@@ -233,7 +233,7 @@ tr:last-child td { border-bottom: none; }
 
 <!-- ══ GOOGLE SHEETS MODAL ══ -->
 <div class="modal-overlay" id="sheets-modal">
-  <div class="modal" style="max-width:540px;">
+  <div class="modal" style="max-width:520px;">
     <button class="modal-close" onclick="document.getElementById('sheets-modal').classList.remove('open')">✕</button>
     <h3>📤 גיבוי לגוגל שיטס</h3>
 
@@ -241,57 +241,45 @@ tr:last-child td { border-bottom: none; }
       <div class="sheets-step active" id="sd1">1</div>
       <div style="flex:1;height:2px;background:#e2e8f0"></div>
       <div class="sheets-step" id="sd2">2</div>
-      <div style="flex:1;height:2px;background:#e2e8f0"></div>
-      <div class="sheets-step" id="sd3">3</div>
     </div>
 
-    <!-- Step 1 -->
+    <!-- Step 1: הדרכה -->
     <div id="gs-step-1">
-      <h4 style="color:#1a365d;margin-bottom:10px;">שלב 1 — הגדרת Google Cloud (פעם אחת)</h4>
-      <div style="background:#f7fafc;border-radius:8px;padding:12px;font-size:0.83rem;line-height:1.9;border:1px solid #e2e8f0;">
-        <ol style="padding-right:18px;">
-          <li>גש ל <strong>console.cloud.google.com</strong> → צור פרוייקט</li>
-          <li><strong>APIs & Services → Enable APIs → Google Sheets API</strong></li>
-          <li><strong>Credentials → Create → OAuth 2.0 Client ID → Web application</strong></li>
-          <li>ב-<strong>Authorized JavaScript origins</strong> הוסף:<br>
-            <code style="direction:ltr;display:inline-block;background:#edf2f7;padding:2px 7px;border-radius:4px;margin-top:3px;">https://dudi98722-bot.github.io</code>
+      <h4 style="color:#1a365d;margin-bottom:10px;">שלב 1 — הגדרה בגיליון (פעם אחת)</h4>
+      <div style="background:#f7fafc;border-radius:8px;padding:14px;font-size:0.85rem;line-height:2;border:1px solid #e2e8f0;">
+        <ol style="padding-right:20px;">
+          <li>פתח את הגיליון שלך בגוגל שיטס</li>
+          <li>לחץ <strong>Extensions → Apps Script</strong></li>
+          <li>מחק את כל הקוד הקיים</li>
+          <li>פתח את הקובץ <strong>google_apps_script.js</strong> מהמחשב שלך והדבק את כל תוכנו</li>
+          <li>לחץ 💾 שמור</li>
+          <li>לחץ <strong>Deploy → New deployment</strong></li>
+          <li>בחר <strong>Web app</strong><br>
+            • Execute as: <strong>Me</strong><br>
+            • Who has access: <strong>Anyone</strong>
           </li>
-          <li>העתק את ה-<strong>Client ID</strong></li>
+          <li>לחץ <strong>Deploy</strong> → אשר הרשאות → העתק את ה-<strong>URL</strong></li>
         </ol>
       </div>
-      <div style="display:flex;justify-content:flex-end;margin-top:12px;">
-        <button class="btn btn-primary" onclick="gsStep(2)">הבא ←</button>
+      <div style="display:flex;justify-content:flex-end;margin-top:14px;">
+        <button class="btn btn-primary" onclick="gsStep(2)">יש לי URL ←</button>
       </div>
     </div>
 
-    <!-- Step 2 -->
+    <!-- Step 2: הזנת URL וגיבוי -->
     <div id="gs-step-2" style="display:none">
-      <h4 style="color:#1a365d;margin-bottom:10px;">שלב 2 — Client ID וגיליון</h4>
-      <div class="form-group" style="margin-bottom:12px;"><label>Google OAuth Client ID</label><input type="text" id="gs-client-id" placeholder="XXXXXXX.apps.googleusercontent.com"></div>
-      <div class="form-group" style="margin-bottom:12px;"><label>Spreadsheet ID (ריק = צור חדש בכל גיבוי)</label><input type="text" id="gs-sheet-id" placeholder="מה-URL של הגיליון: /d/XXXXX/edit"></div>
-      <div style="display:flex;justify-content:space-between;margin-top:12px;">
-        <button class="btn btn-gray" onclick="gsStep(1)">← חזור</button>
-        <button class="btn btn-primary" onclick="gsSaveAndConnect()">שמור והתחבר ←</button>
+      <h4 style="color:#1a365d;margin-bottom:12px;">שלב 2 — הזן את ה-URL וגבה</h4>
+      <div class="form-group" style="margin-bottom:16px;">
+        <label>כתובת Apps Script Web App</label>
+        <input type="text" id="gs-script-url" placeholder="https://script.google.com/macros/s/...">
       </div>
-    </div>
-
-    <!-- Step 3 -->
-    <div id="gs-step-3" style="display:none;text-align:center;">
-      <div id="gs-auth-area" style="padding:20px 0;">
-        <button class="btn btn-primary" style="font-size:1rem;padding:12px 28px;" onclick="gsSignIn()">🔑 התחבר עם Google</button>
-        <p style="font-size:0.8rem;color:#718096;margin-top:10px;">תיפתח חלונית הרשאה לגישה לגיליונות</p>
+      <div id="gs-prog" style="display:none;margin-bottom:14px;">
+        <div class="progress-wrap"><div class="progress-bar" id="gs-prog-bar" style="width:0%"></div></div>
+        <p id="gs-prog-text" style="font-size:0.82rem;color:#4a5568;margin-top:6px;text-align:center;"></p>
       </div>
-      <div id="gs-ready-area" style="display:none;padding:10px 0;">
-        <p style="color:#276749;font-weight:600;margin-bottom:14px;">✅ מחובר לגוגל!</p>
-        <button class="btn btn-success" style="font-size:1rem;padding:12px 28px;" onclick="runBackup()">📤 בצע גיבוי עכשיו</button>
-        <div id="gs-prog" style="margin-top:14px;display:none;">
-          <div class="progress-wrap"><div class="progress-bar" id="gs-prog-bar" style="width:0%"></div></div>
-          <p id="gs-prog-text" style="font-size:0.82rem;color:#4a5568;margin-top:6px;"></p>
-        </div>
-        <br><button class="btn btn-gray btn-sm" style="margin-top:8px" onclick="gsSignOut()">התנתק</button>
-      </div>
-      <div style="display:flex;justify-content:flex-start;margin-top:12px;">
-        <button class="btn btn-gray" onclick="gsStep(2)">← חזור</button>
+      <button class="btn btn-success" style="width:100%;font-size:1rem;padding:12px;" onclick="runBackup()">📤 גיבוי עכשיו</button>
+      <div style="display:flex;justify-content:flex-start;margin-top:10px;">
+        <button class="btn btn-gray btn-sm" onclick="gsStep(1)">← חזור</button>
       </div>
     </div>
   </div>
@@ -773,78 +761,38 @@ function populateDropdowns() {
 }
 
 // ══════════════════════════════════════════════════════════
-// GOOGLE SHEETS BACKUP
+// GOOGLE SHEETS — Apps Script approach (ללא OAuth)
 // ══════════════════════════════════════════════════════════
-const GS_SCOPE='https://www.googleapis.com/auth/spreadsheets';
-let gsTokClient=null, gsToken=null;
-
 function openSheetsModal() {
-  document.getElementById('gs-client-id').value=localStorage.getItem('gs_client_id')||'';
-  document.getElementById('gs-sheet-id').value=localStorage.getItem('gs_sheet_id')||'';
-  const savedId=localStorage.getItem('gs_client_id');
-  gsStep(savedId?2:1);
+  const saved = localStorage.getItem('gs_script_url') || '';
+  document.getElementById('gs-script-url').value = saved;
+  gsStep(saved ? 2 : 1);
   document.getElementById('sheets-modal').classList.add('open');
 }
 function gsStep(n) {
-  [1,2,3].forEach(i=>{
-    document.getElementById('gs-step-'+i).style.display=i===n?'':'none';
-    const d=document.getElementById('sd'+i);
-    d.className='sheets-step'+(i<n?' done':i===n?' active':'');
+  [1,2].forEach(i => {
+    document.getElementById('gs-step-'+i).style.display = i===n ? '' : 'none';
+    document.getElementById('sd'+i).className = 'sheets-step'+(i<n?' done':i===n?' active':'');
   });
-  if (n===3) gsLoadLib();
-}
-function gsSaveAndConnect() {
-  const cid=document.getElementById('gs-client-id').value.trim();
-  if (!cid) { alert('יש להזין Client ID'); return; }
-  localStorage.setItem('gs_client_id',cid);
-  localStorage.setItem('gs_sheet_id',document.getElementById('gs-sheet-id').value.trim());
-  gsStep(3);
-}
-function gsLoadLib() {
-  if (window.google?.accounts?.oauth2) { buildGsClient(); return; }
-  if (!document.getElementById('gsi-script')) {
-    const s=document.createElement('script'); s.id='gsi-script';
-    s.src='https://accounts.google.com/gsi/client';
-    s.onload=buildGsClient; document.head.appendChild(s);
-  }
-}
-function buildGsClient() {
-  gsTokClient=google.accounts.oauth2.initTokenClient({
-    client_id: localStorage.getItem('gs_client_id'),
-    scope: GS_SCOPE,
-    callback: resp=>{
-      if (resp.error) { alert('שגיאה: '+resp.error); return; }
-      gsToken=resp.access_token;
-      document.getElementById('gs-auth-area').style.display='none';
-      document.getElementById('gs-ready-area').style.display='';
-    }
-  });
-}
-function gsSignIn() { if (gsTokClient) gsTokClient.requestAccessToken(); }
-function gsSignOut() {
-  if (gsToken) google.accounts.oauth2.revoke(gsToken);
-  gsToken=null;
-  document.getElementById('gs-auth-area').style.display='';
-  document.getElementById('gs-ready-area').style.display='none';
 }
 async function runBackup() {
-  if (!gsToken) { alert('יש להתחבר תחילה'); return; }
-  setProg(5,'מכין נתונים...');
-  const data=buildSheetData();
-  let sid=localStorage.getItem('gs_sheet_id')||'';
+  const url = document.getElementById('gs-script-url').value.trim();
+  if (!url) { alert('יש להזין את ה-URL של Apps Script'); return; }
+  localStorage.setItem('gs_script_url', url);
+  setProg(10, 'מכין נתונים...');
+  const data = buildSheetData();
   try {
-    if (!sid) { setProg(20,'יוצר גיליון...'); sid=await gsCreate(); localStorage.setItem('gs_sheet_id',sid); document.getElementById('gs-sheet-id').value=sid; }
-    else { setProg(20,'מנקה...'); await gsClear(sid,Object.keys(data)); }
-    const keys=Object.keys(data);
-    for (let i=0;i<keys.length;i++) {
-      const name=keys[i]; setProg(30+Math.round(i/keys.length*60),'כותב: '+name+'...');
-      await gsEnsureTab(sid,name); await gsWrite(sid,name,data[name]);
-    }
-    setProg(100,'✅ גיבוי הושלם!');
-    showSheetsStatus(`✅ גיבוי הושלם! <a href="https://docs.google.com/spreadsheets/d/${sid}" target="_blank" style="color:#276749;font-weight:700">פתח גיליון ↗</a>`,'green');
+    setProg(40, 'שולח לגיליון...');
+    await fetch(url, {
+      method: 'POST',
+      mode: 'no-cors',
+      body: JSON.stringify(data)
+    });
+    setProg(100, '✅ גיבוי נשלח!');
+    showSheetsStatus('✅ הנתונים נשלחו לגיליון בהצלחה! פתח את הגיליון לאימות.', 'green');
   } catch(e) {
-    document.getElementById('gs-prog').style.display='none';
-    showSheetsStatus('❌ שגיאה: '+(e.message||e),'red');
+    document.getElementById('gs-prog').style.display = 'none';
+    showSheetsStatus('❌ שגיאה: ' + (e.message || e), 'red');
   }
 }
 function buildSheetData() {
@@ -862,11 +810,6 @@ function buildSheetData() {
   const smRows=[['סיכום',''],['חוזי לקוחות',tCP],['גבוי',tCPd],['יתרה לקוחות',tCP-tCPd],['',''],['לקבלנים',tSP],['שולם',tSPd],['יתרה קבלנים',tSP-tSPd],['',''],['רווח גולמי',tCP-tSP],['',''],['תאריך גיבוי',new Date().toLocaleString('he-IL')]];
   return {'סיכום':smRows,'פרוייקטים':pRows,'קבלני משנה':sRows,'שלבים':stRows,'תשלומים':paRows};
 }
-async function gsApi(method,url,body){const r=await fetch(url,{method,headers:{Authorization:'Bearer '+gsToken,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});const j=await r.json();if(!r.ok)throw new Error(j.error?.message||JSON.stringify(j));return j;}
-async function gsCreate(){const d=await gsApi('POST','https://sheets.googleapis.com/v4/spreadsheets',{properties:{title:'גיבוי ניהול פרוייקטים — '+new Date().toLocaleDateString('he-IL')}});return d.spreadsheetId;}
-async function gsEnsureTab(id,title){const d=await gsApi('GET',`https://sheets.googleapis.com/v4/spreadsheets/${id}?fields=sheets.properties`);if(!d.sheets.some(s=>s.properties.title===title))await gsApi('POST',`https://sheets.googleapis.com/v4/spreadsheets/${id}:batchUpdate`,{requests:[{addSheet:{properties:{title}}}]});}
-async function gsClear(id,titles){const d=await gsApi('GET',`https://sheets.googleapis.com/v4/spreadsheets/${id}?fields=sheets.properties`);for(const t of titles){if(d.sheets.some(s=>s.properties.title===t))await gsApi('POST',`https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(t)}:clear`,{});}}
-async function gsWrite(id,sheet,rows){await gsApi('PUT',`https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(sheet)}?valueInputOption=USER_ENTERED`,{values:rows});}
 function setProg(pct,text){const el=document.getElementById('gs-prog');el.style.display='block';document.getElementById('gs-prog-bar').style.width=pct+'%';document.getElementById('gs-prog-text').textContent=text;}
 function showSheetsStatus(html,color){const el=document.getElementById('sheets-status');el.style.display='block';el.style.cssText+=`;background:${color==='green'?'#f0fff4':'#fff5f5'};border:1px solid ${color==='green'?'#c6f6d5':'#fed7d7'};color:${color==='green'?'#276749':'#c53030'};`;el.innerHTML=html;}
 
