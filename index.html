@@ -116,6 +116,7 @@ tr:last-child td { border-bottom: none; }
 <header>
   <span>🏗️</span>
   <h1>ניהול פרוייקטים לקבלנים</h1>
+  <div id="backup-status" style="font-size:0.75rem;opacity:0.8;text-align:left;white-space:nowrap;"></div>
 </header>
 
 <div class="tabs">
@@ -790,6 +791,9 @@ async function runBackup() {
       mode: 'no-cors',
       body: JSON.stringify(data)
     });
+    lastBackupTime = Date.now();
+    localStorage.setItem('last_backup_time', lastBackupTime);
+    updateBackupStatus();
     setProg(100, '✅ גיבוי נשלח!');
     showSheetsStatus('✅ הנתונים נשלחו לגיליון בהצלחה! פתח את הגיליון לאימות.', 'green');
   } catch(e) {
@@ -814,6 +818,50 @@ function buildSheetData() {
 }
 function setProg(pct,text){const el=document.getElementById('gs-prog');el.style.display='block';document.getElementById('gs-prog-bar').style.width=pct+'%';document.getElementById('gs-prog-text').textContent=text;}
 function showSheetsStatus(html,color){const el=document.getElementById('sheets-status');el.style.display='block';el.style.cssText+=`;background:${color==='green'?'#f0fff4':'#fff5f5'};border:1px solid ${color==='green'?'#c6f6d5':'#fed7d7'};color:${color==='green'?'#276749':'#c53030'};`;el.innerHTML=html;}
+
+// ══════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════
+// AUTO BACKUP
+// ══════════════════════════════════════════════════════════
+const AUTO_BACKUP_INTERVAL = 5 * 60 * 1000; // כל 5 דקות
+let lastBackupTime = parseInt(localStorage.getItem('last_backup_time') || '0');
+
+function updateBackupStatus() {
+  const el = document.getElementById('backup-status');
+  if (!el) return;
+  if (!lastBackupTime) { el.textContent = ''; return; }
+  const diff = Math.floor((Date.now() - lastBackupTime) / 60000);
+  const txt = diff < 1 ? 'גיבוי: עכשיו' : diff === 1 ? 'גיבוי: לפני דקה' : `גיבוי: לפני ${diff} דק'`;
+  el.innerHTML = `☁️ ${txt}`;
+}
+
+async function autoBackup() {
+  const url = localStorage.getItem('gs_script_url') || GS_DEFAULT_URL;
+  if (!url) return;
+  try {
+    const data = buildSheetData();
+    await fetch(url, { method: 'POST', mode: 'no-cors', body: JSON.stringify(data) });
+    lastBackupTime = Date.now();
+    localStorage.setItem('last_backup_time', lastBackupTime);
+    updateBackupStatus();
+  } catch(e) { /* שקט בשגיאה — ינסה שוב */ }
+}
+
+// גיבוי כל 5 דקות
+setInterval(autoBackup, AUTO_BACKUP_INTERVAL);
+
+// גיבוי בסגירת הדף
+window.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') autoBackup();
+});
+window.addEventListener('beforeunload', () => autoBackup());
+
+// עדכון תצוגת זמן כל דקה
+setInterval(updateBackupStatus, 60000);
+updateBackupStatus();
+
+// גיבוי ראשוני אחרי 10 שניות (לאחר טעינה)
+setTimeout(autoBackup, 10000);
 
 // ══════════════════════════════════════════════════════════
 // INIT
