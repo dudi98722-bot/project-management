@@ -162,14 +162,49 @@ tr:last-child td { border-bottom: none; }
 <!-- STAGES -->
 <div id="tab-stages" class="tab-panel">
   <div class="card">
-    <h2 id="stage-form-title">➕ הוסף שלב</h2>
-    <div class="form-row">
-      <div class="form-group"><label>פרוייקט</label><select id="stage-proj"><option value="">— בחר —</option></select></div>
-      <div class="form-group"><label>שם שלב</label><input type="text" id="stage-name" placeholder="שלב א׳"></div>
-      <div class="form-group"><label>מחיר ללקוח (₪)</label><input type="number" id="stage-client-price" placeholder="0" min="0"></div>
-      <div class="form-group"><label>מחיר לקבלן משנה (₪)</label><input type="number" id="stage-sub-price" placeholder="0" min="0"></div>
-      <button class="btn btn-primary" id="stage-save-btn" onclick="saveStage()">שמור</button>
-      <button class="btn btn-gray" id="stage-cancel-btn" onclick="cancelEdit('stage')" style="display:none">ביטול</button>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <h2 id="stage-form-title" style="margin-bottom:0">➕ הוסף שלב</h2>
+      <button class="btn btn-gray btn-sm" onclick="toggleBulk()" id="bulk-toggle-btn">📋 הדבקה מרובה</button>
+    </div>
+
+    <!-- טופס בודד -->
+    <div id="single-stage-form">
+      <div class="form-row">
+        <div class="form-group"><label>פרוייקט</label><select id="stage-proj"><option value="">— בחר —</option></select></div>
+        <div class="form-group"><label>שם שלב</label><input type="text" id="stage-name" placeholder="שלב א׳"></div>
+        <div class="form-group"><label>מחיר ללקוח (₪)</label><input type="number" id="stage-client-price" placeholder="0" min="0"></div>
+        <div class="form-group"><label>מחיר לקבלן משנה (₪)</label><input type="number" id="stage-sub-price" placeholder="0" min="0"></div>
+        <button class="btn btn-primary" id="stage-save-btn" onclick="saveStage()">שמור</button>
+        <button class="btn btn-gray" id="stage-cancel-btn" onclick="cancelEdit('stage')" style="display:none">ביטול</button>
+      </div>
+    </div>
+
+    <!-- הדבקה מרובה -->
+    <div id="bulk-stage-form" style="display:none">
+      <div class="form-row" style="margin-bottom:12px;">
+        <div class="form-group"><label>פרוייקט לכל השלבים</label><select id="bulk-proj"><option value="">— בחר —</option></select></div>
+      </div>
+      <div style="background:#f0fff4;border-radius:8px;padding:12px;font-size:0.82rem;margin-bottom:10px;border:1px solid #c6f6d5;">
+        <strong>📋 הוראות הדבקה:</strong><br>
+        כל שורה = שלב אחד בפורמט: <strong>שם שלב, מחיר ללקוח, מחיר לקבלן</strong><br>
+        אפשר גם להדביק ישירות מאקסל / גוגל שיטס (עמודות: שם | מחיר ללקוח | מחיר לקבלן)
+        <div style="margin-top:6px;color:#718096;font-size:0.78rem;">
+          דוגמה:<br>
+          יסודות, 50000, 35000<br>
+          שלד, 120000, 90000<br>
+          גמר פנים, 80000, 60000
+        </div>
+      </div>
+      <textarea id="bulk-text" rows="8" placeholder="הדבק כאן..." style="width:100%;padding:10px;border:1.5px solid #cbd5e0;border-radius:8px;font-family:inherit;font-size:0.9rem;direction:rtl;resize:vertical;"></textarea>
+      <div id="bulk-preview" style="margin-top:10px;display:none;">
+        <h4 style="font-size:0.88rem;color:#4a5568;margin-bottom:8px;">תצוגה מקדימה — <span id="bulk-count"></span> שלבים:</h4>
+        <div id="bulk-preview-table"></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn btn-gray" onclick="previewBulk()">👁️ תצוגה מקדימה</button>
+        <button class="btn btn-success" onclick="saveBulk()">💾 שמור הכל</button>
+        <button class="btn btn-gray btn-sm" onclick="toggleBulk()">ביטול</button>
+      </div>
     </div>
   </div>
   <div class="summary-bar" id="stages-summary"></div>
@@ -738,6 +773,89 @@ function renderDashboard() {
           </div>`;}).join('')}
       </div></div>`;
   }).join('') : '<p style="color:#a0aec0">אין קבלני משנה</p>';
+}
+
+// ══════════════════════════════════════════════════════════
+// BULK STAGES
+// ══════════════════════════════════════════════════════════
+function toggleBulk() {
+  const bulk = document.getElementById('bulk-stage-form');
+  const single = document.getElementById('single-stage-form');
+  const btn = document.getElementById('bulk-toggle-btn');
+  const isOpen = bulk.style.display !== 'none';
+  bulk.style.display = isOpen ? 'none' : '';
+  single.style.display = isOpen ? '' : 'none';
+  btn.textContent = isOpen ? '📋 הדבקה מרובה' : '✕ סגור';
+  // סנכרן dropdown פרוייקט
+  const bProj = document.getElementById('bulk-proj');
+  const cur = bProj.value;
+  bProj.innerHTML = '<option value="">— בחר פרוייקט —</option>' +
+    projects.map(p=>`<option value="${p.id}">${esc(projLabel(p))}</option>`).join('');
+  bProj.value = cur;
+  document.getElementById('bulk-preview').style.display = 'none';
+}
+
+function parseBulkText(text) {
+  return text.split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .map(line => {
+      // תמיכה בפסיק, טאב (מאקסל), או |
+      const parts = line.split(/\t|,|[|]/).map(p => p.trim());
+      const name = parts[0] || '';
+      const clientPrice = parseFloat((parts[1]||'').replace(/[^\d.]/g,'')) || 0;
+      const subPrice    = parseFloat((parts[2]||'').replace(/[^\d.]/g,'')) || 0;
+      return { name, clientPrice, subPrice };
+    })
+    .filter(s => s.name.length > 0);
+}
+
+function previewBulk() {
+  const projId = document.getElementById('bulk-proj').value;
+  if (!projId) { alert('יש לבחור פרוייקט'); return; }
+  const text = document.getElementById('bulk-text').value;
+  const rows = parseBulkText(text);
+  if (!rows.length) { alert('לא נמצאו שלבים — בדוק את הפורמט'); return; }
+
+  document.getElementById('bulk-count').textContent = rows.length;
+  document.getElementById('bulk-preview-table').innerHTML = `
+    <table>
+      <thead><tr><th>#</th><th>שם שלב</th><th>מחיר ללקוח</th><th>מחיר לקבלן</th><th>רווח</th></tr></thead>
+      <tbody>
+      ${rows.map((r,i)=>`<tr>
+        <td style="color:#a0aec0">${i+1}</td>
+        <td><strong>${esc(r.name)}</strong></td>
+        <td>${fmt(r.clientPrice)}</td>
+        <td>${fmt(r.subPrice)}</td>
+        <td class="${(r.clientPrice-r.subPrice)>=0?'profit-pos':'profit-neg'}">${fmt(r.clientPrice-r.subPrice)}</td>
+      </tr>`).join('')}
+      <tr style="background:#f7fafc;font-weight:700;">
+        <td colspan="2">סה"כ</td>
+        <td>${fmt(rows.reduce((a,r)=>a+r.clientPrice,0))}</td>
+        <td>${fmt(rows.reduce((a,r)=>a+r.subPrice,0))}</td>
+        <td class="profit-pos">${fmt(rows.reduce((a,r)=>a+(r.clientPrice-r.subPrice),0))}</td>
+      </tr>
+      </tbody>
+    </table>`;
+  document.getElementById('bulk-preview').style.display = '';
+}
+
+function saveBulk() {
+  const projId = document.getElementById('bulk-proj').value;
+  if (!projId) { alert('יש לבחור פרוייקט'); return; }
+  const text = document.getElementById('bulk-text').value;
+  const rows = parseBulkText(text);
+  if (!rows.length) { alert('לא נמצאו שלבים'); return; }
+
+  rows.forEach(r => {
+    stages.push({ id: uid(), projId, name: r.name, clientPrice: r.clientPrice, subPrice: r.subPrice });
+  });
+  save();
+  renderStages();
+  document.getElementById('bulk-text').value = '';
+  document.getElementById('bulk-preview').style.display = 'none';
+  toggleBulk();
+  alert(`✅ נשמרו ${rows.length} שלבים בהצלחה!`);
 }
 
 // ══════════════════════════════════════════════════════════
