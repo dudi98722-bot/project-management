@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>שחזור נתונים</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<style>
+body { font-family: Arial, sans-serif; padding: 30px; background: #f0f4f8; direction: rtl; }
+.box { background: white; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+h2 { color: #1a365d; margin-bottom: 14px; }
+pre { background: #f7fafc; padding: 12px; border-radius: 8px; font-size: 0.85rem; overflow-x: auto; direction: ltr; }
+.btn { padding: 12px 28px; border: none; border-radius: 8px; font-size: 1rem; font-weight: 700; cursor: pointer; margin-left: 10px; }
+.btn-green { background: #276749; color: white; }
+.btn-red   { background: #e53e3e; color: white; }
+#status { margin-top: 16px; font-weight: 700; font-size: 1.1rem; }
+</style>
+</head>
+<body>
+
+<div class="box">
+  <h2>🔍 נתונים שנמצאו בדפדפן</h2>
+  <div id="found"></div>
+</div>
+
+<div class="box">
+  <h2>☁️ העברה לענן</h2>
+  <button class="btn btn-red" onclick="clearFirestore()">🗑️ נקה ענן (מחק כפילויות)</button>
+  <button class="btn btn-green" onclick="migrate()">✅ העבר לענן עכשיו</button>
+  <div id="status"></div>
+</div>
+
+<script>
+firebase.initializeApp({
+  apiKey: "AIzaSyBTGFdv6v87aRC0bg3UbiWPT7nmJVSOv04",
+  authDomain: "kablan-management.firebaseapp.com",
+  projectId: "kablan-management",
+  appId: "1:1096929079665:web:321151ff71e6a0251706d0"
+});
+const db = firebase.firestore();
+
+const oldProjects = JSON.parse(localStorage.getItem('proj_projects') || '[]');
+const oldSubs     = JSON.parse(localStorage.getItem('proj_subs')     || '[]');
+const oldStages   = JSON.parse(localStorage.getItem('proj_stages')   || '[]');
+const oldPayments = JSON.parse(localStorage.getItem('proj_payments') || '[]');
+
+document.getElementById('found').innerHTML = `
+  <p>✅ פרוייקטים: <strong>${oldProjects.length}</strong> — ${oldProjects.map(p=>p.name).join(', ') || 'אין'}</p>
+  <p>✅ קבלני משנה: <strong>${oldSubs.length}</strong> — ${oldSubs.map(s=>s.name).join(', ') || 'אין'}</p>
+  <p>✅ שלבים: <strong>${oldStages.length}</strong></p>
+  <p>✅ תשלומים: <strong>${oldPayments.length}</strong></p>
+`;
+
+async function deleteCollection(col) {
+  const snap = await db.collection(col).get();
+  const batch = db.batch();
+  snap.docs.forEach(d => batch.delete(d.ref));
+  await batch.commit();
+}
+
+async function clearFirestore() {
+  if (!confirm('למחוק את כל הנתונים בענן?')) return;
+  try {
+    setStatus('⏳ מנקה פרוייקטים...');
+    await deleteCollection('projects');
+    setStatus('⏳ מנקה קבלנים...');
+    await deleteCollection('subs');
+    setStatus('⏳ מנקה שלבים...');
+    await deleteCollection('stages');
+    setStatus('⏳ מנקה תשלומים...');
+    await deleteCollection('payments');
+    setStatus('✅ הענן נוקה! עכשיו לחץ "העבר לענן"');
+  } catch(e) {
+    setStatus('❌ שגיאה בניקוי: ' + e.message);
+  }
+}
+
+async function migrate() {
+  if (!oldProjects.length && !oldSubs.length) {
+    setStatus('❌ לא נמצאו נתונים בדפדפן!');
+    return;
+  }
+  try {
+    setStatus('⏳ מכין נתונים...');
+    const batch = db.batch();
+    const subIdMap = {}, projectIdMap = {}, stageIdMap = {};
+
+    oldSubs.forEach(s => {
+      const ref = db.collection('subs').doc();
+      subIdMap[s.id] = ref.id;
+      batch.set(ref, {name:s.name, phone:s.phone||'', spec:s.spec||''});
+    });
+    oldProjects.forEach(p => {
+      const ref = db.collection('projects').doc();
+      projectIdMap[p.id] = ref.id;
+      batch.set(ref, {name:p.name, addr:p.addr||'', subId:subIdMap[p.subId]||''});
+    });
+    oldStages.forEach(s => {
+      const ref = db.collection('stages').doc();
+      stageIdMap[s.id] = ref.id;
+      batch.set(ref, {projId:projectIdMap[s.projId]||'', name:s.name, clientPrice:s.clientPrice||0, subPrice:s.subPrice||0});
+    });
+    oldPayments.forEach(p => {
+      const ref = db.collection('payments').doc();
+      batch.set(ref, {stageId:stageIdMap[p.stageId]||'', type:p.type, amount:p.amount||0, date:p.date||'', note:p.note||''});
+    });
+
+    setStatus('⏳ שולח לענן...');
+    await batch.commit();
+    localStorage.setItem('proj_migrated', '1');
+    setStatus(`✅ הועברו בהצלחה! ${oldProjects.length} פרוייקטים | ${oldSubs.length} קבלנים | ${oldStages.length} שלבים`);
+  } catch(e) {
+    setStatus('❌ שגיאה: ' + e.message);
+  }
+}
+
+function setStatus(msg) {
+  document.getElementById('status').textContent = msg;
+}
+</script>
+</body>
+</html>
