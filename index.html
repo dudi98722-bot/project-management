@@ -1023,41 +1023,36 @@ function checkLocalData() {
 }
 
 async function migrateLocalData() {
-  if (!confirm('להעביר את הנתונים הישנים לענן? זה יצרף אותם לנתונים הקיימים.')) return;
+  if (!confirm('להעביר את הנתונים הישנים לענן?')) return;
 
   const oldProjects = JSON.parse(localStorage.getItem('proj_projects') || '[]');
   const oldSubs     = JSON.parse(localStorage.getItem('proj_subs')     || '[]');
   const oldStages   = JSON.parse(localStorage.getItem('proj_stages')   || '[]');
   const oldPayments = JSON.parse(localStorage.getItem('proj_payments') || '[]');
 
-  document.getElementById('migrate-btn').textContent = '⏳ מעביר...';
+  const btn = document.getElementById('migrate-btn');
+  btn.textContent = '⏳ מעביר...';
 
-  // מיפוי ID ישן → ID חדש בFirestore
-  const subIdMap     = {};
-  const projectIdMap = {};
-  const stageIdMap   = {};
+  const ts = firebase.firestore.FieldValue.serverTimestamp();
+  const subIdMap = {}, projectIdMap = {}, stageIdMap = {};
 
-  for (const s of oldSubs) {
-    const ref = await fsAdd('subs', {name: s.name, phone: s.phone||'', spec: s.spec||''});
-    subIdMap[s.id] = ref.id;
-  }
-  for (const p of oldProjects) {
-    const newSubId = subIdMap[p.subId] || '';
-    const ref = await fsAdd('projects', {name: p.name, addr: p.addr||'', subId: newSubId});
-    projectIdMap[p.id] = ref.id;
-  }
-  for (const s of oldStages) {
-    const newProjId = projectIdMap[s.projId] || '';
-    const ref = await fsAdd('stages', {projId: newProjId, name: s.name, clientPrice: s.clientPrice||0, subPrice: s.subPrice||0});
-    stageIdMap[s.id] = ref.id;
-  }
-  for (const p of oldPayments) {
-    const newStageId = stageIdMap[p.stageId] || '';
-    await fsAdd('payments', {stageId: newStageId, type: p.type, amount: p.amount||0, date: p.date||'', note: p.note||''});
-  }
+  // סבבה 1: קבלני משנה
+  const subRefs = await Promise.all(oldSubs.map(s => db.collection('subs').add({name:s.name,phone:s.phone||'',spec:s.spec||'',_ts:ts})));
+  oldSubs.forEach((s,i) => subIdMap[s.id] = subRefs[i].id);
+
+  // סבבה 2: פרוייקטים
+  const projRefs = await Promise.all(oldProjects.map(p => db.collection('projects').add({name:p.name,addr:p.addr||'',subId:subIdMap[p.subId]||'',_ts:ts})));
+  oldProjects.forEach((p,i) => projectIdMap[p.id] = projRefs[i].id);
+
+  // סבבה 3: שלבים
+  const stageRefs = await Promise.all(oldStages.map(s => db.collection('stages').add({projId:projectIdMap[s.projId]||'',name:s.name,clientPrice:s.clientPrice||0,subPrice:s.subPrice||0,_ts:ts})));
+  oldStages.forEach((s,i) => stageIdMap[s.id] = stageRefs[i].id);
+
+  // סבבה 4: תשלומים
+  await Promise.all(oldPayments.map(p => db.collection('payments').add({stageId:stageIdMap[p.stageId]||'',type:p.type,amount:p.amount||0,date:p.date||'',note:p.note||'',_ts:ts})));
 
   localStorage.setItem('proj_migrated', '1');
-  document.getElementById('migrate-btn').style.display = 'none';
+  btn.style.display = 'none';
   alert('✅ הנתונים הועברו לענן בהצלחה!');
 }
 
