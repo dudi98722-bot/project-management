@@ -4,6 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ניהול פרוייקטים לקבלנים</title>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+  firebase.initializeApp({
+    apiKey: "AIzaSyBTGFdv6v87aRC0bg3UbiWPT7nmJVSOv04",
+    authDomain: "kablan-management.firebaseapp.com",
+    projectId: "kablan-management",
+    appId: "1:1096929079665:web:321151ff71e6a0251706d0"
+  });
+  const db = firebase.firestore();
+</script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: #2d3748; direction: rtl; }
@@ -323,19 +336,43 @@ tr:last-child td { border-bottom: none; }
 
 <script>
 // ══════════════════════════════════════════════════════════
-// DATA — localStorage
+// DATA — Firestore (ענן, משותף לכולם)
 // ══════════════════════════════════════════════════════════
-let projects = JSON.parse(localStorage.getItem('proj_projects') || '[]');
-let subs     = JSON.parse(localStorage.getItem('proj_subs')     || '[]');
-let stages   = JSON.parse(localStorage.getItem('proj_stages')   || '[]');
-let payments = JSON.parse(localStorage.getItem('proj_payments') || '[]');
+let projects = [], subs = [], stages = [], payments = [];
+let unsubs = [];
 
-function save() {
-  localStorage.setItem('proj_projects', JSON.stringify(projects));
-  localStorage.setItem('proj_subs',     JSON.stringify(subs));
-  localStorage.setItem('proj_stages',   JSON.stringify(stages));
-  localStorage.setItem('proj_payments', JSON.stringify(payments));
+function save() {} // ריק — Firestore כותב ישירות
+
+function setupListeners() {
+  const showLoader = v => document.getElementById('backup-status').innerHTML = v ? '🔄 מתחבר...' : '';
+
+  unsubs.forEach(u => u());
+  unsubs = [];
+
+  unsubs.push(db.collection('subs').onSnapshot(snap => {
+    subs = snap.docs.map(d => ({id: d.id, ...d.data()}));
+    populateDropdowns(); renderSubs(); renderProjects();
+    document.getElementById('backup-status').innerHTML = '🟢 מחובר לענן';
+  }));
+  unsubs.push(db.collection('projects').onSnapshot(snap => {
+    projects = snap.docs.map(d => ({id: d.id, ...d.data()}));
+    renderProjects(); populateDropdowns(); renderStages();
+  }));
+  unsubs.push(db.collection('stages').onSnapshot(snap => {
+    stages = snap.docs.map(d => ({id: d.id, ...d.data()}));
+    renderStages();
+  }));
+  unsubs.push(db.collection('payments').onSnapshot(snap => {
+    payments = snap.docs.map(d => ({id: d.id, ...d.data()}));
+    renderStages(); renderPaymentsLog();
+    if (payModalStageId) { updatePayModalBalance(payModalStageId); renderPayModalHistory(payModalStageId); }
+  }));
 }
+
+// פעולות Firestore
+async function fsAdd(col, data) { return db.collection(col).add({...data, _ts: firebase.firestore.FieldValue.serverTimestamp()}); }
+async function fsUpdate(col, id, data) { return db.collection(col).doc(id).update({...data, _ts: firebase.firestore.FieldValue.serverTimestamp()}); }
+async function fsDelete(col, id) { return db.collection(col).doc(id).delete(); }
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
 function fmt(n) { return Number(n||0).toLocaleString('he-IL') + ' ₪'; }
@@ -392,17 +429,16 @@ function switchTab(name, btn) {
 // ══════════════════════════════════════════════════════════
 // SUBCONTRACTORS
 // ══════════════════════════════════════════════════════════
-function saveSub() {
+async function saveSub() {
   const name=v('sub-name'), phone=v('sub-phone'), spec=v('sub-spec');
   if (!name) { alert('יש להזין שם'); return; }
   if (editingSub) {
-    Object.assign(subs.find(x=>x.id===editingSub)||{}, {name,phone,spec});
+    await fsUpdate('subs', editingSub, {name,phone,spec});
     cancelEdit('sub');
   } else {
-    subs.push({id:uid(),name,phone,spec});
+    await fsAdd('subs', {name,phone,spec});
     ['sub-name','sub-phone','sub-spec'].forEach(id=>document.getElementById(id).value='');
   }
-  save(); populateDropdowns(); renderSubs();
 }
 function editSub(id) {
   const s=subs.find(x=>x.id===id); if(!s) return;
@@ -414,11 +450,12 @@ function editSub(id) {
   document.getElementById('sub-save-btn').textContent='עדכן';
   document.getElementById('sub-cancel-btn').style.display='';
 }
-function deleteSub(id) {
+async function deleteSub(id) {
   if (!confirm('למחוק?')) return;
-  subs=subs.filter(x=>x.id!==id);
-  projects.forEach(p=>{if(p.subId===id)p.subId='';});
-  save(); populateDropdowns(); renderSubs(); renderProjects();
+  await fsDelete('subs', id);
+  const batch = db.batch();
+  projects.filter(p=>p.subId===id).forEach(p=>batch.update(db.collection('projects').doc(p.id),{subId:''}));
+  await batch.commit();
 }
 function renderSubs() {
   const el=document.getElementById('subs-table');
@@ -438,19 +475,18 @@ function renderSubs() {
 // ══════════════════════════════════════════════════════════
 // PROJECTS
 // ══════════════════════════════════════════════════════════
-function saveProject() {
+async function saveProject() {
   const name=v('proj-name'), addr=v('proj-addr'), subId=document.getElementById('proj-sub').value;
   if (!name) { alert('יש להזין שם'); return; }
   if (editingProject) {
-    Object.assign(projects.find(x=>x.id===editingProject)||{}, {name,addr,subId});
+    await fsUpdate('projects', editingProject, {name,addr,subId});
     cancelEdit('project');
   } else {
-    projects.push({id:uid(),name,addr,subId});
+    await fsAdd('projects', {name,addr,subId});
     document.getElementById('proj-name').value='';
     document.getElementById('proj-addr').value='';
     document.getElementById('proj-sub').value='';
   }
-  save(); renderProjects(); populateDropdowns();
 }
 function editProject(id) {
   const p=projects.find(x=>x.id===id); if(!p) return;
@@ -462,13 +498,15 @@ function editProject(id) {
   document.getElementById('proj-save-btn').textContent='עדכן';
   document.getElementById('proj-cancel-btn').style.display='';
 }
-function deleteProject(id) {
+async function deleteProject(id) {
   if (!confirm('למחוק פרוייקט? שלבים ותשלומים יימחקו.')) return;
-  const stageIds=stages.filter(s=>s.projId===id).map(s=>s.id);
-  projects=projects.filter(x=>x.id!==id);
-  stages=stages.filter(x=>x.projId!==id);
-  payments=payments.filter(x=>!stageIds.includes(x.stageId));
-  save(); renderProjects(); populateDropdowns(); renderStages();
+  const batch = db.batch();
+  batch.delete(db.collection('projects').doc(id));
+  stages.filter(s=>s.projId===id).forEach(s=>{
+    batch.delete(db.collection('stages').doc(s.id));
+    payments.filter(p=>p.stageId===s.id).forEach(p=>batch.delete(db.collection('payments').doc(p.id)));
+  });
+  await batch.commit();
 }
 function renderProjects() {
   const el=document.getElementById('projects-table');
@@ -488,7 +526,7 @@ function renderProjects() {
 // ══════════════════════════════════════════════════════════
 // STAGES
 // ══════════════════════════════════════════════════════════
-function saveStage() {
+async function saveStage() {
   const projId=document.getElementById('stage-proj').value;
   const name=v('stage-name');
   const clientPrice=parseFloat(document.getElementById('stage-client-price').value)||0;
@@ -496,14 +534,13 @@ function saveStage() {
   if (!projId) { alert('יש לבחור פרוייקט'); return; }
   if (!name)   { alert('יש להזין שם שלב'); return; }
   if (editingStage) {
-    Object.assign(stages.find(x=>x.id===editingStage)||{}, {projId,name,clientPrice,subPrice});
+    await fsUpdate('stages', editingStage, {projId,name,clientPrice,subPrice});
     cancelEdit('stage');
   } else {
-    stages.push({id:uid(),projId,name,clientPrice,subPrice});
+    await fsAdd('stages', {projId,name,clientPrice,subPrice});
     ['stage-name','stage-client-price','stage-sub-price'].forEach(id=>document.getElementById(id).value='');
     document.getElementById('stage-proj').value='';
   }
-  save(); renderStages();
 }
 function editStage(id) {
   const s=stages.find(x=>x.id===id); if(!s) return;
@@ -516,11 +553,12 @@ function editStage(id) {
   document.getElementById('stage-save-btn').textContent='עדכן';
   document.getElementById('stage-cancel-btn').style.display='';
 }
-function deleteStage(id) {
+async function deleteStage(id) {
   if (!confirm('למחוק שלב?')) return;
-  stages=stages.filter(x=>x.id!==id);
-  payments=payments.filter(x=>x.stageId!==id);
-  save(); renderStages();
+  const batch = db.batch();
+  batch.delete(db.collection('stages').doc(id));
+  payments.filter(p=>p.stageId===id).forEach(p=>batch.delete(db.collection('payments').doc(p.id)));
+  await batch.commit();
 }
 function renderStages() {
   const fv=document.getElementById('stages-filter')?.value||'';
@@ -645,31 +683,24 @@ function cancelEditPayment() {
   document.getElementById('pay-submit-btn').textContent='אישור תשלום';
   document.getElementById('pay-cancel-edit-btn').style.display='none';
 }
-function deletePayment(id) {
+async function deletePayment(id) {
   if (!confirm('למחוק תשלום?')) return;
   if (editingPaymentId===id) cancelEditPayment();
-  payments=payments.filter(x=>x.id!==id);
-  save();
-  if (payModalStageId) { updatePayModalBalance(payModalStageId); renderPayModalHistory(payModalStageId); }
-  renderStages(); renderPaymentsLog();
+  await fsDelete('payments', id);
 }
-function submitPayment() {
+async function submitPayment() {
   const amount=parseFloat(document.getElementById('pay-amount').value)||0;
   const date=document.getElementById('pay-date').value||new Date().toISOString().slice(0,10);
   const note=v('pay-note');
   if (!amount||amount<=0) { alert('יש להזין סכום תקין'); return; }
   if (editingPaymentId) {
-    const p=payments.find(x=>x.id===editingPaymentId);
-    if (p) { p.amount=amount; p.date=date; p.note=note; p.type=payType; }
+    await fsUpdate('payments', editingPaymentId, {type:payType,amount,date,note});
     cancelEditPayment();
   } else {
-    payments.push({id:uid(),stageId:payModalStageId,type:payType,amount,date,note});
+    await fsAdd('payments', {stageId:payModalStageId,type:payType,amount,date,note});
     document.getElementById('pay-amount').value='';
     document.getElementById('pay-note').value='';
   }
-  save();
-  updatePayModalBalance(payModalStageId);
-  renderPayModalHistory(payModalStageId);
 }
 function editPaymentFromLog(id) {
   const p=payments.find(x=>x.id===id); if(!p) return;
@@ -840,18 +871,16 @@ function previewBulk() {
   document.getElementById('bulk-preview').style.display = '';
 }
 
-function saveBulk() {
+async function saveBulk() {
   const projId = document.getElementById('bulk-proj').value;
   if (!projId) { alert('יש לבחור פרוייקט'); return; }
   const text = document.getElementById('bulk-text').value;
   const rows = parseBulkText(text);
   if (!rows.length) { alert('לא נמצאו שלבים'); return; }
 
-  rows.forEach(r => {
-    stages.push({ id: uid(), projId, name: r.name, clientPrice: r.clientPrice, subPrice: r.subPrice });
-  });
-  save();
-  renderStages();
+  for (const r of rows) {
+    await fsAdd('stages', { projId, name: r.name, clientPrice: r.clientPrice, subPrice: r.subPrice });
+  }
   document.getElementById('bulk-text').value = '';
   document.getElementById('bulk-preview').style.display = 'none';
   toggleBulk();
@@ -984,10 +1013,8 @@ setTimeout(autoBackup, 10000);
 // ══════════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════════
-populateDropdowns();
-renderProjects();
-renderSubs();
-renderStages();
+document.getElementById('backup-status').innerHTML = '🔄 מתחבר לענן...';
+setupListeners(); // מתחבר ל-Firestore ומקשיב לשינויים בזמן אמת
 </script>
 </body>
 </html>
