@@ -39,17 +39,38 @@ firebase.initializeApp({
 });
 const db = firebase.firestore();
 
-const oldProjects = JSON.parse(localStorage.getItem('proj_projects') || '[]');
-const oldSubs     = JSON.parse(localStorage.getItem('proj_subs')     || '[]');
-const oldStages   = JSON.parse(localStorage.getItem('proj_stages')   || '[]');
-const oldPayments = JSON.parse(localStorage.getItem('proj_payments') || '[]');
+let oldProjects = JSON.parse(localStorage.getItem('proj_projects') || '[]');
+let oldSubs     = JSON.parse(localStorage.getItem('proj_subs')     || '[]');
+let oldStages   = JSON.parse(localStorage.getItem('proj_stages')   || '[]');
+let oldPayments = JSON.parse(localStorage.getItem('proj_payments') || '[]');
 
-document.getElementById('found').innerHTML = `
-  <p>✅ פרוייקטים: <strong>${oldProjects.length}</strong> — ${oldProjects.map(p=>p.name).join(', ') || 'אין'}</p>
-  <p>✅ קבלני משנה: <strong>${oldSubs.length}</strong> — ${oldSubs.map(s=>s.name).join(', ') || 'אין'}</p>
-  <p>✅ שלבים: <strong>${oldStages.length}</strong></p>
-  <p>✅ תשלומים: <strong>${oldPayments.length}</strong></p>
-`;
+function showFound() {
+  document.getElementById('found').innerHTML = (oldProjects.length || oldSubs.length) ? `
+    <p>✅ פרוייקטים: <strong>${oldProjects.length}</strong> — ${oldProjects.map(p=>p.name).join(', ')||'אין'}</p>
+    <p>✅ קבלני משנה: <strong>${oldSubs.length}</strong> — ${oldSubs.map(s=>s.name).join(', ')||'אין'}</p>
+    <p>✅ שלבים: <strong>${oldStages.length}</strong></p>
+    <p>✅ תשלומים: <strong>${oldPayments.length}</strong></p>
+  ` : `
+    <p>⚠️ אין נתונים בדפדפן זה — טען קובץ JSON מהמחשב:</p>
+    <input type="file" accept=".json" onchange="loadJson(this)" style="margin-top:10px;font-size:1rem;">
+  `;
+}
+showFound();
+
+function loadJson(input) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const d = JSON.parse(e.target.result);
+      oldProjects = d.projects || [];
+      oldSubs     = d.subs     || [];
+      oldStages   = d.stages   || [];
+      oldPayments = d.payments || [];
+      showFound();
+    } catch(err) { alert('קובץ לא תקין'); }
+  };
+  reader.readAsText(input.files[0]);
+}
 
 async function deleteCollection(col) {
   const snap = await db.collection(col).get();
