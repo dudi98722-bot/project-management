@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ניהול פרוייקטים לקבלנים</title>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: #2d3748; direction: rtl; }
+
+/* ── Auth / Setup screens ── */
+.fullscreen {
+  position: fixed; inset: 0; z-index: 2000;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #1a365d 0%, #2b6cb0 100%);
+}
+.auth-box {
+  background: white; border-radius: 16px; padding: 36px 40px;
+  width: 95%; max-width: 440px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  text-align: center;
+}
+.auth-box .logo { font-size: 3rem; margin-bottom: 8px; }
+.auth-box h1 { font-size: 1.4rem; color: #1a365d; margin-bottom: 4px; }
+.auth-box p  { font-size: 0.85rem; color: #718096; margin-bottom: 24px; }
+.auth-box .form-group { text-align: right; margin-bottom: 14px; }
+.auth-box .form-group label { display: block; font-size: 0.82rem; font-weight: 600; color: #4a5568; margin-bottom: 5px; }
+.auth-box .form-group input { width: 100%; }
+.auth-error { background: #fff5f5; color: #c53030; border: 1px solid #fed7d7; border-radius: 8px; padding: 10px 14px; font-size: 0.85rem; margin-bottom: 14px; display: none; }
+.auth-success { background: #f0fff4; color: #276749; border: 1px solid #c6f6d5; border-radius: 8px; padding: 10px 14px; font-size: 0.85rem; margin-bottom: 14px; display: none; }
+
+/* Setup steps */
+.setup-step { display: none; text-align: right; }
+.setup-step.active { display: block; }
+.setup-step h3 { color: #1a365d; margin-bottom: 12px; font-size: 1rem; }
+.setup-step ol { padding-right: 18px; font-size: 0.85rem; line-height: 2; color: #4a5568; }
+.setup-step ol li strong { color: #1a365d; }
+code { background: #edf2f7; padding: 2px 7px; border-radius: 4px; font-size: 0.82rem; direction: ltr; display: inline-block; }
+.step-nav { display: flex; justify-content: space-between; margin-top: 18px; }
+
+/* ── Main app ── */
+header {
+  background: linear-gradient(135deg, #1a365d, #2b6cb0);
+  color: white; padding: 14px 24px;
+  display: flex; align-items: center; gap: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+header h1 { font-size: 1.3rem; font-weight: 700; flex: 1; }
+.user-badge { font-size: 0.8rem; opacity: 0.85; background: rgba(255,255,255,0.15); padding: 4px 12px; border-radius: 20px; }
+.btn-logout { background: rgba(255,255,255,0.15); border: none; color: white; padding: 5px 14px; border-radius: 8px; cursor: pointer; font-size: 0.82rem; font-family: inherit; }
+.btn-logout:hover { background: rgba(255,255,255,0.25); }
+
+.tabs { display: flex; background: #2b6cb0; padding: 0 16px; gap: 2px; overflow-x: auto; }
+.tab-btn { padding: 11px 20px; border: none; background: transparent; color: rgba(255,255,255,0.7); cursor: pointer; font-size: 0.9rem; font-weight: 600; border-bottom: 3px solid transparent; transition: all 0.2s; font-family: inherit; white-space: nowrap; }
+.tab-btn:hover { color: white; background: rgba(255,255,255,0.1); }
+.tab-btn.active { color: white; border-bottom-color: #f6e05e; background: rgba(255,255,255,0.1); }
+
+.content { padding: 22px; max-width: 1300px; margin: 0 auto; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+.card { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); padding: 20px; margin-bottom: 18px; }
+.card h2 { font-size: 1rem; font-weight: 700; color: #1a365d; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+
+.form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+.form-group { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 140px; }
+.form-group label { font-size: 0.8rem; font-weight: 600; color: #4a5568; }
+.form-group input, .form-group select, .form-group textarea { padding: 8px 11px; border: 1.5px solid #cbd5e0; border-radius: 8px; font-size: 0.9rem; font-family: inherit; background: #f7fafc; direction: rtl; transition: border-color 0.2s; }
+.form-group input:focus, .form-group select:focus { outline: none; border-color: #2b6cb0; background: white; }
+
+.btn { padding: 8px 18px; border: none; border-radius: 8px; font-size: 0.88rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.2s; white-space: nowrap; }
+.btn-primary { background: #2b6cb0; color: white; }
+.btn-primary:hover { background: #1a365d; }
+.btn-success { background: #276749; color: white; }
+.btn-success:hover { background: #1c4532; }
+.btn-warning { background: #d69e2e; color: white; }
+.btn-warning:hover { background: #b7791f; }
+.btn-danger { background: #e53e3e; color: white; padding: 5px 10px; font-size: 0.78rem; }
+.btn-danger:hover { background: #c53030; }
+.btn-edit { background: #ed8936; color: white; padding: 5px 10px; font-size: 0.78rem; }
+.btn-edit:hover { background: #c05621; }
+.btn-sm { padding: 5px 12px; font-size: 0.78rem; }
+.btn-gray { background: #e2e8f0; color: #4a5568; }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+th { background: #ebf4ff; color: #1a365d; padding: 10px 12px; text-align: right; font-weight: 700; border-bottom: 2px solid #bee3f8; }
+td { padding: 9px 12px; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
+tr:hover td { background: #f7fafc; }
+tr:last-child td { border-bottom: none; }
+
+.badge { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 0.76rem; font-weight: 600; background: #bee3f8; color: #1a365d; }
+.badge-green  { background: #c6f6d5; color: #276749; }
+.badge-orange { background: #feebc8; color: #c05621; }
+
+.profit-pos { color: #276749; font-weight: 700; }
+.profit-neg { color: #c53030; font-weight: 700; }
+
+.empty-state { text-align: center; padding: 36px; color: #a0aec0; }
+.empty-state div { font-size: 2rem; margin-bottom: 8px; }
+
+.summary-bar { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.summary-card { flex: 1; min-width: 120px; background: white; border-radius: 10px; padding: 12px 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.07); text-align: center; }
+.summary-card .label { font-size: 0.74rem; color: #718096; margin-bottom: 3px; }
+.summary-card .value { font-size: 1.2rem; font-weight: 800; color: #1a365d; }
+.summary-card.green .value { color: #276749; }
+.summary-card.red .value   { color: #c53030; }
+.summary-card.orange .value { color: #c05621; }
+
+/* Modal */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+.modal-overlay.open { display: flex; }
+.modal { background: white; border-radius: 14px; padding: 26px; width: 95%; max-width: 560px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.25); }
+.modal h3 { font-size: 1.05rem; color: #1a365d; margin-bottom: 16px; }
+.modal-close { float: left; background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #718096; line-height: 1; }
+.modal-close:hover { color: #1a365d; }
+
+.progress-wrap { background: #e2e8f0; border-radius: 99px; height: 7px; margin-top: 4px; overflow: hidden; }
+.progress-bar  { height: 100%; border-radius: 99px; background: #2b6cb0; transition: width 0.3s; }
+.progress-bar.done { background: #276749; }
+
+.dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+@media (max-width: 800px) { .dash-grid { grid-template-columns: 1fr; } }
+
+.dash-entity { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); overflow: hidden; }
+.dash-entity-header { background: linear-gradient(135deg, #1a365d, #2b6cb0); color: white; padding: 13px 16px; }
+.dash-entity-header h3 { font-size: 0.95rem; margin-bottom: 2px; }
+.dash-entity-header small { font-size: 0.76rem; opacity: 0.8; }
+.dash-entity-body { padding: 14px; }
+.stage-row { border-bottom: 1px solid #e2e8f0; padding: 9px 0; }
+.stage-row:last-child { border-bottom: none; }
+.stage-row-title { font-weight: 600; font-size: 0.88rem; margin-bottom: 5px; }
+.stage-row-nums { display: flex; gap: 14px; font-size: 0.8rem; color: #4a5568; flex-wrap: wrap; }
+
+.payment-entry { display: flex; justify-content: space-between; align-items: center; padding: 7px 10px; border-radius: 8px; margin-bottom: 5px; font-size: 0.83rem; }
+.payment-entry.client-pay { background: #ebf8ff; }
+.payment-entry.sub-pay    { background: #fffaf0; }
+.payment-entry .pay-amount { font-weight: 700; }
+.payment-entry .pay-date   { color: #718096; font-size: 0.76rem; }
+
+.filter-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; align-items: flex-end; }
+.filter-row .form-group { max-width: 210px; }
+.actions { display: flex; gap: 5px; flex-wrap: wrap; }
+
+/* Sync indicator */
+.sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #48bb78; display: inline-block; margin-left: 6px; }
+.sync-dot.syncing { background: #ed8936; animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+
+.sheets-step { width: 26px; height: 26px; border-radius: 50%; background: #e2e8f0; color: #718096; font-size: 0.8rem; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.sheets-step.active { background: #2b6cb0; color: white; }
+.sheets-step.done   { background: #276749; color: white; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════ FIREBASE SETUP SCREEN ══════════════ -->
+<div class="fullscreen" id="setup-screen" style="display:none;">
+  <div class="auth-box" style="max-width:520px;">
+    <div class="logo">🔧</div>
+    <h1>הגדרת Firebase</h1>
+    <p>הגדרה זו נעשית פעם אחת בלבד</p>
+
+    <div class="auth-error" id="setup-error"></div>
+
+    <div class="setup-step active" id="setup-s1">
+      <h3>שלב 1 — צור פרוייקט Firebase</h3>
+      <ol>
+        <li>גש ל־ <strong>console.firebase.google.com</strong></li>
+        <li>לחץ <strong>Add project</strong> → תן שם (למשל: proj-kablan)</li>
+        <li>כבה Google Analytics → לחץ <strong>Create project</strong></li>
+        <li>לחץ <strong>Firestore Database → Create database</strong> → בחר <strong>Start in test mode</strong></li>
+        <li>לחץ <strong>Authentication → Get started → Email/Password → Enable</strong></li>
+        <li>לחץ <strong>Authentication → Users → Add user</strong> → הוסף כל עובד</li>
+      </ol>
+      <div class="step-nav">
+        <span></span>
+        <button class="btn btn-primary" onclick="setupNext(2)">הבא ←</button>
+      </div>
+    </div>
+
+    <div class="setup-step" id="setup-s2">
+      <h3>שלב 2 — קבל את פרטי החיבור</h3>
+      <ol>
+        <li>בפרוייקט Firebase לחץ ⚙️ <strong>Project settings</strong></li>
+        <li>מטה, תחת <strong>Your apps</strong>, לחץ <strong>&lt;/&gt;</strong> (Web)</li>
+        <li>תן שם לאפליקציה → לחץ <strong>Register app</strong></li>
+        <li>תראה קוד עם <code>firebaseConfig</code> — העתק את הערכים למטה</li>
+      </ol>
+      <div style="margin-top:14px;">
+        <div class="form-group" style="margin-bottom:10px;"><label>API Key</label><input type="text" id="cfg-apikey" placeholder="AIzaSy..."></div>
+        <div class="form-group" style="margin-bottom:10px;"><label>Auth Domain</label><input type="text" id="cfg-authdomain" placeholder="proj.firebaseapp.com"></div>
+        <div class="form-group" style="margin-bottom:10px;"><label>Project ID</label><input type="text" id="cfg-projectid" placeholder="proj-kablan"></div>
+        <div class="form-group" style="margin-bottom:10px;"><label>App ID</label><input type="text" id="cfg-appid" placeholder="1:123:web:abc..."></div>
+      </div>
+      <div class="step-nav">
+        <button class="btn btn-gray" onclick="setupNext(1)">← חזור</button>
+        <button class="btn btn-primary" onclick="saveFirebaseConfig()">שמור והמשך ←</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ LOGIN SCREEN ══════════════ -->
+<div class="fullscreen" id="login-screen" style="display:none;">
+  <div class="auth-box">
+    <div class="logo">🏗️</div>
+    <h1>ניהול פרוייקטים</h1>
+    <p>התחבר כדי להמשיך</p>
+    <div class="auth-error"  id="login-error"></div>
+    <div class="auth-success" id="login-success"></div>
+    <div class="form-group"><label>אימייל</label><input type="email" id="login-email" placeholder="name@example.com" onkeydown="if(event.key==='Enter') doLogin()"></div>
+    <div class="form-group" style="margin-bottom:20px;"><label>סיסמה</label><input type="password" id="login-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter') doLogin()"></div>
+    <button class="btn btn-primary" style="width:100%;padding:11px;" onclick="doLogin()">כניסה</button>
+    <p style="margin-top:14px;font-size:0.78rem;color:#a0aec0;">משתמשים מנוהלים על ידי מנהל המערכת</p>
+    <button class="btn btn-gray btn-sm" style="margin-top:8px;" onclick="showSetup()">⚙️ הגדרות Firebase</button>
+  </div>
+</div>
+
+<!-- ══════════════ MAIN APP ══════════════ -->
+<div id="main-app" style="display:none;">
+
+<header>
+  <span>🏗️</span>
+  <h1>ניהול פרוייקטים לקבלנים</h1>
+  <span class="sync-dot" id="sync-dot" title="מחובר"></span>
+  <span class="user-badge" id="user-badge"></span>
+  <button class="btn-logout" onclick="doLogout()">יציאה</button>
+</header>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('projects',this)">📋 פרוייקטים</button>
+  <button class="tab-btn" onclick="switchTab('subs',this)">👷 קבלני משנה</button>
+  <button class="tab-btn" onclick="switchTab('stages',this)">📊 שלבים ותמחור</button>
+  <button class="tab-btn" onclick="switchTab('payments',this)">💳 תשלומים</button>
+  <button class="tab-btn" onclick="switchTab('dashboard',this)">📈 דשבורד</button>
+</div>
+
+<div class="content">
+
+<!-- PROJECTS -->
+<div id="tab-projects" class="tab-panel active">
+  <div class="card">
+    <h2>➕ הוסף פרוייקט</h2>
+    <div class="form-row">
+      <div class="form-group"><label>שם אתר / לקוח</label><input type="text" id="proj-name" placeholder="משפחת כהן"></div>
+      <div class="form-group"><label>כתובת</label><input type="text" id="proj-addr" placeholder="רחוב, עיר"></div>
+      <div class="form-group"><label>קבלן משנה</label><select id="proj-sub"><option value="">— ללא —</option></select></div>
+      <button class="btn btn-primary" id="proj-save-btn" onclick="saveProject()">שמור</button>
+      <button class="btn btn-gray" id="proj-cancel-btn" onclick="cancelEdit('project')" style="display:none;">ביטול</button>
+    </div>
+  </div>
+  <div class="card"><h2>📋 רשימת פרוייקטים</h2><div id="projects-table"></div></div>
+</div>
+
+<!-- SUBS -->
+<div id="tab-subs" class="tab-panel">
+  <div class="card">
+    <h2>➕ הוסף קבלן משנה</h2>
+    <div class="form-row">
+      <div class="form-group"><label>שם</label><input type="text" id="sub-name" placeholder="שם מלא"></div>
+      <div class="form-group"><label>טלפון</label><input type="tel" id="sub-phone" placeholder="05X-XXXXXXX"></div>
+      <div class="form-group"><label>התמחות</label><input type="text" id="sub-spec" placeholder="חשמל, אינסטלציה..."></div>
+      <button class="btn btn-primary" id="sub-save-btn" onclick="saveSub()">שמור</button>
+      <button class="btn btn-gray" id="sub-cancel-btn" onclick="cancelEdit('sub')" style="display:none;">ביטול</button>
+    </div>
+  </div>
+  <div class="card"><h2>👷 קבלני משנה</h2><div id="subs-table"></div></div>
+</div>
+
+<!-- STAGES -->
+<div id="tab-stages" class="tab-panel">
+  <div class="card">
+    <h2>➕ הוסף שלב</h2>
+    <div class="form-row">
+      <div class="form-group"><label>פרוייקט</label><select id="stage-proj"><option value="">— בחר —</option></select></div>
+      <div class="form-group"><label>שם שלב</label><input type="text" id="stage-name" placeholder="שלב א׳"></div>
+      <div class="form-group"><label>מחיר ללקוח (₪)</label><input type="number" id="stage-client-price" placeholder="0" min="0"></div>
+      <div class="form-group"><label>מחיר לקבלן משנה (₪)</label><input type="number" id="stage-sub-price" placeholder="0" min="0"></div>
+      <button class="btn btn-primary" id="stage-save-btn" onclick="saveStage()">שמור</button>
+      <button class="btn btn-gray" id="stage-cancel-btn" onclick="cancelEdit('stage')" style="display:none;">ביטול</button>
+    </div>
+  </div>
+  <div class="summary-bar" id="stages-summary"></div>
+  <div class="card">
+    <h2>📊 שלבים</h2>
+    <div class="filter-row"><div class="form-group"><label>סנן לפי פרוייקט</label><select id="stages-filter" onchange="renderStages()"><option value="">כל הפרוייקטים</option></select></div></div>
+    <div id="stages-table"></div>
+  </div>
+</div>
+
+<!-- PAYMENTS LOG -->
+<div id="tab-payments" class="tab-panel">
+  <div class="card">
+    <h2>💳 יומן תשלומים</h2>
+    <div class="filter-row">
+      <div class="form-group"><label>סנן לפי פרוייקט</label><select id="pay-filter-proj" onchange="renderPaymentsLog()"><option value="">כל הפרוייקטים</option></select></div>
+      <div class="form-group"><label>סוג</label><select id="pay-filter-type" onchange="renderPaymentsLog()"><option value="">הכל</option><option value="client">מלקוח</option><option value="sub">לקבלן</option></select></div>
+    </div>
+    <div id="payments-log"></div>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="tab-dashboard" class="tab-panel">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
+    <button class="btn btn-success" onclick="openSheetsSetup()">📤 גיבוי לגוגל שיטס</button>
+  </div>
+  <div id="sheets-status" style="display:none;margin-bottom:14px;padding:10px 14px;border-radius:8px;font-size:0.88rem;"></div>
+  <div class="summary-bar" id="dash-summary"></div>
+  <h2 style="margin-bottom:12px;color:#1a365d;">👤 לפי לקוח</h2>
+  <div class="dash-grid" id="dash-clients"></div>
+  <h2 style="margin:22px 0 12px;color:#1a365d;">👷 לפי קבלן משנה</h2>
+  <div class="dash-grid" id="dash-subs"></div>
+</div>
+
+</div><!-- /content -->
+</div><!-- /main-app -->
+
+<!-- ══════════════ PAYMENT MODAL ══════════════ -->
+<div class="modal-overlay" id="pay-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closePayModal()">✕</button>
+    <h3 id="pay-modal-title">רישום תשלום</h3>
+    <div style="margin-bottom:16px;" id="pay-modal-balance"></div>
+    <div style="display:flex;gap:8px;margin-bottom:14px;">
+      <button class="btn btn-success" style="flex:1" onclick="setPayType('client')" id="pay-type-client">💰 תשלום מלקוח</button>
+      <button class="btn btn-warning" style="flex:1" onclick="setPayType('sub')"    id="pay-type-sub">🔧 תשלום לקבלן</button>
+    </div>
+    <div class="form-row" style="margin-bottom:12px;">
+      <div class="form-group"><label>סכום (₪)</label><input type="number" id="pay-amount" placeholder="0" min="0"></div>
+      <div class="form-group"><label>תאריך</label><input type="date" id="pay-date"></div>
+    </div>
+    <div class="form-group" style="margin-bottom:14px;"><label>הערה</label><input type="text" id="pay-note" placeholder="מזומן, העברה..."></div>
+    <button class="btn btn-primary" style="width:100%" id="pay-submit-btn" onclick="submitPayment()">אישור תשלום</button>
+    <button class="btn btn-gray" style="width:100%;margin-top:6px;display:none;" id="pay-cancel-edit-btn" onclick="cancelEditPayment()">ביטול עריכה</button>
+    <div class="payment-log" id="pay-modal-history"></div>
+  </div>
+</div>
+
+<!-- ══════════════ GOOGLE SHEETS MODAL ══════════════ -->
+<div class="modal-overlay" id="sheets-modal">
+  <div class="modal" style="max-width:580px;">
+    <button class="modal-close" onclick="document.getElementById('sheets-modal').classList.remove('open')">✕</button>
+    <h3>📤 גיבוי לגוגל שיטס</h3>
+    <div style="display:flex;gap:6px;margin-bottom:18px;align-items:center;">
+      <div class="sheets-step active" id="sd1">1</div>
+      <div style="flex:1;height:2px;background:#e2e8f0;"></div>
+      <div class="sheets-step" id="sd2">2</div>
+      <div style="flex:1;height:2px;background:#e2e8f0;"></div>
+      <div class="sheets-step" id="sd3">3</div>
+    </div>
+
+    <div id="gs-step-1">
+      <h4 style="color:#1a365d;margin-bottom:10px;">שלב 1 — הגדרת Google Cloud (פעם אחת)</h4>
+      <div style="background:#f7fafc;border-radius:8px;padding:12px;font-size:0.83rem;line-height:1.8;border:1px solid #e2e8f0;">
+        <ol style="padding-right:18px;">
+          <li>גש ל <strong>console.cloud.google.com</strong> → צור פרוייקט</li>
+          <li><strong>APIs & Services → Enable → Google Sheets API</strong></li>
+          <li><strong>Credentials → Create → OAuth 2.0 Client ID → Web application</strong></li>
+          <li>ב-<strong>Authorized JavaScript origins</strong> הוסף את כתובת האתר שלך</li>
+          <li>העתק את ה-<strong>Client ID</strong></li>
+        </ol>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+        <button class="btn btn-primary" onclick="gsStep(2)">הבא ←</button>
+      </div>
+    </div>
+
+    <div id="gs-step-2" style="display:none;">
+      <h4 style="color:#1a365d;margin-bottom:10px;">שלב 2 — הזן Client ID</h4>
+      <div class="form-group" style="margin-bottom:12px;"><label>Google OAuth Client ID</label><input type="text" id="gs-client-id" placeholder="XXXXXXX.apps.googleusercontent.com"></div>
+      <div class="form-group" style="margin-bottom:12px;"><label>Spreadsheet ID (ריק = צור חדש)</label><input type="text" id="gs-sheet-id" placeholder="ID מה-URL של הגיליון"></div>
+      <div style="display:flex;justify-content:space-between;margin-top:12px;">
+        <button class="btn btn-gray" onclick="gsStep(1)">← חזור</button>
+        <button class="btn btn-primary" onclick="gsInitAuth()">שמור והתחבר ←</button>
+      </div>
+    </div>
+
+    <div id="gs-step-3" style="display:none;text-align:center;">
+      <div id="gs-auth-area" style="padding:20px 0;">
+        <button class="btn btn-primary" style="font-size:1rem;padding:12px 28px;" onclick="gsSignIn()">התחבר עם Google</button>
+        <p style="font-size:0.8rem;color:#718096;margin-top:10px;">תיפתח חלונית הרשאה</p>
+      </div>
+      <div id="gs-ready-area" style="display:none;padding:10px 0;">
+        <p style="color:#276749;font-weight:600;margin-bottom:14px;">✅ מחובר!</p>
+        <button class="btn btn-success" style="font-size:1rem;padding:12px 28px;" onclick="runBackup()">📤 גיבוי עכשיו</button>
+        <div id="gs-prog" style="margin-top:14px;display:none;">
+          <div class="progress-wrap"><div class="progress-bar" id="gs-prog-bar" style="width:0%"></div></div>
+          <p id="gs-prog-text" style="font-size:0.82rem;color:#4a5568;margin-top:6px;"></p>
+        </div>
+        <br><button class="btn btn-gray btn-sm" style="margin-top:8px;" onclick="gsSignOut()">התנתק</button>
+      </div>
+      <div style="display:flex;justify-content:flex-start;margin-top:12px;">
+        <button class="btn btn-gray" onclick="gsStep(2)">← חזור</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+// FIREBASE SETUP & AUTH
+// ══════════════════════════════════════════════════════════
+let db, auth;
+let projects=[], subs=[], stages=[], payments=[];
+let unsubs=[];
+
+function loadConfig() {
+  try { return JSON.parse(localStorage.getItem('fb_config')||'null'); } catch(e) { return null; }
+}
+function saveFirebaseConfig() {
+  const cfg = {
+    apiKey:     v('cfg-apikey'),
+    authDomain: v('cfg-authdomain'),
+    projectId:  v('cfg-projectid'),
+    appId:      v('cfg-appid')
+  };
+  if (!cfg.apiKey || !cfg.projectId) { showErr('setup-error','יש למלא לפחות API Key ו-Project ID'); return; }
+  localStorage.setItem('fb_config', JSON.stringify(cfg));
+  startApp(cfg);
+}
+function showSetup() {
+  hide('login-screen'); show('setup-screen'); setupNext(1);
+}
+function setupNext(n) {
+  [1,2].forEach(i => document.getElementById('setup-s'+i).classList.toggle('active', i===n));
+}
+
+function startApp(cfg) {
+  if (!firebase.apps.length) firebase.initializeApp(cfg);
+  else firebase.app();
+  db   = firebase.firestore();
+  auth = firebase.auth();
+
+  hide('setup-screen');
+  auth.onAuthStateChanged(user => {
+    if (user) {
+      hide('login-screen');
+      show('main-app');
+      document.getElementById('user-badge').textContent = user.email;
+      setupListeners();
+    } else {
+      hide('main-app');
+      show('login-screen');
+      teardownListeners();
+    }
+  });
+}
+
+function init() {
+  const cfg = loadConfig();
+  if (!cfg) { show('setup-screen'); return; }
+  startApp(cfg);
+}
+
+async function doLogin() {
+  const email = v('login-email'), pass = v('login-pass');
+  if (!email||!pass) { showErr('login-error','יש למלא אימייל וסיסמה'); return; }
+  hideErr('login-error'); hideErr('login-success');
+  try {
+    await auth.signInWithEmailAndPassword(email, pass);
+  } catch(e) {
+    showErr('login-error', hebrewAuthError(e.code));
+  }
+}
+async function doLogout() {
+  if (!confirm('לצאת מהמערכת?')) return;
+  await auth.signOut();
+}
+function hebrewAuthError(code) {
+  const m = { 'auth/user-not-found':'משתמש לא נמצא', 'auth/wrong-password':'סיסמה שגויה', 'auth/invalid-email':'אימייל לא תקין', 'auth/too-many-requests':'יותר מדי ניסיונות, נסה שוב מאוחר יותר' };
+  return m[code] || 'שגיאת התחברות: ' + code;
+}
+
+// ══════════════════════════════════════════════════════════
+// FIRESTORE LISTENERS
+// ══════════════════════════════════════════════════════════
+function setSyncing(v) {
+  const d = document.getElementById('sync-dot');
+  if(d) d.className = 'sync-dot' + (v?' syncing':'');
+}
+
+function setupListeners() {
+  setSyncing(true);
+  const colRef = col => db.collection(col).orderBy('_ts', 'asc');
+
+  unsubs.push(db.collection('subs').onSnapshot(snap => {
+    subs = snap.docs.map(d=>({id:d.id,...d.data()}));
+    populateSubDropdowns(); renderSubs(); renderProjects();
+    setSyncing(false);
+  }));
+  unsubs.push(db.collection('projects').onSnapshot(snap => {
+    projects = snap.docs.map(d=>({id:d.id,...d.data()}));
+    renderProjects(); populateProjectDropdowns(); renderStages(); renderDashboard();
+  }));
+  unsubs.push(db.collection('stages').onSnapshot(snap => {
+    stages = snap.docs.map(d=>({id:d.id,...d.data()}));
+    renderStages(); renderDashboard();
+  }));
+  unsubs.push(db.collection('payments').onSnapshot(snap => {
+    payments = snap.docs.map(d=>({id:d.id,...d.data()}));
+    renderStages(); renderPaymentsLog(); renderDashboard();
+    if(payModalStageId) { updatePayModalBalance(payModalStageId); renderPayModalHistory(payModalStageId); }
+  }));
+}
+function teardownListeners() { unsubs.forEach(u=>u()); unsubs=[]; }
+
+// ══════════════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════════════
+const ts = () => firebase.firestore.FieldValue.serverTimestamp();
+function v(id) { return document.getElementById(id)?.value?.trim()||''; }
+function fmt(n) { return Number(n||0).toLocaleString('he-IL') + ' ₪'; }
+function fmtDate(d) { return d ? (d.toDate ? d.toDate() : new Date(d)).toLocaleDateString('he-IL') : ''; }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function show(id) { document.getElementById(id).style.display=''; }
+function hide(id) { document.getElementById(id).style.display='none'; }
+function showErr(id,msg) { const el=document.getElementById(id); el.style.display='block'; el.textContent=msg; }
+function hideErr(id) { document.getElementById(id).style.display='none'; }
+function projLabel(p) { return p?`${p.name}${p.addr?' — '+p.addr:''}`:'—'; }
+function stageClientPaid(sid) { return payments.filter(p=>p.stageId===sid&&p.type==='client').reduce((a,p)=>a+(p.amount||0),0); }
+function stageSubPaid(sid)    { return payments.filter(p=>p.stageId===sid&&p.type==='sub').reduce((a,p)=>a+(p.amount||0),0); }
+
+// ══════════════════════════════════════════════════════════
+// TABS
+// ══════════════════════════════════════════════════════════
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  btn.classList.add('active');
+  if(name==='payments')  { populatePayFilters(); renderPaymentsLog(); }
+  if(name==='dashboard') renderDashboard();
+}
+
+// ══════════════════════════════════════════════════════════
+// EDIT STATE
+// ══════════════════════════════════════════════════════════
+let editingProject=null, editingSub=null, editingStage=null;
+
+function cancelEdit(type) {
+  if(type==='project') {
+    editingProject=null;
+    ['proj-name','proj-addr'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('proj-sub').value='';
+    document.getElementById('proj-save-btn').textContent='שמור';
+    document.getElementById('proj-cancel-btn').style.display='none';
+  }
+  if(type==='sub') {
+    editingSub=null;
+    ['sub-name','sub-phone','sub-spec'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('sub-save-btn').textContent='שמור';
+    document.getElementById('sub-cancel-btn').style.display='none';
+  }
+  if(type==='stage') {
+    editingStage=null;
+    ['stage-proj','stage-name','stage-client-price','stage-sub-price'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('stage-save-btn').textContent='שמור';
+    document.getElementById('stage-cancel-btn').style.display='none';
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// SUBCONTRACTORS
+// ══════════════════════════════════════════════════════════
+async function saveSub() {
+  const name=v('sub-name'), phone=v('sub-phone'), spec=v('sub-spec');
+  if(!name){alert('יש להזין שם');return;}
+  setSyncing(true);
+  if(editingSub) {
+    await db.collection('subs').doc(editingSub).update({name,phone,spec,_ts:ts()});
+    cancelEdit('sub');
+  } else {
+    await db.collection('subs').add({name,phone,spec,_ts:ts()});
+    ['sub-name','sub-phone','sub-spec'].forEach(id=>document.getElementById(id).value='');
+  }
+}
+function editSub(id) {
+  const s=subs.find(x=>x.id===id); if(!s) return;
+  editingSub=id;
+  document.getElementById('sub-name').value=s.name;
+  document.getElementById('sub-phone').value=s.phone||'';
+  document.getElementById('sub-spec').value=s.spec||'';
+  document.getElementById('sub-save-btn').textContent='עדכן';
+  document.getElementById('sub-cancel-btn').style.display='';
+}
+async function deleteSub(id) {
+  if(!confirm('למחוק?')) return;
+  const batch=db.batch();
+  batch.delete(db.collection('subs').doc(id));
+  projects.filter(p=>p.subId===id).forEach(p=>batch.update(db.collection('projects').doc(p.id),{subId:''}));
+  await batch.commit();
+}
+function renderSubs() {
+  const el=document.getElementById('subs-table');
+  if(!subs.length){el.innerHTML='<div class="empty-state"><div>👷</div>אין קבלני משנה</div>';return;}
+  el.innerHTML=`<table><thead><tr><th>שם</th><th>טלפון</th><th>התמחות</th><th>פעולות</th></tr></thead><tbody>
+  ${subs.map(s=>`<tr><td><strong>${esc(s.name)}</strong></td><td><a href="tel:${esc(s.phone)}">${esc(s.phone)}</a></td>
+  <td>${s.spec?`<span class="badge">${esc(s.spec)}</span>`:'—'}</td>
+  <td><div class="actions"><button class="btn btn-edit" onclick="editSub('${s.id}')">✏️</button><button class="btn btn-danger" onclick="deleteSub('${s.id}')">🗑️</button></div></td></tr>`).join('')}
+  </tbody></table>`;
+}
+function populateSubDropdowns() {
+  const el=document.getElementById('proj-sub'); if(!el) return;
+  const cur=el.value;
+  el.innerHTML='<option value="">— ללא —</option>'+subs.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
+  el.value=cur;
+}
+
+// ══════════════════════════════════════════════════════════
+// PROJECTS
+// ══════════════════════════════════════════════════════════
+async function saveProject() {
+  const name=v('proj-name'), addr=v('proj-addr'), subId=document.getElementById('proj-sub').value;
+  if(!name){alert('יש להזין שם');return;}
+  setSyncing(true);
+  if(editingProject) {
+    await db.collection('projects').doc(editingProject).update({name,addr,subId,_ts:ts()});
+    cancelEdit('project');
+  } else {
+    await db.collection('projects').add({name,addr,subId,_ts:ts()});
+    ['proj-name','proj-addr'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('proj-sub').value='';
+  }
+}
+function editProject(id) {
+  const p=projects.find(x=>x.id===id); if(!p) return;
+  editingProject=id;
+  document.getElementById('proj-name').value=p.name;
+  document.getElementById('proj-addr').value=p.addr||'';
+  document.getElementById('proj-sub').value=p.subId||'';
+  document.getElementById('proj-save-btn').textContent='עדכן';
+  document.getElementById('proj-cancel-btn').style.display='';
+}
+async function deleteProject(id) {
+  if(!confirm('למחוק פרוייקט? שלבים ותשלומים יימחקו.')) return;
+  setSyncing(true);
+  const batch=db.batch();
+  batch.delete(db.collection('projects').doc(id));
+  const pStages=stages.filter(s=>s.projId===id);
+  pStages.forEach(s=>{
+    batch.delete(db.collection('stages').doc(s.id));
+    payments.filter(p=>p.stageId===s.id).forEach(p=>batch.delete(db.collection('payments').doc(p.id)));
+  });
+  await batch.commit();
+}
+function renderProjects() {
+  const el=document.getElementById('projects-table');
+  if(!projects.length){el.innerHTML='<div class="empty-state"><div>📋</div>אין פרוייקטים</div>';return;}
+  el.innerHTML=`<table><thead><tr><th>שם / לקוח</th><th>כתובת</th><th>קבלן משנה</th><th>פעולות</th></tr></thead><tbody>
+  ${projects.map(p=>{const sub=subs.find(s=>s.id===p.subId);return`<tr>
+  <td><strong>${esc(p.name)}</strong></td><td>${esc(p.addr)||'—'}</td>
+  <td>${sub?`<span class="badge">👷 ${esc(sub.name)}</span>`:'—'}</td>
+  <td><div class="actions"><button class="btn btn-edit" onclick="editProject('${p.id}')">✏️</button><button class="btn btn-danger" onclick="deleteProject('${p.id}')">🗑️</button></div></td>
+  </tr>`;}).join('')}</tbody></table>`;
+}
+function populateProjectDropdowns() {
+  const opts=projects.map(p=>`<option value="${p.id}">${esc(projLabel(p))}</option>`).join('');
+  ['stage-proj','stages-filter','pay-filter-proj'].forEach(id=>{
+    const el=document.getElementById(id); if(!el) return;
+    const cur=el.value;
+    const prefix=id==='stage-proj'?'<option value="">— בחר —</option>':'<option value="">כל הפרוייקטים</option>';
+    el.innerHTML=prefix+opts; el.value=cur;
+  });
+}
+function populatePayFilters() { populateProjectDropdowns(); }
+
+// ══════════════════════════════════════════════════════════
+// STAGES
+// ══════════════════════════════════════════════════════════
+async function saveStage() {
+  const projId=document.getElementById('stage-proj').value;
+  const name=v('stage-name');
+  const clientPrice=parseFloat(document.getElementById('stage-client-price').value)||0;
+  const subPrice=parseFloat(document.getElementById('stage-sub-price').value)||0;
+  if(!projId){alert('יש לבחור פרוייקט');return;}
+  if(!name){alert('יש להזין שם שלב');return;}
+  setSyncing(true);
+  if(editingStage) {
+    await db.collection('stages').doc(editingStage).update({projId,name,clientPrice,subPrice,_ts:ts()});
+    cancelEdit('stage');
+  } else {
+    await db.collection('stages').add({projId,name,clientPrice,subPrice,_ts:ts()});
+    ['stage-name','stage-client-price','stage-sub-price'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('stage-proj').value='';
+  }
+}
+function editStage(id) {
+  const s=stages.find(x=>x.id===id); if(!s) return;
+  editingStage=id;
+  document.getElementById('stage-proj').value=s.projId;
+  document.getElementById('stage-name').value=s.name;
+  document.getElementById('stage-client-price').value=s.clientPrice;
+  document.getElementById('stage-sub-price').value=s.subPrice;
+  document.getElementById('stage-save-btn').textContent='עדכן';
+  document.getElementById('stage-cancel-btn').style.display='';
+}
+async function deleteStage(id) {
+  if(!confirm('למחוק שלב?')) return;
+  const batch=db.batch();
+  batch.delete(db.collection('stages').doc(id));
+  payments.filter(p=>p.stageId===id).forEach(p=>batch.delete(db.collection('payments').doc(p.id)));
+  await batch.commit();
+}
+function renderStages() {
+  const fv=document.getElementById('stages-filter')?.value||'';
+  const filtered=fv?stages.filter(s=>s.projId===fv):stages;
+  const tCP=filtered.reduce((a,s)=>a+(s.clientPrice||0),0);
+  const tSP=filtered.reduce((a,s)=>a+(s.subPrice||0),0);
+  const tCPd=filtered.reduce((a,s)=>a+stageClientPaid(s.id),0);
+  const tSPd=filtered.reduce((a,s)=>a+stageSubPaid(s.id),0);
+  document.getElementById('stages-summary').innerHTML=`
+    <div class="summary-card"><div class="label">ללקוח</div><div class="value">${fmt(tCP)}</div></div>
+    <div class="summary-card"><div class="label">גבוי</div><div class="value">${fmt(tCPd)}</div></div>
+    <div class="summary-card orange"><div class="label">יתרה לקוח</div><div class="value">${fmt(tCP-tCPd)}</div></div>
+    <div class="summary-card"><div class="label">לקבלן</div><div class="value">${fmt(tSP)}</div></div>
+    <div class="summary-card"><div class="label">שולם</div><div class="value">${fmt(tSPd)}</div></div>
+    <div class="summary-card orange"><div class="label">יתרה קבלן</div><div class="value">${fmt(tSP-tSPd)}</div></div>
+    <div class="summary-card ${(tCP-tSP)>=0?'green':'red'}"><div class="label">רווח גולמי</div><div class="value">${fmt(tCP-tSP)}</div></div>`;
+  const el=document.getElementById('stages-table');
+  if(!filtered.length){el.innerHTML='<div class="empty-state"><div>📊</div>אין שלבים</div>';return;}
+  el.innerHTML=`<table><thead><tr><th>פרוייקט</th><th>שלב</th><th>ללקוח</th><th>גבוי</th><th>יתרה</th><th>לקבלן</th><th>שולם</th><th>יתרה</th><th>רווח</th><th>פעולות</th></tr></thead><tbody>
+  ${filtered.map(s=>{
+    const proj=projects.find(p=>p.id===s.projId);
+    const cp=stageClientPaid(s.id),sp=stageSubPaid(s.id);
+    const cb=(s.clientPrice||0)-cp, sb=(s.subPrice||0)-sp;
+    const pct1=s.clientPrice?Math.min(100,cp/s.clientPrice*100):0;
+    const pct2=s.subPrice?Math.min(100,sp/s.subPrice*100):0;
+    const profit=(s.clientPrice||0)-(s.subPrice||0);
+    return`<tr>
+    <td><span class="badge">${esc(proj?proj.name:'—')}</span></td>
+    <td><strong>${esc(s.name)}</strong></td>
+    <td>${fmt(s.clientPrice)}</td>
+    <td>${fmt(cp)}<div class="progress-wrap"><div class="progress-bar ${pct1>=100?'done':''}" style="width:${pct1}%"></div></div></td>
+    <td class="${cb>0?'profit-neg':'profit-pos'}">${fmt(cb)}</td>
+    <td>${fmt(s.subPrice)}</td>
+    <td>${fmt(sp)}<div class="progress-wrap"><div class="progress-bar ${pct2>=100?'done':''}" style="width:${pct2}%"></div></div></td>
+    <td class="${sb>0?'profit-neg':'profit-pos'}">${fmt(sb)}</td>
+    <td class="${profit>=0?'profit-pos':'profit-neg'}">${fmt(profit)}</td>
+    <td><div class="actions">
+      <button class="btn btn-success btn-sm" onclick="openPayModal('${s.id}')">💳</button>
+      <button class="btn btn-edit" onclick="editStage('${s.id}')">✏️</button>
+      <button class="btn btn-danger" onclick="deleteStage('${s.id}')">🗑️</button>
+    </div></td></tr>`;
+  }).join('')}</tbody></table>`;
+}
+
+// ══════════════════════════════════════════════════════════
+// PAYMENTS
+// ══════════════════════════════════════════════════════════
+let payModalStageId=null, payType='client', editingPaymentId=null;
+
+function openPayModal(stageId) {
+  payModalStageId=stageId; payType='client'; editingPaymentId=null;
+  const s=stages.find(x=>x.id===stageId);
+  const proj=s?projects.find(p=>p.id===s.projId):null;
+  document.getElementById('pay-modal-title').textContent=`💳 תשלום — ${s?esc(s.name):''}${proj?' ('+esc(proj.name)+')':''}`;
+  document.getElementById('pay-amount').value='';
+  document.getElementById('pay-note').value='';
+  document.getElementById('pay-date').value=new Date().toISOString().slice(0,10);
+  document.getElementById('pay-submit-btn').textContent='אישור תשלום';
+  document.getElementById('pay-cancel-edit-btn').style.display='none';
+  setPayType('client');
+  updatePayModalBalance(stageId);
+  renderPayModalHistory(stageId);
+  document.getElementById('pay-modal').classList.add('open');
+}
+function closePayModal() { document.getElementById('pay-modal').classList.remove('open'); payModalStageId=null; }
+document.getElementById('pay-modal').addEventListener('click',function(e){if(e.target===this)closePayModal();});
+document.getElementById('sheets-modal').addEventListener('click',function(e){if(e.target===this)this.classList.remove('open');});
+
+function setPayType(t) {
+  payType=t;
+  document.getElementById('pay-type-client').style.opacity=t==='client'?'1':'0.5';
+  document.getElementById('pay-type-sub').style.opacity=t==='sub'?'1':'0.5';
+}
+function updatePayModalBalance(sid) {
+  const s=stages.find(x=>x.id===sid); if(!s) return;
+  const cp=stageClientPaid(sid), sp=stageSubPaid(sid);
+  const cb=(s.clientPrice||0)-cp, sb=(s.subPrice||0)-sp;
+  document.getElementById('pay-modal-balance').innerHTML=`
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <div style="flex:1;background:#ebf8ff;border-radius:8px;padding:10px;">
+        <div style="font-size:0.76rem;color:#2b6cb0;font-weight:600;">💰 לקוח</div>
+        <div style="font-size:0.82rem;">מחיר: <strong>${fmt(s.clientPrice)}</strong> | גבוי: <strong>${fmt(cp)}</strong></div>
+        <div style="font-weight:800;color:${cb>0?'#c53030':'#276749'};">יתרה: ${fmt(cb)}</div>
+      </div>
+      <div style="flex:1;background:#fffaf0;border-radius:8px;padding:10px;">
+        <div style="font-size:0.76rem;color:#c05621;font-weight:600;">🔧 קבלן</div>
+        <div style="font-size:0.82rem;">מחיר: <strong>${fmt(s.subPrice)}</strong> | שולם: <strong>${fmt(sp)}</strong></div>
+        <div style="font-weight:800;color:${sb>0?'#c53030':'#276749'};">יתרה: ${fmt(sb)}</div>
+      </div>
+    </div>`;
+}
+function renderPayModalHistory(sid) {
+  const pays=payments.filter(p=>p.stageId===sid).sort((a,b)=>{
+    const da=a._ts?.toDate?a._ts.toDate():new Date(a.date);
+    const db2=b._ts?.toDate?b._ts.toDate():new Date(b.date);
+    return db2-da;
+  });
+  const el=document.getElementById('pay-modal-history');
+  if(!pays.length){el.innerHTML='<p style="color:#a0aec0;text-align:center;margin-top:14px;font-size:0.83rem;">אין תשלומים לשלב זה</p>';return;}
+  el.innerHTML='<h4 style="margin-top:14px;margin-bottom:8px;font-size:0.88rem;color:#4a5568;">היסטוריית תשלומים</h4>'+
+    pays.map(p=>`<div class="payment-entry ${p.type==='client'?'client-pay':'sub-pay'}">
+      <span>${p.type==='client'?'💰 מלקוח':'🔧 לקבלן'} ${p.note?`<span style="color:#718096;font-size:0.78rem;">(${esc(p.note)})</span>`:''}
+      <button onclick="editPayment('${p.id}')" style="background:none;border:none;cursor:pointer;color:#ed8936;font-size:0.88rem;margin-right:4px;">✏️</button>
+      <button onclick="deletePayment('${p.id}')" style="background:none;border:none;cursor:pointer;color:#e53e3e;font-size:0.88rem;">✕</button></span>
+      <span><span class="pay-amount">${fmt(p.amount)}</span> <span class="pay-date">${fmtDate(p.date||p._ts)}</span></span>
+    </div>`).join('');
+}
+
+function editPayment(id) {
+  const p=payments.find(x=>x.id===id); if(!p) return;
+  editingPaymentId=id;
+  setPayType(p.type);
+  document.getElementById('pay-amount').value=p.amount;
+  document.getElementById('pay-date').value=p.date||'';
+  document.getElementById('pay-note').value=p.note||'';
+  document.getElementById('pay-submit-btn').textContent='עדכן תשלום';
+  document.getElementById('pay-cancel-edit-btn').style.display='block';
+}
+function cancelEditPayment() {
+  editingPaymentId=null;
+  document.getElementById('pay-amount').value='';
+  document.getElementById('pay-note').value='';
+  document.getElementById('pay-submit-btn').textContent='אישור תשלום';
+  document.getElementById('pay-cancel-edit-btn').style.display='none';
+}
+async function deletePayment(id) {
+  if(!confirm('למחוק תשלום?')) return;
+  if(editingPaymentId===id) cancelEditPayment();
+  await db.collection('payments').doc(id).delete();
+}
+async function submitPayment() {
+  const amount=parseFloat(document.getElementById('pay-amount').value)||0;
+  const date=document.getElementById('pay-date').value||new Date().toISOString().slice(0,10);
+  const note=v('pay-note');
+  if(!amount||amount<=0){alert('יש להזין סכום תקין');return;}
+  setSyncing(true);
+  if(editingPaymentId) {
+    await db.collection('payments').doc(editingPaymentId).update({type:payType,amount,date,note,_ts:ts()});
+    cancelEditPayment();
+  } else {
+    await db.collection('payments').add({stageId:payModalStageId,type:payType,amount,date,note,_ts:ts()});
+    document.getElementById('pay-amount').value='';
+    document.getElementById('pay-note').value='';
+  }
+}
+function editPaymentFromLog(id) {
+  const p=payments.find(x=>x.id===id); if(!p) return;
+  openPayModal(p.stageId);
+  setTimeout(()=>editPayment(id),60);
+}
+
+function renderPaymentsLog() {
+  const pf=document.getElementById('pay-filter-proj')?.value||'';
+  const tf=document.getElementById('pay-filter-type')?.value||'';
+  let sIds=stages.map(s=>s.id);
+  if(pf) sIds=stages.filter(s=>s.projId===pf).map(s=>s.id);
+  let pays=payments.filter(p=>sIds.includes(p.stageId));
+  if(tf) pays=pays.filter(p=>p.type===tf);
+  pays=[...pays].sort((a,b)=>{
+    const da=a._ts?.toDate?a._ts.toDate():new Date(a.date);
+    const db2=b._ts?.toDate?b._ts.toDate():new Date(b.date);
+    return db2-da;
+  });
+  const el=document.getElementById('payments-log');
+  if(!pays.length){el.innerHTML='<div class="empty-state"><div>💳</div>אין תשלומים</div>';return;}
+  el.innerHTML=`<table><thead><tr><th>תאריך</th><th>פרוייקט</th><th>שלב</th><th>סוג</th><th>סכום</th><th>הערה</th><th></th></tr></thead><tbody>
+  ${pays.map(p=>{
+    const stage=stages.find(s=>s.id===p.stageId);
+    const proj=stage?projects.find(pr=>pr.id===stage.projId):null;
+    return`<tr><td>${fmtDate(p.date||p._ts)}</td><td>${proj?`<span class="badge">${esc(proj.name)}</span>`:'—'}</td>
+    <td>${stage?esc(stage.name):'—'}</td>
+    <td>${p.type==='client'?'<span class="badge badge-green">💰 מלקוח</span>':'<span class="badge badge-orange">🔧 לקבלן</span>'}</td>
+    <td><strong>${fmt(p.amount)}</strong></td><td>${esc(p.note)||'—'}</td>
+    <td><div class="actions"><button class="btn btn-edit" onclick="editPaymentFromLog('${p.id}')">✏️</button><button class="btn btn-danger" onclick="deletePayment('${p.id}')">🗑️</button></div></td></tr>`;
+  }).join('')}</tbody></table>`;
+}
+
+// ══════════════════════════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════════════════════════
+function renderDashboard() {
+  if(!document.getElementById('tab-dashboard').classList.contains('active')) return;
+  const tCP=stages.reduce((a,s)=>a+(s.clientPrice||0),0);
+  const tSP=stages.reduce((a,s)=>a+(s.subPrice||0),0);
+  const tCPd=payments.filter(p=>p.type==='client').reduce((a,p)=>a+(p.amount||0),0);
+  const tSPd=payments.filter(p=>p.type==='sub').reduce((a,p)=>a+(p.amount||0),0);
+  document.getElementById('dash-summary').innerHTML=`
+    <div class="summary-card"><div class="label">חוזי לקוחות</div><div class="value">${fmt(tCP)}</div></div>
+    <div class="summary-card green"><div class="label">גבוי</div><div class="value">${fmt(tCPd)}</div></div>
+    <div class="summary-card orange"><div class="label">יתרה לקוחות</div><div class="value">${fmt(tCP-tCPd)}</div></div>
+    <div class="summary-card"><div class="label">לקבלני משנה</div><div class="value">${fmt(tSP)}</div></div>
+    <div class="summary-card"><div class="label">שולם</div><div class="value">${fmt(tSPd)}</div></div>
+    <div class="summary-card orange"><div class="label">יתרה קבלנים</div><div class="value">${fmt(tSP-tSPd)}</div></div>
+    <div class="summary-card green"><div class="label">רווח גולמי</div><div class="value">${fmt(tCP-tSP)}</div></div>`;
+
+  document.getElementById('dash-clients').innerHTML=projects.length?projects.map(proj=>{
+    const ps=stages.filter(s=>s.projId===proj.id);
+    const tC=ps.reduce((a,s)=>a+(s.clientPrice||0),0);
+    const pC=ps.reduce((a,s)=>a+stageClientPaid(s.id),0);
+    return`<div class="dash-entity">
+      <div class="dash-entity-header"><h3>📋 ${esc(proj.name)}</h3><small>${esc(proj.addr||'')}</small></div>
+      <div class="dash-entity-body">
+        <div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;text-align:center;">
+          <div style="flex:1"><div style="font-size:0.74rem;color:#718096;">חוזה</div><div style="font-weight:700">${fmt(tC)}</div></div>
+          <div style="flex:1"><div style="font-size:0.74rem;color:#718096;">גבוי</div><div style="font-weight:700;color:#276749">${fmt(pC)}</div></div>
+          <div style="flex:1"><div style="font-size:0.74rem;color:#718096;">יתרה</div><div style="font-weight:700;color:${(tC-pC)>0?'#c53030':'#276749'}">${fmt(tC-pC)}</div></div>
+        </div>
+        ${ps.map(s=>{const paid=stageClientPaid(s.id);const bal=(s.clientPrice||0)-paid;const pct=s.clientPrice?Math.min(100,paid/s.clientPrice*100):0;
+          return`<div class="stage-row"><div class="stage-row-title">${esc(s.name)}</div>
+          <div class="stage-row-nums"><span>חוזה: <strong>${fmt(s.clientPrice)}</strong></span><span style="color:#276749">גבוי: <strong>${fmt(paid)}</strong></span><span style="color:${bal>0?'#c53030':'#276749'}">יתרה: <strong>${fmt(bal)}</strong></span></div>
+          <div class="progress-wrap" style="margin-top:5px;"><div class="progress-bar ${pct>=100?'done':''}" style="width:${pct}%"></div></div></div>`;
+        }).join('')}
+      </div></div>`;
+  }).join(''):'<p style="color:#a0aec0">אין פרוייקטים</p>';
+
+  document.getElementById('dash-subs').innerHTML=subs.length?subs.map(sub=>{
+    const sProjIds=projects.filter(p=>p.subId===sub.id).map(p=>p.id);
+    const ss=stages.filter(s=>sProjIds.includes(s.projId));
+    const tS=ss.reduce((a,s)=>a+(s.subPrice||0),0);
+    const pS=ss.reduce((a,s)=>a+stageSubPaid(s.id),0);
+    return`<div class="dash-entity">
+      <div class="dash-entity-header" style="background:linear-gradient(135deg,#744210,#c05621)">
+        <h3>👷 ${esc(sub.name)}</h3><small>${esc(sub.phone||'')} ${sub.spec?'| '+esc(sub.spec):''}</small></div>
+      <div class="dash-entity-body">
+        <div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;text-align:center;">
+          <div style="flex:1"><div style="font-size:0.74rem;color:#718096;">חוזה</div><div style="font-weight:700">${fmt(tS)}</div></div>
+          <div style="flex:1"><div style="font-size:0.74rem;color:#718096;">שולם</div><div style="font-weight:700;color:#276749">${fmt(pS)}</div></div>
+          <div style="flex:1"><div style="font-size:0.74rem;color:#718096;">יתרה</div><div style="font-weight:700;color:${(tS-pS)>0?'#c53030':'#276749'}">${fmt(tS-pS)}</div></div>
+        </div>
+        ${ss.map(s=>{const proj=projects.find(p=>p.id===s.projId);const paid=stageSubPaid(s.id);const bal=(s.subPrice||0)-paid;const pct=s.subPrice?Math.min(100,paid/s.subPrice*100):0;
+          return`<div class="stage-row"><div class="stage-row-title">${esc(s.name)} <span style="color:#a0aec0;font-size:0.78rem;">(${proj?esc(proj.name):''})</span></div>
+          <div class="stage-row-nums"><span>חוזה: <strong>${fmt(s.subPrice)}</strong></span><span style="color:#276749">שולם: <strong>${fmt(paid)}</strong></span><span style="color:${bal>0?'#c53030':'#276749'}">יתרה: <strong>${fmt(bal)}</strong></span></div>
+          <div class="progress-wrap" style="margin-top:5px;"><div class="progress-bar ${pct>=100?'done':''}" style="width:${pct}%"></div></div></div>`;
+        }).join('')}
+      </div></div>`;
+  }).join(''):'<p style="color:#a0aec0">אין קבלני משנה</p>';
+}
+
+// ══════════════════════════════════════════════════════════
+// GOOGLE SHEETS BACKUP
+// ══════════════════════════════════════════════════════════
+const GS_SCOPE='https://www.googleapis.com/auth/spreadsheets';
+let gsTokClient=null, gsToken=null;
+
+function openSheetsSetup() {
+  document.getElementById('gs-client-id').value=localStorage.getItem('gs_client_id')||'';
+  document.getElementById('gs-sheet-id').value=localStorage.getItem('gs_sheet_id')||'';
+  gsStep(1);
+  document.getElementById('sheets-modal').classList.add('open');
+}
+function gsStep(n) {
+  [1,2,3].forEach(i=>{
+    document.getElementById('gs-step-'+i).style.display=i===n?'':'none';
+    const d=document.getElementById('sd'+i);
+    d.className='sheets-step'+(i<n?' done':i===n?' active':'');
+  });
+  if(n===3) gsLoadLib();
+}
+function gsInitAuth() {
+  const cid=document.getElementById('gs-client-id').value.trim();
+  if(!cid){alert('יש להזין Client ID');return;}
+  localStorage.setItem('gs_client_id',cid);
+  localStorage.setItem('gs_sheet_id',document.getElementById('gs-sheet-id').value.trim());
+  gsStep(3);
+}
+function gsLoadLib() {
+  if(window.google?.accounts?.oauth2){buildGsClient();return;}
+  if(!document.getElementById('gsi-script')){
+    const s=document.createElement('script');s.id='gsi-script';
+    s.src='https://accounts.google.com/gsi/client';
+    s.onload=buildGsClient; document.head.appendChild(s);
+  }
+}
+function buildGsClient() {
+  const cid=localStorage.getItem('gs_client_id');
+  gsTokClient=google.accounts.oauth2.initTokenClient({client_id:cid,scope:GS_SCOPE,callback:resp=>{
+    if(resp.error){alert('שגיאת התחברות: '+resp.error);return;}
+    gsToken=resp.access_token;
+    document.getElementById('gs-auth-area').style.display='none';
+    document.getElementById('gs-ready-area').style.display='';
+  }});
+}
+function gsSignIn(){if(gsTokClient)gsTokClient.requestAccessToken();}
+function gsSignOut(){if(gsToken)google.accounts.oauth2.revoke(gsToken);gsToken=null;document.getElementById('gs-auth-area').style.display='';document.getElementById('gs-ready-area').style.display='none';}
+
+async function runBackup() {
+  if(!gsToken){alert('יש להתחבר תחילה');return;}
+  setProg(5,'מכין נתונים...');
+  const data=buildSheetData();
+  let sid=localStorage.getItem('gs_sheet_id')||'';
+  try {
+    if(!sid){setProg(20,'יוצר גיליון...');sid=await gsCreateSheet();localStorage.setItem('gs_sheet_id',sid);document.getElementById('gs-sheet-id').value=sid;}
+    else{setProg(20,'מנקה גיליון...');await gsClear(sid,Object.keys(data));}
+    const keys=Object.keys(data);
+    for(let i=0;i<keys.length;i++){
+      const name=keys[i];setProg(30+Math.round(i/keys.length*60),'כותב: '+name+'...');
+      await gsEnsureTab(sid,name);await gsWrite(sid,name,data[name]);
+    }
+    setProg(100,'✅ גיבוי הושלם!');
+    showSheetsStatus(`✅ גיבוי הושלם! <a href="https://docs.google.com/spreadsheets/d/${sid}" target="_blank" style="color:#276749;font-weight:700;">פתח גיליון</a>`,'green');
+  } catch(e){setProg(0,'');document.getElementById('gs-prog').style.display='none';showSheetsStatus('❌ שגיאה: '+(e.message||e),'red');console.error(e);}
+}
+function buildSheetData() {
+  const pRows=[['שם לקוח','כתובת','קבלן משנה']];
+  projects.forEach(p=>{const s=subs.find(x=>x.id===p.subId);pRows.push([p.name,p.addr||'',s?s.name:'']);});
+  const sRows=[['שם','טלפון','התמחות']];
+  subs.forEach(s=>sRows.push([s.name,s.phone||'',s.spec||'']));
+  const stRows=[['פרוייקט','שם שלב','מחיר ללקוח','גבוי מלקוח','יתרה לקוח','מחיר לקבלן','שולם לקבלן','יתרה קבלן','רווח']];
+  stages.forEach(s=>{const proj=projects.find(p=>p.id===s.projId);const cp=stageClientPaid(s.id),sp=stageSubPaid(s.id);stRows.push([proj?proj.name:'',s.name,s.clientPrice||0,cp,(s.clientPrice||0)-cp,s.subPrice||0,sp,(s.subPrice||0)-sp,(s.clientPrice||0)-(s.subPrice||0)]);});
+  const paRows=[['תאריך','פרוייקט','שלב','סוג','סכום','הערה']];
+  [...payments].sort((a,b)=>new Date(b.date)-new Date(a.date)).forEach(p=>{
+    const stage=stages.find(s=>s.id===p.stageId);const proj=stage?projects.find(pr=>pr.id===stage.projId):null;
+    paRows.push([p.date||'',proj?proj.name:'',stage?stage.name:'',p.type==='client'?'מלקוח':'לקבלן',p.amount||0,p.note||'']);
+  });
+  const tCP=stages.reduce((a,s)=>a+(s.clientPrice||0),0),tSP=stages.reduce((a,s)=>a+(s.subPrice||0),0);
+  const tCPd=payments.filter(p=>p.type==='client').reduce((a,p)=>a+(p.amount||0),0);
+  const tSPd=payments.filter(p=>p.type==='sub').reduce((a,p)=>a+(p.amount||0),0);
+  const smRows=[['סיכום כללי',''],['חוזי לקוחות',tCP],['גבוי מלקוחות',tCPd],['יתרה לקוחות',tCP-tCPd],['',''],['לקבלני משנה',tSP],['שולם לקבלנים',tSPd],['יתרה קבלנים',tSP-tSPd],['',''],['רווח גולמי',tCP-tSP],['',''],['תאריך גיבוי',new Date().toLocaleString('he-IL')]];
+  return{'סיכום':smRows,'פרוייקטים':pRows,'קבלני משנה':sRows,'שלבים':stRows,'תשלומים':paRows};
+}
+async function gsApi(method,url,body){
+  const r=await fetch(url,{method,headers:{Authorization:'Bearer '+gsToken,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
+  const j=await r.json();if(!r.ok)throw new Error(j.error?.message||JSON.stringify(j.error));return j;
+}
+async function gsCreateSheet(){const d=await gsApi('POST','https://sheets.googleapis.com/v4/spreadsheets',{properties:{title:'גיבוי ניהול פרוייקטים — '+new Date().toLocaleDateString('he-IL')}});return d.spreadsheetId;}
+async function gsEnsureTab(id,title){const d=await gsApi('GET',`https://sheets.googleapis.com/v4/spreadsheets/${id}?fields=sheets.properties`);if(!d.sheets.some(s=>s.properties.title===title))await gsApi('POST',`https://sheets.googleapis.com/v4/spreadsheets/${id}:batchUpdate`,{requests:[{addSheet:{properties:{title}}}]});}
+async function gsClear(id,titles){const d=await gsApi('GET',`https://sheets.googleapis.com/v4/spreadsheets/${id}?fields=sheets.properties`);for(const t of titles){if(d.sheets.some(s=>s.properties.title===t))await gsApi('POST',`https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(t)}:clear`,{});}}
+async function gsWrite(id,sheet,rows){await gsApi('PUT',`https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(sheet)}?valueInputOption=USER_ENTERED`,{values:rows});}
+function setProg(pct,text){const el=document.getElementById('gs-prog');el.style.display='block';document.getElementById('gs-prog-bar').style.width=pct+'%';document.getElementById('gs-prog-text').textContent=text;}
+function showSheetsStatus(html,color){const el=document.getElementById('sheets-status');el.style.display='block';el.style.background=color==='green'?'#f0fff4':'#fff5f5';el.style.border=`1px solid ${color==='green'?'#c6f6d5':'#fed7d7'}`;el.style.color=color==='green'?'#276749':'#c53030';el.innerHTML=html;}
+
+// ══════════════════════════════════════════════════════════
+// BOOT
+// ══════════════════════════════════════════════════════════
+init();
+</script>
+</body>
+</html>
