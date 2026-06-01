@@ -130,6 +130,7 @@ tr:last-child td { border-bottom: none; }
   <span>🏗️</span>
   <h1>ניהול פרוייקטים לקבלנים</h1>
   <div id="backup-status" style="font-size:0.75rem;opacity:0.8;text-align:left;white-space:nowrap;"></div>
+  <button id="migrate-btn" onclick="migrateLocalData()" style="display:none;background:#f6e05e;color:#1a365d;border:none;padding:6px 14px;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.8rem;">⚠️ שחזר נתונים ישנים</button>
 </header>
 
 <div class="tabs">
@@ -1011,10 +1012,61 @@ updateBackupStatus();
 setTimeout(autoBackup, 10000);
 
 // ══════════════════════════════════════════════════════════
+// מיגרציה מ-localStorage לענן
+// ══════════════════════════════════════════════════════════
+function checkLocalData() {
+  const oldProjects = JSON.parse(localStorage.getItem('proj_projects') || '[]');
+  const migrated    = localStorage.getItem('proj_migrated');
+  if (oldProjects.length > 0 && !migrated) {
+    document.getElementById('migrate-btn').style.display = '';
+  }
+}
+
+async function migrateLocalData() {
+  if (!confirm('להעביר את הנתונים הישנים לענן? זה יצרף אותם לנתונים הקיימים.')) return;
+
+  const oldProjects = JSON.parse(localStorage.getItem('proj_projects') || '[]');
+  const oldSubs     = JSON.parse(localStorage.getItem('proj_subs')     || '[]');
+  const oldStages   = JSON.parse(localStorage.getItem('proj_stages')   || '[]');
+  const oldPayments = JSON.parse(localStorage.getItem('proj_payments') || '[]');
+
+  document.getElementById('migrate-btn').textContent = '⏳ מעביר...';
+
+  // מיפוי ID ישן → ID חדש בFirestore
+  const subIdMap     = {};
+  const projectIdMap = {};
+  const stageIdMap   = {};
+
+  for (const s of oldSubs) {
+    const ref = await fsAdd('subs', {name: s.name, phone: s.phone||'', spec: s.spec||''});
+    subIdMap[s.id] = ref.id;
+  }
+  for (const p of oldProjects) {
+    const newSubId = subIdMap[p.subId] || '';
+    const ref = await fsAdd('projects', {name: p.name, addr: p.addr||'', subId: newSubId});
+    projectIdMap[p.id] = ref.id;
+  }
+  for (const s of oldStages) {
+    const newProjId = projectIdMap[s.projId] || '';
+    const ref = await fsAdd('stages', {projId: newProjId, name: s.name, clientPrice: s.clientPrice||0, subPrice: s.subPrice||0});
+    stageIdMap[s.id] = ref.id;
+  }
+  for (const p of oldPayments) {
+    const newStageId = stageIdMap[p.stageId] || '';
+    await fsAdd('payments', {stageId: newStageId, type: p.type, amount: p.amount||0, date: p.date||'', note: p.note||''});
+  }
+
+  localStorage.setItem('proj_migrated', '1');
+  document.getElementById('migrate-btn').style.display = 'none';
+  alert('✅ הנתונים הועברו לענן בהצלחה!');
+}
+
+// ══════════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════════
 document.getElementById('backup-status').innerHTML = '🔄 מתחבר לענן...';
-setupListeners(); // מתחבר ל-Firestore ומקשיב לשינויים בזמן אמת
+setupListeners();
+checkLocalData(); // מתחבר ל-Firestore ומקשיב לשינויים בזמן אמת
 </script>
 </body>
 </html>
