@@ -275,6 +275,37 @@ input[type=checkbox] {
 .inner-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
 .inner-scroll::-webkit-scrollbar-track { background: #f0f4f8; }
 .inner-scroll::-webkit-scrollbar-thumb { background: #cbd5e0; border-radius: 4px; }
+
+/* ── QUOTE ── */
+.quote-box { background:#fff; border-radius:16px; box-shadow:0 4px 24px rgba(0,0,0,0.1); max-width:680px; margin:0 auto; overflow:hidden; }
+.quote-header { background:linear-gradient(135deg,#0f2942,#1a4a7a); color:#fff; padding:32px 36px; }
+.quote-header h2 { font-size:1.5rem; font-weight:900; margin-bottom:6px; }
+.quote-header p  { opacity:0.75; font-size:0.9rem; }
+.quote-contractor { display:flex; gap:8px; margin-top:16px; align-items:center; }
+.quote-contractor .lbl { background:rgba(255,255,255,0.15); padding:5px 14px; border-radius:20px; font-size:0.85rem; font-weight:600; }
+.quote-body { padding:28px 36px; }
+.quote-items table { width:100%; border-collapse:collapse; }
+.quote-items th { text-align:right; padding:10px 12px; font-size:0.82rem; color:#64748b; font-weight:600; border-bottom:2px solid #e2e8f0; }
+.quote-items td { padding:11px 12px; font-size:0.9rem; border-bottom:1px solid #f1f5f9; }
+.quote-items tr:last-child td { border-bottom:none; }
+.quote-items td:first-child { font-weight:600; color:#1a365d; }
+.quote-items td:last-child { font-weight:700; color:#276749; text-align:left; }
+.quote-extra { background:#fffbeb; border:1px dashed #fcd34d; border-radius:10px; padding:12px 16px; margin-top:16px; display:flex; justify-content:space-between; align-items:center; }
+.quote-extra span { font-weight:700; color:#92400e; }
+.quote-total { background:linear-gradient(135deg,#f0fdf4,#dcfce7); border:2px solid #86efac; border-radius:12px; padding:20px 24px; margin-top:20px; display:flex; justify-content:space-between; align-items:center; }
+.quote-total .total-lbl { font-size:1rem; font-weight:700; color:#166534; }
+.quote-total .total-amt { font-size:2rem; font-weight:900; color:#15803d; }
+.quote-actions { display:flex; gap:10px; margin-top:20px; }
+.btn-print { padding:11px 22px; background:#0f2942; color:#fff; border:none; border-radius:10px; font-family:'Heebo',sans-serif; font-size:0.95rem; font-weight:700; cursor:pointer; }
+.btn-print:hover { background:#1a4a7a; }
+.quote-empty { text-align:center; padding:60px 20px; color:#94a3b8; }
+.quote-empty .icon { font-size:3rem; margin-bottom:12px; }
+.quote-empty p { font-size:1rem; }
+@media print {
+  header, nav, .select-bar, .calc-wrap, .total-bar, .quote-actions, .page:not(#pg-quote) { display:none !important; }
+  #pg-quote { display:block !important; padding:0; }
+  .quote-box { box-shadow:none; }
+}
 </style>
 </head>
 <body>
@@ -291,6 +322,7 @@ input[type=checkbox] {
     <button class="active" onclick="show('pg-price',this)">💰 מחירון</button>
     <button onclick="show('pg-cont',this)">👥 קלידנים</button>
     <button onclick="show('pg-calc',this)">🧮 מחשבון</button>
+    <button onclick="showQuote(this)">📄 הצעת מחיר</button>
   </nav>
 </header>
 
@@ -348,6 +380,12 @@ input[type=checkbox] {
       <div class="amount"><span class="currency">₪</span><span id="total">0</span></div>
     </div>
   </div>
+</div>
+
+
+<!-- ══ הצעת מחיר ══ -->
+<div id="pg-quote" class="page">
+  <div id="quote-content"></div>
 </div>
 
 <script>
@@ -537,6 +575,89 @@ function clearCalc() {
   }
   document.getElementById('extra-amt').value = '';
   recalc();
+}
+
+
+/* ── הצעת מחיר ── */
+function showQuote(btn) {
+  updateQuote();
+  document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+  document.querySelectorAll('nav button').forEach(function(b) { b.classList.remove('active'); });
+  document.getElementById('pg-quote').classList.add('active');
+  btn.classList.add('active');
+}
+
+function updateQuote() {
+  var idx = parseInt(document.getElementById('sel-cont').value);
+  var container = document.getElementById('quote-content');
+
+  if (isNaN(idx) || idx < 0) {
+    container.innerHTML = '<div class="quote-empty"><div class="icon">📋</div><p>לא נבחר קלידן — חזור למחשבון ובחר קלידן</p></div>';
+    return;
+  }
+
+  var colIdx = CONTS[idx][1];
+  var contName = CONTS[idx][0];
+  var priceListName = COLS[colIdx];
+  var items = [];
+  var total = 0;
+
+  for (var i = 0; i < PRODS.length; i++) {
+    var el = document.getElementById('ck' + i);
+    var qty = el.tagName === 'SELECT' ? parseFloat(el.value) || 0 : (el.checked ? 1 : 0);
+    if (qty > 0) {
+      var price = PRODS[i][colIdx + 1];
+      var rowAmt = price * qty;
+      total += rowAmt;
+      var label = PRODS[i][0];
+      if (qty !== 1) label += ' × ' + qty;
+      items.push({ name: label, amt: rowAmt });
+    }
+  }
+
+  var extra = parseFloat(document.getElementById('extra-amt').value) || 0;
+  total += extra;
+
+  var today = new Date();
+  var dateStr = today.getDate() + '/' + (today.getMonth()+1) + '/' + today.getFullYear();
+
+  if (items.length === 0 && extra === 0) {
+    container.innerHTML = '<div class="quote-empty"><div class="icon">🛒</div><p>לא נבחרו מוצרים — חזור למחשבון וסמן את הפריטים הרצויים</p></div>';
+    return;
+  }
+
+  var rows = items.map(function(it) {
+    return '<tr><td>' + it.name + '</td><td>' + it.amt.toLocaleString() + ' ₪</td></tr>';
+  }).join('');
+
+  var extraRow = extra > 0 ?
+    '<div class="quote-extra"><span>סכום נוסף לחיוב</span><span>' + extra.toLocaleString() + ' ₪</span></div>' : '';
+
+  container.innerHTML =
+    '<div class="quote-box">' +
+      '<div class="quote-header">' +
+        '<h2>הצעת מחיר</h2>' +
+        '<p>תאריך: ' + dateStr + '</p>' +
+        '<div class="quote-contractor">' +
+          '<span class="lbl">קלידן: ' + contName + '</span>' +
+          '<span class="lbl">מחירון: ' + priceListName + '</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="quote-body">' +
+        '<div class="quote-items">' +
+          '<table><thead><tr><th>שירות</th><th>מחיר</th></tr></thead>' +
+          '<tbody>' + rows + '</tbody></table>' +
+        '</div>' +
+        extraRow +
+        '<div class="quote-total">' +
+          '<span class="total-lbl">סה״כ לתשלום</span>' +
+          '<span class="total-amt">₪' + total.toLocaleString() + '</span>' +
+        '</div>' +
+        '<div class="quote-actions">' +
+          '<button class="btn-print" onclick="window.print()">🖨️ הדפסה / שמור PDF</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
 }
 
 /* ── מעבר עמודים ── */
