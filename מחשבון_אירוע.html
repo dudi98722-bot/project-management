@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>מחשבון עלות אירוע</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Heebo', Arial, sans-serif; background: #f0f4f8; color: #1a202c; direction: rtl; min-height: 100vh; }
+
+/* ── HEADER ── */
+header {
+  background: linear-gradient(135deg, #0f2942 0%, #1a4a7a 60%, #1e6bb0 100%);
+  padding: 0 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 0;
+}
+.header-icon {
+  width: 46px; height: 46px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.5rem;
+  backdrop-filter: blur(4px);
+}
+.header-text h1 { color: #fff; font-size: 1.3rem; font-weight: 800; letter-spacing: -0.3px; }
+.header-text p  { color: rgba(255,255,255,0.65); font-size: 0.8rem; margin-top: 2px; }
+
+/* ── NAV TABS ── */
+nav {
+  display: flex;
+  gap: 2px;
+  padding: 14px 0;
+}
+nav button {
+  background: transparent;
+  color: rgba(255,255,255,0.6);
+  border: none;
+  padding: 8px 20px;
+  font-size: 0.9rem;
+  font-family: 'Heebo', sans-serif;
+  cursor: pointer;
+  border-radius: 8px;
+  font-weight: 600;
+  transition: all 0.18s;
+  white-space: nowrap;
+}
+nav button.active { background: rgba(255,255,255,0.18); color: #fff; }
+nav button:hover:not(.active) { background: rgba(255,255,255,0.09); color: rgba(255,255,255,0.85); }
+
+/* ── PAGES ── */
+.page { display: none; padding: 28px 24px; max-width: 1150px; margin: 0 auto; }
+.page.active { display: block; }
+
+.page-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #0f2942;
+  margin-bottom: 18px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+/* ── TABLES ── */
+.tbl-wrap { overflow-x: auto; border-radius: 14px; box-shadow: 0 2px 16px rgba(0,0,0,0.09); }
+table { width: 100%; border-collapse: collapse; background: #fff; min-width: 500px; }
+thead th {
+  background: #0f2942;
+  color: #fff;
+  padding: 12px 15px;
+  text-align: right;
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+}
+thead th:first-child { border-radius: 0 14px 0 0; }
+thead th:last-child  { border-radius: 14px 0 0 0; }
+tbody tr:nth-child(even) { background: #f7fafc; }
+tbody tr:hover { background: #ebf4ff; transition: background 0.12s; }
+tbody td { padding: 10px 15px; font-size: 0.88rem; border-bottom: 1px solid #edf2f7; }
+tbody td:first-child { font-weight: 700; color: #1a365d; }
+
+/* ── CALCULATOR ── */
+.select-bar {
+  background: #fff;
+  border-radius: 14px;
+  padding: 18px 22px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  flex-wrap: wrap;
+}
+.select-bar label { font-weight: 800; font-size: 1rem; color: #0f2942; }
+.select-bar select {
+  padding: 10px 16px;
+  font-size: 0.95rem;
+  font-family: 'Heebo', sans-serif;
+  border: 2px solid #bee3f8;
+  border-radius: 10px;
+  background: #ebf8ff;
+  min-width: 210px;
+  color: #1a365d;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.select-bar select:focus { outline: none; border-color: #3182ce; }
+
+#plBadge {
+  background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+  color: #065f46;
+  padding: 7px 16px;
+  border-radius: 20px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  display: none;
+  box-shadow: 0 1px 4px rgba(16,185,129,0.2);
+}
+
+.calc-wrap {
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.09);
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+.calc-wrap .inner-scroll {
+  max-height: 60vh;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+.calc-wrap table { min-width: 500px; }
+
+/* Sticky header */
+.calc-wrap thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #0f2942;
+}
+
+.calc-wrap tbody td { padding: 10px 15px; }
+
+input[type=checkbox] {
+  width: 20px; height: 20px;
+  cursor: pointer;
+  accent-color: #1a4a7a;
+}
+
+.checked-row { background: #ebf4ff !important; }
+.checked-row td:first-child { border-right: 3px solid #3182ce; }
+
+.price-unit { color: #2b6cb0; font-weight: 700; }
+.price-row  { color: #276749; font-weight: 800; }
+
+/* Dropdowns in calc */
+.qty-select {
+  padding: 5px 8px;
+  border: 2px solid #cbd5e0;
+  border-radius: 8px;
+  font-family: 'Heebo', sans-serif;
+  font-size: 0.9rem;
+  background: #f7fafc;
+  cursor: pointer;
+  color: #2d3748;
+  font-weight: 600;
+  min-width: 65px;
+}
+.qty-select:disabled { opacity: 0.4; cursor: not-allowed; }
+.qty-select:focus { outline: none; border-color: #3182ce; }
+
+/* Extra row */
+.extra-row { background: #fffbeb !important; }
+.extra-row td { border-top: 2px dashed #fcd34d; }
+.extra-label { font-weight: 800; color: #92400e; font-size: 0.9rem; }
+.extra-input {
+  width: 130px;
+  padding: 7px 12px;
+  border: 2px solid #fcd34d;
+  border-radius: 8px;
+  font-family: 'Heebo', sans-serif;
+  font-size: 0.95rem;
+  color: #92400e;
+  font-weight: 700;
+  background: #fffbeb;
+  text-align: center;
+}
+.extra-input:focus { outline: none; border-color: #f59e0b; }
+.extra-input::placeholder { color: #d97706; opacity: 0.7; font-weight: 400; }
+
+/* ── TOTAL BAR ── */
+.total-bar {
+  background: linear-gradient(135deg, #0f2942, #1a4a7a);
+  color: #fff;
+  border-radius: 14px;
+  padding: 20px 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  box-shadow: 0 4px 20px rgba(15,41,66,0.35);
+}
+.total-bar .stat { text-align: center; }
+.total-bar .stat-lbl { font-size: 0.75rem; opacity: 0.7; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+.total-bar .stat-val { font-size: 1.6rem; font-weight: 800; }
+
+.total-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(255,255,255,0.1);
+  border-radius: 12px;
+  padding: 14px 32px;
+  backdrop-filter: blur(4px);
+}
+.total-main .lbl { font-size: 0.8rem; opacity: 0.8; margin-bottom: 4px; }
+.total-main .amount {
+  font-size: 2.4rem;
+  font-weight: 900;
+  letter-spacing: -1px;
+  color: #fff;
+}
+.total-main .currency { font-size: 1.4rem; opacity: 0.85; margin-left: 2px; }
+
+/* ── CONTRACTORS GRID ── */
+.cont-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+.cont-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 14px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 1px 8px rgba(0,0,0,0.07);
+  border-right: 5px solid #cbd5e0;
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+.cont-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.12); transform: translateY(-1px); }
+.cont-card.own    { border-right-color: #48bb78; }
+.cont-card.prak   { border-right-color: #9f7aea; }
+.cont-card.new    { border-right-color: #4299e1; }
+.cont-name { font-weight: 700; font-size: 0.95rem; color: #1a365d; }
+.cont-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.badge-own  { background: #c6f6d5; color: #276749; }
+.badge-prak { background: #e9d8fd; color: #553c9a; }
+.badge-new  { background: #bee3f8; color: #2c5282; }
+
+/* ── SCROLLBAR ── */
+.inner-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.inner-scroll::-webkit-scrollbar-track { background: #f0f4f8; }
+.inner-scroll::-webkit-scrollbar-thumb { background: #cbd5e0; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-brand">
+    <div class="header-icon">🎵</div>
+    <div class="header-text">
+      <h1>מחשבון עלות אירוע</h1>
+      <p>חישוב עלות שירותי קלידן לפי מחירון</p>
+    </div>
+  </div>
+  <nav>
+    <button class="active" onclick="show('pg-price',this)">💰 מחירון</button>
+    <button onclick="show('pg-cont',this)">👥 קלידנים</button>
+    <button onclick="show('pg-calc',this)">🧮 מחשבון</button>
+  </nav>
+</header>
+
+<!-- ══ מחירון ══ -->
+<div id="pg-price" class="page active">
+  <div class="page-title">טבלת מחירון</div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr id="th-price"></tr></thead>
+      <tbody id="tb-price"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══ קלידנים ══ -->
+<div id="pg-cont" class="page">
+  <div class="page-title">רשימת קלידנים</div>
+  <div class="cont-grid" id="cont-grid"></div>
+</div>
+
+<!-- ══ מחשבון ══ -->
+<div id="pg-calc" class="page">
+  <div class="select-bar">
+    <label>בחר קלידן:</label>
+    <select id="sel-cont" onchange="loadCalc()">
+      <option value="-1">-- בחר קלידן --</option>
+    </select>
+    <span id="plBadge"></span>
+  </div>
+
+  <div class="calc-wrap">
+    <div class="inner-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:70px">סמן</th>
+            <th>שם מוצר</th>
+            <th>מחיר ליחידה</th>
+            <th>סה״כ לשורה</th>
+          </tr>
+        </thead>
+        <tbody id="tb-calc"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="total-bar">
+    <div class="stat">
+      <div class="stat-lbl">פריטים נבחרים</div>
+      <div class="stat-val" id="cnt">0</div>
+    </div>
+    <div class="total-main">
+      <div class="lbl">סה״כ לתשלום</div>
+      <div class="amount"><span class="currency">₪</span><span id="total">0</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+var COLS = [
+  "אושי לנדסמן","יהודה רשגולד","חנניה סונדרס","פסח איינדסון",
+  "מוישי מנדלסון","הרשי סגל","צביקי לוין","פרקטי","בית ברכה","קלידנים חדשים"
+];
+
+var PRODS = [
+  ["סט חתונה",               1100,1100,1100,1100,1100,1100,1100,1100,1200,1200],
+  ["פיזור 1",                100, 150, 100, 100, 150, 150, 200, 150, 200, 200],
+  ["פיזור 2",                150, 150, 150, 150, 150, 150, 200, 150, 200, 200],
+  ["פיזור 3",                150, 150, 150, 150, 150, 150, 200, 150, 200, 200],
+  ["פיזור 4",                150, 150, 150, 150, 150, 150, 200, 150, 200, 200],
+  ["חופה דיבורים",           200, 150, 200, 200, 200, 200, 200, 200, 200, 200],
+  ["חופה קלידים 1 רמקול",    300, 200, 300, 300, 300, 300, 300, 350, 350, 350],
+  ["חופה קלידים 2 רמקול",    400, 300, 400, 400, 400, 400, 400, 450, 450, 450],
+  ["חופה עם כבל AUX ומיקסר", 300, 300, 300, 300, 300, 300, 300, 350, 350, 350],
+  ["מקהלה בחופה",            100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
+  ["מוניטור גיטרה",          100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
+  ["מוניטור נוסף",           100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
+  ["אינר P2",                50,  50,  50,  50,  50,  50,  50,  50,  50,  50],
+  ["גב במה",                 0,   150, 150, 150, 0,   0,   0,   150, 150, 150],
+  ["מקהלה 4 חברים",          500, 500, 500, 500, 500, 500, 500, 500, 500, 500],
+  ["מקהלה חבר נוסף",         100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
+  ["סאונד",                  500, 500, 500, 500, 500, 500, 500, 500, 500, 500],
+  ["שעה נוספת מאחרי 5 שעות", 150, 150, 200, 200, 200, 200, 150, 200, 200, 200],
+  ["חבילת קרלין",            700, 700, 700, 700, 700, 700, 700, 700, 700, 700],
+  ["ליין אריי 3 לצד",        2200,2200,2200,2200,2200,2200,2000,2200,2400,2400],
+  ["ליין אריי 4 לצד",        2400,2400,2400,2400,2400,2400,2200,2400,2600,2600],
+  ["פנס (לא קשור לגב במה)", 50,  50,  50,  50,  50,  50,  50,  50,  50,  50],
+  ["גב במה לבן",             300, 300, 300, 300, 300, 300, 300, 300, 300, 300]
+];
+
+var IDX_SHAA  = 17;
+var IDX_PANAS = 21;
+
+var CONTS = [
+  ["אושי לנדסמן",    0, "own"],
+  ["יהודה רשגולד",   1, "own"],
+  ["חנניה סונדרס",   2, "own"],
+  ["פסח איינדסון",   3, "own"],
+  ["מוישי מנדלסון",  4, "own"],
+  ["הרשי סגל",       5, "own"],
+  ["צביקי לוין",     6, "own"],
+  ["מוישי סופר",     7, "prak"],
+  ["אושי צייגר",     7, "prak"],
+  ["נחמן כהן",       7, "prak"],
+  ["צביקי רובין",    7, "prak"],
+  ["דודי בלוך",      7, "prak"],
+  ["אברימי גלויברמן", 7, "prak"],
+  ["מוטי רוזנפלד",   7, "prak"],
+  ["שימי ברזבסקי",   7, "prak"],
+  ["מוישי קרונבליט", 7, "prak"],
+  ["חזקי יוזעף",     7, "prak"],
+  ["שיעלה רוב",      9, "new"],
+  ["שלום רוזנפלד",   9, "new"],
+  ["צביקי לוקר",     9, "new"],
+  ["נוחי ברנדווין",  9, "new"],
+  ["מוישי ביכלר",    9, "new"],
+  ["יחיאל שטיין",    9, "new"],
+  ["יענקי רובין",    9, "new"],
+  ["חיים בלנדר",     9, "new"],
+  ["שימי יאקאב",     9, "new"],
+  ["שלומי גוטליב",   9, "new"],
+  ["קלידן מזדמן",   9, "new"]
+];
+
+var BADGE_LABELS = { own:"מחירון אישי", prak:"פרקטי", new:"קלידנים חדשים" };
+var BADGE_CSS    = { own:"badge-own",   prak:"badge-prak", new:"badge-new" };
+
+/* ── בנה טבלת מחירון ── */
+var thRow = document.getElementById('th-price');
+thRow.innerHTML = '<th>שם מוצר</th>';
+for (var c = 0; c < COLS.length; c++) thRow.innerHTML += '<th>' + COLS[c] + '</th>';
+
+var tbPrice = document.getElementById('tb-price');
+for (var i = 0; i < PRODS.length; i++) {
+  var row = '<tr><td>' + PRODS[i][0] + '</td>';
+  for (var c = 1; c <= COLS.length; c++)
+    row += '<td>' + (PRODS[i][c] > 0 ? PRODS[i][c].toLocaleString() : '—') + '</td>';
+  tbPrice.innerHTML += row + '</tr>';
+}
+
+/* ── בנה טבלת קלידנים ── */
+var grid = document.getElementById('cont-grid');
+for (var i = 0; i < CONTS.length; i++) {
+  var t = CONTS[i][2];
+  grid.innerHTML +=
+    '<div class="cont-card ' + t + '">' +
+    '<span class="cont-name">' + CONTS[i][0] + '</span>' +
+    '<span class="cont-badge ' + BADGE_CSS[t] + '">' + BADGE_LABELS[t] + '</span>' +
+    '</div>';
+}
+
+/* ── בנה select קלידנים ── */
+var sel = document.getElementById('sel-cont');
+for (var i = 0; i < CONTS.length; i++)
+  sel.innerHTML += '<option value="' + i + '">' + CONTS[i][0] + '</option>';
+
+/* ── בנה שורות מחשבון ── */
+var tbCalc = document.getElementById('tb-calc');
+for (var i = 0; i < PRODS.length; i++) {
+  var ctrl;
+  if (i === IDX_SHAA) {
+    var opts = '';
+    for (var v = 0; v <= 6; v += 0.5) opts += '<option value="' + v + '">' + v + '</option>';
+    ctrl = '<select class="qty-select" id="ck' + i + '" onchange="recalc()" disabled>' + opts + '</select>';
+  } else if (i === IDX_PANAS) {
+    var opts = '';
+    for (var v = 0; v <= 6; v++) opts += '<option value="' + v + '">' + v + '</option>';
+    ctrl = '<select class="qty-select" id="ck' + i + '" onchange="recalc()" disabled>' + opts + '</select>';
+  } else {
+    ctrl = '<input type="checkbox" id="ck' + i + '" onchange="recalc()" disabled>';
+  }
+  tbCalc.innerHTML +=
+    '<tr id="cr' + i + '">' +
+    '<td>' + ctrl + '</td>' +
+    '<td>' + PRODS[i][0] + '</td>' +
+    '<td class="price-unit" id="pc' + i + '">—</td>' +
+    '<td class="price-row"  id="rt' + i + '">—</td>' +
+    '</tr>';
+}
+tbCalc.innerHTML +=
+  '<tr class="extra-row">' +
+  '<td></td>' +
+  '<td class="extra-label">סכום נוסף לחיוב</td>' +
+  '<td></td>' +
+  '<td><input class="extra-input" type="number" id="extra-amt" min="0" value="" oninput="recalc()" placeholder="הכנס סכום ₪"></td>' +
+  '</tr>';
+
+/* ── טעינת מחשבון ── */
+function loadCalc() {
+  var idx = parseInt(document.getElementById('sel-cont').value);
+  var badge = document.getElementById('plBadge');
+  for (var i = 0; i < PRODS.length; i++) {
+    var el = document.getElementById('ck' + i);
+    if (el.tagName === 'SELECT') { el.value = '0'; el.disabled = true; }
+    else { el.checked = false; el.disabled = true; }
+    document.getElementById('pc' + i).textContent = '—';
+    document.getElementById('rt' + i).textContent = '—';
+    document.getElementById('cr' + i).classList.remove('checked-row');
+  }
+  document.getElementById('extra-amt').value = '';
+  recalc();
+  if (isNaN(idx) || idx < 0) { badge.style.display = 'none'; return; }
+  var colIdx = CONTS[idx][1];
+  badge.textContent = 'מחירון: ' + COLS[colIdx];
+  badge.style.display = 'inline';
+  for (var i = 0; i < PRODS.length; i++) {
+    var price = PRODS[i][colIdx + 1];
+    document.getElementById('pc' + i).textContent =
+      i === IDX_SHAA ? price.toLocaleString() + ' ₪/שעה' : price.toLocaleString() + ' ₪';
+    document.getElementById('ck' + i).disabled = false;
+  }
+}
+
+/* ── חישוב ── */
+function recalc() {
+  var idx = parseInt(document.getElementById('sel-cont').value);
+  var total = 0, count = 0;
+  if (!isNaN(idx) && idx >= 0) {
+    var colIdx = CONTS[idx][1];
+    for (var i = 0; i < PRODS.length; i++) {
+      var el  = document.getElementById('ck' + i);
+      var row = document.getElementById('cr' + i);
+      var qty = el.tagName === 'SELECT' ? parseFloat(el.value) || 0 : (el.checked ? 1 : 0);
+      var rowAmt = PRODS[i][colIdx + 1] * qty;
+      document.getElementById('rt' + i).textContent = qty > 0 ? rowAmt.toLocaleString() + ' ₪' : '—';
+      if (qty > 0) { total += rowAmt; count++; row.classList.add('checked-row'); }
+      else row.classList.remove('checked-row');
+    }
+  }
+  total += parseFloat(document.getElementById('extra-amt').value) || 0;
+  document.getElementById('total').textContent = total.toLocaleString();
+  document.getElementById('cnt').textContent = count;
+}
+
+/* ── מעבר עמודים ── */
+function show(id, btn) {
+  document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+  document.querySelectorAll('nav button').forEach(function(b) { b.classList.remove('active'); });
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+}
+</script>
+</body>
+</html>
