@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0f2942">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="מחשבון אירוע">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<title>מחשבון אירוע</title>
+<style>
+:root {
+  --navy: #0f2942;
+  --blue: #1a4a7a;
+  --accent: #3182ce;
+  --green: #276749;
+  --light-green: #d1fae5;
+  --bg: #f0f4f8;
+  --white: #ffffff;
+  --border: #e2e8f0;
+  --text: #1a202c;
+  --muted: #718096;
+  --radius: 14px;
+  --shadow: 0 2px 16px rgba(0,0,0,0.1);
+  --tab-h: 56px;
+  --header-h: 60px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: 'Heebo', Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  direction: rtl;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── HEADER ── */
+.app-header {
+  height: var(--header-h);
+  background: linear-gradient(135deg, var(--navy), var(--blue));
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+  flex-shrink: 0;
+  z-index: 10;
+}
+.app-icon { font-size: 1.6rem; }
+.app-title { color: #fff; font-size: 1.1rem; font-weight: 800; }
+.app-sub   { color: rgba(255,255,255,0.65); font-size: 0.72rem; }
+
+/* ── CONTENT ── */
+.content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+.page { display: none; padding: 16px; padding-bottom: 80px; }
+.page.active { display: block; }
+
+/* ── BOTTOM TABS ── */
+.bottom-nav {
+  height: var(--tab-h);
+  background: var(--white);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-shrink: 0;
+  z-index: 10;
+  box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
+}
+.bottom-nav button {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  background: none;
+  border: none;
+  font-family: 'Heebo', sans-serif;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.15s;
+  padding: 0;
+}
+.bottom-nav button .icon { font-size: 1.3rem; }
+.bottom-nav button.active { color: var(--navy); }
+.bottom-nav button.active .tab-indicator {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--navy);
+  border-radius: 0 0 3px 3px;
+}
+.bottom-nav button { position: relative; }
+
+/* ── CARDS ── */
+.card {
+  background: var(--white);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+.card-header {
+  padding: 14px 16px;
+  background: var(--navy);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+/* ── SELECT BAR ── */
+.select-bar {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow);
+}
+.select-bar label {
+  display: block;
+  font-weight: 800;
+  font-size: 0.9rem;
+  color: var(--navy);
+  margin-bottom: 8px;
+}
+.select-bar select {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 1rem;
+  font-family: 'Heebo', sans-serif;
+  border: 2px solid #bee3f8;
+  border-radius: 10px;
+  background: #ebf8ff;
+  color: #1a365d;
+  font-weight: 600;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%231a365d' stroke-width='2' fill='none'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 14px center;
+}
+#plBadge {
+  display: none;
+  margin-top: 8px;
+  padding: 6px 12px;
+  background: var(--light-green);
+  color: #065f46;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  display: none;
+}
+.clear-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 11px;
+  background: #fee2e2;
+  color: #991b1b;
+  border: 2px solid #fca5a5;
+  border-radius: 10px;
+  font-family: 'Heebo', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* ── PRODUCT ROWS ── */
+.prod-list { padding: 0; }
+.prod-row {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f4f8;
+  gap: 12px;
+  transition: background 0.12s;
+}
+.prod-row:last-child { border-bottom: none; }
+.prod-row.checked { background: #ebf4ff; border-right: 3px solid var(--accent); }
+.prod-check {
+  width: 24px; height: 24px;
+  accent-color: var(--navy);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.prod-info { flex: 1; min-width: 0; }
+.prod-name { font-size: 0.88rem; font-weight: 600; color: #1a365d; line-height: 1.3; }
+.prod-price { font-size: 0.78rem; color: var(--accent); font-weight: 600; margin-top: 2px; }
+.prod-row-total { font-size: 0.88rem; font-weight: 800; color: var(--green); text-align: left; white-space: nowrap; min-width: 60px; }
+
+.qty-select {
+  padding: 6px 8px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  font-family: 'Heebo', sans-serif;
+  font-size: 0.9rem;
+  background: #f7fafc;
+  color: #2d3748;
+  font-weight: 600;
+  width: 64px;
+  flex-shrink: 0;
+}
+.qty-select:disabled { opacity: 0.35; }
+
+.extra-row {
+  background: #fffbeb;
+  border-top: 2px dashed #fcd34d;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.extra-label { font-size: 0.85rem; font-weight: 800; color: #92400e; flex: 1; }
+.extra-input {
+  width: 110px;
+  padding: 8px 10px;
+  border: 2px solid #fcd34d;
+  border-radius: 8px;
+  font-family: 'Heebo', sans-serif;
+  font-size: 0.9rem;
+  color: #92400e;
+  font-weight: 700;
+  background: #fffbeb;
+  text-align: center;
+}
+
+/* ── TOTAL BAR ── */
+.total-bar {
+  background: linear-gradient(135deg, var(--navy), var(--blue));
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(15,41,66,0.3);
+}
+.total-bar .stat-lbl { font-size: 0.72rem; opacity: 0.75; }
+.total-bar .stat-val { font-size: 1.4rem; font-weight: 800; }
+.total-bar .total-amount { font-size: 2rem; font-weight: 900; }
+.total-bar .total-lbl { font-size: 0.72rem; opacity: 0.75; text-align: center; }
+
+/* ── QUOTE ── */
+.quote-header-card {
+  background: linear-gradient(135deg, var(--navy), var(--blue));
+  color: #fff;
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow);
+}
+.quote-header-card h2 { font-size: 1.2rem; font-weight: 900; }
+.quote-header-card .date { font-size: 0.8rem; opacity: 0.75; margin-top: 4px; }
+.quote-tags { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.quote-tag {
+  background: rgba(255,255,255,0.15);
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.quote-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 11px 16px;
+  border-bottom: 1px solid #f0f4f8;
+}
+.quote-item:last-child { border-bottom: none; }
+.quote-item-name { font-size: 0.88rem; font-weight: 600; color: #1a365d; }
+.quote-item-price { font-size: 0.9rem; font-weight: 800; color: var(--green); }
+
+.quote-extra-row {
+  background: #fffbeb;
+  border: 1px dashed #fcd34d;
+  border-radius: 10px;
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  margin: 12px 0;
+}
+.quote-extra-row span { font-weight: 700; color: #92400e; font-size: 0.9rem; }
+
+.quote-total-card {
+  background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+  border: 2px solid #86efac;
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.quote-total-card .lbl { font-size: 0.85rem; font-weight: 700; color: #166534; }
+.quote-total-card .amt { font-size: 1.9rem; font-weight: 900; color: #15803d; }
+
+.print-btn {
+  width: 100%;
+  padding: 14px;
+  background: var(--navy);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-family: 'Heebo', sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.3px;
+}
+.print-btn:active { background: var(--blue); }
+
+.quote-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--muted);
+}
+.quote-empty .icon { font-size: 3rem; margin-bottom: 12px; }
+.quote-empty p { font-size: 0.95rem; }
+
+/* ── INSTALL PROMPT ── */
+.install-bar {
+  background: linear-gradient(135deg, #1a4a7a, #2563eb);
+  color: #fff;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  flex-shrink: 0;
+  display: none;
+}
+.install-bar button {
+  margin-right: auto;
+  padding: 6px 14px;
+  background: #fff;
+  color: #1a4a7a;
+  border: none;
+  border-radius: 8px;
+  font-family: 'Heebo', sans-serif;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+@media print {
+  .app-header, .bottom-nav, .select-bar, .card.calc-card, .total-bar, .print-btn, .install-bar { display: none !important; }
+  .page { display: none !important; }
+  #pg-quote { display: block !important; padding: 0; }
+  body { overflow: visible; }
+  .content { overflow: visible; }
+}
+</style>
+</head>
+<body>
+
+<div class="install-bar" id="installBar">
+  <span>🎵 הוסף לדף הבית כאפליקציה</span>
+  <button onclick="installApp()">התקן</button>
+  <button onclick="document.getElementById('installBar').style.display='none'" style="background:transparent;color:#fff;padding:6px">✕</button>
+</div>
+
+<div class="app-header">
+  <div class="app-icon">🎵</div>
+  <div>
+    <div class="app-title">מחשבון אירוע</div>
+    <div class="app-sub">עלות שירותי קלידן</div>
+  </div>
+</div>
+
+<div class="content">
+
+  <!-- ══ מחשבון ══ -->
+  <div id="pg-calc" class="page active">
+    <div class="select-bar">
+      <label>בחר קלידן:</label>
+      <select id="sel-cont" onchange="loadCalc()">
+        <option value="-1">-- בחר קלידן --</option>
+      </select>
+      <span id="plBadge"></span>
+      <button class="clear-btn" onclick="clearCalc()">🗑 נקה בחירה</button>
+    </div>
+
+    <div class="card calc-card">
+      <div class="prod-list" id="prod-list"></div>
+      <div class="extra-row">
+        <span class="extra-label">סכום נוסף לחיוב</span>
+        <input class="extra-input" type="number" id="extra-amt" min="0" value="" oninput="recalc()" placeholder="₪">
+      </div>
+    </div>
+
+    <div class="total-bar">
+      <div>
+        <div class="stat-lbl">פריטים נבחרים</div>
+        <div class="stat-val" id="cnt">0</div>
+      </div>
+      <div style="text-align:center">
+        <div class="total-lbl">סה״כ לתשלום</div>
+        <div class="total-amount">₪<span id="total">0</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ הצעת מחיר ══ -->
+  <div id="pg-quote" class="page">
+    <div id="quote-content"></div>
+  </div>
+
+</div>
+
+<nav class="bottom-nav">
+  <button class="active" onclick="show('pg-calc',this)">
+    <div class="tab-indicator"></div>
+    <span class="icon">🧮</span>
+    <span>מחשבון</span>
+  </button>
+  <button onclick="showQuote(this)">
+    <div class="tab-indicator"></div>
+    <span class="icon">📄</span>
+    <span>הצעת מחיר</span>
+  </button>
+</nav>
+
+<script>
+var COLS = [
+  "אושי לנדסמן","יהודה רשגולד","חנניה סונדרס","פסח איינדסון",
+  "מוישי מנדלסון","הרשי סגל","צביקי לוין","פרקטי","בית ברכה","קלידנים חדשים"
+];
+var PRODS = [
+  ["סט חתונה",               1100,1100,1100,1100,1100,1100,1100,1100,1200,1200],
+  ["פיזור 1",                100, 150, 100, 100, 150, 150, 200, 150, 200, 200],
+  ["פיזור 2",                150, 150, 150, 150, 150, 150, 200, 150, 200, 200],
+  ["פיזור 3",                150, 150, 150, 150, 150, 150, 200, 150, 200, 200],
+  ["פיזור 4",                150, 150, 150, 150, 150, 150, 200, 150, 200, 200],
+  ["חופה דיבורים",           200, 150, 200, 200, 200, 200, 200, 200, 200, 200],
+  ["חופה קלידים 1 רמקול",    300, 200, 300, 300, 300, 300, 300, 350, 350, 350],
+  ["חופה קלידים 2 רמקול",    400, 300, 400, 400, 400, 400, 400, 450, 450, 450],
+  ["חופה עם כבל AUX ומיקסר", 300, 300, 300, 300, 300, 300, 300, 350, 350, 350],
+  ["מקהלה בחופה",            100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
+  ["מוניטור גיטרה",          100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
+  ["מוניטור נוסף",           100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
+  ["אינר P2",                50,  50,  50,  50,  50,  50,  50,  50,  50,  50],
+  ["גב במה",                 0,   150, 150, 150, 0,   0,   0,   150, 150, 150],
+  ["מקהלה 4 חברים",          500, 500, 500, 500, 500, 500, 500, 500, 500, 500],
+  ["מקהלה חבר נוסף",         100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
+  ["סאונד",                  500, 500, 500, 500, 500, 500, 500, 500, 500, 500],
+  ["שעה נוספת מאחרי 5 שעות", 150, 150, 200, 200, 200, 200, 150, 200, 200, 200],
+  ["חבילת קרלין",            700, 700, 700, 700, 700, 700, 700, 700, 700, 700],
+  ["ליין אריי 3 לצד",        2200,2200,2200,2200,2200,2200,2000,2200,2400,2400],
+  ["ליין אריי 4 לצד",        2400,2400,2400,2400,2400,2400,2200,2400,2600,2600],
+  ["פנס (לא קשור לגב במה)", 50,  50,  50,  50,  50,  50,  50,  50,  50,  50],
+  ["גב במה לבן",             300, 300, 300, 300, 300, 300, 300, 300, 300, 300]
+];
+var IDX_SHAA = 17, IDX_PANAS = 21;
+var CONTS = [
+  ["אושי לנדסמן",    0],["יהודה רשגולד",   1],["חנניה סונדרס",   2],
+  ["פסח איינדסון",   3],["מוישי מנדלסון",  4],["הרשי סגל",       5],
+  ["צביקי לוין",     6],["מוישי סופר",     7],["אושי צייגר",     7],
+  ["נחמן כהן",       7],["צביקי רובין",    7],["דודי בלוך",      7],
+  ["אברימי גלויברמן", 7],["מוטי רוזנפלד",   7],["שימי ברזבסקי",   7],
+  ["מוישי קרונבליט", 7],["חזקי יוזעף",     7],["שיעלה רוב",      9],
+  ["שלום רוזנפלד",   9],["צביקי לוקר",     9],["נוחי ברנדווין",  9],
+  ["מוישי ביכלר",    9],["יחיאל שטיין",    9],["יענקי רובין",    9],
+  ["חיים בלנדר",     9],["שימי יאקאב",     9],["שלומי גוטליב",   9],
+  ["קלידן מזדמן",   9]
+];
+
+/* Build select */
+var sel = document.getElementById('sel-cont');
+CONTS.forEach(function(c, i) {
+  sel.innerHTML += '<option value="' + i + '">' + c[0] + '</option>';
+});
+
+/* Build product rows */
+var list = document.getElementById('prod-list');
+PRODS.forEach(function(p, i) {
+  var ctrl;
+  if (i === IDX_SHAA) {
+    var opts = '';
+    for (var v = 0; v <= 6; v += 0.5) opts += '<option value="' + v + '">' + v + '</option>';
+    ctrl = '<select class="qty-select" id="ck' + i + '" onchange="recalc()" disabled>' + opts + '</select>';
+  } else if (i === IDX_PANAS) {
+    var opts = '';
+    for (var v = 0; v <= 6; v++) opts += '<option value="' + v + '">' + v + '</option>';
+    ctrl = '<select class="qty-select" id="ck' + i + '" onchange="recalc()" disabled>' + opts + '</select>';
+  } else {
+    ctrl = '<input class="prod-check" type="checkbox" id="ck' + i + '" onchange="recalc()" disabled>';
+  }
+  list.innerHTML +=
+    '<div class="prod-row" id="cr' + i + '">' +
+    ctrl +
+    '<div class="prod-info">' +
+      '<div class="prod-name">' + p[0] + '</div>' +
+      '<div class="prod-price" id="pc' + i + '">—</div>' +
+    '</div>' +
+    '<div class="prod-row-total" id="rt' + i + '">—</div>' +
+    '</div>';
+});
+
+function loadCalc() {
+  var idx = parseInt(sel.value);
+  var badge = document.getElementById('plBadge');
+  for (var i = 0; i < PRODS.length; i++) {
+    var el = document.getElementById('ck' + i);
+    if (el.tagName === 'SELECT') { el.value = '0'; el.disabled = true; }
+    else { el.checked = false; el.disabled = true; }
+    document.getElementById('pc' + i).textContent = '—';
+    document.getElementById('rt' + i).textContent = '—';
+    document.getElementById('cr' + i).classList.remove('checked');
+  }
+  document.getElementById('extra-amt').value = '';
+  recalc();
+  if (isNaN(idx) || idx < 0) { badge.style.display = 'none'; return; }
+  var colIdx = CONTS[idx][1];
+  badge.textContent = 'מחירון: ' + COLS[colIdx];
+  badge.style.display = 'inline';
+  for (var i = 0; i < PRODS.length; i++) {
+    var price = PRODS[i][colIdx + 1];
+    document.getElementById('pc' + i).textContent =
+      i === IDX_SHAA ? price.toLocaleString() + ' ₪ לשעה' : price.toLocaleString() + ' ₪';
+    document.getElementById('ck' + i).disabled = false;
+  }
+}
+
+function recalc() {
+  var idx = parseInt(sel.value);
+  var total = 0, count = 0;
+  if (!isNaN(idx) && idx >= 0) {
+    var colIdx = CONTS[idx][1];
+    for (var i = 0; i < PRODS.length; i++) {
+      var el = document.getElementById('ck' + i);
+      var row = document.getElementById('cr' + i);
+      var qty = el.tagName === 'SELECT' ? parseFloat(el.value)||0 : (el.checked?1:0);
+      var amt = PRODS[i][colIdx+1] * qty;
+      document.getElementById('rt' + i).textContent = qty > 0 ? amt.toLocaleString() + ' ₪' : '—';
+      if (qty > 0) { total += amt; count++; row.classList.add('checked'); }
+      else row.classList.remove('checked');
+    }
+  }
+  total += parseFloat(document.getElementById('extra-amt').value)||0;
+  document.getElementById('total').textContent = total.toLocaleString();
+  document.getElementById('cnt').textContent = count;
+}
+
+function clearCalc() {
+  for (var i = 0; i < PRODS.length; i++) {
+    var el = document.getElementById('ck' + i);
+    if (el.tagName === 'SELECT') el.value = '0';
+    else el.checked = false;
+    document.getElementById('rt' + i).textContent = '—';
+    document.getElementById('cr' + i).classList.remove('checked');
+  }
+  document.getElementById('extra-amt').value = '';
+  recalc();
+}
+
+function showQuote(btn) {
+  var idx = parseInt(sel.value);
+  var container = document.getElementById('quote-content');
+  if (isNaN(idx) || idx < 0) {
+    container.innerHTML = '<div class="quote-empty"><div class="icon">📋</div><p>חזור למחשבון ובחר קלידן</p></div>';
+  } else {
+    var colIdx = CONTS[idx][1];
+    var items = [], total = 0;
+    for (var i = 0; i < PRODS.length; i++) {
+      var el = document.getElementById('ck' + i);
+      var qty = el.tagName === 'SELECT' ? parseFloat(el.value)||0 : (el.checked?1:0);
+      if (qty > 0) {
+        var amt = PRODS[i][colIdx+1] * qty;
+        total += amt;
+        items.push({ name: PRODS[i][0] + (qty!==1?' × '+qty:''), amt: amt });
+      }
+    }
+    var extra = parseFloat(document.getElementById('extra-amt').value)||0;
+    total += extra;
+    var today = new Date();
+    var dateStr = today.getDate()+'/'+(today.getMonth()+1)+'/'+today.getFullYear();
+    if (items.length === 0 && extra === 0) {
+      container.innerHTML = '<div class="quote-empty"><div class="icon">🛒</div><p>לא נבחרו פריטים — חזור למחשבון וסמן שירותים</p></div>';
+    } else {
+      var itemsHTML = items.map(function(it) {
+        return '<div class="quote-item"><span class="quote-item-name">'+it.name+'</span><span class="quote-item-price">'+it.amt.toLocaleString()+' ₪</span></div>';
+      }).join('');
+      var extraHTML = extra > 0 ? '<div class="quote-extra-row"><span>סכום נוסף לחיוב</span><span>'+extra.toLocaleString()+' ₪</span></div>' : '';
+      container.innerHTML =
+        '<div class="quote-header-card">' +
+          '<h2>הצעת מחיר</h2>' +
+          '<div class="date">'+dateStr+'</div>' +
+          '<div class="quote-tags">' +
+            '<span class="quote-tag">'+CONTS[idx][0]+'</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="card"><div class="prod-list">'+itemsHTML+'</div></div>' +
+        extraHTML +
+        '<div class="quote-total-card">' +
+          '<span class="lbl">סה״כ לתשלום</span>' +
+          '<span class="amt">₪'+total.toLocaleString()+'</span>' +
+        '</div>' +
+        '<button class="print-btn" onclick="window.print()">🖨️ שמור כ-PDF / הדפסה</button>';
+    }
+  }
+  show('pg-quote', btn);
+}
+
+function show(id, btn) {
+  document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+  document.querySelectorAll('.bottom-nav button').forEach(function(b) { b.classList.remove('active'); });
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+  document.querySelector('.content').scrollTop = 0;
+}
+
+/* PWA Install */
+var deferredPrompt;
+window.addEventListener('beforeinstallprompt', function(e) {
+  e.preventDefault();
+  deferredPrompt = e;
+  document.getElementById('installBar').style.display = 'flex';
+});
+function installApp() {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then(function() {
+      document.getElementById('installBar').style.display = 'none';
+      deferredPrompt = null;
+    });
+  }
+}
+
+/* Register Service Worker */
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js');
+}
+</script>
+</body>
+</html>
