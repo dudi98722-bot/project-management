@@ -319,6 +319,7 @@ input[type=checkbox] {
       <option value="-1">-- בחר קלידן --</option>
     </select>
     <span id="plBadge"></span>
+    <button onclick="clearCalc()" style="margin-right:auto;padding:9px 18px;background:#fee2e2;color:#991b1b;border:2px solid #fca5a5;border-radius:10px;font-family:'Heebo',sans-serif;font-size:0.9rem;font-weight:700;cursor:pointer" onmouseover="this.style.background='#fecaca'" onmouseout="this.style.background='#fee2e2'">🗑 נקה בחירה</button>
   </div>
 
   <div class="calc-wrap">
@@ -523,6 +524,19 @@ function recalc() {
   total += parseFloat(document.getElementById('extra-amt').value) || 0;
   document.getElementById('total').textContent = total.toLocaleString();
   document.getElementById('cnt').textContent = count;
+}
+
+/* ── ניקוי ── */
+function clearCalc() {
+  for (var i = 0; i < PRODS.length; i++) {
+    var el = document.getElementById('ck' + i);
+    if (el.tagName === 'SELECT') el.value = '0';
+    else el.checked = false;
+    document.getElementById('rt' + i).textContent = '—';
+    document.getElementById('cr' + i).classList.remove('checked-row');
+  }
+  document.getElementById('extra-amt').value = '';
+  recalc();
 }
 
 /* ── מעבר עמודים ── */
