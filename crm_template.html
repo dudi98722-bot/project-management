@@ -124,12 +124,110 @@ tr:last-child td { border-bottom: none; }
 .pct-bar-fill { height:8px; border-radius:4px; }
 
 @media print {
-  .tabs, .toolbar, .header, .summary-bar, select, button, #reportActions { display: none !important; }
+  /* Hide everything except report content */
+  .tabs, .toolbar, .header, .summary-bar, select, button,
+  #reportActions, #emailModal, .modal-overlay,
+  .pagination, .tab-content:not(#tab-report) { display: none !important; }
+
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+  body { background: white !important; font-size: 12px; margin: 0; }
+
   .tab-content { display: block !important; }
-  .tab-content:not(#tab-report) { display: none !important; }
-  body { background: white; }
-  .report-section { box-shadow: none; border: 1px solid #ddd; }
-  .report-header-card { box-shadow: none; border: 1px solid #ddd; }
+  #tab-report { display: block !important; }
+  .content { padding: 0 !important; max-width: 100% !important; }
+
+  /* Print header */
+  #tab-report::before {
+    content: "בית כנסת — דוח אישי";
+    display: block;
+    font-size: 18px;
+    font-weight: bold;
+    color: #1a237e;
+    text-align: center;
+    padding: 12px 0 4px;
+    border-bottom: 2px solid #1a237e;
+    margin-bottom: 16px;
+  }
+
+  /* Name selector row - hide it */
+  #tab-report > .content > div:first-child { display: none !important; }
+
+  /* Header card */
+  .report-header-card {
+    box-shadow: none !important;
+    border: 2px solid #1a237e !important;
+    border-radius: 6px !important;
+    padding: 12px 16px !important;
+    margin-bottom: 14px !important;
+    page-break-inside: avoid;
+  }
+  .report-name { font-size: 16px !important; }
+  .report-totals { gap: 8px !important; }
+  .report-kpi {
+    border: 1px solid #ccc !important;
+    border-radius: 6px !important;
+    padding: 8px 12px !important;
+    min-width: 100px !important;
+    background: #f5f7ff !important;
+  }
+  .report-kpi .val { font-size: 15px !important; }
+
+  /* Sections */
+  .report-section {
+    box-shadow: none !important;
+    border: 1px solid #ccc !important;
+    border-radius: 6px !important;
+    margin-bottom: 14px !important;
+    page-break-inside: avoid;
+  }
+  .report-section-title {
+    background: #e8eaf6 !important;
+    padding: 8px 14px !important;
+    font-size: 13px !important;
+    border-bottom: 1px solid #ccc !important;
+  }
+
+  /* Tables */
+  .report-table, .year-table {
+    font-size: 11px !important;
+    width: 100% !important;
+  }
+  .report-table th, .year-table th {
+    background: #e8eaf6 !important;
+    padding: 7px 10px !important;
+    font-size: 11px !important;
+    position: static !important;
+    border: 1px solid #ccc !important;
+  }
+  .report-table td, .year-table td {
+    padding: 6px 10px !important;
+    border: 1px solid #e0e0e0 !important;
+  }
+  .report-table tr.paid-row td { background: #f0fff0 !important; }
+  .report-table tr.open-row td { background: #fff5f5 !important; }
+
+  /* Progress bar in year table */
+  .pct-bar-wrap { gap: 4px !important; }
+  .pct-bar { min-width: 40px !important; }
+
+  /* Status badges */
+  .status-badge { border: 1px solid currentColor !important; }
+  .status-paid { background: #e8f5e9 !important; }
+  .status-partial { background: #fff3e0 !important; }
+  .status-open { background: #ffebee !important; }
+
+  /* Colors */
+  .debt-pos { color: #c62828 !important; }
+  .debt-zero { color: #2e7d32 !important; }
+  .paid-cell { color: #2e7d32 !important; }
+
+  /* Page setup */
+  @page {
+    size: A4;
+    margin: 15mm 12mm;
+    direction: rtl;
+  }
 }
 </style>
 </head>
