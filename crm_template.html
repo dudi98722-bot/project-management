@@ -280,6 +280,14 @@ tr:last-child td { border-bottom: none; }
   <div class="summary-bar" id="vowsSummary"></div>
   <div class="toolbar">
     <input type="text" class="search-box" id="vowsSearch" placeholder="&#x05D7;&#x05D9;&#x05E4;&#x05D5;&#x05E9;..." oninput="onVowsSearch()">
+    <select id="vowsDebtFilter" onchange="onVowsSearch()" style="padding:9px 14px;border:1px solid #ccc;border-radius:7px;font-size:13px;min-width:160px">
+      <option value="all">כל הרשומות</option>
+      <option value="open">יש יתרה לתשלום</option>
+      <option value="paid">שולם במלואו</option>
+      <option value="gt500">יתרה מעל ₪500</option>
+      <option value="gt1000">יתרה מעל ₪1,000</option>
+      <option value="gt5000">יתרה מעל ₪5,000</option>
+    </select>
     <span class="count-badge" id="vowsCountBadge"></span>
     <button class="btn btn-primary" onclick="openVowModal()">+ &#x05D4;&#x05D5;&#x05E1;&#x05E3; &#x05E8;&#x05E9;&#x05D5;&#x05DE;&#x05D4;</button>
   </div>
@@ -802,10 +810,23 @@ function saveVow(){
 }
 function onVowsSearch(){
   var q=document.getElementById('vowsSearch').value.trim().toLowerCase();
-  vFiltered=!q?vows.slice():vows.filter(function(v){
-    return(v.name||'').toLowerCase().indexOf(q)>=0||(v.forA||'').toLowerCase().indexOf(q)>=0||
-      (v.forB||'').toLowerCase().indexOf(q)>=0||(v.hebrewDate||'').indexOf(q)>=0||
-      (v.note||'').toLowerCase().indexOf(q)>=0;
+  var debtFilter=document.getElementById('vowsDebtFilter').value;
+  vFiltered=vows.filter(function(v){
+    // text filter
+    if(q){
+      var match=(v.name||'').toLowerCase().indexOf(q)>=0||(v.forA||'').toLowerCase().indexOf(q)>=0||
+        (v.forB||'').toLowerCase().indexOf(q)>=0||(v.hebrewDate||'').indexOf(q)>=0||
+        (v.note||'').toLowerCase().indexOf(q)>=0;
+      if(!match) return false;
+    }
+    // debt filter
+    var balance=(v.amount||0)-getPaidForVow(v.id);
+    if(debtFilter==='open') return balance>0;
+    if(debtFilter==='paid') return balance<=0;
+    if(debtFilter==='gt500') return balance>500;
+    if(debtFilter==='gt1000') return balance>1000;
+    if(debtFilter==='gt5000') return balance>5000;
+    return true;
   });
   vPage=1;renderVows();
 }
