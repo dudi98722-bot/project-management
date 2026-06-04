@@ -456,7 +456,7 @@ tr:last-child td { border-bottom: none; }
     </div>
   </div>
 
-  <!-- Row 5: Debt distribution -->
+  <!-- Row 5: Debt distribution + status -->
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
     <div class="an-card">
       <div class="an-title">פילוח חייבים — לפי גובה יתרה</div>
@@ -465,6 +465,50 @@ tr:last-child td { border-bottom: none; }
     <div class="an-card">
       <div class="an-title">סטטוס התחייבויות</div>
       <div class="an-body an-center"><canvas id="chartStatus"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Row 6: City + commitment size histogram -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+    <div class="an-card">
+      <div class="an-title">Top 10 ערים לפי סכום התחייבות</div>
+      <div class="an-body"><canvas id="chartCities"></canvas></div>
+    </div>
+    <div class="an-card">
+      <div class="an-title">התפלגות גודל התחייבויות</div>
+      <div class="an-body"><canvas id="chartHistogram"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Row 7: New donors + avg commitment per year -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+    <div class="an-card">
+      <div class="an-title">תורמים חדשים לפי שנה</div>
+      <div class="an-body"><canvas id="chartNewDonors"></canvas></div>
+    </div>
+    <div class="an-card">
+      <div class="an-title">ממוצע התחייבות לתורם לפי שנה</div>
+      <div class="an-body"><canvas id="chartAvgCommit"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Row 8: Monthly heatmap radar + cumulative -->
+  <div style="display:grid;grid-template-columns:1fr 2fr;gap:20px;margin-bottom:20px">
+    <div class="an-card">
+      <div class="an-title">עונתיות — התחייבויות לפי חודש</div>
+      <div class="an-body an-center"><canvas id="chartSeasonality"></canvas></div>
+    </div>
+    <div class="an-card">
+      <div class="an-title">מצטבר — סה"כ התחייבויות ותשלומים</div>
+      <div class="an-body"><canvas id="chartCumulative" style="max-height:260px"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Row 9: Collection rate per year -->
+  <div style="margin-bottom:20px">
+    <div class="an-card">
+      <div class="an-title">אחוז גבייה לפי שנה</div>
+      <div class="an-body"><canvas id="chartCollectionRate" style="max-height:200px"></canvas></div>
     </div>
   </div>
 
@@ -1496,6 +1540,127 @@ function renderAnalytics(){
     labels:['שולם במלואו','שולם חלקית','לא שולם'],
     datasets:[{data:[stt.paid,stt.partial,stt.open],backgroundColor:['#43a047','#ffa726','#ef5350'],borderWidth:2,borderColor:'#fff'}]
   },{plugins:{legend:{position:'bottom',labels:{boxWidth:14,font:{size:12}}}}});
+
+  // --- Top 10 cities ---
+  var cityMap={};
+  vows.forEach(function(v){
+    if(!v.name) return;
+    var c=null; for(var i=0;i<contacts.length;i++){if(contacts[i].display_name===v.name){c=contacts[i];break;}}
+    var city=(c&&c.city)?c.city:'לא ידוע';
+    if(!cityMap[city])cityMap[city]=0;
+    cityMap[city]+=v.amount||0;
+  });
+  var cityTop=Object.entries(cityMap).sort(function(a,b){return b[1]-a[1];}).slice(0,10);
+  makeChart('chartCities','bar',{
+    labels:cityTop.map(function(e){return e[0];}),
+    datasets:[{label:'סכום (₪)',data:cityTop.map(function(e){return e[1];}),backgroundColor:PALETTE,borderRadius:5}]
+  },{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{ticks:{callback:function(v){return '₪'+v.toLocaleString();}}},y:{grid:{display:false}}}});
+
+  // --- Commitment size histogram ---
+  var bins={'עד ₪100':0,'₪100–300':0,'₪300–500':0,'₪500–1,000':0,'₪1,000–2,000':0,'₪2,000–5,000':0,'₪5,000+':0};
+  vows.forEach(function(v){
+    var a=v.amount||0;
+    if(a<=100)bins['עד ₪100']++;
+    else if(a<=300)bins['₪100–300']++;
+    else if(a<=500)bins['₪300–500']++;
+    else if(a<=1000)bins['₪500–1,000']++;
+    else if(a<=2000)bins['₪1,000–2,000']++;
+    else if(a<=5000)bins['₪2,000–5,000']++;
+    else bins['₪5,000+']++;
+  });
+  makeChart('chartHistogram','bar',{
+    labels:Object.keys(bins),
+    datasets:[{label:'מספר התחייבויות',data:Object.values(bins),
+      backgroundColor:['#9fa8da','#7986cb','#5c6bc0','#3949ab','#283593','#1a237e','#0d0f4f'],borderRadius:5}]
+  },{plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{ticks:{precision:0}}}});
+
+  // --- New donors per year ---
+  var firstYearMap={};
+  vows.forEach(function(v){
+    if(!v.name||!v.date) return;
+    var yr=v.date.substring(0,4);
+    if(!firstYearMap[v.name]||yr<firstYearMap[v.name]) firstYearMap[v.name]=yr;
+  });
+  var newDonorMap={};
+  Object.values(firstYearMap).forEach(function(yr){
+    if(!newDonorMap[yr])newDonorMap[yr]=0;
+    newDonorMap[yr]++;
+  });
+  var ndYears=Object.keys(newDonorMap).filter(function(y){return y!=='—';}).sort();
+  makeChart('chartNewDonors','bar',{
+    labels:ndYears,
+    datasets:[{label:'תורמים חדשים',data:ndYears.map(function(y){return newDonorMap[y];}),
+      backgroundColor:'rgba(57,73,171,0.7)',borderColor:'#3949ab',borderWidth:2,borderRadius:5}]
+  },{plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{ticks:{precision:0}}}});
+
+  // --- Avg commitment per donor per year ---
+  var yearDonorMap={};
+  vows.forEach(function(v){
+    if(!v.date) return;
+    var yr=v.date.substring(0,4);
+    if(!yearDonorMap[yr])yearDonorMap[yr]={total:0,names:{}};
+    yearDonorMap[yr].total+=v.amount||0;
+    if(v.name)yearDonorMap[yr].names[v.name]=1;
+  });
+  var avgYears=Object.keys(yearDonorMap).filter(function(y){return y!=='—';}).sort();
+  makeChart('chartAvgCommit','line',{
+    labels:avgYears,
+    datasets:[{label:'ממוצע ₪ לתורם',
+      data:avgYears.map(function(y){
+        var d=yearDonorMap[y];
+        return d&&Object.keys(d.names).length?Math.round(d.total/Object.keys(d.names).length):0;
+      }),
+      borderColor:'#7b1fa2',backgroundColor:'rgba(123,31,162,0.1)',fill:true,tension:0.4,pointRadius:4,pointBackgroundColor:'#7b1fa2'}]
+  },{plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{ticks:{callback:function(v){return '₪'+v.toLocaleString();}}}}});
+
+  // --- Seasonality radar ---
+  var MONTHS=['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+  var monthTotals=new Array(12).fill(0);
+  vows.forEach(function(v){
+    if(!v.date||v.date.length<7) return;
+    var m=parseInt(v.date.substring(5,7))-1;
+    monthTotals[m]+=v.amount||0;
+  });
+  makeChart('chartSeasonality','polarArea',{
+    labels:MONTHS,
+    datasets:[{data:monthTotals,
+      backgroundColor:MONTHS.map(function(_,i){return 'hsla('+(i*30)+',70%,55%,0.7)';}),
+      borderColor:MONTHS.map(function(_,i){return 'hsl('+(i*30)+',70%,45%)';}),
+      borderWidth:1}]
+  },{plugins:{legend:{display:false}},scales:{r:{ticks:{display:false}}}});
+
+  // --- Cumulative line ---
+  var cumMonths=Object.keys(monthMap).filter(function(m){return m!=='—';}).sort().slice(-48);
+  var cumC=0,cumP=0,cumCData=[],cumPData=[];
+  cumMonths.forEach(function(m){
+    cumC+=monthMap[m]?monthMap[m].committed:0;
+    cumP+=monthMap[m]?monthMap[m].paid:0;
+    cumCData.push(cumC); cumPData.push(cumP);
+  });
+  makeChart('chartCumulative','line',{
+    labels:cumMonths,
+    datasets:[
+      {label:'מצטבר התחייב',data:cumCData,borderColor:'#3949ab',backgroundColor:'rgba(57,73,171,0.08)',fill:true,tension:0.3,pointRadius:0,borderWidth:2},
+      {label:'מצטבר שולם',data:cumPData,borderColor:'#43a047',backgroundColor:'rgba(67,160,71,0.08)',fill:true,tension:0.3,pointRadius:0,borderWidth:2}
+    ]
+  },{plugins:{legend:{position:'top'}},scales:{x:{ticks:{maxTicksLimit:12,font:{size:10}},grid:{display:false}},y:{ticks:{callback:function(v){return '₪'+(v/1000).toFixed(0)+'K';}}}}});
+
+  // --- Collection rate per year ---
+  makeChart('chartCollectionRate','line',{
+    labels:years,
+    datasets:[{
+      label:'% גבייה',
+      data:years.map(function(y){
+        var d=yearMap[y];
+        return d&&d.committed>0?Math.round(d.paid/d.committed*100):0;
+      }),
+      borderColor:'#f57c00',backgroundColor:'rgba(245,124,0,0.1)',fill:true,
+      tension:0.4,pointRadius:5,pointBackgroundColor:'#f57c00',borderWidth:2
+    }]
+  },{plugins:{legend:{display:false}},scales:{
+    x:{grid:{display:false}},
+    y:{min:0,max:100,ticks:{callback:function(v){return v+'%';}},grid:{color:'rgba(0,0,0,0.05)'}}
+  }});
 }
 
 function goToPersonReport(idx){
