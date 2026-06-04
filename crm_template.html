@@ -307,56 +307,23 @@ tr:last-child td { border-bottom: none; }
 /*PAYMENTS_DATA*/
 
 /* ===== HEBREW DATE ===== */
-function gregorianToJD(y,m,d){
-  var a=Math.floor((14-m)/12); y=y+4800-a; m=m+12*a-3;
-  return d+Math.floor((153*m+2)/5)+365*y+Math.floor(y/4)-Math.floor(y/100)+Math.floor(y/400)-32045;
-}
-function isHebLeap(y){return((y*7+1)%19)<7;}
-function hebMonthName(m,y){
-  var n=isHebLeap(y)?{1:'ניסן',2:'אייר',3:'סיוון',4:'תמוז',5:'אב',6:'אלול',7:'תשרי',8:'חשוון',9:'כסלו',10:'טבת',11:'שבט',12:"אדר א'",13:"אדר ב'"}:
-    {1:'ניסן',2:'אייר',3:'סיוון',4:'תמוז',5:'אב',6:'אלול',7:'תשרי',8:'חשוון',9:'כסלו',10:'טבת',11:'שבט',12:'אדר'};
-  return n[m]||'?';
-}
-var HN=['','א','ב','ג','ד','ה','ו','ז','ח','ט','י','יא','יב','יג','יד','טו','טז','יז','יח','יט','כ','כא','כב','כג','כד','כה','כו','כז','כח','כט','ל'];
-var H100=['','ק','ר','ש','ת','תק','תר','תש','תת','תתק'];
-var H10=['','י','כ','ל','מ','נ','ס','ע','פ','צ'];
-var H1=['','א','ב','ג','ד','ה','ו','ז','ח','ט'];
-function numHeb(n){
-  var r='',t=Math.floor(n/1000);n=n%1000;
-  if(t>0&&t<10)r+=H1[t]+"'";
-  var h=Math.floor(n/100);n=n%100;r+=H100[h];
-  if(n===15)r+='טו';else if(n===16)r+='טז';else{r+=H10[Math.floor(n/10)]+H1[n%10];}
-  return r;
-}
-function jdToHebrew(jd){
-  var count=Math.floor(((jd-347997)*98496)/35975351);
-  var year=count-1,i=count;
-  while(jd>=hebrewJD(i,7,1)){year=i;i++;}
-  var first=(jd<hebrewJD(year,1,1))?7:1;
-  var month=first;i=first;
-  while(jd>hebrewJD(year,i,lastHebMonthDay(i,year))){month=i+1;i++;}
-  var day=jd-hebrewJD(year,month,1)+1;
-  return HN[day]+' '+hebMonthName(month,year)+' '+numHeb(year);
-}
-function hebrewJD(year,month,day){
-  var months=Math.floor((235*year-234)/19);
-  var elapsed=months*29+Math.floor(months*13753/25920)+day;
-  var jd=347997+elapsed+((months%25920>=19440)?1:0);
-  if(month===7&&day===1){var wd=((jd+1)%7);if(wd===1||wd===4||wd===6)jd++;if(wd===0)jd+=2;}
-  return jd;
-}
-function lastHebMonthDay(m,y){
-  if(m===2)return((hebrewJD(y+1,7,1)-hebrewJD(y,7,1))%10===5)?30:29;
-  if(m===3)return((hebrewJD(y+1,7,1)-hebrewJD(y,7,1))%10===3)?29:30;
-  if(m===6)return isHebLeap(y)?30:29;
-  if(m===8)return 29;
-  if([4,7,9,11,13].indexOf(m)>=0)return 29;
-  return 30;
+var _hebFmt = null;
+function getHebFormatter(){
+  if(!_hebFmt){
+    try{ _hebFmt = new Intl.DateTimeFormat('he-IL-u-ca-hebrew',{year:'numeric',month:'long',day:'numeric'}); }
+    catch(e){ _hebFmt = false; }
+  }
+  return _hebFmt;
 }
 function dateStrToHeb(s){
-  if(!s)return '';
-  var p=s.split('-');
-  try{return jdToHebrew(gregorianToJD(+p[0],+p[1],+p[2]));}catch(e){return '';}
+  if(!s) return '';
+  try{
+    var fmt = getHebFormatter();
+    if(!fmt) return s;
+    // Add noon time to avoid timezone shifts
+    var d = new Date(s + 'T12:00:00');
+    return fmt.format(d);
+  }catch(e){ return ''; }
 }
 
 /* ===== DATA ===== */
