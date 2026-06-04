@@ -137,21 +137,11 @@ tr:last-child td { border-bottom: none; }
   #tab-report { display: block !important; }
   .content { padding: 0 !important; max-width: 100% !important; }
 
-  /* Print header */
-  #tab-report::before {
-    content: "בית כנסת — דוח אישי";
-    display: block;
-    font-size: 18px;
-    font-weight: bold;
-    color: #1a237e;
-    text-align: center;
-    padding: 12px 0 4px;
-    border-bottom: 2px solid #1a237e;
-    margin-bottom: 16px;
-  }
+  /* Print header - injected dynamically */
 
-  /* Name selector row - hide it */
+  /* Name selector row - hide it, show print header */
   #tab-report > .content > div:first-child { display: none !important; }
+  #printHeader { display: block !important; }
 
   /* Header card */
   .report-header-card {
@@ -353,6 +343,7 @@ tr:last-child td { border-bottom: none; }
       <button class="btn btn-secondary" id="emailReportBtn" onclick="emailReport()">&#x2709; &#x05E9;&#x05DC;&#x05D7; &#x05DC;&#x05DE;&#x05D9;&#x05D9;&#x05DC;</button>
     </div>
   </div>
+  <div id="printHeader" style="display:none"></div>
   <div id="reportContent"></div>
 </div>
 </div>
@@ -1050,7 +1041,26 @@ function renderReport(){
 }
 
 function printReport(){
+  var name = document.getElementById('reportNameSelect').value || '';
+  var today = new Date();
+  var todayHeb = '';
+  try {
+    var fmt = new Intl.DateTimeFormat('he-IL-u-ca-hebrew',{year:'numeric',month:'long',day:'numeric'});
+    todayHeb = fmt.format(today);
+  } catch(e) {}
+  var todayGreg = today.toLocaleDateString('he-IL',{year:'numeric',month:'long',day:'numeric'});
+
+  var ph = document.getElementById('printHeader');
+  ph.style.display = 'block';
+  ph.innerHTML =
+    '<div style="text-align:center;border-bottom:3px solid #1a237e;padding-bottom:10px;margin-bottom:16px">' +
+      '<div style="font-size:22px;font-weight:bold;color:#1a237e;margin-bottom:2px">מוסדות אלכסנדר</div>' +
+      '<div style="font-size:16px;font-weight:bold;color:#333;margin-bottom:4px">דוח נדרים ונדבות</div>' +
+      '<div style="font-size:12px;color:#666">' + (todayHeb ? todayHeb + ' | ' : '') + todayGreg + '</div>' +
+    '</div>';
+
   window.print();
+  ph.style.display = 'none';
 }
 
 function copyEmailBody(){
@@ -1100,14 +1110,18 @@ function emailReport(){
     return yr + ': התחייב ₪' + d.committed.toLocaleString() + ' | שילם ₪' + d.paid.toLocaleString() + ' | יתרה ₪' + (d.committed-d.paid).toLocaleString();
   }).join('\n');
 
-  var subject = 'דוח אישי - ' + name;
-  var body = 'שלום,\n\n' +
-    'להלן סיכום חשבונך:\n\n' +
-    '📊 סה"כ התחייב: ₪' + totalCommitted.toLocaleString() + '\n' +
-    '✅ סה"כ שילם: ₪' + totalPaid.toLocaleString() + '\n' +
-    '💳 יתרה לתשלום: ₪' + debt.toLocaleString() + '\n\n' +
+  var today = new Date();
+  var todayStr = today.toLocaleDateString('he-IL', {year:'numeric', month:'long', day:'numeric'});
+
+  var subject = 'נדרים ונדבות - ' + name;
+  var body = 'שלום וברכה,\n\n' +
+    'מצו"ב דוח נדרים ונדבות נכון לתאריך ' + todayStr + '.\n\n' +
+    'סיכום חשבון:\n' +
+    'סה"כ התחייב: ₪' + totalCommitted.toLocaleString() + '\n' +
+    'סה"כ שולם: ₪' + totalPaid.toLocaleString() + '\n' +
+    'יתרה לתשלום: ₪' + debt.toLocaleString() + '\n\n' +
     'פירוט שנתי:\n' + yearLines + '\n\n' +
-    'בברכה';
+    'בברכה,\nמוסדות אלכסנדר';
 
   // Try Gmail first, fallback to mailto
   var gmailUrl = 'https://mail.google.com/mail/?view=cm' +
