@@ -988,10 +988,11 @@ function populateReportSelect(){
   if(cur) sel.value = cur;
 }
 
-function renderReport(){
-  var name = document.getElementById('reportNameSelect').value;
+function renderReport(forceName){
+  var name = forceName || document.getElementById('reportNameSelect').value;
   var el = document.getElementById('reportContent');
   document.getElementById('reportActions').style.display = name ? 'flex' : 'none';
+  if(forceName) document.getElementById('reportNameSelect').value = forceName;
   if(!name){ el.innerHTML = ''; return; }
 
   // find contact info
@@ -1469,14 +1470,9 @@ function renderAnalytics(){
   },{plugins:{legend:{position:'bottom',labels:{boxWidth:14,font:{size:12}}}}});
 }
 
-var _pendingReportName = null;
-
 function goToPersonReport(name){
-  _pendingReportName = name;
   switchTab('report');
-  document.getElementById('reportNameSelect').value = name;
-  _pendingReportName = null;
-  renderReport();
+  renderReport(name);
   window.scrollTo(0, 0);
 }
 
@@ -1499,7 +1495,7 @@ function switchTab(name){
   document.getElementById('tab-'+name).classList.add('active');
   if(name==='vows'){vFiltered=vows.slice();renderVows();}
   if(name==='payments'){pFiltered=payments.slice();renderPayments();}
-  if(name==='report'){populateReportSelect();if(!_pendingReportName)renderReport();}
+  if(name==='report'){populateReportSelect();}
   if(name==='generalreport'){renderGeneralReport();}
   if(name==='analytics'){renderAnalytics();}
 }
