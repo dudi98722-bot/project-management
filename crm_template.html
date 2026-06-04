@@ -119,12 +119,17 @@ tr:last-child td { border-bottom: none; }
 .year-table th { padding: 10px 14px; text-align: right; font-weight: bold; color: #555; border-bottom: 2px solid #e0e0e0; background: #fafbff; }
 .year-table td { padding: 9px 14px; border-bottom: 1px solid #f0f0f0; }
 .year-table tr:last-child td { border-bottom: none; }
+.pct-bar-wrap { display:flex; align-items:center; gap:8px; }
+.pct-bar { flex:1; background:#e0e0e0; border-radius:4px; height:8px; min-width:60px; }
+.pct-bar-fill { height:8px; border-radius:4px; }
+
 @media print {
-  .tabs, .toolbar, .header, .summary-bar, select, button { display: none !important; }
+  .tabs, .toolbar, .header, .summary-bar, select, button, #reportActions { display: none !important; }
   .tab-content { display: block !important; }
   .tab-content:not(#tab-report) { display: none !important; }
   body { background: white; }
   .report-section { box-shadow: none; border: 1px solid #ddd; }
+  .report-header-card { box-shadow: none; border: 1px solid #ddd; }
 }
 </style>
 </head>
@@ -140,6 +145,7 @@ tr:last-child td { border-bottom: none; }
   <div class="tab" onclick="switchTab('vows')">&#x05E0;&#x05D3;&#x05E8;&#x05D9;&#x05DD; &#x05D5;&#x05E0;&#x05D3;&#x05D1;&#x05D5;&#x05EA;</div>
   <div class="tab" onclick="switchTab('payments')">&#x05EA;&#x05E9;&#x05DC;&#x05D5;&#x05DE;&#x05D9;&#x05DD;</div>
   <div class="tab" onclick="switchTab('report')">&#x05D3;&#x05D5;&#x05D7; &#x05D0;&#x05D9;&#x05E9;&#x05D9;</div>
+  <div class="tab" onclick="switchTab('generalreport')">&#x05D3;&#x05D5;&#x05D7; &#x05DB;&#x05DC;&#x05DC;&#x05D9;</div>
 </div>
 
 <!-- ===== TAB: CONTACTS ===== -->
@@ -244,9 +250,46 @@ tr:last-child td { border-bottom: none; }
         <option value="">-- בחר --</option>
       </select>
     </div>
-    <button class="btn btn-secondary" onclick="printReport()" id="reportPrintBtn" style="display:none;margin-top:18px">&#x05D4;&#x05D3;&#x05E4;&#x05E1; &#x05D3;&#x05D5;&#x05D7;</button>
+    <div id="reportActions" style="display:none;display:flex;gap:8px;margin-top:18px;flex-wrap:wrap">
+      <button class="btn btn-secondary" onclick="printReport()">&#x1F5A8; &#x05D4;&#x05D3;&#x05E4;&#x05E1; / PDF</button>
+      <button class="btn btn-secondary" id="emailReportBtn" onclick="emailReport()">&#x2709; &#x05E9;&#x05DC;&#x05D7; &#x05DC;&#x05DE;&#x05D9;&#x05D9;&#x05DC;</button>
+    </div>
   </div>
   <div id="reportContent"></div>
+</div>
+</div>
+
+<!-- ===== TAB: GENERAL REPORT ===== -->
+<div class="tab-content" id="tab-generalreport">
+<div class="content">
+  <div class="summary-bar" id="generalSummary"></div>
+  <div class="toolbar">
+    <input type="text" class="search-box" id="generalSearch" placeholder="חיפוש לפי שם..." oninput="onGeneralSearch()">
+    <span class="count-badge" id="generalCountBadge"></span>
+    <select id="generalSort" onchange="renderGeneralReport()" style="padding:9px 14px;border:1px solid #ccc;border-radius:7px;font-size:13px">
+      <option value="debt">מיין: יתרה גבוהה</option>
+      <option value="committed">מיין: התחייבות גבוהה</option>
+      <option value="paid">מיין: תשלום גבוה</option>
+      <option value="name">מיין: שם</option>
+    </select>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>#</th>
+        <th>שם</th>
+        <th>סה"כ התחייב</th>
+        <th>סה"כ שולם</th>
+        <th>יתרה לתשלום</th>
+        <th>% שולם</th>
+        <th>מס' התחייבויות</th>
+        <th>פעולות</th>
+      </tr></thead>
+      <tbody id="generalBody"></tbody>
+    </table>
+    <div id="generalNoResults" class="no-results" style="display:none">לא נמצאו תוצאות</div>
+  </div>
+  <div class="pagination" id="generalPagination"></div>
 </div>
 </div>
 
@@ -742,7 +785,7 @@ function populateReportSelect(){
 function renderReport(){
   var name = document.getElementById('reportNameSelect').value;
   var el = document.getElementById('reportContent');
-  document.getElementById('reportPrintBtn').style.display = name ? '' : 'none';
+  document.getElementById('reportActions').style.display = name ? 'flex' : 'none';
   if(!name){ el.innerHTML = ''; return; }
 
   // find contact info
@@ -880,6 +923,113 @@ function printReport(){
   window.print();
 }
 
+function emailReport(){
+  var name = document.getElementById('reportNameSelect').value;
+  if(!name) return;
+  var contact = null;
+  for(var i=0;i<contacts.length;i++){ if(contacts[i].display_name===name){contact=contacts[i];break;} }
+  var email = contact && contact.email ? contact.email : '';
+  if(!email){ alert('לאיש קשר זה אין כתובת מייל. הורד את ה-PDF ושלח ידנית.'); printReport(); return; }
+
+  var personVows = vows.filter(function(v){return v.name===name;});
+  var totalCommitted=0, totalPaid=0;
+  personVows.forEach(function(v){ totalCommitted+=v.amount||0; totalPaid+=getPaidForVow(v.id); });
+  var debt = totalCommitted - totalPaid;
+
+  var subject = encodeURIComponent('דוח אישי - ' + name);
+  var body = 'שלום,' + '\n\n' +
+    'להלן סיכום חשבונך:\n' +
+    'סה"כ התחייבויות: ₪' + totalCommitted.toLocaleString() + '\n' +
+    'סה"כ שולם: ₪' + totalPaid.toLocaleString() + '\n' +
+    'יתרה לתשלום: ₪' + debt.toLocaleString() + '\n\n' +
+    'לפרטים נוספים צור קשר.\n\nבברכה';
+
+  window.open('mailto:' + email + '?subject=' + subject + '&body=' + encodeURIComponent(body));
+}
+
+/* ===== GENERAL REPORT ===== */
+var generalData = [];
+var generalFiltered = [];
+var generalPage = 1;
+
+function buildGeneralData(){
+  var nameMap = {};
+  vows.forEach(function(v){
+    if(!v.name) return;
+    if(!nameMap[v.name]) nameMap[v.name] = {name:v.name, committed:0, paid:0, count:0};
+    nameMap[v.name].committed += v.amount||0;
+    nameMap[v.name].paid += getPaidForVow(v.id);
+    nameMap[v.name].count++;
+  });
+  generalData = Object.values(nameMap);
+}
+
+function onGeneralSearch(){
+  var q = document.getElementById('generalSearch').value.trim().toLowerCase();
+  generalFiltered = !q ? generalData.slice() : generalData.filter(function(r){
+    return r.name.toLowerCase().indexOf(q) >= 0;
+  });
+  generalPage = 1;
+  renderGeneralReport();
+}
+
+function renderGeneralReport(){
+  buildGeneralData();
+  var q = document.getElementById('generalSearch').value.trim().toLowerCase();
+  generalFiltered = !q ? generalData.slice() : generalData.filter(function(r){
+    return r.name.toLowerCase().indexOf(q) >= 0;
+  });
+
+  var sort = document.getElementById('generalSort').value;
+  generalFiltered.sort(function(a,b){
+    if(sort==='name') return a.name.localeCompare(b.name, 'he');
+    if(sort==='committed') return b.committed - a.committed;
+    if(sort==='paid') return b.paid - a.paid;
+    return (b.committed-b.paid) - (a.committed-a.paid); // debt
+  });
+
+  var total = generalFiltered.length;
+  var tC=0, tP=0;
+  generalData.forEach(function(r){tC+=r.committed;tP+=r.paid;});
+  document.getElementById('generalCountBadge').textContent = total.toLocaleString() + ' אנשים';
+  document.getElementById('generalSummary').innerHTML =
+    '<div class="summary-card"><div class="val">'+generalData.length+'</div><div class="lbl">אנשים עם התחייבויות</div></div>'+
+    '<div class="summary-card"><div class="val">₪'+tC.toLocaleString()+'</div><div class="lbl">סה"כ התחייבויות</div></div>'+
+    '<div class="summary-card"><div class="val" style="color:#2e7d32">₪'+tP.toLocaleString()+'</div><div class="lbl">סה"כ שולם</div></div>'+
+    '<div class="summary-card"><div class="val debt-pos">₪'+(tC-tP).toLocaleString()+'</div><div class="lbl">סה"כ יתרה</div></div>';
+
+  var tb = document.getElementById('generalBody');
+  document.getElementById('generalNoResults').style.display = total===0 ? '' : 'none';
+  if(!total){ tb.innerHTML=''; document.getElementById('generalPagination').innerHTML=''; return; }
+
+  var start=(generalPage-1)*PAGE_SIZE;
+  var page=generalFiltered.slice(start, start+PAGE_SIZE);
+  var rows='';
+  page.forEach(function(r, i){
+    var debt = r.committed - r.paid;
+    var pct = r.committed>0 ? Math.round(r.paid/r.committed*100) : 0;
+    var color = pct>=100 ? '#2e7d32' : pct>=50 ? '#1a237e' : '#c62828';
+    rows += '<tr>'+
+      '<td style="color:#aaa;font-size:12px">'+(start+i+1)+'</td>'+
+      '<td><b>'+r.name+'</b></td>'+
+      '<td style="text-align:left">₪'+r.committed.toLocaleString()+'</td>'+
+      '<td class="paid-cell" style="text-align:left">₪'+r.paid.toLocaleString()+'</td>'+
+      '<td class="'+(debt>0?'debt-pos':'debt-zero')+'" style="text-align:left">₪'+debt.toLocaleString()+'</td>'+
+      '<td style="min-width:120px"><div class="pct-bar-wrap"><div class="pct-bar"><div class="pct-bar-fill" style="width:'+Math.min(pct,100)+'%;background:'+color+'"></div></div><span style="font-size:12px;min-width:32px">'+pct+'%</span></div></td>'+
+      '<td style="text-align:center;color:#666">'+r.count+'</td>'+
+      '<td><button class="btn btn-secondary btn-sm" onclick="goToPersonReport(\''+r.name.replace(/'/g,"\\'")+'\')">דוח אישי</button></td>'+
+      '</tr>';
+  });
+  tb.innerHTML = rows;
+  renderPag('generalPagination', total, generalPage, function(p){generalPage=p;renderGeneralReport();});
+}
+
+function goToPersonReport(name){
+  switchTab('report');
+  document.getElementById('reportNameSelect').value = name;
+  renderReport();
+}
+
 /* ===== INIT ===== */
 function init(){
   refreshNameSelects();
@@ -894,12 +1044,13 @@ function init(){
 function switchTab(name){
   document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});
   document.querySelectorAll('.tab-content').forEach(function(t){t.classList.remove('active');});
-  var map={contacts:0,vows:1,payments:2,report:3};
+  var map={contacts:0,vows:1,payments:2,report:3,generalreport:4};
   document.querySelectorAll('.tab')[map[name]].classList.add('active');
   document.getElementById('tab-'+name).classList.add('active');
   if(name==='vows'){vFiltered=vows.slice();renderVows();}
   if(name==='payments'){pFiltered=payments.slice();renderPayments();}
   if(name==='report'){populateReportSelect();renderReport();}
+  if(name==='generalreport'){renderGeneralReport();}
 }
 
 init();
