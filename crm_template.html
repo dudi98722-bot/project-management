@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRM - בית כנסת</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Arial, sans-serif; background: #f0f2f8; direction: rtl; color: #222; }
+
+.header { background: #1a237e; color: white; padding: 14px 24px; display: flex; align-items: center; gap: 12px; }
+.header h1 { font-size: 20px; font-weight: bold; }
+
+.tabs { background: white; border-bottom: 2px solid #e0e0e0; padding: 0 24px; display: flex; }
+.tab { padding: 12px 28px; cursor: pointer; font-size: 14px; border-bottom: 3px solid transparent; margin-bottom: -2px; color: #666; transition: all .15s; }
+.tab.active { border-bottom-color: #1a237e; color: #1a237e; font-weight: bold; }
+.tab:hover:not(.active) { background: #f5f5f5; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+.content { padding: 24px; max-width: 1500px; margin: 0 auto; }
+
+.toolbar { display: flex; gap: 12px; margin-bottom: 18px; align-items: center; flex-wrap: wrap; }
+.search-box { flex: 1; min-width: 220px; padding: 9px 14px; border: 1px solid #ccc; border-radius: 7px; font-size: 14px; }
+.search-box:focus { outline: none; border-color: #1a237e; box-shadow: 0 0 0 3px rgba(26,35,126,.1); }
+
+.btn { padding: 9px 20px; border: none; border-radius: 7px; cursor: pointer; font-size: 14px; font-weight: bold; transition: background .15s; }
+.btn-primary { background: #1a237e; color: white; }
+.btn-primary:hover { background: #283593; }
+.btn-secondary { background: #e8eaf6; color: #1a237e; }
+.btn-secondary:hover { background: #c5cae9; }
+.btn-danger { background: #ffebee; color: #c62828; }
+.btn-danger:hover { background: #ffcdd2; }
+.btn-sm { padding: 4px 12px; font-size: 12px; border-radius: 5px; }
+.count-badge { background: #e8eaf6; color: #1a237e; padding: 5px 14px; border-radius: 20px; font-size: 13px; white-space: nowrap; font-weight: bold; }
+
+.table-wrap { background: white; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); overflow: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead { background: #f5f7ff; }
+th { padding: 11px 12px; text-align: right; font-weight: bold; color: #444; border-bottom: 2px solid #e0e0e0; white-space: nowrap; }
+td { padding: 9px 12px; border-bottom: 1px solid #f0f0f0; color: #333; vertical-align: middle; }
+tr:hover td { background: #f5f7ff; }
+tr:last-child td { border-bottom: none; }
+
+.pagination { display: flex; gap: 5px; align-items: center; margin-top: 16px; justify-content: center; flex-wrap: wrap; }
+.page-btn { padding: 6px 12px; border: 1px solid #d0d0d0; border-radius: 5px; cursor: pointer; background: white; font-size: 13px; }
+.page-btn.active { background: #1a237e; color: white; border-color: #1a237e; font-weight: bold; }
+.page-btn:hover:not(.active) { background: #f0f0f0; }
+.page-info { font-size: 13px; color: #777; padding: 6px 10px; }
+
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 1000; align-items: center; justify-content: center; }
+.modal-overlay.open { display: flex; }
+.modal { background: white; border-radius: 12px; width: 680px; max-width: 96vw; max-height: 92vh; overflow-y: auto; box-shadow: 0 12px 40px rgba(0,0,0,0.25); }
+.modal-lg { width: 780px; }
+.modal-header { padding: 18px 24px 14px; border-bottom: 1px solid #e8e8e8; display: flex; justify-content: space-between; align-items: center; background: #f5f7ff; border-radius: 12px 12px 0 0; }
+.modal-header h2 { font-size: 17px; color: #1a237e; }
+.modal-close { background: none; border: none; font-size: 22px; cursor: pointer; color: #aaa; line-height: 1; padding: 2px 6px; border-radius: 4px; }
+.modal-close:hover { background: #f0f0f0; color: #555; }
+.modal-body { padding: 20px 24px; }
+.modal-footer { padding: 14px 24px; border-top: 1px solid #e8e8e8; display: flex; gap: 10px; justify-content: flex-end; }
+
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-group { display: flex; flex-direction: column; gap: 5px; }
+.form-group.full { grid-column: 1 / -1; }
+.form-group label { font-size: 12px; font-weight: bold; color: #555; }
+.form-group input, .form-group select, .form-group textarea {
+  padding: 8px 11px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; font-family: inherit;
+  transition: border-color .15s;
+}
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: #1a237e; box-shadow: 0 0 0 3px rgba(26,35,126,.08); }
+.form-group input:disabled { background: #f5f5f5; color: #888; }
+.form-group textarea { resize: vertical; min-height: 55px; }
+
+.hebrew-date-box { background: #fff3e0; padding: 9px 13px; border-radius: 6px; font-size: 14px; color: #e65100; font-weight: bold; min-height: 36px; display: flex; align-items: center; }
+.display-name-box { background: #e8eaf6; padding: 9px 13px; border-radius: 6px; font-size: 13px; color: #1a237e; font-weight: bold; min-height: 36px; }
+
+.summary-bar { display: flex; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+.summary-card { background: white; border-radius: 8px; padding: 14px 18px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); flex: 1; min-width: 140px; text-align: center; }
+.summary-card .val { font-size: 22px; font-weight: bold; color: #1a237e; }
+.summary-card .lbl { font-size: 12px; color: #888; margin-top: 3px; }
+
+.debt-pos { color: #c62828; font-weight: bold; }
+.debt-zero { color: #2e7d32; font-weight: bold; }
+.paid-cell { color: #2e7d32; font-weight: bold; }
+
+.no-results { text-align: center; padding: 50px; color: #aaa; font-size: 15px; }
+.required { color: #c62828; }
+
+.open-vows-list { font-size: 12px; color: #555; line-height: 1.7; }
+.open-vows-list .ov-item { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; border-bottom: 1px dashed #e0e0e0; }
+.open-vows-list .ov-item:last-child { border-bottom: none; }
+.open-vows-list .ov-amt { color: #c62828; font-weight: bold; white-space: nowrap; }
+
+.methods-table-wrap { margin-top: 12px; }
+.methods-table-wrap input[type=text] { width: 100%; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <span style="font-size:26px">&#x2721;</span>
+  <h1>CRM &#x2014; &#x05D1;&#x05D9;&#x05EA; &#x05DB;&#x05E0;&#x05E1;&#x05EA;</h1>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('contacts')">&#x05D0;&#x05E0;&#x05E9;&#x05D9; &#x05E7;&#x05E9;&#x05E8;</div>
+  <div class="tab" onclick="switchTab('vows')">&#x05E0;&#x05D3;&#x05E8;&#x05D9;&#x05DD; &#x05D5;&#x05E0;&#x05D3;&#x05D1;&#x05D5;&#x05EA;</div>
+  <div class="tab" onclick="switchTab('payments')">&#x05EA;&#x05E9;&#x05DC;&#x05D5;&#x05DE;&#x05D9;&#x05DD;</div>
+</div>
+
+<!-- ===== TAB: CONTACTS ===== -->
+<div class="tab-content active" id="tab-contacts">
+<div class="content">
+  <div class="toolbar">
+    <input type="text" class="search-box" id="searchInput" placeholder="&#x05D7;&#x05D9;&#x05E4;&#x05D5;&#x05E9;..." oninput="onSearch()">
+    <span class="count-badge" id="countBadge"></span>
+    <button class="btn btn-primary" onclick="openAddModal()">+ &#x05D4;&#x05D5;&#x05E1;&#x05E3; &#x05D0;&#x05D9;&#x05E9; &#x05E7;&#x05E9;&#x05E8;</button>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>&#x05DE;&#x05D6;&#x05D4;&#x05D4;</th><th>&#x05EA;&#x05D5;&#x05D0;&#x05E8;</th>
+        <th>&#x05E9;&#x05DD; &#x05E4;&#x05E8;&#x05D8;&#x05D9;</th><th>&#x05E9;&#x05DD; &#x05DE;&#x05E9;&#x05E4;&#x05D7;&#x05D4;</th>
+        <th>&#x05E9;&#x05DD; &#x05D4;&#x05D0;&#x05D1;</th><th>&#x05E0;&#x05D9;&#x05D9;&#x05D3;</th>
+        <th>&#x05D8;&#x05DC;&#x05E4;&#x05D5;&#x05DF; &#x05D1;&#x05D9;&#x05EA;</th><th>&#x05E2;&#x05D9;&#x05E8;</th>
+        <th>&#x05D3;&#x05D5;&#x05D0;"&#x05DC;</th><th>&#x05E4;&#x05E2;&#x05D5;&#x05DC;&#x05D5;&#x05EA;</th>
+      </tr></thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+    <div id="noResults" class="no-results" style="display:none">&#x05DC;&#x05D0; &#x05E0;&#x05DE;&#x05E6;&#x05D0;&#x05D5; &#x05EA;&#x05D5;&#x05E6;&#x05D0;&#x05D5;&#x05EA;</div>
+  </div>
+  <div class="pagination" id="pagination"></div>
+</div>
+</div>
+
+<!-- ===== TAB: VOWS ===== -->
+<div class="tab-content" id="tab-vows">
+<div class="content">
+  <div class="summary-bar" id="vowsSummary"></div>
+  <div class="toolbar">
+    <input type="text" class="search-box" id="vowsSearch" placeholder="&#x05D7;&#x05D9;&#x05E4;&#x05D5;&#x05E9;..." oninput="onVowsSearch()">
+    <span class="count-badge" id="vowsCountBadge"></span>
+    <button class="btn btn-primary" onclick="openVowModal()">+ &#x05D4;&#x05D5;&#x05E1;&#x05E3; &#x05E8;&#x05E9;&#x05D5;&#x05DE;&#x05D4;</button>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>&#x05EA;&#x05D0;&#x05E8;&#x05D9;&#x05DA; &#x05E2;&#x05D1;&#x05E8;&#x05D9;</th>
+        <th>&#x05EA;&#x05D0;&#x05E8;&#x05D9;&#x05DA; &#x05DC;&#x05D5;&#x05E2;&#x05D6;&#x05D9;</th>
+        <th>&#x05E9;&#x05DD;</th>
+        <th>&#x05E2;&#x05D1;&#x05D5;&#x05E8; &#x05D0;</th>
+        <th>&#x05E2;&#x05D1;&#x05D5;&#x05E8; &#x05D1;</th>
+        <th>&#x05E1;&#x05DB;&#x05D5;&#x05DD; &#x05D4;&#x05EA;&#x05D7;&#x05D9;&#x05D9;&#x05D1;&#x05D5;&#x05EA;</th>
+        <th>&#x05E9;&#x05D5;&#x05DC;&#x05DD; &#x05E2;&#x05D3; &#x05DB;&#x05D4;</th>
+        <th>&#x05D9;&#x05EA;&#x05E8;&#x05D4; &#x05DC;&#x05EA;&#x05E9;&#x05DC;&#x05D5;&#x05DD;</th>
+        <th>&#x05D7;&#x05D5;&#x05D1; &#x05DB;&#x05DC;&#x05DC;&#x05D9;</th>
+        <th>&#x05D4;&#x05E2;&#x05E8;&#x05D4;</th>
+        <th>&#x05DE;&#x05E1;' &#x05DE;&#x05E7;&#x05D5;&#x05DD;</th>
+        <th>&#x05E4;&#x05E2;&#x05D5;&#x05DC;&#x05D5;&#x05EA;</th>
+      </tr></thead>
+      <tbody id="vowsBody"></tbody>
+    </table>
+    <div id="vowsNoResults" class="no-results" style="display:none">&#x05DC;&#x05D0; &#x05E0;&#x05DE;&#x05E6;&#x05D0;&#x05D5; &#x05EA;&#x05D5;&#x05E6;&#x05D0;&#x05D5;&#x05EA;</div>
+  </div>
+  <div class="pagination" id="vowsPagination"></div>
+</div>
+</div>
+
+<!-- ===== TAB: PAYMENTS ===== -->
+<div class="tab-content" id="tab-payments">
+<div class="content">
+  <div class="summary-bar" id="paymentsSummary"></div>
+  <div class="toolbar">
+    <input type="text" class="search-box" id="paymentsSearch" placeholder="&#x05D7;&#x05D9;&#x05E4;&#x05D5;&#x05E9;..." oninput="onPaymentsSearch()">
+    <span class="count-badge" id="paymentsCountBadge"></span>
+    <button class="btn btn-secondary" onclick="openMethodsModal()" style="margin-right:auto">&#x05E2;&#x05E8;&#x05D9;&#x05DB;&#x05EA; &#x05D0;&#x05D5;&#x05E4;&#x05E0;&#x05D9; &#x05EA;&#x05E9;&#x05DC;&#x05D5;&#x05DD;</button>
+    <button class="btn btn-primary" onclick="openPaymentModal()">+ &#x05D4;&#x05D5;&#x05E1;&#x05E3; &#x05EA;&#x05E9;&#x05DC;&#x05D5;&#x05DD;</button>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>&#x05EA;&#x05D0;&#x05E8;&#x05D9;&#x05DA; &#x05E2;&#x05D1;&#x05E8;&#x05D9;</th>
+        <th>&#x05EA;&#x05D0;&#x05E8;&#x05D9;&#x05DA; &#x05DC;&#x05D5;&#x05E2;&#x05D6;&#x05D9;</th>
+        <th>&#x05E9;&#x05DD;</th>
+        <th>&#x05E2;&#x05D1;&#x05D5;&#x05E8; &#x05D4;&#x05EA;&#x05D7;&#x05D9;&#x05D9;&#x05D1;&#x05D5;&#x05EA;</th>
+        <th>&#x05E1;&#x05DB;&#x05D5;&#x05DD; &#x05EA;&#x05E9;&#x05DC;&#x05D5;&#x05DD;</th>
+        <th>&#x05D0;&#x05D5;&#x05E4;&#x05DF; &#x05EA;&#x05E9;&#x05DC;&#x05D5;&#x05DD;</th>
+        <th>&#x05DE;&#x05E1;' &#x05EA;&#x05E9;&#x05DC;&#x05D5;&#x05DE;&#x05D9;&#x05DD;</th>
+        <th>&#x05E9;&#x05D5;&#x05DC;&#x05DD; &#x05E2;&#x05D1;&#x05D5;&#x05E8; &#x05D4;&#x05EA;&#x05D7;&#x05D9;&#x05D9;&#x05D1;&#x05D5;&#x05EA;</th>
+        <th>&#x05D7;&#x05D5;&#x05D1; &#x05DB;&#x05DC;&#x05DC;&#x05D9;</th>
+        <th>&#x05D4;&#x05EA;&#x05D7;&#x05D9;&#x05D9;&#x05D1;&#x05D5;&#x05D9;&#x05D5;&#x05EA; &#x05E4;&#x05EA;&#x05D5;&#x05D7;&#x05D5;&#x05EA;</th>
+        <th>&#x05D4;&#x05E2;&#x05E8;&#x05D4;</th>
+        <th>&#x05E4;&#x05E2;&#x05D5;&#x05DC;&#x05D5;&#x05EA;</th>
+      </tr></thead>
+      <tbody id="paymentsBody"></tbody>
+    </table>
+    <div id="paymentsNoResults" class="no-results" style="display:none">&#x05DC;&#x05D0; &#x05E0;&#x05DE;&#x05E6;&#x05D0;&#x05D5; &#x05EA;&#x05D5;&#x05E6;&#x05D0;&#x05D5;&#x05EA;</div>
+  </div>
+  <div class="pagination" id="paymentsPagination"></div>
+</div>
+</div>
+
+<!-- CONTACTS Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-header"><h2 id="modalTitle"></h2><button class="modal-close" onclick="closeModal()">&#x2715;</button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <input type="hidden" id="fId">
+        <div class="form-group"><label>&#x05DE;&#x05D6;&#x05D4;&#x05D4;</label><input type="text" id="fIdDisplay" disabled></div>
+        <div class="form-group"><label>&#x05DE;&#x05E1;' &#x05EA;&#x05D5;&#x05E8;&#x05DD; APT</label><input type="text" id="fApt"></div>
+        <div class="form-group"><label>&#x05EA;&#x05D5;&#x05D0;&#x05E8;</label>
+          <select id="fTitle"><option value=""></option><option>&#x05D4;&#x05E8;&#x05D1;</option><option>&#x05D4;&#x05E8;"&#x05E8;</option><option>&#x05E8;'</option><option>&#x05DE;&#x05E8;</option></select>
+        </div>
+        <div class="form-group"></div>
+        <div class="form-group"><label>&#x05E9;&#x05DD; &#x05E4;&#x05E8;&#x05D8;&#x05D9; <span class="required">*</span></label><input type="text" id="fFirstName" oninput="updatePreview()"></div>
+        <div class="form-group"><label>&#x05E9;&#x05DD; &#x05DE;&#x05E9;&#x05E4;&#x05D7;&#x05D4; <span class="required">*</span></label><input type="text" id="fLastName" oninput="updatePreview()"></div>
+        <div class="form-group"><label>&#x05E9;&#x05DD; &#x05D4;&#x05D0;&#x05D1;</label><input type="text" id="fFatherName" oninput="updatePreview()"></div>
+        <div class="form-group"></div>
+        <div class="form-group"><label>&#x05E0;&#x05D9;&#x05D9;&#x05D3;</label><input type="text" id="fMobile"></div>
+        <div class="form-group"><label>&#x05D8;&#x05DC;&#x05E4;&#x05D5;&#x05DF; &#x05D1;&#x05D9;&#x05EA;</label><input type="text" id="fPhone"></div>
+        <div class="form-group"><label>&#x05E8;&#x05D7;&#x05D5;&#x05D1;</label><input type="text" id="fStreet"></div>
+        <div class="form-group"><label>&#x05DE;&#x05E1;' &#x05D1;&#x05D9;&#x05EA;</label><input type="text" id="fHouse"></div>
+        <div class="form-group"><label>&#x05E2;&#x05D9;&#x05E8;</label><input type="text" id="fCity"></div>
+        <div class="form-group"><label>&#x05DE;&#x05D9;&#x05E7;&#x05D5;&#x05D3;</label><input type="text" id="fZip"></div>
+        <div class="form-group full"><label>&#x05D3;&#x05D5;&#x05D0;"&#x05DC;</label><input type="email" id="fEmail"></div>
+        <div class="form-group full"><label>&#x05E9;&#x05DD; &#x05EA;&#x05E6;&#x05D5;&#x05D2;&#x05D4;</label><div class="display-name-box" id="displayNamePreview">&#x2014;</div></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">&#x05D1;&#x05D9;&#x05D8;&#x05D5;&#x05DC;</button>
+      <button class="btn btn-primary" onclick="saveContact()">&#x05E9;&#x05DE;&#x05D5;&#x05E8;</button>
+    </div>
+  </div>
+</div>
+
+<!-- VOWS Modal -->
+<div class="modal-overlay" id="vowModalOverlay">
+  <div class="modal">
+    <div class="modal-header"><h2 id="vowModalTitle"></h2><button class="modal-close" onclick="closeVowModal()">&#x2715;</button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <input type="hidden" id="vfId">
+        <div class="form-group"><label>&#x05EA;&#x05D0;&#x05E8;&#x05D9;&#x05DA; &#x05DC;&#x05D5;&#x05E2;&#x05D6;&#x05D9; <span class="required">*</span></label><input type="date" id="vfDate" oninput="onVowDateChange()"></div>
+        <div class="form-group"><label>&#x05EA;&#x05D0;&#x05E8;&#x05D9;&#x05DA; &#x05E2;&#x05D1;&#x05E8;&#x05D9;</label><div class="hebrew-date-box" id="vfHebrewDate">&#x05D1;&#x05D7;&#x05E8; &#x05EA;&#x05D0;&#x05E8;&#x05D9;&#x05DA;...</div></div>
+        <div class="form-group full"><label>&#x05E9;&#x05DD; <span class="required">*</span></label><select id="vfName"><option value="">-- &#x05D1;&#x05D7;&#x05E8; --</option></select></div>
+        <div class="form-group"><label>&#x05E2;&#x05D1;&#x05D5;&#x05E8; &#x05D0;</label><select id="vfForA"><option value="">--</option></select></div>
+        <div class="form-group"><label>&#x05E2;&#x05D1;&#x05D5;&#x05E8; &#x05D1;</label><select id="vfForB"><option value="">--</option></select></div>
+        <div class="form-group"><label>&#x05E1;&#x05DB;&#x05D5;&#x05DD; &#x05D4;&#x05EA;&#x05D7;&#x05D9;&#x05D9;&#x05D1;&#x05D5;&#x05EA; (&#x05E9;"&#x05D7;)</label><input type="number" id="vfAmount" min="0" step="1"></div>
+        <div class="form-group"><label>&#x05DE;&#x05E1;' &#x05DE;&#x05E7;&#x05D5;&#x05DD;</label><input type="text" id="vfPlace"></div>
+        <div class="form-group full"><label>&#x05D4;&#x05E2;&#x05E8;&#x05D4;</label><textarea id="vfNote" rows="2"></textarea></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeVowModal()">&#x05D1;&#x05D9;&#x05D8;&#x05D5;&#x05DC;</button>
+      <button class="btn btn-primary" onclick="saveVow()">&#x05E9;&#x05DE;&#x05D5;&#x05E8;</button>
+    </div>
+  </div>
+</div>
+
+<!-- PAYMENT Modal -->
+<div class="modal-overlay" id="paymentModalOverlay">
+  <div class="modal modal-lg">
+    <div class="modal-header"><h2 id="paymentModalTitle"></h2><button class="modal-close" onclick="closePaymentModal()">&#x2715;</button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <input type="hidden" id="pfId">
+        <div class="form-group"><label>&#x05EA;&#x05D0;&#x05E8;&#x05D9;&#x05DA; &#x05DC;&#x05D5;&#x05E2;&#x05D6;&#x05D9; <span class="required">*</span></label><input type="date" id="pfDate" oninput="onPaymentDateChange()"></div>
+        <div class="form-group"><label>&#x05EA;&#x05D0;&#x05E8;&#x05D9;&#x05DA; &#x05E2;&#x05D1;&#x05E8;&#x05D9;</label><div class="hebrew-date-box" id="pfHebrewDate">&#x05D1;&#x05D7;&#x05E8; &#x05EA;&#x05D0;&#x05E8;&#x05D9;&#x05DA;...</div></div>
+        <div class="form-group full"><label>&#x05E9;&#x05DD; <span class="required">*</span></label><select id="pfName" onchange="onPaymentNameChange()"><option value="">-- &#x05D1;&#x05D7;&#x05E8; &#x05D0;&#x05D9;&#x05E9; &#x05E7;&#x05E9;&#x05E8; --</option></select></div>
+        <div class="form-group full"><label>&#x05E2;&#x05D1;&#x05D5;&#x05E8; &#x05D4;&#x05EA;&#x05D7;&#x05D9;&#x05D9;&#x05D1;&#x05D5;&#x05EA; <span class="required">*</span></label><select id="pfVow"><option value="">-- &#x05D1;&#x05D7;&#x05E8; &#x05D4;&#x05EA;&#x05D7;&#x05D9;&#x05D9;&#x05D1;&#x05D5;&#x05EA; --</option></select></div>
+        <div class="form-group"><label>&#x05E1;&#x05DB;&#x05D5;&#x05DD; &#x05EA;&#x05E9;&#x05DC;&#x05D5;&#x05DD; (&#x05E9;"&#x05D7;) <span class="required">*</span></label><input type="number" id="pfAmount" min="0" step="1"></div>
+        <div class="form-group"><label>&#x05D0;&#x05D5;&#x05E4;&#x05DF; &#x05EA;&#x05E9;&#x05DC;&#x05D5;&#x05DD;</label><select id="pfMethod"><option value="">--</option></select></div>
+        <div class="form-group"><label>&#x05DE;&#x05E1;' &#x05EA;&#x05E9;&#x05DC;&#x05D5;&#x05DE;&#x05D9;&#x05DD;</label><input type="number" id="pfNumPayments" min="1" step="1" value="1"></div>
+        <div class="form-group"></div>
+        <div class="form-group full"><label>&#x05D4;&#x05E2;&#x05E8;&#x05D4;</label><textarea id="pfNote" rows="2"></textarea></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closePaymentModal()">&#x05D1;&#x05D9;&#x05D8;&#x05D5;&#x05DC;</button>
+      <button class="btn btn-primary" onclick="savePayment()">&#x05E9;&#x05DE;&#x05D5;&#x05E8;</button>
+    </div>
+  </div>
+</div>
+
+<!-- PAYMENT METHODS Modal -->
+<div class="modal-overlay" id="methodsModalOverlay">
+  <div class="modal" style="width:420px">
+    <div class="modal-header"><h2>&#x05D0;&#x05D5;&#x05E4;&#x05E0;&#x05D9; &#x05EA;&#x05E9;&#x05DC;&#x05D5;&#x05DD;</h2><button class="modal-close" onclick="closeMethodsModal()">&#x2715;</button></div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:#666;margin-bottom:12px">&#x05D4;&#x05D5;&#x05E1;&#x05E3; &#x05D0;&#x05D5; &#x05DE;&#x05D7;&#x05E7; &#x05D0;&#x05D5;&#x05E4;&#x05E0;&#x05D9; &#x05EA;&#x05E9;&#x05DC;&#x05D5;&#x05DD;:</p>
+      <div id="methodsList" class="methods-table-wrap"></div>
+      <button class="btn btn-secondary btn-sm" style="margin-top:10px" onclick="addMethodRow()">+ &#x05D4;&#x05D5;&#x05E1;&#x05E3; &#x05E9;&#x05D5;&#x05E8;&#x05D4;</button>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeMethodsModal()">&#x05D1;&#x05D9;&#x05D8;&#x05D5;&#x05DC;</button>
+      <button class="btn btn-primary" onclick="saveMethods()">&#x05E9;&#x05DE;&#x05D5;&#x05E8;</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/*CONTACTS_DATA*/
+/*TABLE1_DATA*/
+/*TABLE2_DATA*/
+/*VOWS_DATA*/
+/*PAYMENTS_DATA*/
+
+/* ===== HEBREW DATE ===== */
+function gregorianToJD(y,m,d){
+  var a=Math.floor((14-m)/12); y=y+4800-a; m=m+12*a-3;
+  return d+Math.floor((153*m+2)/5)+365*y+Math.floor(y/4)-Math.floor(y/100)+Math.floor(y/400)-32045;
+}
+function isHebLeap(y){return((y*7+1)%19)<7;}
+function hebMonthName(m,y){
+  var n=isHebLeap(y)?{1:'ניסן',2:'אייר',3:'סיוון',4:'תמוז',5:'אב',6:'אלול',7:'תשרי',8:'חשוון',9:'כסלו',10:'טבת',11:'שבט',12:"אדר א'",13:"אדר ב'"}:
+    {1:'ניסן',2:'אייר',3:'סיוון',4:'תמוז',5:'אב',6:'אלול',7:'תשרי',8:'חשוון',9:'כסלו',10:'טבת',11:'שבט',12:'אדר'};
+  return n[m]||'?';
+}
+var HN=['','א','ב','ג','ד','ה','ו','ז','ח','ט','י','יא','יב','יג','יד','טו','טז','יז','יח','יט','כ','כא','כב','כג','כד','כה','כו','כז','כח','כט','ל'];
+var H100=['','ק','ר','ש','ת','תק','תר','תש','תת','תתק'];
+var H10=['','י','כ','ל','מ','נ','ס','ע','פ','צ'];
+var H1=['','א','ב','ג','ד','ה','ו','ז','ח','ט'];
+function numHeb(n){
+  var r='',t=Math.floor(n/1000);n=n%1000;
+  if(t>0&&t<10)r+=H1[t]+"'";
+  var h=Math.floor(n/100);n=n%100;r+=H100[h];
+  if(n===15)r+='טו';else if(n===16)r+='טז';else{r+=H10[Math.floor(n/10)]+H1[n%10];}
+  return r;
+}
+function jdToHebrew(jd){
+  var count=Math.floor(((jd-347997)*98496)/35975351);
+  var year=count-1,i=count;
+  while(jd>=hebrewJD(i,7,1)){year=i;i++;}
+  var first=(jd<hebrewJD(year,1,1))?7:1;
+  var month=first;i=first;
+  while(jd>hebrewJD(year,i,lastHebMonthDay(i,year))){month=i+1;i++;}
+  var day=jd-hebrewJD(year,month,1)+1;
+  return HN[day]+' '+hebMonthName(month,year)+' '+numHeb(year);
+}
+function hebrewJD(year,month,day){
+  var months=Math.floor((235*year-234)/19);
+  var elapsed=months*29+Math.floor(months*13753/25920)+day;
+  var jd=347997+elapsed+((months%25920>=19440)?1:0);
+  if(month===7&&day===1){var wd=((jd+1)%7);if(wd===1||wd===4||wd===6)jd++;if(wd===0)jd+=2;}
+  return jd;
+}
+function lastHebMonthDay(m,y){
+  if(m===2)return((hebrewJD(y+1,7,1)-hebrewJD(y,7,1))%10===5)?30:29;
+  if(m===3)return((hebrewJD(y+1,7,1)-hebrewJD(y,7,1))%10===3)?29:30;
+  if(m===6)return isHebLeap(y)?30:29;
+  if(m===8)return 29;
+  if([4,7,9,11,13].indexOf(m)>=0)return 29;
+  return 30;
+}
+function dateStrToHeb(s){
+  if(!s)return '';
+  var p=s.split('-');
+  try{return jdToHebrew(gregorianToJD(+p[0],+p[1],+p[2]));}catch(e){return '';}
+}
+
+/* ===== DATA ===== */
+var contacts = CONTACTS_DATA.map(function(c,i){return Object.assign({},c,{_idx:i});});
+var filtered = contacts.slice();
+var vows = typeof VOWS_DATA !== 'undefined' ? VOWS_DATA : [];
+var payments = typeof PAYMENTS_DATA !== 'undefined' ? PAYMENTS_DATA : [];
+var paymentMethods = ['מזומן','שיק','העברה בנקאית','כרטיס אשראי','פייבוקס','ביט'];
+
+var PAGE_SIZE = 50;
+var cPage=1, vPage=1, pPage=1;
+var cFiltered=contacts.slice(), vFiltered=[], pFiltered=[];
+var editContact=null, editVow=null, editPayment=null;
+
+/* ===== TABS ===== */
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});
+  document.querySelectorAll('.tab-content').forEach(function(t){t.classList.remove('active');});
+  var map={contacts:0,vows:1,payments:2};
+  document.querySelectorAll('.tab')[map[name]].classList.add('active');
+  document.getElementById('tab-'+name).classList.add('active');
+  if(name==='vows'){vFiltered=vows.slice();renderVows();}
+  if(name==='payments'){pFiltered=payments.slice();renderPayments();}
+}
+
+/* ===== CALC ===== */
+function calcDisplayName(ln,fn,fa,id){
+  var n=(ln+' '+fn).trim();
+  if(fa)n+=' ב"ר '+fa;
+  if(id)n+=' - '+id;
+  return n;
+}
+function getPaidForVow(vowId){
+  var t=0;
+  payments.forEach(function(p){if(p.vowId===vowId)t+=p.amount||0;});
+  return t;
+}
+function getPersonDebt(name){
+  var total=0,paid=0;
+  vows.forEach(function(v){if(v.name===name){total+=v.amount||0;paid+=getPaidForVow(v.id);}});
+  return total-paid;
+}
+function getOpenVows(name){
+  return vows.filter(function(v){
+    if(v.name!==name)return false;
+    return(v.amount||0)-getPaidForVow(v.id)>0;
+  });
+}
+function vowLabel(v){
+  var parts=[];
+  if(v.forA)parts.push(v.forA);
+  if(v.forB)parts.push(v.forB);
+  if(v.hebrewDate)parts.push(v.hebrewDate);
+  var lbl=parts.join(' / ');
+  if(!lbl)lbl='התחייבות '+v.id;
+  return lbl+' — ₪'+v.amount;
+}
+
+/* ===== CONTACTS ===== */
+function onSearch(){
+  var q=document.getElementById('searchInput').value.trim().toLowerCase();
+  cFiltered=!q?contacts.slice():contacts.filter(function(c){
+    return(c.first_name||'').toLowerCase().indexOf(q)>=0||(c.last_name||'').toLowerCase().indexOf(q)>=0||
+      (c.city||'').toLowerCase().indexOf(q)>=0||(c.phone_mobile||'').indexOf(q)>=0||
+      (c.email||'').toLowerCase().indexOf(q)>=0||(c.id||'').indexOf(q)>=0||
+      (c.display_name||'').toLowerCase().indexOf(q)>=0;
+  });
+  cPage=1;render();
+}
+function render(){
+  var tb=document.getElementById('tableBody'),total=cFiltered.length;
+  document.getElementById('countBadge').textContent=total.toLocaleString()+' אנשי קשר';
+  document.getElementById('noResults').style.display=total===0?'':'none';
+  if(!total){tb.innerHTML='';document.getElementById('pagination').innerHTML='';return;}
+  var page=cFiltered.slice((cPage-1)*PAGE_SIZE,cPage*PAGE_SIZE);
+  tb.innerHTML=page.map(function(c){
+    var em=c.email?'<a href="mailto:'+c.email+'" style="color:#1a237e;text-decoration:none">'+c.email+'</a>':'';
+    return '<tr><td style="color:#888;font-size:12px">'+c.id+'</td><td>'+c.title+'</td>'+
+      '<td><b>'+c.first_name+'</b></td><td><b>'+c.last_name+'</b></td>'+
+      '<td style="color:#666">'+c.father_name+'</td><td>'+c.phone_mobile+'</td>'+
+      '<td style="color:#777">'+c.phone_home+'</td><td>'+c.city+'</td>'+
+      '<td style="font-size:12px">'+em+'</td>'+
+      '<td><button class="btn btn-secondary btn-sm" onclick="openEditModal('+c._idx+')">עריכה</button></td></tr>';
+  }).join('');
+  renderPag('pagination',total,cPage,function(p){cPage=p;render();});
+}
+function renderPag(id,total,cur,cb){
+  var tp=Math.ceil(total/PAGE_SIZE),el=document.getElementById(id);
+  if(tp<=1){el.innerHTML='';return;}
+  var h='<span class="page-info">עמוד '+cur+' מתוך '+tp+'</span>';
+  if(cur>1)h+='<button class="page-btn" onclick="('+cb+')(1)">«</button><button class="page-btn" onclick="('+cb+')('+(cur-1)+')">‹</button>';
+  var s=Math.max(1,cur-2),e=Math.min(tp,s+4);s=Math.max(1,e-4);
+  for(var p=s;p<=e;p++)h+='<button class="page-btn'+(p===cur?' active':'')+'" onclick="('+cb+')('+p+')">'+p+'</button>';
+  if(cur<tp)h+='<button class="page-btn" onclick="('+cb+')('+(cur+1)+')">›</button><button class="page-btn" onclick="('+cb+')('+tp+')">»</button>';
+  el.innerHTML=h;
+}
+function openAddModal(){
+  editContact=null;
+  document.getElementById('modalTitle').textContent='הוסף איש קשר';
+  clearContactForm();
+  var maxId=100000;contacts.forEach(function(c){var n=parseInt(c.id)||0;if(n>maxId)maxId=n;});
+  var nid=String(maxId+1);
+  document.getElementById('fId').value=nid;document.getElementById('fIdDisplay').value=nid;
+  updatePreview();document.getElementById('modalOverlay').className='modal-overlay open';
+}
+function openEditModal(idx){
+  editContact=idx;var c=contacts[idx];
+  document.getElementById('modalTitle').textContent='עריכת איש קשר';
+  document.getElementById('fId').value=c.id;document.getElementById('fIdDisplay').value=c.id;
+  document.getElementById('fApt').value=c.apt||'';document.getElementById('fTitle').value=c.title||'';
+  document.getElementById('fFirstName').value=c.first_name||'';document.getElementById('fLastName').value=c.last_name||'';
+  document.getElementById('fFatherName').value=c.father_name||'';document.getElementById('fMobile').value=c.phone_mobile||'';
+  document.getElementById('fPhone').value=c.phone_home||'';document.getElementById('fStreet').value=c.street||'';
+  document.getElementById('fHouse').value=c.house_num||'';document.getElementById('fCity').value=c.city||'';
+  document.getElementById('fZip').value=c.zip||'';document.getElementById('fEmail').value=c.email||'';
+  updatePreview();document.getElementById('modalOverlay').className='modal-overlay open';
+}
+function clearContactForm(){
+  ['fApt','fFirstName','fLastName','fFatherName','fMobile','fPhone','fStreet','fHouse','fCity','fZip','fEmail'].forEach(function(id){document.getElementById(id).value='';});
+  document.getElementById('fTitle').selectedIndex=0;document.getElementById('displayNamePreview').textContent='—';
+}
+function updatePreview(){
+  var ln=document.getElementById('fLastName').value,fn=document.getElementById('fFirstName').value;
+  var fa=document.getElementById('fFatherName').value,id=document.getElementById('fId').value;
+  document.getElementById('displayNamePreview').textContent=calcDisplayName(ln,fn,fa,id)||'—';
+}
+function closeModal(){document.getElementById('modalOverlay').className='modal-overlay';}
+function saveContact(){
+  var fn=document.getElementById('fFirstName').value.trim(),ln=document.getElementById('fLastName').value.trim();
+  if(!fn||!ln){alert('שם פרטי ושם משפחה הם שדות חובה');return;}
+  var id=document.getElementById('fId').value,fa=document.getElementById('fFatherName').value.trim();
+  var c={id:id,apt:document.getElementById('fApt').value.trim(),title:document.getElementById('fTitle').value,
+    first_name:fn,last_name:ln,father_name:fa,phone_home:document.getElementById('fPhone').value.trim(),
+    phone_mobile:document.getElementById('fMobile').value.trim(),street:document.getElementById('fStreet').value.trim(),
+    house_num:document.getElementById('fHouse').value.trim(),city:document.getElementById('fCity').value.trim(),
+    zip:document.getElementById('fZip').value.trim(),email:document.getElementById('fEmail').value.trim(),
+    display_name:calcDisplayName(ln,fn,fa,id)};
+  if(editContact!==null){c._idx=editContact;contacts[editContact]=c;}
+  else{c._idx=contacts.length;contacts.push(c);}
+  refreshNameSelects();closeModal();onSearch();
+}
+document.getElementById('modalOverlay').addEventListener('click',function(e){if(e.target===this)closeModal();});
+
+/* ===== VOWS ===== */
+function populateSelect(id,items,blank){
+  var sel=document.getElementById(id),cur=sel.value;
+  sel.innerHTML='<option value="">'+blank+'</option>';
+  items.forEach(function(v){var o=document.createElement('option');o.value=v;o.textContent=v;sel.appendChild(o);});
+  if(cur)sel.value=cur;
+}
+function refreshNameSelects(){
+  var names=contacts.map(function(c){return c.display_name;}).filter(Boolean);
+  populateSelect('vfName',names,'-- בחר --');
+  populateSelect('pfName',names,'-- בחר איש קשר --');
+}
+function onVowDateChange(){
+  var d=document.getElementById('vfDate').value;
+  document.getElementById('vfHebrewDate').textContent=d?dateStrToHeb(d):'בחר תאריך...';
+}
+function openVowModal(){
+  editVow=null;document.getElementById('vowModalTitle').textContent='הוסף נדר/נדבה';
+  ['vfDate','vfAmount','vfPlace','vfNote'].forEach(function(id){document.getElementById(id).value='';});
+  document.getElementById('vfName').value='';document.getElementById('vfForA').value='';document.getElementById('vfForB').value='';
+  document.getElementById('vfHebrewDate').textContent='בחר תאריך...';
+  document.getElementById('vowModalOverlay').className='modal-overlay open';
+}
+function openVowEditModal(idx){
+  editVow=idx;var v=vows[idx];
+  document.getElementById('vowModalTitle').textContent='עריכת נדר/נדבה';
+  document.getElementById('vfDate').value=v.date;document.getElementById('vfHebrewDate').textContent=v.hebrewDate||'—';
+  document.getElementById('vfName').value=v.name;document.getElementById('vfForA').value=v.forA;
+  document.getElementById('vfForB').value=v.forB;document.getElementById('vfAmount').value=v.amount;
+  document.getElementById('vfNote').value=v.note;document.getElementById('vfPlace').value=v.place;
+  document.getElementById('vowModalOverlay').className='modal-overlay open';
+}
+function closeVowModal(){document.getElementById('vowModalOverlay').className='modal-overlay';}
+function saveVow(){
+  var date=document.getElementById('vfDate').value,name=document.getElementById('vfName').value;
+  if(!date||!name){alert('תאריך ושם הם שדות חובה');return;}
+  var vow={id:editVow!==null?vows[editVow].id:Date.now(),date:date,hebrewDate:dateStrToHeb(date),
+    name:name,forA:document.getElementById('vfForA').value,forB:document.getElementById('vfForB').value,
+    amount:parseFloat(document.getElementById('vfAmount').value)||0,
+    note:document.getElementById('vfNote').value.trim(),place:document.getElementById('vfPlace').value.trim()};
+  if(editVow!==null)vows[editVow]=vow;else vows.push(vow);
+  closeVowModal();onVowsSearch();
+}
+function onVowsSearch(){
+  var q=document.getElementById('vowsSearch').value.trim().toLowerCase();
+  vFiltered=!q?vows.slice():vows.filter(function(v){
+    return(v.name||'').toLowerCase().indexOf(q)>=0||(v.forA||'').toLowerCase().indexOf(q)>=0||
+      (v.forB||'').toLowerCase().indexOf(q)>=0||(v.hebrewDate||'').indexOf(q)>=0||
+      (v.note||'').toLowerCase().indexOf(q)>=0;
+  });
+  vPage=1;renderVows();
+}
+function renderVows(){
+  var tb=document.getElementById('vowsBody'),total=vFiltered.length;
+  document.getElementById('vowsCountBadge').textContent=total.toLocaleString()+' רשומות';
+  document.getElementById('vowsNoResults').style.display=total===0?'':'none';
+  var tAmt=0,tPaid=0;
+  vows.forEach(function(v){tAmt+=v.amount||0;tPaid+=getPaidForVow(v.id);});
+  document.getElementById('vowsSummary').innerHTML=
+    '<div class="summary-card"><div class="val">'+vows.length+'</div><div class="lbl">סה"כ רשומות</div></div>'+
+    '<div class="summary-card"><div class="val">₪'+tAmt.toLocaleString()+'</div><div class="lbl">סה"כ התחייבויות</div></div>'+
+    '<div class="summary-card"><div class="val" style="color:#2e7d32">₪'+tPaid.toLocaleString()+'</div><div class="lbl">שולם</div></div>'+
+    '<div class="summary-card"><div class="val debt-pos">₪'+(tAmt-tPaid).toLocaleString()+'</div><div class="lbl">יתרה לתשלום</div></div>';
+  if(!total){tb.innerHTML='';document.getElementById('vowsPagination').innerHTML='';return;}
+  var page=vFiltered.slice((vPage-1)*PAGE_SIZE,vPage*PAGE_SIZE);
+  tb.innerHTML=page.map(function(v){
+    var paid=getPaidForVow(v.id),owing=v.amount-paid,debt=getPersonDebt(v.name);
+    return '<tr>'+
+      '<td style="white-space:nowrap">'+v.hebrewDate+'</td><td>'+v.date+'</td>'+
+      '<td><b>'+v.name+'</b></td><td>'+v.forA+'</td><td>'+v.forB+'</td>'+
+      '<td style="text-align:left">₪'+v.amount.toLocaleString()+'</td>'+
+      '<td class="paid-cell" style="text-align:left">₪'+paid.toLocaleString()+'</td>'+
+      '<td class="'+(owing>0?'debt-pos':'debt-zero')+'" style="text-align:left">₪'+owing.toLocaleString()+'</td>'+
+      '<td class="'+(debt>0?'debt-pos':'debt-zero')+'" style="text-align:left">₪'+debt.toLocaleString()+'</td>'+
+      '<td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+v.note+'">'+v.note+'</td>'+
+      '<td>'+v.place+'</td>'+
+      '<td><button class="btn btn-secondary btn-sm" onclick="openVowEditModal('+vows.indexOf(v)+')">עריכה</button></td></tr>';
+  }).join('');
+  renderPag('vowsPagination',total,vPage,function(p){vPage=p;renderVows();});
+}
+document.getElementById('vowModalOverlay').addEventListener('click',function(e){if(e.target===this)closeVowModal();});
+
+/* ===== PAYMENTS ===== */
+function refreshPaymentMethodSelect(){
+  var sel=document.getElementById('pfMethod'),cur=sel.value;
+  sel.innerHTML='<option value="">--</option>';
+  paymentMethods.forEach(function(m){var o=document.createElement('option');o.value=m;o.textContent=m;sel.appendChild(o);});
+  if(cur)sel.value=cur;
+}
+function onPaymentDateChange(){
+  var d=document.getElementById('pfDate').value;
+  document.getElementById('pfHebrewDate').textContent=d?dateStrToHeb(d):'בחר תאריך...';
+}
+function onPaymentNameChange(){
+  var name=document.getElementById('pfName').value;
+  var sel=document.getElementById('pfVow');
+  sel.innerHTML='<option value="">-- בחר התחייבות --</option>';
+  vows.filter(function(v){return v.name===name;}).forEach(function(v){
+    var remaining=(v.amount||0)-getPaidForVow(v.id);
+    var o=document.createElement('option');
+    o.value=v.id;
+    o.textContent=vowLabel(v)+' (נותר: ₪'+remaining.toLocaleString()+')';
+    sel.appendChild(o);
+  });
+}
+function openPaymentModal(){
+  editPayment=null;document.getElementById('paymentModalTitle').textContent='הוסף תשלום';
+  ['pfDate','pfAmount','pfNote'].forEach(function(id){document.getElementById(id).value='';});
+  document.getElementById('pfNumPayments').value='1';
+  document.getElementById('pfName').value='';document.getElementById('pfVow').innerHTML='<option value="">-- בחר התחייבות --</option>';
+  document.getElementById('pfMethod').value='';
+  document.getElementById('pfHebrewDate').textContent='בחר תאריך...';
+  document.getElementById('paymentModalOverlay').className='modal-overlay open';
+}
+function openPaymentEditModal(idx){
+  editPayment=idx;var p=payments[idx];
+  document.getElementById('paymentModalTitle').textContent='עריכת תשלום';
+  document.getElementById('pfDate').value=p.date;document.getElementById('pfHebrewDate').textContent=p.hebrewDate||'—';
+  document.getElementById('pfName').value=p.name;onPaymentNameChange();
+  document.getElementById('pfVow').value=p.vowId;
+  document.getElementById('pfAmount').value=p.amount;document.getElementById('pfMethod').value=p.method||'';
+  document.getElementById('pfNumPayments').value=p.numPayments||1;document.getElementById('pfNote').value=p.note||'';
+  document.getElementById('paymentModalOverlay').className='modal-overlay open';
+}
+function closePaymentModal(){document.getElementById('paymentModalOverlay').className='modal-overlay';}
+function savePayment(){
+  var date=document.getElementById('pfDate').value,name=document.getElementById('pfName').value;
+  var vowId=document.getElementById('pfVow').value,amount=parseFloat(document.getElementById('pfAmount').value)||0;
+  if(!date||!name||!vowId||!amount){alert('תאריך, שם, התחייבות וסכום הם שדות חובה');return;}
+  var pmt={id:editPayment!==null?payments[editPayment].id:Date.now(),date:date,hebrewDate:dateStrToHeb(date),
+    name:name,vowId:parseInt(vowId)||vowId,amount:amount,method:document.getElementById('pfMethod').value,
+    numPayments:parseInt(document.getElementById('pfNumPayments').value)||1,
+    note:document.getElementById('pfNote').value.trim()};
+  if(editPayment!==null)payments[editPayment]=pmt;else payments.push(pmt);
+  closePaymentModal();onPaymentsSearch();
+  // refresh vows if visible
+  if(document.getElementById('tab-vows').classList.contains('active'))renderVows();
+}
+function onPaymentsSearch(){
+  var q=document.getElementById('paymentsSearch').value.trim().toLowerCase();
+  pFiltered=!q?payments.slice():payments.filter(function(p){
+    return(p.name||'').toLowerCase().indexOf(q)>=0||(p.method||'').toLowerCase().indexOf(q)>=0||
+      (p.hebrewDate||'').indexOf(q)>=0||(p.date||'').indexOf(q)>=0||(p.note||'').toLowerCase().indexOf(q)>=0;
+  });
+  pPage=1;renderPayments();
+}
+function renderPayments(){
+  var tb=document.getElementById('paymentsBody'),total=pFiltered.length;
+  document.getElementById('paymentsCountBadge').textContent=total.toLocaleString()+' רשומות';
+  document.getElementById('paymentsNoResults').style.display=total===0?'':'none';
+  var tAmt=0,tVows=0,tPaid=0;
+  payments.forEach(function(p){tAmt+=p.amount||0;});
+  vows.forEach(function(v){tVows+=v.amount||0;tPaid+=getPaidForVow(v.id);});
+  document.getElementById('paymentsSummary').innerHTML=
+    '<div class="summary-card"><div class="val">'+payments.length+'</div><div class="lbl">סה"כ תשלומים</div></div>'+
+    '<div class="summary-card"><div class="val" style="color:#2e7d32">₪'+tAmt.toLocaleString()+'</div><div class="lbl">סה"כ שולם</div></div>'+
+    '<div class="summary-card"><div class="val debt-pos">₪'+(tVows-tPaid).toLocaleString()+'</div><div class="lbl">יתרה כוללת</div></div>';
+  if(!total){tb.innerHTML='';document.getElementById('paymentsPagination').innerHTML='';return;}
+  var page=pFiltered.slice((pPage-1)*PAGE_SIZE,pPage*PAGE_SIZE);
+  tb.innerHTML=page.map(function(p){
+    // find vow
+    var vow=null;for(var i=0;i<vows.length;i++){if(vows[i].id==p.vowId){vow=vows[i];break;}}
+    var vowDesc=vow?vowLabel(vow):'—';
+    var paidForVow=vow?getPaidForVow(vow.id):0;
+    var vowAmt=vow?vow.amount:0;
+    var debtPerson=getPersonDebt(p.name);
+    // open vows for this person
+    var openVs=getOpenVows(p.name);
+    var openHtml='';
+    if(openVs.length>0){
+      openHtml='<div class="open-vows-list">';
+      openVs.forEach(function(v){
+        var rem=(v.amount||0)-getPaidForVow(v.id);
+        openHtml+='<div class="ov-item"><span>'+vowLabel(v)+'</span><span class="ov-amt">₪'+rem.toLocaleString()+'</span></div>';
+      });
+      openHtml+='</div>';
+    }else{openHtml='<span style="color:#2e7d32;font-size:12px">✓ אין חוב פתוח</span>';}
+    return '<tr>'+
+      '<td style="white-space:nowrap">'+p.hebrewDate+'</td><td>'+p.date+'</td>'+
+      '<td><b>'+p.name+'</b></td>'+
+      '<td style="font-size:12px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+vowDesc+'">'+vowDesc+'</td>'+
+      '<td class="paid-cell" style="text-align:left">₪'+p.amount.toLocaleString()+'</td>'+
+      '<td>'+p.method+'</td>'+
+      '<td style="text-align:center">'+p.numPayments+'</td>'+
+      '<td class="paid-cell" style="text-align:left">₪'+paidForVow.toLocaleString()+' / ₪'+vowAmt.toLocaleString()+'</td>'+
+      '<td class="'+(debtPerson>0?'debt-pos':'debt-zero')+'" style="text-align:left">₪'+debtPerson.toLocaleString()+'</td>'+
+      '<td style="min-width:180px">'+openHtml+'</td>'+
+      '<td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+p.note+'">'+p.note+'</td>'+
+      '<td><button class="btn btn-secondary btn-sm" onclick="openPaymentEditModal('+payments.indexOf(p)+')">עריכה</button></td></tr>';
+  }).join('');
+  renderPag('paymentsPagination',total,pPage,function(p){pPage=p;renderPayments();});
+}
+document.getElementById('paymentModalOverlay').addEventListener('click',function(e){if(e.target===this)closePaymentModal();});
+
+/* ===== PAYMENT METHODS ===== */
+function openMethodsModal(){
+  renderMethodsList();
+  document.getElementById('methodsModalOverlay').className='modal-overlay open';
+}
+function closeMethodsModal(){document.getElementById('methodsModalOverlay').className='modal-overlay';}
+function renderMethodsList(){
+  var div=document.getElementById('methodsList');
+  div.innerHTML='<table style="width:100%;border-collapse:collapse">';
+  paymentMethods.forEach(function(m,i){
+    div.innerHTML+='<tr><td style="padding:4px 0"><input type="text" value="'+m+'" id="pm_'+i+'"></td>'+
+      '<td style="padding:4px 0 4px 8px;width:40px"><button class="btn btn-danger btn-sm" onclick="removeMethod('+i+')">&#x2715;</button></td></tr>';
+  });
+  div.innerHTML+='</table>';
+}
+function addMethodRow(){paymentMethods.push('');renderMethodsList();}
+function removeMethod(i){paymentMethods.splice(i,1);renderMethodsList();}
+function saveMethods(){
+  var inputs=document.querySelectorAll('#methodsList input[type=text]');
+  paymentMethods=[];
+  inputs.forEach(function(inp){var v=inp.value.trim();if(v)paymentMethods.push(v);});
+  refreshPaymentMethodSelect();closeMethodsModal();
+}
+document.getElementById('methodsModalOverlay').addEventListener('click',function(e){if(e.target===this)closeMethodsModal();});
+
+/* ===== INIT ===== */
+function init(){
+  refreshNameSelects();
+  populateSelect('vfForA',TABLE1,'--');
+  populateSelect('vfForB',TABLE2,'--');
+  refreshPaymentMethodSelect();
+  cFiltered=contacts.slice();
+  render();
+}
+init();
+</script>
+</body>
+</html>
