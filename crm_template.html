@@ -119,6 +119,18 @@ tr:last-child td { border-bottom: none; }
 .year-table th { padding: 10px 14px; text-align: right; font-weight: bold; color: #555; border-bottom: 2px solid #e0e0e0; background: #fafbff; position: sticky; top: 0; z-index: 2; }
 .year-table td { padding: 9px 14px; border-bottom: 1px solid #f0f0f0; }
 .year-table tr:last-child td { border-bottom: none; }
+/* Analytics */
+.an-card { background:white; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow:hidden; }
+.an-title { padding:14px 20px 10px; font-weight:bold; font-size:14px; color:#1a237e; border-bottom:1px solid #f0f0f0; }
+.an-body { padding:16px 20px; }
+.an-body canvas { max-height:280px; }
+.an-center { display:flex; flex-direction:column; align-items:center; justify-content:center; }
+.gauge-label { font-size:28px; font-weight:bold; color:#1a237e; margin-top:8px; }
+@media (max-width:900px) {
+  #tab-analytics [style*="grid-template-columns:2fr 1fr"],
+  #tab-analytics [style*="grid-template-columns:1fr 1fr"] { grid-template-columns:1fr !important; }
+}
+
 .pct-bar-wrap { display:flex; align-items:center; gap:8px; }
 .pct-bar { flex:1; background:#e0e0e0; border-radius:4px; height:8px; min-width:60px; }
 .pct-bar-fill { height:8px; border-radius:4px; }
@@ -234,6 +246,7 @@ tr:last-child td { border-bottom: none; }
   <div class="tab" onclick="switchTab('payments')">&#x05EA;&#x05E9;&#x05DC;&#x05D5;&#x05DE;&#x05D9;&#x05DD;</div>
   <div class="tab" onclick="switchTab('report')">&#x05D3;&#x05D5;&#x05D7; &#x05D0;&#x05D9;&#x05E9;&#x05D9;</div>
   <div class="tab" onclick="switchTab('generalreport')">&#x05D3;&#x05D5;&#x05D7; &#x05DB;&#x05DC;&#x05DC;&#x05D9;</div>
+  <div class="tab" onclick="switchTab('analytics')">&#x05E4;&#x05D9;&#x05DC;&#x05D5;&#x05D7;&#x05D9;&#x05DD; &#x05D5;&#x05D2;&#x05E8;&#x05E4;&#x05D9;&#x05DD;</div>
 </div>
 
 <!-- ===== TAB: CONTACTS ===== -->
@@ -382,6 +395,72 @@ tr:last-child td { border-bottom: none; }
 </div>
 </div>
 
+<!-- ===== TAB: ANALYTICS ===== -->
+<div class="tab-content" id="tab-analytics">
+<div class="content">
+
+  <!-- KPI Row -->
+  <div class="summary-bar" id="analyticsSummary"></div>
+
+  <!-- Row 1: Yearly bar + collection rate -->
+  <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-bottom:20px">
+    <div class="an-card">
+      <div class="an-title">התחייבויות ותשלומים לפי שנה</div>
+      <div class="an-body"><canvas id="chartYearly"></canvas></div>
+    </div>
+    <div class="an-card">
+      <div class="an-title">אחוז גבייה כולל</div>
+      <div class="an-body an-center"><canvas id="chartGauge"></canvas><div id="gaugeLabel" class="gauge-label"></div></div>
+    </div>
+  </div>
+
+  <!-- Row 2: By type + by parasha -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+    <div class="an-card">
+      <div class="an-title">פילוח לפי סוג התחייבות (עבור א)</div>
+      <div class="an-body"><canvas id="chartTypeA"></canvas></div>
+    </div>
+    <div class="an-card">
+      <div class="an-title">Top 10 — פרשה / מועד (עבור ב)</div>
+      <div class="an-body"><canvas id="chartTypeB"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Row 3: Top donors + payment methods -->
+  <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-bottom:20px">
+    <div class="an-card">
+      <div class="an-title">Top 15 — מתחייבים לפי סכום</div>
+      <div class="an-body"><canvas id="chartTopDonors"></canvas></div>
+    </div>
+    <div class="an-card">
+      <div class="an-title">אופני תשלום</div>
+      <div class="an-body an-center"><canvas id="chartMethods"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Row 4: Monthly trend -->
+  <div style="margin-bottom:20px">
+    <div class="an-card">
+      <div class="an-title">מגמת התחייבויות לאורך זמן (חודשי)</div>
+      <div class="an-body"><canvas id="chartTrend" style="max-height:200px"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Row 5: Debt distribution -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+    <div class="an-card">
+      <div class="an-title">פילוח חייבים — לפי גובה יתרה</div>
+      <div class="an-body"><canvas id="chartDebtBrackets"></canvas></div>
+    </div>
+    <div class="an-card">
+      <div class="an-title">סטטוס התחייבויות</div>
+      <div class="an-body an-center"><canvas id="chartStatus"></canvas></div>
+    </div>
+  </div>
+
+</div>
+</div>
+
 <!-- EMAIL Modal -->
 <div id="emailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;align-items:center;justify-content:center">
   <div style="background:white;border-radius:12px;width:520px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.25)">
@@ -518,6 +597,7 @@ tr:last-child td { border-bottom: none; }
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 /*CONTACTS_DATA*/
 /*TABLE1_DATA*/
@@ -1221,6 +1301,174 @@ function renderGeneralReport(){
   renderPag('generalPagination', total, generalPage, function(p){generalPage=p;renderGeneralReport();});
 }
 
+/* ===== ANALYTICS ===== */
+var anCharts = {};
+var PALETTE = ['#1a237e','#283593','#3949ab','#5c6bc0','#7986cb','#9fa8da',
+               '#1565c0','#1976d2','#1e88e5','#42a5f5','#90caf9',
+               '#2e7d32','#388e3c','#43a047','#66bb6a','#a5d6a7'];
+var PALETTE2 = ['#c62828','#e53935','#ef5350','#ef9a9a','#ffcdd2'];
+
+function destroyChart(id){ if(anCharts[id]){ anCharts[id].destroy(); delete anCharts[id]; } }
+
+function makeChart(id, type, data, options){
+  destroyChart(id);
+  var ctx = document.getElementById(id);
+  if(!ctx) return;
+  Chart.defaults.font.family = 'Arial';
+  Chart.defaults.color = '#555';
+  anCharts[id] = new Chart(ctx, {type:type, data:data, options:Object.assign({
+    responsive:true, maintainAspectRatio:true,
+    plugins:{ legend:{ labels:{ font:{size:12}, padding:12 } } }
+  }, options||{})});
+}
+
+function renderAnalytics(){
+  var tC=0, tP=0;
+  vows.forEach(function(v){ tC+=v.amount||0; tP+=getPaidForVow(v.id); });
+  var tD=tC-tP, pct=tC>0?Math.round(tP/tC*100):0;
+
+  // KPIs
+  document.getElementById('analyticsSummary').innerHTML =
+    '<div class="summary-card"><div class="val">'+vows.length.toLocaleString()+'</div><div class="lbl">סה"כ התחייבויות</div></div>'+
+    '<div class="summary-card"><div class="val">&#x20AA;'+tC.toLocaleString()+'</div><div class="lbl">סה"כ התחייב</div></div>'+
+    '<div class="summary-card"><div class="val" style="color:#2e7d32">&#x20AA;'+tP.toLocaleString()+'</div><div class="lbl">סה"כ שולם</div></div>'+
+    '<div class="summary-card"><div class="val debt-pos">&#x20AA;'+tD.toLocaleString()+'</div><div class="lbl">סה"כ יתרה</div></div>'+
+    '<div class="summary-card"><div class="val" style="color:#1a237e">'+pct+'%</div><div class="lbl">אחוז גבייה</div></div>';
+
+  // --- Yearly bar chart ---
+  var yearMap = {};
+  vows.forEach(function(v){
+    var yr = v.date ? v.date.substring(0,4) : '—';
+    if(!yearMap[yr]) yearMap[yr]={committed:0,paid:0};
+    yearMap[yr].committed += v.amount||0;
+    yearMap[yr].paid += getPaidForVow(v.id);
+  });
+  var years = Object.keys(yearMap).filter(function(y){return y!=='—';}).sort();
+  makeChart('chartYearly','bar',{
+    labels: years,
+    datasets:[
+      {label:'התחייב',data:years.map(function(y){return yearMap[y].committed;}),backgroundColor:'#3949ab',borderRadius:4},
+      {label:'שולם',data:years.map(function(y){return yearMap[y].paid;}),backgroundColor:'#43a047',borderRadius:4},
+      {label:'יתרה',data:years.map(function(y){return yearMap[y].committed-yearMap[y].paid;}),backgroundColor:'#ef5350',borderRadius:4}
+    ]
+  },{plugins:{legend:{position:'top'}},scales:{x:{grid:{display:false}},y:{ticks:{callback:function(v){return '₪'+v.toLocaleString();}}}}});
+
+  // --- Gauge (doughnut) ---
+  makeChart('chartGauge','doughnut',{
+    labels:['שולם','יתרה'],
+    datasets:[{data:[tP,tD],backgroundColor:['#43a047','#ef5350'],borderWidth:0,circumference:270,rotation:225}]
+  },{plugins:{legend:{display:false}},cutout:'75%'});
+  document.getElementById('gaugeLabel').textContent = pct + '%';
+
+  // --- Type A donut ---
+  var typeAMap = {};
+  vows.forEach(function(v){
+    var k=v.forA||'לא צוין';
+    if(!typeAMap[k]) typeAMap[k]=0;
+    typeAMap[k]+=(v.amount||0);
+  });
+  var typeAEntries = Object.entries(typeAMap).sort(function(a,b){return b[1]-a[1];}).slice(0,10);
+  makeChart('chartTypeA','doughnut',{
+    labels:typeAEntries.map(function(e){return e[0];}),
+    datasets:[{data:typeAEntries.map(function(e){return e[1];}),backgroundColor:PALETTE,borderWidth:2,borderColor:'#fff'}]
+  },{plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:11}}}}});
+
+  // --- Top 10 Type B bar ---
+  var typeBMap = {};
+  vows.forEach(function(v){
+    var k=v.forB||'לא צוין';
+    if(!typeBMap[k]) typeBMap[k]=0;
+    typeBMap[k]+=(v.amount||0);
+  });
+  var typeBEntries = Object.entries(typeBMap).sort(function(a,b){return b[1]-a[1];}).slice(0,10);
+  makeChart('chartTypeB','bar',{
+    labels:typeBEntries.map(function(e){return e[0].length>18?e[0].substring(0,16)+'…':e[0];}),
+    datasets:[{label:'סכום (₪)',data:typeBEntries.map(function(e){return e[1];}),backgroundColor:PALETTE,borderRadius:4}]
+  },{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{ticks:{callback:function(v){return '₪'+v.toLocaleString();}}},y:{grid:{display:false}}}});
+
+  // --- Top 15 donors ---
+  var donorMap = {};
+  vows.forEach(function(v){
+    if(!v.name) return;
+    if(!donorMap[v.name]) donorMap[v.name]=0;
+    donorMap[v.name]+=(v.amount||0);
+  });
+  var donors = Object.entries(donorMap).sort(function(a,b){return b[1]-a[1];}).slice(0,15);
+  var shortNames = donors.map(function(e){
+    var p=e[0].split(' - ');
+    return p[0].length>20?p[0].substring(0,18)+'…':p[0];
+  });
+  makeChart('chartTopDonors','bar',{
+    labels:shortNames,
+    datasets:[{label:'סה"כ התחייב (₪)',data:donors.map(function(e){return e[1];}),backgroundColor:PALETTE,borderRadius:4}]
+  },{plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{font:{size:10}}},y:{ticks:{callback:function(v){return '₪'+v.toLocaleString();}}}}});
+
+  // --- Payment methods donut ---
+  var methodMap = {};
+  payments.forEach(function(p){
+    var m=p.method||'לא צוין';
+    if(!methodMap[m]) methodMap[m]=0;
+    methodMap[m]+=(p.amount||0);
+  });
+  var methodEntries = Object.entries(methodMap).sort(function(a,b){return b[1]-a[1];});
+  makeChart('chartMethods','doughnut',{
+    labels:methodEntries.map(function(e){return e[0];}),
+    datasets:[{data:methodEntries.map(function(e){return e[1];}),backgroundColor:PALETTE,borderWidth:2,borderColor:'#fff'}]
+  },{plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}}}});
+
+  // --- Monthly trend line ---
+  var monthMap = {};
+  vows.forEach(function(v){
+    if(!v.date||v.date.length<7) return;
+    var ym = v.date.substring(0,7);
+    if(!monthMap[ym]) monthMap[ym]={committed:0,paid:0};
+    monthMap[ym].committed += v.amount||0;
+    monthMap[ym].paid += getPaidForVow(v.id);
+  });
+  var months = Object.keys(monthMap).sort().slice(-36);
+  makeChart('chartTrend','line',{
+    labels:months,
+    datasets:[
+      {label:'התחייב',data:months.map(function(m){return monthMap[m].committed;}),borderColor:'#3949ab',backgroundColor:'rgba(57,73,171,0.1)',fill:true,tension:0.4,pointRadius:2},
+      {label:'שולם',data:months.map(function(m){return monthMap[m].paid;}),borderColor:'#43a047',backgroundColor:'rgba(67,160,71,0.1)',fill:true,tension:0.4,pointRadius:2}
+    ]
+  },{plugins:{legend:{position:'top'}},scales:{x:{ticks:{maxTicksLimit:12,font:{size:10}},grid:{display:false}},y:{ticks:{callback:function(v){return '₪'+v.toLocaleString();}}}}});
+
+  // --- Debt brackets ---
+  var brackets = {'0 (שולם במלואו)':0,'1–500':0,'501–1,000':0,'1,001–2,000':0,'2,001–5,000':0,'5,000+':0};
+  var nameDebtMap = {};
+  vows.forEach(function(v){
+    if(!v.name) return;
+    if(!nameDebtMap[v.name]) nameDebtMap[v.name]=0;
+    nameDebtMap[v.name] += (v.amount||0) - getPaidForVow(v.id);
+  });
+  Object.values(nameDebtMap).forEach(function(d){
+    if(d<=0) brackets['0 (שולם במלואו)']++;
+    else if(d<=500) brackets['1–500']++;
+    else if(d<=1000) brackets['501–1,000']++;
+    else if(d<=2000) brackets['1,001–2,000']++;
+    else if(d<=5000) brackets['2,001–5,000']++;
+    else brackets['5,000+']++;
+  });
+  makeChart('chartDebtBrackets','bar',{
+    labels:Object.keys(brackets),
+    datasets:[{label:'מספר אנשים',data:Object.values(brackets),backgroundColor:['#43a047','#a5d6a7','#fff176','#ffb74d','#ef5350','#b71c1c'],borderRadius:4}]
+  },{plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{ticks:{precision:0}}}});
+
+  // --- Status pie ---
+  var stt={paid:0,partial:0,open:0};
+  vows.forEach(function(v){
+    var p=getPaidForVow(v.id),b=v.amount-p;
+    if(b<=0) stt.paid++;
+    else if(p>0) stt.partial++;
+    else stt.open++;
+  });
+  makeChart('chartStatus','doughnut',{
+    labels:['שולם במלואו','שולם חלקית','לא שולם'],
+    datasets:[{data:[stt.paid,stt.partial,stt.open],backgroundColor:['#43a047','#ffa726','#ef5350'],borderWidth:2,borderColor:'#fff'}]
+  },{plugins:{legend:{position:'bottom',labels:{boxWidth:14,font:{size:12}}}}});
+}
+
 function goToPersonReport(name){
   switchTab('report');
   document.getElementById('reportNameSelect').value = name;
@@ -1241,13 +1489,14 @@ function init(){
 function switchTab(name){
   document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});
   document.querySelectorAll('.tab-content').forEach(function(t){t.classList.remove('active');});
-  var map={contacts:0,vows:1,payments:2,report:3,generalreport:4};
+  var map={contacts:0,vows:1,payments:2,report:3,generalreport:4,analytics:5};
   document.querySelectorAll('.tab')[map[name]].classList.add('active');
   document.getElementById('tab-'+name).classList.add('active');
   if(name==='vows'){vFiltered=vows.slice();renderVows();}
   if(name==='payments'){pFiltered=payments.slice();renderPayments();}
   if(name==='report'){populateReportSelect();renderReport();}
   if(name==='generalreport'){renderGeneralReport();}
+  if(name==='analytics'){renderAnalytics();}
 }
 
 init();
