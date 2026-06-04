@@ -1469,10 +1469,15 @@ function renderAnalytics(){
   },{plugins:{legend:{position:'bottom',labels:{boxWidth:14,font:{size:12}}}}});
 }
 
+var _pendingReportName = null;
+
 function goToPersonReport(name){
+  _pendingReportName = name;
   switchTab('report');
   document.getElementById('reportNameSelect').value = name;
+  _pendingReportName = null;
   renderReport();
+  window.scrollTo(0, 0);
 }
 
 /* ===== INIT ===== */
@@ -1494,7 +1499,7 @@ function switchTab(name){
   document.getElementById('tab-'+name).classList.add('active');
   if(name==='vows'){vFiltered=vows.slice();renderVows();}
   if(name==='payments'){pFiltered=payments.slice();renderPayments();}
-  if(name==='report'){populateReportSelect();renderReport();}
+  if(name==='report'){populateReportSelect();if(!_pendingReportName)renderReport();}
   if(name==='generalreport'){renderGeneralReport();}
   if(name==='analytics'){renderAnalytics();}
 }
