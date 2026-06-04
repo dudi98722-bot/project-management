@@ -1295,7 +1295,7 @@ function renderGeneralReport(){
       '<td class="'+(debt>0?'debt-pos':'debt-zero')+'" style="text-align:left">₪'+debt.toLocaleString()+'</td>'+
       '<td style="min-width:120px"><div class="pct-bar-wrap"><div class="pct-bar"><div class="pct-bar-fill" style="width:'+Math.min(pct,100)+'%;background:'+color+'"></div></div><span style="font-size:12px;min-width:32px">'+pct+'%</span></div></td>'+
       '<td style="text-align:center;color:#666">'+r.count+'</td>'+
-      '<td><button class="btn btn-secondary btn-sm" onclick="goToPersonReport(\''+r.name.replace(/'/g,"\\'")+'\')">דוח אישי</button></td>'+
+      '<td><button class="btn btn-secondary btn-sm" onclick="goToPersonReport('+start+i+')">דוח אישי</button></td>'+
       '</tr>';
   });
   tb.innerHTML = rows;
@@ -1470,7 +1470,8 @@ function renderAnalytics(){
   },{plugins:{legend:{position:'bottom',labels:{boxWidth:14,font:{size:12}}}}});
 }
 
-function goToPersonReport(name){
+function goToPersonReport(idx){
+  var name = generalFiltered[idx] ? generalFiltered[idx].name : idx;
   switchTab('report');
   renderReport(name);
   window.scrollTo(0, 0);
