@@ -122,6 +122,8 @@ tr:last-child td { border-bottom: none; }
 .year-table td { padding: 9px 14px; border-bottom: 1px solid #f0f0f0; }
 .year-table tr:last-child td { border-bottom: none; }
 /* Analytics */
+.sticky-top-bar { position:sticky; top:0; z-index:50; background:#f0f2f8; padding:16px 0 10px; margin:-24px -24px 18px; padding:16px 24px 10px; border-bottom:2px solid #e0e0e0; box-shadow:0 2px 8px rgba(0,0,0,0.07); }
+
 .an-card { background:white; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow:hidden; }
 .an-title { padding:14px 20px 10px; font-weight:bold; font-size:14px; color:#1a237e; border-bottom:1px solid #f0f0f0; }
 .an-body { padding:16px 20px; }
@@ -374,16 +376,28 @@ tr:last-child td { border-bottom: none; }
 <!-- ===== TAB: GENERAL REPORT ===== -->
 <div class="tab-content" id="tab-generalreport">
 <div class="content">
-  <div class="summary-bar" id="generalSummary"></div>
-  <div class="toolbar">
-    <input type="text" class="search-box" id="generalSearch" placeholder="חיפוש לפי שם..." oninput="onGeneralSearch()">
-    <span class="count-badge" id="generalCountBadge"></span>
-    <select id="generalSort" onchange="renderGeneralReport()" style="padding:9px 14px;border:1px solid #ccc;border-radius:7px;font-size:13px">
-      <option value="debt">מיין: יתרה גבוהה</option>
-      <option value="committed">מיין: התחייבות גבוהה</option>
-      <option value="paid">מיין: תשלום גבוה</option>
-      <option value="name">מיין: שם</option>
-    </select>
+  <div class="sticky-top-bar" id="generalStickyBar">
+    <div class="summary-bar" id="generalSummary" style="margin-bottom:0;padding-bottom:12px"></div>
+    <div class="toolbar" style="margin-bottom:0">
+      <input type="text" class="search-box" id="generalSearch" placeholder="חיפוש לפי שם..." oninput="onGeneralSearch()">
+      <select id="generalDebtFilter" onchange="onGeneralSearch()" style="padding:9px 14px;border:1px solid #ccc;border-radius:7px;font-size:13px;min-width:170px">
+        <option value="all">כל האנשים</option>
+        <option value="open">יש יתרה כלשהי</option>
+        <option value="gt500">יתרה מעל ₪500</option>
+        <option value="gt1000">יתרה מעל ₪1,000</option>
+        <option value="gt2000">יתרה מעל ₪2,000</option>
+        <option value="gt5000">יתרה מעל ₪5,000</option>
+        <option value="gt10000">יתרה מעל ₪10,000</option>
+        <option value="paid">שולם במלואו</option>
+      </select>
+      <select id="generalSort" onchange="renderGeneralReport()" style="padding:9px 14px;border:1px solid #ccc;border-radius:7px;font-size:13px;min-width:160px">
+        <option value="debt">מיין: יתרה גבוהה</option>
+        <option value="committed">מיין: התחייבות גבוהה</option>
+        <option value="paid">מיין: תשלום גבוה</option>
+        <option value="name">מיין: שם</option>
+      </select>
+      <span class="count-badge" id="generalCountBadge"></span>
+    </div>
   </div>
   <div class="table-wrap">
     <table>
@@ -1310,9 +1324,20 @@ function buildGeneralData(){
 }
 
 function onGeneralSearch(){
+  buildGeneralData();
   var q = document.getElementById('generalSearch').value.trim().toLowerCase();
-  generalFiltered = !q ? generalData.slice() : generalData.filter(function(r){
-    return r.name.toLowerCase().indexOf(q) >= 0;
+  var df = document.getElementById('generalDebtFilter').value;
+  generalFiltered = generalData.filter(function(r){
+    if(q && r.name.toLowerCase().indexOf(q) < 0) return false;
+    var debt = r.committed - r.paid;
+    if(df==='open')   return debt > 0;
+    if(df==='paid')   return debt <= 0;
+    if(df==='gt500')  return debt > 500;
+    if(df==='gt1000') return debt > 1000;
+    if(df==='gt2000') return debt > 2000;
+    if(df==='gt5000') return debt > 5000;
+    if(df==='gt10000')return debt > 10000;
+    return true;
   });
   generalPage = 1;
   renderGeneralReport();
