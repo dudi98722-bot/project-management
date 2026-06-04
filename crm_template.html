@@ -605,7 +605,7 @@ tr:last-child td { border-bottom: none; }
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" onerror="window._chartFailed=true"></script>
 <script>
 /*CONTACTS_DATA*/
 /*TABLE1_DATA*/
@@ -1345,6 +1345,11 @@ function makeChart(id, type, data, options){
 }
 
 function renderAnalytics(){
+  if(window._chartFailed || typeof Chart === 'undefined'){
+    document.getElementById('analyticsSummary').innerHTML =
+      '<div style="padding:20px;color:#c62828;font-size:14px">⚠️ לא ניתן לטעון את ספריית הגרפים. בדוק חיבור לאינטרנט ורענן את הדף.</div>';
+    return;
+  }
   var tC=0, tP=0;
   vows.forEach(function(v){ tC+=v.amount||0; tP+=getPaidForVow(v.id); });
   var tD=tC-tP, pct=tC>0?Math.round(tP/tC*100):0;
