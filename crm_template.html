@@ -239,6 +239,45 @@ tr:last-child td { border-bottom: none; }
 </head>
 <body>
 
+<!-- LOGIN SCREEN -->
+<div id="loginScreen" style="display:flex;position:fixed;inset:0;background:linear-gradient(135deg,#1a237e 0%,#283593 50%,#1565c0 100%);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:white;border-radius:16px;padding:44px 40px;width:360px;max-width:92vw;box-shadow:0 20px 60px rgba(0,0,0,0.35);text-align:center">
+    <div style="font-size:42px;margin-bottom:8px">&#x2721;</div>
+    <div style="font-size:22px;font-weight:bold;color:#1a237e;margin-bottom:4px">מוסדות אלכסנדר</div>
+    <div style="font-size:13px;color:#888;margin-bottom:28px">מערכת ניהול נדרים ונדבות</div>
+    <div id="loginError" style="display:none;background:#ffebee;color:#c62828;padding:8px 14px;border-radius:6px;font-size:13px;margin-bottom:16px">&#x26A0; שם משתמש או סיסמא שגויים</div>
+    <div style="margin-bottom:14px;text-align:right">
+      <label style="font-size:12px;font-weight:bold;color:#555;display:block;margin-bottom:5px">שם משתמש</label>
+      <input type="text" id="loginUser" placeholder="הכנס שם משתמש" style="width:100%;padding:10px 12px;border:1px solid #ccc;border-radius:7px;font-size:14px;direction:rtl">
+    </div>
+    <div style="margin-bottom:24px;text-align:right">
+      <label style="font-size:12px;font-weight:bold;color:#555;display:block;margin-bottom:5px">סיסמא</label>
+      <input type="password" id="loginPass" placeholder="הכנס סיסמא" style="width:100%;padding:10px 12px;border:1px solid #ccc;border-radius:7px;font-size:14px;direction:rtl" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button onclick="doLogin()" style="width:100%;background:#1a237e;color:white;border:none;border-radius:8px;padding:12px;font-size:15px;font-weight:bold;cursor:pointer">כניסה למערכת</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  var u='יחיאל', p='0527695019';
+  if(sessionStorage.getItem('crm_auth')==='1'){
+    document.getElementById('loginScreen').style.display='none';
+  }
+  window.doLogin=function(){
+    var eu=document.getElementById('loginUser').value.trim();
+    var ep=document.getElementById('loginPass').value;
+    if(eu===u&&ep===p){
+      sessionStorage.setItem('crm_auth','1');
+      document.getElementById('loginScreen').style.display='none';
+    } else {
+      document.getElementById('loginError').style.display='block';
+      document.getElementById('loginPass').value='';
+    }
+  };
+})();
+</script>
+
 <div class="header">
   <span style="font-size:26px">&#x2721;</span>
   <h1>CRM &#x2014; &#x05D1;&#x05D9;&#x05EA; &#x05DB;&#x05E0;&#x05E1;&#x05EA;</h1>
