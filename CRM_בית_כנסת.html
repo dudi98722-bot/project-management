@@ -293,6 +293,38 @@ tr:last-child td { border-bottom: none; }
 </div>
 </div>
 
+<!-- EMAIL Modal -->
+<div id="emailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:white;border-radius:12px;width:520px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.25)">
+    <div style="padding:18px 24px 14px;border-bottom:1px solid #e8e8e8;display:flex;justify-content:space-between;align-items:center;background:#f5f7ff;border-radius:12px 12px 0 0">
+      <h2 style="font-size:17px;color:#1a237e">&#x2709; &#x05E9;&#x05DC;&#x05D7; &#x05D3;&#x05D5;&#x05D7; &#x05D1;&#x05DE;&#x05D9;&#x05D9;&#x05DC;</h2>
+      <button onclick="document.getElementById('emailModal').style.display='none'" style="background:none;border:none;font-size:22px;cursor:pointer;color:#aaa">&#x2715;</button>
+    </div>
+    <div style="padding:20px 24px">
+      <div class="form-group" style="margin-bottom:12px">
+        <label>&#x05E0;&#x05DE;&#x05E2;&#x05DF;</label>
+        <input type="email" id="emailModalTo" style="width:100%;padding:8px 11px;border:1px solid #ccc;border-radius:6px;font-size:13px">
+      </div>
+      <div class="form-group" style="margin-bottom:12px">
+        <label>&#x05E0;&#x05D5;&#x05E9;&#x05D0;</label>
+        <input type="text" id="emailModalSubject" style="width:100%;padding:8px 11px;border:1px solid #ccc;border-radius:6px;font-size:13px">
+      </div>
+      <div class="form-group" style="margin-bottom:16px">
+        <label>&#x05EA;&#x05D5;&#x05DB;&#x05DF; &#x05D4;&#x05D4;&#x05D5;&#x05D3;&#x05E2;&#x05D4;</label>
+        <textarea id="emailModalBody" rows="8" style="width:100%;padding:8px 11px;border:1px solid #ccc;border-radius:6px;font-size:13px;font-family:inherit;resize:vertical"></textarea>
+      </div>
+      <div style="background:#fff3e0;border-radius:8px;padding:12px 14px;font-size:13px;color:#e65100;margin-bottom:16px">
+        &#x26A0; &#x05DC;&#x05D7;&#x05E5; "&#x05E4;&#x05EA;&#x05D7; &#x05D1;-Gmail" &#x05DB;&#x05D3;&#x05D9; &#x05DC;&#x05E9;&#x05DC;&#x05D5;&#x05D7; &#x05D0;&#x05D5; &#x05D4;&#x05E2;&#x05EA;&#x05E7; &#x05D0;&#x05EA; &#x05D4;&#x05EA;&#x05D5;&#x05DB;&#x05DF; &#x05D5;&#x05E9;&#x05DC;&#x05D7; &#x05D3;&#x05E8;&#x05DA; &#x05DE;&#x05D9;&#x05D9;&#x05DC; &#x05E8;&#x05D2;&#x05D9;&#x05DC;.
+      </div>
+    </div>
+    <div style="padding:14px 24px;border-top:1px solid #e8e8e8;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+      <button class="btn btn-secondary" onclick="document.getElementById('emailModal').style.display='none'">&#x05D1;&#x05D9;&#x05D8;&#x05D5;&#x05DC;</button>
+      <button class="btn btn-secondary" onclick="copyEmailBody()">&#x05D4;&#x05E2;&#x05EA;&#x05E7; &#x05D8;&#x05E7;&#x05E1;&#x05D8;</button>
+      <a id="emailModalGmailUrl" href="#" target="_blank" onclick="updateGmailUrl()" class="btn btn-primary" style="text-decoration:none">&#x05E4;&#x05EA;&#x05D7; &#x05D1;-Gmail</a>
+    </div>
+  </div>
+</div>
+
 <!-- CONTACTS Modal -->
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal">
@@ -923,28 +955,74 @@ function printReport(){
   window.print();
 }
 
+function copyEmailBody(){
+  var body = document.getElementById('emailModalBody').value;
+  navigator.clipboard.writeText(body).then(function(){
+    alert('הטקסט הועתק!');
+  }).catch(function(){
+    document.getElementById('emailModalBody').select();
+    document.execCommand('copy');
+    alert('הטקסט הועתק!');
+  });
+}
+
+function updateGmailUrl(){
+  var to = document.getElementById('emailModalTo').value;
+  var subject = document.getElementById('emailModalSubject').value;
+  var body = document.getElementById('emailModalBody').value;
+  var url = 'https://mail.google.com/mail/?view=cm' +
+    (to ? '&to=' + encodeURIComponent(to) : '') +
+    '&su=' + encodeURIComponent(subject) +
+    '&body=' + encodeURIComponent(body);
+  document.getElementById('emailModalGmailUrl').href = url;
+}
+
 function emailReport(){
   var name = document.getElementById('reportNameSelect').value;
   if(!name) return;
   var contact = null;
   for(var i=0;i<contacts.length;i++){ if(contacts[i].display_name===name){contact=contacts[i];break;} }
   var email = contact && contact.email ? contact.email : '';
-  if(!email){ alert('לאיש קשר זה אין כתובת מייל. הורד את ה-PDF ושלח ידנית.'); printReport(); return; }
 
   var personVows = vows.filter(function(v){return v.name===name;});
   var totalCommitted=0, totalPaid=0;
   personVows.forEach(function(v){ totalCommitted+=v.amount||0; totalPaid+=getPaidForVow(v.id); });
   var debt = totalCommitted - totalPaid;
 
-  var subject = encodeURIComponent('דוח אישי - ' + name);
-  var body = 'שלום,' + '\n\n' +
-    'להלן סיכום חשבונך:\n' +
-    'סה"כ התחייבויות: ₪' + totalCommitted.toLocaleString() + '\n' +
-    'סה"כ שולם: ₪' + totalPaid.toLocaleString() + '\n' +
-    'יתרה לתשלום: ₪' + debt.toLocaleString() + '\n\n' +
-    'לפרטים נוספים צור קשר.\n\nבברכה';
+  // Build per-year summary
+  var yearMap = {};
+  personVows.forEach(function(v){
+    var yr = v.date ? v.date.substring(0,4) : '—';
+    if(!yearMap[yr]) yearMap[yr] = {committed:0, paid:0};
+    yearMap[yr].committed += v.amount||0;
+    yearMap[yr].paid += getPaidForVow(v.id);
+  });
+  var yearLines = Object.keys(yearMap).sort().reverse().map(function(yr){
+    var d = yearMap[yr];
+    return yr + ': התחייב ₪' + d.committed.toLocaleString() + ' | שילם ₪' + d.paid.toLocaleString() + ' | יתרה ₪' + (d.committed-d.paid).toLocaleString();
+  }).join('\n');
 
-  window.open('mailto:' + email + '?subject=' + subject + '&body=' + encodeURIComponent(body));
+  var subject = 'דוח אישי - ' + name;
+  var body = 'שלום,\n\n' +
+    'להלן סיכום חשבונך:\n\n' +
+    '📊 סה"כ התחייב: ₪' + totalCommitted.toLocaleString() + '\n' +
+    '✅ סה"כ שילם: ₪' + totalPaid.toLocaleString() + '\n' +
+    '💳 יתרה לתשלום: ₪' + debt.toLocaleString() + '\n\n' +
+    'פירוט שנתי:\n' + yearLines + '\n\n' +
+    'בברכה';
+
+  // Try Gmail first, fallback to mailto
+  var gmailUrl = 'https://mail.google.com/mail/?view=cm' +
+    (email ? '&to=' + encodeURIComponent(email) : '') +
+    '&su=' + encodeURIComponent(subject) +
+    '&body=' + encodeURIComponent(body);
+
+  document.getElementById('emailModal').style.display = 'flex';
+  document.getElementById('emailModalTo').value = email;
+  document.getElementById('emailModalSubject').value = subject;
+  document.getElementById('emailModalBody').value = body;
+  document.getElementById('emailModalGmailUrl').href = gmailUrl;
+  document.getElementById('emailModalGmailUrl').setAttribute('data-gmail', gmailUrl);
 }
 
 /* ===== GENERAL REPORT ===== */
