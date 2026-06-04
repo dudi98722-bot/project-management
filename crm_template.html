@@ -293,6 +293,7 @@ tr:last-child td { border-bottom: none; }
       <option value="gt5000">יתרה מעל ₪5,000</option>
     </select>
     <span class="count-badge" id="vowsCountBadge"></span>
+    <button class="btn btn-secondary" onclick="openListsModal()">&#x2699; &#x05E2;&#x05E8;&#x05D9;&#x05DB;&#x05EA; &#x05E8;&#x05E9;&#x05D9;&#x05DE;&#x05D5;&#x05EA;</button>
     <button class="btn btn-primary" onclick="openVowModal()">+ &#x05D4;&#x05D5;&#x05E1;&#x05E3; &#x05E8;&#x05E9;&#x05D5;&#x05DE;&#x05D4;</button>
   </div>
   <div class="table-wrap">
@@ -645,6 +646,39 @@ tr:last-child td { border-bottom: none; }
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closePaymentModal()">&#x05D1;&#x05D9;&#x05D8;&#x05D5;&#x05DC;</button>
       <button class="btn btn-primary" onclick="savePayment()">&#x05E9;&#x05DE;&#x05D5;&#x05E8;</button>
+    </div>
+  </div>
+</div>
+
+<!-- LISTS MANAGER Modal -->
+<div class="modal-overlay" id="listsModalOverlay">
+  <div class="modal" style="width:660px">
+    <div class="modal-header">
+      <h2>&#x2699; &#x05E2;&#x05E8;&#x05D9;&#x05DB;&#x05EA; &#x05E8;&#x05E9;&#x05D9;&#x05DE;&#x05D5;&#x05EA; &#x05E2;&#x05D1;&#x05D5;&#x05E8; &#x05D0; / &#x05E2;&#x05D1;&#x05D5;&#x05E8; &#x05D1;</h2>
+      <button class="modal-close" onclick="closeListsModal()">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div>
+          <div style="font-weight:bold;color:#1a237e;margin-bottom:10px;font-size:14px">&#x05E2;&#x05D1;&#x05D5;&#x05E8; &#x05D0;</div>
+          <div id="listA_items" style="max-height:320px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;padding:8px;margin-bottom:8px"></div>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="listA_new" placeholder="פריט חדש..." style="flex:1;padding:7px 10px;border:1px solid #ccc;border-radius:6px;font-size:13px">
+            <button class="btn btn-primary btn-sm" onclick="addToListA()">+ &#x05D4;&#x05D5;&#x05E1;&#x05E3;</button>
+          </div>
+        </div>
+        <div>
+          <div style="font-weight:bold;color:#1a237e;margin-bottom:10px;font-size:14px">&#x05E2;&#x05D1;&#x05D5;&#x05E8; &#x05D1;</div>
+          <div id="listB_items" style="max-height:320px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;padding:8px;margin-bottom:8px"></div>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="listB_new" placeholder="פריט חדש..." style="flex:1;padding:7px 10px;border:1px solid #ccc;border-radius:6px;font-size:13px">
+            <button class="btn btn-primary btn-sm" onclick="addToListB()">+ &#x05D4;&#x05D5;&#x05E1;&#x05E3;</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeListsModal()">&#x05E1;&#x05D2;&#x05D5;&#x05E8;</button>
     </div>
   </div>
 </div>
@@ -1055,6 +1089,53 @@ function saveMethods(){
   inputs.forEach(function(inp){var v=inp.value.trim();if(v)paymentMethods.push(v);});
   refreshPaymentMethodSelect();closeMethodsModal();
 }
+
+/* ===== LISTS MANAGER ===== */
+function openListsModal(){
+  renderListItems('listA_items', TABLE1, 'A');
+  renderListItems('listB_items', TABLE2, 'B');
+  document.getElementById('listA_new').value = '';
+  document.getElementById('listB_new').value = '';
+  document.getElementById('listsModalOverlay').className = 'modal-overlay open';
+}
+function closeListsModal(){
+  document.getElementById('listsModalOverlay').className = 'modal-overlay';
+  // refresh selects in vow modal
+  populateSelect('vfForA', TABLE1, '--');
+  populateSelect('vfForB', TABLE2, '--');
+}
+function renderListItems(containerId, list, which){
+  var div = document.getElementById(containerId);
+  div.innerHTML = list.map(function(item, i){
+    return '<div style="display:flex;align-items:center;gap:6px;padding:4px 2px;border-bottom:1px solid #f5f5f5">' +
+      '<span style="flex:1;font-size:13px">'+item+'</span>' +
+      '<button class="btn btn-danger btn-sm" style="padding:2px 8px;font-size:11px" onclick="removeListItem(\''+which+'\','+i+')">✕</button>' +
+      '</div>';
+  }).join('');
+}
+function removeListItem(which, i){
+  if(which==='A'){ TABLE1.splice(i,1); renderListItems('listA_items', TABLE1, 'A'); }
+  else           { TABLE2.splice(i,1); renderListItems('listB_items', TABLE2, 'B'); }
+}
+function addToListA(){
+  var val = document.getElementById('listA_new').value.trim();
+  if(!val) return;
+  TABLE1.push(val);
+  document.getElementById('listA_new').value = '';
+  renderListItems('listA_items', TABLE1, 'A');
+}
+function addToListB(){
+  var val = document.getElementById('listB_new').value.trim();
+  if(!val) return;
+  TABLE2.push(val);
+  document.getElementById('listB_new').value = '';
+  renderListItems('listB_items', TABLE2, 'B');
+}
+document.getElementById('listsModalOverlay').addEventListener('mousedown', function(e){ if(e.target===this) closeListsModal(); });
+
+// Enter key support
+document.getElementById('listA_new').addEventListener('keydown', function(e){ if(e.key==='Enter') addToListA(); });
+document.getElementById('listB_new').addEventListener('keydown', function(e){ if(e.key==='Enter') addToListB(); });
 document.getElementById('methodsModalOverlay').addEventListener('mousedown',function(e){if(e.target===this)closeMethodsModal();});
 
 /* ===== PERSONAL REPORT ===== */
