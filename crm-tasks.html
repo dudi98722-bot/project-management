@@ -462,12 +462,13 @@ let editingTaskId=null, editingUserId=null, editingClientId=null;
 // ============================================================
 // INIT
 // ============================================================
+const DEFAULT_API_URL='https://script.google.com/macros/s/AKfycbyXcorIm0ISDHpRJm7Q_gR4MTI5zK9zkphvjcrINT57hL2vcjdx7pjJ1OY5EY8P4jlRzw/exec';
+
 window.addEventListener('DOMContentLoaded',async()=>{
   const lm=localStorage.getItem('crm_local_mode');
-  const url=localStorage.getItem('crm_api_url');
+  const url=localStorage.getItem('crm_api_url')||DEFAULT_API_URL;
   if(lm==='1'){localMode=true;loadLocalData();await showLoginScreen();}
-  else if(url){apiUrl=url;await showLoginScreen();}
-  else{document.getElementById('setupScreen').style.display='flex';}
+  else{apiUrl=url;await showLoginScreen();}
 });
 
 window.saveConfig=async function(){
