@@ -90,6 +90,8 @@ function objToRow(headers, obj) {
   return headers.map(h => {
     let val = obj[h];
     if (h === 'assignedUsers' && val && typeof val === 'object') val = JSON.stringify(val);
+    // Store username/password always as string (prevent numeric passwords from becoming numbers)
+    if ((h === 'username' || h === 'password') && val !== undefined && val !== null) val = String(val);
     return val !== undefined && val !== null ? val : '';
   });
 }
