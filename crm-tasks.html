@@ -518,19 +518,31 @@ window.doLogin=function(){
 };
 
 window.showFirstAdmin=async function(){
-  // If no users exist, create a default admin
   const users=Object.entries(allUsers);
+  // No users at all — create default admin
   if(users.length===0){
     showLoading('יוצר מנהל ראשון...');
     const id=await apiPush('users',{name:'מנהל',username:'admin',password:'admin123',role:'Admin',isAdmin:true});
     allUsers[id]={name:'מנהל',username:'admin',password:'admin123',role:'Admin',isAdmin:true};
     hideLoading();
-    showToast('נוצר מנהל ראשון: שם משתמש admin | סיסמה admin123','success');
+    showToast('נוצר מנהל: שם משתמש admin | סיסמה admin123','success');
     return;
   }
-  // Find any admin
-  const admin=users.find(([,u])=>u.isAdmin);
-  if(admin) showToast(`מנהל קיים: ${admin[1].username||admin[1].name}`);
+  // Users exist but none have username/password → set up first admin
+  const adminEntry=users.find(([,u])=>u.isAdmin)||users[0];
+  if(adminEntry){
+    const [id,u]=adminEntry;
+    if(!u.username||!u.password){
+      showLoading('מגדיר כניסת מנהל...');
+      const updated={...u,username:'admin',password:'admin123',isAdmin:true};
+      await apiSet('users',id,updated);
+      allUsers[id]=updated;
+      hideLoading();
+      showToast('הוגדרה כניסת מנהל: שם משתמש admin | סיסמה admin123','success');
+    } else {
+      showToast(`שם משתמש: ${u.username}`,'success');
+    }
+  }
 };
 
 function loginAs(userId){
