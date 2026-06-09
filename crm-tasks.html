@@ -6,263 +6,205 @@
 <title>CRM ניהול משימות</title>
 <style>
   :root {
-    --primary: #2563eb;
-    --primary-dark: #1d4ed8;
-    --success: #16a34a;
-    --warning: #d97706;
-    --danger: #dc2626;
-    --danger-light: #fef2f2;
-    --warning-light: #fffbeb;
-    --success-light: #f0fdf4;
-    --gray-50: #f9fafb;
-    --gray-100: #f3f4f6;
-    --gray-200: #e5e7eb;
-    --gray-300: #d1d5db;
-    --gray-400: #9ca3af;
-    --gray-500: #6b7280;
-    --gray-700: #374151;
-    --gray-900: #111827;
-    --radius: 10px;
-    --shadow: 0 2px 8px rgba(0,0,0,0.08);
-    --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+    --primary: #2563eb; --primary-dark: #1d4ed8;
+    --success: #16a34a; --warning: #d97706; --danger: #dc2626;
+    --danger-light: #fef2f2; --warning-light: #fffbeb; --success-light: #f0fdf4;
+    --gray-50: #f9fafb; --gray-100: #f3f4f6; --gray-200: #e5e7eb;
+    --gray-300: #d1d5db; --gray-400: #9ca3af; --gray-500: #6b7280;
+    --gray-700: #374151; --gray-900: #111827;
+    --radius: 10px; --shadow: 0 2px 8px rgba(0,0,0,0.08); --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--gray-50); color: var(--gray-900); min-height: 100vh; }
 
   /* SETUP */
-  #setupScreen {
-    display: flex; align-items: center; justify-content: center;
-    min-height: 100vh; background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
-  }
-  .setup-card {
-    background: white; border-radius: 16px; padding: 40px; width: 500px;
-    box-shadow: var(--shadow-lg);
-  }
-  .setup-card h2 { color: var(--primary); margin-bottom: 8px; font-size: 22px; }
-  .setup-card p { color: var(--gray-500); margin-bottom: 24px; font-size: 14px; line-height: 1.7; }
-  .setup-steps { background: var(--gray-50); border-radius: 10px; padding: 18px; margin-bottom: 20px; font-size: 13px; }
-  .setup-steps ol { padding-right: 20px; }
-  .setup-steps li { margin-bottom: 8px; color: var(--gray-700); line-height: 1.5; }
-  .setup-steps a { color: var(--primary); }
-  .setup-steps strong { color: var(--gray-900); }
-  .form-group { margin-bottom: 14px; }
-  .form-group label { display: block; font-size: 13px; font-weight: 600; color: var(--gray-700); margin-bottom: 5px; }
-  .form-group input {
-    width: 100%; padding: 10px 14px; border: 1px solid var(--gray-300);
-    border-radius: 8px; font-size: 13px; direction: ltr;
-  }
-  .form-group input:focus { outline: none; border-color: var(--primary); }
+  #setupScreen { display:flex; align-items:center; justify-content:center; min-height:100vh; background:linear-gradient(135deg,#1e3a5f,#2563eb); }
+  .setup-card { background:white; border-radius:16px; padding:40px; width:500px; box-shadow:var(--shadow-lg); }
+  .setup-card h2 { color:var(--primary); margin-bottom:8px; font-size:22px; }
+  .setup-card p { color:var(--gray-500); margin-bottom:24px; font-size:14px; line-height:1.7; }
+  .setup-steps { background:var(--gray-50); border-radius:10px; padding:18px; margin-bottom:20px; font-size:13px; }
+  .setup-steps ol { padding-right:20px; }
+  .setup-steps li { margin-bottom:8px; color:var(--gray-700); line-height:1.5; }
+  .setup-steps a { color:var(--primary); }
+  .setup-steps strong { color:var(--gray-900); }
 
   /* LOGIN */
-  #loginScreen {
-    display: none; align-items: center; justify-content: center;
-    min-height: 100vh; background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
-  }
-  .login-card {
-    background: white; border-radius: 16px; padding: 40px; width: 420px;
-    box-shadow: var(--shadow-lg); text-align: center;
-  }
-  .login-card h1 { font-size: 26px; color: var(--gray-900); margin-bottom: 6px; }
-  .login-card p { color: var(--gray-500); margin-bottom: 28px; font-size: 14px; }
-  .user-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
-  .user-btn {
-    padding: 16px 12px; border: 2px solid var(--gray-200); border-radius: var(--radius);
-    background: white; cursor: pointer; font-size: 14px; font-weight: 600;
-    color: var(--gray-700); transition: all 0.2s; display: flex; flex-direction: column;
-    align-items: center; gap: 8px;
-  }
-  .user-btn:hover { border-color: var(--primary); color: var(--primary); background: #eff6ff; }
-  .user-avatar {
-    width: 48px; height: 48px; border-radius: 50%; background: var(--primary);
-    color: white; display: flex; align-items: center; justify-content: center;
-    font-size: 20px; font-weight: bold;
-  }
+  #loginScreen { display:none; align-items:center; justify-content:center; min-height:100vh; background:linear-gradient(135deg,#1e3a5f,#2563eb); }
+  .login-card { background:white; border-radius:16px; padding:40px; width:380px; box-shadow:var(--shadow-lg); text-align:center; }
+  .login-card h1 { font-size:24px; color:var(--gray-900); margin-bottom:6px; }
+  .login-card p { color:var(--gray-500); margin-bottom:24px; font-size:14px; }
+  .login-input { width:100%; padding:11px 14px; border:1px solid var(--gray-300); border-radius:8px; font-size:14px; margin-bottom:12px; text-align:right; }
+  .login-input:focus { outline:none; border-color:var(--primary); }
+  .login-error { color:var(--danger); font-size:13px; margin-bottom:10px; display:none; }
 
   /* HEADER */
-  #app { display: none; }
-  .header {
-    background: white; border-bottom: 1px solid var(--gray-200);
-    padding: 0 24px; display: flex; align-items: center; justify-content: space-between;
-    height: 60px; position: sticky; top: 0; z-index: 100; box-shadow: var(--shadow);
-  }
-  .header-title { font-size: 18px; font-weight: 700; color: var(--primary); }
-  .header-avatar {
-    width: 36px; height: 36px; border-radius: 50%; background: var(--primary);
-    color: white; display: flex; align-items: center; justify-content: center;
-    font-weight: bold; font-size: 14px;
-  }
-  .header-nav { display: flex; gap: 4px; }
-  .nav-btn {
-    padding: 8px 14px; border: none; border-radius: 8px; cursor: pointer;
-    font-size: 13px; font-weight: 600; background: transparent; color: var(--gray-500); transition: all 0.2s;
-  }
-  .nav-btn.active { background: var(--primary); color: white; }
-  .nav-btn:hover:not(.active) { background: var(--gray-100); color: var(--gray-700); }
-  .badge { display: inline-block; background: var(--danger); color: white; border-radius: 10px; padding: 1px 7px; font-size: 11px; margin-right: 4px; }
+  #app { display:none; }
+  .header { background:white; border-bottom:1px solid var(--gray-200); padding:0 20px; display:flex; align-items:center; justify-content:space-between; height:58px; position:sticky; top:0; z-index:100; box-shadow:var(--shadow); }
+  .header-title { font-size:17px; font-weight:700; color:var(--primary); }
+  .header-avatar { width:34px; height:34px; border-radius:50%; background:var(--primary); color:white; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:14px; flex-shrink:0; }
+  .header-nav { display:flex; gap:3px; }
+  .nav-btn { padding:7px 13px; border:none; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600; background:transparent; color:var(--gray-500); transition:all 0.2s; white-space:nowrap; }
+  .nav-btn.active { background:var(--primary); color:white; }
+  .nav-btn:hover:not(.active) { background:var(--gray-100); color:var(--gray-700); }
+  .badge { display:inline-block; background:var(--danger); color:white; border-radius:10px; padding:1px 6px; font-size:11px; margin-right:3px; }
 
   /* VIEWS */
-  .view { display: none; padding: 24px; max-width: 1200px; margin: 0 auto; }
-  .view.active { display: block; }
+  .view { display:none; padding:20px; max-width:1100px; margin:0 auto; }
+  .view.active { display:block; }
 
   /* FILTERS */
-  .filters-bar {
-    background: white; border-radius: var(--radius); padding: 16px 20px;
-    margin-bottom: 20px; box-shadow: var(--shadow);
-    display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
-  }
-  .filter-select {
-    padding: 8px 12px; border: 1px solid var(--gray-300); border-radius: 8px;
-    font-size: 13px; background: white; cursor: pointer; color: var(--gray-700);
-  }
-  .filter-toggle {
-    padding: 7px 14px; border: 1px solid var(--gray-300); border-radius: 8px;
-    font-size: 13px; cursor: pointer; background: white; color: var(--gray-700); font-weight: 600; transition: all 0.2s;
-  }
-  .filter-toggle.on { background: var(--danger); color: white; border-color: var(--danger); }
-  .filters-label { font-size: 13px; font-weight: 600; color: var(--gray-500); }
+  .filters-bar { background:white; border-radius:var(--radius); padding:12px 16px; margin-bottom:16px; box-shadow:var(--shadow); display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .filter-select { padding:7px 11px; border:1px solid var(--gray-300); border-radius:8px; font-size:13px; background:white; color:var(--gray-700); }
+  .filter-toggle { padding:6px 13px; border:1px solid var(--gray-300); border-radius:8px; font-size:13px; cursor:pointer; background:white; color:var(--gray-700); font-weight:600; transition:all 0.2s; }
+  .filter-toggle.on { background:var(--primary); color:white; border-color:var(--primary); }
+  .filters-label { font-size:13px; font-weight:600; color:var(--gray-500); }
 
-  /* TASK CARDS */
-  .task-card {
-    background: white; border-radius: var(--radius); padding: 18px 20px;
-    margin-bottom: 12px; box-shadow: var(--shadow); border-right: 4px solid var(--gray-200);
-    transition: all 0.2s;
-  }
-  .task-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-1px); }
-  .task-card.critical { border-right-color: var(--danger); }
-  .task-card.overdue-warning { border-right-color: var(--warning); background: var(--warning-light); }
-  .task-card.critical-overdue { border-right-color: var(--danger); background: var(--danger-light); }
-  .task-card.normal { border-right-color: var(--primary); }
-  .task-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-  .task-title { font-size: 16px; font-weight: 700; color: var(--gray-900); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .task-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
-  .tag { padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
-  .tag-client { background: #eff6ff; color: var(--primary); }
-  .tag-overdue { background: var(--warning-light); color: var(--warning); }
-  .tag-recur { background: var(--gray-100); color: var(--gray-500); }
-  .tag-due { background: #f0fdf4; color: var(--success); }
-  .tag-late { background: var(--danger-light); color: var(--danger); }
-  .task-desc { font-size: 14px; color: var(--gray-500); margin-top: 10px; line-height: 1.5; }
-  .task-actions { display: flex; gap: 8px; margin-top: 14px; }
-  .task-assigned { font-size: 12px; color: var(--gray-400); margin-top: 8px; }
-  .critical-badge { background: var(--danger); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  /* TASK CARDS - cleaner design */
+  .task-card { background:white; border-radius:var(--radius); padding:16px 18px; margin-bottom:10px; box-shadow:var(--shadow); border-right:4px solid var(--gray-300); transition:box-shadow 0.2s; }
+  .task-card:hover { box-shadow:var(--shadow-lg); }
+  .task-card.is-critical-overdue { border-right-color:var(--danger); background:var(--danger-light); }
+  .task-card.is-overdue { border-right-color:var(--warning); background:var(--warning-light); }
+  .task-card.is-critical { border-right-color:var(--danger); }
+  .task-card.is-normal { border-right-color:var(--primary); }
+  .task-card.is-future { border-right-color:var(--gray-300); opacity:0.85; }
+
+  .tc-top { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+  .tc-name { font-size:15px; font-weight:700; color:var(--gray-900); line-height:1.3; }
+  .tc-client { font-size:12px; font-weight:700; color:var(--primary); background:#eff6ff; padding:2px 8px; border-radius:4px; display:inline-block; margin-top:4px; }
+  .tc-row { display:flex; align-items:center; gap:10px; margin-top:10px; flex-wrap:wrap; }
+  .tc-pill { display:inline-flex; align-items:center; gap:3px; padding:3px 9px; border-radius:20px; font-size:12px; font-weight:600; }
+  .pill-date { background:var(--gray-100); color:var(--gray-700); }
+  .pill-ok { background:#dcfce7; color:var(--success); }
+  .pill-warn { background:var(--warning-light); color:var(--warning); }
+  .pill-danger { background:var(--danger-light); color:var(--danger); }
+  .pill-deadline { background:#ede9fe; color:#7c3aed; }
+
+  .tc-desc { font-size:13px; color:var(--gray-500); margin-top:8px; line-height:1.5; }
+  .tc-note { font-size:12px; color:var(--gray-500); margin-top:6px; background:var(--gray-50); border-radius:6px; padding:6px 10px; }
+  .tc-link { display:inline-flex; align-items:center; gap:4px; font-size:12px; color:var(--primary); text-decoration:none; margin-top:6px; }
+  .tc-actions { display:flex; gap:8px; margin-top:12px; }
+  .tc-assigned { font-size:11px; color:var(--gray-400); margin-top:6px; }
+  .critical-label { background:var(--danger); color:white; padding:2px 7px; border-radius:4px; font-size:11px; font-weight:700; display:inline-block; margin-bottom:4px; }
+  .postponed-info { font-size:12px; color:var(--gray-400); margin-top:6px; background:var(--gray-100); border-radius:6px; padding:5px 9px; }
 
   /* BUTTONS */
-  .btn { padding: 8px 18px; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s; }
-  .btn-success { background: var(--success); color: white; }
-  .btn-success:hover { background: #15803d; }
-  .btn-warning { background: var(--warning); color: white; }
-  .btn-warning:hover { background: #b45309; }
-  .btn-primary { background: var(--primary); color: white; }
-  .btn-primary:hover { background: var(--primary-dark); }
-  .btn-danger { background: var(--danger); color: white; }
-  .btn-danger:hover { background: #b91c1c; }
-  .btn-ghost { background: var(--gray-100); color: var(--gray-700); }
-  .btn-ghost:hover { background: var(--gray-200); }
-  .btn-sm { padding: 6px 12px; font-size: 12px; }
+  .btn { padding:7px 16px; border:none; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600; transition:all 0.2s; }
+  .btn-success { background:var(--success); color:white; } .btn-success:hover { background:#15803d; }
+  .btn-warning { background:var(--warning); color:white; } .btn-warning:hover { background:#b45309; }
+  .btn-primary { background:var(--primary); color:white; } .btn-primary:hover { background:var(--primary-dark); }
+  .btn-danger { background:var(--danger); color:white; } .btn-danger:hover { background:#b91c1c; }
+  .btn-ghost { background:var(--gray-100); color:var(--gray-700); } .btn-ghost:hover { background:var(--gray-200); }
+  .btn-sm { padding:5px 11px; font-size:12px; }
 
   /* MODALS */
-  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
-  .modal-overlay.open { display: flex; }
-  .modal { background: white; border-radius: 16px; padding: 32px; width: 520px; max-width: 95vw; box-shadow: var(--shadow-lg); max-height: 90vh; overflow-y: auto; }
-  .modal h3 { font-size: 18px; font-weight: 700; margin-bottom: 20px; color: var(--gray-900); }
-  .form-group-m { margin-bottom: 16px; }
-  .form-group-m label { display: block; font-size: 13px; font-weight: 600; color: var(--gray-700); margin-bottom: 6px; }
-  .form-group-m input, .form-group-m select, .form-group-m textarea {
-    width: 100%; padding: 10px 14px; border: 1px solid var(--gray-300);
-    border-radius: 8px; font-size: 14px; color: var(--gray-900); background: white;
-  }
-  .form-group-m input:focus, .form-group-m select:focus, .form-group-m textarea:focus { outline: none; border-color: var(--primary); }
-  .form-group-m textarea { resize: vertical; min-height: 80px; }
-  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .checkbox-group { display: flex; align-items: center; gap: 10px; }
-  .checkbox-group input[type=checkbox] { width: 18px; height: 18px; cursor: pointer; }
-  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
-  .user-checkboxes { display: flex; flex-wrap: wrap; gap: 8px; }
-  .user-check-btn {
-    padding: 6px 14px; border: 2px solid var(--gray-200); border-radius: 20px;
-    cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s;
-    background: white; color: var(--gray-700);
-  }
-  .user-check-btn.selected { border-color: var(--primary); background: #eff6ff; color: var(--primary); }
+  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center; }
+  .modal-overlay.open { display:flex; }
+  .modal { background:white; border-radius:16px; padding:28px; width:520px; max-width:95vw; box-shadow:var(--shadow-lg); max-height:90vh; overflow-y:auto; }
+  .modal h3 { font-size:17px; font-weight:700; margin-bottom:18px; color:var(--gray-900); }
+  .fg { margin-bottom:14px; }
+  .fg label { display:block; font-size:13px; font-weight:600; color:var(--gray-700); margin-bottom:5px; }
+  .fg input, .fg select, .fg textarea { width:100%; padding:9px 13px; border:1px solid var(--gray-300); border-radius:8px; font-size:14px; color:var(--gray-900); background:white; }
+  .fg input:focus, .fg select:focus, .fg textarea:focus { outline:none; border-color:var(--primary); }
+  .fg textarea { resize:vertical; min-height:70px; }
+  .fg.required label::after { content:' *'; color:var(--danger); }
+  .form-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .checkbox-group { display:flex; align-items:center; gap:10px; }
+  .checkbox-group input[type=checkbox] { width:17px; height:17px; cursor:pointer; }
+  .modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:20px; }
+  .user-checkboxes { display:flex; flex-wrap:wrap; gap:8px; }
+  .user-check-btn { padding:5px 13px; border:2px solid var(--gray-200); border-radius:20px; cursor:pointer; font-size:13px; font-weight:600; transition:all 0.2s; background:white; color:var(--gray-700); }
+  .user-check-btn.selected { border-color:var(--primary); background:#eff6ff; color:var(--primary); }
+  .recur-field { display:none; } .recur-field.show { display:block; }
 
   /* STATS */
-  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
-  .stat-card { background: white; border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); text-align: center; }
-  .stat-card .num { font-size: 36px; font-weight: 800; color: var(--primary); }
-  .stat-card .label { font-size: 13px; color: var(--gray-500); margin-top: 4px; }
-  .chart-container { background: white; border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); margin-bottom: 24px; }
-  .chart-title { font-size: 16px; font-weight: 700; margin-bottom: 20px; color: var(--gray-700); }
-  .bar-chart { display: flex; align-items: flex-end; gap: 8px; height: 160px; }
-  .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
-  .bar { width: 100%; background: var(--primary); border-radius: 4px 4px 0 0; min-height: 4px; }
-  .bar-label { font-size: 11px; color: var(--gray-500); }
-  .bar-val { font-size: 12px; font-weight: 700; color: var(--gray-700); }
-  .user-stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
-  .user-stat-card { background: white; border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); }
-  .user-stat-card h4 { font-size: 15px; font-weight: 700; margin-bottom: 12px; color: var(--gray-900); display: flex; align-items: center; gap: 10px; }
+  .stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin-bottom:20px; }
+  .stat-card { background:white; border-radius:var(--radius); padding:18px; box-shadow:var(--shadow); text-align:center; }
+  .stat-card .num { font-size:32px; font-weight:800; color:var(--primary); }
+  .stat-card .label { font-size:12px; color:var(--gray-500); margin-top:3px; }
+  .chart-container { background:white; border-radius:var(--radius); padding:20px; box-shadow:var(--shadow); margin-bottom:20px; }
+  .chart-title { font-size:15px; font-weight:700; margin-bottom:16px; color:var(--gray-700); }
+  .bar-chart { display:flex; align-items:flex-end; gap:8px; height:140px; }
+  .bar-col { flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; }
+  .bar { width:100%; border-radius:4px 4px 0 0; min-height:4px; }
+  .bar.completed { background:var(--primary); }
+  .bar.pending { background:#fbbf24; }
+  .bar-label { font-size:11px; color:var(--gray-500); }
+  .bar-val { font-size:11px; font-weight:700; color:var(--gray-700); }
+  .user-stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; }
+  .user-stat-card { background:white; border-radius:var(--radius); padding:18px; box-shadow:var(--shadow); }
+  .user-stat-card h4 { font-size:14px; font-weight:700; margin-bottom:12px; color:var(--gray-900); display:flex; align-items:center; gap:8px; }
+  .mini-avatar { width:30px; height:30px; border-radius:50%; background:var(--primary); color:white; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:bold; flex-shrink:0; }
+  .pending-row { display:flex; align-items:center; justify-content:space-between; margin-top:8px; padding:6px 10px; background:var(--warning-light); border-radius:8px; }
+  .pending-row span { font-size:12px; color:var(--warning); font-weight:600; }
 
   /* ADMIN */
-  .admin-tabs { display: flex; gap: 4px; margin-bottom: 20px; }
-  .admin-tab { padding: 8px 20px; border: 1px solid var(--gray-300); border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; background: white; color: var(--gray-500); transition: all 0.2s; }
-  .admin-tab.active { background: var(--primary); color: white; border-color: var(--primary); }
-  .admin-section { display: none; }
-  .admin-section.active { display: block; }
-  .list-item { background: white; border-radius: var(--radius); padding: 14px 18px; margin-bottom: 8px; box-shadow: var(--shadow); display: flex; align-items: center; justify-content: space-between; }
-  .list-item-title { font-size: 14px; font-weight: 600; color: var(--gray-900); }
-  .list-item-sub { font-size: 12px; color: var(--gray-400); margin-top: 3px; }
+  .admin-tabs { display:flex; gap:4px; margin-bottom:18px; }
+  .admin-tab { padding:7px 18px; border:1px solid var(--gray-300); border-radius:8px; cursor:pointer; font-size:13px; font-weight:600; background:white; color:var(--gray-500); transition:all 0.2s; }
+  .admin-tab.active { background:var(--primary); color:white; border-color:var(--primary); }
+  .admin-section { display:none; } .admin-section.active { display:block; }
+  .list-item { background:white; border-radius:var(--radius); padding:13px 16px; margin-bottom:8px; box-shadow:var(--shadow); display:flex; align-items:center; justify-content:space-between; }
+  .list-item-title { font-size:14px; font-weight:600; color:var(--gray-900); }
+  .list-item-sub { font-size:12px; color:var(--gray-400); margin-top:2px; }
 
   /* ARCHIVE */
-  .archive-card { background: white; border-radius: var(--radius); padding: 16px 20px; margin-bottom: 10px; box-shadow: var(--shadow); border-right: 4px solid var(--success); opacity: 0.85; }
-  .archive-card .archive-title { font-size: 15px; font-weight: 600; color: var(--gray-700); }
-  .archive-card .archive-meta { font-size: 12px; color: var(--gray-400); margin-top: 6px; }
-  .archive-note { font-size: 13px; color: var(--gray-500); margin-top: 8px; font-style: italic; }
+  .archive-card { background:white; border-radius:var(--radius); padding:14px 18px; margin-bottom:8px; box-shadow:var(--shadow); border-right:4px solid var(--success); }
+  .archive-card .archive-title { font-size:14px; font-weight:600; color:var(--gray-700); }
+  .archive-card .archive-meta { font-size:12px; color:var(--gray-400); margin-top:5px; }
+  .archive-note { font-size:12px; color:var(--gray-500); margin-top:6px; font-style:italic; }
+  .completed-by { font-size:12px; font-weight:600; color:var(--success); margin-top:4px; }
+
+  /* UPCOMING */
+  .upcoming-card { background:white; border-radius:var(--radius); padding:14px 18px; margin-bottom:8px; box-shadow:var(--shadow); border-right:4px solid #818cf8; display:flex; align-items:center; justify-content:space-between; }
+  .upcoming-info { flex:1; }
+  .upcoming-name { font-size:14px; font-weight:700; color:var(--gray-900); }
+  .upcoming-meta { font-size:12px; color:var(--gray-500); margin-top:3px; }
+  .upcoming-date { font-size:13px; font-weight:700; color:#4f46e5; white-space:nowrap; }
 
   /* MISC */
-  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-  .section-title { font-size: 18px; font-weight: 700; color: var(--gray-900); }
-  .period-header { font-size: 12px; font-weight: 700; color: var(--gray-400); text-transform: uppercase; letter-spacing: 0.5px; margin: 20px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--gray-200); }
-  .empty-state { text-align: center; padding: 60px 20px; color: var(--gray-400); }
-  .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
-  .empty-state h3 { font-size: 18px; color: var(--gray-500); margin-bottom: 8px; }
-  .recur-field { display: none; }
-  .recur-field.show { display: block; }
-  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--gray-900); color: white; padding: 12px 24px; border-radius: 8px; font-size: 14px; z-index: 9999; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
-  .toast.show { opacity: 1; }
-  .toast.success { background: var(--success); }
-  .toast.error { background: var(--danger); }
-  .loading-overlay { position: fixed; inset: 0; background: rgba(255,255,255,0.8); display: flex; align-items: center; justify-content: center; z-index: 500; font-size: 16px; color: var(--gray-500); gap: 12px; }
-  .spinner { width: 24px; height: 24px; border: 3px solid var(--gray-200); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .sync-btn { background: none; border: 1px solid var(--gray-300); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; color: var(--gray-500); }
-  .sync-btn:hover { background: var(--gray-100); }
+  .section-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+  .section-title { font-size:17px; font-weight:700; color:var(--gray-900); }
+  .period-header { font-size:11px; font-weight:700; color:var(--gray-400); text-transform:uppercase; letter-spacing:0.5px; margin:18px 0 8px; padding-bottom:5px; border-bottom:1px solid var(--gray-200); }
+  .empty-state { text-align:center; padding:50px 20px; color:var(--gray-400); }
+  .empty-state .icon { font-size:44px; margin-bottom:14px; }
+  .empty-state h3 { font-size:17px; color:var(--gray-500); margin-bottom:6px; }
+  .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--gray-900); color:white; padding:11px 22px; border-radius:8px; font-size:14px; z-index:9999; opacity:0; transition:opacity 0.3s; pointer-events:none; }
+  .toast.show { opacity:1; } .toast.success { background:var(--success); } .toast.error { background:var(--danger); }
+  .loading-overlay { position:fixed; inset:0; background:rgba(255,255,255,0.85); display:flex; align-items:center; justify-content:center; z-index:500; font-size:15px; color:var(--gray-500); gap:10px; }
+  .spinner { width:22px; height:22px; border:3px solid var(--gray-200); border-top-color:var(--primary); border-radius:50%; animation:spin 0.8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .sync-btn { background:none; border:1px solid var(--gray-300); border-radius:6px; padding:4px 9px; font-size:12px; cursor:pointer; color:var(--gray-500); }
+  .sync-btn:hover { background:var(--gray-100); }
+  .form-group-setup { margin-bottom:14px; }
+  .form-group-setup label { display:block; font-size:13px; font-weight:600; color:var(--gray-700); margin-bottom:5px; }
+  .form-group-setup input { width:100%; padding:10px 14px; border:1px solid var(--gray-300); border-radius:8px; font-size:13px; direction:ltr; }
+  .form-group-setup input:focus { outline:none; border-color:var(--primary); }
 </style>
 </head>
 <body>
 
-<!-- SETUP SCREEN -->
+<!-- SETUP -->
 <div id="setupScreen">
   <div class="setup-card">
     <h2>🔗 חיבור ל-Google Sheets</h2>
-    <p>פעם ראשונה בלבד — בצע את השלבים הבאים כדי לחבר את האפליקציה ל-Google Sheets</p>
+    <p>פעם ראשונה בלבד — בצע את השלבים הבאים</p>
     <div class="setup-steps">
       <ol>
         <li>פתח <strong>Google Sheet חדש</strong> ב-<a href="https://sheets.google.com" target="_blank">sheets.google.com</a></li>
         <li>לחץ על <strong>Extensions → Apps Script</strong></li>
         <li>מחק את הקוד הקיים, הדבק את תוכן הקובץ <strong>crm-script.gs</strong></li>
-        <li>לחץ <strong>Deploy → New deployment</strong></li>
-        <li>בחר Type: <strong>Web app</strong> | Execute as: <strong>Me</strong> | Access: <strong>Anyone</strong></li>
-        <li>לחץ <strong>Deploy</strong>, אשר הרשאות, העתק את ה-<strong>Web app URL</strong></li>
-        <li>הדבק את ה-URL בשדה למטה</li>
+        <li>לחץ <strong>פריסה → פריסה חדשה → אפליקציית אינטרנט</strong></li>
+        <li>Execute as: <strong>Me</strong> | Access: <strong>Anyone</strong> → לחץ פרוס</li>
+        <li>העתק את ה-<strong>Web app URL</strong></li>
       </ol>
     </div>
-    <div class="form-group">
+    <div class="form-group-setup">
       <label>Web App URL</label>
       <input type="text" id="cfg_url" placeholder="https://script.google.com/macros/s/.../exec">
     </div>
     <button class="btn btn-primary" style="width:100%;padding:12px;font-size:15px" onclick="saveConfig()">התחבר →</button>
     <div style="margin-top:12px;text-align:center">
       <button onclick="useLocalMode()" style="background:none;border:none;color:var(--gray-400);font-size:12px;cursor:pointer;text-decoration:underline">
-        השתמש במצב מקומי (ללא Google Sheets, לניסיון בלבד)
+        מצב מקומי (לניסיון בלבד, ללא שיתוף)
       </button>
     </div>
   </div>
@@ -272,9 +214,16 @@
 <div id="loginScreen">
   <div class="login-card">
     <h1>📋 ניהול משימות</h1>
-    <p>בחר את המשתמש שלך</p>
-    <div id="userGrid" class="user-grid"></div>
-    <button class="btn btn-ghost" onclick="showAdminLogin()" style="width:100%;margin-top:8px">⚙️ ניהול (Admin)</button>
+    <p>כניסה למערכת</p>
+    <input type="text" id="loginUsername" class="login-input" placeholder="שם משתמש" onkeydown="if(event.key==='Enter')doLogin()">
+    <input type="password" id="loginPassword" class="login-input" placeholder="סיסמה" onkeydown="if(event.key==='Enter')doLogin()">
+    <div id="loginError" class="login-error">שם משתמש או סיסמה שגויים</div>
+    <button class="btn btn-primary" style="width:100%;padding:11px;font-size:15px" onclick="doLogin()">כניסה →</button>
+    <div style="margin-top:16px">
+      <button onclick="showFirstAdmin()" style="background:none;border:none;color:var(--gray-400);font-size:12px;cursor:pointer;text-decoration:underline">
+        כניסת מנהל ראשונה
+      </button>
+    </div>
   </div>
 </div>
 
@@ -286,12 +235,13 @@
       <button class="nav-btn active" onclick="showView('tasks')" id="navTasks">
         משימות <span id="pendingBadge" class="badge" style="display:none">0</span>
       </button>
+      <button class="nav-btn" onclick="showView('upcoming')" id="navUpcoming">יומן 2 חודשים</button>
       <button class="nav-btn" onclick="showView('stats')" id="navStats">סטטיסטיקות</button>
       <button class="nav-btn" onclick="showView('archive')" id="navArchive">ארכיון</button>
-      <button class="nav-btn" onclick="showView('admin')" id="navAdmin" style="display:none">ניהול</button>
+      <button class="nav-btn" onclick="showView('admin')" id="navAdmin" style="display:none">⚙️ ניהול</button>
     </div>
-    <div style="display:flex;align-items:center;gap:10px">
-      <button class="sync-btn" onclick="syncData()" title="רענן נתונים">🔄 סנכרן</button>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button class="sync-btn" onclick="syncData()">🔄 סנכרן</button>
       <span id="headerUserName" style="font-size:13px;font-weight:600;color:var(--gray-700)"></span>
       <div id="headerAvatar" class="header-avatar"></div>
       <button class="btn btn-ghost btn-sm" onclick="logout()">יציאה</button>
@@ -309,6 +259,15 @@
       <button id="filterToday" class="filter-toggle" onclick="toggleFilter('today')">📅 להיום</button>
     </div>
     <div id="tasksList"></div>
+  </div>
+
+  <!-- UPCOMING -->
+  <div id="viewUpcoming" class="view">
+    <div class="section-header">
+      <div class="section-title">📆 משימות צפויות — 2 חודשים קרובים</div>
+      <select id="upcomingFilterClient" class="filter-select" onchange="renderUpcoming()"><option value="">כל הלקוחות</option></select>
+    </div>
+    <div id="upcomingList"></div>
   </div>
 
   <!-- STATS -->
@@ -338,24 +297,15 @@
       <button class="admin-tab" onclick="switchAdminTab('clients',this)">🏢 לקוחות</button>
     </div>
     <div id="adminTasks" class="admin-section active">
-      <div class="section-header">
-        <div class="section-title">משימות</div>
-        <button class="btn btn-primary" onclick="openTaskModal()">+ משימה חדשה</button>
-      </div>
+      <div class="section-header"><div class="section-title">משימות</div><button class="btn btn-primary" onclick="openTaskModal()">+ משימה חדשה</button></div>
       <div id="adminTasksList"></div>
     </div>
     <div id="adminUsers" class="admin-section">
-      <div class="section-header">
-        <div class="section-title">משתמשים</div>
-        <button class="btn btn-primary" onclick="openUserModal()">+ משתמש חדש</button>
-      </div>
+      <div class="section-header"><div class="section-title">משתמשים</div><button class="btn btn-primary" onclick="openUserModal()">+ משתמש חדש</button></div>
       <div id="adminUsersList"></div>
     </div>
     <div id="adminClients" class="admin-section">
-      <div class="section-header">
-        <div class="section-title">לקוחות</div>
-        <button class="btn btn-primary" onclick="openClientModal()">+ לקוח חדש</button>
-      </div>
+      <div class="section-header"><div class="section-title">לקוחות</div><button class="btn btn-primary" onclick="openClientModal()">+ לקוח חדש</button></div>
       <div id="adminClientsList"></div>
     </div>
   </div>
@@ -363,7 +313,7 @@
 
 <!-- LOADING -->
 <div id="loadingOverlay" class="loading-overlay" style="display:none">
-  <div class="spinner"></div> <span id="loadingMsg">טוען...</span>
+  <div class="spinner"></div><span id="loadingMsg">טוען...</span>
 </div>
 
 <!-- COMPLETE MODAL -->
@@ -371,10 +321,7 @@
   <div class="modal">
     <h3>✅ ביצוע משימה</h3>
     <div id="completeTaskInfo" style="background:var(--gray-50);border-radius:8px;padding:12px;margin-bottom:16px;font-size:14px;color:var(--gray-700)"></div>
-    <div class="form-group-m">
-      <label>הערה (אופציונלי)</label>
-      <textarea id="completeNote" placeholder="הוסף הערה על ביצוע המשימה..."></textarea>
-    </div>
+    <div class="fg"><label>הערה (אופציונלי)</label><textarea id="completeNote" placeholder="הוסף הערה על ביצוע המשימה..."></textarea></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('completeModal')">ביטול</button>
       <button class="btn btn-success" onclick="confirmComplete()">✅ אשר ביצוע</button>
@@ -387,14 +334,8 @@
   <div class="modal">
     <h3>📅 דחיית משימה</h3>
     <div id="postponeTaskInfo" style="background:var(--gray-50);border-radius:8px;padding:12px;margin-bottom:16px;font-size:14px;color:var(--gray-700)"></div>
-    <div class="form-group-m">
-      <label>תאריך חדש *</label>
-      <input type="date" id="postponeDate">
-    </div>
-    <div class="form-group-m">
-      <label>סיבת הדחיה * (חובה)</label>
-      <textarea id="postponeReason" placeholder="חובה להזין סיבה לדחיה..."></textarea>
-    </div>
+    <div class="fg"><label>תאריך חדש *</label><input type="date" id="postponeDate"></div>
+    <div class="fg"><label>סיבת הדחיה * (חובה)</label><textarea id="postponeReason" placeholder="חובה להזין סיבה לדחיה..."></textarea></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('postponeModal')">ביטול</button>
       <button class="btn btn-warning" onclick="confirmPostpone()">📅 דחה</button>
@@ -407,30 +348,14 @@
   <div class="modal">
     <h3 id="taskModalTitle">📋 משימה חדשה</h3>
     <div class="form-row">
-      <div class="form-group-m">
-        <label>שם המשימה *</label>
-        <input type="text" id="tName" placeholder="שם המשימה">
-      </div>
-      <div class="form-group-m">
-        <label>לקוח</label>
-        <select id="tClient"><option value="">ללא לקוח</option></select>
-      </div>
+      <div class="fg required"><label>שם המשימה</label><input type="text" id="tName" placeholder="שם המשימה"></div>
+      <div class="fg required"><label>לקוח</label><select id="tClient"><option value="">-- בחר לקוח --</option></select></div>
     </div>
-    <div class="form-group-m">
-      <label>פירוט המשימה</label>
-      <textarea id="tDesc" placeholder="תיאור מפורט..."></textarea>
-    </div>
-    <div class="form-group-m">
-      <label>💬 הערה פנימית (אופציונלי)</label>
-      <textarea id="tNote" placeholder="הערה פנימית — לא מוצגת ללקוח..."></textarea>
-    </div>
-    <div class="form-group-m">
-      <label>🔗 קישור (אופציונלי)</label>
-      <input type="url" id="tLink" placeholder="https://..." style="direction:ltr">
-    </div>
+    <div class="fg"><label>פירוט המשימה</label><textarea id="tDesc" placeholder="תיאור מפורט..."></textarea></div>
+    <div class="fg"><label>💬 הערה פנימית</label><textarea id="tNote" placeholder="הערה פנימית..."></textarea></div>
+    <div class="fg"><label>🔗 קישור</label><input type="url" id="tLink" placeholder="https://..." style="direction:ltr"></div>
     <div class="form-row">
-      <div class="form-group-m">
-        <label>חזרתיות *</label>
+      <div class="fg required"><label>חזרתיות</label>
         <select id="tRecur" onchange="updateRecurFields()">
           <option value="once">חד פעמי</option>
           <option value="weekly">שבועי</option>
@@ -438,43 +363,22 @@
           <option value="bimonthly">דו-חודשי (חודש אי-זוגי)</option>
         </select>
       </div>
-      <div class="form-group-m">
-        <label>SLA — ימים לביצוע (0=ללא)</label>
-        <input type="number" id="tSla" value="0" min="0">
-      </div>
+      <div class="fg"><label>מועד אחרון לביצוע (ימים, 0=ללא)</label><input type="number" id="tSla" value="0" min="0"></div>
     </div>
-    <div id="rfOnce" class="recur-field show">
-      <div class="form-group-m"><label>תאריך המשימה *</label><input type="date" id="tOnceDate"></div>
-    </div>
+    <div id="rfOnce" class="recur-field show"><div class="fg required"><label>תאריך המשימה</label><input type="date" id="tOnceDate"></div></div>
     <div id="rfWeekly" class="recur-field">
-      <div class="form-group-m">
-        <label>יום בשבוע *</label>
+      <div class="fg required"><label>יום בשבוע</label>
         <select id="tDayOfWeek">
           <option value="0">ראשון</option><option value="1">שני</option><option value="2">שלישי</option>
           <option value="3">רביעי</option><option value="4">חמישי</option><option value="5">שישי</option><option value="6">שבת</option>
         </select>
       </div>
     </div>
-    <div id="rfMonthly" class="recur-field">
-      <div class="form-group-m"><label>יום בחודש * (1–28)</label><input type="number" id="tDayOfMonth" min="1" max="28" placeholder="15"></div>
-    </div>
-    <div id="rfBimonthly" class="recur-field">
-      <div class="form-group-m"><label>יום בחודש (בחודשי אי-זוגי) * (1–28)</label><input type="number" id="tBiDayOfMonth" min="1" max="28" placeholder="1"></div>
-    </div>
-    <div class="form-group-m">
-      <label>תאריך התחלה (מתי להתחיל לייצר מופעים)</label>
-      <input type="date" id="tStartDate">
-    </div>
-    <div class="form-group-m">
-      <label>משויך למשתמשים</label>
-      <div id="tUsers" class="user-checkboxes"></div>
-    </div>
-    <div class="form-group-m">
-      <div class="checkbox-group">
-        <input type="checkbox" id="tCritical">
-        <label for="tCritical">🔴 משימה קריטית</label>
-      </div>
-    </div>
+    <div id="rfMonthly" class="recur-field"><div class="fg required"><label>יום בחודש (1–28)</label><input type="number" id="tDayOfMonth" min="1" max="28" placeholder="15"></div></div>
+    <div id="rfBimonthly" class="recur-field"><div class="fg required"><label>יום בחודש — בחודשי אי-זוגי (1–28)</label><input type="number" id="tBiDayOfMonth" min="1" max="28" placeholder="1"></div></div>
+    <div class="fg"><label>תאריך התחלה</label><input type="date" id="tStartDate"></div>
+    <div class="fg"><label>שיוך לעובדים</label><div id="tUsers" class="user-checkboxes"></div></div>
+    <div class="fg"><div class="checkbox-group"><input type="checkbox" id="tCritical"><label for="tCritical">🔴 משימה קריטית</label></div></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('taskModal')">ביטול</button>
       <button class="btn btn-primary" onclick="saveTask()">שמור</button>
@@ -484,11 +388,13 @@
 
 <!-- USER MODAL -->
 <div id="userModal" class="modal-overlay">
-  <div class="modal" style="max-width:380px">
+  <div class="modal" style="max-width:400px">
     <h3 id="userModalTitle">👤 משתמש חדש</h3>
-    <div class="form-group-m"><label>שם מלא *</label><input type="text" id="uName" placeholder="שם המשתמש"></div>
-    <div class="form-group-m"><label>תפקיד</label><input type="text" id="uRole" placeholder="תפקיד"></div>
-    <div class="form-group-m"><div class="checkbox-group"><input type="checkbox" id="uIsAdmin"><label for="uIsAdmin">הרשאות Admin</label></div></div>
+    <div class="fg required"><label>שם מלא</label><input type="text" id="uName" placeholder="שם המשתמש"></div>
+    <div class="fg required"><label>שם משתמש (לכניסה)</label><input type="text" id="uUsername" placeholder="username" style="direction:ltr"></div>
+    <div class="fg required"><label>סיסמה</label><input type="password" id="uPassword" placeholder="סיסמה"></div>
+    <div class="fg"><label>תפקיד</label><input type="text" id="uRole" placeholder="תפקיד"></div>
+    <div class="fg"><div class="checkbox-group"><input type="checkbox" id="uIsAdmin"><label for="uIsAdmin">הרשאות Admin</label></div></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('userModal')">ביטול</button>
       <button class="btn btn-primary" onclick="saveUser()">שמור</button>
@@ -500,8 +406,8 @@
 <div id="clientModal" class="modal-overlay">
   <div class="modal" style="max-width:380px">
     <h3 id="clientModalTitle">🏢 לקוח חדש</h3>
-    <div class="form-group-m"><label>שם הלקוח *</label><input type="text" id="cName" placeholder="שם הלקוח"></div>
-    <div class="form-group-m"><label>פרטים</label><input type="text" id="cInfo" placeholder="טלפון / כתובת / הערה"></div>
+    <div class="fg required"><label>שם הלקוח</label><input type="text" id="cName" placeholder="שם הלקוח"></div>
+    <div class="fg"><label>פרטים</label><input type="text" id="cInfo" placeholder="טלפון / כתובת / הערה"></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('clientModal')">ביטול</button>
       <button class="btn btn-primary" onclick="saveClient()">שמור</button>
@@ -515,240 +421,243 @@
 // ============================================================
 // API LAYER
 // ============================================================
-let apiUrl = '';
-let localMode = false;
-let localData = { users:{}, clients:{}, tasks:{}, instances:{} };
+let apiUrl='', localMode=false;
+let localData={users:{},clients:{},tasks:{},instances:{}};
 
-function loadLocalData() {
-  try { const d = JSON.parse(localStorage.getItem('crm_local')||'{}'); localData = Object.assign({users:{},clients:{},tasks:{},instances:{}}, d); } catch(e) {}
-}
-function saveLocalData() { localStorage.setItem('crm_local', JSON.stringify(localData)); }
+function loadLocalData(){ try{const d=JSON.parse(localStorage.getItem('crm_local')||'{}');localData=Object.assign({users:{},clients:{},tasks:{},instances:{}},d);}catch(e){} }
+function saveLocalData(){ localStorage.setItem('crm_local',JSON.stringify(localData)); }
 
-async function apiGet() {
-  if (localMode) return localData;
-  const res = await fetch(apiUrl + '?action=getAll');
-  const json = await res.json();
-  if (!json.ok) throw new Error(json.error);
+async function apiGet(){
+  if(localMode) return localData;
+  const res=await fetch(apiUrl+'?action=getAll');
+  const json=await res.json();
+  if(!json.ok) throw new Error(json.error);
   return json.data;
 }
-
-async function apiSet(collection, id, data) {
-  if (localMode) {
-    if (!localData[collection]) localData[collection] = {};
-    localData[collection][id] = data;
-    saveLocalData(); return id;
-  }
-  const res = await fetch(apiUrl, { method:'POST', body: JSON.stringify({ action:'set', collection, id, data }) });
-  const json = await res.json();
-  if (!json.ok) throw new Error(json.error);
-  return json.result;
+async function apiSet(col,id,data){
+  if(localMode){if(!localData[col])localData[col]={};localData[col][id]=data;saveLocalData();return id;}
+  const res=await fetch(apiUrl,{method:'POST',body:JSON.stringify({action:'set',collection:col,id,data})});
+  const json=await res.json(); if(!json.ok) throw new Error(json.error); return json.result;
 }
-
-async function apiPush(collection, data) {
-  if (localMode) {
-    const id = 'id_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
-    await apiSet(collection, id, { ...data, id });
-    return id;
-  }
-  const res = await fetch(apiUrl, { method:'POST', body: JSON.stringify({ action:'push', collection, data }) });
-  const json = await res.json();
-  if (!json.ok) throw new Error(json.error);
-  return json.result;
+async function apiPush(col,data){
+  if(localMode){const id='id_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);await apiSet(col,id,{...data,id});return id;}
+  const res=await fetch(apiUrl,{method:'POST',body:JSON.stringify({action:'push',collection:col,data})});
+  const json=await res.json(); if(!json.ok) throw new Error(json.error); return json.result;
 }
-
-async function apiRemove(collection, id) {
-  if (localMode) {
-    if (localData[collection]) { delete localData[collection][id]; saveLocalData(); }
-    return;
-  }
-  const res = await fetch(apiUrl, { method:'POST', body: JSON.stringify({ action:'remove', collection, id }) });
-  const json = await res.json();
-  if (!json.ok) throw new Error(json.error);
+async function apiRemove(col,id){
+  if(localMode){if(localData[col])delete localData[col][id];saveLocalData();return;}
+  const res=await fetch(apiUrl,{method:'POST',body:JSON.stringify({action:'remove',collection:col,id})});
+  const json=await res.json(); if(!json.ok) throw new Error(json.error);
 }
 
 // ============================================================
 // STATE
 // ============================================================
-let currentUser = null;
-let allTasks = {}, allInstances = {}, allUsers = {}, allClients = {};
-let filters = { critical:false, overdue:false, today:false };
-let pendingComplete = null, pendingPostpone = null;
-let editingTaskId = null, editingUserId = null, editingClientId = null;
+let currentUser=null;
+let allTasks={}, allInstances={}, allUsers={}, allClients={};
+let filters={critical:false,overdue:false,today:false};
+let pendingComplete=null, pendingPostpone=null;
+let editingTaskId=null, editingUserId=null, editingClientId=null;
 
 // ============================================================
 // INIT
 // ============================================================
-window.addEventListener('DOMContentLoaded', async () => {
-  const lm = localStorage.getItem('crm_local_mode');
-  const url = localStorage.getItem('crm_api_url');
-  if (lm === '1') { localMode = true; loadLocalData(); await showLoginScreen(); }
-  else if (url) { apiUrl = url; await showLoginScreen(); }
-  else { document.getElementById('setupScreen').style.display = 'flex'; }
+window.addEventListener('DOMContentLoaded',async()=>{
+  const lm=localStorage.getItem('crm_local_mode');
+  const url=localStorage.getItem('crm_api_url');
+  if(lm==='1'){localMode=true;loadLocalData();await showLoginScreen();}
+  else if(url){apiUrl=url;await showLoginScreen();}
+  else{document.getElementById('setupScreen').style.display='flex';}
 });
 
-window.saveConfig = async function() {
-  const url = document.getElementById('cfg_url').value.trim();
-  if (!url.startsWith('https://script.google.com')) { showToast('URL לא תקין', 'error'); return; }
-  apiUrl = url;
-  localStorage.setItem('crm_api_url', url);
-  await showLoginScreen();
+window.saveConfig=async function(){
+  const url=document.getElementById('cfg_url').value.trim();
+  if(!url.startsWith('https://script.google.com')){showToast('URL לא תקין','error');return;}
+  apiUrl=url; localStorage.setItem('crm_api_url',url); await showLoginScreen();
+};
+window.useLocalMode=async function(){
+  localStorage.setItem('crm_local_mode','1'); localMode=true; loadLocalData(); await showLoginScreen();
 };
 
-window.useLocalMode = async function() {
-  localStorage.setItem('crm_local_mode', '1');
-  localMode = true;
-  loadLocalData();
-  await showLoginScreen();
-};
-
-async function showLoginScreen() {
+async function showLoginScreen(){
   showLoading('טוען נתונים...');
-  try {
-    document.getElementById('setupScreen').style.display = 'none';
+  try{
+    document.getElementById('setupScreen').style.display='none';
     await loadAll();
-    renderLoginScreen();
-    document.getElementById('loginScreen').style.display = 'flex';
-  } catch(e) {
-    showToast('שגיאה בטעינה: ' + e.message, 'error');
-    document.getElementById('setupScreen').style.display = 'flex';
-    localStorage.removeItem('crm_api_url');
-  }
+    document.getElementById('loginScreen').style.display='flex';
+  }catch(e){showToast('שגיאה: '+e.message,'error');document.getElementById('setupScreen').style.display='flex';localStorage.removeItem('crm_api_url');}
   hideLoading();
 }
 
-async function loadAll() {
-  const data = await apiGet();
-  allUsers = data.users || {};
-  allClients = data.clients || {};
-  allTasks = data.tasks || {};
-  allInstances = data.instances || {};
+async function loadAll(){
+  const data=await apiGet();
+  allUsers=data.users||{}; allClients=data.clients||{}; allTasks=data.tasks||{}; allInstances=data.instances||{};
 }
 
-window.syncData = async function() {
+window.syncData=async function(){
   showLoading('מסנכרן...');
-  try { await loadAll(); generateInstances(); renderCurrentView(); showToast('סונכרן ✅', 'success'); }
-  catch(e) { showToast('שגיאה: ' + e.message, 'error'); }
+  try{await loadAll();generateInstances();renderCurrentView();showToast('סונכרן ✅','success');}
+  catch(e){showToast('שגיאה: '+e.message,'error');}
   hideLoading();
 };
 
-function renderLoginScreen() {
-  const grid = document.getElementById('userGrid');
-  const users = Object.entries(allUsers);
-  if (!users.length) {
-    grid.innerHTML = '<div style="grid-column:1/-1;color:var(--gray-500);font-size:14px;text-align:center">אין משתמשים<br>לחץ "ניהול" להוסיף</div>';
+// ============================================================
+// LOGIN WITH USERNAME + PASSWORD
+// ============================================================
+window.doLogin=function(){
+  const username=document.getElementById('loginUsername').value.trim().toLowerCase();
+  const password=document.getElementById('loginPassword').value;
+  const err=document.getElementById('loginError');
+  err.style.display='none';
+
+  const found=Object.entries(allUsers).find(([,u])=>
+    (u.username||'').toLowerCase()===username && u.password===password
+  );
+  if(!found){err.style.display='block';return;}
+  loginAs(found[0]);
+};
+
+window.showFirstAdmin=async function(){
+  // If no users exist, create a default admin
+  const users=Object.entries(allUsers);
+  if(users.length===0){
+    showLoading('יוצר מנהל ראשון...');
+    const id=await apiPush('users',{name:'מנהל',username:'admin',password:'admin123',role:'Admin',isAdmin:true});
+    allUsers[id]={name:'מנהל',username:'admin',password:'admin123',role:'Admin',isAdmin:true};
+    hideLoading();
+    showToast('נוצר מנהל ראשון: שם משתמש admin | סיסמה admin123','success');
     return;
   }
-  grid.innerHTML = users.map(([id,u]) => `
-    <button class="user-btn" onclick="loginAs('${id}')">
-      <div class="user-avatar">${u.name.charAt(0)}</div>
-      ${u.name}
-      ${u.role ? `<span style="font-size:11px;font-weight:400;color:var(--gray-400)">${u.role}</span>` : ''}
-    </button>`).join('');
-}
+  // Find any admin
+  const admin=users.find(([,u])=>u.isAdmin);
+  if(admin) showToast(`מנהל קיים: ${admin[1].username||admin[1].name}`);
+};
 
-window.loginAs = function(userId) {
-  currentUser = { id: userId, ...allUsers[userId] };
-  document.getElementById('loginScreen').style.display = 'none';
-  document.getElementById('app').style.display = 'block';
-  document.getElementById('headerUserName').textContent = currentUser.name;
-  document.getElementById('headerAvatar').textContent = currentUser.name.charAt(0);
-  document.getElementById('navAdmin').style.display = currentUser.isAdmin ? 'block' : 'none';
+function loginAs(userId){
+  currentUser={id:userId,...allUsers[userId]};
+  document.getElementById('loginScreen').style.display='none';
+  document.getElementById('app').style.display='block';
+  document.getElementById('headerUserName').textContent=currentUser.name;
+  document.getElementById('headerAvatar').textContent=currentUser.name.charAt(0);
+  document.getElementById('navAdmin').style.display=currentUser.isAdmin?'block':'none';
+  document.getElementById('loginUsername').value='';
+  document.getElementById('loginPassword').value='';
   generateInstances();
   populateFilters();
   renderTasks();
-};
+}
 
-window.showAdminLogin = async function() {
-  const admin = Object.entries(allUsers).find(([,u]) => u.isAdmin);
-  if (admin) { loginAs(admin[0]); showView('admin'); }
-  else {
-    showLoading('יוצר מנהל...');
-    const id = await apiPush('users', { name:'מנהל', role:'Admin', isAdmin:true });
-    allUsers[id] = { name:'מנהל', role:'Admin', isAdmin:true };
-    hideLoading();
-    loginAs(id);
-    showView('admin');
-  }
-};
-
-window.logout = function() {
-  currentUser = null;
-  document.getElementById('app').style.display = 'none';
-  renderLoginScreen();
-  document.getElementById('loginScreen').style.display = 'flex';
+window.logout=function(){
+  currentUser=null;
+  document.getElementById('app').style.display='none';
+  document.getElementById('loginScreen').style.display='flex';
 };
 
 // ============================================================
 // DATE HELPERS
 // ============================================================
-function todayStr() { return new Date().toISOString().slice(0,10); }
-function dateStr(d) { return d.toISOString().slice(0,10); }
-function parseDate(s) { return new Date(s + 'T00:00:00'); }
-function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate()+n); return r; }
-function formatDate(s) {
-  if (!s) return '';
-  return parseDate(s).toLocaleDateString('he-IL', { day:'2-digit', month:'2-digit', year:'numeric' });
-}
+function todayStr(){return new Date().toISOString().slice(0,10);}
+function dateStr(d){return d.toISOString().slice(0,10);}
+function parseDate(s){return new Date(s+'T00:00:00');}
+function addDays(d,n){const r=new Date(d);r.setDate(r.getDate()+n);return r;}
+function formatDate(s){if(!s)return '';return parseDate(s).toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'numeric'});}
+function formatDateShort(s){if(!s)return '';return parseDate(s).toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit'});}
 
 // ============================================================
 // INSTANCE GENERATION
 // ============================================================
-function generateInstances() {
-  const today = new Date(); today.setHours(0,0,0,0);
-  const toCreate = [];
-  Object.entries(allTasks).forEach(([tid, task]) => {
-    if (!task) return;
-    const startStr = task.startDate || (task.recur === 'once' ? task.onceDate : todayStr());
-    if (!startStr) return;
-    const start = parseDate(startStr);
-    const periods = getPeriods(task, start, today);
-    periods.forEach(({ key, dueDate }) => {
-      const instKey = `${tid}__${key}`;
-      if (!allInstances[instKey]) {
-        const inst = { key: instKey, taskId: tid, periodKey: key, dueDate, status: 'pending' };
-        allInstances[instKey] = inst;
-        toCreate.push({ instKey, inst });
+function generateInstances(){
+  const today=new Date();today.setHours(0,0,0,0);
+  const toCreate=[];
+  Object.entries(allTasks).forEach(([tid,task])=>{
+    if(!task)return;
+    const startStr=task.startDate||(task.recur==='once'?task.onceDate:todayStr());
+    if(!startStr)return;
+    const start=parseDate(startStr);
+    getPeriods(task,start,today).forEach(({key,dueDate})=>{
+      const instKey=`${tid}__${key}`;
+      if(!allInstances[instKey]){
+        const inst={key:instKey,taskId:tid,periodKey:key,dueDate,status:'pending'};
+        allInstances[instKey]=inst;
+        toCreate.push({instKey,inst});
       }
     });
   });
-  // Save new instances in background
-  toCreate.forEach(({ instKey, inst }) => {
-    apiSet('instances', instKey, inst).catch(()=>{});
-  });
+  toCreate.forEach(({instKey,inst})=>apiSet('instances',instKey,inst).catch(()=>{}));
 }
 
-function getPeriods(task, start, today) {
-  const periods = [];
-  if (task.recur === 'once') {
-    if (!task.onceDate) return [];
-    const d = parseDate(task.onceDate);
-    if (d <= today) periods.push({ key: task.onceDate, dueDate: task.onceDate });
-  } else if (task.recur === 'weekly') {
-    let d = new Date(start);
-    const dow = parseInt(task.dayOfWeek) || 0;
-    while (d.getDay() !== dow) d = addDays(d, 1);
-    while (d <= today) { periods.push({ key: dateStr(d), dueDate: dateStr(d) }); d = addDays(d, 7); }
-  } else if (task.recur === 'monthly') {
-    const day = parseInt(task.dayOfMonth) || 1;
-    let d = new Date(start.getFullYear(), start.getMonth(), day);
-    if (d < start) d = new Date(d.getFullYear(), d.getMonth()+1, day);
-    while (d <= today) {
-      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-      periods.push({ key, dueDate: dateStr(d) });
-      d = new Date(d.getFullYear(), d.getMonth()+1, day);
+function getPeriods(task,start,upTo){
+  const periods=[];
+  if(task.recur==='once'){
+    if(!task.onceDate)return[];
+    const d=parseDate(task.onceDate);
+    if(d<=upTo)periods.push({key:task.onceDate,dueDate:task.onceDate});
+  }else if(task.recur==='weekly'){
+    let d=new Date(start);
+    const dow=parseInt(task.dayOfWeek)||0;
+    while(d.getDay()!==dow)d=addDays(d,1);
+    while(d<=upTo){periods.push({key:dateStr(d),dueDate:dateStr(d)});d=addDays(d,7);}
+  }else if(task.recur==='monthly'){
+    const day=parseInt(task.dayOfMonth)||1;
+    let d=new Date(start.getFullYear(),start.getMonth(),day);
+    if(d<start)d=new Date(d.getFullYear(),d.getMonth()+1,day);
+    while(d<=upTo){
+      const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      periods.push({key,dueDate:dateStr(d)});
+      d=new Date(d.getFullYear(),d.getMonth()+1,day);
     }
-  } else if (task.recur === 'bimonthly') {
-    const day = parseInt(task.biDayOfMonth) || 1;
-    let yr = start.getFullYear(), mo = start.getMonth();
-    // Find first odd month (1-indexed) >= start
-    for (let i = 0; i < 120; i++) {
-      const d = new Date(yr, mo, day);
-      if (d > today) break;
-      if ((mo + 1) % 2 === 1 && d >= start) { // odd month (Jan=1,Mar=3...)
-        const key = `${yr}-${String(mo+1).padStart(2,'0')}`;
-        periods.push({ key, dueDate: dateStr(d) });
+  }else if(task.recur==='bimonthly'){
+    const day=parseInt(task.biDayOfMonth)||1;
+    let yr=start.getFullYear(),mo=start.getMonth();
+    for(let i=0;i<120;i++){
+      const d=new Date(yr,mo,day);
+      if(d>upTo)break;
+      if((mo+1)%2===1&&d>=start){
+        const key=`${yr}-${String(mo+1).padStart(2,'0')}`;
+        periods.push({key,dueDate:dateStr(d)});
       }
-      mo++; if (mo > 11) { mo = 0; yr++; }
+      mo++;if(mo>11){mo=0;yr++;}
+    }
+  }
+  return periods;
+}
+
+// Get FUTURE periods for upcoming view
+function getFuturePeriods(task,fromDate,toDate){
+  const periods=[];
+  const start=task.startDate?parseDate(task.startDate):fromDate;
+  if(task.recur==='once'){
+    if(!task.onceDate)return[];
+    const d=parseDate(task.onceDate);
+    if(d>fromDate&&d<=toDate)periods.push({key:task.onceDate,dueDate:task.onceDate});
+  }else if(task.recur==='weekly'){
+    let d=new Date(fromDate);
+    const dow=parseInt(task.dayOfWeek)||0;
+    while(d.getDay()!==dow)d=addDays(d,1);
+    while(d<=toDate){
+      if(d>fromDate)periods.push({key:dateStr(d),dueDate:dateStr(d)});
+      d=addDays(d,7);
+    }
+  }else if(task.recur==='monthly'){
+    const day=parseInt(task.dayOfMonth)||1;
+    let d=new Date(fromDate.getFullYear(),fromDate.getMonth(),day);
+    if(d<=fromDate)d=new Date(d.getFullYear(),d.getMonth()+1,day);
+    while(d<=toDate){
+      const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      periods.push({key,dueDate:dateStr(d)});
+      d=new Date(d.getFullYear(),d.getMonth()+1,day);
+    }
+  }else if(task.recur==='bimonthly'){
+    const day=parseInt(task.biDayOfMonth)||1;
+    let yr=fromDate.getFullYear(),mo=fromDate.getMonth();
+    for(let i=0;i<6;i++){
+      const d=new Date(yr,mo,day);
+      if(d>toDate)break;
+      if((mo+1)%2===1&&d>fromDate){
+        const key=`${yr}-${String(mo+1).padStart(2,'0')}`;
+        periods.push({key,dueDate:dateStr(d)});
+      }
+      mo++;if(mo>11){mo=0;yr++;}
     }
   }
   return periods;
@@ -757,113 +666,111 @@ function getPeriods(task, start, today) {
 // ============================================================
 // TASK RENDERING
 // ============================================================
-function getPendingInstances() {
-  const today = todayStr();
+function getPendingInstances(){
+  const today=todayStr();
   return Object.entries(allInstances)
-    .filter(([,inst]) => {
-      const task = allTasks[inst.taskId];
-      if (!task) return false;
-      if (inst.status === 'completed') return false;
-      if (inst.status === 'postponed' && inst.postponedTo > today) return false;
-      if (task.assignedUsers && !task.assignedUsers[currentUser.id]) return false;
+    .filter(([,inst])=>{
+      const task=allTasks[inst.taskId];
+      if(!task)return false;
+      if(inst.status==='completed')return false;
+      if(inst.status==='postponed'&&inst.postponedTo>today)return false;
+      if(task.assignedUsers&&!task.assignedUsers[currentUser.id])return false;
       return true;
     })
-    .map(([key,inst]) => ({ key, inst, task: allTasks[inst.taskId] }));
+    .map(([key,inst])=>({key,inst,task:allTasks[inst.taskId]}));
 }
 
-function getDaysOverSla(inst, task) {
-  if (!task.slaDays || task.slaDays <= 0) return null;
-  const due = parseDate(inst.dueDate);
-  const today = new Date(); today.setHours(0,0,0,0);
-  return Math.floor((today - due) / 86400000);
+function getDaysOverDeadline(inst,task){
+  if(!task.slaDays||task.slaDays<=0)return null;
+  const due=parseDate(inst.dueDate);
+  const today=new Date();today.setHours(0,0,0,0);
+  return Math.floor((today-due)/86400000);
 }
 
-function isCriticalOverdue(inst, task) {
-  return task.critical && inst.dueDate < todayStr();
-}
+function isCriticalOverdue(inst,task){return task.critical&&inst.dueDate<todayStr();}
 
-window.renderTasks = function() {
+window.renderTasks=function(){
   generateInstances();
-  let items = getPendingInstances();
-  const clientFilter = document.getElementById('filterClient')?.value;
-  const userFilter = document.getElementById('filterUser')?.value;
-  if (clientFilter) items = items.filter(({task}) => task.clientId === clientFilter);
-  if (userFilter) items = items.filter(({task}) => task.assignedUsers && task.assignedUsers[userFilter]);
-  if (filters.critical) items = items.filter(({task}) => task.critical);
-  if (filters.overdue) items = items.filter(({inst,task}) => (getDaysOverSla(inst,task)||0) > 0 || isCriticalOverdue(inst,task));
-  if (filters.today) items = items.filter(({inst}) => inst.dueDate === todayStr());
+  let items=getPendingInstances();
+  const cf=document.getElementById('filterClient')?.value;
+  const uf=document.getElementById('filterUser')?.value;
+  if(cf)items=items.filter(({task})=>task.clientId===cf);
+  if(uf)items=items.filter(({task})=>task.assignedUsers&&task.assignedUsers[uf]);
+  if(filters.critical)items=items.filter(({task})=>task.critical);
+  if(filters.overdue)items=items.filter(({inst,task})=>(getDaysOverDeadline(inst,task)||0)>0||isCriticalOverdue(inst,task));
+  if(filters.today)items=items.filter(({inst})=>inst.dueDate===todayStr());
 
-  items.sort((a,b) => {
-    const aCO = isCriticalOverdue(a.inst, a.task) ? 0 : 1;
-    const bCO = isCriticalOverdue(b.inst, b.task) ? 0 : 1;
-    if (aCO !== bCO) return aCO - bCO;
-    if (a.task.critical !== b.task.critical) return b.task.critical ? 1 : -1;
+  items.sort((a,b)=>{
+    const aCO=isCriticalOverdue(a.inst,a.task)?0:1;
+    const bCO=isCriticalOverdue(b.inst,b.task)?0:1;
+    if(aCO!==bCO)return aCO-bCO;
+    if(a.task.critical!==b.task.critical)return b.task.critical?1:-1;
     return a.inst.dueDate.localeCompare(b.inst.dueDate);
   });
 
-  const total = getPendingInstances().length;
-  const badge = document.getElementById('pendingBadge');
-  badge.textContent = total; badge.style.display = total > 0 ? 'inline-block' : 'none';
+  const total=getPendingInstances().length;
+  const badge=document.getElementById('pendingBadge');
+  badge.textContent=total;badge.style.display=total>0?'inline-block':'none';
 
-  const today = todayStr();
-  const overdue = items.filter(i => i.inst.dueDate < today);
-  const todayItems = items.filter(i => i.inst.dueDate === today);
-  const upcoming = items.filter(i => i.inst.dueDate > today);
+  const today=todayStr();
+  const overdue=items.filter(i=>i.inst.dueDate<today);
+  const todayItems=items.filter(i=>i.inst.dueDate===today);
+  const upcomingItems=items.filter(i=>i.inst.dueDate>today);
 
-  let html = '';
-  if (overdue.length) { html += `<div class="period-header">⚠️ באיחור (${overdue.length})</div>`; html += overdue.map(renderCard).join(''); }
-  if (todayItems.length) { html += `<div class="period-header">📅 להיום (${todayItems.length})</div>`; html += todayItems.map(renderCard).join(''); }
-  if (upcoming.length) { html += `<div class="period-header">🔮 עתידי (${upcoming.length})</div>`; html += upcoming.map(renderCard).join(''); }
-
-  if (!html) html = `<div class="empty-state"><div class="icon">🎉</div><h3>אין משימות ממתינות</h3><p>כל המשימות בוצעו!</p></div>`;
-  document.getElementById('tasksList').innerHTML = html;
+  let html='';
+  if(overdue.length){html+=`<div class="period-header">⚠️ באיחור (${overdue.length})</div>`;html+=overdue.map(renderCard).join('');}
+  if(todayItems.length){html+=`<div class="period-header">📅 להיום (${todayItems.length})</div>`;html+=todayItems.map(renderCard).join('');}
+  if(upcomingItems.length){html+=`<div class="period-header">🔜 ממתינות (${upcomingItems.length})</div>`;html+=upcomingItems.map(renderCard).join('');}
+  if(!html)html=`<div class="empty-state"><div class="icon">🎉</div><h3>אין משימות ממתינות!</h3></div>`;
+  document.getElementById('tasksList').innerHTML=html;
 };
 
-function renderCard({key,inst,task}) {
-  const today = new Date(); today.setHours(0,0,0,0);
-  const dueD = parseDate(inst.dueDate);
-  const daysToGo = Math.floor((dueD - today) / 86400000);
-  const daysOverSla = getDaysOverSla(inst, task);
-  const criticalOver = isCriticalOverdue(inst, task);
-  const client = task.clientId ? allClients[task.clientId] : null;
-  const recurLabel = {weekly:'שבועי',monthly:'חודשי',bimonthly:'דו-חודשי',once:'חד פעמי'}[task.recur]||'';
+function renderCard({key,inst,task}){
+  const today=new Date();today.setHours(0,0,0,0);
+  const dueD=parseDate(inst.dueDate);
+  const daysToGo=Math.floor((dueD-today)/86400000);
+  const daysOver=getDaysOverDeadline(inst,task);
+  const criticalOver=isCriticalOverdue(inst,task);
+  const client=task.clientId?allClients[task.clientId]:null;
 
-  let cardClass = criticalOver ? 'task-card critical-overdue' : (daysOverSla||0) > 0 ? 'task-card overdue-warning' : task.critical ? 'task-card critical' : 'task-card normal';
+  let cardClass=criticalOver?'task-card is-critical-overdue':
+    (daysOver||0)>0?'task-card is-overdue':
+    task.critical?'task-card is-critical':'task-card is-normal';
 
-  let dueBadge = daysToGo < 0
-    ? `<span class="tag tag-late">איחור ${-daysToGo} ימים</span>`
-    : daysToGo === 0 ? `<span class="tag tag-due">להיום</span>`
-    : `<span class="tag tag-due">בעוד ${daysToGo} ימים</span>`;
+  // Date pill
+  let datePill=daysToGo<0
+    ?`<span class="tc-pill pill-danger">⚠️ איחור של ${-daysToGo} ימים</span>`
+    :daysToGo===0?`<span class="tc-pill pill-warn">📅 להיום</span>`
+    :`<span class="tc-pill pill-date">📅 ${formatDate(inst.dueDate)}</span>`;
 
-  let slaBadge = '';
-  if (task.slaDays > 0) {
-    slaBadge = (daysOverSla||0) > 0
-      ? `<span class="tag tag-late">⚠️ חרג SLA ב-${daysOverSla} ימים</span>`
-      : `<span class="tag tag-due">SLA: ${task.slaDays} ימים</span>`;
+  // Deadline pill (replaces SLA)
+  let deadlinePill='';
+  if(task.slaDays>0){
+    deadlinePill=(daysOver||0)>0
+      ?`<span class="tc-pill pill-danger">⏰ חרג ממועד הביצוע ב-${daysOver} ימים</span>`
+      :`<span class="tc-pill pill-deadline">⏰ יש לבצע תוך ${task.slaDays} ימים</span>`;
   }
 
-  const assignedNames = task.assignedUsers ? Object.keys(task.assignedUsers).map(id=>allUsers[id]?.name).filter(Boolean).join(', ') : '';
-  const postponeInfo = inst.status === 'postponed' ? `<div style="margin-top:8px;font-size:12px;color:var(--gray-400)">↩️ נדחה ל-${formatDate(inst.postponedTo)} | ${inst.postponeReason}</div>` : '';
+  const postponeInfo=inst.status==='postponed'?`<div class="postponed-info">↩️ נדחה ל-${formatDate(inst.postponedTo)} | ${inst.postponeReason}</div>`:'';
+  const assignedNames=task.assignedUsers?Object.keys(task.assignedUsers).map(id=>allUsers[id]?.name).filter(Boolean).join(', '):'';
 
   return `<div class="${cardClass}">
-    <div class="task-title">
-      ${criticalOver ? '<span class="critical-badge">🔴 קריטי - באיחור!</span>' : task.critical ? '<span class="critical-badge">🔴 קריטי</span>' : ''}
-      ${task.name}
+    <div class="tc-top">
+      <div style="flex:1">
+        ${criticalOver?'<div class="critical-label">🔴 קריטי — באיחור!</div>':task.critical?'<div class="critical-label">🔴 קריטי</div>':''}
+        <div class="tc-name">${task.name}</div>
+        ${client?`<div class="tc-client">🏢 ${client.name}</div>`:''}
+      </div>
     </div>
-    <div class="task-meta">
-      ${client ? `<span class="tag tag-client">🏢 ${client.name}</span>` : ''}
-      <span class="tag tag-recur">${recurLabel}</span>
-      <span class="tag tag-due">📅 ${formatDate(inst.dueDate)}</span>
-      ${dueBadge}${slaBadge}
-    </div>
-    ${task.description ? `<div class="task-desc">${task.description}</div>` : ''}
-    ${task.note ? `<div style="margin-top:8px;font-size:13px;color:var(--gray-500);background:var(--gray-50);border-radius:6px;padding:8px 12px;">💬 ${task.note}</div>` : ''}
-    ${task.link ? `<div style="margin-top:8px;"><a href="${task.link}" target="_blank" style="font-size:13px;color:var(--primary);text-decoration:none;display:inline-flex;align-items:center;gap:4px;">🔗 פתח קישור</a></div>` : ''}
+    <div class="tc-row">${datePill}${deadlinePill}</div>
+    ${task.description?`<div class="tc-desc">${task.description}</div>`:''}
+    ${task.note?`<div class="tc-note">💬 ${task.note}</div>`:''}
+    ${task.link?`<a href="${task.link}" target="_blank" class="tc-link">🔗 פתח קישור</a>`:''}
     ${postponeInfo}
-    ${assignedNames ? `<div class="task-assigned">👥 ${assignedNames}</div>` : ''}
-    <div class="task-actions">
-      <button class="btn btn-success" onclick="openComplete('${key}')">✅ בצע</button>
-      <button class="btn btn-warning" onclick="openPostpone('${key}')">📅 דחה</button>
+    ${assignedNames?`<div class="tc-assigned">👥 ${assignedNames}</div>`:''}
+    <div class="tc-actions">
+      <button class="btn btn-success btn-sm" onclick="openComplete('${key}')">✅ בצעתי</button>
+      <button class="btn btn-warning btn-sm" onclick="openPostpone('${key}')">📅 דחה</button>
     </div>
   </div>`;
 }
@@ -871,104 +778,170 @@ function renderCard({key,inst,task}) {
 // ============================================================
 // COMPLETE / POSTPONE
 // ============================================================
-window.openComplete = function(key) {
-  pendingComplete = key;
-  const inst = allInstances[key], task = allTasks[inst.taskId];
-  document.getElementById('completeTaskInfo').innerHTML = `<strong>${task.name}</strong>${task.description ? `<br><span style="color:var(--gray-500)">${task.description}</span>` : ''}`;
-  document.getElementById('completeNote').value = '';
+window.openComplete=function(key){
+  pendingComplete=key;
+  const inst=allInstances[key],task=allTasks[inst.taskId];
+  document.getElementById('completeTaskInfo').innerHTML=`<strong>${task.name}</strong>${task.description?`<br><span style="color:var(--gray-500);font-size:13px">${task.description}</span>`:''}`;
+  document.getElementById('completeNote').value='';
   document.getElementById('completeModal').classList.add('open');
 };
 
-window.confirmComplete = async function() {
-  if (!pendingComplete) return;
+window.confirmComplete=async function(){
+  if(!pendingComplete)return;
   showLoading('שומר...');
-  try {
-    const note = document.getElementById('completeNote').value.trim();
-    const update = { ...allInstances[pendingComplete], status:'completed', completedBy:currentUser.id, completedByName:currentUser.name, completedAt:new Date().toISOString(), completionNote:note };
-    await apiSet('instances', pendingComplete, update);
-    allInstances[pendingComplete] = update;
+  try{
+    const note=document.getElementById('completeNote').value.trim();
+    const update={...allInstances[pendingComplete],status:'completed',completedBy:currentUser.id,completedByName:currentUser.name,completedAt:new Date().toISOString(),completionNote:note};
+    await apiSet('instances',pendingComplete,update);
+    allInstances[pendingComplete]=update;
     closeModal('completeModal');
-    showToast('המשימה בוצעה! ✅', 'success');
+    showToast(`✅ בוצע על ידי ${currentUser.name}`,'success');
     renderTasks();
-  } catch(e) { showToast('שגיאה: '+e.message,'error'); }
+  }catch(e){showToast('שגיאה: '+e.message,'error');}
   hideLoading();
 };
 
-window.openPostpone = function(key) {
-  pendingPostpone = key;
-  const task = allTasks[allInstances[key].taskId];
-  document.getElementById('postponeTaskInfo').innerHTML = `<strong>${task.name}</strong>`;
-  document.getElementById('postponeDate').value = '';
-  document.getElementById('postponeReason').value = '';
+window.openPostpone=function(key){
+  pendingPostpone=key;
+  const task=allTasks[allInstances[key].taskId];
+  document.getElementById('postponeTaskInfo').innerHTML=`<strong>${task.name}</strong>`;
+  document.getElementById('postponeDate').value='';
+  document.getElementById('postponeReason').value='';
   document.getElementById('postponeModal').classList.add('open');
 };
 
-window.confirmPostpone = async function() {
-  if (!pendingPostpone) return;
-  const date = document.getElementById('postponeDate').value;
-  const reason = document.getElementById('postponeReason').value.trim();
-  if (!date) { showToast('בחר תאריך','error'); return; }
-  if (!reason) { showToast('חובה להזין סיבת דחיה','error'); return; }
-  if (date <= todayStr()) { showToast('בחר תאריך עתידי','error'); return; }
+window.confirmPostpone=async function(){
+  if(!pendingPostpone)return;
+  const date=document.getElementById('postponeDate').value;
+  const reason=document.getElementById('postponeReason').value.trim();
+  if(!date){showToast('בחר תאריך','error');return;}
+  if(!reason){showToast('חובה להזין סיבת דחיה','error');return;}
+  if(date<=todayStr()){showToast('בחר תאריך עתידי','error');return;}
   showLoading('שומר...');
-  try {
-    const update = { ...allInstances[pendingPostpone], status:'postponed', postponedTo:date, postponeReason:reason, postponedBy:currentUser.id, postponedAt:new Date().toISOString() };
-    await apiSet('instances', pendingPostpone, update);
-    allInstances[pendingPostpone] = update;
-    closeModal('postponeModal');
-    showToast('המשימה נדחתה 📅');
-    renderTasks();
-  } catch(e) { showToast('שגיאה: '+e.message,'error'); }
+  try{
+    const update={...allInstances[pendingPostpone],status:'postponed',postponedTo:date,postponeReason:reason,postponedBy:currentUser.id,postponedAt:new Date().toISOString()};
+    await apiSet('instances',pendingPostpone,update);
+    allInstances[pendingPostpone]=update;
+    closeModal('postponeModal');showToast('המשימה נדחתה 📅');renderTasks();
+  }catch(e){showToast('שגיאה: '+e.message,'error');}
   hideLoading();
+};
+
+// ============================================================
+// UPCOMING — 2 months ahead
+// ============================================================
+window.renderUpcoming=function(){
+  const today=new Date();today.setHours(0,0,0,0);
+  const twoMonths=new Date(today);twoMonths.setMonth(twoMonths.getMonth()+2);
+
+  const cf=document.getElementById('upcomingFilterClient')?.value;
+  const items=[];
+
+  Object.entries(allTasks).forEach(([tid,task])=>{
+    if(!task)return;
+    if(cf&&task.clientId!==cf)return;
+    if(task.assignedUsers&&!task.assignedUsers[currentUser.id])return;
+    const client=task.clientId?allClients[task.clientId]:null;
+    const futurePeriods=getFuturePeriods(task,today,twoMonths);
+    futurePeriods.forEach(({key,dueDate})=>{
+      const instKey=`${tid}__${key}`;
+      const existing=allInstances[instKey];
+      if(existing&&existing.status==='completed')return;
+      items.push({task,client,dueDate,instKey});
+    });
+  });
+
+  items.sort((a,b)=>a.dueDate.localeCompare(b.dueDate));
+
+  if(!items.length){
+    document.getElementById('upcomingList').innerHTML='<div class="empty-state"><div class="icon">📆</div><h3>אין משימות צפויות בחודשיים הקרובים</h3></div>';
+    return;
+  }
+
+  // Group by month
+  const byMonth={};
+  items.forEach(item=>{
+    const d=parseDate(item.dueDate);
+    const mk=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const ml=d.toLocaleDateString('he-IL',{month:'long',year:'numeric'});
+    if(!byMonth[mk])byMonth[mk]={label:ml,items:[]};
+    byMonth[mk].items.push(item);
+  });
+
+  let html='';
+  Object.values(byMonth).forEach(({label,items:mi})=>{
+    html+=`<div class="period-header">📆 ${label}</div>`;
+    html+=mi.map(({task,client,dueDate})=>`
+      <div class="upcoming-card">
+        <div class="upcoming-info">
+          <div class="upcoming-name">${task.critical?'🔴 ':''}${task.name}</div>
+          <div class="upcoming-meta">${client?`🏢 ${client.name} · `:''}${{weekly:'שבועי',monthly:'חודשי',bimonthly:'דו-חודשי',once:'חד פעמי'}[task.recur]||''}</div>
+        </div>
+        <div class="upcoming-date">${formatDate(dueDate)}</div>
+      </div>`).join('');
+  });
+
+  document.getElementById('upcomingList').innerHTML=html;
 };
 
 // ============================================================
 // STATS
 // ============================================================
-window.renderStats = function() {
-  const filterUser = document.getElementById('statsUserFilter')?.value;
-  const today = todayStr(), yesterday = dateStr(addDays(new Date(),-1));
-  const completed = Object.values(allInstances).filter(i => i.status === 'completed');
-  const fc = filterUser ? completed.filter(i => i.completedBy === filterUser) : completed;
+window.renderStats=function(){
+  const filterUser=document.getElementById('statsUserFilter')?.value;
+  const today=todayStr(),yesterday=dateStr(addDays(new Date(),-1));
+  const completed=Object.values(allInstances).filter(i=>i.status==='completed');
+  const fc=filterUser?completed.filter(i=>i.completedBy===filterUser):completed;
 
-  const days = [];
-  for (let i=6; i>=0; i--) {
-    const d = addDays(new Date(),-i), ds = dateStr(d);
-    days.push({ label: d.toLocaleDateString('he-IL',{weekday:'short'}), count: fc.filter(x=>x.completedAt&&x.completedAt.slice(0,10)===ds).length });
+  const days=[];
+  for(let i=6;i>=0;i--){
+    const d=addDays(new Date(),-i),ds=dateStr(d);
+    days.push({label:d.toLocaleDateString('he-IL',{weekday:'short'}),count:fc.filter(x=>x.completedAt&&x.completedAt.slice(0,10)===ds).length});
   }
-  const maxBar = Math.max(...days.map(d=>d.count),1);
+  const maxBar=Math.max(...days.map(d=>d.count),1);
 
-  const userStats = Object.entries(allUsers).map(([id,u]) => {
-    const uc = completed.filter(i=>i.completedBy===id);
-    return { id, name:u.name,
-      today: uc.filter(i=>i.completedAt&&i.completedAt.slice(0,10)===today).length,
-      yesterday: uc.filter(i=>i.completedAt&&i.completedAt.slice(0,10)===yesterday).length,
-      week: uc.filter(i=>{ if(!i.completedAt) return false; return (new Date()-new Date(i.completedAt))/86400000<=7; }).length,
-      total: uc.length };
+  // Pending count per user
+  const allPending=getPendingInstances();
+  const userStats=Object.entries(allUsers).map(([id,u])=>{
+    const uc=completed.filter(i=>i.completedBy===id);
+    const pending=Object.entries(allTasks).reduce((acc,[tid,task])=>{
+      if(task.assignedUsers&&task.assignedUsers[id]){
+        const p=Object.values(allInstances).filter(inst=>inst.taskId===tid&&inst.status!=='completed'&&(inst.status!=='postponed'||inst.postponedTo<=todayStr()));
+        return acc+p.length;
+      }
+      return acc;
+    },0);
+    return{id,name:u.name,
+      today:uc.filter(i=>i.completedAt&&i.completedAt.slice(0,10)===today).length,
+      yesterday:uc.filter(i=>i.completedAt&&i.completedAt.slice(0,10)===yesterday).length,
+      week:uc.filter(i=>{if(!i.completedAt)return false;return(new Date()-new Date(i.completedAt))/86400000<=7;}).length,
+      total:uc.length,
+      pending};
   });
 
-  document.getElementById('statsContent').innerHTML = `
+  document.getElementById('statsContent').innerHTML=`
     <div class="stats-grid">
       <div class="stat-card"><div class="num">${fc.filter(i=>i.completedAt&&i.completedAt.slice(0,10)===today).length}</div><div class="label">בוצע היום</div></div>
       <div class="stat-card"><div class="num">${fc.filter(i=>i.completedAt&&i.completedAt.slice(0,10)===yesterday).length}</div><div class="label">בוצע אתמול</div></div>
-      <div class="stat-card"><div class="num">${fc.filter(i=>{ if(!i.completedAt) return false; return (new Date()-new Date(i.completedAt))/86400000<=7; }).length}</div><div class="label">שבוע אחרון</div></div>
-      <div class="stat-card"><div class="num">${fc.filter(i=>{ if(!i.completedAt) return false; const d=new Date(i.completedAt),n=new Date(); return d.getMonth()===n.getMonth()&&d.getFullYear()===n.getFullYear(); }).length}</div><div class="label">החודש</div></div>
+      <div class="stat-card"><div class="num">${fc.filter(i=>{if(!i.completedAt)return false;return(new Date()-new Date(i.completedAt))/86400000<=7;}).length}</div><div class="label">שבוע אחרון</div></div>
+      <div class="stat-card"><div class="num">${getPendingInstances().length}</div><div class="label">ממתינות לי כעת</div></div>
     </div>
     <div class="chart-container">
       <div class="chart-title">ביצועים — 7 ימים אחרונים</div>
-      <div class="bar-chart">${days.map(d=>`<div class="bar-col"><div class="bar-val">${d.count}</div><div class="bar" style="height:${Math.round((d.count/maxBar)*120)+4}px"></div><div class="bar-label">${d.label}</div></div>`).join('')}</div>
+      <div class="bar-chart">${days.map(d=>`<div class="bar-col"><div class="bar-val">${d.count}</div><div class="bar completed" style="height:${Math.round((d.count/maxBar)*120)+4}px"></div><div class="bar-label">${d.label}</div></div>`).join('')}</div>
     </div>
-    <div class="section-title" style="margin-bottom:16px">לפי עובד</div>
+    <div class="section-title" style="margin-bottom:14px">ביצועים לפי עובד</div>
     <div class="user-stats-grid">${userStats.map(u=>`
       <div class="user-stat-card">
-        <h4><div class="header-avatar" style="width:32px;height:32px;font-size:13px;border-radius:50%;background:var(--primary);color:white;display:flex;align-items:center;justify-content:center">${u.name.charAt(0)}</div>${u.name}</h4>
+        <h4><div class="mini-avatar">${u.name.charAt(0)}</div>${u.name}</h4>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          ${[['היום',u.today],['אתמול',u.yesterday],['שבוע',u.week],['סה"כ',u.total]].map(([l,v])=>`
-            <div style="text-align:center;background:var(--gray-50);border-radius:8px;padding:10px">
-              <div style="font-size:22px;font-weight:800;color:var(--primary)">${v}</div>
+          ${[['היום',u.today,'var(--primary)'],['אתמול',u.yesterday,'var(--primary)'],['שבוע',u.week,'var(--primary)'],['סה"כ',u.total,'var(--primary)']].map(([l,v,c])=>`
+            <div style="text-align:center;background:var(--gray-50);border-radius:8px;padding:8px">
+              <div style="font-size:20px;font-weight:800;color:${c}">${v}</div>
               <div style="font-size:11px;color:var(--gray-400)">${l}</div>
             </div>`).join('')}
         </div>
+        ${u.pending>0?`<div class="pending-row"><span>⏳ ממתינות: ${u.pending} משימות</span></div>`:'<div style="margin-top:8px;text-align:center;font-size:12px;color:var(--success)">✅ אין משימות ממתינות</div>'}
       </div>`).join('')}
     </div>`;
 };
@@ -976,25 +949,27 @@ window.renderStats = function() {
 // ============================================================
 // ARCHIVE
 // ============================================================
-window.renderArchive = function() {
-  let items = Object.entries(allInstances)
-    .filter(([,i]) => i.status === 'completed')
-    .map(([k,i]) => ({ key:k, inst:i, task:allTasks[i.taskId] }))
-    .filter(x => x.task);
+window.renderArchive=function(){
+  let items=Object.entries(allInstances)
+    .filter(([,i])=>i.status==='completed')
+    .map(([k,i])=>({key:k,inst:i,task:allTasks[i.taskId]}))
+    .filter(x=>x.task);
 
-  const cf = document.getElementById('archiveFilterClient')?.value;
-  const uf = document.getElementById('archiveFilterUser')?.value;
-  if (cf) items = items.filter(({task}) => task.clientId === cf);
-  if (uf) items = items.filter(({inst}) => inst.completedBy === uf);
-  items.sort((a,b) => (b.inst.completedAt||'').localeCompare(a.inst.completedAt||''));
+  const cf=document.getElementById('archiveFilterClient')?.value;
+  const uf=document.getElementById('archiveFilterUser')?.value;
+  if(cf)items=items.filter(({task})=>task.clientId===cf);
+  if(uf)items=items.filter(({inst})=>inst.completedBy===uf);
+  items.sort((a,b)=>(b.inst.completedAt||'').localeCompare(a.inst.completedAt||''));
 
-  if (!items.length) { document.getElementById('archiveList').innerHTML = '<div class="empty-state"><div class="icon">📁</div><h3>הארכיון ריק</h3></div>'; return; }
-  document.getElementById('archiveList').innerHTML = items.map(({inst,task}) => {
-    const client = task.clientId ? allClients[task.clientId] : null;
-    const date = inst.completedAt ? new Date(inst.completedAt).toLocaleDateString('he-IL') : '';
+  if(!items.length){document.getElementById('archiveList').innerHTML='<div class="empty-state"><div class="icon">📁</div><h3>הארכיון ריק</h3></div>';return;}
+  document.getElementById('archiveList').innerHTML=items.map(({inst,task})=>{
+    const client=task.clientId?allClients[task.clientId]:null;
+    const date=inst.completedAt?new Date(inst.completedAt).toLocaleDateString('he-IL'):'';
     return `<div class="archive-card">
       <div class="archive-title">✅ ${task.name}</div>
-      <div class="archive-meta">${client?`🏢 ${client.name} · `:''}📅 ${formatDate(inst.dueDate)} · בוצע ע"י ${inst.completedByName||''} ${date?`(${date})`:''}</div>
+      ${client?`<div style="font-size:12px;color:var(--primary);font-weight:600;margin-top:3px">🏢 ${client.name}</div>`:''}
+      <div class="completed-by">👤 בוצע על ידי: ${inst.completedByName||'—'} ${date?`| ${date}`:''}</div>
+      <div class="archive-meta">📅 תאריך משימה: ${formatDate(inst.dueDate)}</div>
       ${inst.completionNote?`<div class="archive-note">💬 ${inst.completionNote}</div>`:''}
     </div>`;
   }).join('');
@@ -1003,16 +978,16 @@ window.renderArchive = function() {
 // ============================================================
 // ADMIN - TASKS
 // ============================================================
-window.renderAdminTasks = function() {
-  const items = Object.entries(allTasks);
-  if (!items.length) { document.getElementById('adminTasksList').innerHTML = '<div class="empty-state"><div class="icon">📋</div><h3>אין משימות</h3></div>'; return; }
-  document.getElementById('adminTasksList').innerHTML = items.map(([id,task]) => {
-    const client = task.clientId ? allClients[task.clientId] : null;
-    const recurLabel = {weekly:'שבועי',monthly:'חודשי',bimonthly:'דו-חודשי',once:'חד פעמי'}[task.recur]||'';
+window.renderAdminTasks=function(){
+  const items=Object.entries(allTasks);
+  if(!items.length){document.getElementById('adminTasksList').innerHTML='<div class="empty-state"><div class="icon">📋</div><h3>אין משימות</h3></div>';return;}
+  document.getElementById('adminTasksList').innerHTML=items.map(([id,task])=>{
+    const client=task.clientId?allClients[task.clientId]:null;
+    const recurLabel={weekly:'שבועי',monthly:'חודשי',bimonthly:'דו-חודשי',once:'חד פעמי'}[task.recur]||'';
     return `<div class="list-item">
       <div style="flex:1">
         <div class="list-item-title">${task.critical?'🔴 ':''}${task.name}</div>
-        <div class="list-item-sub">${client?`🏢 ${client.name} · `:''}${recurLabel}${task.slaDays>0?` · SLA: ${task.slaDays} ימים`:''}</div>
+        <div class="list-item-sub">${client?`🏢 ${client.name} · `:''}${recurLabel}${task.slaDays>0?` · מועד אחרון: ${task.slaDays} ימים`:''}</div>
       </div>
       <div style="display:flex;gap:6px">
         <button class="btn btn-ghost btn-sm" onclick="openTaskModal('${id}')">✏️ ערוך</button>
@@ -1022,29 +997,29 @@ window.renderAdminTasks = function() {
   }).join('');
 };
 
-window.openTaskModal = function(taskId=null) {
-  editingTaskId = taskId;
-  document.getElementById('taskModalTitle').textContent = taskId ? '✏️ עריכת משימה' : '📋 משימה חדשה';
-  document.getElementById('tClient').innerHTML = '<option value="">ללא לקוח</option>' + Object.entries(allClients).map(([id,c])=>`<option value="${id}">${c.name}</option>`).join('');
-  document.getElementById('tUsers').innerHTML = Object.entries(allUsers).map(([id,u])=>`<button type="button" class="user-check-btn" data-uid="${id}" onclick="this.classList.toggle('selected')">${u.name}</button>`).join('');
+window.openTaskModal=function(taskId=null){
+  editingTaskId=taskId;
+  document.getElementById('taskModalTitle').textContent=taskId?'✏️ עריכת משימה':'📋 משימה חדשה';
+  document.getElementById('tClient').innerHTML='<option value="">-- בחר לקוח --</option>'+Object.entries(allClients).map(([id,c])=>`<option value="${id}">${c.name}</option>`).join('');
+  document.getElementById('tUsers').innerHTML=Object.entries(allUsers).map(([id,u])=>`<button type="button" class="user-check-btn" data-uid="${id}" onclick="this.classList.toggle('selected')">${u.name}</button>`).join('');
 
-  if (taskId) {
-    const t = allTasks[taskId];
-    document.getElementById('tName').value = t.name||'';
-    document.getElementById('tDesc').value = t.description||'';
-    document.getElementById('tNote').value = t.note||'';
-    document.getElementById('tLink').value = t.link||'';
-    document.getElementById('tClient').value = t.clientId||'';
-    document.getElementById('tRecur').value = t.recur||'once';
-    document.getElementById('tSla').value = t.slaDays||0;
-    document.getElementById('tOnceDate').value = t.onceDate||'';
-    document.getElementById('tDayOfWeek').value = t.dayOfWeek||0;
-    document.getElementById('tDayOfMonth').value = t.dayOfMonth||'';
-    document.getElementById('tBiDayOfMonth').value = t.biDayOfMonth||'';
-    document.getElementById('tStartDate').value = t.startDate||'';
-    document.getElementById('tCritical').checked = !!t.critical;
-    if (t.assignedUsers) document.querySelectorAll('#tUsers .user-check-btn').forEach(b=>{ if(t.assignedUsers[b.dataset.uid]) b.classList.add('selected'); });
-  } else {
+  if(taskId){
+    const t=allTasks[taskId];
+    document.getElementById('tName').value=t.name||'';
+    document.getElementById('tDesc').value=t.description||'';
+    document.getElementById('tNote').value=t.note||'';
+    document.getElementById('tLink').value=t.link||'';
+    document.getElementById('tClient').value=t.clientId||'';
+    document.getElementById('tRecur').value=t.recur||'once';
+    document.getElementById('tSla').value=t.slaDays||0;
+    document.getElementById('tOnceDate').value=t.onceDate||'';
+    document.getElementById('tDayOfWeek').value=t.dayOfWeek||0;
+    document.getElementById('tDayOfMonth').value=t.dayOfMonth||'';
+    document.getElementById('tBiDayOfMonth').value=t.biDayOfMonth||'';
+    document.getElementById('tStartDate').value=t.startDate||'';
+    document.getElementById('tCritical').checked=!!t.critical;
+    if(t.assignedUsers)document.querySelectorAll('#tUsers .user-check-btn').forEach(b=>{if(t.assignedUsers[b.dataset.uid])b.classList.add('selected');});
+  }else{
     ['tName','tDesc','tNote','tLink','tDayOfMonth','tBiDayOfMonth'].forEach(id=>document.getElementById(id).value='');
     document.getElementById('tClient').value='';
     document.getElementById('tRecur').value='once';
@@ -1057,65 +1032,53 @@ window.openTaskModal = function(taskId=null) {
   document.getElementById('taskModal').classList.add('open');
 };
 
-window.updateRecurFields = function() {
-  const v = document.getElementById('tRecur').value;
+window.updateRecurFields=function(){
+  const v=document.getElementById('tRecur').value;
   ['rfOnce','rfWeekly','rfMonthly','rfBimonthly'].forEach(id=>document.getElementById(id).classList.remove('show'));
-  const map = {once:'rfOnce',weekly:'rfWeekly',monthly:'rfMonthly',bimonthly:'rfBimonthly'};
-  if (map[v]) document.getElementById(map[v]).classList.add('show');
+  const map={once:'rfOnce',weekly:'rfWeekly',monthly:'rfMonthly',bimonthly:'rfBimonthly'};
+  if(map[v])document.getElementById(map[v]).classList.add('show');
 };
 
-window.saveTask = async function() {
-  const name = document.getElementById('tName').value.trim();
-  if (!name) { showToast('שם המשימה חסר','error'); return; }
-  const assignedUsers = {};
-  document.querySelectorAll('#tUsers .user-check-btn.selected').forEach(b=>{ assignedUsers[b.dataset.uid]=true; });
-  const task = {
-    name, description: document.getElementById('tDesc').value.trim(),
-    note: document.getElementById('tNote').value.trim(),
-    link: document.getElementById('tLink').value.trim(),
-    clientId: document.getElementById('tClient').value,
-    recur: document.getElementById('tRecur').value,
-    slaDays: parseInt(document.getElementById('tSla').value)||0,
-    critical: document.getElementById('tCritical').checked,
-    startDate: document.getElementById('tStartDate').value||todayStr(),
-    assignedUsers,
-    onceDate: document.getElementById('tOnceDate').value,
-    dayOfWeek: parseInt(document.getElementById('tDayOfWeek').value)||0,
-    dayOfMonth: parseInt(document.getElementById('tDayOfMonth').value)||null,
-    biDayOfMonth: parseInt(document.getElementById('tBiDayOfMonth').value)||null,
-  };
+window.saveTask=async function(){
+  const name=document.getElementById('tName').value.trim();
+  const clientId=document.getElementById('tClient').value;
+  if(!name){showToast('שם המשימה חסר','error');return;}
+  if(!clientId){showToast('חובה לבחור לקוח','error');return;}
+  const assignedUsers={};
+  document.querySelectorAll('#tUsers .user-check-btn.selected').forEach(b=>{assignedUsers[b.dataset.uid]=true;});
+  const task={name,description:document.getElementById('tDesc').value.trim(),note:document.getElementById('tNote').value.trim(),link:document.getElementById('tLink').value.trim(),clientId,recur:document.getElementById('tRecur').value,slaDays:parseInt(document.getElementById('tSla').value)||0,critical:document.getElementById('tCritical').checked,startDate:document.getElementById('tStartDate').value||todayStr(),assignedUsers,onceDate:document.getElementById('tOnceDate').value,dayOfWeek:parseInt(document.getElementById('tDayOfWeek').value)||0,dayOfMonth:parseInt(document.getElementById('tDayOfMonth').value)||null,biDayOfMonth:parseInt(document.getElementById('tBiDayOfMonth').value)||null};
   showLoading('שומר...');
-  try {
-    if (editingTaskId) { await apiSet('tasks',editingTaskId,{...task,id:editingTaskId}); allTasks[editingTaskId]=task; }
-    else { const id=await apiPush('tasks',task); allTasks[id]={...task,id}; }
-    closeModal('taskModal'); generateInstances(); renderAdminTasks(); renderTasks();
-    showToast('נשמר ✅','success');
-  } catch(e) { showToast('שגיאה: '+e.message,'error'); }
+  try{
+    if(editingTaskId){await apiSet('tasks',editingTaskId,{...task,id:editingTaskId});allTasks[editingTaskId]=task;}
+    else{const id=await apiPush('tasks',task);allTasks[id]={...task,id};}
+    closeModal('taskModal');generateInstances();renderAdminTasks();renderTasks();showToast('נשמר ✅','success');
+  }catch(e){showToast('שגיאה: '+e.message,'error');}
   hideLoading();
 };
 
-window.deleteTask = async function(id) {
-  if (!confirm('למחוק משימה לצמיתות?')) return;
+window.deleteTask=async function(id){
+  if(!confirm('למחוק משימה לצמיתות?'))return;
   showLoading('מוחק...');
-  try {
-    await apiRemove('tasks',id); delete allTasks[id];
-    for (const k of Object.keys(allInstances)) {
-      if (allInstances[k].taskId===id) { await apiRemove('instances',k); delete allInstances[k]; }
-    }
-    renderAdminTasks(); renderTasks(); showToast('נמחק');
-  } catch(e) { showToast('שגיאה: '+e.message,'error'); }
+  try{
+    await apiRemove('tasks',id);delete allTasks[id];
+    for(const k of Object.keys(allInstances)){if(allInstances[k].taskId===id){await apiRemove('instances',k);delete allInstances[k];}}
+    renderAdminTasks();renderTasks();showToast('נמחק');
+  }catch(e){showToast('שגיאה: '+e.message,'error');}
   hideLoading();
 };
 
 // ============================================================
 // ADMIN - USERS
 // ============================================================
-window.renderAdminUsers = function() {
-  const items = Object.entries(allUsers);
-  if (!items.length) { document.getElementById('adminUsersList').innerHTML = '<div class="empty-state"><div class="icon">👤</div><h3>אין משתמשים</h3></div>'; return; }
-  document.getElementById('adminUsersList').innerHTML = items.map(([id,u])=>`
+window.renderAdminUsers=function(){
+  const items=Object.entries(allUsers);
+  if(!items.length){document.getElementById('adminUsersList').innerHTML='<div class="empty-state"><div class="icon">👤</div><h3>אין משתמשים</h3></div>';return;}
+  document.getElementById('adminUsersList').innerHTML=items.map(([id,u])=>`
     <div class="list-item">
-      <div style="flex:1"><div class="list-item-title">${u.name}${u.isAdmin?' ⚙️':''}</div><div class="list-item-sub">${u.role||''}</div></div>
+      <div style="flex:1">
+        <div class="list-item-title">${u.name}${u.isAdmin?' ⚙️':''}</div>
+        <div class="list-item-sub">@${u.username||'—'} ${u.role?`· ${u.role}`:''}</div>
+      </div>
       <div style="display:flex;gap:6px">
         <button class="btn btn-ghost btn-sm" onclick="openUserModal('${id}')">✏️</button>
         <button class="btn btn-danger btn-sm" onclick="deleteUser('${id}')">🗑️</button>
@@ -1123,42 +1086,49 @@ window.renderAdminUsers = function() {
     </div>`).join('');
 };
 
-window.openUserModal = function(userId=null) {
+window.openUserModal=function(userId=null){
   editingUserId=userId;
-  document.getElementById('userModalTitle').textContent = userId ? '✏️ עריכת משתמש' : '👤 משתמש חדש';
-  if (userId) { const u=allUsers[userId]; document.getElementById('uName').value=u.name||''; document.getElementById('uRole').value=u.role||''; document.getElementById('uIsAdmin').checked=!!u.isAdmin; }
-  else { document.getElementById('uName').value=''; document.getElementById('uRole').value=''; document.getElementById('uIsAdmin').checked=false; }
+  document.getElementById('userModalTitle').textContent=userId?'✏️ עריכת משתמש':'👤 משתמש חדש';
+  if(userId){const u=allUsers[userId];document.getElementById('uName').value=u.name||'';document.getElementById('uUsername').value=u.username||'';document.getElementById('uPassword').value=u.password||'';document.getElementById('uRole').value=u.role||'';document.getElementById('uIsAdmin').checked=!!u.isAdmin;}
+  else{['uName','uUsername','uPassword','uRole'].forEach(id=>document.getElementById(id).value='');document.getElementById('uIsAdmin').checked=false;}
   document.getElementById('userModal').classList.add('open');
 };
 
-window.saveUser = async function() {
+window.saveUser=async function(){
   const name=document.getElementById('uName').value.trim();
-  if (!name) { showToast('שם חסר','error'); return; }
-  const user={name,role:document.getElementById('uRole').value.trim(),isAdmin:document.getElementById('uIsAdmin').checked};
+  const username=document.getElementById('uUsername').value.trim().toLowerCase();
+  const password=document.getElementById('uPassword').value;
+  if(!name){showToast('שם חסר','error');return;}
+  if(!username){showToast('שם משתמש חסר','error');return;}
+  if(!password){showToast('סיסמה חסרה','error');return;}
+  // Check username uniqueness
+  const dup=Object.entries(allUsers).find(([id,u])=>u.username===username&&id!==editingUserId);
+  if(dup){showToast('שם המשתמש כבר קיים','error');return;}
+  const user={name,username,password,role:document.getElementById('uRole').value.trim(),isAdmin:document.getElementById('uIsAdmin').checked};
   showLoading('שומר...');
-  try {
-    if (editingUserId) { await apiSet('users',editingUserId,{...user,id:editingUserId}); allUsers[editingUserId]=user; }
-    else { const id=await apiPush('users',user); allUsers[id]={...user,id}; }
-    closeModal('userModal'); renderAdminUsers(); renderLoginScreen(); showToast('נשמר','success');
-  } catch(e) { showToast('שגיאה: '+e.message,'error'); }
+  try{
+    if(editingUserId){await apiSet('users',editingUserId,{...user,id:editingUserId});allUsers[editingUserId]=user;}
+    else{const id=await apiPush('users',user);allUsers[id]={...user,id};}
+    closeModal('userModal');renderAdminUsers();showToast('נשמר','success');
+  }catch(e){showToast('שגיאה: '+e.message,'error');}
   hideLoading();
 };
 
-window.deleteUser = async function(id) {
-  if (!confirm('למחוק משתמש?')) return;
+window.deleteUser=async function(id){
+  if(!confirm('למחוק משתמש?'))return;
   showLoading('מוחק...');
-  try { await apiRemove('users',id); delete allUsers[id]; renderAdminUsers(); renderLoginScreen(); showToast('נמחק'); }
-  catch(e) { showToast('שגיאה: '+e.message,'error'); }
+  try{await apiRemove('users',id);delete allUsers[id];renderAdminUsers();showToast('נמחק');}
+  catch(e){showToast('שגיאה: '+e.message,'error');}
   hideLoading();
 };
 
 // ============================================================
 // ADMIN - CLIENTS
 // ============================================================
-window.renderAdminClients = function() {
-  const items = Object.entries(allClients);
-  if (!items.length) { document.getElementById('adminClientsList').innerHTML = '<div class="empty-state"><div class="icon">🏢</div><h3>אין לקוחות</h3></div>'; return; }
-  document.getElementById('adminClientsList').innerHTML = items.map(([id,c])=>`
+window.renderAdminClients=function(){
+  const items=Object.entries(allClients);
+  if(!items.length){document.getElementById('adminClientsList').innerHTML='<div class="empty-state"><div class="icon">🏢</div><h3>אין לקוחות</h3></div>';return;}
+  document.getElementById('adminClientsList').innerHTML=items.map(([id,c])=>`
     <div class="list-item">
       <div style="flex:1"><div class="list-item-title">${c.name}</div><div class="list-item-sub">${c.info||''}</div></div>
       <div style="display:flex;gap:6px">
@@ -1168,89 +1138,86 @@ window.renderAdminClients = function() {
     </div>`).join('');
 };
 
-window.openClientModal = function(clientId=null) {
+window.openClientModal=function(clientId=null){
   editingClientId=clientId;
-  document.getElementById('clientModalTitle').textContent = clientId ? '✏️ עריכת לקוח' : '🏢 לקוח חדש';
-  if (clientId) { const c=allClients[clientId]; document.getElementById('cName').value=c.name||''; document.getElementById('cInfo').value=c.info||''; }
-  else { document.getElementById('cName').value=''; document.getElementById('cInfo').value=''; }
+  document.getElementById('clientModalTitle').textContent=clientId?'✏️ עריכת לקוח':'🏢 לקוח חדש';
+  if(clientId){const c=allClients[clientId];document.getElementById('cName').value=c.name||'';document.getElementById('cInfo').value=c.info||'';}
+  else{document.getElementById('cName').value='';document.getElementById('cInfo').value='';}
   document.getElementById('clientModal').classList.add('open');
 };
 
-window.saveClient = async function() {
+window.saveClient=async function(){
   const name=document.getElementById('cName').value.trim();
-  if (!name) { showToast('שם חסר','error'); return; }
+  if(!name){showToast('שם חסר','error');return;}
   const client={name,info:document.getElementById('cInfo').value.trim()};
   showLoading('שומר...');
-  try {
-    if (editingClientId) { await apiSet('clients',editingClientId,{...client,id:editingClientId}); allClients[editingClientId]=client; }
-    else { const id=await apiPush('clients',client); allClients[id]={...client,id}; }
-    closeModal('clientModal'); renderAdminClients(); populateFilters(); showToast('נשמר','success');
-  } catch(e) { showToast('שגיאה: '+e.message,'error'); }
+  try{
+    if(editingClientId){await apiSet('clients',editingClientId,{...client,id:editingClientId});allClients[editingClientId]=client;}
+    else{const id=await apiPush('clients',client);allClients[id]={...client,id};}
+    closeModal('clientModal');renderAdminClients();populateFilters();showToast('נשמר','success');
+  }catch(e){showToast('שגיאה: '+e.message,'error');}
   hideLoading();
 };
 
-window.deleteClient = async function(id) {
-  if (!confirm('למחוק לקוח?')) return;
+window.deleteClient=async function(id){
+  if(!confirm('למחוק לקוח?'))return;
   showLoading('מוחק...');
-  try { await apiRemove('clients',id); delete allClients[id]; renderAdminClients(); populateFilters(); showToast('נמחק'); }
-  catch(e) { showToast('שגיאה: '+e.message,'error'); }
+  try{await apiRemove('clients',id);delete allClients[id];renderAdminClients();populateFilters();showToast('נמחק');}
+  catch(e){showToast('שגיאה: '+e.message,'error');}
   hideLoading();
 };
 
 // ============================================================
 // HELPERS
 // ============================================================
-function populateFilters() {
-  const co = '<option value="">כל הלקוחות</option>'+Object.entries(allClients).map(([id,c])=>`<option value="${id}">${c.name}</option>`).join('');
-  ['filterClient','archiveFilterClient'].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=co; });
-  const uo = '<option value="">כל המשתמשים</option>'+Object.entries(allUsers).map(([id,u])=>`<option value="${id}">${u.name}</option>`).join('');
-  ['archiveFilterUser','statsUserFilter'].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=uo; });
-  const fu = document.getElementById('filterUser');
-  if (fu) fu.innerHTML='<option value="">כל המשימות שלי</option>'+Object.entries(allUsers).map(([id,u])=>`<option value="${id}">${u.name}</option>`).join('');
+function populateFilters(){
+  const co='<option value="">כל הלקוחות</option>'+Object.entries(allClients).map(([id,c])=>`<option value="${id}">${c.name}</option>`).join('');
+  ['filterClient','archiveFilterClient','upcomingFilterClient'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=co;});
+  const uo='<option value="">כל המשתמשים</option>'+Object.entries(allUsers).map(([id,u])=>`<option value="${id}">${u.name}</option>`).join('');
+  ['archiveFilterUser','statsUserFilter'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=uo;});
+  const fu=document.getElementById('filterUser');
+  if(fu)fu.innerHTML='<option value="">כל המשימות שלי</option>'+Object.entries(allUsers).map(([id,u])=>`<option value="${id}">${u.name}</option>`).join('');
 }
 
-window.toggleFilter = function(name) {
+window.toggleFilter=function(name){
   filters[name]=!filters[name];
   const map={critical:'filterCritical',overdue:'filterOverdue',today:'filterToday'};
   document.getElementById(map[name])?.classList.toggle('on',filters[name]);
   renderTasks();
 };
 
-window.showView = function(name) {
+window.showView=function(name){
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('view'+name.charAt(0).toUpperCase()+name.slice(1))?.classList.add('active');
   document.getElementById('nav'+name.charAt(0).toUpperCase()+name.slice(1))?.classList.add('active');
-  if (name==='stats') renderStats();
-  if (name==='archive') renderArchive();
-  if (name==='admin') { renderAdminTasks(); renderAdminUsers(); renderAdminClients(); }
+  if(name==='stats')renderStats();
+  if(name==='archive')renderArchive();
+  if(name==='upcoming')renderUpcoming();
+  if(name==='admin'){renderAdminTasks();renderAdminUsers();renderAdminClients();}
 };
 
-window.switchAdminTab = function(tab, btn) {
+window.switchAdminTab=function(tab,btn){
   document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.admin-section').forEach(s=>s.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById('admin'+tab.charAt(0).toUpperCase()+tab.slice(1))?.classList.add('active');
 };
 
-function renderCurrentView() {
-  const id = document.querySelector('.view.active')?.id;
-  if (id==='viewTasks') renderTasks();
-  else if (id==='viewStats') renderStats();
-  else if (id==='viewArchive') renderArchive();
+function renderCurrentView(){
+  const id=document.querySelector('.view.active')?.id;
+  if(id==='viewTasks')renderTasks();
+  else if(id==='viewStats')renderStats();
+  else if(id==='viewArchive')renderArchive();
+  else if(id==='viewUpcoming')renderUpcoming();
 }
 
-window.closeModal = function(id) { document.getElementById(id).classList.remove('open'); };
-document.addEventListener('click', e => { if (e.target.classList.contains('modal-overlay')) e.target.classList.remove('open'); });
+window.closeModal=function(id){document.getElementById(id).classList.remove('open');};
+document.addEventListener('click',e=>{if(e.target.classList.contains('modal-overlay'))e.target.classList.remove('open');});
 
-function showLoading(msg='') { document.getElementById('loadingOverlay').style.display='flex'; document.getElementById('loadingMsg').textContent=msg; }
-function hideLoading() { document.getElementById('loadingOverlay').style.display='none'; }
-
-function showToast(msg,type='') {
-  const t=document.getElementById('toast');
-  t.textContent=msg; t.className='toast show '+(type||'');
-  setTimeout(()=>t.className='toast',2800);
-}
+function showLoading(msg=''){document.getElementById('loadingOverlay').style.display='flex';document.getElementById('loadingMsg').textContent=msg;}
+function hideLoading(){document.getElementById('loadingOverlay').style.display='none';}
+function showToast(msg,type=''){const t=document.getElementById('toast');t.textContent=msg;t.className='toast show '+(type||'');setTimeout(()=>t.className='toast',2800);}
 </script>
 </body>
 </html>
