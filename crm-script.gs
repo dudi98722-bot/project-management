@@ -18,20 +18,32 @@ const SHEET_NAMES = {
   instances: 'instances',
 };
 
+const REQUIRED_HEADERS = {
+  users: ['id','name','username','password','role','isAdmin'],
+  clients: ['id','name','info'],
+  tasks: ['id','name','description','clientId','recur','slaDays','critical','startDate','onceDate','dayOfWeek','dayOfMonth','biDayOfMonth','assignedUsers','note','link'],
+  instances: ['key','taskId','periodKey','dueDate','status','completedBy','completedByName','completedAt','completionNote','postponedTo','postponeReason','postponedBy','postponedAt'],
+};
+
 function getSheet(name) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName(name);
   if (!sheet) {
     sheet = ss.insertSheet(name);
-    // Add header row
-    const headers = {
-      users: ['id','name','username','password','role','isAdmin'],
-      clients: ['id','name','info'],
-      tasks: ['id','name','description','clientId','recur','slaDays','critical','startDate','onceDate','dayOfWeek','dayOfMonth','biDayOfMonth','assignedUsers'],
-      instances: ['key','taskId','periodKey','dueDate','status','completedBy','completedByName','completedAt','completionNote','postponedTo','postponeReason','postponedBy','postponedAt'],
-    };
-    sheet.appendRow(headers[name] || ['id','data']);
+    sheet.appendRow(REQUIRED_HEADERS[name] || ['id','data']);
     sheet.getRange(1,1,1,sheet.getLastColumn()).setFontWeight('bold').setBackground('#f3f4f6');
+  } else {
+    // Add any missing columns automatically
+    const required = REQUIRED_HEADERS[name];
+    if (required) {
+      const existing = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(),1)).getValues()[0];
+      required.forEach(col => {
+        if (!existing.includes(col)) {
+          const newCol = sheet.getLastColumn() + 1;
+          sheet.getRange(1, newCol).setValue(col).setFontWeight('bold').setBackground('#f3f4f6');
+        }
+      });
+    }
   }
   return sheet;
 }
