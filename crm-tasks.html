@@ -59,8 +59,15 @@
   .filter-toggle.on { background:var(--primary); color:white; border-color:var(--primary); }
   .filters-label { font-size:13px; font-weight:600; color:var(--gray-500); }
 
-  /* TASK CARDS - cleaner design */
-  .task-card { background:white; border-radius:var(--radius); padding:16px 18px; margin-bottom:10px; box-shadow:var(--shadow); border-right:4px solid var(--gray-300); transition:box-shadow 0.2s; }
+  /* CLIENT SUMMARY BAR */
+  .client-summary { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .client-chip { display:flex; align-items:center; gap:5px; background:white; border:1px solid var(--gray-200); border-radius:20px; padding:4px 12px; font-size:12px; font-weight:600; color:var(--gray-700); box-shadow:var(--shadow); cursor:pointer; transition:all 0.15s; }
+  .client-chip:hover { border-color:var(--primary); color:var(--primary); }
+  .client-chip .chip-count { background:var(--primary); color:white; border-radius:10px; padding:1px 6px; font-size:11px; }
+  .client-chip.has-overdue .chip-count { background:var(--danger); }
+
+  /* TASK CARDS - compact */
+  .task-card { background:white; border-radius:var(--radius); padding:10px 14px; margin-bottom:7px; box-shadow:var(--shadow); border-right:4px solid var(--gray-300); transition:box-shadow 0.2s; }
   .task-card:hover { box-shadow:var(--shadow-lg); }
   .task-card.is-critical-overdue { border-right-color:var(--danger); background:var(--danger-light); }
   .task-card.is-overdue { border-right-color:var(--warning); background:var(--warning-light); }
@@ -68,24 +75,24 @@
   .task-card.is-normal { border-right-color:var(--primary); }
   .task-card.is-future { border-right-color:var(--gray-300); opacity:0.85; }
 
-  .tc-top { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
-  .tc-name { font-size:15px; font-weight:700; color:var(--gray-900); line-height:1.3; }
-  .tc-client { font-size:12px; font-weight:700; color:var(--primary); background:#eff6ff; padding:2px 8px; border-radius:4px; display:inline-block; margin-top:4px; }
-  .tc-row { display:flex; align-items:center; gap:10px; margin-top:10px; flex-wrap:wrap; }
-  .tc-pill { display:inline-flex; align-items:center; gap:3px; padding:3px 9px; border-radius:20px; font-size:12px; font-weight:600; }
+  .tc-main { display:flex; align-items:center; gap:10px; }
+  .tc-info { flex:1; min-width:0; }
+  .tc-name { font-size:14px; font-weight:700; color:var(--gray-900); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tc-meta { display:flex; align-items:center; gap:6px; margin-top:3px; flex-wrap:wrap; }
+  .tc-client { font-size:11px; font-weight:700; color:var(--primary); background:#eff6ff; padding:1px 7px; border-radius:4px; }
+  .tc-pill { display:inline-flex; align-items:center; gap:3px; padding:2px 8px; border-radius:20px; font-size:11px; font-weight:600; }
   .pill-date { background:var(--gray-100); color:var(--gray-700); }
   .pill-ok { background:#dcfce7; color:var(--success); }
   .pill-warn { background:var(--warning-light); color:var(--warning); }
   .pill-danger { background:var(--danger-light); color:var(--danger); }
   .pill-deadline { background:#ede9fe; color:#7c3aed; }
-
-  .tc-desc { font-size:13px; color:var(--gray-500); margin-top:8px; line-height:1.5; }
-  .tc-note { font-size:12px; color:var(--gray-500); margin-top:6px; background:var(--gray-50); border-radius:6px; padding:6px 10px; }
-  .tc-link { display:inline-flex; align-items:center; gap:4px; font-size:12px; color:var(--primary); text-decoration:none; margin-top:6px; }
-  .tc-actions { display:flex; gap:8px; margin-top:12px; }
-  .tc-assigned { font-size:11px; color:var(--gray-400); margin-top:6px; }
-  .critical-label { background:var(--danger); color:white; padding:2px 7px; border-radius:4px; font-size:11px; font-weight:700; display:inline-block; margin-bottom:4px; }
-  .postponed-info { font-size:12px; color:var(--gray-400); margin-top:6px; background:var(--gray-100); border-radius:6px; padding:5px 9px; }
+  .tc-actions { display:flex; gap:6px; flex-shrink:0; }
+  .tc-extra { font-size:12px; color:var(--gray-500); margin-top:5px; padding-top:5px; border-top:1px solid var(--gray-100); display:none; }
+  .tc-extra.open { display:block; }
+  .tc-assigned { font-size:11px; color:var(--gray-400); margin-top:2px; }
+  .critical-label { background:var(--danger); color:white; padding:1px 6px; border-radius:4px; font-size:10px; font-weight:700; display:inline-block; }
+  .postponed-info { font-size:11px; color:var(--gray-400); margin-top:4px; background:var(--gray-100); border-radius:5px; padding:3px 8px; }
+  .tc-toggle { background:none; border:none; font-size:11px; color:var(--gray-400); cursor:pointer; padding:0; margin-top:3px; }
 
   /* BUTTONS */
   .btn { padding:7px 16px; border:none; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600; transition:all 0.2s; }
@@ -256,8 +263,9 @@
       <button id="filterOverdue" class="filter-toggle" onclick="toggleFilter('overdue')">⚠️ באיחור</button>
       <button id="filterToday" class="filter-toggle" onclick="toggleFilter('today')">📅 להיום</button>
     </div>
-    <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
-      <button class="btn btn-primary" onclick="openQuickTaskModal()">＋ משימה חד פעמית</button>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div id="clientSummary" class="client-summary" style="flex:1"></div>
+      <button class="btn btn-primary btn-sm" style="flex-shrink:0;margin-right:10px" onclick="openQuickTaskModal()">＋ משימה חד פעמית</button>
     </div>
     <div id="tasksList"></div>
   </div>
@@ -389,13 +397,21 @@
 
 <!-- QUICK TASK MODAL (employees) -->
 <div id="quickTaskModal" class="modal-overlay">
-  <div class="modal" style="max-width:440px">
+  <div class="modal">
     <h3>＋ משימה חד פעמית</h3>
-    <div class="fg required"><label>שם המשימה</label><input type="text" id="qtName" placeholder="שם המשימה"></div>
-    <div class="fg required"><label>לקוח</label><select id="qtClient"><option value="">-- בחר לקוח --</option></select></div>
-    <div class="fg required"><label>תאריך המשימה</label><input type="date" id="qtDate"></div>
-    <div class="fg required"><label>שייך לעובד</label><select id="qtUser"><option value="">-- בחר עובד --</option></select></div>
+    <div class="form-row">
+      <div class="fg required"><label>שם המשימה</label><input type="text" id="qtName" placeholder="שם המשימה"></div>
+      <div class="fg required"><label>לקוח</label><select id="qtClient"><option value="">-- בחר לקוח --</option></select></div>
+    </div>
+    <div class="form-row">
+      <div class="fg required"><label>תאריך המשימה</label><input type="date" id="qtDate"></div>
+      <div class="fg"><label>מועד אחרון (ימים, 0=ללא)</label><input type="number" id="qtSla" value="0" min="0"></div>
+    </div>
+    <div class="fg"><label>שיוך לעובדים</label><div id="qtUsers" class="user-checkboxes"></div></div>
     <div class="fg"><label>פירוט (אופציונלי)</label><textarea id="qtDesc" placeholder="תיאור מפורט..."></textarea></div>
+    <div class="fg"><label>💬 הערה פנימית</label><textarea id="qtNote" placeholder="הערה פנימית..."></textarea></div>
+    <div class="fg"><label>🔗 קישור</label><input type="url" id="qtLink" placeholder="https://..." style="direction:ltr"></div>
+    <div class="fg"><div class="checkbox-group"><input type="checkbox" id="qtCritical"><label for="qtCritical">🔴 משימה קריטית</label></div></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('quickTaskModal')">ביטול</button>
       <button class="btn btn-primary" onclick="saveQuickTask()">שמור</button>
@@ -759,6 +775,24 @@ window.renderTasks=function(){
   const todayItems=items.filter(i=>i.inst.dueDate===today);
   const upcomingItems=items.filter(i=>i.inst.dueDate>today);
 
+  // Client summary chips
+  const allPending=getPendingInstances();
+  const clientCounts={};
+  const clientHasOverdue={};
+  allPending.forEach(({inst,task})=>{
+    const cid=task.clientId||'_none';
+    clientCounts[cid]=(clientCounts[cid]||0)+1;
+    if(inst.dueDate<today||(getDaysOverDeadline(inst,task)||0)>0)clientHasOverdue[cid]=true;
+  });
+  const summaryHtml=Object.entries(clientCounts).sort((a,b)=>b[1]-a[1]).map(([cid,cnt])=>{
+    const name=allClients[cid]?.name||'ללא לקוח';
+    const overdue=clientHasOverdue[cid]?'has-overdue':'';
+    return `<div class="client-chip ${overdue}" onclick="document.getElementById('filterClient').value='${cid==='_none'?'':cid}';renderTasks()">
+      <span>${name}</span><span class="chip-count">${cnt}</span>
+    </div>`;
+  }).join('');
+  document.getElementById('clientSummary').innerHTML=summaryHtml;
+
   let html='';
   if(overdue.length){html+=`<div class="period-header">⚠️ באיחור (${overdue.length})</div>`;html+=overdue.map(renderCard).join('');}
   if(todayItems.length){html+=`<div class="period-header">📅 להיום (${todayItems.length})</div>`;html+=todayItems.map(renderCard).join('');}
@@ -796,23 +830,31 @@ function renderCard({key,inst,task}){
   const postponeInfo=inst.status==='postponed'?`<div class="postponed-info">↩️ נדחה ל-${formatDate(inst.postponedTo)} | ${inst.postponeReason}</div>`:'';
   const assignedNames=task.assignedUsers?Object.keys(task.assignedUsers).map(id=>allUsers[id]?.name).filter(Boolean).join(', '):'';
 
-  return `<div class="${cardClass}">
-    <div class="tc-top">
-      <div style="flex:1">
-        ${criticalOver?'<div class="critical-label">🔴 קריטי — באיחור!</div>':task.critical?'<div class="critical-label">🔴 קריטי</div>':''}
-        <div class="tc-name">${task.name}</div>
-        ${client?`<div class="tc-client">🏢 ${client.name}</div>`:''}
-      </div>
-    </div>
-    <div class="tc-row">${datePill}${deadlinePill}</div>
-    ${task.description?`<div class="tc-desc">${task.description}</div>`:''}
-    ${task.note?`<div class="tc-note">💬 ${task.note}</div>`:''}
-    ${task.link?`<a href="${task.link}" target="_blank" class="tc-link">🔗 פתח קישור</a>`:''}
+  const hasExtra=!!(task.description||task.note||task.link||postponeInfo);
+  const extraId='ex_'+key.replace(/[^a-z0-9]/gi,'_');
+  const extraHtml=hasExtra?`<div id="${extraId}" class="tc-extra">
+    ${task.description?`<div style="margin-bottom:4px">${task.description}</div>`:''}
+    ${task.note?`<div style="color:var(--gray-500);font-size:11px">💬 ${task.note}</div>`:''}
+    ${task.link?`<a href="${task.link}" target="_blank" class="tc-link" style="font-size:11px">🔗 קישור</a>`:''}
     ${postponeInfo}
-    ${assignedNames?`<div class="tc-assigned">👥 ${assignedNames}</div>`:''}
-    <div class="tc-actions">
-      <button class="btn btn-success btn-sm" onclick="openComplete('${key}')">✅ בצעתי</button>
-      <button class="btn btn-warning btn-sm" onclick="openPostpone('${key}')">📅 דחה</button>
+  </div>`:'';
+
+  return `<div class="${cardClass}">
+    <div class="tc-main">
+      <div class="tc-info">
+        <div class="tc-name">${criticalOver?'<span class="critical-label">🔴 קריטי</span> ':task.critical?'<span class="critical-label">🔴</span> ':''}${task.name}</div>
+        <div class="tc-meta">
+          ${client?`<span class="tc-client">${client.name}</span>`:''}
+          ${datePill}${deadlinePill}
+          ${assignedNames?`<span style="font-size:11px;color:var(--gray-400)">👥 ${assignedNames}</span>`:''}
+        </div>
+        ${hasExtra?`<button class="tc-toggle" onclick="var e=document.getElementById('${extraId}');e.classList.toggle('open');this.textContent=e.classList.contains('open')?'▲ פחות':'▼ פרטים'">▼ פרטים</button>`:''}
+        ${extraHtml}
+      </div>
+      <div class="tc-actions">
+        <button class="btn btn-success btn-sm" onclick="openComplete('${key}')">✅ בצעתי</button>
+        <button class="btn btn-warning btn-sm" onclick="openPostpone('${key}')">📅 דחה</button>
+      </div>
     </div>
   </div>`;
 }
@@ -1043,13 +1085,17 @@ window.renderAdminTasks=function(){
 // QUICK TASK (employees - one-time only)
 // ============================================================
 window.openQuickTaskModal=function(){
-  document.getElementById('qtName').value='';
-  document.getElementById('qtDesc').value='';
+  ['qtName','qtDesc','qtNote','qtLink'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('qtDate').value=todayStr();
+  document.getElementById('qtSla').value=0;
+  document.getElementById('qtCritical').checked=false;
   document.getElementById('qtClient').innerHTML='<option value="">-- בחר לקוח --</option>'+Object.entries(allClients).map(([id,c])=>`<option value="${id}">${c.name}</option>`).join('');
-  document.getElementById('qtUser').innerHTML='<option value="">-- בחר עובד --</option>'+Object.entries(allUsers).map(([id,u])=>`<option value="${id}">${u.name}</option>`).join('');
+  document.getElementById('qtUsers').innerHTML=Object.entries(allUsers).map(([id,u])=>`<button type="button" class="user-check-btn" data-uid="${id}" onclick="this.classList.toggle('selected')">${u.name}</button>`).join('');
   // pre-select current user
-  if(currentUser&&currentUser.id) document.getElementById('qtUser').value=currentUser.id;
+  if(currentUser&&currentUser.id){
+    const btn=document.querySelector(`#qtUsers [data-uid="${currentUser.id}"]`);
+    if(btn)btn.classList.add('selected');
+  }
   document.getElementById('quickTaskModal').classList.add('open');
 };
 
@@ -1057,13 +1103,12 @@ window.saveQuickTask=async function(){
   const name=document.getElementById('qtName').value.trim();
   const clientId=document.getElementById('qtClient').value;
   const date=document.getElementById('qtDate').value;
-  const userId=document.getElementById('qtUser').value;
   if(!name){showToast('שם המשימה חסר','error');return;}
   if(!clientId){showToast('חובה לבחור לקוח','error');return;}
   if(!date){showToast('חובה לבחור תאריך','error');return;}
-  if(!userId){showToast('חובה לבחור עובד','error');return;}
-  const assignedUsers={[userId]:true};
-  const task={name,description:document.getElementById('qtDesc').value.trim(),note:'',link:'',clientId,recur:'once',slaDays:0,critical:false,startDate:date,assignedUsers,onceDate:date,dayOfWeek:null,dayOfMonth:null,biDayOfMonth:null};
+  const assignedUsers={};
+  document.querySelectorAll('#qtUsers .user-check-btn.selected').forEach(b=>{assignedUsers[b.dataset.uid]=true;});
+  const task={name,description:document.getElementById('qtDesc').value.trim(),note:document.getElementById('qtNote').value.trim(),link:document.getElementById('qtLink').value.trim(),clientId,recur:'once',slaDays:parseInt(document.getElementById('qtSla').value)||0,critical:document.getElementById('qtCritical').checked,startDate:date,assignedUsers,onceDate:date,dayOfWeek:null,dayOfMonth:null,biDayOfMonth:null};
   showLoading('שומר...');
   try{
     const id=await apiPush('tasks',task);
