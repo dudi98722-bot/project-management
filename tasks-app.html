@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ניהול משימות</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700&display=swap">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Heebo', sans-serif;
+    background: #f0f4f8;
+    color: #1a202c;
+    min-height: 100vh;
+  }
+
+  /* HEADER */
+  header {
+    background: linear-gradient(135deg, #2d3748 0%, #4a5568 100%);
+    color: white;
+    padding: 20px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+  }
+  header h1 { font-size: 1.5rem; font-weight: 700; }
+  header span { font-size: 0.85rem; opacity: 0.7; }
+
+  /* STATS BAR */
+  .stats {
+    display: flex;
+    gap: 12px;
+    padding: 16px 24px;
+    background: white;
+    border-bottom: 1px solid #e2e8f0;
+    overflow-x: auto;
+  }
+  .stat-card {
+    background: #f7fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 10px 18px;
+    text-align: center;
+    min-width: 90px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .stat-card:hover, .stat-card.active { background: #2d3748; color: white; border-color: #2d3748; }
+  .stat-card .num { font-size: 1.5rem; font-weight: 700; }
+  .stat-card .lbl { font-size: 0.72rem; opacity: 0.75; }
+
+  /* MAIN LAYOUT */
+  .main { display: flex; height: calc(100vh - 130px); }
+
+  /* SIDEBAR */
+  .sidebar {
+    width: 240px;
+    background: white;
+    border-left: 1px solid #e2e8f0;
+    padding: 16px;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+  .sidebar h3 { font-size: 0.8rem; color: #718096; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+  .filter-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 9px 12px;
+    border: none;
+    background: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-family: inherit;
+    color: #4a5568;
+    transition: background 0.15s;
+    text-align: right;
+  }
+  .filter-btn:hover { background: #f7fafc; }
+  .filter-btn.active { background: #ebf4ff; color: #2b6cb0; font-weight: 600; }
+  .filter-btn .dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+  }
+  .filter-btn .badge {
+    margin-right: auto;
+    background: #e2e8f0;
+    border-radius: 10px;
+    padding: 1px 7px;
+    font-size: 0.75rem;
+    color: #4a5568;
+  }
+  .filter-btn.active .badge { background: #bee3f8; color: #2b6cb0; }
+
+  .sidebar-divider { height: 1px; background: #e2e8f0; margin: 14px 0; }
+
+  /* CONTENT */
+  .content { flex: 1; overflow-y: auto; padding: 20px 24px; }
+
+  /* TOOLBAR */
+  .toolbar {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .search-box {
+    flex: 1;
+    min-width: 200px;
+    padding: 9px 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    background: white;
+  }
+  .search-box:focus { outline: none; border-color: #4299e1; box-shadow: 0 0 0 3px rgba(66,153,225,0.1); }
+  .btn {
+    padding: 9px 18px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-family: inherit;
+    font-weight: 600;
+    transition: all 0.2s;
+  }
+  .btn-primary { background: #3182ce; color: white; }
+  .btn-primary:hover { background: #2b6cb0; }
+  .btn-danger { background: #fc8181; color: white; }
+  .btn-sm { padding: 6px 12px; font-size: 0.8rem; }
+  .sort-select {
+    padding: 9px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.85rem;
+    background: white;
+    cursor: pointer;
+  }
+
+  /* TASK CARDS */
+  .tasks-list { display: flex; flex-direction: column; gap: 10px; }
+
+  .task-card {
+    background: white;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    padding: 14px 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    transition: box-shadow 0.2s, border-color 0.2s;
+    position: relative;
+  }
+  .task-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-color: #cbd5e0; }
+  .task-card.done { opacity: 0.55; }
+  .task-card.overdue { border-right: 3px solid #fc8181; }
+  .task-card.today { border-right: 3px solid #f6ad55; }
+
+  .task-check {
+    width: 22px; height: 22px;
+    border-radius: 6px;
+    border: 2px solid #cbd5e0;
+    cursor: pointer;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    margin-top: 2px;
+    transition: all 0.2s;
+  }
+  .task-check.checked { background: #48bb78; border-color: #48bb78; }
+  .task-check.checked::after { content: '✓'; color: white; font-size: 13px; font-weight: 700; }
+
+  .task-body { flex: 1; min-width: 0; }
+  .task-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: 5px;
+    color: #2d3748;
+  }
+  .task-card.done .task-title { text-decoration: line-through; color: #a0aec0; }
+
+  .task-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+
+  /* Category colors */
+  .cat-field    { background: #fefcbf; color: #744210; }
+  .cat-office   { background: #e9d8fd; color: #44337a; }
+  .cat-bank     { background: #c6f6d5; color: #22543d; }
+  .cat-phone    { background: #bee3f8; color: #2a4365; }
+  .cat-meeting  { background: #fed7e2; color: #702459; }
+  .cat-other    { background: #e2e8f0; color: #2d3748; }
+
+  /* Priority */
+  .prio-high   { background: #fed7d7; color: #c53030; }
+  .prio-medium { background: #fefcbf; color: #744210; }
+  .prio-low    { background: #e2e8f0; color: #4a5568; }
+
+  .date-tag {
+    font-size: 0.75rem;
+    color: #718096;
+    display: flex; align-items: center; gap: 3px;
+  }
+  .date-tag.overdue { color: #e53e3e; font-weight: 600; }
+  .date-tag.today   { color: #d97706; font-weight: 600; }
+
+  .address-link {
+    font-size: 0.78rem;
+    color: #3182ce;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .address-link:hover { text-decoration: underline; }
+
+  .task-actions {
+    display: flex;
+    gap: 6px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    flex-shrink: 0;
+  }
+  .task-card:hover .task-actions { opacity: 1; }
+  .icon-btn {
+    width: 28px; height: 28px;
+    border: none;
+    background: #f7fafc;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    transition: background 0.15s;
+  }
+  .icon-btn:hover { background: #e2e8f0; }
+
+  .task-notes {
+    font-size: 0.82rem;
+    color: #718096;
+    margin-top: 4px;
+    white-space: pre-wrap;
+  }
+
+  /* EMPTY STATE */
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: #a0aec0;
+  }
+  .empty-state .icon { font-size: 3rem; margin-bottom: 12px; }
+  .empty-state p { font-size: 1rem; }
+
+  /* MODAL */
+  .overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  .overlay.open { display: flex; }
+
+  .modal {
+    background: white;
+    border-radius: 16px;
+    width: 520px;
+    max-width: 95vw;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    animation: slideUp 0.25s ease;
+  }
+  @keyframes slideUp {
+    from { transform: translateY(30px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+
+  .modal-header {
+    padding: 20px 24px 14px;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .modal-header h2 { font-size: 1.1rem; font-weight: 700; }
+  .close-btn { background: none; border: none; font-size: 1.3rem; cursor: pointer; color: #718096; }
+
+  .modal-body { padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; }
+
+  .form-group { display: flex; flex-direction: column; gap: 5px; }
+  .form-group label { font-size: 0.82rem; font-weight: 600; color: #4a5568; }
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    padding: 9px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    transition: border-color 0.2s;
+    background: white;
+  }
+  .form-group input:focus,
+  .form-group select:focus,
+  .form-group textarea:focus {
+    outline: none;
+    border-color: #4299e1;
+    box-shadow: 0 0 0 3px rgba(66,153,225,0.1);
+  }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  /* Address section */
+  .address-section {
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    background: #f7fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px;
+  }
+  .address-section.visible { display: flex; }
+
+  #addressInput {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.9rem;
+  }
+  #addressInput:focus { outline: none; border-color: #4299e1; box-shadow: 0 0 0 3px rgba(66,153,225,0.1); }
+
+  .address-preview {
+    display: none;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .address-preview.show { display: flex; }
+  .address-preview span { font-size: 0.82rem; color: #4a5568; flex: 1; }
+  .waze-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
+    background: #1cc5ff;
+    color: white;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-decoration: none;
+    border: none;
+    cursor: pointer;
+  }
+  .waze-btn:hover { background: #00aaee; }
+
+  /* Autocomplete */
+  .autocomplete-wrapper { position: relative; }
+  .autocomplete-list {
+    position: absolute;
+    top: 100%;
+    right: 0; left: 0;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    z-index: 200;
+    max-height: 200px;
+    overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  }
+  .autocomplete-list li {
+    padding: 9px 12px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    list-style: none;
+    border-bottom: 1px solid #f7fafc;
+  }
+  .autocomplete-list li:hover { background: #ebf8ff; }
+  .autocomplete-list li:last-child { border-bottom: none; }
+
+  .modal-footer {
+    padding: 14px 24px 20px;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    border-top: 1px solid #e2e8f0;
+  }
+  .btn-cancel { background: #f7fafc; border: 1px solid #e2e8f0; color: #4a5568; }
+  .btn-cancel:hover { background: #e2e8f0; }
+
+  /* DELETE confirm */
+  .confirm-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+  }
+  .confirm-overlay.open { display: flex; }
+  .confirm-box {
+    background: white;
+    border-radius: 14px;
+    padding: 28px;
+    max-width: 340px;
+    width: 90%;
+    text-align: center;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+  }
+  .confirm-box p { margin-bottom: 20px; color: #4a5568; line-height: 1.5; }
+  .confirm-btns { display: flex; gap: 10px; justify-content: center; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e0; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>✅ ניהול משימות</h1>
+  <span id="currentDate"></span>
+</header>
+
+<!-- STATS -->
+<div class="stats">
+  <div class="stat-card active" id="statAll" onclick="filterByStatus('all')">
+    <div class="num" id="countAll">0</div>
+    <div class="lbl">הכל</div>
+  </div>
+  <div class="stat-card" id="statPending" onclick="filterByStatus('pending')">
+    <div class="num" id="countPending">0</div>
+    <div class="lbl">פתוחות</div>
+  </div>
+  <div class="stat-card" id="statOverdue" onclick="filterByStatus('overdue')">
+    <div class="num" id="countOverdue">0</div>
+    <div class="lbl">באיחור</div>
+  </div>
+  <div class="stat-card" id="statToday" onclick="filterByStatus('today')">
+    <div class="num" id="countToday">0</div>
+    <div class="lbl">היום</div>
+  </div>
+  <div class="stat-card" id="statDone" onclick="filterByStatus('done')">
+    <div class="num" id="countDone">0</div>
+    <div class="lbl">הושלמו</div>
+  </div>
+</div>
+
+<div class="main">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <h3>קטגוריה</h3>
+    <button class="filter-btn active" onclick="filterByCategory('all')" id="cat-all">
+      <span class="dot" style="background:#a0aec0"></span> הכל
+      <span class="badge" id="badge-all">0</span>
+    </button>
+    <button class="filter-btn" onclick="filterByCategory('field')" id="cat-field">
+      <span class="dot" style="background:#d69e2e"></span> שטח
+      <span class="badge" id="badge-field">0</span>
+    </button>
+    <button class="filter-btn" onclick="filterByCategory('office')" id="cat-office">
+      <span class="dot" style="background:#805ad5"></span> משרד
+      <span class="badge" id="badge-office">0</span>
+    </button>
+    <button class="filter-btn" onclick="filterByCategory('bank')" id="cat-bank">
+      <span class="dot" style="background:#38a169"></span> בנק
+      <span class="badge" id="badge-bank">0</span>
+    </button>
+    <button class="filter-btn" onclick="filterByCategory('phone')" id="cat-phone">
+      <span class="dot" style="background:#3182ce"></span> טלפון
+      <span class="badge" id="badge-phone">0</span>
+    </button>
+    <button class="filter-btn" onclick="filterByCategory('meeting')" id="cat-meeting">
+      <span class="dot" style="background:#d53f8c"></span> פגישה
+      <span class="badge" id="badge-meeting">0</span>
+    </button>
+    <button class="filter-btn" onclick="filterByCategory('other')" id="cat-other">
+      <span class="dot" style="background:#718096"></span> אחר
+      <span class="badge" id="badge-other">0</span>
+    </button>
+
+    <div class="sidebar-divider"></div>
+    <h3>עדיפות</h3>
+    <button class="filter-btn" onclick="filterByPriority('all')" id="prio-all">
+      <span class="dot" style="background:#a0aec0"></span> הכל
+    </button>
+    <button class="filter-btn" onclick="filterByPriority('high')" id="prio-high">
+      <span class="dot" style="background:#e53e3e"></span> גבוהה
+    </button>
+    <button class="filter-btn" onclick="filterByPriority('medium')" id="prio-medium">
+      <span class="dot" style="background:#d69e2e"></span> בינונית
+    </button>
+    <button class="filter-btn" onclick="filterByPriority('low')" id="prio-low">
+      <span class="dot" style="background:#718096"></span> נמוכה
+    </button>
+  </aside>
+
+  <!-- CONTENT -->
+  <div class="content">
+    <div class="toolbar">
+      <input class="search-box" type="text" id="searchInput" placeholder="🔍 חיפוש משימה..." oninput="renderTasks()">
+      <select class="sort-select" id="sortSelect" onchange="renderTasks()">
+        <option value="date">מיין: תאריך</option>
+        <option value="priority">מיין: עדיפות</option>
+        <option value="category">מיין: קטגוריה</option>
+        <option value="created">מיין: נוצר</option>
+      </select>
+      <button class="btn btn-primary" onclick="openModal()">+ משימה חדשה</button>
+    </div>
+
+    <div class="tasks-list" id="tasksList"></div>
+  </div>
+</div>
+
+<!-- ADD/EDIT MODAL -->
+<div class="overlay" id="modalOverlay" onclick="closeModalOnBg(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle">משימה חדשה</h2>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>כותרת המשימה *</label>
+        <input type="text" id="taskTitle" placeholder="תאר את המשימה...">
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>קטגוריה</label>
+          <select id="taskCategory" onchange="onCategoryChange()">
+            <option value="field">🏗️ שטח</option>
+            <option value="office">🏢 משרד</option>
+            <option value="bank">🏦 בנק</option>
+            <option value="phone">📞 טלפון</option>
+            <option value="meeting">🤝 פגישה</option>
+            <option value="other">📌 אחר</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>עדיפות</label>
+          <select id="taskPriority">
+            <option value="high">🔴 גבוהה</option>
+            <option value="medium" selected>🟡 בינונית</option>
+            <option value="low">⚪ נמוכה</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>תאריך לביצוע</label>
+          <input type="date" id="taskDueDate">
+        </div>
+        <div class="form-group">
+          <label>שעה (אופציונלי)</label>
+          <input type="time" id="taskDueTime">
+        </div>
+      </div>
+
+      <!-- ADDRESS (field tasks) -->
+      <div class="address-section" id="addressSection">
+        <label style="font-size:0.82rem;font-weight:600;color:#4a5568;">📍 כתובת</label>
+        <div class="autocomplete-wrapper">
+          <input type="text" id="addressInput" placeholder="הקלד כתובת..." autocomplete="off" oninput="onAddressInput()" onkeydown="onAddressKeyDown(event)">
+          <ul class="autocomplete-list" id="autocompleteList" style="display:none"></ul>
+        </div>
+        <div class="address-preview" id="addressPreview">
+          <span id="addressText"></span>
+          <a id="wazeLink" href="#" target="_blank" class="waze-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/>
+            </svg>
+            נווט בוויז
+          </a>
+          <button onclick="clearAddress()" style="background:none;border:none;cursor:pointer;color:#e53e3e;font-size:1rem;" title="נקה כתובת">✕</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>הערות</label>
+        <textarea id="taskNotes" rows="3" placeholder="פרטים נוספים..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-cancel" onclick="closeModal()">ביטול</button>
+      <button class="btn btn-primary" onclick="saveTask()">שמור משימה</button>
+    </div>
+  </div>
+</div>
+
+<!-- DELETE CONFIRM -->
+<div class="confirm-overlay" id="confirmOverlay">
+  <div class="confirm-box">
+    <p>האם למחוק את המשימה?<br>פעולה זו לא ניתנת לביטול.</p>
+    <div class="confirm-btns">
+      <button class="btn btn-cancel" onclick="closeConfirm()">ביטול</button>
+      <button class="btn btn-danger" onclick="confirmDelete()">מחק</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── DATA ──────────────────────────────────────────────────────────────
+let tasks = JSON.parse(localStorage.getItem('tasks_v2') || '[]');
+let editingId = null;
+let deleteId = null;
+let activeStatus = 'all';
+let activeCategory = 'all';
+let activePriority = 'all';
+let selectedAddress = '';
+let autocompleteDebounce = null;
+
+const CATEGORIES = {
+  field:   { label: 'שטח',  icon: '🏗️', cls: 'cat-field'   },
+  office:  { label: 'משרד', icon: '🏢', cls: 'cat-office'  },
+  bank:    { label: 'בנק',  icon: '🏦', cls: 'cat-bank'    },
+  phone:   { label: 'טלפון',icon: '📞', cls: 'cat-phone'   },
+  meeting: { label: 'פגישה',icon: '🤝', cls: 'cat-meeting' },
+  other:   { label: 'אחר',  icon: '📌', cls: 'cat-other'   },
+};
+
+function save() {
+  localStorage.setItem('tasks_v2', JSON.stringify(tasks));
+}
+
+// ── DATE HELPERS ──────────────────────────────────────────────────────
+function today() {
+  return new Date().toISOString().slice(0,10);
+}
+function formatDate(d) {
+  if (!d) return '';
+  const [y,m,day] = d.split('-');
+  return `${day}/${m}/${y}`;
+}
+function isOverdue(task) {
+  return !task.done && task.dueDate && task.dueDate < today();
+}
+function isToday(task) {
+  return !task.done && task.dueDate === today();
+}
+
+// ── FILTERS ───────────────────────────────────────────────────────────
+function filterByStatus(s) {
+  activeStatus = s;
+  document.querySelectorAll('.stat-card').forEach(c => c.classList.remove('active'));
+  document.getElementById('stat' + s.charAt(0).toUpperCase() + s.slice(1))?.classList.add('active');
+  renderTasks();
+}
+function filterByCategory(c) {
+  activeCategory = c;
+  document.querySelectorAll('[id^="cat-"]').forEach(b => b.classList.remove('active'));
+  document.getElementById('cat-' + c)?.classList.add('active');
+  renderTasks();
+}
+function filterByPriority(p) {
+  activePriority = p;
+  document.querySelectorAll('[id^="prio-"]').forEach(b => b.classList.remove('active'));
+  document.getElementById('prio-' + p)?.classList.add('active');
+  renderTasks();
+}
+
+function getFiltered() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  return tasks.filter(t => {
+    if (activeStatus === 'done'    && !t.done) return false;
+    if (activeStatus === 'pending' && t.done)  return false;
+    if (activeStatus === 'overdue' && !isOverdue(t)) return false;
+    if (activeStatus === 'today'   && !isToday(t))   return false;
+    if (activeCategory !== 'all' && t.category !== activeCategory) return false;
+    if (activePriority !== 'all' && t.priority !== activePriority) return false;
+    if (q && !t.title.toLowerCase().includes(q) && !(t.notes||'').toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+
+function getSorted(list) {
+  const s = document.getElementById('sortSelect').value;
+  return [...list].sort((a,b) => {
+    if (s === 'date') {
+      if (!a.dueDate && !b.dueDate) return 0;
+      if (!a.dueDate) return 1;
+      if (!b.dueDate) return -1;
+      return a.dueDate.localeCompare(b.dueDate);
+    }
+    if (s === 'priority') {
+      const p = {high:0,medium:1,low:2};
+      return (p[a.priority]||1) - (p[b.priority]||1);
+    }
+    if (s === 'category') return a.category.localeCompare(b.category);
+    return b.createdAt - a.createdAt;
+  });
+}
+
+// ── RENDER ─────────────────────────────────────────────────────────────
+function renderTasks() {
+  updateStats();
+  const list = getSorted(getFiltered());
+  const el = document.getElementById('tasksList');
+
+  if (!list.length) {
+    el.innerHTML = `<div class="empty-state"><div class="icon">📋</div><p>אין משימות להצגה</p></div>`;
+    return;
+  }
+
+  el.innerHTML = list.map(t => {
+    const cat = CATEGORIES[t.category] || CATEGORIES.other;
+    const overdue = isOverdue(t);
+    const tod = isToday(t);
+    let dateStr = '';
+    if (t.dueDate) {
+      const cls = overdue ? 'overdue' : (tod ? 'today' : '');
+      const prefix = overdue ? '⚠️ באיחור · ' : (tod ? '⏰ היום · ' : '📅 ');
+      dateStr = `<span class="date-tag ${cls}">${prefix}${formatDate(t.dueDate)}${t.dueTime ? ' ' + t.dueTime : ''}</span>`;
+    }
+    let addressHtml = '';
+    if (t.address) {
+      const wazeUrl = `https://waze.com/ul?q=${encodeURIComponent(t.address)}&navigate=yes`;
+      addressHtml = `
+        <a class="address-link" href="${wazeUrl}" target="_blank">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="#3182ce"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+          ${t.address}
+        </a>`;
+    }
+    const prioLabel = {high:'גבוהה',medium:'בינונית',low:'נמוכה'}[t.priority] || '';
+    return `
+      <div class="task-card ${t.done?'done':''} ${overdue?'overdue':''} ${tod&&!overdue?'today':''}" data-id="${t.id}">
+        <div class="task-check ${t.done?'checked':''}" onclick="toggleDone('${t.id}')"></div>
+        <div class="task-body">
+          <div class="task-title">${escHtml(t.title)}</div>
+          <div class="task-meta">
+            <span class="tag ${cat.cls}">${cat.icon} ${cat.label}</span>
+            <span class="tag prio-${t.priority}">${prioLabel}</span>
+            ${dateStr}
+            ${addressHtml}
+          </div>
+          ${t.notes ? `<div class="task-notes">${escHtml(t.notes)}</div>` : ''}
+        </div>
+        <div class="task-actions">
+          <button class="icon-btn" onclick="editTask('${t.id}')" title="עריכה">✏️</button>
+          <button class="icon-btn" onclick="askDelete('${t.id}')" title="מחיקה">🗑️</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function updateStats() {
+  const all = tasks.length;
+  const pending = tasks.filter(t => !t.done).length;
+  const overdue = tasks.filter(isOverdue).length;
+  const tod = tasks.filter(isToday).length;
+  const done = tasks.filter(t => t.done).length;
+  document.getElementById('countAll').textContent = all;
+  document.getElementById('countPending').textContent = pending;
+  document.getElementById('countOverdue').textContent = overdue;
+  document.getElementById('countToday').textContent = tod;
+  document.getElementById('countDone').textContent = done;
+
+  const cats = ['all','field','office','bank','phone','meeting','other'];
+  cats.forEach(c => {
+    const n = c === 'all' ? tasks.length : tasks.filter(t => t.category === c).length;
+    document.getElementById('badge-' + c).textContent = n;
+  });
+}
+
+// ── TOGGLE DONE ────────────────────────────────────────────────────────
+function toggleDone(id) {
+  const t = tasks.find(t => t.id === id);
+  if (t) { t.done = !t.done; save(); renderTasks(); }
+}
+
+// ── MODAL ──────────────────────────────────────────────────────────────
+function openModal(task) {
+  editingId = task ? task.id : null;
+  document.getElementById('modalTitle').textContent = task ? 'עריכת משימה' : 'משימה חדשה';
+  document.getElementById('taskTitle').value = task ? task.title : '';
+  document.getElementById('taskCategory').value = task ? task.category : 'field';
+  document.getElementById('taskPriority').value = task ? task.priority : 'medium';
+  document.getElementById('taskDueDate').value = task ? (task.dueDate || '') : today();
+  document.getElementById('taskDueTime').value = task ? (task.dueTime || '') : '';
+  document.getElementById('taskNotes').value = task ? (task.notes || '') : '';
+  selectedAddress = task ? (task.address || '') : '';
+  document.getElementById('addressInput').value = selectedAddress;
+  document.getElementById('addressText').textContent = selectedAddress;
+  document.getElementById('addressPreview').classList.toggle('show', !!selectedAddress);
+  if (selectedAddress) {
+    document.getElementById('wazeLink').href = `https://waze.com/ul?q=${encodeURIComponent(selectedAddress)}&navigate=yes`;
+  }
+  onCategoryChange();
+  document.getElementById('modalOverlay').classList.add('open');
+  setTimeout(() => document.getElementById('taskTitle').focus(), 100);
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+  document.getElementById('autocompleteList').style.display = 'none';
+  editingId = null;
+}
+function closeModalOnBg(e) {
+  if (e.target === document.getElementById('modalOverlay')) closeModal();
+}
+
+function onCategoryChange() {
+  const isField = document.getElementById('taskCategory').value === 'field';
+  document.getElementById('addressSection').classList.toggle('visible', isField);
+}
+
+function saveTask() {
+  const title = document.getElementById('taskTitle').value.trim();
+  if (!title) { document.getElementById('taskTitle').focus(); return; }
+
+  const task = {
+    id: editingId || Date.now().toString(),
+    title,
+    category: document.getElementById('taskCategory').value,
+    priority: document.getElementById('taskPriority').value,
+    dueDate: document.getElementById('taskDueDate').value,
+    dueTime: document.getElementById('taskDueTime').value,
+    notes: document.getElementById('taskNotes').value.trim(),
+    address: selectedAddress,
+    done: editingId ? tasks.find(t => t.id === editingId)?.done || false : false,
+    createdAt: editingId ? tasks.find(t => t.id === editingId)?.createdAt || Date.now() : Date.now(),
+  };
+
+  if (editingId) {
+    const idx = tasks.findIndex(t => t.id === editingId);
+    if (idx > -1) tasks[idx] = task;
+  } else {
+    tasks.unshift(task);
+  }
+  save();
+  closeModal();
+  renderTasks();
+}
+
+function editTask(id) {
+  const t = tasks.find(t => t.id === id);
+  if (t) openModal(t);
+}
+
+// ── DELETE ─────────────────────────────────────────────────────────────
+function askDelete(id) {
+  deleteId = id;
+  document.getElementById('confirmOverlay').classList.add('open');
+}
+function closeConfirm() {
+  deleteId = null;
+  document.getElementById('confirmOverlay').classList.remove('open');
+}
+function confirmDelete() {
+  tasks = tasks.filter(t => t.id !== deleteId);
+  save(); closeConfirm(); renderTasks();
+}
+
+// ── ADDRESS AUTOCOMPLETE (Nominatim) ──────────────────────────────────
+function onAddressInput() {
+  const q = document.getElementById('addressInput').value;
+  selectedAddress = '';
+  document.getElementById('addressPreview').classList.remove('show');
+  clearTimeout(autocompleteDebounce);
+  if (q.length < 3) { document.getElementById('autocompleteList').style.display = 'none'; return; }
+  autocompleteDebounce = setTimeout(() => fetchSuggestions(q), 350);
+}
+
+async function fetchSuggestions(q) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&addressdetails=1&limit=6&accept-language=he`;
+    const res = await fetch(url, { headers: { 'Accept-Language': 'he' } });
+    const data = await res.json();
+    showSuggestions(data);
+  } catch(e) {
+    document.getElementById('autocompleteList').style.display = 'none';
+  }
+}
+
+function showSuggestions(results) {
+  const list = document.getElementById('autocompleteList');
+  if (!results.length) { list.style.display = 'none'; return; }
+  list.innerHTML = results.map((r,i) =>
+    `<li onclick="selectAddress('${escAttr(r.display_name)}')">${escHtml(r.display_name)}</li>`
+  ).join('');
+  list.style.display = 'block';
+}
+
+function selectAddress(addr) {
+  selectedAddress = addr;
+  document.getElementById('addressInput').value = addr;
+  document.getElementById('autocompleteList').style.display = 'none';
+  document.getElementById('addressText').textContent = addr;
+  document.getElementById('wazeLink').href = `https://waze.com/ul?q=${encodeURIComponent(addr)}&navigate=yes`;
+  document.getElementById('addressPreview').classList.add('show');
+}
+
+function clearAddress() {
+  selectedAddress = '';
+  document.getElementById('addressInput').value = '';
+  document.getElementById('addressPreview').classList.remove('show');
+}
+
+function onAddressKeyDown(e) {
+  const list = document.getElementById('autocompleteList');
+  const items = list.querySelectorAll('li');
+  if (!items.length) return;
+  const active = list.querySelector('li.ac-active');
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    const next = active ? (active.nextElementSibling || items[0]) : items[0];
+    items.forEach(i => i.classList.remove('ac-active'));
+    next.classList.add('ac-active');
+    document.getElementById('addressInput').value = next.textContent;
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    const prev = active ? (active.previousElementSibling || items[items.length-1]) : items[items.length-1];
+    items.forEach(i => i.classList.remove('ac-active'));
+    prev.classList.add('ac-active');
+    document.getElementById('addressInput').value = prev.textContent;
+  } else if (e.key === 'Enter' && active) {
+    e.preventDefault();
+    selectAddress(active.textContent);
+  } else if (e.key === 'Escape') {
+    list.style.display = 'none';
+  }
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.autocomplete-wrapper')) {
+    document.getElementById('autocompleteList').style.display = 'none';
+  }
+});
+
+// ── UTILS ─────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s) {
+  return (s||'').replace(/'/g,"\\'");
+}
+
+// ── KEYBOARD SHORTCUTS ────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeModal(); closeConfirm(); }
+  if (e.key === 'n' && !e.ctrlKey && !e.metaKey && document.activeElement === document.body) openModal();
+});
+
+// ── INIT ──────────────────────────────────────────────────────────────
+const days = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+const now = new Date();
+document.getElementById('currentDate').textContent =
+  `יום ${days[now.getDay()]}, ${now.getDate().toString().padStart(2,'0')}/${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getFullYear()}`;
+
+// Demo tasks if empty
+if (!tasks.length) {
+  tasks = [
+    { id:'1', title:'בדיקת פרויקט ברחוב הרצל', category:'field', priority:'high', dueDate: today(), dueTime:'10:00', notes:'להביא תוכניות', address:'רחוב הרצל 1, תל אביב', done:false, createdAt: Date.now()-5000 },
+    { id:'2', title:'פגישה עם רואה חשבון', category:'meeting', priority:'medium', dueDate: today(), dueTime:'14:00', notes:'', address:'', done:false, createdAt: Date.now()-4000 },
+    { id:'3', title:'הפקדת שיק', category:'bank', priority:'high', dueDate:'2026-06-08', dueTime:'', notes:'שיק מספר 12345', address:'', done:false, createdAt: Date.now()-3000 },
+    { id:'4', title:'הכנת חוזה לחתימה', category:'office', priority:'medium', dueDate:'2026-06-15', dueTime:'', notes:'', address:'', done:false, createdAt: Date.now()-2000 },
+    { id:'5', title:'שיחת טלפון עם ספק', category:'phone', priority:'low', dueDate:'2026-06-12', dueTime:'', notes:'', address:'', done:true, createdAt: Date.now()-1000 },
+  ];
+  save();
+}
+
+renderTasks();
+</script>
+</body>
+</html>
