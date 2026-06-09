@@ -25,7 +25,7 @@ function getSheet(name) {
     sheet = ss.insertSheet(name);
     // Add header row
     const headers = {
-      users: ['id','name','role','isAdmin'],
+      users: ['id','name','username','password','role','isAdmin'],
       clients: ['id','name','info'],
       tasks: ['id','name','description','clientId','recur','slaDays','critical','startDate','onceDate','dayOfWeek','dayOfMonth','biDayOfMonth','assignedUsers'],
       instances: ['key','taskId','periodKey','dueDate','status','completedBy','completedByName','completedAt','completionNote','postponedTo','postponeReason','postponedBy','postponedAt'],

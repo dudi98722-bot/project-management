@@ -510,9 +510,12 @@ window.doLogin=function(){
   const err=document.getElementById('loginError');
   err.style.display='none';
 
-  const found=Object.entries(allUsers).find(([,u])=>
-    (u.username||'').toLowerCase()===username && u.password===password
-  );
+  // Try match by username field, OR by name (fallback for users without username set)
+  const found=Object.entries(allUsers).find(([,u])=>{
+    const uname=(u.username||u.name||'').toLowerCase();
+    const pass=u.password||'';
+    return uname===username && pass===password;
+  });
   if(!found){err.style.display='block';return;}
   loginAs(found[0]);
 };
