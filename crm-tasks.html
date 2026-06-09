@@ -482,11 +482,20 @@ window.useLocalMode=async function(){
 
 async function showLoginScreen(){
   showLoading('טוען נתונים...');
+  document.getElementById('setupScreen').style.display='none';
   try{
-    document.getElementById('setupScreen').style.display='none';
     await loadAll();
     document.getElementById('loginScreen').style.display='flex';
-  }catch(e){showToast('שגיאה: '+e.message,'error');document.getElementById('setupScreen').style.display='flex';localStorage.removeItem('crm_api_url');}
+  }catch(e){
+    showToast('שגיאה בטעינה — מנסה שוב...','error');
+    // Retry once after 2s
+    setTimeout(async()=>{
+      try{await loadAll();document.getElementById('loginScreen').style.display='flex';}
+      catch(e2){showToast('שגיאת חיבור: '+e2.message,'error');document.getElementById('loginScreen').style.display='flex';}
+      hideLoading();
+    },2000);
+    return;
+  }
   hideLoading();
 }
 
