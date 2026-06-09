@@ -424,6 +424,10 @@
       <label>💬 הערה פנימית (אופציונלי)</label>
       <textarea id="tNote" placeholder="הערה פנימית — לא מוצגת ללקוח..."></textarea>
     </div>
+    <div class="form-group-m">
+      <label>🔗 קישור (אופציונלי)</label>
+      <input type="url" id="tLink" placeholder="https://..." style="direction:ltr">
+    </div>
     <div class="form-row">
       <div class="form-group-m">
         <label>חזרתיות *</label>
@@ -854,6 +858,7 @@ function renderCard({key,inst,task}) {
     </div>
     ${task.description ? `<div class="task-desc">${task.description}</div>` : ''}
     ${task.note ? `<div style="margin-top:8px;font-size:13px;color:var(--gray-500);background:var(--gray-50);border-radius:6px;padding:8px 12px;">💬 ${task.note}</div>` : ''}
+    ${task.link ? `<div style="margin-top:8px;"><a href="${task.link}" target="_blank" style="font-size:13px;color:var(--primary);text-decoration:none;display:inline-flex;align-items:center;gap:4px;">🔗 פתח קישור</a></div>` : ''}
     ${postponeInfo}
     ${assignedNames ? `<div class="task-assigned">👥 ${assignedNames}</div>` : ''}
     <div class="task-actions">
@@ -1028,6 +1033,7 @@ window.openTaskModal = function(taskId=null) {
     document.getElementById('tName').value = t.name||'';
     document.getElementById('tDesc').value = t.description||'';
     document.getElementById('tNote').value = t.note||'';
+    document.getElementById('tLink').value = t.link||'';
     document.getElementById('tClient').value = t.clientId||'';
     document.getElementById('tRecur').value = t.recur||'once';
     document.getElementById('tSla').value = t.slaDays||0;
@@ -1039,7 +1045,7 @@ window.openTaskModal = function(taskId=null) {
     document.getElementById('tCritical').checked = !!t.critical;
     if (t.assignedUsers) document.querySelectorAll('#tUsers .user-check-btn').forEach(b=>{ if(t.assignedUsers[b.dataset.uid]) b.classList.add('selected'); });
   } else {
-    ['tName','tDesc','tNote','tDayOfMonth','tBiDayOfMonth'].forEach(id=>document.getElementById(id).value='');
+    ['tName','tDesc','tNote','tLink','tDayOfMonth','tBiDayOfMonth'].forEach(id=>document.getElementById(id).value='');
     document.getElementById('tClient').value='';
     document.getElementById('tRecur').value='once';
     document.getElementById('tSla').value=0;
@@ -1066,6 +1072,7 @@ window.saveTask = async function() {
   const task = {
     name, description: document.getElementById('tDesc').value.trim(),
     note: document.getElementById('tNote').value.trim(),
+    link: document.getElementById('tLink').value.trim(),
     clientId: document.getElementById('tClient').value,
     recur: document.getElementById('tRecur').value,
     slaDays: parseInt(document.getElementById('tSla').value)||0,
