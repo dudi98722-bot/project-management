@@ -219,10 +219,9 @@
     <input type="password" id="loginPassword" class="login-input" placeholder="סיסמה" onkeydown="if(event.key==='Enter')doLogin()">
     <div id="loginError" class="login-error">שם משתמש או סיסמה שגויים</div>
     <button class="btn btn-primary" style="width:100%;padding:11px;font-size:15px" onclick="doLogin()">כניסה →</button>
-    <div style="margin-top:16px">
-      <button onclick="showFirstAdmin()" style="background:none;border:none;color:var(--gray-400);font-size:12px;cursor:pointer;text-decoration:underline">
-        כניסת מנהל ראשונה
-      </button>
+    <div style="margin-top:16px;display:flex;flex-direction:column;gap:6px;align-items:center">
+      <button onclick="showFirstAdmin()" style="background:none;border:none;color:var(--gray-400);font-size:12px;cursor:pointer;text-decoration:underline">כניסת מנהל ראשונה</button>
+      <button onclick="debugUsers()" style="background:none;border:none;color:var(--gray-300);font-size:11px;cursor:pointer;text-decoration:underline">🔍 בדיקת משתמשים</button>
     </div>
   </div>
 </div>
@@ -522,9 +521,9 @@ window.doLogin=function(){
 
   // Try match by username field, OR by name (fallback for users without username set)
   const found=Object.entries(allUsers).find(([,u])=>{
-    const uname=(u.username||u.name||'').toLowerCase();
-    const pass=u.password||'';
-    return uname===username && pass===password;
+    const uname=(u.username||u.name||'').toLowerCase().trim();
+    const pass=(u.password||'').trim();
+    return uname===username && pass===password.trim();
   });
   if(!found){err.style.display='block';return;}
   loginAs(found[0]);
@@ -1239,6 +1238,13 @@ function renderCurrentView(){
 
 window.closeModal=function(id){document.getElementById(id).classList.remove('open');};
 document.addEventListener('click',e=>{if(e.target.classList.contains('modal-overlay'))e.target.classList.remove('open');});
+
+window.debugUsers=function(){
+  const lines=Object.entries(allUsers).map(([id,u])=>
+    `${u.name} | user: "${u.username||'—'}" | pass: "${u.password||'—'}"`
+  ).join('\n');
+  alert('משתמשים שמורים:\n\n'+(lines||'אין משתמשים'));
+};
 
 function showLoading(msg=''){document.getElementById('loadingOverlay').style.display='flex';document.getElementById('loadingMsg').textContent=msg;}
 function hideLoading(){document.getElementById('loadingOverlay').style.display='none';}
