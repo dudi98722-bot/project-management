@@ -1,0 +1,1636 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRM ניהול משימות</title>
+<style>
+  :root {
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    --success: #16a34a;
+    --warning: #d97706;
+    --danger: #dc2626;
+    --danger-light: #fef2f2;
+    --warning-light: #fffbeb;
+    --success-light: #f0fdf4;
+    --gray-50: #f9fafb;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-300: #d1d5db;
+    --gray-400: #9ca3af;
+    --gray-500: #6b7280;
+    --gray-700: #374151;
+    --gray-900: #111827;
+    --radius: 10px;
+    --shadow: 0 2px 8px rgba(0,0,0,0.08);
+    --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--gray-50); color: var(--gray-900); min-height: 100vh; }
+
+  /* ===== FIREBASE SETUP SCREEN ===== */
+  #setupScreen {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+  }
+  .setup-card {
+    background: white; border-radius: 16px; padding: 40px; width: 480px;
+    box-shadow: var(--shadow-lg);
+  }
+  .setup-card h2 { color: var(--primary); margin-bottom: 8px; font-size: 22px; }
+  .setup-card p { color: var(--gray-500); margin-bottom: 24px; font-size: 14px; line-height: 1.6; }
+  .setup-card input {
+    width: 100%; padding: 10px 14px; border: 1px solid var(--gray-300);
+    border-radius: 8px; margin-bottom: 12px; font-size: 13px; direction: ltr;
+  }
+  .setup-card label { font-size: 13px; font-weight: 600; color: var(--gray-700); display: block; margin-bottom: 4px; }
+  .setup-steps { background: var(--gray-50); border-radius: 8px; padding: 16px; margin-bottom: 20px; font-size: 13px; }
+  .setup-steps ol { padding-right: 20px; }
+  .setup-steps li { margin-bottom: 6px; color: var(--gray-700); }
+  .setup-steps a { color: var(--primary); }
+
+  /* ===== LOGIN SCREEN ===== */
+  #loginScreen {
+    display: none; align-items: center; justify-content: center;
+    min-height: 100vh; background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+  }
+  .login-card {
+    background: white; border-radius: 16px; padding: 40px; width: 420px;
+    box-shadow: var(--shadow-lg); text-align: center;
+  }
+  .login-card h1 { font-size: 26px; color: var(--gray-900); margin-bottom: 6px; }
+  .login-card p { color: var(--gray-500); margin-bottom: 28px; font-size: 14px; }
+  .user-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+  .user-btn {
+    padding: 16px 12px; border: 2px solid var(--gray-200); border-radius: var(--radius);
+    background: white; cursor: pointer; font-size: 14px; font-weight: 600;
+    color: var(--gray-700); transition: all 0.2s; display: flex; flex-direction: column;
+    align-items: center; gap: 8px;
+  }
+  .user-btn:hover { border-color: var(--primary); color: var(--primary); background: #eff6ff; }
+  .user-avatar {
+    width: 48px; height: 48px; border-radius: 50%; background: var(--primary);
+    color: white; display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: bold;
+  }
+
+  /* ===== MAIN APP ===== */
+  #app { display: none; }
+
+  /* Header */
+  .header {
+    background: white; border-bottom: 1px solid var(--gray-200);
+    padding: 0 24px; display: flex; align-items: center; justify-content: space-between;
+    height: 60px; position: sticky; top: 0; z-index: 100; box-shadow: var(--shadow);
+  }
+  .header-title { font-size: 18px; font-weight: 700; color: var(--primary); }
+  .header-user { display: flex; align-items: center; gap: 10px; }
+  .header-avatar {
+    width: 36px; height: 36px; border-radius: 50%; background: var(--primary);
+    color: white; display: flex; align-items: center; justify-content: center;
+    font-weight: bold; font-size: 14px;
+  }
+  .header-nav { display: flex; gap: 4px; }
+  .nav-btn {
+    padding: 8px 14px; border: none; border-radius: 8px; cursor: pointer;
+    font-size: 13px; font-weight: 600; background: transparent; color: var(--gray-500);
+    transition: all 0.2s;
+  }
+  .nav-btn.active { background: var(--primary); color: white; }
+  .nav-btn:hover:not(.active) { background: var(--gray-100); color: var(--gray-700); }
+  .badge {
+    display: inline-block; background: var(--danger); color: white;
+    border-radius: 10px; padding: 1px 7px; font-size: 11px; margin-right: 4px;
+  }
+
+  /* ===== VIEWS ===== */
+  .view { display: none; padding: 24px; max-width: 1200px; margin: 0 auto; }
+  .view.active { display: block; }
+
+  /* ===== TASKS VIEW ===== */
+  .filters-bar {
+    background: white; border-radius: var(--radius); padding: 16px 20px;
+    margin-bottom: 20px; box-shadow: var(--shadow);
+    display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+  }
+  .filter-select {
+    padding: 8px 12px; border: 1px solid var(--gray-300); border-radius: 8px;
+    font-size: 13px; background: white; cursor: pointer; color: var(--gray-700);
+  }
+  .filter-select:focus { outline: none; border-color: var(--primary); }
+  .filters-label { font-size: 13px; font-weight: 600; color: var(--gray-500); }
+  .filter-toggle {
+    padding: 7px 14px; border: 1px solid var(--gray-300); border-radius: 8px;
+    font-size: 13px; cursor: pointer; background: white; color: var(--gray-700);
+    font-weight: 600; transition: all 0.2s;
+  }
+  .filter-toggle.on { background: var(--danger); color: white; border-color: var(--danger); }
+
+  .task-card {
+    background: white; border-radius: var(--radius); padding: 18px 20px;
+    margin-bottom: 12px; box-shadow: var(--shadow); border-right: 4px solid var(--gray-200);
+    transition: all 0.2s; position: relative;
+  }
+  .task-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-1px); }
+  .task-card.critical { border-right-color: var(--danger); }
+  .task-card.overdue-warning { border-right-color: var(--warning); background: var(--warning-light); }
+  .task-card.critical-overdue { border-right-color: var(--danger); background: var(--danger-light); }
+  .task-card.normal { border-right-color: var(--primary); }
+
+  .task-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .task-title { font-size: 16px; font-weight: 700; color: var(--gray-900); display: flex; align-items: center; gap: 8px; }
+  .task-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .tag {
+    padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .tag-client { background: #eff6ff; color: var(--primary); }
+  .tag-critical { background: #fef2f2; color: var(--danger); }
+  .tag-overdue { background: var(--warning-light); color: var(--warning); }
+  .tag-recur { background: var(--gray-100); color: var(--gray-500); }
+  .tag-due { background: #f0fdf4; color: var(--success); }
+
+  .task-desc { font-size: 14px; color: var(--gray-500); margin-top: 10px; line-height: 1.5; }
+  .task-actions { display: flex; gap: 8px; margin-top: 14px; }
+  .btn {
+    padding: 8px 18px; border: none; border-radius: 8px; cursor: pointer;
+    font-size: 13px; font-weight: 600; transition: all 0.2s;
+  }
+  .btn-success { background: var(--success); color: white; }
+  .btn-success:hover { background: #15803d; }
+  .btn-warning { background: var(--warning); color: white; }
+  .btn-warning:hover { background: #b45309; }
+  .btn-primary { background: var(--primary); color: white; }
+  .btn-primary:hover { background: var(--primary-dark); }
+  .btn-danger { background: var(--danger); color: white; }
+  .btn-danger:hover { background: #b91c1c; }
+  .btn-ghost { background: var(--gray-100); color: var(--gray-700); }
+  .btn-ghost:hover { background: var(--gray-200); }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+  .task-assigned { font-size: 12px; color: var(--gray-400); margin-top: 8px; }
+  .days-left { font-weight: 700; }
+  .days-left.ok { color: var(--success); }
+  .days-left.warn { color: var(--warning); }
+  .days-left.over { color: var(--danger); }
+
+  .critical-badge {
+    background: var(--danger); color: white; padding: 2px 8px;
+    border-radius: 4px; font-size: 11px; font-weight: 700;
+  }
+  .overdue-count {
+    background: var(--warning); color: white; padding: 2px 8px;
+    border-radius: 4px; font-size: 11px; font-weight: 700;
+  }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center; padding: 60px 20px; color: var(--gray-400);
+  }
+  .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+  .empty-state h3 { font-size: 18px; color: var(--gray-500); margin-bottom: 8px; }
+
+  /* ===== MODALS ===== */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    z-index: 1000; align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: white; border-radius: 16px; padding: 32px; width: 520px;
+    max-width: 95vw; box-shadow: var(--shadow-lg); max-height: 90vh; overflow-y: auto;
+  }
+  .modal h3 { font-size: 18px; font-weight: 700; margin-bottom: 20px; color: var(--gray-900); }
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; font-size: 13px; font-weight: 600; color: var(--gray-700); margin-bottom: 6px; }
+  .form-group input, .form-group select, .form-group textarea {
+    width: 100%; padding: 10px 14px; border: 1px solid var(--gray-300);
+    border-radius: 8px; font-size: 14px; color: var(--gray-900); background: white;
+  }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+    outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+  }
+  .form-group textarea { resize: vertical; min-height: 80px; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .checkbox-group { display: flex; align-items: center; gap: 10px; }
+  .checkbox-group input[type=checkbox] { width: 18px; height: 18px; cursor: pointer; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
+  .user-checkboxes { display: flex; flex-wrap: wrap; gap: 8px; }
+  .user-check-btn {
+    padding: 6px 14px; border: 2px solid var(--gray-200); border-radius: 20px;
+    cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s;
+    background: white; color: var(--gray-700);
+  }
+  .user-check-btn.selected { border-color: var(--primary); background: #eff6ff; color: var(--primary); }
+
+  /* ===== STATS VIEW ===== */
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .stat-card {
+    background: white; border-radius: var(--radius); padding: 20px;
+    box-shadow: var(--shadow); text-align: center;
+  }
+  .stat-card .num { font-size: 36px; font-weight: 800; color: var(--primary); }
+  .stat-card .label { font-size: 13px; color: var(--gray-500); margin-top: 4px; }
+  .chart-container {
+    background: white; border-radius: var(--radius); padding: 24px;
+    box-shadow: var(--shadow); margin-bottom: 24px;
+  }
+  .chart-title { font-size: 16px; font-weight: 700; margin-bottom: 20px; color: var(--gray-700); }
+  .bar-chart { display: flex; align-items: flex-end; gap: 8px; height: 160px; }
+  .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .bar { width: 100%; background: var(--primary); border-radius: 4px 4px 0 0; min-height: 4px; transition: height 0.3s; }
+  .bar-label { font-size: 11px; color: var(--gray-500); }
+  .bar-val { font-size: 12px; font-weight: 700; color: var(--gray-700); }
+  .user-stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .user-stat-card {
+    background: white; border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow);
+  }
+  .user-stat-card h4 { font-size: 15px; font-weight: 700; margin-bottom: 12px; color: var(--gray-900); display: flex; align-items: center; gap: 10px; }
+
+  /* ===== ADMIN VIEW ===== */
+  .admin-tabs { display: flex; gap: 4px; margin-bottom: 20px; }
+  .admin-tab {
+    padding: 8px 20px; border: 1px solid var(--gray-300); border-radius: 8px;
+    cursor: pointer; font-size: 14px; font-weight: 600; background: white;
+    color: var(--gray-500); transition: all 0.2s;
+  }
+  .admin-tab.active { background: var(--primary); color: white; border-color: var(--primary); }
+  .admin-section { display: none; }
+  .admin-section.active { display: block; }
+  .list-item {
+    background: white; border-radius: var(--radius); padding: 14px 18px;
+    margin-bottom: 8px; box-shadow: var(--shadow); display: flex;
+    align-items: center; justify-content: space-between;
+  }
+  .list-item-info { flex: 1; }
+  .list-item-title { font-size: 14px; font-weight: 600; color: var(--gray-900); }
+  .list-item-sub { font-size: 12px; color: var(--gray-400); margin-top: 3px; }
+  .list-actions { display: flex; gap: 6px; }
+
+  /* ===== ARCHIVE VIEW ===== */
+  .archive-card {
+    background: white; border-radius: var(--radius); padding: 16px 20px;
+    margin-bottom: 10px; box-shadow: var(--shadow); border-right: 4px solid var(--success);
+    opacity: 0.85;
+  }
+  .archive-card .archive-title { font-size: 15px; font-weight: 600; color: var(--gray-700); }
+  .archive-card .archive-meta { font-size: 12px; color: var(--gray-400); margin-top: 6px; }
+  .archive-note { font-size: 13px; color: var(--gray-500); margin-top: 8px; font-style: italic; }
+
+  /* Section header */
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .section-title { font-size: 18px; font-weight: 700; color: var(--gray-900); }
+
+  /* Loading */
+  .loading { text-align: center; padding: 40px; color: var(--gray-400); font-size: 16px; }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--gray-900); color: white; padding: 12px 24px;
+    border-radius: 8px; font-size: 14px; z-index: 9999; opacity: 0;
+    transition: opacity 0.3s; pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+  .toast.success { background: var(--success); }
+  .toast.error { background: var(--danger); }
+
+  /* Postponed badge */
+  .postponed-badge {
+    background: var(--gray-100); color: var(--gray-500); padding: 2px 8px;
+    border-radius: 4px; font-size: 11px;
+  }
+
+  /* Recurrence field visibility */
+  .recur-field { display: none; }
+  .recur-field.show { display: block; }
+
+  .period-header {
+    font-size: 12px; font-weight: 700; color: var(--gray-400); text-transform: uppercase;
+    letter-spacing: 0.5px; margin: 20px 0 10px; padding-bottom: 6px;
+    border-bottom: 1px solid var(--gray-200);
+  }
+</style>
+</head>
+<body>
+
+<!-- FIREBASE SETUP -->
+<div id="setupScreen">
+  <div class="setup-card">
+    <h2>⚙️ הגדרת Firebase</h2>
+    <p>פעם ראשונה בלבד — הכנס את פרטי Firebase כדי שהנתונים יסתנכרנו בין כל המכשירים</p>
+    <div class="setup-steps">
+      <ol>
+        <li>היכנס ל-<a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a></li>
+        <li>צור פרויקט חדש (חינמי)</li>
+        <li>לך ל-Realtime Database → צור מסד נתונים (בחר "test mode")</li>
+        <li>לך להגדרות הפרויקט (⚙️) → הוסף אפליקציית Web</li>
+        <li>העתק את הפרטים למטה</li>
+      </ol>
+    </div>
+    <div class="form-group">
+      <label>API Key</label>
+      <input type="text" id="cfg_apiKey" placeholder="AIzaSy...">
+    </div>
+    <div class="form-group">
+      <label>Auth Domain</label>
+      <input type="text" id="cfg_authDomain" placeholder="your-project.firebaseapp.com">
+    </div>
+    <div class="form-group">
+      <label>Database URL</label>
+      <input type="text" id="cfg_databaseURL" placeholder="https://your-project-default-rtdb.firebaseio.com">
+    </div>
+    <div class="form-group">
+      <label>Project ID</label>
+      <input type="text" id="cfg_projectId" placeholder="your-project-id">
+    </div>
+    <button class="btn btn-primary" style="width:100%;padding:12px" onclick="saveFirebaseConfig()">התחל →</button>
+    <div style="margin-top:12px;text-align:center">
+      <button onclick="useLocalMode()" style="background:none;border:none;color:var(--gray-400);font-size:12px;cursor:pointer;text-decoration:underline">
+        השתמש במצב מקומי (ללא שיתוף בין מכשירים)
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div class="login-card">
+    <h1>📋 ניהול משימות</h1>
+    <p>בחר את המשתמש שלך כדי להמשיך</p>
+    <div id="userGrid" class="user-grid"></div>
+    <button class="btn btn-ghost" onclick="showAdminLogin()" style="width:100%;margin-top:8px">⚙️ ניהול (Admin)</button>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app">
+  <div class="header">
+    <div class="header-title">📋 ניהול משימות</div>
+    <div class="header-nav">
+      <button class="nav-btn active" onclick="showView('tasks')" id="navTasks">
+        משימות <span id="pendingBadge" class="badge" style="display:none">0</span>
+      </button>
+      <button class="nav-btn" onclick="showView('stats')" id="navStats">סטטיסטיקות</button>
+      <button class="nav-btn" onclick="showView('archive')" id="navArchive">ארכיון</button>
+      <button class="nav-btn" onclick="showView('admin')" id="navAdmin" style="display:none">ניהול</button>
+    </div>
+    <div class="header-user">
+      <span id="headerUserName" style="font-size:13px;font-weight:600;color:var(--gray-700)"></span>
+      <div id="headerAvatar" class="header-avatar"></div>
+      <button class="btn btn-ghost btn-sm" onclick="logout()">יציאה</button>
+    </div>
+  </div>
+
+  <!-- TASKS VIEW -->
+  <div id="viewTasks" class="view active">
+    <div class="filters-bar">
+      <span class="filters-label">סינון:</span>
+      <select id="filterClient" class="filter-select" onchange="renderTasks()">
+        <option value="">כל הלקוחות</option>
+      </select>
+      <select id="filterUser" class="filter-select" onchange="renderTasks()">
+        <option value="">כל המשימות שלי</option>
+      </select>
+      <button id="filterCritical" class="filter-toggle" onclick="toggleFilter('critical')">🔴 קריטי בלבד</button>
+      <button id="filterOverdue" class="filter-toggle" onclick="toggleFilter('overdue')">⚠️ באיחור</button>
+      <button id="filterToday" class="filter-toggle" onclick="toggleFilter('today')">📅 להיום</button>
+    </div>
+    <div id="tasksList"></div>
+  </div>
+
+  <!-- STATS VIEW -->
+  <div id="viewStats" class="view">
+    <div class="section-header">
+      <div class="section-title">סטטיסטיקות</div>
+      <select id="statsUserFilter" class="filter-select" onchange="renderStats()">
+        <option value="">כל המשתמשים</option>
+      </select>
+    </div>
+    <div id="statsContent"></div>
+  </div>
+
+  <!-- ARCHIVE VIEW -->
+  <div id="viewArchive" class="view">
+    <div class="filters-bar">
+      <span class="filters-label">ארכיון:</span>
+      <select id="archiveFilterClient" class="filter-select" onchange="renderArchive()">
+        <option value="">כל הלקוחות</option>
+      </select>
+      <select id="archiveFilterUser" class="filter-select" onchange="renderArchive()">
+        <option value="">כל המשתמשים</option>
+      </select>
+    </div>
+    <div id="archiveList"></div>
+  </div>
+
+  <!-- ADMIN VIEW -->
+  <div id="viewAdmin" class="view">
+    <div class="admin-tabs">
+      <button class="admin-tab active" onclick="switchAdminTab('tasks')">📋 משימות</button>
+      <button class="admin-tab" onclick="switchAdminTab('users')">👤 משתמשים</button>
+      <button class="admin-tab" onclick="switchAdminTab('clients')">🏢 לקוחות</button>
+    </div>
+    <div id="adminTasks" class="admin-section active">
+      <div class="section-header">
+        <div class="section-title">ניהול משימות</div>
+        <button class="btn btn-primary" onclick="openTaskModal()">+ משימה חדשה</button>
+      </div>
+      <div id="adminTasksList"></div>
+    </div>
+    <div id="adminUsers" class="admin-section">
+      <div class="section-header">
+        <div class="section-title">ניהול משתמשים</div>
+        <button class="btn btn-primary" onclick="openUserModal()">+ משתמש חדש</button>
+      </div>
+      <div id="adminUsersList"></div>
+    </div>
+    <div id="adminClients" class="admin-section">
+      <div class="section-header">
+        <div class="section-title">ניהול לקוחות</div>
+        <button class="btn btn-primary" onclick="openClientModal()">+ לקוח חדש</button>
+      </div>
+      <div id="adminClientsList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- COMPLETE TASK MODAL -->
+<div id="completeModal" class="modal-overlay">
+  <div class="modal">
+    <h3>✅ ביצוע משימה</h3>
+    <div id="completeTaskInfo" style="background:var(--gray-50);border-radius:8px;padding:12px;margin-bottom:16px;font-size:14px;color:var(--gray-700)"></div>
+    <div class="form-group">
+      <label>הערה (אופציונלי)</label>
+      <textarea id="completeNote" placeholder="הוסף הערה על ביצוע המשימה..."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('completeModal')">ביטול</button>
+      <button class="btn btn-success" onclick="confirmComplete()">✅ אשר ביצוע</button>
+    </div>
+  </div>
+</div>
+
+<!-- POSTPONE MODAL -->
+<div id="postponeModal" class="modal-overlay">
+  <div class="modal">
+    <h3>📅 דחיית משימה</h3>
+    <div id="postponeTaskInfo" style="background:var(--gray-50);border-radius:8px;padding:12px;margin-bottom:16px;font-size:14px;color:var(--gray-700)"></div>
+    <div class="form-group">
+      <label>תאריך חדש *</label>
+      <input type="date" id="postponeDate">
+    </div>
+    <div class="form-group">
+      <label>סיבת הדחיה * (חובה)</label>
+      <textarea id="postponeReason" placeholder="חייב להזין סיבה לדחיה..."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('postponeModal')">ביטול</button>
+      <button class="btn btn-warning" onclick="confirmPostpone()">📅 דחה משימה</button>
+    </div>
+  </div>
+</div>
+
+<!-- TASK ADMIN MODAL -->
+<div id="taskModal" class="modal-overlay">
+  <div class="modal">
+    <h3 id="taskModalTitle">📋 משימה חדשה</h3>
+    <div class="form-row">
+      <div class="form-group">
+        <label>שם המשימה *</label>
+        <input type="text" id="tName" placeholder="שם המשימה">
+      </div>
+      <div class="form-group">
+        <label>לקוח</label>
+        <select id="tClient"><option value="">ללא לקוח</option></select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>פירוט המשימה</label>
+      <textarea id="tDesc" placeholder="תיאור מפורט של המשימה..."></textarea>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>חזרתיות *</label>
+        <select id="tRecur" onchange="updateRecurFields()">
+          <option value="once">חד פעמי</option>
+          <option value="weekly">שבועי</option>
+          <option value="monthly">חודשי (לפי יום)</option>
+          <option value="bimonthly">דו-חודשי</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>SLA (ימים לביצוע)</label>
+        <input type="number" id="tSla" placeholder="0 = ללא הגבלה" min="0" value="0">
+      </div>
+    </div>
+    <!-- Once -->
+    <div id="rfOnce" class="recur-field show">
+      <div class="form-group">
+        <label>תאריך המשימה *</label>
+        <input type="date" id="tOnceDate">
+      </div>
+    </div>
+    <!-- Weekly -->
+    <div id="rfWeekly" class="recur-field">
+      <div class="form-group">
+        <label>יום בשבוע *</label>
+        <select id="tDayOfWeek">
+          <option value="0">ראשון</option>
+          <option value="1">שני</option>
+          <option value="2">שלישי</option>
+          <option value="3">רביעי</option>
+          <option value="4">חמישי</option>
+          <option value="5">שישי</option>
+          <option value="6">שבת</option>
+        </select>
+      </div>
+    </div>
+    <!-- Monthly -->
+    <div id="rfMonthly" class="recur-field">
+      <div class="form-group">
+        <label>יום בחודש *</label>
+        <input type="number" id="tDayOfMonth" placeholder="1-28" min="1" max="28">
+      </div>
+    </div>
+    <!-- Bimonthly -->
+    <div id="rfBimonthly" class="recur-field">
+      <div class="form-group">
+        <label>יום בחודש (בחודשי אי-זוגי) *</label>
+        <input type="number" id="tBiDayOfMonth" placeholder="1-28" min="1" max="28">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>תאריך התחלה (מתי להתחיל לספור)</label>
+      <input type="date" id="tStartDate">
+    </div>
+    <div class="form-group">
+      <label>משויך למשתמשים</label>
+      <div id="tUsers" class="user-checkboxes"></div>
+    </div>
+    <div class="form-group">
+      <div class="checkbox-group">
+        <input type="checkbox" id="tCritical">
+        <label for="tCritical">🔴 משימה קריטית</label>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('taskModal')">ביטול</button>
+      <button class="btn btn-primary" onclick="saveTask()">שמור</button>
+    </div>
+  </div>
+</div>
+
+<!-- USER MODAL -->
+<div id="userModal" class="modal-overlay">
+  <div class="modal" style="max-width:380px">
+    <h3 id="userModalTitle">👤 משתמש חדש</h3>
+    <div class="form-group">
+      <label>שם מלא *</label>
+      <input type="text" id="uName" placeholder="שם המשתמש">
+    </div>
+    <div class="form-group">
+      <label>תפקיד</label>
+      <input type="text" id="uRole" placeholder="תפקיד">
+    </div>
+    <div class="form-group">
+      <div class="checkbox-group">
+        <input type="checkbox" id="uIsAdmin">
+        <label for="uIsAdmin">הרשאות Admin</label>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('userModal')">ביטול</button>
+      <button class="btn btn-primary" onclick="saveUser()">שמור</button>
+    </div>
+  </div>
+</div>
+
+<!-- CLIENT MODAL -->
+<div id="clientModal" class="modal-overlay">
+  <div class="modal" style="max-width:380px">
+    <h3 id="clientModalTitle">🏢 לקוח חדש</h3>
+    <div class="form-group">
+      <label>שם הלקוח *</label>
+      <input type="text" id="cName" placeholder="שם הלקוח">
+    </div>
+    <div class="form-group">
+      <label>פרטים נוספים</label>
+      <input type="text" id="cInfo" placeholder="טלפון / כתובת / הערה">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('clientModal')">ביטול</button>
+      <button class="btn btn-primary" onclick="saveClient()">שמור</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast" class="toast"></div>
+
+<script type="module">
+// ============================================================
+// FIREBASE / LOCAL STORAGE ABSTRACTION
+// ============================================================
+let db = null;
+let localMode = false;
+let localData = {};
+
+function loadLocalData() {
+  try { localData = JSON.parse(localStorage.getItem('crm_data') || '{}'); } catch(e) { localData = {}; }
+}
+function saveLocalData() {
+  localStorage.setItem('crm_data', JSON.stringify(localData));
+}
+
+async function dbGet(path) {
+  if (localMode) {
+    const parts = path.split('/').filter(Boolean);
+    let cur = localData;
+    for (const p of parts) { if (cur == null) return null; cur = cur[p]; }
+    return cur ?? null;
+  }
+  const { ref, get } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js');
+  const snap = await get(ref(db, path));
+  return snap.exists() ? snap.val() : null;
+}
+
+async function dbSet(path, val) {
+  if (localMode) {
+    const parts = path.split('/').filter(Boolean);
+    let cur = localData;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!cur[parts[i]]) cur[parts[i]] = {};
+      cur = cur[parts[i]];
+    }
+    cur[parts[parts.length-1]] = val;
+    saveLocalData();
+    return;
+  }
+  const { ref, set } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js');
+  await set(ref(db, path), val);
+}
+
+async function dbPush(path, val) {
+  if (localMode) {
+    const id = 'id_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+    await dbSet(path + '/' + id, val);
+    return id;
+  }
+  const { ref, push } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js');
+  const r = await push(ref(db, path), val);
+  return r.key;
+}
+
+async function dbRemove(path) {
+  if (localMode) {
+    await dbSet(path, null);
+    // clean up nulls
+    const parts = path.split('/').filter(Boolean);
+    let cur = localData;
+    for (let i = 0; i < parts.length - 1; i++) { cur = cur[parts[i]]; }
+    delete cur[parts[parts.length-1]];
+    saveLocalData();
+    return;
+  }
+  const { ref, remove } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js');
+  await remove(ref(db, path));
+}
+
+function onDbChange(path, cb) {
+  if (localMode) return; // no realtime in local mode
+  import('https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js').then(({ ref, onValue }) => {
+    onValue(ref(db, path), snap => {
+      cb(snap.exists() ? snap.val() : null);
+    });
+  });
+}
+
+// ============================================================
+// STATE
+// ============================================================
+let currentUser = null;
+let allTasks = {};      // task templates
+let allInstances = {};  // task instances
+let allUsers = {};
+let allClients = {};
+let filters = { critical: false, overdue: false, today: false };
+let pendingComplete = null;
+let pendingPostpone = null;
+let editingTaskId = null;
+let editingUserId = null;
+let editingClientId = null;
+
+// ============================================================
+// INIT
+// ============================================================
+window.addEventListener('DOMContentLoaded', async () => {
+  const cfg = localStorage.getItem('firebase_config');
+  const lm = localStorage.getItem('local_mode');
+  if (lm === '1') {
+    localMode = true;
+    loadLocalData();
+    showLoginScreen();
+  } else if (cfg) {
+    await initFirebase(JSON.parse(cfg));
+  } else {
+    document.getElementById('setupScreen').style.display = 'flex';
+  }
+});
+
+window.saveFirebaseConfig = async function() {
+  const cfg = {
+    apiKey: document.getElementById('cfg_apiKey').value.trim(),
+    authDomain: document.getElementById('cfg_authDomain').value.trim(),
+    databaseURL: document.getElementById('cfg_databaseURL').value.trim(),
+    projectId: document.getElementById('cfg_projectId').value.trim(),
+  };
+  if (!cfg.apiKey || !cfg.databaseURL) { showToast('נא למלא את כל השדות', 'error'); return; }
+  localStorage.setItem('firebase_config', JSON.stringify(cfg));
+  await initFirebase(cfg);
+};
+
+window.useLocalMode = function() {
+  localStorage.setItem('local_mode', '1');
+  localMode = true;
+  loadLocalData();
+  showLoginScreen();
+};
+
+async function initFirebase(cfg) {
+  try {
+    const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js');
+    const { getDatabase } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js');
+    const app = initializeApp(cfg);
+    db = getDatabase(app);
+    showLoginScreen();
+  } catch(e) {
+    showToast('שגיאה בחיבור Firebase: ' + e.message, 'error');
+  }
+}
+
+async function showLoginScreen() {
+  document.getElementById('setupScreen').style.display = 'none';
+  await loadAll();
+  renderLoginScreen();
+  document.getElementById('loginScreen').style.display = 'flex';
+}
+
+async function loadAll() {
+  allUsers = (await dbGet('users')) || {};
+  allClients = (await dbGet('clients')) || {};
+  allTasks = (await dbGet('tasks')) || {};
+  allInstances = (await dbGet('instances')) || {};
+
+  // Subscribe to realtime updates (Firebase only)
+  if (!localMode) {
+    onDbChange('instances', v => { allInstances = v || {}; if (currentUser) { generateInstances(); renderCurrentView(); } });
+    onDbChange('tasks', v => { allTasks = v || {}; if (currentUser) { generateInstances(); renderCurrentView(); } });
+    onDbChange('users', v => { allUsers = v || {}; if (currentUser) renderCurrentView(); });
+    onDbChange('clients', v => { allClients = v || {}; if (currentUser) renderCurrentView(); });
+  }
+}
+
+function renderLoginScreen() {
+  const grid = document.getElementById('userGrid');
+  const users = Object.entries(allUsers);
+  if (users.length === 0) {
+    grid.innerHTML = '<div style="grid-column:1/-1;color:var(--gray-500);font-size:14px;">אין משתמשים — לחץ "ניהול" להוסיף</div>';
+    return;
+  }
+  grid.innerHTML = users.map(([id, u]) => `
+    <button class="user-btn" onclick="loginAs('${id}')">
+      <div class="user-avatar">${u.name.charAt(0)}</div>
+      ${u.name}
+      ${u.role ? `<span style="font-size:11px;font-weight:400;color:var(--gray-400)">${u.role}</span>` : ''}
+    </button>
+  `).join('');
+}
+
+window.loginAs = function(userId) {
+  currentUser = { id: userId, ...allUsers[userId] };
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('headerUserName').textContent = currentUser.name;
+  document.getElementById('headerAvatar').textContent = currentUser.name.charAt(0);
+  if (currentUser.isAdmin) document.getElementById('navAdmin').style.display = 'block';
+  else document.getElementById('navAdmin').style.display = 'none';
+  generateInstances();
+  populateFilters();
+  renderTasks();
+};
+
+window.showAdminLogin = function() {
+  // Find any admin user
+  const admin = Object.entries(allUsers).find(([,u]) => u.isAdmin);
+  if (admin) {
+    loginAs(admin[0]);
+    showView('admin');
+  } else {
+    // Auto create first admin
+    loginAsSetupAdmin();
+  }
+};
+
+async function loginAsSetupAdmin() {
+  // Create default admin
+  const id = await dbPush('users', { name: 'מנהל', role: 'Admin', isAdmin: true });
+  await loadAll();
+  loginAs(id);
+  showView('admin');
+}
+
+window.logout = function() {
+  currentUser = null;
+  document.getElementById('app').style.display = 'none';
+  renderLoginScreen();
+  document.getElementById('loginScreen').style.display = 'flex';
+};
+
+// ============================================================
+// GENERATE INSTANCES
+// ============================================================
+function todayStr() {
+  return new Date().toISOString().slice(0,10);
+}
+function dateStr(d) { return d.toISOString().slice(0,10); }
+function parseDate(s) { return new Date(s + 'T00:00:00'); }
+function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate()+n); return r; }
+
+function generateInstances() {
+  const today = new Date();
+  today.setHours(0,0,0,0);
+
+  Object.entries(allTasks).forEach(([tid, task]) => {
+    const start = task.startDate ? parseDate(task.startDate) : parseDate(task.recur === 'once' ? task.onceDate : todayStr());
+    const periods = getPeriods(task, start, today);
+
+    periods.forEach(({ key, dueDate }) => {
+      const instKey = `${tid}__${key}`;
+      if (!allInstances[instKey]) {
+        // Create new instance
+        const inst = {
+          taskId: tid,
+          periodKey: key,
+          dueDate: dueDate,
+          status: 'pending',
+        };
+        allInstances[instKey] = inst;
+        dbSet(`instances/${instKey}`, inst);
+      }
+    });
+  });
+}
+
+function getPeriods(task, start, today) {
+  const periods = [];
+  if (task.recur === 'once') {
+    const d = parseDate(task.onceDate);
+    if (d <= today) periods.push({ key: task.onceDate, dueDate: task.onceDate });
+  } else if (task.recur === 'weekly') {
+    let d = new Date(start);
+    // find first occurrence of dayOfWeek >= start
+    while (d.getDay() !== parseInt(task.dayOfWeek)) d = addDays(d, 1);
+    while (d <= today) {
+      periods.push({ key: dateStr(d), dueDate: dateStr(d) });
+      d = addDays(d, 7);
+    }
+  } else if (task.recur === 'monthly') {
+    let d = new Date(start.getFullYear(), start.getMonth(), parseInt(task.dayOfMonth));
+    if (d < start) d = new Date(d.getFullYear(), d.getMonth()+1, parseInt(task.dayOfMonth));
+    while (d <= today) {
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      periods.push({ key, dueDate: dateStr(d) });
+      d = new Date(d.getFullYear(), d.getMonth()+1, parseInt(task.dayOfMonth));
+    }
+  } else if (task.recur === 'bimonthly') {
+    let month = start.getMonth(); // 0-indexed
+    let year = start.getFullYear();
+    // Odd months (1,3,5,7,9,11 = January,March... in 1-indexed)
+    // Find first odd month >= start
+    while (true) {
+      const d = new Date(year, month, parseInt(task.biDayOfMonth || 1));
+      if (d > today) break;
+      if ((month + 1) % 2 === 1) { // odd month (1-indexed)
+        if (d >= start) {
+          const key = `${year}-${String(month+1).padStart(2,'0')}`;
+          periods.push({ key, dueDate: dateStr(d) });
+        }
+      }
+      month++;
+      if (month > 11) { month = 0; year++; }
+    }
+  }
+  return periods;
+}
+
+// ============================================================
+// TASK RENDERING
+// ============================================================
+function getPendingInstances() {
+  const today = todayStr();
+  return Object.entries(allInstances)
+    .filter(([key, inst]) => {
+      const task = allTasks[inst.taskId];
+      if (!task) return false;
+      if (inst.status === 'completed') return false;
+      if (inst.status === 'postponed' && inst.postponedTo > today) return false;
+      // Filter by assigned users
+      if (task.assignedUsers && !task.assignedUsers[currentUser.id]) return false;
+      return true;
+    })
+    .map(([key, inst]) => ({ key, inst, task: allTasks[inst.taskId] }));
+}
+
+function getDaysOverSla(inst, task) {
+  if (!task.slaDays || task.slaDays <= 0) return null;
+  const due = parseDate(inst.dueDate);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const diff = Math.floor((today - due) / 86400000);
+  return diff; // positive = days passed, negative = days remaining
+}
+
+function isCriticalOverdue(inst, task) {
+  if (!task.critical) return false;
+  return inst.dueDate < todayStr();
+}
+
+window.renderTasks = function() {
+  generateInstances();
+  let items = getPendingInstances();
+
+  // Apply filters
+  const clientFilter = document.getElementById('filterClient')?.value;
+  const userFilter = document.getElementById('filterUser')?.value;
+  if (clientFilter) items = items.filter(({task}) => task.clientId === clientFilter);
+  if (userFilter) items = items.filter(({task}) => task.assignedUsers && task.assignedUsers[userFilter]);
+  if (filters.critical) items = items.filter(({task}) => task.critical);
+  if (filters.overdue) items = items.filter(({inst,task}) => getDaysOverSla(inst,task) > 0 || isCriticalOverdue(inst,task));
+  if (filters.today) items = items.filter(({inst}) => inst.dueDate === todayStr());
+
+  // Sort: critical overdue first, then by date
+  items.sort((a,b) => {
+    const aCO = isCriticalOverdue(a.inst, a.task) ? 0 : 1;
+    const bCO = isCriticalOverdue(b.inst, b.task) ? 0 : 1;
+    if (aCO !== bCO) return aCO - bCO;
+    if (a.task.critical !== b.task.critical) return b.task.critical ? 1 : -1;
+    return a.inst.dueDate.localeCompare(b.inst.dueDate);
+  });
+
+  // Update badge
+  const total = getPendingInstances().length;
+  const badge = document.getElementById('pendingBadge');
+  badge.textContent = total;
+  badge.style.display = total > 0 ? 'inline-block' : 'none';
+
+  const container = document.getElementById('tasksList');
+  if (items.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">🎉</div>
+        <h3>אין משימות ממתינות</h3>
+        <p>כל המשימות בוצעו!</p>
+      </div>`;
+    return;
+  }
+
+  // Group by period
+  const today = todayStr();
+  const overdue = items.filter(i => i.inst.dueDate < today);
+  const todayItems = items.filter(i => i.inst.dueDate === today);
+  const upcoming = items.filter(i => i.inst.dueDate > today);
+
+  let html = '';
+  if (overdue.length) {
+    html += `<div class="period-header">⚠️ באיחור (${overdue.length})</div>`;
+    html += overdue.map(renderTaskCard).join('');
+  }
+  if (todayItems.length) {
+    html += `<div class="period-header">📅 להיום (${todayItems.length})</div>`;
+    html += todayItems.map(renderTaskCard).join('');
+  }
+  if (upcoming.length) {
+    html += `<div class="period-header">🔮 עתידי (${upcoming.length})</div>`;
+    html += upcoming.map(renderTaskCard).join('');
+  }
+  container.innerHTML = html;
+};
+
+function renderTaskCard({key, inst, task}) {
+  const today = todayStr();
+  const daysOverSla = getDaysOverSla(inst, task);
+  const criticalOver = isCriticalOverdue(inst, task);
+  const client = task.clientId ? allClients[task.clientId] : null;
+
+  let cardClass = 'task-card normal';
+  if (criticalOver) cardClass = 'task-card critical-overdue';
+  else if (daysOverSla > 0) cardClass = 'task-card overdue-warning';
+  else if (task.critical) cardClass = 'task-card critical';
+
+  const recurLabel = {weekly:'שבועי',monthly:'חודשי',bimonthly:'דו-חודשי',once:'חד פעמי'}[task.recur] || '';
+  const dueDateFormatted = formatDate(inst.dueDate);
+  const today2 = new Date(); today2.setHours(0,0,0,0);
+  const dueD = parseDate(inst.dueDate);
+  const daysToGo = Math.floor((dueD - today2) / 86400000);
+
+  let slaBadge = '';
+  if (task.slaDays > 0) {
+    if (daysOverSla > 0) {
+      slaBadge = `<span class="tag tag-overdue">⚠️ SLA חרג ב-${daysOverSla} ימים</span>`;
+    } else {
+      const slaDays = task.slaDays + daysToGo; // remaining of SLA
+      // remaining SLA days
+      const slaDaysLeft = task.slaDays - Math.max(0,-daysToGo);
+      slaBadge = `<span class="tag" style="background:#f0fdf4;color:#16a34a">SLA: ${task.slaDays} ימים</span>`;
+    }
+  }
+
+  let dueBadge = '';
+  if (daysToGo < 0) dueBadge = `<span class="tag tag-overdue">איחור של ${-daysToGo} ימים</span>`;
+  else if (daysToGo === 0) dueBadge = `<span class="tag tag-due">להיום</span>`;
+  else dueBadge = `<span class="tag tag-due">בעוד ${daysToGo} ימים</span>`;
+
+  const assignedNames = task.assignedUsers
+    ? Object.keys(task.assignedUsers).map(id => allUsers[id]?.name).filter(Boolean).join(', ')
+    : '';
+
+  const postponeInfo = inst.status === 'postponed' ? `
+    <div style="margin-top:8px;font-size:12px;color:var(--gray-400);">
+      ↩️ נדחה ל-${formatDate(inst.postponedTo)} | סיבה: ${inst.postponeReason}
+    </div>` : '';
+
+  return `
+    <div class="${cardClass}">
+      <div class="task-header">
+        <div>
+          <div class="task-title">
+            ${criticalOver ? '<span class="critical-badge">🔴 קריטי - באיחור!</span>' : task.critical ? '<span class="critical-badge">🔴 קריטי</span>' : ''}
+            ${task.name}
+          </div>
+          <div class="task-meta">
+            ${client ? `<span class="tag tag-client">🏢 ${client.name}</span>` : ''}
+            <span class="tag tag-recur">${recurLabel}</span>
+            <span class="tag tag-due">📅 ${dueDateFormatted}</span>
+            ${dueBadge}
+            ${slaBadge}
+          </div>
+        </div>
+      </div>
+      ${task.description ? `<div class="task-desc">${task.description}</div>` : ''}
+      ${postponeInfo}
+      ${assignedNames ? `<div class="task-assigned">👥 משויך: ${assignedNames}</div>` : ''}
+      <div class="task-actions">
+        <button class="btn btn-success" onclick="openComplete('${key}')">✅ בצע</button>
+        <button class="btn btn-warning" onclick="openPostpone('${key}')">📅 דחה</button>
+      </div>
+    </div>`;
+}
+
+function formatDate(s) {
+  if (!s) return '';
+  const d = parseDate(s);
+  return d.toLocaleDateString('he-IL', { day:'2-digit', month:'2-digit', year:'numeric' });
+}
+
+// ============================================================
+// COMPLETE / POSTPONE
+// ============================================================
+window.openComplete = function(key) {
+  pendingComplete = key;
+  const { inst, task } = getInstTask(key);
+  document.getElementById('completeTaskInfo').innerHTML = `
+    <strong>${task.name}</strong><br>
+    ${task.description ? `<span style="color:var(--gray-500)">${task.description}</span>` : ''}
+  `;
+  document.getElementById('completeNote').value = '';
+  document.getElementById('completeModal').classList.add('open');
+};
+
+window.confirmComplete = async function() {
+  if (!pendingComplete) return;
+  const note = document.getElementById('completeNote').value.trim();
+  const update = {
+    ...allInstances[pendingComplete],
+    status: 'completed',
+    completedBy: currentUser.id,
+    completedByName: currentUser.name,
+    completedAt: new Date().toISOString(),
+    completionNote: note,
+  };
+  await dbSet(`instances/${pendingComplete}`, update);
+  allInstances[pendingComplete] = update;
+  closeModal('completeModal');
+  showToast('המשימה בוצעה! ✅', 'success');
+  renderTasks();
+};
+
+window.openPostpone = function(key) {
+  pendingPostpone = key;
+  const { inst, task } = getInstTask(key);
+  document.getElementById('postponeTaskInfo').innerHTML = `<strong>${task.name}</strong>`;
+  document.getElementById('postponeDate').value = '';
+  document.getElementById('postponeReason').value = '';
+  document.getElementById('postponeModal').classList.add('open');
+};
+
+window.confirmPostpone = async function() {
+  if (!pendingPostpone) return;
+  const date = document.getElementById('postponeDate').value;
+  const reason = document.getElementById('postponeReason').value.trim();
+  if (!date) { showToast('בחר תאריך', 'error'); return; }
+  if (!reason) { showToast('חובה להזין סיבת דחיה', 'error'); return; }
+  if (date <= todayStr()) { showToast('בחר תאריך עתידי', 'error'); return; }
+  const update = {
+    ...allInstances[pendingPostpone],
+    status: 'postponed',
+    postponedTo: date,
+    postponeReason: reason,
+    postponedBy: currentUser.id,
+    postponedAt: new Date().toISOString(),
+  };
+  await dbSet(`instances/${pendingPostpone}`, update);
+  allInstances[pendingPostpone] = update;
+  closeModal('postponeModal');
+  showToast('המשימה נדחתה 📅');
+  renderTasks();
+};
+
+function getInstTask(key) {
+  const inst = allInstances[key];
+  const task = allTasks[inst.taskId];
+  return { inst, task };
+}
+
+// ============================================================
+// STATS VIEW
+// ============================================================
+window.renderStats = function() {
+  const filterUser = document.getElementById('statsUserFilter')?.value;
+  const today = todayStr();
+  const yesterday = dateStr(addDays(new Date(), -1));
+
+  const completed = Object.values(allInstances).filter(i => i.status === 'completed');
+  const filteredCompleted = filterUser ? completed.filter(i => i.completedBy === filterUser) : completed;
+
+  const todayCount = filteredCompleted.filter(i => i.completedAt && i.completedAt.slice(0,10) === today).length;
+  const yesterdayCount = filteredCompleted.filter(i => i.completedAt && i.completedAt.slice(0,10) === yesterday).length;
+  const weekCount = filteredCompleted.filter(i => {
+    if (!i.completedAt) return false;
+    const d = new Date(i.completedAt); const now = new Date();
+    return (now - d) / 86400000 <= 7;
+  }).length;
+  const monthCount = filteredCompleted.filter(i => {
+    if (!i.completedAt) return false;
+    const d = new Date(i.completedAt); const now = new Date();
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }).length;
+
+  // Last 7 days bar chart
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = addDays(new Date(), -i);
+    const ds = dateStr(d);
+    const count = filteredCompleted.filter(x => x.completedAt && x.completedAt.slice(0,10) === ds).length;
+    days.push({ label: d.toLocaleDateString('he-IL', { weekday:'short' }), count });
+  }
+  const maxBar = Math.max(...days.map(d => d.count), 1);
+
+  // Per-user stats
+  const userStats = Object.entries(allUsers).map(([id, u]) => {
+    const uc = completed.filter(i => i.completedBy === id);
+    return {
+      id, name: u.name,
+      today: uc.filter(i => i.completedAt && i.completedAt.slice(0,10) === today).length,
+      yesterday: uc.filter(i => i.completedAt && i.completedAt.slice(0,10) === yesterday).length,
+      week: uc.filter(i => { if (!i.completedAt) return false; const d=new Date(i.completedAt); return (new Date()-d)/86400000<=7; }).length,
+      total: uc.length,
+    };
+  });
+
+  document.getElementById('statsContent').innerHTML = `
+    <div class="stats-grid">
+      <div class="stat-card"><div class="num">${todayCount}</div><div class="label">בוצע היום</div></div>
+      <div class="stat-card"><div class="num">${yesterdayCount}</div><div class="label">בוצע אתמול</div></div>
+      <div class="stat-card"><div class="num">${weekCount}</div><div class="label">בשבוע האחרון</div></div>
+      <div class="stat-card"><div class="num">${monthCount}</div><div class="label">החודש</div></div>
+    </div>
+    <div class="chart-container">
+      <div class="chart-title">ביצועים - 7 ימים אחרונים</div>
+      <div class="bar-chart">
+        ${days.map(d => `
+          <div class="bar-col">
+            <div class="bar-val">${d.count}</div>
+            <div class="bar" style="height:${Math.round((d.count/maxBar)*120)+4}px"></div>
+            <div class="bar-label">${d.label}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    <div class="section-title" style="margin-bottom:16px">ביצועים לפי עובד</div>
+    <div class="user-stats-grid">
+      ${userStats.map(u => `
+        <div class="user-stat-card">
+          <h4><div class="header-avatar" style="width:32px;height:32px;font-size:13px">${u.name.charAt(0)}</div>${u.name}</h4>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div style="text-align:center;background:var(--gray-50);border-radius:8px;padding:10px">
+              <div style="font-size:22px;font-weight:800;color:var(--primary)">${u.today}</div>
+              <div style="font-size:11px;color:var(--gray-400)">היום</div>
+            </div>
+            <div style="text-align:center;background:var(--gray-50);border-radius:8px;padding:10px">
+              <div style="font-size:22px;font-weight:800;color:var(--primary)">${u.yesterday}</div>
+              <div style="font-size:11px;color:var(--gray-400)">אתמול</div>
+            </div>
+            <div style="text-align:center;background:var(--gray-50);border-radius:8px;padding:10px">
+              <div style="font-size:22px;font-weight:800;color:var(--primary)">${u.week}</div>
+              <div style="font-size:11px;color:var(--gray-400)">שבוע</div>
+            </div>
+            <div style="text-align:center;background:var(--gray-50);border-radius:8px;padding:10px">
+              <div style="font-size:22px;font-weight:800;color:var(--primary)">${u.total}</div>
+              <div style="font-size:11px;color:var(--gray-400)">סה"כ</div>
+            </div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+};
+
+// ============================================================
+// ARCHIVE VIEW
+// ============================================================
+window.renderArchive = function() {
+  let items = Object.entries(allInstances)
+    .filter(([,i]) => i.status === 'completed' || (i.status === 'postponed' && i.postponedTo <= todayStr()))
+    .map(([key,inst]) => ({ key, inst, task: allTasks[inst.taskId] }))
+    .filter(x => x.task);
+
+  const clientFilter = document.getElementById('archiveFilterClient')?.value;
+  const userFilter = document.getElementById('archiveFilterUser')?.value;
+  if (clientFilter) items = items.filter(({task}) => task.clientId === clientFilter);
+  if (userFilter) items = items.filter(({inst}) => inst.completedBy === userFilter);
+
+  items.sort((a,b) => (b.inst.completedAt || b.inst.dueDate).localeCompare(a.inst.completedAt || a.inst.dueDate));
+
+  if (items.length === 0) {
+    document.getElementById('archiveList').innerHTML = '<div class="empty-state"><div class="icon">📁</div><h3>הארכיון ריק</h3></div>';
+    return;
+  }
+
+  document.getElementById('archiveList').innerHTML = items.map(({key,inst,task}) => {
+    const client = task.clientId ? allClients[task.clientId] : null;
+    const completedByName = inst.completedByName || (inst.completedBy ? allUsers[inst.completedBy]?.name : '');
+    const completedDate = inst.completedAt ? new Date(inst.completedAt).toLocaleDateString('he-IL') : '';
+    return `
+      <div class="archive-card">
+        <div class="archive-title">✅ ${task.name}</div>
+        <div class="archive-meta">
+          ${client ? `🏢 ${client.name} · ` : ''}
+          📅 תאריך משימה: ${formatDate(inst.dueDate)} ·
+          ✅ בוצע על ידי: ${completedByName} ${completedDate ? `(${completedDate})` : ''}
+        </div>
+        ${inst.completionNote ? `<div class="archive-note">💬 ${inst.completionNote}</div>` : ''}
+      </div>`;
+  }).join('');
+};
+
+// ============================================================
+// ADMIN - TASKS
+// ============================================================
+window.renderAdminTasks = function() {
+  const items = Object.entries(allTasks);
+  if (items.length === 0) {
+    document.getElementById('adminTasksList').innerHTML = '<div class="empty-state"><div class="icon">📋</div><h3>אין משימות מוגדרות</h3></div>';
+    return;
+  }
+  document.getElementById('adminTasksList').innerHTML = items.map(([id,task]) => {
+    const client = task.clientId ? allClients[task.clientId] : null;
+    const recurLabel = {weekly:'שבועי',monthly:'חודשי',bimonthly:'דו-חודשי',once:'חד פעמי'}[task.recur] || '';
+    return `
+      <div class="list-item">
+        <div class="list-item-info">
+          <div class="list-item-title">${task.critical ? '🔴 ' : ''}${task.name}</div>
+          <div class="list-item-sub">${client ? `🏢 ${client.name} · ` : ''}${recurLabel}${task.slaDays > 0 ? ` · SLA: ${task.slaDays} ימים` : ''}</div>
+        </div>
+        <div class="list-actions">
+          <button class="btn btn-ghost btn-sm" onclick="openTaskModal('${id}')">✏️ ערוך</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteTask('${id}')">🗑️</button>
+        </div>
+      </div>`;
+  }).join('');
+};
+
+window.openTaskModal = function(taskId = null) {
+  editingTaskId = taskId;
+  document.getElementById('taskModalTitle').textContent = taskId ? '✏️ עריכת משימה' : '📋 משימה חדשה';
+
+  // Populate client select
+  const cs = document.getElementById('tClient');
+  cs.innerHTML = '<option value="">ללא לקוח</option>' + Object.entries(allClients).map(([id,c]) => `<option value="${id}">${c.name}</option>`).join('');
+
+  // Populate users
+  const ud = document.getElementById('tUsers');
+  ud.innerHTML = Object.entries(allUsers).map(([id,u]) => `
+    <button type="button" class="user-check-btn" data-uid="${id}" onclick="toggleUserBtn(this)">${u.name}</button>
+  `).join('');
+
+  if (taskId) {
+    const t = allTasks[taskId];
+    document.getElementById('tName').value = t.name || '';
+    document.getElementById('tDesc').value = t.description || '';
+    document.getElementById('tClient').value = t.clientId || '';
+    document.getElementById('tRecur').value = t.recur || 'once';
+    document.getElementById('tSla').value = t.slaDays || 0;
+    document.getElementById('tOnceDate').value = t.onceDate || '';
+    document.getElementById('tDayOfWeek').value = t.dayOfWeek || 0;
+    document.getElementById('tDayOfMonth').value = t.dayOfMonth || '';
+    document.getElementById('tBiDayOfMonth').value = t.biDayOfMonth || '';
+    document.getElementById('tStartDate').value = t.startDate || '';
+    document.getElementById('tCritical').checked = !!t.critical;
+    // Select assigned users
+    if (t.assignedUsers) {
+      ud.querySelectorAll('.user-check-btn').forEach(btn => {
+        if (t.assignedUsers[btn.dataset.uid]) btn.classList.add('selected');
+      });
+    }
+  } else {
+    document.getElementById('tName').value = '';
+    document.getElementById('tDesc').value = '';
+    document.getElementById('tClient').value = '';
+    document.getElementById('tRecur').value = 'once';
+    document.getElementById('tSla').value = 0;
+    document.getElementById('tOnceDate').value = todayStr();
+    document.getElementById('tStartDate').value = todayStr();
+    document.getElementById('tCritical').checked = false;
+  }
+  updateRecurFields();
+  document.getElementById('taskModal').classList.add('open');
+};
+
+window.toggleUserBtn = function(btn) { btn.classList.toggle('selected'); };
+
+window.updateRecurFields = function() {
+  const v = document.getElementById('tRecur').value;
+  ['rfOnce','rfWeekly','rfMonthly','rfBimonthly'].forEach(id => {
+    document.getElementById(id).classList.remove('show');
+  });
+  document.getElementById('rf' + v.charAt(0).toUpperCase() + v.slice(1)).classList.add('show');
+};
+
+window.saveTask = async function() {
+  const name = document.getElementById('tName').value.trim();
+  if (!name) { showToast('שם המשימה חסר', 'error'); return; }
+  const recur = document.getElementById('tRecur').value;
+
+  const assignedUsers = {};
+  document.querySelectorAll('#tUsers .user-check-btn.selected').forEach(btn => {
+    assignedUsers[btn.dataset.uid] = true;
+  });
+
+  const task = {
+    name,
+    description: document.getElementById('tDesc').value.trim(),
+    clientId: document.getElementById('tClient').value,
+    recur,
+    slaDays: parseInt(document.getElementById('tSla').value) || 0,
+    critical: document.getElementById('tCritical').checked,
+    startDate: document.getElementById('tStartDate').value || todayStr(),
+    assignedUsers,
+    onceDate: document.getElementById('tOnceDate').value,
+    dayOfWeek: parseInt(document.getElementById('tDayOfWeek').value),
+    dayOfMonth: parseInt(document.getElementById('tDayOfMonth').value) || null,
+    biDayOfMonth: parseInt(document.getElementById('tBiDayOfMonth').value) || null,
+  };
+
+  if (editingTaskId) {
+    await dbSet(`tasks/${editingTaskId}`, task);
+    allTasks[editingTaskId] = task;
+  } else {
+    const id = await dbPush('tasks', task);
+    allTasks[id] = task;
+  }
+  closeModal('taskModal');
+  generateInstances();
+  renderAdminTasks();
+  renderTasks();
+  showToast('המשימה נשמרה ✅', 'success');
+};
+
+window.deleteTask = async function(id) {
+  if (!confirm('למחוק את המשימה לצמיתות?')) return;
+  await dbRemove(`tasks/${id}`);
+  delete allTasks[id];
+  // Remove related instances
+  for (const key of Object.keys(allInstances)) {
+    if (allInstances[key].taskId === id) {
+      await dbRemove(`instances/${key}`);
+      delete allInstances[key];
+    }
+  }
+  renderAdminTasks();
+  renderTasks();
+  showToast('המשימה נמחקה');
+};
+
+// ============================================================
+// ADMIN - USERS
+// ============================================================
+window.renderAdminUsers = function() {
+  const items = Object.entries(allUsers);
+  if (items.length === 0) {
+    document.getElementById('adminUsersList').innerHTML = '<div class="empty-state"><div class="icon">👤</div><h3>אין משתמשים</h3></div>';
+    return;
+  }
+  document.getElementById('adminUsersList').innerHTML = items.map(([id,u]) => `
+    <div class="list-item">
+      <div class="list-item-info">
+        <div class="list-item-title">${u.name} ${u.isAdmin ? '⚙️' : ''}</div>
+        <div class="list-item-sub">${u.role || ''}</div>
+      </div>
+      <div class="list-actions">
+        <button class="btn btn-ghost btn-sm" onclick="openUserModal('${id}')">✏️</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteUser('${id}')">🗑️</button>
+      </div>
+    </div>
+  `).join('');
+};
+
+window.openUserModal = function(userId = null) {
+  editingUserId = userId;
+  document.getElementById('userModalTitle').textContent = userId ? '✏️ עריכת משתמש' : '👤 משתמש חדש';
+  if (userId) {
+    const u = allUsers[userId];
+    document.getElementById('uName').value = u.name || '';
+    document.getElementById('uRole').value = u.role || '';
+    document.getElementById('uIsAdmin').checked = !!u.isAdmin;
+  } else {
+    document.getElementById('uName').value = '';
+    document.getElementById('uRole').value = '';
+    document.getElementById('uIsAdmin').checked = false;
+  }
+  document.getElementById('userModal').classList.add('open');
+};
+
+window.saveUser = async function() {
+  const name = document.getElementById('uName').value.trim();
+  if (!name) { showToast('שם חסר', 'error'); return; }
+  const user = {
+    name,
+    role: document.getElementById('uRole').value.trim(),
+    isAdmin: document.getElementById('uIsAdmin').checked,
+  };
+  if (editingUserId) {
+    await dbSet(`users/${editingUserId}`, user);
+    allUsers[editingUserId] = user;
+  } else {
+    const id = await dbPush('users', user);
+    allUsers[id] = user;
+  }
+  closeModal('userModal');
+  renderAdminUsers();
+  renderLoginScreen();
+  showToast('המשתמש נשמר', 'success');
+};
+
+window.deleteUser = async function(id) {
+  if (!confirm('למחוק משתמש?')) return;
+  await dbRemove(`users/${id}`);
+  delete allUsers[id];
+  renderAdminUsers();
+  renderLoginScreen();
+};
+
+// ============================================================
+// ADMIN - CLIENTS
+// ============================================================
+window.renderAdminClients = function() {
+  const items = Object.entries(allClients);
+  if (items.length === 0) {
+    document.getElementById('adminClientsList').innerHTML = '<div class="empty-state"><div class="icon">🏢</div><h3>אין לקוחות</h3></div>';
+    return;
+  }
+  document.getElementById('adminClientsList').innerHTML = items.map(([id,c]) => `
+    <div class="list-item">
+      <div class="list-item-info">
+        <div class="list-item-title">${c.name}</div>
+        <div class="list-item-sub">${c.info || ''}</div>
+      </div>
+      <div class="list-actions">
+        <button class="btn btn-ghost btn-sm" onclick="openClientModal('${id}')">✏️</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteClient('${id}')">🗑️</button>
+      </div>
+    </div>
+  `).join('');
+};
+
+window.openClientModal = function(clientId = null) {
+  editingClientId = clientId;
+  document.getElementById('clientModalTitle').textContent = clientId ? '✏️ עריכת לקוח' : '🏢 לקוח חדש';
+  if (clientId) {
+    const c = allClients[clientId];
+    document.getElementById('cName').value = c.name || '';
+    document.getElementById('cInfo').value = c.info || '';
+  } else {
+    document.getElementById('cName').value = '';
+    document.getElementById('cInfo').value = '';
+  }
+  document.getElementById('clientModal').classList.add('open');
+};
+
+window.saveClient = async function() {
+  const name = document.getElementById('cName').value.trim();
+  if (!name) { showToast('שם לקוח חסר', 'error'); return; }
+  const client = { name, info: document.getElementById('cInfo').value.trim() };
+  if (editingClientId) {
+    await dbSet(`clients/${editingClientId}`, client);
+    allClients[editingClientId] = client;
+  } else {
+    const id = await dbPush('clients', client);
+    allClients[id] = client;
+  }
+  closeModal('clientModal');
+  renderAdminClients();
+  populateFilters();
+  showToast('הלקוח נשמר', 'success');
+};
+
+window.deleteClient = async function(id) {
+  if (!confirm('למחוק לקוח?')) return;
+  await dbRemove(`clients/${id}`);
+  delete allClients[id];
+  renderAdminClients();
+  populateFilters();
+};
+
+// ============================================================
+// FILTERS & NAV
+// ============================================================
+function populateFilters() {
+  const clientOpts = '<option value="">כל הלקוחות</option>' + Object.entries(allClients).map(([id,c]) => `<option value="${id}">${c.name}</option>`).join('');
+  ['filterClient','archiveFilterClient'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = clientOpts;
+  });
+
+  const userOpts = '<option value="">כל המשתמשים</option>' + Object.entries(allUsers).map(([id,u]) => `<option value="${id}">${u.name}</option>`).join('');
+  ['filterUser','archiveFilterUser','statsUserFilter'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = id === 'filterUser' ? '<option value="">כל המשימות שלי</option>' + Object.entries(allUsers).map(([uid,u]) => `<option value="${uid}">${u.name}</option>`).join('') : userOpts;
+  });
+}
+
+window.toggleFilter = function(name) {
+  filters[name] = !filters[name];
+  document.getElementById('filter' + name.charAt(0).toUpperCase() + name.slice(1)).classList.toggle('on', filters[name]);
+  renderTasks();
+};
+
+window.showView = function(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('view' + name.charAt(0).toUpperCase() + name.slice(1)).classList.add('active');
+  document.getElementById('nav' + name.charAt(0).toUpperCase() + name.slice(1)).classList.add('active');
+  if (name === 'stats') renderStats();
+  if (name === 'archive') renderArchive();
+  if (name === 'admin') { renderAdminTasks(); renderAdminUsers(); renderAdminClients(); }
+};
+
+window.switchAdminTab = function(tab) {
+  document.querySelectorAll('.admin-tab').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.admin-section').forEach(s => s.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('admin' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+};
+
+function renderCurrentView() {
+  const active = document.querySelector('.view.active');
+  if (!active) return;
+  const id = active.id;
+  if (id === 'viewTasks') renderTasks();
+  else if (id === 'viewStats') renderStats();
+  else if (id === 'viewArchive') renderArchive();
+}
+
+// ============================================================
+// MODAL HELPERS
+// ============================================================
+window.closeModal = function(id) {
+  document.getElementById(id).classList.remove('open');
+};
+document.querySelectorAll('.modal-overlay').forEach(m => {
+  m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
+});
+
+// ============================================================
+// TOAST
+// ============================================================
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  setTimeout(() => t.className = 'toast', 2800);
+}
+window.showToast = showToast;
+</script>
+</body>
+</html>
