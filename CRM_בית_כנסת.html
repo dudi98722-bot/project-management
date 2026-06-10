@@ -865,6 +865,14 @@ var cPage=1, vPage=1, pPage=1;
 var cFiltered=contacts.slice(), vFiltered=[], pFiltered=[];
 var editContact=null, editVow=null, editPayment=null;
 
+/* ===== GOOGLE SHEETS SYNC ===== */
+var SHEETS_URL='https://script.google.com/macros/s/AKfycbyuJlKaSaz8xWv9Ht48SQUy4sax6POiO8ZR8_kZ5WU6-rACiRi0Ls_h7EPmZ5PK6TBo/exec';
+function syncToSheets(type,action,data){
+  if(!SHEETS_URL)return;
+  fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({type:type,action:action,data:data})})
+    .catch(function(){});
+}
+
 /* ===== TABS ===== (defined later in init section) */
 
 /* ===== CALC ===== */
@@ -979,8 +987,8 @@ function saveContact(){
     house_num:document.getElementById('fHouse').value.trim(),city:document.getElementById('fCity').value.trim(),
     zip:document.getElementById('fZip').value.trim(),email:document.getElementById('fEmail').value.trim(),
     display_name:calcDisplayName(ln,fn,fa,id)};
-  if(editContact!==null){c._idx=editContact;contacts[editContact]=c;}
-  else{c._idx=contacts.length;contacts.push(c);}
+  if(editContact!==null){c._idx=editContact;contacts[editContact]=c;syncToSheets('contact','edit',c);}
+  else{c._idx=contacts.length;contacts.push(c);syncToSheets('contact','add',c);}
   refreshNameSelects();closeModal();onSearch();
 }
 document.getElementById('modalOverlay').addEventListener('mousedown',function(e){if(e.target===this)closeModal();});
@@ -1025,7 +1033,7 @@ function saveVow(){
     name:name,forA:document.getElementById('vfForA').value,forB:document.getElementById('vfForB').value,
     amount:parseFloat(document.getElementById('vfAmount').value)||0,
     note:document.getElementById('vfNote').value.trim(),place:document.getElementById('vfPlace').value.trim()};
-  if(editVow!==null)vows[editVow]=vow;else vows.push(vow);
+  if(editVow!==null){vows[editVow]=vow;syncToSheets('vow','edit',vow);}else{vows.push(vow);syncToSheets('vow','add',vow);}
   closeVowModal();onVowsSearch();
 }
 function onVowsSearch(){
@@ -1131,7 +1139,7 @@ function savePayment(){
     name:name,vowId:parseInt(vowId)||vowId,amount:amount,method:document.getElementById('pfMethod').value,
     numPayments:parseInt(document.getElementById('pfNumPayments').value)||1,
     note:document.getElementById('pfNote').value.trim()};
-  if(editPayment!==null)payments[editPayment]=pmt;else payments.push(pmt);
+  if(editPayment!==null){payments[editPayment]=pmt;syncToSheets('payment','edit',pmt);}else{payments.push(pmt);syncToSheets('payment','add',pmt);}
   closePaymentModal();onPaymentsSearch();
   // refresh vows if visible
   if(document.getElementById('tab-vows').classList.contains('active'))renderVows();
