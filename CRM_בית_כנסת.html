@@ -367,7 +367,8 @@ tr:last-child td { border-bottom: none; }
 <div class="header">
   <span style="font-size:26px">&#x2721;</span>
   <h1>CRM &#x2014; &#x05D1;&#x05D9;&#x05EA; &#x05DB;&#x05E0;&#x05E1;&#x05EA;</h1>
-  <button onclick="doLogout()" style="margin-right:auto;background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.4);border-radius:6px;padding:6px 16px;font-size:13px;cursor:pointer">&#x05D9;&#x05E6;&#x05D9;&#x05D0;&#x05D4; &#x05DE;&#x05D4;&#x05DE;&#x05E2;&#x05E8;&#x05DB;&#x05EA;</button>
+  <button id="exportSheetsBtn" onclick="exportAllToSheets()" style="margin-right:auto;background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.4);border-radius:6px;padding:6px 16px;font-size:13px;cursor:pointer">&#x1F4CA; ייצוא לשיטס</button>
+  <button onclick="doLogout()" style="background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.4);border-radius:6px;padding:6px 16px;font-size:13px;cursor:pointer">יציאה מהמערכת</button>
 </div>
 
 <div class="tabs">
@@ -871,6 +872,31 @@ function syncToSheets(type,action,data){
   if(!SHEETS_URL)return;
   fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({type:type,action:action,data:data})})
     .catch(function(){});
+}
+function exportAllToSheets(){
+  if(!SHEETS_URL)return;
+  var btn=document.getElementById('exportSheetsBtn');
+  btn.disabled=true;btn.textContent='מייצא...';
+  var types=[
+    {type:'contact',rows:contacts},
+    {type:'vow',rows:vows},
+    {type:'payment',rows:payments}
+  ];
+  var labels={contact:'אנשי קשר',vow:'נדרים ונדבות',payment:'תשלומים'};
+  var i=0;
+  function next(){
+    if(i>=types.length){
+      btn.disabled=false;btn.textContent='📊 ייצוא לשיטס';
+      alert('✅ הייצוא הושלם!\nיוצאו:\n• '+contacts.length+' אנשי קשר\n• '+vows.length+' נדרים ונדבות\n• '+payments.length+' תשלומים');
+      return;
+    }
+    var t=types[i];
+    btn.textContent='מייצא '+labels[t.type]+'...';
+    fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({type:t.type,action:'bulk',rows:t.rows})})
+      .then(function(){i++;next();})
+      .catch(function(){i++;next();});
+  }
+  next();
 }
 
 /* ===== TABS ===== (defined later in init section) */
