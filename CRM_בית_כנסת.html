@@ -339,64 +339,54 @@ tr:last-child td { border-bottom: none; }
 (function(){
   var ADMIN='092ac8c9795ff2c16d3b1e8c096075cc7b8ae2758cff024b3ba6ed5e74f551dd';
   var ADMIN_USER='יחיאל';
+  var GS='https://script.google.com/macros/s/AKfycbyuJlKaSaz8xWv9Ht48SQUy4sax6POiO8ZR8_kZ5WU6-rACiRi0Ls_h7EPmZ5PK6TBo/exec';
   async function hashCreds(u,p){
     var buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(u+':'+p));
     return Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
   }
-  var SHEETS_URL_LOGIN='https://script.google.com/macros/s/AKfycbyuJlKaSaz8xWv9Ht48SQUy4sax6POiO8ZR8_kZ5WU6-rACiRi0Ls_h7EPmZ5PK6TBo/exec';
-  // cache users from sheets in sessionStorage
-  function getCachedUsers(){try{return JSON.parse(sessionStorage.getItem('crm_users_cache')||'[]');}catch(e){return[];}}
-  function getUsers(){return getCachedUsers();}
-  function saveUsers(arr){
-    sessionStorage.setItem('crm_users_cache',JSON.stringify(arr));
-    var encoded=encodeURIComponent(JSON.stringify(arr.map(function(u){return {username:u.username,hash:u.hash,role:u.role};})));
-    fetch(SHEETS_URL_LOGIN+'?action=saveUsers&data='+encoded,{method:'GET'}).catch(function(){});
-  }
-  function loadUsersFromSheets(callback){
-    var done=false;
-    var timer=setTimeout(function(){if(!done){done=true;callback();}},5000);
-    fetch(SHEETS_URL_LOGIN+'?action=loadUsers',{method:'GET'})
+  function loadUsers(cb){
+    var t=setTimeout(function(){cb([]);},4000);
+    fetch(GS+'?action=loadUsers')
       .then(function(r){return r.json();})
-      .then(function(data){
-        if(!done){done=true;clearTimeout(timer);
-          if(data.users){sessionStorage.setItem('crm_users_cache',JSON.stringify(data.users));}
-          callback();}
-      })
-      .catch(function(){if(!done){done=true;clearTimeout(timer);callback();}});
+      .then(function(d){clearTimeout(t);cb(d.users||[]);})
+      .catch(function(){clearTimeout(t);cb([]);});
   }
+  function saveUsersRemote(arr){
+    fetch(GS+'?action=saveUsers&data='+encodeURIComponent(JSON.stringify(arr))).catch(function(){});
+  }
+  window._gsUsers=null;
+  window.getUsers=function(){return window._gsUsers||[];};
+  window.saveUsers=function(arr){window._gsUsers=arr;saveUsersRemote(arr);};
+  window.hashCreds=hashCreds;
   if(sessionStorage.getItem('crm_auth')==='1'){
     document.getElementById('loginScreen').style.display='none';
+    // pre-load users in background for admin UI
+    loadUsers(function(u){window._gsUsers=u;});
+    return;
   }
   window.doLogout=function(){
-    sessionStorage.removeItem('crm_auth');
-    sessionStorage.removeItem('crm_user');
-    sessionStorage.removeItem('crm_role');
-    sessionStorage.removeItem('crm_users_cache');
+    ['crm_auth','crm_user','crm_role'].forEach(function(k){sessionStorage.removeItem(k);});
     location.reload();
   };
   window.doLogin=async function(){
     var eu=document.getElementById('loginUser').value.trim();
     var ep=document.getElementById('loginPass').value;
-    var btn=document.querySelector('#loginScreen button[onclick="doLogin()"]')||document.querySelector('#loginScreen .login-btn');
     var h=await hashCreds(eu,ep);
-    // check admin first (no network needed)
-    if(eu===ADMIN_USER && h===ADMIN){
+    if(eu===ADMIN_USER&&h===ADMIN){
       sessionStorage.setItem('crm_auth','1');
       sessionStorage.setItem('crm_user',eu);
       sessionStorage.setItem('crm_role','admin');
       document.getElementById('loginScreen').style.display='none';
-      if(window.initUserUI)initUserUI();
+      loadUsers(function(u){window._gsUsers=u;if(window.initUserUI)initUserUI();});
       return;
     }
-    // load users from sheets then check
-    var errEl=document.getElementById('loginError2');
-    errEl.style.display='none';
-    errEl.textContent='מאמת...';errEl.style.display='block';errEl.style.color='#666';
-    loadUsersFromSheets(function(){
-      errEl.style.display='none';errEl.style.color='';
-      var users=getCachedUsers();
+    var err=document.getElementById('loginError2');
+    err.textContent='מאמת...';err.style.color='#999';err.style.display='block';
+    loadUsers(function(users){
+      window._gsUsers=users;
+      err.style.display='none';err.style.color='';
       for(var i=0;i<users.length;i++){
-        if(users[i].username===eu && users[i].hash===h){
+        if(users[i].username===eu&&users[i].hash===h){
           sessionStorage.setItem('crm_auth','1');
           sessionStorage.setItem('crm_user',eu);
           sessionStorage.setItem('crm_role',users[i].role||'user');
@@ -405,14 +395,10 @@ tr:last-child td { border-bottom: none; }
           return;
         }
       }
-      document.getElementById('loginError2').style.display='block';
-      document.getElementById('loginError2').style.color='';
+      err.textContent='שם משתמש או סיסמא שגויים';err.style.color='';err.style.display='block';
       document.getElementById('loginPass').value='';
     });
   };
-  window.getUsers=getUsers;
-  window.saveUsers=saveUsers;
-  window.hashCreds=hashCreds;
 })();
 </script>
 
@@ -765,6 +751,7 @@ tr:last-child td { border-bottom: none; }
       </table>
       <hr style="margin:12px 0">
       <!-- edit section -->
+      <div id="usersSaveStatus" style="display:none;background:#e8f5e9;color:#2e7d32;padding:8px 12px;border-radius:6px;margin-bottom:10px;font-size:13px"></div>
       <div id="editUserSection" style="display:none;background:#f0f4ff;border-radius:8px;padding:14px;margin-bottom:14px">
         <h3 style="margin-bottom:10px">✏️ עריכת משתמש</h3>
         <div class="form-grid">
@@ -1006,27 +993,25 @@ function addUser(){
     document.getElementById('newUsername').value='';
     document.getElementById('newPassword').value='';
     renderUsersMgmt();
-    syncToSheets('user','add',{username:un,role:role});
+    showUserStatus('✅ משתמש נוסף בהצלחה');
   });
 }
 function removeUser(idx){
   if(!confirm('למחוק משתמש זה?'))return;
   var users=getUsers();
-  var removed=users.splice(idx,1)[0];
+  users.splice(idx,1);
   saveUsers(users);
-  syncToSheets('user','delete',{username:removed.username});
   renderUsersMgmt();
+  showUserStatus('✅ משתמש נמחק');
 }
 var editUserIdx=null;
 function openEditUser(idx){
   editUserIdx=idx;
-  var users=getUsers();
-  var u=users[idx];
+  var u=getUsers()[idx];
   document.getElementById('editUsername').value=u.username;
   document.getElementById('editPassword').value='';
   document.getElementById('editRole').value=u.role||'user';
   document.getElementById('editUserSection').style.display='';
-  document.getElementById('editUsername').focus();
 }
 function cancelEditUser(){
   editUserIdx=null;
@@ -1038,18 +1023,22 @@ function saveEditUser(){
   var pw=document.getElementById('editPassword').value;
   var role=document.getElementById('editRole').value;
   if(!un){alert('שם משתמש חובה');return;}
-  var users=getUsers();
-  var oldUsername=users[editUserIdx].username;
   function doSave(h){
-    users[editUserIdx].username=un;
-    users[editUserIdx].role=role;
+    var users=getUsers();
+    users[editUserIdx]=Object.assign({},users[editUserIdx],{username:un,role:role});
     if(h)users[editUserIdx].hash=h;
     saveUsers(users);
-    syncToSheets('user','edit',{username:un,role:role});
     cancelEditUser();
     renderUsersMgmt();
+    showUserStatus('✅ משתמש עודכן');
   }
   if(pw){hashCreds(un,pw).then(doSave);}else{doSave(null);}
+}
+function showUserStatus(msg){
+  var el=document.getElementById('usersSaveStatus');
+  if(!el)return;
+  el.textContent=msg;el.style.display='block';
+  setTimeout(function(){el.style.display='none';},3000);
 }
 document.getElementById('userMgmtOverlay').addEventListener('mousedown',function(e){if(e.target===this)closeUserMgmt();});
 
