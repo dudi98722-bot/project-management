@@ -1069,6 +1069,12 @@ function openVowEditModal(idx){
   document.getElementById('vowModalOverlay').className='modal-overlay open';
 }
 function closeVowModal(){document.getElementById('vowModalOverlay').className='modal-overlay';}
+function deleteVow(idx){
+  if(!confirm('למחוק נדר/נדבה זו?'))return;
+  var deleted=vows.splice(idx,1)[0];
+  syncToSheets('vow','delete',{id:deleted.id});
+  onVowsSearch();
+}
 function saveVow(){
   var date=document.getElementById('vfDate').value,name=document.getElementById('vfName').value;
   if(!date||!name){alert('תאריך ושם הם שדות חובה');return;}
@@ -1125,7 +1131,7 @@ function renderVows(){
       '<td class="'+(debt>0?'debt-pos':'debt-zero')+'" style="text-align:left">₪'+debt.toLocaleString()+'</td>'+
       '<td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+v.note+'">'+v.note+'</td>'+
       '<td>'+v.place+'</td>'+
-      '<td><button class="btn btn-secondary btn-sm" onclick="openVowEditModal('+vows.indexOf(v)+')">עריכה</button></td></tr>';
+      '<td style="white-space:nowrap"><button class="btn btn-secondary btn-sm" onclick="openVowEditModal('+vows.indexOf(v)+')">עריכה</button> <button class="btn btn-sm" style="background:#e53935;color:white" onclick="deleteVow('+vows.indexOf(v)+')">מחק</button></td></tr>';
   }).join('');
   renderPag('vowsPagination',total,vPage,function(p){vPage=p;renderVows();});
 }
@@ -1174,6 +1180,13 @@ function openPaymentEditModal(idx){
   document.getElementById('paymentModalOverlay').className='modal-overlay open';
 }
 function closePaymentModal(){document.getElementById('paymentModalOverlay').className='modal-overlay';}
+function deletePayment(idx){
+  if(!confirm('למחוק תשלום זה?'))return;
+  var deleted=payments.splice(idx,1)[0];
+  syncToSheets('payment','delete',{id:deleted.id});
+  onPaymentsSearch();
+  if(document.getElementById('tab-vows').classList.contains('active'))renderVows();
+}
 function savePayment(){
   var date=document.getElementById('pfDate').value,name=document.getElementById('pfName').value;
   var vowId=document.getElementById('pfVow').value,amount=parseFloat(document.getElementById('pfAmount').value)||0;
@@ -1237,7 +1250,7 @@ function renderPayments(){
       '<td class="'+(debtPerson>0?'debt-pos':'debt-zero')+'" style="text-align:left">₪'+debtPerson.toLocaleString()+'</td>'+
       '<td style="min-width:180px">'+openHtml+'</td>'+
       '<td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+p.note+'">'+p.note+'</td>'+
-      '<td><button class="btn btn-secondary btn-sm" onclick="openPaymentEditModal('+payments.indexOf(p)+')">עריכה</button></td></tr>';
+      '<td style="white-space:nowrap"><button class="btn btn-secondary btn-sm" onclick="openPaymentEditModal('+payments.indexOf(p)+')">עריכה</button> <button class="btn btn-sm" style="background:#e53935;color:white" onclick="deletePayment('+payments.indexOf(p)+')">מחק</button></td></tr>';
   }).join('');
   renderPag('paymentsPagination',total,pPage,function(p){pPage=p;renderPayments();});
 }
