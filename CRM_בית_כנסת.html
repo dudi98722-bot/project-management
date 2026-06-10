@@ -873,28 +873,48 @@ function syncToSheets(type,action,data){
   fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({type:type,action:action,data:data})})
     .catch(function(){});
 }
+function postToSheets(payload){
+  return fetch(SHEETS_URL,{
+    method:'POST',
+    mode:'no-cors',
+    body:JSON.stringify(payload)
+  });
+}
+function syncToSheetsNocors(type,action,data){
+  if(!SHEETS_URL)return;
+  postToSheets({type:type,action:action,data:data}).catch(function(){});
+}
 function exportAllToSheets(){
   if(!SHEETS_URL)return;
   var btn=document.getElementById('exportSheetsBtn');
-  btn.disabled=true;btn.textContent='מייצא...';
+  btn.disabled=true;
+  var CHUNK=200;
+  var tasks=[];
+  // build chunk tasks for each type
   var types=[
     {type:'contact',rows:contacts},
     {type:'vow',rows:vows},
     {type:'payment',rows:payments}
   ];
-  var labels={contact:'אנשי קשר',vow:'נדרים ונדבות',payment:'תשלומים'};
-  var i=0;
+  types.forEach(function(t){
+    for(var s=0;s<t.rows.length;s+=CHUNK){
+      var chunk=t.rows.slice(s,s+CHUNK);
+      var isFirst=(s===0);
+      tasks.push({type:t.type,chunk:chunk,isFirst:isFirst});
+    }
+  });
+  var i=0,total=tasks.length;
   function next(){
-    if(i>=types.length){
+    if(i>=total){
       btn.disabled=false;btn.textContent='📊 ייצוא לשיטס';
-      alert('✅ הייצוא הושלם!\nיוצאו:\n• '+contacts.length+' אנשי קשר\n• '+vows.length+' נדרים ונדבות\n• '+payments.length+' תשלומים');
+      alert('✅ הייצוא הושלם!\n• '+contacts.length+' אנשי קשר\n• '+vows.length+' נדרים ונדבות\n• '+payments.length+' תשלומים');
       return;
     }
-    var t=types[i];
-    btn.textContent='מייצא '+labels[t.type]+'...';
-    fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({type:t.type,action:'bulk',rows:t.rows})})
-      .then(function(){i++;next();})
-      .catch(function(){i++;next();});
+    var t=tasks[i];
+    btn.textContent='מייצא... ('+(i+1)+'/'+total+')';
+    postToSheets({type:t.type,action:'bulk_chunk',rows:t.chunk,isFirst:t.isFirst})
+      .then(function(){i++;setTimeout(next,300);})
+      .catch(function(){i++;setTimeout(next,300);});
   }
   next();
 }
