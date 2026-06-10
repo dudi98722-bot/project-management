@@ -349,22 +349,20 @@ tr:last-child td { border-bottom: none; }
   function getUsers(){return getCachedUsers();}
   function saveUsers(arr){
     sessionStorage.setItem('crm_users_cache',JSON.stringify(arr));
-    // sync full users list to sheets
-    var params=new URLSearchParams();
-    params.append('p',JSON.stringify({type:'users_list',action:'save',rows:arr.map(function(u){return {username:u.username,hash:u.hash,role:u.role};})}));
-    fetch(SHEETS_URL_LOGIN,{method:'POST',mode:'no-cors',body:params}).catch(function(){});
+    var encoded=encodeURIComponent(JSON.stringify(arr.map(function(u){return {username:u.username,hash:u.hash,role:u.role};})));
+    fetch(SHEETS_URL_LOGIN+'?action=saveUsers&data='+encoded,{method:'GET'}).catch(function(){});
   }
   function loadUsersFromSheets(callback){
-    var params=new URLSearchParams();
-    params.append('p',JSON.stringify({type:'users_list',action:'load'}));
-    // use GET for reading
+    var done=false;
+    var timer=setTimeout(function(){if(!done){done=true;callback();}},5000);
     fetch(SHEETS_URL_LOGIN+'?action=loadUsers',{method:'GET'})
       .then(function(r){return r.json();})
       .then(function(data){
-        if(data.users){sessionStorage.setItem('crm_users_cache',JSON.stringify(data.users));}
-        callback();
+        if(!done){done=true;clearTimeout(timer);
+          if(data.users){sessionStorage.setItem('crm_users_cache',JSON.stringify(data.users));}
+          callback();}
       })
-      .catch(function(){callback();});
+      .catch(function(){if(!done){done=true;clearTimeout(timer);callback();}});
   }
   if(sessionStorage.getItem('crm_auth')==='1'){
     document.getElementById('loginScreen').style.display='none';
