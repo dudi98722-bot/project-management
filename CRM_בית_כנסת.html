@@ -343,21 +343,45 @@ tr:last-child td { border-bottom: none; }
     var buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(u+':'+p));
     return Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
   }
-  function getUsers(){try{return JSON.parse(localStorage.getItem('crm_users')||'[]');}catch(e){return[];}}
-  function saveUsers(arr){localStorage.setItem('crm_users',JSON.stringify(arr));}
+  var SHEETS_URL_LOGIN='https://script.google.com/macros/s/AKfycbyuJlKaSaz8xWv9Ht48SQUy4sax6POiO8ZR8_kZ5WU6-rACiRi0Ls_h7EPmZ5PK6TBo/exec';
+  // cache users from sheets in sessionStorage
+  function getCachedUsers(){try{return JSON.parse(sessionStorage.getItem('crm_users_cache')||'[]');}catch(e){return[];}}
+  function getUsers(){return getCachedUsers();}
+  function saveUsers(arr){
+    sessionStorage.setItem('crm_users_cache',JSON.stringify(arr));
+    // sync full users list to sheets
+    var params=new URLSearchParams();
+    params.append('p',JSON.stringify({type:'users_list',action:'save',rows:arr.map(function(u){return {username:u.username,hash:u.hash,role:u.role};})}));
+    fetch(SHEETS_URL_LOGIN,{method:'POST',mode:'no-cors',body:params}).catch(function(){});
+  }
+  function loadUsersFromSheets(callback){
+    var params=new URLSearchParams();
+    params.append('p',JSON.stringify({type:'users_list',action:'load'}));
+    // use GET for reading
+    fetch(SHEETS_URL_LOGIN+'?action=loadUsers',{method:'GET'})
+      .then(function(r){return r.json();})
+      .then(function(data){
+        if(data.users){sessionStorage.setItem('crm_users_cache',JSON.stringify(data.users));}
+        callback();
+      })
+      .catch(function(){callback();});
+  }
   if(sessionStorage.getItem('crm_auth')==='1'){
     document.getElementById('loginScreen').style.display='none';
   }
   window.doLogout=function(){
     sessionStorage.removeItem('crm_auth');
     sessionStorage.removeItem('crm_user');
+    sessionStorage.removeItem('crm_role');
+    sessionStorage.removeItem('crm_users_cache');
     location.reload();
   };
   window.doLogin=async function(){
     var eu=document.getElementById('loginUser').value.trim();
     var ep=document.getElementById('loginPass').value;
+    var btn=document.querySelector('#loginScreen button[onclick="doLogin()"]')||document.querySelector('#loginScreen .login-btn');
     var h=await hashCreds(eu,ep);
-    // check admin
+    // check admin first (no network needed)
     if(eu===ADMIN_USER && h===ADMIN){
       sessionStorage.setItem('crm_auth','1');
       sessionStorage.setItem('crm_user',eu);
@@ -365,19 +389,26 @@ tr:last-child td { border-bottom: none; }
       document.getElementById('loginScreen').style.display='none';
       return;
     }
-    // check other users
-    var users=getUsers();
-    for(var i=0;i<users.length;i++){
-      if(users[i].username===eu && users[i].hash===h){
-        sessionStorage.setItem('crm_auth','1');
-        sessionStorage.setItem('crm_user',eu);
-        sessionStorage.setItem('crm_role',users[i].role||'user');
-        document.getElementById('loginScreen').style.display='none';
-        return;
+    // load users from sheets then check
+    var errEl=document.getElementById('loginError2');
+    errEl.style.display='none';
+    errEl.textContent='מאמת...';errEl.style.display='block';errEl.style.color='#666';
+    loadUsersFromSheets(function(){
+      errEl.style.display='none';errEl.style.color='';
+      var users=getCachedUsers();
+      for(var i=0;i<users.length;i++){
+        if(users[i].username===eu && users[i].hash===h){
+          sessionStorage.setItem('crm_auth','1');
+          sessionStorage.setItem('crm_user',eu);
+          sessionStorage.setItem('crm_role',users[i].role||'user');
+          document.getElementById('loginScreen').style.display='none';
+          return;
+        }
       }
-    }
-    document.getElementById('loginError2').style.display='block';
-    document.getElementById('loginPass').value='';
+      document.getElementById('loginError2').style.display='block';
+      document.getElementById('loginError2').style.color='';
+      document.getElementById('loginPass').value='';
+    });
   };
   window.getUsers=getUsers;
   window.saveUsers=saveUsers;
