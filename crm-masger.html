@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRM מסגריה - ניהול פרוייקטים</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: #1a202c; }
+
+  /* HEADER */
+  .header {
+    background: linear-gradient(135deg, #1a365d 0%, #2d6a9f 100%);
+    color: white; padding: 20px 30px;
+    display: flex; align-items: center; justify-content: space-between;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  }
+  .header h1 { font-size: 24px; font-weight: 700; }
+  .header h1 span { font-size: 14px; opacity: 0.8; display: block; margin-top: 2px; }
+  .btn-add-main {
+    background: #e67e22; color: white; border: none;
+    padding: 10px 22px; border-radius: 8px; font-size: 15px;
+    cursor: pointer; font-weight: 600; transition: background 0.2s;
+  }
+  .btn-add-main:hover { background: #cf6d17; }
+
+  /* STATS BAR */
+  .stats-bar {
+    display: flex; gap: 16px; padding: 20px 30px;
+    flex-wrap: wrap;
+  }
+  .stat-card {
+    background: white; border-radius: 10px; padding: 16px 24px;
+    flex: 1; min-width: 150px; text-align: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    border-top: 4px solid #2d6a9f;
+  }
+  .stat-card.orange { border-top-color: #e67e22; }
+  .stat-card.green  { border-top-color: #27ae60; }
+  .stat-card.red    { border-top-color: #e74c3c; }
+  .stat-card .num   { font-size: 32px; font-weight: 700; color: #1a365d; }
+  .stat-card .lbl   { font-size: 13px; color: #718096; margin-top: 4px; }
+
+  /* FILTER BAR */
+  .filter-bar {
+    display: flex; gap: 12px; padding: 0 30px 16px;
+    flex-wrap: wrap; align-items: center;
+  }
+  .filter-bar input, .filter-bar select {
+    padding: 8px 14px; border: 1px solid #cbd5e0; border-radius: 8px;
+    font-size: 14px; background: white; font-family: inherit;
+  }
+  .filter-bar input { flex: 1; min-width: 200px; }
+
+  /* TABLE */
+  .table-wrap { padding: 0 30px 30px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; background: white;
+    border-radius: 12px; overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+  thead tr { background: #1a365d; color: white; }
+  th { padding: 13px 14px; text-align: right; font-size: 13px; font-weight: 600; white-space: nowrap; }
+  td { padding: 11px 14px; font-size: 14px; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: #f7fafc; }
+
+  /* STATUS BADGE */
+  .badge {
+    display: inline-block; padding: 4px 10px; border-radius: 20px;
+    font-size: 12px; font-weight: 600; white-space: nowrap;
+  }
+  .badge-lead      { background: #ebf8ff; color: #2b6cb0; }
+  .badge-offer     { background: #fef3c7; color: #92400e; }
+  .badge-approved  { background: #d1fae5; color: #065f46; }
+  .badge-inprog    { background: #e0e7ff; color: #3730a3; }
+  .badge-done      { background: #d1fae5; color: #065f46; }
+  .badge-lost      { background: #fee2e2; color: #991b1b; }
+  .badge-waiting   { background: #fef9c3; color: #713f12; }
+
+  /* ACTION BTNS */
+  .btn-icon {
+    background: none; border: none; cursor: pointer;
+    padding: 5px 7px; border-radius: 6px; font-size: 16px;
+    transition: background 0.15s;
+  }
+  .btn-icon:hover { background: #e2e8f0; }
+
+  /* MODAL OVERLAY */
+  .overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5); z-index: 100;
+    justify-content: center; align-items: flex-start;
+    padding: 20px; overflow-y: auto;
+  }
+  .overlay.open { display: flex; }
+  .modal {
+    background: white; border-radius: 16px; width: 100%;
+    max-width: 680px; margin: auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    animation: slideIn 0.2s ease;
+  }
+  @keyframes slideIn { from { transform: translateY(-20px); opacity:0; } to { transform: translateY(0); opacity:1; } }
+  .modal-header {
+    background: linear-gradient(135deg, #1a365d, #2d6a9f);
+    color: white; padding: 18px 24px; border-radius: 16px 16px 0 0;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .modal-header h2 { font-size: 18px; }
+  .modal-close { background: none; border: none; color: white; font-size: 22px; cursor: pointer; }
+  .modal-body { padding: 24px; }
+
+  /* FORM GRID */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .form-grid .full { grid-column: 1 / -1; }
+  .field label { display: block; font-size: 13px; font-weight: 600; color: #4a5568; margin-bottom: 5px; }
+  .field input, .field select, .field textarea {
+    width: 100%; padding: 9px 12px;
+    border: 1px solid #cbd5e0; border-radius: 8px;
+    font-size: 14px; font-family: inherit; transition: border 0.2s;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus {
+    outline: none; border-color: #2d6a9f; box-shadow: 0 0 0 3px rgba(45,106,159,0.15);
+  }
+  .field textarea { resize: vertical; min-height: 70px; }
+
+  /* SECTION DIVIDER */
+  .section-divider {
+    grid-column: 1/-1; border-top: 2px solid #e2e8f0;
+    padding-top: 16px; margin-top: 4px;
+    font-size: 14px; font-weight: 700; color: #1a365d;
+  }
+
+  /* CALL LOG */
+  .call-log-list { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+  .call-entry {
+    background: #f7fafc; border: 1px solid #e2e8f0;
+    border-radius: 10px; padding: 12px 16px;
+    position: relative;
+  }
+  .call-entry .call-date { font-size: 12px; color: #718096; margin-bottom: 4px; }
+  .call-entry .call-text { font-size: 14px; color: #2d3748; }
+  .call-entry .call-del {
+    position: absolute; top: 8px; left: 12px;
+    background: none; border: none; color: #e74c3c;
+    cursor: pointer; font-size: 16px;
+  }
+  .add-call-area { display: flex; gap: 10px; margin-top: 10px; }
+  .add-call-area textarea {
+    flex: 1; padding: 9px 12px; border: 1px solid #cbd5e0;
+    border-radius: 8px; font-size: 14px; font-family: inherit; resize: none; height: 60px;
+  }
+  .add-call-area button {
+    background: #2d6a9f; color: white; border: none;
+    padding: 0 18px; border-radius: 8px; cursor: pointer; font-size: 13px;
+    font-weight: 600;
+  }
+  .add-call-area button:hover { background: #1a365d; }
+
+  /* MODAL FOOTER */
+  .modal-footer {
+    padding: 16px 24px; border-top: 1px solid #e2e8f0;
+    display: flex; justify-content: flex-end; gap: 12px;
+  }
+  .btn-save {
+    background: #27ae60; color: white; border: none;
+    padding: 10px 28px; border-radius: 8px; font-size: 15px;
+    cursor: pointer; font-weight: 700; transition: background 0.2s;
+  }
+  .btn-save:hover { background: #1e8449; }
+  .btn-cancel {
+    background: #e2e8f0; color: #4a5568; border: none;
+    padding: 10px 22px; border-radius: 8px; font-size: 15px;
+    cursor: pointer; font-weight: 600;
+  }
+
+  /* VIEW MODAL (project detail) */
+  .detail-section { margin-bottom: 20px; }
+  .detail-section h3 { font-size: 14px; font-weight: 700; color: #1a365d; margin-bottom: 10px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; }
+  .detail-row { display: flex; gap: 8px; margin-bottom: 6px; font-size: 14px; }
+  .detail-row .dl { color: #718096; min-width: 160px; font-weight: 600; }
+  .detail-row .dv { color: #2d3748; }
+
+  .empty-state {
+    text-align: center; padding: 60px 20px; color: #a0aec0;
+  }
+  .empty-state .icon { font-size: 60px; margin-bottom: 16px; }
+  .empty-state p { font-size: 16px; }
+
+  @media (max-width: 600px) {
+    .header { padding: 14px 16px; }
+    .stats-bar, .filter-bar, .table-wrap { padding-left: 14px; padding-right: 14px; }
+    .form-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>🔩 CRM מסגריה
+      <span>ניהול פרוייקטים ולקוחות</span>
+    </h1>
+  </div>
+  <button class="btn-add-main" onclick="openAdd()">+ פרוייקט חדש</button>
+</div>
+
+<div class="stats-bar" id="statsBar"></div>
+
+<div class="filter-bar">
+  <input type="text" id="searchInput" placeholder="🔍  חיפוש לפי שם / כתובת / טלפון..." oninput="renderTable()">
+  <select id="filterStatus" onchange="renderTable()">
+    <option value="">כל הסטטוסים</option>
+    <option value="ליד">ליד</option>
+    <option value="הצעה נשלחה">הצעה נשלחה</option>
+    <option value="ממתין לאישור">ממתין לאישור</option>
+    <option value="אושר">אושר</option>
+    <option value="בביצוע">בביצוע</option>
+    <option value="הושלם">הושלם</option>
+    <option value="לא סגר">לא סגר</option>
+  </select>
+  <select id="filterSource" onchange="renderTable()">
+    <option value="">כל מקורות ההפניה</option>
+    <option value="פה לאוזן">פה לאוזן</option>
+    <option value="פייסבוק">פייסבוק</option>
+    <option value="גוגל">גוגל</option>
+    <option value="יד2">יד2</option>
+    <option value="אחר">אחר</option>
+  </select>
+</div>
+
+<div class="table-wrap">
+  <table id="projectTable">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>שם לקוח</th>
+        <th>טלפון</th>
+        <th>כתובת / פרוייקט</th>
+        <th>מחיר מוצע ₪</th>
+        <th>עלות צפויה ₪</th>
+        <th>רווח צפוי ₪</th>
+        <th>סטטוס</th>
+        <th>מקור הפניה</th>
+        <th>תאריך יצירה</th>
+        <th>שיחות</th>
+        <th>פעולות</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+  <div id="emptyState" class="empty-state" style="display:none;">
+    <div class="icon">📋</div>
+    <p>אין פרוייקטים. לחץ <strong>+ פרוייקט חדש</strong> להתחיל</p>
+  </div>
+</div>
+
+<!-- ADD / EDIT MODAL -->
+<div class="overlay" id="formOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle">פרוייקט חדש</h2>
+      <button class="modal-close" onclick="closeForm()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <!-- ROW 1 -->
+        <div class="field">
+          <label>שם לקוח *</label>
+          <input type="text" id="fName" placeholder="ישראל ישראלי">
+        </div>
+        <div class="field">
+          <label>טלפון *</label>
+          <input type="tel" id="fPhone" placeholder="050-0000000">
+        </div>
+        <!-- ROW 2 -->
+        <div class="field full">
+          <label>כתובת / תיאור פרוייקט *</label>
+          <input type="text" id="fAddress" placeholder="רחוב הרצל 10, תל אביב – גדר + שער">
+        </div>
+        <!-- ROW 3 -->
+        <div class="field">
+          <label>מחיר שהוצע ללקוח (₪)</label>
+          <input type="number" id="fPrice" placeholder="5000" min="0">
+        </div>
+        <div class="field">
+          <label>צפי עלות (₪)</label>
+          <input type="number" id="fCost" placeholder="2500" min="0">
+        </div>
+        <!-- ROW 4 -->
+        <div class="field">
+          <label>סטטוס הצעה</label>
+          <select id="fStatus">
+            <option value="ליד">ליד</option>
+            <option value="הצעה נשלחה">הצעה נשלחה</option>
+            <option value="ממתין לאישור">ממתין לאישור</option>
+            <option value="אושר">אושר</option>
+            <option value="בביצוע">בביצוע</option>
+            <option value="הושלם">הושלם</option>
+            <option value="לא סגר">לא סגר</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>מקור הפניה</label>
+          <select id="fSource">
+            <option value="פה לאוזן">פה לאוזן</option>
+            <option value="פייסבוק">פייסבוק</option>
+            <option value="גוגל">גוגל</option>
+            <option value="יד2">יד2</option>
+            <option value="אחר">אחר</option>
+          </select>
+        </div>
+        <!-- NOTES -->
+        <div class="field full">
+          <label>הערות</label>
+          <textarea id="fNotes" placeholder="פרטים נוספים על הפרוייקט..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeForm()">ביטול</button>
+      <button class="btn-save" onclick="saveProject()">💾 שמור</button>
+    </div>
+  </div>
+</div>
+
+<!-- VIEW / CALLS MODAL -->
+<div class="overlay" id="viewOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="viewTitle">פרטי פרוייקט</h2>
+      <button class="modal-close" onclick="closeView()">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- PROJECT DETAILS -->
+      <div class="detail-section">
+        <h3>📋 פרטי הפרוייקט</h3>
+        <div id="viewDetails"></div>
+      </div>
+      <!-- CALL LOG -->
+      <div class="detail-section">
+        <h3>📞 תיעוד שיחות</h3>
+        <div class="add-call-area">
+          <textarea id="newCallText" placeholder="רשום כאן מה סוכם / דובר בשיחה..."></textarea>
+          <button onclick="addCall()">+ הוסף</button>
+        </div>
+        <div class="call-log-list" id="callLogList"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeView()">סגור</button>
+      <button class="btn-save" style="background:#2d6a9f;" onclick="openEditFromView()">✏️ ערוך פרוייקט</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── DATA ───────────────────────────────────────────────────────────────────
+const STORAGE_KEY = 'masger_crm_v1';
+let projects = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+let editingId = null;
+let viewingId = null;
+
+function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); }
+function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function today() { return new Date().toLocaleDateString('he-IL'); }
+
+// ─── STATUS MAP ─────────────────────────────────────────────────────────────
+const statusClass = {
+  'ליד': 'badge-lead',
+  'הצעה נשלחה': 'badge-offer',
+  'ממתין לאישור': 'badge-waiting',
+  'אושר': 'badge-approved',
+  'בביצוע': 'badge-inprog',
+  'הושלם': 'badge-done',
+  'לא סגר': 'badge-lost'
+};
+
+// ─── STATS ──────────────────────────────────────────────────────────────────
+function renderStats() {
+  const total = projects.length;
+  const active = projects.filter(p => ['אושר','בביצוע'].includes(p.status)).length;
+  const done = projects.filter(p => p.status === 'הושלם').length;
+  const lost = projects.filter(p => p.status === 'לא סגר').length;
+  const revenue = projects.filter(p => p.status === 'הושלם')
+                          .reduce((s,p) => s + (parseFloat(p.price)||0), 0);
+
+  document.getElementById('statsBar').innerHTML = `
+    <div class="stat-card"><div class="num">${total}</div><div class="lbl">סה"כ פרוייקטים</div></div>
+    <div class="stat-card orange"><div class="num">${active}</div><div class="lbl">פרוייקטים פעילים</div></div>
+    <div class="stat-card green"><div class="num">${done}</div><div class="lbl">הושלמו</div></div>
+    <div class="stat-card red"><div class="num">${lost}</div><div class="lbl">לא נסגרו</div></div>
+    <div class="stat-card" style="border-top-color:#27ae60;">
+      <div class="num" style="color:#27ae60;">₪${revenue.toLocaleString('he-IL')}</div>
+      <div class="lbl">הכנסות (הושלם)</div>
+    </div>`;
+}
+
+// ─── TABLE ──────────────────────────────────────────────────────────────────
+function renderTable() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  const fs = document.getElementById('filterStatus').value;
+  const fr = document.getElementById('filterSource').value;
+
+  let filtered = projects.filter(p => {
+    const text = (p.name+p.phone+p.address).toLowerCase();
+    return (!q || text.includes(q))
+        && (!fs || p.status === fs)
+        && (!fr || p.source === fr);
+  });
+
+  const tbody = document.getElementById('tableBody');
+  if (!filtered.length) {
+    tbody.innerHTML = '';
+    document.getElementById('emptyState').style.display = 'block';
+    document.getElementById('projectTable').style.display = 'none';
+    return;
+  }
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('projectTable').style.display = '';
+
+  tbody.innerHTML = filtered.map((p, i) => {
+    const profit = (parseFloat(p.price)||0) - (parseFloat(p.cost)||0);
+    const profitColor = profit >= 0 ? '#27ae60' : '#e74c3c';
+    const calls = (p.calls||[]).length;
+    return `<tr>
+      <td style="color:#a0aec0;font-size:13px;">${i+1}</td>
+      <td><strong>${esc(p.name)}</strong></td>
+      <td><a href="tel:${esc(p.phone)}" style="color:#2d6a9f;text-decoration:none;">${esc(p.phone)}</a></td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(p.address)}">${esc(p.address)}</td>
+      <td style="font-weight:600;">${p.price ? '₪'+Number(p.price).toLocaleString('he-IL') : '—'}</td>
+      <td style="color:#718096;">${p.cost ? '₪'+Number(p.cost).toLocaleString('he-IL') : '—'}</td>
+      <td style="font-weight:700;color:${profitColor};">${p.price||p.cost ? '₪'+profit.toLocaleString('he-IL') : '—'}</td>
+      <td><span class="badge ${statusClass[p.status]||''}">${esc(p.status)}</span></td>
+      <td style="color:#718096;font-size:13px;">${esc(p.source||'')}</td>
+      <td style="color:#718096;font-size:12px;">${esc(p.created||'')}</td>
+      <td>
+        <button class="btn-icon" onclick="openView('${p.id}')" title="תיעוד שיחות">
+          📞${calls ? `<sup style="background:#e74c3c;color:white;border-radius:50%;padding:1px 4px;font-size:10px;">${calls}</sup>` : ''}
+        </button>
+      </td>
+      <td style="white-space:nowrap;">
+        <button class="btn-icon" onclick="openEdit('${p.id}')" title="ערוך">✏️</button>
+        <button class="btn-icon" onclick="deleteProject('${p.id}')" title="מחק">🗑️</button>
+      </td>
+    </tr>`;
+  }).join('');
+  renderStats();
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── ADD / EDIT ──────────────────────────────────────────────────────────────
+function openAdd() {
+  editingId = null;
+  document.getElementById('modalTitle').textContent = '+ פרוייקט חדש';
+  clearForm();
+  document.getElementById('formOverlay').classList.add('open');
+}
+
+function openEdit(id) {
+  const p = projects.find(x => x.id === id);
+  if (!p) return;
+  editingId = id;
+  document.getElementById('modalTitle').textContent = 'עריכת פרוייקט';
+  document.getElementById('fName').value    = p.name||'';
+  document.getElementById('fPhone').value   = p.phone||'';
+  document.getElementById('fAddress').value = p.address||'';
+  document.getElementById('fPrice').value   = p.price||'';
+  document.getElementById('fCost').value    = p.cost||'';
+  document.getElementById('fStatus').value  = p.status||'ליד';
+  document.getElementById('fSource').value  = p.source||'פה לאוזן';
+  document.getElementById('fNotes').value   = p.notes||'';
+  document.getElementById('formOverlay').classList.add('open');
+}
+
+function openEditFromView() {
+  closeView();
+  if (viewingId) openEdit(viewingId);
+}
+
+function closeForm() { document.getElementById('formOverlay').classList.remove('open'); }
+function clearForm() {
+  ['fName','fPhone','fAddress','fPrice','fCost','fNotes'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('fStatus').value = 'ליד';
+  document.getElementById('fSource').value = 'פה לאוזן';
+}
+
+function saveProject() {
+  const name = document.getElementById('fName').value.trim();
+  const phone = document.getElementById('fPhone').value.trim();
+  const address = document.getElementById('fAddress').value.trim();
+  if (!name || !phone || !address) { alert('נא למלא שם, טלפון וכתובת/פרוייקט'); return; }
+
+  if (editingId) {
+    const p = projects.find(x => x.id === editingId);
+    Object.assign(p, { name, phone, address,
+      price: document.getElementById('fPrice').value,
+      cost: document.getElementById('fCost').value,
+      status: document.getElementById('fStatus').value,
+      source: document.getElementById('fSource').value,
+      notes: document.getElementById('fNotes').value,
+    });
+  } else {
+    projects.unshift({ id: newId(), name, phone, address,
+      price: document.getElementById('fPrice').value,
+      cost: document.getElementById('fCost').value,
+      status: document.getElementById('fStatus').value,
+      source: document.getElementById('fSource').value,
+      notes: document.getElementById('fNotes').value,
+      created: today(), calls: []
+    });
+  }
+  save(); closeForm(); renderTable();
+}
+
+function deleteProject(id) {
+  if (!confirm('למחוק פרוייקט זה?')) return;
+  projects = projects.filter(p => p.id !== id);
+  save(); renderTable();
+}
+
+// ─── VIEW / CALLS ────────────────────────────────────────────────────────────
+function openView(id) {
+  viewingId = id;
+  const p = projects.find(x => x.id === id);
+  if (!p) return;
+  document.getElementById('viewTitle').textContent = '📋 ' + p.name;
+  const profit = (parseFloat(p.price)||0) - (parseFloat(p.cost)||0);
+  document.getElementById('viewDetails').innerHTML = `
+    <div class="detail-row"><span class="dl">שם לקוח:</span><span class="dv">${esc(p.name)}</span></div>
+    <div class="detail-row"><span class="dl">טלפון:</span><span class="dv"><a href="tel:${esc(p.phone)}">${esc(p.phone)}</a></span></div>
+    <div class="detail-row"><span class="dl">כתובת / פרוייקט:</span><span class="dv">${esc(p.address)}</span></div>
+    <div class="detail-row"><span class="dl">מחיר מוצע:</span><span class="dv">${p.price ? '₪'+Number(p.price).toLocaleString('he-IL') : '—'}</span></div>
+    <div class="detail-row"><span class="dl">עלות צפויה:</span><span class="dv">${p.cost ? '₪'+Number(p.cost).toLocaleString('he-IL') : '—'}</span></div>
+    <div class="detail-row"><span class="dl">רווח צפוי:</span><span class="dv" style="font-weight:700;color:${profit>=0?'#27ae60':'#e74c3c'};">${p.price||p.cost ? '₪'+profit.toLocaleString('he-IL') : '—'}</span></div>
+    <div class="detail-row"><span class="dl">סטטוס:</span><span class="dv"><span class="badge ${statusClass[p.status]||''}">${esc(p.status)}</span></span></div>
+    <div class="detail-row"><span class="dl">מקור הפניה:</span><span class="dv">${esc(p.source||'')}</span></div>
+    <div class="detail-row"><span class="dl">תאריך יצירה:</span><span class="dv">${esc(p.created||'')}</span></div>
+    ${p.notes ? `<div class="detail-row"><span class="dl">הערות:</span><span class="dv">${esc(p.notes)}</span></div>` : ''}
+  `;
+  renderCallLog();
+  document.getElementById('viewOverlay').classList.add('open');
+}
+
+function closeView() { document.getElementById('viewOverlay').classList.remove('open'); viewingId = null; }
+
+function renderCallLog() {
+  const p = projects.find(x => x.id === viewingId);
+  if (!p) return;
+  const list = document.getElementById('callLogList');
+  if (!p.calls || !p.calls.length) {
+    list.innerHTML = '<div style="color:#a0aec0;font-size:14px;padding:8px 0;">אין שיחות מתועדות עדיין</div>';
+    return;
+  }
+  list.innerHTML = p.calls.slice().reverse().map((c, ri) => {
+    const i = p.calls.length - 1 - ri;
+    return `<div class="call-entry">
+      <div class="call-date">📅 ${esc(c.date)}</div>
+      <div class="call-text">${esc(c.text)}</div>
+      <button class="call-del" onclick="deleteCall(${i})" title="מחק שיחה">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function addCall() {
+  const text = document.getElementById('newCallText').value.trim();
+  if (!text) return;
+  const p = projects.find(x => x.id === viewingId);
+  if (!p) return;
+  if (!p.calls) p.calls = [];
+  p.calls.push({ date: today(), text });
+  document.getElementById('newCallText').value = '';
+  save(); renderCallLog(); renderTable();
+}
+
+function deleteCall(idx) {
+  if (!confirm('למחוק שיחה זו?')) return;
+  const p = projects.find(x => x.id === viewingId);
+  if (!p) return;
+  p.calls.splice(idx, 1);
+  save(); renderCallLog(); renderTable();
+}
+
+// Close overlay on outside click
+document.getElementById('formOverlay').addEventListener('click', function(e) { if(e.target===this) closeForm(); });
+document.getElementById('viewOverlay').addEventListener('click', function(e) { if(e.target===this) closeView(); });
+
+// ─── INIT ─────────────────────────────────────────────────────────────────
+renderTable();
+renderStats();
+</script>
+</body>
+</html>
