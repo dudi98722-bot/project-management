@@ -63,7 +63,7 @@ async function startImport() {
   let ok = 0, fail = 0;
   for (let i = 0; i < PROJECTS.length; i++) {
     const p = PROJECTS[i];
-    document.getElementById('statusText').textContent = ;
+    document.getElementById('statusText').textContent = 'מייבא ' + (i+1) + ' / ' + PROJECTS.length + ': ' + p.name;
     document.getElementById('bar').style.width = ((i+1)/PROJECTS.length*100)+'%';
     try {
       await apiPost({ action:'upsert', collection:'projects', id:p.id, data:p });
@@ -75,8 +75,8 @@ async function startImport() {
     }
     await new Promise(r => setTimeout(r, 300));
   }
-  document.getElementById('statusText').textContent = ;
-  btn.textContent = fail===0 ? '✓ הייבוא הושלם בהצלחה!' : ;
+  document.getElementById('statusText').textContent = 'סיום! ' + ok + ' הצליחו, ' + fail + ' נכשלו';
+  btn.textContent = fail===0 ? '✓ הייבוא הושלם בהצלחה! לחץ לפתיחת CRM' : ('⚠️ ' + fail + ' שגיאות — לחץ לפתיחת CRM');
   btn.className = 'btn ' + (fail===0?'success':'');
   btn.disabled = false;
   btn.onclick = () => window.location.href = 'crm-masger.html';
