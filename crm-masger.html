@@ -5,191 +5,247 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CRM מסגריה - ניהול פרוייקטים</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: #1a202c; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: #1a202c; }
 
-  /* HEADER */
-  .header {
-    background: linear-gradient(135deg, #1a365d 0%, #2d6a9f 100%);
-    color: white; padding: 20px 30px;
-    display: flex; align-items: center; justify-content: space-between;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-  }
-  .header h1 { font-size: 24px; font-weight: 700; }
-  .header h1 span { font-size: 14px; opacity: 0.8; display: block; margin-top: 2px; }
-  .btn-add-main {
-    background: #e67e22; color: white; border: none;
-    padding: 10px 22px; border-radius: 8px; font-size: 15px;
-    cursor: pointer; font-weight: 600; transition: background 0.2s;
-  }
-  .btn-add-main:hover { background: #cf6d17; }
+/* HEADER */
+.header {
+  background: linear-gradient(135deg, #1a365d 0%, #2d6a9f 100%);
+  color: white; padding: 18px 30px;
+  display: flex; align-items: center; justify-content: space-between;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2); flex-wrap: wrap; gap: 12px;
+}
+.header h1 { font-size: 22px; font-weight: 700; }
+.header h1 span { font-size: 13px; opacity: 0.8; display: block; margin-top: 2px; }
+.header-btns { display: flex; gap: 10px; }
+.btn-add-main {
+  background: #e67e22; color: white; border: none;
+  padding: 9px 20px; border-radius: 8px; font-size: 14px;
+  cursor: pointer; font-weight: 600; transition: background 0.2s;
+}
+.btn-add-main:hover { background: #cf6d17; }
+.btn-settings {
+  background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.3);
+  padding: 9px 16px; border-radius: 8px; font-size: 14px;
+  cursor: pointer; font-weight: 600; transition: background 0.2s;
+}
+.btn-settings:hover { background: rgba(255,255,255,0.25); }
 
-  /* STATS BAR */
-  .stats-bar {
-    display: flex; gap: 16px; padding: 20px 30px;
-    flex-wrap: wrap;
-  }
-  .stat-card {
-    background: white; border-radius: 10px; padding: 16px 24px;
-    flex: 1; min-width: 150px; text-align: center;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-    border-top: 4px solid #2d6a9f;
-  }
-  .stat-card.orange { border-top-color: #e67e22; }
-  .stat-card.green  { border-top-color: #27ae60; }
-  .stat-card.red    { border-top-color: #e74c3c; }
-  .stat-card .num   { font-size: 32px; font-weight: 700; color: #1a365d; }
-  .stat-card .lbl   { font-size: 13px; color: #718096; margin-top: 4px; }
+/* TABS */
+.tabs {
+  display: flex; gap: 0; padding: 0 30px;
+  background: white; border-bottom: 2px solid #e2e8f0;
+}
+.tab-btn {
+  padding: 13px 22px; background: none; border: none; cursor: pointer;
+  font-size: 14px; font-weight: 600; color: #718096;
+  border-bottom: 3px solid transparent; margin-bottom: -2px;
+  transition: all 0.2s;
+}
+.tab-btn.active { color: #1a365d; border-bottom-color: #2d6a9f; }
+.tab-btn:hover:not(.active) { color: #2d3748; background: #f7fafc; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
 
-  /* FILTER BAR */
-  .filter-bar {
-    display: flex; gap: 12px; padding: 0 30px 16px;
-    flex-wrap: wrap; align-items: center;
-  }
-  .filter-bar input, .filter-bar select {
-    padding: 8px 14px; border: 1px solid #cbd5e0; border-radius: 8px;
-    font-size: 14px; background: white; font-family: inherit;
-  }
-  .filter-bar input { flex: 1; min-width: 200px; }
+/* SUMMARY STATS */
+.stats-bar {
+  display: flex; gap: 14px; padding: 20px 30px 0;
+  flex-wrap: wrap;
+}
+.stat-card {
+  background: white; border-radius: 10px; padding: 14px 20px;
+  flex: 1; min-width: 130px; text-align: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  border-top: 4px solid #2d6a9f;
+}
+.stat-card.orange { border-top-color: #e67e22; }
+.stat-card.green  { border-top-color: #27ae60; }
+.stat-card.red    { border-top-color: #e74c3c; }
+.stat-card.gold   { border-top-color: #f59e0b; }
+.stat-card .num   { font-size: 28px; font-weight: 700; color: #1a365d; }
+.stat-card .lbl   { font-size: 12px; color: #718096; margin-top: 3px; }
 
-  /* TABLE */
-  .table-wrap { padding: 0 30px 30px; overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; background: white;
-    border-radius: 12px; overflow: hidden;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
-  thead tr { background: #1a365d; color: white; }
-  th { padding: 13px 14px; text-align: right; font-size: 13px; font-weight: 600; white-space: nowrap; }
-  td { padding: 11px 14px; font-size: 14px; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
-  tr:last-child td { border-bottom: none; }
-  tbody tr:hover { background: #f7fafc; }
+/* DASHBOARD - STATUS BREAKDOWN */
+.dashboard-section { padding: 20px 30px; }
+.dashboard-section h2 { font-size: 16px; font-weight: 700; color: #1a365d; margin-bottom: 14px; }
+.status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.status-dash-card {
+  background: white; border-radius: 12px;
+  padding: 16px 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+  cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
+  border-right: 5px solid #ccc; display: flex; align-items: center; gap: 14px;
+}
+.status-dash-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.12); }
+.status-dash-count { font-size: 36px; font-weight: 800; color: #1a365d; min-width: 44px; text-align: center; }
+.status-dash-info .status-dash-name { font-size: 14px; font-weight: 700; color: #2d3748; }
+.status-dash-info .status-dash-amount { font-size: 12px; color: #718096; margin-top: 2px; }
 
-  /* STATUS BADGE */
-  .badge {
-    display: inline-block; padding: 4px 10px; border-radius: 20px;
-    font-size: 12px; font-weight: 600; white-space: nowrap;
-  }
-  .badge-lead      { background: #ebf8ff; color: #2b6cb0; }
-  .badge-offer     { background: #fef3c7; color: #92400e; }
-  .badge-approved  { background: #d1fae5; color: #065f46; }
-  .badge-inprog    { background: #e0e7ff; color: #3730a3; }
-  .badge-done      { background: #d1fae5; color: #065f46; }
-  .badge-lost      { background: #fee2e2; color: #991b1b; }
-  .badge-waiting   { background: #fef9c3; color: #713f12; }
+/* REVENUE DASHBOARD */
+.revenue-section { padding: 0 30px 20px; }
+.revenue-cards { display: flex; gap: 14px; flex-wrap: wrap; }
+.revenue-card {
+  background: white; border-radius: 10px; padding: 16px 20px;
+  flex: 1; min-width: 180px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+.revenue-card .rc-lbl { font-size: 12px; color: #718096; margin-bottom: 4px; font-weight: 600; }
+.revenue-card .rc-val { font-size: 22px; font-weight: 800; color: #1a365d; }
 
-  /* ACTION BTNS */
-  .btn-icon {
-    background: none; border: none; cursor: pointer;
-    padding: 5px 7px; border-radius: 6px; font-size: 16px;
-    transition: background 0.15s;
-  }
-  .btn-icon:hover { background: #e2e8f0; }
+/* FILTER BAR */
+.filter-bar {
+  display: flex; gap: 10px; padding: 14px 30px;
+  flex-wrap: wrap; align-items: center;
+}
+.filter-bar input, .filter-bar select {
+  padding: 8px 12px; border: 1px solid #cbd5e0; border-radius: 8px;
+  font-size: 14px; background: white; font-family: inherit;
+}
+.filter-bar input { flex: 1; min-width: 180px; }
 
-  /* MODAL OVERLAY */
-  .overlay {
-    display: none; position: fixed; inset: 0;
-    background: rgba(0,0,0,0.5); z-index: 100;
-    justify-content: center; align-items: flex-start;
-    padding: 20px; overflow-y: auto;
-  }
-  .overlay.open { display: flex; }
-  .modal {
-    background: white; border-radius: 16px; width: 100%;
-    max-width: 680px; margin: auto;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-    animation: slideIn 0.2s ease;
-  }
-  @keyframes slideIn { from { transform: translateY(-20px); opacity:0; } to { transform: translateY(0); opacity:1; } }
-  .modal-header {
-    background: linear-gradient(135deg, #1a365d, #2d6a9f);
-    color: white; padding: 18px 24px; border-radius: 16px 16px 0 0;
-    display: flex; justify-content: space-between; align-items: center;
-  }
-  .modal-header h2 { font-size: 18px; }
-  .modal-close { background: none; border: none; color: white; font-size: 22px; cursor: pointer; }
-  .modal-body { padding: 24px; }
+/* TABLE */
+.table-wrap { padding: 0 30px 30px; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; background: white;
+  border-radius: 12px; overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+thead tr { background: #1a365d; color: white; }
+th { padding: 12px 13px; text-align: right; font-size: 12px; font-weight: 600; white-space: nowrap; }
+td { padding: 10px 13px; font-size: 13px; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: #f7fafc; }
 
-  /* FORM GRID */
-  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .form-grid .full { grid-column: 1 / -1; }
-  .field label { display: block; font-size: 13px; font-weight: 600; color: #4a5568; margin-bottom: 5px; }
-  .field input, .field select, .field textarea {
-    width: 100%; padding: 9px 12px;
-    border: 1px solid #cbd5e0; border-radius: 8px;
-    font-size: 14px; font-family: inherit; transition: border 0.2s;
-  }
-  .field input:focus, .field select:focus, .field textarea:focus {
-    outline: none; border-color: #2d6a9f; box-shadow: 0 0 0 3px rgba(45,106,159,0.15);
-  }
-  .field textarea { resize: vertical; min-height: 70px; }
+/* STATUS BADGE */
+.badge {
+  display: inline-block; padding: 3px 10px; border-radius: 20px;
+  font-size: 11px; font-weight: 700; white-space: nowrap;
+}
 
-  /* SECTION DIVIDER */
-  .section-divider {
-    grid-column: 1/-1; border-top: 2px solid #e2e8f0;
-    padding-top: 16px; margin-top: 4px;
-    font-size: 14px; font-weight: 700; color: #1a365d;
-  }
+/* ACTION BTNS */
+.btn-icon {
+  background: none; border: none; cursor: pointer;
+  padding: 4px 6px; border-radius: 6px; font-size: 15px;
+  transition: background 0.15s;
+}
+.btn-icon:hover { background: #e2e8f0; }
 
-  /* CALL LOG */
-  .call-log-list { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
-  .call-entry {
-    background: #f7fafc; border: 1px solid #e2e8f0;
-    border-radius: 10px; padding: 12px 16px;
-    position: relative;
-  }
-  .call-entry .call-date { font-size: 12px; color: #718096; margin-bottom: 4px; }
-  .call-entry .call-text { font-size: 14px; color: #2d3748; }
-  .call-entry .call-del {
-    position: absolute; top: 8px; left: 12px;
-    background: none; border: none; color: #e74c3c;
-    cursor: pointer; font-size: 16px;
-  }
-  .add-call-area { display: flex; gap: 10px; margin-top: 10px; }
-  .add-call-area textarea {
-    flex: 1; padding: 9px 12px; border: 1px solid #cbd5e0;
-    border-radius: 8px; font-size: 14px; font-family: inherit; resize: none; height: 60px;
-  }
-  .add-call-area button {
-    background: #2d6a9f; color: white; border: none;
-    padding: 0 18px; border-radius: 8px; cursor: pointer; font-size: 13px;
-    font-weight: 600;
-  }
-  .add-call-area button:hover { background: #1a365d; }
+/* MODAL OVERLAY */
+.overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.5); z-index: 100;
+  justify-content: center; align-items: flex-start;
+  padding: 20px; overflow-y: auto;
+}
+.overlay.open { display: flex; }
+.modal {
+  background: white; border-radius: 16px; width: 100%;
+  max-width: 680px; margin: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  animation: slideIn 0.2s ease;
+}
+.modal.narrow { max-width: 480px; }
+@keyframes slideIn { from { transform: translateY(-20px); opacity:0; } to { transform: translateY(0); opacity:1; } }
+.modal-header {
+  background: linear-gradient(135deg, #1a365d, #2d6a9f);
+  color: white; padding: 16px 22px; border-radius: 16px 16px 0 0;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.modal-header h2 { font-size: 17px; }
+.modal-close { background: none; border: none; color: white; font-size: 20px; cursor: pointer; }
+.modal-body { padding: 22px; }
 
-  /* MODAL FOOTER */
-  .modal-footer {
-    padding: 16px 24px; border-top: 1px solid #e2e8f0;
-    display: flex; justify-content: flex-end; gap: 12px;
-  }
-  .btn-save {
-    background: #27ae60; color: white; border: none;
-    padding: 10px 28px; border-radius: 8px; font-size: 15px;
-    cursor: pointer; font-weight: 700; transition: background 0.2s;
-  }
-  .btn-save:hover { background: #1e8449; }
-  .btn-cancel {
-    background: #e2e8f0; color: #4a5568; border: none;
-    padding: 10px 22px; border-radius: 8px; font-size: 15px;
-    cursor: pointer; font-weight: 600;
-  }
+/* FORM GRID */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-grid .full { grid-column: 1 / -1; }
+.field label { display: block; font-size: 12px; font-weight: 700; color: #4a5568; margin-bottom: 4px; }
+.field input, .field select, .field textarea {
+  width: 100%; padding: 9px 11px;
+  border: 1px solid #cbd5e0; border-radius: 8px;
+  font-size: 14px; font-family: inherit; transition: border 0.2s;
+}
+.field input:focus, .field select:focus, .field textarea:focus {
+  outline: none; border-color: #2d6a9f; box-shadow: 0 0 0 3px rgba(45,106,159,0.15);
+}
+.field textarea { resize: vertical; min-height: 65px; }
 
-  /* VIEW MODAL (project detail) */
-  .detail-section { margin-bottom: 20px; }
-  .detail-section h3 { font-size: 14px; font-weight: 700; color: #1a365d; margin-bottom: 10px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; }
-  .detail-row { display: flex; gap: 8px; margin-bottom: 6px; font-size: 14px; }
-  .detail-row .dl { color: #718096; min-width: 160px; font-weight: 600; }
-  .detail-row .dv { color: #2d3748; }
+/* CALL LOG */
+.call-log-list { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.call-entry {
+  background: #f7fafc; border: 1px solid #e2e8f0;
+  border-radius: 10px; padding: 11px 15px;
+  position: relative;
+}
+.call-entry .call-date { font-size: 11px; color: #718096; margin-bottom: 3px; }
+.call-entry .call-text { font-size: 14px; color: #2d3748; }
+.call-entry .call-del {
+  position: absolute; top: 8px; left: 10px;
+  background: none; border: none; color: #e74c3c;
+  cursor: pointer; font-size: 15px;
+}
+.add-call-area { display: flex; gap: 10px; margin-top: 10px; }
+.add-call-area textarea {
+  flex: 1; padding: 9px 12px; border: 1px solid #cbd5e0;
+  border-radius: 8px; font-size: 14px; font-family: inherit; resize: none; height: 58px;
+}
+.add-call-area button {
+  background: #2d6a9f; color: white; border: none;
+  padding: 0 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;
+}
+.add-call-area button:hover { background: #1a365d; }
 
-  .empty-state {
-    text-align: center; padding: 60px 20px; color: #a0aec0;
-  }
-  .empty-state .icon { font-size: 60px; margin-bottom: 16px; }
-  .empty-state p { font-size: 16px; }
+/* MODAL FOOTER */
+.modal-footer {
+  padding: 14px 22px; border-top: 1px solid #e2e8f0;
+  display: flex; justify-content: flex-end; gap: 10px;
+}
+.btn-save {
+  background: #27ae60; color: white; border: none;
+  padding: 10px 26px; border-radius: 8px; font-size: 14px;
+  cursor: pointer; font-weight: 700; transition: background 0.2s;
+}
+.btn-save:hover { background: #1e8449; }
+.btn-cancel {
+  background: #e2e8f0; color: #4a5568; border: none;
+  padding: 10px 20px; border-radius: 8px; font-size: 14px; cursor: pointer; font-weight: 600;
+}
 
-  @media (max-width: 600px) {
-    .header { padding: 14px 16px; }
-    .stats-bar, .filter-bar, .table-wrap { padding-left: 14px; padding-right: 14px; }
-    .form-grid { grid-template-columns: 1fr; }
-  }
+/* DETAIL VIEW */
+.detail-section { margin-bottom: 18px; }
+.detail-section h3 { font-size: 13px; font-weight: 700; color: #1a365d; margin-bottom: 8px; border-bottom: 2px solid #e2e8f0; padding-bottom: 5px; }
+.detail-row { display: flex; gap: 8px; margin-bottom: 5px; font-size: 13px; }
+.detail-row .dl { color: #718096; min-width: 150px; font-weight: 600; }
+.detail-row .dv { color: #2d3748; }
+
+/* STATUS SETTINGS */
+.status-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+.status-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; background: #f7fafc; border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+.status-item .swatch { width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0; }
+.status-item .sname { flex: 1; font-size: 14px; font-weight: 600; }
+.status-item .sdel {
+  background: none; border: none; color: #e74c3c; cursor: pointer;
+  font-size: 16px; padding: 2px 6px; border-radius: 4px;
+}
+.status-item .sdel:hover { background: #fee2e2; }
+.status-item .slock { color: #a0aec0; font-size: 12px; }
+.add-status-row { display: flex; gap: 10px; align-items: center; }
+.add-status-row input { flex: 1; padding: 9px 12px; border: 1px solid #cbd5e0; border-radius: 8px; font-size: 14px; font-family: inherit; }
+.add-status-row input[type="color"] { width: 48px; flex: none; padding: 4px; cursor: pointer; }
+.add-status-row button {
+  background: #2d6a9f; color: white; border: none; padding: 9px 16px;
+  border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 700; white-space: nowrap;
+}
+
+.empty-state { text-align: center; padding: 50px 20px; color: #a0aec0; }
+.empty-state .icon { font-size: 50px; margin-bottom: 14px; }
+.empty-state p { font-size: 15px; }
+
+@media (max-width: 600px) {
+  .header { padding: 14px 16px; }
+  .stats-bar, .filter-bar, .table-wrap, .dashboard-section, .revenue-section { padding-left: 14px; padding-right: 14px; }
+  .form-grid { grid-template-columns: 1fr; }
+  .tabs { padding: 0 8px; }
+}
 </style>
 </head>
 <body>
@@ -200,56 +256,69 @@
       <span>ניהול פרוייקטים ולקוחות</span>
     </h1>
   </div>
-  <button class="btn-add-main" onclick="openAdd()">+ פרוייקט חדש</button>
+  <div class="header-btns">
+    <button class="btn-settings" onclick="openStatusSettings()">⚙️ סטטוסים</button>
+    <button class="btn-add-main" onclick="openAdd()">+ פרוייקט חדש</button>
+  </div>
 </div>
 
-<div class="stats-bar" id="statsBar"></div>
-
-<div class="filter-bar">
-  <input type="text" id="searchInput" placeholder="🔍  חיפוש לפי שם / כתובת / טלפון..." oninput="renderTable()">
-  <select id="filterStatus" onchange="renderTable()">
-    <option value="">כל הסטטוסים</option>
-    <option value="ליד">ליד</option>
-    <option value="הצעה נשלחה">הצעה נשלחה</option>
-    <option value="ממתין לאישור">ממתין לאישור</option>
-    <option value="אושר">אושר</option>
-    <option value="בביצוע">בביצוע</option>
-    <option value="הושלם">הושלם</option>
-    <option value="לא סגר">לא סגר</option>
-  </select>
-  <select id="filterSource" onchange="renderTable()">
-    <option value="">כל מקורות ההפניה</option>
-    <option value="פה לאוזן">פה לאוזן</option>
-    <option value="פייסבוק">פייסבוק</option>
-    <option value="גוגל">גוגל</option>
-    <option value="יד2">יד2</option>
-    <option value="אחר">אחר</option>
-  </select>
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('dashboard')">📊 דשבורד</button>
+  <button class="tab-btn" onclick="switchTab('projects')">📋 פרוייקטים</button>
 </div>
 
-<div class="table-wrap">
-  <table id="projectTable">
-    <thead>
-      <tr>
-        <th>#</th>
-        <th>שם לקוח</th>
-        <th>טלפון</th>
-        <th>כתובת / פרוייקט</th>
-        <th>מחיר מוצע ₪</th>
-        <th>עלות צפויה ₪</th>
-        <th>רווח צפוי ₪</th>
-        <th>סטטוס</th>
-        <th>מקור הפניה</th>
-        <th>תאריך יצירה</th>
-        <th>שיחות</th>
-        <th>פעולות</th>
-      </tr>
-    </thead>
-    <tbody id="tableBody"></tbody>
-  </table>
-  <div id="emptyState" class="empty-state" style="display:none;">
-    <div class="icon">📋</div>
-    <p>אין פרוייקטים. לחץ <strong>+ פרוייקט חדש</strong> להתחיל</p>
+<!-- DASHBOARD TAB -->
+<div class="tab-panel active" id="tab-dashboard">
+  <div class="stats-bar" id="statsBar"></div>
+  <div class="revenue-section" style="padding-top:16px;">
+    <div class="revenue-cards" id="revenueCards"></div>
+  </div>
+  <div class="dashboard-section">
+    <h2>📌 לקוחות לפי סטטוס</h2>
+    <div class="status-grid" id="statusGrid"></div>
+  </div>
+</div>
+
+<!-- PROJECTS TAB -->
+<div class="tab-panel" id="tab-projects">
+  <div class="filter-bar">
+    <input type="text" id="searchInput" placeholder="🔍  חיפוש לפי שם / כתובת / טלפון..." oninput="renderTable()">
+    <select id="filterStatus" onchange="renderTable()">
+      <option value="">כל הסטטוסים</option>
+    </select>
+    <select id="filterSource" onchange="renderTable()">
+      <option value="">כל מקורות ההפניה</option>
+      <option value="פה לאוזן">פה לאוזן</option>
+      <option value="פייסבוק">פייסבוק</option>
+      <option value="גוגל">גוגל</option>
+      <option value="יד2">יד2</option>
+      <option value="אחר">אחר</option>
+    </select>
+  </div>
+  <div class="table-wrap">
+    <table id="projectTable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>שם לקוח</th>
+          <th>טלפון</th>
+          <th>כתובת / פרוייקט</th>
+          <th>מחיר מוצע ₪</th>
+          <th>עלות צפויה ₪</th>
+          <th>רווח ₪</th>
+          <th>סטטוס</th>
+          <th>מקור</th>
+          <th>תאריך</th>
+          <th>שיחות</th>
+          <th>פעולות</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+    <div id="emptyState" class="empty-state" style="display:none;">
+      <div class="icon">📋</div>
+      <p>אין פרוייקטים. לחץ <strong>+ פרוייקט חדש</strong> להתחיל</p>
+    </div>
   </div>
 </div>
 
@@ -262,7 +331,6 @@
     </div>
     <div class="modal-body">
       <div class="form-grid">
-        <!-- ROW 1 -->
         <div class="field">
           <label>שם לקוח *</label>
           <input type="text" id="fName" placeholder="ישראל ישראלי">
@@ -271,12 +339,10 @@
           <label>טלפון *</label>
           <input type="tel" id="fPhone" placeholder="050-0000000">
         </div>
-        <!-- ROW 2 -->
         <div class="field full">
           <label>כתובת / תיאור פרוייקט *</label>
           <input type="text" id="fAddress" placeholder="רחוב הרצל 10, תל אביב – גדר + שער">
         </div>
-        <!-- ROW 3 -->
         <div class="field">
           <label>מחיר שהוצע ללקוח (₪)</label>
           <input type="number" id="fPrice" placeholder="5000" min="0">
@@ -285,18 +351,9 @@
           <label>צפי עלות (₪)</label>
           <input type="number" id="fCost" placeholder="2500" min="0">
         </div>
-        <!-- ROW 4 -->
         <div class="field">
           <label>סטטוס הצעה</label>
-          <select id="fStatus">
-            <option value="ליד">ליד</option>
-            <option value="הצעה נשלחה">הצעה נשלחה</option>
-            <option value="ממתין לאישור">ממתין לאישור</option>
-            <option value="אושר">אושר</option>
-            <option value="בביצוע">בביצוע</option>
-            <option value="הושלם">הושלם</option>
-            <option value="לא סגר">לא סגר</option>
-          </select>
+          <select id="fStatus"></select>
         </div>
         <div class="field">
           <label>מקור הפניה</label>
@@ -308,7 +365,6 @@
             <option value="אחר">אחר</option>
           </select>
         </div>
-        <!-- NOTES -->
         <div class="field full">
           <label>הערות</label>
           <textarea id="fNotes" placeholder="פרטים נוספים על הפרוייקט..."></textarea>
@@ -330,12 +386,10 @@
       <button class="modal-close" onclick="closeView()">✕</button>
     </div>
     <div class="modal-body">
-      <!-- PROJECT DETAILS -->
       <div class="detail-section">
         <h3>📋 פרטי הפרוייקט</h3>
         <div id="viewDetails"></div>
       </div>
-      <!-- CALL LOG -->
       <div class="detail-section">
         <h3>📞 תיעוד שיחות</h3>
         <div class="add-call-area">
@@ -352,65 +406,147 @@
   </div>
 </div>
 
+<!-- STATUS SETTINGS MODAL -->
+<div class="overlay" id="settingsOverlay">
+  <div class="modal narrow">
+    <div class="modal-header">
+      <h2>⚙️ ניהול סטטוסים</h2>
+      <button class="modal-close" onclick="closeStatusSettings()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:#718096;margin-bottom:14px;">סטטוסים ברירת מחדל לא ניתנים למחיקה. ניתן להוסיף סטטוסים מותאמים אישית.</p>
+      <div class="status-list" id="statusSettingsList"></div>
+      <div style="font-size:13px;font-weight:700;color:#1a365d;margin-bottom:8px;">+ הוסף סטטוס חדש</div>
+      <div class="add-status-row">
+        <input type="text" id="newStatusEmoji" placeholder="😊" style="width:54px;flex:none;text-align:center;font-size:18px;">
+        <input type="text" id="newStatusName" placeholder="שם הסטטוס">
+        <input type="color" id="newStatusColor" value="#6366f1">
+        <button onclick="addCustomStatus()">הוסף</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-save" onclick="closeStatusSettings()">✓ סגור</button>
+    </div>
+  </div>
+</div>
+
 <script>
-// ─── DATA ───────────────────────────────────────────────────────────────────
-const STORAGE_KEY = 'masger_crm_v1';
+// ─── STORAGE KEYS ─────────────────────────────────────────────────────────
+const STORAGE_KEY  = 'masger_crm_v1';
+const STATUS_KEY   = 'masger_statuses_v1';
+
+// ─── DEFAULT STATUSES ─────────────────────────────────────────────────────
+const DEFAULT_STATUSES = [
+  { id: 'lead',      name: 'ליד',              emoji: '📩', color: '#3b82f6', builtin: true },
+  { id: 'hot',       name: 'ליד חם',           emoji: '🔥', color: '#ef4444', builtin: true },
+  { id: 'big',       name: 'פרוייקט גדול',     emoji: '⭐', color: '#f59e0b', builtin: true },
+  { id: 'offer',     name: 'הצעה נשלחה',       emoji: '📤', color: '#8b5cf6', builtin: true },
+  { id: 'waiting',   name: 'ממתין לאישור',     emoji: '⏳', color: '#f97316', builtin: true },
+  { id: 'approved',  name: 'אושר',             emoji: '✅', color: '#10b981', builtin: true },
+  { id: 'inprog',    name: 'בביצוע',           emoji: '🔨', color: '#2d6a9f', builtin: true },
+  { id: 'done',      name: 'הושלם',            emoji: '🎉', color: '#27ae60', builtin: true },
+  { id: 'lost',      name: 'לא סגר',           emoji: '❌', color: '#e74c3c', builtin: true },
+];
+
+// ─── DATA ─────────────────────────────────────────────────────────────────
 let projects = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+let statuses = JSON.parse(localStorage.getItem(STATUS_KEY)  || 'null') || [...DEFAULT_STATUSES];
 let editingId = null;
 let viewingId = null;
 
-function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); }
-function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
-function today() { return new Date().toLocaleDateString('he-IL'); }
+function save()         { localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); }
+function saveStatuses() { localStorage.setItem(STATUS_KEY,  JSON.stringify(statuses)); }
+function newId()        { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function today()        { return new Date().toLocaleDateString('he-IL'); }
 
-// ─── STATUS MAP ─────────────────────────────────────────────────────────────
-const statusClass = {
-  'ליד': 'badge-lead',
-  'הצעה נשלחה': 'badge-offer',
-  'ממתין לאישור': 'badge-waiting',
-  'אושר': 'badge-approved',
-  'בביצוע': 'badge-inprog',
-  'הושלם': 'badge-done',
-  'לא סגר': 'badge-lost'
-};
+function getStatus(name) {
+  return statuses.find(s => s.name === name) || { color: '#718096', emoji: '' };
+}
 
-// ─── STATS ──────────────────────────────────────────────────────────────────
-function renderStats() {
-  const total = projects.length;
-  const active = projects.filter(p => ['אושר','בביצוע'].includes(p.status)).length;
-  const done = projects.filter(p => p.status === 'הושלם').length;
-  const lost = projects.filter(p => p.status === 'לא סגר').length;
-  const revenue = projects.filter(p => p.status === 'הושלם')
-                          .reduce((s,p) => s + (parseFloat(p.price)||0), 0);
+// ─── BADGE HTML ──────────────────────────────────────────────────────────
+function badgeHtml(statusName) {
+  const s = getStatus(statusName);
+  const bg = hexToRgba(s.color, 0.12);
+  return `<span class="badge" style="background:${bg};color:${s.color};">${s.emoji} ${esc(statusName)}</span>`;
+}
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// ─── TABS ────────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', ['dashboard','projects'][i] === tab));
+  document.getElementById('tab-dashboard').classList.toggle('active', tab === 'dashboard');
+  document.getElementById('tab-projects').classList.toggle('active', tab === 'projects');
+  if (tab === 'dashboard') renderDashboard();
+  if (tab === 'projects')  renderTable();
+}
+
+// ─── DASHBOARD ──────────────────────────────────────────────────────────
+function renderDashboard() {
+  const total   = projects.length;
+  const active  = projects.filter(p => ['אושר','בביצוע'].includes(p.status)).length;
+  const done    = projects.filter(p => p.status === 'הושלם').length;
+  const lost    = projects.filter(p => p.status === 'לא סגר').length;
+  const hotBig  = projects.filter(p => ['ליד חם','פרוייקט גדול'].includes(p.status)).length;
 
   document.getElementById('statsBar').innerHTML = `
     <div class="stat-card"><div class="num">${total}</div><div class="lbl">סה"כ פרוייקטים</div></div>
     <div class="stat-card orange"><div class="num">${active}</div><div class="lbl">פרוייקטים פעילים</div></div>
+    <div class="stat-card gold"><div class="num">${hotBig}</div><div class="lbl">לידים חמים / גדולים</div></div>
     <div class="stat-card green"><div class="num">${done}</div><div class="lbl">הושלמו</div></div>
-    <div class="stat-card red"><div class="num">${lost}</div><div class="lbl">לא נסגרו</div></div>
-    <div class="stat-card" style="border-top-color:#27ae60;">
-      <div class="num" style="color:#27ae60;">₪${revenue.toLocaleString('he-IL')}</div>
-      <div class="lbl">הכנסות (הושלם)</div>
+    <div class="stat-card red"><div class="num">${lost}</div><div class="lbl">לא נסגרו</div></div>`;
+
+  // Revenue cards
+  const revenue  = projects.filter(p => p.status === 'הושלם').reduce((s,p) => s+(parseFloat(p.price)||0), 0);
+  const pipeline = projects.filter(p => ['אושר','בביצוע'].includes(p.status)).reduce((s,p) => s+(parseFloat(p.price)||0), 0);
+  const potentialLeads = projects.filter(p => ['ליד','ליד חם','פרוייקט גדול','הצעה נשלחה','ממתין לאישור'].includes(p.status)).reduce((s,p) => s+(parseFloat(p.price)||0), 0);
+  document.getElementById('revenueCards').innerHTML = `
+    <div class="revenue-card"><div class="rc-lbl">💰 הכנסות (הושלם)</div><div class="rc-val" style="color:#27ae60;">₪${revenue.toLocaleString('he-IL')}</div></div>
+    <div class="revenue-card"><div class="rc-lbl">🔨 בצנרת (פעיל)</div><div class="rc-val" style="color:#2d6a9f;">₪${pipeline.toLocaleString('he-IL')}</div></div>
+    <div class="revenue-card"><div class="rc-lbl">🎯 פוטנציאל (לידים)</div><div class="rc-val" style="color:#f59e0b;">₪${potentialLeads.toLocaleString('he-IL')}</div></div>`;
+
+  // Status breakdown grid
+  const grid = document.getElementById('statusGrid');
+  grid.innerHTML = statuses.map(s => {
+    const count = projects.filter(p => p.name !== undefined ? false : p.status === s.name).length;
+    // fix: just filter by status name
+    const cnt = projects.filter(p => p.status === s.name).length;
+    const amount = projects.filter(p => p.status === s.name).reduce((sum, p) => sum + (parseFloat(p.price)||0), 0);
+    return `<div class="status-dash-card" style="border-right-color:${s.color};" onclick="filterByStatus('${esc(s.name)}')">
+      <div class="status-dash-count" style="color:${s.color};">${cnt}</div>
+      <div class="status-dash-info">
+        <div class="status-dash-name">${s.emoji} ${esc(s.name)}</div>
+        <div class="status-dash-amount">${amount ? '₪'+amount.toLocaleString('he-IL') : 'אין סכום'}</div>
+      </div>
     </div>`;
+  }).join('');
 }
 
-// ─── TABLE ──────────────────────────────────────────────────────────────────
+function filterByStatus(statusName) {
+  switchTab('projects');
+  document.getElementById('filterStatus').value = statusName;
+  renderTable();
+}
+
+// ─── TABLE ───────────────────────────────────────────────────────────────
 function renderTable() {
-  const q = document.getElementById('searchInput').value.toLowerCase();
+  const q  = document.getElementById('searchInput').value.toLowerCase();
   const fs = document.getElementById('filterStatus').value;
   const fr = document.getElementById('filterSource').value;
 
   let filtered = projects.filter(p => {
     const text = (p.name+p.phone+p.address).toLowerCase();
-    return (!q || text.includes(q))
-        && (!fs || p.status === fs)
-        && (!fr || p.source === fr);
+    return (!q || text.includes(q)) && (!fs || p.status === fs) && (!fr || p.source === fr);
   });
 
   const tbody = document.getElementById('tableBody');
   if (!filtered.length) {
     tbody.innerHTML = '';
-    document.getElementById('emptyState').style.display = 'block';
+    document.getElementById('emptyState').style.display = '';
     document.getElementById('projectTable').style.display = 'none';
     return;
   }
@@ -419,19 +555,18 @@ function renderTable() {
 
   tbody.innerHTML = filtered.map((p, i) => {
     const profit = (parseFloat(p.price)||0) - (parseFloat(p.cost)||0);
-    const profitColor = profit >= 0 ? '#27ae60' : '#e74c3c';
     const calls = (p.calls||[]).length;
     return `<tr>
-      <td style="color:#a0aec0;font-size:13px;">${i+1}</td>
+      <td style="color:#a0aec0;font-size:12px;">${i+1}</td>
       <td><strong>${esc(p.name)}</strong></td>
       <td><a href="tel:${esc(p.phone)}" style="color:#2d6a9f;text-decoration:none;">${esc(p.phone)}</a></td>
-      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(p.address)}">${esc(p.address)}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(p.address)}">${esc(p.address)}</td>
       <td style="font-weight:600;">${p.price ? '₪'+Number(p.price).toLocaleString('he-IL') : '—'}</td>
       <td style="color:#718096;">${p.cost ? '₪'+Number(p.cost).toLocaleString('he-IL') : '—'}</td>
-      <td style="font-weight:700;color:${profitColor};">${p.price||p.cost ? '₪'+profit.toLocaleString('he-IL') : '—'}</td>
-      <td><span class="badge ${statusClass[p.status]||''}">${esc(p.status)}</span></td>
-      <td style="color:#718096;font-size:13px;">${esc(p.source||'')}</td>
-      <td style="color:#718096;font-size:12px;">${esc(p.created||'')}</td>
+      <td style="font-weight:700;color:${profit>=0?'#27ae60':'#e74c3c'};">${p.price||p.cost ? '₪'+profit.toLocaleString('he-IL') : '—'}</td>
+      <td>${badgeHtml(p.status)}</td>
+      <td style="color:#718096;font-size:12px;">${esc(p.source||'')}</td>
+      <td style="color:#718096;font-size:11px;">${esc(p.created||'')}</td>
       <td>
         <button class="btn-icon" onclick="openView('${p.id}')" title="תיעוד שיחות">
           📞${calls ? `<sup style="background:#e74c3c;color:white;border-radius:50%;padding:1px 4px;font-size:10px;">${calls}</sup>` : ''}
@@ -443,14 +578,21 @@ function renderTable() {
       </td>
     </tr>`;
   }).join('');
-  renderStats();
 }
 
 function esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ─── ADD / EDIT ──────────────────────────────────────────────────────────────
+// ─── POPULATE SELECTS ────────────────────────────────────────────────────
+function populateStatusSelects() {
+  const opts = statuses.map(s => `<option value="${esc(s.name)}">${s.emoji} ${esc(s.name)}</option>`).join('');
+  document.getElementById('fStatus').innerHTML = opts;
+  const filterOpts = '<option value="">כל הסטטוסים</option>' + opts;
+  document.getElementById('filterStatus').innerHTML = filterOpts;
+}
+
+// ─── ADD / EDIT ──────────────────────────────────────────────────────────
 function openAdd() {
   editingId = null;
   document.getElementById('modalTitle').textContent = '+ פרוייקט חדש';
@@ -468,59 +610,47 @@ function openEdit(id) {
   document.getElementById('fAddress').value = p.address||'';
   document.getElementById('fPrice').value   = p.price||'';
   document.getElementById('fCost').value    = p.cost||'';
-  document.getElementById('fStatus').value  = p.status||'ליד';
+  document.getElementById('fStatus').value  = p.status||statuses[0].name;
   document.getElementById('fSource').value  = p.source||'פה לאוזן';
   document.getElementById('fNotes').value   = p.notes||'';
   document.getElementById('formOverlay').classList.add('open');
 }
 
-function openEditFromView() {
-  closeView();
-  if (viewingId) openEdit(viewingId);
-}
-
+function openEditFromView() { closeView(); if (viewingId) openEdit(viewingId); }
 function closeForm() { document.getElementById('formOverlay').classList.remove('open'); }
 function clearForm() {
   ['fName','fPhone','fAddress','fPrice','fCost','fNotes'].forEach(id => document.getElementById(id).value = '');
-  document.getElementById('fStatus').value = 'ליד';
+  document.getElementById('fStatus').value = statuses[0]?.name || '';
   document.getElementById('fSource').value = 'פה לאוזן';
 }
 
 function saveProject() {
-  const name = document.getElementById('fName').value.trim();
-  const phone = document.getElementById('fPhone').value.trim();
+  const name    = document.getElementById('fName').value.trim();
+  const phone   = document.getElementById('fPhone').value.trim();
   const address = document.getElementById('fAddress').value.trim();
   if (!name || !phone || !address) { alert('נא למלא שם, טלפון וכתובת/פרוייקט'); return; }
-
+  const data = { name, phone, address,
+    price: document.getElementById('fPrice').value,
+    cost: document.getElementById('fCost').value,
+    status: document.getElementById('fStatus').value,
+    source: document.getElementById('fSource').value,
+    notes: document.getElementById('fNotes').value,
+  };
   if (editingId) {
-    const p = projects.find(x => x.id === editingId);
-    Object.assign(p, { name, phone, address,
-      price: document.getElementById('fPrice').value,
-      cost: document.getElementById('fCost').value,
-      status: document.getElementById('fStatus').value,
-      source: document.getElementById('fSource').value,
-      notes: document.getElementById('fNotes').value,
-    });
+    Object.assign(projects.find(x => x.id === editingId), data);
   } else {
-    projects.unshift({ id: newId(), name, phone, address,
-      price: document.getElementById('fPrice').value,
-      cost: document.getElementById('fCost').value,
-      status: document.getElementById('fStatus').value,
-      source: document.getElementById('fSource').value,
-      notes: document.getElementById('fNotes').value,
-      created: today(), calls: []
-    });
+    projects.unshift({ id: newId(), created: today(), calls: [], ...data });
   }
-  save(); closeForm(); renderTable();
+  save(); closeForm(); renderTable(); renderDashboard();
 }
 
 function deleteProject(id) {
   if (!confirm('למחוק פרוייקט זה?')) return;
   projects = projects.filter(p => p.id !== id);
-  save(); renderTable();
+  save(); renderTable(); renderDashboard();
 }
 
-// ─── VIEW / CALLS ────────────────────────────────────────────────────────────
+// ─── VIEW / CALLS ─────────────────────────────────────────────────────────
 function openView(id) {
   viewingId = id;
   const p = projects.find(x => x.id === id);
@@ -531,14 +661,13 @@ function openView(id) {
     <div class="detail-row"><span class="dl">שם לקוח:</span><span class="dv">${esc(p.name)}</span></div>
     <div class="detail-row"><span class="dl">טלפון:</span><span class="dv"><a href="tel:${esc(p.phone)}">${esc(p.phone)}</a></span></div>
     <div class="detail-row"><span class="dl">כתובת / פרוייקט:</span><span class="dv">${esc(p.address)}</span></div>
-    <div class="detail-row"><span class="dl">מחיר מוצע:</span><span class="dv">${p.price ? '₪'+Number(p.price).toLocaleString('he-IL') : '—'}</span></div>
-    <div class="detail-row"><span class="dl">עלות צפויה:</span><span class="dv">${p.cost ? '₪'+Number(p.cost).toLocaleString('he-IL') : '—'}</span></div>
-    <div class="detail-row"><span class="dl">רווח צפוי:</span><span class="dv" style="font-weight:700;color:${profit>=0?'#27ae60':'#e74c3c'};">${p.price||p.cost ? '₪'+profit.toLocaleString('he-IL') : '—'}</span></div>
-    <div class="detail-row"><span class="dl">סטטוס:</span><span class="dv"><span class="badge ${statusClass[p.status]||''}">${esc(p.status)}</span></span></div>
+    <div class="detail-row"><span class="dl">מחיר מוצע:</span><span class="dv">${p.price?'₪'+Number(p.price).toLocaleString('he-IL'):'—'}</span></div>
+    <div class="detail-row"><span class="dl">עלות צפויה:</span><span class="dv">${p.cost?'₪'+Number(p.cost).toLocaleString('he-IL'):'—'}</span></div>
+    <div class="detail-row"><span class="dl">רווח צפוי:</span><span class="dv" style="font-weight:700;color:${profit>=0?'#27ae60':'#e74c3c'};">${p.price||p.cost?'₪'+profit.toLocaleString('he-IL'):'—'}</span></div>
+    <div class="detail-row"><span class="dl">סטטוס:</span><span class="dv">${badgeHtml(p.status)}</span></div>
     <div class="detail-row"><span class="dl">מקור הפניה:</span><span class="dv">${esc(p.source||'')}</span></div>
     <div class="detail-row"><span class="dl">תאריך יצירה:</span><span class="dv">${esc(p.created||'')}</span></div>
-    ${p.notes ? `<div class="detail-row"><span class="dl">הערות:</span><span class="dv">${esc(p.notes)}</span></div>` : ''}
-  `;
+    ${p.notes?`<div class="detail-row"><span class="dl">הערות:</span><span class="dv">${esc(p.notes)}</span></div>`:''}`;
   renderCallLog();
   document.getElementById('viewOverlay').classList.add('open');
 }
@@ -549,8 +678,8 @@ function renderCallLog() {
   const p = projects.find(x => x.id === viewingId);
   if (!p) return;
   const list = document.getElementById('callLogList');
-  if (!p.calls || !p.calls.length) {
-    list.innerHTML = '<div style="color:#a0aec0;font-size:14px;padding:8px 0;">אין שיחות מתועדות עדיין</div>';
+  if (!p.calls?.length) {
+    list.innerHTML = '<div style="color:#a0aec0;font-size:13px;padding:8px 0;">אין שיחות מתועדות עדיין</div>';
     return;
   }
   list.innerHTML = p.calls.slice().reverse().map((c, ri) => {
@@ -558,7 +687,7 @@ function renderCallLog() {
     return `<div class="call-entry">
       <div class="call-date">📅 ${esc(c.date)}</div>
       <div class="call-text">${esc(c.text)}</div>
-      <button class="call-del" onclick="deleteCall(${i})" title="מחק שיחה">✕</button>
+      <button class="call-del" onclick="deleteCall(${i})">✕</button>
     </div>`;
   }).join('');
 }
@@ -571,24 +700,74 @@ function addCall() {
   if (!p.calls) p.calls = [];
   p.calls.push({ date: today(), text });
   document.getElementById('newCallText').value = '';
-  save(); renderCallLog(); renderTable();
+  save(); renderCallLog(); renderTable(); renderDashboard();
 }
 
 function deleteCall(idx) {
   if (!confirm('למחוק שיחה זו?')) return;
   const p = projects.find(x => x.id === viewingId);
-  if (!p) return;
   p.calls.splice(idx, 1);
-  save(); renderCallLog(); renderTable();
+  save(); renderCallLog();
 }
 
-// Close overlay on outside click
-document.getElementById('formOverlay').addEventListener('click', function(e) { if(e.target===this) closeForm(); });
-document.getElementById('viewOverlay').addEventListener('click', function(e) { if(e.target===this) closeView(); });
+// ─── STATUS SETTINGS ────────────────────────────────────────────────────
+function openStatusSettings() {
+  renderStatusSettingsList();
+  document.getElementById('settingsOverlay').classList.add('open');
+}
+function closeStatusSettings() {
+  document.getElementById('settingsOverlay').classList.remove('open');
+  populateStatusSelects();
+  renderTable();
+  renderDashboard();
+}
 
-// ─── INIT ─────────────────────────────────────────────────────────────────
-renderTable();
-renderStats();
+function renderStatusSettingsList() {
+  document.getElementById('statusSettingsList').innerHTML = statuses.map((s, i) => `
+    <div class="status-item">
+      <div class="swatch" style="background:${s.color};"></div>
+      <span style="font-size:18px;">${s.emoji}</span>
+      <span class="sname">${esc(s.name)}</span>
+      ${s.builtin
+        ? `<span class="slock">🔒 ברירת מחדל</span>`
+        : `<button class="sdel" onclick="deleteStatus(${i})">🗑️</button>`}
+    </div>`).join('');
+}
+
+function addCustomStatus() {
+  const emoji = document.getElementById('newStatusEmoji').value.trim() || '🏷️';
+  const name  = document.getElementById('newStatusName').value.trim();
+  const color = document.getElementById('newStatusColor').value;
+  if (!name) { alert('נא להזין שם לסטטוס'); return; }
+  if (statuses.some(s => s.name === name)) { alert('סטטוס בשם זה כבר קיים'); return; }
+  statuses.push({ id: newId(), name, emoji, color, builtin: false });
+  saveStatuses();
+  document.getElementById('newStatusName').value  = '';
+  document.getElementById('newStatusEmoji').value = '';
+  renderStatusSettingsList();
+}
+
+function deleteStatus(idx) {
+  const s = statuses[idx];
+  if (s.builtin) return;
+  const inUse = projects.filter(p => p.status === s.name).length;
+  if (inUse && !confirm(`סטטוס זה משמש ${inUse} פרוייקטים. למחוק בכל זאת?`)) return;
+  statuses.splice(idx, 1);
+  saveStatuses();
+  renderStatusSettingsList();
+}
+
+// ─── CLOSE ON BACKDROP ──────────────────────────────────────────────────
+['formOverlay','viewOverlay','settingsOverlay'].forEach(id => {
+  document.getElementById(id).addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('open');
+    if (id === 'viewOverlay') viewingId = null;
+  });
+});
+
+// ─── INIT ────────────────────────────────────────────────────────────────
+populateStatusSelects();
+renderDashboard();
 </script>
 </body>
 </html>
