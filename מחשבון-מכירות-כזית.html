@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>כזית · מחשבון מכירות סנדוויצ'ים</title>
+<style>
+  :root{
+    --green:#2e7d32; --green-d:#1b5e20; --green-l:#e8f5e9;
+    --gold:#c9a227; --bg:#f4f6f4; --card:#ffffff;
+    --ink:#1f2a1f; --muted:#6b776b; --line:#e2e8e2;
+    --red:#c62828; --shadow:0 4px 18px rgba(0,0,0,.07);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:"Segoe UI",Arial,sans-serif;background:var(--bg);color:var(--ink);
+    line-height:1.5;padding:18px;
+  }
+  .wrap{max-width:1100px;margin:0 auto}
+
+  /* Header */
+  header{
+    background:linear-gradient(135deg,var(--green-d),var(--green));
+    color:#fff;border-radius:18px;padding:26px 30px;box-shadow:var(--shadow);
+    display:flex;align-items:center;gap:18px;position:relative;overflow:hidden;
+  }
+  header .logo{
+    width:64px;height:64px;border-radius:50%;background:#fff;color:var(--green-d);
+    display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:900;
+    box-shadow:0 3px 10px rgba(0,0,0,.2);flex-shrink:0;
+  }
+  header h1{font-size:30px;font-weight:900;letter-spacing:.5px}
+  header p{opacity:.92;font-size:15px;margin-top:2px}
+  header .gold-line{position:absolute;bottom:0;right:0;left:0;height:5px;background:var(--gold)}
+
+  /* Tabs */
+  .tabs{display:flex;gap:8px;margin:20px 0}
+  .tab{
+    flex:1;padding:14px;background:var(--card);border:2px solid var(--line);
+    border-radius:12px;cursor:pointer;font-size:16px;font-weight:700;color:var(--muted);
+    transition:.15s;text-align:center;
+  }
+  .tab:hover{border-color:var(--green)}
+  .tab.active{background:var(--green);color:#fff;border-color:var(--green)}
+
+  .card{background:var(--card);border-radius:16px;padding:22px;box-shadow:var(--shadow);margin-bottom:18px}
+  .card h2{font-size:20px;color:var(--green-d);margin-bottom:4px;display:flex;align-items:center;gap:8px}
+  .card .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
+
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:11px 10px;text-align:right;border-bottom:1px solid var(--line)}
+  th{background:var(--green-l);color:var(--green-d);font-size:13px;font-weight:800}
+  tbody tr:hover{background:#fafdfa}
+  td input{
+    width:100%;max-width:120px;padding:8px;border:1.5px solid var(--line);border-radius:8px;
+    font-size:15px;text-align:center;font-family:inherit;
+  }
+  td input:focus{outline:none;border-color:var(--green)}
+  td.name input{max-width:200px;text-align:right;font-weight:700}
+  .profit-pos{color:var(--green);font-weight:800}
+  .profit-neg{color:var(--red);font-weight:800}
+  .muted-cell{color:var(--muted);font-size:13px}
+
+  .btn{
+    padding:11px 20px;border:none;border-radius:10px;font-size:15px;font-weight:700;
+    cursor:pointer;font-family:inherit;transition:.15s;
+  }
+  .btn-green{background:var(--green);color:#fff}
+  .btn-green:hover{background:var(--green-d)}
+  .btn-ghost{background:#fff;color:var(--green);border:2px solid var(--green)}
+  .btn-ghost:hover{background:var(--green-l)}
+  .btn-del{background:none;color:var(--red);font-size:20px;padding:4px 10px;border-radius:8px}
+  .btn-del:hover{background:#ffebee}
+  .row-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+
+  /* Report */
+  .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}
+  .stat{
+    border-radius:14px;padding:18px;text-align:center;color:#fff;box-shadow:var(--shadow);
+  }
+  .stat .lbl{font-size:14px;opacity:.9}
+  .stat .val{font-size:30px;font-weight:900;margin-top:4px}
+  .stat.sales{background:linear-gradient(135deg,#1565c0,#1976d2)}
+  .stat.cost{background:linear-gradient(135deg,#ef6c00,#f57c00)}
+  .stat.profit{background:linear-gradient(135deg,var(--green-d),var(--green))}
+  .stat.units{background:linear-gradient(135deg,#6a1b9a,#8e24aa)}
+  .stat.margin{background:linear-gradient(135deg,#00838f,#0097a7)}
+  .summary.five{grid-template-columns:repeat(5,1fr)}
+
+  .qty-input{max-width:90px !important;font-size:16px;font-weight:700}
+  .num{font-variant-numeric:tabular-nums;font-weight:700}
+  .total-row td{background:var(--green-l);font-weight:900;font-size:16px;border-top:2px solid var(--green)}
+
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+  .badge{background:var(--gold);color:#fff;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700}
+  @media print{.tabs,.row-actions,.toolbar,.btn,.btn-del,.no-print{display:none!important}
+    body{background:#fff;padding:0}.card{box-shadow:none;border:1px solid var(--line)}}
+  @media(max-width:760px){
+    .summary,.summary.five{grid-template-columns:repeat(2,1fr)}
+    header h1{font-size:22px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo">כ</div>
+    <div>
+      <h1>כזית</h1>
+      <p>מחשבון מכירות סנדוויצ'ים · מחירון, עלויות ודוח רווחיות</p>
+    </div>
+    <div class="gold-line"></div>
+  </header>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="price">📋 מחירון ועלויות</div>
+    <div class="tab" data-tab="calc">🧮 מחשבון מכירה</div>
+    <div class="tab" data-tab="report">📊 דוח מפורט</div>
+  </div>
+
+  <!-- ============ TAB 1: PRICE LIST ============ -->
+  <section id="tab-price" class="tab-content">
+    <div class="card">
+      <h2>📋 מחירון מוצרים</h2>
+      <div class="sub">הזן לכל מוצר את עלות ההכנה ומחיר המכירה. הרווח לכל יחידה מחושב אוטומטית.</div>
+      <table id="priceTable">
+        <thead>
+          <tr>
+            <th>מוצר</th>
+            <th>עלות ליחידה (₪)</th>
+            <th>מחיר מכירה (₪)</th>
+            <th>רווח ליחידה (₪)</th>
+            <th>אחוז רווח</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="priceBody"></tbody>
+      </table>
+      <div class="row-actions">
+        <button class="btn btn-green" onclick="addProduct()">＋ הוסף מוצר</button>
+        <button class="btn btn-ghost" onclick="resetDefaults()">↺ שחזר רשימת ברירת מחדל</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TAB 2: CALCULATOR ============ -->
+  <section id="tab-calc" class="tab-content" style="display:none">
+    <div class="card">
+      <h2>🧮 מחשבון כמויות למכירה</h2>
+      <div class="sub">הזן כמה יחידות מכל סוג. הסכומים מתעדכנים בזמן אמת.</div>
+      <table id="calcTable">
+        <thead>
+          <tr>
+            <th>מוצר</th>
+            <th>מחיר יחידה</th>
+            <th>כמות</th>
+            <th>סה"כ מכירה</th>
+            <th>סה"כ עלות</th>
+            <th>סה"כ רווח</th>
+          </tr>
+        </thead>
+        <tbody id="calcBody"></tbody>
+        <tfoot id="calcFoot"></tfoot>
+      </table>
+      <div class="row-actions">
+        <button class="btn btn-ghost" onclick="clearQty()">נקה כמויות</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TAB 3: REPORT ============ -->
+  <section id="tab-report" class="tab-content" style="display:none">
+    <div class="card">
+      <div class="toolbar">
+        <h2 style="margin:0">📊 דוח מכירות מפורט</h2>
+        <span class="badge" id="reportDate"></span>
+        <button class="btn btn-green no-print" style="margin-right:auto" onclick="window.print()">🖨️ הדפס / שמור PDF</button>
+      </div>
+
+      <div class="summary five">
+        <div class="stat sales"><div class="lbl">סה"כ מכירות</div><div class="val" id="sSales">₪0</div></div>
+        <div class="stat cost"><div class="lbl">סה"כ עלות</div><div class="val" id="sCost">₪0</div></div>
+        <div class="stat profit"><div class="lbl">סה"כ רווח</div><div class="val" id="sProfit">₪0</div></div>
+        <div class="stat units"><div class="lbl">יחידות נמכרו</div><div class="val" id="sUnits">0</div></div>
+        <div class="stat margin"><div class="lbl">אחוז רווח</div><div class="val" id="sMargin">0%</div></div>
+      </div>
+
+      <table id="reportTable">
+        <thead>
+          <tr>
+            <th>מוצר</th>
+            <th>כמות</th>
+            <th>מחיר יחידה</th>
+            <th>עלות יחידה</th>
+            <th>סה"כ מכירה</th>
+            <th>סה"כ עלות</th>
+            <th>רווח</th>
+            <th>% רווח</th>
+          </tr>
+        </thead>
+        <tbody id="reportBody"></tbody>
+        <tfoot id="reportFoot"></tfoot>
+      </table>
+    </div>
+  </section>
+
+  <p class="no-print" style="text-align:center;color:var(--muted);font-size:12px;margin-top:8px">
+    הנתונים נשמרים אוטומטית במחשב זה · עסק כזית
+  </p>
+</div>
+
+<script>
+/* ---------- Data ---------- */
+const DEFAULTS = [
+  {name:"סנדוויץ' טונה",     cost:6.5, price:18},
+  {name:"סנדוויץ' ביצה",     cost:4.0, price:15},
+  {name:"סנדוויץ' גבינות",   cost:7.0, price:20},
+  {name:"סנדוויץ' חביתה",    cost:5.0, price:17},
+  {name:"באגט פיצה",         cost:5.5, price:19},
+  {name:"לאפה פלאפל",        cost:6.0, price:22},
+];
+
+let products = load();
+
+function load(){
+  try{
+    const d = JSON.parse(localStorage.getItem("kazit_products"));
+    if(Array.isArray(d) && d.length) return d.map(p=>({name:p.name||"",cost:+p.cost||0,price:+p.price||0,qty:+p.qty||0}));
+  }catch(e){}
+  return DEFAULTS.map(p=>({...p, qty:0}));
+}
+function save(){ localStorage.setItem("kazit_products", JSON.stringify(products)); }
+
+const fmt = n => "₪" + (Math.round(n*100)/100).toLocaleString("he-IL",{minimumFractionDigits:0,maximumFractionDigits:2});
+const pct = n => (Math.round(n*10)/10) + "%";
+
+/* ---------- Tabs ---------- */
+document.querySelectorAll(".tab").forEach(t=>{
+  t.onclick = ()=>{
+    document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+    document.querySelectorAll(".tab-content").forEach(x=>x.style.display="none");
+    t.classList.add("active");
+    document.getElementById("tab-"+t.dataset.tab).style.display="block";
+    if(t.dataset.tab==="calc") renderCalc();
+    if(t.dataset.tab==="report") renderReport();
+  };
+});
+
+/* ---------- Tab 1: Price list ---------- */
+function renderPrice(){
+  const body = document.getElementById("priceBody");
+  body.innerHTML = "";
+  products.forEach((p,i)=>{
+    const profit = p.price - p.cost;
+    const margin = p.price>0 ? (profit/p.price*100) : 0;
+    const cls = profit>=0 ? "profit-pos" : "profit-neg";
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="name"><input value="${esc(p.name)}" onchange="upd(${i},'name',this.value)"></td>
+      <td><input type="number" min="0" step="0.5" value="${p.cost}" onchange="upd(${i},'cost',this.value)"></td>
+      <td><input type="number" min="0" step="0.5" value="${p.price}" onchange="upd(${i},'price',this.value)"></td>
+      <td class="num ${cls}">${fmt(profit)}</td>
+      <td class="num ${cls}">${pct(margin)}</td>
+      <td><button class="btn-del" title="מחק" onclick="delProduct(${i})">🗑</button></td>`;
+    body.appendChild(tr);
+  });
+}
+function esc(s){return String(s).replace(/"/g,"&quot;").replace(/</g,"&lt;");}
+function upd(i,field,val){
+  products[i][field] = field==="name" ? val : (parseFloat(val)||0);
+  save(); renderPrice();
+}
+function addProduct(){ products.push({name:"מוצר חדש",cost:0,price:0,qty:0}); save(); renderPrice(); }
+function delProduct(i){ if(confirm("למחוק את "+products[i].name+"?")){ products.splice(i,1); save(); renderPrice(); } }
+function resetDefaults(){ if(confirm("לשחזר את רשימת ברירת המחדל? כל השינויים יימחקו.")){ products = DEFAULTS.map(p=>({...p,qty:0})); save(); renderPrice(); } }
+
+/* ---------- Tab 2: Calculator ---------- */
+function renderCalc(){
+  const body = document.getElementById("calcBody");
+  body.innerHTML = "";
+  products.forEach((p,i)=>{
+    const lineSales = p.price*p.qty, lineCost = p.cost*p.qty, lineProfit = lineSales-lineCost;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td style="font-weight:700">${esc(p.name)}</td>
+      <td class="num">${fmt(p.price)}</td>
+      <td><input class="qty-input" type="number" min="0" step="1" value="${p.qty}" onchange="updQty(${i},this.value)" oninput="updQty(${i},this.value)"></td>
+      <td class="num">${fmt(lineSales)}</td>
+      <td class="num muted-cell">${fmt(lineCost)}</td>
+      <td class="num ${lineProfit>=0?'profit-pos':'profit-neg'}">${fmt(lineProfit)}</td>`;
+    body.appendChild(tr);
+  });
+  const t = totals();
+  document.getElementById("calcFoot").innerHTML = `
+    <tr class="total-row">
+      <td>סה"כ</td><td></td>
+      <td class="num">${t.units}</td>
+      <td class="num">${fmt(t.sales)}</td>
+      <td class="num">${fmt(t.cost)}</td>
+      <td class="num ${t.profit>=0?'profit-pos':'profit-neg'}">${fmt(t.profit)}</td>
+    </tr>`;
+}
+function updQty(i,val){
+  products[i].qty = Math.max(0, parseInt(val)||0);
+  save();
+  // update only footer + line live without full re-render disrupting focus
+  renderCalc();
+}
+function clearQty(){ products.forEach(p=>p.qty=0); save(); renderCalc(); }
+
+/* ---------- Tab 3: Report ---------- */
+function totals(){
+  let sales=0,cost=0,units=0;
+  products.forEach(p=>{ sales+=p.price*p.qty; cost+=p.cost*p.qty; units+=p.qty; });
+  return {sales,cost,profit:sales-cost,units};
+}
+function renderReport(){
+  const t = totals();
+  document.getElementById("sSales").textContent  = fmt(t.sales);
+  document.getElementById("sCost").textContent   = fmt(t.cost);
+  document.getElementById("sProfit").textContent = fmt(t.profit);
+  document.getElementById("sUnits").textContent  = t.units;
+  document.getElementById("sMargin").textContent = pct(t.sales>0 ? t.profit/t.sales*100 : 0);
+  document.getElementById("reportDate").textContent = new Date().toLocaleDateString("he-IL",{day:"2-digit",month:"2-digit",year:"numeric"});
+
+  const body = document.getElementById("reportBody");
+  body.innerHTML = "";
+  products.filter(p=>p.qty>0).forEach(p=>{
+    const ls=p.price*p.qty, lc=p.cost*p.qty, lp=ls-lc, m=ls>0?lp/ls*100:0;
+    const tr=document.createElement("tr");
+    tr.innerHTML=`
+      <td style="font-weight:700">${esc(p.name)}</td>
+      <td class="num">${p.qty}</td>
+      <td class="num">${fmt(p.price)}</td>
+      <td class="num muted-cell">${fmt(p.cost)}</td>
+      <td class="num">${fmt(ls)}</td>
+      <td class="num muted-cell">${fmt(lc)}</td>
+      <td class="num ${lp>=0?'profit-pos':'profit-neg'}">${fmt(lp)}</td>
+      <td class="num">${pct(m)}</td>`;
+    body.appendChild(tr);
+  });
+  if(!body.children.length){
+    body.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:30px">לא הוזנו כמויות. עבור ל"מחשבון מכירה" והזן כמויות.</td></tr>`;
+  }
+  document.getElementById("reportFoot").innerHTML = body.children.length && products.some(p=>p.qty>0) ? `
+    <tr class="total-row">
+      <td>סה"כ</td>
+      <td class="num">${t.units}</td><td></td><td></td>
+      <td class="num">${fmt(t.sales)}</td>
+      <td class="num">${fmt(t.cost)}</td>
+      <td class="num ${t.profit>=0?'profit-pos':'profit-neg'}">${fmt(t.profit)}</td>
+      <td class="num">${pct(t.sales>0?t.profit/t.sales*100:0)}</td>
+    </tr>` : "";
+}
+
+/* ---------- init ---------- */
+renderPrice();
+</script>
+</body>
+</html>
