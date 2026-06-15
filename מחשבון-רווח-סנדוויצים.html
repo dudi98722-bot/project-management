@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>מחשבון רווחיות · עסקת סנדוויצ'ים</title>
+<style>
+  :root{
+    --green:#2e7d32; --green-d:#1b5e20; --green-l:#e8f5e9;
+    --gold:#c9a227; --bg:#f4f6f4; --card:#ffffff;
+    --ink:#1f2a1f; --muted:#6b776b; --line:#e2e8e2;
+    --red:#c62828; --shadow:0 4px 18px rgba(0,0,0,.07);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Segoe UI",Arial,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5;padding:18px}
+  .wrap{max-width:1080px;margin:0 auto}
+
+  header{
+    background:linear-gradient(135deg,var(--green-d),var(--green));
+    color:#fff;border-radius:18px;padding:26px 30px;box-shadow:var(--shadow);
+    display:flex;align-items:center;gap:18px;position:relative;overflow:hidden;
+  }
+  header .logo{
+    width:64px;height:64px;border-radius:50%;background:#fff;color:var(--green-d);
+    display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:900;
+    box-shadow:0 3px 10px rgba(0,0,0,.2);flex-shrink:0;
+  }
+  header h1{font-size:28px;font-weight:900;letter-spacing:.5px}
+  header p{opacity:.92;font-size:15px;margin-top:2px}
+  header .gold-line{position:absolute;bottom:0;right:0;left:0;height:5px;background:var(--gold)}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:20px}
+  @media(max-width:820px){.grid{grid-template-columns:1fr}}
+
+  .card{background:var(--card);border-radius:16px;padding:22px;box-shadow:var(--shadow);margin-bottom:18px}
+  .card h2{font-size:19px;color:var(--green-d);margin-bottom:4px;display:flex;align-items:center;gap:8px}
+  .card .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
+
+  .field{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);gap:10px}
+  .field:last-child{border-bottom:none}
+  .field label{font-size:15px;font-weight:600;flex:1}
+  .field .unit{color:var(--muted);font-size:12px;margin-inline-start:4px}
+  .field input{
+    width:110px;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;
+    font-size:15px;text-align:center;font-family:inherit;font-weight:700;
+  }
+  .field input:focus{outline:none;border-color:var(--green);background:#fafffa}
+  .subtotal{display:flex;justify-content:space-between;align-items:center;padding:12px 0 2px;font-weight:800;color:var(--green-d);font-size:16px}
+
+  /* KPI cards */
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:4px}
+  @media(max-width:820px){.kpis{grid-template-columns:repeat(2,1fr)}}
+  .kpi{background:var(--green-l);border-radius:12px;padding:14px;text-align:center}
+  .kpi .label{font-size:12px;color:var(--muted);margin-bottom:4px}
+  .kpi .value{font-size:22px;font-weight:900;color:var(--green-d)}
+  .kpi.big{background:linear-gradient(135deg,var(--green-d),var(--green));color:#fff}
+  .kpi.big .label{color:rgba(255,255,255,.85)}
+  .kpi.big .value{color:#fff;font-size:26px}
+  .kpi.neg .value{color:var(--red)}
+
+  table{width:100%;border-collapse:collapse;margin-top:6px}
+  th,td{padding:11px 10px;text-align:right;border-bottom:1px solid var(--line);font-size:14px}
+  th{background:var(--green-l);color:var(--green-d);font-weight:800}
+  td.num{font-weight:700;text-align:left;direction:ltr}
+  tr.total td{font-weight:900;background:#fafdfa;font-size:15px}
+  .pos{color:var(--green);font-weight:800}
+  .neg{color:var(--red);font-weight:800}
+
+  .bar-wrap{margin-top:14px}
+  .bar{height:34px;border-radius:9px;display:flex;overflow:hidden;font-size:12px;font-weight:800;color:#fff}
+  .bar .seg{display:flex;align-items:center;justify-content:center;white-space:nowrap;min-width:0}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;font-size:13px}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .dot{width:12px;height:12px;border-radius:3px;display:inline-block}
+
+  footer{text-align:center;color:var(--muted);font-size:12px;margin:24px 0 8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo">🥪</div>
+    <div>
+      <h1>מחשבון רווחיות · עסקת סנדוויצ'ים</h1>
+      <p>שנה כל מספר וכל החישוב מתעדכן מיד — כולל נקודת איזון</p>
+    </div>
+    <div class="gold-line"></div>
+  </header>
+
+  <div class="grid">
+
+    <!-- ══ הזנת נתונים ══ -->
+    <div>
+      <div class="card">
+        <h2>📦 פרטי העסקה</h2>
+        <div class="sub">כמויות ומחיר מכירה (ללא מע"מ)</div>
+        <div class="field"><label>סנדוויצ'ים ליום</label><div><input type="number" id="perDay" value="3000"><span class="unit">יח'</span></div></div>
+        <div class="field"><label>מספר ימים</label><div><input type="number" id="days" value="22"><span class="unit">ימים</span></div></div>
+        <div class="field"><label>מחיר מכירה ליחידה</label><div><input type="number" id="price" value="8.5" step="0.1"><span class="unit">₪</span></div></div>
+        <div class="field"><label>משלוח יומי</label><div><input type="number" id="delivery" value="2500"><span class="unit">₪/יום</span></div></div>
+        <div class="field"><label>קרטון (מחיר)</label><div><input type="number" id="cartonPrice" value="3" step="0.1"><span class="unit">₪</span></div></div>
+        <div class="field"><label>יחידות בקרטון</label><div><input type="number" id="cartonUnits" value="40"><span class="unit">יח'</span></div></div>
+      </div>
+
+      <div class="card">
+        <h2>🧾 עלות ליחידה</h2>
+        <div class="sub">פירוט רכיבי העלות לכל סנדוויץ'</div>
+        <div class="field"><label>לחמניה</label><div><input type="number" id="c_bun" value="1" step="0.05"><span class="unit">₪</span></div></div>
+        <div class="field"><label>מילוי לחמניה</label><div><input type="number" id="c_fill" value="1.5" step="0.05"><span class="unit">₪</span></div></div>
+        <div class="field"><label>פרי</label><div><input type="number" id="c_fruit" value="0.8" step="0.05"><span class="unit">₪</span></div></div>
+        <div class="field"><label>עמלת תיווך</label><div><input type="number" id="c_broker" value="1" step="0.05"><span class="unit">₪</span></div></div>
+        <div class="field"><label>עובדים</label><div><input type="number" id="c_labor" value="0.85" step="0.05"><span class="unit">₪</span></div></div>
+        <div class="field"><label>ניילון</label><div><input type="number" id="c_nylon" value="0.1" step="0.01"><span class="unit">₪</span></div></div>
+        <div class="field"><label>בלת"מ</label><div><input type="number" id="c_misc" value="0.3" step="0.05"><span class="unit">₪</span></div></div>
+        <div class="subtotal"><span>סה"כ עלות ישירה ליחידה</span><span id="unitDirect">—</span></div>
+      </div>
+    </div>
+
+    <!-- ══ תוצאות ══ -->
+    <div>
+      <div class="card">
+        <h2>💰 שורה תחתונה</h2>
+        <div class="sub">סיכום העסקה כולה</div>
+        <div class="kpis">
+          <div class="kpi big"><div class="label">רווח נקי</div><div class="value" id="kpiProfit">—</div></div>
+          <div class="kpi"><div class="label">שיעור רווח</div><div class="value" id="kpiMargin">—</div></div>
+          <div class="kpi"><div class="label">רווח ליחידה</div><div class="value" id="kpiUnit">—</div></div>
+          <div class="kpi"><div class="label">סה"כ יחידות</div><div class="value" id="kpiQty">—</div></div>
+        </div>
+
+        <div class="bar-wrap">
+          <div class="bar" id="bar"></div>
+          <div class="legend">
+            <span><i class="dot" style="background:#2e7d32"></i> רווח</span>
+            <span><i class="dot" style="background:#9e9e9e"></i> עלויות ישירות</span>
+            <span><i class="dot" style="background:#c9a227"></i> משלוח</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>📊 פירוט כספי</h2>
+        <table>
+          <tbody>
+            <tr><td>הכנסות (מכירות)</td><td class="num" id="rRev">—</td></tr>
+            <tr><td>עלות מלאי / רכיבים</td><td class="num" id="rDirect">—</td></tr>
+            <tr><td>קרטונים</td><td class="num" id="rCarton">—</td></tr>
+            <tr><td>משלוחים</td><td class="num" id="rDeliv">—</td></tr>
+            <tr><td>סה"כ עלויות</td><td class="num" id="rCost">—</td></tr>
+            <tr class="total"><td>רווח נקי</td><td class="num pos" id="rProfit">—</td></tr>
+          </tbody>
+        </table>
+
+        <h2 style="margin-top:20px">📈 פר יחידה / פר יום</h2>
+        <table>
+          <thead><tr><th>מדד</th><th style="text-align:left">ליחידה</th><th style="text-align:left">ליום</th></tr></thead>
+          <tbody>
+            <tr><td>הכנסה</td><td class="num" id="uRev">—</td><td class="num" id="dRev">—</td></tr>
+            <tr><td>עלות מלאה</td><td class="num" id="uCost">—</td><td class="num" id="dCost">—</td></tr>
+            <tr class="total"><td>רווח</td><td class="num pos" id="uProfit">—</td><td class="num pos" id="dProfit">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card" id="beCard">
+        <h2>⚖️ נקודת איזון</h2>
+        <div class="sub">כמה צריך למכור ביום כדי לא להפסיד (בגלל המשלוח הקבוע)</div>
+        <table>
+          <tbody>
+            <tr><td>נקודת איזון ליום</td><td class="num" id="beQty">—</td></tr>
+            <tr><td>תרומה לרווח ליחידה</td><td class="num" id="beContrib">—</td></tr>
+            <tr><td>שולי ביטחון (מעל האיזון)</td><td class="num" id="beSafety">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>מחשבון פנימי · הסכומים ללא מע"מ · כל הנתונים ניתנים לעריכה</footer>
+</div>
+
+<script>
+const ils = n => (Math.round(n*100)/100).toLocaleString('he-IL',{minimumFractionDigits:0,maximumFractionDigits:2}) + ' ₪';
+const ils2 = n => (Math.round(n*1000)/1000).toLocaleString('he-IL',{minimumFractionDigits:0,maximumFractionDigits:3}) + ' ₪';
+const num = id => parseFloat(document.getElementById(id).value) || 0;
+
+function calc(){
+  const perDay = num('perDay'), days = num('days'), price = num('price');
+  const delivery = num('delivery'), cartonPrice = num('cartonPrice'), cartonUnits = num('cartonUnits')||1;
+
+  // עלות ישירה ליחידה
+  const unitComponents = num('c_bun')+num('c_fill')+num('c_fruit')+num('c_broker')+num('c_labor')+num('c_nylon')+num('c_misc');
+  const cartonPerUnit = cartonPrice / cartonUnits;
+  const unitDirect = unitComponents + cartonPerUnit; // כולל קרטון
+
+  const qty = perDay * days;
+
+  const revenue = qty * price;
+  const directCost = unitComponents * qty;
+  const cartonCost = cartonPerUnit * qty;
+  const deliveryCost = delivery * days;
+  const totalCost = directCost + cartonCost + deliveryCost;
+  const profit = revenue - totalCost;
+
+  const margin = revenue ? profit/revenue*100 : 0;
+  const unitProfit = qty ? profit/qty : 0;
+  const unitFullCost = qty ? totalCost/qty : 0;
+
+  // נקודת איזון יומית: תרומה ליחידה = מחיר - עלות משתנה ליחידה (כולל קרטון)
+  const contribution = price - unitDirect;
+  const breakevenDay = contribution > 0 ? delivery/contribution : Infinity;
+  const safety = perDay - breakevenDay;
+
+  // === הצגה ===
+  document.getElementById('unitDirect').textContent = ils2(unitComponents) + '  +  ' + ils2(cartonPerUnit) + ' (קרטון)';
+
+  const profitEl = document.getElementById('kpiProfit');
+  profitEl.textContent = ils(profit);
+  document.getElementById('kpiProfit').parentElement.classList.toggle('neg', profit<0);
+  document.getElementById('kpiMargin').textContent = margin.toFixed(1) + '%';
+  document.getElementById('kpiUnit').textContent = ils2(unitProfit);
+  document.getElementById('kpiQty').textContent = qty.toLocaleString('he-IL');
+
+  document.getElementById('rRev').textContent = ils(revenue);
+  document.getElementById('rDirect').textContent = ils(directCost);
+  document.getElementById('rCarton').textContent = ils(cartonCost);
+  document.getElementById('rDeliv').textContent = ils(deliveryCost);
+  document.getElementById('rCost').textContent = ils(totalCost);
+  const rp = document.getElementById('rProfit');
+  rp.textContent = ils(profit); rp.className = 'num ' + (profit>=0?'pos':'neg');
+
+  document.getElementById('uRev').textContent = ils2(price);
+  document.getElementById('uCost').textContent = ils2(unitFullCost);
+  const up = document.getElementById('uProfit'); up.textContent = ils2(unitProfit); up.className='num '+(unitProfit>=0?'pos':'neg');
+  document.getElementById('dRev').textContent = ils(revenue/Math.max(days,1));
+  document.getElementById('dCost').textContent = ils(totalCost/Math.max(days,1));
+  const dp = document.getElementById('dProfit'); dp.textContent = ils(profit/Math.max(days,1)); dp.className='num '+(profit>=0?'pos':'neg');
+
+  // נקודת איזון
+  document.getElementById('beQty').textContent = isFinite(breakevenDay) ? Math.ceil(breakevenDay).toLocaleString('he-IL') + ' יח\'/יום' : 'לא ניתן (אין רווחיות)';
+  document.getElementById('beContrib').textContent = ils2(contribution);
+  const bs = document.getElementById('beSafety');
+  bs.textContent = isFinite(safety) ? (safety>=0?'+':'') + Math.floor(safety).toLocaleString('he-IL') + ' יח\'/יום' : '—';
+  bs.className = 'num ' + (safety>=0?'pos':'neg');
+
+  // === בר חזותי ===
+  const segs = [
+    {v: Math.max(profit,0), c:'#2e7d32'},
+    {v: directCost+cartonCost, c:'#9e9e9e'},
+    {v: deliveryCost, c:'#c9a227'}
+  ];
+  const tot = segs.reduce((a,s)=>a+s.v,0) || 1;
+  document.getElementById('bar').innerHTML = segs.map(s=>{
+    const pct = s.v/tot*100;
+    return pct>0 ? `<div class="seg" style="background:${s.c};width:${pct}%">${pct>9?Math.round(pct)+'%':''}</div>` : '';
+  }).join('');
+}
+
+document.querySelectorAll('input').forEach(i=>i.addEventListener('input',calc));
+calc();
+</script>
+</body>
+</html>
