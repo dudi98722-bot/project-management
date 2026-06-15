@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>מחשבון רווחיות · עסקת סנדוויצ'ים</title>
+<title>כזית · מחשבון רווחיות סנדוויצ'ים</title>
 <style>
   :root{
     --green:#2e7d32; --green-d:#1b5e20; --green-l:#e8f5e9;
@@ -45,6 +45,8 @@
     font-size:15px;text-align:center;font-family:inherit;font-weight:700;
   }
   .field input:focus{outline:none;border-color:var(--green);background:#fafffa}
+  .field .fdel{background:none;border:none;color:#c9b7b5;cursor:pointer;font-size:15px;font-weight:800;padding:0 4px;flex-shrink:0;line-height:1;transition:.15s}
+  .field .fdel:hover{color:var(--red)}
   .subtotal{display:flex;justify-content:space-between;align-items:center;padding:12px 0 2px;font-weight:800;color:var(--green-d);font-size:16px}
 
   /* custom items */
@@ -91,9 +93,9 @@
 <div class="wrap">
 
   <header>
-    <div class="logo">🥪</div>
+    <div class="logo" style="font-size:19px">כזית</div>
     <div>
-      <h1>מחשבון רווחיות · עסקת סנדוויצ'ים</h1>
+      <h1>כזית · מחשבון רווחיות סנדוויצ'ים</h1>
       <p>שנה כל מספר וכל החישוב מתעדכן מיד — כולל נקודת איזון</p>
     </div>
     <div class="gold-line"></div>
@@ -117,13 +119,13 @@
       <div class="card">
         <h2>🧾 עלות ליחידה</h2>
         <div class="sub">פירוט רכיבי העלות לכל סנדוויץ'</div>
-        <div class="field"><label>לחמניה</label><div><input type="number" id="c_bun" value="1" step="0.05"><span class="unit">₪</span></div></div>
-        <div class="field"><label>מילוי לחמניה</label><div><input type="number" id="c_fill" value="1.5" step="0.05"><span class="unit">₪</span></div></div>
-        <div class="field"><label>פרי</label><div><input type="number" id="c_fruit" value="0.8" step="0.05"><span class="unit">₪</span></div></div>
-        <div class="field"><label>עמלת תיווך</label><div><input type="number" id="c_broker" value="1" step="0.05"><span class="unit">₪</span></div></div>
-        <div class="field"><label>עובדים</label><div><input type="number" id="c_labor" value="0.85" step="0.05"><span class="unit">₪</span></div></div>
-        <div class="field"><label>ניילון</label><div><input type="number" id="c_nylon" value="0.1" step="0.01"><span class="unit">₪</span></div></div>
-        <div class="field"><label>בלת"מ</label><div><input type="number" id="c_misc" value="0.3" step="0.05"><span class="unit">₪</span></div></div>
+        <div class="field"><button class="fdel" title="הסר" onclick="this.closest('.field').remove();calc()">✕</button><label>לחמניה</label><div><input type="number" id="c_bun" value="1" step="0.05"><span class="unit">₪</span></div></div>
+        <div class="field"><button class="fdel" title="הסר" onclick="this.closest('.field').remove();calc()">✕</button><label>מילוי לחמניה</label><div><input type="number" id="c_fill" value="1.5" step="0.05"><span class="unit">₪</span></div></div>
+        <div class="field"><button class="fdel" title="הסר" onclick="this.closest('.field').remove();calc()">✕</button><label>פרי</label><div><input type="number" id="c_fruit" value="0.8" step="0.05"><span class="unit">₪</span></div></div>
+        <div class="field"><button class="fdel" title="הסר" onclick="this.closest('.field').remove();calc()">✕</button><label>עמלת תיווך</label><div><input type="number" id="c_broker" value="1" step="0.05"><span class="unit">₪</span></div></div>
+        <div class="field"><button class="fdel" title="הסר" onclick="this.closest('.field').remove();calc()">✕</button><label>עובדים</label><div><input type="number" id="c_labor" value="0.85" step="0.05"><span class="unit">₪</span></div></div>
+        <div class="field"><button class="fdel" title="הסר" onclick="this.closest('.field').remove();calc()">✕</button><label>ניילון</label><div><input type="number" id="c_nylon" value="0.1" step="0.01"><span class="unit">₪</span></div></div>
+        <div class="field"><button class="fdel" title="הסר" onclick="this.closest('.field').remove();calc()">✕</button><label>בלת"מ</label><div><input type="number" id="c_misc" value="0.3" step="0.05"><span class="unit">₪</span></div></div>
         <div id="customItems"></div>
         <button class="add-btn" onclick="addItem()">➕ הוסף פריט</button>
         <div class="subtotal"><span>סה"כ עלות ישירה ליחידה</span><span id="unitDirect">—</span></div>
@@ -198,7 +200,7 @@
 <script>
 const ils = n => (Math.round(n*100)/100).toLocaleString('he-IL',{minimumFractionDigits:0,maximumFractionDigits:2}) + ' ₪';
 const ils2 = n => (Math.round(n*1000)/1000).toLocaleString('he-IL',{minimumFractionDigits:0,maximumFractionDigits:3}) + ' ₪';
-const num = id => parseFloat(document.getElementById(id).value) || 0;
+const num = id => { const el=document.getElementById(id); return el ? (parseFloat(el.value)||0) : 0; };
 
 function calc(){
   const perDay = num('perDay'), days = num('days'), price = num('price');
