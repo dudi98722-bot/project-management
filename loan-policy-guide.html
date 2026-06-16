@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>מדיניות הלוואות מרובות — מדריך לנציגים</title>
+<style>
+  :root {
+    --primary: #1a56db;
+    --success: #057a55;
+    --warning: #c27803;
+    --danger: #e02424;
+    --frozen: #6b7280;
+    --active: #057a55;
+    --bg: #f9fafb;
+    --card: #ffffff;
+    --border: #e5e7eb;
+    --text: #111827;
+    --muted: #6b7280;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  /* HEADER */
+  header {
+    background: linear-gradient(135deg, #1e3a8a, #1a56db);
+    color: white;
+    padding: 28px 40px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  header .logo { font-size: 36px; }
+  header h1 { font-size: 22px; font-weight: 700; }
+  header p { font-size: 13px; opacity: .8; margin-top: 3px; }
+
+  /* NAV TABS */
+  .tabs {
+    background: white;
+    border-bottom: 2px solid var(--border);
+    display: flex;
+    gap: 0;
+    padding: 0 32px;
+    overflow-x: auto;
+  }
+  .tab-btn {
+    padding: 14px 22px;
+    cursor: pointer;
+    border: none;
+    background: none;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--muted);
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    white-space: nowrap;
+    transition: all .2s;
+  }
+  .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+  .tab-btn:hover:not(.active) { color: var(--text); }
+
+  /* MAIN */
+  main { max-width: 1000px; margin: 0 auto; padding: 32px 20px; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* SECTION TITLE */
+  .section-title {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-title .icon { font-size: 22px; }
+
+  /* RULE BOX */
+  .rule-box {
+    background: #eff6ff;
+    border: 2px solid #bfdbfe;
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 24px;
+  }
+  .rule-box h3 { color: #1e40af; font-size: 15px; margin-bottom: 10px; }
+  .rule-box ul { padding-right: 20px; }
+  .rule-box ul li { margin-bottom: 6px; }
+  .rule-highlight { background: #1e40af; color: white; padding: 2px 8px; border-radius: 4px; font-weight: 700; }
+
+  /* DECISION TREE */
+  .decision-tree { margin: 24px 0; }
+  .dt-node {
+    background: white;
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 8px;
+    position: relative;
+  }
+  .dt-node.question { border-color: #93c5fd; background: #eff6ff; }
+  .dt-node.action-yes { border-color: #6ee7b7; background: #ecfdf5; }
+  .dt-node.action-no { border-color: #fca5a5; background: #fef2f2; }
+  .dt-node.freeze { border-color: #d1d5db; background: #f9fafb; }
+  .dt-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+  .dt-label.q { color: #1d4ed8; }
+  .dt-label.y { color: #065f46; }
+  .dt-label.n { color: #991b1b; }
+  .dt-label.f { color: #374151; }
+  .dt-text { font-size: 14px; font-weight: 600; }
+  .dt-sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .dt-arrow { text-align: center; color: var(--muted); font-size: 20px; margin: 2px 0; }
+  .dt-branch { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 8px; }
+
+  /* SCENARIOS TABLE */
+  .scenarios { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+  .scenarios th {
+    background: #1e3a8a;
+    color: white;
+    padding: 12px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: right;
+  }
+  .scenarios td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    vertical-align: top;
+  }
+  .scenarios tr:hover td { background: #f0f9ff; }
+  .scenarios tr:nth-child(even) td { background: #f9fafb; }
+  .scenarios tr:nth-child(even):hover td { background: #f0f9ff; }
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .badge.active { background: #d1fae5; color: #065f46; }
+  .badge.frozen { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+  .badge.pending { background: #fef3c7; color: #92400e; }
+
+  /* LOAN VISUAL */
+  .loan-grid { display: flex; flex-direction: column; gap: 8px; }
+  .loan-row { display: flex; align-items: center; gap: 10px; }
+  .loan-bar-wrap { flex: 1; background: #e5e7eb; border-radius: 6px; height: 20px; overflow: hidden; }
+  .loan-bar { height: 100%; border-radius: 6px; transition: width .5s; }
+  .loan-bar.active { background: linear-gradient(90deg, #059669, #34d399); }
+  .loan-bar.frozen { background: #9ca3af; }
+  .loan-label { font-size: 13px; min-width: 120px; font-weight: 600; }
+  .loan-amount { font-size: 13px; color: var(--muted); min-width: 80px; text-align: left; }
+
+  /* CALCULATOR */
+  .calc-card {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  }
+  .calc-card h3 { font-size: 16px; font-weight: 700; margin-bottom: 18px; }
+  .loan-input-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+  .loan-input-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 10px;
+    align-items: center;
+    background: #f9fafb;
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+  .loan-input-row label { font-size: 13px; font-weight: 600; }
+  input[type="number"], input[type="text"] {
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 14px;
+    width: 100%;
+    font-family: inherit;
+    direction: ltr;
+    text-align: left;
+  }
+  input:focus { outline: 2px solid #93c5fd; border-color: #3b82f6; }
+  .btn {
+    padding: 8px 18px;
+    border-radius: 8px;
+    border: none;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: .2s;
+  }
+  .btn-primary { background: #1a56db; color: white; }
+  .btn-primary:hover { background: #1e40af; }
+  .btn-danger { background: #fee2e2; color: #991b1b; }
+  .btn-danger:hover { background: #fca5a5; }
+  .btn-sm { padding: 5px 12px; font-size: 12px; }
+  .btn-add { background: #ecfdf5; color: #065f46; border: 1px solid #6ee7b7; margin-bottom: 14px; }
+  .btn-add:hover { background: #d1fae5; }
+  .result-box {
+    background: #f0f9ff;
+    border: 2px solid #bae6fd;
+    border-radius: 10px;
+    padding: 18px;
+    margin-top: 16px;
+  }
+  .result-box h4 { font-size: 15px; font-weight: 700; margin-bottom: 12px; color: #0369a1; }
+  .result-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: white;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    border: 1px solid #e0f2fe;
+  }
+  .result-item .loan-name { font-weight: 600; font-size: 14px; }
+  .result-item .loan-info { font-size: 12px; color: var(--muted); }
+  .result-summary {
+    margin-top: 12px;
+    padding: 12px;
+    background: white;
+    border-radius: 8px;
+    border: 1px solid #bae6fd;
+    font-size: 13px;
+  }
+
+  /* FLOWCHART */
+  .flow-wrap {
+    overflow-x: auto;
+    padding: 20px 0;
+  }
+  .flow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    min-width: 400px;
+  }
+  .flow-box {
+    padding: 12px 20px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    width: 320px;
+    line-height: 1.4;
+  }
+  .flow-box.start { background: #1e3a8a; color: white; border-radius: 50px; }
+  .flow-box.decision { background: #fef3c7; border: 2px solid #fcd34d; color: #78350f; transform: rotate(0deg); }
+  .flow-box.ok { background: #d1fae5; border: 2px solid #6ee7b7; color: #065f46; }
+  .flow-box.freeze { background: #f3f4f6; border: 2px solid #9ca3af; color: #374151; }
+  .flow-box.warn { background: #fee2e2; border: 2px solid #fca5a5; color: #991b1b; }
+  .flow-arrow { font-size: 22px; color: #6b7280; line-height: 1; margin: 4px 0; }
+  .flow-label { font-size: 12px; color: #6b7280; font-weight: 600; margin: 2px 0; }
+  .flow-split { display: flex; gap: 16px; width: 100%; justify-content: center; align-items: flex-start; margin: 4px 0; }
+  .flow-branch { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .flow-branch-label { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+  .flow-branch-label.yes { background: #d1fae5; color: #065f46; }
+  .flow-branch-label.no { background: #fee2e2; color: #991b1b; }
+
+  /* INFO CARDS */
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  @media(max-width: 600px) { .info-grid { grid-template-columns: 1fr; } }
+  .info-card {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid var(--border);
+    box-shadow: 0 1px 3px rgba(0,0,0,.05);
+  }
+  .info-card .ic-icon { font-size: 28px; margin-bottom: 8px; }
+  .info-card h4 { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+  .info-card p, .info-card li { font-size: 13px; color: var(--muted); }
+  .info-card ul { padding-right: 16px; }
+  .info-card ul li { margin-bottom: 4px; }
+
+  /* FOOTER */
+  footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    padding: 24px;
+    border-top: 1px solid var(--border);
+    margin-top: 32px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🏦</div>
+  <div>
+    <h1>מדיניות הלוואות מרובות</h1>
+    <p>מדריך לנציגים — גרסה 1.0 | עדכון: יוני 2026</p>
+  </div>
+</header>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="showTab('rules')">📋 הכללים</button>
+  <button class="tab-btn" onclick="showTab('flow')">🔀 תרשים זרימה</button>
+  <button class="tab-btn" onclick="showTab('scenarios')">📊 תרחישים</button>
+  <button class="tab-btn" onclick="showTab('calc')">🧮 בודק מצב לווה</button>
+</div>
+
+<main>
+
+<!-- TAB 1: RULES -->
+<div class="tab-panel active" id="tab-rules">
+  <div class="section-title"><span class="icon">📋</span> הכללים הבסיסיים</div>
+
+  <div class="rule-box">
+    <h3>⚖️ כלל מספר הלוואות</h3>
+    <ul>
+      <li>לווה יכול להחזיק <span class="rule-highlight">עד 3 הלוואות פעילות</span> בו זמנית</li>
+      <li>הלוואה 4 ומעלה — <strong>מוקפאת אוטומטית</strong> עד שאחת מה-3 הפעילות מסתיימת</li>
+      <li>כשהלוואה פעילה מסתיימת, <strong>ההלוואה המוקפאת הבאה מופעלת אוטומטית</strong></li>
+    </ul>
+  </div>
+
+  <div class="rule-box">
+    <h3>❄️ כלל הקפאת הלוואה קטנה</h3>
+    <ul>
+      <li>כאשר יש ל-3 מקומות פעילים — <strong>ההלוואה עם הסכום הנמוך ביותר מוקפאת</strong></li>
+      <li>הגיון: כדי לא להקפיא את ההתחייבות הגדולה של הלווה</li>
+      <li>דוגמה: 3 הלוואות של 50,000 ₪ + הלוואה של 150,000 ₪ → ההלוואה של 50,000 ₪ מוקפאת</li>
+    </ul>
+  </div>
+
+  <div class="info-grid">
+    <div class="info-card">
+      <div class="ic-icon">⏸️</div>
+      <h4>מה קורה בהקפאה?</h4>
+      <ul>
+        <li>ההחזרים החודשיים מושהים</li>
+        <li>הריבית — לפי נהלי העמותה</li>
+        <li>הלווה מקבל הודעה על ההקפאה</li>
+        <li>ההקפאה תסתיים ברגע שמקום מתפנה</li>
+      </ul>
+    </div>
+    <div class="info-card">
+      <div class="ic-icon">▶️</div>
+      <h4>מה קורה בהפשרה?</h4>
+      <ul>
+        <li>הלווה מקבל הודעה על ההפשרה</li>
+        <li>ההחזרים מתחדשים מהחודש הבא</li>
+        <li>בודקים שוב אם יש הלוואות מוקפאות נוספות</li>
+      </ul>
+    </div>
+    <div class="info-card">
+      <div class="ic-icon">🏆</div>
+      <h4>סדר עדיפויות — איזו מוקפאת?</h4>
+      <ul>
+        <li><strong>ראשון:</strong> הסכום הנמוך ביותר</li>
+        <li><strong>שוויון בסכום:</strong> ההלוואה האחרונה שנפתחה</li>
+        <li><strong>מקרה קיצון:</strong> שאלו מנהל</li>
+      </ul>
+    </div>
+    <div class="info-card">
+      <div class="ic-icon">✅</div>
+      <h4>מתי אישור הלוואה חדשה?</h4>
+      <ul>
+        <li>פחות מ-3 הלוואות פעילות — ניתן לאשר ישירות</li>
+        <li>בדיוק 3 פעילות — מוקפאת אוטומטית</li>
+        <li>כבר יש מוקפאת — לא ניתן לפתוח נוספת</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: FLOW -->
+<div class="tab-panel" id="tab-flow">
+  <div class="section-title"><span class="icon">🔀</span> תרשים זרימה — תהליך אישור הלוואה חדשה</div>
+
+  <div class="flow-wrap">
+    <div class="flow">
+      <div class="flow-box start">לווה מבקש הלוואה חדשה</div>
+      <div class="flow-arrow">↓</div>
+
+      <div class="flow-box decision">כמה הלוואות פעילות יש ללווה כעת?</div>
+      <div class="flow-arrow">↓</div>
+
+      <div class="flow-split">
+        <div class="flow-branch">
+          <div class="flow-branch-label yes">0–2 הלוואות</div>
+          <div class="flow-arrow">↓</div>
+          <div class="flow-box ok">✅ אפשר לאשר<br><small style="font-weight:400">הלוואה מופעלת מיד</small></div>
+        </div>
+        <div class="flow-branch">
+          <div class="flow-branch-label" style="background:#fef3c7;color:#78350f;">3 הלוואות</div>
+          <div class="flow-arrow">↓</div>
+          <div class="flow-box decision">יש כבר הלוואה מוקפאת?</div>
+          <div class="flow-arrow">↓</div>
+          <div class="flow-split">
+            <div class="flow-branch">
+              <div class="flow-branch-label no">כן</div>
+              <div class="flow-arrow">↓</div>
+              <div class="flow-box warn">🚫 לא ניתן לפתוח<br><small style="font-weight:400">כבר יש הלוואה בהמתנה</small></div>
+            </div>
+            <div class="flow-branch">
+              <div class="flow-branch-label yes">לא</div>
+              <div class="flow-arrow">↓</div>
+              <div class="flow-box decision">מהי ההלוואה עם הסכום הנמוך ביותר?</div>
+              <div class="flow-arrow">↓</div>
+              <div class="flow-box freeze">❄️ מקפיאים את הסכום הנמוך<br><small style="font-weight:400">מפעילים את ההלוואה החדשה</small></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-arrow">↓</div>
+      <div class="flow-box decision" style="margin-top:8px">הלוואה פעילה הסתיימה? (פירעון מלא)</div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-box ok">▶️ ההלוואה המוקפאת מופשרת<br><small style="font-weight:400">החזרים מתחדשים מהחודש הבא</small></div>
+    </div>
+  </div>
+
+  <div style="margin-top:24px">
+    <div class="section-title"><span class="icon">❄️</span> תרשים זרימה — קביעת איזו הלוואה מוקפאת</div>
+    <div class="flow-wrap">
+      <div class="flow">
+        <div class="flow-box start">יש 3 הלוואות פעילות + בקשה חדשה</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-box decision">מה סכומי ה-4 ההלוואות?</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-box decision">מיינו מהקטן לגדול — מי הקטן ביותר?</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-split">
+          <div class="flow-branch">
+            <div class="flow-branch-label" style="background:#fef3c7;color:#78350f;">יש סכום קטן אחד בלבד</div>
+            <div class="flow-arrow">↓</div>
+            <div class="flow-box freeze">❄️ מקפיאים אותו</div>
+          </div>
+          <div class="flow-branch">
+            <div class="flow-branch-label" style="background:#fef3c7;color:#78350f;">שוויון בסכום הקטן ביותר</div>
+            <div class="flow-arrow">↓</div>
+            <div class="flow-box freeze">❄️ מקפיאים את האחרונה שנפתחה</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 3: SCENARIOS -->
+<div class="tab-panel" id="tab-scenarios">
+  <div class="section-title"><span class="icon">📊</span> תרחישים — דוגמאות לנציגים</div>
+
+  <table class="scenarios">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>תיאור המצב</th>
+        <th>ההלוואות הקיימות</th>
+        <th>ההחלטה</th>
+        <th>הסבר</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>1</strong></td>
+        <td>לווה עם הלוואה אחת מבקש הלוואה שנייה</td>
+        <td>
+          <span class="badge active">פעיל</span> 30,000 ₪<br>
+          <span class="badge pending">חדשה</span> 50,000 ₪
+        </td>
+        <td><strong style="color:#065f46">✅ אשר</strong></td>
+        <td>יש פחות מ-3 פעילות — אפשר להוסיף</td>
+      </tr>
+      <tr>
+        <td><strong>2</strong></td>
+        <td>לווה עם 3 הלוואות שוות מבקש הלוואה נוספת</td>
+        <td>
+          <span class="badge active">פעיל</span> 50,000 ₪<br>
+          <span class="badge active">פעיל</span> 50,000 ₪<br>
+          <span class="badge active">פעיל</span> 50,000 ₪<br>
+          <span class="badge pending">חדשה</span> 20,000 ₪
+        </td>
+        <td><strong style="color:#065f46">✅ אשר + הקפא</strong></td>
+        <td>ההלוואה החדשה (20,000 ₪) היא הקטנה — מוקפאת. 3 ה-50,000 ממשיכות</td>
+      </tr>
+      <tr>
+        <td><strong>3</strong></td>
+        <td>לווה עם 3 הלוואות + הלוואה גדולה חדשה</td>
+        <td>
+          <span class="badge active">פעיל</span> 50,000 ₪<br>
+          <span class="badge active">פעיל</span> 50,000 ₪<br>
+          <span class="badge active">פעיל</span> 50,000 ₪<br>
+          <span class="badge pending">חדשה</span> 150,000 ₪
+        </td>
+        <td><strong style="color:#065f46">✅ אשר + הקפא</strong></td>
+        <td>150,000 ₪ הגדולה — פעילה. אחת מה-50,000 (האחרונה שנפתחה) — מוקפאת</td>
+      </tr>
+      <tr>
+        <td><strong>4</strong></td>
+        <td>לווה עם הלוואות שונות + בקשה חדשה</td>
+        <td>
+          <span class="badge active">פעיל</span> 100,000 ₪<br>
+          <span class="badge active">פעיל</span> 80,000 ₪<br>
+          <span class="badge active">פעיל</span> 30,000 ₪<br>
+          <span class="badge pending">חדשה</span> 60,000 ₪
+        </td>
+        <td><strong style="color:#065f46">✅ אשר + הקפא</strong></td>
+        <td>30,000 ₪ הקטנה — מוקפאת. 100,000, 80,000, 60,000 פעילות</td>
+      </tr>
+      <tr>
+        <td><strong>5</strong></td>
+        <td>לווה עם 3 הלוואות + כבר יש מוקפאת</td>
+        <td>
+          <span class="badge active">פעיל</span> 70,000 ₪<br>
+          <span class="badge active">פעיל</span> 60,000 ₪<br>
+          <span class="badge active">פעיל</span> 40,000 ₪<br>
+          <span class="badge frozen">מוקפא</span> 20,000 ₪
+        </td>
+        <td><strong style="color:#991b1b">🚫 דחה</strong></td>
+        <td>כבר יש 3 פעילות + מוקפאת. לא ניתן לפתוח עוד הלוואה</td>
+      </tr>
+      <tr>
+        <td><strong>6</strong></td>
+        <td>הלוואה פעילה הסתיימה, יש מוקפאת</td>
+        <td>
+          <span class="badge frozen">הסתיים</span> 40,000 ₪ ✓<br>
+          <span class="badge active">פעיל</span> 80,000 ₪<br>
+          <span class="badge active">פעיל</span> 60,000 ₪<br>
+          <span class="badge frozen">מוקפא</span> 20,000 ₪
+        </td>
+        <td><strong style="color:#c27803">▶️ הפשר</strong></td>
+        <td>ה-40,000 הסתיימה — 20,000 המוקפאת מופשרת ומתחילה שוב</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:16px 20px;font-size:13px;">
+    <strong>⚠️ תזכורת לנציגים:</strong> לפני כל אישור — בדקו בדיוק כמה הלוואות פעילות ומוקפאות יש ללווה במערכת. אל תסמכו על זיכרון.
+  </div>
+</div>
+
+<!-- TAB 4: CALCULATOR -->
+<div class="tab-panel" id="tab-calc">
+  <div class="section-title"><span class="icon">🧮</span> בודק מצב לווה</div>
+  <p style="color:var(--muted);font-size:13px;margin-bottom:20px;">הכניסו את ההלוואות הקיימות של הלווה כולל ההלוואה החדשה המבוקשת — המערכת תסביר מה לעשות.</p>
+
+  <div class="calc-card">
+    <h3>📝 הלוואות הלווה</h3>
+    <div class="loan-input-list" id="loanList">
+      <!-- rows injected by JS -->
+    </div>
+    <button class="btn btn-add" onclick="addLoan()">+ הוסף הלוואה</button>
+    <div>
+      <button class="btn btn-primary" onclick="calculate()">בדוק מצב</button>
+    </div>
+    <div id="result" style="display:none" class="result-box">
+      <h4 id="resultTitle"></h4>
+      <div id="resultItems"></div>
+      <div class="result-summary" id="resultSummary"></div>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<footer>
+  מדריך זה מיועד לנציגי העמותה בלבד | עדכון אחרון: יוני 2026
+</footer>
+
+<script>
+// TABS
+function showTab(id) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  event.target.classList.add('active');
+}
+
+// CALCULATOR
+let loanCount = 0;
+
+function addLoan(amount = '', status = 'existing') {
+  loanCount++;
+  const id = loanCount;
+  const list = document.getElementById('loanList');
+  const row = document.createElement('div');
+  row.className = 'loan-input-row';
+  row.id = 'loan-' + id;
+  row.innerHTML = `
+    <label>הלוואה ${id}
+      <select style="margin-top:4px;width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;direction:rtl;" id="status-${id}">
+        <option value="existing" ${status==='existing'?'selected':''}>קיימת ופעילה</option>
+        <option value="new" ${status==='new'?'selected':''}>חדשה (בבקשה)</option>
+      </select>
+    </label>
+    <div>
+      <label style="font-size:12px;color:#6b7280">סכום (₪)</label>
+      <input type="number" id="amount-${id}" placeholder="0" value="${amount}" min="0" step="1000">
+    </div>
+    <button class="btn btn-danger btn-sm" onclick="removeLoan(${id})">✕</button>
+  `;
+  list.appendChild(row);
+}
+
+function removeLoan(id) {
+  const el = document.getElementById('loan-' + id);
+  if (el) el.remove();
+}
+
+function calculate() {
+  const loans = [];
+  document.querySelectorAll('.loan-input-row').forEach(row => {
+    const id = row.id.replace('loan-', '');
+    const amount = parseFloat(document.getElementById('amount-' + id)?.value) || 0;
+    const status = document.getElementById('status-' + id)?.value;
+    if (amount > 0) loans.push({ id, amount, status, label: `הלוואה ${id}` });
+  });
+
+  if (loans.length === 0) { alert('הכניסו לפחות הלוואה אחת'); return; }
+
+  const existing = loans.filter(l => l.status === 'existing').sort((a,b) => a.amount - b.amount);
+  const newLoans = loans.filter(l => l.status === 'new').sort((a,b) => b.amount - a.amount);
+
+  // combine: existing already active, new loans to be processed
+  const all = [...existing.map(l=>({...l, decision:'active'})), ...newLoans.map(l=>({...l, decision:'pending'}))];
+
+  // Process: max 3 active
+  let activeCount = existing.length;
+  let frozen = [];
+  let result = existing.map(l => ({...l, decision:'active'}));
+
+  // check if already over 3 existing
+  if (activeCount > 3) {
+    // freeze smallest existing
+    result.sort((a,b) => a.amount - b.amount);
+    for (let i = 0; i < activeCount - 3; i++) {
+      result[i].decision = 'frozen';
+    }
+    activeCount = 3;
+  }
+
+  for (const nl of newLoans) {
+    if (activeCount < 3) {
+      result.push({...nl, decision:'active'});
+      activeCount++;
+    } else if (!frozen.length && !result.some(r => r.decision === 'frozen')) {
+      // need to freeze smallest among all active + this new loan
+      const candidates = [...result.filter(r=>r.decision==='active'), {...nl, decision:'pending'}];
+      candidates.sort((a,b) => a.amount - b.amount);
+      const toFreeze = candidates[0];
+      if (toFreeze.id === nl.id) {
+        result.push({...nl, decision:'frozen'});
+      } else {
+        const idx = result.findIndex(r => r.id === toFreeze.id);
+        if (idx >= 0) result[idx].decision = 'frozen';
+        result.push({...nl, decision:'active'});
+      }
+      frozen.push(toFreeze);
+    } else {
+      result.push({...nl, decision:'rejected'});
+    }
+  }
+
+  // display
+  const resultDiv = document.getElementById('result');
+  const titleEl = document.getElementById('resultTitle');
+  const itemsEl = document.getElementById('resultItems');
+  const summaryEl = document.getElementById('resultSummary');
+
+  const activeOnes = result.filter(r=>r.decision==='active');
+  const frozenOnes = result.filter(r=>r.decision==='frozen');
+  const rejectedOnes = result.filter(r=>r.decision==='rejected');
+
+  const newActive = result.filter(r=>r.decision==='active' && r.status==='new');
+  const newFrozen = result.filter(r=>r.decision==='frozen' && r.status==='new');
+  const existingFrozen = result.filter(r=>r.decision==='frozen' && r.status==='existing');
+
+  if (rejectedOnes.length) {
+    titleEl.textContent = '🚫 לא ניתן לאשר — יש מגבלה פעילה';
+    titleEl.style.color = '#991b1b';
+  } else if (frozenOnes.length) {
+    titleEl.textContent = '⚠️ אפשר לאשר — עם הקפאה';
+    titleEl.style.color = '#c27803';
+  } else {
+    titleEl.textContent = '✅ אפשר לאשר — ללא הקפאה';
+    titleEl.style.color = '#065f46';
+  }
+
+  itemsEl.innerHTML = result.sort((a,b) => {
+    const o = {active:0, frozen:1, rejected:2};
+    return o[a.decision] - o[b.decision];
+  }).map(l => `
+    <div class="result-item">
+      <div>
+        <div class="loan-name">${l.label} — ${l.amount.toLocaleString()} ₪</div>
+        <div class="loan-info">${l.status === 'new' ? '🆕 בקשה חדשה' : '📄 קיימת'}</div>
+      </div>
+      <span class="badge ${l.decision === 'active' ? 'active' : l.decision === 'frozen' ? 'frozen' : 'pending'}">
+        ${l.decision === 'active' ? '✅ פעיל' : l.decision === 'frozen' ? '❄️ מוקפא' : '🚫 נדחה'}
+      </span>
+    </div>
+  `).join('');
+
+  let summary = '';
+  if (rejectedOnes.length) {
+    summary = `<strong>לא ניתן לפתוח הלוואה נוספת</strong> — כבר יש ${activeOnes.length} פעילות ו-${frozenOnes.length} מוקפאות. יש להמתין לסיום הלוואה פעילה תחילה.`;
+  } else {
+    summary = `<strong>סיכום:</strong> ${activeOnes.length} הלוואות פעילות`;
+    if (frozenOnes.length) summary += ` | ${frozenOnes.length} מוקפאות`;
+    if (newActive.length) summary += ` | ${newActive.length} חדשה מאושרת`;
+    if (newFrozen.length) summary += ` — ההלוואה החדשה מוקפאת כי סכומה נמוך`;
+    if (existingFrozen.length) summary += ` — הלוואה קיימת מוקפאת כי סכומה הנמוך ביותר`;
+  }
+  summaryEl.innerHTML = summary;
+
+  resultDiv.style.display = 'block';
+  resultDiv.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+// init with 2 loans
+addLoan(50000, 'existing');
+addLoan(80000, 'existing');
+addLoan(150000, 'new');
+</script>
+</body>
+</html>
