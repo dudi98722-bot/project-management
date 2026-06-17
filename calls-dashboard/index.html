@@ -299,6 +299,45 @@
 
 </div>
 
+  <!-- Session Analysis Section -->
+  <div class="section-title">⏱️ ניתוח שיחות לפי סשן (טווח שעה)</div>
+
+  <div class="kosher-cards" style="grid-template-columns:repeat(4,1fr)">
+    <div class="card blue">
+      <div class="card-label">סשנים ייחודיים</div>
+      <div class="card-value">1,363</div>
+      <div class="card-sub">קריאות מאוחדות בטווח שעה</div>
+    </div>
+    <div class="card green">
+      <div class="card-label">סשנים שנענו</div>
+      <div class="card-value">926</div>
+      <div class="card-sub">67.9% מכלל הסשנים</div>
+    </div>
+    <div class="card red">
+      <div class="card-label">סשנים שהוחמצו</div>
+      <div class="card-value">437</div>
+      <div class="card-sub">32.1% – לא נענו כלל</div>
+    </div>
+    <div class="card orange">
+      <div class="card-label">התקשרו כמה פעמים ולא נענו</div>
+      <div class="card-value">105</div>
+      <div class="card-sub">ניסו שוב ושוב – הוחמצו לחלוטין</div>
+    </div>
+  </div>
+
+  <div class="chart-box chart-full" style="margin-bottom:20px">
+    <div class="chart-title"><span class="dot red"></span> שיחות שהוחמצו לפי יום (ספירת סשנים ייחודיים)</div>
+    <canvas id="sessionChart"></canvas>
+  </div>
+
+  <div style="margin-bottom:20px">
+    <div class="insight-box" style="border-color:rgba(237,137,54,0.4);background:rgba(237,137,54,0.07);color:#f6ad55">
+      <strong>מה זה אומר?</strong> במקום לספור כל חיוג בנפרד, מספרים שהתקשרו כמה פעמים באותה שעה נספרים פעם אחת.
+      <br>נמצאו <strong>1,363 ניסיונות יצירת קשר ייחודיים</strong> – מתוכם <strong>437 (32.1%) הוחמצו לחלוטין</strong>.
+      <br>489 סשנים כללו יותר מניסיון אחד (קראו כמה פעמים) – מתוכם <strong>105 הוחמצו גם אחרי ניסיונות חוזרים</strong>.
+    </div>
+  </div>
+
   <!-- Kosher Section -->
   <div class="section-title">📱 ניתוח טלפונים כשרים</div>
 
@@ -492,6 +531,27 @@ new Chart(document.getElementById('rateChart'), {
     scales: {
       x: { ...chartDefaults.scales.x, ticks: { color: '#718096', font: { size: 10 }, maxRotation: 45 } },
       y: { ...chartDefaults.scales.y, min: 0, max: 100, title: { display: true, text: '%', color: '#718096' } }
+    }
+  }
+});
+
+// Session chart
+const sessionData = [{"date":"2026-05-01","total":7,"answered":3,"missed":4},{"date":"2026-05-02","total":5,"answered":0,"missed":5},{"date":"2026-05-03","total":49,"answered":37,"missed":12},{"date":"2026-05-04","total":63,"answered":47,"missed":16},{"date":"2026-05-05","total":89,"answered":64,"missed":25},{"date":"2026-05-06","total":43,"answered":34,"missed":9},{"date":"2026-05-07","total":33,"answered":25,"missed":8},{"date":"2026-05-08","total":11,"answered":5,"missed":6},{"date":"2026-05-09","total":7,"answered":0,"missed":7},{"date":"2026-05-10","total":54,"answered":38,"missed":16},{"date":"2026-05-11","total":57,"answered":42,"missed":15},{"date":"2026-05-12","total":67,"answered":51,"missed":16},{"date":"2026-05-13","total":59,"answered":42,"missed":17},{"date":"2026-05-14","total":47,"answered":35,"missed":12},{"date":"2026-05-15","total":8,"answered":1,"missed":7},{"date":"2026-05-16","total":3,"answered":0,"missed":3},{"date":"2026-05-17","total":79,"answered":54,"missed":25},{"date":"2026-05-18","total":70,"answered":50,"missed":20},{"date":"2026-05-19","total":54,"answered":41,"missed":13},{"date":"2026-05-20","total":62,"answered":37,"missed":25},{"date":"2026-05-21","total":12,"answered":6,"missed":6},{"date":"2026-05-23","total":10,"answered":0,"missed":10},{"date":"2026-05-24","total":86,"answered":55,"missed":31},{"date":"2026-05-25","total":89,"answered":59,"missed":30},{"date":"2026-05-26","total":65,"answered":47,"missed":18},{"date":"2026-05-27","total":67,"answered":44,"missed":23},{"date":"2026-05-28","total":69,"answered":45,"missed":24},{"date":"2026-05-29","total":12,"answered":8,"missed":4},{"date":"2026-05-30","total":11,"answered":0,"missed":11},{"date":"2026-05-31","total":75,"answered":56,"missed":19}];
+const sessLabels = sessionData.map(d => { const p=d.date.split('-'); return `${parseInt(p[2])}/${parseInt(p[1])}`; });
+new Chart(document.getElementById('sessionChart'), {
+  type: 'bar',
+  data: {
+    labels: sessLabels,
+    datasets: [
+      { label: 'נענו', data: sessionData.map(d=>d.answered), backgroundColor: 'rgba(72,187,120,0.7)', borderRadius: 4 },
+      { label: 'הוחמצו', data: sessionData.map(d=>d.missed), backgroundColor: 'rgba(252,129,129,0.8)', borderRadius: 4 }
+    ]
+  },
+  options: {
+    ...chartDefaults,
+    scales: {
+      x: { ...chartDefaults.scales.x, stacked: true },
+      y: { ...chartDefaults.scales.y, stacked: true, title: { display: true, text: 'סשנים ייחודיים', color: '#718096' } }
     }
   }
 });
