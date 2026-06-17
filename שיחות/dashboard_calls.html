@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ניתוח שיחות - מאי 2026</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #0f1117;
+    color: #e2e8f0;
+    direction: rtl;
+    min-height: 100vh;
+  }
+  header {
+    background: linear-gradient(135deg, #1a1f2e 0%, #16213e 50%, #0f3460 100%);
+    padding: 28px 40px;
+    border-bottom: 1px solid #2d3748;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+  }
+  header .icon { font-size: 36px; }
+  header h1 { font-size: 26px; font-weight: 700; color: #fff; }
+  header p { font-size: 14px; color: #a0aec0; margin-top: 4px; }
+
+  .main { padding: 30px 40px; max-width: 1400px; margin: 0 auto; }
+
+  /* Summary Cards */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 30px;
+  }
+  .card {
+    background: #1a1f2e;
+    border: 1px solid #2d3748;
+    border-radius: 12px;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; right: 0;
+    width: 4px; height: 100%;
+    border-radius: 0 12px 12px 0;
+  }
+  .card.blue::before { background: #4299e1; }
+  .card.green::before { background: #48bb78; }
+  .card.orange::before { background: #ed8936; }
+  .card.red::before { background: #fc8181; }
+  .card.purple::before { background: #9f7aea; }
+  .card.teal::before { background: #38b2ac; }
+
+  .card-label { font-size: 12px; color: #718096; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .card-value { font-size: 32px; font-weight: 800; line-height: 1; }
+  .card.blue .card-value { color: #63b3ed; }
+  .card.green .card-value { color: #68d391; }
+  .card.orange .card-value { color: #f6ad55; }
+  .card.red .card-value { color: #fc8181; }
+  .card.purple .card-value { color: #b794f4; }
+  .card.teal .card-value { color: #4fd1c5; }
+  .card-sub { font-size: 12px; color: #718096; margin-top: 6px; }
+
+  /* Charts Grid */
+  .charts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+  .chart-full { grid-column: 1 / -1; }
+
+  .chart-box {
+    background: #1a1f2e;
+    border: 1px solid #2d3748;
+    border-radius: 12px;
+    padding: 24px;
+  }
+  .chart-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #cbd5e0;
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .chart-title .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .chart-title .dot.blue { background: #4299e1; }
+  .chart-title .dot.green { background: #48bb78; }
+  .chart-title .dot.orange { background: #ed8936; }
+  .chart-title .dot.purple { background: #9f7aea; }
+
+  canvas { max-height: 300px; }
+
+  /* Bottom row: 3 cols */
+  .charts-row3 {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+
+  /* Missed analysis special card */
+  .missed-breakdown {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 8px;
+  }
+  .missed-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+  }
+  .missed-item.lost { background: rgba(252,129,129,0.1); border: 1px solid rgba(252,129,129,0.25); }
+  .missed-item.back { background: rgba(72,187,120,0.1); border: 1px solid rgba(72,187,120,0.25); }
+  .missed-item .label { color: #a0aec0; }
+  .missed-item.lost .count { color: #fc8181; font-size: 22px; font-weight: 800; }
+  .missed-item.back .count { color: #68d391; font-size: 22px; font-weight: 800; }
+
+  .insight-box {
+    background: rgba(159,122,234,0.08);
+    border: 1px solid rgba(159,122,234,0.25);
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-size: 13px;
+    color: #b794f4;
+    margin-top: 12px;
+    line-height: 1.6;
+  }
+  .insight-box strong { color: #d6bcfa; }
+
+    /* Kosher section */
+  .section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #718096;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin: 10px 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #2d3748;
+  }
+  .kosher-cards {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .card.gold::before { background: #f6e05e; }
+  .card.gold .card-value { color: #f6e05e; }
+  .card.gray::before { background: #718096; }
+  .card.gray .card-value { color: #a0aec0; }
+
+  .kosher-charts {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+  .provider-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .provider-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13px;
+  }
+  .provider-bar-wrap {
+    flex: 1;
+    height: 6px;
+    background: #2d3748;
+    border-radius: 3px;
+    margin: 0 10px;
+    overflow: hidden;
+  }
+  .provider-bar { height: 100%; border-radius: 3px; background: #f6e05e; }
+  .provider-name { color: #a0aec0; min-width: 80px; text-align: right; }
+  .provider-count { color: #e2e8f0; font-weight: 600; min-width: 36px; text-align: left; }
+
+  footer {
+    text-align: center;
+    padding: 20px;
+    color: #4a5568;
+    font-size: 12px;
+    border-top: 1px solid #1a1f2e;
+    margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="icon">📞</div>
+  <div>
+    <h1>ניתוח שיחות נכנסות</h1>
+    <p>מאי 2026 &nbsp;|&nbsp; 1 במאי – 31 במאי</p>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- Summary Cards -->
+  <div class="cards">
+    <div class="card blue">
+      <div class="card-label">סה"כ שיחות נכנסות</div>
+      <div class="card-value">2,173</div>
+      <div class="card-sub">מ-1,062 מתקשרים ייחודיים</div>
+    </div>
+    <div class="card green">
+      <div class="card-label">מתקשרים שקיבלו מענה</div>
+      <div class="card-value">742</div>
+      <div class="card-sub">69.9% מכלל המתקשרים</div>
+    </div>
+    <div class="card orange">
+      <div class="card-label">שיחות שלא נענו</div>
+      <div class="card-value">320</div>
+      <div class="card-sub">30.1% מכלל המתקשרים</div>
+    </div>
+    <div class="card red">
+      <div class="card-label">אבדו לחלוטין</div>
+      <div class="card-value">306</div>
+      <div class="card-sub">לא נענו ולא חזרו אליהם</div>
+    </div>
+    <div class="card teal">
+    <div class="card-label">חזרו אל המתקשר</div>
+      <div class="card-value">14</div>
+      <div class="card-sub">4.4% מהשיחות שהוחמצו</div>
+    </div>
+    <div class="card purple">
+      <div class="card-label">ממוצע משך שיחה</div>
+      <div class="card-value">2:11</div>
+      <div class="card-sub">דקות:שניות לשיחה שנענתה</div>
+    </div>
+  </div>
+
+  <!-- Daily Calls Chart (full width) -->
+  <div class="chart-box chart-full" style="margin-bottom:20px">
+    <div class="chart-title"><span class="dot blue"></span> שיחות לפי יום – נענו מול לא נענו</div>
+    <canvas id="dailyChart"></canvas>
+  </div>
+
+  <!-- Row 2: Hourly + Avg Duration -->
+  <div class="charts-grid">
+    <div class="chart-box">
+      <div class="chart-title"><span class="dot purple"></span> שיחות לפי שעה</div>
+      <canvas id="hourlyChart"></canvas>
+    </div>
+    <div class="chart-box">
+      <div class="chart-title"><span class="dot teal"></span> ממוצע משך שיחה לפי יום (שניות)</div>
+      <canvas id="durationChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Row 3: Answer rate + Missed breakdown -->
+  <div class="charts-row3">
+    <div class="chart-box">
+      <div class="chart-title"><span class="dot green"></span> אחוז מענה יומי</div>
+      <canvas id="rateChart"></canvas>
+    </div>
+    <div class="chart-box">
+      <div class="chart-title"><span class="dot red"></span> ניתוח שיחות שלא נענו</div>
+      <div class="missed-breakdown">
+        <div class="missed-item lost">
+          <span class="label">אבדו לחלוטין (לא חזרו)</span>
+          <span class="count">306</span>
+        </div>
+        <div class="missed-item back">
+          <span class="label">חזרו למתקשר</span>
+          <span class="count">14</span>
+        </div>
+      </div>
+      <canvas id="missedPie" style="max-height:180px;margin-top:16px"></canvas>
+      <div class="insight-box">
+        מתוך <strong>320</strong> מתקשרים שלא קיבלו מענה,<br>
+        רק <strong>14 (4.4%)</strong> קיבלו חזרה –<br>
+        <strong>306 מתקשרים (95.6%) אבדו לחלוטין.</strong>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+  <!-- Kosher Section -->
+  <div class="section-title">📱 ניתוח טלפונים כשרים</div>
+
+  <div class="kosher-cards">
+    <div class="card gold">
+      <div class="card-label">שיחות מטלפון כשר</div>
+      <div class="card-value">1,728</div>
+      <div class="card-sub">79.5% מכלל השיחות</div>
+    </div>
+    <div class="card red">
+      <div class="card-label">שיחות מטלפון לא כשר</div>
+      <div class="card-value">436</div>
+      <div class="card-sub">20.1% מכלל השיחות</div>
+    </div>
+    <div class="card gold">
+      <div class="card-label">מתקשרים עם טלפון כשר</div>
+      <div class="card-value">802</div>
+      <div class="card-sub">75.6% מהמתקשרים הייחודיים</div>
+    </div>
+    <div class="card red">
+      <div class="card-label">מתקשרים עם טלפון לא כשר</div>
+      <div class="card-value">259</div>
+      <div class="card-sub">24.4% מהמתקשרים הייחודיים</div>
+    </div>
+  </div>
+
+  <div class="kosher-charts">
+    <div class="chart-box">
+      <div class="chart-title"><span class="dot" style="background:#f6e05e"></span> כשר מול לא כשר (שיחות)</div>
+      <canvas id="kosherPie" style="max-height:220px"></canvas>
+    </div>
+    <div class="chart-box">
+      <div class="chart-title"><span class="dot" style="background:#f6e05e"></span> כשר מול לא כשר (מתקשרים ייחודיים)</div>
+      <canvas id="kosherUniqPie" style="max-height:220px"></canvas>
+    </div>
+    <div class="chart-box">
+      <div class="chart-title"><span class="dot" style="background:#f6e05e"></span> פירוט ספקים כשרים</div>
+      <div class="provider-list" id="providerList"></div>
+    </div>
+  </div>
+
+</div>
+
+<footer>נוצר אוטומטית מקובץ ReportCdrs מאי 2026</footer>
+
+<script>
+const daily = [{"date":"2026-05-01","total":10,"unique":7,"answered":3,"missed":4,"avg_dur":154},{"date":"2026-05-02","total":10,"unique":5,"answered":0,"missed":5,"avg_dur":0},{"date":"2026-05-03","total":73,"unique":48,"answered":35,"missed":13,"avg_dur":126},{"date":"2026-05-04","total":105,"unique":59,"answered":45,"missed":14,"avg_dur":123},{"date":"2026-05-05","total":151,"unique":85,"answered":61,"missed":24,"avg_dur":139},{"date":"2026-05-06","total":64,"unique":41,"answered":32,"missed":9,"avg_dur":118},{"date":"2026-05-07","total":51,"unique":33,"answered":25,"missed":8,"avg_dur":139},{"date":"2026-05-08","total":18,"unique":10,"answered":5,"missed":5,"avg_dur":56},{"date":"2026-05-09","total":9,"unique":7,"answered":0,"missed":7,"avg_dur":0},{"date":"2026-05-10","total":90,"unique":52,"answered":38,"missed":14,"avg_dur":119},{"date":"2026-05-11","total":105,"unique":52,"answered":39,"missed":13,"avg_dur":136},{"date":"2026-05-12","total":102,"unique":64,"answered":49,"missed":15,"avg_dur":139},{"date":"2026-05-13","total":82,"unique":58,"answered":41,"missed":17,"avg_dur":125},{"date":"2026-05-14","total":71,"unique":47,"answered":35,"missed":12,"avg_dur":88},{"date":"2026-05-15","total":18,"unique":7,"answered":1,"missed":6,"avg_dur":81},{"date":"2026-05-16","total":3,"unique":3,"answered":0,"missed":3,"avg_dur":0},{"date":"2026-05-17","total":115,"unique":71,"answered":49,"missed":22,"avg_dur":139},{"date":"2026-05-18","total":108,"unique":68,"answered":48,"missed":20,"avg_dur":126},{"date":"2026-05-19","total":91,"unique":52,"answered":39,"missed":13,"avg_dur":160},{"date":"2026-05-20","total":112,"unique":60,"answered":36,"missed":24,"avg_dur":138},{"date":"2026-05-21","total":28,"unique":10,"answered":5,"missed":5,"avg_dur":134},{"date":"2026-05-23","total":11,"unique":10,"answered":0,"missed":10,"avg_dur":280},{"date":"2026-05-24","total":137,"unique":75,"answered":47,"missed":28,"avg_dur":132},{"date":"2026-05-25","total":151,"unique":83,"answered":56,"missed":27,"avg_dur":119},{"date":"2026-05-26","total":108,"unique":61,"answered":44,"missed":17,"avg_dur":148},{"date":"2026-05-27","total":105,"unique":63,"answered":40,"missed":23,"avg_dur":176},{"date":"2026-05-28","total":90,"unique":66,"answered":45,"missed":21,"avg_dur":180},{"date":"2026-05-29","total":18,"unique":12,"answered":8,"missed":4,"avg_dur":93},{"date":"2026-05-30","total":24,"unique":10,"answered":0,"missed":10,"avg_dur":0},{"date":"2026-05-31","total":113,"unique":65,"answered":48,"missed":17,"avg_dur":122}];
+
+const hourly = {"0":199,"1":185,"2":34,"3":6,"4":2,"6":8,"7":6,"8":1,"9":12,"10":17,"11":37,"12":87,"13":133,"14":148,"15":73,"16":91,"17":97,"18":95,"19":104,"20":161,"21":197,"22":258,"23":222};
+
+// Format date labels
+const labels = daily.map(d => {
+  const parts = d.date.split('-');
+  return `${parseInt(parts[2])}/${parseInt(parts[1])}`;
+});
+
+const chartDefaults = {
+  responsive: true,
+  maintainAspectRatio: true,
+  plugins: {
+    legend: { labels: { color: '#a0aec0', font: { family: 'Segoe UI, Arial' } } },
+    tooltip: {
+      backgroundColor: '#1a1f2e',
+      borderColor: '#4a5568',
+      borderWidth: 1,
+      titleColor: '#e2e8f0',
+      bodyColor: '#a0aec0',
+      rtl: true,
+    }
+  },
+  scales: {
+    x: { ticks: { color: '#718096', font: { size: 11 } }, grid: { color: '#2d3748' } },
+    y: { ticks: { color: '#718096' }, grid: { color: '#2d3748' } }
+  }
+};
+
+// 1. Daily stacked bar
+new Chart(document.getElementById('dailyChart'), {
+  type: 'bar',
+  data: {
+    labels,
+    datasets: [
+      {
+        label: 'נענו',
+        data: daily.map(d => d.answered),
+        backgroundColor: 'rgba(72,187,120,0.75)',
+        borderRadius: 4,
+      },
+      {
+        label: 'לא נענו',
+        data: daily.map(d => d.missed),
+        backgroundColor: 'rgba(252,129,129,0.75)',
+        borderRadius: 4,
+      }
+    ]
+  },
+  options: {
+    ...chartDefaults,
+    plugins: { ...chartDefaults.plugins },
+    scales: {
+      x: { ...chartDefaults.scales.x, stacked: true },
+      y: { ...chartDefaults.scales.y, stacked: true, title: { display: true, text: 'מתקשרים ייחודיים', color: '#718096' } }
+    }
+  }
+});
+
+// 2. Hourly bar
+const hourLabels = Array.from({length: 24}, (_, i) => `${String(i).padStart(2,'0')}:00`);
+const hourData = hourLabels.map((_, i) => hourly[String(i)] || 0);
+
+new Chart(document.getElementById('hourlyChart'), {
+  type: 'bar',
+  data: {
+    labels: hourLabels,
+    datasets: [{
+      label: 'שיחות',
+      data: hourData,
+      backgroundColor: hourData.map(v => {
+        if (v >= 200) return 'rgba(159,122,234,0.85)';
+        if (v >= 100) return 'rgba(159,122,234,0.65)';
+        return 'rgba(159,122,234,0.4)';
+      }),
+      borderRadius: 3,
+    }]
+  },
+  options: {
+    ...chartDefaults,
+    plugins: { ...chartDefaults.plugins, legend: { display: false } },
+    scales: {
+      x: { ...chartDefaults.scales.x, ticks: { color: '#718096', font: { size: 9 } } },
+      y: { ...chartDefaults.scales.y }
+    }
+  }
+});
+
+// 3. Duration line chart
+const durLabels = daily.filter(d => d.avg_dur > 0).map(d => {
+  const p = d.date.split('-'); return `${parseInt(p[2])}/${parseInt(p[1])}`;
+});
+const durData = daily.filter(d => d.avg_dur > 0).map(d => d.avg_dur);
+
+new Chart(document.getElementById('durationChart'), {
+  type: 'line',
+  data: {
+    labels: durLabels,
+    datasets: [{
+      label: 'שניות',
+      data: durData,
+      borderColor: '#4fd1c5',
+      backgroundColor: 'rgba(79,209,197,0.08)',
+      fill: true,
+      tension: 0.4,
+      pointRadius: 3,
+      pointBackgroundColor: '#4fd1c5',
+    }]
+  },
+  options: {
+    ...chartDefaults,
+    plugins: { ...chartDefaults.plugins, legend: { display: false } },
+    scales: {
+      x: { ...chartDefaults.scales.x, ticks: { color: '#718096', font: { size: 9 }, maxRotation: 45 } },
+      y: { ...chartDefaults.scales.y, min: 0, title: { display: true, text: 'שניות', color: '#718096' } }
+    }
+  }
+});
+
+// 4. Answer rate line
+const rateData = daily.map(d => d.unique > 0 ? Math.round(d.answered / d.unique * 100) : 0);
+new Chart(document.getElementById('rateChart'), {
+  type: 'line',
+  data: {
+    labels,
+    datasets: [{
+      label: 'אחוז מענה %',
+      data: rateData,
+      borderColor: '#68d391',
+      backgroundColor: 'rgba(104,211,145,0.08)',
+      fill: true,
+      tension: 0.3,
+      pointRadius: 3,
+      pointBackgroundColor: '#68d391',
+    }]
+  },
+  options: {
+    ...chartDefaults,
+    plugins: { ...chartDefaults.plugins, legend: { display: false },
+      tooltip: { ...chartDefaults.plugins.tooltip,
+        callbacks: { label: ctx => `${ctx.parsed.y}% מענה` }
+      }
+    },
+    scales: {
+      x: { ...chartDefaults.scales.x, ticks: { color: '#718096', font: { size: 10 }, maxRotation: 45 } },
+      y: { ...chartDefaults.scales.y, min: 0, max: 100, title: { display: true, text: '%', color: '#718096' } }
+    }
+  }
+});
+
+// 6. Kosher pies
+const kosherColors = {
+  kosher: 'rgba(246,224,94,0.8)',
+  not: 'rgba(252,129,129,0.8)',
+  other: 'rgba(113,128,150,0.6)'
+};
+
+new Chart(document.getElementById('kosherPie'), {
+  type: 'doughnut',
+  data: {
+    labels: ['כשר (1,728)', 'לא כשר (436)', 'אחר (9)'],
+    datasets: [{ data: [1728, 436, 9],
+      backgroundColor: [kosherColors.kosher, kosherColors.not, kosherColors.other],
+      borderColor: ['#f6e05e','#fc8181','#718096'], borderWidth: 1 }]
+  },
+  options: { responsive:true, maintainAspectRatio:true, cutout:'60%',
+    plugins: { legend: { position:'bottom', labels:{ color:'#a0aec0', font:{size:11,family:'Segoe UI'}, padding:12 }},
+      tooltip:{ backgroundColor:'#1a1f2e', borderColor:'#4a5568', borderWidth:1, titleColor:'#e2e8f0', bodyColor:'#a0aec0' }}
+  }
+});
+
+new Chart(document.getElementById('kosherUniqPie'), {
+  type: 'doughnut',
+  data: {
+    labels: ['כשר (802)', 'לא כשר (259)'],
+    datasets: [{ data: [802, 259],
+      backgroundColor: [kosherColors.kosher, kosherColors.not],
+      borderColor: ['#f6e05e','#fc8181'], borderWidth: 1 }]
+  },
+  options: { responsive:true, maintainAspectRatio:true, cutout:'60%',
+    plugins: { legend: { position:'bottom', labels:{ color:'#a0aec0', font:{size:11,family:'Segoe UI'}, padding:12 }},
+      tooltip:{ backgroundColor:'#1a1f2e', borderColor:'#4a5568', borderWidth:1, titleColor:'#e2e8f0', bodyColor:'#a0aec0' }}
+  }
+});
+
+// Provider list
+const providers = [
+  {name:'פלאפון', count:421},
+  {name:'הוט מוביל', count:392},
+  {name:'רמי לוי', count:297},
+  {name:'סלקום', count:268},
+  {name:'גולן', count:192},
+  {name:'פרטנר', count:144},
+  {name:'פרי טלקום', count:11},
+  {name:'סים מהדרין', count:2},
+  {name:'נטו-פון', count:1},
+];
+const maxProv = providers[0].count;
+const provEl = document.getElementById('providerList');
+providers.forEach(p => {
+  const pct = Math.round(p.count / maxProv * 100);
+  provEl.innerHTML += `<div class="provider-row">
+    <span class="provider-name">${p.name}</span>
+    <div class="provider-bar-wrap"><div class="provider-bar" style="width:${pct}%"></div></div>
+    <span class="provider-count">${p.count}</span>
+  </div>`;
+});
+
+// 5. Missed pie
+new Chart(document.getElementById('missedPie'), {
+  type: 'doughnut',
+  data: {
+    labels: ['אבדו לחלוטין (306)', 'חזרו למתקשר (14)'],
+    datasets: [{
+      data: [306, 14],
+      backgroundColor: ['rgba(252,129,129,0.8)', 'rgba(72,187,120,0.8)'],
+      borderColor: ['#fc8181', '#48bb78'],
+      borderWidth: 1,
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: true,
+    cutout: '65%',
+    plugins: {
+      legend: {
+        position: 'bottom',
+        labels: { color: '#a0aec0', font: { size: 12, family: 'Segoe UI, Arial' }, padding: 16 }
+      },
+      tooltip: { backgroundColor: '#1a1f2e', borderColor: '#4a5568', borderWidth: 1, titleColor: '#e2e8f0', bodyColor: '#a0aec0' }
+    }
+  }
+});
+</script>
+</body>
+</html>
