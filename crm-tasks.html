@@ -882,8 +882,9 @@ function renderCard({key,inst,task}){
 // COMPLETE / POSTPONE
 // ============================================================
 window.openComplete=function(key){
-  pendingComplete=key;
   const inst=allInstances[key],task=allTasks[inst.taskId];
+  if(!currentUser.isAdmin&&!(task.assignedUsers&&task.assignedUsers[currentUser.id])){showToast('אין הרשאה לבצע משימה זו','error');return;}
+  pendingComplete=key;
   document.getElementById('completeTaskInfo').innerHTML=`<strong>${task.name}</strong>${task.description?`<br><span style="color:var(--gray-500);font-size:13px">${task.description}</span>`:''}`;
   document.getElementById('completeNote').value='';
   document.getElementById('completeModal').classList.add('open');
@@ -991,7 +992,10 @@ window.renderUpcoming=function(){
 // STATS
 // ============================================================
 window.renderStats=function(){
-  const filterUser=document.getElementById('statsUserFilter')?.value;
+  // non-admins are locked to their own view
+  const statsFilterEl=document.getElementById('statsUserFilter');
+  if(statsFilterEl)statsFilterEl.parentElement.style.display=currentUser.isAdmin?'flex':'none';
+  const filterUser=currentUser.isAdmin?(statsFilterEl?.value||''):currentUser.id;
   const today=todayStr(),yesterday=dateStr(addDays(new Date(),-1));
   const completed=Object.values(allInstances).filter(i=>i.status==='completed');
   const fc=filterUser?completed.filter(i=>i.completedBy===filterUser):completed;
@@ -1053,13 +1057,20 @@ window.renderStats=function(){
 // ARCHIVE
 // ============================================================
 window.renderArchive=function(){
+  // hide user filter for non-admins
+  const userFilterEl=document.getElementById('archiveFilterUser');
+  if(userFilterEl)userFilterEl.parentElement.style.display=currentUser.isAdmin?'':'none';
+
   let items=Object.entries(allInstances)
     .filter(([,i])=>i.status==='completed')
     .map(([k,i])=>({key:k,inst:i,task:allTasks[i.taskId]}))
     .filter(x=>x.task);
 
+  // non-admins see only their own archive
+  if(!currentUser.isAdmin)items=items.filter(({inst})=>inst.completedBy===currentUser.id);
+
   const cf=document.getElementById('archiveFilterClient')?.value;
-  const uf=document.getElementById('archiveFilterUser')?.value;
+  const uf=currentUser.isAdmin?document.getElementById('archiveFilterUser')?.value:'';
   if(cf)items=items.filter(({task})=>task.clientId===cf);
   if(uf)items=items.filter(({inst})=>inst.completedBy===uf);
   items.sort((a,b)=>(b.inst.completedAt||'').localeCompare(a.inst.completedAt||''));
@@ -1315,8 +1326,16 @@ function populateFilters(){
   ['filterClient','archiveFilterClient','upcomingFilterClient'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=co;});
   const uo='<option value="">כל המשתמשים</option>'+Object.entries(allUsers).map(([id,u])=>`<option value="${id}">${u.name}</option>`).join('');
   ['archiveFilterUser','statsUserFilter'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=uo;});
+  // task user filter — only admins can switch between users
   const fu=document.getElementById('filterUser');
-  if(fu)fu.innerHTML='<option value="">כל המשימות שלי</option>'+Object.entries(allUsers).map(([id,u])=>`<option value="${id}">${u.name}</option>`).join('');
+  if(fu){
+    if(currentUser.isAdmin){
+      fu.innerHTML='<option value="">כל המשימות שלי</option>'+Object.entries(allUsers).map(([id,u])=>`<option value="${id}">${u.name}</option>`).join('');
+      fu.style.display='';
+    } else {
+      fu.style.display='none';
+    }
+  }
 }
 
 window.toggleFilter=function(name){
