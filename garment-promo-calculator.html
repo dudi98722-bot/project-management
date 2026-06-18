@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>מחשבון מבצעים לבגד · איפה הרווח הכי גבוה</title>
+<style>
+  :root{
+    --pri:#6d28d9; --pri-d:#4c1d95; --pri-l:#f3effd;
+    --gold:#c9a227; --bg:#f5f4f8; --card:#ffffff;
+    --ink:#231f2a; --muted:#766b80; --line:#e7e2ee;
+    --green:#2e7d32; --green-l:#e8f5e9;
+    --red:#c62828; --shadow:0 4px 18px rgba(0,0,0,.07);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Segoe UI",Arial,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5;padding:18px}
+  .wrap{max-width:1080px;margin:0 auto}
+
+  header{
+    background:linear-gradient(135deg,var(--pri-d),var(--pri));
+    color:#fff;border-radius:18px;padding:26px 30px;box-shadow:var(--shadow);
+    display:flex;align-items:center;gap:18px;position:relative;overflow:hidden;
+  }
+  header .logo{
+    width:64px;height:64px;border-radius:50%;background:#fff;color:var(--pri-d);
+    display:flex;align-items:center;justify-content:center;font-size:32px;flex-shrink:0;
+    box-shadow:0 3px 10px rgba(0,0,0,.2);
+  }
+  header h1{font-size:26px;font-weight:900;letter-spacing:.3px}
+  header p{opacity:.92;font-size:15px;margin-top:2px}
+  header .gold-line{position:absolute;bottom:0;right:0;left:0;height:5px;background:var(--gold)}
+
+  .card{background:var(--card);border-radius:16px;padding:22px;box-shadow:var(--shadow);margin-top:18px}
+  .card h2{font-size:19px;color:var(--pri-d);margin-bottom:4px;display:flex;align-items:center;gap:8px}
+  .card .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
+
+  .field{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);gap:10px}
+  .field:last-child{border-bottom:none}
+  .field label{font-size:15px;font-weight:600;flex:1}
+  .field .unit{color:var(--muted);font-size:12px;margin-inline-start:4px}
+  .field input{
+    width:120px;padding:9px 10px;border:1.5px solid var(--line);border-radius:8px;
+    font-size:15px;text-align:center;font-family:inherit;font-weight:700;
+  }
+  .field input:focus{outline:none;border-color:var(--pri);background:#fbfaff}
+
+  .info-row{display:flex;gap:12px;margin-top:14px}
+  .info{flex:1;background:var(--pri-l);border-radius:12px;padding:12px;text-align:center}
+  .info .label{font-size:12px;color:var(--muted);margin-bottom:3px}
+  .info .value{font-size:20px;font-weight:900;color:var(--pri-d)}
+
+  /* scenarios */
+  .scen{border:1.5px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px;transition:.2s}
+  .scen.best{border-color:var(--green);box-shadow:0 0 0 3px var(--green-l)}
+  .scen-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .scen-head input.sname{flex:1;font-size:17px;font-weight:800;border:none;border-bottom:2px solid var(--line);padding:4px 2px;font-family:inherit;color:var(--pri-d);background:none}
+  .scen-head input.sname:focus{outline:none;border-color:var(--pri)}
+  .scen-head .badge{font-size:12px;font-weight:800;padding:4px 10px;border-radius:20px;background:var(--green);color:#fff;white-space:nowrap}
+  .scen-head .sdel{background:#fdecea;color:var(--red);border:none;border-radius:8px;width:32px;height:32px;cursor:pointer;font-size:16px;font-weight:800;flex-shrink:0}
+  .scen-head .sdel:hover{background:#f9d7d2}
+
+  .item{display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px dashed var(--line)}
+  .item .pos{width:78px;font-size:13px;color:var(--muted);font-weight:700}
+  .item .disc-wrap{display:flex;align-items:center;gap:5px;flex:1}
+  .item input.disc{width:78px;padding:8px;border:1.5px solid var(--line);border-radius:8px;font-size:14px;text-align:center;font-family:inherit;font-weight:700}
+  .item input.disc:focus{outline:none;border-color:var(--pri)}
+  .item select.dtype{padding:8px 4px;border:1.5px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background:#fff;cursor:pointer}
+  .item .calc{font-size:13px;color:var(--muted);min-width:130px;text-align:left;direction:ltr}
+  .item .calc b{color:var(--ink)}
+  .item .idel{background:none;border:none;color:#c9b7b5;cursor:pointer;font-size:16px;font-weight:800;flex-shrink:0}
+  .item .idel:hover{color:var(--red)}
+
+  .add-item{margin-top:10px;width:100%;padding:9px;background:var(--pri-l);color:var(--pri-d);border:1.5px dashed var(--pri);border-radius:9px;cursor:pointer;font-size:13px;font-weight:800;font-family:inherit}
+  .add-item:hover{background:#e8e0fb}
+
+  .scen-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}
+  @media(max-width:680px){.scen-kpis{grid-template-columns:repeat(2,1fr)}}
+  .skpi{background:#faf9fc;border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center}
+  .skpi .label{font-size:11px;color:var(--muted);margin-bottom:2px}
+  .skpi .value{font-size:18px;font-weight:900;color:var(--ink)}
+  .skpi.profit .value{color:var(--green)}
+  .skpi.profit.neg .value{color:var(--red)}
+
+  .add-scen{width:100%;padding:13px;background:var(--pri);color:#fff;border:none;border-radius:11px;cursor:pointer;font-size:15px;font-weight:800;font-family:inherit;margin-top:4px}
+  .add-scen:hover{background:var(--pri-d)}
+
+  /* comparison */
+  .cmp-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .cmp-row:last-child{border-bottom:none}
+  .cmp-name{width:150px;font-weight:800;font-size:14px;flex-shrink:0}
+  .cmp-bar-wrap{flex:1;background:#eee;border-radius:8px;height:30px;overflow:hidden;position:relative}
+  .cmp-bar{height:100%;background:linear-gradient(135deg,var(--pri),var(--pri-d));display:flex;align-items:center;padding:0 10px;color:#fff;font-weight:800;font-size:13px;border-radius:8px;transition:width .4s;white-space:nowrap}
+  .cmp-bar.win{background:linear-gradient(135deg,var(--green),#1b5e20)}
+  .cmp-bar.neg{background:linear-gradient(135deg,#e57373,var(--red))}
+  .winner-note{background:var(--green-l);border:1.5px solid var(--green);border-radius:12px;padding:14px 16px;margin-top:14px;font-size:15px;color:#1b5e20}
+  .winner-note b{font-weight:900}
+
+  footer{text-align:center;color:var(--muted);font-size:12px;margin:24px 0 8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo">👕</div>
+    <div>
+      <h1>מחשבון מבצעים לבגד</h1>
+      <p>הגדר את הרווח הגולמי, בנה כמה מבני מבצע — וראה איפה הרווח הכי גבוה</p>
+    </div>
+    <div class="gold-line"></div>
+  </header>
+
+  <!-- ══ נתוני הבגד ══ -->
+  <div class="card">
+    <h2>👕 נתוני הבגד</h2>
+    <div class="sub">מחיר מלא = המחיר שהלקוח משלם על פריט אחד ללא מבצע</div>
+    <div class="field"><label>מחיר מכירה מלא (לפריט)</label><div><input type="number" id="price" value="120" step="1"><span class="unit">₪</span></div></div>
+    <div class="field"><label>עלות הבגד (כמה הוא עולה לי)</label><div><input type="number" id="cost" value="50" step="1"><span class="unit">₪</span></div></div>
+    <div class="info-row">
+      <div class="info"><div class="label">רווח גולמי לפריט</div><div class="value" id="grossUnit">—</div></div>
+      <div class="info"><div class="label">אחוז רווח גולמי</div><div class="value" id="grossPct">—</div></div>
+    </div>
+  </div>
+
+  <!-- ══ מבני מבצע ══ -->
+  <div class="card">
+    <h2>🏷️ מבני מבצע להשוואה</h2>
+    <div class="sub">כל פריט במבצע = הנחה משלו. בחר "אחוז הנחה" / "מחיר קבוע" / "חינם". הוסף כמה תרחישים שתרצה.</div>
+    <div id="scenarios"></div>
+    <button class="add-scen" onclick="addScenario()">➕ הוסף תרחיש מבצע</button>
+  </div>
+
+  <!-- ══ השוואה ══ -->
+  <div class="card">
+    <h2>📊 השוואת רווח</h2>
+    <div class="sub">רווח כולל לכל תרחיש (אחרי ניכוי עלויות הבגדים)</div>
+    <div id="comparison"></div>
+    <div class="winner-note" id="winnerNote"></div>
+  </div>
+
+  <footer>מחשבון מבצעים · כל שינוי מתעדכן מיד · נשמר אוטומטית בדפדפן</footer>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = n => (Math.round(n*100)/100).toLocaleString('he-IL');
+const money = n => '₪' + fmt(n);
+
+let scenarios = [];
+let sid = 0, iid = 0;
+
+const DEFAULTS = [
+  { name:'20% על הכל', items:[ {type:'pct',val:20}, {type:'pct',val:20}, {type:'pct',val:20} ] },
+  { name:'ראשון מלא · שני 50%', items:[ {type:'pct',val:0}, {type:'pct',val:50} ] },
+  { name:'קנה 2 · שלישי חינם', items:[ {type:'pct',val:0}, {type:'pct',val:0}, {type:'free',val:0} ] },
+];
+
+function load(){
+  try{
+    const saved = JSON.parse(localStorage.getItem('garmentPromo'));
+    if(saved){ $('price').value=saved.price; $('cost').value=saved.cost; scenarios=saved.scenarios; }
+  }catch(e){}
+  if(!scenarios.length){
+    scenarios = DEFAULTS.map(d => ({ id:++sid, name:d.name, items:d.items.map(i=>({id:++iid,...i})) }));
+  } else {
+    scenarios.forEach(s=>{ s.id=++sid; s.items.forEach(i=>i.id=++iid); });
+  }
+}
+
+function save(){
+  localStorage.setItem('garmentPromo', JSON.stringify({
+    price:$('price').value, cost:$('cost').value,
+    scenarios: scenarios.map(s=>({name:s.name, items:s.items.map(i=>({type:i.type,val:i.val}))}))
+  }));
+}
+
+// מחיר ששולם על פריט לפי סוג ההנחה
+function paidFor(item, price){
+  if(item.type==='free') return 0;
+  if(item.type==='fixed') return Math.max(0, +item.val||0);
+  // pct
+  const p = Math.min(100, Math.max(0, +item.val||0));
+  return price * (1 - p/100);
+}
+
+function discLabel(item, price){
+  if(item.type==='free') return 'חינם';
+  if(item.type==='fixed') return money(paidFor(item,price));
+  const p = +item.val||0;
+  return p>0 ? `${p}% הנחה` : 'מחיר מלא';
+}
+
+function calcScenario(s, price, cost){
+  let revenue=0, totalCost=0;
+  s.items.forEach(it=>{ revenue += paidFor(it, price); totalCost += cost; });
+  const profit = revenue - totalCost;
+  const units = s.items.length;
+  return { revenue, totalCost, profit, units,
+           profitPerUnit: units? profit/units : 0,
+           margin: revenue? (profit/revenue*100) : 0 };
+}
+
+function render(){
+  const price = +$('price').value||0;
+  const cost  = +$('cost').value||0;
+  const gross = price - cost;
+  $('grossUnit').textContent = money(gross);
+  $('grossPct').textContent  = price? fmt(gross/price*100)+'%' : '—';
+
+  // scenarios
+  const box = $('scenarios'); box.innerHTML='';
+  const results = scenarios.map(s=>({s, r:calcScenario(s, price, cost)}));
+  const maxProfit = Math.max(...results.map(x=>x.r.profit), 0);
+  const bestId = results.length ? results.reduce((a,b)=>b.r.profit>a.r.profit?b:a).s.id : null;
+
+  results.forEach(({s,r})=>{
+    const isBest = s.id===bestId && results.length>1;
+    const el = document.createElement('div');
+    el.className = 'scen' + (isBest?' best':'');
+    el.innerHTML = `
+      <div class="scen-head">
+        <input class="sname" value="${s.name.replace(/"/g,'&quot;')}" oninput="renameScen(${s.id}, this.value)">
+        ${isBest?'<span class="badge">⭐ הכי רווחי</span>':''}
+        <button class="sdel" onclick="delScen(${s.id})" title="מחק תרחיש">✕</button>
+      </div>
+      <div class="items">
+        ${s.items.map((it,idx)=>`
+          <div class="item">
+            <span class="pos">פריט ${idx+1}</span>
+            <div class="disc-wrap">
+              <select class="dtype" onchange="setType(${s.id},${it.id},this.value)">
+                <option value="pct" ${it.type==='pct'?'selected':''}>אחוז הנחה</option>
+                <option value="fixed" ${it.type==='fixed'?'selected':''}>מחיר קבוע</option>
+                <option value="free" ${it.type==='free'?'selected':''}>חינם</option>
+              </select>
+              ${it.type!=='free'?`<input class="disc" type="number" value="${it.val}" oninput="setVal(${s.id},${it.id},this.value)"><span class="unit">${it.type==='pct'?'%':'₪'}</span>`:''}
+            </div>
+            <span class="calc">משלם <b>${money(paidFor(it,price))}</b></span>
+            <button class="idel" onclick="delItem(${s.id},${it.id})" title="הסר פריט">🗑</button>
+          </div>`).join('')}
+      </div>
+      <button class="add-item" onclick="addItem(${s.id})">➕ הוסף פריט למבצע</button>
+      <div class="scen-kpis">
+        <div class="skpi"><div class="label">פריטים בעסקה</div><div class="value">${r.units}</div></div>
+        <div class="skpi"><div class="label">הכנסה כוללת</div><div class="value">${money(r.revenue)}</div></div>
+        <div class="skpi profit ${r.profit<0?'neg':''}"><div class="label">רווח כולל</div><div class="value">${money(r.profit)}</div></div>
+        <div class="skpi"><div class="label">% רווחיות</div><div class="value">${fmt(r.margin)}%</div></div>
+      </div>`;
+    box.appendChild(el);
+  });
+
+  // comparison
+  const cmp = $('comparison'); cmp.innerHTML='';
+  const span = maxProfit>0 ? maxProfit : 1;
+  results.forEach(({s,r})=>{
+    const w = Math.max(4, Math.abs(r.profit)/span*100);
+    const isWin = s.id===bestId && results.length>1;
+    cmp.innerHTML += `
+      <div class="cmp-row">
+        <div class="cmp-name">${s.name}</div>
+        <div class="cmp-bar-wrap">
+          <div class="cmp-bar ${r.profit<0?'neg':(isWin?'win':'')}" style="width:${w}%">${money(r.profit)} ${r.profit<0?'הפסד':'רווח'}</div>
+        </div>
+      </div>`;
+  });
+
+  const note = $('winnerNote');
+  if(results.length>1 && bestId){
+    const best = results.find(x=>x.s.id===bestId);
+    const sorted = [...results].sort((a,b)=>b.r.profit-a.r.profit);
+    const second = sorted[1];
+    const diff = best.r.profit - second.r.profit;
+    note.style.display='block';
+    note.innerHTML = `⭐ התרחיש הכי רווחי: <b>${best.s.name}</b> — רווח של <b>${money(best.r.profit)}</b> על העסקה`
+      + (diff>0.01 ? ` (גבוה ב-<b>${money(diff)}</b> מ"${second.s.name}").` : `.`)
+      + ` רווח לפריט: <b>${money(best.r.profitPerUnit)}</b>.`;
+  } else {
+    note.style.display='none';
+  }
+
+  save();
+}
+
+// actions
+function addScenario(){
+  scenarios.push({ id:++sid, name:'מבצע חדש', items:[{id:++iid,type:'pct',val:0}] });
+  render();
+}
+function delScen(id){ scenarios = scenarios.filter(s=>s.id!==id); render(); }
+function renameScen(id,v){ const s=scenarios.find(s=>s.id===id); if(s){ s.name=v; save(); } }
+function addItem(id){ const s=scenarios.find(s=>s.id===id); if(s){ s.items.push({id:++iid,type:'pct',val:0}); render(); } }
+function delItem(sId,iId){ const s=scenarios.find(s=>s.id===sId); if(s){ s.items=s.items.filter(i=>i.id!==iId); render(); } }
+function setType(sId,iId,t){ const it=scenarios.find(s=>s.id===sId).items.find(i=>i.id===iId); it.type=t; if(t==='free')it.val=0; render(); }
+function setVal(sId,iId,v){ const it=scenarios.find(s=>s.id===sId).items.find(i=>i.id===iId); it.val=v; render(); }
+
+$('price').addEventListener('input', render);
+$('cost').addEventListener('input', render);
+
+load();
+render();
+</script>
+</body>
+</html>
