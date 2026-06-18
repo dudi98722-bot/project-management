@@ -6,6 +6,18 @@
 <title>ניהול מזוזות — רכישה ומכירה</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+  firebase.initializeApp({
+    apiKey: "AIzaSyBTGFdv6v87aRC0bg3UbiWPT7nmJVSOv04",
+    authDomain: "kablan-management.firebaseapp.com",
+    projectId: "kablan-management",
+    appId: "1:1096929079665:web:321151ff71e6a0251706d0"
+  });
+  const fdb = firebase.firestore();
+  const cloudRef = fdb.collection('mezuzah_data').doc('shared');
+</script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: #2d3748; direction: rtl; }
@@ -86,6 +98,7 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
 <body>
 <header>
   <h1>📜 ניהול מזוזות — רכישה ומכירה</h1>
+  <span id="syncStatus" class="badge b-yellow" style="font-size:.72rem">⏳ מתחבר לענן…</span>
   <div class="actions">
     <button class="btn btn-light" onclick="exportExcel()">⬇ ייצוא לאקסל</button>
     <button class="btn btn-light" onclick="document.getElementById('importFile').click()">⬆ ייבוא גיבוי</button>
@@ -247,18 +260,76 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
 <script>
 // ============ DATA ============
 const KEY = 'mezuzah_system_v1';
+const CLIENT = Math.random().toString(36).slice(2); // identify our own cloud writes
 let data = load();
+let cloudReady = false;   // became true after first snapshot from server
+let writing = false;      // true while pushing our own write
+
+function emptyData(){ return { scribes: [], computer: [], gavra: [], mezuzot: [], payments: [], seq: 1 }; }
 
 function load() {
+  // local cache shown instantly until the cloud snapshot arrives
   try {
     const d = JSON.parse(localStorage.getItem(KEY));
     if (d) return d;
   } catch(e) {}
-  return { scribes: [], computer: [], gavra: [], mezuzot: [], payments: [], seq: 1 };
+  return emptyData();
 }
+
+function setSync(state, txt) {
+  const el = document.getElementById('syncStatus');
+  if (!el) return;
+  el.className = 'badge ' + ({ok:'b-green', wait:'b-yellow', err:'b-red'}[state]||'b-gray');
+  el.textContent = txt;
+}
+
+// write the whole shared document to the cloud (last-write-wins on the doc)
 function save() {
   localStorage.setItem(KEY, JSON.stringify(data));
   renderAll();
+  cloudSave();
+}
+function cloudSave() {
+  if (typeof cloudRef === 'undefined') return;
+  writing = true;
+  setSync('wait', '⏳ שומר…');
+  cloudRef.set(Object.assign({ _by: CLIENT, _at: Date.now() }, data))
+    .then(()=>{ setSync('ok', '☁ מסונכרן'); })
+    .catch(err=>{ setSync('err', '⚠ שגיאת שמירה'); console.error(err); })
+    .finally(()=>{ writing = false; });
+}
+
+function itemCount(d){ return (d.scribes||[]).length + (d.computer||[]).length + (d.gavra||[]).length + (d.mezuzot||[]).length + (d.payments||[]).length; }
+let firstSnap = true;
+
+// real-time subscription: any change by anyone updates every open device
+function startCloudSync() {
+  if (typeof cloudRef === 'undefined') { setSync('err', '⚠ ללא ענן (מקומי)'); return; }
+  cloudRef.onSnapshot(snap => {
+    cloudReady = true;
+    const remote = snap.exists ? snap.data() : null;
+    // first snapshot: decide direction so existing local data is never wiped
+    if (firstSnap) {
+      firstSnap = false;
+      const remoteCount = remote ? itemCount(remote) : 0;
+      if (remoteCount === 0 && itemCount(data) > 0) {
+        // cloud is empty but we have local data — push it up, keep showing it
+        cloudSave();
+        setSync('ok', '☁ מסונכרן');
+        return;
+      }
+      if (!remote) { cloudSave(); return; }
+    }
+    if (!remote) return;
+    // ignore the echo of our own just-sent write to avoid clobbering active typing
+    if (remote._by === CLIENT && writing) { setSync('ok', '☁ מסונכרן'); return; }
+    delete remote._by; delete remote._at;
+    data = Object.assign(emptyData(), remote);
+    localStorage.setItem(KEY, JSON.stringify(data));
+    renderAll();
+    if (document.getElementById('tab-charts').classList.contains('active')) renderCharts();
+    setSync('ok', '☁ מסונכרן');
+  }, err => { setSync('err', '⚠ אין חיבור לענן'); console.error(err); });
 }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 function toast(msg) {
@@ -611,6 +682,7 @@ function renderAll() {
 renderAll();
 document.getElementById('mz-date').value = new Date().toISOString().slice(0,10);
 document.getElementById('pay-date').value = new Date().toISOString().slice(0,10);
+startCloudSync();
 </script>
 </body>
 </html>
