@@ -4,14 +4,31 @@
  * doGet  ?action=load            -> מחזיר את כל הנתונים כ-JSON
  * doPost p=<JSON מלא> action=save -> כותב מחדש את כל הלשוניות
  *
- * הגדרה:
- *   1. צור גיליון Google חדש, העתק את ה-ID שלו (מתוך הכתובת) ל-SHEET_ID למטה.
- *   2. פרסם כ-Web App: Deploy > New deployment > Web app
+ * הגדרה (פשוט!):
+ *   1. script.google.com  ->  New project, הדבק את כל הקוד הזה.
+ *   2. Deploy > New deployment > Web app
  *        Execute as: Me   |   Who has access: Anyone
- *   3. העתק את כתובת ה-/exec והדבק אותה במערכת המזוזות (כפתור "⚙ הגדר שרת").
+ *   3. אשר את ההרשאות (Authorize / Allow).
+ *   4. העתק את כתובת ה-/exec ושלח אותה.
+ *
+ * הסקריפט יוצר לבד גיליון בשם "ניהול מזוזות" ב-Google Drive שלך
+ * בפעם הראשונה — אין צורך ליצור גיליון או להעתיק ID ידנית.
  */
 
-var SHEET_ID = 'PASTE_YOUR_SHEET_ID_HERE';
+// הסקריפט מוצא/יוצר את הגיליון לבד. אם רוצים גיליון קיים — אפשר להדביק כאן ID ידני.
+var SHEET_ID = '';
+
+function getSpreadsheet() {
+  var props = PropertiesService.getScriptProperties();
+  if (SHEET_ID) return SpreadsheetApp.openById(SHEET_ID);
+  var saved = props.getProperty('mz_sheet_id');
+  if (saved) {
+    try { return SpreadsheetApp.openById(saved); } catch (e) {}
+  }
+  var ss = SpreadsheetApp.create('ניהול מזוזות');
+  props.setProperty('mz_sheet_id', ss.getId());
+  return ss;
+}
 
 var SHEETS = {
   scribes:  { name: 'סופרים',
@@ -58,7 +75,7 @@ function handle(e) {
   }
 }
 
-function ss() { return SpreadsheetApp.openById(SHEET_ID); }
+function ss() { return getSpreadsheet(); }
 
 function getSheet(cfg) {
   var s = ss().getSheetByName(cfg.name);
