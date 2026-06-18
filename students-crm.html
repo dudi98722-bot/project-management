@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>מערכת מעקב התקדמות תלמידים</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: #2d3748; direction: rtl; }
+
+/* ===== LOGIN ===== */
+#login-screen { position: fixed; inset: 0; background: linear-gradient(135deg,#1a365d,#2b6cb0); display: flex; align-items: center; justify-content: center; z-index: 2000; }
+.login-box { background: white; border-radius: 16px; padding: 34px 30px; width: 92%; max-width: 380px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); text-align: center; }
+.login-box .logo { font-size: 2.6rem; margin-bottom: 6px; }
+.login-box h1 { font-size: 1.25rem; color: #1a365d; margin-bottom: 4px; }
+.login-box p.sub { font-size: 0.82rem; color: #718096; margin-bottom: 20px; }
+.login-box input { width: 100%; padding: 11px 13px; border: 1.5px solid #cbd5e0; border-radius: 9px; font-size: 0.95rem; font-family: inherit; margin-bottom: 11px; background: #f7fafc; direction: rtl; }
+.login-box input:focus { outline: none; border-color: #2b6cb0; background: white; }
+.login-box button { width: 100%; padding: 12px; background: #2b6cb0; color: white; border: none; border-radius: 9px; font-size: 1rem; font-weight: 700; cursor: pointer; font-family: inherit; }
+.login-box button:hover { background: #1a365d; }
+.login-err { color: #c53030; font-size: 0.84rem; margin-bottom: 10px; min-height: 18px; }
+.demo-creds { margin-top: 18px; background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; font-size: 0.78rem; color: #4a5568; text-align: right; line-height: 1.9; }
+.demo-creds b { color: #1a365d; }
+.demo-creds .chip { cursor: pointer; color: #2b6cb0; text-decoration: underline; }
+
+header { background: linear-gradient(135deg, #1a365d, #2b6cb0); color: white; padding: 14px 24px; display: flex; align-items: center; gap: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+header h1 { font-size: 1.25rem; font-weight: 700; flex: 1; }
+header .user-chip { font-size: 0.82rem; background: rgba(255,255,255,0.15); padding: 5px 12px; border-radius: 20px; display: flex; align-items: center; gap: 7px; }
+header .role-badge { background: #f6e05e; color: #1a365d; padding: 1px 8px; border-radius: 12px; font-weight: 700; font-size: 0.72rem; }
+header button.logout { background: rgba(255,255,255,0.15); color: white; border: none; padding: 6px 13px; border-radius: 8px; cursor: pointer; font-family: inherit; font-size: 0.8rem; font-weight: 600; }
+header button.logout:hover { background: rgba(255,255,255,0.28); }
+
+.tabs { display: flex; background: #2b6cb0; padding: 0 16px; gap: 2px; overflow-x: auto; }
+.tab-btn { padding: 11px 18px; border: none; background: transparent; color: rgba(255,255,255,0.7); cursor: pointer; font-size: 0.88rem; font-weight: 600; border-bottom: 3px solid transparent; transition: all 0.2s; font-family: inherit; white-space: nowrap; }
+.tab-btn:hover { color: white; background: rgba(255,255,255,0.1); }
+.tab-btn.active { color: white; border-bottom-color: #f6e05e; background: rgba(255,255,255,0.1); }
+
+.content { padding: 22px; max-width: 1320px; margin: 0 auto; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+.card { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); padding: 20px; margin-bottom: 18px; }
+.card h2 { font-size: 1rem; font-weight: 700; color: #1a365d; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+
+.form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+.form-group { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 140px; }
+.form-group label { font-size: 0.8rem; font-weight: 600; color: #4a5568; }
+.form-group input, .form-group select, .form-group textarea { padding: 8px 11px; border: 1.5px solid #cbd5e0; border-radius: 8px; font-size: 0.9rem; font-family: inherit; background: #f7fafc; direction: rtl; transition: border-color 0.2s; }
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: #2b6cb0; background: white; }
+
+.btn { padding: 8px 18px; border: none; border-radius: 8px; font-size: 0.88rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.2s; white-space: nowrap; }
+.btn-primary { background: #2b6cb0; color: white; }
+.btn-primary:hover { background: #1a365d; }
+.btn-success { background: #276749; color: white; }
+.btn-success:hover { background: #1c4532; }
+.btn-danger { background: #e53e3e; color: white; padding: 5px 10px; font-size: 0.78rem; }
+.btn-danger:hover { background: #c53030; }
+.btn-edit { background: #ed8936; color: white; padding: 5px 10px; font-size: 0.78rem; }
+.btn-edit:hover { background: #c05621; }
+.btn-sm { padding: 5px 12px; font-size: 0.78rem; }
+.btn-gray { background: #e2e8f0; color: #4a5568; }
+.btn-gray:hover { background: #cbd5e0; }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+th { background: #ebf4ff; color: #1a365d; padding: 10px 12px; text-align: right; font-weight: 700; border-bottom: 2px solid #bee3f8; white-space: nowrap; }
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { background: #d9ecff; }
+td { padding: 9px 12px; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
+tr:hover td { background: #f7fafc; }
+
+.badge { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 0.76rem; font-weight: 600; background: #bee3f8; color: #1a365d; }
+.badge-green  { background: #c6f6d5; color: #276749; }
+.badge-orange { background: #feebc8; color: #c05621; }
+.badge-red    { background: #fed7d7; color: #c53030; }
+.badge-purple { background: #e9d8fd; color: #6b46c1; }
+
+.score-pill { display:inline-block; min-width: 36px; text-align:center; padding: 2px 8px; border-radius: 8px; font-weight: 700; font-size: 0.82rem; }
+.s-high { background:#c6f6d5; color:#276749; }
+.s-mid  { background:#feebc8; color:#c05621; }
+.s-low  { background:#fed7d7; color:#c53030; }
+
+.empty-state { text-align: center; padding: 36px; color: #a0aec0; }
+.empty-state div { font-size: 2rem; margin-bottom: 8px; }
+
+.summary-bar { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.summary-card { flex: 1; min-width: 130px; background: white; border-radius: 10px; padding: 14px 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.07); text-align: center; }
+.summary-card .label { font-size: 0.74rem; color: #718096; margin-bottom: 3px; }
+.summary-card .value { font-size: 1.4rem; font-weight: 800; color: #1a365d; }
+.summary-card.green .value { color: #276749; }
+.summary-card.red .value   { color: #c53030; }
+.summary-card.orange .value { color: #c05621; }
+.summary-card.purple .value { color: #6b46c1; }
+
+.chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+@media (max-width: 900px) { .chart-grid { grid-template-columns: 1fr; } }
+.chart-box { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); padding: 16px; }
+.chart-box h3 { font-size: 0.9rem; color: #1a365d; margin-bottom: 12px; font-weight: 700; }
+.chart-canvas-wrap { position: relative; height: 260px; }
+
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+.modal-overlay.open { display: flex; }
+.modal { background: white; border-radius: 14px; padding: 26px; width: 95%; max-width: 720px; max-height: 92vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.25); }
+.modal h3 { font-size: 1.1rem; color: #1a365d; margin-bottom: 16px; }
+.modal-close { float: left; background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #718096; }
+.modal-close:hover { color: #1a365d; }
+
+.filter-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; align-items: flex-end; }
+.filter-row .form-group { max-width: 220px; }
+.actions { display: flex; gap: 5px; flex-wrap: wrap; }
+
+.progress-wrap { background: #e2e8f0; border-radius: 99px; height: 7px; overflow: hidden; }
+.progress-bar  { height: 100%; border-radius: 99px; background: #2b6cb0; transition: width 0.3s; }
+
+.alert-row { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:9px; margin-bottom:7px; font-size:0.86rem; }
+.alert-row.warn { background:#fffaf0; border:1px solid #feebc8; }
+.alert-row.bad  { background:#fff5f5; border:1px solid #fed7d7; }
+.alert-row.good { background:#f0fff4; border:1px solid #c6f6d5; }
+
+.tl-item { border-right: 3px solid #2b6cb0; padding: 8px 14px; margin-bottom: 8px; background: #f7fafc; border-radius: 0 8px 8px 0; }
+.tl-item .tl-date { font-size: 0.74rem; color: #718096; }
+.tl-item .tl-body { font-size: 0.88rem; margin-top: 2px; }
+
+.tag-toolbar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+
+@media print {
+  body { background: white; }
+  header, .tabs, .no-print, .btn { display: none !important; }
+  .content { max-width: none; padding: 0; }
+  .card { box-shadow: none; border: 1px solid #ccc; page-break-inside: avoid; }
+  .report-page { page-break-after: always; }
+}
+</style>
+</head>
+<body>
+
+<!-- ===== LOGIN ===== -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="logo">🎓</div>
+    <h1>מערכת מעקב התקדמות תלמידים</h1>
+    <p class="sub">התחבר כדי להמשיך</p>
+    <div class="login-err" id="login-err"></div>
+    <input type="text" id="login-user" placeholder="שם משתמש" autocomplete="username">
+    <input type="password" id="login-pass" placeholder="סיסמה" autocomplete="current-password">
+    <button onclick="doLogin()">כניסה</button>
+    <div class="demo-creds">
+      <b>חשבונות לדוגמה (לחיצה ממלאת):</b><br>
+      👑 מנהל — <span class="chip" onclick="fillLogin('admin','admin')">admin / admin</span><br>
+      👨‍🏫 מלמד — <span class="chip" onclick="fillLogin('teacher1','1234')">teacher1 / 1234</span><br>
+      👪 הורה — <span class="chip" onclick="fillLogin('parent1','1234')">parent1 / 1234</span>
+    </div>
+  </div>
+</div>
+
+<!-- ===== APP ===== -->
+<div id="app" style="display:none">
+<header>
+  <span style="font-size:1.5rem">🎓</span>
+  <h1>מעקב התקדמות תלמידים</h1>
+  <div class="user-chip"><span id="hdr-user"></span><span class="role-badge" id="hdr-role"></span></div>
+  <button class="logout" onclick="logout()">יציאה ←</button>
+</header>
+
+<div class="tabs" id="tabs"></div>
+
+<div class="content">
+  <!-- DASHBOARD -->
+  <div id="tab-dashboard" class="tab-panel active">
+    <div class="filter-row no-print">
+      <div class="form-group" id="dash-class-filter-wrap"><label>כיתה</label>
+        <select id="dash-class" onchange="renderDashboard()"></select>
+      </div>
+      <div class="form-group"><label>טווח</label>
+        <select id="dash-range" onchange="renderDashboard()">
+          <option value="all">כל השנה</option>
+          <option value="90">3 חודשים אחרונים</option>
+          <option value="30">חודש אחרון</option>
+        </select>
+      </div>
+    </div>
+    <div class="summary-bar" id="dash-summary"></div>
+    <div class="card" id="dash-alerts-card"><h2>🔔 התראות ותובנות</h2><div id="dash-alerts"></div></div>
+    <div class="chart-grid" id="dash-charts"></div>
+  </div>
+
+  <!-- STUDENTS -->
+  <div id="tab-students" class="tab-panel">
+    <div class="card no-print" id="student-form-card">
+      <h2 id="stud-form-title">➕ הוסף תלמיד</h2>
+      <div class="form-row">
+        <div class="form-group"><label>שם מלא</label><input type="text" id="stud-name" placeholder="שם התלמיד"></div>
+        <div class="form-group"><label>כיתה</label><select id="stud-class"></select></div>
+        <div class="form-group"><label>שם ההורה</label><input type="text" id="stud-parent" placeholder="שם ההורה"></div>
+        <div class="form-group"><label>טלפון הורה</label><input type="tel" id="stud-phone" placeholder="05X-XXXXXXX"></div>
+        <div class="form-group" style="max-width:120px"><label>שנת לידה</label><input type="number" id="stud-birth" placeholder="2015" min="2005" max="2025"></div>
+        <button class="btn btn-primary" id="stud-save-btn" onclick="saveStudent()">שמור</button>
+        <button class="btn btn-gray" id="stud-cancel-btn" onclick="cancelStudentEdit()" style="display:none">ביטול</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>👦 רשימת תלמידים</h2>
+      <div class="filter-row no-print">
+        <div class="form-group"><label>חיפוש</label><input type="text" id="stud-search" placeholder="שם / הורה..." oninput="renderStudents()"></div>
+        <div class="form-group"><label>כיתה</label><select id="stud-filter-class" onchange="renderStudents()"></select></div>
+        <div class="form-group" style="align-self:flex-end"><button class="btn btn-gray btn-sm" onclick="exportStudentsCSV()">⬇️ ייצוא CSV</button></div>
+      </div>
+      <div id="students-table"></div>
+    </div>
+  </div>
+
+  <!-- PROGRESS ENTRY -->
+  <div id="tab-progress" class="tab-panel">
+    <div class="card no-print">
+      <h2>📝 הזנת ציון / הערכה</h2>
+      <div class="form-row">
+        <div class="form-group"><label>תלמיד</label><select id="prog-student"></select></div>
+        <div class="form-group"><label>מקצוע / תחום</label><select id="prog-subject"></select></div>
+        <div class="form-group" style="max-width:120px"><label>ציון (0-100)</label><input type="number" id="prog-score" min="0" max="100" placeholder="85"></div>
+        <div class="form-group"><label>תאריך</label><input type="date" id="prog-date"></div>
+        <div class="form-group"><label>הערה</label><input type="text" id="prog-note" placeholder="מבחן / שינון / התקדמות..."></div>
+        <button class="btn btn-success" onclick="saveProgress()">💾 שמור</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>📋 הערכות אחרונות</h2>
+      <div class="filter-row no-print">
+        <div class="form-group"><label>תלמיד</label><select id="prog-filter-student" onchange="renderProgressLog()"></select></div>
+        <div class="form-group"><label>מקצוע</label><select id="prog-filter-subject" onchange="renderProgressLog()"></select></div>
+      </div>
+      <div id="progress-log"></div>
+    </div>
+  </div>
+
+  <!-- ATTENDANCE -->
+  <div id="tab-attendance" class="tab-panel">
+    <div class="card no-print">
+      <h2>🗓️ רישום נוכחות</h2>
+      <div class="form-row">
+        <div class="form-group"><label>תלמיד</label><select id="att-student"></select></div>
+        <div class="form-group"><label>תאריך</label><input type="date" id="att-date"></div>
+        <div class="form-group"><label>סטטוס</label><select id="att-status">
+          <option value="present">נוכח</option><option value="late">איחור</option><option value="absent">חיסור</option>
+        </select></div>
+        <button class="btn btn-success" onclick="saveAttendance()">💾 שמור</button>
+      </div>
+    </div>
+    <div class="card"><h2>📊 סיכום נוכחות</h2>
+      <div class="filter-row no-print"><div class="form-group"><label>כיתה</label><select id="att-filter-class" onchange="renderAttendance()"></select></div></div>
+      <div id="attendance-table"></div>
+    </div>
+  </div>
+
+  <!-- CONDUCT -->
+  <div id="tab-conduct" class="tab-panel">
+    <div class="card no-print">
+      <h2>⭐ נקודות התנהגות / מידות</h2>
+      <div class="form-row">
+        <div class="form-group"><label>תלמיד</label><select id="cond-student"></select></div>
+        <div class="form-group"><label>נקודות</label><select id="cond-points">
+          <option value="3">+3 מצוין</option><option value="2">+2 טוב מאוד</option><option value="1">+1 טוב</option>
+          <option value="-1">-1 שיפור נדרש</option><option value="-2">-2 הפרעה</option>
+        </select></div>
+        <div class="form-group"><label>סיבה</label><input type="text" id="cond-reason" placeholder="עזרה לחבר / השתתפות..."></div>
+        <div class="form-group"><label>תאריך</label><input type="date" id="cond-date"></div>
+        <button class="btn btn-success" onclick="saveConduct()">💾 שמור</button>
+      </div>
+    </div>
+    <div class="card"><h2>🏆 טבלת מידות</h2>
+      <div class="filter-row no-print"><div class="form-group"><label>כיתה</label><select id="cond-filter-class" onchange="renderConduct()"></select></div></div>
+      <div id="conduct-table"></div>
+    </div>
+  </div>
+
+  <!-- REPORTS -->
+  <div id="tab-reports" class="tab-panel">
+    <div class="card no-print">
+      <h2>📄 דוחות שנתיים</h2>
+      <div class="form-row">
+        <div class="form-group"><label>סוג דוח</label><select id="rep-type" onchange="onReportTypeChange()">
+          <option value="student">תעודה שנתית לתלמיד</option>
+          <option value="class">דוח כיתתי שנתי</option>
+        </select></div>
+        <div class="form-group" id="rep-student-wrap"><label>תלמיד</label><select id="rep-student"></select></div>
+        <div class="form-group" id="rep-class-wrap" style="display:none"><label>כיתה</label><select id="rep-class"></select></div>
+        <button class="btn btn-primary" onclick="generateReport()">📊 הפק דוח</button>
+        <button class="btn btn-gray" onclick="window.print()">🖨️ הדפסה / PDF</button>
+      </div>
+    </div>
+    <div id="report-output"></div>
+  </div>
+
+  <!-- ADMIN -->
+  <div id="tab-admin" class="tab-panel">
+    <div class="card no-print">
+      <h2>🏫 כיתות ומלמדים</h2>
+      <div class="form-row">
+        <div class="form-group"><label>שם הכיתה</label><input type="text" id="cls-name" placeholder="כיתה א'"></div>
+        <div class="form-group"><label>שם המלמד</label><input type="text" id="cls-teacher" placeholder="הרב ..."></div>
+        <button class="btn btn-primary" onclick="saveClass()">הוסף כיתה</button>
+      </div>
+      <div id="classes-table" style="margin-top:14px"></div>
+    </div>
+    <div class="card">
+      <h2>👤 משתמשים והרשאות</h2>
+      <p style="font-size:0.82rem;color:#718096;margin-bottom:12px">מלמד משויך לכיתה אחת; הורה משויך לתלמיד אחד.</p>
+      <div id="users-table"></div>
+    </div>
+    <div class="card no-print">
+      <h2>🛠️ נתונים</h2>
+      <div class="actions">
+        <button class="btn btn-gray" onclick="exportAllJSON()">⬇️ גיבוי JSON</button>
+        <button class="btn btn-danger" onclick="resetDemo()">🔄 אפס לנתוני דמו</button>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- STUDENT PROFILE MODAL -->
+<div class="modal-overlay" id="profile-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeProfile()">✕</button>
+    <div id="profile-content"></div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+//  STORAGE
+// ════════════════════════════════════════════════════════════
+const LS_KEY = 'students_crm_v1';
+const SUBJECTS = ['גמרא','משנה','חומש','הלכה','תפילה','מידות'];
+let DB = { users:[], classes:[], students:[], assessments:[], attendance:[], conduct:[] };
+let CUR = null; // current user
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const v = id => document.getElementById(id)?.value?.trim() || '';
+const todayISO = () => new Date().toISOString().slice(0,10);
+const fmtDate = d => d ? new Date(d).toLocaleDateString('he-IL') : '';
+
+function save(){ localStorage.setItem(LS_KEY, JSON.stringify(DB)); }
+function load(){ const r = localStorage.getItem(LS_KEY); if(r){ try{ DB = JSON.parse(r); return true; }catch(e){} } return false; }
+
+// ════════════════════════════════════════════════════════════
+//  DEMO SEED — 100 students
+// ════════════════════════════════════════════════════════════
+function seedDemo(){
+  const firsts = ['משה','יוסף','אברהם','יעקב','דוד','שמואל','יצחק','אהרן','חיים','מנחם','שלמה','נתן','אליהו','בנימין','יהודה','מרדכי','ראובן','שמעון','לוי','דן','אשר','נפתלי','עזריאל','מאיר','ברוך','שניאור','זלמן','פנחס','אלעזר','גרשון','יחיאל','שרגא','נחום','זאב','אורי','עוזר','ישראל','אליעזר','שלום','טוביה'];
+  const lasts = ['כהן','לוי','פרידמן','רוזנברג','גולדשטיין','וייס','שפירא','כץ','הלוי','ברגר','גרוס','פישר','אדלר','שטרן','הורוביץ','רובין','זילבר','גרינברג','לנדאו','אייזן','ברוין','פוקס','שטראוס','ביטון','מזרחי','אוחיון','דוד','עמר','חדד','אזולאי'];
+  const parents = ['ר\' יצחק','ר\' משה','ר\' דוד','ר\' שמואל','ר\' אברהם','ר\' חיים','ר\' יוסף','ר\' מנחם'];
+  const rng = (() => { let s = 12345; return () => { s = (s*1103515245 + 12345) & 0x7fffffff; return s/0x7fffffff; }; })();
+  const pick = a => a[Math.floor(rng()*a.length)];
+  const ri = (a,b) => Math.floor(rng()*(b-a+1))+a;
+
+  // classes
+  const clsNames = ["כיתה א'","כיתה ב'","כיתה ג'","כיתה ד'","כיתה ה'","כיתה ו'"];
+  const teacherNames = ['הרב פרידמן','הרב כהן','הרב רוזנברג','הרב וייס','הרב שפירא','הרב לנדאו'];
+  DB.classes = clsNames.map((n,i)=>({ id:'c'+(i+1), name:n, teacher:teacherNames[i] }));
+
+  // users: admin + teachers
+  DB.users = [{ id:uid(), username:'admin', password:'admin', role:'admin', name:'מנהל בית הספר' }];
+  DB.classes.forEach((c,i)=> DB.users.push({ id:uid(), username:'teacher'+(i+1), password:'1234', role:'teacher', name:c.teacher, classId:c.id }));
+
+  // students + parent users
+  DB.students = [];
+  for(let i=0;i<100;i++){
+    const cls = DB.classes[i % DB.classes.length];
+    const baseGrade = 6 - (DB.classes.indexOf(cls)); // older class -> not used for grade, just spread
+    const name = pick(firsts)+' '+pick(lasts);
+    const st = {
+      id:'s'+(i+1),
+      name,
+      classId: cls.id,
+      parentName: pick(parents)+' '+name.split(' ')[1],
+      parentPhone: '05'+ri(0,8)+'-'+ri(1000000,9999999),
+      birthYear: 2025 - (6 + DB.classes.indexOf(cls)),
+      ability: ri(55, 96) // hidden baseline ability
+    };
+    DB.students.push(st);
+    DB.users.push({ id:uid(), username:'parent'+(i+1), password:'1234', role:'parent', name:st.parentName, studentId:st.id });
+  }
+
+  // assessments — spread across school year Sep 2025 - Jun 2026
+  DB.assessments = [];
+  const months = ['2025-09','2025-10','2025-11','2025-12','2026-01','2026-02','2026-03','2026-04','2026-05','2026-06'];
+  DB.students.forEach(st=>{
+    SUBJECTS.forEach((subj,si)=>{
+      const subjBias = ri(-8,8);
+      months.filter((_,mi)=> mi%2===0 || rng()>0.5 ).forEach((m,idx)=>{
+        const trend = idx*1.2; // gentle improvement over year
+        let score = st.ability + subjBias + trend + ri(-9,9);
+        score = Math.max(35, Math.min(100, Math.round(score)));
+        const day = String(ri(3,26)).padStart(2,'0');
+        DB.assessments.push({ id:uid(), studentId:st.id, subject:subj, score, date:m+'-'+day, note:'', by:'מערכת' });
+      });
+    });
+  });
+
+  // attendance — ~14 sample days per student
+  DB.attendance = [];
+  DB.students.forEach(st=>{
+    for(let k=0;k<14;k++){
+      const m = pick(months); const day = String(ri(2,27)).padStart(2,'0');
+      const r = rng();
+      const status = r>0.88 ? 'absent' : (r>0.80 ? 'late' : 'present');
+      DB.attendance.push({ id:uid(), studentId:st.id, date:m+'-'+day, status });
+    }
+  });
+
+  // conduct points
+  DB.conduct = [];
+  const reasons = ['עזרה לחבר','השתתפות פעילה','שינון מצוין','תפילה בכוונה','איחר לשיעור','הפרעה בשיעור','סדר וניקיון','כיבוד מורים'];
+  DB.students.forEach(st=>{
+    const cnt = ri(2,6);
+    for(let k=0;k<cnt;k++){
+      const pts = rng()>0.25 ? pick([1,2,3,2,1]) : pick([-1,-2]);
+      const m = pick(months); const day = String(ri(2,27)).padStart(2,'0');
+      DB.conduct.push({ id:uid(), studentId:st.id, points:pts, reason:pick(reasons), date:m+'-'+day, by:'מערכת' });
+    }
+  });
+
+  // strip hidden ability so it isn't shown
+  DB.students.forEach(s=> delete s.ability);
+  save();
+}
+
+// ════════════════════════════════════════════════════════════
+//  AUTH + ROLE SCOPE
+// ════════════════════════════════════════════════════════════
+function fillLogin(u,p){ document.getElementById('login-user').value=u; document.getElementById('login-pass').value=p; }
+function doLogin(){
+  const u = v('login-user'), p = document.getElementById('login-pass').value;
+  const user = DB.users.find(x=> x.username===u && x.password===p);
+  if(!user){ document.getElementById('login-err').textContent='שם משתמש או סיסמה שגויים'; return; }
+  CUR = user; sessionStorage.setItem('crm_cur', user.id);
+  startApp();
+}
+function logout(){ CUR=null; sessionStorage.removeItem('crm_cur'); location.reload(); }
+
+const ROLE_HE = { admin:'מנהל', teacher:'מלמד', parent:'הורה' };
+
+// which students the current user may see
+function scopedStudents(){
+  if(CUR.role==='admin') return DB.students;
+  if(CUR.role==='teacher') return DB.students.filter(s=> s.classId===CUR.classId);
+  if(CUR.role==='parent') return DB.students.filter(s=> s.id===CUR.studentId);
+  return [];
+}
+function canEditStudent(st){
+  if(CUR.role==='admin') return true;
+  if(CUR.role==='teacher') return st.classId===CUR.classId;
+  if(CUR.role==='parent') return st.id===CUR.studentId; // parents may add home notes/practice
+  return false;
+}
+
+// ════════════════════════════════════════════════════════════
+//  TABS (role-aware)
+// ════════════════════════════════════════════════════════════
+const TAB_DEFS = [
+  { id:'dashboard',  label:'📈 דשבורד',     roles:['admin','teacher','parent'] },
+  { id:'students',   label:'👦 תלמידים',     roles:['admin','teacher'] },
+  { id:'progress',   label:'📝 הזנת ציונים',  roles:['admin','teacher','parent'] },
+  { id:'attendance', label:'🗓️ נוכחות',      roles:['admin','teacher'] },
+  { id:'conduct',    label:'⭐ מידות',        roles:['admin','teacher','parent'] },
+  { id:'reports',    label:'📄 דוחות שנתיים', roles:['admin','teacher','parent'] },
+  { id:'admin',      label:'⚙️ ניהול',        roles:['admin'] },
+];
+function buildTabs(){
+  const wrap = document.getElementById('tabs');
+  const tabs = TAB_DEFS.filter(t=> t.roles.includes(CUR.role));
+  wrap.innerHTML = tabs.map((t,i)=>`<button class="tab-btn ${i===0?'active':''}" data-tab="${t.id}" onclick="switchTab('${t.id}',this)">${t.label}</button>`).join('');
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('tab-'+tabs[0].id).classList.add('active');
+}
+function switchTab(name, btn){
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  btn.classList.add('active');
+  if(name==='dashboard') renderDashboard();
+  if(name==='students') renderStudents();
+  if(name==='progress') renderProgressLog();
+  if(name==='attendance') renderAttendance();
+  if(name==='conduct') renderConduct();
+  if(name==='admin') { renderClasses(); renderUsers(); }
+}
+
+// ════════════════════════════════════════════════════════════
+//  DROPDOWNS
+// ════════════════════════════════════════════════════════════
+function classOptions(includeAll, allLabel){
+  const opts = (CUR.role==='teacher') ? DB.classes.filter(c=>c.id===CUR.classId) : DB.classes;
+  let h = includeAll ? `<option value="">${allLabel||'כל הכיתות'}</option>` : '';
+  return h + opts.map(c=>`<option value="${c.id}">${esc(c.name)} — ${esc(c.teacher)}</option>`).join('');
+}
+function studentOptions(includeAll){
+  const list = scopedStudents().slice().sort((a,b)=> a.name.localeCompare(b.name,'he'));
+  let h = includeAll ? '<option value="">כל התלמידים</option>' : '';
+  return h + list.map(s=>{ const c=DB.classes.find(x=>x.id===s.classId); return `<option value="${s.id}">${esc(s.name)}${c?' ('+esc(c.name)+')':''}</option>`; }).join('');
+}
+function subjectOptions(includeAll){
+  let h = includeAll ? '<option value="">כל המקצועות</option>' : '';
+  return h + SUBJECTS.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('');
+}
+function populateDropdowns(){
+  ['stud-class','stud-filter-class','att-filter-class','cond-filter-class','rep-class','dash-class'].forEach(id=>{
+    const el=document.getElementById(id); if(!el) return;
+    const all = id.includes('filter')||id==='dash-class'||id==='stud-filter-class';
+    el.innerHTML = classOptions(all);
+  });
+  ['prog-student','att-student','cond-student','rep-student'].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=studentOptions(false); });
+  ['prog-filter-student'].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=studentOptions(true); });
+  document.getElementById('prog-subject').innerHTML = subjectOptions(false);
+  document.getElementById('prog-filter-subject').innerHTML = subjectOptions(true);
+  // default dates
+  ['prog-date','att-date','cond-date'].forEach(id=>{ const el=document.getElementById(id); if(el&&!el.value) el.value=todayISO(); });
+}
+
+// ════════════════════════════════════════════════════════════
+//  HELPERS — analytics
+// ════════════════════════════════════════════════════════════
+function studAssessments(sid){ return DB.assessments.filter(a=>a.studentId===sid); }
+function studAvg(sid, subject){ const a=studAssessments(sid).filter(x=>!subject||x.subject===subject); return a.length? Math.round(a.reduce((s,x)=>s+x.score,0)/a.length) : null; }
+function scoreClass(n){ return n>=85?'s-high':n>=70?'s-mid':'s-low'; }
+function inRange(dateStr, days){ if(days==='all') return true; const d=new Date(dateStr); const cut=new Date(); cut.setDate(cut.getDate()-Number(days)); return d>=cut; }
+function attRate(sid){ const recs=DB.attendance.filter(a=>a.studentId===sid); if(!recs.length) return null; const pres=recs.filter(a=>a.status==='present').length; return Math.round(pres/recs.length*100); }
+function conductSum(sid){ return DB.conduct.filter(c=>c.studentId===sid).reduce((s,c)=>s+Number(c.points),0); }
+
+// trend: compares last third vs first third of a student's assessments
+function studTrend(sid){
+  const a=studAssessments(sid).slice().sort((x,y)=>x.date.localeCompare(y.date));
+  if(a.length<4) return 0;
+  const n=Math.max(1,Math.floor(a.length/3));
+  const first=a.slice(0,n), last=a.slice(-n);
+  const fa=first.reduce((s,x)=>s+x.score,0)/first.length, la=last.reduce((s,x)=>s+x.score,0)/last.length;
+  return Math.round(la-fa);
+}
+
+// ════════════════════════════════════════════════════════════
+//  STUDENTS TAB
+// ════════════════════════════════════════════════════════════
+let editingStudent=null;
+function saveStudent(){
+  const name=v('stud-name'); if(!name){ alert('יש להזין שם'); return; }
+  const data={ name, classId:document.getElementById('stud-class').value, parentName:v('stud-parent'), parentPhone:v('stud-phone'), birthYear:parseInt(v('stud-birth'))||null };
+  if(editingStudent){ Object.assign(DB.students.find(s=>s.id===editingStudent), data); editingStudent=null;
+    document.getElementById('stud-form-title').textContent='➕ הוסף תלמיד'; document.getElementById('stud-save-btn').textContent='שמור'; document.getElementById('stud-cancel-btn').style.display='none';
+  } else { DB.students.push({ id:uid(), ...data }); }
+  ['stud-name','stud-parent','stud-phone','stud-birth'].forEach(id=>document.getElementById(id).value='');
+  save(); renderStudents(); populateDropdowns();
+}
+function editStudent(id){
+  if(!canEditStudent(DB.students.find(s=>s.id===id))) return;
+  const s=DB.students.find(x=>x.id===id); editingStudent=id;
+  document.getElementById('stud-name').value=s.name; document.getElementById('stud-class').value=s.classId;
+  document.getElementById('stud-parent').value=s.parentName||''; document.getElementById('stud-phone').value=s.parentPhone||'';
+  document.getElementById('stud-birth').value=s.birthYear||'';
+  document.getElementById('stud-form-title').textContent='✏️ עריכת תלמיד'; document.getElementById('stud-save-btn').textContent='עדכן'; document.getElementById('stud-cancel-btn').style.display='';
+  window.scrollTo(0,0);
+}
+function cancelStudentEdit(){ editingStudent=null; ['stud-name','stud-parent','stud-phone','stud-birth'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('stud-form-title').textContent='➕ הוסף תלמיד'; document.getElementById('stud-save-btn').textContent='שמור'; document.getElementById('stud-cancel-btn').style.display='none'; }
+function deleteStudent(id){ if(!confirm('למחוק תלמיד וכל נתוניו?')) return;
+  DB.students=DB.students.filter(s=>s.id!==id);
+  DB.assessments=DB.assessments.filter(a=>a.studentId!==id);
+  DB.attendance=DB.attendance.filter(a=>a.studentId!==id);
+  DB.conduct=DB.conduct.filter(c=>c.studentId!==id);
+  save(); renderStudents(); populateDropdowns();
+}
+function renderStudents(){
+  const q=v('stud-search').toLowerCase();
+  const fc=document.getElementById('stud-filter-class')?.value||'';
+  let list=scopedStudents();
+  if(fc) list=list.filter(s=>s.classId===fc);
+  if(q) list=list.filter(s=> s.name.toLowerCase().includes(q) || (s.parentName||'').toLowerCase().includes(q));
+  list=list.slice().sort((a,b)=>a.name.localeCompare(b.name,'he'));
+  const canEdit = CUR.role!=='parent';
+  const el=document.getElementById('students-table');
+  if(!list.length){ el.innerHTML='<div class="empty-state"><div>👦</div>אין תלמידים</div>'; return; }
+  el.innerHTML=`<table><thead><tr>
+    <th>שם</th><th>כיתה</th><th>הורה</th><th>טלפון</th><th>ממוצע</th><th>מגמה</th><th>נוכחות</th><th>מידות</th><th>פעולות</th>
+  </tr></thead><tbody>
+  ${list.map(s=>{ const c=DB.classes.find(x=>x.id===s.classId); const avg=studAvg(s.id); const tr=studTrend(s.id); const att=attRate(s.id); const cp=conductSum(s.id);
+    return `<tr>
+      <td><strong>${esc(s.name)}</strong></td>
+      <td><span class="badge">${esc(c?c.name:'—')}</span></td>
+      <td>${esc(s.parentName||'—')}</td>
+      <td>${s.parentPhone?`<a href="tel:${esc(s.parentPhone)}">${esc(s.parentPhone)}</a>`:'—'}</td>
+      <td>${avg!=null?`<span class="score-pill ${scoreClass(avg)}">${avg}</span>`:'—'}</td>
+      <td>${tr>0?`<span class="badge badge-green">▲ ${tr}</span>`:tr<0?`<span class="badge badge-red">▼ ${tr}</span>`:'<span class="badge">―</span>'}</td>
+      <td>${att!=null?att+'%':'—'}</td>
+      <td>${cp>0?`<span class="badge badge-green">+${cp}</span>`:cp<0?`<span class="badge badge-red">${cp}</span>`:'0'}</td>
+      <td><div class="actions">
+        <button class="btn btn-primary btn-sm" onclick="openProfile('${s.id}')">👁️ תיק</button>
+        ${canEdit?`<button class="btn btn-edit" onclick="editStudent('${s.id}')">✏️</button>`:''}
+        ${CUR.role==='admin'?`<button class="btn btn-danger" onclick="deleteStudent('${s.id}')">🗑️</button>`:''}
+      </div></td></tr>`; }).join('')}
+  </tbody></table>`;
+}
+function exportStudentsCSV(){
+  const list=scopedStudents();
+  const rows=[['שם','כיתה','הורה','טלפון','ממוצע','נוכחות%','מידות']];
+  list.forEach(s=>{ const c=DB.classes.find(x=>x.id===s.classId); rows.push([s.name,c?c.name:'',s.parentName||'',s.parentPhone||'',studAvg(s.id)??'',attRate(s.id)??'',conductSum(s.id)]); });
+  downloadCSV(rows,'students.csv');
+}
+function downloadCSV(rows,fn){
+  const csv='﻿'+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const b=new Blob([csv],{type:'text/csv'}); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=fn; a.click();
+}
+
+// ════════════════════════════════════════════════════════════
+//  PROGRESS TAB
+// ════════════════════════════════════════════════════════════
+function saveProgress(){
+  const sid=document.getElementById('prog-student').value;
+  const subject=document.getElementById('prog-subject').value;
+  const score=parseInt(v('prog-score'));
+  if(!sid){ alert('יש לבחור תלמיד'); return; }
+  if(isNaN(score)||score<0||score>100){ alert('ציון 0-100'); return; }
+  DB.assessments.push({ id:uid(), studentId:sid, subject, score, date:v('prog-date')||todayISO(), note:v('prog-note'), by:CUR.name });
+  save(); document.getElementById('prog-score').value=''; document.getElementById('prog-note').value='';
+  renderProgressLog();
+  alert('✅ נשמר');
+}
+function deleteAssessment(id){ if(!confirm('למחוק?'))return; DB.assessments=DB.assessments.filter(a=>a.id!==id); save(); renderProgressLog(); }
+function renderProgressLog(){
+  const sid=document.getElementById('prog-filter-student')?.value||'';
+  const subj=document.getElementById('prog-filter-subject')?.value||'';
+  const scoped=scopedStudents().map(s=>s.id);
+  let list=DB.assessments.filter(a=>scoped.includes(a.studentId));
+  if(sid) list=list.filter(a=>a.studentId===sid);
+  if(subj) list=list.filter(a=>a.subject===subj);
+  list=list.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,200);
+  const el=document.getElementById('progress-log');
+  if(!list.length){ el.innerHTML='<div class="empty-state"><div>📝</div>אין הערכות</div>'; return; }
+  el.innerHTML=`<table><thead><tr><th>תאריך</th><th>תלמיד</th><th>מקצוע</th><th>ציון</th><th>הערה</th><th>הוזן ע"י</th><th></th></tr></thead><tbody>
+  ${list.map(a=>{ const s=DB.students.find(x=>x.id===a.studentId);
+    return `<tr><td>${fmtDate(a.date)}</td><td>${esc(s?s.name:'—')}</td><td><span class="badge badge-purple">${esc(a.subject)}</span></td>
+    <td><span class="score-pill ${scoreClass(a.score)}">${a.score}</span></td><td>${esc(a.note||'—')}</td><td style="color:#718096">${esc(a.by||'')}</td>
+    <td><button class="btn btn-danger" onclick="deleteAssessment('${a.id}')">🗑️</button></td></tr>`; }).join('')}
+  </tbody></table>`;
+}
+
+// ════════════════════════════════════════════════════════════
+//  ATTENDANCE TAB
+// ════════════════════════════════════════════════════════════
+function saveAttendance(){
+  const sid=document.getElementById('att-student').value; if(!sid){alert('בחר תלמיד');return;}
+  DB.attendance.push({ id:uid(), studentId:sid, date:v('att-date')||todayISO(), status:document.getElementById('att-status').value });
+  save(); renderAttendance(); alert('✅ נשמר');
+}
+function renderAttendance(){
+  const fc=document.getElementById('att-filter-class')?.value||'';
+  let list=scopedStudents(); if(fc) list=list.filter(s=>s.classId===fc);
+  list=list.slice().sort((a,b)=>a.name.localeCompare(b.name,'he'));
+  const el=document.getElementById('attendance-table');
+  if(!list.length){ el.innerHTML='<div class="empty-state"><div>🗓️</div>אין נתונים</div>'; return; }
+  el.innerHTML=`<table><thead><tr><th>תלמיד</th><th>כיתה</th><th>נוכח</th><th>איחורים</th><th>חיסורים</th><th>אחוז נוכחות</th></tr></thead><tbody>
+  ${list.map(s=>{ const r=DB.attendance.filter(a=>a.studentId===s.id); const c=DB.classes.find(x=>x.id===s.classId);
+    const pr=r.filter(a=>a.status==='present').length, la=r.filter(a=>a.status==='late').length, ab=r.filter(a=>a.status==='absent').length;
+    const rate=r.length?Math.round(pr/r.length*100):0;
+    return `<tr><td><strong>${esc(s.name)}</strong></td><td><span class="badge">${esc(c?c.name:'')}</span></td>
+    <td>${pr}</td><td>${la?`<span class="badge badge-orange">${la}</span>`:0}</td><td>${ab?`<span class="badge badge-red">${ab}</span>`:0}</td>
+    <td><div style="display:flex;align-items:center;gap:8px"><span style="min-width:34px">${rate}%</span><div class="progress-wrap" style="flex:1"><div class="progress-bar" style="width:${rate}%;background:${rate>=90?'#276749':rate>=75?'#d69e2e':'#e53e3e'}"></div></div></div></td></tr>`; }).join('')}
+  </tbody></table>`;
+}
+
+// ════════════════════════════════════════════════════════════
+//  CONDUCT TAB
+// ════════════════════════════════════════════════════════════
+function saveConduct(){
+  const sid=document.getElementById('cond-student').value; if(!sid){alert('בחר תלמיד');return;}
+  DB.conduct.push({ id:uid(), studentId:sid, points:Number(document.getElementById('cond-points').value), reason:v('cond-reason'), date:v('cond-date')||todayISO(), by:CUR.name });
+  save(); document.getElementById('cond-reason').value=''; renderConduct(); alert('✅ נשמר');
+}
+function renderConduct(){
+  const fc=document.getElementById('cond-filter-class')?.value||'';
+  let list=scopedStudents(); if(fc) list=list.filter(s=>s.classId===fc);
+  list=list.map(s=>({s,pts:conductSum(s.id)})).sort((a,b)=>b.pts-a.pts);
+  const el=document.getElementById('conduct-table');
+  if(!list.length){ el.innerHTML='<div class="empty-state"><div>⭐</div>אין נתונים</div>'; return; }
+  el.innerHTML=`<table><thead><tr><th>#</th><th>תלמיד</th><th>כיתה</th><th>נקודות</th><th>אחרון</th></tr></thead><tbody>
+  ${list.map((o,i)=>{ const c=DB.classes.find(x=>x.id===o.s.classId); const recs=DB.conduct.filter(x=>x.studentId===o.s.id).sort((a,b)=>b.date.localeCompare(a.date));
+    const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1);
+    return `<tr><td>${medal}</td><td><strong>${esc(o.s.name)}</strong></td><td><span class="badge">${esc(c?c.name:'')}</span></td>
+    <td><span class="badge ${o.pts>0?'badge-green':o.pts<0?'badge-red':''}">${o.pts>0?'+':''}${o.pts}</span></td>
+    <td style="color:#718096;font-size:0.82rem">${recs[0]?esc(recs[0].reason)+' ('+fmtDate(recs[0].date)+')':'—'}</td></tr>`; }).join('')}
+  </tbody></table>`;
+}
+
+// ════════════════════════════════════════════════════════════
+//  STUDENT PROFILE MODAL  (radar + trend)
+// ════════════════════════════════════════════════════════════
+let profileCharts=[];
+function openProfile(sid){
+  const s=DB.students.find(x=>x.id===sid); if(!s) return;
+  const c=DB.classes.find(x=>x.id===s.classId);
+  const avg=studAvg(sid), tr=studTrend(sid), att=attRate(sid), cp=conductSum(sid);
+  const subjAvgs=SUBJECTS.map(subj=>studAvg(sid,subj)||0);
+  const recent=[...studAssessments(sid)].sort((a,b)=>a.date.localeCompare(b.date));
+  const conducts=DB.conduct.filter(x=>x.studentId===sid).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,8);
+  document.getElementById('profile-content').innerHTML=`
+    <h3>👦 ${esc(s.name)} <span class="badge">${esc(c?c.name:'')}</span></h3>
+    <p style="color:#718096;font-size:0.85rem;margin-bottom:14px">הורה: ${esc(s.parentName||'—')} | ${esc(s.parentPhone||'')} ${s.birthYear?'| שנת לידה '+s.birthYear:''}</p>
+    <div class="summary-bar">
+      <div class="summary-card"><div class="label">ממוצע כללי</div><div class="value">${avg??'—'}</div></div>
+      <div class="summary-card ${tr>=0?'green':'red'}"><div class="label">מגמה</div><div class="value">${tr>0?'+':''}${tr}</div></div>
+      <div class="summary-card"><div class="label">נוכחות</div><div class="value">${att??'—'}%</div></div>
+      <div class="summary-card ${cp>=0?'green':'red'}"><div class="label">מידות</div><div class="value">${cp>0?'+':''}${cp}</div></div>
+    </div>
+    <div class="chart-grid">
+      <div class="chart-box"><h3>פרופיל מקצועות</h3><div class="chart-canvas-wrap"><canvas id="pf-radar"></canvas></div></div>
+      <div class="chart-box"><h3>התקדמות לאורך השנה</h3><div class="chart-canvas-wrap"><canvas id="pf-trend"></canvas></div></div>
+    </div>
+    <div class="card" style="margin-top:16px;box-shadow:none;border:1px solid #e2e8f0">
+      <h2>⭐ יומן מידות אחרון</h2>
+      ${conducts.length?conducts.map(x=>`<div class="tl-item" style="border-color:${x.points>0?'#276749':'#e53e3e'}"><div class="tl-date">${fmtDate(x.date)}</div><div class="tl-body">${x.points>0?'➕':'➖'} <b>${x.points>0?'+':''}${x.points}</b> — ${esc(x.reason)}</div></div>`).join(''):'<p style="color:#a0aec0">אין רישומים</p>'}
+    </div>`;
+  document.getElementById('profile-modal').classList.add('open');
+  profileCharts.forEach(c=>c.destroy()); profileCharts=[];
+  profileCharts.push(new Chart(document.getElementById('pf-radar'),{ type:'radar',
+    data:{ labels:SUBJECTS, datasets:[{ label:'ממוצע', data:subjAvgs, backgroundColor:'rgba(43,108,176,0.2)', borderColor:'#2b6cb0', pointBackgroundColor:'#2b6cb0' }] },
+    options:{ responsive:true, maintainAspectRatio:false, scales:{ r:{ min:0, max:100, ticks:{stepSize:25} } }, plugins:{legend:{display:false}} } }));
+  // trend by month
+  const byMonth={}; recent.forEach(a=>{ const m=a.date.slice(0,7); (byMonth[m]=byMonth[m]||[]).push(a.score); });
+  const months=Object.keys(byMonth).sort(); const avgs=months.map(m=>Math.round(byMonth[m].reduce((s,x)=>s+x,0)/byMonth[m].length));
+  profileCharts.push(new Chart(document.getElementById('pf-trend'),{ type:'line',
+    data:{ labels:months.map(m=>m.slice(5)+'/'+m.slice(2,4)), datasets:[{ label:'ממוצע חודשי', data:avgs, borderColor:'#276749', backgroundColor:'rgba(39,103,73,0.1)', fill:true, tension:0.3 }] },
+    options:{ responsive:true, maintainAspectRatio:false, scales:{ y:{ min:0, max:100 } }, plugins:{legend:{display:false}} } }));
+}
+function closeProfile(){ document.getElementById('profile-modal').classList.remove('open'); profileCharts.forEach(c=>c.destroy()); profileCharts=[]; }
+document.getElementById('profile-modal').addEventListener('click',function(e){ if(e.target===this) closeProfile(); });
+
+// ════════════════════════════════════════════════════════════
+//  DASHBOARD  (role-aware, charts)
+// ════════════════════════════════════════════════════════════
+let dashCharts=[];
+function renderDashboard(){
+  const range=document.getElementById('dash-range').value;
+  const classFilter=document.getElementById('dash-class').value;
+  let students=scopedStudents();
+  if(classFilter) students=students.filter(s=>s.classId===classFilter);
+  const sids=students.map(s=>s.id);
+  const assess=DB.assessments.filter(a=>sids.includes(a.studentId) && inRange(a.date,range));
+
+  // hide class filter for parent (single child)
+  document.getElementById('dash-class-filter-wrap').style.display = (CUR.role==='parent')?'none':'';
+
+  // summary cards
+  const avgAll = assess.length? Math.round(assess.reduce((s,a)=>s+a.score,0)/assess.length):0;
+  const attAll = (()=>{ const r=DB.attendance.filter(a=>sids.includes(a.studentId)); if(!r.length) return 0; return Math.round(r.filter(a=>a.status==='present').length/r.length*100); })();
+  const condAll = DB.conduct.filter(c=>sids.includes(c.studentId)).reduce((s,c)=>s+Number(c.points),0);
+  const improving = students.filter(s=>studTrend(s.id)>0).length;
+  document.getElementById('dash-summary').innerHTML=`
+    <div class="summary-card"><div class="label">תלמידים</div><div class="value">${students.length}</div></div>
+    <div class="summary-card"><div class="label">ממוצע כללי</div><div class="value">${avgAll||'—'}</div></div>
+    <div class="summary-card green"><div class="label">אחוז נוכחות</div><div class="value">${attAll}%</div></div>
+    <div class="summary-card purple"><div class="label">סה"כ נקודות מידות</div><div class="value">${condAll}</div></div>
+    <div class="summary-card ${improving>=students.length/2?'green':'orange'}"><div class="label">במגמת שיפור</div><div class="value">${improving}/${students.length}</div></div>`;
+
+  // alerts
+  renderAlerts(students);
+
+  // charts container
+  const cont=document.getElementById('dash-charts');
+  const isParent = CUR.role==='parent';
+  cont.innerHTML = isParent ? `
+    <div class="chart-box"><h3>פרופיל מקצועות</h3><div class="chart-canvas-wrap"><canvas id="ch-radar"></canvas></div></div>
+    <div class="chart-box"><h3>התקדמות לאורך השנה</h3><div class="chart-canvas-wrap"><canvas id="ch-trend"></canvas></div></div>
+    <div class="chart-box"><h3>נוכחות</h3><div class="chart-canvas-wrap"><canvas id="ch-att"></canvas></div></div>
+    <div class="chart-box"><h3>ממוצע מול הכיתה</h3><div class="chart-canvas-wrap"><canvas id="ch-vsclass"></canvas></div></div>
+  ` : `
+    <div class="chart-box"><h3>ממוצע לפי מקצוע</h3><div class="chart-canvas-wrap"><canvas id="ch-subj"></canvas></div></div>
+    <div class="chart-box"><h3>ממוצע לפי כיתה</h3><div class="chart-canvas-wrap"><canvas id="ch-class"></canvas></div></div>
+    <div class="chart-box"><h3>מגמת ציונים חודשית</h3><div class="chart-canvas-wrap"><canvas id="ch-trend"></canvas></div></div>
+    <div class="chart-box"><h3>התפלגות רמות</h3><div class="chart-canvas-wrap"><canvas id="ch-dist"></canvas></div></div>
+    <div class="chart-box"><h3>5 המצטיינים</h3><div class="chart-canvas-wrap"><canvas id="ch-top"></canvas></div></div>
+    <div class="chart-box"><h3>נוכחות לפי כיתה</h3><div class="chart-canvas-wrap"><canvas id="ch-attclass"></canvas></div></div>`;
+
+  dashCharts.forEach(c=>c.destroy()); dashCharts=[];
+  const C={ blue:'#2b6cb0', green:'#276749', orange:'#d69e2e', red:'#e53e3e', purple:'#6b46c1', teal:'#319795' };
+  const mk=(id,cfg)=>{ const el=document.getElementById(id); if(el) dashCharts.push(new Chart(el,cfg)); };
+
+  if(isParent){
+    const sid=sids[0];
+    mk('ch-radar',{ type:'radar', data:{ labels:SUBJECTS, datasets:[{ data:SUBJECTS.map(s=>studAvg(sid,s)||0), backgroundColor:'rgba(43,108,176,0.2)', borderColor:C.blue, pointBackgroundColor:C.blue }] }, options:radarOpts() });
+    trendChart('ch-trend', assess);
+    const r=DB.attendance.filter(a=>a.studentId===sid);
+    mk('ch-att',{ type:'doughnut', data:{ labels:['נוכח','איחור','חיסור'], datasets:[{ data:['present','late','absent'].map(st=>r.filter(a=>a.status===st).length), backgroundColor:[C.green,C.orange,C.red] }] }, options:{responsive:true,maintainAspectRatio:false} });
+    // vs class
+    const st=students[0]; const classmates=DB.students.filter(x=>x.classId===st.classId);
+    const myAvg=studAvg(sid)||0; const clsAvg=Math.round(classmates.map(x=>studAvg(x.id)||0).reduce((a,b)=>a+b,0)/classmates.length);
+    mk('ch-vsclass',{ type:'bar', data:{ labels:['התלמיד','ממוצע הכיתה'], datasets:[{ data:[myAvg,clsAvg], backgroundColor:[C.blue,C.teal] }] }, options:barOpts(100) });
+    return;
+  }
+
+  // ADMIN / TEACHER
+  mk('ch-subj',{ type:'bar', data:{ labels:SUBJECTS, datasets:[{ label:'ממוצע', data:SUBJECTS.map(subj=>{ const a=assess.filter(x=>x.subject===subj); return a.length?Math.round(a.reduce((s,x)=>s+x.score,0)/a.length):0; }), backgroundColor:C.blue }] }, options:barOpts(100) });
+
+  const classesToShow = (CUR.role==='teacher')? DB.classes.filter(c=>c.id===CUR.classId) : DB.classes;
+  mk('ch-class',{ type:'bar', data:{ labels:classesToShow.map(c=>c.name), datasets:[{ label:'ממוצע', data:classesToShow.map(c=>{ const ss=DB.students.filter(s=>s.classId===c.id).map(s=>s.id); const a=assess.filter(x=>ss.includes(x.studentId)); return a.length?Math.round(a.reduce((s,x)=>s+x.score,0)/a.length):0; }), backgroundColor:C.teal }] }, options:barOpts(100) });
+
+  trendChart('ch-trend', assess);
+
+  // distribution
+  const dist=[0,0,0]; students.forEach(s=>{ const a=studAvg(s.id); if(a==null)return; if(a>=85)dist[0]++; else if(a>=70)dist[1]++; else dist[2]++; });
+  mk('ch-dist',{ type:'doughnut', data:{ labels:['מצטיינים (85+)','בינוני (70-84)','זקוק לחיזוק (<70)'], datasets:[{ data:dist, backgroundColor:[C.green,C.orange,C.red] }] }, options:{responsive:true,maintainAspectRatio:false} });
+
+  // top 5
+  const ranked=students.map(s=>({n:s.name,a:studAvg(s.id)||0})).sort((x,y)=>y.a-x.a).slice(0,5);
+  mk('ch-top',{ type:'bar', data:{ labels:ranked.map(r=>r.n), datasets:[{ label:'ממוצע', data:ranked.map(r=>r.a), backgroundColor:C.purple }] }, options:{ ...barOpts(100), indexAxis:'y' } });
+
+  // attendance by class
+  mk('ch-attclass',{ type:'bar', data:{ labels:classesToShow.map(c=>c.name), datasets:[{ label:'% נוכחות', data:classesToShow.map(c=>{ const ss=DB.students.filter(s=>s.classId===c.id).map(s=>s.id); const r=DB.attendance.filter(a=>ss.includes(a.studentId)); return r.length?Math.round(r.filter(a=>a.status==='present').length/r.length*100):0; }), backgroundColor:C.green }] }, options:barOpts(100) });
+}
+function trendChart(id, assess){
+  const byMonth={}; assess.forEach(a=>{ const m=a.date.slice(0,7); (byMonth[m]=byMonth[m]||[]).push(a.score); });
+  const months=Object.keys(byMonth).sort(); const avgs=months.map(m=>Math.round(byMonth[m].reduce((s,x)=>s+x,0)/byMonth[m].length));
+  const el=document.getElementById(id); if(!el) return;
+  dashCharts.push(new Chart(el,{ type:'line', data:{ labels:months.map(m=>m.slice(5)+'/'+m.slice(2,4)), datasets:[{ label:'ממוצע', data:avgs, borderColor:'#2b6cb0', backgroundColor:'rgba(43,108,176,0.1)', fill:true, tension:0.3 }] }, options:{ responsive:true, maintainAspectRatio:false, scales:{ y:{min:0,max:100} }, plugins:{legend:{display:false}} } }));
+}
+const barOpts=(max)=>({ responsive:true, maintainAspectRatio:false, scales:{ y:{ min:0, max:max||100 } }, plugins:{legend:{display:false}} });
+const radarOpts=()=>({ responsive:true, maintainAspectRatio:false, scales:{ r:{ min:0, max:100, ticks:{stepSize:25} } }, plugins:{legend:{display:false}} });
+
+function renderAlerts(students){
+  const el=document.getElementById('dash-alerts'); const alerts=[];
+  students.forEach(s=>{
+    const avg=studAvg(s.id), tr=studTrend(s.id), att=attRate(s.id);
+    if(avg!=null && avg<65) alerts.push({t:'bad', i:'⚠️', m:`<b>${esc(s.name)}</b> — ממוצע נמוך (${avg}). מומלץ חיזוק.`});
+    else if(tr<=-6) alerts.push({t:'warn', i:'📉', m:`<b>${esc(s.name)}</b> — מגמת ירידה (${tr} נק').`});
+    if(att!=null && att<75) alerts.push({t:'warn', i:'🗓️', m:`<b>${esc(s.name)}</b> — נוכחות נמוכה (${att}%).`});
+    if(tr>=8) alerts.push({t:'good', i:'🚀', m:`<b>${esc(s.name)}</b> — שיפור מרשים (+${tr} נק')!`});
+  });
+  if(!alerts.length){ el.innerHTML='<p style="color:#a0aec0">אין התראות — הכל תקין 👍</p>'; return; }
+  const order={bad:0,warn:1,good:2};
+  el.innerHTML=alerts.sort((a,b)=>order[a.t]-order[b.t]).slice(0,12).map(a=>`<div class="alert-row ${a.t}"><span style="font-size:1.1rem">${a.i}</span><span>${a.m}</span></div>`).join('');
+}
+
+// ════════════════════════════════════════════════════════════
+//  REPORTS  (annual)
+// ════════════════════════════════════════════════════════════
+function onReportTypeChange(){
+  const t=document.getElementById('rep-type').value;
+  document.getElementById('rep-student-wrap').style.display = t==='student'?'':'none';
+  document.getElementById('rep-class-wrap').style.display = t==='class'?'':'none';
+}
+function generateReport(){
+  const t=document.getElementById('rep-type').value;
+  if(t==='student') reportStudent(document.getElementById('rep-student').value);
+  else reportClass(document.getElementById('rep-class').value);
+}
+function reportStudent(sid){
+  const s=DB.students.find(x=>x.id===sid); if(!s){ alert('בחר תלמיד'); return; }
+  const c=DB.classes.find(x=>x.id===s.classId);
+  const rows=SUBJECTS.map(subj=>{ const a=studAssessments(sid).filter(x=>x.subject===subj); const avg=a.length?Math.round(a.reduce((q,x)=>q+x.score,0)/a.length):null; return {subj,avg,n:a.length}; });
+  const overall=studAvg(sid), tr=studTrend(sid), att=attRate(sid), cp=conductSum(sid);
+  const grade = overall>=90?'מצוין':overall>=80?'טוב מאוד':overall>=70?'טוב':overall>=60?'מספיק':'טעון שיפור';
+  document.getElementById('report-output').innerHTML=`
+  <div class="card report-page">
+    <div style="text-align:center;border-bottom:3px solid #2b6cb0;padding-bottom:14px;margin-bottom:18px">
+      <div style="font-size:1.6rem">🎓 תעודה שנתית</div>
+      <div style="color:#718096;font-size:0.9rem">שנת הלימודים תשפ"ו (2025-2026)</div>
+    </div>
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin-bottom:18px;font-size:0.95rem">
+      <div><b>שם התלמיד:</b> ${esc(s.name)}</div>
+      <div><b>כיתה:</b> ${esc(c?c.name:'')} (${esc(c?c.teacher:'')})</div>
+      <div><b>הורה:</b> ${esc(s.parentName||'')}</div>
+    </div>
+    <table><thead><tr><th>מקצוע</th><th>ממוצע שנתי</th><th>מס' הערכות</th><th>הערכה מילולית</th></tr></thead><tbody>
+      ${rows.map(r=>`<tr><td><b>${esc(r.subj)}</b></td><td>${r.avg!=null?`<span class="score-pill ${scoreClass(r.avg)}">${r.avg}</span>`:'—'}</td><td>${r.n}</td><td>${r.avg==null?'—':r.avg>=85?'מצוין':r.avg>=70?'טוב':'טעון חיזוק'}</td></tr>`).join('')}
+    </tbody></table>
+    <div class="summary-bar" style="margin-top:18px">
+      <div class="summary-card"><div class="label">ממוצע כללי</div><div class="value">${overall??'—'}</div></div>
+      <div class="summary-card"><div class="label">הערכה כללית</div><div class="value" style="font-size:1.1rem">${grade}</div></div>
+      <div class="summary-card ${tr>=0?'green':'red'}"><div class="label">מגמה שנתית</div><div class="value">${tr>0?'+':''}${tr}</div></div>
+      <div class="summary-card green"><div class="label">נוכחות</div><div class="value">${att??'—'}%</div></div>
+      <div class="summary-card purple"><div class="label">נקודות מידות</div><div class="value">${cp>0?'+':''}${cp}</div></div>
+    </div>
+    <div style="margin-top:20px;padding:14px;background:#f7fafc;border-radius:10px;font-size:0.9rem;line-height:1.7">
+      <b>הערת המלמד:</b> ${s.name.split(' ')[0]} ${overall>=80?'מתמיד ומגלה התקדמות יפה לאורך השנה. ימשיך כך!':overall>=65?'משקיע ומראה התקדמות. כדאי לחזק את ההתמדה.':'זקוק לחיזוק ותשומת לב נוספת. נמשיך יחד.'}
+    </div>
+    <div style="margin-top:30px;display:flex;justify-content:space-between;font-size:0.85rem;color:#4a5568">
+      <div>חתימת המלמד: ____________</div><div>חתימת המנהל: ____________</div><div>תאריך: ${fmtDate(todayISO())}</div>
+    </div>
+  </div>`;
+  document.getElementById('report-output').scrollIntoView({behavior:'smooth'});
+}
+function reportClass(cid){
+  const c=DB.classes.find(x=>x.id===cid); if(!c){ alert('בחר כיתה'); return; }
+  const students=DB.students.filter(s=>s.classId===cid);
+  const sids=students.map(s=>s.id);
+  const clsAvg=(()=>{ const all=students.map(s=>studAvg(s.id)).filter(x=>x!=null); return all.length?Math.round(all.reduce((a,b)=>a+b,0)/all.length):0; })();
+  const ranked=students.map(s=>({s,avg:studAvg(s.id)||0,att:attRate(s.id)||0,cp:conductSum(s.id),tr:studTrend(s.id)})).sort((a,b)=>b.avg-a.avg);
+  const subjAvgs=SUBJECTS.map(subj=>{ const a=DB.assessments.filter(x=>sids.includes(x.studentId)&&x.subject===subj); return a.length?Math.round(a.reduce((s,x)=>s+x.score,0)/a.length):0; });
+  document.getElementById('report-output').innerHTML=`
+  <div class="card report-page">
+    <div style="text-align:center;border-bottom:3px solid #2b6cb0;padding-bottom:14px;margin-bottom:18px">
+      <div style="font-size:1.5rem">📊 דוח כיתתי שנתי — ${esc(c.name)}</div>
+      <div style="color:#718096">מלמד: ${esc(c.teacher)} | שנה"ל תשפ"ו | ${students.length} תלמידים</div>
+    </div>
+    <div class="summary-bar">
+      <div class="summary-card"><div class="label">ממוצע כיתתי</div><div class="value">${clsAvg}</div></div>
+      <div class="summary-card green"><div class="label">מצטיינים (85+)</div><div class="value">${ranked.filter(r=>r.avg>=85).length}</div></div>
+      <div class="summary-card red"><div class="label">זקוקים לחיזוק</div><div class="value">${ranked.filter(r=>r.avg<70).length}</div></div>
+      <div class="summary-card"><div class="label">מקצוע חזק</div><div class="value" style="font-size:1rem">${SUBJECTS[subjAvgs.indexOf(Math.max(...subjAvgs))]}</div></div>
+      <div class="summary-card orange"><div class="label">מקצוע לחיזוק</div><div class="value" style="font-size:1rem">${SUBJECTS[subjAvgs.indexOf(Math.min(...subjAvgs))]}</div></div>
+    </div>
+    <h2 style="margin:16px 0 10px;color:#1a365d">ממוצע לפי מקצוע</h2>
+    <table><thead><tr>${SUBJECTS.map(s=>`<th>${esc(s)}</th>`).join('')}</tr></thead>
+      <tbody><tr>${subjAvgs.map(a=>`<td><span class="score-pill ${scoreClass(a)}">${a}</span></td>`).join('')}</tr></tbody></table>
+    <h2 style="margin:18px 0 10px;color:#1a365d">דירוג תלמידים</h2>
+    <table><thead><tr><th>#</th><th>תלמיד</th><th>ממוצע</th><th>מגמה</th><th>נוכחות</th><th>מידות</th></tr></thead><tbody>
+      ${ranked.map((r,i)=>`<tr><td>${i+1}</td><td><b>${esc(r.s.name)}</b></td><td><span class="score-pill ${scoreClass(r.avg)}">${r.avg}</span></td>
+      <td>${r.tr>0?'▲ +'+r.tr:r.tr<0?'▼ '+r.tr:'―'}</td><td>${r.att}%</td><td>${r.cp>0?'+':''}${r.cp}</td></tr>`).join('')}
+    </tbody></table>
+  </div>`;
+  document.getElementById('report-output').scrollIntoView({behavior:'smooth'});
+}
+
+// ════════════════════════════════════════════════════════════
+//  ADMIN — classes & users
+// ════════════════════════════════════════════════════════════
+function saveClass(){
+  const name=v('cls-name'), teacher=v('cls-teacher'); if(!name){alert('שם כיתה');return;}
+  DB.classes.push({ id:uid(), name, teacher });
+  save(); document.getElementById('cls-name').value=''; document.getElementById('cls-teacher').value='';
+  renderClasses(); populateDropdowns();
+}
+function deleteClass(id){ if(DB.students.some(s=>s.classId===id)){ alert('יש תלמידים בכיתה — לא ניתן למחוק'); return; } if(!confirm('למחוק כיתה?'))return; DB.classes=DB.classes.filter(c=>c.id!==id); save(); renderClasses(); populateDropdowns(); }
+function renderClasses(){
+  const el=document.getElementById('classes-table');
+  el.innerHTML=`<table><thead><tr><th>כיתה</th><th>מלמד</th><th>תלמידים</th><th>ממוצע</th><th></th></tr></thead><tbody>
+  ${DB.classes.map(c=>{ const ss=DB.students.filter(s=>s.classId===c.id); const avgs=ss.map(s=>studAvg(s.id)).filter(x=>x!=null); const avg=avgs.length?Math.round(avgs.reduce((a,b)=>a+b,0)/avgs.length):'—';
+    return `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.teacher||'—')}</td><td>${ss.length}</td><td>${avg}</td>
+    <td><button class="btn btn-danger" onclick="deleteClass('${c.id}')">🗑️</button></td></tr>`; }).join('')}
+  </tbody></table>`;
+}
+function renderUsers(){
+  const el=document.getElementById('users-table');
+  el.innerHTML=`<table><thead><tr><th>שם משתמש</th><th>שם</th><th>הרשאה</th><th>משויך ל-</th></tr></thead><tbody>
+  ${DB.users.map(u=>{ let link='—'; if(u.role==='teacher'){ const c=DB.classes.find(x=>x.id===u.classId); link=c?c.name:'—'; } if(u.role==='parent'){ const s=DB.students.find(x=>x.id===u.studentId); link=s?s.name:'—'; }
+    const badge={admin:'badge-purple',teacher:'badge',parent:'badge-green'}[u.role];
+    return `<tr><td><code>${esc(u.username)}</code></td><td>${esc(u.name)}</td><td><span class="badge ${badge}">${ROLE_HE[u.role]}</span></td><td>${esc(link)}</td></tr>`; }).join('')}
+  </tbody></table>
+  <p style="font-size:0.8rem;color:#718096;margin-top:10px">סך הכל ${DB.users.length} משתמשים. סיסמת מלמדים והורים: <code>1234</code>.</p>`;
+}
+
+function exportAllJSON(){ const b=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='students-crm-backup.json'; a.click(); }
+function resetDemo(){ if(!confirm('לאפס את כל הנתונים ולטעון מחדש 100 תלמידי דמו?'))return; localStorage.removeItem(LS_KEY); DB={users:[],classes:[],students:[],assessments:[],attendance:[],conduct:[]}; seedDemo(); alert('אופס לנתוני דמו'); location.reload(); }
+
+// ════════════════════════════════════════════════════════════
+//  BOOT
+// ════════════════════════════════════════════════════════════
+function startApp(){
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app').style.display='block';
+  document.getElementById('hdr-user').textContent=CUR.name;
+  document.getElementById('hdr-role').textContent=ROLE_HE[CUR.role];
+  buildTabs();
+  populateDropdowns();
+  onReportTypeChange();
+  renderDashboard();
+}
+function init(){
+  if(!load() || !DB.students || !DB.students.length){ seedDemo(); }
+  // restore session
+  const cid=sessionStorage.getItem('crm_cur');
+  if(cid){ const u=DB.users.find(x=>x.id===cid); if(u){ CUR=u; startApp(); return; } }
+  document.getElementById('login-pass').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
+}
+init();
+</script>
+</body>
+</html>
