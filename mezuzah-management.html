@@ -6,18 +6,6 @@
 <title>ניהול מזוזות — רכישה ומכירה</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-<script>
-  firebase.initializeApp({
-    apiKey: "AIzaSyBTGFdv6v87aRC0bg3UbiWPT7nmJVSOv04",
-    authDomain: "kablan-management.firebaseapp.com",
-    projectId: "kablan-management",
-    appId: "1:1096929079665:web:321151ff71e6a0251706d0"
-  });
-  const fdb = firebase.firestore();
-  const cloudRef = fdb.collection('mezuzah_data').doc('shared');
-</script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: #2d3748; direction: rtl; }
@@ -98,8 +86,9 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
 <body>
 <header>
   <h1>📜 ניהול מזוזות — רכישה ומכירה</h1>
-  <span id="syncStatus" class="badge b-yellow" style="font-size:.72rem">⏳ מתחבר לענן…</span>
+  <span id="syncStatus" class="badge b-gray" style="font-size:.72rem">— לא מחובר</span>
   <div class="actions">
+    <button class="btn btn-light" onclick="setServerUrl()">⚙ הגדר שרת</button>
     <button class="btn btn-light" onclick="exportExcel()">⬇ ייצוא לאקסל</button>
     <button class="btn btn-light" onclick="document.getElementById('importFile').click()">⬆ ייבוא גיבוי</button>
     <input type="file" id="importFile" accept=".json" style="display:none" onchange="importBackup(event)">
@@ -267,15 +256,19 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
 <script>
 // ============ DATA ============
 const KEY = 'mezuzah_system_v1';
-const CLIENT = Math.random().toString(36).slice(2); // identify our own cloud writes
+const URLKEY = 'mezuzah_gs_url';            // where the Apps Script URL is stored
+let GS_URL = localStorage.getItem(URLKEY) || '';
 let data = load();
-let cloudReady = false;   // became true after first snapshot from server
-let writing = false;      // true while pushing our own write
+
+let suppressPullUntil = 0;                   // skip pulling right after a local change (avoid race)
+let pushTimer = null;                        // debounce server writes
+let lastPushedJSON = '';                     // what we last sent to the server
 
 function emptyData(){ return { scribes: [], computer: [], gavra: [], mezuzot: [], payments: [], seq: 1 }; }
+function itemCount(d){ return (d.scribes||[]).length + (d.computer||[]).length + (d.gavra||[]).length + (d.mezuzot||[]).length + (d.payments||[]).length; }
 
 function load() {
-  // local cache shown instantly until the cloud snapshot arrives
+  // local cache shown instantly until the server responds
   try {
     const d = JSON.parse(localStorage.getItem(KEY));
     if (d) return d;
@@ -290,54 +283,81 @@ function setSync(state, txt) {
   el.textContent = txt;
 }
 
-// write the whole shared document to the cloud (last-write-wins on the doc)
+// paste / change the Apps Script web-app URL (stored locally per device)
+function setServerUrl() {
+  const cur = GS_URL || '';
+  const v = prompt('הדבק כאן את כתובת ה-Apps Script (מסתיימת ב-/exec):', cur);
+  if (v === null) return;                    // cancelled
+  const url = v.trim();
+  if (url && !/\/exec$/.test(url)) { alert('הכתובת צריכה להסתיים ב-/exec'); return; }
+  GS_URL = url;
+  localStorage.setItem(URLKEY, url);
+  if (url) { toast('השרת הוגדר'); startSheetSync(); }
+  else setSync('', '— לא מחובר');
+}
+
+// ---- save: local first (instant), then push to the sheet (debounced) ----
 function save() {
   localStorage.setItem(KEY, JSON.stringify(data));
   renderAll();
-  cloudSave();
+  serverPush();
 }
-function cloudSave() {
-  if (typeof cloudRef === 'undefined') return;
-  writing = true;
+function serverPush() {
+  if (!GS_URL) { setSync('', '— לא מחובר'); return; }
+  suppressPullUntil = Date.now() + 9000;     // don't let a pull clobber this change
   setSync('wait', '⏳ שומר…');
-  cloudRef.set(Object.assign({ _by: CLIENT, _at: Date.now() }, data))
-    .then(()=>{ setSync('ok', '☁ מסונכרן'); })
-    .catch(err=>{ setSync('err', '⚠ שגיאת שמירה'); console.error(err); })
-    .finally(()=>{ writing = false; });
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(()=>{
+    const body = new URLSearchParams();
+    body.append('action', 'save');
+    body.append('data', JSON.stringify(data));
+    lastPushedJSON = JSON.stringify(stripVolatile(data));
+    fetch(GS_URL, { method:'POST', mode:'no-cors', body })   // no-cors: fire-and-forget
+      .then(()=> setSync('ok', '☁ נשמר'))
+      .catch(()=> setSync('err', '⚠ שגיאת שמירה'));
+  }, 350);
 }
 
-function itemCount(d){ return (d.scribes||[]).length + (d.computer||[]).length + (d.gavra||[]).length + (d.mezuzot||[]).length + (d.payments||[]).length; }
-let firstSnap = true;
-
-// real-time subscription: any change by anyone updates every open device
-function startCloudSync() {
-  if (typeof cloudRef === 'undefined') { setSync('err', '⚠ ללא ענן (מקומי)'); return; }
-  cloudRef.onSnapshot(snap => {
-    cloudReady = true;
-    const remote = snap.exists ? snap.data() : null;
-    // first snapshot: decide direction so existing local data is never wiped
-    if (firstSnap) {
-      firstSnap = false;
-      const remoteCount = remote ? itemCount(remote) : 0;
-      if (remoteCount === 0 && itemCount(data) > 0) {
-        // cloud is empty but we have local data — push it up, keep showing it
-        cloudSave();
-        setSync('ok', '☁ מסונכרן');
-        return;
+// ---- pull: read the sheet and adopt it if it changed (poll + on focus) ----
+function stripVolatile(d){ return d; }
+function editingNow(){
+  const a = document.activeElement;
+  return a && (a.tagName==='INPUT' || a.tagName==='SELECT' || a.tagName==='TEXTAREA');
+}
+function serverPull(initial) {
+  if (!GS_URL) return;
+  fetch(GS_URL + '?action=load&t=' + Date.now())
+    .then(r=>r.json())
+    .then(remote=>{
+      if (!remote || remote.status==='error') { setSync('err','⚠ שגיאת טעינה'); return; }
+      const remoteCount = itemCount(remote);
+      if (initial) {
+        // first load: if the sheet is empty but we have local data, seed the sheet
+        if (remoteCount === 0 && itemCount(data) > 0) { serverPush(); setSync('ok','☁ נשמר'); return; }
       }
-      if (!remote) { cloudSave(); return; }
-    }
-    if (!remote) return;
-    // ignore the echo of our own just-sent write to avoid clobbering active typing
-    if (remote._by === CLIENT && writing) { setSync('ok', '☁ מסונכרן'); return; }
-    delete remote._by; delete remote._at;
-    data = Object.assign(emptyData(), remote);
-    localStorage.setItem(KEY, JSON.stringify(data));
-    renderAll();
-    if (document.getElementById('tab-charts').classList.contains('active')) renderCharts();
-    setSync('ok', '☁ מסונכרן');
-  }, err => { setSync('err', '⚠ אין חיבור לענן'); console.error(err); });
+      // don't overwrite a change we just made, or while the user is typing
+      if (Date.now() < suppressPullUntil || editingNow()) { setSync('ok','☁ מסונכרן'); return; }
+      const incoming = JSON.stringify(remote);
+      if (incoming !== JSON.stringify(Object.assign(emptyData(), data))) {
+        data = Object.assign(emptyData(), remote);
+        localStorage.setItem(KEY, JSON.stringify(data));
+        renderAll();
+        if (document.getElementById('tab-charts').classList.contains('active')) renderCharts();
+      }
+      setSync('ok','☁ מסונכרן');
+    })
+    .catch(()=> setSync('err','⚠ אין חיבור לשרת'));
 }
+
+let pollTimer = null;
+function startSheetSync() {
+  if (!GS_URL) { setSync('', '— לא מחובר (לחץ ⚙ הגדר שרת)'); return; }
+  setSync('wait', '⏳ טוען מהשרת…');
+  serverPull(true);
+  clearInterval(pollTimer);
+  pollTimer = setInterval(()=>serverPull(false), 12000);   // refresh every 12s
+}
+document.addEventListener('visibilitychange', ()=>{ if (!document.hidden) serverPull(false); });
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 function toast(msg) {
   const t = document.getElementById('toast');
@@ -699,7 +719,7 @@ function renderAll() {
 renderAll();
 document.getElementById('mz-date').value = new Date().toISOString().slice(0,10);
 document.getElementById('pay-date').value = new Date().toISOString().slice(0,10);
-startCloudSync();
+if (GS_URL) startSheetSync(); else setSync('', '— לא מחובר (לחץ ⚙ הגדר שרת)');
 </script>
 </body>
 </html>
