@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ניהול מזוזות — רכישה ומכירה</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: #2d3748; direction: rtl; }
+
+header {
+  background: linear-gradient(135deg, #1a365d, #2b6cb0);
+  color: white; padding: 14px 24px;
+  display: flex; align-items: center; gap: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+header h1 { font-size: 1.3rem; font-weight: 700; flex: 1; }
+header .actions { display: flex; gap: 8px; }
+
+.tabs { display: flex; background: #2b6cb0; padding: 0 16px; gap: 2px; overflow-x: auto; }
+.tab-btn { padding: 11px 20px; border: none; background: transparent; color: rgba(255,255,255,0.7); cursor: pointer; font-size: 0.9rem; font-weight: 600; border-bottom: 3px solid transparent; transition: all 0.2s; font-family: inherit; white-space: nowrap; }
+.tab-btn:hover { color: white; background: rgba(255,255,255,0.1); }
+.tab-btn.active { color: white; border-bottom-color: #f6e05e; background: rgba(255,255,255,0.1); }
+
+.content { padding: 22px; max-width: 1400px; margin: 0 auto; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+.card { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); padding: 20px; margin-bottom: 18px; }
+.card h2 { font-size: 1rem; font-weight: 700; color: #1a365d; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+.card h2 .hint { font-size: 0.72rem; font-weight: 500; color: #718096; }
+
+.form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+.form-group { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 130px; }
+.form-group label { font-size: 0.8rem; font-weight: 600; color: #4a5568; }
+.form-group input, .form-group select { padding: 8px 11px; border: 1.5px solid #cbd5e0; border-radius: 8px; font-size: 0.9rem; font-family: inherit; background: #f7fafc; direction: rtl; transition: border-color 0.2s; }
+.form-group input:focus, .form-group select:focus { outline: none; border-color: #2b6cb0; background: white; }
+
+.btn { padding: 8px 18px; border: none; border-radius: 8px; font-size: 0.88rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.2s; white-space: nowrap; }
+.btn-primary { background: #2b6cb0; color: white; }
+.btn-primary:hover { background: #1a365d; }
+.btn-success { background: #276749; color: white; }
+.btn-success:hover { background: #1c4532; }
+.btn-light { background: rgba(255,255,255,0.18); color: white; }
+.btn-light:hover { background: rgba(255,255,255,0.3); }
+.btn-danger { background: #e53e3e; color: white; padding: 5px 10px; font-size: 0.78rem; }
+.btn-danger:hover { background: #c53030; }
+.btn-edit { background: #ed8936; color: white; padding: 5px 10px; font-size: 0.78rem; }
+.btn-edit:hover { background: #c05621; }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+th, td { padding: 9px 10px; text-align: right; border-bottom: 1px solid #e2e8f0; }
+th { background: #edf2f7; color: #1a365d; font-weight: 700; font-size: 0.78rem; white-space: nowrap; position: sticky; top: 0; }
+tbody tr:hover { background: #f7fafc; }
+.table-wrap { overflow-x: auto; }
+td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; border-radius: 6px; font-family: inherit; font-size: 0.83rem; background: white; }
+
+.badge { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; white-space: nowrap; }
+.b-green { background: #c6f6d5; color: #22543d; }
+.b-red { background: #fed7d7; color: #742a2a; }
+.b-yellow { background: #fefcbf; color: #744210; }
+.b-gray { background: #e2e8f0; color: #4a5568; }
+.b-blue { background: #bee3f8; color: #2a4365; }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 18px; }
+.stat-card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); border-right: 4px solid #2b6cb0; }
+.stat-card .num { font-size: 1.7rem; font-weight: 800; color: #1a365d; }
+.stat-card .lbl { font-size: 0.8rem; color: #718096; margin-top: 3px; }
+
+.charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px; }
+.empty { text-align: center; color: #a0aec0; padding: 30px; font-size: 0.9rem; }
+.section-tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.section-tab { padding: 7px 16px; border-radius: 8px; background: #e2e8f0; color: #4a5568; cursor: pointer; font-size: 0.85rem; font-weight: 600; border: none; font-family: inherit; }
+.section-tab.active { background: #2b6cb0; color: white; }
+.money { font-variant-numeric: tabular-nums; font-weight: 600; }
+.pos { color: #c53030; }
+.zero { color: #718096; }
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #276749; color: white; padding: 12px 26px; border-radius: 10px; font-weight: 600; box-shadow: 0 4px 14px rgba(0,0,0,0.25); opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 999; }
+.toast.show { opacity: 1; }
+.filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
+@media print { header, .tabs, .actions, .no-print { display: none !important; } .card { box-shadow: none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>📜 ניהול מזוזות — רכישה ומכירה</h1>
+  <div class="actions">
+    <button class="btn btn-light" onclick="exportExcel()">⬇ ייצוא לאקסל</button>
+    <button class="btn btn-light" onclick="document.getElementById('importFile').click()">⬆ ייבוא גיבוי</button>
+    <input type="file" id="importFile" accept=".json" style="display:none" onchange="importBackup(event)">
+    <button class="btn btn-light" onclick="exportBackup()">💾 גיבוי JSON</button>
+  </div>
+</header>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="showTab('pricelist',this)">מחירון</button>
+  <button class="tab-btn" onclick="showTab('mezuzot',this)">מזוזות</button>
+  <button class="tab-btn" onclick="showTab('payments',this)">תשלומים</button>
+  <button class="tab-btn" onclick="showTab('reports',this)">דוחות</button>
+  <button class="tab-btn" onclick="showTab('charts',this)">גרפים</button>
+</div>
+
+<div class="content">
+
+  <!-- ============ מחירון ============ -->
+  <div class="tab-panel active" id="tab-pricelist">
+    <div class="section-tabs">
+      <button class="section-tab active" onclick="showPriceSec('scribes',this)">סופרים</button>
+      <button class="section-tab" onclick="showPriceSec('computer',this)">הגהת מחשב</button>
+      <button class="section-tab" onclick="showPriceSec('gavra',this)">הגהת גברא</button>
+    </div>
+
+    <div id="psec-scribes" class="price-sec">
+      <div class="card">
+        <h2>סופרים <span class="hint">— מחיר ליחי' לפי סוג מזוזה</span></h2>
+        <div class="form-row">
+          <div class="form-group"><label>שם הסופר</label><input id="sc-name" placeholder="שם הסופר"></div>
+          <div class="form-group"><label>מחיר מזוזה בית יוסף</label><input id="sc-by" type="number" placeholder="₪"></div>
+          <div class="form-group"><label>מחיר מזוזה ארי</label><input id="sc-ari" type="number" placeholder="₪"></div>
+          <button class="btn btn-success" onclick="addScribe()">+ הוסף סופר</button>
+        </div>
+      </div>
+      <div class="card"><div class="table-wrap"><table id="tbl-scribes"></table></div></div>
+    </div>
+
+    <div id="psec-computer" class="price-sec" style="display:none">
+      <div class="card">
+        <h2>מגיהי מחשב <span class="hint">— מחיר ליחי'</span></h2>
+        <div class="form-row">
+          <div class="form-group"><label>שם המגיה</label><input id="cp-name" placeholder="שם המגיה"></div>
+          <div class="form-group"><label>מחיר ליחי'</label><input id="cp-price" type="number" placeholder="₪"></div>
+          <button class="btn btn-success" onclick="addProof('computer')">+ הוסף מגיה</button>
+        </div>
+      </div>
+      <div class="card"><div class="table-wrap"><table id="tbl-computer"></table></div></div>
+    </div>
+
+    <div id="psec-gavra" class="price-sec" style="display:none">
+      <div class="card">
+        <h2>מגיהי גברא <span class="hint">— מחיר ליחי'</span></h2>
+        <div class="form-row">
+          <div class="form-group"><label>שם המגיה</label><input id="gp-name" placeholder="שם המגיה"></div>
+          <div class="form-group"><label>מחיר ליחי'</label><input id="gp-price" type="number" placeholder="₪"></div>
+          <button class="btn btn-success" onclick="addProof('gavra')">+ הוסף מגיה</button>
+        </div>
+      </div>
+      <div class="card"><div class="table-wrap"><table id="tbl-gavra"></table></div></div>
+    </div>
+  </div>
+
+  <!-- ============ מזוזות ============ -->
+  <div class="tab-panel" id="tab-mezuzot">
+    <div class="card">
+      <h2>הוספת מזוזה</h2>
+      <div class="form-row">
+        <div class="form-group"><label>מק"ט</label><input id="mz-sku" placeholder="אוטומטי אם ריק"></div>
+        <div class="form-group"><label>שם הסופר</label><select id="mz-scribe" onchange="autoPrice()"></select></div>
+        <div class="form-group"><label>מוצר</label><select id="mz-product" onchange="autoPrice()">
+          <option value="מזוזה בית יוסף">מזוזה בית יוסף</option>
+          <option value="מזוזה ארי">מזוזה ארי</option>
+        </select></div>
+        <div class="form-group"><label>תאריך</label><input id="mz-date" type="date"></div>
+        <div class="form-group"><label>מחיר ליחי' (סופר)</label><input id="mz-price" type="number" placeholder="אוטומטי"></div>
+      </div>
+      <div class="form-row" style="margin-top:10px">
+        <div class="form-group"><label>הגהת מחשב ע"י</label><select id="mz-comp"></select></div>
+        <div class="form-group"><label>הגהת גברא 1 ע"י</label><select id="mz-g1"></select></div>
+        <div class="form-group"><label>הגהת גברא 2 ע"י</label><select id="mz-g2"></select></div>
+        <div class="form-group"><label>אישור הרב</label><select id="mz-approve" onchange="approveChange()">
+          <option value="ממתין">ממתין לאישור</option>
+          <option value="אושר">אושר</option>
+          <option value="פסול">לא אושר — פסול</option>
+          <option value="כשר">לא אושר — כשר</option>
+        </select></div>
+        <div class="form-group" id="mz-adj-wrap" style="display:none"><label>מחיר מופחת לסופר</label><input id="mz-adj" type="number" placeholder="₪"></div>
+      </div>
+      <div class="form-row" style="margin-top:10px">
+        <div class="form-group"><label>מס' הולוגרמה בד"ץ</label><input id="mz-holo" placeholder="ריק = להשלים אח״כ"></div>
+        <div class="form-group"><label>נשלח לכתר?</label><select id="mz-keter"><option value="לא">לא</option><option value="כן">כן</option></select></div>
+        <div class="form-group" style="max-width:110px"><label>כמות</label><input id="mz-qty" type="number" min="1" value="1" title="כמה מזוזות זהות ליצור בבת אחת"></div>
+        <button class="btn btn-success" onclick="addMezuza()">+ הוסף מזוזה</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="filters">
+        <div class="form-group"><label>חיפוש</label><input id="f-search" placeholder="מק״ט / סופר / הולוגרמה" oninput="renderMezuzot()"></div>
+        <div class="form-group"><label>סטטוס אישור</label><select id="f-status" onchange="renderMezuzot()">
+          <option value="">הכל</option><option value="ממתין">ממתין</option><option value="אושר">אושר</option><option value="פסול">פסול</option><option value="כשר">כשר</option>
+        </select></div>
+        <div class="form-group"><label>נשלח לכתר</label><select id="f-keter" onchange="renderMezuzot()">
+          <option value="">הכל</option><option value="כן">כן</option><option value="לא">לא</option>
+        </select></div>
+      </div>
+      <div class="table-wrap"><table id="tbl-mezuzot"></table></div>
+    </div>
+  </div>
+
+  <!-- ============ תשלומים ============ -->
+  <div class="tab-panel" id="tab-payments">
+    <div class="card">
+      <h2>רישום תשלום <span class="hint">— לסופר או למגיה</span></h2>
+      <div class="form-row">
+        <div class="form-group"><label>שם (סופר / מגיה)</label><select id="pay-name"></select></div>
+        <div class="form-group"><label>תאריך</label><input id="pay-date" type="date"></div>
+        <div class="form-group"><label>סך ששולם</label><input id="pay-amount" type="number" placeholder="₪"></div>
+        <div class="form-group" style="flex:2"><label>הערה</label><input id="pay-note" placeholder="הערה"></div>
+        <button class="btn btn-success" onclick="addPayment()">+ רשום תשלום</button>
+      </div>
+    </div>
+    <div class="card"><div class="table-wrap"><table id="tbl-payments"></table></div></div>
+  </div>
+
+  <!-- ============ דוחות ============ -->
+  <div class="tab-panel" id="tab-reports">
+    <div class="stats" id="report-stats"></div>
+    <div class="card">
+      <h2>דוח יתרות — סופרים ומגיהים <button class="btn btn-primary no-print" style="margin-right:auto;font-size:.78rem;padding:5px 12px" onclick="window.print()">🖨 הדפסה</button></h2>
+      <div class="table-wrap"><table id="tbl-balances"></table></div>
+    </div>
+    <div class="card">
+      <h2>דוח מזוזות לפי סטטוס</h2>
+      <div class="table-wrap"><table id="tbl-status"></table></div>
+    </div>
+    <div class="card">
+      <h2>פילוח חודשי</h2>
+      <div class="table-wrap"><table id="tbl-monthly"></table></div>
+    </div>
+  </div>
+
+  <!-- ============ גרפים ============ -->
+  <div class="tab-panel" id="tab-charts">
+    <div class="charts-grid">
+      <div class="card"><h2>מזוזות לפי סטטוס אישור</h2><canvas id="ch-status"></canvas></div>
+      <div class="card"><h2>מזוזות לפי סופר</h2><canvas id="ch-scribe"></canvas></div>
+      <div class="card"><h2>מזוזות לפי חודש</h2><canvas id="ch-month"></canvas></div>
+      <div class="card"><h2>יתרת חוב לפי אדם (₪)</h2><canvas id="ch-debt"></canvas></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ============ DATA ============
+const KEY = 'mezuzah_system_v1';
+let data = load();
+
+function load() {
+  try {
+    const d = JSON.parse(localStorage.getItem(KEY));
+    if (d) return d;
+  } catch(e) {}
+  return { scribes: [], computer: [], gavra: [], mezuzot: [], payments: [], seq: 1 };
+}
+function save() {
+  localStorage.setItem(KEY, JSON.stringify(data));
+  renderAll();
+}
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 1800);
+}
+const ILS = n => '₪' + (Number(n)||0).toLocaleString('he-IL');
+
+// ============ TABS ============
+function showTab(id, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  btn.classList.add('active');
+  if (id==='charts') renderCharts();
+}
+function showPriceSec(id, btn) {
+  document.querySelectorAll('.price-sec').forEach(p=>p.style.display='none');
+  document.querySelectorAll('.section-tab').forEach(b=>b.classList.remove('active'));
+  document.getElementById('psec-'+id).style.display='block';
+  btn.classList.add('active');
+}
+
+// ============ PRICELIST: SCRIBES ============
+function addScribe() {
+  const name = document.getElementById('sc-name').value.trim();
+  if (!name) return toast('הזן שם סופר');
+  data.scribes.push({ id: uid(), name, by: +document.getElementById('sc-by').value||0, ari: +document.getElementById('sc-ari').value||0 });
+  document.getElementById('sc-name').value=''; document.getElementById('sc-by').value=''; document.getElementById('sc-ari').value='';
+  save(); toast('סופר נוסף');
+}
+function renderScribes() {
+  const t = document.getElementById('tbl-scribes');
+  if (!data.scribes.length) { t.innerHTML = '<tr><td class="empty">אין סופרים עדיין</td></tr>'; return; }
+  let h = '<thead><tr><th>שם הסופר</th><th>מזוזה בית יוסף</th><th>מזוזה ארי</th><th></th></tr></thead><tbody>';
+  data.scribes.forEach(s=>{
+    h += `<tr>
+      <td><input value="${esc(s.name)}" onchange="editScribe('${s.id}','name',this.value)"></td>
+      <td><input type="number" value="${s.by}" onchange="editScribe('${s.id}','by',this.value)"></td>
+      <td><input type="number" value="${s.ari}" onchange="editScribe('${s.id}','ari',this.value)"></td>
+      <td><button class="btn btn-danger" onclick="delScribe('${s.id}')">מחק</button></td></tr>`;
+  });
+  t.innerHTML = h + '</tbody>';
+}
+function editScribe(id,f,v){ const s=data.scribes.find(x=>x.id===id); if(s){ s[f]= f==='name'?v:(+v||0); save(); } }
+function delScribe(id){ if(!confirm('למחוק סופר?'))return; data.scribes=data.scribes.filter(x=>x.id!==id); save(); }
+
+// ============ PRICELIST: PROOFREADERS ============
+function addProof(type) {
+  const p = type==='computer' ? 'cp' : 'gp';
+  const name = document.getElementById(p+'-name').value.trim();
+  if (!name) return toast('הזן שם מגיה');
+  data[type].push({ id: uid(), name, price: +document.getElementById(p+'-price').value||0 });
+  document.getElementById(p+'-name').value=''; document.getElementById(p+'-price').value='';
+  save(); toast('מגיה נוסף');
+}
+function renderProof(type) {
+  const t = document.getElementById('tbl-'+type);
+  if (!data[type].length) { t.innerHTML = '<tr><td class="empty">אין מגיהים עדיין</td></tr>'; return; }
+  let h = '<thead><tr><th>שם המגיה</th><th>מחיר ליחי\'</th><th></th></tr></thead><tbody>';
+  data[type].forEach(s=>{
+    h += `<tr>
+      <td><input value="${esc(s.name)}" onchange="editProof('${type}','${s.id}','name',this.value)"></td>
+      <td><input type="number" value="${s.price}" onchange="editProof('${type}','${s.id}','price',this.value)"></td>
+      <td><button class="btn btn-danger" onclick="delProof('${type}','${s.id}')">מחק</button></td></tr>`;
+  });
+  t.innerHTML = h + '</tbody>';
+}
+function editProof(type,id,f,v){ const s=data[type].find(x=>x.id===id); if(s){ s[f]= f==='name'?v:(+v||0); save(); } }
+function delProof(type,id){ if(!confirm('למחוק מגיה?'))return; data[type]=data[type].filter(x=>x.id!==id); save(); }
+
+// ============ DROPDOWNS ============
+function fillSelects() {
+  const opt = (arr,sel) => arr.map(x=>`<option value="${esc(x.name)}"${x.name===sel?' selected':''}>${esc(x.name)}</option>`).join('');
+  document.getElementById('mz-scribe').innerHTML = '<option value="">בחר סופר</option>'+opt(data.scribes);
+  document.getElementById('mz-comp').innerHTML = '<option value="">—</option>'+opt(data.computer);
+  document.getElementById('mz-g1').innerHTML = '<option value="">—</option>'+opt(data.gavra);
+  document.getElementById('mz-g2').innerHTML = '<option value="">—</option>'+opt(data.gavra);
+  // payments: all people
+  const people = [...data.scribes.map(s=>'סופר: '+s.name), ...data.computer.map(s=>'מגיה מחשב: '+s.name), ...data.gavra.map(s=>'מגיה גברא: '+s.name)];
+  document.getElementById('pay-name').innerHTML = '<option value="">בחר</option>'+people.map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('');
+}
+function autoPrice() {
+  const name = document.getElementById('mz-scribe').value;
+  const prod = document.getElementById('mz-product').value;
+  const s = data.scribes.find(x=>x.name===name);
+  if (s) document.getElementById('mz-price').value = prod==='מזוזה ארי' ? s.ari : s.by;
+}
+function approveChange() {
+  document.getElementById('mz-adj-wrap').style.display = document.getElementById('mz-approve').value==='כשר' ? 'flex' : 'none';
+}
+
+// ============ MEZUZOT ============
+function addMezuza() {
+  const scribe = document.getElementById('mz-scribe').value;
+  if (!scribe) return toast('בחר סופר');
+  const qty = Math.max(1, parseInt(document.getElementById('mz-qty').value)||1);
+  const baseSku = document.getElementById('mz-sku').value.trim();
+  // shared fields — identical for every mezuza in the batch
+  const shared = {
+    scribe,
+    product: document.getElementById('mz-product').value,
+    date: document.getElementById('mz-date').value || new Date().toISOString().slice(0,10),
+    price: +document.getElementById('mz-price').value||0,
+    comp: document.getElementById('mz-comp').value,
+    g1: document.getElementById('mz-g1').value,
+    g2: document.getElementById('mz-g2').value,
+    approve: document.getElementById('mz-approve').value,
+    adj: +document.getElementById('mz-adj').value||0,
+    keter: document.getElementById('mz-keter').value
+  };
+  const holoIn = document.getElementById('mz-holo').value.trim();
+  // hologram is a unique number — only kept for a single mezuza; in bulk left blank to fill later
+  const created = [];
+  for (let i=0; i<qty; i++) {
+    let sku;
+    if (qty===1) sku = baseSku || ('M' + String(data.seq++).padStart(4,'0'));
+    else sku = (baseSku ? baseSku + '-' : 'M') + String(data.seq++).padStart(4,'0');
+    data.mezuzot.push(Object.assign({ id: uid(), sku, holo: (qty===1 ? holoIn : '') }, shared));
+    created.push(sku);
+  }
+  ['mz-sku','mz-price','mz-holo','mz-adj'].forEach(i=>document.getElementById(i).value='');
+  document.getElementById('mz-qty').value = 1;
+  save();
+  toast(qty===1 ? ('מזוזה נוספה — ' + created[0]) : (qty + ' מזוזות נוספו — ' + created[0] + ' … ' + created[created.length-1]));
+}
+// effective scribe price after approval
+function scribePay(m) {
+  if (m.approve==='פסול') return 0;
+  if (m.approve==='כשר') return m.adj||0;
+  return m.price; // אושר / ממתין
+}
+function statusBadge(a) {
+  const map = { 'אושר':['b-green','אושר'], 'פסול':['b-red','פסול'], 'כשר':['b-yellow','כשר (לא אושר)'], 'ממתין':['b-gray','ממתין'] };
+  const [c,t] = map[a]||['b-gray',a];
+  return `<span class="badge ${c}">${t}</span>`;
+}
+function renderMezuzot() {
+  const t = document.getElementById('tbl-mezuzot');
+  const q = (document.getElementById('f-search').value||'').toLowerCase();
+  const fs = document.getElementById('f-status').value, fk = document.getElementById('f-keter').value;
+  let rows = data.mezuzot.filter(m=>{
+    if (fs && m.approve!==fs) return false;
+    if (fk && m.keter!==fk) return false;
+    if (q && !(`${m.sku} ${m.scribe} ${m.holo}`.toLowerCase().includes(q))) return false;
+    return true;
+  });
+  if (!rows.length) { t.innerHTML = '<tr><td class="empty">אין מזוזות</td></tr>'; return; }
+  let h = `<thead><tr><th>מק"ט</th><th>סופר</th><th>מוצר</th><th>תאריך</th><th>מחיר ליחי'</th><th>הגהת מחשב</th><th>גברא 1</th><th>גברא 2</th><th>אישור הרב</th><th>לתשלום לסופר</th><th>הולוגרמה</th><th>כתר</th><th></th></tr></thead><tbody>`;
+  rows.forEach(m=>{
+    h += `<tr>
+      <td><b>${esc(m.sku)}</b></td>
+      <td>${esc(m.scribe)}</td>
+      <td>${esc(m.product)}</td>
+      <td>${m.date}</td>
+      <td class="money">${ILS(m.price)}</td>
+      <td>${esc(m.comp)||'—'}</td>
+      <td>${esc(m.g1)||'—'}</td>
+      <td>${esc(m.g2)||'—'}</td>
+      <td>
+        <select onchange="editMez('${m.id}','approve',this.value)">
+          ${['ממתין','אושר','פסול','כשר'].map(o=>`<option value="${o}"${m.approve===o?' selected':''}>${o}</option>`).join('')}
+        </select>
+        ${m.approve==='כשר'?`<input type="number" value="${m.adj}" title="מחיר מופחת" style="margin-top:4px" onchange="editMez('${m.id}','adj',this.value)">`:''}
+      </td>
+      <td class="money">${ILS(scribePay(m))}</td>
+      <td>${esc(m.holo)||'—'}</td>
+      <td><select onchange="editMez('${m.id}','keter',this.value)"><option value="לא"${m.keter==='לא'?' selected':''}>לא</option><option value="כן"${m.keter==='כן'?' selected':''}>כן</option></select></td>
+      <td><button class="btn btn-danger" onclick="delMez('${m.id}')">מחק</button></td></tr>`;
+  });
+  t.innerHTML = h + '</tbody>';
+}
+function editMez(id,f,v){ const m=data.mezuzot.find(x=>x.id===id); if(m){ m[f]= f==='adj'?(+v||0):v; save(); } }
+function delMez(id){ if(!confirm('למחוק מזוזה?'))return; data.mezuzot=data.mezuzot.filter(x=>x.id!==id); save(); }
+
+// ============ PAYMENTS ============
+function addPayment() {
+  const name = document.getElementById('pay-name').value;
+  if (!name) return toast('בחר אדם');
+  data.payments.push({
+    id: uid(), name,
+    date: document.getElementById('pay-date').value || new Date().toISOString().slice(0,10),
+    amount: +document.getElementById('pay-amount').value||0,
+    note: document.getElementById('pay-note').value.trim()
+  });
+  document.getElementById('pay-amount').value=''; document.getElementById('pay-note').value='';
+  save(); toast('תשלום נרשם');
+}
+function renderPayments() {
+  const t = document.getElementById('tbl-payments');
+  if (!data.payments.length) { t.innerHTML = '<tr><td class="empty">אין תשלומים</td></tr>'; return; }
+  let h = '<thead><tr><th>שם</th><th>תאריך</th><th>סך ששולם</th><th>הערה</th><th></th></tr></thead><tbody>';
+  [...data.payments].sort((a,b)=>b.date.localeCompare(a.date)).forEach(p=>{
+    h += `<tr><td>${esc(p.name)}</td><td>${p.date}</td><td class="money">${ILS(p.amount)}</td><td>${esc(p.note)}</td>
+      <td><button class="btn btn-danger" onclick="delPay('${p.id}')">מחק</button></td></tr>`;
+  });
+  t.innerHTML = h + '</tbody>';
+}
+function delPay(id){ if(!confirm('למחוק תשלום?'))return; data.payments=data.payments.filter(x=>x.id!==id); save(); }
+
+// ============ REPORTS / BALANCES ============
+// build owed amounts per person key "סופר: שם" / "מגיה מחשב: שם" / "מגיה גברא: שם"
+function computeOwed() {
+  const owed = {}; // key -> amount
+  const add = (k,v)=>{ if(!k||!v) return; owed[k]=(owed[k]||0)+v; };
+  data.mezuzot.forEach(m=>{
+    add('סופר: '+m.scribe, scribePay(m));
+    if (m.comp) { const p=data.computer.find(x=>x.name===m.comp); add('מגיה מחשב: '+m.comp, p?p.price:0); }
+    if (m.g1) { const p=data.gavra.find(x=>x.name===m.g1); add('מגיה גברא: '+m.g1, p?p.price:0); }
+    if (m.g2) { const p=data.gavra.find(x=>x.name===m.g2); add('מגיה גברא: '+m.g2, p?p.price:0); }
+  });
+  return owed;
+}
+function computePaid() {
+  const paid = {};
+  data.payments.forEach(p=>{ paid[p.name]=(paid[p.name]||0)+p.amount; });
+  return paid;
+}
+function renderReports() {
+  const owed = computeOwed(), paid = computePaid();
+  const keys = [...new Set([...Object.keys(owed), ...Object.keys(paid)])].sort();
+  // stats
+  const totalOwed = Object.values(owed).reduce((a,b)=>a+b,0);
+  const totalPaid = Object.values(paid).reduce((a,b)=>a+b,0);
+  document.getElementById('report-stats').innerHTML = `
+    <div class="stat-card"><div class="num">${data.mezuzot.length}</div><div class="lbl">סה"כ מזוזות</div></div>
+    <div class="stat-card"><div class="num">${ILS(totalOwed)}</div><div class="lbl">סה"כ זכאות (לתשלום)</div></div>
+    <div class="stat-card"><div class="num">${ILS(totalPaid)}</div><div class="lbl">סה"כ שולם</div></div>
+    <div class="stat-card" style="border-right-color:#e53e3e"><div class="num pos">${ILS(totalOwed-totalPaid)}</div><div class="lbl">יתרה לתשלום</div></div>`;
+  // balances table
+  const t = document.getElementById('tbl-balances');
+  if (!keys.length) { t.innerHTML='<tr><td class="empty">אין נתונים</td></tr>'; }
+  else {
+    let h='<thead><tr><th>שם</th><th>זכאות מצטברת</th><th>שולם</th><th>יתרה לתשלום</th></tr></thead><tbody>';
+    keys.forEach(k=>{
+      const o=owed[k]||0, p=paid[k]||0, bal=o-p;
+      h+=`<tr><td>${esc(k)}</td><td class="money">${ILS(o)}</td><td class="money">${ILS(p)}</td>
+        <td class="money ${bal>0?'pos':'zero'}">${ILS(bal)}</td></tr>`;
+    });
+    h+=`<tr style="background:#edf2f7;font-weight:800"><td>סה"כ</td><td class="money">${ILS(totalOwed)}</td><td class="money">${ILS(totalPaid)}</td><td class="money pos">${ILS(totalOwed-totalPaid)}</td></tr>`;
+    t.innerHTML=h+'</tbody>';
+  }
+  // status report
+  const stCount = {'ממתין':0,'אושר':0,'פסול':0,'כשר':0};
+  let keterYes=0;
+  data.mezuzot.forEach(m=>{ stCount[m.approve]=(stCount[m.approve]||0)+1; if(m.keter==='כן')keterYes++; });
+  const st = document.getElementById('tbl-status');
+  st.innerHTML = `<thead><tr><th>סטטוס</th><th>כמות</th></tr></thead><tbody>
+    <tr><td>ממתין לאישור</td><td>${stCount['ממתין']}</td></tr>
+    <tr><td>אושר</td><td>${stCount['אושר']}</td></tr>
+    <tr><td>לא אושר — פסול</td><td>${stCount['פסול']}</td></tr>
+    <tr><td>לא אושר — כשר</td><td>${stCount['כשר']}</td></tr>
+    <tr style="background:#edf2f7;font-weight:700"><td>נשלחו לכתר</td><td>${keterYes} / ${data.mezuzot.length}</td></tr>
+    </tbody>`;
+  // monthly
+  const mon = {};
+  data.mezuzot.forEach(m=>{
+    const mk = (m.date||'').slice(0,7) || 'ללא תאריך';
+    if(!mon[mk]) mon[mk]={count:0, owed:0};
+    mon[mk].count++; mon[mk].owed += scribePay(m);
+  });
+  const mt = document.getElementById('tbl-monthly');
+  const mkeys = Object.keys(mon).sort().reverse();
+  if (!mkeys.length) { mt.innerHTML='<tr><td class="empty">אין נתונים</td></tr>'; }
+  else {
+    let h='<thead><tr><th>חודש</th><th>כמות מזוזות</th><th>זכאות סופרים</th></tr></thead><tbody>';
+    mkeys.forEach(k=>{ h+=`<tr><td>${k}</td><td>${mon[k].count}</td><td class="money">${ILS(mon[k].owed)}</td></tr>`; });
+    mt.innerHTML=h+'</tbody>';
+  }
+}
+
+// ============ CHARTS ============
+let charts = {};
+function mkChart(id, cfg) { if(charts[id]) charts[id].destroy(); charts[id]=new Chart(document.getElementById(id), cfg); }
+function renderCharts() {
+  const palette = ['#2b6cb0','#38a169','#d69e2e','#e53e3e','#805ad5','#319795','#dd6b20','#3182ce'];
+  // status
+  const stCount = {'ממתין':0,'אושר':0,'פסול':0,'כשר':0};
+  data.mezuzot.forEach(m=>stCount[m.approve]=(stCount[m.approve]||0)+1);
+  mkChart('ch-status', { type:'doughnut', data:{ labels:['ממתין','אושר','פסול','כשר'], datasets:[{ data:Object.values(stCount), backgroundColor:['#a0aec0','#38a169','#e53e3e','#d69e2e'] }] }, options:{ plugins:{legend:{position:'bottom'}} } });
+  // by scribe
+  const byScribe = {};
+  data.mezuzot.forEach(m=>byScribe[m.scribe]=(byScribe[m.scribe]||0)+1);
+  mkChart('ch-scribe', { type:'bar', data:{ labels:Object.keys(byScribe), datasets:[{ label:'מזוזות', data:Object.values(byScribe), backgroundColor:'#2b6cb0' }] }, options:{ plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,ticks:{precision:0}}} } });
+  // by month
+  const byMon = {};
+  data.mezuzot.forEach(m=>{ const k=(m.date||'').slice(0,7)||'—'; byMon[k]=(byMon[k]||0)+1; });
+  const mk = Object.keys(byMon).sort();
+  mkChart('ch-month', { type:'line', data:{ labels:mk, datasets:[{ label:'מזוזות', data:mk.map(k=>byMon[k]), borderColor:'#38a169', backgroundColor:'rgba(56,161,105,.15)', fill:true, tension:.3 }] }, options:{ plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,ticks:{precision:0}}} } });
+  // debt
+  const owed=computeOwed(), paid=computePaid();
+  const keys=[...new Set([...Object.keys(owed),...Object.keys(paid)])];
+  const bals = keys.map(k=>({k, v:(owed[k]||0)-(paid[k]||0)})).filter(x=>x.v>0).sort((a,b)=>b.v-a.v);
+  mkChart('ch-debt', { type:'bar', data:{ labels:bals.map(x=>x.k), datasets:[{ label:'יתרה לתשלום', data:bals.map(x=>x.v), backgroundColor:'#e53e3e' }] }, options:{ indexAxis:'y', plugins:{legend:{display:false}}, scales:{x:{beginAtZero:true}} } });
+}
+
+// ============ EXPORT / IMPORT ============
+function exportBackup() {
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  dl(blob, 'mezuzot-backup-'+new Date().toISOString().slice(0,10)+'.json');
+  toast('גיבוי נוצר');
+}
+function importBackup(e) {
+  const f = e.target.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try { const d=JSON.parse(r.result); if(!d.mezuzot)throw 0; data=d; save(); toast('הגיבוי נטען'); }
+    catch(err){ alert('קובץ גיבוי לא תקין'); }
+  };
+  r.readAsText(f); e.target.value='';
+}
+function exportExcel() {
+  const wb = XLSX.utils.book_new();
+  const ws1 = XLSX.utils.json_to_sheet(data.scribes.map(s=>({'שם סופר':s.name,'מזוזה בית יוסף':s.by,'מזוזה ארי':s.ari})));
+  XLSX.utils.book_append_sheet(wb, ws1, 'מחירון סופרים');
+  const wsC = XLSX.utils.json_to_sheet(data.computer.map(s=>({'שם מגיה':s.name,'מחיר ליחי':s.price})));
+  XLSX.utils.book_append_sheet(wb, wsC, 'הגהת מחשב');
+  const wsG = XLSX.utils.json_to_sheet(data.gavra.map(s=>({'שם מגיה':s.name,'מחיר ליחי':s.price})));
+  XLSX.utils.book_append_sheet(wb, wsG, 'הגהת גברא');
+  const ws2 = XLSX.utils.json_to_sheet(data.mezuzot.map(m=>({
+    'מק"ט':m.sku,'שם סופר':m.scribe,'מוצר':m.product,'תאריך':m.date,'מחיר ליחי':m.price,
+    'הגהת מחשב':m.comp,'גברא 1':m.g1,'גברא 2':m.g2,'אישור הרב':m.approve,'לתשלום לסופר':scribePay(m),
+    'הולוגרמה בדץ':m.holo,'נשלח לכתר':m.keter
+  })));
+  XLSX.utils.book_append_sheet(wb, ws2, 'מזוזות');
+  const ws3 = XLSX.utils.json_to_sheet(data.payments.map(p=>({'שם':p.name,'תאריך':p.date,'סך ששולם':p.amount,'הערה':p.note})));
+  XLSX.utils.book_append_sheet(wb, ws3, 'תשלומים');
+  // balances
+  const owed=computeOwed(), paid=computePaid();
+  const keys=[...new Set([...Object.keys(owed),...Object.keys(paid)])].sort();
+  const ws4 = XLSX.utils.json_to_sheet(keys.map(k=>({'שם':k,'זכאות':owed[k]||0,'שולם':paid[k]||0,'יתרה':(owed[k]||0)-(paid[k]||0)})));
+  XLSX.utils.book_append_sheet(wb, ws4, 'יתרות');
+  XLSX.writeFile(wb, 'מזוזות-'+new Date().toISOString().slice(0,10)+'.xlsx');
+  toast('יוצא לאקסל');
+}
+function dl(blob, name) {
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); URL.revokeObjectURL(a.href);
+}
+
+// ============ UTIL ============
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// ============ RENDER ALL ============
+function renderAll() {
+  renderScribes(); renderProof('computer'); renderProof('gavra');
+  fillSelects(); renderMezuzot(); renderPayments(); renderReports();
+  if (document.getElementById('tab-charts').classList.contains('active')) renderCharts();
+}
+renderAll();
+document.getElementById('mz-date').value = new Date().toISOString().slice(0,10);
+document.getElementById('pay-date').value = new Date().toISOString().slice(0,10);
+</script>
+</body>
+</html>
