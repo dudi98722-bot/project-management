@@ -847,7 +847,8 @@ function renderCard({key,inst,task}){
   }
 
   const postponeInfo=inst.status==='postponed'?`<div class="postponed-info">↩️ נדחה ל-${formatDate(inst.postponedTo)} | ${inst.postponeReason}</div>`:'';
-  const assignedNames=task.assignedUsers?Object.keys(task.assignedUsers).map(id=>allUsers[id]?.name).filter(Boolean).join(', '):'';
+  const assignedList=task.assignedUsers?Object.keys(task.assignedUsers).map(id=>allUsers[id]?.name).filter(Boolean):[];
+  const assignedNames=assignedList.join(', ');
 
   const hasExtra=!!(task.description||task.note||task.link||postponeInfo);
   const extraId='ex_'+key.replace(/[^a-z0-9]/gi,'_');
@@ -865,8 +866,11 @@ function renderCard({key,inst,task}){
         <div class="tc-meta">
           ${client?`<span class="tc-client">${client.name}</span>`:''}
           ${datePill}${deadlinePill}
-          ${assignedNames?`<span style="font-size:11px;color:var(--gray-400)">👥 ${assignedNames}</span>`:''}
         </div>
+        ${assignedList.length?`<div style="display:flex;align-items:center;gap:5px;margin-top:5px;flex-wrap:wrap">
+          <span style="font-size:11px;color:var(--gray-400);font-weight:500">שיוך:</span>
+          ${assignedList.map(n=>`<span style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px">${n}</span>`).join('')}
+        </div>`:''}
         ${hasExtra?`<button class="tc-toggle" onclick="var e=document.getElementById('${extraId}');e.classList.toggle('open');this.textContent=e.classList.contains('open')?'▲ פחות':'▼ פרטים'">▼ פרטים</button>`:''}
         ${extraHtml}
       </div>
