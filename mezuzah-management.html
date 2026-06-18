@@ -202,6 +202,7 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
           <option value="g2">חסר גברא 2</option>
           <option value="any">חסר לפחות הגהה אחת</option>
         </select></div>
+        <button class="btn btn-edit" style="margin-right:auto" onclick="printFilteredMezuzot()">🖨 הדפס מק"טים מוצגים</button>
       </div>
       <div class="table-wrap"><table id="tbl-mezuzot"></table></div>
     </div>
@@ -477,13 +478,18 @@ function addMezuza() {
     let sku;
     if (qty===1) sku = baseSku || ('M' + String(data.seq++).padStart(4,'0'));
     else sku = (baseSku ? baseSku + '-' : 'M') + String(data.seq++).padStart(4,'0');
-    data.mezuzot.push(Object.assign({ id: uid(), sku, holo: (qty===1 ? holoIn : '') }, shared));
-    created.push(sku);
+    const m = Object.assign({ id: uid(), sku, holo: (qty===1 ? holoIn : '') }, shared);
+    data.mezuzot.push(m);
+    created.push(m);
   }
   ['mz-sku','mz-price','mz-holo','mz-adj'].forEach(i=>document.getElementById(i).value='');
   document.getElementById('mz-qty').value = 1;
   save();
-  toast(qty===1 ? ('מזוזה נוספה — ' + created[0]) : (qty + ' מזוזות נוספו — ' + created[0] + ' … ' + created[created.length-1]));
+  toast(qty===1 ? ('מזוזה נוספה — ' + created[0].sku) : (qty + ' מזוזות נוספו — ' + created[0].sku + ' … ' + created[created.length-1].sku));
+  // offer to print the SKUs that were just created (the "sale")
+  if (confirm('נוצרו ' + qty + ' מזוזות. להדפיס את רשימת המק"טים?')) {
+    printMezuzot(created, 'מק"טים שנוצרו — ' + (shared.date||''));
+  }
 }
 // effective scribe price after approval
 function scribePay(m) {
@@ -495,6 +501,46 @@ function statusBadge(a) {
   const map = { 'אושר':['b-green','אושר'], 'פסול':['b-red','פסול'], 'כשר':['b-yellow','כשר (לא אושר)'], 'ממתין':['b-gray','ממתין'] };
   const [c,t] = map[a]||['b-gray',a];
   return `<span class="badge ${c}">${t}</span>`;
+}
+// open a clean printable sheet of SKU labels for the given mezuza list
+function printMezuzot(list, heading) {
+  if (!list || !list.length) { toast('אין מק"טים להדפסה'); return; }
+  const cards = list.map(m=>`
+    <div class="lbl">
+      <div class="sku">${esc(m.sku)}</div>
+      <div class="meta">${esc(m.product||'')}${m.scribe?' · '+esc(m.scribe):''}</div>
+      <div class="meta">${m.date||''}${m.holo?' · הולוגרמה '+esc(m.holo):''}</div>
+    </div>`).join('');
+  const html = `<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>${esc(heading)}</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif}
+      body{padding:18px;color:#1a202c}
+      h1{font-size:18px;margin-bottom:4px}
+      .sub{color:#718096;font-size:12px;margin-bottom:14px}
+      .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+      .lbl{border:1.5px solid #2b6cb0;border-radius:8px;padding:10px 12px;text-align:center;page-break-inside:avoid}
+      .sku{font-size:22px;font-weight:800;letter-spacing:.5px;color:#1a365d}
+      .meta{font-size:11px;color:#4a5568;margin-top:3px}
+      .total{margin-top:14px;font-size:12px;color:#718096}
+      @media print{.noprint{display:none}}
+      .noprint{margin-bottom:14px}
+      button{padding:8px 18px;border:0;border-radius:8px;background:#2b6cb0;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+    </style></head><body>
+    <div class="noprint"><button onclick="window.print()">🖨 הדפס</button></div>
+    <h1>${esc(heading)}</h1>
+    <div class="sub">סה"כ ${list.length} מק"טים · הופק ${new Date().toLocaleDateString('he-IL')}</div>
+    <div class="grid">${cards}</div>
+    <div class="total">סה"כ ${list.length} מק"טים</div>
+    <script>window.onload=function(){setTimeout(function(){window.print()},250)}<\/script>
+    </body></html>`;
+  const w = window.open('', '_blank');
+  if (!w) { toast('הדפדפן חסם חלון — אפשר חלונות קופצים'); return; }
+  w.document.write(html); w.document.close();
+}
+// print SKUs of whatever is currently shown in the mezuzot table (after filters)
+function printFilteredMezuzot() {
+  if (!window._mzFiltered || !window._mzFiltered.length) { toast('אין מזוזות מסוננות'); return; }
+  printMezuzot(window._mzFiltered, 'רשימת מק"טים' + (window._mzFiltered.length?' ('+window._mzFiltered.length+')':''));
 }
 // build <option> list for an inline select from a pricelist array
 function optHtml(arr, sel, placeholder) {
@@ -516,6 +562,7 @@ function renderMezuzot() {
     if (q && !(`${m.sku} ${m.scribe} ${m.holo}`.toLowerCase().includes(q))) return false;
     return true;
   });
+  window._mzFiltered = rows;   // remember for "print SKUs of shown rows"
   if (!rows.length) { t.innerHTML = '<tr><td class="empty">אין מזוזות</td></tr>'; return; }
   let h = `<thead><tr><th>מק"ט</th><th>סופר</th><th>מוצר</th><th>תאריך</th><th>מחיר ליחי'</th><th>הגהת מחשב</th><th>גברא 1</th><th>גברא 2</th><th>אישור הרב</th><th>לתשלום לסופר</th><th>הולוגרמה</th><th>כתר</th><th></th></tr></thead><tbody>`;
   rows.forEach(m=>{
@@ -537,7 +584,9 @@ function renderMezuzot() {
       <td class="money">${ILS(scribePay(m))}</td>
       <td><input value="${esc(m.holo)}" style="min-width:90px" placeholder="—" onchange="editMez('${m.id}','holo',this.value)"></td>
       <td><select onchange="editMez('${m.id}','keter',this.value)"><option value="לא"${m.keter==='לא'?' selected':''}>לא</option><option value="כן"${m.keter==='כן'?' selected':''}>כן</option></select></td>
-      <td><button class="btn btn-danger" onclick="delMez('${m.id}')">מחק</button></td></tr>`;
+      <td style="white-space:nowrap">
+        <button class="btn btn-edit" title="הדפס מק״ט" onclick="printMezuzot([data.mezuzot.find(x=>x.id==='${m.id}')],'מק&quot;ט ${esc(m.sku)}')">🖨</button>
+        <button class="btn btn-danger" onclick="delMez('${m.id}')">מחק</button></td></tr>`;
   });
   t.innerHTML = h + '</tbody>';
 }
