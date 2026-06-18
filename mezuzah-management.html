@@ -206,6 +206,13 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
         <div class="form-group"><label>נשלח לכתר</label><select id="f-keter" onchange="renderMezuzot()">
           <option value="">הכל</option><option value="כן">כן</option><option value="לא">לא</option>
         </select></div>
+        <div class="form-group"><label>חסר הגהה</label><select id="f-missing" onchange="renderMezuzot()">
+          <option value="">הכל</option>
+          <option value="comp">חסר הגהת מחשב</option>
+          <option value="g1">חסר גברא 1</option>
+          <option value="g2">חסר גברא 2</option>
+          <option value="any">חסר לפחות הגהה אחת</option>
+        </select></div>
       </div>
       <div class="table-wrap"><table id="tbl-mezuzot"></table></div>
     </div>
@@ -468,13 +475,23 @@ function statusBadge(a) {
   const [c,t] = map[a]||['b-gray',a];
   return `<span class="badge ${c}">${t}</span>`;
 }
+// build <option> list for an inline select from a pricelist array
+function optHtml(arr, sel, placeholder) {
+  const head = placeholder!=null ? `<option value="">${placeholder}</option>` : '';
+  return head + arr.map(x=>`<option value="${esc(x.name)}"${x.name===sel?' selected':''}>${esc(x.name)}</option>`).join('');
+}
 function renderMezuzot() {
   const t = document.getElementById('tbl-mezuzot');
   const q = (document.getElementById('f-search').value||'').toLowerCase();
   const fs = document.getElementById('f-status').value, fk = document.getElementById('f-keter').value;
+  const fm = (document.getElementById('f-missing')||{}).value || '';
   let rows = data.mezuzot.filter(m=>{
     if (fs && m.approve!==fs) return false;
     if (fk && m.keter!==fk) return false;
+    if (fm==='comp' && m.comp) return false;
+    if (fm==='g1' && m.g1) return false;
+    if (fm==='g2' && m.g2) return false;
+    if (fm==='any' && m.comp && m.g1 && m.g2) return false; // יש את כל ההגהות → מסתיר
     if (q && !(`${m.sku} ${m.scribe} ${m.holo}`.toLowerCase().includes(q))) return false;
     return true;
   });
@@ -482,14 +499,14 @@ function renderMezuzot() {
   let h = `<thead><tr><th>מק"ט</th><th>סופר</th><th>מוצר</th><th>תאריך</th><th>מחיר ליחי'</th><th>הגהת מחשב</th><th>גברא 1</th><th>גברא 2</th><th>אישור הרב</th><th>לתשלום לסופר</th><th>הולוגרמה</th><th>כתר</th><th></th></tr></thead><tbody>`;
   rows.forEach(m=>{
     h += `<tr>
-      <td><b>${esc(m.sku)}</b></td>
-      <td>${esc(m.scribe)}</td>
-      <td>${esc(m.product)}</td>
-      <td>${m.date}</td>
-      <td class="money">${ILS(m.price)}</td>
-      <td>${esc(m.comp)||'—'}</td>
-      <td>${esc(m.g1)||'—'}</td>
-      <td>${esc(m.g2)||'—'}</td>
+      <td><input value="${esc(m.sku)}" style="min-width:72px;font-weight:700" onchange="editMez('${m.id}','sku',this.value)"></td>
+      <td><select style="min-width:90px" onchange="editMez('${m.id}','scribe',this.value)">${optHtml(data.scribes,m.scribe,'—')}</select></td>
+      <td><select style="min-width:110px" onchange="editMez('${m.id}','product',this.value)">${['מזוזה בית יוסף','מזוזה ארי'].map(o=>`<option${m.product===o?' selected':''}>${o}</option>`).join('')}</select></td>
+      <td><input type="date" value="${m.date}" onchange="editMez('${m.id}','date',this.value)"></td>
+      <td><input type="number" value="${m.price}" style="min-width:78px" onchange="editMez('${m.id}','price',this.value)"></td>
+      <td><select style="min-width:90px" onchange="editMez('${m.id}','comp',this.value)">${optHtml(data.computer,m.comp,'—')}</select></td>
+      <td><select style="min-width:90px" onchange="editMez('${m.id}','g1',this.value)">${optHtml(data.gavra,m.g1,'—')}</select></td>
+      <td><select style="min-width:90px" onchange="editMez('${m.id}','g2',this.value)">${optHtml(data.gavra,m.g2,'—')}</select></td>
       <td>
         <select onchange="editMez('${m.id}','approve',this.value)">
           ${['ממתין','אושר','פסול','כשר'].map(o=>`<option value="${o}"${m.approve===o?' selected':''}>${o}</option>`).join('')}
@@ -497,13 +514,13 @@ function renderMezuzot() {
         ${m.approve==='כשר'?`<input type="number" value="${m.adj}" title="מחיר מופחת" style="margin-top:4px" onchange="editMez('${m.id}','adj',this.value)">`:''}
       </td>
       <td class="money">${ILS(scribePay(m))}</td>
-      <td>${esc(m.holo)||'—'}</td>
+      <td><input value="${esc(m.holo)}" style="min-width:90px" placeholder="—" onchange="editMez('${m.id}','holo',this.value)"></td>
       <td><select onchange="editMez('${m.id}','keter',this.value)"><option value="לא"${m.keter==='לא'?' selected':''}>לא</option><option value="כן"${m.keter==='כן'?' selected':''}>כן</option></select></td>
       <td><button class="btn btn-danger" onclick="delMez('${m.id}')">מחק</button></td></tr>`;
   });
   t.innerHTML = h + '</tbody>';
 }
-function editMez(id,f,v){ const m=data.mezuzot.find(x=>x.id===id); if(m){ m[f]= f==='adj'?(+v||0):v; save(); } }
+function editMez(id,f,v){ const m=data.mezuzot.find(x=>x.id===id); if(m){ m[f]= (f==='adj'||f==='price')?(+v||0):v; save(); } }
 function delMez(id){ if(!confirm('למחוק מזוזה?'))return; data.mezuzot=data.mezuzot.filter(x=>x.id!==id); save(); }
 
 // ============ PAYMENTS ============
