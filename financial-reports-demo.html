@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>דוחות כספיים לדוגמה — עסק לדוגמא בע״מ</title>
+<style>
+  :root{
+    --bg:#f4f6fb; --card:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e6eaf2;
+    --brand:#2563eb; --brand2:#1e40af;
+    --green:#16a34a; --red:#dc2626; --amber:#f59e0b; --purple:#8b5cf6; --teal:#0d9488; --pink:#db2777;
+    --shadow:0 6px 24px rgba(15,23,42,.06);
+    --radius:16px;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:'Rubik','Heebo','Assistant','Segoe UI',Arial,sans-serif;
+    line-height:1.55; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px; margin:0 auto; padding:28px 20px 60px}
+
+  /* Header */
+  header.top{
+    background:linear-gradient(135deg,var(--brand2),var(--brand));
+    color:#fff; border-radius:22px; padding:30px 32px; box-shadow:var(--shadow);
+    position:relative; overflow:hidden;
+  }
+  header.top::after{content:"";position:absolute;left:-60px;top:-60px;width:240px;height:240px;background:rgba(255,255,255,.08);border-radius:50%}
+  header.top::before{content:"";position:absolute;left:90px;bottom:-90px;width:200px;height:200px;background:rgba(255,255,255,.06);border-radius:50%}
+  .top-row{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;position:relative;z-index:1}
+  .brand-name{font-size:30px;font-weight:800;letter-spacing:-.5px;margin:0}
+  .brand-sub{opacity:.92;margin:6px 0 0;font-size:15px}
+  .badge-demo{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);padding:7px 14px;border-radius:999px;font-size:13px;font-weight:600;backdrop-filter:blur(4px)}
+  .period{display:inline-flex;gap:8px;align-items:center;margin-top:14px;background:rgba(0,0,0,.12);padding:6px 14px;border-radius:10px;font-size:14px;position:relative;z-index:1}
+
+  /* KPI */
+  .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin:22px 0 8px}
+  .kpi{background:var(--card);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);border:1px solid var(--line)}
+  .kpi .label{color:var(--muted);font-size:13px;font-weight:600}
+  .kpi .value{font-size:24px;font-weight:800;margin:6px 0 2px;letter-spacing:-.5px}
+  .kpi .delta{font-size:12.5px;font-weight:700;display:inline-flex;align-items:center;gap:4px}
+  .up{color:var(--green)} .down{color:var(--red)}
+  .kpi .bar{height:5px;border-radius:99px;margin-top:10px;background:#eef2f9;overflow:hidden}
+  .kpi .bar i{display:block;height:100%;border-radius:99px}
+
+  /* Sections */
+  section{background:var(--card);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow);border:1px solid var(--line);margin-top:22px}
+  .sec-head{display:flex;align-items:center;gap:12px;margin:0 0 4px}
+  .sec-head h2{font-size:20px;margin:0;font-weight:800}
+  .sec-icon{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;color:#fff;font-size:18px;flex:0 0 auto}
+  .sec-sub{color:var(--muted);font-size:14px;margin:0 0 18px}
+
+  /* Tables */
+  table{width:100%;border-collapse:collapse;font-size:14.5px}
+  th,td{padding:11px 12px;text-align:right;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:700;font-size:13px;background:#f8fafd}
+  td.num,th.num{font-variant-numeric:tabular-nums;text-align:left;direction:ltr}
+  tr.total td{font-weight:800;background:#f1f5fc;border-top:2px solid var(--brand)}
+  tr.sub td{font-weight:700;background:#fafbfe}
+  tr.grand td{font-weight:800;background:#eef6ef;color:#14532d;border-top:2px solid var(--green)}
+  .pos{color:var(--green);font-weight:700}
+  .neg{color:var(--red);font-weight:700}
+  .pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12.5px;font-weight:700}
+  .pill.g{background:#e8f6ee;color:#15803d}
+  .pill.b{background:#e8effc;color:#1d4ed8}
+  .pill.a{background:#fef3e2;color:#b45309}
+
+  /* layout helpers */
+  .grid2{display:grid;grid-template-columns:1.15fr .85fr;gap:24px;align-items:start}
+  .grid2b{display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start}
+  .chart-title{font-weight:700;font-size:15px;margin:0 0 12px;color:var(--ink)}
+  .legend{display:flex;flex-wrap:wrap;gap:10px 16px;margin-top:14px;font-size:13px}
+  .legend span{display:inline-flex;align-items:center;gap:7px;color:var(--muted)}
+  .dot{width:12px;height:12px;border-radius:4px;flex:0 0 auto}
+  svg{width:100%;height:auto;display:block;overflow:visible}
+
+  .ratios{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .ratios .r{background:#f8fafd;border:1px solid var(--line);border-radius:13px;padding:15px}
+  .ratios .r .v{font-size:22px;font-weight:800;color:var(--brand);letter-spacing:-.5px}
+  .ratios .r .l{font-size:13.5px;font-weight:700;margin-top:2px}
+  .ratios .r .s{font-size:11.5px;color:var(--muted);margin-top:3px}
+
+  .note{color:var(--muted);font-size:13px;background:#f8fafd;border:1px dashed var(--line);border-radius:12px;padding:12px 14px;margin-top:18px}
+  footer{color:var(--muted);font-size:13px;text-align:center;margin-top:30px;line-height:1.8}
+
+  .toolbar{display:flex;justify-content:flex-end;gap:10px;margin-bottom:14px}
+  .btn{border:1px solid var(--line);background:#fff;color:var(--ink);padding:9px 16px;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;box-shadow:var(--shadow)}
+  .btn.primary{background:var(--brand);color:#fff;border-color:var(--brand)}
+  .btn:hover{filter:brightness(.98)}
+
+  @media (max-width:920px){
+    .kpis{grid-template-columns:repeat(2,1fr)}
+    .grid2,.grid2b{grid-template-columns:1fr}
+    .ratios{grid-template-columns:repeat(2,1fr)}
+  }
+  @media print{
+    body{background:#fff}
+    .toolbar{display:none}
+    section,header.top,.kpi{box-shadow:none;break-inside:avoid}
+    .wrap{max-width:100%}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="toolbar">
+    <button class="btn" onclick="window.print()">🖨️ הדפסה / שמירה כ-PDF</button>
+  </div>
+
+  <header class="top">
+    <div class="top-row">
+      <div>
+        <h1 class="brand-name">עסק לדוגמא בע״מ</h1>
+        <p class="brand-sub">דוחות כספיים להמחשה — רווח והפסד ותזרים מזומנים</p>
+        <div class="period">📅 שנת הדיווח: 2025 · מטבע: ₪ (ש״ח)</div>
+      </div>
+      <div class="badge-demo">⚠️ נתונים בדויים להמחשה בלבד</div>
+    </div>
+  </header>
+
+  <!-- KPIs -->
+  <div class="kpis" id="kpis"></div>
+
+  <!-- P&L full -->
+  <section>
+    <div class="sec-head">
+      <div class="sec-icon" style="background:var(--brand)">📊</div>
+      <h2>דוח רווח והפסד — מאוחד</h2>
+    </div>
+    <p class="sec-sub">סיכום שנתי של ההכנסות, העלויות והרווח של העסק כולו.</p>
+    <table id="pnlTable"></table>
+  </section>
+
+  <!-- By Branch -->
+  <section>
+    <div class="sec-head">
+      <div class="sec-icon" style="background:var(--teal)">🏬</div>
+      <h2>רווח והפסד לפי סניפים</h2>
+    </div>
+    <p class="sec-sub">פילוח ביצועי כל סניף — מהכנסות ועד רווח תפעולי ושיעור רווחיות.</p>
+    <div class="grid2">
+      <div>
+        <p class="chart-title">חלוקת ההכנסה בכל סניף — לאן הולך הכסף</p>
+        <svg id="branchChart" viewBox="0 0 760 320" role="img" aria-label="תרשים סניפים"></svg>
+        <div class="legend">
+          <span><i class="dot" style="background:var(--red)"></i> עלות המכר</span>
+          <span><i class="dot" style="background:var(--amber)"></i> הוצאות תפעול</span>
+          <span><i class="dot" style="background:var(--green)"></i> רווח תפעולי</span>
+        </div>
+      </div>
+      <div>
+        <p class="chart-title">שיעור רווח תפעולי לפי סניף</p>
+        <svg id="branchMargin" viewBox="0 0 380 320" role="img" aria-label="שיעורי רווח"></svg>
+      </div>
+    </div>
+    <table id="branchTable" style="margin-top:22px"></table>
+  </section>
+
+  <!-- By Department -->
+  <section>
+    <div class="sec-head">
+      <div class="sec-icon" style="background:var(--purple)">🗂️</div>
+      <h2>רווח והפסד לפי מחלקות</h2>
+    </div>
+    <p class="sec-sub">פילוח לפי קווי פעילות (מחלקות) — נתח ההכנסה והתרומה לרווח.</p>
+    <div class="grid2b">
+      <div>
+        <p class="chart-title">נתח ההכנסה לפי מחלקה</p>
+        <svg id="deptDonut" viewBox="0 0 360 280" role="img" aria-label="נתח הכנסה"></svg>
+        <div class="legend" id="deptLegend"></div>
+      </div>
+      <div>
+        <p class="chart-title">רווח תפעולי לפי מחלקה (₪)</p>
+        <svg id="deptProfit" viewBox="0 0 380 280" role="img" aria-label="רווח לפי מחלקה"></svg>
+      </div>
+    </div>
+    <table id="deptTable" style="margin-top:22px"></table>
+  </section>
+
+  <!-- Expense breakdown -->
+  <section>
+    <div class="sec-head">
+      <div class="sec-icon" style="background:var(--amber)">💸</div>
+      <h2>פילוח הוצאות התפעול</h2>
+    </div>
+    <p class="sec-sub">התפלגות סעיפי ההוצאה התפעולית של העסק.</p>
+    <div class="grid2b">
+      <div>
+        <svg id="expDonut" viewBox="0 0 360 280" role="img" aria-label="פילוח הוצאות"></svg>
+        <div class="legend" id="expLegend"></div>
+      </div>
+      <div>
+        <table id="expTable"></table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Cash flow statement -->
+  <section>
+    <div class="sec-head">
+      <div class="sec-icon" style="background:var(--green)">💧</div>
+      <h2>דוח תזרים מזומנים</h2>
+    </div>
+    <p class="sec-sub">תנועות המזומנים מפעילות שוטפת, השקעה ומימון — ושינוי יתרת המזומנים.</p>
+    <table id="cfTable"></table>
+  </section>
+
+  <!-- Monthly cash flow -->
+  <section>
+    <div class="sec-head">
+      <div class="sec-icon" style="background:var(--brand2)">📈</div>
+      <h2>תזרים מזומנים חודשי</h2>
+    </div>
+    <p class="sec-sub">תזרים נטו בכל חודש ומגמת יתרת המזומנים המצטברת לאורך השנה.</p>
+    <p class="chart-title">תזרים חודשי נטו (₪)</p>
+    <svg id="cfBars" viewBox="0 0 800 300" role="img" aria-label="תזרים חודשי"></svg>
+    <p class="chart-title" style="margin-top:26px">יתרת מזומנים מצטברת (₪)</p>
+    <svg id="cfLine" viewBox="0 0 800 280" role="img" aria-label="יתרת מזומנים"></svg>
+  </section>
+
+  <!-- Financial ratios -->
+  <section>
+    <div class="sec-head">
+      <div class="sec-icon" style="background:var(--pink)">📐</div>
+      <h2>יחסים פיננסיים מרכזיים</h2>
+    </div>
+    <p class="sec-sub">מדדי רווחיות, נזילות ויעילות של העסק במבט מהיר.</p>
+    <div class="ratios" id="ratios"></div>
+  </section>
+
+  <!-- Quarterly trend -->
+  <section>
+    <div class="sec-head">
+      <div class="sec-icon" style="background:var(--brand)">🗓️</div>
+      <h2>מגמה רבעונית</h2>
+    </div>
+    <p class="sec-sub">התפתחות ההכנסות והרווח התפעולי לאורך ארבעת הרבעונים.</p>
+    <svg id="qChart" viewBox="0 0 800 320" role="img" aria-label="מגמה רבעונית"></svg>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--brand)"></i> הכנסות</span>
+      <span><i class="dot" style="background:var(--green)"></i> רווח תפעולי</span>
+    </div>
+    <table id="qTable" style="margin-top:20px"></table>
+  </section>
+
+  <!-- Monthly revenue -->
+  <section>
+    <div class="sec-head">
+      <div class="sec-icon" style="background:var(--teal)">💹</div>
+      <h2>הכנסות חודשיות</h2>
+    </div>
+    <p class="sec-sub">מחזור ההכנסות בכל חודש לאורך השנה.</p>
+    <svg id="revBars" viewBox="0 0 800 300" role="img" aria-label="הכנסות חודשיות"></svg>
+  </section>
+
+  <!-- Branch x Department matrix -->
+  <section>
+    <div class="sec-head">
+      <div class="sec-icon" style="background:var(--purple)">🔢</div>
+      <h2>הכנסות: סניפים מול מחלקות</h2>
+    </div>
+    <p class="sec-sub">מטריצת הצלבה — תרומת כל מחלקה בכל סניף (כהה יותר = הכנסה גבוהה יותר).</p>
+    <table id="matrixTable"></table>
+  </section>
+
+  <!-- Budget vs Actual -->
+  <section>
+    <div class="sec-head">
+      <div class="sec-icon" style="background:var(--amber)">🎯</div>
+      <h2>תקציב מול ביצוע</h2>
+    </div>
+    <p class="sec-sub">השוואת היעדים שתוכננו לתחילת השנה מול הביצוע בפועל.</p>
+    <table id="budgetTable"></table>
+  </section>
+
+  <div class="note">
+    💡 <b>הערה:</b> כל הנתונים בדוח זה הם בדויים ונועדו להמחשת מבנה ועיצוב הדוחות בלבד. אין כל קשר ללקוחות, לעסקים או לנתונים אמיתיים.
+  </div>
+
+  <footer>
+    הופק כדוגמה · עסק לדוגמא בע״מ · דוחות רווח והפסד ותזרים מזומנים<br>
+    מבנה הדוחות ניתן להתאמה מלאה למספר הסניפים, המחלקות והסעיפים הנדרשים.
+  </footer>
+
+</div>
+
+<script>
+/* ===================== נתוני דוגמה ===================== */
+const pnl = {
+  revenue:11500000, cogs:6555000, grossProfit:4945000,
+  payroll:2070000, rent:690000, marketing:575000, ga:460000, depreciation:230000,
+  totalOpex:4025000, ebit:920000, finance:115000, pbt:805000, tax:185000, net:620000,
+  cashEnd:755000
+};
+
+const branches = [
+  {name:'תל אביב', rev:4200000, cogs:2352000, gp:1848000, opex:1400000, op:448000},
+  {name:'ירושלים', rev:3100000, cogs:1798000, gp:1302000, opex:1080000, op:222000},
+  {name:'חיפה',    rev:2400000, cogs:1392000, gp:1008000, opex:860000,  op:148000},
+  {name:'באר שבע', rev:1800000, cogs:1013000, gp:787000,  opex:685000,  op:102000},
+];
+
+const departments = [
+  {name:'קמעונאות',     rev:5800000, cogs:3480000, gp:2320000, opex:1950000, op:370000, color:'#2563eb'},
+  {name:'אונליין',      rev:3200000, cogs:1760000, gp:1440000, opex:1090000, op:350000, color:'#10b981'},
+  {name:'סיטונאות',     rev:1700000, cogs:1156000, gp:544000,  opex:420000,  op:124000, color:'#f59e0b'},
+  {name:'שירות ותחזוקה',rev:800000,  cogs:159000,  gp:641000,  opex:565000,  op:76000,  color:'#8b5cf6'},
+];
+
+const expenses = [
+  {name:'שכר ונלוות',     val:2070000, color:'#2563eb'},
+  {name:'שכירות',         val:690000,  color:'#0d9488'},
+  {name:'שיווק ופרסום',   val:575000,  color:'#f59e0b'},
+  {name:'הנהלה וכלליות',  val:460000,  color:'#8b5cf6'},
+  {name:'פחת והפחתות',    val:230000,  color:'#db2777'},
+];
+
+const cashflow = {
+  operating:[
+    {l:'רווח נקי', v:620000},
+    {l:'פחת והפחתות', v:230000},
+    {l:'גידול בלקוחות (חייבים)', v:-180000},
+    {l:'גידול במלאי', v:-140000},
+    {l:'גידול בספקים (זכאים)', v:95000},
+    {l:'שינוי בהתחייבויות שוטפות', v:40000},
+  ],
+  investing:[
+    {l:'רכישת רכוש קבוע', v:-320000},
+    {l:'רכישת ציוד ומערכות', v:-60000},
+  ],
+  financing:[
+    {l:'קבלת הלוואות', v:200000},
+    {l:'פירעון הלוואות', v:-150000},
+    {l:'חלוקת דיבידנד', v:-120000},
+  ],
+  openBalance:540000
+};
+
+const monthly = [
+  {m:'ינו', net:-30000, rev:800000}, {m:'פבר', net:10000, rev:830000}, {m:'מרץ', net:35000, rev:900000},
+  {m:'אפר', net:20000, rev:880000}, {m:'מאי', net:5000, rev:920000},  {m:'יונ', net:-15000, rev:960000},
+  {m:'יול', net:40000, rev:1000000}, {m:'אוג', net:50000, rev:1080000}, {m:'ספט', net:25000, rev:1025000},
+  {m:'אוק', net:30000, rev:1010000}, {m:'נוב', net:-10000, rev:1015000},{m:'דצמ', net:55000, rev:1080000},
+];
+
+const quarters = [
+  {q:'רבעון 1', rev:2530000, gross:1088000, opex:980000,  ebit:108000},
+  {q:'רבעון 2', rev:2760000, gross:1187000, opex:1010000, ebit:177000},
+  {q:'רבעון 3', rev:3105000, gross:1335000, opex:1015000, ebit:320000},
+  {q:'רבעון 4', rev:3105000, gross:1335000, opex:1020000, ebit:315000},
+];
+
+const matrix = {
+  cols: departments.map(d=>d.name),
+  rows: [
+    {name:'תל אביב', vals:[2000000,1300000,600000,300000]},
+    {name:'ירושלים', vals:[1600000,900000, 400000,200000]},
+    {name:'חיפה',    vals:[1300000,600000, 350000,150000]},
+    {name:'באר שבע', vals:[900000, 400000, 350000,150000]},
+  ]
+};
+
+const budget = [
+  {l:'הכנסות',       plan:11000000, act:11500000},
+  {l:'רווח גולמי',   plan:4730000,  act:4945000},
+  {l:'הוצאות תפעול', plan:4100000,  act:4025000, lowerBetter:true},
+  {l:'רווח תפעולי',  plan:630000,   act:920000},
+  {l:'רווח נקי',     plan:430000,   act:620000},
+];
+
+const ratios = [
+  {label:'שיעור רווח גולמי',      val:'43.0%',  sub:'רווח גולמי ÷ הכנסות'},
+  {label:'שיעור רווח תפעולי',     val:'8.0%',   sub:'EBIT ÷ הכנסות'},
+  {label:'שיעור רווח נקי',        val:'5.4%',   sub:'רווח נקי ÷ הכנסות'},
+  {label:'תזרים מפעילות שוטפת',   val:'₪665K',  sub:'מזומן שנוצר מהפעילות'},
+  {label:'תשואה על ההון (ROE)',   val:'18.2%',  sub:'רווח נקי ÷ הון עצמי'},
+  {label:'יחס שוטף',              val:'1.8',    sub:'נכסים שוטפים ÷ התחייבויות'},
+  {label:'עלות שכר מההכנסה',      val:'18.0%',  sub:'יעילות כוח אדם'},
+  {label:'צמיחה שנתית',           val:'+12%',   sub:'לעומת שנה קודמת'},
+];
+
+/* ===================== עזרי פורמט ===================== */
+const ils  = n => '₪' + Math.round(n).toLocaleString('he-IL');
+const ilsK = n => (n/1000).toLocaleString('he-IL',{maximumFractionDigits:0}) + 'K';
+const pct  = (a,b) => (a/b*100).toLocaleString('he-IL',{maximumFractionDigits:1}) + '%';
+const signed = n => (n<0?'-':'+') + '₪' + Math.abs(Math.round(n)).toLocaleString('he-IL');
+const NS = 'http://www.w3.org/2000/svg';
+function el(tag,attrs,text){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(text!=null)e.textContent=text;return e;}
+
+/* ===================== KPI ===================== */
+const kpiData = [
+  {label:'הכנסות', value:ils(pnl.revenue), delta:'+12%', up:true, w:100, color:'var(--brand)'},
+  {label:'רווח גולמי', value:ils(pnl.grossProfit), sub:pct(pnl.grossProfit,pnl.revenue), delta:'+9%', up:true, w:43, color:'var(--teal)'},
+  {label:'רווח תפעולי', value:ils(pnl.ebit), sub:pct(pnl.ebit,pnl.revenue), delta:'+15%', up:true, w:18, color:'var(--amber)'},
+  {label:'רווח נקי', value:ils(pnl.net), sub:pct(pnl.net,pnl.revenue), delta:'+18%', up:true, w:12, color:'var(--green)'},
+  {label:'יתרת מזומנים', value:ils(pnl.cashEnd), delta:'+40%', up:true, w:60, color:'var(--purple)'},
+];
+const kpiBox = document.getElementById('kpis');
+kpiData.forEach(k=>{
+  const d=document.createElement('div'); d.className='kpi';
+  d.innerHTML = `<div class="label">${k.label}</div>
+    <div class="value">${k.value}</div>
+    <div class="delta ${k.up?'up':'down'}">${k.up?'▲':'▼'} ${k.delta} מהשנה הקודמת${k.sub?` · ${k.sub} מההכנסה`:''}</div>
+    <div class="bar"><i style="width:${k.w}%;background:${k.color}"></i></div>`;
+  kpiBox.appendChild(d);
+});
+
+/* ===================== טבלת רווח והפסד ===================== */
+document.getElementById('pnlTable').innerHTML = `
+  <thead><tr><th>סעיף</th><th class="num">סכום (₪)</th><th class="num">% מההכנסה</th></tr></thead>
+  <tbody>
+    <tr><td>הכנסות ממכירות</td><td class="num">${ils(pnl.revenue)}</td><td class="num">100%</td></tr>
+    <tr><td>עלות המכר</td><td class="num neg">(${ils(pnl.cogs)})</td><td class="num">${pct(pnl.cogs,pnl.revenue)}</td></tr>
+    <tr class="sub"><td>רווח גולמי</td><td class="num">${ils(pnl.grossProfit)}</td><td class="num">${pct(pnl.grossProfit,pnl.revenue)}</td></tr>
+    <tr><td>שכר ונלוות</td><td class="num neg">(${ils(pnl.payroll)})</td><td class="num">${pct(pnl.payroll,pnl.revenue)}</td></tr>
+    <tr><td>שכירות</td><td class="num neg">(${ils(pnl.rent)})</td><td class="num">${pct(pnl.rent,pnl.revenue)}</td></tr>
+    <tr><td>שיווק ופרסום</td><td class="num neg">(${ils(pnl.marketing)})</td><td class="num">${pct(pnl.marketing,pnl.revenue)}</td></tr>
+    <tr><td>הנהלה וכלליות</td><td class="num neg">(${ils(pnl.ga)})</td><td class="num">${pct(pnl.ga,pnl.revenue)}</td></tr>
+    <tr><td>פחת והפחתות</td><td class="num neg">(${ils(pnl.depreciation)})</td><td class="num">${pct(pnl.depreciation,pnl.revenue)}</td></tr>
+    <tr class="sub"><td>סך הוצאות תפעול</td><td class="num neg">(${ils(pnl.totalOpex)})</td><td class="num">${pct(pnl.totalOpex,pnl.revenue)}</td></tr>
+    <tr class="total"><td>רווח תפעולי (EBIT)</td><td class="num">${ils(pnl.ebit)}</td><td class="num">${pct(pnl.ebit,pnl.revenue)}</td></tr>
+    <tr><td>הוצאות מימון</td><td class="num neg">(${ils(pnl.finance)})</td><td class="num">${pct(pnl.finance,pnl.revenue)}</td></tr>
+    <tr><td>רווח לפני מס</td><td class="num">${ils(pnl.pbt)}</td><td class="num">${pct(pnl.pbt,pnl.revenue)}</td></tr>
+    <tr><td>מס חברות (23%)</td><td class="num neg">(${ils(pnl.tax)})</td><td class="num">${pct(pnl.tax,pnl.revenue)}</td></tr>
+    <tr class="grand"><td>רווח נקי</td><td class="num">${ils(pnl.net)}</td><td class="num">${pct(pnl.net,pnl.revenue)}</td></tr>
+  </tbody>`;
+
+/* ===================== טבלת סניפים ===================== */
+(function(){
+  const sum = k => branches.reduce((a,b)=>a+b[k],0);
+  let rows = branches.map(b=>`
+    <tr>
+      <td><b>${b.name}</b></td>
+      <td class="num">${ils(b.rev)}</td>
+      <td class="num neg">(${ils(b.cogs)})</td>
+      <td class="num">${ils(b.gp)}</td>
+      <td class="num neg">(${ils(b.opex)})</td>
+      <td class="num pos">${ils(b.op)}</td>
+      <td class="num"><span class="pill ${b.op/b.rev>=0.08?'g':'a'}">${pct(b.op,b.rev)}</span></td>
+    </tr>`).join('');
+  document.getElementById('branchTable').innerHTML = `
+    <thead><tr><th>סניף</th><th class="num">הכנסות</th><th class="num">עלות המכר</th><th class="num">רווח גולמי</th><th class="num">הוצ׳ תפעול</th><th class="num">רווח תפעולי</th><th class="num">% רווחיות</th></tr></thead>
+    <tbody>${rows}
+      <tr class="total"><td>סה״כ</td><td class="num">${ils(sum('rev'))}</td><td class="num">(${ils(sum('cogs'))})</td><td class="num">${ils(sum('gp'))}</td><td class="num">(${ils(sum('opex'))})</td><td class="num">${ils(sum('op'))}</td><td class="num">${pct(sum('op'),sum('rev'))}</td></tr>
+    </tbody>`;
+})();
+
+/* ===================== תרשים סניפים (עמודות מוערמות) ===================== */
+(function(){
+  const svg=document.getElementById('branchChart');
+  const W=760,H=320, padB=46, padT=20, padL=60, padR=20;
+  const plotH=H-padB-padT, plotW=W-padL-padR;
+  const maxV=Math.max(...branches.map(b=>b.rev));
+  const y = v => padT + plotH*(1-v/maxV);
+  // gridlines
+  for(let i=0;i<=4;i++){
+    const gv=maxV*i/4, gy=y(gv);
+    svg.appendChild(el('line',{x1:padL,y1:gy,x2:W-padR,y2:gy,stroke:'#eef2f9','stroke-width':1}));
+    svg.appendChild(el('text',{x:padL-8,y:gy+4,'text-anchor':'end','font-size':11,fill:'#94a3b8'},ilsK(gv)));
+  }
+  const n=branches.length, slot=plotW/n, bw=Math.min(74,slot*0.5);
+  branches.forEach((b,i)=>{
+    const cx=padL+slot*i+slot/2, x=cx-bw/2;
+    const segs=[{v:b.cogs,c:'#dc2626'},{v:b.opex,c:'#f59e0b'},{v:b.op,c:'#16a34a'}];
+    let acc=0;
+    segs.forEach(s=>{
+      const h=plotH*(s.v/maxV);
+      const yy=y(acc+s.v);
+      svg.appendChild(el('rect',{x,y:yy,width:bw,height:h,fill:s.c,rx:3}));
+      acc+=s.v;
+    });
+    // total label
+    svg.appendChild(el('text',{x:cx,y:y(b.rev)-8,'text-anchor':'middle','font-size':12,'font-weight':700,fill:'#0f172a'},ilsK(b.rev)));
+    svg.appendChild(el('text',{x:cx,y:H-padB+20,'text-anchor':'middle','font-size':13,'font-weight':600,fill:'#475569'},b.name));
+  });
+})();
+
+/* ===================== שיעור רווח לפי סניף (עמודות אופקיות) ===================== */
+(function(){
+  const svg=document.getElementById('branchMargin');
+  const W=380,H=320, padR=70, padL=80, padT=14, gap=14;
+  const rows=branches.map(b=>({name:b.name, m:b.op/b.rev}));
+  const maxM=Math.max(...rows.map(r=>r.m));
+  const barH=(H-padT*2-gap*(rows.length-1))/rows.length;
+  const plotW=W-padL-padR;
+  rows.forEach((r,i)=>{
+    const yy=padT+i*(barH+gap);
+    svg.appendChild(el('text',{x:W-8,y:yy+barH/2+5,'text-anchor':'end','font-size':13,'font-weight':600,fill:'#475569'},r.name));
+    svg.appendChild(el('rect',{x:padL,y:yy,width:plotW,height:barH,fill:'#eef2f9',rx:6}));
+    const w=plotW*(r.m/maxM);
+    const col=r.m>=0.08?'#16a34a':(r.m>=0.06?'#f59e0b':'#ef4444');
+    svg.appendChild(el('rect',{x:padL,y:yy,width:w,height:barH,fill:col,rx:6}));
+    svg.appendChild(el('text',{x:padL+w-8,y:yy+barH/2+5,'text-anchor':'start','font-size':12.5,'font-weight':800,fill:'#fff',direction:'ltr'},pct(r.m,1)));
+  });
+})();
+
+/* ===================== דונאט גנרי ===================== */
+function drawDonut(svgId, data, valKey, centerLabel, centerVal){
+  const svg=document.getElementById(svgId);
+  const cx=180, cy=140, r=92, sw=34, C=2*Math.PI*r;
+  const total=data.reduce((a,d)=>a+d[valKey],0);
+  const g=el('g',{transform:`rotate(-90 ${cx} ${cy})`});
+  svg.appendChild(g);
+  let acc=0;
+  data.forEach(d=>{
+    const frac=d[valKey]/total, len=frac*C;
+    const c=el('circle',{cx,cy,r,fill:'none',stroke:d.color,'stroke-width':sw,
+      'stroke-dasharray':`${len} ${C-len}`,'stroke-dashoffset':-acc});
+    g.appendChild(c);
+    acc+=len;
+  });
+  svg.appendChild(el('text',{x:cx,y:cy-4,'text-anchor':'middle','font-size':15,'font-weight':700,fill:'#0f172a'},centerLabel));
+  svg.appendChild(el('text',{x:cx,y:cy+18,'text-anchor':'middle','font-size':16,'font-weight':800,fill:'#2563eb'},centerVal));
+}
+function buildLegend(elId, data, valKey){
+  const total=data.reduce((a,d)=>a+d[valKey],0);
+  document.getElementById(elId).innerHTML = data.map(d=>
+    `<span><i class="dot" style="background:${d.color}"></i> ${d.name} · ${pct(d[valKey],total)}</span>`).join('');
+}
+
+/* ===================== מחלקות ===================== */
+drawDonut('deptDonut', departments, 'rev', 'סך הכנסות', ilsK(pnl.revenue));
+buildLegend('deptLegend', departments, 'rev');
+
+(function(){
+  const svg=document.getElementById('deptProfit');
+  const W=380,H=280, padR=70, padL=120, padT=12, gap=16;
+  const maxP=Math.max(...departments.map(d=>d.op));
+  const barH=(H-padT*2-gap*(departments.length-1))/departments.length;
+  const plotW=W-padL-padR;
+  departments.forEach((d,i)=>{
+    const yy=padT+i*(barH+gap);
+    svg.appendChild(el('text',{x:W-8,y:yy+barH/2+5,'text-anchor':'end','font-size':12.5,'font-weight':600,fill:'#475569'},d.name));
+    svg.appendChild(el('rect',{x:padL,y:yy,width:plotW,height:barH,fill:'#eef2f9',rx:6}));
+    const w=plotW*(d.op/maxP);
+    svg.appendChild(el('rect',{x:padL,y:yy,width:w,height:barH,fill:d.color,rx:6}));
+    svg.appendChild(el('text',{x:padL+w+6,y:yy+barH/2+5,'text-anchor':'start','font-size':12,'font-weight':800,fill:'#0f172a',direction:'ltr'},ils(d.op)));
+  });
+})();
+
+(function(){
+  const sum=k=>departments.reduce((a,d)=>a+d[k],0);
+  let rows=departments.map(d=>`
+    <tr>
+      <td><span class="dot" style="display:inline-block;background:${d.color};margin-left:6px"></span><b>${d.name}</b></td>
+      <td class="num">${ils(d.rev)}</td>
+      <td class="num">${pct(d.rev,sum('rev'))}</td>
+      <td class="num">${ils(d.gp)}</td>
+      <td class="num pos">${ils(d.op)}</td>
+      <td class="num"><span class="pill ${d.op/d.rev>=0.08?'g':'a'}">${pct(d.op,d.rev)}</span></td>
+    </tr>`).join('');
+  document.getElementById('deptTable').innerHTML=`
+    <thead><tr><th>מחלקה</th><th class="num">הכנסות</th><th class="num">נתח</th><th class="num">רווח גולמי</th><th class="num">רווח תפעולי</th><th class="num">% רווחיות</th></tr></thead>
+    <tbody>${rows}
+      <tr class="total"><td>סה״כ</td><td class="num">${ils(sum('rev'))}</td><td class="num">100%</td><td class="num">${ils(sum('gp'))}</td><td class="num">${ils(sum('op'))}</td><td class="num">${pct(sum('op'),sum('rev'))}</td></tr>
+    </tbody>`;
+})();
+
+/* ===================== הוצאות ===================== */
+drawDonut('expDonut', expenses, 'val', 'סך הוצאות', ilsK(pnl.totalOpex));
+buildLegend('expLegend', expenses, 'val');
+(function(){
+  const total=expenses.reduce((a,e)=>a+e.val,0);
+  let rows=expenses.map(e=>`
+    <tr>
+      <td><span class="dot" style="display:inline-block;background:${e.color};margin-left:6px"></span>${e.name}</td>
+      <td class="num">${ils(e.val)}</td>
+      <td class="num">${pct(e.val,total)}</td>
+    </tr>`).join('');
+  document.getElementById('expTable').innerHTML=`
+    <thead><tr><th>סעיף הוצאה</th><th class="num">סכום</th><th class="num">% מההוצאות</th></tr></thead>
+    <tbody>${rows}<tr class="total"><td>סה״כ הוצאות תפעול</td><td class="num">${ils(total)}</td><td class="num">100%</td></tr></tbody>`;
+})();
+
+/* ===================== דוח תזרים מזומנים ===================== */
+(function(){
+  const sec=(arr)=>arr.reduce((a,x)=>a+x.v,0);
+  const op=sec(cashflow.operating), inv=sec(cashflow.investing), fin=sec(cashflow.financing);
+  const netChange=op+inv+fin;
+  const close=cashflow.openBalance+netChange;
+  const line = x => `<tr><td>${x.l}</td><td class="num ${x.v<0?'neg':'pos'}">${x.v<0?'('+ils(-x.v)+')':ils(x.v)}</td></tr>`;
+  document.getElementById('cfTable').innerHTML=`
+    <thead><tr><th>תנועת מזומנים</th><th class="num">סכום (₪)</th></tr></thead>
+    <tbody>
+      <tr class="sub"><td>פעילות שוטפת</td><td></td></tr>
+      ${cashflow.operating.map(line).join('')}
+      <tr class="total"><td>מזומנים נטו מפעילות שוטפת</td><td class="num pos">${ils(op)}</td></tr>
+      <tr class="sub"><td>פעילות השקעה</td><td></td></tr>
+      ${cashflow.investing.map(line).join('')}
+      <tr class="total"><td>מזומנים נטו מפעילות השקעה</td><td class="num neg">(${ils(-inv)})</td></tr>
+      <tr class="sub"><td>פעילות מימון</td><td></td></tr>
+      ${cashflow.financing.map(line).join('')}
+      <tr class="total"><td>מזומנים נטו מפעילות מימון</td><td class="num neg">(${ils(-fin)})</td></tr>
+      <tr class="sub"><td>שינוי נטו במזומנים</td><td class="num pos">${ils(netChange)}</td></tr>
+      <tr><td>יתרת מזומנים לתחילת השנה</td><td class="num">${ils(cashflow.openBalance)}</td></tr>
+      <tr class="grand"><td>יתרת מזומנים לסוף השנה</td><td class="num">${ils(close)}</td></tr>
+    </tbody>`;
+})();
+
+/* ===================== תזרים חודשי — עמודות נטו ===================== */
+(function(){
+  const svg=document.getElementById('cfBars');
+  const W=800,H=300, padL=64, padR=16, padT=20, padB=40;
+  const plotH=H-padT-padB, plotW=W-padL-padR;
+  const vals=monthly.map(m=>m.net);
+  const maxV=Math.max(...vals), minV=Math.min(...vals);
+  const top=Math.max(maxV,0), bot=Math.min(minV,0), range=top-bot;
+  const y=v=>padT+plotH*(1-(v-bot)/range);
+  const zeroY=y(0);
+  // gridlines
+  for(let i=0;i<=4;i++){
+    const gv=bot+range*i/4, gy=y(gv);
+    svg.appendChild(el('line',{x1:padL,y1:gy,x2:W-padR,y2:gy,stroke:'#eef2f9','stroke-width':1}));
+    svg.appendChild(el('text',{x:padL-8,y:gy+4,'text-anchor':'end','font-size':10.5,fill:'#94a3b8'},ilsK(gv)));
+  }
+  svg.appendChild(el('line',{x1:padL,y1:zeroY,x2:W-padR,y2:zeroY,stroke:'#cbd5e1','stroke-width':1.5}));
+  const n=monthly.length, slot=plotW/n, bw=Math.min(34,slot*0.55);
+  monthly.forEach((m,i)=>{
+    const cx=padL+slot*i+slot/2, x=cx-bw/2;
+    const yy=m.net>=0?y(m.net):zeroY, h=Math.abs(y(m.net)-zeroY);
+    svg.appendChild(el('rect',{x,y:yy,width:bw,height:h,fill:m.net>=0?'#16a34a':'#dc2626',rx:3}));
+    svg.appendChild(el('text',{x:cx,y:m.net>=0?yy-5:yy+h+13,'text-anchor':'middle','font-size':10,'font-weight':700,fill:m.net>=0?'#15803d':'#b91c1c'},ilsK(m.net)));
+    svg.appendChild(el('text',{x:cx,y:H-padB+22,'text-anchor':'middle','font-size':11.5,fill:'#475569'},m.m));
+  });
+})();
+
+/* ===================== יתרת מזומנים מצטברת — קו ===================== */
+(function(){
+  const svg=document.getElementById('cfLine');
+  const W=800,H=280, padL=70, padR=20, padT=24, padB=40;
+  const plotH=H-padT-padB, plotW=W-padL-padR;
+  // build cumulative balances
+  let bal=cashflow.openBalance;
+  const pts=monthly.map(m=>{ bal+=m.net; return {m:m.m, v:bal}; });
+  const vals=pts.map(p=>p.v);
+  const maxV=Math.max(...vals)*1.04, minV=Math.min(...vals)*0.96;
+  const range=maxV-minV;
+  const n=pts.length, step=plotW/(n-1);
+  const x=i=>padL+step*i;
+  const y=v=>padT+plotH*(1-(v-minV)/range);
+  // gridlines
+  for(let i=0;i<=4;i++){
+    const gv=minV+range*i/4, gy=padT+plotH*(1-i/4);
+    svg.appendChild(el('line',{x1:padL,y1:gy,x2:W-padR,y2:gy,stroke:'#eef2f9','stroke-width':1}));
+    svg.appendChild(el('text',{x:padL-8,y:gy+4,'text-anchor':'end','font-size':10.5,fill:'#94a3b8'},ilsK(gv)));
+  }
+  // area
+  let area=`M ${x(0)} ${y(pts[0].v)}`;
+  pts.forEach((p,i)=>{ if(i>0) area+=` L ${x(i)} ${y(p.v)}`; });
+  area+=` L ${x(n-1)} ${padT+plotH} L ${x(0)} ${padT+plotH} Z`;
+  svg.appendChild(el('path',{d:area,fill:'rgba(37,99,235,.10)'}));
+  // line
+  let d=`M ${x(0)} ${y(pts[0].v)}`;
+  pts.forEach((p,i)=>{ if(i>0) d+=` L ${x(i)} ${y(p.v)}`; });
+  svg.appendChild(el('path',{d,fill:'none',stroke:'#2563eb','stroke-width':3,'stroke-linejoin':'round','stroke-linecap':'round'}));
+  // points + labels
+  pts.forEach((p,i)=>{
+    svg.appendChild(el('circle',{cx:x(i),cy:y(p.v),r:4,fill:'#fff',stroke:'#2563eb','stroke-width':2.5}));
+    if(i%2===0||i===n-1)
+      svg.appendChild(el('text',{x:x(i),y:y(p.v)-12,'text-anchor':'middle','font-size':10,'font-weight':700,fill:'#1e40af'},ilsK(p.v)));
+    svg.appendChild(el('text',{x:x(i),y:H-padB+22,'text-anchor':'middle','font-size':11.5,fill:'#475569'},p.m));
+  });
+})();
+
+/* ===================== יחסים פיננסיים ===================== */
+document.getElementById('ratios').innerHTML = ratios.map(r=>
+  `<div class="r"><div class="v">${r.val}</div><div class="l">${r.label}</div><div class="s">${r.sub}</div></div>`).join('');
+
+/* ===================== מגמה רבעונית (עמודות הכנסה + קו רווח) ===================== */
+(function(){
+  const svg=document.getElementById('qChart');
+  const W=800,H=320,padL=64,padR=20,padT=26,padB=44;
+  const plotH=H-padT-padB, plotW=W-padL-padR;
+  const maxRev=Math.max(...quarters.map(q=>q.rev))*1.12;
+  const maxE=Math.max(...quarters.map(q=>q.ebit))*1.5;
+  const yR=v=>padT+plotH*(1-v/maxRev);
+  const yE=v=>padT+plotH*(1-v/maxE);
+  for(let i=0;i<=4;i++){const gy=padT+plotH*(1-i/4);
+    svg.appendChild(el('line',{x1:padL,y1:gy,x2:W-padR,y2:gy,stroke:'#eef2f9','stroke-width':1}));
+    svg.appendChild(el('text',{x:padL-8,y:gy+4,'text-anchor':'end','font-size':10.5,fill:'#94a3b8'},ilsK(maxRev*i/4)));
+  }
+  const n=quarters.length, slot=plotW/n, bw=Math.min(78,slot*0.45);
+  quarters.forEach((q,i)=>{
+    const cx=padL+slot*i+slot/2, x=cx-bw/2, h=plotH*(q.rev/maxRev);
+    svg.appendChild(el('rect',{x,y:yR(q.rev),width:bw,height:h,fill:'#2563eb',rx:4}));
+    svg.appendChild(el('text',{x:cx,y:yR(q.rev)-7,'text-anchor':'middle','font-size':12,'font-weight':700,fill:'#1e40af'},ilsK(q.rev)));
+    svg.appendChild(el('text',{x:cx,y:H-padB+22,'text-anchor':'middle','font-size':13,'font-weight':600,fill:'#475569'},q.q));
+  });
+  let d='';
+  quarters.forEach((q,i)=>{const cx=padL+slot*i+slot/2; d+=(i?' L ':'M ')+cx+' '+yE(q.ebit);});
+  svg.appendChild(el('path',{d,fill:'none',stroke:'#16a34a','stroke-width':3,'stroke-linecap':'round','stroke-linejoin':'round'}));
+  quarters.forEach((q,i)=>{const cx=padL+slot*i+slot/2;
+    svg.appendChild(el('circle',{cx,cy:yE(q.ebit),r:4.5,fill:'#fff',stroke:'#16a34a','stroke-width':2.5}));
+    svg.appendChild(el('text',{x:cx,y:yE(q.ebit)-11,'text-anchor':'middle','font-size':10.5,'font-weight':700,fill:'#15803d'},ilsK(q.ebit)));
+  });
+})();
+
+/* ===================== טבלה רבעונית ===================== */
+(function(){
+  const sum=k=>quarters.reduce((a,q)=>a+q[k],0);
+  let rows=quarters.map(q=>`<tr><td><b>${q.q}</b></td><td class="num">${ils(q.rev)}</td><td class="num">${ils(q.gross)}</td><td class="num neg">(${ils(q.opex)})</td><td class="num pos">${ils(q.ebit)}</td><td class="num">${pct(q.ebit,q.rev)}</td></tr>`).join('');
+  document.getElementById('qTable').innerHTML=`<thead><tr><th>רבעון</th><th class="num">הכנסות</th><th class="num">רווח גולמי</th><th class="num">הוצ׳ תפעול</th><th class="num">רווח תפעולי</th><th class="num">% רווחיות</th></tr></thead><tbody>${rows}<tr class="total"><td>סה״כ שנתי</td><td class="num">${ils(sum('rev'))}</td><td class="num">${ils(sum('gross'))}</td><td class="num">(${ils(sum('opex'))})</td><td class="num">${ils(sum('ebit'))}</td><td class="num">${pct(sum('ebit'),sum('rev'))}</td></tr></tbody>`;
+})();
+
+/* ===================== הכנסות חודשיות (עמודות) ===================== */
+(function(){
+  const svg=document.getElementById('revBars');
+  const W=800,H=300,padL=64,padR=16,padT=26,padB=40;
+  const plotH=H-padT-padB, plotW=W-padL-padR;
+  const maxV=Math.max(...monthly.map(m=>m.rev))*1.15;
+  const y=v=>padT+plotH*(1-v/maxV);
+  for(let i=0;i<=4;i++){const gy=padT+plotH*(1-i/4);
+    svg.appendChild(el('line',{x1:padL,y1:gy,x2:W-padR,y2:gy,stroke:'#eef2f9','stroke-width':1}));
+    svg.appendChild(el('text',{x:padL-8,y:gy+4,'text-anchor':'end','font-size':10.5,fill:'#94a3b8'},ilsK(maxV*i/4)));
+  }
+  const n=monthly.length, slot=plotW/n, bw=Math.min(40,slot*0.62);
+  monthly.forEach((m,i)=>{const cx=padL+slot*i+slot/2,x=cx-bw/2,h=plotH*(m.rev/maxV);
+    svg.appendChild(el('rect',{x,y:y(m.rev),width:bw,height:h,fill:'#0d9488',rx:3}));
+    svg.appendChild(el('text',{x:cx,y:y(m.rev)-6,'text-anchor':'middle','font-size':9.5,'font-weight':700,fill:'#0f766e'},ilsK(m.rev)));
+    svg.appendChild(el('text',{x:cx,y:H-padB+22,'text-anchor':'middle','font-size':11.5,fill:'#475569'},m.m));
+  });
+})();
+
+/* ===================== מטריצת סניפים × מחלקות ===================== */
+(function(){
+  const allVals=matrix.rows.flatMap(r=>r.vals);
+  const maxC=Math.max(...allVals);
+  const colTot=matrix.cols.map((_,c)=>matrix.rows.reduce((a,r)=>a+r.vals[c],0));
+  const grand=colTot.reduce((a,b)=>a+b,0);
+  const head=`<thead><tr><th>סניף \\ מחלקה</th>${matrix.cols.map(c=>`<th class="num">${c}</th>`).join('')}<th class="num">סה״כ סניף</th></tr></thead>`;
+  const body=matrix.rows.map(r=>{
+    const rowTot=r.vals.reduce((a,b)=>a+b,0);
+    const cells=r.vals.map(v=>{
+      const a=(v/maxC*0.85+0.06).toFixed(2);
+      const dark=v/maxC>0.55;
+      return `<td class="num" style="background:rgba(37,99,235,${a});color:${dark?'#fff':'#0f172a'};font-weight:700">${ilsK(v)}</td>`;
+    }).join('');
+    return `<tr><td><b>${r.name}</b></td>${cells}<td class="num"><b>${ils(rowTot)}</b></td></tr>`;
+  }).join('');
+  const foot=`<tr class="total"><td>סה״כ מחלקה</td>${colTot.map(t=>`<td class="num">${ils(t)}</td>`).join('')}<td class="num">${ils(grand)}</td></tr>`;
+  document.getElementById('matrixTable').innerHTML=head+`<tbody>${body}${foot}</tbody>`;
+})();
+
+/* ===================== תקציב מול ביצוע ===================== */
+(function(){
+  let rows=budget.map(b=>{
+    const diff=b.act-b.plan;
+    const good=b.lowerBetter?diff<=0:diff>=0;
+    const variance=(b.act-b.plan)/b.plan*100;
+    return `<tr>
+      <td><b>${b.l}</b></td>
+      <td class="num">${ils(b.plan)}</td>
+      <td class="num">${ils(b.act)}</td>
+      <td class="num ${good?'pos':'neg'}">${diff>=0?'+':'-'}${ils(Math.abs(diff))}</td>
+      <td class="num"><span class="pill ${good?'g':'a'}">${variance>=0?'+':''}${variance.toLocaleString('he-IL',{maximumFractionDigits:1})}%</span></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('budgetTable').innerHTML=`<thead><tr><th>מדד</th><th class="num">תקציב מתוכנן</th><th class="num">ביצוע בפועל</th><th class="num">פער</th><th class="num">% סטייה</th></tr></thead><tbody>${rows}</tbody>`;
+})();
+</script>
+</body>
+</html>
