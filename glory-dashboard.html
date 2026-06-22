@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>גלורי · דשבורד פיננסי 2024–2025</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --gold:#C9A227; --gold-soft:#E5C766; --gold-deep:#A6841B;
+  --ink:#16203a; --ink-2:#243153; --slate:#5b6b8c;
+  --c-stores:#C9A227; --c-franchise:#2E6FB0; --c-wholesale:#3FA17D; --c-dominic:#B0567E;
+  --bg:#f4f6fb; --card:#ffffff; --line:#e7ebf3;
+  --pos:#2ea36b; --neg:#d4574a;
+  --shadow:0 4px 20px rgba(22,32,58,.06), 0 1px 3px rgba(22,32,58,.05);
+  --shadow-lg:0 18px 50px rgba(22,32,58,.12);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Heebo',system-ui,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1280px;margin:0 auto;padding:0 22px}
+
+/* Header */
+header{background:linear-gradient(120deg,#11192e 0%,#1d2a4d 55%,#24365f 100%);color:#fff;position:relative;overflow:hidden}
+header::after{content:"";position:absolute;inset:0;background:radial-gradient(900px 380px at 88% -30%,rgba(201,162,39,.28),transparent 60%);pointer-events:none}
+.hd{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:30px 0 34px;position:relative;z-index:1;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:16px}
+.logo{width:60px;height:60px;border-radius:16px;background:linear-gradient(145deg,var(--gold-soft),var(--gold-deep));display:flex;align-items:center;justify-content:center;font-weight:900;font-size:30px;color:#1a1205;box-shadow:0 10px 26px rgba(201,162,39,.4)}
+.brand h1{font-size:30px;font-weight:800;letter-spacing:-.5px}
+.brand p{color:#b9c4dc;font-size:14px;font-weight:400;margin-top:2px}
+.hd-badge{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);padding:10px 18px;border-radius:14px;backdrop-filter:blur(6px)}
+.hd-badge .yr{font-size:13px;color:#aebbd6}
+.hd-badge .big{font-size:22px;font-weight:800;color:var(--gold-soft)}
+
+/* Sections */
+section{padding:34px 0}
+.sec-title{font-size:20px;font-weight:800;margin-bottom:4px;display:flex;align-items:center;gap:10px}
+.sec-title::before{content:"";width:5px;height:22px;border-radius:3px;background:linear-gradient(var(--gold),var(--gold-deep))}
+.sec-sub{color:var(--slate);font-size:14px;margin-bottom:22px;padding-right:15px}
+
+/* KPI cards */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:-44px;position:relative;z-index:2}
+.kpi{background:var(--card);border-radius:18px;padding:22px;box-shadow:var(--shadow-lg);border:1px solid var(--line);transition:transform .25s,box-shadow .25s}
+.kpi:hover{transform:translateY(-4px)}
+.kpi .lbl{font-size:14px;color:var(--slate);font-weight:500;display:flex;align-items:center;gap:8px}
+.kpi .dot{width:9px;height:9px;border-radius:50%}
+.kpi .val{font-size:30px;font-weight:800;margin:10px 0 6px;letter-spacing:-1px}
+.kpi .val small{font-size:16px;font-weight:600;color:var(--slate);margin-right:3px}
+.trend{display:inline-flex;align-items:center;gap:5px;font-size:13.5px;font-weight:700;padding:4px 10px;border-radius:20px}
+.trend.up{color:var(--pos);background:rgba(46,163,107,.12)}
+.trend.down{color:var(--neg);background:rgba(212,87,74,.12)}
+.trend span.sub{color:var(--slate);font-weight:500;margin-right:4px}
+
+/* Grid + chart cards */
+.grid{display:grid;gap:20px}
+.g-2{grid-template-columns:1fr 1fr}
+.g-3{grid-template-columns:1.3fr 1fr}
+.card{background:var(--card);border-radius:18px;padding:24px;box-shadow:var(--shadow);border:1px solid var(--line)}
+.card h3{font-size:17px;font-weight:700;margin-bottom:3px}
+.card .note{color:var(--slate);font-size:13px;margin-bottom:18px}
+.chart-box{position:relative;width:100%}
+.h-280{height:280px}.h-320{height:320px}.h-360{height:360px}.h-420{height:420px}
+
+/* donut center */
+.donut-wrap{position:relative}
+.donut-center{position:absolute;top:46%;left:0;right:0;text-align:center;transform:translateY(-50%);pointer-events:none}
+.donut-center .t{font-size:13px;color:var(--slate)}
+.donut-center .n{font-size:26px;font-weight:800;letter-spacing:-1px}
+
+/* legend */
+.legend{display:flex;flex-direction:column;gap:12px;margin-top:6px}
+.legend .row{display:flex;align-items:center;justify-content:space-between;font-size:14.5px;padding-bottom:11px;border-bottom:1px dashed var(--line)}
+.legend .row:last-child{border-bottom:0;padding-bottom:0}
+.legend .nm{display:flex;align-items:center;gap:9px;font-weight:600}
+.legend .sw{width:12px;height:12px;border-radius:4px}
+.legend .vv{font-weight:700}
+.legend .pc{color:var(--slate);font-size:12.5px;font-weight:500;margin-right:8px}
+
+/* table */
+.tbl-card{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14.5px;min-width:640px}
+th,td{padding:13px 14px;text-align:right}
+thead th{background:var(--ink);color:#fff;font-weight:600;font-size:13.5px;position:sticky;top:0}
+thead th:first-child{border-radius:0 10px 0 0}
+thead th:last-child{border-radius:10px 0 0 0}
+tbody tr{border-bottom:1px solid var(--line)}
+tbody tr:nth-child(even){background:#fafbfe}
+tbody tr:hover{background:#fff7e6}
+td.metric{font-weight:700;color:var(--ink-2)}
+td.num{font-variant-numeric:tabular-nums}
+.delta{font-size:12.5px;font-weight:700}
+.delta.up{color:var(--pos)}.delta.down{color:var(--neg)}
+tr.total-row{background:var(--ink)!important;color:#fff;font-weight:700}
+tr.total-row td{color:#fff}
+
+footer{text-align:center;padding:30px 0 40px;color:var(--slate);font-size:13px}
+.src{display:inline-block;margin-top:6px;font-size:12px;opacity:.8}
+
+/* insight cards */
+.insights{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+.ins{position:relative;border-radius:18px;padding:22px;color:#fff;overflow:hidden;box-shadow:var(--shadow);transition:transform .25s}
+.ins:hover{transform:translateY(-4px)}
+.ins .ic{font-size:28px;margin-bottom:10px;display:block}
+.ins .t{font-size:13px;opacity:.88;font-weight:500}
+.ins .v{font-size:24px;font-weight:800;margin:6px 0 3px;letter-spacing:-.5px}
+.ins .d{font-size:13.5px;opacity:.95;font-weight:600}
+.ins::after{content:"";position:absolute;width:130px;height:130px;border-radius:50%;background:rgba(255,255,255,.13);bottom:-55px;left:-35px}
+.ins.a{background:linear-gradient(135deg,#1d8a5b,#2ea36b)}
+.ins.b{background:linear-gradient(135deg,#244e9c,#2E6FB0)}
+.ins.c{background:linear-gradient(135deg,#9a7517,#C9A227)}
+.ins.d{background:linear-gradient(135deg,#a23f63,#B0567E)}
+
+/* leaderboard */
+.lb{display:grid;grid-template-columns:repeat(2,1fr);gap:11px}
+.lb .it{display:grid;grid-template-columns:32px 1fr auto;gap:13px;align-items:center;padding:11px 14px;border-radius:14px;background:#fafbfe;border:1px solid var(--line);transition:background .2s}
+.lb .it:hover{background:#fff7e6}
+.lb .rk{font-size:18px;font-weight:800;text-align:center;color:var(--slate)}
+.lb .it .nm{font-weight:700;font-size:14.5px}
+.lb .bar{height:7px;border-radius:5px;background:#eef1f7;margin-top:7px;overflow:hidden}
+.lb .bar i{display:block;height:100%;border-radius:5px}
+.lb .rt{text-align:left}
+.lb .rt .s{font-weight:800;font-variant-numeric:tabular-nums;font-size:14.5px}
+.lb .gr{font-size:12px;font-weight:700;margin-top:3px;white-space:nowrap}
+.gr.up{color:var(--pos)}.gr.down{color:var(--neg)}.gr.new{color:var(--gold-deep)}
+
+@media(max-width:920px){.kpis,.insights{grid-template-columns:1fr 1fr}.g-2,.g-3{grid-template-columns:1fr}.lb{grid-template-columns:1fr}}
+@media(max-width:520px){.kpis,.insights{grid-template-columns:1fr}.brand h1{font-size:24px}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap hd">
+    <div class="brand">
+      <div class="logo">G</div>
+      <div>
+        <h1>גלורי</h1>
+        <p>דשבורד פיננסי · השוואת ביצועים 2024–2025</p>
+      </div>
+    </div>
+    <div class="hd-badge">
+      <div class="yr">סך מכירות הרשת 2025</div>
+      <div class="big">₪20.19M</div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- KPI -->
+  <div class="kpis" id="kpis"></div>
+
+  <!-- Annual performance -->
+  <section>
+    <div class="sec-title">ביצועים שנתיים</div>
+    <div class="sec-sub">השוואת מדדי הליבה של הרשת בין 2024 ל-2025 (במיליוני ₪)</div>
+    <div class="grid g-3">
+      <div class="card">
+        <h3>מכירות · רווח גולמי · תפעולי · נקי</h3>
+        <div class="note">עמודות צמודות לכל מדד — 2025 מול 2024</div>
+        <div class="chart-box h-360"><canvas id="annualBar"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>מבנה הרווחיות 2025</h3>
+        <div class="note">מהמכירות ועד הרווח הנקי</div>
+        <div class="chart-box h-360"><canvas id="waterfall"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Channels -->
+  <section>
+    <div class="sec-title">פילוח לפי ערוץ</div>
+    <div class="sec-sub">חלוקת המכירות והרווח בין ארבעת ערוצי הפעילות</div>
+    <div class="grid g-2">
+      <div class="card">
+        <h3>מכירות לפי ערוץ · 2025</h3>
+        <div class="note">סך ₪20,186,282</div>
+        <div class="grid" style="grid-template-columns:1.1fr 1fr;gap:18px;align-items:center">
+          <div class="donut-wrap chart-box h-280">
+            <canvas id="channelDonut"></canvas>
+            <div class="donut-center"><div class="t">סה״כ מכירות</div><div class="n">₪20.19M</div></div>
+          </div>
+          <div class="legend" id="channelLegend"></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>מכירות לפי ערוץ · 2024 מול 2025</h3>
+        <div class="note">צמיחה לפי ערוץ פעילות</div>
+        <div class="chart-box h-280"><canvas id="channelCompare"></canvas></div>
+      </div>
+    </div>
+    <div class="grid g-2" style="margin-top:20px">
+      <div class="card">
+        <h3>רווח נקי לפי ערוץ</h3>
+        <div class="note">תרומת כל ערוץ לשורה התחתונה (₪)</div>
+        <div class="chart-box h-320"><canvas id="netByChannel"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>שולי רווח לפי ערוץ · 2025</h3>
+        <div class="note">גולמי · תפעולי · נקי (%)</div>
+        <div class="chart-box h-320"><canvas id="marginsChart"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Insights -->
+  <section>
+    <div class="sec-title">תובנות מרכזיות</div>
+    <div class="sec-sub">הכותרות הגדולות של השנה — מחושב אוטומטית מהנתונים</div>
+    <div class="insights" id="insights"></div>
+  </section>
+
+  <!-- Advanced -->
+  <section>
+    <div class="sec-title">ניתוח מתקדם</div>
+    <div class="sec-sub">חיתוכים שמראים לא רק כמה מכרנו — אלא כמה זה באמת שווה</div>
+    <div class="grid g-2">
+      <div class="card">
+        <h3>גודל מול רווחיות · 2025</h3>
+        <div class="note">כל בועה = ערוץ · גובה = שולי רווח נקי · גודל = רווח נקי ב-₪</div>
+        <div class="chart-box h-360"><canvas id="bubbleChart"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>פרופיל שולי רווח נקי לפי ערוץ</h3>
+        <div class="note">2024 מול 2025 — לאן זזה הרווחיות</div>
+        <div class="chart-box h-360"><canvas id="radarChart"></canvas></div>
+      </div>
+    </div>
+    <div class="grid g-2" style="margin-top:20px">
+      <div class="card">
+        <h3>מכירות מול שולי רווח נקי</h3>
+        <div class="note">עמודות = מכירות · קו = % רווח נקי</div>
+        <div class="chart-box h-320"><canvas id="comboChart"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>קצב צמיחת סניפים · 2024 → 2025</h3>
+        <div class="note">ירוק = צמיחה · אדום = ירידה</div>
+        <div class="chart-box h-360"><canvas id="growthDiverge"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stores -->
+  <section>
+    <div class="sec-title">פילוח לפי סניף</div>
+    <div class="sec-sub">ביצועי מכירות ברמת הסניף הבודד</div>
+    <div class="grid g-2">
+      <div class="card">
+        <h3>מכירות לפי סניף · 2025</h3>
+        <div class="note">מדורג מהגבוה לנמוך</div>
+        <div class="chart-box h-420"><canvas id="storeBar"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>השוואת סניפים · 2024 מול 2025</h3>
+        <div class="note">סניפים פעילים בשתי השנים</div>
+        <div class="chart-box h-420"><canvas id="storeCompare"></canvas></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:20px">
+      <h3>🏆 לוח האלופים · מכירות 2025</h3>
+      <div class="note">דירוג כל 18 הסניפים עם שיעור הצמיחה מול 2024</div>
+      <div class="lb" id="leaderboard"></div>
+    </div>
+  </section>
+
+  <!-- Table -->
+  <section>
+    <div class="sec-title">טבלת סיכום</div>
+    <div class="sec-sub">כל המדדים, שתי השנים, והשינוי ביניהן</div>
+    <div class="card tbl-card">
+      <table id="summaryTable"></table>
+    </div>
+  </section>
+
+  <footer>
+    דשבורד גלורי · הופק אוטומטית מתוך הקובץ "גלורי - 2024.xlsx"
+    <br><span class="src">הנתונים מתייחסים לתאריכים 1.1–31.12 · מכירות לא כולל מע״מ</span>
+  </footer>
+</div>
+
+<script>
+const NIS = n => '₪' + Math.round(n).toLocaleString('en-US');
+const M  = n => '₪' + (n/1e6).toFixed(2) + 'M';
+const PC = n => (n*100).toFixed(1) + '%';
+const C = {stores:'#C9A227',franchise:'#2E6FB0',wholesale:'#3FA17D',dominic:'#B0567E'};
+
+/* ---------- DATA (from גלורי - 2024.xlsx) ---------- */
+const totals = {
+  2024:{sales:15455414, cogs:4670786, gross:10784628, op:7515221, net:4978429},
+  2025:{sales:20186282, cogs:5435613, gross:14750669, op:9786783, net:6731128}
+};
+const channels = [
+  {key:'stores',   name:'חנויות',   color:C.stores,
+    s24:7022003, s25:9370469, n24:1456566, n25:2562965,
+    gm25:.7526, om25:.4508, nm25:.2735},
+  {key:'franchise',name:'זכיינות',  color:C.franchise,
+    s24:4122782, s25:6283357, n24:2066712, n25:1797628,
+    gm25:.7473, om25:.4634, nm25:.2861},
+  {key:'wholesale',name:'סיטונאות', color:C.wholesale,
+    s24:1984307, s25:1577571, n24:572344,  n25:704206,
+    gm25:.6856, om25:.6237, nm25:.4464},
+  {key:'dominic',  name:'דומיניק',  color:C.dominic,
+    s24:2326322, s25:2954885, n24:882808,  n25:1666330,
+    gm25:.6502, om25:.5639, nm25:.5639}
+];
+const stores = [
+  {n:'שמגר',        c:C.stores,   y24:2089961, y25:2805322},
+  {n:'כהנמן',       c:C.stores,   y24:1338222, y25:1776624},
+  {n:'ר׳ עקיבא',    c:C.stores,   y24:2190763, y25:2445566},
+  {n:'אשדוד',       c:C.stores,   y24:1403057, y25:1604879},
+  {n:'בית שמש',     c:C.stores,   y24:0,       y25:738078},
+  {n:'תפוח ביתר',   c:C.franchise,y24:700000,  y25:1106027},
+  {n:'מייסטייט ים', c:C.franchise,y24:433827,  y25:740389},
+  {n:'קידו ערד',    c:C.franchise,y24:342360,  y25:846786},
+  {n:'שהחיינו ב״ב', c:C.franchise,y24:547243,  y25:949514},
+  {n:'שהחיינו ים',  c:C.franchise,y24:2024537, y25:2114091},
+  {n:'המעיין שלי',  c:C.franchise,y24:74815,   y25:154000},
+  {n:'סוקשיק',      c:C.franchise,y24:0,       y25:372550},
+  {n:'ישראל גלורי', c:C.wholesale,y24:1113214, y25:1189371},
+  {n:'אירופה גלורי',c:C.wholesale,y24:88766,   y25:173895},
+  {n:'ארה״ב גלורי', c:C.wholesale,y24:782327,  y25:214305},
+  {n:'דומיניק ישראל',c:C.dominic, y24:881622,  y25:1906200},
+  {n:'דומיניק אירופה',c:C.dominic,y24:269503,  y25:189232},
+  {n:'דומיניק ארה״ב',c:C.dominic, y24:1175197, y25:859453}
+];
+
+/* ---------- Chart.js defaults ---------- */
+Chart.defaults.font.family = "'Heebo',sans-serif";
+Chart.defaults.font.size = 13;
+Chart.defaults.color = '#5b6b8c';
+const RTL = {rtl:true, textDirection:'rtl'};
+const moneyTip = ctx => ' ' + NIS(ctx.parsed.y ?? ctx.parsed.x ?? ctx.parsed);
+
+/* ---------- KPI cards ---------- */
+const kpiDefs = [
+  {lbl:'מכירות',     a:totals[2025].sales, b:totals[2024].sales, dot:C.stores},
+  {lbl:'רווח גולמי', a:totals[2025].gross, b:totals[2024].gross, dot:C.franchise},
+  {lbl:'רווח תפעולי',a:totals[2025].op,    b:totals[2024].op,    dot:C.wholesale},
+  {lbl:'רווח נקי',   a:totals[2025].net,   b:totals[2024].net,   dot:C.dominic}
+];
+document.getElementById('kpis').innerHTML = kpiDefs.map(k=>{
+  const g=(k.a-k.b)/k.b, up=g>=0;
+  return `<div class="kpi">
+    <div class="lbl"><span class="dot" style="background:${k.dot}"></span>${k.lbl} · 2025</div>
+    <div class="val">${M(k.a)}</div>
+    <div class="trend ${up?'up':'down'}">${up?'▲':'▼'} ${PC(Math.abs(g))}
+      <span class="sub">מול ${M(k.b)} ב-2024</span></div>
+  </div>`;
+}).join('');
+
+/* ---------- Annual grouped bar ---------- */
+new Chart(annualBar,{
+  type:'bar',
+  data:{labels:['מכירות','רווח גולמי','רווח תפעולי','רווח נקי'],
+    datasets:[
+      {label:'2024',data:[15.46,10.78,7.52,4.98],backgroundColor:'#c2cbe0',borderRadius:7,maxBarThickness:46},
+      {label:'2025',data:[20.19,14.75,9.79,6.73],backgroundColor:C.stores,borderRadius:7,maxBarThickness:46}
+    ]},
+  options:{maintainAspectRatio:false,
+    plugins:{legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',padding:18}},
+      tooltip:{...RTL,callbacks:{label:c=>` ${c.dataset.label}: ₪${c.parsed.y}M`}}},
+    scales:{y:{ticks:{callback:v=>'₪'+v+'M'},grid:{color:'#eef1f7'}},x:{grid:{display:false}}}}
+});
+
+/* ---------- Waterfall 2025 ---------- */
+const t=totals[2025];
+new Chart(waterfall,{
+  type:'bar',
+  data:{labels:['מכירות','עלות המכר','רווח גולמי','הוצאות תפעול','רווח תפעולי','הוצ׳ רשת','רווח נקי'],
+    datasets:[{
+      data:[ [0,t.sales],[t.gross,t.sales],[0,t.gross],[t.op,t.gross],[0,t.op],[t.net,t.op],[0,t.net] ],
+      backgroundColor:['#2E6FB0','#d4574a','#C9A227','#d4574a','#A6841B','#d4574a','#3FA17D'],
+      borderRadius:5,maxBarThickness:40
+    }]},
+  options:{maintainAspectRatio:false,
+    plugins:{legend:{display:false},
+      tooltip:{...RTL,callbacks:{label:c=>{const v=c.raw;return ' '+NIS(Math.abs(v[1]-v[0]));}}}},
+    scales:{y:{ticks:{callback:v=>'₪'+(v/1e6)+'M'},grid:{color:'#eef1f7'}},
+      x:{grid:{display:false},ticks:{maxRotation:50,minRotation:30,font:{size:11}}}}}
+});
+
+/* ---------- Channel donut + legend ---------- */
+new Chart(channelDonut,{
+  type:'doughnut',
+  data:{labels:channels.map(c=>c.name),
+    datasets:[{data:channels.map(c=>c.s25),backgroundColor:channels.map(c=>c.color),
+      borderWidth:3,borderColor:'#fff',hoverOffset:8}]},
+  options:{maintainAspectRatio:false,cutout:'66%',
+    plugins:{legend:{display:false},
+      tooltip:{...RTL,callbacks:{label:c=>` ${c.label}: ${NIS(c.parsed)} (${PC(c.parsed/totals[2025].sales)})`}}}}
+});
+document.getElementById('channelLegend').innerHTML = channels.map(c=>`
+  <div class="row">
+    <span class="nm"><span class="sw" style="background:${c.color}"></span>${c.name}</span>
+    <span><span class="vv">${M(c.s25)}</span><span class="pc">${PC(c.s25/totals[2025].sales)}</span></span>
+  </div>`).join('');
+
+/* ---------- Channel compare 2024 vs 2025 ---------- */
+new Chart(channelCompare,{
+  type:'bar',
+  data:{labels:channels.map(c=>c.name),
+    datasets:[
+      {label:'2024',data:channels.map(c=>c.s24),backgroundColor:'#c2cbe0',borderRadius:6,maxBarThickness:36},
+      {label:'2025',data:channels.map(c=>c.s25),backgroundColor:channels.map(c=>c.color),borderRadius:6,maxBarThickness:36}
+    ]},
+  options:{maintainAspectRatio:false,
+    plugins:{legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',padding:16}},
+      tooltip:{...RTL,callbacks:{label:c=>` ${c.dataset.label}: ${NIS(c.parsed.y)}`}}},
+    scales:{y:{ticks:{callback:v=>'₪'+(v/1e6)+'M'},grid:{color:'#eef1f7'}},x:{grid:{display:false}}}}
+});
+
+/* ---------- Net profit by channel ---------- */
+new Chart(netByChannel,{
+  type:'bar',
+  data:{labels:channels.map(c=>c.name),
+    datasets:[
+      {label:'2024',data:channels.map(c=>c.n24),backgroundColor:'#c2cbe0',borderRadius:6,maxBarThickness:38},
+      {label:'2025',data:channels.map(c=>c.n25),backgroundColor:channels.map(c=>c.color),borderRadius:6,maxBarThickness:38}
+    ]},
+  options:{maintainAspectRatio:false,
+    plugins:{legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',padding:16}},
+      tooltip:{...RTL,callbacks:{label:c=>` ${c.dataset.label}: ${NIS(c.parsed.y)}`}}},
+    scales:{y:{ticks:{callback:v=>'₪'+(v/1e6)+'M'},grid:{color:'#eef1f7'}},x:{grid:{display:false}}}}
+});
+
+/* ---------- Margins by channel ---------- */
+new Chart(marginsChart,{
+  type:'bar',
+  data:{labels:channels.map(c=>c.name),
+    datasets:[
+      {label:'גולמי',  data:channels.map(c=>+(c.gm25*100).toFixed(1)),backgroundColor:C.stores,borderRadius:6,maxBarThickness:30},
+      {label:'תפעולי', data:channels.map(c=>+(c.om25*100).toFixed(1)),backgroundColor:C.franchise,borderRadius:6,maxBarThickness:30},
+      {label:'נקי',    data:channels.map(c=>+(c.nm25*100).toFixed(1)),backgroundColor:C.wholesale,borderRadius:6,maxBarThickness:30}
+    ]},
+  options:{maintainAspectRatio:false,
+    plugins:{legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',padding:16}},
+      tooltip:{...RTL,callbacks:{label:c=>` ${c.dataset.label}: ${c.parsed.y}%`}}},
+    scales:{y:{max:100,ticks:{callback:v=>v+'%'},grid:{color:'#eef1f7'}},x:{grid:{display:false}}}}
+});
+
+/* ---------- Store bar (2025, sorted) ---------- */
+const sSorted=[...stores].sort((a,b)=>b.y25-a.y25);
+new Chart(storeBar,{
+  type:'bar',
+  data:{labels:sSorted.map(s=>s.n),
+    datasets:[{data:sSorted.map(s=>s.y25),backgroundColor:sSorted.map(s=>s.c),borderRadius:6,maxBarThickness:24}]},
+  options:{indexAxis:'y',maintainAspectRatio:false,
+    plugins:{legend:{display:false},tooltip:{...RTL,callbacks:{label:c=>' '+NIS(c.parsed.x)}}},
+    scales:{x:{ticks:{callback:v=>'₪'+(v/1e6)+'M'},grid:{color:'#eef1f7'}},y:{grid:{display:false},ticks:{font:{size:12}}}}}
+});
+
+/* ---------- Store compare (active both years) ---------- */
+const both=stores.filter(s=>s.y24>0).sort((a,b)=>b.y25-a.y25);
+new Chart(storeCompare,{
+  type:'bar',
+  data:{labels:both.map(s=>s.n),
+    datasets:[
+      {label:'2024',data:both.map(s=>s.y24),backgroundColor:'#c2cbe0',borderRadius:5,maxBarThickness:14},
+      {label:'2025',data:both.map(s=>s.y25),backgroundColor:both.map(s=>s.c),borderRadius:5,maxBarThickness:14}
+    ]},
+  options:{indexAxis:'y',maintainAspectRatio:false,
+    plugins:{legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',padding:16}},
+      tooltip:{...RTL,callbacks:{label:c=>` ${c.dataset.label}: ${NIS(c.parsed.x)}`}}},
+    scales:{x:{ticks:{callback:v=>'₪'+(v/1e6)+'M'},grid:{color:'#eef1f7'}},y:{grid:{display:false},ticks:{font:{size:11}}}}}
+});
+
+/* ---------- store growth helper ---------- */
+stores.forEach(s=>{ s.g = s.y24>0 ? (s.y25-s.y24)/s.y24 : null; });
+
+/* ---------- Insight cards (auto-computed) ---------- */
+const withBase = stores.filter(s=>s.g!==null);
+const topGrow = withBase.reduce((a,b)=>b.g>a.g?b:a);
+const worst   = withBase.reduce((a,b)=>b.g<a.g?b:a);
+const biggest = stores.reduce((a,b)=>b.y25>a.y25?b:a);
+const topCh   = channels.reduce((a,b)=>b.s25>a.s25?b:a);
+const insCards=[
+  {cls:'a',ic:'🚀',t:'אלוף הצמיחה',v:topGrow.n,d:'+'+PC(topGrow.g)+' במכירות'},
+  {cls:'c',ic:'👑',t:'הסניף הגדול ביותר',v:biggest.n,d:M(biggest.y25)+' מכירות'},
+  {cls:'b',ic:'🧭',t:'הערוץ המוביל',v:topCh.name,d:PC(topCh.s25/totals[2025].sales)+' מהמכירות'},
+  {cls:'d',ic:'⚠️',t:'דורש תשומת לב',v:worst.n,d:PC(worst.g)+' במכירות'}
+];
+document.getElementById('insights').innerHTML=insCards.map(k=>`
+  <div class="ins ${k.cls}"><span class="ic">${k.ic}</span>
+    <div class="t">${k.t}</div><div class="v">${k.v}</div><div class="d">${k.d}</div></div>`).join('');
+
+/* ---------- Bubble: size vs profitability ---------- */
+new Chart(bubbleChart,{
+  type:'bubble',
+  data:{datasets:channels.map(c=>({
+    label:c.name,
+    data:[{x:+(c.s25/1e6).toFixed(2), y:+(c.nm25*100).toFixed(1), r:(c.n25/1e6)*7+9}],
+    backgroundColor:c.color+'cc', borderColor:c.color, borderWidth:2
+  }))},
+  options:{maintainAspectRatio:false,
+    plugins:{legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',padding:14}},
+      tooltip:{...RTL,callbacks:{label:ctx=>{const c=channels[ctx.datasetIndex];
+        return [` ${c.name}`,` מכירות: ${M(c.s25)}`,` רווח נקי: ${M(c.n25)}`,` שול נקי: ${PC(c.nm25)}`];}}}},
+    scales:{
+      x:{title:{display:true,text:'מכירות (מיליוני ₪)'},grid:{color:'#eef1f7'},ticks:{callback:v=>'₪'+v+'M'}},
+      y:{title:{display:true,text:'שולי רווח נקי (%)'},grid:{color:'#eef1f7'},ticks:{callback:v=>v+'%'}}}}
+});
+
+/* ---------- Radar: net margin 2024 vs 2025 ---------- */
+new Chart(radarChart,{
+  type:'radar',
+  data:{labels:channels.map(c=>c.name),
+    datasets:[
+      {label:'2024',data:channels.map(c=>+(c.n24/c.s24*100).toFixed(1)),
+        backgroundColor:'rgba(91,107,140,.16)',borderColor:'#8190ad',pointBackgroundColor:'#8190ad',borderWidth:2},
+      {label:'2025',data:channels.map(c=>+(c.nm25*100).toFixed(1)),
+        backgroundColor:'rgba(201,162,39,.22)',borderColor:C.stores,pointBackgroundColor:C.stores,borderWidth:2}
+    ]},
+  options:{maintainAspectRatio:false,
+    plugins:{legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',padding:16}},
+      tooltip:{...RTL,callbacks:{label:c=>` ${c.dataset.label}: ${c.parsed.r}%`}}},
+    scales:{r:{suggestedMin:0,suggestedMax:60,ticks:{callback:v=>v+'%',backdropColor:'transparent',font:{size:11}},
+      grid:{color:'#e7ebf3'},angleLines:{color:'#e7ebf3'},pointLabels:{font:{size:13,weight:'600'}}}}}
+});
+
+/* ---------- Combo: sales bar + net margin line ---------- */
+new Chart(comboChart,{
+  type:'bar',
+  data:{labels:channels.map(c=>c.name),
+    datasets:[
+      {type:'bar',label:'מכירות 2025',data:channels.map(c=>c.s25),
+        backgroundColor:channels.map(c=>c.color+'d9'),borderRadius:7,maxBarThickness:54,yAxisID:'y',order:2},
+      {type:'line',label:'% רווח נקי',data:channels.map(c=>+(c.nm25*100).toFixed(1)),
+        borderColor:'#16203a',backgroundColor:'#16203a',borderWidth:3,tension:.35,
+        pointRadius:5,pointBackgroundColor:'#fff',pointBorderWidth:2,yAxisID:'y1',order:1}
+    ]},
+  options:{maintainAspectRatio:false,
+    plugins:{legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',padding:16}},
+      tooltip:{...RTL,callbacks:{label:c=>c.dataset.yAxisID==='y1'?` ${c.dataset.label}: ${c.parsed.y}%`:` ${c.dataset.label}: ${NIS(c.parsed.y)}`}}},
+    scales:{
+      y:{position:'right',ticks:{callback:v=>'₪'+(v/1e6)+'M'},grid:{color:'#eef1f7'}},
+      y1:{position:'left',min:0,max:70,ticks:{callback:v=>v+'%'},grid:{display:false}},
+      x:{grid:{display:false}}}}
+});
+
+/* ---------- Diverging growth per store ---------- */
+const grow=[...withBase].sort((a,b)=>a.g-b.g);
+new Chart(growthDiverge,{
+  type:'bar',
+  data:{labels:grow.map(s=>s.n),
+    datasets:[{data:grow.map(s=>+(s.g*100).toFixed(1)),
+      backgroundColor:grow.map(s=>s.g>=0?'#2ea36b':'#d4574a'),borderRadius:5,maxBarThickness:20}]},
+  options:{indexAxis:'y',maintainAspectRatio:false,
+    plugins:{legend:{display:false},tooltip:{...RTL,callbacks:{label:c=>` ${c.parsed.x>=0?'+':''}${c.parsed.x}% מול 2024`}}},
+    scales:{x:{ticks:{callback:v=>v+'%'},grid:{color:'#eef1f7'},title:{display:true,text:'% שינוי במכירות'}},
+      y:{grid:{display:false},ticks:{font:{size:11}}}}}
+});
+
+/* ---------- Leaderboard ---------- */
+const lbSorted=[...stores].sort((a,b)=>b.y25-a.y25);
+const lbMax=lbSorted[0].y25;
+const medal=i=>i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1);
+document.getElementById('leaderboard').innerHTML=lbSorted.map((s,i)=>{
+  const grTxt = s.g===null?'חדש ✨':(s.g>=0?'▲ +':'▼ ')+PC(Math.abs(s.g));
+  const grCls = s.g===null?'new':(s.g>=0?'up':'down');
+  return `<div class="it">
+    <div class="rk">${medal(i)}</div>
+    <div><div class="nm">${s.n}</div>
+      <div class="bar"><i style="width:${(s.y25/lbMax*100).toFixed(1)}%;background:${s.c}"></i></div></div>
+    <div class="rt"><div class="s">${M(s.y25)}</div><div class="gr ${grCls}">${grTxt}</div></div>
+  </div>`;
+}).join('');
+
+/* ---------- Summary table ---------- */
+const rows=[
+  {m:'מכירות',a:totals[2024].sales,b:totals[2025].sales,money:1},
+  {m:'עלות המכר',a:totals[2024].cogs,b:totals[2025].cogs,money:1},
+  {m:'רווח גולמי',a:totals[2024].gross,b:totals[2025].gross,money:1},
+  {m:'אחוז רווח גולמי',a:totals[2024].gross/totals[2024].sales,b:totals[2025].gross/totals[2025].sales,money:0},
+  {m:'רווח תפעולי',a:totals[2024].op,b:totals[2025].op,money:1},
+  {m:'אחוז רווח תפעולי',a:totals[2024].op/totals[2024].sales,b:totals[2025].op/totals[2025].sales,money:0},
+  {m:'רווח נקי',a:totals[2024].net,b:totals[2025].net,money:1},
+  {m:'אחוז רווח נקי',a:totals[2024].net/totals[2024].sales,b:totals[2025].net/totals[2025].sales,money:0}
+];
+let html=`<thead><tr><th>מדד</th><th>2024</th><th>2025</th><th>שינוי</th></tr></thead><tbody>`;
+rows.forEach(r=>{
+  const fmt=v=>r.money?NIS(v):PC(v);
+  const g = r.money ? (r.b-r.a)/r.a : (r.b-r.a);
+  const up = g>=0;
+  const gtxt = r.money ? (up?'+':'')+PC(g) : (up?'+':'')+(g*100).toFixed(1)+' נק׳';
+  html+=`<tr><td class="metric">${r.m}</td>
+    <td class="num">${fmt(r.a)}</td>
+    <td class="num">${fmt(r.b)}</td>
+    <td class="num delta ${up?'up':'down'}">${up?'▲':'▼'} ${gtxt}</td></tr>`;
+});
+html+=`</tbody>`;
+document.getElementById('summaryTable').innerHTML=html;
+
+/* keep charts perfectly sized once web-fonts settle and on window resize */
+(function(){
+  const refit=()=>document.querySelectorAll('canvas').forEach(cv=>{const k=Chart.getChart(cv);if(k)k.resize();});
+  if(document.fonts&&document.fonts.ready){document.fonts.ready.then(refit);}
+  window.addEventListener('load',refit);
+})();
+</script>
+</body>
+</html>
