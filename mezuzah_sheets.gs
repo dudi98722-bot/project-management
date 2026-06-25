@@ -41,14 +41,14 @@ var SHEETS = {
               headers: ['id','שם המגיה','מחיר ליחי'],
               fields:  ['id','name','price'] },
   mezuzot:  { name: 'מזוזות',
-              headers: ['id','מק"ט','סופר','מוצר','תאריך','מחיר ליחי','הגהת מחשב','גברא 1','גברא 2','אישור הרב','מחיר מופחת','הולוגרמה בד"ץ','נשלח לכתר'],
-              fields:  ['id','sku','scribe','product','date','price','comp','g1','g2','approve','adj','holo','keter'] },
+              headers: ['id','מק"ט','סופר','מוצר','תאריך','מחיר ליחי','הגהת מחשב','גברא 1','גברא 2','אישור הרב','מחיר מופחת','הולוגרמה בד"ץ','נשלח לכתר','תמונה'],
+              fields:  ['id','sku','scribe','product','date','price','comp','g1','g2','approve','adj','holo','keter','img'] },
   payments: { name: 'תשלומים',
               headers: ['id','שם','תאריך','סכום','הערה'],
               fields:  ['id','name','date','amount','note'] }
 };
 
-var TEXT_FIELDS = { sku:1, holo:1, name:1, scribe:1, product:1, comp:1, g1:1, g2:1, approve:1, keter:1, note:1, date:1 };
+var TEXT_FIELDS = { sku:1, holo:1, name:1, scribe:1, product:1, comp:1, g1:1, g2:1, approve:1, keter:1, note:1, date:1, img:1 };
 var NUM_FIELDS  = { by:1, ari:1, price:1, adj:1, amount:1 };
 
 function doGet(e)  { return handle(e); }

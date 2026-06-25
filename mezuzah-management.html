@@ -6,6 +6,8 @@
 <title>ניהול מזוזות — רכישה ומכירה</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: #2d3748; direction: rtl; }
@@ -81,6 +83,22 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
 .toast.show { opacity: 1; }
 .filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
 @media print { header, .tabs, .actions, .no-print { display: none !important; } .card { box-shadow: none; } }
+
+/* overlays: details modal + scanner */
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+.overlay.show { display: flex; }
+.modal { background: #fff; border-radius: 14px; max-width: 460px; width: 100%; max-height: 90vh; overflow: auto; box-shadow: 0 10px 40px rgba(0,0,0,.3); }
+.modal-head { background: linear-gradient(135deg,#1a365d,#2b6cb0); color: #fff; padding: 14px 18px; display: flex; align-items: center; gap: 10px; border-radius: 14px 14px 0 0; }
+.modal-head h3 { flex: 1; font-size: 1.1rem; }
+.modal-head .x { cursor: pointer; font-size: 1.4rem; line-height: 1; opacity: .85; }
+.modal-body { padding: 18px; }
+.det-img { width: 100%; max-height: 230px; object-fit: contain; border-radius: 10px; background: #f0f4f8; margin-bottom: 12px; }
+.det-row { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid #edf2f7; font-size: .9rem; }
+.det-row .k { color: #718096; }
+.det-row .v { font-weight: 600; text-align: left; }
+#scanReader { width: 100%; border-radius: 10px; overflow: hidden; }
+.thumb { width: 38px; height: 38px; object-fit: cover; border-radius: 6px; cursor: pointer; border: 1px solid #cbd5e0; }
+.img-btn { font-size: .72rem; padding: 4px 8px; }
 </style>
 </head>
 <body>
@@ -202,7 +220,9 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
           <option value="g2">חסר גברא 2</option>
           <option value="any">חסר לפחות הגהה אחת</option>
         </select></div>
-        <button class="btn btn-edit" style="margin-right:auto" onclick="printFilteredMezuzot()">🖨 הדפס מק"טים מוצגים</button>
+        <button class="btn btn-primary" style="margin-right:auto" onclick="openScanner()">📷 סרוק ברקוד</button>
+        <button class="btn btn-edit" onclick="printFilteredMezuzot()">🖨 הדפס מק"טים מוצגים</button>
+        <button class="btn btn-danger" id="btn-del-selected" style="display:none;padding:8px 14px;font-size:.85rem" onclick="deleteSelectedMez()">🗑 מחק מסומנים (<span id="sel-count">0</span>)</button>
       </div>
       <div class="table-wrap"><table id="tbl-mezuzot"></table></div>
     </div>
@@ -250,6 +270,25 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
     </div>
   </div>
 
+</div>
+
+<!-- details modal (opened by scan / QR / row) -->
+<div class="overlay" id="detailOverlay" onclick="if(event.target===this)closeDetails()">
+  <div class="modal">
+    <div class="modal-head"><h3 id="det-title">פרטי מזוזה</h3><span class="x" onclick="closeDetails()">✕</span></div>
+    <div class="modal-body" id="det-body"></div>
+  </div>
+</div>
+
+<!-- barcode / QR scanner -->
+<div class="overlay" id="scanOverlay" onclick="if(event.target===this)closeScanner()">
+  <div class="modal">
+    <div class="modal-head"><h3>📷 סריקת ברקוד</h3><span class="x" onclick="closeScanner()">✕</span></div>
+    <div class="modal-body">
+      <div id="scanReader"></div>
+      <p style="font-size:.82rem;color:#718096;margin-top:10px">כוון את המצלמה לברקוד / QR שעל המזוזה. הפרטים ייפתחו אוטומטית.</p>
+    </div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -345,6 +384,7 @@ function serverPull(initial) {
         localStorage.setItem(KEY, JSON.stringify(data));
         renderAll();
         if (document.getElementById('tab-charts').classList.contains('active')) renderCharts();
+        if (initial && !document.getElementById('detailOverlay').classList.contains('show')) openSkuFromUrl();
       }
       setSync('ok','☁ מסונכרן');
     })
@@ -505,12 +545,17 @@ function statusBadge(a) {
 // open a clean printable sheet of SKU labels for the given mezuza list
 function printMezuzot(list, heading) {
   if (!list || !list.length) { toast('אין מק"טים להדפסה'); return; }
-  const cards = list.map(m=>`
+  const appUrl = location.origin + location.pathname;
+  const cards = list.map(m=>{
+    const qr = qrDataURL(appUrl + '?sku=' + encodeURIComponent(m.sku));
+    return `
     <div class="lbl">
       <div class="sku">${esc(m.sku)}</div>
       <div class="meta">${esc(m.product||'')}${m.scribe?' · '+esc(m.scribe):''}</div>
       <div class="meta">${m.date||''}${m.holo?' · הולוגרמה '+esc(m.holo):''}</div>
-    </div>`).join('');
+      ${qr?`<img class="qr" src="${qr}">`:''}
+    </div>`;
+  }).join('');
   const html = `<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>${esc(heading)}</title>
     <style>
       *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif}
@@ -521,6 +566,7 @@ function printMezuzot(list, heading) {
       .lbl{border:1.5px solid #2b6cb0;border-radius:8px;padding:10px 12px;text-align:center;page-break-inside:avoid}
       .sku{font-size:22px;font-weight:800;letter-spacing:.5px;color:#1a365d}
       .meta{font-size:11px;color:#4a5568;margin-top:3px}
+      .qr{width:84px;height:84px;margin:8px auto 0;display:block}
       .total{margin-top:14px;font-size:12px;color:#718096}
       @media print{.noprint{display:none}}
       .noprint{margin-bottom:14px}
@@ -564,9 +610,11 @@ function renderMezuzot() {
   });
   window._mzFiltered = rows;   // remember for "print SKUs of shown rows"
   if (!rows.length) { t.innerHTML = '<tr><td class="empty">אין מזוזות</td></tr>'; return; }
-  let h = `<thead><tr><th>מק"ט</th><th>סופר</th><th>מוצר</th><th>תאריך</th><th>מחיר ליחי'</th><th>הגהת מחשב</th><th>גברא 1</th><th>גברא 2</th><th>אישור הרב</th><th>לתשלום לסופר</th><th>הולוגרמה</th><th>כתר</th><th></th></tr></thead><tbody>`;
+  const allChecked = rows.length && rows.every(m=>selectedMez.has(m.id));
+  let h = `<thead><tr><th><input type="checkbox" ${allChecked?'checked':''} onclick="toggleSelectAll(this.checked)" title="בחר הכל"></th><th>מק"ט</th><th>סופר</th><th>מוצר</th><th>תאריך</th><th>מחיר ליחי'</th><th>הגהת מחשב</th><th>גברא 1</th><th>גברא 2</th><th>אישור הרב</th><th>לתשלום לסופר</th><th>הולוגרמה</th><th>כתר</th><th>תמונה</th><th></th></tr></thead><tbody>`;
   rows.forEach(m=>{
     h += `<tr>
+      <td><input type="checkbox" ${selectedMez.has(m.id)?'checked':''} onclick="toggleSelectMez('${m.id}',this.checked)"></td>
       <td><input value="${esc(m.sku)}" style="min-width:72px;font-weight:700" onchange="editMez('${m.id}','sku',this.value)"></td>
       <td><select style="min-width:90px" onchange="editMez('${m.id}','scribe',this.value)">${optHtml(data.scribes,m.scribe,'—')}</select></td>
       <td><select style="min-width:110px" onchange="editMez('${m.id}','product',this.value)">${['מזוזה בית יוסף','מזוזה ארי'].map(o=>`<option${m.product===o?' selected':''}>${o}</option>`).join('')}</select></td>
@@ -584,14 +632,130 @@ function renderMezuzot() {
       <td class="money">${ILS(scribePay(m))}</td>
       <td><input value="${esc(m.holo)}" style="min-width:90px" placeholder="—" onchange="editMez('${m.id}','holo',this.value)"></td>
       <td><select onchange="editMez('${m.id}','keter',this.value)"><option value="לא"${m.keter==='לא'?' selected':''}>לא</option><option value="כן"${m.keter==='כן'?' selected':''}>כן</option></select></td>
+      <td style="white-space:nowrap;text-align:center">
+        ${m.img?`<img class="thumb" src="${m.img}" title="הצג תמונה" onclick="viewImage('${m.id}')">`:''}
+        <button class="btn btn-edit img-btn" title="${m.img?'החלף תמונה':'הוסף תמונה'}" onclick="pickImage('${m.id}')">${m.img?'החלף':'📷'}</button></td>
       <td style="white-space:nowrap">
+        <button class="btn btn-edit" title="פרטים" onclick="showMezuzaDetails('${m.id}')">🔍</button>
         <button class="btn btn-edit" title="הדפס מק״ט" onclick="printMezuzot([data.mezuzot.find(x=>x.id==='${m.id}')],'מק&quot;ט ${esc(m.sku)}')">🖨</button>
         <button class="btn btn-danger" onclick="delMez('${m.id}')">מחק</button></td></tr>`;
   });
   t.innerHTML = h + '</tbody>';
+  updateSelCount();
 }
 function editMez(id,f,v){ const m=data.mezuzot.find(x=>x.id===id); if(m){ m[f]= (f==='adj'||f==='price')?(+v||0):v; save(); } }
-function delMez(id){ if(!confirm('למחוק מזוזה?'))return; data.mezuzot=data.mezuzot.filter(x=>x.id!==id); save(); }
+function delMez(id){ if(!confirm('למחוק מזוזה?'))return; data.mezuzot=data.mezuzot.filter(x=>x.id!==id); selectedMez.delete(id); save(); }
+
+// ---- bulk selection & delete ----
+const selectedMez = new Set();
+function toggleSelectMez(id, on){ on ? selectedMez.add(id) : selectedMez.delete(id); updateSelCount(); }
+function toggleSelectAll(on){
+  (window._mzFiltered||[]).forEach(m=> on ? selectedMez.add(m.id) : selectedMez.delete(m.id));
+  renderMezuzot(); updateSelCount();
+}
+function updateSelCount(){
+  const n = selectedMez.size;
+  const btn = document.getElementById('btn-del-selected');
+  if (btn){ btn.style.display = n ? 'inline-block' : 'none'; document.getElementById('sel-count').textContent = n; }
+}
+function deleteSelectedMez(){
+  const n = selectedMez.size;
+  if (!n) return;
+  if (!confirm('למחוק '+n+' מזוזות מסומנות? פעולה זו תימחק גם בגיליון.')) return;
+  data.mezuzot = data.mezuzot.filter(m=>!selectedMez.has(m.id));
+  selectedMez.clear();
+  save(); updateSelCount();
+  toast(n+' מזוזות נמחקו');
+}
+
+// ---- image per mezuza (compressed, stored on the record) ----
+function pickImage(id){
+  const inp = document.createElement('input');
+  inp.type='file'; inp.accept='image/*'; inp.capture='environment';
+  inp.onchange = ()=>{
+    const f = inp.files[0]; if(!f) return;
+    compressImage(f, 600, 0.55, dataUrl=>{
+      const m = data.mezuzot.find(x=>x.id===id); if(!m) return;
+      m.img = dataUrl; save(); toast('תמונה נשמרה');
+    });
+  };
+  inp.click();
+}
+function compressImage(file, maxSize, quality, cb){
+  const r = new FileReader();
+  r.onload = ()=>{
+    const img = new Image();
+    img.onload = ()=>{
+      let {width:w, height:h} = img;
+      if (w>h && w>maxSize){ h=Math.round(h*maxSize/w); w=maxSize; }
+      else if (h>maxSize){ w=Math.round(w*maxSize/h); h=maxSize; }
+      const c = document.createElement('canvas'); c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      cb(c.toDataURL('image/jpeg', quality));
+    };
+    img.src = r.result;
+  };
+  r.readAsDataURL(file);
+}
+function viewImage(id){ const m=data.mezuzot.find(x=>x.id===id); if(m&&m.img){ const w=window.open('','_blank'); w.document.write('<img src="'+m.img+'" style="max-width:100%">'); } }
+
+// ---- details modal (also the scan target) ----
+function showMezuzaDetails(id){
+  const m = data.mezuzot.find(x=>x.id===id);
+  if (!m){ toast('מזוזה לא נמצאה'); return; }
+  document.getElementById('det-title').textContent = 'מזוזה ' + m.sku;
+  const row=(k,v)=>`<div class="det-row"><span class="k">${k}</span><span class="v">${esc(v)||'—'}</span></div>`;
+  document.getElementById('det-body').innerHTML =
+    (m.img?`<img class="det-img" src="${m.img}">`:'') +
+    row('מק"ט', m.sku) + row('סופר', m.scribe) + row('מוצר', m.product) + row('תאריך', m.date) +
+    row('מחיר ליחי\'', ILS(m.price)) + row('הגהת מחשב', m.comp) + row('גברא 1', m.g1) + row('גברא 2', m.g2) +
+    row('אישור הרב', m.approve) + row('לתשלום לסופר', ILS(scribePay(m))) + row('הולוגרמה בד"ץ', m.holo) + row('נשלח לכתר', m.keter);
+  document.getElementById('detailOverlay').classList.add('show');
+}
+function closeDetails(){ document.getElementById('detailOverlay').classList.remove('show'); }
+function findBySku(sku){ sku=String(sku).trim(); return data.mezuzot.find(m=>String(m.sku).trim()===sku); }
+
+// ---- barcode / QR scanner ----
+let _scanner = null;
+function openScanner(){
+  if (typeof Html5Qrcode==='undefined'){ toast('ספריית הסריקה לא נטענה'); return; }
+  document.getElementById('scanOverlay').classList.add('show');
+  _scanner = new Html5Qrcode('scanReader');
+  _scanner.start({ facingMode:'environment' }, { fps:10, qrbox:230 },
+    decoded=>{ onScanResult(decoded); },
+    ()=>{} // ignore per-frame decode errors
+  ).catch(err=>{ toast('אין גישה למצלמה'); console.error(err); closeScanner(); });
+}
+function onScanResult(text){
+  let sku = text;
+  const mm = String(text).match(/[?&]sku=([^&]+)/);
+  if (mm) sku = decodeURIComponent(mm[1]);
+  const m = findBySku(sku);
+  closeScanner();
+  if (m) showMezuzaDetails(m.id);
+  else toast('לא נמצאה מזוזה עם מק"ט: ' + sku);
+}
+function closeScanner(){
+  document.getElementById('scanOverlay').classList.remove('show');
+  if (_scanner){ _scanner.stop().then(()=>_scanner.clear()).catch(()=>{}); _scanner=null; }
+}
+
+// ---- QR helper for printed labels ----
+function qrDataURL(text, size){
+  if (typeof QRCode==='undefined') return '';
+  const d = document.createElement('div');
+  try { new QRCode(d, { text, width:size||86, height:size||86, correctLevel: QRCode.CorrectLevel.M }); }
+  catch(e){ return ''; }
+  const c = d.querySelector('canvas'); if (c) return c.toDataURL();
+  const img = d.querySelector('img'); return img ? img.src : '';
+}
+// open a mezuza's details if the page was opened with ?sku=... (phone-camera QR scan)
+function openSkuFromUrl(){
+  const sku = new URLSearchParams(location.search).get('sku');
+  if (!sku) return;
+  const m = findBySku(sku);
+  if (m) showMezuzaDetails(m.id);
+}
 
 // ============ PAYMENTS ============
 function addPayment() {
@@ -770,6 +934,7 @@ renderAll();
 document.getElementById('mz-date').value = new Date().toISOString().slice(0,10);
 document.getElementById('pay-date').value = new Date().toISOString().slice(0,10);
 if (GS_URL) startSheetSync(); else setSync('', '— לא מחובר (לחץ ⚙ הגדר שרת)');
+openSkuFromUrl();
 </script>
 </body>
 </html>
