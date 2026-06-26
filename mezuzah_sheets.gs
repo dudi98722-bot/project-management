@@ -45,10 +45,13 @@ var SHEETS = {
               fields:  ['id','sku','scribe','product','date','price','comp','g1','g2','approve','adj','holo','keter','img'] },
   payments: { name: 'תשלומים',
               headers: ['id','שם','תאריך','סכום','הערה'],
-              fields:  ['id','name','date','amount','note'] }
+              fields:  ['id','name','date','amount','note'] },
+  users:    { name: 'משתמשים',
+              headers: ['id','שם','תפקיד','סיסמה מוצפנת'],
+              fields:  ['id','name','role','hash'] }
 };
 
-var TEXT_FIELDS = { sku:1, holo:1, name:1, scribe:1, product:1, comp:1, g1:1, g2:1, approve:1, keter:1, note:1, date:1, img:1 };
+var TEXT_FIELDS = { sku:1, holo:1, name:1, scribe:1, product:1, comp:1, g1:1, g2:1, approve:1, keter:1, note:1, date:1, img:1, role:1, hash:1 };
 var NUM_FIELDS  = { by:1, ari:1, price:1, adj:1, amount:1 };
 
 function doGet(e)  { return handle(e); }
@@ -89,7 +92,7 @@ function getSheet(cfg) {
 }
 
 function loadAll() {
-  var out = { scribes: [], computer: [], gavra: [], mezuzot: [], payments: [], seq: 1 };
+  var out = { scribes: [], computer: [], gavra: [], mezuzot: [], payments: [], users: [], seq: 1 };
   Object.keys(SHEETS).forEach(function (key) {
     var cfg = SHEETS[key];
     var s = getSheet(cfg);

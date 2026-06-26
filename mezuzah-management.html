@@ -112,15 +112,20 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
     <button class="btn btn-light" onclick="document.getElementById('importFile').click()">⬆ ייבוא גיבוי</button>
     <input type="file" id="importFile" accept=".json" style="display:none" onchange="importBackup(event)">
     <button class="btn btn-light" onclick="exportBackup()">💾 גיבוי JSON</button>
+    <span id="userChip" style="display:none;align-items:center;gap:6px;color:#fff;font-size:.82rem;font-weight:600">
+      <span id="userChipName"></span>
+      <button class="btn btn-light" style="padding:5px 12px" onclick="logout()">יציאה</button>
+    </span>
   </div>
 </header>
 
 <div class="tabs">
-  <button class="tab-btn active" onclick="showTab('pricelist',this)">מחירון</button>
-  <button class="tab-btn" onclick="showTab('mezuzot',this)">מזוזות</button>
-  <button class="tab-btn" onclick="showTab('payments',this)">תשלומים</button>
-  <button class="tab-btn" onclick="showTab('reports',this)">דוחות</button>
-  <button class="tab-btn" onclick="showTab('charts',this)">גרפים</button>
+  <button class="tab-btn active" id="tabbtn-pricelist" onclick="showTab('pricelist',this)">מחירון</button>
+  <button class="tab-btn" id="tabbtn-mezuzot" onclick="showTab('mezuzot',this)">מזוזות</button>
+  <button class="tab-btn" id="tabbtn-payments" onclick="showTab('payments',this)">תשלומים</button>
+  <button class="tab-btn" id="tabbtn-reports" onclick="showTab('reports',this)">דוחות</button>
+  <button class="tab-btn" id="tabbtn-charts" onclick="showTab('charts',this)">גרפים</button>
+  <button class="tab-btn" id="tabbtn-users" onclick="showTab('users',this)" style="display:none">משתמשים</button>
 </div>
 
 <div class="content">
@@ -271,6 +276,26 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
     </div>
   </div>
 
+  <!-- ============ משתמשים ============ -->
+  <div class="tab-panel" id="tab-users">
+    <div class="card">
+      <h2>הוספת משתמש <span class="hint">— שם, תפקיד וסיסמה</span></h2>
+      <div class="form-row">
+        <div class="form-group"><label>שם המשתמש</label><input id="u-name" placeholder="שם"></div>
+        <div class="form-group"><label>תפקיד</label><select id="u-role">
+          <option value="admin">מנהל</option>
+          <option value="worker">עובד</option>
+          <option value="supervisor">משגיח</option>
+          <option value="investor">משקיע</option>
+        </select></div>
+        <div class="form-group"><label>סיסמה</label><input id="u-pass" type="text" placeholder="סיסמה"></div>
+        <button class="btn btn-success" onclick="addUser()">+ הוסף משתמש</button>
+      </div>
+      <p style="font-size:.8rem;color:#718096;margin-top:8px">הסיסמאות נשמרות מוצפנות. ניהול ההרשאות לכל תפקיד ייקבע בהמשך.</p>
+    </div>
+    <div class="card"><div class="table-wrap"><table id="tbl-users"></table></div></div>
+  </div>
+
 </div>
 
 <!-- details modal (opened by scan / QR / row) -->
@@ -292,6 +317,24 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
   </div>
 </div>
 
+<!-- login gate -->
+<div class="overlay" id="loginOverlay" style="background:linear-gradient(135deg,#1a365d,#2b6cb0)">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-head"><h3>📜 כניסה למערכת</h3></div>
+    <div class="modal-body">
+      <div class="form-group" style="margin-bottom:12px"><label>שם המשתמש</label>
+        <select id="login-user" style="padding:9px 11px;border:1.5px solid #cbd5e0;border-radius:8px;font-family:inherit"></select>
+      </div>
+      <div class="form-group" style="margin-bottom:14px"><label>סיסמה</label>
+        <input id="login-pass" type="password" placeholder="סיסמה" style="padding:9px 11px;border:1.5px solid #cbd5e0;border-radius:8px;font-family:inherit"
+          onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <div id="login-err" style="display:none;color:#c53030;font-size:.85rem;margin-bottom:10px"></div>
+      <button class="btn btn-primary" style="width:100%" onclick="doLogin()">כניסה</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -306,7 +349,7 @@ let suppressPullUntil = 0;                   // skip pulling right after a local
 let pushTimer = null;                        // debounce server writes
 let lastPushedJSON = '';                     // what we last sent to the server
 
-function emptyData(){ return { scribes: [], computer: [], gavra: [], mezuzot: [], payments: [], seq: 1 }; }
+function emptyData(){ return { scribes: [], computer: [], gavra: [], mezuzot: [], payments: [], users: [], seq: 1 }; }
 function itemCount(d){ return (d.scribes||[]).length + (d.computer||[]).length + (d.gavra||[]).length + (d.mezuzot||[]).length + (d.payments||[]).length; }
 
 function load() {
@@ -394,6 +437,7 @@ function serverPull(initial) {
       if (incoming !== JSON.stringify(Object.assign(emptyData(), data))) {
         data = Object.assign(emptyData(), remote);
         localStorage.setItem(KEY, JSON.stringify(data));
+        checkAuth();
         renderAll();
         if (document.getElementById('tab-charts').classList.contains('active')) renderCharts();
         if (initial && !document.getElementById('detailOverlay').classList.contains('show')) openSkuFromUrl();
@@ -936,12 +980,153 @@ function dl(blob, name) {
 // ============ UTIL ============
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
+// ============ USERS & PERMISSIONS ============
+const ROLE_LABELS = { admin:'מנהל', worker:'עובד', supervisor:'משגיח', investor:'משקיע' };
+// הרשאות לכל תפקיד — ערכי ברירת מחדל זמניים; יעודכנו לפי ההגדרה הסופית.
+const PERMISSIONS = {
+  admin:      { mezuzot_view:1, mezuzot_edit:1, mezuzot_delete:1, pricelist:1, payments:1, reports:1, users:1 },
+  worker:     { mezuzot_view:1, mezuzot_edit:1, mezuzot_delete:0, pricelist:0, payments:0, reports:0, users:0 },
+  supervisor: { mezuzot_view:1, mezuzot_edit:1, mezuzot_delete:0, pricelist:0, payments:0, reports:1, users:0 },
+  investor:   { mezuzot_view:1, mezuzot_edit:0, mezuzot_delete:0, pricelist:0, payments:0, reports:1, users:0 }
+};
+let currentUser = null;
+
+function can(cap){
+  if (!data.users || !data.users.length) return true;   // לפני שהוגדרו משתמשים — גישה פתוחה
+  if (!currentUser) return false;
+  const p = PERMISSIONS[currentUser.role] || {};
+  return !!p[cap];
+}
+async function hashPass(name, pass){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(name + ':' + pass));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+// ---- login gate ----
+function authActive(){ return data.users && data.users.length > 0; }
+function fillLoginUsers(){
+  const sel = document.getElementById('login-user');
+  sel.innerHTML = (data.users||[]).map(u=>`<option value="${u.id}">${esc(u.name)} (${ROLE_LABELS[u.role]||u.role})</option>`).join('');
+}
+function checkAuth(){
+  if (!authActive()){ currentUser = null; document.getElementById('loginOverlay').classList.remove('show'); applyPermissions(); return; }
+  const sid = sessionStorage.getItem('mz_user');
+  const u = sid && data.users.find(x=>x.id===sid);
+  if (u){ currentUser = u; document.getElementById('loginOverlay').classList.remove('show'); applyPermissions(); }
+  else { currentUser = null; fillLoginUsers(); document.getElementById('loginOverlay').classList.add('show'); }
+}
+async function doLogin(){
+  const id = document.getElementById('login-user').value;
+  const u = data.users.find(x=>x.id===id);
+  const err = document.getElementById('login-err');
+  if (!u){ err.textContent='בחר משתמש'; err.style.display='block'; return; }
+  const h = await hashPass(u.name, document.getElementById('login-pass').value);
+  if (h === u.hash){
+    currentUser = u;
+    sessionStorage.setItem('mz_user', u.id);
+    document.getElementById('login-pass').value='';
+    err.style.display='none';
+    document.getElementById('loginOverlay').classList.remove('show');
+    applyPermissions(); renderAll();
+  } else {
+    err.textContent='סיסמה שגויה'; err.style.display='block';
+  }
+}
+function logout(){
+  sessionStorage.removeItem('mz_user');
+  currentUser = null;
+  if (authActive()){ fillLoginUsers(); document.getElementById('loginOverlay').classList.add('show'); }
+}
+
+// ---- show/hide by permission ----
+function applyPermissions(){
+  const tabCap = { pricelist:'pricelist', mezuzot:'mezuzot_view', payments:'payments', reports:'reports', charts:'reports', users:'users' };
+  let firstVisible = null;
+  Object.keys(tabCap).forEach(t=>{
+    const btn = document.getElementById('tabbtn-'+t);
+    if (!btn) return;
+    const ok = can(tabCap[t]);
+    btn.style.display = ok ? '' : 'none';
+    if (ok && !firstVisible) firstVisible = t;
+  });
+  // if the active tab is now hidden, jump to the first allowed tab
+  const activeBtn = document.querySelector('.tab-btn.active');
+  if (activeBtn && activeBtn.style.display==='none' && firstVisible){
+    showTab(firstVisible, document.getElementById('tabbtn-'+firstVisible));
+  }
+  // hide "add" forms where editing isn't allowed
+  ['psec-scribes','psec-computer','psec-gavra'].forEach(()=>{});
+  toggleAddForms();
+  // user chip
+  const chip = document.getElementById('userChip');
+  if (currentUser){ chip.style.display='inline-flex'; document.getElementById('userChipName').textContent = currentUser.name + ' · ' + (ROLE_LABELS[currentUser.role]||''); }
+  else chip.style.display='none';
+}
+function toggleAddForms(){
+  // מחירון add-cards
+  const pl = can('pricelist') ? '' : 'none';
+  ['psec-scribes','psec-computer','psec-gavra'].forEach(id=>{ const c=document.querySelector('#'+id+' .card'); if(c) c.style.display=pl; });
+  // mezuza add-card (first card in mezuzot tab)
+  const mezAdd = document.querySelector('#tab-mezuzot .card'); if (mezAdd) mezAdd.style.display = can('mezuzot_edit') ? '' : 'none';
+  // payment add-card
+  const payAdd = document.querySelector('#tab-payments .card'); if (payAdd) payAdd.style.display = can('payments') ? '' : 'none';
+}
+// disable inline editing in the mezuzot table for view-only roles
+function lockMezuzotEditing(){
+  if (can('mezuzot_edit')) return;
+  document.querySelectorAll('#tbl-mezuzot tbody input, #tbl-mezuzot tbody select').forEach(el=>{ el.disabled = true; });
+  document.querySelectorAll('#tbl-mezuzot tbody .btn-danger, #tbl-mezuzot tbody .img-btn').forEach(el=>{ el.style.display='none'; });
+}
+
+// ---- users CRUD (admin) ----
+async function addUser(){
+  if (!can('users')) return toast('אין הרשאה');
+  const name = document.getElementById('u-name').value.trim();
+  const pass = document.getElementById('u-pass').value;
+  const role = document.getElementById('u-role').value;
+  if (!name || !pass) return toast('מלא שם וסיסמה');
+  if ((data.users||[]).some(u=>u.name===name)) return toast('שם כבר קיים');
+  if (!data.users) data.users = [];
+  data.users.push({ id: uid(), name, role, hash: await hashPass(name, pass) });
+  document.getElementById('u-name').value=''; document.getElementById('u-pass').value='';
+  save(); toast('משתמש נוסף');
+}
+function renderUsers(){
+  const t = document.getElementById('tbl-users');
+  if (!t) return;
+  const us = data.users||[];
+  if (!us.length){ t.innerHTML = '<tr><td class="empty">אין משתמשים — הוסף את עצמך כמנהל ראשון</td></tr>'; return; }
+  let h = '<thead><tr><th>שם</th><th>תפקיד</th><th>סיסמה</th><th></th></tr></thead><tbody>';
+  us.forEach(u=>{
+    h += `<tr>
+      <td>${esc(u.name)}</td>
+      <td><select onchange="editUserRole('${u.id}',this.value)">${Object.keys(ROLE_LABELS).map(r=>`<option value="${r}"${u.role===r?' selected':''}>${ROLE_LABELS[r]}</option>`).join('')}</select></td>
+      <td><button class="btn btn-edit" onclick="resetUserPass('${u.id}')">שנה סיסמה</button></td>
+      <td><button class="btn btn-danger" onclick="delUser('${u.id}')">מחק</button></td></tr>`;
+  });
+  t.innerHTML = h + '</tbody>';
+}
+function editUserRole(id, role){ const u=data.users.find(x=>x.id===id); if(u){ u.role=role; save(); } }
+async function resetUserPass(id){
+  const u = data.users.find(x=>x.id===id); if(!u) return;
+  const p = prompt('סיסמה חדשה עבור '+u.name+':'); if(p===null||p==='') return;
+  u.hash = await hashPass(u.name, p); save(); toast('הסיסמה עודכנה');
+}
+function delUser(id){
+  if (!confirm('למחוק משתמש?')) return;
+  data.users = data.users.filter(x=>x.id!==id);
+  if (currentUser && currentUser.id===id) logout();
+  save();
+}
+
 // ============ RENDER ALL ============
 function renderAll() {
   renderScribes(); renderProof('computer'); renderProof('gavra');
-  fillSelects(); renderMezuzot(); renderPayments(); renderReports();
+  fillSelects(); renderMezuzot(); renderPayments(); renderReports(); renderUsers();
+  lockMezuzotEditing();
   if (document.getElementById('tab-charts').classList.contains('active')) renderCharts();
 }
+checkAuth();
 renderAll();
 document.getElementById('mz-date').value = new Date().toISOString().slice(0,10);
 document.getElementById('pay-date').value = new Date().toISOString().slice(0,10);
