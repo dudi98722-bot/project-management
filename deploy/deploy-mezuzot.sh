@@ -5,9 +5,17 @@
 # ============================================================
 set -e
 
-# ---- 1. הגדרה: החלף את הדומיין שלך כאן ----
-DOMAIN="mezuzot.YOUR-DOMAIN.com"          # ← שנה לתת-הדומיין שלך
-EMAIL="dudi98722@gmail.com"               # ← למייל של Let's Encrypt (התראות חידוש SSL)
+# ---- 1. הגדרה ----
+# אפשר להעביר את הדומיין בפקודה (DOMAIN=... bash ...) בלי לערוך את הקובץ,
+# או לשנות כאן ידנית את ערך ברירת המחדל.
+DOMAIN="${DOMAIN:-mezuzot.YOUR-DOMAIN.com}"   # ← תת-הדומיין שלך
+EMAIL="${EMAIL:-dudi98722@gmail.com}"         # ← מייל ל-Let's Encrypt (התראות חידוש SSL)
+
+if [ "$DOMAIN" = "mezuzot.YOUR-DOMAIN.com" ]; then
+  echo "❌ לא הוגדר דומיין. הרץ כך:"
+  echo "   DOMAIN=mezuzot.הדומיין-שלך.com bash <(curl -fsSL <כתובת-הסקריפט>)"
+  exit 1
+fi
 
 WEBROOT="/var/www/mezuzot"
 RAW_URL="https://raw.githubusercontent.com/dudi98722-bot/project-management/main/mezuzah-management.html"
