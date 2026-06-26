@@ -350,7 +350,7 @@ let pushTimer = null;                        // debounce server writes
 let lastPushedJSON = '';                     // what we last sent to the server
 
 function emptyData(){ return { scribes: [], computer: [], gavra: [], mezuzot: [], payments: [], users: [], seq: 1 }; }
-function itemCount(d){ return (d.scribes||[]).length + (d.computer||[]).length + (d.gavra||[]).length + (d.mezuzot||[]).length + (d.payments||[]).length; }
+function itemCount(d){ return (d.scribes||[]).length + (d.computer||[]).length + (d.gavra||[]).length + (d.mezuzot||[]).length + (d.payments||[]).length + (d.users||[]).length; }
 
 function load() {
   // local cache shown instantly until the server responds
@@ -427,10 +427,8 @@ function serverPull(initial) {
     .then(remote=>{
       if (!remote || remote.status==='error') { setSync('err','⚠ שגיאת טעינה'); return; }
       const remoteCount = itemCount(remote);
-      if (initial) {
-        // first load: if the sheet is empty but we have local data, seed the sheet
-        if (remoteCount === 0 && itemCount(data) > 0) { serverPush(); setSync('ok','☁ נשמר'); return; }
-      }
+      // never let an empty/stale server wipe local data — re-push it instead (initial OR poll)
+      if (remoteCount === 0 && itemCount(data) > 0) { serverPush(); setSync('ok','☁ נשמר'); return; }
       // don't overwrite a change we just made, or while the user is typing
       if (Date.now() < suppressPullUntil || editingNow()) { setSync('ok','☁ מסונכרן'); return; }
       const incoming = JSON.stringify(remote);
