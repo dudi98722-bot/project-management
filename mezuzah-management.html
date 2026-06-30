@@ -412,10 +412,11 @@ function emptyData(){ return { scribes: [], computer: [], gavra: [], mezuzot: []
 function itemCount(d){ return (d.scribes||[]).length + (d.computer||[]).length + (d.gavra||[]).length + (d.mezuzot||[]).length + (d.payments||[]).length + (d.expenses||[]).length + (d.income||[]).length + (d.users||[]).length; }
 
 function load() {
-  // local cache shown instantly until the server responds
+  // local cache shown instantly until the server responds.
+  // merge onto emptyData so every array exists even if the cache predates a field.
   try {
     const d = JSON.parse(localStorage.getItem(KEY));
-    if (d) return d;
+    if (d) return Object.assign(emptyData(), d);
   } catch(e) {}
   return emptyData();
 }
@@ -931,6 +932,7 @@ function addExpense(){
   const amount = +document.getElementById('ex-amount').value||0;
   const cat = document.getElementById('ex-cat').value.trim();
   if (!cat && !amount) return toast('מלא קטגוריה וסכום');
+  if (!data.expenses) data.expenses = [];
   data.expenses.push({
     id: uid(),
     date: document.getElementById('ex-date').value || new Date().toISOString().slice(0,10),
@@ -962,6 +964,7 @@ function addIncome(){
   const amount = +document.getElementById('in-amount').value||0;
   const source = document.getElementById('in-source').value.trim();
   if (!source && !amount) return toast('מלא מקור וסכום');
+  if (!data.income) data.income = [];
   data.income.push({
     id: uid(),
     date: document.getElementById('in-date').value || new Date().toISOString().slice(0,10),
