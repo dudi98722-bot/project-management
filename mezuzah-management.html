@@ -128,6 +128,7 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
   <button class="tab-btn active" id="tabbtn-pricelist" onclick="showTab('pricelist',this)">מחירון</button>
   <button class="tab-btn" id="tabbtn-mezuzot" onclick="showTab('mezuzot',this)">מזוזות</button>
   <button class="tab-btn" id="tabbtn-payments" onclick="showTab('payments',this)">תשלומים</button>
+  <button class="tab-btn" id="tabbtn-finance" onclick="showTab('finance',this)">כספים</button>
   <button class="tab-btn" id="tabbtn-reports" onclick="showTab('reports',this)">דוחות</button>
   <button class="tab-btn" id="tabbtn-charts" onclick="showTab('charts',this)">גרפים</button>
   <button class="tab-btn" id="tabbtn-users" onclick="showTab('users',this)" style="display:none">משתמשים</button>
@@ -267,18 +268,58 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
     <div class="card"><div class="table-wrap"><table id="tbl-payments"></table></div></div>
   </div>
 
+  <!-- ============ כספים (הוצאות / הכנסות) ============ -->
+  <div class="tab-panel" id="tab-finance">
+    <div class="section-tabs">
+      <button class="section-tab active" onclick="showFinSec('expenses',this)">הוצאות שוטפות</button>
+      <button class="section-tab" onclick="showFinSec('income',this)">הכנסות צדדיות</button>
+    </div>
+
+    <div id="finsec-expenses" class="fin-sec">
+      <div class="card">
+        <h2>הוצאה שוטפת <span class="hint">— הוצאות כלליות של העסק</span></h2>
+        <div class="form-row">
+          <div class="form-group"><label>תאריך</label><input id="ex-date" type="date"></div>
+          <div class="form-group"><label>קטגוריה</label><input id="ex-cat" placeholder="לדוגמה: קלף, דיו, משלוח"></div>
+          <div class="form-group"><label>סכום</label><input id="ex-amount" type="number" placeholder="₪"></div>
+          <div class="form-group" style="flex:2"><label>הערה</label><input id="ex-note" placeholder="הערה"></div>
+          <button class="btn btn-success" onclick="addExpense()">+ הוסף הוצאה</button>
+        </div>
+      </div>
+      <div class="card"><div class="table-wrap"><table id="tbl-expenses"></table></div></div>
+    </div>
+
+    <div id="finsec-income" class="fin-sec" style="display:none">
+      <div class="card">
+        <h2>הכנסה צדדית <span class="hint">— למשל שכירות שסופרים משלמים</span></h2>
+        <div class="form-row">
+          <div class="form-group"><label>תאריך</label><input id="in-date" type="date"></div>
+          <div class="form-group"><label>מקור</label><input id="in-source" placeholder="לדוגמה: שכירות סופר X"></div>
+          <div class="form-group"><label>סכום</label><input id="in-amount" type="number" placeholder="₪"></div>
+          <div class="form-group" style="flex:2"><label>הערה</label><input id="in-note" placeholder="הערה"></div>
+          <button class="btn btn-success" onclick="addIncome()">+ הוסף הכנסה</button>
+        </div>
+      </div>
+      <div class="card"><div class="table-wrap"><table id="tbl-income"></table></div></div>
+    </div>
+  </div>
+
   <!-- ============ דוחות ============ -->
   <div class="tab-panel" id="tab-reports">
     <div class="stats" id="report-stats"></div>
-    <div class="card">
+    <div class="card" id="card-finance">
+      <h2>סיכום כספי <span class="hint">— הכנסות צדדיות מול הוצאות</span></h2>
+      <div class="table-wrap"><table id="tbl-finance"></table></div>
+    </div>
+    <div class="card" id="card-balances">
       <h2>דוח יתרות — סופרים ומגיהים <button class="btn btn-primary no-print" style="margin-right:auto;font-size:.78rem;padding:5px 12px" onclick="window.print()">🖨 הדפסה</button></h2>
       <div class="table-wrap"><table id="tbl-balances"></table></div>
     </div>
-    <div class="card">
+    <div class="card" id="card-status">
       <h2>דוח מזוזות לפי סטטוס</h2>
       <div class="table-wrap"><table id="tbl-status"></table></div>
     </div>
-    <div class="card">
+    <div class="card" id="card-monthly">
       <h2>פילוח חודשי</h2>
       <div class="table-wrap"><table id="tbl-monthly"></table></div>
     </div>
@@ -367,8 +408,8 @@ let suppressPullUntil = 0;                   // skip pulling right after a local
 let pushTimer = null;                        // debounce server writes
 let lastPushedJSON = '';                     // what we last sent to the server
 
-function emptyData(){ return { scribes: [], computer: [], gavra: [], mezuzot: [], payments: [], users: [], seq: 1 }; }
-function itemCount(d){ return (d.scribes||[]).length + (d.computer||[]).length + (d.gavra||[]).length + (d.mezuzot||[]).length + (d.payments||[]).length + (d.users||[]).length; }
+function emptyData(){ return { scribes: [], computer: [], gavra: [], mezuzot: [], payments: [], expenses: [], income: [], users: [], seq: 1 }; }
+function itemCount(d){ return (d.scribes||[]).length + (d.computer||[]).length + (d.gavra||[]).length + (d.mezuzot||[]).length + (d.payments||[]).length + (d.expenses||[]).length + (d.income||[]).length + (d.users||[]).length; }
 
 function load() {
   // local cache shown instantly until the server responds
@@ -683,7 +724,8 @@ function renderMezuzot() {
   window._mzFiltered = rows;   // remember for "print SKUs of shown rows"
   if (!rows.length) { t.innerHTML = '<tr><td class="empty">אין מזוזות</td></tr>'; return; }
   const allChecked = rows.length && rows.every(m=>selectedMez.has(m.id));
-  let h = `<thead><tr><th><input type="checkbox" ${allChecked?'checked':''} onclick="toggleSelectAll(this.checked)" title="בחר הכל"></th><th>מק"ט</th><th>סופר</th><th>מוצר</th><th>תאריך</th><th>מחיר ליחי'</th><th>הגהת מחשב</th><th>גברא 1</th><th>גברא 2</th><th>אישור הרב</th><th>לתשלום לסופר</th><th>הולוגרמה</th><th>כתר</th><th>תמונה</th><th></th></tr></thead><tbody>`;
+  const cv = colVis;
+  let h = `<thead><tr><th><input type="checkbox" ${allChecked?'checked':''} onclick="toggleSelectAll(this.checked)" title="בחר הכל"></th><th>מק"ט</th><th>סופר</th><th>מוצר</th><th>תאריך</th>${cv('price')?`<th>מחיר ליחי'</th>`:''}${cv('comp')?'<th>הגהת מחשב</th>':''}${cv('g1')?'<th>גברא 1</th>':''}${cv('g2')?'<th>גברא 2</th>':''}<th>אישור הרב</th>${cv('scribePay')?'<th>לתשלום לסופר</th>':''}<th>הולוגרמה</th>${cv('keter')?'<th>כתר</th>':''}<th>תמונה</th><th></th></tr></thead><tbody>`;
   rows.forEach(m=>{
     h += `<tr>
       <td><input type="checkbox" ${selectedMez.has(m.id)?'checked':''} onclick="toggleSelectMez('${m.id}',this.checked)"></td>
@@ -691,19 +733,19 @@ function renderMezuzot() {
       <td><select style="min-width:90px" onchange="editMez('${m.id}','scribe',this.value)">${optHtml(data.scribes,m.scribe,'—')}</select></td>
       <td><select style="min-width:110px" onchange="editMez('${m.id}','product',this.value)">${['מזוזה בית יוסף','מזוזה ארי'].map(o=>`<option${m.product===o?' selected':''}>${o}</option>`).join('')}</select></td>
       <td><input type="date" value="${m.date}" onchange="editMez('${m.id}','date',this.value)"></td>
-      <td><input type="number" value="${m.price}" style="min-width:78px" onchange="editMez('${m.id}','price',this.value)"></td>
-      <td><select style="min-width:90px" onchange="editMez('${m.id}','comp',this.value)">${optHtml(data.computer,m.comp,'—')}</select></td>
-      <td><select style="min-width:90px" onchange="editMez('${m.id}','g1',this.value)">${optHtml(data.gavra,m.g1,'—')}</select></td>
-      <td><select style="min-width:90px" onchange="editMez('${m.id}','g2',this.value)">${optHtml(data.gavra,m.g2,'—')}</select></td>
+      ${cv('price')?`<td><input type="number" value="${m.price}" style="min-width:78px" onchange="editMez('${m.id}','price',this.value)"></td>`:''}
+      ${cv('comp')?`<td><select style="min-width:90px" onchange="editMez('${m.id}','comp',this.value)">${optHtml(data.computer,m.comp,'—')}</select></td>`:''}
+      ${cv('g1')?`<td><select style="min-width:90px" onchange="editMez('${m.id}','g1',this.value)">${optHtml(data.gavra,m.g1,'—')}</select></td>`:''}
+      ${cv('g2')?`<td><select style="min-width:90px" onchange="editMez('${m.id}','g2',this.value)">${optHtml(data.gavra,m.g2,'—')}</select></td>`:''}
       <td>
         <select onchange="editMez('${m.id}','approve',this.value)">
           ${['ממתין','אושר','פסול','כשר'].map(o=>`<option value="${o}"${m.approve===o?' selected':''}>${o}</option>`).join('')}
         </select>
-        ${m.approve==='כשר'?`<input type="number" value="${m.adj}" title="מחיר מופחת" style="margin-top:4px" onchange="editMez('${m.id}','adj',this.value)">`:''}
+        ${m.approve==='כשר'&&cv('price')?`<input type="number" value="${m.adj}" title="מחיר מופחת" style="margin-top:4px" onchange="editMez('${m.id}','adj',this.value)">`:''}
       </td>
-      <td class="money">${ILS(scribePay(m))}</td>
+      ${cv('scribePay')?`<td class="money">${ILS(scribePay(m))}</td>`:''}
       <td><input value="${esc(m.holo)}" style="min-width:90px" placeholder="—" onchange="editMez('${m.id}','holo',this.value)"></td>
-      <td><select style="min-width:72px" onchange="editMez('${m.id}','keter',this.value)"><option value="לא"${m.keter==='לא'?' selected':''}>לא</option><option value="כן"${m.keter==='כן'?' selected':''}>כן</option></select></td>
+      ${cv('keter')?`<td><select style="min-width:72px" onchange="editMez('${m.id}','keter',this.value)"><option value="לא"${m.keter==='לא'?' selected':''}>לא</option><option value="כן"${m.keter==='כן'?' selected':''}>כן</option></select></td>`:''}
       <td style="white-space:nowrap;text-align:center">
         ${m.img?`<img class="thumb" src="${m.img}" title="הצג תמונה" onclick="viewImage('${m.id}')">`:''}
         <button class="btn btn-edit img-btn" title="${m.img?'החלף תמונה':'הוסף תמונה'}" onclick="pickImage('${m.id}')">${m.img?'החלף':'📷'}</button></td>
@@ -805,11 +847,12 @@ function showMezuzaDetails(id){
   if (!m){ toast('מזוזה לא נמצאה'); return; }
   document.getElementById('det-title').textContent = 'מזוזה ' + m.sku;
   const row=(k,v)=>`<div class="det-row"><span class="k">${k}</span><span class="v">${esc(v)||'—'}</span></div>`;
+  const rc=(c,k,v)=>colVis(c)?row(k,v):'';
   document.getElementById('det-body').innerHTML =
     (m.img?`<img class="det-img" src="${m.img}">`:'') +
     row('מק"ט', m.sku) + row('סופר', m.scribe) + row('מוצר', m.product) + row('תאריך', m.date) +
-    row('מחיר ליחי\'', ILS(m.price)) + row('הגהת מחשב', m.comp) + row('גברא 1', m.g1) + row('גברא 2', m.g2) +
-    row('אישור הרב', m.approve) + row('לתשלום לסופר', ILS(scribePay(m))) + row('הולוגרמה בד"ץ', m.holo) + row('נשלח לכתר', m.keter);
+    rc('price','מחיר ליחי\'', ILS(m.price)) + rc('comp','הגהת מחשב', m.comp) + rc('g1','גברא 1', m.g1) + rc('g2','גברא 2', m.g2) +
+    row('אישור הרב', m.approve) + rc('scribePay','לתשלום לסופר', ILS(scribePay(m))) + row('הולוגרמה בד"ץ', m.holo) + rc('keter','נשלח לכתר', m.keter);
   document.getElementById('detailOverlay').classList.add('show');
 }
 function closeDetails(){ document.getElementById('detailOverlay').classList.remove('show'); }
@@ -882,6 +925,70 @@ function renderPayments() {
 }
 function delPay(id){ if(!confirm('למחוק תשלום?'))return; data.payments=data.payments.filter(x=>x.id!==id); save(); }
 
+// ============ EXPENSES (הוצאות שוטפות) ============
+function addExpense(){
+  if (!can('finance')) return toast('אין הרשאה');
+  const amount = +document.getElementById('ex-amount').value||0;
+  const cat = document.getElementById('ex-cat').value.trim();
+  if (!cat && !amount) return toast('מלא קטגוריה וסכום');
+  data.expenses.push({
+    id: uid(),
+    date: document.getElementById('ex-date').value || new Date().toISOString().slice(0,10),
+    category: cat, amount,
+    note: document.getElementById('ex-note').value.trim()
+  });
+  ['ex-cat','ex-amount','ex-note'].forEach(i=>document.getElementById(i).value='');
+  save(); toast('הוצאה נרשמה');
+}
+function renderExpenses(){
+  const t = document.getElementById('tbl-expenses'); if(!t) return;
+  const arr = data.expenses||[];
+  if (!arr.length){ t.innerHTML='<tr><td class="empty">אין הוצאות</td></tr>'; return; }
+  let total=0;
+  let h='<thead><tr><th>תאריך</th><th>קטגוריה</th><th>סכום</th><th>הערה</th><th></th></tr></thead><tbody>';
+  [...arr].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).forEach(x=>{
+    total+=x.amount||0;
+    h+=`<tr><td>${x.date||''}</td><td>${esc(x.category)}</td><td class="money">${ILS(x.amount)}</td><td>${esc(x.note)}</td>
+      <td><button class="btn btn-danger" onclick="delExpense('${x.id}')">מחק</button></td></tr>`;
+  });
+  h+=`<tr style="background:#fed7d7;font-weight:800"><td colspan="2">סה"כ הוצאות</td><td class="money">${ILS(total)}</td><td colspan="2"></td></tr>`;
+  t.innerHTML=h+'</tbody>';
+}
+function delExpense(id){ if(!confirm('למחוק הוצאה?'))return; data.expenses=data.expenses.filter(x=>x.id!==id); save(); }
+
+// ============ INCOME (הכנסות צדדיות) ============
+function addIncome(){
+  if (!can('finance')) return toast('אין הרשאה');
+  const amount = +document.getElementById('in-amount').value||0;
+  const source = document.getElementById('in-source').value.trim();
+  if (!source && !amount) return toast('מלא מקור וסכום');
+  data.income.push({
+    id: uid(),
+    date: document.getElementById('in-date').value || new Date().toISOString().slice(0,10),
+    source, amount,
+    note: document.getElementById('in-note').value.trim()
+  });
+  ['in-source','in-amount','in-note'].forEach(i=>document.getElementById(i).value='');
+  save(); toast('הכנסה נרשמה');
+}
+function renderIncome(){
+  const t = document.getElementById('tbl-income'); if(!t) return;
+  const arr = data.income||[];
+  if (!arr.length){ t.innerHTML='<tr><td class="empty">אין הכנסות</td></tr>'; return; }
+  let total=0;
+  let h='<thead><tr><th>תאריך</th><th>מקור</th><th>סכום</th><th>הערה</th><th></th></tr></thead><tbody>';
+  [...arr].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).forEach(x=>{
+    total+=x.amount||0;
+    h+=`<tr><td>${x.date||''}</td><td>${esc(x.source)}</td><td class="money">${ILS(x.amount)}</td><td>${esc(x.note)}</td>
+      <td><button class="btn btn-danger" onclick="delIncome('${x.id}')">מחק</button></td></tr>`;
+  });
+  h+=`<tr style="background:#c6f6d5;font-weight:800"><td colspan="2">סה"כ הכנסות</td><td class="money">${ILS(total)}</td><td colspan="2"></td></tr>`;
+  t.innerHTML=h+'</tbody>';
+}
+function delIncome(id){ if(!confirm('למחוק הכנסה?'))return; data.income=data.income.filter(x=>x.id!==id); save(); }
+function sumExpenses(){ return (data.expenses||[]).reduce((a,b)=>a+(b.amount||0),0); }
+function sumIncome(){ return (data.income||[]).reduce((a,b)=>a+(b.amount||0),0); }
+
 // ============ REPORTS / BALANCES ============
 // build owed amounts per person key "סופר: שם" / "מגיה מחשב: שם" / "מגיה גברא: שם"
 function computeOwed() {
@@ -906,11 +1013,30 @@ function renderReports() {
   // stats
   const totalOwed = Object.values(owed).reduce((a,b)=>a+b,0);
   const totalPaid = Object.values(paid).reduce((a,b)=>a+b,0);
-  document.getElementById('report-stats').innerHTML = `
+  const money = can('reports_money');
+  const pending = data.mezuzot.filter(m=>m.approve==='ממתין').length;
+  let statsHtml = `
     <div class="stat-card"><div class="num">${data.mezuzot.length}</div><div class="lbl">סה"כ מזוזות</div></div>
+    <div class="stat-card" style="border-right-color:#d69e2e"><div class="num">${pending}</div><div class="lbl">ממתינים לאישור</div></div>`;
+  if (money) {
+    const totInc = sumIncome(), totExp = sumExpenses();
+    statsHtml += `
     <div class="stat-card"><div class="num">${ILS(totalOwed)}</div><div class="lbl">סה"כ זכאות (לתשלום)</div></div>
-    <div class="stat-card"><div class="num">${ILS(totalPaid)}</div><div class="lbl">סה"כ שולם</div></div>
-    <div class="stat-card" style="border-right-color:#e53e3e"><div class="num pos">${ILS(totalOwed-totalPaid)}</div><div class="lbl">יתרה לתשלום</div></div>`;
+    <div class="stat-card" style="border-right-color:#e53e3e"><div class="num pos">${ILS(totalOwed-totalPaid)}</div><div class="lbl">יתרה לתשלום</div></div>
+    <div class="stat-card" style="border-right-color:#38a169"><div class="num">${ILS(totInc)}</div><div class="lbl">הכנסות צדדיות</div></div>
+    <div class="stat-card" style="border-right-color:#dd6b20"><div class="num">${ILS(totExp)}</div><div class="lbl">הוצאות שוטפות</div></div>`;
+  }
+  document.getElementById('report-stats').innerHTML = statsHtml;
+  // finance summary table
+  const ft = document.getElementById('tbl-finance');
+  if (ft) {
+    const totInc = sumIncome(), totExp = sumExpenses(), net = totInc - totExp;
+    ft.innerHTML = `<thead><tr><th>סעיף</th><th>סכום</th></tr></thead><tbody>
+      <tr><td>הכנסות צדדיות (שכירות וכו')</td><td class="money">${ILS(totInc)}</td></tr>
+      <tr><td>הוצאות שוטפות</td><td class="money pos">${ILS(totExp)}</td></tr>
+      <tr style="background:#edf2f7;font-weight:800"><td>מאזן (הכנסות פחות הוצאות)</td><td class="money ${net<0?'pos':'zero'}">${ILS(net)}</td></tr>
+      </tbody>`;
+  }
   // balances table
   const t = document.getElementById('tbl-balances');
   if (!keys.length) { t.innerHTML='<tr><td class="empty">אין נתונים</td></tr>'; }
@@ -1026,12 +1152,22 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;'
 
 // ============ USERS & PERMISSIONS ============
 const ROLE_LABELS = { admin:'מנהל', worker:'עובד', supervisor:'משגיח', investor:'משקיע' };
-// הרשאות לכל תפקיד — ערכי ברירת מחדל זמניים; יעודכנו לפי ההגדרה הסופית.
+// הרשאות לכל תפקיד.
+//   reports_status = דוחות סטטוס מזוזות (ממתינים לאישור וכו') — ללא כסף
+//   reports_money  = דוחות כספיים (יתרות, הכנסות/הוצאות, פילוח חודשי)
+//   finance        = לשונית הזנת הוצאות/הכנסות
 const PERMISSIONS = {
-  admin:      { mezuzot_view:1, mezuzot_edit:1, mezuzot_delete:1, pricelist:1, payments:1, reports:1, users:1 },
-  worker:     { mezuzot_view:1, mezuzot_edit:1, mezuzot_delete:0, pricelist:0, payments:0, reports:0, users:0 },
-  supervisor: { mezuzot_view:1, mezuzot_edit:1, mezuzot_delete:0, pricelist:0, payments:0, reports:1, users:0 },
-  investor:   { mezuzot_view:1, mezuzot_edit:0, mezuzot_delete:0, pricelist:0, payments:0, reports:1, users:0 }
+  admin:      { mezuzot_view:1, mezuzot_edit:1, mezuzot_delete:1, pricelist:1, payments:1, finance:1, reports_status:1, reports_money:1, users:1 },
+  worker:     { mezuzot_view:1, mezuzot_edit:1, mezuzot_delete:1, pricelist:0, payments:0, finance:0, reports_status:0, reports_money:0, users:0 },
+  supervisor: { mezuzot_view:1, mezuzot_edit:1, mezuzot_delete:0, pricelist:0, payments:0, finance:0, reports_status:1, reports_money:0, users:0 },
+  investor:   { mezuzot_view:1, mezuzot_edit:0, mezuzot_delete:0, pricelist:0, payments:0, finance:0, reports_status:1, reports_money:1, users:0 }
+};
+// עמודות שמוסתרות בטבלת המזוזות לכל תפקיד
+const COLUMN_HIDE = {
+  admin:      [],
+  worker:     ['price','scribePay','keter'],
+  supervisor: ['price','scribePay','keter'],
+  investor:   ['price','scribePay','keter','comp','g1','g2']
 };
 let currentUser = null;
 
@@ -1041,6 +1177,8 @@ function can(cap){
   const p = PERMISSIONS[currentUser.role] || {};
   return !!p[cap];
 }
+function roleOf(){ return currentUser ? currentUser.role : 'admin'; }
+function colVis(c){ if (!authActive()) return true; return !((COLUMN_HIDE[roleOf()]||[]).includes(c)); }
 async function hashPass(name, pass){
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(name + ':' + pass));
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -1083,13 +1221,22 @@ function logout(){
 }
 
 // ---- show/hide by permission ----
+function tabAllowed(t){
+  if (t==='pricelist') return can('pricelist');
+  if (t==='mezuzot')   return can('mezuzot_view');
+  if (t==='payments')  return can('payments');
+  if (t==='finance')   return can('finance');
+  if (t==='reports')   return can('reports_status') || can('reports_money');
+  if (t==='charts')    return can('reports_money');
+  if (t==='users')     return can('users');
+  return true;
+}
 function applyPermissions(){
-  const tabCap = { pricelist:'pricelist', mezuzot:'mezuzot_view', payments:'payments', reports:'reports', charts:'reports', users:'users' };
   let firstVisible = null;
-  Object.keys(tabCap).forEach(t=>{
+  ['pricelist','mezuzot','payments','finance','reports','charts','users'].forEach(t=>{
     const btn = document.getElementById('tabbtn-'+t);
     if (!btn) return;
-    const ok = can(tabCap[t]);
+    const ok = tabAllowed(t);
     btn.style.display = ok ? '' : 'none';
     if (ok && !firstVisible) firstVisible = t;
   });
@@ -1098,8 +1245,10 @@ function applyPermissions(){
   if (activeBtn && activeBtn.style.display==='none' && firstVisible){
     showTab(firstVisible, document.getElementById('tabbtn-'+firstVisible));
   }
-  // hide "add" forms where editing isn't allowed
-  ['psec-scribes','psec-computer','psec-gavra'].forEach(()=>{});
+  // report sections: money vs status
+  const money = can('reports_money');
+  ['card-finance','card-balances','card-monthly'].forEach(id=>{ const c=document.getElementById(id); if(c) c.style.display = money ? '' : 'none'; });
+  const cs = document.getElementById('card-status'); if (cs) cs.style.display = can('reports_status') ? '' : 'none';
   toggleAddForms();
   // user chip
   const chip = document.getElementById('userChip');
@@ -1114,6 +1263,15 @@ function toggleAddForms(){
   const mezAdd = document.querySelector('#tab-mezuzot .card'); if (mezAdd) mezAdd.style.display = can('mezuzot_edit') ? '' : 'none';
   // payment add-card
   const payAdd = document.querySelector('#tab-payments .card'); if (payAdd) payAdd.style.display = can('payments') ? '' : 'none';
+  // finance add-cards (expenses + income)
+  const fin = can('finance') ? '' : 'none';
+  ['finsec-expenses','finsec-income'].forEach(id=>{ const c=document.querySelector('#'+id+' .card'); if(c) c.style.display=fin; });
+}
+function showFinSec(id, btn){
+  document.querySelectorAll('.fin-sec').forEach(p=>p.style.display='none');
+  document.querySelectorAll('#tab-finance .section-tab').forEach(b=>b.classList.remove('active'));
+  document.getElementById('finsec-'+id).style.display='block';
+  btn.classList.add('active');
 }
 // disable inline editing in the mezuzot table for view-only roles
 function lockMezuzotEditing(){
@@ -1166,7 +1324,7 @@ function delUser(id){
 // ============ RENDER ALL ============
 function renderAll() {
   renderScribes(); renderProof('computer'); renderProof('gavra');
-  fillSelects(); renderMezuzot(); renderPayments(); renderReports(); renderUsers();
+  fillSelects(); renderMezuzot(); renderPayments(); renderExpenses(); renderIncome(); renderReports(); renderUsers();
   lockMezuzotEditing();
   if (document.getElementById('tab-charts').classList.contains('active')) renderCharts();
 }
@@ -1174,6 +1332,8 @@ checkAuth();
 renderAll();
 document.getElementById('mz-date').value = new Date().toISOString().slice(0,10);
 document.getElementById('pay-date').value = new Date().toISOString().slice(0,10);
+document.getElementById('ex-date').value = new Date().toISOString().slice(0,10);
+document.getElementById('in-date').value = new Date().toISOString().slice(0,10);
 if (GS_URL) startSheetSync(); else setSync('', '— לא מחובר (לחץ ⚙ הגדר שרת)');
 openSkuFromUrl();
 </script>
