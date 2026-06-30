@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>מערכת אבחון גרפולוגי — ישראל הפטקה</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✒️</text></svg>">
+<style>
+  :root{
+    --bg:#eef1f6; --panel:#ffffff; --ink:#1f2733; --muted:#6b7688;
+    --brand:#2b3a67; --brand2:#3f5694; --accent:#0e8a6e; --accent-soft:#e3f4ef;
+    --warn:#c2410c; --warn-soft:#fff1e8; --danger:#b91c1c;
+    --line:#e2e6ee; --chip:#eef2fb; --shadow:0 6px 22px rgba(28,40,70,.10);
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:"Segoe UI","Assistant","Heebo",Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.6}
+  button{font-family:inherit;cursor:pointer}
+  input,select,textarea{font-family:inherit;font-size:14px}
+  a{color:var(--brand2)}
+  .hidden{display:none!important}
+
+  /* Layout */
+  header.top{background:linear-gradient(120deg,var(--brand),var(--brand2));color:#fff;padding:12px 20px;display:flex;align-items:center;gap:16px;box-shadow:var(--shadow);position:sticky;top:0;z-index:50}
+  header.top .logo{font-size:26px}
+  header.top h1{font-size:18px;margin:0;font-weight:700}
+  header.top .sub{font-size:12px;opacity:.85;margin-top:1px}
+  header.top .spacer{flex:1}
+  nav.tabs{display:flex;gap:4px;background:#fff;padding:6px 14px;border-bottom:1px solid var(--line);position:sticky;top:58px;z-index:40;flex-wrap:wrap;box-shadow:0 2px 8px rgba(28,40,70,.04)}
+  nav.tabs button{background:transparent;border:none;padding:9px 16px;border-radius:10px;color:var(--muted);font-weight:600;font-size:14px}
+  nav.tabs button.active{background:var(--brand);color:#fff}
+  nav.tabs button:hover:not(.active){background:var(--chip);color:var(--brand)}
+  main{padding:20px;max-width:1280px;margin:0 auto}
+
+  /* Generic */
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;margin-bottom:18px}
+  .card h2{margin:0 0 12px;font-size:17px;color:var(--brand);display:flex;align-items:center;gap:8px}
+  .card h3{margin:18px 0 8px;font-size:15px;color:var(--brand2)}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .grid{display:grid;gap:12px}
+  label.fld{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);font-weight:600}
+  label.fld input,label.fld select,label.fld textarea{padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink)}
+  label.fld textarea{min-height:70px;resize:vertical;line-height:1.6}
+  .btn{background:var(--brand);color:#fff;border:none;padding:10px 18px;border-radius:10px;font-weight:700;font-size:14px}
+  .btn:hover{background:var(--brand2)}
+  .btn.accent{background:var(--accent)}.btn.accent:hover{filter:brightness(1.08)}
+  .btn.ghost{background:#fff;color:var(--brand);border:1px solid var(--line)}
+  .btn.ghost:hover{background:var(--chip)}
+  .btn.sm{padding:6px 12px;font-size:13px;border-radius:8px}
+  .btn.danger{background:var(--danger)}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:var(--chip);color:var(--brand);font-size:12px;font-weight:700}
+  .muted{color:var(--muted)}
+  .right{margin-inline-start:auto}
+  table.tbl{width:100%;border-collapse:collapse;font-size:13.5px}
+  table.tbl th,table.tbl td{border:1px solid var(--line);padding:8px 10px;text-align:right;vertical-align:top}
+  table.tbl th{background:var(--chip);color:var(--brand);font-weight:700;position:sticky;top:0}
+  table.tbl tr:nth-child(even) td{background:#fafbfe}
+  .tag{display:inline-block;background:var(--accent-soft);color:var(--accent);border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700;margin:1px}
+  .empty{text-align:center;color:var(--muted);padding:40px 10px}
+  .empty .big{font-size:40px;opacity:.5}
+
+  /* Dashboard */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+  .stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow)}
+  .stat .n{font-size:26px;font-weight:800;color:var(--brand)}
+  .stat .l{font-size:12.5px;color:var(--muted);font-weight:600}
+  .stat.accent .n{color:var(--accent)}
+
+  /* Cases list */
+  .case-card{display:flex;align-items:center;gap:14px;padding:13px 16px;border:1px solid var(--line);border-radius:12px;background:#fff;margin-bottom:9px;cursor:pointer;transition:.12s}
+  .case-card:hover{border-color:var(--brand2);box-shadow:var(--shadow);transform:translateY(-1px)}
+  .case-card .av{width:42px;height:42px;border-radius:50%;background:var(--brand);color:#fff;display:grid;place-items:center;font-weight:800;font-size:16px;flex:none}
+  .case-card .nm{font-weight:700}
+  .case-card .meta{font-size:12.5px;color:var(--muted)}
+  .status-badge{font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:999px}
+
+  /* Workbench */
+  .wb{display:grid;grid-template-columns:1fr 360px;gap:16px;align-items:start}
+  @media(max-width:1000px){.wb{grid-template-columns:1fr}}
+  .catalog .group{border:1px solid var(--line);border-radius:10px;margin-bottom:8px;overflow:hidden}
+  .catalog .group>summary{padding:10px 13px;background:var(--chip);font-weight:700;color:var(--brand);cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}
+  .catalog .group>summary::-webkit-details-marker{display:none}
+  .catalog .cat{padding:6px 10px 10px}
+  .catalog .cat .catname{font-weight:700;font-size:13px;color:var(--brand2);margin:6px 0 4px}
+  .catalog .var{display:block;width:100%;text-align:right;background:#fff;border:1px solid var(--line);border-radius:8px;padding:7px 10px;margin:3px 0;font-size:13px;line-height:1.45}
+  .catalog .var:hover{background:var(--accent-soft);border-color:var(--accent)}
+  .catalog .var .vt{font-weight:700;color:var(--ink)}
+  .catalog .var .vm{color:var(--muted);font-size:12px}
+  .sel-sign{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:#fff}
+  .sel-sign.prominent{border-inline-start:5px solid var(--accent);background:#f6fbf9}
+  .sel-sign.doubt{border-inline-start:5px solid var(--warn);background:#fff8f3}
+  .sel-sign .sh{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .sel-sign .sh .cat{font-size:11px;font-weight:700;color:var(--brand2);background:var(--chip);border-radius:6px;padding:1px 8px}
+  .sel-sign .sh .vr{font-weight:700}
+  .sel-sign .mn{font-size:13px;color:#374151;margin:6px 0}
+  .toggle{border:1px solid var(--line);background:#fff;border-radius:7px;padding:3px 9px;font-size:12px;font-weight:700;color:var(--muted)}
+  .toggle.on-acc{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .toggle.on-warn{background:var(--warn);color:#fff;border-color:var(--warn)}
+  .sidebar .bar-row{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:13px}
+  .sidebar .bar-row .lbl{width:96px;flex:none;font-weight:600}
+  .sidebar .bar{flex:1;height:14px;background:var(--chip);border-radius:7px;overflow:hidden}
+  .sidebar .bar>span{display:block;height:100%;background:linear-gradient(90deg,var(--brand2),var(--accent))}
+  .sidebar .bar-row .v{width:24px;text-align:center;font-weight:800;color:var(--brand)}
+  .trait{display:inline-block;background:var(--accent-soft);color:var(--accent);border-radius:999px;padding:3px 11px;margin:3px;font-size:12.5px;font-weight:700}
+  .trait small{opacity:.7;font-weight:600}
+
+  /* Report */
+  #reportDoc{background:#fff;border:1px solid var(--line);border-radius:10px;padding:34px 40px;max-width:820px;margin:0 auto;box-shadow:var(--shadow);line-height:1.8}
+  #reportDoc h1{text-align:center;font-size:22px;color:var(--brand);margin:0 0 4px}
+  #reportDoc .bsd{text-align:center;font-size:13px;color:var(--muted)}
+  #reportDoc .secttl{color:var(--brand);border-bottom:2px solid var(--accent);padding-bottom:3px;margin:22px 0 8px;font-size:16px}
+  #reportDoc table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+  #reportDoc table th,#reportDoc table td{border:1px solid #cdd4e2;padding:6px 8px;text-align:right;vertical-align:top}
+  #reportDoc table th{background:#eef2fb;color:var(--brand)}
+  #reportDoc .disc{font-size:12px;color:#555;background:#f6f7fb;border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:18px}
+  .kb-search{position:sticky;top:108px;z-index:5}
+  .modal-bg{position:fixed;inset:0;background:rgba(20,28,48,.45);display:grid;place-items:center;z-index:100;padding:16px}
+  .modal{background:#fff;border-radius:16px;max-width:680px;width:100%;max-height:88vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+  .modal .mhead{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;position:sticky;top:0;background:#fff}
+  .modal .mbody{padding:18px 20px}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:11px 20px;border-radius:10px;font-weight:600;z-index:200;box-shadow:var(--shadow);opacity:0;transition:.25s}
+  .toast.show{opacity:1}
+  @media print{
+    header.top,nav.tabs,#reportTools,.no-print{display:none!important}
+    body{background:#fff}main{padding:0;max-width:none}
+    #reportDoc{box-shadow:none;border:none;max-width:none;margin:0;padding:0}
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="logo">✒️</div>
+  <div>
+    <h1>מערכת אבחון גרפולוגי</h1>
+    <div class="sub" id="hdrSub">כלי עבודה מקצועי לניתוח כתב יד והפקת דוחות</div>
+  </div>
+  <div class="spacer"></div>
+  <button class="btn ghost sm" id="btnExport">גיבוי ↧</button>
+  <button class="btn ghost sm" id="btnImport">שחזור ↥</button>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button data-view="dashboard" class="active">לוח בקרה</button>
+  <button data-view="cases">תיקים</button>
+  <button data-view="workbench" id="tabWb" disabled>ניתוח כתב היד</button>
+  <button data-view="report" id="tabRep" disabled>דוח</button>
+  <button data-view="kb">מאגר הידע</button>
+  <button data-view="settings">הגדרות</button>
+</nav>
+
+<main id="app"></main>
+<div class="toast" id="toast"></div>
+<input type="file" id="fileInput" accept="application/json" class="hidden">
+
+<script src="kb.js"></script>
+<script>
+/* =================== STATE & STORAGE =================== */
+const KB = window.GRAPHO_KB || {signs:[],groups:[],glossary:[],jung:[],odemList:[],odemDesc:{},speedtest:[]};
+const LS_KEY = 'grapho_db_v1';
+const STATUSES = ['נפתח תיק','נשלחו הנחיות כתיבה','התקבל כתב יד','התקבל תשלום','האבחון התחיל','ממתין להשלמת נתונים','טיוטת דוח מוכנה','דוח אושר','דוח נשלח','התיק נסגר'];
+const STATUS_COLORS = {'נפתח תיק':'#64748b','נשלחו הנחיות כתיבה':'#7c5cbf','התקבל כתב יד':'#2563eb','התקבל תשלום':'#0891b2','האבחון התחיל':'#d97706','ממתין להשלמת נתונים':'#c2410c','טיוטת דוח מוכנה':'#9333ea','דוח אושר':'#0e8a6e','דוח נשלח':'#15803d','התיק נסגר':'#475569'};
+const PURPOSES = ['אישי','תעסוקתי','מועמד למשרה','ייעוץ קריירה','אחר'];
+const SUCCESS_PARAGRAPH = 'חשוב לזכור שהצלחה תעסוקתית ואישית אינה נשענת רק על כישרון טבעי, אלא גם על חזרתיות, עקביות ובנייה הדרגתית של יכולות. כאשר האדם פועל בסביבה המתאימה לו, תוך מודעות לחוזקותיו ולנקודות הדורשות חיזוק, ניתן לפתח לאורך זמן את "שריר ההצלחה" — היכולת להתמיד, להשתפר ולבנות תוצאות יציבות.';
+const DEFAULT_DISCLAIMER = 'האבחון מבוסס על ניתוח כתב היד כפי שנמסר, ומשמש ככלי עזר מקצועי להבנת סגנון תפקוד, נטיות, חוזקות ואתגרים. אין לראות בו אבחון רפואי, פסיכולוגי או קביעה מוחלטת, ומומלץ לשלבו עם שיחה אישית, ניסיון קודם, המלצות וכלי הערכה נוספים.';
+
+function loadDB(){
+  try{ const d = JSON.parse(localStorage.getItem(LS_KEY)); if(d&&d.cases) return d; }catch(e){}
+  return {cases:[], settings:{graphologist:'ישראל הפטקה', disclaimer:DEFAULT_DISCLAIMER, success:SUCCESS_PARAGRAPH}};
+}
+let DB = loadDB();
+function saveDB(){ DB.updatedAt=Date.now(); localStorage.setItem(LS_KEY, JSON.stringify(DB)); }
+let currentView='dashboard', currentCaseId=null;
+function curCase(){ return DB.cases.find(c=>c.id===currentCaseId); }
+
+/* =================== HELPERS =================== */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1900);}
+function fmtDate(ts){if(!ts)return'';const d=new Date(ts);return d.toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'numeric'});}
+function initials(n){n=(n||'').trim();if(!n)return'?';const p=n.split(/\s+/);return (p[0][0]||'')+(p[1]?p[1][0]:'');}
+
+/* =================== NAVIGATION =================== */
+function setView(v){
+  if((v==='workbench'||v==='report') && !currentCaseId){ toast('בחר או פתח תיק קודם'); v='cases'; }
+  currentView=v;
+  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active', b.dataset.view===v));
+  render();
+}
+$('#tabs').addEventListener('click',e=>{const b=e.target.closest('button[data-view]');if(b&&!b.disabled)setView(b.dataset.view);});
+
+function refreshTabLocks(){
+  $('#tabWb').disabled = !currentCaseId;
+  $('#tabRep').disabled = !currentCaseId;
+  const c=curCase();
+  $('#hdrSub').textContent = c ? ('תיק פעיל: '+c.name+(c.purpose?(' · '+c.purpose):'')) : 'כלי עבודה מקצועי לניתוח כתב יד והפקת דוחות';
+}
+
+/* =================== RENDER ROUTER =================== */
+function render(){
+  refreshTabLocks();
+  const v={dashboard:viewDashboard,cases:viewCases,case:viewCaseEdit,workbench:viewWorkbench,report:viewReport,kb:viewKB,settings:viewSettings}[currentView]||viewDashboard;
+  $('#app').innerHTML=v();
+  if(afterRender[currentView]) afterRender[currentView]();
+}
+const afterRender={};
+
+/* =================== DASHBOARD =================== */
+function viewDashboard(){
+  const cs=DB.cases;
+  const byStatus={};STATUSES.forEach(s=>byStatus[s]=0);
+  cs.forEach(c=>{byStatus[c.status]=(byStatus[c.status]||0)+1;});
+  const open=cs.filter(c=>c.status!=='התיק נסגר'&&c.status!=='דוח נשלח').length;
+  const waitWriting=cs.filter(c=>c.status==='נשלחו הנחיות כתיבה').length;
+  const waitPay=cs.filter(c=>['נפתח תיק','התקבל כתב יד'].includes(c.status)&&!c.paid).length;
+  const drafts=cs.filter(c=>c.status==='טיוטת דוח מוכנה').length;
+  const recent=[...cs].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)).slice(0,6);
+  return `
+  <div class="card">
+    <h2>📊 לוח בקרה</h2>
+    <div class="stats">
+      <div class="stat"><div class="n">${cs.length}</div><div class="l">סה״כ תיקים</div></div>
+      <div class="stat accent"><div class="n">${open}</div><div class="l">תיקים פתוחים</div></div>
+      <div class="stat"><div class="n">${waitWriting}</div><div class="l">ממתינים לכתב יד</div></div>
+      <div class="stat"><div class="n">${drafts}</div><div class="l">טיוטות לאישור</div></div>
+      <div class="stat"><div class="n">${KB.signs.length}</div><div class="l">סימנים במאגר</div></div>
+    </div>
+  </div>
+  <div class="row" style="align-items:stretch">
+    <div class="card" style="flex:1;min-width:280px">
+      <h2>תיקים אחרונים</h2>
+      ${recent.length?recent.map(caseRowHTML).join(''):`<div class="empty"><div class="big">🗂️</div>אין תיקים עדיין</div>`}
+      <button class="btn accent" data-act="newcase" style="margin-top:8px">+ תיק אבחון חדש</button>
+    </div>
+    <div class="card" style="flex:1;min-width:280px">
+      <h2>פילוח סטטוסים</h2>
+      ${STATUSES.filter(s=>byStatus[s]).map(s=>`
+        <div style="display:flex;align-items:center;gap:8px;margin:6px 0">
+          <span class="status-badge" style="background:${STATUS_COLORS[s]}22;color:${STATUS_COLORS[s]}">${s}</span>
+          <div style="flex:1;height:10px;background:var(--chip);border-radius:5px;overflow:hidden"><span style="display:block;height:100%;width:${Math.round(byStatus[s]/cs.length*100)}%;background:${STATUS_COLORS[s]}"></span></div>
+          <b style="color:var(--brand)">${byStatus[s]}</b>
+        </div>`).join('')||`<div class="empty">—</div>`}
+    </div>
+  </div>`;
+}
+afterRender.dashboard=bindCommon;
+
+/* =================== CASES LIST =================== */
+function caseRowHTML(c){
+  const sc=STATUS_COLORS[c.status]||'#64748b';
+  return `<div class="case-card" data-open="${c.id}">
+    <div class="av">${esc(initials(c.name))}</div>
+    <div style="flex:1;min-width:0">
+      <div class="nm">${esc(c.name||'(ללא שם)')}</div>
+      <div class="meta">${esc(c.purpose||'')}${c.age?(' · גיל '+esc(c.age)):''}${c.orderer?(' · מזמין: '+esc(c.orderer)):''} · עודכן ${fmtDate(c.updatedAt)}</div>
+    </div>
+    <span class="status-badge" style="background:${sc}22;color:${sc}">${esc(c.status||'')}</span>
+  </div>`;
+}
+function viewCases(){
+  const q=(viewCases._q||'').trim();
+  let list=[...DB.cases].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+  if(q) list=list.filter(c=>JSON.stringify([c.name,c.purpose,c.orderer,c.status]).includes(q));
+  return `
+  <div class="card">
+    <h2>🗂️ תיקי אבחון <button class="btn accent right" data-act="newcase">+ תיק חדש</button></h2>
+    <input id="caseSearch" class="fld" style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;margin-bottom:12px" placeholder="חיפוש לפי שם / סוג / סטטוס…" value="${esc(q)}">
+    ${list.length?list.map(caseRowHTML).join(''):`<div class="empty"><div class="big">🗂️</div>${q?'לא נמצאו תיקים':'אין תיקים. פתח תיק אבחון ראשון.'}</div>`}
+  </div>`;
+}
+afterRender.cases=function(){
+  bindCommon();
+  const s=$('#caseSearch'); if(s){s.addEventListener('input',()=>{viewCases._q=s.value;const p=s.selectionStart;render();const n=$('#caseSearch');if(n){n.focus();n.setSelectionRange(p,p);}});}
+};
+
+/* =================== CASE EDIT (CRM card) =================== */
+function viewCaseEdit(){
+  const c=curCase(); if(!c) return viewCases();
+  const f=(k,v)=>esc(c[k]!=null?c[k]:(v||''));
+  return `
+  <div class="card">
+    <h2>🧾 כרטיס תיק — ${esc(c.name||'חדש')}
+      <span class="right"></span>
+      <button class="btn ghost sm" data-act="del" data-id="${c.id}">מחק תיק</button>
+    </h2>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(210px,1fr))">
+      <label class="fld">שם מלא<input data-f="name" value="${f('name')}"></label>
+      <label class="fld">גיל<input data-f="age" value="${f('age')}"></label>
+      <label class="fld">מגדר<select data-f="gender"><option value="">—</option>${['זכר','נקבה'].map(o=>`<option ${c.gender===o?'selected':''}>${o}</option>`).join('')}</select></label>
+      <label class="fld">יד כותבת<select data-f="hand"><option value="">—</option>${['ימין','שמאל','שתי ידיים'].map(o=>`<option ${c.hand===o?'selected':''}>${o}</option>`).join('')}</select></label>
+      <label class="fld">שפת כתיבה<input data-f="lang" value="${f('lang','עברית')}"></label>
+      <label class="fld">מטרת האבחון<select data-f="purpose">${PURPOSES.map(o=>`<option ${c.purpose===o?'selected':''}>${o}</option>`).join('')}</select></label>
+      <label class="fld">מזמין האבחון<input data-f="orderer" value="${f('orderer')}" placeholder="האדם עצמו / מעסיק / מוסד"></label>
+      <label class="fld">פרטי קשר<input data-f="contact" value="${f('contact')}"></label>
+      <label class="fld">מחיר (₪)<input data-f="price" value="${f('price')}"></label>
+      <label class="fld">סטטוס<select data-f="status">${STATUSES.map(o=>`<option ${c.status===o?'selected':''}>${o}</option>`).join('')}</select></label>
+      <label class="fld">תשלום<select data-f="paid"><option value="">לא שולם</option><option value="1" ${c.paid?'selected':''}>שולם</option></select></label>
+    </div>
+    <label class="fld" style="margin-top:12px">מצב פיזי רלוונטי (רעד, פציעה, תרופות, עייפות…)<input data-f="physical" value="${f('physical')}"></label>
+    <label class="fld" style="margin-top:12px">הערות מנהלתיות<textarea data-f="notes">${f('notes')}</textarea></label>
+    <div class="row" style="margin-top:14px">
+      <button class="btn accent" data-act="goWb">המשך לניתוח כתב היד →</button>
+      <button class="btn ghost" data-act="guidelines">📋 הנחיות כתיבה ללקוח</button>
+      <button class="btn ghost" data-go="cases">חזרה לרשימה</button>
+    </div>
+  </div>`;
+}
+afterRender.case=function(){
+  bindCommon();
+  $('#app').querySelectorAll('[data-f]').forEach(el=>{
+    el.addEventListener('change',()=>{const c=curCase();if(!c)return;c[el.dataset.f]=el.value;c.updatedAt=Date.now();saveDB();refreshTabLocks();if(el.dataset.f==='name'||el.dataset.f==='purpose')toast('נשמר');});
+  });
+};
+
+/* =================== WORKBENCH =================== */
+function ensureAnalysis(c){ if(!c.analysis) c.analysis={signs:[],jung:{},odem:{dominant:'',sec:''},report:{}}; if(!c.analysis.signs)c.analysis.signs=[]; return c.analysis; }
+
+function viewWorkbench(){
+  const c=curCase(); if(!c) return viewCases();
+  const a=ensureAnalysis(c);
+  return `
+  <div class="wb">
+    <div>
+      <div class="card">
+        <h2>🔎 ניתוח כתב היד — ${esc(c.name)}</h2>
+        <input id="sigSearch" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;margin-bottom:10px" placeholder="חיפוש סימן או משמעות במאגר (${KB.signs.length} סימנים)…">
+        <div class="catalog" id="catalog"></div>
+      </div>
+    </div>
+    <div class="sidebar">
+      <div class="card">
+        <h2>סימנים שנבחרו <span class="right pill" id="selCount">0</span></h2>
+        <div id="selList"></div>
+      </div>
+      <div class="card">
+        <h2>🧭 טיפולוגיות</h2>
+        <h3>יונג</h3>
+        <div class="row">
+          <label class="fld" style="flex:1">עמדה<select id="jungAtt"><option value="">—</option><option ${a.jung.attitude==='מוחצן'?'selected':''}>מוחצן</option><option ${a.jung.attitude==='מופנם'?'selected':''}>מופנם</option></select></label>
+          <label class="fld" style="flex:1">פונקציה<select id="jungFn"><option value="">—</option>${['חשיבה','רגש','חישה','אינטואיציה'].map(f=>`<option ${a.jung.fn===f?'selected':''}>${f}</option>`).join('')}</select></label>
+        </div>
+        <div id="jungMean" class="muted" style="font-size:12.5px;margin-top:6px"></div>
+        <h3>אודם</h3>
+        <label class="fld">טיפוס דומיננטי<select id="odemDom"><option value="">— לפי הצלבה —</option>${KB.odemList.map(o=>`<option ${a.odem.dominant===o?'selected':''}>${o}</option>`).join('')}</select></label>
+        <div id="odemDesc" class="muted" style="font-size:12.5px;margin-top:6px"></div>
+      </div>
+      <div class="card">
+        <h2>🔗 מנוע הצלבות</h2>
+        <h3>טיפוסי אודם חוזרים</h3>
+        <div id="odemTally"></div>
+        <h3>תכונות חוזרות</h3>
+        <div id="traits"></div>
+        <div id="conflicts"></div>
+      </div>
+      <button class="btn accent" data-view-go="report" style="width:100%">בנה דוח ←</button>
+    </div>
+  </div>`;
+}
+afterRender.workbench=function(){
+  bindCommon();
+  renderCatalog('');
+  renderSelected();
+  const ss=$('#sigSearch'); ss.addEventListener('input',()=>renderCatalog(ss.value.trim()));
+  const c=curCase(),a=ensureAnalysis(c);
+  const upd=()=>{a.jung.attitude=$('#jungAtt').value;a.jung.fn=$('#jungFn').value;a.odem.dominant=$('#odemDom').value;saveDB();renderTypoMeanings();};
+  ['#jungAtt','#jungFn','#odemDom'].forEach(id=>$(id).addEventListener('change',upd));
+  renderTypoMeanings();
+  document.querySelectorAll('[data-view-go]').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.viewGo)));
+};
+
+function renderCatalog(q){
+  const box=$('#catalog'); if(!box) return;
+  q=(q||'').trim();
+  let html='';
+  if(q){
+    const hits=KB.signs.filter(s=>(s.cat+' '+s.variant+' '+s.meaning+' '+s.appearance).includes(q)).slice(0,80);
+    html=`<div class="cat">${hits.length?hits.map(varHTML).join(''):'<div class="empty">לא נמצא</div>'}</div>`;
+    box.innerHTML=html;
+  }else{
+    html=KB.groups.map((g,gi)=>{
+      const cats=g.cats.filter(cn=>KB.signs.some(s=>s.cat===cn));
+      if(!cats.length) return '';
+      return `<details class="group" ${gi===0?'open':''}><summary>▸ ${esc(g.name)}</summary>
+        ${cats.map(cn=>`<div class="cat"><div class="catname">${esc(cn)}</div>
+          ${KB.signs.filter(s=>s.cat===cn).map(varHTML).join('')}</div>`).join('')}
+      </details>`;
+    }).join('');
+    box.innerHTML=html;
+  }
+  box.querySelectorAll('[data-add]').forEach(el=>el.addEventListener('click',()=>addSign(parseInt(el.dataset.add))));
+}
+function varHTML(s){
+  const i=KB.signs.indexOf(s);
+  return `<button class="var" data-add="${i}"><span class="vt">${esc(s.variant||s.cat)}</span> ${s.meaning?`<span class="vm">— ${esc(s.meaning.slice(0,70))}${s.meaning.length>70?'…':''}</span>`:''}</button>`;
+}
+function addSign(idx){
+  const s=KB.signs[idx]; if(!s)return;
+  const c=curCase(),a=ensureAnalysis(c);
+  a.signs.push({cat:s.cat,variant:s.variant,meaning:s.meaning,appearance:s.appearance,odem:s.odem||[],prominent:false,doubt:false,intensity:'בינונית',note:''});
+  saveDB(); renderSelected(); toast('נוסף: '+(s.variant||s.cat));
+}
+function renderSelected(){
+  const c=curCase(),a=ensureAnalysis(c);
+  $('#selCount').textContent=a.signs.length;
+  const box=$('#selList');
+  if(!a.signs.length){box.innerHTML=`<div class="empty" style="padding:20px"><div class="big">✍️</div>בחר סימנים מהמאגר משמאל</div>`;}
+  else box.innerHTML=a.signs.map((s,i)=>`
+    <div class="sel-sign ${s.prominent?'prominent':''} ${s.doubt?'doubt':''}">
+      <div class="sh">
+        <span class="cat">${esc(s.cat)}</span><span class="vr">${esc(s.variant||'')}</span>
+        <span class="right"></span>
+        <button class="toggle ${s.prominent?'on-acc':''}" data-tg="prominent" data-i="${i}" title="סימן בולט">בולט</button>
+        <button class="toggle ${s.doubt?'on-warn':''}" data-tg="doubt" data-i="${i}" title="דורש בירור / בספק">ספק?</button>
+        <button class="toggle" data-rm="${i}" title="הסר">✕</button>
+      </div>
+      ${s.meaning?`<div class="mn">${esc(s.meaning)}</div>`:''}
+      ${(s.odem&&s.odem.length)?`<div>${s.odem.map(o=>`<span class="tag">${esc(o)}</span>`).join('')}</div>`:''}
+    </div>`).join('');
+  box.querySelectorAll('[data-tg]').forEach(b=>b.addEventListener('click',()=>{const i=+b.dataset.i;a.signs[i][b.dataset.tg]=!a.signs[i][b.dataset.tg];saveDB();renderSelected();}));
+  box.querySelectorAll('[data-rm]').forEach(b=>b.addEventListener('click',()=>{a.signs.splice(+b.dataset.rm,1);saveDB();renderSelected();}));
+  renderCrossRef();
+}
+function renderTypoMeanings(){
+  const c=curCase(),a=ensureAnalysis(c);
+  const jm=$('#jungMean');
+  if(jm){
+    let txt='';
+    if(a.jung.fn){const m=KB.jung.find(j=>j.main===a.jung.fn&&j.attitude===a.jung.attitude); if(m)txt=m.meaning;}
+    else if(a.jung.attitude){const m=KB.jung.find(j=>j.main===a.jung.attitude); if(m)txt=m.meaning;}
+    jm.textContent=txt;
+  }
+  const od=$('#odemDesc'); if(od) od.textContent = a.odem.dominant?(KB.odemDesc[a.odem.dominant]||''):'';
+}
+
+/* ---- Cross-reference engine ---- */
+const STOP=new Set(['של','על','אל','עם','או','גם','כי','אך','אם','לא','אין','יש','זה','זו','את','כל','כמו','אבל','מאוד','יותר','פחות','בין','לבין','תוך','לכדי','עד','ללא','ועד','אצל','לפי','כדי','מתוך','בעת','הוא','היא','הם','הן','אדם','הכותב','מבטא','מבטאת','מעיד','מעידה','מורה','ביטוי','לעיתים','ואף','וכן','כן','אלו','אלה','כאן','בו','בה','בכך','דבר','דברים','עצמו','עצמה','אותו','אותה','מה','שלא','וגם','כגון','בעיקר','אינו','אינה','להיות','יכול','יכולה','יכולת']);
+function tokens(txt){
+  return (txt||'').replace(/\([^)]*\)/g,' ').replace(/[^א-ת\s]/g,' ').split(/\s+/).filter(w=>w.length>=3&&!STOP.has(w));
+}
+function renderCrossRef(){
+  const c=curCase(),a=ensureAnalysis(c);
+  // odem tally
+  const tally={}; KB.odemList.forEach(o=>tally[o]=0);
+  a.signs.forEach(s=>(s.odem||[]).forEach(o=>{const k=KB.odemList.find(x=>x===o)||o; tally[k]=(tally[k]||0)+1;}));
+  const max=Math.max(1,...Object.values(tally));
+  const ranked=Object.entries(tally).filter(([k,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+  const ot=$('#odemTally');
+  if(ot) ot.innerHTML = ranked.length?ranked.map(([k,v])=>`
+    <div class="bar-row"><span class="lbl">${esc(k.replace(/^[א-ת]\.\s*/,''))}</span><div class="bar"><span style="width:${Math.round(v/max*100)}%"></span></div><span class="v">${v}</span></div>`).join('')
+    : `<div class="muted" style="font-size:12.5px">בחר סימנים המקושרים לטיפוסי אודם</div>`;
+  // recurring traits
+  const freq={};
+  a.signs.forEach(s=>{const seen=new Set();tokens(s.meaning).forEach(w=>{if(seen.has(w))return;seen.add(w);freq[w]=(freq[w]||0)+1;});});
+  const top=Object.entries(freq).filter(([w,n])=>n>=2).sort((a,b)=>b[1]-a[1]).slice(0,14);
+  const tr=$('#traits');
+  if(tr) tr.innerHTML = top.length?top.map(([w,n])=>`<span class="trait">${esc(w)} <small>×${n}</small></span>`).join('')
+    : `<div class="muted" style="font-size:12.5px">תכונות שחוזרות ב-2+ סימנים יופיעו כאן</div>`;
+  // conflicts / doubts note
+  const doubts=a.signs.filter(s=>s.doubt).length;
+  const cf=$('#conflicts');
+  if(cf) cf.innerHTML = doubts?`<div style="margin-top:8px;font-size:12.5px;background:var(--warn-soft);color:var(--warn);border-radius:8px;padding:8px 10px">⚠️ ${doubts} סימנים מסומנים כדורשים בירור — נסח אותם בזהירות בדוח.</div>`:'';
+}
+
+/* =================== REPORT =================== */
+function buildDraftParagraph(a){
+  const prom=a.signs.filter(s=>s.prominent&&s.meaning);
+  const base=(prom.length?prom:a.signs.filter(s=>s.meaning)).map(s=>s.meaning.replace(/\s*\.?\s*$/,''));
+  if(!base.length) return '';
+  return 'מפענוח כתב היד ניכר כי ' + base.join('; ') + '.';
+}
+function viewReport(){
+  const c=curCase(); if(!c) return viewCases();
+  const a=ensureAnalysis(c); const r=a.report||(a.report={});
+  if(r.prominentText==null){
+    r.prominentText=a.signs.filter(s=>s.prominent).map(s=>'• '+(s.variant?s.variant+' — ':'')+s.meaning).join('\n');
+  }
+  if(r.paragraph==null) r.paragraph=buildDraftParagraph(a);
+  if(r.professions==null) r.professions='';
+  if(r.recommendations==null) r.recommendations='';
+  if(r.success==null) r.success=DB.settings.success||SUCCESS_PARAGRAPH;
+  saveDB();
+  return `
+  <div class="card no-print" id="reportTools">
+    <h2>📝 עריכת הדוח — ${esc(c.name)}</h2>
+    <div class="row">
+      <label class="fld" style="flex:1;min-width:240px">סימנים בולטים (כל שורה = סימן)<textarea id="rPro" style="min-height:120px">${esc(r.prominentText)}</textarea>
+        <button class="btn ghost sm" data-act="refillPro" style="margin-top:4px;align-self:flex-start">↻ מלא מחדש מהסימנים הבולטים</button></label>
+      <label class="fld" style="flex:1;min-width:240px">פסקת ניתוח<textarea id="rPara" style="min-height:120px">${esc(r.paragraph)}</textarea>
+        <button class="btn ghost sm" data-act="draftPara" style="margin-top:4px;align-self:flex-start">✨ הצע טיוטה מהמשמעויות</button></label>
+    </div>
+    <div class="row">
+      <label class="fld" style="flex:1;min-width:240px">מקצועות מומלצים<textarea id="rProf" style="min-height:80px">${esc(r.professions)}</textarea></label>
+      <label class="fld" style="flex:1;min-width:240px">המלצות<textarea id="rRec" style="min-height:80px">${esc(r.recommendations)}</textarea></label>
+    </div>
+    <label class="fld" style="margin-top:10px">פסקת סיום ("שריר ההצלחה")<textarea id="rSucc" style="min-height:60px">${esc(r.success)}</textarea></label>
+    <div class="row" style="margin-top:12px">
+      <button class="btn accent" data-act="saveReport">💾 שמור</button>
+      <button class="btn" data-act="printReport">🖨️ הדפסה / PDF</button>
+      <button class="btn ghost" data-act="wordReport">⬇️ ייצוא Word</button>
+      <button class="btn ghost" data-view-go="workbench">→ חזרה לניתוח</button>
+    </div>
+  </div>
+  <div id="reportDoc">${reportDocHTML(c)}</div>`;
+}
+function reportDocHTML(c){
+  const a=ensureAnalysis(c),r=a.report||{};
+  const title = c.purpose==='תעסוקתי'?'אבחון גרפולוגי תעסוקתי':(c.purpose==='מועמד למשרה'?'אבחון גרפולוגי — התאמה למשרה':'אבחון גרפולוגי אישי');
+  let jung='';
+  if(a.jung&&a.jung.fn) jung=(a.jung.fn)+(a.jung.attitude?(' '+a.jung.attitude):'');
+  else if(a.jung&&a.jung.attitude) jung=a.jung.attitude;
+  const odem=a.odem&&a.odem.dominant?a.odem.dominant:'';
+  const doubts=a.signs.filter(s=>s.doubt);
+  const proLines=(r.prominentText||'').split('\n').filter(x=>x.trim());
+  return `
+    <div class="bsd">בס״ד</div>
+    <h1>${esc(title)}</h1>
+    <div style="text-align:center;color:#555;font-size:13px;margin-bottom:6px">
+      ${esc(c.name||'')}${c.age?(' · גיל '+esc(c.age)):''}${c.hand?(' · יד '+esc(c.hand)):''} · ${fmtDate(Date.now())}
+    </div>
+    ${proLines.length?`<h3 class="secttl">סימנים בולטים</h3>${proLines.map(l=>`<div>${esc(l)}</div>`).join('')}`:''}
+    ${r.paragraph?`<h3 class="secttl">ניתוח</h3><p>${esc(r.paragraph).replace(/\n/g,'<br>')}</p>`:''}
+    ${r.professions?`<h3 class="secttl">מקצועות וכיווני תעסוקה מומלצים</h3><p>${esc(r.professions).replace(/\n/g,'<br>')}</p>`:''}
+    ${r.recommendations?`<h3 class="secttl">המלצות</h3><p>${esc(r.recommendations).replace(/\n/g,'<br>')}</p>`:''}
+    ${(jung||odem)?`<h3 class="secttl">טיפולוגיה</h3><p>${jung?('<b>יונג:</b> '+esc(jung)+'  '):''}${odem?('&nbsp;&nbsp;<b>אודם:</b> '+esc(odem)):''}</p>`:''}
+    ${a.signs.length?`<h3 class="secttl">טבלת סימנים מלאה</h3>
+      <table><thead><tr><th style="width:130px">קטגוריה</th><th style="width:170px">הסימן</th><th>משמעות</th></tr></thead><tbody>
+      ${a.signs.map(s=>`<tr><td>${esc(s.cat)}</td><td>${esc(s.variant||'')}</td><td>${esc(s.meaning||'')}</td></tr>`).join('')}
+      </tbody></table>`:''}
+    ${doubts.length?`<h3 class="secttl">נקודות הדורשות בירור נוסף</h3><ul>${doubts.map(s=>`<li>${esc(s.variant||s.cat)}</li>`).join('')}</ul>`:''}
+    ${r.success?`<h3 class="secttl">לסיום</h3><p>${esc(r.success)}</p>`:''}
+    <div class="disc"><b>הסתייגות מקצועית:</b> ${esc(DB.settings.disclaimer||DEFAULT_DISCLAIMER)}</div>
+    <div style="text-align:left;margin-top:16px;color:#555">בכבוד רב,<br>${esc(DB.settings.graphologist||'')}</div>`;
+}
+afterRender.report=function(){
+  bindCommon();
+  const c=curCase(),a=ensureAnalysis(c);
+  function syncDoc(){$('#reportDoc').innerHTML=reportDocHTML(c);}
+  const map={'#rPro':'prominentText','#rPara':'paragraph','#rProf':'professions','#rRec':'recommendations','#rSucc':'success'};
+  Object.entries(map).forEach(([sel,key])=>{const el=$(sel);if(el)el.addEventListener('input',()=>{a.report[key]=el.value;saveDB();syncDoc();});});
+  document.querySelectorAll('[data-view-go]').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.viewGo)));
+};
+
+/* =================== KNOWLEDGE BASE BROWSER =================== */
+function viewKB(){
+  const q=(viewKB._q||'').trim();
+  let signs=KB.signs;
+  if(q) signs=signs.filter(s=>(s.cat+' '+s.variant+' '+s.meaning+' '+s.appearance).includes(q));
+  const glos=q?KB.glossary.filter(g=>(g.term+' '+g.def).includes(q)):KB.glossary;
+  return `
+  <div class="card kb-search">
+    <h2>📚 מאגר הידע הגרפולוגי</h2>
+    <input id="kbSearch" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px" placeholder="חיפוש במאגר: ${KB.signs.length} סימנים · ${KB.glossary.length} מונחים…" value="${esc(q)}">
+    <div class="muted" style="font-size:12.5px;margin-top:6px">מקור: קובץ העבודה של ${esc(KB.meta?KB.meta.graphologist:'')}. לעיון בלבד — להוספת סימנים לאבחון השתמש במסך הניתוח.</div>
+  </div>
+  <div class="card">
+    <h2>סימנים גרפולוגיים ${q?`(${signs.length})`:''}</h2>
+    <div style="max-height:60vh;overflow:auto">
+    <table class="tbl"><thead><tr><th style="width:120px">קטגוריה</th><th style="width:170px">סימן</th><th>משמעות</th><th style="width:90px">אודם</th></tr></thead><tbody>
+    ${signs.slice(0,400).map(s=>`<tr><td>${esc(s.cat)}</td><td>${esc(s.variant||'')}</td><td>${esc(s.meaning||'')}${s.appearance?`<div class="muted" style="font-size:11.5px">תיאור: ${esc(s.appearance)}</div>`:''}</td><td>${(s.odem||[]).map(o=>`<span class="tag">${esc(o.replace(/^[א-ת]\.\s*/,''))}</span>`).join('')}</td></tr>`).join('')}
+    </tbody></table>
+    ${signs.length>400?`<div class="muted" style="padding:8px">מוצגים 400 ראשונים — צמצם בחיפוש.</div>`:''}
+    </div>
+  </div>
+  ${glos.length?`<div class="card"><h2>מילון מונחים</h2>
+    <table class="tbl"><tbody>${glos.map(g=>`<tr><td style="width:150px;font-weight:700">${esc(g.term)}</td><td>${esc(g.def)}</td></tr>`).join('')}</tbody></table></div>`:''}`;
+}
+afterRender.kb=function(){
+  bindCommon();
+  const s=$('#kbSearch'); if(s)s.addEventListener('input',()=>{viewKB._q=s.value;const p=s.selectionStart;render();const n=$('#kbSearch');if(n){n.focus();n.setSelectionRange(p,p);}});
+};
+
+/* =================== SETTINGS =================== */
+function viewSettings(){
+  const s=DB.settings;
+  return `
+  <div class="card">
+    <h2>⚙️ הגדרות</h2>
+    <label class="fld">שם הגרפולוג (יופיע בדוח)<input id="setName" value="${esc(s.graphologist||'')}"></label>
+    <label class="fld" style="margin-top:12px">הסתייגות מקצועית (תחתית הדוח)<textarea id="setDisc" style="min-height:90px">${esc(s.disclaimer||DEFAULT_DISCLAIMER)}</textarea></label>
+    <label class="fld" style="margin-top:12px">פסקת סיום ברירת מחדל ("שריר ההצלחה")<textarea id="setSucc" style="min-height:90px">${esc(s.success||SUCCESS_PARAGRAPH)}</textarea></label>
+    <div class="row" style="margin-top:12px"><button class="btn accent" data-act="saveSettings">💾 שמירה</button></div>
+  </div>
+  <div class="card">
+    <h2>נתונים וגיבוי</h2>
+    <p class="muted">כל הנתונים נשמרים מקומית בדפדפן זה. מומלץ לגבות מדי פעם לקובץ.</p>
+    <div class="row">
+      <button class="btn ghost" data-act="export">↧ גיבוי לקובץ</button>
+      <button class="btn ghost" data-act="import">↥ שחזור מקובץ</button>
+      <button class="btn danger" data-act="wipe">מחיקת כל הנתונים</button>
+    </div>
+    <p class="muted" style="margin-top:10px">מאגר הידע: ${KB.signs.length} סימנים · ${KB.glossary.length} מונחים · ${KB.jung.length} ערכי יונג · ${KB.odemList.length} טיפוסי אודם.</p>
+  </div>`;
+}
+afterRender.settings=bindCommon;
+
+/* =================== ACTIONS =================== */
+function bindCommon(){
+  $('#app').querySelectorAll('[data-open]').forEach(el=>el.addEventListener('click',()=>{currentCaseId=el.dataset.open;currentView='case';setView('case');}));
+  $('#app').querySelectorAll('[data-go]').forEach(el=>el.addEventListener('click',()=>setView(el.dataset.go)));
+  $('#app').querySelectorAll('[data-act]').forEach(el=>el.addEventListener('click',()=>doAction(el.dataset.act,el)));
+}
+function doAction(act,el){
+  const c=curCase();
+  switch(act){
+    case 'newcase':{
+      const nc={id:uid(),name:'',purpose:'אישי',status:'נפתח תיק',createdAt:Date.now(),updatedAt:Date.now(),analysis:{signs:[],jung:{},odem:{dominant:'',sec:''},report:{}}};
+      DB.cases.push(nc);saveDB();currentCaseId=nc.id;setView('case');break;}
+    case 'del':{
+      if(confirm('למחוק את התיק לצמיתות?')){DB.cases=DB.cases.filter(x=>x.id!==el.dataset.id);if(currentCaseId===el.dataset.id)currentCaseId=null;saveDB();setView('cases');toast('התיק נמחק');}break;}
+    case 'goWb': setView('workbench');break;
+    case 'guidelines': showGuidelines();break;
+    case 'draftPara':{ensureAnalysis(c);const t=buildDraftParagraph(c.analysis);$('#rPara').value=t;c.analysis.report.paragraph=t;saveDB();$('#reportDoc').innerHTML=reportDocHTML(c);toast('נוצרה טיוטה');break;}
+    case 'refillPro':{ensureAnalysis(c);const t=c.analysis.signs.filter(s=>s.prominent).map(s=>'• '+(s.variant?s.variant+' — ':'')+s.meaning).join('\n');$('#rPro').value=t;c.analysis.report.prominentText=t;saveDB();$('#reportDoc').innerHTML=reportDocHTML(c);break;}
+    case 'saveReport': saveDB();toast('הדוח נשמר');break;
+    case 'printReport': window.print();break;
+    case 'wordReport': exportWord(c);break;
+    case 'saveSettings':{DB.settings.graphologist=$('#setName').value;DB.settings.disclaimer=$('#setDisc').value;DB.settings.success=$('#setSucc').value;saveDB();toast('ההגדרות נשמרו');break;}
+    case 'export': exportBackup();break;
+    case 'import': $('#fileInput').click();break;
+    case 'wipe': if(confirm('למחוק את כל התיקים והנתונים? פעולה בלתי הפיכה.')){DB={cases:[],settings:DB.settings};saveDB();currentCaseId=null;setView('cases');}break;
+  }
+}
+
+function showGuidelines(){
+  const c=curCase();
+  const txt=`הנחיות לכתיבת כתב יד לאבחון גרפולוגי:
+• לכתוב על דף A4 חלק (ללא שורות).
+• להשתמש בעט כדורי רגיל בלבד (לא טוש/עיפרון/פיילוט).
+• לכתוב טקסט חופשי ורציף של לפחות 15 שורות — לא להעתיק ולא בהכתבה.
+• להוסיף חתימה בסיום.
+• לציין גיל ויד כותבת${c&&c.name?(' ('+c.name+')'):''}.
+• לכתוב בישיבה נוחה ליד שולחן יציב, במצב רגוע.
+• אם יש מגבלה פיזית המשפיעה על הכתיבה — לציין במפורש.
+• לצלם/לסרוק באיכות טובה.`;
+  const bg=document.createElement('div');bg.className='modal-bg';
+  bg.innerHTML=`<div class="modal"><div class="mhead"><b>📋 הנחיות כתיבה ללקוח</b><span class="right"></span><button class="btn ghost sm" data-close>✕</button></div>
+    <div class="mbody"><textarea style="width:100%;min-height:230px;border:1px solid var(--line);border-radius:9px;padding:10px;line-height:1.7">${esc(txt)}</textarea>
+    <div class="row" style="margin-top:10px"><button class="btn accent" data-copy>📋 העתק</button><button class="btn ghost" data-close>סגור</button></div></div></div>`;
+  document.body.appendChild(bg);
+  bg.addEventListener('click',e=>{if(e.target===bg||e.target.hasAttribute('data-close'))bg.remove();if(e.target.hasAttribute('data-copy')){navigator.clipboard.writeText(txt);toast('הועתק');}});
+}
+
+/* ---- Export Word / Backup ---- */
+function exportWord(c){
+  const html=`<html dir="rtl" xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word'><head><meta charset="utf-8"><style>body{font-family:'David',Arial;direction:rtl;line-height:1.8}h1{text-align:center;color:#2b3a67}h3{color:#2b3a67;border-bottom:1px solid #0e8a6e}table{border-collapse:collapse;width:100%}td,th{border:1px solid #999;padding:5px;text-align:right}</style></head><body>${reportDocHTML(c)}</body></html>`;
+  const blob=new Blob(['﻿'+html],{type:'application/msword'});
+  dl(blob,'אבחון - '+(c.name||'ללא שם')+'.doc');
+}
+function exportBackup(){
+  const blob=new Blob([JSON.stringify(DB,null,1)],{type:'application/json'});
+  dl(blob,'גיבוי-אבחונים-'+new Date().toISOString().slice(0,10)+'.json');
+  toast('הגיבוי ירד');
+}
+function dl(blob,name){const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1500);}
+$('#fileInput').addEventListener('change',e=>{
+  const f=e.target.files[0];if(!f)return;const rd=new FileReader();
+  rd.onload=()=>{try{const d=JSON.parse(rd.result);if(d&&d.cases){if(confirm('שחזור יחליף את כל הנתונים הקיימים. להמשיך?')){DB=d;saveDB();currentCaseId=null;setView('cases');toast('שוחזר בהצלחה');}}else toast('קובץ לא תקין');}catch(err){toast('שגיאה בקריאת הקובץ');}};
+  rd.readAsText(f);e.target.value='';
+});
+$('#btnExport').addEventListener('click',exportBackup);
+$('#btnImport').addEventListener('click',()=>$('#fileInput').click());
+
+/* =================== BOOT =================== */
+render();
+</script>
+</body>
+</html>
