@@ -405,12 +405,13 @@ afterRender.cases=function(){
 /* ============================================================
    WORKSPACE (multi-step) — שלד תהליך האבחון
    ============================================================ */
-const STEPS=[['details','פרטים ואתיקה'],['impression','התרשמות'],['images','כתב יד'],['signs','סימנים'],['occupational','תעסוקה'],['redflags','דגלים אדומים'],['typology','טיפולוגיה'],['report','דוח']];
+const STEPS=[['details','פרטים ואתיקה'],['impression','התרשמות'],['images','כתב יד'],['signs','סימנים'],['ai','ניתוח AI 🤖'],['occupational','תעסוקה'],['redflags','דגלים אדומים'],['typology','טיפולוגיה'],['report','דוח']];
 function stepDone(c,s){const a=ensure(c);switch(s){
   case'details':return!!(c.name&&c.purpose);
   case'impression':return Object.values(c.impression||{}).some(v=>v);
   case'images':return(c.images||[]).length>0;
   case'signs':return a.signs.length>0;
+  case'ai':return!!a.ai;
   case'occupational':return Object.keys(a.profile||{}).some(k=>a.profile[k])||Object.values(a.riasec).some(v=>v>0);
   case'redflags':return Object.keys(c.analysis.redflags||{}).length>0;
   case'typology':return!!(a.jung.fn||a.odem.dominant);
@@ -420,7 +421,7 @@ function viewWorkspace(){
   const c=curCase();if(!c)return viewCases();ensure(c);
   const bar=`<div class="steps">${STEPS.map(([k,l])=>`<button data-step="${k}" class="${caseStep===k?'active':''} ${stepDone(c,k)?'done':''}">${l}<span class="dot"></span></button>`).join('')}</div>`;
   const back=`<div class="row" style="margin-bottom:10px"><button class="btn ghost sm" data-go="cases">← כל התיקים</button><span class="pill">${esc(c.name||'תיק חדש')}</span><span class="muted">${esc(c.purpose||'')}</span></div>`;
-  const body={details:stepDetails,impression:stepImpression,images:stepImages,signs:stepSigns,occupational:stepOccupational,redflags:stepRedFlags,typology:stepTypology,report:stepReport}[caseStep](c);
+  const body={details:stepDetails,impression:stepImpression,images:stepImages,signs:stepSigns,ai:stepAi,occupational:stepOccupational,redflags:stepRedFlags,typology:stepTypology,report:stepReport}[caseStep](c);
   return back+bar+body;
 }
 afterRender.workspace=function(){const c=curCase();if(!c)return;if(stepAfter[caseStep])stepAfter[caseStep](c);};
@@ -846,6 +847,124 @@ function renderMatchInto(c,el){const a=ensure(c),req=c.job.req||{};
 }
 
 /* ============================================================
+   AI ANALYSIS (שלב ה' באפיון) — ניתוח כתב יד אוטומטי ע"י Claude
+   קורא ישירות ל-Claude Messages API מהדפדפן (ראייה), במקביל לאבחון הידני.
+   ============================================================ */
+const AI_MODEL='claude-opus-4-8';
+const AI_SCHEMA={type:'object',additionalProperties:false,
+  properties:{
+    impression:{type:'string',description:'התרשמות כללית מהכתב'},
+    prominentSigns:{type:'array',items:{type:'object',additionalProperties:false,properties:{category:{type:'string'},sign:{type:'string'},meaning:{type:'string'}},required:['category','sign','meaning']}},
+    aspectFunction:{type:'string',description:'היבט חשיבתי-תפקודי'},
+    aspectSocial:{type:'string',description:'היבט חברתי'},
+    aspectPersonal:{type:'string',description:'היבט אישי'},
+    strengths:{type:'string'},blocks:{type:'string'},
+    jung:{type:'string',description:'הערכת טיפוס יונג'},
+    odem:{type:'string',description:'הערכת טיפוס אודם'},
+    occupational:{type:'string',description:'כיווני תעסוקה מומלצים'},
+    redFlags:{type:'array',items:{type:'string'}},
+    caveats:{type:'string',description:'הסתייגויות ונקודות לבירור'}},
+  required:['impression','prominentSigns','aspectFunction','aspectSocial','aspectPersonal','strengths','blocks','jung','odem','occupational','redFlags','caveats']};
+
+function buildAiRequest(c){
+  const key=(DB.settings.apiKey||'').trim();
+  const cats=KB.groups.map(g=>g.name+': '+g.cats.join(', ')).join('\n');
+  const odem=KB.odemList.map(o=>o+' — '+(KB.odemDesc[o]||'')).join('\n');
+  const sys=`אתה עוזר מקצועי לגרפולוג מומחה (שיטת גרפולוגיה בעברית, מבוססת טיפוסי אודם ופונקציות יונג). אתה כלי עזר — לא מאבחן לבד.
+עקרונות מחייבים:
+• כל מסקנה חייבת להישען על כמה סימנים, לא על סימן יחיד.
+• נסח בזהירות; כשיש ספק ציין זאת מפורשות והשתמש בניסוח כמו "ניכרים סימנים המחייבים בירור נוסף".
+• אין לתת אבחנה רפואית או פסיכולוגית — רק תיאור סגנון תפקוד, נטיות, חוזקות ואתגרים.
+• כתוב בעברית, בשפה מקצועית אך נגישה.
+קטגוריות הסימנים לעבוד לפיהן:
+${cats}
+טיפוסי אודם:
+${odem}
+פונקציות יונג: חשיבה / רגש / חישה / אינטואיציה, בעמדת מוחצן או מופנם.
+החזר JSON בלבד לפי הסכמה שניתנה.`;
+  const ctx=`פרטי הנבדק: שם ${c.name||'-'}, גיל ${c.age||'-'}, יד כותבת ${c.hand||'-'}, מטרת אבחון ${c.purpose||'-'}${c.physical?(', מצב פיזי רלוונטי: '+c.physical):''}.${(c.impression&&c.impression.general)?(' התרשמות ראשונית של המאבחן: '+c.impression.general):''}`;
+  const imgs=(c.images||[]).slice(0,3).map(src=>({type:'image',source:{type:'base64',media_type:'image/jpeg',data:(src.split(',')[1]||'')}}));
+  const body={model:AI_MODEL,max_tokens:12000,thinking:{type:'adaptive'},
+    output_config:{format:{type:'json_schema',schema:AI_SCHEMA}},
+    system:sys,
+    messages:[{role:'user',content:[...imgs,{type:'text',text:ctx+'\n\nנתח את כתב היד שבתמונות לפי שיטת הגרפולוגיה והחזר JSON לפי הסכמה.'}]}]};
+  return {url:'https://api.anthropic.com/v1/messages',
+    headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body};
+}
+async function runAiAnalysis(c){
+  const a=ensure(c);
+  if(!(DB.settings.apiKey||'').trim()){toast('הזן מפתח API בהגדרות');setView('settings');return;}
+  if(!(c.images||[]).length){toast('העלה תמונת כתב יד קודם');setStep('images');return;}
+  a.aiLoading=true;a.aiError='';renderAiPanel();
+  try{
+    const req=buildAiRequest(c);
+    const r=await fetch(req.url,{method:'POST',headers:req.headers,body:JSON.stringify(req.body)});
+    if(!r.ok){let m=r.status+'';try{const e=await r.json();m+=' '+(e.error&&e.error.message||'');}catch(_){}throw new Error('שגיאת שרת '+m);}
+    const data=await r.json();
+    if(data.stop_reason==='refusal')throw new Error('הבקשה נדחתה מטעמי בטיחות.');
+    const txt=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
+    const parsed=JSON.parse(txt);
+    parsed.at=Date.now();a.ai=parsed;
+  }catch(err){a.aiError=(''+(err&&err.message||err)).slice(0,300);}
+  a.aiLoading=false;saveDB();renderAiPanel();
+}
+function stepAi(c){
+  const a=ensure(c);const hasKey=!!(DB.settings.apiKey||'').trim();const imgN=(c.images||[]).length;
+  return `<div class="card"><h2>🤖 ניתוח AI אוטומטי של כתב היד</h2>
+    <div class="muted" style="margin-bottom:10px">Claude מנתח את תמונת כתב היד <b>במקביל</b> לאבחון הידני שלך — כעמית מקצועי שמציע דעה שנייה. <b>שיקול הדעת המקצועי שלך מכריע.</b></div>
+    ${!hasKey?`<div style="background:var(--warn-soft);color:var(--warn);border-radius:9px;padding:10px 12px;margin-bottom:10px">⚠️ כדי להפעיל ניתוח AI יש להזין מפתח Claude API ב<a href="#" data-go="settings">הגדרות</a>.</div>`:''}
+    ${imgN?'':`<div style="background:var(--chip);border-radius:9px;padding:10px 12px;margin-bottom:10px">📷 אין תמונות. <a href="#" data-step="images">העלה תמונת כתב יד</a> תחילה.</div>`}
+    <div class="row"><button class="btn accent" data-act="runAi" ${(!hasKey||!imgN)?'disabled':''}>▶️ הפעל ניתוח AI</button>
+      <span class="muted" style="align-self:center">משתמש ב-${imgN} תמונות · מודל ${AI_MODEL} · ~₪0.5</span></div>
+    <div id="aiPanel" style="margin-top:14px"></div>
+  </div>`;
+}
+stepAfter.ai=function(c){renderAiPanel();};
+function renderAiPanel(){
+  const c=curCase();if(!c)return;const a=ensure(c);const box=$('#aiPanel');if(!box)return;
+  if(a.aiLoading){box.innerHTML=`<div class="empty"><div class="big">🤖</div>מנתח את כתב היד… זה עשוי לקחת כדקה.<div class="muted" style="margin-top:6px">אל תסגור את הדף.</div></div>`;return;}
+  if(a.aiError){box.innerHTML=`<div style="background:var(--warn-soft);color:var(--warn);border-radius:9px;padding:10px 12px">⚠️ ${esc(a.aiError)}</div>`;return;}
+  const ai=a.ai;if(!ai){box.innerHTML=`<div class="muted">טרם הופעל ניתוח.</div>`;return;}
+  const sec=(t,v)=>v?`<h3>${t}</h3><div style="white-space:pre-wrap">${esc(v)}</div>`:'';
+  box.innerHTML=`
+    <div style="background:#f6fbf9;border:1px solid var(--accent);border-radius:10px;padding:14px 16px">
+      <div class="muted" style="font-size:12px;margin-bottom:6px">טיוטת AI · ${fmtDate(ai.at)} · להשוואה ולעריכה</div>
+      ${sec('התרשמות כללית',ai.impression)}
+      ${(ai.prominentSigns&&ai.prominentSigns.length)?`<h3>סימנים בולטים</h3><table class="tbl"><thead><tr><th style="width:120px">קטגוריה</th><th style="width:150px">סימן</th><th>משמעות</th></tr></thead><tbody>${ai.prominentSigns.map(s=>`<tr><td>${esc(s.category)}</td><td>${esc(s.sign)}</td><td>${esc(s.meaning)}</td></tr>`).join('')}</tbody></table>`:''}
+      ${sec('היבט חשיבתי-תפקודי',ai.aspectFunction)}
+      ${sec('היבט חברתי',ai.aspectSocial)}
+      ${sec('היבט אישי',ai.aspectPersonal)}
+      ${sec('חוזקות',ai.strengths)}
+      ${sec('נקודות לחיזוק',ai.blocks)}
+      ${sec('יונג',ai.jung)}${sec('אודם',ai.odem)}
+      ${sec('כיווני תעסוקה',ai.occupational)}
+      ${(ai.redFlags&&ai.redFlags.length)?`<h3>דגלים אדומים</h3><ul>${ai.redFlags.map(f=>`<li>${esc(f)}</li>`).join('')}</ul>`:''}
+      ${sec('הסתייגויות ונקודות לבירור',ai.caveats)}
+      <div class="row" style="margin-top:12px">
+        <button class="btn accent sm" data-act="aiImport">📥 ייבא לטיוטת הדוח</button>
+        <button class="btn ghost sm" data-act="runAi">↻ הרץ שוב</button>
+      </div>
+    </div>`;
+  box.querySelectorAll('[data-act]').forEach(el=>el.addEventListener('click',()=>doAction(el.dataset.act,el)));
+  box.querySelectorAll('[data-go]').forEach(el=>el.addEventListener('click',e=>{e.preventDefault();setView(el.dataset.go);}));
+  box.querySelectorAll('[data-step]').forEach(el=>el.addEventListener('click',e=>{e.preventDefault();setStep(el.dataset.step);}));
+}
+function aiImport(c){
+  const a=ensure(c),ai=a.ai;if(!ai)return;const r=a.report=a.report||{};
+  const fill=(k,v)=>{if(v&&!(r[k]&&r[k].trim()))r[k]=v;};
+  if(ai.prominentSigns&&ai.prominentSigns.length&&!(r.prominentText&&r.prominentText.trim()))
+    r.prominentText=ai.prominentSigns.map(s=>'• '+s.sign+' — '+s.meaning).join('\n');
+  fill('paragraph',ai.impression);
+  r.sections=r.sections||{};
+  if(ai.aspectFunction&&!r.sections.function)r.sections.function=ai.aspectFunction;
+  if(ai.aspectSocial&&!r.sections.social)r.sections.social=ai.aspectSocial;
+  if(ai.aspectPersonal&&!r.sections.personal)r.sections.personal=ai.aspectPersonal;
+  fill('strengths',ai.strengths);fill('blocks',ai.blocks);fill('professions',ai.occupational);fill('recommendations',ai.caveats);
+  saveDB();toast('יובא לטיוטת הדוח (שדות ריקים בלבד)');setStep('report');
+}
+
+/* ============================================================
    COMPARISON (11) — השוואת מועמדים
    ============================================================ */
 function viewComparison(){
@@ -901,6 +1020,11 @@ function viewSettings(){const s=DB.settings;
     <label class="fld" style="margin-top:12px">הסתייגות מקצועית (תחתית הדוח)<textarea id="setDisc" style="min-height:80px">${esc(s.disclaimer||DEFAULT_DISCLAIMER)}</textarea></label>
     <label class="fld" style="margin-top:12px">פסקת סיום ברירת מחדל<textarea id="setSucc" style="min-height:70px">${esc(s.success||SUCCESS_PARAGRAPH)}</textarea></label>
     <div class="row" style="margin-top:12px"><button class="btn accent" data-act="saveSettings">💾 שמירה</button></div></div>
+  <div class="card"><h2>🤖 חיבור AI (Claude)</h2>
+    <div class="muted" style="margin-bottom:8px">מאפשר ניתוח אוטומטי של תמונת כתב היד (שלב "ניתוח AI"). הזן מפתח Claude API מ-<a href="https://console.anthropic.com/" target="_blank">console.anthropic.com</a>.</div>
+    <label class="fld">מפתח API<input id="aiKey" type="password" value="${esc(s.apiKey||'')}" placeholder="sk-ant-..." autocomplete="off"></label>
+    <div style="background:var(--warn-soft);color:var(--warn);border-radius:9px;padding:9px 11px;margin-top:8px;font-size:12.5px">🔒 המפתח נשמר אך ורק בדפדפן שלך (מקומית) ונשלח ישירות ל-Anthropic. אל תזין אותו במחשב משותף ואל תשתף את הקובץ עם המפתח. עלות משוערת: ~₪0.5 לכל ניתוח.</div>
+    <div class="row" style="margin-top:10px"><button class="btn accent" data-act="saveSettings">💾 שמירה</button></div></div>
   <div class="card"><h2>💰 ניהול מחירונים</h2>
     <div id="priceList">${(s.prices||[]).map((p,i)=>`<div class="row" style="margin-bottom:6px"><input data-pl="label" data-i="${i}" value="${esc(p.label)}" style="flex:3;padding:7px 9px;border:1px solid var(--line);border-radius:8px"><input data-pl="amount" data-i="${i}" value="${esc(p.amount)}" style="flex:1;padding:7px 9px;border:1px solid var(--line);border-radius:8px"><button class="btn ghost sm" data-act="rmPrice" data-i="${i}">✕</button></div>`).join('')}</div>
     <button class="btn ghost sm" data-act="addPrice">+ מסלול</button></div>
@@ -936,7 +1060,9 @@ function doAction(act,el){const c=curCase();
     case'printReport':window.print();break;
     case'wordReport':exportWord(c);break;
     case'learnMark':{ensure(c);c.learning.flag=!c.learning.flag;if(c.learning.flag&&!c.learning.note)c.learning.note=prompt('הערה למאגר הלמידה (אופציונלי):')||'';saveDB();render();toast(c.learning.flag?'נוסף למאגר הלמידה':'הוסר');break;}
-    case'saveSettings':DB.settings.graphologist=$('#setName').value;DB.settings.disclaimer=$('#setDisc').value;DB.settings.success=$('#setSucc').value;saveDB();toast('ההגדרות נשמרו');break;
+    case'saveSettings':if($('#setName'))DB.settings.graphologist=$('#setName').value;if($('#setDisc'))DB.settings.disclaimer=$('#setDisc').value;if($('#setSucc'))DB.settings.success=$('#setSucc').value;if($('#aiKey'))DB.settings.apiKey=$('#aiKey').value.trim();saveDB();toast('ההגדרות נשמרו');break;
+    case'runAi':runAiAnalysis(c);break;
+    case'aiImport':aiImport(c);break;
     case'addPrice':DB.settings.prices.push({label:'מסלול חדש',amount:0});saveDB();render();break;
     case'rmPrice':DB.settings.prices.splice(+el.dataset.i,1);saveDB();render();break;
     case'addProf':DB.settings.profBank.push({traits:'',prof:'',axes:[]});saveDB();render();break;
