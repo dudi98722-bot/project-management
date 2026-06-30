@@ -149,6 +149,19 @@ tbody tr:last-child td{border-bottom:none}
 .pivot td:first-child,.pivot th:first-child{text-align:right;font-weight:700}
 .note-cell{white-space:normal;min-width:180px;color:var(--muted);font-size:12.5px}
 
+/* Dudi balance breakdown */
+.balance-grid{display:grid;grid-template-columns:1.5fr 1fr;gap:20px;align-items:center;margin-top:10px}
+@media(max-width:760px){.balance-grid{grid-template-columns:1fr}}
+.balance-tbl{width:100%;border-collapse:collapse;font-size:14px}
+.balance-tbl th{background:#f4f7fb;color:var(--navy);padding:11px 13px;text-align:right;font-size:12.5px;font-weight:700;border-bottom:2px solid var(--line)}
+.balance-tbl td{padding:11px 13px;border-bottom:1px solid #f0f3f8;white-space:nowrap}
+.balance-tbl td:first-child{font-weight:700}
+.balance-tbl .focus{font-weight:800;color:var(--red);font-size:15px}
+.balance-tbl tr.total td{background:#f7faff;font-weight:800;border-top:2px solid var(--line);border-bottom:none}
+.balance-tbl tr.total .focus{color:var(--navy)}
+.mini-prog{height:6px;border-radius:6px;background:#edf1f6;margin-top:5px;overflow:hidden;width:90px}
+.mini-prog>i{display:block;height:100%;background:linear-gradient(90deg,var(--teal),var(--green))}
+
 @media(max-width:640px){
   .brand h1{font-size:17px}.kpi .val{font-size:22px}
   .search input{width:150px}
@@ -263,6 +276,8 @@ tbody tr:last-child td{border-bottom:none}
       </div>
       <button class="btn ghost" onclick="printReports()">🖨️ הדפסה / PDF</button>
     </div>
+
+    <div class="panel" id="dudiBalancePanel" style="margin-top:8px"></div>
 
     <div class="filters" id="repFilters">
       <div class="f-field"><label>סוג תנועה</label>
@@ -674,8 +689,44 @@ function getFiltered(){
   }).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
 }
 const TYPE_COLORS={'הוצאת עיסקא':'#0f2747','ריבית מיטב':'#c8a24a','דודי — הוצאות':'#2a9d8f','דודי — ריבית':'#d65a4f'};
+function renderDudiBalance(){
+  const paidInt=sum(DATA.dudiInterest,'amount');
+  const paidExp=sum(DATA.dudiExpenses,'amount');
+  const balInt=getSummary('יתרה לתשלום — ריביות');
+  const balExp=getSummary('יתרה לתשלום — הוצאות');
+  const oblInt=paidInt+balInt, oblExp=paidExp+balExp;
+  const oblTot=oblInt+oblExp, paidTot=paidInt+paidExp, balTot=balInt+balExp;
+  const pc=(p,o)=>o>0?Math.round(p/o*100):0;
+  const row=(name,obl,paid,bal,cls)=>`<tr class="${cls||''}">
+    <td>${name}</td><td class="num">${money(obl)}</td><td class="num">${money(paid)}</td>
+    <td class="num focus">${money(bal)}</td>
+    <td class="num">${pc(paid,obl)}%<div class="mini-prog"><i style="width:${pc(paid,obl)}%"></i></div></td></tr>`;
+  document.getElementById('dudiBalancePanel').innerHTML=`
+    <h3>💰 יתרת דודי — ריביות מול הוצאות</h3>
+    <div class="ph-sub">פירוט יתרת התשלום של דודי לפי רכיב · התחייבות = שולם + יתרה</div>
+    <div class="balance-grid">
+      <table class="balance-tbl">
+        <thead><tr><th>רכיב</th><th>סך התחייבות</th><th>שולם</th><th>יתרה לתשלום</th><th>% שולם</th></tr></thead>
+        <tbody>
+          ${row('ריביות',oblInt,paidInt,balInt)}
+          ${row('הוצאות',oblExp,paidExp,balExp)}
+          ${row('סה״כ',oblTot,paidTot,balTot,'total')}
+        </tbody>
+      </table>
+      <div class="chart-box" style="height:240px"><canvas id="chDudiBal"></canvas></div>
+    </div>`;
+  destroyChart('chDudiBal');
+  charts.chDudiBal=new Chart(document.getElementById('chDudiBal'),{
+    type:'doughnut',
+    data:{labels:['יתרה — ריביות','יתרה — הוצאות'],datasets:[{data:[balInt,balExp],backgroundColor:['#d65a4f','#e8a33d'],borderWidth:2,borderColor:'#fff'}]},
+    options:{plugins:{legend:{position:'bottom',rtl:true,labels:{font:{family:'Heebo',size:12.5},boxWidth:12,padding:12}},
+      tooltip:{rtl:true,callbacks:{label:c=>` ${c.label}: ${ILS.format(c.parsed)} (${balTot>0?Math.round(c.parsed/balTot*100):0}%)`}}},cutout:'58%'}
+  });
+}
+
 function renderReports(){
   buildYearFilter();
+  renderDudiBalance();
   const rows=getFiltered();
   const total=sum(rows,'amount');
   // KPIs
