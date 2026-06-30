@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>אופקים — ניהול עסקת מגרש 1.5 דונם</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --navy:#0f2747; --navy2:#1c3a63; --gold:#c8a24a; --gold-soft:#e7d3a1;
+  --teal:#2a9d8f; --red:#d65a4f; --green:#3fa66a; --amber:#e8a33d;
+  --bg:#eef2f7; --card:#ffffff; --line:#e2e8f0; --ink:#1a2435; --muted:#6b7892;
+  --shadow:0 6px 22px rgba(15,39,71,.08); --shadow-lg:0 12px 40px rgba(15,39,71,.14);
+  --radius:16px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:'Heebo',system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+.wrap{max-width:1280px;margin:0 auto;padding:0 18px 60px}
+
+/* ---------- Header ---------- */
+header.top{background:linear-gradient(120deg,var(--navy) 0%,var(--navy2) 60%,#27466f 100%);color:#fff;padding:22px 0 0;box-shadow:var(--shadow)}
+.head-in{max-width:1280px;margin:0 auto;padding:0 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px}
+.brand{display:flex;align-items:center;gap:14px}
+.logo{width:50px;height:50px;border-radius:13px;background:linear-gradient(135deg,var(--gold),#9c7b2e);display:grid;place-items:center;font-size:25px;box-shadow:0 4px 14px rgba(200,162,74,.4)}
+.brand h1{font-size:21px;margin:0;font-weight:800;letter-spacing:-.3px}
+.brand p{margin:2px 0 0;font-size:12.5px;color:var(--gold-soft);font-weight:500}
+.head-tools{display:flex;gap:8px;flex-wrap:wrap}
+.htbtn{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:10px;padding:8px 13px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;transition:.15s;display:flex;align-items:center;gap:6px}
+.htbtn:hover{background:rgba(255,255,255,.22)}
+nav.tabs{max-width:1280px;margin:18px auto 0;padding:0 10px;display:flex;gap:4px;overflow-x:auto}
+nav.tabs button{background:transparent;border:none;color:#cdd9ea;padding:13px 18px;font-size:14.5px;font-weight:600;cursor:pointer;font-family:inherit;border-radius:11px 11px 0 0;white-space:nowrap;transition:.15s;border-bottom:3px solid transparent}
+nav.tabs button:hover{color:#fff}
+nav.tabs button.active{background:var(--bg);color:var(--navy);border-bottom-color:var(--gold)}
+
+/* ---------- Sections ---------- */
+.view{display:none;animation:fade .35s ease}
+.view.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.section-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin:26px 0 16px}
+.section-head h2{font-size:20px;margin:0;font-weight:800}
+.section-head .sub{color:var(--muted);font-size:13px;margin-top:2px}
+
+/* ---------- KPI cards ---------- */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:14px;margin-top:18px}
+.kpi{background:var(--card);border-radius:var(--radius);padding:18px 18px 16px;box-shadow:var(--shadow);position:relative;overflow:hidden;border:1px solid var(--line)}
+.kpi::before{content:"";position:absolute;inset-inline-start:0;top:0;bottom:0;width:5px;background:var(--gold)}
+.kpi.k-blue::before{background:var(--navy2)} .kpi.k-teal::before{background:var(--teal)}
+.kpi.k-red::before{background:var(--red)} .kpi.k-green::before{background:var(--green)} .kpi.k-amber::before{background:var(--amber)}
+.kpi .lbl{font-size:12.5px;color:var(--muted);font-weight:600;display:flex;align-items:center;gap:7px}
+.kpi .val{font-size:26px;font-weight:800;margin-top:7px;letter-spacing:-.5px;line-height:1.1}
+.kpi .meta{font-size:12px;color:var(--muted);margin-top:6px}
+.progress{height:7px;border-radius:6px;background:#edf1f6;margin-top:11px;overflow:hidden}
+.progress > i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,var(--teal),var(--green))}
+
+/* ---------- Charts ---------- */
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px;margin-top:18px}
+.panel{background:var(--card);border-radius:var(--radius);padding:18px 20px 20px;box-shadow:var(--shadow);border:1px solid var(--line)}
+.panel h3{margin:0 0 4px;font-size:15.5px;font-weight:700}
+.panel .ph-sub{color:var(--muted);font-size:12px;margin-bottom:12px}
+.chart-box{position:relative;height:300px}
+.chart-box.tall{height:340px}
+
+/* ---------- Tables ---------- */
+.card-table{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--line);overflow:hidden}
+.tbl-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 16px;border-bottom:1px solid var(--line);background:#fbfcfe}
+.tbl-tools .grow{flex:1}
+.search{position:relative}
+.search input{border:1px solid var(--line);border-radius:10px;padding:9px 34px 9px 12px;font-family:inherit;font-size:13.5px;width:230px;background:#fff}
+.search::before{content:"🔎";position:absolute;inset-inline-start:11px;top:50%;transform:translateY(-50%);font-size:13px;opacity:.6}
+.table-scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+thead th{background:#f4f7fb;color:var(--navy);text-align:right;padding:11px 14px;font-weight:700;font-size:12.5px;position:sticky;top:0;white-space:nowrap;border-bottom:2px solid var(--line)}
+tbody td{padding:10px 14px;border-bottom:1px solid #f0f3f8;white-space:nowrap}
+tbody tr:hover{background:#f7faff}
+tbody tr:last-child td{border-bottom:none}
+.num{font-variant-numeric:tabular-nums;font-weight:600}
+.neg{color:var(--red)}
+.tfoot{background:#f4f7fb;font-weight:800}
+.tfoot td{padding:12px 14px;border-top:2px solid var(--line)}
+.rowbtns{display:flex;gap:5px}
+.icbtn{border:1px solid var(--line);background:#fff;border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:14px;display:grid;place-items:center;transition:.12s}
+.icbtn:hover{background:#eef2f7}
+.icbtn.del:hover{background:#fdecea;border-color:#f3c0bb}
+.chip{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11.5px;font-weight:600;background:#eef2f7;color:var(--navy)}
+.chip.m{background:#e8f5f2;color:#1f7a6d} .chip.l{background:#fdf3e0;color:#a9741a}
+
+/* ---------- Buttons ---------- */
+.btn{border:none;border-radius:10px;padding:9px 16px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:7px;transition:.15s}
+.btn.primary{background:var(--navy);color:#fff}
+.btn.primary:hover{background:var(--navy2)}
+.btn.gold{background:var(--gold);color:#3a2c08}
+.btn.gold:hover{filter:brightness(1.06)}
+.btn.ghost{background:#fff;border:1px solid var(--line);color:var(--navy)}
+.btn.ghost:hover{background:#f1f5fa}
+
+/* ---------- Filters ---------- */
+.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow);margin-top:8px}
+.f-field{display:flex;flex-direction:column;gap:4px}
+.f-field label{font-size:11.5px;color:var(--muted);font-weight:600}
+.f-field input,.f-field select{border:1px solid var(--line);border-radius:9px;padding:8px 10px;font-family:inherit;font-size:13px;background:#fff}
+
+/* ---------- Modal ---------- */
+.modal-bg{position:fixed;inset:0;background:rgba(15,39,71,.5);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;z-index:50;padding:18px}
+.modal-bg.show{display:flex}
+.modal{background:#fff;border-radius:18px;width:100%;max-width:520px;box-shadow:var(--shadow-lg);max-height:90vh;overflow:auto;animation:pop .25s ease}
+@keyframes pop{from{opacity:0;transform:scale(.95) translateY(10px)}to{opacity:1;transform:none}}
+.modal-h{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+.modal-h h3{margin:0;font-size:17px;font-weight:800}
+.modal-h .x{cursor:pointer;font-size:20px;color:var(--muted);background:none;border:none}
+.modal-b{padding:20px 22px;display:grid;gap:14px}
+.fld{display:flex;flex-direction:column;gap:5px}
+.fld label{font-size:12.5px;font-weight:600;color:var(--navy)}
+.fld input,.fld select{border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-family:inherit;font-size:14px;background:#fff}
+.fld input:focus,.fld select:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px rgba(200,162,74,.18)}
+.modal-f{padding:14px 22px 20px;display:flex;gap:10px;justify-content:flex-start}
+
+.empty{padding:46px 20px;text-align:center;color:var(--muted)}
+.empty .em-ic{font-size:38px;opacity:.5}
+.toast{position:fixed;bottom:22px;inset-inline-start:50%;transform:translateX(50%);background:var(--navy);color:#fff;padding:12px 22px;border-radius:12px;font-weight:600;font-size:13.5px;box-shadow:var(--shadow-lg);opacity:0;pointer-events:none;transition:.3s;z-index:80}
+.toast.show{opacity:1;transform:translateX(50%) translateY(-4px)}
+
+/* pivot */
+.pivot td,.pivot th{text-align:center}
+.pivot td:first-child,.pivot th:first-child{text-align:right;font-weight:700}
+.note-cell{white-space:normal;min-width:180px;color:var(--muted);font-size:12.5px}
+
+@media(max-width:640px){
+  .brand h1{font-size:17px}.kpi .val{font-size:22px}
+  .search input{width:150px}
+  .head-tools .htbtn span{display:none}
+}
+@media print{
+  header.top,nav.tabs,.tbl-tools,.rowbtns,.head-tools,.filters .btn,.section-head .btn{display:none!important}
+  body{background:#fff}.panel,.card-table,.kpi{box-shadow:none;border:1px solid #ccc}
+  .view{display:none!important}.view.print-on{display:block!important}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="head-in">
+    <div class="brand">
+      <div class="logo">🏗️</div>
+      <div>
+        <h1>אופקים — עסקת מגרש 1.5 דונם</h1>
+        <p>מערכת ניהול שותפות · הוצאות · ריביות · תשלומים</p>
+      </div>
+    </div>
+    <div class="head-tools">
+      <button class="htbtn" onclick="exportJSON()">⬇️ <span>גיבוי</span></button>
+      <button class="htbtn" onclick="document.getElementById('importFile').click()">⬆️ <span>שחזור</span></button>
+      <input type="file" id="importFile" accept="application/json" style="display:none" onchange="importJSON(event)">
+      <button class="htbtn" onclick="resetData()">↺ <span>נתונים מקוריים</span></button>
+    </div>
+  </div>
+  <nav class="tabs" id="tabs">
+    <button data-view="dash" class="active">📊 דשבורד</button>
+    <button data-view="expenses">🧾 הוצאות עיסקא</button>
+    <button data-view="meitavInterest">🏦 ריבית מיטב דש</button>
+    <button data-view="dudiExpenses">💸 תשלומי דודי — הוצאות</button>
+    <button data-view="dudiInterest">💰 תשלומי דודי — ריבית</button>
+    <button data-view="partners">🤝 שותפים</button>
+    <button data-view="reports">📈 דוחות ופילוחים</button>
+  </nav>
+</header>
+
+<div class="wrap">
+
+  <!-- ============ DASHBOARD ============ -->
+  <section class="view active" id="view-dash">
+    <div class="kpis" id="kpiRow"></div>
+
+    <div class="grid2">
+      <div class="panel">
+        <h3>פילוח הוצאות העיסקא לפי סוג</h3>
+        <div class="ph-sub">ללא שובר ההלוואה למנהל · לפי סכום</div>
+        <div class="chart-box"><canvas id="chExp"></canvas></div>
+      </div>
+      <div class="panel">
+        <h3>חלוקת בעלות בין השותפים</h3>
+        <div class="ph-sub">אחוזי החזקה בעיסקא</div>
+        <div class="chart-box"><canvas id="chOwn"></canvas></div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <h3>ריבית מיטב דש — תשלום חודשי לאורך זמן</h3>
+      <div class="ph-sub">מגמת ההחזרים החודשיים</div>
+      <div class="chart-box tall"><canvas id="chMeitav"></canvas></div>
+    </div>
+
+    <div class="grid2">
+      <div class="panel">
+        <h3>שולם מול יתרה לתשלום</h3>
+        <div class="ph-sub">פירוט מצב התשלומים — הוצאות וריביות</div>
+        <div class="chart-box"><canvas id="chPaid"></canvas></div>
+      </div>
+      <div class="panel">
+        <h3>תשלומי דודי לפי שנה</h3>
+        <div class="ph-sub">הוצאות מול ריבית, בחלוקה שנתית</div>
+        <div class="chart-box"><canvas id="chDudiYear"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ DATA TABS (generic) ============ -->
+  <section class="view" id="view-expenses"></section>
+  <section class="view" id="view-meitavInterest"></section>
+  <section class="view" id="view-dudiExpenses"></section>
+  <section class="view" id="view-dudiInterest"></section>
+  <section class="view" id="view-partners"></section>
+
+  <!-- ============ REPORTS ============ -->
+  <section class="view" id="view-reports">
+    <div class="section-head">
+      <div>
+        <h2>דוחות ופילוחים</h2>
+        <div class="sub">תנועות מאוחדות, סינון לפי סוג / שנה / טווח תאריכים, ופילוחים שנתיים</div>
+      </div>
+      <button class="btn ghost" onclick="printReports()">🖨️ הדפסה / PDF</button>
+    </div>
+
+    <div class="filters" id="repFilters">
+      <div class="f-field"><label>סוג תנועה</label>
+        <select id="fType">
+          <option value="">הכל</option>
+          <option value="הוצאת עיסקא">הוצאת עיסקא</option>
+          <option value="ריבית מיטב">ריבית מיטב דש</option>
+          <option value="דודי — הוצאות">דודי — הוצאות</option>
+          <option value="דודי — ריבית">דודי — ריבית</option>
+        </select>
+      </div>
+      <div class="f-field"><label>שנה</label><select id="fYear"><option value="">הכל</option></select></div>
+      <div class="f-field"><label>מתאריך</label><input type="date" id="fFrom"></div>
+      <div class="f-field"><label>עד תאריך</label><input type="date" id="fTo"></div>
+      <div class="f-field"><label>חיפוש חופשי</label><input type="text" id="fText" placeholder="הערה / גורם..."></div>
+      <button class="btn primary" onclick="renderReports()">סנן</button>
+      <button class="btn ghost" onclick="clearFilters()">נקה</button>
+    </div>
+
+    <div class="kpis" id="repKpis" style="margin-top:14px"></div>
+
+    <div class="grid2">
+      <div class="panel">
+        <h3>פילוח לפי סוג תנועה</h3>
+        <div class="ph-sub">סך הסכומים (אחרי סינון)</div>
+        <div class="chart-box"><canvas id="chRepType"></canvas></div>
+      </div>
+      <div class="panel">
+        <h3>תזרים לפי שנה</h3>
+        <div class="ph-sub">סך תנועות בכל שנה</div>
+        <div class="chart-box"><canvas id="chRepYear"></canvas></div>
+      </div>
+    </div>
+
+    <div class="section-head" style="margin-bottom:8px"><div><h2 style="font-size:17px">פנקס תנועות מאוחד</h2></div></div>
+    <div class="card-table">
+      <div class="table-scroll"><table id="repTable"></table></div>
+    </div>
+
+    <div class="grid2" style="margin-top:18px">
+      <div class="card-table">
+        <div class="tbl-tools"><b>פילוח שנתי לפי סוג</b></div>
+        <div class="table-scroll"><table id="pivotYear" class="pivot"></table></div>
+      </div>
+      <div class="card-table">
+        <div class="tbl-tools"><b>הוצאות עיסקא לפי משלם</b></div>
+        <div class="table-scroll"><table id="pivotPayer" class="pivot"></table></div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- Modal -->
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <div class="modal-h"><h3 id="modalTitle">רשומה</h3><button class="x" onclick="closeModal()">✕</button></div>
+    <div class="modal-b" id="modalBody"></div>
+    <div class="modal-f">
+      <button class="btn primary" onclick="saveModal()">💾 שמירה</button>
+      <button class="btn ghost" onclick="closeModal()">ביטול</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= SEED DATA ================= */
+const SEED = {
+  partners:[
+    {name:'דודי',   pct:20, note:''},
+    {name:'דודי 2', pct:40, note:''},
+    {name:'צבי',    pct:20, note:''},
+    {name:'מנדי',   pct:20, note:'משלם כל חודש לדודי (לחשב עלות מעביד)'}
+  ],
+  summary:[
+    {label:'סך הוצאות רכישה',      amount:3427006.46},
+    {label:'סך ריביות מיטב',       amount:1047854.70},
+    {label:'סך הלוואה מיטב',       amount:2765000},
+    {label:'ס״ה לתשלום דודי',      amount:1709861.16},
+    {label:'סך ששולם — הוצאות',    amount:451000},
+    {label:'סך ששולם — ריביות',    amount:522500},
+    {label:'יתרה לתשלום — ריביות', amount:525354.70},
+    {label:'יתרה לתשלום — הוצאות', amount:211006.46}
+  ],
+  expenses:[
+    {type:'ערבות ראשונה למנהל', amount:72000,  date:'',           note:'מרדכי מנלה מזרחי',                receipt:'קבלה',        paidBy:'מנלה'},
+    {type:'עוד דווח',           amount:0,      date:'',           note:'',                                receipt:'',            paidBy:'מנלה'},
+    {type:'מס רכישה',           amount:148471, date:'2022-09-08', note:'מרדכי מנלה צק פועלים',           receipt:'קבלה',        paidBy:'מנלה'},
+    {type:'שמאות',              amount:12000,  date:'',           note:'',                                receipt:'',            paidBy:'מנלה'},
+    {type:'שובר למנהל',         amount:395182, date:'2022-09-11', note:'מרדכי מנלה',                     receipt:'קבלה',        paidBy:'מנלה'},
+    {type:'ערבות חכ״ל',         amount:46168,  date:'2022-09-07', note:'מרדכי מנלה מח-ן לאומי ללא הפקדה', receipt:'צילום ערבות', paidBy:'מנלה'},
+    {type:'נוטריון',            amount:335,    date:'2022-09-07', note:'מזומן מנלה',                     receipt:'קבלה',        paidBy:'מנלה'},
+    {type:'משכון',              amount:195,    date:'2022-09-07', note:'אשראי מנלה',                     receipt:'קבלה',        paidBy:'מנלה'},
+    {type:'נסיעה',              amount:1000,   date:'2022-09-07', note:'מזומן מנלה חכל חתימות ערבות',    receipt:'אין קבלה ?',  paidBy:'מנלה'},
+    {type:'אגרת מנהל — אישור זכויות', amount:75, date:'2022-11-29', note:'אשראי שלי',                   receipt:'',            paidBy:'מנלה'},
+    {type:'תיווך שמאי — גרוסליק', amount:500,  date:'2022-11-29', note:'גרוסליק על תווך שמאי',           receipt:'אמור לשלם מזומן', paidBy:'מנלה'},
+    {type:'זיכוי מס רכישה (החזר)', amount:-14004, date:'2023-05-11', note:'רשות המיסים — לשלם לאגדי',    receipt:'בנק פועלים שלי', paidBy:'מנלה'},
+    {type:'אישור זכויות מנהל',   amount:84,     date:'2025-09-03', note:'מנהל',                          receipt:'אשראי מנלה',  paidBy:'מנלה'},
+    {type:'שובר למנהל (רכישה)',  amount:2765000.46, date:'2022-09-11', note:'מימון הלוואת מיטב',         receipt:'קבלה',        paidBy:'הלוואה מיטב'}
+  ],
+  meitavInterest:[
+    {date:'2022-09-30',amount:11293},{date:'2022-10-31',amount:19037},{date:'2022-11-30',amount:20207},
+    {date:'2022-12-30',amount:21369},{date:'2023-01-31',amount:22393},{date:'2023-02-28',amount:20591},
+    {date:'2023-03-31',amount:23773},{date:'2023-04-30',amount:23477},{date:'2023-05-31',amount:24482},
+    {date:'2023-06-30',amount:24156},{date:'2023-07-31',amount:24960},{date:'2023-08-31',amount:24962},
+    {date:'2023-09-29',amount:24156},{date:'2023-10-31',amount:24962},{date:'2023-11-30',amount:24156},
+    {date:'2023-12-31',amount:24962},{date:'2024-01-30',amount:24444},{date:'2024-02-28',amount:22795},
+    {date:'2024-03-30',amount:24376},{date:'2024-04-30',amount:23581},{date:'2024-05-31',amount:24367},
+    {date:'2024-06-30',amount:23581},{date:'2024-07-30',amount:24367},{date:'2024-08-30',amount:24367},
+    {date:'2024-09-30',amount:23581},{date:'2024-10-30',amount:24367},{date:'2024-11-30',amount:23581},
+    {date:'2024-12-30',amount:24367},{date:'2025-01-30',amount:24367},{date:'2025-02-28',amount:22009},
+    {date:'2025-03-30',amount:24367},{date:'2025-04-30',amount:23581},{date:'2025-05-30',amount:24367},
+    {date:'2025-06-30',amount:23581},{date:'2025-07-30',amount:24367},{date:'2025-08-30',amount:24367},
+    {date:'2025-09-30',amount:23581},{date:'2025-10-30',amount:24607},{date:'2025-11-30',amount:23771},
+    {date:'2025-12-30',amount:24015.12},{date:'2026-01-30',amount:23569.77},{date:'2026-02-28',amount:21156.14},
+    {date:'2026-03-30',amount:23414.79},{date:'2026-04-30',amount:22667},{date:'2026-05-30',amount:23356.88}
+  ],
+  dudiExpenses:[
+    {date:'2022-01-22',amount:35000, note:'העברה לבנק פועלים', who:''},
+    {date:'2022-09-08',amount:100000,note:'',                  who:'העברת זהב אנונימי'},
+    {date:'2022-09-08',amount:1000,  note:'',                  who:'רבינוביץ'},
+    {date:'2022-09-09',amount:40000, note:'',                  who:'פישמן'},
+    {date:'2022-09-12',amount:20000, note:'',                  who:'זאב קלפהולץ'},
+    {date:'2022-11-07',amount:10000, note:'העביר 40000 והחזרתי 30 להלר', who:'פרוש'},
+    {date:'2022-11-15',amount:70000, note:'העביר 120000 והחזרתי 50000 להלר', who:'דודי קלפהולץ'},
+    {date:'2022-12-11',amount:45000, note:'העברה ממנדלסון',    who:'מנדלסון'},
+    {date:'2022-12-29',amount:65000, note:'העברה מנדלסון',     who:'מנדלסון'},
+    {date:'2025-10-06',amount:42000, note:'העברה מדיסקונט דודי לפועלים שלי', who:'קלפהולץ'},
+    {date:'2025-10-20',amount:8000,  note:'העברה מדיסקונט דודי לפועלים שלי', who:'קלפהולץ'},
+    {date:'2026-09-13',amount:15000, note:'',                  who:'פרוינד'}
+  ],
+  dudiInterest:[
+    {date:'2022-09-28',amount:7500, note:''},{date:'2022-09-30',amount:3000, note:''},
+    {date:'2022-10-28',amount:18000,note:'בנגייב'},{date:'2022-11-29',amount:22000,note:''},
+    {date:'2023-02-07',amount:30000,note:''},{date:'2023-02-28',amount:23000,note:''},
+    {date:'2023-03-28',amount:30000,note:'העברה לרדמינסקי מקרן החסד'},
+    {date:'2023-04-30',amount:15000,note:'גיס שלו הפקיד מזומן לחן שלי'},
+    {date:'2023-05-08',amount:9000, note:'זיכוי לפועלים מדיסקונט'},
+    {date:'2023-06-09',amount:23000,note:'זיכוי דיסקונט'},
+    {date:'2023-07-02',amount:18000,note:'זיכוי מדיסקונט'},
+    {date:'2023-07-26',amount:12000,note:''},{date:'2023-07-31',amount:10000,note:''},
+    {date:'2023-08-18',amount:10000,note:'זיכוי בדיסקונט'},
+    {date:'2023-08-28',amount:10000,note:'זיכוי מדיסקונט ברי'},
+    {date:'2023-08-29',amount:12000,note:'זיכוי מדיסקונט דודי'},
+    {date:'2023-10-01',amount:23000,note:'זיכוי מדיסקונט דודי'},
+    {date:'2023-10-15',amount:6000, note:'זיכוי מדיסקונט דודי'},
+    {date:'2023-10-31',amount:24000,note:''},{date:'2023-11-10',amount:4500, note:''},
+    {date:'2023-11-30',amount:23000,note:''},{date:'2023-12-31',amount:23000,note:''},
+    {date:'2024-01-31',amount:24000,note:'20000 בצק קראוס ו-4000 מזומן'},
+    {date:'2024-02-29',amount:22500,note:''},
+    {date:'2024-03-31',amount:24500,note:'22000 מרכנתיל + 2500 מדיסקונט'},
+    {date:'2024-04-30',amount:22000,note:''},{date:'2024-05-31',amount:23500,note:''},
+    {date:'2024-06-03',amount:2000, note:''},{date:'2024-07-01',amount:22000,note:''},
+    {date:'2024-07-05',amount:2000, note:''},{date:'2024-08-01',amount:18000,note:''},
+    {date:'2024-08-04',amount:6000, note:''}
+  ]
+};
+
+/* ================= STATE ================= */
+const LS_KEY='ofakim_crm_v1';
+let DATA=load();
+function load(){try{const r=localStorage.getItem(LS_KEY);if(r)return JSON.parse(r);}catch(e){}return structuredClone(SEED);}
+function save(){DATA.updated=new Date().toISOString();localStorage.setItem(LS_KEY,JSON.stringify(DATA));}
+
+/* ================= HELPERS ================= */
+const ILS=new Intl.NumberFormat('he-IL',{style:'currency',currency:'ILS',maximumFractionDigits:0});
+const ILS2=new Intl.NumberFormat('he-IL',{style:'currency',currency:'ILS',maximumFractionDigits:2});
+const NUM=new Intl.NumberFormat('he-IL',{maximumFractionDigits:0});
+function money(n){return n==null||n===''?'—':ILS.format(n);}
+function moneyExact(n){return n==null||n===''?'—':ILS2.format(n);}
+function fmtDate(d){if(!d)return '—';const p=d.split('-');return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:d;}
+function yearOf(d){return d&&d.length>=4?d.slice(0,4):'—';}
+function sum(arr,k){return arr.reduce((a,b)=>a+(Number(b[k])||0),0);}
+function getSummary(lbl){const r=(DATA.summary||[]).find(s=>s.label===lbl);return r?r.amount:0;}
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);}
+
+/* ================= DATASET CONFIG ================= */
+const DS={
+  expenses:{title:'הוצאות עיסקא',icon:'🧾',sub:'כל הוצאות רכישת המגרש',amountKey:'amount',sortKey:'date',
+    cols:[
+      {key:'type',label:'סוג הוצאה',w:''},
+      {key:'amount',label:'סכום',money:1},
+      {key:'date',label:'תאריך',date:1},
+      {key:'paidBy',label:'שולם ע״י',chip:1},
+      {key:'receipt',label:'קבלה / אסמכתא'},
+      {key:'note',label:'הערה',note:1}
+    ],
+    fields:[
+      {key:'type',label:'סוג הוצאה',type:'text'},
+      {key:'amount',label:'סכום (₪)',type:'number'},
+      {key:'date',label:'תאריך תשלום',type:'date'},
+      {key:'paidBy',label:'שולם ע״י',type:'text'},
+      {key:'receipt',label:'קבלה / אסמכתא',type:'text'},
+      {key:'note',label:'הערה',type:'text'}
+    ]},
+  meitavInterest:{title:'ריבית מיטב דש',icon:'🏦',sub:'תשלומי הריבית החודשיים על ההלוואה',amountKey:'amount',sortKey:'date',
+    cols:[{key:'date',label:'תאריך',date:1},{key:'amount',label:'סכום ריבית',money:1}],
+    fields:[{key:'date',label:'תאריך',type:'date'},{key:'amount',label:'סכום ריבית (₪)',type:'number'}]},
+  dudiExpenses:{title:'תשלומי דודי — הוצאות',icon:'💸',sub:'תשלומים ששילם דודי על חשבון ההוצאות',amountKey:'amount',sortKey:'date',
+    cols:[{key:'date',label:'תאריך',date:1},{key:'amount',label:'סכום',money:1},{key:'who',label:'גורם / אסמכתא',chip:1},{key:'note',label:'הערה',note:1}],
+    fields:[{key:'date',label:'תאריך',type:'date'},{key:'amount',label:'סכום (₪)',type:'number'},{key:'who',label:'גורם / אסמכתא',type:'text'},{key:'note',label:'הערה',type:'text'}]},
+  dudiInterest:{title:'תשלומי דודי — ריבית',icon:'💰',sub:'תשלומים ששילם דודי על חשבון הריביות',amountKey:'amount',sortKey:'date',
+    cols:[{key:'date',label:'תאריך',date:1},{key:'amount',label:'סכום',money:1},{key:'note',label:'הערה',note:1}],
+    fields:[{key:'date',label:'תאריך',type:'date'},{key:'amount',label:'סכום (₪)',type:'number'},{key:'note',label:'הערה',type:'text'}]},
+  partners:{title:'שותפים',icon:'🤝',sub:'אחוזי החזקה בעיסקא',amountKey:null,sortKey:null,
+    cols:[{key:'name',label:'שותף'},{key:'pct',label:'אחוז',pct:1},{key:'_share',label:'חלק מעלות הרכישה',computedShare:1},{key:'note',label:'הערה',note:1}],
+    fields:[{key:'name',label:'שם שותף',type:'text'},{key:'pct',label:'אחוז החזקה (%)',type:'number'},{key:'note',label:'הערה',type:'text'}]}
+};
+
+/* ================= GENERIC TABLE RENDER ================= */
+let searchState={};
+function renderDataset(name){
+  const cfg=DS[name];const rows=DATA[name]||[];
+  const q=(searchState[name]||'').trim();
+  let view=rows.map((r,i)=>({r,i}));
+  if(q){const ql=q.toLowerCase();view=view.filter(({r})=>Object.values(r).some(v=>String(v).toLowerCase().includes(ql)));}
+  if(cfg.sortKey)view.sort((a,b)=>String(a.r[cfg.sortKey]).localeCompare(String(b.r[cfg.sortKey])));
+  const total=cfg.amountKey?sum(rows,cfg.amountKey):null;
+  const purchase=getSummary('סך הוצאות רכישה');
+
+  let html=`
+  <div class="section-head">
+    <div><h2>${cfg.icon} ${cfg.title}</h2><div class="sub">${cfg.sub} · ${rows.length} רשומות</div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn ghost" onclick="exportCSV('${name}')">⬇️ ייצוא Excel</button>
+      <button class="btn gold" onclick="openModal('${name}',-1)">➕ רשומה חדשה</button>
+    </div>
+  </div>
+  <div class="card-table">
+    <div class="tbl-tools">
+      <div class="search"><input type="text" placeholder="חיפוש..." value="${q.replace(/"/g,'&quot;')}" oninput="searchState['${name}']=this.value;renderDataset('${name}')"></div>
+      <div class="grow"></div>
+      ${total!=null?`<div style="font-weight:700;color:var(--navy)">סה״כ: <span class="num">${moneyExact(total)}</span></div>`:''}
+    </div>
+    <div class="table-scroll"><table><thead><tr>`;
+  cfg.cols.forEach(c=>html+=`<th>${c.label}</th>`);
+  html+=`<th></th></tr></thead><tbody>`;
+  if(!view.length){html+=`<tr><td colspan="${cfg.cols.length+1}"><div class="empty"><div class="em-ic">📭</div><div>אין רשומות${q?' התואמות לחיפוש':''}</div></div></td></tr>`;}
+  view.forEach(({r,i})=>{
+    html+=`<tr>`;
+    cfg.cols.forEach(c=>{
+      let v=r[c.key];
+      if(c.money){const neg=Number(v)<0;html+=`<td class="num ${neg?'neg':''}">${money(v)}</td>`;}
+      else if(c.date)html+=`<td>${fmtDate(v)}</td>`;
+      else if(c.pct)html+=`<td class="num">${v}%</td>`;
+      else if(c.computedShare){const s=purchase*(Number(r.pct)||0)/100;html+=`<td class="num">${money(s)}</td>`;}
+      else if(c.chip)html+=`<td>${v?`<span class="chip ${chipCls(v)}">${v}</span>`:'—'}</td>`;
+      else if(c.note)html+=`<td class="note-cell">${v||'—'}</td>`;
+      else html+=`<td>${v||'—'}</td>`;
+    });
+    html+=`<td><div class="rowbtns">
+      <button class="icbtn" title="עריכה" onclick="openModal('${name}',${i})">✏️</button>
+      <button class="icbtn del" title="מחיקה" onclick="delRow('${name}',${i})">🗑️</button>
+    </div></td></tr>`;
+  });
+  html+=`</tbody>`;
+  if(total!=null)html+=`<tfoot class="tfoot"><tr><td>סה״כ (${rows.length})</td><td class="num">${moneyExact(total)}</td><td colspan="${cfg.cols.length-1}"></td><td></td></tr></tfoot>`;
+  html+=`</table></div></div>`;
+  document.getElementById('view-'+name).innerHTML=html;
+}
+function chipCls(v){if(v==='מנלה')return 'm';if(String(v).includes('מיטב')||String(v).includes('הלוואה'))return 'l';return '';}
+
+/* ================= MODAL CRUD ================= */
+let modalCtx={name:null,idx:-1};
+function openModal(name,idx){
+  modalCtx={name,idx};const cfg=DS[name];const rec=idx>=0?DATA[name][idx]:{};
+  document.getElementById('modalTitle').textContent=(idx>=0?'עריכת ':'הוספת ')+cfg.title.replace(/^.*— /,'');
+  document.getElementById('modalBody').innerHTML=cfg.fields.map(f=>`
+    <div class="fld"><label>${f.label}</label>
+      <input id="fld_${f.key}" type="${f.type}" value="${rec[f.key]!=null?String(rec[f.key]).replace(/"/g,'&quot;'):''}" ${f.type==='number'?'step="any"':''}>
+    </div>`).join('');
+  document.getElementById('modal').classList.add('show');
+}
+function closeModal(){document.getElementById('modal').classList.remove('show');}
+function saveModal(){
+  const {name,idx}=modalCtx;const cfg=DS[name];const obj={};
+  cfg.fields.forEach(f=>{let v=document.getElementById('fld_'+f.key).value;if(f.type==='number')v=v===''?0:Number(v);obj[f.key]=v;});
+  if(idx>=0)DATA[name][idx]=obj;else DATA[name].push(obj);
+  save();closeModal();renderDataset(name);refreshDashboard();toast(idx>=0?'הרשומה עודכנה':'הרשומה נוספה');
+}
+function delRow(name,idx){
+  if(!confirm('למחוק את הרשומה?'))return;
+  DATA[name].splice(idx,1);save();renderDataset(name);refreshDashboard();toast('הרשומה נמחקה');
+}
+
+/* ================= DASHBOARD ================= */
+let charts={};
+function destroyChart(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
+const PALETTE=['#0f2747','#c8a24a','#2a9d8f','#d65a4f','#3fa66a','#e8a33d','#5b6f9c','#9c7b2e','#7bb0a8','#b85c50','#6aa6c9','#caa66a','#487a8a','#a05a78'];
+
+function renderKPIs(){
+  const purchase=getSummary('סך הוצאות רכישה');
+  const loan=getSummary('סך הלוואה מיטב');
+  const interestTot=getSummary('סך ריביות מיטב');
+  const dudiOblig=getSummary('ס״ה לתשלום דודי');
+  const paidExp=sum(DATA.dudiExpenses,'amount');
+  const paidInt=sum(DATA.dudiInterest,'amount');
+  const paidTot=paidExp+paidInt;
+  const balance=getSummary('יתרה לתשלום — ריביות')+getSummary('יתרה לתשלום — הוצאות');
+  const pct=dudiOblig?Math.min(100,Math.round(paidTot/dudiOblig*100)):0;
+  const cards=[
+    {c:'k-blue',ic:'🏞️',lbl:'עלות רכישה כוללת',val:money(purchase),meta:'מגרש + הוצאות'},
+    {c:'k-amber',ic:'🏦',lbl:'הלוואת מיטב דש',val:money(loan),meta:`ריבית מצטברת: ${money(interestTot)}`},
+    {c:'k-teal',ic:'📉',lbl:'ריבית מיטב ששולמה',val:money(sum(DATA.meitavInterest,'amount')),meta:`${DATA.meitavInterest.length} תשלומים חודשיים`},
+    {c:'',ic:'🤝',lbl:'התחייבות דודי',val:money(dudiOblig),meta:`שולם ${money(paidTot)} · ${pct}%`,prog:pct},
+    {c:'k-green',ic:'✅',lbl:'סה״כ שילם דודי',val:money(paidTot),meta:`הוצאות ${money(paidExp)} · ריבית ${money(paidInt)}`},
+    {c:'k-red',ic:'⏳',lbl:'יתרה לתשלום דודי',val:money(balance),meta:'הוצאות + ריביות'}
+  ];
+  document.getElementById('kpiRow').innerHTML=cards.map(k=>`
+    <div class="kpi ${k.c}">
+      <div class="lbl">${k.ic} ${k.lbl}</div>
+      <div class="val">${k.val}</div>
+      <div class="meta">${k.meta}</div>
+      ${k.prog!=null?`<div class="progress"><i style="width:${k.prog}%"></i></div>`:''}
+    </div>`).join('');
+}
+
+function chartExpenses(){
+  destroyChart('chExp');
+  const items=DATA.expenses.filter(e=>e.paidBy!=='הלוואה מיטב'&&Number(e.amount)>0);
+  const map={};items.forEach(e=>{map[e.type]=(map[e.type]||0)+Number(e.amount);});
+  const arr=Object.entries(map).sort((a,b)=>b[1]-a[1]);
+  charts.chExp=new Chart(document.getElementById('chExp'),{
+    type:'doughnut',
+    data:{labels:arr.map(a=>a[0]),datasets:[{data:arr.map(a=>a[1]),backgroundColor:PALETTE,borderWidth:2,borderColor:'#fff'}]},
+    options:{plugins:{legend:{position:'right',rtl:true,labels:{font:{family:'Heebo',size:12},boxWidth:13,padding:9}},
+      tooltip:{rtl:true,callbacks:{label:c=>` ${c.label}: ${ILS.format(c.parsed)}`}}},cutout:'58%'}
+  });
+}
+function chartOwnership(){
+  destroyChart('chOwn');
+  charts.chOwn=new Chart(document.getElementById('chOwn'),{
+    type:'doughnut',
+    data:{labels:DATA.partners.map(p=>p.name),datasets:[{data:DATA.partners.map(p=>p.pct),backgroundColor:['#0f2747','#c8a24a','#2a9d8f','#d65a4f','#3fa66a'],borderWidth:2,borderColor:'#fff'}]},
+    options:{plugins:{legend:{position:'right',rtl:true,labels:{font:{family:'Heebo',size:13},boxWidth:13,padding:10}},
+      tooltip:{rtl:true,callbacks:{label:c=>` ${c.label}: ${c.parsed}%`}}},cutout:'55%'}
+  });
+}
+function chartMeitav(){
+  destroyChart('chMeitav');
+  const arr=[...DATA.meitavInterest].sort((a,b)=>a.date.localeCompare(b.date));
+  charts.chMeitav=new Chart(document.getElementById('chMeitav'),{
+    type:'line',
+    data:{labels:arr.map(a=>fmtDate(a.date)),datasets:[{label:'ריבית חודשית',data:arr.map(a=>a.amount),
+      borderColor:'#c8a24a',backgroundColor:'rgba(200,162,74,.15)',fill:true,tension:.3,pointRadius:2.5,pointBackgroundColor:'#0f2747',borderWidth:2.5}]},
+    options:{plugins:{legend:{display:false},tooltip:{rtl:true,callbacks:{label:c=>' '+ILS.format(c.parsed.y)}}},
+      scales:{y:{ticks:{callback:v=>NUM.format(v),font:{family:'Heebo'}},grid:{color:'#eef2f7'}},
+        x:{ticks:{font:{family:'Heebo',size:10},maxRotation:60,minRotation:60,autoSkip:true,maxTicksLimit:18},grid:{display:false}}}}
+  });
+}
+function chartPaid(){
+  destroyChart('chPaid');
+  charts.chPaid=new Chart(document.getElementById('chPaid'),{
+    type:'bar',
+    data:{labels:['הוצאות','ריביות'],datasets:[
+      {label:'שולם',data:[getSummary('סך ששולם — הוצאות'),getSummary('סך ששולם — ריביות')],backgroundColor:'#3fa66a',borderRadius:7},
+      {label:'יתרה לתשלום',data:[getSummary('יתרה לתשלום — הוצאות'),getSummary('יתרה לתשלום — ריביות')],backgroundColor:'#d65a4f',borderRadius:7}
+    ]},
+    options:{plugins:{legend:{rtl:true,labels:{font:{family:'Heebo',size:12}}},tooltip:{rtl:true,callbacks:{label:c=>` ${c.dataset.label}: ${ILS.format(c.parsed.y)}`}}},
+      scales:{x:{stacked:true,grid:{display:false},ticks:{font:{family:'Heebo',size:13}}},y:{stacked:true,ticks:{callback:v=>NUM.format(v),font:{family:'Heebo'}},grid:{color:'#eef2f7'}}}}
+  });
+}
+function chartDudiYear(){
+  destroyChart('chDudiYear');
+  const years={};
+  DATA.dudiExpenses.forEach(r=>{const y=yearOf(r.date);(years[y]=years[y]||{e:0,i:0}).e+=Number(r.amount)||0;});
+  DATA.dudiInterest.forEach(r=>{const y=yearOf(r.date);(years[y]=years[y]||{e:0,i:0}).i+=Number(r.amount)||0;});
+  const ys=Object.keys(years).filter(y=>y!=='—').sort();
+  charts.chDudiYear=new Chart(document.getElementById('chDudiYear'),{
+    type:'bar',
+    data:{labels:ys,datasets:[
+      {label:'הוצאות',data:ys.map(y=>years[y].e),backgroundColor:'#0f2747',borderRadius:6},
+      {label:'ריבית',data:ys.map(y=>years[y].i),backgroundColor:'#c8a24a',borderRadius:6}
+    ]},
+    options:{plugins:{legend:{rtl:true,labels:{font:{family:'Heebo',size:12}}},tooltip:{rtl:true,callbacks:{label:c=>` ${c.dataset.label}: ${ILS.format(c.parsed.y)}`}}},
+      scales:{x:{grid:{display:false},ticks:{font:{family:'Heebo',size:12}}},y:{ticks:{callback:v=>NUM.format(v),font:{family:'Heebo'}},grid:{color:'#eef2f7'}}}}
+  });
+}
+function refreshDashboard(){renderKPIs();chartExpenses();chartOwnership();chartMeitav();chartPaid();chartDudiYear();}
+
+/* ================= REPORTS ================= */
+function allTransactions(){
+  const t=[];
+  DATA.expenses.forEach(r=>t.push({type:'הוצאת עיסקא',date:r.date,amount:r.amount,desc:r.type,extra:[r.paidBy,r.note,r.receipt].filter(Boolean).join(' · ')}));
+  DATA.meitavInterest.forEach(r=>t.push({type:'ריבית מיטב',date:r.date,amount:r.amount,desc:'תשלום ריבית חודשי',extra:''}));
+  DATA.dudiExpenses.forEach(r=>t.push({type:'דודי — הוצאות',date:r.date,amount:r.amount,desc:'תשלום דודי (הוצאות)',extra:[r.who,r.note].filter(Boolean).join(' · ')}));
+  DATA.dudiInterest.forEach(r=>t.push({type:'דודי — ריבית',date:r.date,amount:r.amount,desc:'תשלום דודי (ריבית)',extra:r.note||''}));
+  return t;
+}
+function buildYearFilter(){
+  const sel=document.getElementById('fYear');if(sel.options.length>1)return;
+  const ys=[...new Set(allTransactions().map(t=>yearOf(t.date)).filter(y=>y!=='—'))].sort();
+  ys.forEach(y=>{const o=document.createElement('option');o.value=y;o.textContent=y;sel.appendChild(o);});
+}
+function getFiltered(){
+  const fType=document.getElementById('fType').value;
+  const fYear=document.getElementById('fYear').value;
+  const fFrom=document.getElementById('fFrom').value;
+  const fTo=document.getElementById('fTo').value;
+  const fText=document.getElementById('fText').value.trim().toLowerCase();
+  return allTransactions().filter(t=>{
+    if(fType&&t.type!==fType)return false;
+    if(fYear&&yearOf(t.date)!==fYear)return false;
+    if(fFrom&&(!t.date||t.date<fFrom))return false;
+    if(fTo&&(!t.date||t.date>fTo))return false;
+    if(fText&&!(`${t.desc} ${t.extra} ${t.type}`.toLowerCase().includes(fText)))return false;
+    return true;
+  }).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+}
+const TYPE_COLORS={'הוצאת עיסקא':'#0f2747','ריבית מיטב':'#c8a24a','דודי — הוצאות':'#2a9d8f','דודי — ריבית':'#d65a4f'};
+function renderReports(){
+  buildYearFilter();
+  const rows=getFiltered();
+  const total=sum(rows,'amount');
+  // KPIs
+  const byType={};rows.forEach(r=>byType[r.type]=(byType[r.type]||0)+(Number(r.amount)||0));
+  document.getElementById('repKpis').innerHTML=`
+    <div class="kpi k-blue"><div class="lbl">📋 מספר תנועות</div><div class="val">${rows.length}</div><div class="meta">אחרי סינון</div></div>
+    <div class="kpi k-amber"><div class="lbl">💵 סך תנועות</div><div class="val">${money(total)}</div><div class="meta">סכום כולל</div></div>
+    <div class="kpi k-teal"><div class="lbl">📊 ממוצע לתנועה</div><div class="val">${money(rows.length?total/rows.length:0)}</div><div class="meta">לכל רשומה</div></div>`;
+  // table
+  let runs=0;
+  let html=`<thead><tr><th>תאריך</th><th>סוג</th><th>תיאור</th><th>פירוט</th><th>סכום</th><th>מצטבר</th></tr></thead><tbody>`;
+  if(!rows.length)html+=`<tr><td colspan="6"><div class="empty"><div class="em-ic">🔍</div><div>אין תנועות התואמות לסינון</div></div></td></tr>`;
+  rows.forEach(r=>{runs+=Number(r.amount)||0;const neg=Number(r.amount)<0;
+    html+=`<tr><td>${fmtDate(r.date)}</td>
+      <td><span class="chip" style="background:${TYPE_COLORS[r.type]}22;color:${TYPE_COLORS[r.type]}">${r.type}</span></td>
+      <td>${r.desc||'—'}</td><td class="note-cell">${r.extra||'—'}</td>
+      <td class="num ${neg?'neg':''}">${money(r.amount)}</td><td class="num">${money(runs)}</td></tr>`;});
+  html+=`</tbody><tfoot class="tfoot"><tr><td colspan="4">סה״כ ${rows.length} תנועות</td><td class="num">${moneyExact(total)}</td><td></td></tr></tfoot>`;
+  document.getElementById('repTable').innerHTML=html;
+  // charts
+  destroyChart('chRepType');
+  const tl=Object.keys(byType);
+  charts.chRepType=new Chart(document.getElementById('chRepType'),{type:'doughnut',
+    data:{labels:tl,datasets:[{data:tl.map(k=>byType[k]),backgroundColor:tl.map(k=>TYPE_COLORS[k]||'#888'),borderWidth:2,borderColor:'#fff'}]},
+    options:{plugins:{legend:{position:'right',rtl:true,labels:{font:{family:'Heebo',size:12},boxWidth:12,padding:8}},tooltip:{rtl:true,callbacks:{label:c=>` ${c.label}: ${ILS.format(c.parsed)}`}}},cutout:'56%'}});
+  destroyChart('chRepYear');
+  const byYear={};rows.forEach(r=>{const y=yearOf(r.date);if(y!=='—')byYear[y]=(byYear[y]||0)+(Number(r.amount)||0);});
+  const ys=Object.keys(byYear).sort();
+  charts.chRepYear=new Chart(document.getElementById('chRepYear'),{type:'bar',
+    data:{labels:ys,datasets:[{label:'סך תנועות',data:ys.map(y=>byYear[y]),backgroundColor:'#1c3a63',borderRadius:6}]},
+    options:{plugins:{legend:{display:false},tooltip:{rtl:true,callbacks:{label:c=>' '+ILS.format(c.parsed.y)}}},
+      scales:{x:{grid:{display:false},ticks:{font:{family:'Heebo',size:12}}},y:{ticks:{callback:v=>NUM.format(v),font:{family:'Heebo'}},grid:{color:'#eef2f7'}}}}});
+  renderPivots(rows);
+}
+function renderPivots(rows){
+  // pivot year x type
+  const types=['הוצאת עיסקא','ריבית מיטב','דודי — הוצאות','דודי — ריבית'];
+  const years=[...new Set(rows.map(r=>yearOf(r.date)).filter(y=>y!=='—'))].sort();
+  const grid={};years.forEach(y=>{grid[y]={};types.forEach(t=>grid[y][t]=0);});
+  rows.forEach(r=>{const y=yearOf(r.date);if(grid[y])grid[y][r.type]+=Number(r.amount)||0;});
+  let h=`<thead><tr><th>שנה</th>${types.map(t=>`<th>${t}</th>`).join('')}<th>סה״כ</th></tr></thead><tbody>`;
+  if(!years.length)h+=`<tr><td colspan="${types.length+2}"><div class="empty">אין נתונים</div></td></tr>`;
+  years.forEach(y=>{const rt=types.reduce((a,t)=>a+grid[y][t],0);
+    h+=`<tr><td>${y}</td>${types.map(t=>`<td class="num">${grid[y][t]?NUM.format(grid[y][t]):'—'}</td>`).join('')}<td class="num">${NUM.format(rt)}</td></tr>`;});
+  h+=`</tbody><tfoot class="tfoot"><tr><td>סה״כ</td>${types.map(t=>`<td class="num">${NUM.format(rows.filter(r=>r.type===t).reduce((a,r)=>a+(+r.amount||0),0))}</td>`).join('')}<td class="num">${NUM.format(sum(rows,'amount'))}</td></tr></tfoot>`;
+  document.getElementById('pivotYear').innerHTML=h;
+  // pivot payer (deal expenses only)
+  const exp=DATA.expenses;const byP={};exp.forEach(e=>byP[e.paidBy||'—']=(byP[e.paidBy||'—']||0)+(Number(e.amount)||0));
+  const payers=Object.entries(byP).sort((a,b)=>b[1]-a[1]);
+  let h2=`<thead><tr><th>משלם</th><th>סכום</th><th>מס׳ רשומות</th></tr></thead><tbody>`;
+  payers.forEach(([p,v])=>{const cnt=exp.filter(e=>(e.paidBy||'—')===p).length;
+    h2+=`<tr><td>${p}</td><td class="num">${money(v)}</td><td class="num">${cnt}</td></tr>`;});
+  h2+=`</tbody><tfoot class="tfoot"><tr><td>סה״כ</td><td class="num">${money(sum(exp,'amount'))}</td><td class="num">${exp.length}</td></tr></tfoot>`;
+  document.getElementById('pivotPayer').innerHTML=h2;
+}
+function clearFilters(){['fType','fYear','fFrom','fTo','fText'].forEach(id=>document.getElementById(id).value='');renderReports();}
+function printReports(){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('print-on'));
+  document.getElementById('view-reports').classList.add('print-on');
+  window.print();
+}
+
+/* ================= IMPORT / EXPORT ================= */
+function exportJSON(){
+  const blob=new Blob([JSON.stringify(DATA,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='ofakim-crm-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();toast('גיבוי הורד');
+}
+function importJSON(e){
+  const f=e.target.files[0];if(!f)return;const rd=new FileReader();
+  rd.onload=()=>{try{DATA=JSON.parse(rd.result);save();boot();toast('הנתונים שוחזרו');}catch(err){alert('קובץ לא תקין');}};
+  rd.readAsText(f);e.target.value='';
+}
+function resetData(){if(!confirm('לשחזר את כל הנתונים המקוריים מהאקסל? פעולה זו תמחק שינויים.'))return;DATA=structuredClone(SEED);save();boot();toast('הנתונים המקוריים שוחזרו');}
+function exportCSV(name){
+  const cfg=DS[name];const rows=DATA[name]||[];
+  const heads=cfg.fields.map(f=>f.label);
+  const lines=[heads.join(',')];
+  rows.forEach(r=>lines.push(cfg.fields.map(f=>{let v=r[f.key]==null?'':String(r[f.key]);return '"'+v.replace(/"/g,'""')+'"';}).join(',')));
+  const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name+'.csv';a.click();toast('קובץ Excel הורד');
+}
+
+/* ================= NAV ================= */
+document.getElementById('tabs').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  document.querySelectorAll('#tabs button').forEach(x=>x.classList.remove('active'));b.classList.add('active');
+  const v=b.dataset.view;
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+  document.getElementById('view-'+v).classList.add('active');
+  if(v==='dash')setTimeout(refreshDashboard,30);
+  if(v==='reports')renderReports();
+});
+
+/* ================= BOOT ================= */
+function boot(){
+  ['expenses','meitavInterest','dudiExpenses','dudiInterest','partners'].forEach(renderDataset);
+  refreshDashboard();
+}
+boot();
+window.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
+document.getElementById('modal').addEventListener('click',e=>{if(e.target.id==='modal')closeModal();});
+</script>
+</body>
+</html>
