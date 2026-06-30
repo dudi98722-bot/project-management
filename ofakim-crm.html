@@ -31,6 +31,27 @@ header.top{background:linear-gradient(120deg,var(--navy) 0%,var(--navy2) 60%,#27
 .head-tools{display:flex;gap:8px;flex-wrap:wrap}
 .htbtn{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:10px;padding:8px 13px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;transition:.15s;display:flex;align-items:center;gap:6px}
 .htbtn:hover{background:rgba(255,255,255,.22)}
+.sync-badge{font-size:12px;font-weight:600;padding:8px 12px;border-radius:10px;display:inline-flex;align-items:center;gap:5px;border:1px solid rgba(255,255,255,.18);white-space:nowrap}
+.s-off{background:rgba(255,255,255,.10);color:#cdd9ea} .s-ok{background:rgba(63,166,106,.28);color:#c6f3d6}
+.s-wait{background:rgba(232,163,61,.28);color:#ffe3b3} .s-err{background:rgba(214,90,79,.32);color:#ffd2cd}
+
+/* ---------- Login ---------- */
+body.locked header.top,body.locked .wrap{display:none}
+#loginScreen{display:none}
+body.locked #loginScreen{display:flex;position:fixed;inset:0;z-index:100;align-items:center;justify-content:center;padding:20px;
+  background:linear-gradient(135deg,#0f2747 0%,#1c3a63 55%,#27466f 100%)}
+.login-card{background:#fff;border-radius:22px;box-shadow:0 24px 60px rgba(0,0,0,.35);width:100%;max-width:380px;padding:36px 32px 30px;text-align:center;animation:pop .3s ease}
+.login-logo{width:66px;height:66px;border-radius:18px;margin:0 auto 14px;background:linear-gradient(135deg,var(--gold),#9c7b2e);display:grid;place-items:center;font-size:32px;box-shadow:0 8px 22px rgba(200,162,74,.45)}
+.login-card h2{margin:0;font-size:21px;font-weight:800;color:var(--navy)}
+.login-sub{margin:5px 0 22px;color:var(--muted);font-size:13.5px}
+.lf{text-align:right;margin-bottom:14px}
+.lf label{display:block;font-size:12.5px;font-weight:700;color:var(--navy);margin-bottom:5px}
+.lf input{width:100%;border:1px solid var(--line);border-radius:11px;padding:12px 13px;font-family:inherit;font-size:15px;background:#fbfcfe}
+.lf input:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px rgba(200,162,74,.18);background:#fff}
+.login-err{display:none;color:var(--red);font-size:13px;font-weight:600;margin-bottom:12px}
+.btn-login{width:100%;border:none;border-radius:12px;padding:13px;font-size:15.5px;font-weight:800;color:#fff;cursor:pointer;font-family:inherit;
+  background:linear-gradient(135deg,var(--navy),var(--navy2));transition:.15s}
+.btn-login:hover{filter:brightness(1.12)}
 nav.tabs{max-width:1280px;margin:18px auto 0;padding:0 10px;display:flex;gap:4px;overflow-x:auto}
 nav.tabs button{background:transparent;border:none;color:#cdd9ea;padding:13px 18px;font-size:14.5px;font-weight:600;cursor:pointer;font-family:inherit;border-radius:11px 11px 0 0;white-space:nowrap;transition:.15s;border-bottom:3px solid transparent}
 nav.tabs button:hover{color:#fff}
@@ -140,7 +161,22 @@ tbody tr:last-child td{border-bottom:none}
 }
 </style>
 </head>
-<body>
+<body class="locked">
+
+<!-- ============ LOGIN ============ -->
+<div id="loginScreen">
+  <form class="login-card" onsubmit="doLogin();return false">
+    <div class="login-logo">🏗️</div>
+    <h2>אופקים — עסקת מגרש</h2>
+    <p class="login-sub">כניסה למערכת הניהול</p>
+    <div class="lf"><label>שם משתמש</label>
+      <input id="loginUser" autocomplete="username" placeholder="שם משתמש" autofocus></div>
+    <div class="lf"><label>סיסמה</label>
+      <input id="loginPass" type="password" autocomplete="current-password" placeholder="סיסמה"></div>
+    <div id="loginErr" class="login-err">שם משתמש או סיסמה שגויים</div>
+    <button type="submit" class="btn-login">כניסה →</button>
+  </form>
+</div>
 
 <header class="top">
   <div class="head-in">
@@ -152,10 +188,13 @@ tbody tr:last-child td{border-bottom:none}
       </div>
     </div>
     <div class="head-tools">
+      <span id="syncStatus" class="sync-badge s-off">— מקומי בלבד</span>
+      <button class="htbtn" onclick="setServerUrl()">☁️ <span>סנכרון</span></button>
       <button class="htbtn" onclick="exportJSON()">⬇️ <span>גיבוי</span></button>
       <button class="htbtn" onclick="document.getElementById('importFile').click()">⬆️ <span>שחזור</span></button>
       <input type="file" id="importFile" accept="application/json" style="display:none" onchange="importJSON(event)">
-      <button class="htbtn" onclick="resetData()">↺ <span>נתונים מקוריים</span></button>
+      <button class="htbtn" onclick="resetData()">↺ <span>מקור</span></button>
+      <button class="htbtn" onclick="logout()">🚪 <span>יציאה</span></button>
     </div>
   </div>
   <nav class="tabs" id="tabs">
@@ -387,7 +426,7 @@ const SEED = {
 const LS_KEY='ofakim_crm_v1';
 let DATA=load();
 function load(){try{const r=localStorage.getItem(LS_KEY);if(r)return JSON.parse(r);}catch(e){}return structuredClone(SEED);}
-function save(){DATA.updated=new Date().toISOString();localStorage.setItem(LS_KEY,JSON.stringify(DATA));}
+function save(){DATA.updated=new Date().toISOString();localStorage.setItem(LS_KEY,JSON.stringify(DATA));serverPush();}
 
 /* ================= HELPERS ================= */
 const ILS=new Intl.NumberFormat('he-IL',{style:'currency',currency:'ILS',maximumFractionDigits:0});
@@ -731,14 +770,94 @@ document.getElementById('tabs').addEventListener('click',e=>{
   if(v==='reports')renderReports();
 });
 
+/* ================= CLOUD SYNC (Google Sheets via Apps Script) ================= */
+const URLKEY='ofakim_gs_url';
+// אחרי פריסת ה-Apps Script — הדבק כאן את כתובת ה-/exec כדי שכל המכשירים יסונכרנו אוטומטית:
+const DEFAULT_GS_URL='';
+let GS_URL=localStorage.getItem(URLKEY)||DEFAULT_GS_URL;
+let suppressPullUntil=0,pushTimer=null,pollTimer=null;
+const COLLECTIONS=['partners','summary','expenses','meitavInterest','dudiExpenses','dudiInterest'];
+function itemCount(d){return d?COLLECTIONS.reduce((a,k)=>a+((d[k]||[]).length),0):0;}
+function setSync(state,txt){const el=document.getElementById('syncStatus');if(!el)return;el.className='sync-badge '+({ok:'s-ok',wait:'s-wait',err:'s-err'}[state]||'s-off');el.textContent=txt;}
+function editingNow(){const a=document.activeElement;return a&&(a.tagName==='INPUT'||a.tagName==='SELECT'||a.tagName==='TEXTAREA');}
+function modalOpen(){return document.getElementById('modal').classList.contains('show');}
+
+function setServerUrl(){
+  const v=prompt('הדבק כאן את כתובת ה-Apps Script (מסתיימת ב-/exec):',GS_URL||'');
+  if(v===null)return;const url=v.trim();
+  if(url&&!/\/exec$/.test(url)){alert('הכתובת צריכה להסתיים ב-/exec');return;}
+  GS_URL=url;localStorage.setItem(URLKEY,url);
+  if(url){toast('השרת הוגדר — מסנכרן');startSync();}else setSync('off','— מקומי בלבד');
+}
+function serverPush(){
+  if(!GS_URL){setSync('off','— מקומי בלבד');return;}
+  suppressPullUntil=Date.now()+9000;setSync('wait','⏳ שומר…');
+  clearTimeout(pushTimer);
+  pushTimer=setTimeout(()=>{
+    const json=JSON.stringify(DATA);const enc=encodeURIComponent(json);
+    if(enc.length<30000){
+      fetch(GS_URL+'?action=save&data='+enc).then(r=>r.json())
+        .then(res=>setSync(res&&res.status==='ok'?'ok':'err',res&&res.status==='ok'?'☁ נשמר בענן':'⚠ שגיאת שמירה'))
+        .catch(()=>setSync('err','⚠ שגיאת שמירה'));
+    }else{
+      const body=new URLSearchParams();body.append('action','save');body.append('data',json);
+      fetch(GS_URL,{method:'POST',mode:'no-cors',body}).then(()=>setSync('ok','☁ נשמר בענן')).catch(()=>setSync('err','⚠ שגיאת שמירה'));
+    }
+  },350);
+}
+function serverPull(initial){
+  if(!GS_URL)return;
+  fetch(GS_URL+'?action=load&t='+Date.now()).then(r=>r.json())
+    .then(remote=>{
+      if(!remote||remote.status==='error'){setSync('err','⚠ שגיאת טעינה');return;}
+      // לעולם לא לתת לשרת ריק למחוק נתונים מקומיים — לדחוף אותם חזרה במקום
+      if(itemCount(remote)===0&&itemCount(DATA)>0){serverPush();setSync('ok','☁ נשמר בענן');return;}
+      // לא לדרוס שינוי שבדיוק עשינו, או בזמן עריכה / מודאל פתוח
+      if(Date.now()<suppressPullUntil||editingNow()||modalOpen()){setSync('ok','☁ מסונכרן');return;}
+      if(JSON.stringify(remote)!==JSON.stringify(DATA)){
+        DATA=remote;localStorage.setItem(LS_KEY,JSON.stringify(DATA));
+        boot();
+        if(document.getElementById('view-reports').classList.contains('active'))renderReports();
+      }
+      setSync('ok','☁ מסונכרן');
+    })
+    .catch(()=>setSync('err','⚠ אין חיבור לשרת'));
+}
+function startSync(){
+  if(!GS_URL){setSync('off','— מקומי בלבד (לחץ ☁️ סנכרון)');return;}
+  setSync('wait','⏳ טוען מהענן…');serverPull(true);
+  clearInterval(pollTimer);pollTimer=setInterval(()=>serverPull(false),12000);
+}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&GS_URL)serverPull(false);});
+
+/* ================= AUTH ================= */
+const AUTH_KEY='ofakim_auth';
+const U_HASH=2141732249, P_HASH=2408763042;   // djb2 — דודי / הסיסמה (לא טקסט גלוי)
+function djb2(s){let h=5381;for(let i=0;i<s.length;i++)h=((h*33)+s.charCodeAt(i))&0xFFFFFFFF;return h>>>0;}
+function doLogin(){
+  const u=document.getElementById('loginUser').value.trim();
+  const p=document.getElementById('loginPass').value;
+  if(djb2(u)===U_HASH&&djb2(p)===P_HASH){localStorage.setItem(AUTH_KEY,'ok');showApp();}
+  else{document.getElementById('loginErr').style.display='block';document.getElementById('loginPass').value='';}
+}
+function logout(){localStorage.removeItem(AUTH_KEY);location.reload();}
+function showApp(){
+  document.body.classList.remove('locked');
+  boot();          // render from local cache (instant)
+  startSync();      // then connect to the cloud
+}
+
 /* ================= BOOT ================= */
 function boot(){
   ['expenses','meitavInterest','dudiExpenses','dudiInterest','partners'].forEach(renderDataset);
   refreshDashboard();
 }
-boot();
 window.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
 document.getElementById('modal').addEventListener('click',e=>{if(e.target.id==='modal')closeModal();});
+
+// כניסה: אם כבר מחוברים — להיכנס ישר; אחרת להציג מסך כניסה
+if(localStorage.getItem(AUTH_KEY)==='ok'){showApp();}
+else{document.getElementById('loginUser').focus();}
 </script>
 </body>
 </html>
