@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>מערכת ניתוח אסטרטגי — שיטת זילבר</title>
+<style>
+:root{
+  --bg:#0f1525; --panel:#161e33; --panel2:#1d2740; --card:#1a2238; --line:#2a375a;
+  --txt:#eaf0ff; --muted:#9fb0d6; --soft:#7e8fbb;
+  --pri:#5b8cff; --pri2:#3f6fe0; --teal:#2dd4bf; --amber:#fbbf24; --rose:#fb7185; --green:#34d399;
+  --good:#34d399; --mid:#fbbf24; --bad:#fb7185;
+  --shadow:0 10px 30px rgba(0,0,0,.35); --r:14px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:'Heebo','Assistant','Segoe UI',Tahoma,Arial,sans-serif;background:linear-gradient(180deg,#0c1220,#0f1525 40%);color:var(--txt);min-height:100vh;font-size:15px;line-height:1.55}
+a{color:var(--pri)}
+button{font-family:inherit}
+.wrap{max-width:1180px;margin:0 auto;padding:0 16px 60px}
+
+/* top bar */
+.top{position:sticky;top:0;z-index:30;background:rgba(13,18,32,.82);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.top .inr{max-width:1180px;margin:0 auto;padding:11px 16px;display:flex;align-items:center;gap:14px}
+.brand{display:flex;align-items:center;gap:11px;font-weight:800;font-size:18px;letter-spacing:.2px}
+.brand .logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--pri),var(--teal));display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 4px 14px rgba(91,140,255,.4)}
+.brand small{display:block;font-weight:500;font-size:11px;color:var(--soft);letter-spacing:0}
+.nav{display:flex;gap:6px;margin-inline-start:auto;flex-wrap:wrap}
+.nav button{background:transparent;border:1px solid transparent;color:var(--muted);padding:8px 14px;border-radius:10px;cursor:pointer;font-size:14px;font-weight:600}
+.nav button:hover{background:var(--panel2);color:var(--txt)}
+.nav button.on{background:var(--pri);color:#fff;border-color:var(--pri)}
+
+h1,h2,h3{margin:0 0 6px}
+.page-h{margin:26px 0 6px;font-size:26px;font-weight:800}
+.page-sub{color:var(--muted);margin:0 0 22px;font-size:14px}
+
+/* buttons */
+.btn{background:var(--pri);color:#fff;border:0;border-radius:11px;padding:10px 18px;font-size:14px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:.15s}
+.btn:hover{background:var(--pri2);transform:translateY(-1px)}
+.btn.ghost{background:var(--panel2);color:var(--txt);border:1px solid var(--line)}
+.btn.ghost:hover{background:var(--card)}
+.btn.sm{padding:6px 12px;font-size:13px;border-radius:9px}
+.btn.danger{background:transparent;border:1px solid var(--bad);color:var(--bad)}
+.btn.danger:hover{background:rgba(251,113,133,.12)}
+
+/* cards / grid */
+.grid{display:grid;gap:16px}
+.clients-grid{grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}
+.ccard{background:linear-gradient(160deg,var(--card),var(--panel));border:1px solid var(--line);border-radius:var(--r);padding:18px;cursor:pointer;transition:.18s;position:relative;overflow:hidden}
+.ccard:hover{border-color:var(--pri);transform:translateY(-3px);box-shadow:var(--shadow)}
+.ccard .nm{font-size:18px;font-weight:800;margin-bottom:2px}
+.ccard .bz{color:var(--muted);font-size:13px;margin-bottom:14px}
+.ccard .meta{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--soft)}
+.pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11.5px;font-weight:700}
+.pill.s-new{background:rgba(91,140,255,.16);color:#9cb8ff}
+.pill.s-diag{background:rgba(251,191,36,.16);color:#fcd66b}
+.pill.s-strat{background:rgba(45,212,191,.16);color:#5fe9d8}
+.pill.s-done{background:rgba(52,211,153,.16);color:#6ee7b7}
+.prog{height:6px;border-radius:6px;background:var(--panel2);overflow:hidden;margin-top:12px}
+.prog>i{display:block;height:100%;background:linear-gradient(90deg,var(--pri),var(--teal))}
+.add-card{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;border:2px dashed var(--line);color:var(--muted);min-height:150px;background:transparent}
+.add-card:hover{border-color:var(--pri);color:var(--txt)}
+.add-card .plus{width:46px;height:46px;border-radius:50%;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:26px}
+
+/* client workbench */
+.cwrap{display:grid;grid-template-columns:248px 1fr;gap:22px;margin-top:18px;align-items:start}
+.stepper{position:sticky;top:74px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:9px;display:flex;flex-direction:column;gap:3px}
+.step{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:10px;cursor:pointer;color:var(--muted);font-size:14px;font-weight:600;border:0;background:transparent;text-align:start;width:100%}
+.step:hover{background:var(--panel2);color:var(--txt)}
+.step.on{background:var(--pri);color:#fff}
+.step .n{width:25px;height:25px;border-radius:50%;background:var(--panel2);color:var(--muted);display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:800;flex-shrink:0}
+.step.on .n{background:rgba(255,255,255,.25);color:#fff}
+.step .ck{margin-inline-start:auto;color:var(--green);font-size:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:24px;min-height:400px}
+.panel h2{font-size:21px;font-weight:800;display:flex;align-items:center;gap:10px}
+.panel .lead{color:var(--muted);font-size:13.5px;margin:0 0 20px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+
+/* fields */
+.fld{margin-bottom:16px}
+.fld>label{display:block;font-weight:700;font-size:14px;margin-bottom:6px}
+.fld .hint{color:var(--soft);font-size:12.5px;font-weight:400;margin-top:2px}
+input[type=text],input[type=tel],input[type=number],input[type=date],textarea,select{
+  width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--txt);
+  padding:10px 12px;font-size:14px;font-family:inherit;outline:none;transition:.15s}
+textarea{resize:vertical;min-height:74px;line-height:1.6}
+input:focus,textarea:focus,select:focus{border-color:var(--pri);background:#1a2238}
+select{cursor:pointer}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+@media(max-width:760px){.row2,.row3{grid-template-columns:1fr}}
+
+/* chips */
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{padding:7px 13px;border-radius:20px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);cursor:pointer;font-size:13px;font-weight:600;transition:.12s;user-select:none}
+.chip:hover{border-color:var(--pri);color:var(--txt)}
+.chip.on{background:var(--pri);border-color:var(--pri);color:#fff}
+
+/* reference / accordion */
+.ref{margin:6px 0 18px;border:1px solid var(--line);border-radius:11px;overflow:hidden;background:var(--panel2)}
+.ref>summary{cursor:pointer;padding:10px 14px;font-weight:700;font-size:13.5px;color:var(--teal);list-style:none;display:flex;align-items:center;gap:8px}
+.ref>summary::-webkit-details-marker{display:none}
+.ref>summary:before{content:'📘'}
+.ref[open]>summary{border-bottom:1px solid var(--line)}
+.ref .rbody{padding:13px 16px;font-size:13px;color:var(--muted);line-height:1.7}
+.ref .rbody b{color:var(--txt)}
+.ref .rbody ul{margin:6px 0;padding-inline-start:20px}
+.ref .rbody li{margin:3px 0}
+
+.qbank{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:4px 4px;margin-bottom:8px}
+.qbank .qh{font-weight:700;font-size:13px;color:var(--amber);padding:8px 12px}
+.qrow{display:flex;gap:9px;align-items:flex-start;padding:7px 12px;font-size:13px;border-top:1px solid var(--line);color:var(--muted)}
+.qrow .qp{color:var(--soft);font-size:11.5px}
+
+/* AEM meters */
+.aem-box{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:10px}
+.aem-row{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.aem-row .lbl{width:62px;font-weight:700;font-size:13px}
+.aem-row input[type=range]{flex:1;accent-color:var(--pri)}
+.aem-row .val{width:42px;text-align:center;font-weight:800;color:var(--pri)}
+.aem-result{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+.aem-tag{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-size:12.5px;flex:1;min-width:150px}
+.aem-tag b{display:block;font-size:14px;margin-bottom:3px}
+.sumbadge{display:inline-block;font-size:12px;color:var(--soft);margin-inline-start:8px}
+
+/* 9 types grid */
+.t9{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.t9 .tt{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:11px 13px}
+.t9 .tt .tn{font-weight:700;font-size:13.5px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.t9 .tt input[type=range]{width:100%;accent-color:var(--teal);margin-top:7px}
+.t9 .tt .sc{font-weight:800;color:var(--teal);font-size:13px}
+.t9 .tt .imp{font-size:11.5px;color:var(--soft);margin-top:5px;display:none}
+.t9 .tt.hot{border-color:var(--teal)}
+.t9 .tt.hot .imp{display:block}
+
+/* forces */
+.force-cat{margin-bottom:8px}
+.force-cat>summary{cursor:pointer;font-weight:700;font-size:14px;padding:10px 0;display:flex;align-items:center;gap:9px;list-style:none}
+.force-cat>summary::-webkit-details-marker{display:none}
+.force-cat>summary:before{content:'▼';font-size:10px;color:var(--soft);transition:.2s}
+.force-cat:not([open])>summary:before{transform:rotate(-90deg)}
+.frow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px;background:var(--panel2);font-size:13px}
+.frow .fq{flex:1}
+.frow .fq small{display:block;color:var(--soft);font-size:11px}
+.seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;flex-shrink:0}
+.seg button{background:var(--card);border:0;color:var(--muted);padding:6px 10px;font-size:12px;cursor:pointer;font-weight:600;border-inline-start:1px solid var(--line)}
+.seg button:first-child{border:0}
+.seg button.pos.on{background:var(--good);color:#06281d}
+.seg button.neu.on{background:var(--soft);color:#10182b}
+.seg button.neg.on{background:var(--bad);color:#3a0d18}
+.score-banner{display:flex;align-items:center;gap:16px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin:14px 0}
+.score-ring{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;flex-shrink:0}
+
+/* repeater list */
+.litem{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;position:relative}
+.litem .del{position:absolute;top:10px;left:10px;background:transparent;border:0;color:var(--bad);cursor:pointer;font-size:17px}
+.litem h4{margin:0 0 10px;font-size:14px;color:var(--teal)}
+.addbtn{background:transparent;border:1.5px dashed var(--line);color:var(--muted);border-radius:10px;padding:9px;width:100%;cursor:pointer;font-weight:600;font-size:13px}
+.addbtn:hover{border-color:var(--pri);color:var(--txt)}
+
+/* whys */
+.why{display:flex;gap:10px;align-items:flex-start;margin-bottom:9px}
+.why .wn{width:30px;height:30px;flex-shrink:0;border-radius:8px;background:var(--card);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--amber);font-size:13px}
+
+/* methodology */
+.meth-tabs{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:18px}
+.meth-tabs button{background:var(--panel2);border:1px solid var(--line);color:var(--muted);padding:8px 14px;border-radius:20px;cursor:pointer;font-weight:600;font-size:13px}
+.meth-tabs button.on{background:var(--teal);color:#06281d;border-color:var(--teal)}
+.mcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:14px}
+.mcard h3{font-size:16px;color:var(--pri);margin-bottom:8px}
+.mcard p,.mcard li{color:var(--muted);font-size:13.5px}
+.mcard ul{padding-inline-start:20px}
+
+/* report */
+.report{background:#fff;color:#1a2236;border-radius:14px;padding:42px 46px;box-shadow:var(--shadow);font-size:14px;line-height:1.7}
+.report h1{color:#16203a;font-size:28px;border-bottom:3px solid #5b8cff;padding-bottom:10px;margin-bottom:4px}
+.report .r-meta{color:#64748b;font-size:13px;margin-bottom:24px}
+.report h2{color:#2a3a66;font-size:18px;margin:26px 0 8px;padding-inline-start:11px;border-inline-start:4px solid #2dd4bf}
+.report .r-block{background:#f5f8ff;border:1px solid #e3ebfa;border-radius:10px;padding:14px 16px;margin-bottom:10px;white-space:pre-wrap}
+.report .r-empty{color:#94a3b8;font-style:italic}
+.report .r-kv{display:grid;grid-template-columns:170px 1fr;gap:6px 14px;margin:8px 0}
+.report .r-kv .k{font-weight:700;color:#475569}
+.report .r-tags span{display:inline-block;background:#eef4ff;border:1px solid #d6e2fb;color:#2a3a66;border-radius:16px;padding:3px 11px;font-size:12.5px;margin:3px 4px 3px 0}
+.report .r-foot{margin-top:34px;padding-top:16px;border-top:1px solid #e2e8f0;color:#64748b;font-size:12px}
+.report .r-strat{background:linear-gradient(135deg,#eef4ff,#e9fbf7);border:1px solid #cfe0fb;border-radius:12px;padding:18px 20px;text-align:center;margin:10px 0}
+.report .r-strat b{font-size:20px;color:#16203a;display:block}
+
+.empty-state{text-align:center;padding:70px 20px;color:var(--muted)}
+.empty-state .ico{font-size:54px;margin-bottom:14px}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--pri);color:var(--txt);padding:12px 22px;border-radius:12px;box-shadow:var(--shadow);z-index:100;font-weight:600;opacity:0;transition:.3s;pointer-events:none}
+.toast.show{opacity:1;bottom:34px}
+.muted{color:var(--muted)}
+.tiny{font-size:12px;color:var(--soft)}
+.sec-actions{display:flex;justify-content:space-between;align-items:center;margin-top:22px;padding-top:16px;border-top:1px solid var(--line)}
+
+@media print{
+  body{background:#fff}
+  .top,.stepper,.no-print,.sec-actions{display:none!important}
+  .cwrap{display:block}
+  .report{box-shadow:none;border-radius:0;padding:0}
+  .wrap{padding:0}
+}
+@media(max-width:880px){.cwrap{grid-template-columns:1fr}.stepper{position:static;flex-direction:row;overflow-x:auto}.step .ck,.step span.tl{display:none}}
+</style>
+</head>
+<body>
+<div class="top"><div class="inr">
+  <div class="brand"><div class="logo">🧭</div><div>ניתוח אסטרטגי<small>שיטת זילבר · הכשרת יועצים עסקיים</small></div></div>
+  <div class="nav" id="nav"></div>
+</div></div>
+<div class="wrap" id="app"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   מערכת ניתוח אסטרטגי — שיטת זילבר
+   בסיס הידע (KB) מזוקק מתוך פרוטוקולי הקורס:
+   פרוטוקול תחילת תהליך, פרוטוקול אסטרטגיה, 9 הטיפוסים, אבחון אמן/יזם/מנהל
+   ============================================================ */
+const KB = {
+  triggerTypes:['כאב / תסכול','השראה / פתרון','אירוע חיים','פחד','שאיפה','רגולציה / חוק','יחסים'],
+
+  visibleReasons:['הקמה / רכישה / סיום','רווחיות / תזרים / כספים','שיווק / מכירות / בידול / תחרות',
+    'ניהול / תפעול / אסטרטגיה','עובדים / האצלה / מבנה ארגוני','שותפות / בני זוג / מתחים','עומס / שחיקה / תקיעות של בעל העסק'],
+
+  aem:{
+    artist:{name:'אמן',ico:'🎨',essence:'מחובר למוצר, למקצועיות ולדיוק. רואה את העסק דרך עיני המקצוע.',
+      strengths:'מצוינות, ייחודיות וחיבור עמוק למהות.',
+      weaknesses:'קושי במכירות, בניהול אנשים, ובהפיכת הכישרון האישי למערכת עסקית רחבה.',
+      says:'"חשוב לי שזה יהיה טוב" · "אני לא מסוגל להוציא משהו לא ברמה" · "קשה לי עם כל המסביב"'},
+    entrepreneur:{name:'יזם',ico:'🚀',essence:'חי רעיונות, הזדמנויות ופריצות דרך. חושב בגדול וצופה פני עתיד.',
+      strengths:'חזון, תעוזה, זיהוי הזדמנויות ויכולת הנעת תהליכים.',
+      weaknesses:'פיזור, חוסר יציבות, קושי בסדר ובהתמדה (נטייה להתחיל ולא לסיים).',
+      says:'"אני חייב תנועה" · "אני רואה כל הזמן אפשרויות" · "יש לי מלא רעיונות" · "אני טוב בלפתוח דברים"'},
+    manager:{name:'מנהל',ico:'📊',essence:'אוהב סדר, שגרה, מדידה ובקרה. רוצה שהדברים יעבדו "לפי הספר".',
+      strengths:'שיטתיות, ארגון, יישום ובניית מערכות יציבות.',
+      weaknesses:'חוסר ביצירתיות ובתשוקה לפריצה, זהירות יתר וקושי עם חוסר ודאות.',
+      says:'"אני חייב סדר" · "בלי מעקב שום דבר לא קורה" · "אני רוצה לראות מספרים"'}
+  },
+
+  types9:[
+    {k:'technical',n:'הטכני / הטכנולוגי',high:'מחובר לקרקע, צריך לראות מציאות מול העיניים, לגעת ולחוש. עושה עבודה מצוינת בתחומו.',low:'איש תיאוריה ולא מעש, לא אוהב ללכלך ידיים.',imp:'חזק בעצם העשייה — חלש ביזמות ובניהול.'},
+    {k:'scientist',n:'המדען / החוקר',high:'אוהב ללמוד ולהחכים, יודע המון על תחומו, שואף להבין עד הסוף.',low:'לא אוהב לחקור; לומד רק בשטח ולא מהוראות.',imp:'סכנה: לשקוע בלימוד ולא לבצע.'},
+    {k:'field',n:'איש השטח / הטבע',high:'אוהב גיוון, מרחב ותנועה; לא יכול לעשות כל יום אותו דבר.',low:'אוהב את הפינה שלו, שונא נסיעות והפתעות.',imp:'יתקשה בניהול ובשגרה — צריך תחום עם גיוון.'},
+    {k:'artistic',n:'האמנותי / היצירתי',high:'אוהב לקדם, לחדש ולשפר את העסק כל הזמן; הופך שגרה לאמנות.',low:'שונא להמציא תהליכים, מפחד מחדש, צריך הוראות ברורות.',imp:'אוהב או שונא — אין אמצע. קשה לו עם שותפות ללא חלוקה ברורה.'},
+    {k:'social',n:'החברתי / טיפולי',high:'אוהב אנשים, לדבר איתם ולתת שירות; מחובר ללקוחות.',low:'אין סבלנות לאנשים; מעדיף לעבוד לבד.',imp:'יתקשה בניהול עובדים, במשמעת ובהצבת גבולות ללקוחות.'},
+    {k:'teacher',n:'המורה / הלמדן',high:'אוהב לרכוש ולהעביר ידע מעשי; מצוין בהכשרת עובדים.',low:'אין סבלנות להסביר; מעדיף לעשות לבד ועובד יומם ולילה.',imp:'נכון לתת לו חומרי למידה — הוא יבצע אותם היטב.'},
+    {k:'organizational',n:'הארגוני',high:'אוהב לארגן, לתאם ולשים כל אחד במקומו; מבסס ומגדיל עסק מסודר.',low:'לא יודע לנהל ולעקוב; יעדיף להיות עצמאי ולא בעל עסק.',imp:'חזק בשמירה וניהול הקיים — חלש ביזמות והובלה.'},
+    {k:'accounting',n:'החשבונאי-ניהולי',high:'מצוין בפרטים הקטנים, בכספים, בחוקים ובדיוק; מסודר.',low:'אין סבלנות לפרטים; לא יודע מה קורה בכספים.',imp:'יתקשה לשחרר ולפרוץ; לעיתים פחדים נסתרים שעוצרים את העסק.'},
+    {k:'entrepreneurial',n:'היזמי / עסקי',high:'אוהב להשפיע, למכור, להוביל ולקחת אחריות; רצון עז להצליח.',low:'מפחד מיוזמה ומהובלה, לא נוח במכירות; רוצה שיגידו לו מה לעשות.',imp:'מנוע הצמיחה של העסק — צריך לתעל לאסטרטגיה ולא רק לתנועה.'}
+  ],
+
+  sixRoots:[
+    {k:'self',n:'ניהול עצמי לא תקין',d:'פחדים, אישיות, דפוסי התנהגות של בעל העסק.'},
+    {k:'strategy',n:'אסטרטגיה עסקית לא ברורה',d:'לא ברור מה העסק עושה ולמי; מודל עסקי לא תקין.'},
+    {k:'marketing',n:'שיווק ומכירות חלשים',d:'אסטרטגיה שיווקית/מכירתית לוקה בחסר או לא קיימת.'},
+    {k:'execution',n:'בעיית ביצוע',d:'יודעים מה צריך לעשות — ולא עושים. חוסר משמעת ניהולית.'},
+    {k:'market',n:'בעיית שוק ותחום',d:'בעיות חיצוניות לתחום העיסוק.'},
+    {k:'data',n:'בעיית מידע',d:'אין נתונים ברורים, או שלא מתנהלים לאור הנתונים.'}
+  ],
+
+  painCenters:['כסף ופיננסים','עומס / בלגן','חוסר שליטה','פחד / בלבול','עובדים','לקוחות / מכירות','קבלת החלטות'],
+  urgency:[{k:'low',n:'לא דחוף — אפשר תהליך מסודר'},{k:'urgent',n:'דחוף — צריך טיפול מהיר'},{k:'critical',n:'קריטי — חשש לנזק מיידי / קריסה'}],
+  understanding:['מבין היטב את הבעיה','מרגיש את הכאב אך לא מבין לעומק','מבולבל','מאשים רק גורמים חיצוניים','לא באמת רואה את הבעיה'],
+  readiness:['מגויס מאוד','פתוח אך חושש','רוצה פתרון מהיר בלי עומק','מחפש רק חיזוק / אישור','לא בשל כרגע לתהליך'],
+  ownerRole:['נמוך','בינוני','גבוה','גבוה מאוד'],
+  ownerPatterns:['שליטה','פיזור','דחיינות','קושי להחליט','קושי להציב גבולות','פחד ממכירה / תמחור','חוסר סדר','חוסר ידע','קושי להאציל','שחיקה'],
+
+  forces:[
+    {cat:'יריבות בין חברות',items:[
+      {q:'מעט מתחרים בתחום',sub:'הרבה מתחרים = לרוב סימן שיש כסף, אך גם צפיפות'},
+      {q:'אין תחרות מחירים',sub:'תחרות על מחיר = בעיה אסטרטגית, כולם נראים אותו דבר'},
+      {q:'מוצרים ייחודיים (לא הומוגניים)',sub:'ייחודיות = קל יותר לבדל ולצמוח בנישות'},
+      {q:'התחום צומח (לא נסוג)'},
+      {q:'יש משמעות למותג ותיק / נאמנות'}]},
+    {cat:'כוח הספקים',items:[
+      {q:'תלות נמוכה בספקים'},
+      {q:'יש הרבה ספקים (לא מעט בעלי כוח)'},
+      {q:'מרווח רווח מספיק לספיגת תקופות חלשות'}]},
+    {cat:'כוח הלקוחות',items:[
+      {q:'ללקוחות אין פתרון חלופי קל'},
+      {q:'הלקוחות מודעים לבעיה ולפתרון',sub:'מודעות נמוכה = צורך בחינוך שוק (מאתגר)'},
+      {q:'הלקוחות מוכנים לשלם סכומים הוגנים'},
+      {q:'קשה ללקוח לעבור למתחרה',sub:'קשה לעבור = קל לשמר'}]},
+    {cat:'חסמי כניסה ויציאה',items:[
+      {q:'קשה להיכנס לתחום (חסם גבוה)',sub:'חסם כניסה גבוה = אטרקטיבי למי שכבר בפנים'},
+      {q:'נדרש רישיון / היתר / מומחיות / השקעה',sub:'רגולציה מחמירה = רף כניסה גבוה'}]},
+    {cat:'פתרונות חליפיים',items:[
+      {q:'אין פתרונות חליפיים זמינים',sub:'יותר חלופות = תחום מאתגר יותר'},
+      {q:'החלופות אינן טובות / זולות יותר'}]},
+    {cat:'הזדמנויות עסקיות',items:[
+      {q:'גודל שוק גדול / אפשרות ייצוא'},
+      {q:'התחום בצמיחה / אפשר להגדיל צריכה'},
+      {q:'סקיילבילי (אפשר לגדול ביעילות)'},
+      {q:'טכנולוגיה עתידית מיטיבה (לא מאיימת)'},
+      {q:'תחום פחות "מכובד"',sub:'תחום פחות מכובד = יותר אטרקטיבי, פחות מתחרים'}]}
+  ],
+
+  openingQuestions:[
+    {q:'ספר לי על עצמך ועל העסק. (אם נתקע — "תתחיל מהאמצע")',p:'פתיחה קלילה, נותן ללקוח לדבר בלי תשאול'},
+    {q:'איך הכול התחיל? מה גרם לך להקים דווקא את העסק הזה?',p:'מחזיר את הניצוץ, חיבור אישי, ולפעמים מגלה שהעסק קם בטעות'},
+    {q:'אם הייתי זבוב על הקיר ביום שלישי טיפוסי — מה הייתי רואה אותך עושה רוב הזמן?',p:'מאבחן מיד אם הוא "אמן", "יזם" או "מנהל"'},
+    {q:'מה קרה דווקא השבוע/החודש שגרם לך להרים טלפון?',p:'שאלת הזהב — מציפה את הבעיה הבוערת ביותר (הטריגר)'},
+    {q:'בעוד שנה אתה אומר לי "זה היה הצעד הכי טוב" — מה חייב לקרות?',p:'מבין ציפיות (והאם ריאליות), ורותם לתהליך'},
+    {q:'מה הדבר שאתה הכי גאה בו? מה עובד מצוין?',p:'מוריד מגננות וחושף את ליבת הערך — שם כנראה הבידול'},
+    {q:'למה שלקוח יבחר דווקא בך ולא במתחרה שמוכר ב-10% פחות?',p:'שאלת האסטרטגיה הקלאסית — גמגום = אין בידול'},
+    {q:'מתוך כל 1,000 ₪ שנכנסים, כמה נשאר לך בכיף בסוף?',p:'בדיקת דופק פיננסי — "אין לי מושג" = בעיית מידע וניהול כספים'},
+    {q:'מה הדבר הכי קשה שתצטרך לשנות כדי שהעסק יעלה שלב?',p:'בודק בשלות ולקיחת אחריות'}
+  ],
+
+  ownerStrategyQuestions:[
+    'איך הגעת לעסק הזה? (טעות / מישהו דחף / חלמתי / סבלתי ורציתי למנוע מאחרים / מקצוע משפחתי)',
+    'היית נכנס היום שוב לתחום אילו ידעת מה שאתה יודע? היית ממליץ לקרוב לפתוח עסק כזה?',
+    'איזו בעיה אתה פותר ללקוחות שלך?',
+    'מי המתחרים הישירים? למה שיגיעו דווקא אליך?',
+    'היית קונה בעסק שלך במחיר גבוה?',
+    'מה העשייה שאתה הכי אוהב בעסק?',
+    'איזה חלק בעסק לא היית רוצה שיגדל, גם אם מכניס כסף?',
+    'אם העסק היה נסגר מחר — מה העולם היה מפסיד?',
+    'על איזה לקוחות היית שמח לוותר, ולמה?',
+    'מי הלקוח שהכי מעריך את העבודה שלך? תאר אותו.',
+    'מה אתה עושה שאף אחד לא רוצה לחקות — אבל זה יוצר ערך?  ← זו לרוב האסטרטגיה האמיתית',
+    'אם היית מעלה מחירים ב-20% — מי היה נשאר, ולמה?',
+    'מי המתחרה האמיתי שלך? (לפעמים זה אי-אמון או אי-עשייה, לא מתחרה ישיר)',
+    'אילו התנגדויות חוזרות שומע נציג המכירות שוב ושוב?',
+    'כמה זמן ייקח למתחרה חדש להגיע למקום שבו אתה נמצא?',
+    'איך הלקוחות מגיעים היום לעסק? (מפה לאוזן / פרסום)'
+  ],
+
+  custInterviewQuestions:[
+    {q:'למה הגעת אליי? למה קנית את המוצר?',p:'מה דיבר אליך? מה הבנת עליי? מה גרם לך להשתכנע? — לא לקבל "שירות"/"יחס" בלי לפענח מה הכוונה'},
+    {q:'מה הבנת אחרי שרכשת? מה מיוחד? מה שונה מאחרים? למה דווקא אני?',p:'דורש תשובות מפורטות ומדויקות, לא בנאליות'},
+    {q:'מה אתה הולך לומר למי שמתעניין אצלך עליי / על העסק?',p:'בדרך כלל מביא זוויות נוספות'},
+    {q:'לאיזה סוג אנשים העסק/המוצר שלי מתאים במיוחד? מי צריך להגיע דווקא אליי?',p:'חלק מהאסטרטגיה זה "למי"'},
+    {q:'האם יש משהו שכדאי לשפר?',p:'בודק אכזבות ופערי ציפיות'}
+  ],
+
+  strategyChecklist:[
+    'הייתי מוכן להיות לקוח של העסק הזה?','יש מספיק לקוחות שצריכים את הערך הזה?','הלקוחות מוכנים לשלם?',
+    'הם יודעים שהם צריכים את זה?','צריך לחנך את השוק?','קל להגיע אליהם?','לעסק יש יכולת לספק את ההבטחה בעקביות?',
+    'בעל העסק מתאים להוביל את האסטרטגיה?','הצוות מתאים?','המחיר מתאים?','המוצר/שירות בנוי לפי האסטרטגיה?',
+    'חוויית הלקוח תומכת באסטרטגיה?','השיווק משקף אותה?','תהליך המכירה משקף אותה?','יש סתירה בין קהלי יעד?',
+    'יש סתירה בין שותפים/מקבלי החלטות?','צריך לוותר על חלק מהלקוחות?','צריך לוותר על חלק מהמוצרים?',
+    'צריך לשנות תמחור?','צריך לשנות את דרך השירות?','צריך לעשות פיבוט?'
+  ],
+
+  decisions:[
+    {k:'thicken',n:'עיבוי אסטרטגיה קיימת',d:'הכיוון נכון — צריך לחדד, להדגיש ולבנות סביבו מערכות.'},
+    {k:'redefine',n:'הגדרה מחדש',d:'העסק טוב, אבל ההגדרה הנוכחית לא מדויקת.'},
+    {k:'pivot',n:'פיבוט',d:'צריך לשנות כיוון משמעותי: קהל יעד, מוצר, מודל עסקי או שוק.'},
+    {k:'focus',n:'התמקדות',d:'העסק מפוזר מדי — צריך לבחור קהל/מוצר/מסר מרכזי.'},
+    {k:'expand',n:'הרחבה',d:'נמצאה נקודת חוזק — צריך להרחיב אותה.'},
+    {k:'reduce',n:'צמצום',d:'העסק עושה יותר מדי דברים שלא משרתים את האסטרטגיה.'},
+    {k:'gtm',n:'חדירה לשוק',d:'יש מוצר וערך ברורים — צריך לבחור איך נכנסים לשוק.'},
+    {k:'rehab',n:'שיקום בסיסי לפני אסטרטגיה',d:'העסק לא בשל — קודם מסדרים כספים, שירות, תפעול או ניהול.'}
+  ],
+
+  goalKinds:[
+    {k:'top',n:'יעד עליון',d:'היעד הרחב של התהליך — לאן הלקוח רוצה להגיע בסופו של דבר. (אחד)'},
+    {k:'primary',n:'יעד ראשוני',d:'הדבר הראשון שחייב לקרות כדי שאפשר יהיה להתקדם. (2-3)'},
+    {k:'process',n:'יעד תהליך',d:'מה צריך להיבנות/להשתנות בדרך כדי שהתוצאה תקרה. (5-10)'}
+  ],
+  metricExamples:'מחזור · רווח גולמי · רווח נקי · תזרים · מספר לידים · אחוז סגירה · עסקה ממוצעת · לקוחות חוזרים · אחוז גבייה · שעות עבודה של הבעלים | איכותי: ירידה בבלגן · יותר בהירות · פחות תלות בבעלים · עלייה בשליטה · פחות כיבוי שריפות',
+
+  glossary:[
+    ['אוקיינוס כחול / אדום','אדום = שוק קיים צפוף ותחרותי; כחול = יצירת שוק חדש בערך ייחודי.'],
+    ['בידול (USP)','ייחודיות ברורה המבוססת על אופי בעל העסק + הערך שהלקוחות מקבלים. מאותר בתשאול לקוחות.'],
+    ['תקרת אסטרטגיה','מצב שבו האסטרטגיה הנוכחית לא מאפשרת צמיחה נוספת בהכנסות, גם בקיבולת מלאה.'],
+    ['עיבוי אסטרטגיה','חיזוק והעמקת האסטרטגיה הקיימת במקום שינוי כיוון.'],
+    ['פיבוט','שינוי מהותי בכיוון העסקי או במודל הפעולה.'],
+    ['חוק פרקינסון','"ההיצע יוצר את הביקוש" — יותר מתחרים מרחיבים את כלל העוגה.'],
+    ['MVP / POC / PMF','מוצר מינימלי / הוכחת היתכנות / התאמת מוצר-שוק.'],
+    ['תוצאות לפני הוצאות','Bring The Money — קודם מייצרים הכנסות, ורק אז מוציאים.'],
+    ['חינוך שוק','שכנוע לקוחות בצורך במוצר חדש שאינו מוכר — יקר ומסוכן.'],
+    ['מסע הלקוח','טריגר → חיפוש → החלטה → לקוח משלם ונאמן.'],
+    ['סקיילביליות','יכולת לגדול בהכנסות בלי שהעלות/מאמץ יגדלו באותו קצב.']
+  ]
+};
+const STAGES=[
+  {k:'overview',n:'סקירת תיק',ic:'🗂️'},
+  {k:'intake',n:'פתיחה ואבחון',ic:'1'},
+  {k:'owner',n:'ציר בעל העסק',ic:'2'},
+  {k:'industry',n:'ציר הענף',ic:'3'},
+  {k:'customer',n:'ציר הלקוחות',ic:'4'},
+  {k:'root',n:'שורש הבעיה',ic:'5'},
+  {k:'strategy',n:'זיקוק האסטרטגיה',ic:'6'},
+  {k:'goals',n:'יעדים ומדדים',ic:'7'},
+  {k:'decision',n:'החלטה והמלצות',ic:'8'},
+  {k:'report',n:'דוח אסטרטגי',ic:'📄'}
+];
+</script>
+
+<script>
+/* ===================== DATA ===================== */
+const LS='zilber_strategy_db_v1';
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
+function defDB(){return{settings:{consultant:'',disclaimer:'הניתוח מבוסס על שיטת זילבר להכשרת יועצים עסקיים ועל הנתונים שנמסרו. ההחלטות הסופיות באחריות בעל העסק.'},clients:[]}}
+let DB=load();
+function load(){try{const d=JSON.parse(localStorage.getItem(LS));if(d&&d.clients){d.settings=Object.assign(defDB().settings,d.settings||{});return d}}catch(e){}return defDB()}
+let _sv;function save(){clearTimeout(_sv);_sv=setTimeout(()=>{localStorage.setItem(LS,JSON.stringify(DB))},250)}
+function saveNow(){localStorage.setItem(LS,JSON.stringify(DB))}
+
+function blankClient(){return{id:uid(),name:'',business:'',phone:'',status:'new',createdAt:Date.now(),updatedAt:Date.now(),
+  intake:{date:'',attendees:'',decisionMaker:'',trigger:'',triggerType:'',visibleReason:[],visibleProblem:'',ownerStory:'',proudOf:'',expectations:'',notes:''},
+  owner:{aem:{artist:33,entrepreneur:33,manager:34},types9:{},strengths:'',weaknesses:'',selfMgmt:'',financialHabits:''},
+  industry:{ratings:{},notes:''},
+  customer:{journey:{trigger:'',search:'',decision:'',influencers:''},interviews:[]},
+  root:{sixRoots:[],primaryRoot:'',fiveWhys:['','','','',''],rootSummary:'',painCenter:'',urgency:'',understanding:'',readiness:'',ownerRole:'',patterns:[]},
+  strategy:{ownerAnswers:'',repeatingWords:'',professionalValue:'',personalValue:'',differentiation:'',oneSentence:'',businessModel:'',economicCheck:'',checklist:[]},
+  goals:{top:'',primary:['',''],process:[''],metrics:['']},
+  decision:{type:'',rationale:'',fit:'',offer:'',firstFocus:'',firstStep:'',actionPlan:['']}
+}}
+
+/* nested get/set by path */
+function getP(o,p){return p.split('.').reduce((a,k)=>a==null?a:a[k],o)}
+function setP(o,p,v){const ks=p.split('.');let a=o;for(let i=0;i<ks.length-1;i++){if(a[ks[i]]==null)a[ks[i]]={};a=a[ks[i]]}a[ks[ks.length-1]]=v}
+
+/* ===================== STATE / ROUTER ===================== */
+let S={view:'clients',cid:null,stage:'overview',meth:'process'};
+const $=s=>document.querySelector(s);
+function cur(){return DB.clients.find(c=>c.id===S.cid)}
+function go(view,extra){S.view=view;Object.assign(S,extra||{});render()}
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1900)}
+const esc=s=>(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function render(){
+  $('#nav').innerHTML=[['clients','לקוחות'],['methodology','מתודולוגיה'],['settings','הגדרות']]
+    .map(([v,l])=>`<button class="${S.view===v?'on':''}" data-go="${v}">${l}</button>`).join('');
+  const app=$('#app');
+  if(S.view==='clients')app.innerHTML=viewClients();
+  else if(S.view==='client')app.innerHTML=viewClient();
+  else if(S.view==='methodology')app.innerHTML=viewMethodology();
+  else if(S.view==='settings')app.innerHTML=viewSettings();
+  window.scrollTo(0,0);
+}
+
+/* ===================== VIEW: CLIENTS ===================== */
+function completeness(c){
+  const checks=[
+    c.intake.trigger||c.intake.visibleProblem,
+    (c.owner.aem.artist!==33||c.owner.aem.entrepreneur!==33)||c.owner.strengths,
+    Object.keys(c.industry.ratings).length>=4,
+    c.customer.interviews.length>0||c.customer.journey.trigger,
+    c.root.primaryRoot||c.root.sixRoots.length,
+    c.strategy.oneSentence||c.strategy.differentiation,
+    c.goals.top,
+    c.decision.type
+  ];
+  return Math.round(checks.filter(Boolean).length/checks.length*100);
+}
+const STATUS={new:['חדש','s-new'],diag:['באבחון','s-diag'],strat:['גיבוש אסטרטגיה','s-strat'],done:['הושלם','s-done']};
+function viewClients(){
+  const cs=DB.clients.slice().sort((a,b)=>b.updatedAt-a.updatedAt);
+  let cards=cs.map(c=>{const st=STATUS[c.status]||STATUS.new;const pr=completeness(c);
+    return `<div class="ccard" data-open="${c.id}">
+      <div class="nm">${esc(c.name)||'ללא שם'}</div>
+      <div class="bz">${esc(c.business)||'—'}</div>
+      <div class="meta"><span class="pill ${st[1]}">${st[0]}</span><span>${pr}% הושלם</span></div>
+      <div class="prog"><i style="width:${pr}%"></i></div>
+    </div>`}).join('');
+  return `<h1 class="page-h">תיקי לקוחות</h1>
+    <p class="page-sub">כל לקוח עובר את התהליך המלא לפי שיטת זילבר — מאבחון ועד דוח אסטרטגי.</p>
+    <div class="grid clients-grid">
+      <div class="ccard add-card" data-new="1"><div class="plus">+</div><b>לקוח חדש</b></div>
+      ${cards}
+    </div>`;
+}
+
+/* ===================== VIEW: CLIENT WORKBENCH ===================== */
+function viewClient(){
+  const c=cur();if(!c)return go('clients'),'';
+  const steps=STAGES.map(s=>{const done=stageDone(c,s.k);
+    return `<button class="step ${S.stage===s.k?'on':''}" data-stage="${s.k}">
+      <span class="n">${s.ic}</span><span class="tl">${s.n}</span>${done?'<span class="ck">✔</span>':''}</button>`}).join('');
+  return `<div style="display:flex;align-items:center;gap:12px;margin:22px 0 4px">
+      <button class="btn ghost sm" data-go="clients">‹ לכל הלקוחות</button>
+      <div><div style="font-size:22px;font-weight:800">${esc(c.name)||'לקוח חדש'}</div>
+      <div class="tiny">${esc(c.business)||''}</div></div>
+    </div>
+    <div class="cwrap"><div class="stepper">${steps}</div><div class="panel">${stageHTML(c,S.stage)}</div></div>`;
+}
+function stageDone(c,k){
+  switch(k){
+    case'intake':return!!(c.intake.trigger||c.intake.visibleProblem);
+    case'owner':return!!(c.owner.strengths||c.owner.aem.artist!==33||c.owner.aem.entrepreneur!==33);
+    case'industry':return Object.keys(c.industry.ratings).length>=4;
+    case'customer':return c.customer.interviews.length>0||!!c.customer.journey.trigger;
+    case'root':return!!c.root.primaryRoot;
+    case'strategy':return!!(c.strategy.oneSentence||c.strategy.differentiation);
+    case'goals':return!!c.goals.top;
+    case'decision':return!!c.decision.type;
+    default:return false;
+  }
+}
+
+/* ---------- field helpers ---------- */
+function fld(label,path,o){o=o||{};const v=esc(getP(cur(),path));
+  const hint=o.hint?`<div class="hint">${o.hint}</div>`:'';
+  if(o.ta)return `<div class="fld"><label>${label}</label><textarea data-bind="${path}" rows="${o.rows||3}" placeholder="${o.ph||''}">${v}</textarea>${hint}</div>`;
+  return `<div class="fld"><label>${label}</label><input type="${o.type||'text'}" data-bind="${path}" value="${v}" placeholder="${o.ph||''}">${hint}</div>`;
+}
+function sel(label,path,opts,o){o=o||{};const cv=getP(cur(),path);
+  const os=['<option value="">— בחר —</option>'].concat(opts.map(x=>{const val=typeof x==='object'?x.k:x,lab=typeof x==='object'?x.n:x;
+    return `<option value="${esc(val)}" ${cv==val?'selected':''}>${esc(lab)}</option>`})).join('');
+  return `<div class="fld"><label>${label}</label><select data-bind="${path}">${os}</select>${o.hint?`<div class="hint">${o.hint}</div>`:''}</div>`;
+}
+function chips(label,path,opts,multi){const cv=getP(cur(),path)||(multi?[]:'');
+  const ch=opts.map(x=>{const val=typeof x==='object'?(x.k||x.n):x,lab=typeof x==='object'?x.n:x;
+    const on=multi?cv.indexOf(val)>=0:cv==val;
+    return `<span class="chip ${on?'on':''}" data-chip="${path}" data-val="${esc(val)}" data-multi="${multi?1:0}">${esc(lab)}</span>`}).join('');
+  return `<div class="fld"><label>${label}</label><div class="chips">${ch}</div></div>`;
+}
+function refBox(title,html){return `<details class="ref"><summary>${title}</summary><div class="rbody">${html}</div></details>`}
+function qBank(title,items){return `<div class="qbank"><div class="qh">${title}</div>`+
+  items.map(it=>typeof it==='object'?`<div class="qrow"><div><div>${esc(it.q)}</div>${it.p?`<div class="qp">↳ ${esc(it.p)}</div>`:''}</div></div>`:`<div class="qrow">${esc(it)}</div>`).join('')+`</div>`}
+
+/* ---------- STAGES ---------- */
+function stageHTML(c,k){return({overview:stOverview,intake:stIntake,owner:stOwner,industry:stIndustry,customer:stCustomer,root:stRoot,strategy:stStrategy,goals:stGoals,decision:stDecision,report:stReport}[k]||(()=>''))(c)}
+
+function stOverview(c){
+  const pr=completeness(c);const dom=aemDominant(c);const t9=top9(c);
+  const root=KB.sixRoots.find(r=>r.k===c.root.primaryRoot);
+  const dec=KB.decisions.find(d=>d.k===c.decision.type);
+  return `<h2>🗂️ סקירת תיק</h2><p class="lead">תמונת מצב מהירה של התיק. השלם את כל השלבים כדי להפיק דוח אסטרטגי.</p>
+    <div class="score-banner"><div class="score-ring" style="background:conic-gradient(var(--pri) ${pr*3.6}deg,var(--panel) 0)"><div style="background:var(--panel);width:50px;height:50px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px">${pr}%</div></div>
+      <div><b>השלמת התהליך</b><div class="tiny">${STAGES.filter(s=>stageDone(c,s.k)).length} מתוך 8 שלבי אבחון הושלמו</div></div></div>
+    <div class="row2">
+      ${ovCard('🎯 הטריגר',c.intake.trigger||'<span class=muted>טרם תועד</span>')}
+      ${ovCard('🧩 שורש הבעיה',root?root.n:'<span class=muted>טרם זוהה</span>')}
+      ${ovCard('👤 טיפוס בעל העסק',dom?`${dom.ico} ${dom.name} (${dom.pct}%)`+(t9?` · ${t9}`:''):'<span class=muted>טרם אובחן</span>')}
+      ${ovCard('⭐ הבידול',c.strategy.differentiation||'<span class=muted>טרם פוצח</span>')}
+      ${ovCard('📌 האסטרטגיה במשפט',c.strategy.oneSentence||'<span class=muted>טרם הוגדרה</span>')}
+      ${ovCard('🧭 ההחלטה',dec?dec.n:'<span class=muted>טרם התקבלה</span>')}
+    </div>
+    <div class="fld" style="margin-top:18px">${fld('פרטי בסיס — שם הלקוח','name').replace('<div class="fld">','<div>')}</div>
+    <div class="row3">${fld('שם הלקוח','name')}${fld('שם העסק / הארגון','business')}${fld('טלפון','phone',{type:'tel'})}</div>
+    ${sel('סטטוס תיק','status',[{k:'new',n:'חדש'},{k:'diag',n:'באבחון'},{k:'strat',n:'גיבוש אסטרטגיה'},{k:'done',n:'הושלם'}])}
+    <div class="sec-actions"><button class="btn danger sm" data-del="${c.id}">🗑 מחק תיק</button>
+      <button class="btn" data-stage="intake">התחל אבחון ›</button></div>`;
+}
+function ovCard(t,v){return `<div class="aem-tag"><b>${t}</b>${v}</div>`}
+
+function stIntake(c){
+  return `<h2>① פתיחה ואבחון ראשוני</h2>
+    <p class="lead">מטרת הפגישה הראשונה: להבין מדוע הלקוח הגיע (הטריגר) ולאסוף תמונת מצב. הקשב למילים, לטון ולשפת הגוף — כל מה שהלקוח מספר הוא תוצאה, לא סיבה.</p>
+    ${refBox('שאלות פתיחה מומלצות (שאלות הזהב)',qBank('פתיחת שיחה',KB.openingQuestions))}
+    <div class="row3">${fld('תאריך פגישה','intake.date',{type:'date'})}${fld('מי נכח בפגישה','intake.attendees')}${fld('מי מקבל ההחלטות בפועל','intake.decisionMaker')}</div>
+    ${chips('סיבת ההגעה הגלויה (אפשר כמה)','intake.visibleReason',KB.visibleReasons,true)}
+    ${chips('סוג הטריגר','intake.triggerType',KB.triggerTypes,false)}
+    ${fld('הטריגר — מה האירוע שעורר את הצורך דווקא עכשיו?','intake.trigger',{ta:1,hint:'מה קרה השבוע/החודש שגרם להרים טלפון?'})}
+    ${fld('הבעיה הגלויה — מה הלקוח אומר שלא עובד?','intake.visibleProblem',{ta:1})}
+    ${fld('סיפור העסק — איך הכול התחיל? המוטיבציה, הרקע, הניסיון','intake.ownerStory',{ta:1,rows:4})}
+    ${fld('במה הלקוח הכי גאה? מה עובד מצוין?','intake.proudOf',{ta:1,hint:'שם כנראה מסתתרת ליבת הערך והבידול'})}
+    ${fld('ציפיות הלקוח — איך נראית הצלחה בעוד שנה?','intake.expectations',{ta:1})}
+    ${fld('הערות / התרשמות כללית','intake.notes',{ta:1})}
+    ${navBtns('owner')}`;
+}
+
+function stOwner(c){
+  const dom=aemDominant(c);
+  const aemRows=Object.entries({artist:'אמן',entrepreneur:'יזם',manager:'מנהל'}).map(([k,l])=>
+    `<div class="aem-row"><span class="lbl">${l}</span><input type="range" min="0" max="100" data-bind="owner.aem.${k}" data-aem="1" value="${c.owner.aem[k]}"><span class="val" id="aemv-${k}">${c.owner.aem[k]}</span></div>`).join('');
+  const sum=c.owner.aem.artist+c.owner.aem.entrepreneur+c.owner.aem.manager;
+  const tags=Object.entries(KB.aem).map(([k,a])=>`<div class="aem-tag"><b>${a.ico} ${a.name}</b><div class="tiny" style="color:var(--good)">+ ${a.strengths}</div><div class="tiny" style="color:var(--rose);margin-top:3px">− ${a.weaknesses}</div></div>`).join('');
+  const t9=KB.types9.map(t=>{const v=c.owner.types9[t.k]||0;
+    return `<div class="tt ${v>=7?'hot':''}" id="t9-${t.k}"><div class="tn"><span>${t.n}</span><span class="sc" id="t9sc-${t.k}">${v}</span></div>
+      <input type="range" min="0" max="10" data-bind="owner.types9.${t.k}" data-t9="${t.k}" value="${v}">
+      <div class="imp">${t.imp}</div></div>`}).join('');
+  return `<h2>② ציר בעל העסק</h2>
+    <p class="lead">העסק הוא המבנה האנושי של בעליו. האסטרטגיה היא תוצאה של האופי והאישיות. נאבחן את התמהיל אמן/יזם/מנהל, ואת הטיפוסים הדומיננטיים.</p>
+    ${refBox('אמן / יזם / מנהל — איך מזהים',
+      Object.values(KB.aem).map(a=>`<b>${a.ico} ${a.name}:</b> ${a.essence}<br><span class="tiny">אומר: ${a.says}</span>`).join('<br><br>'))}
+    <div class="fld"><label>תמהיל אמן / יזם / מנהל <span class="sumbadge" id="aemsum">סה״כ ${sum}%</span></label>
+      <div class="aem-box">${aemRows}</div>
+      <div class="aem-result">${tags}</div>
+      ${dom?`<div class="hint" style="margin-top:8px">דומיננטי: <b style="color:var(--pri)">${dom.ico} ${dom.name}</b> — ${KB.aem[dom.key].weaknesses}</div>`:''}
+    </div>
+    <details class="ref"><summary>תשעת הטיפוסים — מודל זילבר (דרג 0-10, חזק מ-7 נצבע)</summary>
+      <div class="rbody"><div class="t9">${t9}</div></div></details>
+    ${fld('חוזקות בעל העסק','owner.strengths',{ta:1})}
+    ${fld('חולשות / נקודות עיוורות','owner.weaknesses',{ta:1})}
+    ${fld('ניהול עצמי — פחדים, דפוסי התנהגות, מה מוריד מוטיבציה','owner.selfMgmt',{ta:1})}
+    ${fld('הרגלים פיננסיים — רישום, גבייה, הפרדה בית/עסק','owner.financialHabits',{ta:1})}
+    ${navBtns('industry')}`;
+}
+
+function stIndustry(c){
+  let cats=KB.forces.map((cat,ci)=>{
+    const items=cat.items.map((it,ii)=>{const key=ci+'_'+ii;const v=c.industry.ratings[key];
+      return `<div class="frow"><div class="fq">${it.q}${it.sub?`<small>${it.sub}</small>`:''}</div>
+        <div class="seg" data-force="${key}">
+          <button class="pos ${v==1?'on':''}" data-fv="1">אטרקטיבי</button>
+          <button class="neu ${v==0?'on':''}" data-fv="0">ניטרלי</button>
+          <button class="neg ${v==-1?'on':''}" data-fv="-1">לא</button>
+        </div></div>`}).join('');
+    return `<details class="force-cat" ${ci<2?'open':''}><summary>${cat.cat}</summary>${items}</details>`}).join('');
+  const sc=attractiveness(c);
+  return `<h2>③ ציר הענף — אטרקטיביות התחום</h2>
+    <p class="lead">לא כל התחומים נבראו שווים. לפני ניתוח העסק הספציפי, נבדוק את "כללי המשחק" של הענף לפי חמשת הכוחות + הזדמנויות.</p>
+    <div class="score-banner" id="attr-banner">${attrBannerHTML(sc)}</div>
+    ${cats}
+    ${fld('הערות על הענף — מגמות, שינויים טכנולוגיים, סיכונים','industry.notes',{ta:1,rows:3})}
+    ${navBtns('customer')}`;
+}
+function attrBannerHTML(sc){const col=sc.pct>=66?'var(--good)':sc.pct>=40?'var(--mid)':'var(--bad)';
+  return `<div class="score-ring" style="background:${col};color:#10182b">${sc.pct}%</div>
+    <div><b style="color:${col}">${sc.label}</b><div class="tiny">דורג ${sc.rated} מתוך ${sc.total} גורמים · ${sc.pos} אטרקטיביים, ${sc.neg} מאתגרים</div></div>`}
+
+function stCustomer(c){
+  const ivs=c.customer.interviews.map((iv,i)=>`<div class="litem">
+    <button class="del" data-rm="customer.interviews" data-i="${i}">×</button>
+    <h4>תשאול #${i+1}</h4>
+    <div class="row2">
+      <div class="fld"><label>שם / כינוי</label><input data-bind="customer.interviews.${i}.name" value="${esc(iv.name)}"></div>
+      <div class="fld"><label>סוג לקוח</label><input data-bind="customer.interviews.${i}.type" value="${esc(iv.type)}" placeholder="חדש / ותיק / לא מרוצה"></div>
+    </div>
+    <div class="fld"><label>למה הגיע / קנה? מה גרם להשתכנע?</label><textarea rows="2" data-bind="customer.interviews.${i}.why">${esc(iv.why)}</textarea></div>
+    <div class="fld"><label>מה מיוחד? מה שונה מאחרים? למה דווקא אני?</label><textarea rows="2" data-bind="customer.interviews.${i}.special">${esc(iv.special)}</textarea></div>
+    <div class="fld"><label>למי זה מתאים במיוחד? + מה כדאי לשפר?</label><textarea rows="2" data-bind="customer.interviews.${i}.fit">${esc(iv.fit)}</textarea></div>
+  </div>`).join('');
+  return `<h2>④ ציר הלקוחות — מסע הלקוח ותשאול</h2>
+    <p class="lead">הלקוחות מכירים את האסטרטגיה הכי טוב — צריך לשאול אותם. תשאל לפחות 4 לקוחות (עדיף 6-10), כולל לקוח אחד לא מרוצה. כתוב כל מילה, ואל תקבל סיסמאות ("שירות","יחס") — פענח מה הכוונה.</p>
+    ${refBox('שאלות תשאול לקוחות',qBank('תשאול לקוחות',KB.custInterviewQuestions))}
+    <h3 style="font-size:15px;margin:4px 0 10px">מסע הלקוח</h3>
+    ${fld('טריגר — מה מעורר את הצורך אצל הלקוח?','customer.journey.trigger',{ta:1,rows:2})}
+    ${fld('חיפוש — היכן הלקוח מחפש פתרונות?','customer.journey.search',{ta:1,rows:2,hint:'חנויות, רשתות חברתיות, חברים...'})}
+    ${fld('החלטה — מי/מה משפיע על ההחלטה? מה מעכב?','customer.journey.decision',{ta:1,rows:2})}
+    <h3 style="font-size:15px;margin:18px 0 10px">תשאולי לקוחות (${c.customer.interviews.length})</h3>
+    ${ivs||'<p class="tiny">עדיין אין תשאולים. הוסף לפחות 4.</p>'}
+    <button class="addbtn" data-add="customer.interviews" data-tpl="interview">+ הוסף תשאול לקוח</button>
+    ${navBtns('root')}`;
+}
+
+function stRoot(c){
+  const whys=c.root.fiveWhys.map((w,i)=>`<div class="why"><div class="wn">${i+1}</div><textarea rows="1" data-bind="root.fiveWhys.${i}" placeholder="${i===0?'למה...? (התחל מהבעיה הגלויה)':'ולמה זה קורה?'}">${esc(w)}</textarea></div>`).join('');
+  return `<h2>⑤ זיהוי שורש הבעיה</h2>
+    <p class="lead">המטרה: לפתור שורש ולא סימפטומים. הנחת היסוד — כל מה שהלקוח מספר הוא תוצאה. נשתמש ב"חמשת הלמה" כדי לרדת לשורש.</p>
+    ${refBox('ששת יסודות הבעיה',KB.sixRoots.map(r=>`<b>${r.n}:</b> ${r.d}`).join('<br>'))}
+    ${chips('אילו יסודות מעורבים? (אפשר כמה)','root.sixRoots',KB.sixRoots,true)}
+    ${sel('שורש מרכזי','root.primaryRoot',KB.sixRoots)}
+    <div class="fld"><label>כלי "חמשת הלמה" — ירידה לשורש</label>${whys}</div>
+    ${fld('הערכת שורש הבעיה (מסקנה)','root.rootSummary',{ta:1,rows:2})}
+    <div class="row2">${sel('מוקד הכאב המרכזי','root.painCenter',KB.painCenters)}${sel('רמת דחיפות','root.urgency',KB.urgency)}</div>
+    <div class="row2">${sel('עד כמה הלקוח מבין את הבעיה','root.understanding',KB.understanding)}${sel('עד כמה הלקוח בשל לתהליך','root.readiness',KB.readiness)}</div>
+    ${sel('חלקו של בעל העסק ביצירת הבעיה','root.ownerRole',KB.ownerRole)}
+    ${chips('דפוס מרכזי של בעל העסק','root.patterns',KB.ownerPatterns,true)}
+    ${navBtns('strategy')}`;
+}
+
+function stStrategy(c){
+  const chk=KB.strategyChecklist.map((q,i)=>`<span class="chip ${(c.strategy.checklist||[]).indexOf(i)>=0?'on':''}" data-chip="strategy.checklist" data-val="${i}" data-multi="1">${q}</span>`).join('');
+  return `<h2>⑥ זיקוק הייחודיות והגדרת האסטרטגיה</h2>
+    <p class="lead">אסטרטגיה = מה העסק עושה, למי, ולמה דווקא הוא. ממוקדת במה הלקוח <b>מקבל</b> (לא מה הבעלים נותן). אסטרטגיה אמיתית = מה שאחרים לא רוצים לחקות.</p>
+    ${refBox('שאלות תשאול עומק עם בעל העסק',qBank('תשאול עומק',KB.ownerStrategyQuestions))}
+    ${fld('סיכום תשובות בעל העסק לשאלות העומק','strategy.ownerAnswers',{ta:1,rows:4})}
+    ${fld('מילים שחוזרות על עצמן בתשאול הלקוחות','strategy.repeatingWords',{ta:1,rows:2,hint:'אסוף את החזרות — שם הבידול'})}
+    <div class="row2">
+      ${fld('הערך המקצועי','strategy.professionalValue',{ta:1,rows:2,hint:'איכות, זמינות, מומחיות'})}
+      ${fld('הערך האישי / רגשי','strategy.personalValue',{ta:1,rows:2,hint:'יחס, חוויה, כבוד, רוגע'})}
+    </div>
+    ${fld('⭐ הבידול — מה שאין אצל אחרים','strategy.differentiation',{ta:1,rows:2})}
+    ${fld('📌 האסטרטגיה במשפט אחד (3 מילים אם אפשר)','strategy.oneSentence',{ta:1,rows:2,hint:'הגדרה אחת ממצה שכולם מבינים'})}
+    ${fld('המודל העסקי — איך העסק מתרגם את הערך לכסף','strategy.businessModel',{ta:1,rows:2})}
+    ${fld('בדיקת כלכליות — האם הייחודיות מתוגמלת? האם מספיק מפרנסת?','strategy.economicCheck',{ta:1,rows:2})}
+    <div class="fld"><label>שאלות בדיקה — סמן את מה שמתקיים ✓</label><div class="chips">${chk}</div></div>
+    ${navBtns('goals')}`;
+}
+
+function stGoals(c){
+  const prim=c.goals.primary.map((g,i)=>`<div class="why"><div class="wn">${i+1}</div><textarea rows="1" data-bind="goals.primary.${i}">${esc(g)}</textarea><button class="btn danger sm no-print" data-rm="goals.primary" data-i="${i}">×</button></div>`).join('');
+  const proc=c.goals.process.map((g,i)=>`<div class="why"><div class="wn">${i+1}</div><textarea rows="1" data-bind="goals.process.${i}">${esc(g)}</textarea><button class="btn danger sm no-print" data-rm="goals.process" data-i="${i}">×</button></div>`).join('');
+  const mets=c.goals.metrics.map((g,i)=>`<div class="why"><div class="wn">📊</div><textarea rows="1" data-bind="goals.metrics.${i}" placeholder="מדד + תאריך יעד">${esc(g)}</textarea><button class="btn danger sm no-print" data-rm="goals.metrics" data-i="${i}">×</button></div>`).join('');
+  return `<h2>⑦ יעדים ומדדים לתהליך</h2>
+    <p class="lead">לא להישאר עם "צריך לשפר". מגדירים: לאן הולכים, מה משנים, ואיך נדע שהצלחנו.</p>
+    ${refBox('שלושת סוגי היעדים',KB.goalKinds.map(g=>`<b>${g.n}:</b> ${g.d}`).join('<br>')+'<br><br><b>שאלה לזיקוק:</b> "אם אליהו הנביא בירך את העסק והבעיה נפתרה — מה יהיו הסימנים שזה קרה?"')}
+    ${fld('🎯 יעד עליון (אחד)','goals.top',{ta:1,rows:2})}
+    <div class="fld"><label>יעדים ראשוניים (2-3)</label>${prim}<button class="addbtn no-print" data-add="goals.primary" data-tpl="str">+ הוסף יעד ראשוני</button></div>
+    <div class="fld"><label>יעדי תהליך (5-10)</label>${proc}<button class="addbtn no-print" data-add="goals.process" data-tpl="str">+ הוסף יעד תהליך</button></div>
+    <div class="fld"><label>מדדים — איך נדע שהגענו</label>${mets}<button class="addbtn no-print" data-add="goals.metrics" data-tpl="str">+ הוסף מדד</button>
+      <div class="hint">דוגמאות: ${KB.metricExamples}</div></div>
+    ${navBtns('decision')}`;
+}
+
+function stDecision(c){
+  return `<h2>⑧ קבלת החלטה והמלצות</h2>
+    <p class="lead">בסיום התהליך האסטרטגי בוחרים את סוג ההחלטה, ומגבשים תוכנית פעולה ראשונה.</p>
+    ${refBox('סוגי החלטות אסטרטגיות',KB.decisions.map(d=>`<b>${d.n}:</b> ${d.d}`).join('<br>'))}
+    ${chips('סוג ההחלטה האסטרטגית','decision.type',KB.decisions,false)}
+    ${fld('נימוק ההחלטה','decision.rationale',{ta:1,rows:3})}
+    <div class="row2">
+      ${sel('האם אני האדם המתאים לתהליך?','decision.fit',['כן','כן, יחד עם איש מקצוע נוסף','לא — הפניה'])}
+      ${sel('מה נכון להציע עכשיו?','decision.offer',['פגישת ייעוץ חד-פעמית','תהליך ליווי 3-6 חודשים','ליווי מתמשך','פגישת אבחון נוספת','הפניה לאיש מקצוע'])}
+    </div>
+    ${fld('המוקד הראשון לתהליך','decision.firstFocus',{ta:1,rows:2,hint:'דיוק אסטרטגי / סדר וייצוב / כסף ונתונים / שיווק ומכירות / עובדים / הרגלי ניהול'})}
+    ${fld('הצעד הראשון','decision.firstStep',{ta:1,rows:2})}
+    ${decPlan(c)}
+    <div class="sec-actions"><button class="btn ghost" data-stage="goals">‹ חזרה</button><button class="btn" data-stage="report">צפה בדוח האסטרטגי ›</button></div>`;
+}
+function decPlan(c){const items=c.decision.actionPlan.map((g,i)=>`<div class="why"><div class="wn">${i+1}</div><textarea rows="1" data-bind="decision.actionPlan.${i}">${esc(g)}</textarea><button class="btn danger sm no-print" data-rm="decision.actionPlan" data-i="${i}">×</button></div>`).join('');
+  return `<div class="fld"><label>תוכנית פעולה</label>${items}<button class="addbtn no-print" data-add="decision.actionPlan" data-tpl="str">+ הוסף צעד</button></div>`}
+
+function navBtns(next){const idx=STAGES.findIndex(s=>s.k===S.stage);const prev=idx>0?STAGES[idx-1].k:null;
+  return `<div class="sec-actions">${prev?`<button class="btn ghost" data-stage="${prev}">‹ הקודם</button>`:'<span></span>'}<button class="btn" data-stage="${next}">השלב הבא ›</button></div>`}
+
+/* ===================== COMPUTED ===================== */
+function aemDominant(c){const a=c.owner.aem;const sum=a.artist+a.entrepreneur+a.manager||1;
+  const arr=[['artist',a.artist],['entrepreneur',a.entrepreneur],['manager',a.manager]].sort((x,y)=>y[1]-x[1]);
+  if(arr[0][1]===33&&arr[1][1]===33)return null;
+  const key=arr[0][0];return{key,name:KB.aem[key].name,ico:KB.aem[key].ico,pct:Math.round(arr[0][1]/sum*100)}}
+function top9(c){const e=Object.entries(c.owner.types9||{}).filter(([k,v])=>v>=7).sort((a,b)=>b[1]-a[1]).slice(0,3);
+  return e.map(([k])=>KB.types9.find(t=>t.k===k).n).join(', ')}
+function attractiveness(c){const total=KB.forces.reduce((n,cat)=>n+cat.items.length,0);
+  const vals=Object.values(c.industry.ratings);const rated=vals.length;
+  const pos=vals.filter(v=>v==1).length,neg=vals.filter(v=>v==-1).length;
+  const score=vals.reduce((s,v)=>s+Number(v),0);
+  const pct=rated?Math.round((score+rated)/(rated*2)*100):0;
+  const label=pct>=66?'תחום אטרקטיבי':pct>=40?'תחום בינוני':'תחום מאתגר';
+  return{total,rated,pos,neg,pct,label}}
+
+/* ===================== REPORT ===================== */
+function stReport(c){return `<div class="no-print" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <button class="btn ghost sm" data-stage="decision">‹ חזרה לעריכה</button>
+    <button class="btn" onclick="window.print()">🖨️ הדפס / שמור PDF</button></div>
+  <div class="report">${buildReport(c)}</div>`}
+function rb(v){return v?`<div class="r-block">${esc(v)}</div>`:`<div class="r-block r-empty">— לא תועד —</div>`}
+function rlist(arr){const f=(arr||[]).filter(x=>x&&x.trim());return f.length?'<div class="r-block">'+f.map(x=>'• '+esc(x)).join('<br>')+'</div>':'<div class="r-block r-empty">— לא תועד —</div>'}
+function buildReport(c){
+  const dom=aemDominant(c);const t9=top9(c);const sc=attractiveness(c);
+  const root=KB.sixRoots.find(r=>r.k===c.root.primaryRoot);
+  const dec=KB.decisions.find(d=>d.k===c.decision.type);
+  const date=new Date().toLocaleDateString('he-IL');
+  const reasons=(c.intake.visibleReason||[]).map(x=>`<span>${esc(x)}</span>`).join('')||'<span class="r-empty">—</span>';
+  const ivs=c.customer.interviews.filter(i=>i.why||i.special);
+  return `<h1>ניתוח אסטרטגי — ${esc(c.name)||'לקוח'}</h1>
+    <div class="r-meta">${esc(c.business)||''} ${c.phone?'· '+esc(c.phone):''} · הופק ${date}${DB.settings.consultant?' · '+esc(DB.settings.consultant):''}</div>
+
+    <h2>למה הלקוח הגיע</h2>
+    <div class="r-kv"><div class="k">סוג הטריגר</div><div>${esc(c.intake.triggerType)||'—'}</div>
+      <div class="k">סיבת ההגעה</div><div class="r-tags">${reasons}</div></div>
+    ${rb(c.intake.trigger)}
+
+    <h2>שורש הבעיה</h2>
+    <div class="r-kv"><div class="k">שורש מרכזי</div><div>${root?esc(root.n):'—'}</div>
+      <div class="k">מוקד הכאב</div><div>${esc(c.root.painCenter)||'—'}</div>
+      <div class="k">דחיפות</div><div>${esc((KB.urgency.find(u=>u.k===c.root.urgency)||{}).n)||'—'}</div>
+      <div class="k">חלק בעל העסק</div><div>${esc(c.root.ownerRole)||'—'}</div></div>
+    ${rb(c.root.rootSummary)}
+
+    <h2>פרופיל בעל העסק</h2>
+    <div class="r-kv"><div class="k">טיפוס דומיננטי</div><div>${dom?dom.ico+' '+dom.name+' ('+dom.pct+'%)':'—'}</div>
+      ${t9?`<div class="k">טיפוסי זילבר</div><div>${esc(t9)}</div>`:''}</div>
+    <div class="r-kv"><div class="k">חוזקות</div><div>${esc(c.owner.strengths)||'—'}</div>
+      <div class="k">חולשות</div><div>${esc(c.owner.weaknesses)||'—'}</div></div>
+
+    <h2>אטרקטיביות הענף</h2>
+    <div class="r-kv"><div class="k">הערכה</div><div><b>${sc.label}</b> (${sc.pct}%) · ${sc.pos} גורמים אטרקטיביים, ${sc.neg} מאתגרים</div></div>
+    ${c.industry.notes?rb(c.industry.notes):''}
+
+    <h2>האסטרטגיה והבידול</h2>
+    ${c.strategy.oneSentence?`<div class="r-strat"><span class="tiny">האסטרטגיה במשפט</span><b>${esc(c.strategy.oneSentence)}</b></div>`:''}
+    <div class="r-kv"><div class="k">הבידול</div><div>${esc(c.strategy.differentiation)||'—'}</div>
+      <div class="k">ערך מקצועי</div><div>${esc(c.strategy.professionalValue)||'—'}</div>
+      <div class="k">ערך אישי/רגשי</div><div>${esc(c.strategy.personalValue)||'—'}</div>
+      <div class="k">מודל עסקי</div><div>${esc(c.strategy.businessModel)||'—'}</div></div>
+    ${ivs.length?`<div class="tiny" style="margin-top:8px">מבוסס על ${ivs.length} תשאולי לקוחות.</div>`:''}
+
+    <h2>ההחלטה האסטרטגית</h2>
+    <div class="r-kv"><div class="k">סוג ההחלטה</div><div><b>${dec?esc(dec.n):'—'}</b>${dec?' · '+esc(dec.d):''}</div></div>
+    ${rb(c.decision.rationale)}
+
+    <h2>יעדים</h2>
+    <div class="r-kv"><div class="k">🎯 יעד עליון</div><div>${esc(c.goals.top)||'—'}</div></div>
+    <div class="tiny" style="margin:10px 0 4px">יעדים ראשוניים:</div>${rlist(c.goals.primary)}
+    <div class="tiny" style="margin:10px 0 4px">מדדים:</div>${rlist(c.goals.metrics)}
+
+    <h2>תוכנית פעולה — צעדים ראשונים</h2>
+    <div class="r-kv"><div class="k">מוקד ראשון</div><div>${esc(c.decision.firstFocus)||'—'}</div>
+      <div class="k">צעד ראשון</div><div>${esc(c.decision.firstStep)||'—'}</div></div>
+    ${rlist(c.decision.actionPlan)}
+
+    <div class="r-foot">${esc(DB.settings.disclaimer||'')}</div>`;
+}
+
+/* ===================== METHODOLOGY ===================== */
+function viewMethodology(){
+  const tabs=[['process','התהליך'],['aem','אמן/יזם/מנהל'],['types9','9 הטיפוסים'],['roots','6 היסודות'],['forces','5 הכוחות'],['decisions','החלטות'],['glossary','מילון מונחים']];
+  return `<h1 class="page-h">מתודולוגיה — שיטת זילבר</h1>
+    <p class="page-sub">מדריך עזר מהיר לכל שלבי האבחון והאסטרטגיה. השתמש בו תוך כדי עבודה על תיק.</p>
+    <div class="meth-tabs">${tabs.map(([k,l])=>`<button class="${S.meth===k?'on':''}" data-meth="${k}">${l}</button>`).join('')}</div>
+    <div id="methbody">${methBody(S.meth)}</div>`;
+}
+function methBody(m){
+  if(m==='process')return `
+    <div class="mcard"><h3>פגישה ראשונה — איסוף ואבחון</h3><p>הבנת מדוע הלקוח הגיע (הטריגר) והערכת אטרקטיביות הענף. הקשבה עם "צניעות אגרסיבית וכנות רדיקלית", הסתכלות מערכתית, ופתרון שורש ולא סימפטומים.</p></div>
+    <div class="mcard"><h3>פגישה שנייה — פיצוח האסטרטגיה</h3><p>ניתוח תשאול הלקוחות ופיצוח הבידול: הגדרת "מה ולמי", חשיפת הערך האמיתי (מקצועי מול רגשי), כניסה לנעלי הלקוח, ובדיקת רווחיות ואטרקטיביות.</p></div>
+    <div class="mcard"><h3>שבעת שלבי בניית עסק נכון</h3><ul>
+      <li><b>אסטרטגיה</b> — מה העסק עושה, למי, ולמה דווקא הוא</li>
+      <li><b>מודל עסקי</b> — איך מתרגמים ערך לכסף</li>
+      <li><b>מוצר/שירות</b> — מה הלקוח מקבל בפועל</li>
+      <li><b>שיווק</b> — איך הלקוח שומע את ההבטחה</li>
+      <li><b>מכירות</b> — איך הלקוח קונה ומשלם</li>
+      <li><b>תפעול</b> — איך מספקים בעקביות</li>
+      <li><b>ניהול</b> — איך מחזיקים את הכול לאורך זמן</li></ul></div>`;
+  if(m==='aem')return Object.values(KB.aem).map(a=>`<div class="mcard"><h3>${a.ico} ${a.name}</h3><p>${a.essence}</p>
+    <p><b style="color:var(--good)">חוזקות:</b> ${a.strengths}<br><b style="color:var(--rose)">חולשות:</b> ${a.weaknesses}</p>
+    <p class="tiny">אומר משפטים כמו: ${a.says}</p></div>`).join('');
+  if(m==='types9')return `<div class="mcard"><p>מודל זילבר מזהה את האופי של בעל העסק — וממנו נגזרת האסטרטגיה.</p></div>`+
+    KB.types9.map(t=>`<div class="mcard"><h3>${t.n}</h3><p><b>ניקוד גבוה:</b> ${t.high}<br><b>ניקוד נמוך:</b> ${t.low}</p><p class="tiny">💼 ${t.imp}</p></div>`).join('');
+  if(m==='roots')return KB.sixRoots.map((r,i)=>`<div class="mcard"><h3>${i+1}. ${r.n}</h3><p>${r.d}</p></div>`).join('')+
+    `<div class="mcard"><h3>כלי: חמשת הלמה</h3><p>שואלים "למה?" חמש פעמים ברצף עד שמגיעים לשורש האמיתי שמייצר את כל הסימפטומים.</p></div>`;
+  if(m==='forces')return KB.forces.map(cat=>`<div class="mcard"><h3>${cat.cat}</h3><ul>${cat.items.map(it=>`<li>${it.q}${it.sub?` <span class="tiny">— ${it.sub}</span>`:''}</li>`).join('')}</ul></div>`).join('');
+  if(m==='decisions')return KB.decisions.map(d=>`<div class="mcard"><h3>${d.n}</h3><p>${d.d}</p></div>`).join('');
+  if(m==='glossary')return `<div class="mcard">${KB.glossary.map(([t,d])=>`<p><b style="color:var(--pri)">${t}</b> — ${d}</p>`).join('')}</div>`;
+  return '';
+}
+
+/* ===================== SETTINGS ===================== */
+function viewSettings(){
+  return `<h1 class="page-h">הגדרות</h1><p class="page-sub">פרטי היועץ, גיבוי נתונים וניהול המערכת.</p>
+    <div class="panel" style="max-width:680px">
+      ${fldS('שם היועץ (יופיע בדוחות)','consultant')}
+      ${fldS('טקסט הסתייגות בתחתית הדוח','disclaimer',true)}
+      <div class="sec-actions" style="border:0;flex-wrap:wrap;gap:10px">
+        <button class="btn" data-saveset="1">💾 שמור הגדרות</button>
+        <button class="btn ghost" data-export="1">⬇️ ייצוא גיבוי (JSON)</button>
+        <label class="btn ghost" style="cursor:pointer">⬆️ ייבוא גיבוי<input type="file" id="impf" accept="application/json" style="display:none"></label>
+      </div>
+      <div class="tiny" style="margin-top:18px">הנתונים נשמרים מקומית בדפדפן בלבד (${DB.clients.length} לקוחות). מומלץ לייצא גיבוי מעת לעת.</div>
+    </div>`;
+}
+function fldS(label,key,ta){const v=esc(DB.settings[key]||'');
+  return `<div class="fld"><label>${label}</label>${ta?`<textarea id="set-${key}" rows="3">${v}</textarea>`:`<input id="set-${key}" value="${v}">`}</div>`}
+
+/* ===================== EVENTS ===================== */
+document.addEventListener('click',e=>{
+  const t=e.target;const cl=s=>t.closest(s);
+  let el;
+  if(el=cl('[data-go]'))return go(el.dataset.go==='client'?'client':el.dataset.go);
+  if(el=cl('[data-new]')){const c=blankClient();DB.clients.push(c);saveNow();return go('client',{cid:c.id,stage:'overview'})}
+  if(el=cl('[data-open]'))return go('client',{cid:el.dataset.open,stage:'overview'});
+  if(el=cl('[data-stage]')){S.stage=el.dataset.stage;return render()}
+  if(el=cl('[data-del]')){if(confirm('למחוק את התיק לצמיתות?')){DB.clients=DB.clients.filter(c=>c.id!==el.dataset.del);saveNow();return go('clients')}return}
+  if(el=cl('[data-meth]')){S.meth=el.dataset.meth;$('#methbody').innerHTML=methBody(S.meth);
+    document.querySelectorAll('[data-meth]').forEach(b=>b.classList.toggle('on',b.dataset.meth===S.meth));return}
+  if(el=cl('[data-chip]')){toggleChip(el);return}
+  if(el=cl('.seg button')){const seg=el.parentElement;const key=seg.dataset.force;const v=Number(el.dataset.fv);
+    const c=cur();if(c.industry.ratings[key]===v){delete c.industry.ratings[key]}else{c.industry.ratings[key]=v}
+    c.updatedAt=Date.now();save();
+    seg.querySelectorAll('button').forEach(b=>b.classList.toggle('on',Number(b.dataset.fv)===c.industry.ratings[key]));
+    $('#attr-banner').innerHTML=attrBannerHTML(attractiveness(c));return}
+  if(el=cl('[data-add]')){addItem(el.dataset.add,el.dataset.tpl);return}
+  if(el=cl('[data-rm]')){const arr=getP(cur(),el.dataset.rm);arr.splice(Number(el.dataset.i),1);cur().updatedAt=Date.now();saveNow();return render()}
+  if(el=cl('[data-saveset]')){DB.settings.consultant=$('#set-consultant').value;DB.settings.disclaimer=$('#set-disclaimer').value;saveNow();return toast('ההגדרות נשמרו')}
+  if(el=cl('[data-export]'))return doExport();
+});
+document.addEventListener('input',e=>{
+  const el=e.target;
+  if(el.dataset&&el.dataset.bind!=null){const c=cur();if(!c)return;
+    let v=el.value;if(el.type==='range')v=Number(v);
+    setP(c,el.dataset.bind,v);c.updatedAt=Date.now();save();
+    if(el.dataset.aem)updateAem(c);
+    if(el.dataset.t9)updateT9(el.dataset.t9,c);
+  }
+});
+document.addEventListener('change',e=>{
+  const el=e.target;
+  if(el.id==='impf'&&el.files[0])doImport(el.files[0]);
+  if(el.dataset&&el.dataset.bind!=null&&el.tagName==='SELECT'){const c=cur();if(c){setP(c,el.dataset.bind,el.value);c.updatedAt=Date.now();save()}}
+});
+function toggleChip(el){const c=cur();const path=el.dataset.chip,val=el.dataset.val,multi=el.dataset.multi==='1';
+  if(multi){let arr=getP(c,path);if(!Array.isArray(arr)){arr=[];setP(c,path,arr)}
+    const num=/^\d+$/.test(val)?Number(val):val;const idx=arr.findIndex(x=>x==num);
+    if(idx>=0)arr.splice(idx,1);else arr.push(num);el.classList.toggle('on')}
+  else{const cur0=getP(c,path);const nv=cur0==val?'':val;setP(c,path,nv);
+    el.parentElement.querySelectorAll('.chip').forEach(x=>x.classList.toggle('on',x.dataset.val===nv))}
+  c.updatedAt=Date.now();save();
+}
+function addItem(path,tpl){const c=cur();let arr=getP(c,path);if(!Array.isArray(arr)){arr=[];setP(c,path,arr)}
+  arr.push(tpl==='interview'?{name:'',type:'',why:'',special:'',fit:''}:'');c.updatedAt=Date.now();saveNow();render()}
+function updateAem(c){const a=c.owner.aem;const sum=a.artist+a.entrepreneur+a.manager;
+  ['artist','entrepreneur','manager'].forEach(k=>{const el=document.getElementById('aemv-'+k);if(el)el.textContent=a[k]});
+  const s=document.getElementById('aemsum');if(s)s.textContent='סה״כ '+sum+'%'}
+function updateT9(k,c){const v=c.owner.types9[k]||0;const sc=document.getElementById('t9sc-'+k);if(sc)sc.textContent=v;
+  const tt=document.getElementById('t9-'+k);if(tt)tt.classList.toggle('hot',v>=7)}
+
+/* ===================== BACKUP ===================== */
+function doExport(){const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='zilber-strategy-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();toast('גיבוי יוצא')}
+function doImport(file){const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);
+  if(!d.clients)throw 0;if(confirm('לייבא ולהחליף את כל הנתונים הקיימים?')){DB=d;DB.settings=Object.assign(defDB().settings,DB.settings||{});saveNow();toast('הנתונים יובאו');go('clients')}}
+  catch(e){toast('קובץ לא תקין')}};r.readAsText(file)}
+
+render();
+</script>
+</body>
+</html>
