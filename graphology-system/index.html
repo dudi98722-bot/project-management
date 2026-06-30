@@ -749,6 +749,7 @@ function stepReport(c){viewReportInit(c);const a=ensure(c),r=a.report;
     <div class="row">
       <label class="fld" style="flex:1;min-width:200px">סוג הדוח<select id="rType">${Object.entries(REPORT_TYPES).map(([k,v])=>`<option value="${k}" ${r.type===k?'selected':''}>${v}</option>`).join('')}</select></label>
       <label class="fld" style="flex:1;min-width:200px;justify-content:flex-end"><span>&nbsp;</span><label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="rAnon"> ייצוא אנונימי (ללא פרטים מזהים)</label></label>
+      <label class="fld" style="flex:1;min-width:200px;justify-content:flex-end"><span>&nbsp;</span><label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="rImg" ${r.includeImage?'checked':''}> כלול תמונת כתב יד בדוח</label></label>
     </div>
     <div class="hr"></div>
     <div class="row">
@@ -792,6 +793,7 @@ stepAfter.report=function(c){const a=ensure(c),r=a.report;
     const el=$('#f_'+k);if(!el)return;el.addEventListener('input',()=>{if(['function','social','personal'].includes(k))r.sections[k]=el.value;else r[k]=el.value;saveDB();sync();});});
   $('#rType').addEventListener('change',()=>{r.type=$('#rType').value;saveDB();sync();});
   $('#rAnon').addEventListener('change',()=>{sync();});
+  $('#rImg').addEventListener('change',()=>{r.includeImage=$('#rImg').checked;saveDB();sync();});
   $('#app').querySelectorAll('[data-gen]').forEach(b=>b.addEventListener('click',()=>{const k=b.dataset.gen;
     if(k==='prominent'){r.prominentText=a.signs.filter(s=>s.prominent).map(s=>'• '+(s.variant?s.variant+' — ':'')+s.meaning).join('\n');$('#f_prominentText').value=r.prominentText;}
     else if(k==='paragraph'){r.paragraph=buildDraft(c);$('#f_paragraph').value=r.paragraph;}
@@ -811,6 +813,7 @@ function reportDocHTML(c){const a=ensure(c),r=a.report||{};const anon=anonOn();c
   let html=`<div class="bsd">בס״ד</div><h1>${esc(titles[type])}</h1>
     <div style="text-align:center;color:#555;font-size:13px;margin-bottom:6px">${esc(name)}${(!anon&&c.age)?(' · גיל '+esc(c.age)):''}${(!anon&&c.hand)?(' · יד '+esc(c.hand)):''} · ${fmtDate(Date.now())}${c.purpose?(' · '+esc(c.purpose)):''}</div>`;
   if(c.job&&c.job.title)html+=`<div style="text-align:center;color:#555;font-size:13px">משרה: ${esc(c.job.title)}</div>`;
+  if(r.includeImage&&!anon&&(c.images||[]).length)html+=`<div style="text-align:center;margin:10px 0"><img src="${c.images[0]}" style="max-width:80%;max-height:320px;border:1px solid #ccc;border-radius:6px"></div>`;
   // impression (not in employer)
   if(!isEmployer){const imp=c.impression||{};const impTxt=[imp.atmosphere,imp.feeling,imp.general].filter(Boolean).join('. ');if(impTxt)html+=sec('התרשמות כללית','<p>'+esc(impTxt)+'</p>');}
   if(!isEmployer&&proLines.length)html+=sec('סימנים בולטים',proLines.map(l=>`<div>${esc(l)}</div>`).join(''));
@@ -918,9 +921,10 @@ function stepAi(c){
     <div class="row"><button class="btn accent" data-act="runAi" ${(!hasKey||!imgN)?'disabled':''}>▶️ הפעל ניתוח AI</button>
       <span class="muted" style="align-self:center">משתמש ב-${imgN} תמונות · מודל ${AI_MODEL} · ~₪0.5</span></div>
     <div id="aiPanel" style="margin-top:14px"></div>
+    ${hasKey&&imgN?`<div class="hr"></div><div id="aiChat"></div>`:''}
   </div>`;
 }
-stepAfter.ai=function(c){renderAiPanel();};
+stepAfter.ai=function(c){renderAiPanel();renderAiChat();};
 function renderAiPanel(){
   const c=curCase();if(!c)return;const a=ensure(c);const box=$('#aiPanel');if(!box)return;
   if(a.aiLoading){box.innerHTML=`<div class="empty"><div class="big">🤖</div>מנתח את כתב היד… זה עשוי לקחת כדקה.<div class="muted" style="margin-top:6px">אל תסגור את הדף.</div></div>`;return;}
@@ -943,6 +947,7 @@ function renderAiPanel(){
       ${sec('הסתייגויות ונקודות לבירור',ai.caveats)}
       <div class="row" style="margin-top:12px">
         <button class="btn accent sm" data-act="aiImport">📥 ייבא לטיוטת הדוח</button>
+        <button class="btn ghost sm" data-act="addAiSigns">➕ הוסף סימנים לרשימה הידנית</button>
         <button class="btn ghost sm" data-act="runAi">↻ הרץ שוב</button>
       </div>
     </div>`;
@@ -963,6 +968,56 @@ function aiImport(c){
   fill('strengths',ai.strengths);fill('blocks',ai.blocks);fill('professions',ai.occupational);fill('recommendations',ai.caveats);
   saveDB();toast('יובא לטיוטת הדוח (שדות ריקים בלבד)');setStep('report');
 }
+function addAiSigns(c){const a=ensure(c),ai=a.ai;if(!ai||!ai.prominentSigns)return;let n=0;
+  ai.prominentSigns.forEach(s=>{if(!a.signs.some(x=>x.variant===s.sign&&x.cat===s.category)){a.signs.push({cat:s.category,variant:s.sign,meaning:s.meaning,appearance:'',odem:[],prominent:true,doubt:false,intensity:'בינונית',freq:'חוזר',certainty:'בינונית',note:'מ-AI'});n++;}});
+  saveDB();toast(n+' סימנים נוספו לרשימה הידנית');setStep('signs');}
+
+/* ---- streaming helper (SSE) ---- */
+async function streamClaude(opts){
+  const key=(DB.settings.apiKey||'').trim();if(!key)throw new Error('אין מפתח API');
+  const body={model:AI_MODEL,max_tokens:opts.max_tokens||2000,stream:true,messages:opts.messages};
+  if(opts.system)body.system=opts.system;
+  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify(body)});
+  if(!r.ok){let m=r.status+'';try{const e=await r.json();m+=' '+(e.error&&e.error.message||'');}catch(_){}throw new Error('שגיאת שרת '+m);}
+  const reader=r.body.getReader(),dec=new TextDecoder();let buf='';
+  while(true){const {done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});
+    let i;while((i=buf.indexOf('\n\n'))>=0){const chunk=buf.slice(0,i);buf=buf.slice(i+2);
+      const line=chunk.split('\n').find(l=>l.startsWith('data:'));if(!line)continue;
+      const js=line.slice(5).trim();if(!js||js==='[DONE]')continue;
+      try{const ev=JSON.parse(js);if(ev.type==='content_block_delta'&&ev.delta&&ev.delta.type==='text_delta')opts.onText(ev.delta.text);}catch(_){}}}
+}
+async function aiAsk(c){
+  const a=ensure(c);const el=$('#aiQ');const q=el?el.value.trim():'';if(!q){toast('כתוב שאלה');return;}
+  if(!(DB.settings.apiKey||'').trim()){toast('הזן מפתח API בהגדרות');setView('settings');return;}
+  a.aiChat={q,answer:'',loading:true};saveDB();renderAiChat();
+  try{
+    const imgs=(c.images||[]).slice(0,3).map(src=>({type:'image',source:{type:'base64',media_type:'image/jpeg',data:src.split(',')[1]||''}}));
+    const sys='אתה גרפולוג מומחה ועוזר למאבחן. ענה בעברית בקצרה ולעניין, על סמך כתב היד שבתמונות וההקשר. כלי עזר בלבד — אל תיתן אבחנה רפואית או פסיכולוגית, ובסס על כמה סימנים.';
+    await streamClaude({system:sys,max_tokens:1500,messages:[{role:'user',content:[...imgs,{type:'text',text:q}]}],onText:t=>{a.aiChat.answer+=t;const o=$('#aiAns');if(o)o.textContent=a.aiChat.answer;}});
+  }catch(err){a.aiChat.answer='⚠️ '+((err&&err.message)||err);}
+  a.aiChat.loading=false;saveDB();renderAiChat();
+}
+function renderAiChat(){
+  const c=curCase();if(!c)return;const a=ensure(c);const box=$('#aiChat');if(!box)return;
+  const ch=a.aiChat;
+  box.innerHTML=`<h3>💬 שאל את ה-AI על כתב היד</h3>
+    <textarea id="aiQ" style="width:100%;min-height:54px;border:1px solid var(--line);border-radius:9px;padding:8px" placeholder="למשל: מה מעידה החתימה? איך הוא מתפקד תחת לחץ?">${esc(ch&&!ch.answer?ch.q:'')}</textarea>
+    <div class="row" style="margin-top:6px"><button class="btn accent sm" data-act="aiAsk" ${ch&&ch.loading?'disabled':''}>${ch&&ch.loading?'…שואל':'שלח שאלה'}</button></div>
+    ${ch?`<div style="margin-top:8px"><div class="muted" style="font-size:12px">${esc(ch.q)}</div><div id="aiAns" style="white-space:pre-wrap;background:#fff;border:1px solid var(--line);border-radius:9px;padding:10px;margin-top:4px;min-height:24px">${esc(ch.answer||(ch.loading?'…':''))}</div></div>`:''}`;
+  box.querySelectorAll('[data-act]').forEach(el=>el.addEventListener('click',()=>doAction(el.dataset.act,el)));
+}
+async function compareAi(){
+  const chosen=(viewComparison._sel||[]).map(id=>DB.cases.find(c=>c.id===id)).filter(Boolean);if(chosen.length<2)return;
+  if(!(DB.settings.apiKey||'').trim()){toast('הזן מפתח API בהגדרות');setView('settings');return;}
+  viewComparison._ai={text:'',loading:true};render();
+  try{
+    const lines=chosen.map((c,i)=>{const a=c.analysis||{};const prof=OCC_AXES.filter(ax=>a.profile&&a.profile[ax]).map(ax=>ax+'='+a.profile[ax]).join(', ');const fl=RED_FLAGS.filter((f,j)=>a.redflags&&a.redflags['r'+j]).length;return `מועמד ${i+1} — ${c.name||''}: צירים [${prof||'-'}]; קוד הולנד ${hollandCode(a.riasec||{})||'-'}; אודם ${(a.odem&&a.odem.dominant)||'-'}; דגלים אדומים ${fl}`;}).join('\n');
+    const job=(chosen[0].job&&chosen[0].job.title)?('המשרה: '+chosen[0].job.title+'. '):'';
+    const sys='אתה יועץ השמה וגרפולוג. השווה בין המועמדים לפי קריטריונים אחידים. אל תבחר "מנצח" אוטומטית — לכל מועמד: חוזקות, חולשות, סיכונים, שאלות מומלצות לראיון, תנאים להצלחה ולכישלון, והמלצה מסכמת זהירה. סיים בטבלת השוואה תמציתית. עברית.';
+    await streamClaude({system:sys,max_tokens:2800,messages:[{role:'user',content:[{type:'text',text:job+'נתוני המועמדים:\n'+lines}]}],onText:t=>{viewComparison._ai.text+=t;const o=$('#cmpAi');if(o)o.textContent=viewComparison._ai.text;}});
+  }catch(err){viewComparison._ai.text='⚠️ '+((err&&err.message)||err);}
+  viewComparison._ai.loading=false;render();
+}
 
 /* ============================================================
    COMPARISON (11) — השוואת מועמדים
@@ -975,7 +1030,8 @@ function viewComparison(){
     <div class="muted" style="margin-bottom:8px">בחר עד 4 מועמדים (תיקים מסוג "מועמד למשרה") להשוואה לפי צירים אחידים. ההכרעה תמיד בידי המאבחן — המערכת אינה בוחרת "מנצח".</div>
     ${candidates.length?`<div class="row">${candidates.map(c=>`<label class="chipbtn" style="${sel.includes(c.id)?'background:var(--accent-soft);border-color:var(--accent)':''}"><input type="checkbox" data-cmp="${c.id}" ${sel.includes(c.id)?'checked':''} style="margin-left:5px">${esc(c.name||'(ללא שם)')}${c.job&&c.job.title?' · '+esc(c.job.title):''}</label>`).join('')}</div>`:'<div class="empty"><div class="big">⚖️</div>אין תיקים מסוג "מועמד למשרה". צור תיקים והגדר מטרת אבחון "מועמד למשרה".</div>'}
     ${chosen.length>=2?comparisonTable(chosen):chosen.length?'<div class="muted" style="margin-top:10px">בחר לפחות 2 מועמדים</div>':''}
-    ${chosen.length>=2?`<div class="row" style="margin-top:12px"><button class="btn ghost" data-act="cmpCsv">⬇️ ייצוא טבלה (CSV/Excel)</button><button class="btn ghost" data-act="cmpWord">⬇️ ייצוא Word</button></div>`:''}
+    ${chosen.length>=2?`<div class="row" style="margin-top:12px"><button class="btn accent" data-act="compareAi">🤖 השוואה חכמה (AI)</button><button class="btn ghost" data-act="cmpCsv">⬇️ ייצוא טבלה (CSV/Excel)</button><button class="btn ghost" data-act="cmpWord">⬇️ ייצוא Word</button></div>
+    ${viewComparison._ai?`<div style="background:#f6fbf9;border:1px solid var(--accent);border-radius:10px;padding:14px 16px;margin-top:12px"><div class="muted" style="font-size:12px;margin-bottom:6px">המלצת AI · להשוואה בלבד · ההכרעה בידיך</div><div id="cmpAi" style="white-space:pre-wrap">${esc(viewComparison._ai.text||(viewComparison._ai.loading?'…מנתח':''))}</div></div>`:''}`:''}
   </div>`;
 }
 function comparisonTable(chosen){
@@ -1007,7 +1063,8 @@ function viewKB(){const q=(viewKB._q||'').trim();
     <table class="tbl"><thead><tr><th style="width:120px">קטגוריה</th><th style="width:170px">סימן</th><th>משמעות</th><th style="width:80px">אודם</th></tr></thead><tbody>
     ${signs.slice(0,400).map(s=>`<tr><td>${esc(s.cat)}</td><td>${esc(s.variant||'')}</td><td>${esc(s.meaning||'')}${s.appearance?`<div class="muted" style="font-size:11.5px">תיאור: ${esc(s.appearance)}</div>`:''}</td><td>${(s.odem||[]).map(o=>`<span class="tag">${esc(o.replace(/^[א-ת]\.\s*/,''))}</span>`).join('')}</td></tr>`).join('')}
     </tbody></table>${signs.length>400?`<div class="muted" style="padding:8px">מוצגים 400 ראשונים — צמצם בחיפוש.</div>`:''}</div></div>
-  ${glos.length?`<div class="card"><h2>מילון מונחים</h2><table class="tbl"><tbody>${glos.map(g=>`<tr><td style="width:150px;font-weight:700">${esc(g.term)}</td><td>${esc(g.def)}</td></tr>`).join('')}</tbody></table></div>`:''}`;
+  ${glos.length?`<div class="card"><h2>מילון מונחים</h2><table class="tbl"><tbody>${glos.map(g=>`<tr><td style="width:150px;font-weight:700">${esc(g.term)}</td><td>${esc(g.def)}</td></tr>`).join('')}</tbody></table></div>`:''}
+  ${(!q&&KB.speedtest&&KB.speedtest.length)?`<div class="card"><h2>⏱️ טבלת כיול — בדיקת מהירות</h2><div class="muted" style="font-size:12.5px;margin-bottom:6px">השוואת סימני כתב מהיר מול כתב איטי (כלי כיול מקצועי).</div><table class="tbl"><thead><tr><th style="width:140px">מאפיין</th><th>כתב מהיר/ער</th><th>כתב איטי/מבוקר</th></tr></thead><tbody>${KB.speedtest.map(s=>`<tr><td>${esc(s.sub)}</td><td>${esc(s.fast)}</td><td>${esc(s.slow)}</td></tr>`).join('')}</tbody></table></div>`:''}`;
 }
 afterRender.kb=function(){const s=$('#kbSearch');if(s)s.addEventListener('input',()=>{viewKB._q=s.value;const p=s.selectionStart;render();const n=$('#kbSearch');if(n){n.focus();n.setSelectionRange(p,p);}});};
 
@@ -1034,7 +1091,7 @@ function viewSettings(){const s=DB.settings;
     <button class="btn ghost sm" data-act="addProf">+ שורה</button></div>
   <div class="card"><h2>🗄️ נתונים וגיבוי</h2>
     <p class="muted">כל הנתונים נשמרים מקומית בדפדפן זה. מומלץ לגבות מדי פעם.</p>
-    <div class="row"><button class="btn ghost" data-act="export">↧ גיבוי לקובץ</button><button class="btn ghost" data-act="import">↥ שחזור מקובץ</button><button class="btn danger" data-act="wipe">מחיקת כל הנתונים</button></div>
+    <div class="row"><button class="btn ghost" data-act="export">↧ גיבוי לקובץ</button><button class="btn ghost" data-act="import">↥ שחזור מקובץ</button><button class="btn ghost" data-act="loadDemo">🎬 טען תיק הדגמה</button><button class="btn danger" data-act="wipe">מחיקת כל הנתונים</button></div>
     <p class="muted" style="margin-top:10px">מאגר ידע: ${KB.signs.length} סימנים · ${KB.glossary.length} מונחים · ${KB.jung.length} ערכי יונג · ${KB.odemList.length} טיפוסי אודם.</p></div>`;
 }
 afterRender.settings=function(){
@@ -1063,6 +1120,10 @@ function doAction(act,el){const c=curCase();
     case'saveSettings':if($('#setName'))DB.settings.graphologist=$('#setName').value;if($('#setDisc'))DB.settings.disclaimer=$('#setDisc').value;if($('#setSucc'))DB.settings.success=$('#setSucc').value;if($('#aiKey'))DB.settings.apiKey=$('#aiKey').value.trim();saveDB();toast('ההגדרות נשמרו');break;
     case'runAi':runAiAnalysis(c);break;
     case'aiImport':aiImport(c);break;
+    case'addAiSigns':addAiSigns(c);break;
+    case'aiAsk':aiAsk(c);break;
+    case'compareAi':compareAi();break;
+    case'loadDemo':loadDemo();break;
     case'addPrice':DB.settings.prices.push({label:'מסלול חדש',amount:0});saveDB();render();break;
     case'rmPrice':DB.settings.prices.splice(+el.dataset.i,1);saveDB();render();break;
     case'addProf':DB.settings.profBank.push({traits:'',prof:'',axes:[]});saveDB();render();break;
@@ -1073,6 +1134,18 @@ function doAction(act,el){const c=curCase();
     case'cmpCsv':exportCmpCsv();break;
     case'cmpWord':exportCmpWord();break;
   }
+}
+function loadDemo(){
+  const id=uid();const c={id,name:'הדגמה — דוד כהן',age:'35',gender:'זכר',hand:'ימין',lang:'עברית',purpose:'תעסוקתי',orderer:'מעסיק',status:'האבחון התחיל',price:'950',paid:true,createdAt:Date.now(),updatedAt:Date.now()};
+  ensure(c);
+  const idxs=[];KB.signs.forEach((s,i)=>{if(s.odem&&s.odem.length&&idxs.length<7)idxs.push(i);});
+  idxs.forEach((i,k)=>{const s=KB.signs[i];c.analysis.signs.push({cat:s.cat,variant:s.variant,meaning:s.meaning,appearance:s.appearance,odem:s.odem||[],prominent:k<3,doubt:k===6,intensity:'בינונית',freq:'חוזר',certainty:'בינונית',note:''});});
+  c.analysis.profile={'סדר וארגון':'גבוה','אחריות':'גבוה','דיוק':'בינוני','יוזמה':'בינוני','יציבות רגשית':'גבוה'};
+  c.analysis.riasec={R:30,I:65,A:15,S:40,E:45,C:75};
+  c.analysis.jung={attitude:'מופנם',fn:'חשיבה'};c.analysis.odem={dominant:'ד. רציונלי',sec:'ב. אינטגרטיבי'};
+  c.impression={atmosphere:'כתב מסודר',order:'גבוהה',general:'כתב מסודר, מאורגן ובהיר, רושם של אדם שיטתי ואחראי'};
+  c.ethics={e0:true,e1:true,e2:true,e6:true};
+  DB.cases.push(c);saveDB();openCase(id);toast('נטען תיק הדגמה');
 }
 function showGuidelines(){const c=curCase();
   const txt=`הנחיות לכתיבת כתב יד לאבחון גרפולוגי:
