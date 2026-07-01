@@ -270,7 +270,10 @@ tfoot td { font-weight: 700; background: #f7fafc; }
   <div class="modal" style="max-width:380px">
     <div class="modal-head"><h3>📋 כניסה למערכת</h3></div>
     <div class="modal-body">
-      <div id="login-noserver">
+      <div id="login-loading">
+        <p style="font-size:.95rem;color:#4a5568;text-align:center;padding:14px 0">⏳ מתחבר לשרת…</p>
+      </div>
+      <div id="login-noserver" style="display:none">
         <p style="font-size:.9rem;color:#4a5568;margin-bottom:12px">יש להגדיר תחילה את כתובת השרת (Apps Script) כדי להתחבר למערכת.</p>
         <button class="btn btn-primary" style="width:100%" onclick="setServerUrl()">⚙ הגדר שרת</button>
       </div>
@@ -341,6 +344,7 @@ let GS_URL = localStorage.getItem(URLKEY) || DEFAULT_GS_URL;
 
 // ==================== STATE ====================
 let loginUsers = [];
+let loginListLoaded = false; // becomes true only after the server answered, so we don't flash the seed screen
 let currentUser = null;     // {id,name,role,hash}
 let boot = null;            // {role, me, therapists, lists, users?, assignments?}
 let selYear, selMonth, selTherapistId;
@@ -397,6 +401,7 @@ function setServerUrl(){
   const url = v.trim();
   if (url && !/\/exec$/.test(url)) { alert('הכתובת צריכה להסתיים ב-/exec'); return; }
   GS_URL = url; localStorage.setItem(URLKEY, url);
+  loginListLoaded = false;
   updateLoginGateView();
   if (url) { toast('השרת הוגדר'); boot ? loadMonth() : loadLoginList(); }
   else setSync('','— לא מחובר');
@@ -404,9 +409,12 @@ function setServerUrl(){
 function updateLoginGateView(){
   const hasServer = !!GS_URL;
   const hasUsers = loginUsers.length > 0;
+  // while connecting to the server, show only a loading note (avoids flashing the seed/import screen)
+  const connecting = hasServer && !loginListLoaded;
+  document.getElementById('login-loading').style.display = connecting ? 'block':'none';
   document.getElementById('login-noserver').style.display = hasServer ? 'none':'block';
-  document.getElementById('login-form').style.display = (hasServer && hasUsers) ? 'block':'none';
-  document.getElementById('login-seed').style.display = (hasServer && !hasUsers) ? 'block':'none';
+  document.getElementById('login-form').style.display = (hasServer && loginListLoaded && hasUsers) ? 'block':'none';
+  document.getElementById('login-seed').style.display = (hasServer && loginListLoaded && !hasUsers) ? 'block':'none';
 }
 
 // ==================== SEED IMPORT (first-time setup) ====================
@@ -446,6 +454,7 @@ async function loadLoginList(){
   setSync('wait','⏳ טוען משתמשים…');
   const res = await apiGet('loginList');
   loginUsers = Array.isArray(res) ? res : [];
+  loginListLoaded = true;
   setSync(loginUsers.length? 'ok':'', loginUsers.length? '☁ מחובר':'— מחובר · אין נתונים עדיין');
   fillLoginSelect();
   checkAuth();
