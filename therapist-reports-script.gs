@@ -73,7 +73,7 @@ function handle(e) {
     var action = p.action || '';
 
     if (action === 'loginList')   return json(loginList());
-    if (action === 'bootstrap')   return json(bootstrap(p.user));
+    if (action === 'bootstrap')   return json(bootstrap(p.user, p.year, p.month));
     if (action === 'entries')     return json(getEntries(p.user, p.therapistId, p.year, p.month));
     if (action === 'monthSummary')return json(monthSummary(p.user, p.year, p.month));
 
@@ -153,17 +153,18 @@ function getUser(userId) {
   return null;
 }
 
-// מחזיר את רשימת מזהי המטפלים שמשתמש נתון מורשה לצפות/לערוך בהם
-function scopeForUser(user) {
+// מחזיר את רשימת מזהי המטפלים שמשתמש נתון מורשה לצפות/לערוך בהם.
+// אפשר להעביר רשימות טעונות מראש כדי לחסוך קריאות חוזרות לגיליון.
+function scopeForUser(user, preTherapists, preAssignments) {
   if (!user) return [];
   if (user.role === 'manager') {
-    return readAll('therapists').map(function (t) { return t.id; });
+    return (preTherapists || readAll('therapists')).map(function (t) { return t.id; });
   }
   if (user.role === 'therapist') {
     return user.therapistId ? [user.therapistId] : [];
   }
   if (user.role === 'secretary') {
-    return readAll('assignments')
+    return (preAssignments || readAll('assignments'))
       .filter(function (a) { return a.secretaryUserId === user.id; })
       .map(function (a) { return a.therapistId; });
   }
@@ -180,11 +181,12 @@ function loginList() {
   });
 }
 
-function bootstrap(userId) {
+function bootstrap(userId, year, month) {
   var user = getUser(userId);
   if (!user) return { status: 'error', message: 'משתמש לא נמצא' };
-  var scopeIds = scopeForUser(user);
   var allTherapists = readAll('therapists');
+  var allAssignments = (user.role === 'manager' || user.role === 'secretary') ? readAll('assignments') : null;
+  var scopeIds = scopeForUser(user, allTherapists, allAssignments);
   var therapists = allTherapists.filter(function (t) { return scopeIds.indexOf(t.id) !== -1; });
   var out = {
     status: 'ok',
@@ -195,9 +197,20 @@ function bootstrap(userId) {
   };
   if (user.role === 'manager') {
     out.users = readAll('users');
-    out.assignments = readAll('assignments');
+    out.assignments = allAssignments;
   } else if (user.role === 'secretary') {
-    out.assignments = readAll('assignments').filter(function (a) { return a.secretaryUserId === user.id; });
+    out.assignments = allAssignments.filter(function (a) { return a.secretaryUserId === user.id; });
+  }
+  // מאחדים לתוך הבקשה גם את רשומות החודש הראשון לתצוגה — חוסך פנייה נוספת (round-trip) לשרת
+  if (year && month) {
+    var initialTid = (user.role === 'therapist') ? user.therapistId : (therapists[0] ? therapists[0].id : null);
+    if (initialTid) {
+      var prefix = Number(year) + '-' + ('0' + Number(month)).slice(-2);
+      out.initialTherapistId = initialTid;
+      out.initialEntries = readAll('entries').filter(function (r) {
+        return r.therapistId === initialTid && String(r.date).indexOf(prefix) === 0;
+      });
+    }
   }
   return out;
 }

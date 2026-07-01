@@ -450,10 +450,14 @@ async function importSeed(){
 }
 
 // ==================== AUTH ====================
+const LOGIN_CACHE_KEY = 'tr_login_users';
 async function loadLoginList(){
-  setSync('wait','⏳ טוען משתמשים…');
+  if (!loginListLoaded) setSync('wait','⏳ טוען משתמשים…');
   const res = await apiGet('loginList');
-  loginUsers = Array.isArray(res) ? res : [];
+  if (Array.isArray(res)){                         // רק אם התקבלה תשובה תקינה — לא מוחקים מטמון בגלל תקלת רשת
+    loginUsers = res;
+    try { localStorage.setItem(LOGIN_CACHE_KEY, JSON.stringify(res)); } catch(e){}
+  }
   loginListLoaded = true;
   setSync(loginUsers.length? 'ok':'', loginUsers.length? '☁ מחובר':'— מחובר · אין נתונים עדיין');
   fillLoginSelect();
@@ -494,15 +498,25 @@ async function afterLogin(){
   document.getElementById('userChip').style.display='inline-flex';
   document.getElementById('userChipName').textContent = currentUser.name + ' · ' + (ROLE_LABELS[currentUser.role]||'');
   setSync('wait','⏳ טוען נתונים…');
-  boot = await apiGet('bootstrap', {user: currentUser.id});
+  // מבקשים כבר בפנייה הזו את רשומות החודש הנוכחי, כדי לחסוך פנייה שנייה איטית
+  const now = new Date();
+  boot = await apiGet('bootstrap', {user: currentUser.id, year: now.getFullYear(), month: now.getMonth()+1});
   if (!boot || boot.status==='error'){ setSync('err','⚠ שגיאת טעינה'); return; }
   setSync('ok','☁ מחובר');
   applyRoleUI();
   initMonthPicker();
-  await loadMonth();
-  if (currentUser.role !== 'therapist') await loadOverview();
+  // אם הרשומות הגיעו יחד עם ה-bootstrap — משתמשים בהן ישר, בלי פנייה נוספת
+  if (boot.initialEntries && boot.initialTherapistId === selTherapistId){
+    monthEntries = boot.initialEntries;
+    localStorage.setItem(cacheKey(), JSON.stringify(monthEntries));
+    buildRows(); renderGrid(); renderSummary();
+  } else {
+    await loadMonth();
+  }
+  // "סיכום צוות" נטען רק כשלוחצים על הלשונית (טעינה עצלה) — חוסך פנייה כבדה בכניסה
   if (currentUser.role === 'manager') renderAdmin();
 }
+function overviewActive(){ return document.getElementById('tab-overview').classList.contains('active'); }
 
 function applyRoleUI(){
   const isTherapist = currentUser.role === 'therapist';
@@ -549,8 +563,8 @@ function initMonthPicker(){
   const y0 = now.getFullYear()-2, y1 = now.getFullYear()+2;
   let opts=''; for(let y=y0;y<=y1;y++) opts+=`<option value="${y}">${y}</option>`;
   ySel.innerHTML = opts; ySel.value = selYear;
-  mSel.onchange = ()=>{ selMonth=+mSel.value; loadMonth(); if(currentUser.role!=='therapist') loadOverview(); };
-  ySel.onchange = ()=>{ selYear=+ySel.value; loadMonth(); if(currentUser.role!=='therapist') loadOverview(); };
+  mSel.onchange = ()=>{ selMonth=+mSel.value; loadMonth(); if(overviewActive()) loadOverview(); };
+  ySel.onchange = ()=>{ selYear=+ySel.value; loadMonth(); if(overviewActive()) loadOverview(); };
 }
 function stepMonth(dir){
   selMonth += dir;
@@ -558,7 +572,7 @@ function stepMonth(dir){
   document.getElementById('pickMonth').value = selMonth;
   document.getElementById('pickYear').value = selYear;
   loadMonth();
-  if (currentUser.role!=='therapist') loadOverview();
+  if (overviewActive()) loadOverview();
 }
 
 // ==================== LOAD MONTH ====================
@@ -960,6 +974,14 @@ function exportExcel(){
 }
 
 // ==================== INIT ====================
+// מציגים מיד את רשימת המשתמשים מהמטמון (אם קיים) כדי שמסך הכניסה יופיע בלי המתנה,
+// ובמקביל מרעננים ברקע מהשרת.
+(function primeLoginCache(){
+  try {
+    const cached = JSON.parse(localStorage.getItem(LOGIN_CACHE_KEY) || 'null');
+    if (Array.isArray(cached) && cached.length){ loginUsers = cached; loginListLoaded = true; fillLoginSelect(); }
+  } catch(e){}
+})();
 updateLoginGateView();
 if (GS_URL) loadLoginList(); else setSync('','— לא מחובר (לחץ ⚙ הגדר שרת)');
 </script>
