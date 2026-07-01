@@ -495,7 +495,9 @@ function applyRoleUI(){
   document.getElementById('tabbtn-admin').style.display = currentUser.role==='manager' ? 'inline-block':'none';
   document.getElementById('therapistPickerCard').style.display = isTherapist ? 'none':'block';
   if (isTherapist){
-    selTherapistId = currentUser.therapistId;
+    // therapistId comes from bootstrap (loginList omits it), fall back if present on currentUser
+    selTherapistId = (boot.me && boot.me.therapistId) || currentUser.therapistId
+                     || (boot.therapists && boot.therapists[0] ? boot.therapists[0].id : null);
   } else {
     const sel = document.getElementById('pickTherapist');
     sel.innerHTML = (boot.therapists||[]).map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');
