@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>דיווח טיפולים חודשי</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='13' fill='%23f0f4f8'/><text x='32' y='42' font-size='30' text-anchor='middle'>%F0%9F%93%8B</text></svg>">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: #2d3748; direction: rtl; }
+
+header {
+  background: linear-gradient(135deg, #1a365d, #2b6cb0);
+  color: white; padding: 14px 24px;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+header h1 { font-size: 1.25rem; font-weight: 700; }
+header .actions { display: flex; gap: 8px; align-items: center; margin-inline-start: auto; flex-wrap: wrap; }
+
+.tabs { display: flex; background: #2b6cb0; padding: 0 16px; gap: 2px; overflow-x: auto; }
+.tab-btn { padding: 11px 20px; border: none; background: transparent; color: rgba(255,255,255,0.7); cursor: pointer; font-size: 0.9rem; font-weight: 600; border-bottom: 3px solid transparent; transition: all 0.2s; font-family: inherit; white-space: nowrap; }
+.tab-btn:hover { color: white; background: rgba(255,255,255,0.1); }
+.tab-btn.active { color: white; border-bottom-color: #f6e05e; background: rgba(255,255,255,0.1); }
+
+.content { padding: 20px; max-width: 1500px; margin: 0 auto; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+.card { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); padding: 18px; margin-bottom: 16px; }
+.card h2 { font-size: 1rem; font-weight: 700; color: #1a365d; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+.card h2 .hint { font-size: 0.72rem; font-weight: 500; color: #718096; }
+
+.form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+.form-group { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 130px; }
+.form-group label { font-size: 0.8rem; font-weight: 600; color: #4a5568; }
+.form-group input, .form-group select, .form-group textarea { padding: 8px 11px; border: 1.5px solid #cbd5e0; border-radius: 8px; font-size: 0.9rem; font-family: inherit; background: #f7fafc; direction: rtl; transition: border-color 0.2s; }
+.form-group input:focus, .form-group select:focus { outline: none; border-color: #2b6cb0; background: white; }
+
+.btn { padding: 8px 18px; border: none; border-radius: 8px; font-size: 0.88rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.2s; white-space: nowrap; }
+.btn-primary { background: #2b6cb0; color: white; }
+.btn-primary:hover { background: #1a365d; }
+.btn-success { background: #276749; color: white; }
+.btn-success:hover { background: #1c4532; }
+.btn-light { background: rgba(255,255,255,0.18); color: white; }
+.btn-light:hover { background: rgba(255,255,255,0.3); }
+.btn-danger { background: #e53e3e; color: white; padding: 5px 10px; font-size: 0.78rem; }
+.btn-danger:hover { background: #c53030; }
+.btn-edit { background: #ed8936; color: white; padding: 5px 10px; font-size: 0.78rem; }
+.btn-edit:hover { background: #c05621; }
+.btn-sm { padding: 4px 9px; font-size: .74rem; }
+
+select.picker, input.picker { padding: 7px 12px; border-radius: 8px; border: none; font-family: inherit; font-size: .88rem; background: rgba(255,255,255,0.92); color: #1a365d; font-weight: 600; }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+th, td { padding: 8px 9px; text-align: right; border-bottom: 1px solid #e2e8f0; }
+th { background: #edf2f7; color: #1a365d; font-weight: 700; font-size: 0.76rem; white-space: nowrap; }
+tbody tr:hover { background: #f7fafc; }
+.table-wrap { overflow-x: auto; }
+
+.badge { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; white-space: nowrap; }
+.b-green { background: #c6f6d5; color: #22543d; }
+.b-red { background: #fed7d7; color: #742a2a; }
+.b-yellow { background: #fefcbf; color: #744210; }
+.b-gray { background: #e2e8f0; color: #4a5568; }
+.b-blue { background: #bee3f8; color: #2a4365; }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 16px; }
+.stat-card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); border-right: 4px solid #2b6cb0; }
+.stat-card .num { font-size: 1.6rem; font-weight: 800; color: #1a365d; }
+.stat-card .lbl { font-size: 0.78rem; color: #718096; margin-top: 3px; }
+
+.empty { text-align: center; color: #a0aec0; padding: 28px; font-size: 0.9rem; }
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #276749; color: white; padding: 12px 26px; border-radius: 10px; font-weight: 600; box-shadow: 0 4px 14px rgba(0,0,0,0.25); opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 999; }
+.toast.show { opacity: 1; }
+@media print { header, .tabs, .actions, .no-print { display: none !important; } .card { box-shadow: none; } }
+
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+.overlay.show { display: flex; }
+.modal { background: #fff; border-radius: 14px; max-width: 460px; width: 100%; max-height: 90vh; overflow: auto; box-shadow: 0 10px 40px rgba(0,0,0,.3); }
+.modal.wide { max-width: 620px; }
+.modal-head { background: linear-gradient(135deg,#1a365d,#2b6cb0); color: #fff; padding: 14px 18px; display: flex; align-items: center; gap: 10px; border-radius: 14px 14px 0 0; }
+.modal-head h3 { flex: 1; font-size: 1.05rem; }
+.modal-head .x { cursor: pointer; font-size: 1.4rem; line-height: 1; opacity: .85; }
+.modal-body { padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+
+/* ---- month/year picker ---- */
+.month-nav { display:flex; align-items:center; gap:6px; }
+.month-nav button { background: rgba(255,255,255,0.18); color:#fff; border:none; border-radius:8px; width:30px; height:30px; cursor:pointer; font-size:1rem; }
+.month-nav button:hover { background: rgba(255,255,255,0.32); }
+
+/* ---- grid ---- */
+.grid-wrap { overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 10px; }
+table.grid { font-size: .78rem; }
+table.grid th, table.grid td { padding: 4px 3px; text-align: center; border: 1px solid #edf2f7; white-space: nowrap; }
+table.grid th.rowlabel, table.grid td.rowlabel { text-align: right; padding: 6px 10px; }
+td.rowlabel, th.rowlabel { position: sticky; right: 0; background: #fff; z-index: 2; min-width: 190px; max-width: 220px; box-shadow: -1px 0 0 #e2e8f0 inset; }
+th.rowlabel { background: #edf2f7; z-index: 3; }
+td.total, th.total { position: sticky; left: 0; background: #f7fafc; z-index: 2; font-weight: 700; color: #1a365d; min-width: 46px; }
+th.total { background: #edf2f7; z-index: 3; }
+th { background: #edf2f7; color: #1a365d; }
+.dow-th { font-size: .68rem; color: #718096; font-weight: 700; }
+.weekend-col { background: #fff7e6; }
+.row-title { font-weight: 700; font-size: .82rem; color: #1a365d; }
+.row-sub { font-size: .68rem; color: #718096; margin-top: 1px; }
+.row-actions { display: inline-flex; gap: 3px; margin-inline-start: 6px; }
+.row-actions button { border: none; background: #edf2f7; border-radius: 5px; cursor: pointer; font-size: .7rem; padding: 2px 5px; }
+.row-actions button:hover { background: #e2e8f0; }
+.day-input { width: 34px; border: none; background: transparent; text-align: center; font-size: .78rem; font-family: inherit; border-radius: 5px; padding: 4px 1px; }
+.day-input:hover { background: #ebf8ff; }
+.day-input:focus { outline: 2px solid #2b6cb0; background: #fff; }
+.day-input.has-val { background: #e6fffa; color: #234e52; font-weight: 700; }
+.cancel-row .row-title { color: #c53030; }
+tfoot td { font-weight: 700; background: #f7fafc; }
+.sync-badge { font-size: .72rem; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip-check { display: flex; align-items: center; gap: 5px; background: #edf2f7; border-radius: 999px; padding: 5px 11px; font-size: .8rem; cursor: pointer; }
+.chip-check input { margin: 0; }
+.assign-block { border-bottom: 1px solid #edf2f7; padding: 10px 0; }
+.assign-block:last-child { border-bottom: none; }
+
+.subtabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+.subtab { padding: 7px 15px; border-radius: 8px; background: #e2e8f0; color: #4a5568; cursor: pointer; font-size: 0.83rem; font-weight: 600; border: none; font-family: inherit; }
+.subtab.active { background: #2b6cb0; color: white; }
+.subpanel { display: none; }
+.subpanel.active { display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📋 דיווח טיפולים חודשי</h1>
+  <div class="month-nav">
+    <button onclick="stepMonth(1)" title="חודש קודם">‹</button>
+    <select id="pickMonth" class="picker"></select>
+    <select id="pickYear" class="picker"></select>
+    <button onclick="stepMonth(-1)" title="חודש הבא">›</button>
+  </div>
+  <div class="actions">
+    <span id="syncStatus" class="badge b-gray sync-badge">— לא מחובר</span>
+    <button class="btn btn-light" onclick="setServerUrl()">⚙ הגדר שרת</button>
+    <button class="btn btn-light" onclick="exportExcel()">⬇ ייצוא לאקסל</button>
+    <span id="userChip" style="display:none;align-items:center;gap:6px;color:#fff;font-size:.82rem;font-weight:600">
+      <span id="userChipName"></span>
+      <button class="btn btn-light" style="padding:5px 12px" onclick="logout()">יציאה</button>
+    </span>
+  </div>
+</header>
+
+<div class="tabs" id="mainTabs">
+  <button class="tab-btn active" id="tabbtn-report" onclick="showTab('report',this)">📅 הדוח החודשי</button>
+  <button class="tab-btn" id="tabbtn-overview" onclick="showTab('overview',this)">👥 סיכום צוות</button>
+  <button class="tab-btn" id="tabbtn-admin" onclick="showTab('admin',this)">⚙ ניהול</button>
+</div>
+
+<div class="content">
+
+  <!-- ===== REPORT TAB ===== -->
+  <div class="tab-panel active" id="tab-report">
+    <div class="card" id="therapistPickerCard" style="display:none">
+      <div class="form-row">
+        <div class="form-group" style="max-width:280px">
+          <label>מטפל/ת</label>
+          <select id="pickTherapist" onchange="onTherapistChange()"></select>
+        </div>
+        <div class="form-group" style="flex:0" id="therapistNameLabel"></div>
+      </div>
+    </div>
+
+    <div class="stats" id="statCards"></div>
+
+    <div class="card">
+      <h2>📆 גיליון חודשי <span class="hint">לחצו על יום כדי לרשום שעות/מפגשים · לחצו + כדי להוסיף שורה</span>
+        <button class="btn btn-success btn-sm" style="margin-inline-start:auto" onclick="openRowModal()">+ הוספת שורה</button>
+      </h2>
+      <div class="grid-wrap"><table class="grid" id="gridTable"></table></div>
+    </div>
+
+    <div class="charts-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
+      <div class="card"><h2>🗂 פילוח לפי סוג</h2><div class="table-wrap"><table id="tblByType"></table></div></div>
+      <div class="card"><h2>📊 פילוח שבועי</h2><div class="table-wrap"><table id="tblByWeek"></table></div></div>
+      <div class="card"><h2>🚫 ביטולים</h2><div class="table-wrap"><table id="tblCancel"></table></div></div>
+      <div class="card"><h2>🏥 פילוח לפי קופ"ח</h2><div class="table-wrap"><table id="tblFund"></table></div></div>
+    </div>
+  </div>
+
+  <!-- ===== OVERVIEW TAB ===== -->
+  <div class="tab-panel" id="tab-overview">
+    <div class="card">
+      <h2>👥 סיכום צוות המטפלים <span class="hint" id="overviewMonthLabel"></span></h2>
+      <div class="table-wrap"><table id="tblOverview"></table></div>
+    </div>
+  </div>
+
+  <!-- ===== ADMIN TAB ===== -->
+  <div class="tab-panel" id="tab-admin">
+    <div class="subtabs">
+      <button class="subtab active" onclick="showSubtab('adm-therapists',this)">מטפלים</button>
+      <button class="subtab" onclick="showSubtab('adm-users',this)">משתמשים</button>
+      <button class="subtab" onclick="showSubtab('adm-assign',this)">שיוכי מזכירות</button>
+      <button class="subtab" onclick="showSubtab('adm-lists',this)">רשימות בחירה</button>
+    </div>
+
+    <div class="subpanel active" id="adm-therapists">
+      <div class="card">
+        <h2>הוספת מטפל/ת</h2>
+        <div class="form-row">
+          <div class="form-group"><label>שם</label><input id="th-name" placeholder="שם מלא"></div>
+          <div class="form-group"><label>התמחות</label><input id="th-spec" placeholder="לדוגמה: ריפוי בעיסוק"></div>
+          <button class="btn btn-success" onclick="addTherapist()">+ הוסף</button>
+        </div>
+      </div>
+      <div class="card"><div class="table-wrap"><table id="tbl-therapists"></table></div></div>
+    </div>
+
+    <div class="subpanel" id="adm-users">
+      <div class="card">
+        <h2>הוספת משתמש <span class="hint">— תפקיד מטפל/ת חייב מטפל מקושר</span></h2>
+        <div class="form-row">
+          <div class="form-group"><label>שם</label><input id="u-name" placeholder="שם"></div>
+          <div class="form-group"><label>תפקיד</label>
+            <select id="u-role" onchange="toggleUserTherapistField()">
+              <option value="manager">מנהל/ת</option>
+              <option value="secretary">מזכירה</option>
+              <option value="therapist">מטפל/ת</option>
+            </select>
+          </div>
+          <div class="form-group" id="u-therapist-wrap" style="display:none"><label>מטפל מקושר</label><select id="u-therapist"></select></div>
+          <div class="form-group"><label>סיסמה</label><input id="u-pass" type="text" placeholder="סיסמה"></div>
+          <button class="btn btn-success" onclick="addUser()">+ הוסף משתמש</button>
+        </div>
+      </div>
+      <div class="card"><div class="table-wrap"><table id="tbl-users"></table></div></div>
+    </div>
+
+    <div class="subpanel" id="adm-assign">
+      <div class="card">
+        <h2>שיוך מטפלים למזכירות <span class="hint">סמנו אילו מטפלים תחת כל מזכירה</span></h2>
+        <div id="assignBlocks"></div>
+      </div>
+    </div>
+
+    <div class="subpanel" id="adm-lists">
+      <div class="subtabs">
+        <button class="subtab active" onclick="showListKind('type',this)">סוגי פעילות</button>
+        <button class="subtab" onclick="showListKind('healthFund',this)">קופות חולים</button>
+        <button class="subtab" onclick="showListKind('cancelReason',this)">סיבות ביטול</button>
+        <button class="subtab" onclick="showListKind('cancelPayment',this)">סוגי תשלום ביטול</button>
+        <button class="subtab" onclick="showListKind('project',this)">פרוייקטים</button>
+      </div>
+      <div class="card">
+        <div class="form-row">
+          <div class="form-group"><label>ערך חדש</label><input id="list-new-val" placeholder="הוסף ערך..."></div>
+          <button class="btn btn-success" onclick="addListValue()">+ הוסף</button>
+        </div>
+        <div class="chips" id="listValuesBox"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- login gate -->
+<div class="overlay show" id="loginOverlay">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-head"><h3>📋 כניסה למערכת</h3></div>
+    <div class="modal-body">
+      <div id="login-noserver">
+        <p style="font-size:.9rem;color:#4a5568;margin-bottom:12px">יש להגדיר תחילה את כתובת השרת (Apps Script) כדי להתחבר למערכת.</p>
+        <button class="btn btn-primary" style="width:100%" onclick="setServerUrl()">⚙ הגדר שרת</button>
+      </div>
+      <div id="login-form" style="display:none">
+        <div class="form-group"><label>שם המשתמש</label>
+          <select id="login-user"></select>
+        </div>
+        <div class="form-group"><label>סיסמה</label>
+          <input id="login-pass" type="password" placeholder="סיסמה" onkeydown="if(event.key==='Enter')doLogin()">
+        </div>
+        <div id="login-err" style="display:none;color:#c53030;font-size:.85rem"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">כניסה</button>
+        <button class="btn btn-light" style="width:100%;margin-top:8px;color:#4a5568;background:#edf2f7" onclick="setServerUrl()">⚙ שנה שרת</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- add/edit row modal -->
+<div class="overlay" id="rowModal">
+  <div class="modal wide">
+    <div class="modal-head"><h3 id="rowModalTitle">הוספת שורה</h3><span class="x" onclick="closeRowModal()">✕</span></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label>סוג *</label><select id="rf-type" onchange="onRowTypeChange()"></select></div>
+        <div class="form-group"><label>מטופל / תיאור</label><input id="rf-patient" list="patientList"></div>
+        <datalist id="patientList"></datalist>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>קופ"ח</label><select id="rf-fund"><option value="">—</option></select></div>
+        <div class="form-group"><label>פרוייקט</label><select id="rf-project"><option value="">—</option></select></div>
+      </div>
+      <div id="cancelFieldsBox" style="display:none">
+        <div class="form-row">
+          <div class="form-group"><label>סיווג הביטול (מה בוטל)</label><select id="rf-cancelClass"><option value="">—</option></select></div>
+          <div class="form-group"><label>סוג תשלום</label><select id="rf-cancelPayment"><option value="">—</option></select></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>סיבת ביטול</label><select id="rf-cancelReason"><option value="">—</option></select></div>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>הערות</label><input id="rf-notes"></div>
+      </div>
+      <button class="btn btn-primary" onclick="saveRowModal()">שמירה</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ==================== CONSTANTS ====================
+const MONTH_NAMES = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+const DOW_LETTERS = ['א','ב','ג','ד','ה','ו','ש'];
+const ROLE_LABELS = { manager:'מנהל/ת', secretary:'מזכירה', therapist:'מטפל/ת' };
+const URLKEY = 'tr_gs_url';
+let GS_URL = localStorage.getItem(URLKEY) || '';
+
+// ==================== STATE ====================
+let loginUsers = [];
+let currentUser = null;     // {id,name,role,hash}
+let boot = null;            // {role, me, therapists, lists, users?, assignments?}
+let selYear, selMonth, selTherapistId;
+let monthEntries = [];
+let rows = [];
+let saveTimer = null;
+let editingRowKey = null;
+let currentListKind = 'type';
+
+// ==================== HELPERS ====================
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function pad2(n){ return ('0'+n).slice(-2); }
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2400); }
+function setSync(cls,msg){ const b=document.getElementById('syncStatus'); b.className='badge sync-badge b-'+(cls||'gray'); b.textContent=msg; }
+function daysInMonth(y,m){ return new Date(y,m,0).getDate(); }
+async function hashPass(name, pass){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(name + ':' + pass));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+// ==================== API ====================
+function qs(params){ return Object.keys(params).map(k=>encodeURIComponent(k)+'='+encodeURIComponent(params[k])).join('&'); }
+async function apiGet(action, params){
+  if (!GS_URL){ setSync('','— לא מחובר (לחץ ⚙ הגדר שרת)'); return null; }
+  const p = Object.assign({action}, params||{});
+  try {
+    const r = await fetch(GS_URL + '?' + qs(p));
+    return await r.json();
+  } catch(e){ setSync('err','⚠ שגיאת תקשורת'); return null; }
+}
+async function apiSend(action, data){
+  if (!GS_URL){ setSync('','— לא מחובר'); return; }
+  const enc = encodeURIComponent(JSON.stringify(data));
+  setSync('wait','⏳ שומר…');
+  try{
+    if (enc.length < 30000){
+      const r = await fetch(GS_URL + '?' + qs({action, user: currentUser.id, data: enc}));
+      const res = await r.json();
+      setSync(res && res.status==='ok' ? 'ok':'err', res && res.status==='ok' ? '☁ נשמר':'⚠ שגיאת שמירה');
+      return res;
+    } else {
+      const body = new URLSearchParams();
+      body.append('action', action); body.append('user', currentUser.id); body.append('data', JSON.stringify(data));
+      await fetch(GS_URL, { method:'POST', mode:'no-cors', body });
+      setSync('ok','☁ נשמר');
+    }
+  } catch(e){ setSync('err','⚠ שגיאת שמירה'); }
+}
+function setServerUrl(){
+  const cur = GS_URL || '';
+  const v = prompt('הדבק כאן את כתובת ה-Apps Script (מסתיימת ב-/exec):', cur);
+  if (v === null) return;
+  const url = v.trim();
+  if (url && !/\/exec$/.test(url)) { alert('הכתובת צריכה להסתיים ב-/exec'); return; }
+  GS_URL = url; localStorage.setItem(URLKEY, url);
+  updateLoginGateView();
+  if (url) { toast('השרת הוגדר'); boot ? loadMonth() : loadLoginList(); }
+  else setSync('','— לא מחובר');
+}
+function updateLoginGateView(){
+  document.getElementById('login-noserver').style.display = GS_URL ? 'none':'block';
+  document.getElementById('login-form').style.display = GS_URL ? 'block':'none';
+}
+
+// ==================== AUTH ====================
+async function loadLoginList(){
+  setSync('wait','⏳ טוען משתמשים…');
+  const res = await apiGet('loginList');
+  loginUsers = Array.isArray(res) ? res : [];
+  setSync(loginUsers.length? 'ok':'', loginUsers.length? '☁ מחובר':'— אין משתמשים עדיין');
+  fillLoginSelect();
+  checkAuth();
+}
+function fillLoginSelect(){
+  const sel = document.getElementById('login-user');
+  sel.innerHTML = loginUsers.map(u=>`<option value="${u.id}">${esc(u.name)} (${ROLE_LABELS[u.role]||u.role})</option>`).join('');
+}
+function checkAuth(){
+  const sid = sessionStorage.getItem('tr_user');
+  const u = sid && loginUsers.find(x=>x.id===sid);
+  if (u){ currentUser = u; document.getElementById('loginOverlay').classList.remove('show'); afterLogin(); }
+  else { currentUser=null; document.getElementById('loginOverlay').classList.add('show'); updateLoginGateView(); }
+}
+async function doLogin(){
+  const id = document.getElementById('login-user').value;
+  const u = loginUsers.find(x=>x.id===id);
+  const err = document.getElementById('login-err');
+  if (!u){ err.textContent='בחר משתמש'; err.style.display='block'; return; }
+  const h = await hashPass(u.name, document.getElementById('login-pass').value);
+  if (h === u.hash){
+    currentUser = u; sessionStorage.setItem('tr_user', u.id);
+    document.getElementById('login-pass').value=''; err.style.display='none';
+    document.getElementById('loginOverlay').classList.remove('show');
+    afterLogin();
+  } else { err.textContent='סיסמה שגויה'; err.style.display='block'; }
+}
+function logout(){
+  sessionStorage.removeItem('tr_user'); currentUser=null;
+  document.getElementById('userChip').style.display='none';
+  document.getElementById('loginOverlay').classList.add('show');
+  updateLoginGateView();
+}
+
+// ==================== AFTER LOGIN ====================
+async function afterLogin(){
+  document.getElementById('userChip').style.display='inline-flex';
+  document.getElementById('userChipName').textContent = currentUser.name + ' · ' + (ROLE_LABELS[currentUser.role]||'');
+  setSync('wait','⏳ טוען נתונים…');
+  boot = await apiGet('bootstrap', {user: currentUser.id});
+  if (!boot || boot.status==='error'){ setSync('err','⚠ שגיאת טעינה'); return; }
+  setSync('ok','☁ מחובר');
+  applyRoleUI();
+  initMonthPicker();
+  await loadMonth();
+  if (currentUser.role !== 'therapist') await loadOverview();
+  if (currentUser.role === 'manager') renderAdmin();
+}
+
+function applyRoleUI(){
+  const isTherapist = currentUser.role === 'therapist';
+  document.getElementById('tabbtn-overview').style.display = isTherapist ? 'none':'inline-block';
+  document.getElementById('tabbtn-admin').style.display = currentUser.role==='manager' ? 'inline-block':'none';
+  document.getElementById('therapistPickerCard').style.display = isTherapist ? 'none':'block';
+  if (isTherapist){
+    selTherapistId = currentUser.therapistId;
+  } else {
+    const sel = document.getElementById('pickTherapist');
+    sel.innerHTML = (boot.therapists||[]).map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');
+    selTherapistId = boot.therapists && boot.therapists[0] ? boot.therapists[0].id : null;
+    sel.value = selTherapistId || '';
+  }
+}
+function onTherapistChange(){ selTherapistId = document.getElementById('pickTherapist').value; loadMonth(); }
+
+// ==================== TABS ====================
+function showTab(name, btn){
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  btn.classList.add('active');
+  if (name==='overview') loadOverview();
+}
+function showSubtab(id, btn){
+  const parent = btn.closest('.subtabs').parentElement;
+  parent.querySelectorAll(':scope > .subpanel').forEach(p=>p.classList.remove('active'));
+  btn.closest('.subtabs').querySelectorAll('.subtab').forEach(b=>b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ==================== MONTH PICKER ====================
+function initMonthPicker(){
+  const now = new Date();
+  selYear = now.getFullYear(); selMonth = now.getMonth()+1;
+  const mSel = document.getElementById('pickMonth');
+  mSel.innerHTML = MONTH_NAMES.map((n,i)=>`<option value="${i+1}">${n}</option>`).join('');
+  mSel.value = selMonth;
+  const ySel = document.getElementById('pickYear');
+  const y0 = now.getFullYear()-2, y1 = now.getFullYear()+2;
+  let opts=''; for(let y=y0;y<=y1;y++) opts+=`<option value="${y}">${y}</option>`;
+  ySel.innerHTML = opts; ySel.value = selYear;
+  mSel.onchange = ()=>{ selMonth=+mSel.value; loadMonth(); if(currentUser.role!=='therapist') loadOverview(); };
+  ySel.onchange = ()=>{ selYear=+ySel.value; loadMonth(); if(currentUser.role!=='therapist') loadOverview(); };
+}
+function stepMonth(dir){
+  selMonth += dir;
+  if (selMonth>12){selMonth=1;selYear++;} if (selMonth<1){selMonth=12;selYear--;}
+  document.getElementById('pickMonth').value = selMonth;
+  document.getElementById('pickYear').value = selYear;
+  loadMonth();
+  if (currentUser.role!=='therapist') loadOverview();
+}
+
+// ==================== LOAD MONTH ====================
+function cacheKey(){ return `tr_entries_${selTherapistId}_${selYear}_${selMonth}`; }
+async function loadMonth(){
+  if (!selTherapistId) return;
+  const cached = localStorage.getItem(cacheKey());
+  if (cached){ try{ monthEntries = JSON.parse(cached); buildRows(); renderGrid(); renderSummary(); }catch(e){} }
+  const th = (boot.therapists||[]).find(t=>t.id===selTherapistId);
+  document.getElementById('therapistNameLabel').textContent = th? '':'';
+  const res = await apiGet('entries', {user: currentUser.id, therapistId: selTherapistId, year: selYear, month: selMonth});
+  if (!res || res.status==='error'){ if(!cached){ monthEntries=[]; buildRows(); renderGrid(); renderSummary(); } return; }
+  monthEntries = res.entries || [];
+  localStorage.setItem(cacheKey(), JSON.stringify(monthEntries));
+  buildRows(); renderGrid(); renderSummary();
+}
+
+// ==================== ROW GROUPING ====================
+function rowKeyOf(e){ return [e.type,e.patient,e.healthFund,e.project,e.cancelClass,e.cancelPayment,e.cancelReason].join('◆'); }
+function buildRows(){
+  rows = [];
+  const map = {};
+  monthEntries.forEach(e=>{
+    const k = rowKeyOf(e);
+    if (!map[k]){
+      map[k] = { key:k, type:e.type, patient:e.patient, healthFund:e.healthFund, project:e.project,
+                 cancelClass:e.cancelClass, cancelPayment:e.cancelPayment, cancelReason:e.cancelReason,
+                 notes:e.notes, days:{} };
+      rows.push(map[k]);
+    }
+    const day = Number(String(e.date).slice(8,10));
+    map[k].days[day] = e.hours;
+  });
+  rows.sort((a,b)=> (a.patient||a.type).localeCompare(b.patient||b.type,'he'));
+}
+function flushPendingSave(){ if (saveTimer){ clearTimeout(saveTimer); saveTimer=null; doSaveEntries(); } }
+
+// ==================== GRID RENDER ====================
+function weekMapFor(y,m){
+  const n = daysInMonth(y,m); const map={}; let week=1;
+  for (let d=1; d<=n; d++){
+    map[d]=week;
+    if (new Date(y,m-1,d).getDay()===6) week++;
+  }
+  return map;
+}
+function renderGrid(){
+  const n = daysInMonth(selYear, selMonth);
+  const wmap = weekMapFor(selYear, selMonth);
+  let head = '<thead><tr><th class="rowlabel">מטופל / פעילות</th>';
+  for (let d=1; d<=n; d++){
+    const dow = new Date(selYear, selMonth-1, d).getDay();
+    const isWeekend = dow===5 || dow===6;
+    head += `<th class="${isWeekend?'weekend-col':''}"><div class="dow-th">${DOW_LETTERS[dow]}</div>${d}</th>`;
+  }
+  head += '<th class="total">סה"כ</th></tr></thead>';
+
+  let body = '<tbody>';
+  if (!rows.length){
+    body += `<tr><td class="empty" colspan="${n+2}">אין רשומות לחודש זה. לחצו על "+ הוספת שורה" כדי להתחיל.</td></tr>`;
+  }
+  rows.forEach(r=>{
+    const isCancel = r.type === 'ביטול תור';
+    let total = 0;
+    body += `<tr class="${isCancel?'cancel-row':''}">`;
+    body += `<td class="rowlabel"><div class="row-title">${esc(r.patient||r.type)}</div>`+
+            `<div class="row-sub">${esc(r.type)}${r.healthFund?' · '+esc(r.healthFund):''}${isCancel&&r.cancelReason?' · ⛔ '+esc(r.cancelReason):''}</div>`+
+            `<span class="row-actions"><button onclick="openRowModal('${r.key}')" title="עריכה">✎</button><button onclick="deleteRow('${r.key}')" title="מחיקה">🗑</button></span></td>`;
+    for (let d=1; d<=n; d++){
+      const v = r.days[d];
+      if (v) total += Number(v);
+      const dow = new Date(selYear, selMonth-1, d).getDay();
+      const isWeekend = dow===5 || dow===6;
+      body += `<td class="${isWeekend?'weekend-col':''}"><input class="day-input ${v?'has-val':''}" type="number" step="0.5" min="0"
+                value="${v!=null?v:''}" data-key="${r.key}" data-day="${d}"
+                onchange="onDayInput(this)"></td>`;
+    }
+    body += `<td class="total">${total? total : ''}</td></tr>`;
+  });
+  body += '</tbody>';
+
+  // footer daily totals
+  let foot = '<tfoot><tr><td class="rowlabel">סה"כ יומי</td>';
+  let grand = 0;
+  for (let d=1; d<=n; d++){
+    let sum=0;
+    rows.forEach(r=>{ if (r.days[d]) sum += Number(r.days[d]); });
+    grand += sum;
+    const dow = new Date(selYear, selMonth-1, d).getDay();
+    foot += `<td class="${(dow===5||dow===6)?'weekend-col':''}">${sum? sum:''}</td>`;
+  }
+  foot += `<td class="total">${grand||''}</td></tr></tfoot>`;
+
+  document.getElementById('gridTable').innerHTML = head + body + foot;
+}
+function onDayInput(input){
+  const key = input.dataset.key, day = +input.dataset.day;
+  const row = rows.find(r=>r.key===key); if (!row) return;
+  const val = input.value===''? null : Number(input.value);
+  if (val && val>0){ row.days[day]=val; input.classList.add('has-val'); }
+  else { delete row.days[day]; input.classList.remove('has-val'); }
+  renderGrid(); renderSummary();
+  markDirty();
+}
+function deleteRow(key){
+  if (!confirm('למחוק שורה זו וכל הימים שסומנו בה?')) return;
+  rows = rows.filter(r=>r.key!==key);
+  renderGrid(); renderSummary(); markDirty();
+}
+
+// ==================== SAVE (debounced) ====================
+function markDirty(){
+  clearTimeout(saveTimer);
+  setSync('wait','⏳ שומר…');
+  saveTimer = setTimeout(doSaveEntries, 900);
+}
+function doSaveEntries(){
+  saveTimer = null;
+  const entries = [];
+  rows.forEach(r=>{
+    Object.keys(r.days).forEach(dStr=>{
+      const hours = r.days[dStr]; if (!hours) return;
+      const d = +dStr;
+      entries.push({
+        id: uid(), date: `${selYear}-${pad2(selMonth)}-${pad2(d)}`,
+        type: r.type, patient: r.patient||'', healthFund: r.healthFund||'',
+        hours, privateAmount: (r.healthFund==='פרטי') ? 350 : null,
+        project: r.project||'', cancelClass: r.cancelClass||'', cancelPayment: r.cancelPayment||'',
+        cancelReason: r.cancelReason||'', notes: r.notes||''
+      });
+    });
+  });
+  monthEntries = entries;
+  localStorage.setItem(cacheKey(), JSON.stringify(entries));
+  apiSend('saveEntries', { therapistId: selTherapistId, year: selYear, month: selMonth, entries });
+}
+
+// ==================== ADD / EDIT ROW MODAL ====================
+function listValues(kind){ return (boot.lists||[]).filter(l=>l.kind===kind).map(l=>l.value); }
+function fillSelect(id, values, keepEmpty){
+  const sel = document.getElementById(id);
+  const empty = keepEmpty ? '<option value="">—</option>' : '';
+  sel.innerHTML = empty + values.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');
+}
+function openRowModal(key){
+  editingRowKey = key || null;
+  fillSelect('rf-type', listValues('type'), false);
+  fillSelect('rf-fund', listValues('healthFund'), true);
+  fillSelect('rf-project', listValues('project'), true);
+  fillSelect('rf-cancelClass', listValues('type').filter(v=>v!=='ביטול תור'), true);
+  fillSelect('rf-cancelPayment', listValues('cancelPayment'), true);
+  fillSelect('rf-cancelReason', listValues('cancelReason'), true);
+  document.getElementById('patientList').innerHTML = Array.from(new Set(rows.map(r=>r.patient).filter(Boolean))).map(p=>`<option value="${esc(p)}">`).join('');
+
+  const row = key ? rows.find(r=>r.key===key) : null;
+  document.getElementById('rowModalTitle').textContent = row ? 'עריכת שורה' : 'הוספת שורה';
+  document.getElementById('rf-type').value = row? row.type : listValues('type')[0]||'';
+  document.getElementById('rf-patient').value = row? (row.patient||'') : '';
+  document.getElementById('rf-fund').value = row? (row.healthFund||'') : '';
+  document.getElementById('rf-project').value = row? (row.project||'') : '';
+  document.getElementById('rf-cancelClass').value = row? (row.cancelClass||'') : '';
+  document.getElementById('rf-cancelPayment').value = row? (row.cancelPayment||'') : '';
+  document.getElementById('rf-cancelReason').value = row? (row.cancelReason||'') : '';
+  document.getElementById('rf-notes').value = row? (row.notes||'') : '';
+  onRowTypeChange();
+  document.getElementById('rowModal').classList.add('show');
+}
+function closeRowModal(){ document.getElementById('rowModal').classList.remove('show'); editingRowKey=null; }
+function onRowTypeChange(){
+  const isCancel = document.getElementById('rf-type').value === 'ביטול תור';
+  document.getElementById('cancelFieldsBox').style.display = isCancel ? 'block':'none';
+}
+function saveRowModal(){
+  const type = document.getElementById('rf-type').value;
+  if (!type){ toast('יש לבחור סוג'); return; }
+  const meta = {
+    type,
+    patient: document.getElementById('rf-patient').value.trim(),
+    healthFund: document.getElementById('rf-fund').value,
+    project: document.getElementById('rf-project').value,
+    cancelClass: document.getElementById('rf-cancelClass').value,
+    cancelPayment: document.getElementById('rf-cancelPayment').value,
+    cancelReason: document.getElementById('rf-cancelReason').value,
+    notes: document.getElementById('rf-notes').value.trim()
+  };
+  const newKey = [meta.type,meta.patient,meta.healthFund,meta.project,meta.cancelClass,meta.cancelPayment,meta.cancelReason].join('◆');
+  if (editingRowKey){
+    const row = rows.find(r=>r.key===editingRowKey);
+    Object.assign(row, meta); row.key = newKey;
+  } else {
+    const row = Object.assign({key:newKey, days:{}}, meta);
+    const today = new Date();
+    if (today.getFullYear()===selYear && (today.getMonth()+1)===selMonth) row.days[today.getDate()] = 1;
+    rows.push(row);
+  }
+  closeRowModal(); renderGrid(); renderSummary(); markDirty();
+}
+
+// ==================== SUMMARY ====================
+function renderSummary(){
+  let totalDays=0, totalHours=0, cancellations=0, privateIncome=0;
+  const byType={}, byFund={}, byWeek={}, cancelByReason={};
+  const wmap = weekMapFor(selYear, selMonth);
+  rows.forEach(r=>{
+    const isCancel = r.type==='ביטול תור';
+    Object.keys(r.days).forEach(dStr=>{
+      const hours = Number(r.days[dStr]); if(!hours) return;
+      const d = +dStr;
+      totalDays++; totalHours+=hours;
+      if (isCancel) cancellations++;
+      if (r.healthFund==='פרטי') privateIncome += 350;
+      byType[r.type] = byType[r.type] || {days:0,hours:0}; byType[r.type].days++; byType[r.type].hours+=hours;
+      if (r.healthFund){ byFund[r.healthFund]=byFund[r.healthFund]||{days:0,hours:0}; byFund[r.healthFund].days++; byFund[r.healthFund].hours+=hours; }
+      const wk = wmap[d]||1; byWeek[wk]=byWeek[wk]||{days:0,hours:0}; byWeek[wk].days++; byWeek[wk].hours+=hours;
+      if (isCancel){
+        const reason = r.cancelReason||'לא צויין';
+        cancelByReason[reason] = cancelByReason[reason] || {count:0, paid:0, unpaid:0};
+        cancelByReason[reason].count++;
+        if (r.cancelPayment==='משולם') cancelByReason[reason].paid++;
+        else if (r.cancelPayment==='לא משולם') cancelByReason[reason].unpaid++;
+      }
+    });
+  });
+
+  document.getElementById('statCards').innerHTML = `
+    <div class="stat-card"><div class="num">${totalDays}</div><div class="lbl">ימי פעילות</div></div>
+    <div class="stat-card"><div class="num">${totalHours}</div><div class="lbl">סה"כ שעות/מפגשים</div></div>
+    <div class="stat-card"><div class="num">${cancellations}</div><div class="lbl">ביטולים</div></div>
+    <div class="stat-card"><div class="num">${new Set(rows.filter(r=>r.type!=='ביטול תור'&&r.patient).map(r=>r.patient)).size}</div><div class="lbl">מטופלים פעילים</div></div>
+    <div class="stat-card"><div class="num">₪${privateIncome}</div><div class="lbl">הכנסה פרטית (₪350/מפגש)</div></div>`;
+
+  document.getElementById('tblByType').innerHTML = '<thead><tr><th>סוג</th><th>ימים</th><th>שעות</th></tr></thead><tbody>'+
+    Object.keys(byType).sort((a,b)=>byType[b].hours-byType[a].hours).map(t=>`<tr><td>${esc(t)}</td><td>${byType[t].days}</td><td>${byType[t].hours}</td></tr>`).join('')+
+    (Object.keys(byType).length?'':'<tr><td class="empty" colspan="3">אין נתונים</td></tr>')+'</tbody>';
+
+  document.getElementById('tblByWeek').innerHTML = '<thead><tr><th>שבוע</th><th>ימים</th><th>שעות</th></tr></thead><tbody>'+
+    Object.keys(byWeek).sort((a,b)=>a-b).map(w=>`<tr><td>שבוע ${w}</td><td>${byWeek[w].days}</td><td>${byWeek[w].hours}</td></tr>`).join('')+
+    (Object.keys(byWeek).length?'':'<tr><td class="empty" colspan="3">אין נתונים</td></tr>')+'</tbody>';
+
+  document.getElementById('tblCancel').innerHTML = '<thead><tr><th>סיבה</th><th>סה"כ</th><th>שולם</th><th>לא שולם</th></tr></thead><tbody>'+
+    Object.keys(cancelByReason).map(r=>`<tr><td>${esc(r)}</td><td>${cancelByReason[r].count}</td><td>${cancelByReason[r].paid}</td><td>${cancelByReason[r].unpaid}</td></tr>`).join('')+
+    (Object.keys(cancelByReason).length?'':'<tr><td class="empty" colspan="4">אין ביטולים</td></tr>')+'</tbody>';
+
+  document.getElementById('tblFund').innerHTML = '<thead><tr><th>קופ"ח</th><th>ימים</th><th>שעות</th></tr></thead><tbody>'+
+    Object.keys(byFund).sort((a,b)=>byFund[b].days-byFund[a].days).map(f=>`<tr><td>${esc(f)}</td><td>${byFund[f].days}</td><td>${byFund[f].hours}</td></tr>`).join('')+
+    (Object.keys(byFund).length?'':'<tr><td class="empty" colspan="3">אין נתונים</td></tr>')+'</tbody>';
+}
+
+// ==================== OVERVIEW (secretary/manager) ====================
+async function loadOverview(){
+  document.getElementById('overviewMonthLabel').textContent = `${MONTH_NAMES[selMonth-1]} ${selYear}`;
+  const res = await apiGet('monthSummary', {user: currentUser.id, year: selYear, month: selMonth});
+  const rowsData = (res && res.summary) || [];
+  const byId = {}; rowsData.forEach(r=>byId[r.therapistId]=r);
+  const tbody = (boot.therapists||[]).map(t=>{
+    const s = byId[t.id] || {sessions:0,hours:0,cancellations:0};
+    return `<tr style="cursor:pointer" onclick="drillTherapist('${t.id}')">
+      <td>${esc(t.name)}</td><td>${s.sessions}</td><td>${s.hours}</td><td>${s.cancellations}</td></tr>`;
+  }).join('');
+  document.getElementById('tblOverview').innerHTML =
+    '<thead><tr><th>מטפל/ת</th><th>ימי טיפול</th><th>שעות</th><th>ביטולים</th></tr></thead><tbody>'+
+    (tbody || '<tr><td class="empty" colspan="4">אין מטפלים משויכים</td></tr>')+'</tbody>';
+}
+function drillTherapist(id){
+  document.getElementById('pickTherapist').value = id;
+  selTherapistId = id;
+  document.querySelector('#mainTabs .tab-btn').click();
+  loadMonth();
+}
+
+// ==================== ADMIN ====================
+function renderAdmin(){
+  renderTherapistsAdmin();
+  renderUsersAdmin();
+  renderAssignAdmin();
+  showListKind('type', document.querySelector('#adm-lists .subtab'));
+}
+function renderTherapistsAdmin(){
+  const t = document.getElementById('tbl-therapists');
+  const list = boot.therapists||[];
+  t.innerHTML = '<thead><tr><th>שם</th><th>התמחות</th><th>פעיל</th><th></th></tr></thead><tbody>'+
+    (list.map(th=>`<tr>
+      <td>${esc(th.name)}</td><td>${esc(th.specialization)}</td>
+      <td><input type="checkbox" ${th.active!=='false'?'checked':''} onchange="toggleTherapistActive('${th.id}',this.checked)"></td>
+      <td><button class="btn btn-danger" onclick="delTherapist('${th.id}')">מחק</button></td></tr>`).join('') ||
+    '<tr><td class="empty" colspan="4">אין מטפלים</td></tr>')+'</tbody>';
+}
+function addTherapist(){
+  const name = document.getElementById('th-name').value.trim();
+  const spec = document.getElementById('th-spec').value.trim();
+  if (!name){ toast('הזן שם'); return; }
+  boot.therapists = boot.therapists||[];
+  boot.therapists.push({id:uid(), name, specialization:spec, active:'true'});
+  document.getElementById('th-name').value=''; document.getElementById('th-spec').value='';
+  saveTherapists(); renderTherapistsAdmin(); renderAssignAdmin(); applyRoleUI(); toast('מטפל נוסף');
+}
+function toggleTherapistActive(id,val){ const t=boot.therapists.find(x=>x.id===id); if(t){t.active=String(val); saveTherapists();} }
+function delTherapist(id){ if(!confirm('למחוק מטפל זה?'))return; boot.therapists=boot.therapists.filter(t=>t.id!==id); saveTherapists(); renderTherapistsAdmin(); renderAssignAdmin(); applyRoleUI(); }
+function saveTherapists(){ apiSend('saveTherapists', {therapists: boot.therapists}); }
+
+function toggleUserTherapistField(){
+  document.getElementById('u-therapist-wrap').style.display = document.getElementById('u-role').value==='therapist' ? 'flex':'none';
+  const sel = document.getElementById('u-therapist');
+  sel.innerHTML = (boot.therapists||[]).map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');
+}
+function renderUsersAdmin(){
+  const list = boot.users||[];
+  const thName = id => { const t=(boot.therapists||[]).find(x=>x.id===id); return t?t.name:''; };
+  document.getElementById('tbl-users').innerHTML = '<thead><tr><th>שם</th><th>תפקיד</th><th>מטפל מקושר</th><th></th><th></th></tr></thead><tbody>'+
+    (list.map(u=>`<tr>
+      <td>${esc(u.name)}</td>
+      <td><select onchange="editUserRole('${u.id}',this.value)">${Object.keys(ROLE_LABELS).map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${ROLE_LABELS[r]}</option>`).join('')}</select></td>
+      <td>${esc(thName(u.therapistId))}</td>
+      <td><button class="btn btn-edit" onclick="resetUserPass('${u.id}')">שנה סיסמה</button></td>
+      <td><button class="btn btn-danger" onclick="delUser('${u.id}')">מחק</button></td></tr>`).join('') ||
+    '<tr><td class="empty" colspan="5">אין משתמשים</td></tr>')+'</tbody>';
+}
+async function addUser(){
+  const name = document.getElementById('u-name').value.trim();
+  const role = document.getElementById('u-role').value;
+  const pass = document.getElementById('u-pass').value;
+  const therapistId = role==='therapist' ? document.getElementById('u-therapist').value : '';
+  if (!name || !pass){ toast('מלא שם וסיסמה'); return; }
+  boot.users = boot.users||[];
+  boot.users.push({id:uid(), name, role, hash: await hashPass(name,pass), therapistId});
+  document.getElementById('u-name').value=''; document.getElementById('u-pass').value='';
+  saveUsers(); renderUsersAdmin(); renderAssignAdmin(); toast('משתמש נוסף');
+}
+function editUserRole(id, role){ const u=boot.users.find(x=>x.id===id); if(u){u.role=role; saveUsers(); renderAssignAdmin();} }
+async function resetUserPass(id){
+  const u = boot.users.find(x=>x.id===id); if(!u) return;
+  const p = prompt('סיסמה חדשה עבור '+u.name+':'); if(p===null||p==='') return;
+  u.hash = await hashPass(u.name, p); saveUsers(); toast('הסיסמה עודכנה');
+}
+function delUser(id){ if(!confirm('למחוק משתמש זה?'))return; boot.users=boot.users.filter(u=>u.id!==id); saveUsers(); renderUsersAdmin(); renderAssignAdmin(); }
+function saveUsers(){ apiSend('saveUsers', {users: boot.users}); }
+
+function renderAssignAdmin(){
+  const secretaries = (boot.users||[]).filter(u=>u.role==='secretary');
+  const therapists = boot.therapists||[];
+  const box = document.getElementById('assignBlocks');
+  if (!secretaries.length){ box.innerHTML = '<p class="empty">אין משתמשות מזכירה עדיין</p>'; return; }
+  box.innerHTML = secretaries.map(s=>{
+    const mine = new Set((boot.assignments||[]).filter(a=>a.secretaryUserId===s.id).map(a=>a.therapistId));
+    return `<div class="assign-block"><b>${esc(s.name)}</b><div class="chips">`+
+      therapists.map(t=>`<label class="chip-check"><input type="checkbox" data-sec="${s.id}" data-th="${t.id}" ${mine.has(t.id)?'checked':''} onchange="onAssignToggle(this)">${esc(t.name)}</label>`).join('')+
+      '</div></div>';
+  }).join('');
+}
+function onAssignToggle(cb){
+  const sec = cb.dataset.sec, th = cb.dataset.th;
+  boot.assignments = boot.assignments || [];
+  if (cb.checked){
+    if (!boot.assignments.some(a=>a.secretaryUserId===sec && a.therapistId===th)) boot.assignments.push({id:uid(), secretaryUserId:sec, therapistId:th});
+  } else {
+    boot.assignments = boot.assignments.filter(a=>!(a.secretaryUserId===sec && a.therapistId===th));
+  }
+  apiSend('saveAssignments', {assignments: boot.assignments});
+}
+
+function showListKind(kind, btn){
+  currentListKind = kind;
+  btn.closest('.subtabs').querySelectorAll('.subtab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderListValues();
+}
+function renderListValues(){
+  const items = (boot.lists||[]).filter(l=>l.kind===currentListKind);
+  document.getElementById('listValuesBox').innerHTML = items.map(l=>
+    `<span class="chip-check">${esc(l.value)} <button class="btn-sm btn-danger" style="padding:1px 6px" onclick="delListValue('${l.id}')">✕</button></span>`
+  ).join('') || '<span class="empty">אין ערכים</span>';
+}
+function addListValue(){
+  const val = document.getElementById('list-new-val').value.trim();
+  if (!val){ return; }
+  boot.lists = boot.lists||[];
+  boot.lists.push({id:uid(), kind: currentListKind, value: val});
+  document.getElementById('list-new-val').value='';
+  saveLists(); renderListValues();
+}
+function delListValue(id){ boot.lists = boot.lists.filter(l=>l.id!==id); saveLists(); renderListValues(); }
+function saveLists(){ apiSend('saveLists', {lists: boot.lists}); }
+
+// ==================== EXPORT ====================
+function exportExcel(){
+  if (!rows.length){ toast('אין נתונים לייצוא'); return; }
+  const n = daysInMonth(selYear, selMonth);
+  const header = ['מטופל/פעילות','סוג',"קופ\"ח"]; for(let d=1;d<=n;d++) header.push(d); header.push('סה"כ');
+  const data = [header];
+  rows.forEach(r=>{
+    let total=0; const line=[r.patient||'', r.type||'', r.healthFund||''];
+    for (let d=1; d<=n; d++){ const v=r.days[d]||''; if(v) total+=Number(v); line.push(v); }
+    line.push(total); data.push(line);
+  });
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  XLSX.utils.book_append_sheet(wb, ws, `${selMonth}-${selYear}`);
+  XLSX.writeFile(wb, `דוח-טיפולים-${selMonth}-${selYear}.xlsx`);
+}
+
+// ==================== INIT ====================
+updateLoginGateView();
+if (GS_URL) loadLoginList(); else setSync('','— לא מחובר (לחץ ⚙ הגדר שרת)');
+</script>
+</body>
+</html>
