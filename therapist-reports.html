@@ -282,6 +282,12 @@ tfoot td { font-weight: 700; background: #f7fafc; }
         <button class="btn btn-primary" style="width:100%" onclick="doLogin()">כניסה</button>
         <button class="btn btn-light" style="width:100%;margin-top:8px;color:#4a5568;background:#edf2f7" onclick="setServerUrl()">⚙ שנה שרת</button>
       </div>
+      <div id="login-seed" style="display:none">
+        <p style="font-size:.9rem;color:#4a5568;margin-bottom:6px">הגיליון עדיין ריק. אפשר לטעון נתוני התחלה (משתמשי דמו + היסטוריית דליה אביגדורי).</p>
+        <p style="font-size:.78rem;color:#718096;margin-bottom:12px">משתמשים לדמו: <b>מנהל ראשי</b> · <b>מזכירה ראשית</b> · <b>דליה אביגדורי</b> — סיסמה לכולם: <b>1234</b></p>
+        <button class="btn btn-success" style="width:100%" id="seedBtn" onclick="importSeed()">⬆ ייבוא נתונים ראשוני</button>
+        <button class="btn btn-light" style="width:100%;margin-top:8px;color:#4a5568;background:#edf2f7" onclick="setServerUrl()">⚙ שנה שרת</button>
+      </div>
     </div>
   </div>
 </div>
@@ -390,8 +396,43 @@ function setServerUrl(){
   else setSync('','— לא מחובר');
 }
 function updateLoginGateView(){
-  document.getElementById('login-noserver').style.display = GS_URL ? 'none':'block';
-  document.getElementById('login-form').style.display = GS_URL ? 'block':'none';
+  const hasServer = !!GS_URL;
+  const hasUsers = loginUsers.length > 0;
+  document.getElementById('login-noserver').style.display = hasServer ? 'none':'block';
+  document.getElementById('login-form').style.display = (hasServer && hasUsers) ? 'block':'none';
+  document.getElementById('login-seed').style.display = (hasServer && !hasUsers) ? 'block':'none';
+}
+
+// ==================== SEED IMPORT (first-time setup) ====================
+async function importSeed(){
+  const btn = document.getElementById('seedBtn');
+  btn.disabled = true; btn.textContent = '⏳ טוען קובץ נתונים…';
+  let seed;
+  try {
+    const r = await fetch('therapist-reports-seed.json?t=' + Date.now());
+    seed = await r.json();
+  } catch(e){ alert('לא הצלחתי לטעון את קובץ הנתונים (therapist-reports-seed.json)'); btn.disabled=false; btn.textContent='⬆ ייבוא נתונים ראשוני'; return; }
+  btn.textContent = '⏳ מייבא לשרת… (עד דקה)';
+  // large payload -> POST no-cors (fire and forget), then poll loginList until users appear
+  const body = new URLSearchParams();
+  body.append('action', 'bulkImportSeed');
+  body.append('data', JSON.stringify(seed));
+  try { await fetch(GS_URL, { method:'POST', mode:'no-cors', body }); } catch(e){}
+  // poll for completion
+  let attempts = 0;
+  const poll = async () => {
+    attempts++;
+    const res = await apiGet('loginList');
+    if (Array.isArray(res) && res.length){
+      loginUsers = res; fillLoginSelect(); updateLoginGateView();
+      setSync('ok','☁ הנתונים יובאו'); toast('הנתונים יובאו בהצלחה!');
+      btn.disabled=false; btn.textContent='⬆ ייבוא נתונים ראשוני';
+      return;
+    }
+    if (attempts < 20){ setTimeout(poll, 3000); }
+    else { alert('הייבוא נמשך זמן רב. רענן את הדף בעוד רגע כדי לבדוק אם הושלם.'); btn.disabled=false; btn.textContent='⬆ ייבוא נתונים ראשוני'; }
+  };
+  setTimeout(poll, 4000);
 }
 
 // ==================== AUTH ====================
@@ -399,7 +440,7 @@ async function loadLoginList(){
   setSync('wait','⏳ טוען משתמשים…');
   const res = await apiGet('loginList');
   loginUsers = Array.isArray(res) ? res : [];
-  setSync(loginUsers.length? 'ok':'', loginUsers.length? '☁ מחובר':'— אין משתמשים עדיין');
+  setSync(loginUsers.length? 'ok':'', loginUsers.length? '☁ מחובר':'— מחובר · אין נתונים עדיין');
   fillLoginSelect();
   checkAuth();
 }
