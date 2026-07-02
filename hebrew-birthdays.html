@@ -523,6 +523,13 @@ function hebMonthOptions(year,selected){
   const order=[7,8,9,10,11,12].concat(leap?[13]:[]).concat([1,2,3,4,5,6]);
   return order.map(m=>`<option value="${m}" ${m===selected?'selected':''}>${hebMonthName(m,leap)}</option>`).join('');
 }
+function hebYearOptions(selected){
+  const tY=hebrewFromRd(todayRd()).y;
+  const max=Math.max(tY+2,selected), min=Math.min(5640,selected);
+  let out='';
+  for(let y=max;y>=min;y--) out+=`<option value="${y}" ${y===selected?'selected':''}>${hebYearStr(y)}</option>`;
+  return out;
+}
 function addEventRow(ev){
   const i=evRowSeq++;
   const tH=hebrewFromRd(todayRd());
@@ -554,7 +561,7 @@ function addEventRow(ev){
       <div class="heb-inputs">
         <select class="ev-hd">${Array.from({length:30},(_,j)=>`<option value="${j+1}" ${j+1===hd?'selected':''}>${gematriya(j+1)}</option>`).join('')}</select>
         <select class="ev-hm">${hebMonthOptions(hy,hm)}</select>
-        <input type="number" class="ev-hy" value="${hy}" min="5000" max="6000" style="width:90px">
+        <select class="ev-hy">${hebYearOptions(hy)}</select>
       </div>
     </div>`;
   div.querySelectorAll(`input[name=evmode${i}]`).forEach(r=>r.addEventListener('change',()=>{
