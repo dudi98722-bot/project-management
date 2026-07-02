@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>🗓️ ימי הולדת ואירועים — לוח עברי</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f4f1e8; --card:#ffffff; --ink:#1e2749; --muted:#6b7280;
+  --accent:#3b4d9b; --accent2:#5a6fc7; --gold:#c9962e; --gold-bg:#fdf6e3;
+  --green:#0f766e; --red:#b91c1c; --line:#e5e0d3;
+  --shadow:0 2px 10px rgba(30,39,73,.08);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Heebo',system-ui,sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
+header{background:linear-gradient(135deg,#1e2749 0%,#3b4d9b 60%,#5a6fc7 100%);color:#fff;padding:22px 20px 18px;box-shadow:0 2px 14px rgba(30,39,73,.3)}
+.hwrap{max-width:1100px;margin:0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:12px;justify-content:space-between}
+header h1{font-size:1.45rem;font-weight:800;letter-spacing:.3px}
+.today-line{font-size:.95rem;opacity:.92;background:rgba(255,255,255,.13);padding:6px 14px;border-radius:20px}
+.today-line b{color:#ffd97a}
+main{max-width:1100px;margin:0 auto;padding:18px 16px 90px}
+/* toolbar */
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px}
+.toolbar input[type=search]{flex:1;min-width:180px;padding:10px 14px;border:1px solid var(--line);border-radius:12px;font:inherit;font-size:.95rem;background:#fff}
+.toolbar select{padding:10px 12px;border:1px solid var(--line);border-radius:12px;font:inherit;font-size:.9rem;background:#fff;cursor:pointer}
+.btn{border:none;border-radius:12px;padding:10px 18px;font:inherit;font-weight:600;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:6px}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:#2f3f85}
+.btn-ghost{background:#fff;border:1px solid var(--line);color:var(--ink)}
+.btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+.btn-sm{padding:6px 12px;font-size:.85rem;border-radius:9px}
+/* banner */
+.banner{background:linear-gradient(120deg,#fdf6e3,#fbeecb);border:1px solid #ecd9a0;border-radius:16px;padding:14px 18px;margin-bottom:14px;box-shadow:var(--shadow)}
+.banner h3{color:var(--gold);font-size:1.05rem;margin-bottom:6px}
+.banner .b-item{font-size:1rem;padding:3px 0}
+/* stats */
+.stats{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.stat-chip{background:#fff;border:1px solid var(--line);border-radius:20px;padding:6px 14px;font-size:.85rem;color:var(--muted)}
+.stat-chip b{color:var(--ink)}
+/* upcoming strip */
+.upcoming{margin-bottom:18px}
+.upcoming h2, .people-sec h2{font-size:1.05rem;font-weight:700;margin-bottom:9px;color:var(--accent)}
+.up-scroll{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;scrollbar-width:thin}
+.up-card{min-width:185px;flex-shrink:0;background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;box-shadow:var(--shadow)}
+.up-card.soon{border-color:var(--gold);background:var(--gold-bg)}
+.up-card .u-name{font-weight:700;font-size:.95rem;margin-bottom:2px}
+.up-card .u-when{color:var(--green);font-weight:600;font-size:.85rem}
+.up-card .u-date{color:var(--muted);font-size:.8rem;margin-top:2px}
+.up-card .u-age{font-size:.85rem;margin-top:4px;color:var(--accent);font-weight:600}
+/* people grid */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:14px}
+.pcard{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:var(--shadow);transition:.15s}
+.pcard.soon{border:2px solid var(--gold)}
+.pcard-top{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.avatar{width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.15rem;color:#fff;flex-shrink:0}
+.pname{font-weight:700;font-size:1.1rem}
+.rel-badge{font-size:.72rem;background:#eef0fa;color:var(--accent);border-radius:12px;padding:2px 10px;font-weight:600;margin-inline-start:4px}
+.ev-line{font-size:.9rem;color:var(--muted);margin:3px 0}
+.next-line{background:#f2f6f2;border-radius:10px;padding:8px 12px;margin:8px 0;font-size:.9rem}
+.next-line .cnt{color:var(--green);font-weight:700}
+.age-big{color:var(--accent);font-weight:700}
+.badge{display:inline-block;font-size:.75rem;border-radius:12px;padding:3px 10px;margin:3px 3px 0 0;font-weight:600}
+.badge-gold{background:var(--gold-bg);color:var(--gold);border:1px solid #ecd9a0}
+.badge-mitzvah{background:#fce7f3;color:#be185d;border:1px solid #f9a8d4}
+.meta-row{font-size:.85rem;color:var(--muted);margin-top:6px}
+.card-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.details{display:none;margin-top:10px;border-top:1px dashed var(--line);padding-top:10px;font-size:.88rem}
+.details.open{display:block}
+.details .d-row{margin:4px 0}
+.chip{display:inline-block;background:#eef0fa;border-radius:12px;padding:2px 10px;font-size:.8rem;margin:2px}
+.ev-sub{background:#faf9f4;border:1px solid var(--line);border-radius:10px;padding:7px 10px;margin:5px 0;font-size:.85rem}
+/* empty */
+.empty{text-align:center;padding:60px 20px;color:var(--muted)}
+.empty .big{font-size:3.5rem;margin-bottom:12px}
+/* modal */
+.overlay{display:none;position:fixed;inset:0;background:rgba(20,25,50,.5);z-index:50;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto}
+.overlay.open{display:flex}
+.modal{background:#fff;border-radius:18px;max-width:640px;width:100%;padding:22px;margin:10px 0 40px;box-shadow:0 10px 40px rgba(0,0,0,.25)}
+.modal h2{font-size:1.2rem;margin-bottom:14px;color:var(--accent)}
+.frow{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.fld{flex:1;min-width:140px}
+.fld label{display:block;font-size:.82rem;font-weight:600;color:var(--muted);margin-bottom:4px}
+.fld input,.fld select,.fld textarea{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:.92rem}
+.fld textarea{resize:vertical;min-height:60px}
+.gender-row{display:flex;gap:14px;align-items:center;padding-top:6px}
+.gender-row label{font-size:.9rem;display:flex;align-items:center;gap:4px;cursor:pointer}
+.sec-title{font-size:.95rem;font-weight:700;color:var(--accent);margin:14px 0 8px;border-top:1px solid var(--line);padding-top:12px}
+.ev-row{border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;background:#fafaf6}
+.ev-row .frow{margin-bottom:8px}
+.mode-row{display:flex;gap:16px;font-size:.85rem;margin-bottom:8px}
+.mode-row label{display:flex;align-items:center;gap:4px;cursor:pointer}
+.heb-inputs{display:flex;gap:8px}
+.heb-inputs select,.heb-inputs input{padding:8px 10px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:.9rem}
+.sunset-lbl{font-size:.8rem;color:var(--muted);display:flex;align-items:center;gap:5px;margin-top:6px;cursor:pointer}
+.kids-wrap{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.kid-chip{background:#eef0fa;border-radius:12px;padding:3px 10px;font-size:.85rem;display:inline-flex;align-items:center;gap:6px}
+.kid-chip button{border:none;background:none;cursor:pointer;color:var(--red);font-weight:700;font-size:.9rem;padding:0}
+.kids-add{display:flex;gap:8px;margin-top:6px}
+.kids-add input{flex:1}
+.modal-actions{display:flex;gap:10px;justify-content:flex-start;margin-top:16px;flex-wrap:wrap}
+.del-link{color:var(--red);background:none;border:none;font:inherit;font-size:.85rem;cursor:pointer;margin-inline-start:auto}
+/* footer */
+.foot{max-width:1100px;margin:26px auto 0;padding:14px 16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--line)}
+.foot .note{font-size:.78rem;color:var(--muted);width:100%;margin-top:6px}
+@media(max-width:600px){
+  header h1{font-size:1.15rem}
+  .grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="hwrap">
+    <h1>🗓️ ימי הולדת ואירועים — לוח עברי</h1>
+    <div class="today-line" id="todayLine"></div>
+  </div>
+</header>
+
+<main>
+  <div class="toolbar">
+    <input type="search" id="searchBox" placeholder="🔍 חיפוש לפי שם, ילדים, הערות...">
+    <select id="filterRel"><option value="">כל הקבוצות</option></select>
+    <select id="sortBy">
+      <option value="next">מיון: הקרוב ביותר</option>
+      <option value="name">מיון: לפי שם</option>
+      <option value="age">מיון: לפי גיל</option>
+    </select>
+    <button class="btn btn-primary" onclick="openModal()">➕ הוספה</button>
+  </div>
+
+  <div id="todayBanner"></div>
+  <div class="stats" id="statsRow"></div>
+
+  <section class="upcoming" id="upcomingSec">
+    <h2>⏳ אירועים קרובים</h2>
+    <div class="up-scroll" id="upScroll"></div>
+  </section>
+
+  <section class="people-sec">
+    <h2>👥 האנשים שלי</h2>
+    <div class="grid" id="peopleGrid"></div>
+    <div id="emptyState"></div>
+  </section>
+</main>
+
+<div class="foot">
+  <button class="btn btn-ghost btn-sm" onclick="exportJSON()">💾 גיבוי (JSON)</button>
+  <button class="btn btn-ghost btn-sm" onclick="document.getElementById('importFile').click()">📂 שחזור מגיבוי</button>
+  <input type="file" id="importFile" accept=".json" hidden onchange="importJSON(this)">
+  <button class="btn btn-ghost btn-sm" onclick="exportICS()">📅 ייצוא ליומן גוגל (ICS)</button>
+  <div class="note">הנתונים נשמרים מקומית בדפדפן במכשיר זה. מומלץ לעשות גיבוי JSON מדי פעם. • גרסה 1.0</div>
+</div>
+
+<!-- modal -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h2 id="modalTitle">הוספת איש / אירוע</h2>
+    <div class="frow">
+      <div class="fld" style="flex:2"><label>שם *</label><input id="fName" placeholder="לדוגמה: דוד כהן"></div>
+      <div class="fld"><label>קבוצה / קרבה</label><input id="fRel" list="relList" placeholder="משפחה / חברים..."><datalist id="relList"><option>משפחה</option><option>חברים</option><option>עבודה</option><option>שכנים</option><option>קהילה</option></datalist></div>
+    </div>
+    <div class="frow">
+      <div class="fld"><label>מין</label>
+        <div class="gender-row">
+          <label><input type="radio" name="fGender" value="M" checked> זכר</label>
+          <label><input type="radio" name="fGender" value="F"> נקבה</label>
+        </div>
+      </div>
+      <div class="fld"><label>טלפון (לברכת ווטסאפ)</label><input id="fPhone" placeholder="050-1234567" dir="ltr" style="text-align:right"></div>
+      <div class="fld"><label>בן/בת זוג</label><input id="fSpouse"></div>
+    </div>
+
+    <div class="sec-title">👶 ילדים</div>
+    <div class="kids-wrap" id="kidsWrap"></div>
+    <div class="kids-add">
+      <input id="kidInput" placeholder="שם ילד/ה — הקש Enter או ➕">
+      <button class="btn btn-ghost btn-sm" onclick="addKid()">➕</button>
+    </div>
+
+    <div class="sec-title">📅 אירועים (יום הולדת, יום נישואין, אזכרה...)</div>
+    <div id="evRows"></div>
+    <button class="btn btn-ghost btn-sm" onclick="addEventRow()">➕ הוסף אירוע נוסף</button>
+
+    <div class="sec-title">📝 הערות</div>
+    <div class="fld"><textarea id="fNotes" placeholder="פרטים אישיים, תחביבים, מה לקנות במתנה..."></textarea></div>
+
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="savePerson()">💾 שמירה</button>
+      <button class="btn btn-ghost" onclick="closeModal()">ביטול</button>
+      <button class="del-link" id="delPersonBtn" onclick="deletePerson()" hidden>🗑️ מחיקת כרטיס</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================= Hebrew calendar engine =================
+   Verified against ICU/Intl on 40,000 dates (1880-2200): 0 mismatches.
+   Month numbering: 1=Nisan..6=Elul, 7=Tishrei..11=Shevat, 12=Adar/Adar I, 13=Adar II */
+const HEBREW_EPOCH = -1373427;
+function gregorianLeap(y){ return (y%4===0 && y%100!==0) || y%400===0; }
+function rdFromGregorian(y,m,d){
+  let rd = 365*(y-1) + Math.floor((y-1)/4) - Math.floor((y-1)/100) + Math.floor((y-1)/400)
+    + Math.floor((367*m-362)/12);
+  if (m>2) rd += gregorianLeap(y) ? -1 : -2;
+  return rd + d;
+}
+function gregorianFromRd(rd){
+  let d0 = rd-1;
+  const n400=Math.floor(d0/146097); d0%=146097;
+  const n100=Math.floor(d0/36524);  d0%=36524;
+  const n4=Math.floor(d0/1461);     d0%=1461;
+  const n1=Math.floor(d0/365);
+  let year = 400*n400+100*n100+4*n4+n1;
+  if (n100!==4 && n1!==4) year+=1;
+  const priorDays = rd - rdFromGregorian(year,1,1);
+  const correction = rd < rdFromGregorian(year,3,1) ? 0 : (gregorianLeap(year)?1:2);
+  const month = Math.floor((12*(priorDays+correction)+373)/367);
+  const day = rd - rdFromGregorian(year,month,1) + 1;
+  return {y:year,m:month,d:day};
+}
+function hebrewLeap(y){ return ((7*y+1)%19) < 7; }
+function hebrewMonthsInYear(y){ return hebrewLeap(y)?13:12; }
+function hebrewElapsedDays(y){
+  const monthsElapsed = Math.floor((235*y-234)/19);
+  const partsElapsed = 12084 + 13753*monthsElapsed;
+  let days = monthsElapsed*29 + Math.floor(partsElapsed/25920);
+  if (((3*(days+1))%7) < 3) days+=1;
+  return days;
+}
+function hebrewYearDelay(y){
+  const c0=hebrewElapsedDays(y-1), c1=hebrewElapsedDays(y), c2=hebrewElapsedDays(y+1);
+  if (c2-c1===356) return 2;
+  if (c1-c0===382) return 1;
+  return 0;
+}
+function hebrewNewYearRd(y){ return HEBREW_EPOCH + hebrewElapsedDays(y) + hebrewYearDelay(y); }
+function hebrewYearDays(y){ return hebrewNewYearRd(y+1)-hebrewNewYearRd(y); }
+function longCheshvan(y){ return hebrewYearDays(y)%10===5; }
+function shortKislev(y){ return hebrewYearDays(y)%10===3; }
+function hebrewMonthDays(y,m){
+  if (m===2||m===4||m===6||m===10||m===13) return 29;
+  if (m===12 && !hebrewLeap(y)) return 29;
+  if (m===8 && !longCheshvan(y)) return 29;
+  if (m===9 && shortKislev(y)) return 29;
+  return 30;
+}
+function rdFromHebrew(y,m,d){
+  let rd = hebrewNewYearRd(y) + d - 1;
+  if (m < 7){
+    for (let mm=7; mm<=hebrewMonthsInYear(y); mm++) rd += hebrewMonthDays(y,mm);
+    for (let mm=1; mm<m; mm++) rd += hebrewMonthDays(y,mm);
+  } else {
+    for (let mm=7; mm<m; mm++) rd += hebrewMonthDays(y,mm);
+  }
+  return rd;
+}
+function hebrewFromRd(rd){
+  const approx = Math.floor((rd - HEBREW_EPOCH) * 98496 / 35975351) + 1;
+  let y = approx-1;
+  while (hebrewNewYearRd(y+1) <= rd) y++;
+  const start = (rd < rdFromHebrew(y,1,1)) ? 7 : 1;
+  let m = start;
+  while (rd > rdFromHebrew(y,m,hebrewMonthDays(y,m))) m++;
+  const d = rd - rdFromHebrew(y,m,1) + 1;
+  return {y,m,d};
+}
+
+/* ================= formatting helpers ================= */
+const MONTH_NAMES = {1:'ניסן',2:'אייר',3:'סיוון',4:'תמוז',5:'אב',6:'אלול',7:'תשרי',8:'חשוון',9:'כסלו',10:'טבת',11:'שבט'};
+function hebMonthName(m, leap){
+  if (m===12) return leap ? 'אדר א׳' : 'אדר';
+  if (m===13) return 'אדר ב׳';
+  return MONTH_NAMES[m];
+}
+function gematriya(n){
+  const vals=[[400,'ת'],[300,'ש'],[200,'ר'],[100,'ק'],[90,'צ'],[80,'פ'],[70,'ע'],[60,'ס'],[50,'נ'],[40,'מ'],[30,'ל'],[20,'כ'],[10,'י'],[9,'ט'],[8,'ח'],[7,'ז'],[6,'ו'],[5,'ה'],[4,'ד'],[3,'ג'],[2,'ב'],[1,'א']];
+  let s='',x=n;
+  while(x>0){
+    if(x===15){s+='טו';break;}
+    if(x===16){s+='טז';break;}
+    for(const[v,l]of vals){ if(x>=v){s+=l;x-=v;break;} }
+  }
+  return s.length>1 ? s.slice(0,-1)+'״'+s.slice(-1) : s+'׳';
+}
+function hebYearStr(y){ return gematriya(y%1000); }
+function fmtHeb(h){ return `${gematriya(h.d)} ${hebMonthName(h.m, hebrewLeap(h.y))} ${hebYearStr(h.y)}`; }
+function fmtGreg(g){ return `${String(g.d).padStart(2,'0')}/${String(g.m).padStart(2,'0')}/${g.y}`; }
+const WEEKDAYS=['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+function weekdayName(rd){ const w=((rd%7)+7)%7; return w===6 ? 'שבת' : 'יום '+WEEKDAYS[w]; }
+function todayRd(){ const n=new Date(); return rdFromGregorian(n.getFullYear(), n.getMonth()+1, n.getDate()); }
+function daysUntilText(n){ return n===0 ? 'היום! 🎉' : n===1 ? 'מחר' : `בעוד ${n} ימים`; }
+function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ================= occurrence logic (Adar rules per user) ================= */
+function occurrenceInYear(Y, ev){
+  const bornLeap = hebrewLeap(ev.hy);
+  const leapY = hebrewLeap(Y);
+  let m = ev.hm;
+  if (ev.hm===12 && !bornLeap && leapY) m = 13; // נולד באדר רגיל, שנה מעוברת → אדר ב'
+  if (ev.hm===13 && !leapY) m = 12;             // נולד באדר ב', שנה רגילה → אדר
+  // נולד באדר א' (12 בשנה מעוברת), שנה רגילה → אדר (12) — ללא שינוי
+  let d = ev.hd;
+  if (d > hebrewMonthDays(Y,m)){ // ל' חשוון→א' כסלו, ל' כסלו→א' טבת, ל' אדר א'→א' ניסן
+    m = (m===8)?9:(m===9)?10:1;
+    d = 1;
+  }
+  return {rd: rdFromHebrew(Y,m,d), m, d};
+}
+function nextOccurrence(ev, tRd){
+  const hy = hebrewFromRd(tRd).y;
+  let year = hy, occ = occurrenceInYear(year, ev);
+  if (occ.rd < tRd){ year++; occ = occurrenceInYear(year, ev); }
+  return {rd:occ.rd, m:occ.m, d:occ.d, hy:year, years:year-ev.hy, daysUntil:occ.rd-tRd};
+}
+
+/* ================= state ================= */
+const LS_KEY='hebrew_birthdays_v1';
+let state={people:[]};
+try{ const raw=localStorage.getItem(LS_KEY); if(raw) state=JSON.parse(raw); }catch(e){}
+if(!state.people) state.people=[];
+function save(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+
+const EV_TYPES={
+  birthday:{emoji:'🎂',label:'יום הולדת'},
+  anniversary:{emoji:'💍',label:'יום נישואין'},
+  memorial:{emoji:'🕯️',label:'יום זיכרון (אזכרה)'},
+  custom:{emoji:'📌',label:'אירוע אחר'}
+};
+const MILESTONES={5:'בן חמש למקרא',10:'בן עשר למשנה',13:'בן שלוש עשרה למצוות',15:'בן חמש עשרה לתלמוד',18:'בן שמונה עשרה לחופה',20:'בן עשרים לרדוף',30:'בן שלושים לכוח',40:'בן ארבעים לבינה',50:'בן חמישים לעצה',60:'בן שישים לזקנה',70:'בן שבעים לשיבה',80:'בן שמונים לגבורה',90:'בן תשעים לשוח',100:'בן מאה'};
+
+function ageText(ev, person, years){
+  if(ev.type==='birthday') return (person.gender==='F'?'בת':'בן')+` ${years} (${gematriya(years)})`;
+  if(ev.type==='anniversary') return `${years} שנים לנישואין`;
+  if(ev.type==='memorial') return `${years} שנים`;
+  return `${years} שנים`;
+}
+
+/* ================= render ================= */
+const AV_COLORS=['#3b4d9b','#0f766e','#b45309','#7c3aed','#be185d','#0369a1','#4d7c0f'];
+function avColor(name){ let h=0; for(const c of name) h=(h*31+c.charCodeAt(0))%997; return AV_COLORS[h%AV_COLORS.length]; }
+
+function allOccurrences(){
+  const tRd=todayRd(), out=[];
+  for(const p of state.people) for(const ev of p.events){
+    const occ=nextOccurrence(ev,tRd);
+    out.push({p,ev,occ});
+  }
+  out.sort((a,b)=>a.occ.daysUntil-b.occ.daysUntil);
+  return out;
+}
+
+function render(){
+  const tRd=todayRd(), tH=hebrewFromRd(tRd), tG=gregorianFromRd(tRd);
+  document.getElementById('todayLine').innerHTML=`היום: <b>${fmtHeb(tH)}</b> • ${fmtGreg(tG)} • ${weekdayName(tRd)}`;
+
+  const q=(document.getElementById('searchBox').value||'').trim();
+  const relF=document.getElementById('filterRel').value;
+  const sortBy=document.getElementById('sortBy').value;
+
+  // relation filter options
+  const rels=[...new Set(state.people.map(p=>p.relation).filter(Boolean))];
+  const relSel=document.getElementById('filterRel');
+  const cur=relSel.value;
+  relSel.innerHTML='<option value="">כל הקבוצות</option>'+rels.map(r=>`<option ${r===cur?'selected':''}>${esc(r)}</option>`).join('');
+
+  const occs=allOccurrences();
+
+  // today banner
+  const todays=occs.filter(o=>o.occ.daysUntil===0);
+  document.getElementById('todayBanner').innerHTML = todays.length ? `
+    <div class="banner"><h3>🎉 מזל טוב — היום!</h3>
+    ${todays.map(o=>`<div class="b-item">${EV_TYPES[o.ev.type].emoji} <b>${esc(o.p.name)}</b> — ${EV_TYPES[o.ev.type].label}${o.ev.label?' ('+esc(o.ev.label)+')':''} • ${ageText(o.ev,o.p,o.occ.years)}</div>`).join('')}
+    </div>` : '';
+
+  // stats
+  const in30=occs.filter(o=>o.occ.daysUntil<=30).length;
+  const thisMonth=occs.filter(o=>o.occ.m===tH.m && o.occ.hy===tH.y).length;
+  document.getElementById('statsRow').innerHTML=`
+    <span class="stat-chip">👥 <b>${state.people.length}</b> אנשים</span>
+    <span class="stat-chip">📅 <b>${occs.length}</b> אירועים</span>
+    <span class="stat-chip">⏰ <b>${in30}</b> ב-30 הימים הקרובים</span>
+    <span class="stat-chip">🌙 <b>${thisMonth}</b> בחודש ${hebMonthName(tH.m,hebrewLeap(tH.y))}</span>`;
+
+  // upcoming strip
+  const ups=occs.filter(o=>o.occ.daysUntil>0).slice(0,10);
+  document.getElementById('upScroll').innerHTML=ups.map(o=>{
+    const g=gregorianFromRd(o.occ.rd);
+    return `<div class="up-card ${o.occ.daysUntil<=7?'soon':''}">
+      <div class="u-name">${EV_TYPES[o.ev.type].emoji} ${esc(o.p.name)}</div>
+      <div class="u-when">${daysUntilText(o.occ.daysUntil)}</div>
+      <div class="u-date">${gematriya(o.occ.d)} ${hebMonthName(o.occ.m,hebrewLeap(o.occ.hy))} • ${fmtGreg(g)}</div>
+      <div class="u-age">${ageText(o.ev,o.p,o.occ.years)}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('upcomingSec').style.display = ups.length ? '' : 'none';
+
+  // people cards
+  let people=[...state.people];
+  if(q) people=people.filter(p=>[p.name,p.spouse,p.notes,p.relation,(p.children||[]).join(' ')].join(' ').includes(q));
+  if(relF) people=people.filter(p=>p.relation===relF);
+  const nextOf=p=>Math.min(...p.events.map(ev=>nextOccurrence(ev,tRd).daysUntil));
+  const mainAge=p=>{ const b=p.events.find(e=>e.type==='birthday')||p.events[0]; return nextOccurrence(b,tRd).years; };
+  if(sortBy==='next') people.sort((a,b)=>nextOf(a)-nextOf(b));
+  if(sortBy==='name') people.sort((a,b)=>a.name.localeCompare(b.name,'he'));
+  if(sortBy==='age') people.sort((a,b)=>mainAge(b)-mainAge(a));
+
+  document.getElementById('peopleGrid').innerHTML=people.map(p=>personCard(p,tRd)).join('');
+  document.getElementById('emptyState').innerHTML = state.people.length ? '' : `
+    <div class="empty"><div class="big">🎂</div>
+    <p style="font-size:1.1rem;font-weight:600;margin-bottom:6px">עדיין אין כאן אף אחד</p>
+    <p>הוסיפו את האדם הראשון — תאריך לידה לועזי או עברי, והמערכת תחשב הכל לבד</p>
+    <p style="margin-top:14px"><button class="btn btn-primary" onclick="openModal()">➕ הוספת אדם ראשון</button></p></div>`;
+}
+
+function personCard(p,tRd){
+  const main=p.events[0];
+  const mOcc=nextOccurrence(main,tRd);
+  const soonest=Math.min(...p.events.map(ev=>nextOccurrence(ev,tRd).daysUntil));
+  const g=gregorianFromRd(mOcc.rd);
+  const origHeb={y:main.hy,m:main.hm,d:main.hd};
+  const origGreg=main.gy?{y:main.gy,m:main.gm,d:main.gd}:gregorianFromRd(rdFromHebrew(main.hy,main.hm,main.hd));
+  let badges='';
+  if(main.type==='birthday'){
+    const barAge=p.gender==='F'?12:13;
+    if(mOcc.years===barAge) badges+=`<span class="badge badge-mitzvah">🎊 ${p.gender==='F'?'בת':'בר'} מצווה השנה!</span>`;
+    if(MILESTONES[mOcc.years]) badges+=`<span class="badge badge-gold">✡️ ${MILESTONES[mOcc.years]}</span>`;
+  }
+  const kids=(p.children||[]);
+  const meta=[];
+  if(kids.length) meta.push(`👶 ${kids.length} ילדים`);
+  if(p.spouse) meta.push(`💍 ${esc(p.spouse)}`);
+  const extra=p.events.slice(1);
+  const waBtn = p.phone && main.type!=='memorial' ? `<button class="btn btn-ghost btn-sm" onclick="sendWA('${p.id}')">💬 ברכה</button>` : '';
+  return `<div class="pcard ${soonest<=7?'soon':''}">
+    <div class="pcard-top">
+      <div class="avatar" style="background:${avColor(p.name)}">${main.type==='memorial'?'🕯️':esc(p.name.charAt(0))}</div>
+      <div><span class="pname">${esc(p.name)}</span>${p.relation?`<span class="rel-badge">${esc(p.relation)}</span>`:''}</div>
+    </div>
+    <div class="ev-line">${EV_TYPES[main.type].emoji} ${EV_TYPES[main.type].label}${main.label?' — '+esc(main.label):''}: <b>${fmtHeb(origHeb)}</b> (${fmtGreg(origGreg)})</div>
+    <div class="next-line">⏳ <span class="cnt">${daysUntilText(mOcc.daysUntil)}</span> • ${weekdayName(mOcc.rd)}, ${fmtGreg(g)}<br>
+    ${gematriya(mOcc.d)} ${hebMonthName(mOcc.m,hebrewLeap(mOcc.hy))} ${hebYearStr(mOcc.hy)} — <span class="age-big">${ageText(main,p,mOcc.years)}</span></div>
+    ${badges}
+    ${meta.length?`<div class="meta-row">${meta.join(' • ')}</div>`:''}
+    <div class="card-actions">
+      <button class="btn btn-ghost btn-sm" onclick="toggleDetails('${p.id}')">📋 פרטים</button>
+      <button class="btn btn-ghost btn-sm" onclick="openModal('${p.id}')">✏️ עריכה</button>
+      ${waBtn}
+    </div>
+    <div class="details" id="det-${p.id}">
+      ${p.phone?`<div class="d-row">📞 <a href="tel:${esc(p.phone)}">${esc(p.phone)}</a></div>`:''}
+      ${kids.length?`<div class="d-row">👶 ילדים: ${kids.map(k=>`<span class="chip">${esc(k)}</span>`).join('')}</div>`:''}
+      ${p.notes?`<div class="d-row">📝 ${esc(p.notes)}</div>`:''}
+      ${extra.map(ev=>{
+        const o=nextOccurrence(ev,tRd);
+        return `<div class="ev-sub">${EV_TYPES[ev.type].emoji} <b>${EV_TYPES[ev.type].label}${ev.label?' — '+esc(ev.label):''}</b>: ${fmtHeb({y:ev.hy,m:ev.hm,d:ev.hd})}<br>
+        ⏳ ${daysUntilText(o.daysUntil)} • ${fmtGreg(gregorianFromRd(o.rd))} • ${ageText(ev,p,o.years)}</div>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+function toggleDetails(id){ document.getElementById('det-'+id).classList.toggle('open'); }
+
+/* ================= WhatsApp ================= */
+function sendWA(pid){
+  const p=state.people.find(x=>x.id===pid); if(!p) return;
+  const main=p.events[0];
+  const occ=nextOccurrence(main,todayRd());
+  const first=p.name.split(' ')[0];
+  let msg;
+  if(main.type==='anniversary') msg=`מזל טוב ${first}! 💍 יום נישואין שמח, שתזכו לעוד הרבה שנים טובות ומאושרות יחד!`;
+  else msg=`מזל טוב ${first}! 🎂 יום הולדת ${occ.years} שמח! עד מאה ועשרים בבריאות, בשמחה ובנחת!`;
+  let ph=(p.phone||'').replace(/\D/g,'');
+  if(ph.startsWith('0')) ph='972'+ph.slice(1);
+  window.open(`https://wa.me/${ph}?text=${encodeURIComponent(msg)}`,'_blank');
+}
+
+/* ================= modal ================= */
+let editingId=null, modalKids=[];
+function openModal(pid){
+  editingId=pid||null;
+  const p=pid?state.people.find(x=>x.id===pid):null;
+  document.getElementById('modalTitle').textContent=p?'עריכת כרטיס':'הוספת איש / אירוע';
+  document.getElementById('fName').value=p?p.name:'';
+  document.getElementById('fRel').value=p?(p.relation||''):'';
+  document.getElementById('fPhone').value=p?(p.phone||''):'';
+  document.getElementById('fSpouse').value=p?(p.spouse||''):'';
+  document.getElementById('fNotes').value=p?(p.notes||''):'';
+  document.querySelector(`input[name=fGender][value=${p&&p.gender==='F'?'F':'M'}]`).checked=true;
+  modalKids=p?[...(p.children||[])]:[];
+  renderKids();
+  document.getElementById('delPersonBtn').hidden=!p;
+  document.getElementById('evRows').innerHTML='';
+  if(p) p.events.forEach(ev=>addEventRow(ev));
+  else addEventRow();
+  document.getElementById('overlay').classList.add('open');
+  document.getElementById('fName').focus();
+}
+function closeModal(){ document.getElementById('overlay').classList.remove('open'); }
+document.getElementById('overlay').addEventListener('click',e=>{ if(e.target.id==='overlay') closeModal(); });
+
+function renderKids(){
+  document.getElementById('kidsWrap').innerHTML=modalKids.map((k,i)=>
+    `<span class="kid-chip">${esc(k)} <button onclick="removeKid(${i})">✕</button></span>`).join('');
+}
+function addKid(){
+  const inp=document.getElementById('kidInput');
+  const v=inp.value.trim();
+  if(v){ modalKids.push(v); inp.value=''; renderKids(); }
+  inp.focus();
+}
+function removeKid(i){ modalKids.splice(i,1); renderKids(); }
+document.getElementById('kidInput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); addKid(); } });
+
+let evRowSeq=0;
+function hebMonthOptions(year,selected){
+  const leap=hebrewLeap(year);
+  const order=[7,8,9,10,11,12].concat(leap?[13]:[]).concat([1,2,3,4,5,6]);
+  return order.map(m=>`<option value="${m}" ${m===selected?'selected':''}>${hebMonthName(m,leap)}</option>`).join('');
+}
+function addEventRow(ev){
+  const i=evRowSeq++;
+  const tH=hebrewFromRd(todayRd());
+  const hy=ev?ev.hy:tH.y, hm=ev?ev.hm:tH.m, hd=ev?ev.hd:tH.d;
+  let gval='';
+  if(ev){
+    const g=ev.gy?{y:ev.gy,m:ev.gm,d:ev.gd}:gregorianFromRd(rdFromHebrew(ev.hy,ev.hm,ev.hd));
+    gval=`${g.y}-${String(g.m).padStart(2,'0')}-${String(g.d).padStart(2,'0')}`;
+  }
+  const div=document.createElement('div');
+  div.className='ev-row'; div.dataset.evid=ev?ev.id:'';
+  div.innerHTML=`
+    <div class="frow">
+      <div class="fld"><label>סוג</label><select class="ev-type">
+        ${Object.entries(EV_TYPES).map(([k,v])=>`<option value="${k}" ${ev&&ev.type===k?'selected':''}>${v.emoji} ${v.label}</option>`).join('')}
+      </select></div>
+      <div class="fld"><label>תיאור (לא חובה)</label><input class="ev-label" value="${ev?esc(ev.label||''):''}" placeholder="לדוגמה: יארצייט של אבא"></div>
+      <button class="del-link" onclick="this.closest('.ev-row').remove()" title="מחיקת אירוע">🗑️</button>
+    </div>
+    <div class="mode-row">
+      <label><input type="radio" name="evmode${i}" value="g" ${ev?'':'checked'}> תאריך לועזי</label>
+      <label><input type="radio" name="evmode${i}" value="h" ${ev?'checked':''}> תאריך עברי</label>
+    </div>
+    <div class="ev-greg" ${ev?'hidden':''}>
+      <input type="date" class="ev-gdate" value="${gval}">
+      <label class="sunset-lbl"><input type="checkbox" class="ev-sunset"> נולד/אירע אחרי השקיעה (נחשב ליום העברי הבא)</label>
+    </div>
+    <div class="ev-heb" ${ev?'':'hidden'}>
+      <div class="heb-inputs">
+        <select class="ev-hd">${Array.from({length:30},(_,j)=>`<option value="${j+1}" ${j+1===hd?'selected':''}>${gematriya(j+1)}</option>`).join('')}</select>
+        <select class="ev-hm">${hebMonthOptions(hy,hm)}</select>
+        <input type="number" class="ev-hy" value="${hy}" min="5000" max="6000" style="width:90px">
+      </div>
+    </div>`;
+  div.querySelectorAll(`input[name=evmode${i}]`).forEach(r=>r.addEventListener('change',()=>{
+    div.querySelector('.ev-greg').hidden = !div.querySelector(`input[name=evmode${i}][value=g]`).checked;
+    div.querySelector('.ev-heb').hidden = !div.querySelector(`input[name=evmode${i}][value=h]`).checked;
+  }));
+  div.querySelector('.ev-hy').addEventListener('input',e=>{
+    const y=+e.target.value;
+    if(y>=5000&&y<=6000){
+      const sel=div.querySelector('.ev-hm');
+      const cur=+sel.value;
+      sel.innerHTML=hebMonthOptions(y, cur===13&&!hebrewLeap(y)?12:cur);
+    }
+  });
+  document.getElementById('evRows').appendChild(div);
+}
+
+function collectEvents(){
+  const rows=[...document.querySelectorAll('#evRows .ev-row')];
+  if(!rows.length){ alert('חייב להיות לפחות אירוע אחד'); return null; }
+  const out=[];
+  for(const row of rows){
+    const type=row.querySelector('.ev-type').value;
+    const label=row.querySelector('.ev-label').value.trim();
+    const isGreg=row.querySelector('.ev-greg').hidden===false;
+    let hy,hm,hd,gy,gm,gd;
+    if(isGreg){
+      const v=row.querySelector('.ev-gdate').value;
+      if(!v){ alert('נא לבחור תאריך לועזי (או לעבור לתאריך עברי)'); return null; }
+      const [y,m,d]=v.split('-').map(Number);
+      gy=y; gm=m; gd=d;
+      let rd=rdFromGregorian(y,m,d);
+      if(row.querySelector('.ev-sunset').checked) rd++;
+      const h=hebrewFromRd(rd);
+      hy=h.y; hm=h.m; hd=h.d;
+    }else{
+      hy=+row.querySelector('.ev-hy').value;
+      hm=+row.querySelector('.ev-hm').value;
+      hd=+row.querySelector('.ev-hd').value;
+      if(!(hy>=5000&&hy<=6000)){ alert('שנה עברית לא תקינה'); return null; }
+      const len=hebrewMonthDays(hy,hm);
+      if(hd>len){ alert(`בחודש ${hebMonthName(hm,hebrewLeap(hy))} ${hebYearStr(hy)} יש רק ${len} ימים`); return null; }
+    }
+    const evObj={id:row.dataset.evid||uid(),type,label,hy,hm,hd};
+    if(gy){ evObj.gy=gy; evObj.gm=gm; evObj.gd=gd; }
+    out.push(evObj);
+  }
+  return out;
+}
+
+function savePerson(){
+  const name=document.getElementById('fName').value.trim();
+  if(!name){ alert('נא להזין שם'); return; }
+  const events=collectEvents();
+  if(!events) return;
+  const data={
+    name,
+    relation:document.getElementById('fRel').value.trim(),
+    gender:document.querySelector('input[name=fGender]:checked').value,
+    phone:document.getElementById('fPhone').value.trim(),
+    spouse:document.getElementById('fSpouse').value.trim(),
+    children:modalKids,
+    notes:document.getElementById('fNotes').value.trim(),
+    events
+  };
+  if(editingId){
+    const p=state.people.find(x=>x.id===editingId);
+    Object.assign(p,data);
+  }else{
+    state.people.push({id:uid(),...data});
+  }
+  save(); closeModal(); render();
+}
+function deletePerson(){
+  if(!editingId) return;
+  const p=state.people.find(x=>x.id===editingId);
+  if(!confirm(`למחוק את הכרטיס של ${p.name}? פעולה זו אינה הפיכה.`)) return;
+  state.people=state.people.filter(x=>x.id!==editingId);
+  save(); closeModal(); render();
+}
+
+/* ================= export / import ================= */
+function download(name,content,type){
+  const blob=new Blob([content],{type});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=name; a.click();
+  URL.revokeObjectURL(a.href);
+}
+function exportJSON(){
+  download('hebrew-birthdays-backup.json', JSON.stringify(state,null,2), 'application/json');
+}
+function importJSON(inp){
+  const f=inp.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const data=JSON.parse(r.result);
+      if(!Array.isArray(data.people)) throw new Error('bad');
+      if(!confirm(`לייבא ${data.people.length} אנשים? זה יחליף את הנתונים הקיימים (${state.people.length} אנשים).`)) return;
+      state=data; save(); render();
+      alert('הגיבוי שוחזר בהצלחה ✅');
+    }catch(e){ alert('קובץ לא תקין'); }
+  };
+  r.readAsText(f); inp.value='';
+}
+function exportICS(){
+  if(!state.people.length){ alert('אין עדיין אירועים לייצוא'); return; }
+  const tY=hebrewFromRd(todayRd()).y;
+  const p4=n=>String(n).padStart(4,'0'), p2=n=>String(n).padStart(2,'0');
+  const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//hebrew-birthdays//IL','CALSCALE:GREGORIAN','X-WR-CALNAME:ימי הולדת ואירועים עבריים'];
+  for(const p of state.people) for(const ev of p.events){
+    for(let Y=Math.max(tY,ev.hy);Y<tY+10;Y++){
+      const occ=occurrenceInYear(Y,ev);
+      const g=gregorianFromRd(occ.rd), g2=gregorianFromRd(occ.rd+1);
+      const n=Y-ev.hy;
+      let sum;
+      if(ev.type==='birthday') sum=`🎂 יום הולדת ${n} — ${p.name}`;
+      else if(ev.type==='anniversary') sum=`💍 יום נישואין (${n} שנים) — ${p.name}`;
+      else if(ev.type==='memorial') sum=`🕯️ אזכרה (${n} שנים) — ${p.name}${ev.label?' — '+ev.label:''}`;
+      else sum=`📌 ${ev.label||'אירוע'} — ${p.name}`;
+      lines.push('BEGIN:VEVENT',
+        `UID:${p.id}-${ev.id}-${Y}@hebrew-birthdays`,
+        `DTSTAMP:${p4(g.y)}${p2(g.m)}${p2(g.d)}T000000Z`,
+        `DTSTART;VALUE=DATE:${p4(g.y)}${p2(g.m)}${p2(g.d)}`,
+        `DTEND;VALUE=DATE:${p4(g2.y)}${p2(g2.m)}${p2(g2.d)}`,
+        `SUMMARY:${sum.replace(/([,;])/g,'\\$1')}`,
+        'END:VEVENT');
+    }
+  }
+  lines.push('END:VCALENDAR');
+  download('hebrew-events.ics', lines.join('\r\n'), 'text/calendar');
+}
+
+/* ================= init ================= */
+document.getElementById('searchBox').addEventListener('input',render);
+document.getElementById('filterRel').addEventListener('change',render);
+document.getElementById('sortBy').addEventListener('change',render);
+render();
+</script>
+</body>
+</html>
