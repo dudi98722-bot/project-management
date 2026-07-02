@@ -74,6 +74,44 @@ main{max-width:1100px;margin:0 auto;padding:18px 16px 90px}
 .details .d-row{margin:4px 0}
 .chip{display:inline-block;background:#eef0fa;border-radius:12px;padding:2px 10px;font-size:.8rem;margin:2px}
 .ev-sub{background:#faf9f4;border:1px solid var(--line);border-radius:10px;padding:7px 10px;margin:5px 0;font-size:.85rem}
+/* view tabs */
+.view-tabs{display:flex;gap:8px;margin-bottom:14px}
+.vtab{border:1px solid var(--line);background:#fff;border-radius:12px;padding:8px 20px;font:inherit;font-weight:600;cursor:pointer;transition:.15s}
+.vtab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+/* monthly calendar */
+.cal-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.cal-title{font-size:1.25rem;font-weight:800;color:var(--accent)}
+.cal-sub{font-size:.85rem;color:var(--muted)}
+.cal-nav{display:flex;gap:6px;margin-inline-start:auto}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-dow{text-align:center;font-weight:700;font-size:.82rem;color:var(--accent);padding:4px 0}
+.cal-cell{background:#fff;border:1px solid var(--line);border-radius:10px;min-height:76px;padding:4px 6px;font-size:.8rem;position:relative}
+.cal-cell.empty{background:transparent;border:none;min-height:0}
+.cal-cell.has-ev{background:#f3f6ff;border-color:#c7d2f0}
+.cal-cell.today{border:2px solid var(--gold);background:var(--gold-bg)}
+.c-heb{font-weight:700}
+.c-greg{position:absolute;top:4px;left:6px;color:var(--muted);font-size:.68rem;direction:ltr}
+.cal-chip{display:block;margin-top:3px;border-radius:8px;padding:1px 6px;font-size:.7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.t-birthday{background:#fce7f3;color:#be185d}
+.t-anniversary{background:#ede9fe;color:#6d28d9}
+.t-memorial{background:#e5e7eb;color:#374151}
+.t-custom{background:#dbeafe;color:#1d4ed8}
+.cal-list{margin-top:16px}
+.cal-list h3{font-size:.98rem;color:var(--accent);margin-bottom:8px}
+.cl-item{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-bottom:8px;font-size:.9rem;box-shadow:var(--shadow)}
+.cl-item .cl-day{font-weight:800;color:var(--accent)}
+.cl-empty{color:var(--muted);text-align:center;padding:20px}
+@media(max-width:600px){
+  .cal-cell{min-height:58px;padding:3px 4px}
+  .cal-chip{font-size:.6rem;padding:1px 3px}
+  .c-greg{display:none}
+}
+@media print{
+  header,.toolbar,.stats,.upcoming,.view-tabs,.foot,#todayBanner,.cal-nav{display:none!important}
+  body{background:#fff}
+  main{padding:0;max-width:100%}
+  .cal-cell{break-inside:avoid}
+}
 /* empty */
 .empty{text-align:center;padding:60px 20px;color:var(--muted)}
 .empty .big{font-size:3.5rem;margin-bottom:12px}
@@ -136,12 +174,34 @@ main{max-width:1100px;margin:0 auto;padding:18px 16px 90px}
   <div id="todayBanner"></div>
   <div class="stats" id="statsRow"></div>
 
+  <div class="view-tabs">
+    <button id="tabCards" class="vtab active" onclick="setView('cards')">👥 כרטיסים</button>
+    <button id="tabCal" class="vtab" onclick="setView('cal')">📆 לוח חודשי</button>
+  </div>
+
+  <section id="calSec" style="display:none">
+    <div class="cal-head">
+      <div>
+        <div class="cal-title" id="calTitle"></div>
+        <div class="cal-sub" id="calSub"></div>
+      </div>
+      <div class="cal-nav">
+        <button class="btn btn-ghost btn-sm" onclick="calPrev()">▶ חודש קודם</button>
+        <button class="btn btn-ghost btn-sm" onclick="calToday()">היום</button>
+        <button class="btn btn-ghost btn-sm" onclick="calNext()">חודש הבא ◀</button>
+        <button class="btn btn-ghost btn-sm" onclick="window.print()">🖨️ הדפסה</button>
+      </div>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+    <div class="cal-list" id="calList"></div>
+  </section>
+
   <section class="upcoming" id="upcomingSec">
     <h2>⏳ אירועים קרובים</h2>
     <div class="up-scroll" id="upScroll"></div>
   </section>
 
-  <section class="people-sec">
+  <section class="people-sec" id="peopleSec">
     <h2>👥 האנשים שלי</h2>
     <div class="grid" id="peopleGrid"></div>
     <div id="emptyState"></div>
@@ -398,7 +458,8 @@ function render(){
       <div class="u-age">${ageText(o.ev,o.p,o.occ.years)}</div>
     </div>`;
   }).join('');
-  document.getElementById('upcomingSec').style.display = ups.length ? '' : 'none';
+  document.getElementById('upcomingSec').style.display = (ups.length && viewMode==='cards') ? '' : 'none';
+  if(viewMode==='cal') renderCalendar();
 
   // people cards
   let people=[...state.people];
@@ -465,6 +526,76 @@ function personCard(p,tRd){
   </div>`;
 }
 function toggleDetails(id){ document.getElementById('det-'+id).classList.toggle('open'); }
+
+/* ================= monthly calendar view ================= */
+let viewMode='cards', calY=null, calM=null;
+function setView(v){
+  viewMode=v;
+  document.getElementById('tabCards').classList.toggle('active',v==='cards');
+  document.getElementById('tabCal').classList.toggle('active',v==='cal');
+  document.getElementById('peopleSec').style.display = v==='cards'?'':'none';
+  document.getElementById('calSec').style.display = v==='cal'?'':'none';
+  if(v==='cal' && calY===null){ const h=hebrewFromRd(todayRd()); calY=h.y; calM=h.m; }
+  render();
+}
+function monthOrder(y){ return [7,8,9,10,11,12].concat(hebrewLeap(y)?[13]:[]).concat([1,2,3,4,5,6]); }
+function calNext(){ const o=monthOrder(calY), i=o.indexOf(calM); if(i===o.length-1){calY++;calM=7;} else calM=o[i+1]; renderCalendar(); }
+function calPrev(){ const o=monthOrder(calY), i=o.indexOf(calM); if(i===0){calY--;calM=6;} else calM=o[i-1]; renderCalendar(); }
+function calToday(){ const h=hebrewFromRd(todayRd()); calY=h.y; calM=h.m; renderCalendar(); }
+const DOW_SHORT=['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','שבת'];
+function calChipText(p,ev,years){
+  const first=p.name.split(' ')[0];
+  if(ev.type==='birthday') return `🎂 ${first} (${years})`;
+  if(ev.type==='anniversary') return `💍 ${first} (${years})`;
+  if(ev.type==='memorial') return `🕯️ ${first}`;
+  return `📌 ${ev.label||first}`;
+}
+function renderCalendar(){
+  if(calY===null) return;
+  const tRd=todayRd();
+  const leap=hebrewLeap(calY);
+  const start=rdFromHebrew(calY,calM,1);
+  const len=hebrewMonthDays(calY,calM);
+  // אירועים לפי יום בחודש
+  const byDay={};
+  for(const p of state.people) for(const ev of p.events){
+    if(calY<ev.hy) continue;
+    const occ=occurrenceInYear(calY,ev);
+    if(occ.rd>=start && occ.rd<start+len){
+      const d=occ.rd-start+1;
+      (byDay[d]=byDay[d]||[]).push({p,ev,years:calY-ev.hy});
+    }
+  }
+  const total=Object.values(byDay).reduce((s,a)=>s+a.length,0);
+  const gS=gregorianFromRd(start), gE=gregorianFromRd(start+len-1);
+  document.getElementById('calTitle').textContent=`${hebMonthName(calM,leap)} ${hebYearStr(calY)}`;
+  document.getElementById('calSub').textContent=`${fmtGreg(gS)} – ${fmtGreg(gE)} • ${total?total+' אירועים החודש':'אין אירועים החודש'}`;
+  // גריד
+  let html=DOW_SHORT.map(d=>`<div class="cal-dow">${d}</div>`).join('');
+  const firstDow=((start%7)+7)%7;
+  for(let i=0;i<firstDow;i++) html+='<div class="cal-cell empty"></div>';
+  for(let d=1;d<=len;d++){
+    const rd=start+d-1, g=gregorianFromRd(rd);
+    const evs=byDay[d]||[];
+    const cls=['cal-cell', rd===tRd?'today':'', evs.length?'has-ev':''].join(' ');
+    html+=`<div class="${cls}">
+      <div class="c-heb">${gematriya(d)}</div>
+      <div class="c-greg">${g.d}/${g.m}</div>
+      ${evs.map(x=>`<span class="cal-chip t-${x.ev.type}" title="${esc(x.p.name)} — ${EV_TYPES[x.ev.type].label}" onclick="openModal('${x.p.id}')">${calChipText(x.p,x.ev,x.years)}</span>`).join('')}
+    </div>`;
+  }
+  document.getElementById('calGrid').innerHTML=html;
+  // פירוט חודשי
+  const days=Object.keys(byDay).map(Number).sort((a,b)=>a-b);
+  document.getElementById('calList').innerHTML = days.length ? '<h3>📋 פירוט האירועים החודש</h3>'+days.map(d=>{
+    const rd=start+d-1, g=gregorianFromRd(rd);
+    return byDay[d].map(x=>`<div class="cl-item">
+      <span class="cl-day">${gematriya(d)} ${hebMonthName(calM,leap)}</span> • ${weekdayName(rd)} • ${fmtGreg(g)}
+      — ${EV_TYPES[x.ev.type].emoji} <b>${esc(x.p.name)}</b>${x.ev.label?' ('+esc(x.ev.label)+')':''} — ${ageText(x.ev,x.p,x.years)}
+      ${rd>=tRd?`<span style="color:var(--green);font-weight:600"> • ${daysUntilText(rd-tRd)}</span>`:''}
+    </div>`).join('');
+  }).join('') : '<div class="cl-empty">אין אירועים בחודש זה 🌙</div>';
+}
 
 /* ================= WhatsApp ================= */
 function sendWA(pid){
