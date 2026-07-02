@@ -386,6 +386,49 @@ if(!state.people) state.people=[];
 function save(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 
+/* ================= seed import — נתונים ראשוניים, נטענים פעם אחת בכל מכשיר ================= */
+const SEED_VERSION=1;
+const SEED_PEOPLE=[
+ {name:'עטרי',gender:'F',events:[{type:'birthday',hy:5754,hm:1,hd:16}]},
+ {name:'אברומי',gender:'M',events:[{type:'birthday',hy:5775,hm:1,hd:3}]},
+ {name:'כבי',gender:'F',events:[{type:'birthday',hy:5776,hm:3,hd:14}]},
+ {name:'פייגי',gender:'F',events:[{type:'birthday',hy:5778,hm:7,hd:4}]},
+ {name:'שימי',gender:'M',events:[{type:'birthday',hy:5781,hm:8,hd:29}]},
+ {name:'שלוימי',gender:'M',events:[{type:'birthday',hy:5783,hm:9,hd:12}]},
+ {name:'דוד פלדמן',gender:'M',events:[{type:'anniversary',hy:5774,hm:12,hd:3}]},
+ {name:'אבי פדר',gender:'M',events:[{type:'birthday',hy:5753,hm:6,hd:11}]},
+ {name:'אבא',gender:'M',relation:'משפחה',events:[{type:'birthday',hy:5732,hm:5,hd:7}]},
+ {name:'אמא',gender:'F',relation:'משפחה',events:[{type:'birthday',hy:5733,hm:6,hd:20}]},
+ {name:'פייגי לנדמן',gender:'F',events:[{type:'birthday',hy:5756,hm:11,hd:5}]},
+ {name:'שלוימי פלדמן (אח)',gender:'M',relation:'משפחה',events:[{type:'birthday',hy:5758,hm:6,hd:4}]},
+ {name:'חיה הרברט',gender:'F',events:[{type:'birthday',hy:5762,hm:11,hd:11}]},
+ {name:'מילי פלדמן',gender:'F',relation:'משפחה',events:[{type:'birthday',hy:5764,hm:7,hd:28}]},
+ {name:'נפתלי פלדמן (אח)',gender:'M',relation:'משפחה',events:[{type:'birthday',hy:5765,hm:2,hd:17}]},
+ {name:'נחמי פלדמן',gender:'F',relation:'משפחה',events:[{type:'birthday',hy:5769,hm:1,hd:2}]},
+ {name:'יששכר פלדמן',gender:'M',relation:'משפחה',events:[{type:'birthday',hy:5771,hm:8,hd:7}]},
+ {name:'בנימין קובלסקי',gender:'M',events:[{type:'birthday',hy:5748,hm:6,hd:28}]},
+ {name:'יענקי חנון',gender:'M',notes:'במקור נרשם אדר א׳ תשנ״ו, אך תשנ״ו אינה שנה מעוברת — נשמר כאדר. ייתכן שהשנה הנכונה היא תשנ״ז המעוברת.',events:[{type:'birthday',hy:5756,hm:12,hd:18}]},
+ {name:'דוד סימון',gender:'M',events:[{type:'birthday',hy:5756,hm:8,hd:22}]},
+ {name:'ישראל בריקמן',gender:'M',events:[{type:'custom',label:'קנה קאמרי חדשה',hy:5785,hm:8,hd:5}]},
+ {name:'יוסי פישגרונד',gender:'M',events:[{type:'birthday',hy:5764,hm:9,hd:18}]},
+ {name:'בנימין הרברט',gender:'M',events:[{type:'birthday',hy:5784,hm:9,hd:17}]},
+ {name:'שלוימי שיינבך',gender:'M',events:[{type:'birthday',hy:5763,hm:10,hd:26}]},
+ {name:'שמחה אדלר',gender:'M',events:[{type:'birthday',hy:5764,hm:10,hd:5}]},
+ {name:'שמואל שניצער',gender:'M',events:[{type:'birthday',hy:5774,hm:12,hd:10,noYear:true}]},
+ {name:'הלל בודיק',gender:'M',events:[{type:'birthday',hy:5750,hm:3,hd:8}]}
+];
+(function seedImport(){
+  const done=+(localStorage.getItem('hebrew_birthdays_seed')||0);
+  if(done>=SEED_VERSION) return;
+  const existing=new Set(state.people.map(p=>p.name.trim()));
+  for(const s of SEED_PEOPLE){
+    if(existing.has(s.name)) continue;
+    state.people.push({id:uid(),relation:'',phone:'',spouse:'',children:[],notes:'',...s,events:s.events.map(e=>({id:uid(),label:'',...e}))});
+  }
+  localStorage.setItem('hebrew_birthdays_seed',String(SEED_VERSION));
+  save();
+})();
+
 const EV_TYPES={
   birthday:{emoji:'🎂',label:'יום הולדת'},
   anniversary:{emoji:'💍',label:'יום נישואין'},
@@ -395,10 +438,15 @@ const EV_TYPES={
 const MILESTONES={5:'בן חמש למקרא',10:'בן עשר למשנה',13:'בן שלוש עשרה למצוות',15:'בן חמש עשרה לתלמוד',18:'בן שמונה עשרה לחופה',20:'בן עשרים לרדוף',30:'בן שלושים לכוח',40:'בן ארבעים לבינה',50:'בן חמישים לעצה',60:'בן שישים לזקנה',70:'בן שבעים לשיבה',80:'בן שמונים לגבורה',90:'בן תשעים לשוח',100:'בן מאה'};
 
 function ageText(ev, person, years){
+  if(ev.noYear) return '';
   if(ev.type==='birthday') return (person.gender==='F'?'בת':'בן')+` ${years} (${gematriya(years)})`;
   if(ev.type==='anniversary') return `${years} שנים לנישואין`;
   if(ev.type==='memorial') return `${years} שנים`;
   return `${years} שנים`;
+}
+function fmtHebEv(ev){
+  if(ev.noYear) return `${gematriya(ev.hd)} ${hebMonthName(ev.hm,hebrewLeap(ev.hy))}`;
+  return fmtHeb({y:ev.hy,m:ev.hm,d:ev.hd});
 }
 
 /* ================= render ================= */
@@ -435,7 +483,7 @@ function render(){
   const todays=occs.filter(o=>o.occ.daysUntil===0);
   document.getElementById('todayBanner').innerHTML = todays.length ? `
     <div class="banner"><h3>🎉 מזל טוב — היום!</h3>
-    ${todays.map(o=>`<div class="b-item">${EV_TYPES[o.ev.type].emoji} <b>${esc(o.p.name)}</b> — ${EV_TYPES[o.ev.type].label}${o.ev.label?' ('+esc(o.ev.label)+')':''} • ${ageText(o.ev,o.p,o.occ.years)}</div>`).join('')}
+    ${todays.map(o=>`<div class="b-item">${EV_TYPES[o.ev.type].emoji} <b>${esc(o.p.name)}</b> — ${EV_TYPES[o.ev.type].label}${o.ev.label?' ('+esc(o.ev.label)+')':''}${(a=>a?' • '+a:'')(ageText(o.ev,o.p,o.occ.years))}</div>`).join('')}
     </div>` : '';
 
   // stats
@@ -455,7 +503,7 @@ function render(){
       <div class="u-name">${EV_TYPES[o.ev.type].emoji} ${esc(o.p.name)}</div>
       <div class="u-when">${daysUntilText(o.occ.daysUntil)}</div>
       <div class="u-date">${gematriya(o.occ.d)} ${hebMonthName(o.occ.m,hebrewLeap(o.occ.hy))} • ${fmtGreg(g)}</div>
-      <div class="u-age">${ageText(o.ev,o.p,o.occ.years)}</div>
+      ${(a=>a?`<div class="u-age">${a}</div>`:'')(ageText(o.ev,o.p,o.occ.years))}
     </div>`;
   }).join('');
   document.getElementById('upcomingSec').style.display = (ups.length && viewMode==='cards') ? '' : 'none';
@@ -466,7 +514,7 @@ function render(){
   if(q) people=people.filter(p=>[p.name,p.spouse,p.notes,p.relation,(p.children||[]).join(' ')].join(' ').includes(q));
   if(relF) people=people.filter(p=>p.relation===relF);
   const nextOf=p=>Math.min(...p.events.map(ev=>nextOccurrence(ev,tRd).daysUntil));
-  const mainAge=p=>{ const b=p.events.find(e=>e.type==='birthday')||p.events[0]; return nextOccurrence(b,tRd).years; };
+  const mainAge=p=>{ const b=p.events.find(e=>e.type==='birthday')||p.events[0]; return b.noYear?-1:nextOccurrence(b,tRd).years; };
   if(sortBy==='next') people.sort((a,b)=>nextOf(a)-nextOf(b));
   if(sortBy==='name') people.sort((a,b)=>a.name.localeCompare(b.name,'he'));
   if(sortBy==='age') people.sort((a,b)=>mainAge(b)-mainAge(a));
@@ -487,7 +535,7 @@ function personCard(p,tRd){
   const origHeb={y:main.hy,m:main.hm,d:main.hd};
   const origGreg=main.gy?{y:main.gy,m:main.gm,d:main.gd}:gregorianFromRd(rdFromHebrew(main.hy,main.hm,main.hd));
   let badges='';
-  if(main.type==='birthday'){
+  if(main.type==='birthday' && !main.noYear){
     const barAge=p.gender==='F'?12:13;
     if(mOcc.years===barAge) badges+=`<span class="badge badge-mitzvah">🎊 ${p.gender==='F'?'בת':'בר'} מצווה השנה!</span>`;
     if(MILESTONES[mOcc.years]) badges+=`<span class="badge badge-gold">✡️ ${MILESTONES[mOcc.years]}</span>`;
@@ -503,9 +551,9 @@ function personCard(p,tRd){
       <div class="avatar" style="background:${avColor(p.name)}">${main.type==='memorial'?'🕯️':esc(p.name.charAt(0))}</div>
       <div><span class="pname">${esc(p.name)}</span>${p.relation?`<span class="rel-badge">${esc(p.relation)}</span>`:''}</div>
     </div>
-    <div class="ev-line">${EV_TYPES[main.type].emoji} ${EV_TYPES[main.type].label}${main.label?' — '+esc(main.label):''}: <b>${fmtHeb(origHeb)}</b> (${fmtGreg(origGreg)})</div>
+    <div class="ev-line">${EV_TYPES[main.type].emoji} ${EV_TYPES[main.type].label}${main.label?' — '+esc(main.label):''}: <b>${fmtHebEv(main)}</b>${main.noYear?' (שנה לא ידועה)':` (${fmtGreg(origGreg)})`}</div>
     <div class="next-line">⏳ <span class="cnt">${daysUntilText(mOcc.daysUntil)}</span> • ${weekdayName(mOcc.rd)}, ${fmtGreg(g)}<br>
-    ${gematriya(mOcc.d)} ${hebMonthName(mOcc.m,hebrewLeap(mOcc.hy))} ${hebYearStr(mOcc.hy)} — <span class="age-big">${ageText(main,p,mOcc.years)}</span></div>
+    ${gematriya(mOcc.d)} ${hebMonthName(mOcc.m,hebrewLeap(mOcc.hy))} ${hebYearStr(mOcc.hy)}${(a=>a?` — <span class="age-big">${a}</span>`:'')(ageText(main,p,mOcc.years))}</div>
     ${badges}
     ${meta.length?`<div class="meta-row">${meta.join(' • ')}</div>`:''}
     <div class="card-actions">
@@ -519,8 +567,8 @@ function personCard(p,tRd){
       ${p.notes?`<div class="d-row">📝 ${esc(p.notes)}</div>`:''}
       ${extra.map(ev=>{
         const o=nextOccurrence(ev,tRd);
-        return `<div class="ev-sub">${EV_TYPES[ev.type].emoji} <b>${EV_TYPES[ev.type].label}${ev.label?' — '+esc(ev.label):''}</b>: ${fmtHeb({y:ev.hy,m:ev.hm,d:ev.hd})}<br>
-        ⏳ ${daysUntilText(o.daysUntil)} • ${fmtGreg(gregorianFromRd(o.rd))} • ${ageText(ev,p,o.years)}</div>`;
+        return `<div class="ev-sub">${EV_TYPES[ev.type].emoji} <b>${EV_TYPES[ev.type].label}${ev.label?' — '+esc(ev.label):''}</b>: ${fmtHebEv(ev)}<br>
+        ⏳ ${daysUntilText(o.daysUntil)} • ${fmtGreg(gregorianFromRd(o.rd))}${(a=>a?' • '+a:'')(ageText(ev,p,o.years))}</div>`;
       }).join('')}
     </div>
   </div>`;
@@ -545,8 +593,9 @@ function calToday(){ const h=hebrewFromRd(todayRd()); calY=h.y; calM=h.m; render
 const DOW_SHORT=['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','שבת'];
 function calChipText(p,ev,years){
   const first=p.name.split(' ')[0];
-  if(ev.type==='birthday') return `🎂 ${first} (${years})`;
-  if(ev.type==='anniversary') return `💍 ${first} (${years})`;
+  const yr=ev.noYear?'':` (${years})`;
+  if(ev.type==='birthday') return `🎂 ${first}${yr}`;
+  if(ev.type==='anniversary') return `💍 ${first}${yr}`;
   if(ev.type==='memorial') return `🕯️ ${first}`;
   return `📌 ${ev.label||first}`;
 }
@@ -591,7 +640,7 @@ function renderCalendar(){
     const rd=start+d-1, g=gregorianFromRd(rd);
     return byDay[d].map(x=>`<div class="cl-item">
       <span class="cl-day">${gematriya(d)} ${hebMonthName(calM,leap)}</span> • ${weekdayName(rd)} • ${fmtGreg(g)}
-      — ${EV_TYPES[x.ev.type].emoji} <b>${esc(x.p.name)}</b>${x.ev.label?' ('+esc(x.ev.label)+')':''} — ${ageText(x.ev,x.p,x.years)}
+      — ${EV_TYPES[x.ev.type].emoji} <b>${esc(x.p.name)}</b>${x.ev.label?' ('+esc(x.ev.label)+')':''}${(a=>a?' — '+a:'')(ageText(x.ev,x.p,x.years))}
       ${rd>=tRd?`<span style="color:var(--green);font-weight:600"> • ${daysUntilText(rd-tRd)}</span>`:''}
     </div>`).join('');
   }).join('') : '<div class="cl-empty">אין אירועים בחודש זה 🌙</div>';
@@ -605,7 +654,7 @@ function sendWA(pid){
   const first=p.name.split(' ')[0];
   let msg;
   if(main.type==='anniversary') msg=`מזל טוב ${first}! 💍 יום נישואין שמח, שתזכו לעוד הרבה שנים טובות ומאושרות יחד!`;
-  else msg=`מזל טוב ${first}! 🎂 יום הולדת ${occ.years} שמח! עד מאה ועשרים בבריאות, בשמחה ובנחת!`;
+  else msg=`מזל טוב ${first}! 🎂 יום הולדת ${main.noYear?'':occ.years+' '}שמח! עד מאה ועשרים בבריאות, בשמחה ובנחת!`;
   let ph=(p.phone||'').replace(/\D/g,'');
   if(ph.startsWith('0')) ph='972'+ph.slice(1);
   window.open(`https://wa.me/${ph}?text=${encodeURIComponent(msg)}`,'_blank');
@@ -694,6 +743,7 @@ function addEventRow(ev){
         <select class="ev-hm">${hebMonthOptions(hy,hm)}</select>
         <select class="ev-hy">${hebYearOptions(hy)}</select>
       </div>
+      <label class="sunset-lbl"><input type="checkbox" class="ev-noyear" ${ev&&ev.noYear?'checked':''}> שנה לא ידועה (יוצג התאריך בלי גיל)</label>
     </div>`;
   div.querySelectorAll(`input[name=evmode${i}]`).forEach(r=>r.addEventListener('change',()=>{
     div.querySelector('.ev-greg').hidden = !div.querySelector(`input[name=evmode${i}][value=g]`).checked;
@@ -707,6 +757,13 @@ function addEventRow(ev){
       sel.innerHTML=hebMonthOptions(y, cur===13&&!hebrewLeap(y)?12:cur);
     }
   });
+  const nyChk=div.querySelector('.ev-noyear'), yearSel=div.querySelector('.ev-hy');
+  function applyNoYear(){
+    yearSel.disabled=nyChk.checked;
+    if(nyChk.checked){ yearSel.value='5774'; yearSel.dispatchEvent(new Event('input',{bubbles:true})); }
+  }
+  nyChk.addEventListener('change',applyNoYear);
+  if(nyChk.checked) applyNoYear();
   document.getElementById('evRows').appendChild(div);
 }
 
@@ -718,7 +775,7 @@ function collectEvents(){
     const type=row.querySelector('.ev-type').value;
     const label=row.querySelector('.ev-label').value.trim();
     const isGreg=row.querySelector('.ev-greg').hidden===false;
-    let hy,hm,hd,gy,gm,gd;
+    let hy,hm,hd,gy,gm,gd,noYear=false;
     if(isGreg){
       const v=row.querySelector('.ev-gdate').value;
       if(!v){ alert('נא לבחור תאריך לועזי (או לעבור לתאריך עברי)'); return null; }
@@ -729,6 +786,7 @@ function collectEvents(){
       const h=hebrewFromRd(rd);
       hy=h.y; hm=h.m; hd=h.d;
     }else{
+      noYear=row.querySelector('.ev-noyear').checked;
       hy=+row.querySelector('.ev-hy').value;
       hm=+row.querySelector('.ev-hm').value;
       hd=+row.querySelector('.ev-hd').value;
@@ -738,6 +796,7 @@ function collectEvents(){
     }
     const evObj={id:row.dataset.evid||uid(),type,label,hy,hm,hd};
     if(gy){ evObj.gy=gy; evObj.gm=gm; evObj.gd=gd; }
+    if(noYear) evObj.noYear=true;
     out.push(evObj);
   }
   return out;
@@ -809,9 +868,9 @@ function exportICS(){
       const g=gregorianFromRd(occ.rd), g2=gregorianFromRd(occ.rd+1);
       const n=Y-ev.hy;
       let sum;
-      if(ev.type==='birthday') sum=`🎂 יום הולדת ${n} — ${p.name}`;
-      else if(ev.type==='anniversary') sum=`💍 יום נישואין (${n} שנים) — ${p.name}`;
-      else if(ev.type==='memorial') sum=`🕯️ אזכרה (${n} שנים) — ${p.name}${ev.label?' — '+ev.label:''}`;
+      if(ev.type==='birthday') sum=`🎂 יום הולדת${ev.noYear?'':' '+n} — ${p.name}`;
+      else if(ev.type==='anniversary') sum=`💍 יום נישואין${ev.noYear?'':` (${n} שנים)`} — ${p.name}`;
+      else if(ev.type==='memorial') sum=`🕯️ אזכרה${ev.noYear?'':` (${n} שנים)`} — ${p.name}${ev.label?' — '+ev.label:''}`;
       else sum=`📌 ${ev.label||'אירוע'} — ${p.name}`;
       lines.push('BEGIN:VEVENT',
         `UID:${p.id}-${ev.id}-${Y}@hebrew-birthdays`,
