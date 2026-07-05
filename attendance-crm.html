@@ -344,6 +344,64 @@ function extrasStr(userId,amutaId,ym){
     .map(x=>x.label+(x.amount?': '+x.amount:'')+(x.note?' ('+x.note+')':'')).join(' | ');
 }
 
+/* ==================== תצוגת חודש מלא (כרטיס עובד) ==================== */
+const DAY_LETTERS=['א','ב','ג','ד','ה','ו','ש'];
+function monthGridHTML(userId,amutaId,ym,editable){
+  const n=monthDaysCount(ym);
+  let rows='',totH=0,workDays=0;const cnt={sick:0,vacation:0,holiday:0,absence:0};
+  for(let d=1;d<=n;d++){
+    const ds=ym+'-'+String(d).padStart(2,'0');
+    const recs=state.records.filter(r=>r.userId===userId&&(!amutaId||r.amutaId===amutaId)&&r.date===ds)
+      .sort((a,b)=>String(a.tin).localeCompare(String(b.tin)));
+    const hol=holidayOf(ds), shab=isShabbat(ds);
+    const cls=shab?'shabbat':(hol?'holiday':'');
+    const dateCells=`<td class="num">${fmtDMY(ds)}</td><td><b>${DAY_LETTERS[weekdayOf(ds)]}</b></td><td class="muted" style="font-size:11.5px">${fmtHebShort(hebOfDateStr(ds))}</td>`;
+    const blank=`<td></td><td></td><td></td>`;
+    if(!recs.length){
+      rows+=`<tr class="${cls}">${dateCells}${amutaId?'':'<td></td>'}<td></td><td></td><td></td><td class="muted">${hol?esc(hol.name):(shab?'שבת':'')}</td><td></td>${editable?'<td></td>':''}</tr>`;
+      continue;
+    }
+    let dayH=0,hadWork=false;
+    recs.forEach((r,i)=>{
+      const h=(r.tin&&r.tout)?hoursOf(r):0;dayH+=h;
+      if(r.type==='work'&&r.tin)hadWork=true;
+      if(cnt[r.type]!==undefined&&!r.tin)cnt[r.type]++;
+      rows+=`<tr class="${cls}">${i===0?dateCells:blank}
+        ${amutaId?'':`<td><span class="tag" style="background:${amuta(r.amutaId).hex}22;color:${amuta(r.amutaId).hex}">${esc(amuta(r.amutaId).short)}</span></td>`}
+        <td class="num">${r.tin||'—'}</td>
+        <td class="num">${r.tout||(r.type==='work'&&r.tin?'<span class="open-punch">פתוח ▶</span>':'—')}</td>
+        <td class="num"><b>${h?fmtH(h):''}</b></td>
+        <td>${r.type!=='work'?(REC_TYPES[r.type]||r.type):(hol?esc(hol.name):'')}</td>
+        <td style="white-space:normal;max-width:180px">${esc(r.note||'')}</td>
+        ${editable?`<td><button class="btn btn-ghost btn-sm" onclick="openRecModal('${r.id}')">✎</button></td>`:''}</tr>`;
+    });
+    totH+=dayH;if(hadWork)workDays++;
+  }
+  const cntTxt=['sick','vacation','holiday'].filter(k=>cnt[k]).map(k=>REC_TYPES[k]+': '+cnt[k]).join(' · ');
+  rows+=`<tr class="total"><td colspan="3">סה"כ</td>${amutaId?'':'<td></td>'}
+    <td class="num" colspan="2">${workDays} ימי עבודה</td>
+    <td class="num">${fmtH(totH)} שעות</td>
+    <td colspan="2">${cntTxt}</td>${editable?'<td></td>':''}</tr>`;
+  return `<div class="tbl-wrap"><table><thead><tr>
+    <th>תאריך</th><th>יום</th><th>עברי</th>${amutaId?'':'<th>עמותה</th>'}<th>כניסה</th><th>יציאה</th><th>סה"כ</th><th>סוג</th><th>הערה</th>${editable?'<th></th>':''}
+  </tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+/* שכר בפועל: שעתי = תעריף×שעות; חודשי = ברוטו יחסי לפי שעות מול התקן */
+function payOf(tm,c,ym){
+  const rate=parseFloat(tm.rate)||0;
+  if(!rate)return null;
+  if(tm.empType==='monthly'){
+    const qh=parseFloat(tm.quotaHours)||0;
+    if(qh)return {pay:rate*c.hours/qh, basis:'שעות מול תקן '+fmtH(qh)};
+    const qd=parseFloat(tm.quotaDays)||workdaysInMonth(ym,tm.daysPerWeek||'5');
+    if(qd)return {pay:rate*c.days/qd, basis:'ימים מול תקן '+qd};
+    return null;
+  }
+  return {pay:rate*c.hours, basis:'תעריף שעתי'};
+}
+function fmtShekel(p){return '₪'+Math.round(p).toLocaleString('he-IL')}
+
 /* ==================== auth ==================== */
 function hashPass(p){return sha256('att|'+p)}
 function session(){try{return JSON.parse(localStorage.getItem(LS_SESSION))}catch(e){return null}}
@@ -439,14 +497,14 @@ function buildNav(){
   if(isAdmin)tabs.push({id:'dash',l:'📊 דשבורד'});
   if(hasTerms||!isAdmin)tabs.push({id:'clock',l:'🕐 שעון נוכחות'});
   if(hasTerms||!isAdmin)tabs.push({id:'my',l:'📅 הדוח שלי'});
-  if(isAdmin)tabs.push({id:'recs',l:'📋 דיווחים'},{id:'emps',l:'👥 עובדים'},{id:'report',l:'📑 דוח חודשי'},{id:'settings',l:'⚙️ הגדרות'});
+  if(isAdmin)tabs.push({id:'recs',l:'📋 דיווחים'},{id:'empcard',l:'🗓 כרטיס עובד'},{id:'emps',l:'👥 עובדים'},{id:'report',l:'📑 דוח חודשי'},{id:'settings',l:'⚙️ הגדרות'});
   document.getElementById('navBar').innerHTML=tabs.map(t=>`<button id="nav-${t.id}" class="${currentTab===t.id?'on':''}" onclick="goTab('${t.id}')">${t.l}</button>`).join('');
 }
 function goTab(id){currentTab=id;buildNav();render()}
 function render(){
   buildNav();
   const m=document.getElementById('mainArea');
-  const fn={dash:renderDash,clock:renderClock,my:renderMy,recs:renderRecs,emps:renderEmps,report:renderReport,settings:renderSettings}[currentTab];
+  const fn={dash:renderDash,clock:renderClock,my:renderMy,recs:renderRecs,empcard:renderEmpCard,emps:renderEmps,report:renderReport,settings:renderSettings}[currentTab];
   m.innerHTML=fn?fn():'';
   if(currentTab==='clock')updateTimers();
 }
@@ -698,9 +756,7 @@ function renderMy(){
     </div>`;
   });
   html+=`</div>`;
-  const recs=state.records.filter(r=>r.userId===me.id&&r.date.startsWith(myYM)&&(!myAmutaFilter||r.amutaId===myAmutaFilter))
-    .sort((a,b)=>a.date.localeCompare(b.date)||String(a.tin).localeCompare(String(b.tin)));
-  html+=`<div class="card"><h3>פירוט דיווחים — ${ymLabel(myYM)}</h3>${recsTable(recs,editable,false)}</div>`;
+  html+=`<div class="card"><h3>כרטיס נוכחות — ${ymLabel(myYM)}</h3>${monthGridHTML(me.id,myAmutaFilter,myYM,editable)}</div>`;
   return html;
 }
 
@@ -768,6 +824,35 @@ function renderRecs(){
     <div class="card">${recsTable(recs,true,true)}</div>`;
 }
 
+/* ==================== כרטיס עובד (מנהל) ==================== */
+let ecUser='',ecYM=curYM(),ecAmuta='';
+function renderEmpCard(){
+  const users=state.users.filter(u=>termsOf(u.id).length).sort((a,b)=>a.name.localeCompare(b.name,'he'));
+  if(!users.length)return '<div class="card">אין עובדים משויכים לעמותות.</div>';
+  if(!ecUser||!userById(ecUser)||!termsOf(ecUser).length)ecUser=users[0].id;
+  const u=userById(ecUser), mine=termsOf(ecUser);
+  if(ecAmuta&&!mine.some(t=>t.amutaId===ecAmuta))ecAmuta='';
+  let html=`<div class="card no-print" style="margin-bottom:14px"><div class="flex">
+    <div><label>עובד</label><select onchange="ecUser=this.value;render()">${users.map(x=>`<option value="${x.id}" ${x.id===ecUser?'selected':''}>${esc(x.name)}</option>`).join('')}</select></div>
+    <div><label>חודש</label><input type="month" value="${ecYM}" onchange="ecYM=this.value;render()"></div>
+    <div><label>עמותה</label><select onchange="ecAmuta=this.value;render()"><option value="">כל העמותות</option>${mine.map(t=>`<option value="${t.amutaId}" ${ecAmuta===t.amutaId?'selected':''}>${esc(amuta(t.amutaId).short)}</option>`).join('')}</select></div>
+    <div style="align-self:flex-end"><button class="btn btn-ok" onclick="openRecModal('','${ecUser}')">➕ הוסף דיווח</button></div>
+    <div style="align-self:flex-end"><button class="btn btn-ghost" onclick="window.print()">🖨 הדפסה</button></div>
+  </div></div>`;
+  html+=`<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin-bottom:14px">`;
+  mine.filter(t=>!ecAmuta||t.amutaId===ecAmuta).forEach(tm=>{
+    const a=amuta(tm.amutaId), c=calcMonth(ecUser,tm.amutaId,ecYM), p=payOf(tm,c,ecYM);
+    html+=`<div class="stat" style="background:${a.hex}">
+      <div class="l">${a.icon} ${esc(a.short)} · ${ymLabel(ecYM)}</div>
+      <div class="n">${fmtH(c.hours)} ש' · ${c.days} ימים</div>
+      <div class="l">${tm.empType==='monthly'?'ברוטו חודשי':'שעתי'}${p?' · שכר בפועל: '+fmtShekel(p.pay):''}</div>
+    </div>`;
+  });
+  html+=`</div>`;
+  html+=`<div class="card"><h3>🗓 ${esc(u.name)} — ${ymLabel(ecYM)}${ecAmuta?' · '+esc(amuta(ecAmuta).short):''}</h3>${monthGridHTML(ecUser,ecAmuta,ecYM,true)}</div>`;
+  return html;
+}
+
 /* ==================== עובדים (מנהל) ==================== */
 function renderEmps(){
   const rows=state.users.map(u=>{
@@ -780,7 +865,7 @@ function renderEmps(){
       <td>${chips||'<span class="muted">—</span>'}</td>
       <td>${canEditSelf(u)?'✓':'—'}</td>
       <td>${u.active==='0'?'<span class="tag" style="background:#f1f5f9;color:#64748b">לא פעיל</span>':'<span class="tag" style="background:#d1fae5;color:#065f46">פעיל</span>'}</td>
-      <td><button class="btn btn-ghost btn-sm" onclick="openEmpModal('${u.id}')">✎ עריכה</button></td>
+      <td><button class="btn btn-ghost btn-sm" onclick="openEmpModal('${u.id}')">✎ עריכה</button> <button class="btn btn-ghost btn-sm" onclick="ecUser='${u.id}';goTab('empcard')" title="כרטיס נוכחות חודשי">🗓</button></td>
     </tr>`}).join('');
   return `<div class="card">
     <div class="flex spread" style="margin-bottom:12px"><h2>👥 עובדים (${state.users.length})</h2><button class="btn btn-ok" onclick="openEmpModal('')">➕ עובד חדש</button></div>
@@ -885,7 +970,45 @@ function deleteEmp(userId){
 }
 
 /* ==================== דוח חודשי (פורמט רו"ח) ==================== */
-let repYM=curYM(), repAmuta='ezrat';
+let repYM=curYM(), repAmuta='ezrat', repView='clean';
+/* תצוגה מסודרת: טבלה נקייה פר עמותה + שכר בפועל (כולל ברוטו חודשי יחסי) */
+function cleanTableFor(aid,ym){
+  const a=amuta(aid);
+  const terms=state.terms.filter(tm=>tm.amutaId===aid).filter(tm=>{
+    const u=userById(tm.userId);if(!u)return false;
+    if(u.active!=='0')return true;
+    return recsOf(tm.userId,aid,ym).length>0;
+  }).sort((x,y)=>((+x.empNum||999)-(+y.empNum||999)));
+  let totH=0,totD=0,totPay=0,anyPay=false;
+  const rows=terms.map(tm=>{
+    const u=userById(tm.userId),c=calcMonth(tm.userId,aid,ym),p=payOf(tm,c,ym);
+    const qh=parseFloat(tm.quotaHours)||0;
+    const qd=tm.empType==='monthly'?(parseFloat(tm.quotaDays)||workdaysInMonth(ym,tm.daysPerWeek||'5')):0;
+    const pct=qh?Math.round(c.hours/qh*100):(qd?Math.round(c.days/qd*100):null);
+    totH+=c.hours;totD+=c.days;if(p){totPay+=p.pay;anyPay=true}
+    return `<tr>
+      <td><b>${esc(u.name)}</b></td><td class="num">${esc(tm.empNum||'')}</td>
+      <td>${tm.empType==='monthly'?'ברוטו חודשי':'שעתי'}</td>
+      <td class="num">${tm.rate?fmtShekel(+tm.rate):''}</td>
+      <td class="num">${c.days}</td>
+      <td class="num"><b>${fmtH(c.hours)}</b></td>
+      <td class="num">${qh?fmtH(qh)+' ש׳':(qd?qd+' ימים':'—')}</td>
+      <td style="min-width:120px">${pct!==null?`<div style="display:flex;gap:6px;align-items:center"><span class="num" style="width:40px;font-weight:700">${pct}%</span><div class="prog" style="flex:1;margin-top:0"><div style="width:${Math.min(100,pct)}%;background:${pct>=100?'var(--ok)':a.hex}"></div></div></div>`:'—'}</td>
+      <td class="num">${c.sick||''}</td><td class="num">${c.vacation||''}</td><td class="num">${c.holiday||''}</td>
+      <td class="num"><b>${p?fmtShekel(p.pay):'—'}</b>${p&&tm.empType==='monthly'?`<div class="muted" style="font-size:10.5px">${esc(p.basis)}</div>`:''}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="card" style="margin-bottom:16px">
+    <h3 style="color:${a.hex};margin-bottom:10px">${a.icon} ${esc(a.short)} — ${ymLabel(ym)}</h3>
+    <div class="tbl-wrap"><table><thead><tr>
+      <th>עובד</th><th>מס'</th><th>היקף</th><th>תעריף</th><th>ימי עבודה</th><th>שעות</th><th>תקן</th><th>% מהתקן</th><th>מחלה</th><th>חופשה</th><th>חג</th><th>שכר בפועל</th>
+    </tr></thead><tbody>
+      ${rows||'<tr><td colspan="12" class="muted">אין עובדים / דיווחים בחודש זה</td></tr>'}
+      ${rows?`<tr class="total"><td>סה"כ</td><td></td><td></td><td></td><td class="num">${totD}</td><td class="num">${fmtH(totH)}</td><td></td><td></td><td></td><td></td><td></td><td class="num">${anyPay?fmtShekel(totPay):''}</td></tr>`:''}
+    </tbody></table></div>
+    <p class="muted" style="font-size:12px;margin-top:8px">💡 "שכר בפועל": עובד שעתי = תעריף × שעות · עובד ברוטו חודשי = המשכורת באופן יחסי לשעות/ימים שעבד מול התקן (לא כולל מחלה/חופשה/חג).</p>
+  </div>`;
+}
 const REP_HEADERS=['שם','היקף המשרה חודשי / שעתי','תעריף לשעה/חודש','ימי עבודה בשבוע 5/6','מס עובד','ימי עבודה בפועל','מתוך ימי עבודה בחודש (לעובד חודשי)','שעות עבודה בפועל','מתוך שעות עבודה בחודש (לעובד חודשי)','שעות בשיעור 100%','שעות בשיעור 125%','שעות בשיעור 150%','נסיעות','ימי חופשה','ימי מחלה','ימי חג','העדרויות-ימים','העדרויות-שעות','תאריך הפסקת עבודה','סיבת הפסקת עבודה','הערות/ שעות בתעריף מיוחד'];
 function repRowsFor(amutaId,ym){
   const terms=state.terms.filter(tm=>tm.amutaId===amutaId).filter(tm=>{
@@ -917,11 +1040,17 @@ function renderReport(){
     <div><label>חודש</label><input type="month" value="${repYM}" onchange="repYM=this.value;render()"></div>
     <div class="flex" style="align-self:flex-end">${tabs}</div>
     <div class="flex" style="align-self:flex-end;margin-inline-start:auto">
+      <button class="btn ${repView==='clean'?'btn-blue':'btn-ghost'}" onclick="repView='clean';render()">📊 תצוגה מסודרת</button>
+      <button class="btn ${repView==='acc'?'btn-blue':'btn-ghost'}" onclick="repView='acc';render()">📄 פורמט רו"ח</button>
       <button class="btn btn-ok" onclick="exportReport()">⬇️ ייצוא אקסל</button>
       <button class="btn btn-ghost" onclick="window.print()">🖨 הדפסה</button>
     </div>
   </div></div>`;
   const list=repAmuta==='all'?AMUTOT.map(a=>a.id):[repAmuta];
+  if(repView==='clean'){
+    list.forEach(aid=>{html+=cleanTableFor(aid,repYM)});
+    return html;
+  }
   list.forEach(aid=>{
     const a=amuta(aid), rows=repRowsFor(aid,repYM);
     html+=`<div class="card rep" style="margin-bottom:16px">
