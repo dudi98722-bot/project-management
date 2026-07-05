@@ -903,7 +903,7 @@ function openEmpModal(userId){
     ${termBoxes}
     <h3 style="margin-top:16px">⏱ דיווח מאוחד — לעובד בכמה עמותות</h3>
     <div class="term-box">
-      <div class="th"><input type="checkbox" id="emSplitOn" ${(u&&getSplit(u.id))?'checked':''} style="width:auto">
+      <div class="th"><input type="checkbox" id="emSplitOn" ${(u&&getSplit(u.id))?'checked':''} style="width:auto" onchange="spPrefill()">
         <span>העובד מחתים פעם אחת, והשעות מתחלקות אוטומטית בין העמותות לפי אחוזים</span></div>
       <div class="term-fields" style="grid-template-columns:repeat(3,1fr)">
         ${AMUTOT.map(a=>{const sp=u?getSplit(u.id):null;return `<div><label>% ${esc(a.short)}</label><input type="number" id="sp-${a.id}" min="0" max="100" value="${sp&&sp.pcts[a.id]?+sp.pcts[a.id]:''}"></div>`}).join('')}
@@ -915,6 +915,15 @@ function openEmpModal(userId){
       <button class="btn btn-ghost" onclick="closeModal()">ביטול</button>
       ${u&&u.id!==me.id?`<button class="btn btn-bad" style="margin-inline-start:auto" onclick="deleteEmp('${u.id}')">🗑 מחיקה</button>`:''}
     </div>`);
+}
+function spPrefill(){ // סימון "דיווח מאוחד" ממלא אוטומטית חלוקה שווה לעמותות המסומנות
+  if(!document.getElementById('emSplitOn').checked)return;
+  const ids=AMUTOT.map(a=>a.id).filter(id=>document.getElementById('tbc-'+id).checked);
+  if(ids.length<2){alert('סמן קודם ✔ ליד 2 עמותות לפחות (בקטע שיוך לעמותות למעלה)');document.getElementById('emSplitOn').checked=false;return}
+  const hasVal=ids.some(id=>+document.getElementById('sp-'+id).value>0);
+  if(hasVal)return;
+  const base=Math.floor(100/ids.length);
+  ids.forEach((id,i)=>{document.getElementById('sp-'+id).value=(i===0)?(100-base*(ids.length-1)):base});
 }
 function saveEmp(userId){
   const name=document.getElementById('emName').value.trim(),un=document.getElementById('emUser').value.trim();
