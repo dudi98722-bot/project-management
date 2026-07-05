@@ -306,6 +306,20 @@ function openPunch(userId,amutaId){return state.records.find(r=>r.userId===userI
 function anyOpenPunches(userId){return state.records.filter(r=>r.userId===userId&&r.type==='work'&&r.tin&&!r.tout)}
 function forgottenPunches(){const t=todayStr();return state.records.filter(r=>r.type==='work'&&r.tin&&!r.tout&&r.date<t)}
 const canEditSelf=u=>u.role==='admin'||u.canEdit==='1'||u.canEdit===1;
+/* דיווח מאוחד: עובד ב-2+ עמותות שמחתים פעם אחת והשעות מתפצלות לפי אחוזים.
+   הקונפיג נשמר ב-settings תחת split_<userId> = {"on":1,"pcts":{"kupat":60,"apiryon":40}} */
+function getSplit(userId){
+  try{
+    const v=JSON.parse(state.settings['split_'+userId]||'null');
+    if(v&&v.on&&v.pcts)return v;
+  }catch(e){}
+  return null;
+}
+function splitAmutot(userId){ // העמותות שמשתתפות בפיצול, לפי סדר קבוע
+  const sp=getSplit(userId);if(!sp)return[];
+  const ids=termsOf(userId).map(t=>t.amutaId);
+  return AMUTOT.map(a=>a.id).filter(id=>ids.includes(id)&&(+sp.pcts[id]||0)>0);
+}
 
 /* חישוב חודשי לעובד בעמותה — בסיס לדוח הרו"ח */
 function calcMonth(userId,amutaId,ym){
@@ -449,7 +463,29 @@ function renderClock(){
   const t=todayStr(),hol=holidayOf(t);
   if(isShabbat(t))html+=`<div class="banner info">🕯️ היום שבת קודש</div>`;
   if(hol)html+=`<div class="banner info">🎉 היום ${esc(hol.name||'חג')}</div>`;
+  const split=getSplit(me.id), spIds=splitAmutot(me.id);
   html+=`<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">`;
+  if(split&&spIds.length>1){
+    // ---- כרטיס דיווח מאוחד: החתמה אחת, פיצול יחסי בין העמותות ----
+    const op=anyOpenPunches(me.id).find(r=>spIds.includes(r.amutaId));
+    const grad=`linear-gradient(105deg,${spIds.map((id,i)=>amuta(id).hex+' '+Math.round(i/(spIds.length-1)*100)+'%').join(',')})`;
+    const pctsTxt=spIds.map(id=>`${amuta(id).icon} ${esc(amuta(id).short)} ${+split.pcts[id]}%`).join(' · ');
+    html+=`<div class="amuta-card" style="grid-column:1/-1">
+      <div class="top" style="background:${grad}"><span>⏱ דיווח מאוחד — החתמה אחת לכל העמותות</span>${op?'<span class="tag" style="background:rgba(255,255,255,.25);color:#fff">בעבודה</span>':''}</div>
+      <div class="body">
+        <div class="muted" style="font-size:13px;margin-bottom:10px">ביציאה השעות יתחלקו אוטומטית: ${pctsTxt}</div>
+        ${op?`
+          <div class="clock-status">נכנסת ב-<b>${op.tin}</b>${op.date!==t?' <b style="color:var(--bad)">('+fmtDMY(op.date)+'!)</b>':''}</div>
+          <div class="clock-timer" id="timer-unified" data-in="${op.date}T${op.tin}">--:--</div>
+          <div style="margin:10px 0"><input id="note-unified" placeholder="הערה (לא חובה)" value="${esc(op.note||'')}"></div>
+          <button class="btn btn-bad btn-big" onclick="punchOutUnified()">🔴 החתמת יציאה</button>`
+        :`
+          <div class="clock-status muted">לא בעבודה כרגע</div>
+          <div style="margin:10px 0"><input id="note-unified" placeholder="הערה (לא חובה)"></div>
+          <button class="btn btn-ok btn-big" onclick="punchInUnified()">🟢 החתמת כניסה</button>`}
+      </div>
+    </div>`;
+  } else
   mine.forEach(tm=>{
     const a=amuta(tm.amutaId), op=openPunch(me.id,tm.amutaId);
     html+=`<div class="amuta-card">
@@ -513,6 +549,41 @@ function punchOut(amutaId){
   op.tout=nowHM();if(noteEl&&noteEl.value.trim())op.note=noteEl.value.trim();
   op.by=me.name;op.ts=new Date().toISOString();
   upsert('records',op);render();
+}
+function minToHM(mins){mins=((Math.round(mins)%1440)+1440)%1440;return String(Math.floor(mins/60)).padStart(2,'0')+':'+String(mins%60).padStart(2,'0')}
+function punchInUnified(){
+  const spIds=splitAmutot(me.id),sp=getSplit(me.id);
+  if(anyOpenPunches(me.id).some(r=>spIds.includes(r.amutaId))){alert('כבר קיים שעון פתוח');return}
+  // נפתח בעמותה עם האחוז הגבוה — ביציאה יתפצל בין כולן
+  const primary=[...spIds].sort((a,b)=>(+sp.pcts[b]||0)-(+sp.pcts[a]||0))[0];
+  const noteEl=document.getElementById('note-unified');
+  const rec={id:uid(),userId:me.id,amutaId:primary,date:todayStr(),tin:nowHM(),tout:'',type:'work',note:noteEl?noteEl.value.trim():'',src:'clock',by:me.name,ts:new Date().toISOString()};
+  upsert('records',rec);render();
+}
+function punchOutUnified(){
+  const spIds=splitAmutot(me.id),sp=getSplit(me.id);
+  const op=anyOpenPunches(me.id).find(r=>spIds.includes(r.amutaId));
+  if(!op){alert('לא נמצא שעון פתוח');return}
+  if(op.date!==todayStr()&&!confirm('השעון נפתח ב-'+fmtDMY(op.date)+' — לסגור אותו בשעה הנוכחית?'))return;
+  const tout=nowHM();
+  let total=toMin(tout)-toMin(op.tin);if(total<0)total+=1440;
+  const noteEl=document.getElementById('note-unified');
+  const note=(noteEl&&noteEl.value.trim())||op.note||'';
+  const ts=new Date().toISOString();
+  const sum=spIds.reduce((s,id)=>s+(+sp.pcts[id]||0),0)||100;
+  // פיצול רציף: כל עמותה מקבלת מקטע זמן לפי האחוז שלה; האחרונה סוגרת בדיוק בשעת היציאה
+  const ops=[];let start=toMin(op.tin);
+  spIds.forEach((aid,i)=>{
+    const isLast=i===spIds.length-1;
+    const segEnd=isLast?toMin(op.tin)+total:start+Math.round(total*(+sp.pcts[aid]||0)/sum);
+    const rec=(i===0)?op:{id:uid(),userId:me.id,date:op.date,type:'work',src:'clock'};
+    rec.amutaId=aid;rec.tin=minToHM(start);rec.tout=minToHM(segEnd);
+    rec.note=note+(spIds.length>1?' [מאוחד '+(+sp.pcts[aid])+'%]':'');
+    rec.by=me.name;rec.ts=ts;
+    ops.push({op:'upsert',sheet:'records',data:rec});
+    start=segEnd;
+  });
+  batchOps(ops);render();
 }
 function reportDay(){
   const amutaId=document.getElementById('dayAmuta').value, date=document.getElementById('dayDate').value,
@@ -700,7 +771,9 @@ function renderRecs(){
 /* ==================== עובדים (מנהל) ==================== */
 function renderEmps(){
   const rows=state.users.map(u=>{
-    const chips=termsOf(u.id).map(tm=>`<span class="tag" style="background:${amuta(tm.amutaId).hex}22;color:${amuta(tm.amutaId).hex}">${esc(amuta(tm.amutaId).short)}${tm.empType==='monthly'?' · חודשי':' · שעתי'}</span>`).join(' ');
+    let chips=termsOf(u.id).map(tm=>`<span class="tag" style="background:${amuta(tm.amutaId).hex}22;color:${amuta(tm.amutaId).hex}">${esc(amuta(tm.amutaId).short)}${tm.empType==='monthly'?' · חודשי':' · שעתי'}</span>`).join(' ');
+    const usp=getSplit(u.id);
+    if(usp&&splitAmutot(u.id).length>1)chips+=` <span class="tag" style="background:#fef3c7;color:#92400e">⏱ מאוחד ${splitAmutot(u.id).map(id=>+usp.pcts[id]).join('/')}</span>`;
     return `<tr>
       <td><b>${esc(u.name)}</b></td><td dir="ltr" style="text-align:right">${esc(u.username)}</td>
       <td>${u.role==='admin'?'<span class="tag" style="background:#fee2e2;color:#991b1b">מנהל</span>':'עובד'}</td>
@@ -745,6 +818,15 @@ function openEmpModal(userId){
     </div>
     <h3 style="margin-top:16px">שיוך לעמותות + תנאי העסקה</h3>
     ${termBoxes}
+    <h3 style="margin-top:16px">⏱ דיווח מאוחד — לעובד בכמה עמותות</h3>
+    <div class="term-box">
+      <div class="th"><input type="checkbox" id="emSplitOn" ${(u&&getSplit(u.id))?'checked':''} style="width:auto">
+        <span>העובד מחתים פעם אחת, והשעות מתחלקות אוטומטית בין העמותות לפי אחוזים</span></div>
+      <div class="term-fields" style="grid-template-columns:repeat(3,1fr)">
+        ${AMUTOT.map(a=>{const sp=u?getSplit(u.id):null;return `<div><label>% ${esc(a.short)}</label><input type="number" id="sp-${a.id}" min="0" max="100" value="${sp&&sp.pcts[a.id]?+sp.pcts[a.id]:''}"></div>`}).join('')}
+      </div>
+      <p class="muted" style="font-size:12px;margin-top:8px">מלא אחוזים רק לעמותות שהעובד משויך אליהן (מסומנות למעלה) — הסכום חייב להיות 100.</p>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-primary" onclick="saveEmp('${u?u.id:''}')">💾 שמירה</button>
       <button class="btn btn-ghost" onclick="closeModal()">ביטול</button>
@@ -779,6 +861,18 @@ function saveEmp(userId){
     }
   });
   batchOps(ops);
+  // דיווח מאוחד — נשמר ב-settings, לא דורש שינוי בגיליון
+  const spOn=document.getElementById('emSplitOn').checked;
+  if(spOn){
+    const pcts={};let sum=0,cnt=0;
+    AMUTOT.forEach(a=>{
+      if(!document.getElementById('tbc-'+a.id).checked)return;
+      const v=+document.getElementById('sp-'+a.id).value||0;
+      if(v>0){pcts[a.id]=v;sum+=v;cnt++}
+    });
+    if(cnt<2||sum!==100){alert('דיווח מאוחד: יש למלא אחוזים ל-2 עמותות לפחות (מהמסומנות), בסכום של בדיוק 100.\nהעובד נשמר — אבל הדיווח המאוחד לא הופעל.')}
+    else setSetting('split_'+u.id,JSON.stringify({on:1,pcts}));
+  } else setSetting('split_'+u.id,'');
   if(me.id===u.id)me=u;
   closeModal();render();
 }
