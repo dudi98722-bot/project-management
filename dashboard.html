@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>דשבורד קבלן בניה - דוד פלדמן</title>
+<style>
+:root{--primary:#1a3c5e;--primary-light:#2563a8;--accent:#f59e0b;--danger:#ef4444;--success:#10b981;--warn:#f97316;--gray-50:#f8fafc;--gray-100:#f1f5f9;--gray-200:#e2e8f0;--gray-400:#94a3b8;--gray-600:#475569;--gray-800:#1e293b;--white:#fff;--shadow:0 2px 12px rgba(0,0,0,.08);--r:12px}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--gray-100);color:var(--gray-800);direction:rtl}
+.sidebar{position:fixed;top:0;right:0;width:230px;height:100vh;background:var(--primary);color:#fff;display:flex;flex-direction:column;z-index:100;box-shadow:-3px 0 20px rgba(0,0,0,.15)}
+.sidebar-logo{padding:22px 18px;border-bottom:1px solid rgba(255,255,255,.1)}
+.sidebar-logo h2{font-size:16px;font-weight:700}
+.sidebar-logo p{font-size:11px;opacity:.55;margin-top:3px}
+.nav-section{padding:12px 0;flex:1;overflow-y:auto}
+.nav-label{font-size:9px;text-transform:uppercase;letter-spacing:1px;opacity:.4;padding:8px 18px 3px}
+.nav-item{display:flex;align-items:center;gap:9px;padding:10px 18px;cursor:pointer;transition:background .2s;font-size:13px;border-right:3px solid transparent}
+.nav-item:hover{background:rgba(255,255,255,.08)}
+.nav-item.active{background:rgba(255,255,255,.12);border-right-color:var(--accent);font-weight:600}
+.nav-item .ic{font-size:16px;width:20px;text-align:center}
+.sidebar-footer{padding:14px 18px;border-top:1px solid rgba(255,255,255,.1);font-size:11px;opacity:.4}
+.main{margin-right:230px;min-height:100vh}
+.topbar{background:#fff;padding:14px 26px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--gray-200);position:sticky;top:0;z-index:50;gap:10px;flex-wrap:wrap}
+.topbar h1{font-size:17px;font-weight:700;color:var(--primary)}
+.topbar-right{display:flex;gap:8px;align-items:center}
+.btn{padding:7px 14px;border-radius:8px;border:none;cursor:pointer;font-size:12px;font-weight:600;transition:all .2s;display:flex;align-items:center;gap:5px}
+.btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{background:var(--primary-light)}
+.btn-outline{background:#fff;color:var(--primary);border:1.5px solid var(--primary)}.btn-outline:hover{background:var(--gray-50)}
+.btn-accent{background:var(--accent);color:#fff}.btn-accent:hover{background:#d97706}
+.btn-sm{padding:5px 10px;font-size:11px}
+.btn-danger{background:var(--danger);color:#fff}
+.content{padding:22px 26px}
+.page{display:none}.page.active{display:block}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:20px}
+.kpi{background:#fff;border-radius:var(--r);padding:18px;box-shadow:var(--shadow);border-top:4px solid transparent}
+.kpi.blue{border-top-color:var(--primary-light)}.kpi.green{border-top-color:var(--success)}
+.kpi.yellow{border-top-color:var(--accent)}.kpi.red{border-top-color:var(--danger)}.kpi.orange{border-top-color:var(--warn)}
+.kpi-label{font-size:11px;color:var(--gray-600);font-weight:500;margin-bottom:4px}
+.kpi-value{font-size:24px;font-weight:800;color:var(--primary)}
+.kpi-sub{font-size:11px;color:var(--gray-600);margin-top:3px}
+.kpi-trend{font-size:11px;font-weight:600;margin-top:3px}
+.kpi-trend.up{color:var(--success)}.kpi-trend.down{color:var(--danger)}
+.card{background:#fff;border-radius:var(--r);box-shadow:var(--shadow);margin-bottom:18px;overflow:hidden}
+.card-header{padding:14px 18px;border-bottom:1px solid var(--gray-100);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.card-title{font-size:14px;font-weight:700;color:var(--primary)}
+.card-body{padding:18px}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{background:var(--gray-50);padding:9px 11px;text-align:right;font-weight:600;font-size:11px;color:var(--gray-600);border-bottom:1.5px solid var(--gray-200);white-space:nowrap;cursor:pointer;user-select:none}
+thead th:hover{background:var(--gray-200)}
+tbody tr{border-bottom:1px solid var(--gray-100);transition:background .15s}
+tbody tr:hover{background:var(--gray-50)}
+tbody td{padding:9px 11px;vertical-align:middle}
+tbody tr:last-child{border-bottom:none}
+.badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:600;white-space:nowrap}
+.badge-green{background:#d1fae5;color:#065f46}.badge-yellow{background:#fef3c7;color:#92400e}
+.badge-blue{background:#dbeafe;color:#1e40af}.badge-red{background:#fee2e2;color:#991b1b}
+.badge-purple{background:#f3e8ff;color:#6b21a8}.badge-gray{background:#f1f5f9;color:#475569}
+.badge-orange{background:#ffedd5;color:#9a3412}
+.filters-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.fi{padding:7px 11px;border:1.5px solid var(--gray-200);border-radius:8px;font-size:12px;background:#fff;color:var(--gray-800);outline:none;transition:border-color .2s}
+.fi:focus{border-color:var(--primary-light)}
+.fi.wide{min-width:200px}
+.prog-bg{background:var(--gray-200);border-radius:10px;height:7px;overflow:hidden;min-width:70px}
+.prog-fill{height:100%;border-radius:10px;background:var(--primary-light);transition:width .3s}
+.prog-fill.g{background:var(--success)}.prog-fill.r{background:var(--danger)}.prog-fill.y{background:var(--accent)}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity .2s}
+.modal-overlay.open{opacity:1;pointer-events:all}
+.modal{background:#fff;border-radius:16px;width:100%;max-width:580px;max-height:90vh;overflow-y:auto;transform:translateY(20px);transition:transform .2s}
+.modal-overlay.open .modal{transform:translateY(0)}
+.modal-header{padding:18px 22px;border-bottom:1px solid var(--gray-200);display:flex;align-items:center;justify-content:space-between}
+.modal-title{font-size:15px;font-weight:700;color:var(--primary)}
+.modal-close{background:none;border:none;cursor:pointer;font-size:18px;color:var(--gray-600)}
+.modal-body{padding:22px}
+.modal-footer{padding:14px 22px;border-top:1px solid var(--gray-200);display:flex;gap:8px;justify-content:flex-end}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-group{display:flex;flex-direction:column;gap:4px}
+.form-group.full{grid-column:1/-1}
+.form-label{font-size:11px;font-weight:600;color:var(--gray-600)}
+.form-input,.form-select,.form-textarea{padding:8px 11px;border:1.5px solid var(--gray-200);border-radius:8px;font-size:12px;outline:none;transition:border-color .2s;background:#fff}
+.form-input:focus,.form-select:focus,.form-textarea:focus{border-color:var(--primary-light)}
+.form-textarea{resize:vertical;min-height:60px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:900px){.grid-2{grid-template-columns:1fr}}
+.summary-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--gray-100);font-size:12px}
+.summary-row:last-child{border-bottom:none}
+.summary-label{color:var(--gray-600)}
+.summary-value{font-weight:700}
+.toast{position:fixed;bottom:22px;left:22px;background:var(--primary);color:#fff;padding:10px 18px;border-radius:10px;font-size:12px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,.2);z-index:999;transform:translateY(80px);transition:transform .3s}
+.toast.show{transform:translateY(0)}.toast.success{background:var(--success)}.toast.error{background:var(--danger)}
+.text-success{color:var(--success);font-weight:700}.text-danger{color:var(--danger);font-weight:700}
+.text-muted{color:var(--gray-600)}.text-warn{color:var(--warn);font-weight:700}
+.mono{font-family:monospace}
+.bar-chart{display:flex;align-items:flex-end;gap:4px;height:160px;padding:0 8px}
+.bar-group{display:flex;flex-direction:column;align-items:center;gap:3px;flex:1}
+.bar-wrap{display:flex;gap:2px;align-items:flex-end;width:100%;justify-content:center}
+.bar{border-radius:4px 4px 0 0;min-width:10px;max-width:22px;flex:1;cursor:pointer;transition:opacity .2s}
+.bar:hover{opacity:.75}
+.bar.i{background:var(--primary-light)}.bar.e{background:var(--danger)}.bar.p{background:var(--success)}
+.bar-label{font-size:9px;color:var(--gray-600);white-space:nowrap}
+.chart-legend{display:flex;gap:14px;padding:10px 18px;flex-wrap:wrap}
+.legend-item{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--gray-600)}
+.legend-dot{width:9px;height:9px;border-radius:2px}
+.stage-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--gray-100);font-size:12px}
+.stage-row:last-child{border-bottom:none}
+.exp-cat-row{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:8px;background:var(--gray-50);margin-bottom:6px;border:1px solid var(--gray-200)}
+.exp-cat-info{display:flex;align-items:center;gap:10px}
+.exp-icon{font-size:18px}
+.exp-cat-name{font-size:12px;font-weight:600}
+.exp-cat-pct{font-size:10px;color:var(--gray-600)}
+.exp-cat-amount{font-size:13px;font-weight:800;color:var(--primary)}
+@media(max-width:768px){.sidebar{display:none}.main{margin-right:0}.form-grid{grid-template-columns:1fr}.kpi-grid{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <h2>🏗️ דוד פלדמן</h2>
+    <p>מערכת ניהול קבלן</p>
+  </div>
+  <nav class="nav-section">
+    <div class="nav-label">ראשי</div>
+    <div class="nav-item active" data-page="dashboard"><span class="ic">📊</span>דשבורד</div>
+    <div class="nav-item" data-page="projects"><span class="ic">🏠</span>פרויקטים</div>
+    <div class="nav-item" data-page="stages"><span class="ic">🔨</span>שלבי ביצוע</div>
+    <div class="nav-label">פיננסים</div>
+    <div class="nav-item" data-page="expenses"><span class="ic">📋</span>הוצאות עסק</div>
+    <div class="nav-item" data-page="proj-expenses"><span class="ic">🧾</span>הוצ' לפרויקט</div>
+    <div class="nav-item" data-page="reports"><span class="ic">📈</span>דוחות</div>
+  </nav>
+  <div class="sidebar-footer">0527698722 • 2026</div>
+</aside>
+
+<main class="main">
+  <div class="topbar">
+    <h1 id="page-title">דשבורד</h1>
+    <div class="topbar-right">
+      <button class="btn btn-outline btn-sm" onclick="exportCSV()">⬇️ ייצוא CSV</button>
+      <button class="btn btn-accent" onclick="openModal('modal-project')">+ פרויקט חדש</button>
+    </div>
+  </div>
+  <div class="content">
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="kpi-grid">
+        <div class="kpi blue">
+          <div class="kpi-label">סה"כ חוזים (לקוחות)</div>
+          <div class="kpi-value" id="kpi-total-client">—</div>
+          <div class="kpi-sub" id="kpi-total-client-sub"></div>
+        </div>
+        <div class="kpi red">
+          <div class="kpi-label">עלות קבלני משנה</div>
+          <div class="kpi-value" id="kpi-total-sub">—</div>
+          <div class="kpi-sub" id="kpi-sub-pct"></div>
+        </div>
+        <div class="kpi green">
+          <div class="kpi-label">רווח שנמשך</div>
+          <div class="kpi-value" id="kpi-profit">—</div>
+          <div class="kpi-sub" id="kpi-profit-remain"></div>
+        </div>
+        <div class="kpi yellow">
+          <div class="kpi-label">יתרת לקוחות לגביה</div>
+          <div class="kpi-value" id="kpi-balance-client">—</div>
+          <div class="kpi-sub">סה"כ שטרם שולם ע"י לקוחות</div>
+        </div>
+        <div class="kpi orange">
+          <div class="kpi-label">חוב לקבלני משנה</div>
+          <div class="kpi-value" id="kpi-balance-sub">—</div>
+          <div class="kpi-sub">יתרה לתשלום לקבלנים</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header"><span class="card-title">הכנסות מול הוצאות – לפי פרויקט</span></div>
+          <div class="bar-chart" id="main-chart"></div>
+          <div class="chart-legend">
+            <div class="legend-item"><div class="legend-dot" style="background:var(--primary-light)"></div>הכנסות</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--danger)"></div>עלות קבלן</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--success)"></div>רווח</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">סטטוס פרויקטים</span><button class="btn btn-outline btn-sm" onclick="navigate('projects')">כל הפרויקטים</button></div>
+          <div class="table-wrap">
+            <table><thead><tr><th>פרויקט</th><th>קבלן</th><th>גבוי</th><th>יתרה</th><th>רווח</th></tr></thead>
+            <tbody id="dash-projects"></tbody></table>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header"><span class="card-title">הוצאות עסק – לפי קטגוריה</span></div>
+          <div class="card-body" id="dash-exp-cats"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">פרויקטים פתוחים – יתרות</span></div>
+          <div class="card-body">
+            <div id="dash-open-projects"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PROJECTS -->
+    <div class="page" id="page-projects">
+      <div class="filters-bar">
+        <input class="fi wide" id="srch-proj" placeholder="🔍 חיפוש פרויקט..." oninput="renderProjects()">
+        <select class="fi" id="flt-sub" onchange="renderProjects()">
+          <option value="">כל הקבלנים</option>
+          <option value="אבו יאסר">אבו יאסר</option>
+          <option value="אבו עזמי">אבו עזמי</option>
+        </select>
+        <span class="text-muted" id="proj-count" style="font-size:11px"></span>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">כל הפרויקטים</span>
+          <button class="btn btn-primary btn-sm" onclick="openModal('modal-project')">+ הוסף</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th onclick="sortBy('name')">פרויקט ⇅</th>
+              <th>קבלן משנה</th>
+              <th onclick="sortBy('clientTotal')">חוזה לקוח ⇅</th>
+              <th onclick="sortBy('clientPaid')">שולם ע"י לקוח ⇅</th>
+              <th>יתרת לקוח</th>
+              <th onclick="sortBy('subTotal')">עלות קבלן ⇅</th>
+              <th>שולם לקבלן</th>
+              <th>יתרת קבלן</th>
+              <th onclick="sortBy('profitDrawn')">רווח נמשך ⇅</th>
+              <th>יתרת רווח</th>
+              <th>הוצ' נוס'</th>
+              <th>פעולות</th>
+            </tr></thead>
+            <tbody id="projects-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- STAGES -->
+    <div class="page" id="page-stages">
+      <div class="filters-bar">
+        <select class="fi wide" id="flt-stage-proj" onchange="renderStages()">
+          <option value="">בחר פרויקט</option>
+        </select>
+      </div>
+      <div class="grid-2" id="stages-content">
+        <div class="card"><div class="card-body text-muted" style="font-size:13px">בחר פרויקט לצפייה בשלבים</div></div>
+      </div>
+    </div>
+
+    <!-- EXPENSES -->
+    <div class="page" id="page-expenses">
+      <div class="kpi-grid" style="margin-bottom:18px" id="exp-kpis"></div>
+      <div class="filters-bar">
+        <input class="fi wide" id="srch-exp" placeholder="🔍 חיפוש..." oninput="renderExpenses()">
+        <select class="fi" id="flt-exp-year" onchange="renderExpenses()">
+          <option value="">כל השנים</option>
+          <option value="2021">2021</option><option value="2022">2022</option>
+          <option value="2023">2023</option><option value="2024">2024</option>
+          <option value="2025">2025</option><option value="2026">2026</option>
+        </select>
+        <select class="fi" id="flt-exp-type" onchange="renderExpenses()">
+          <option value="">כל הסוגים</option>
+        </select>
+        <button class="btn btn-primary btn-sm" onclick="openModal('modal-expense')">+ הוסף הוצאה</button>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header"><span class="card-title">הוצאות לפי קטגוריה</span></div>
+          <div class="card-body" id="exp-by-cat"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">רשימת הוצאות</span></div>
+          <div class="table-wrap">
+            <table><thead><tr><th>תאריך</th><th>קטגוריה</th><th>סכום</th><th>הערה</th></tr></thead>
+            <tbody id="expenses-body"></tbody></table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PROJECT EXPENSES -->
+    <div class="page" id="page-proj-expenses">
+      <div class="filters-bar">
+        <input class="fi wide" id="srch-pexp" placeholder="🔍 חיפוש לקוח / פירוט..." oninput="renderProjExpenses()">
+        <select class="fi" id="flt-pexp-year" onchange="renderProjExpenses()">
+          <option value="">כל השנים</option>
+          <option value="2021">2021</option><option value="2022">2022</option>
+          <option value="2023">2023</option><option value="2024">2024</option>
+          <option value="2025">2025</option><option value="2026">2026</option>
+        </select>
+        <select class="fi" id="flt-pexp-client" onchange="renderProjExpenses()">
+          <option value="">כל הפרויקטים</option>
+        </select>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">הוצאות לפרויקטים</span>
+          <span class="text-muted" id="pexp-total" style="font-size:12px"></span>
+        </div>
+        <div class="table-wrap">
+          <table><thead><tr><th>תאריך</th><th>לקוח</th><th>סכום</th><th>ספק</th><th>סוג הוצאה</th><th>אמצעי תשלום</th><th>פירוט</th></tr></thead>
+          <tbody id="pexp-body"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- REPORTS -->
+    <div class="page" id="page-reports">
+      <div class="kpi-grid">
+        <div class="kpi blue">
+          <div class="kpi-label">סה"כ הכנסות (כל הזמן)</div>
+          <div class="kpi-value" id="rep-total-income">—</div>
+        </div>
+        <div class="kpi red">
+          <div class="kpi-label">סה"כ עלות קבלנים</div>
+          <div class="kpi-value" id="rep-total-sub">—</div>
+        </div>
+        <div class="kpi green">
+          <div class="kpi-label">סה"כ רווח נמשך</div>
+          <div class="kpi-value" id="rep-total-profit">—</div>
+        </div>
+        <div class="kpi yellow">
+          <div class="kpi-label">סה"כ הוצאות עסק</div>
+          <div class="kpi-value" id="rep-total-exp">—</div>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header"><span class="card-title">ביצועים לפי פרויקט</span></div>
+          <div class="table-wrap">
+            <table><thead><tr><th>פרויקט</th><th>קבלן</th><th>חוזה</th><th>עלות קבלן</th><th>רווח גולמי</th><th>% רווח</th><th>רווח נמשך</th></tr></thead>
+            <tbody id="rep-projects-body"></tbody></table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">הוצאות עסק לפי שנה</span></div>
+          <div class="card-body" id="rep-exp-by-year"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">ביצועי קבלני משנה</span></div>
+        <div class="table-wrap">
+          <table><thead><tr><th>קבלן משנה</th><th>מס' פרויקטים</th><th>עלות כוללת</th><th>ממוצע לפרויקט</th><th>סה"כ שולם</th><th>חוב פתוח</th></tr></thead>
+          <tbody id="rep-subs-body"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<!-- MODAL: ADD PROJECT -->
+<div class="modal-overlay" id="modal-project">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-project-title">הוספת פרויקט</span>
+      <button class="modal-close" onclick="closeModal('modal-project')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group full"><label class="form-label">שם פרויקט *</label><input class="form-input" id="fp-name" placeholder="שם לקוח / פרויקט"></div>
+        <div class="form-group"><label class="form-label">קבלן משנה</label>
+          <select class="form-select" id="fp-sub"><option value="אבו יאסר">אבו יאסר</option><option value="אבו עזמי">אבו עזמי</option><option value="">ללא</option></select>
+        </div>
+        <div class="form-group"><label class="form-label">חוזה לקוח (₪)</label><input class="form-input" id="fp-client-total" type="number" placeholder="0"></div>
+        <div class="form-group"><label class="form-label">שולם ע"י לקוח (₪)</label><input class="form-input" id="fp-client-paid" type="number" placeholder="0"></div>
+        <div class="form-group"><label class="form-label">עלות קבלן משנה (₪)</label><input class="form-input" id="fp-sub-total" type="number" placeholder="0"></div>
+        <div class="form-group"><label class="form-label">שולם לקבלן (₪)</label><input class="form-input" id="fp-sub-paid" type="number" placeholder="0"></div>
+        <div class="form-group"><label class="form-label">הוצאות נוספות (₪)</label><input class="form-input" id="fp-extra" type="number" placeholder="0"></div>
+        <div class="form-group"><label class="form-label">רווח שנמשך (₪)</label><input class="form-input" id="fp-profit" type="number" placeholder="0"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-project')">ביטול</button>
+      <button class="btn btn-primary" id="btn-save-project" onclick="saveProject()">שמור</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ADD EXPENSE -->
+<div class="modal-overlay" id="modal-expense">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">הוספת הוצאה עסקית</span>
+      <button class="modal-close" onclick="closeModal('modal-expense')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group"><label class="form-label">תאריך</label><input class="form-input" id="fe-date" type="date"></div>
+        <div class="form-group"><label class="form-label">סוג הוצאה</label>
+          <select class="form-select" id="fe-type">
+            <option>שכר עובד</option><option>משכורת מנכל</option><option>שכירות משרד</option>
+            <option>עורך דין</option><option>ייעוץ עיסקי</option><option>רכב</option>
+            <option>תקשורת</option><option>מתנות</option><option>פרסום</option>
+            <option>הנהלת חשבונות</option><option>ציוד בניה</option><option>שכירות מחסן</option><option>כללי</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">סכום (₪)</label><input class="form-input" id="fe-amount" type="number" placeholder="0"></div>
+        <div class="form-group"><label class="form-label">אמצעי תשלום</label>
+          <select class="form-select" id="fe-payment"><option>מזומן</option><option>העברה</option><option>שיק</option><option>אשראי</option></select>
+        </div>
+        <div class="form-group full"><label class="form-label">הערה</label><input class="form-input" id="fe-note" placeholder="פירוט..."></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-expense')">ביטול</button>
+      <button class="btn btn-primary" onclick="saveExpense()">שמור</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ======= REAL DATA FROM SPREADSHEET =======
+const PROJECTS_BASE = [
+  {id:1,name:'לביוב - לחי ב"ב',sub:'אבו יאסר',clientTotal:231200,clientPaid:219400,clientBalance:11800,subTotal:196900,subPaid:196650,subBalance:250,extra:5592.37,profitDrawn:17157.63,profitRemain:11550},
+  {id:2,name:'פוברסקי - פרוייקט שלד',sub:'אבו יאסר',clientTotal:1171000,clientPaid:1170148,clientBalance:852,subTotal:861700,subPaid:859700,subBalance:2000,extra:1200,profitDrawn:309248,profitRemain:-1148},
+  {id:3,name:'וינברג - צירלזון',sub:'אבו יאסר',clientTotal:467000,clientPaid:452000,clientBalance:15000,subTotal:328500,subPaid:306000,subBalance:22500,extra:8493.39,profitDrawn:137506.61,profitRemain:-7500},
+  {id:4,name:'בלוך תיווך',sub:'אבו יאסר',clientTotal:15000,clientPaid:15000,clientBalance:0,subTotal:0,subPaid:0,subBalance:0,extra:0,profitDrawn:15000,profitRemain:0},
+  {id:5,name:'איצקוביץ - טחנת קמח',sub:'אבו יאסר',clientTotal:250000,clientPaid:240000,clientBalance:10000,subTotal:206500,subPaid:194000,subBalance:12500,extra:4458.64,profitDrawn:41541.36,profitRemain:-2500},
+  {id:6,name:'כלימי יגאל אלון',sub:'אבו יאסר',clientTotal:172500,clientPaid:160500,clientBalance:12000,subTotal:118500,subPaid:108500,subBalance:10000,extra:11390,profitDrawn:40610,profitRemain:2000},
+  {id:7,name:'קורניק',sub:'אבו יאסר',clientTotal:516500,clientPaid:500000,clientBalance:16500,subTotal:361500,subPaid:341100,subBalance:20400,extra:38972.40,profitDrawn:119927.60,profitRemain:-3900},
+  {id:8,name:'רוזנשטיין חיים - אלוף שמחוני',sub:'אבו יאסר',clientTotal:145000,clientPaid:125000,clientBalance:20000,subTotal:97600,subPaid:87600,subBalance:10000,extra:9900,profitDrawn:27500,profitRemain:10000},
+  {id:9,name:'שלום לעם - בוגרשוב ת"א',sub:'אבו עזמי',clientTotal:290000,clientPaid:225000,clientBalance:65000,subTotal:142000,subPaid:148098,subBalance:-6098,extra:103376.27,profitDrawn:-26474.27,profitRemain:71098},
+  {id:10,name:'הלוי - חברון בב',sub:'אבו יאסר',clientTotal:453250,clientPaid:335000,clientBalance:118250,subTotal:330000,subPaid:230000,subBalance:100000,extra:0,profitDrawn:105000,profitRemain:18250},
+  {id:11,name:'גוטפריד',sub:'אבו יאסר',clientTotal:820000,clientPaid:430000,clientBalance:390000,subTotal:525000,subPaid:210000,subBalance:315000,extra:451.02,profitDrawn:219548.98,profitRemain:75000},
+  {id:12,name:'יהודה בר - הרב קוק 30',sub:'אבו יאסר',clientTotal:643000,clientPaid:339000,clientBalance:304000,subTotal:509500,subPaid:273250,subBalance:236250,extra:0,profitDrawn:65750,profitRemain:67750},
+];
+
+const STAGES_DATA = {
+  'לביוב - לחי ב"ב': [{name:'מקדמה',total:30000,paid:30000},{name:'הריסה',total:35000,paid:35000},{name:'בניה',total:20000,paid:20000},{name:'ריצוף',total:30000,paid:30000},{name:'גבס',total:20000,paid:20000},{name:'שפכטל צבע',total:40000,paid:36200},{name:'התקנת אביזרי חשמל',total:35000,paid:35000},{name:'מסירת מפתח',total:10000,paid:8200},{name:"תוס' פנלית",total:8200,paid:2000},{name:"תוס' אינסטלציה",total:3000,paid:3000}],
+  'פוברסקי - פרוייקט שלד': [{name:'מקדמה',total:50000,paid:50000},{name:'ביצוע כלונסאות',total:120000,paid:120000},{name:'ביצוע קורות קשר',total:65000,paid:65000},{name:'פינוי חול',total:40000,paid:40000},{name:"יציקה קומה א'",total:110000,paid:110000},{name:"יציקה קומה ב'",total:90000,paid:90000},{name:"יציקה ג'",total:110000,paid:110000},{name:"יציקה גג קומה ד'",total:110000,paid:110000}],
+};
+
+const EXPENSES_DATA = [
+  {date:'2026-05-01',year:2026,month:5,type:'שכר עובד',amount:39582,payment:'',note:'שכר מאי'},
+  {date:'2026-04-01',year:2026,month:4,type:'שכר עובד',amount:51395,payment:'',note:'שכר אפריל'},
+  {date:'2026-03-01',year:2026,month:3,type:'שכר עובד',amount:37208,payment:'',note:'שכר מרץ'},
+  {date:'2026-02-01',year:2026,month:2,type:'שכר עובד',amount:39582,payment:'',note:'שכר פברואר'},
+  {date:'2026-01-01',year:2026,month:1,type:'שכר עובד',amount:36439,payment:'',note:'שכר ינואר'},
+  {date:'2026-01-01',year:2026,month:1,type:'ייעוץ עיסקי',amount:10000,payment:'',note:'ייעוץ'},
+  {date:'2026-01-01',year:2026,month:1,type:'פרסום',amount:3600,payment:'',note:'פרסום'},
+  {date:'2025-12-01',year:2025,month:12,type:'שכירות משרד',amount:3000,payment:'',note:''},
+  {date:'2025-11-01',year:2025,month:11,type:'שכירות משרד',amount:3000,payment:'',note:''},
+  {date:'2025-10-01',year:2025,month:10,type:'שכירות משרד',amount:3000,payment:'',note:''},
+  {date:'2025-09-01',year:2025,month:9,type:'שכירות משרד',amount:3000,payment:'',note:''},
+  {date:'2025-08-01',year:2025,month:8,type:'שכירות משרד',amount:3000,payment:'',note:''},
+  {date:'2025-07-01',year:2025,month:7,type:'שכירות משרד',amount:3000,payment:'',note:''},
+  {date:'2025-01-01',year:2025,month:1,type:'עורך דין',amount:3450,payment:'',note:''},
+  {date:'2024-06-01',year:2024,month:6,type:'רכב',amount:4200,payment:'',note:'דלק + ביטוח'},
+  {date:'2024-03-01',year:2024,month:3,type:'הנהלת חשבונות',amount:5000,payment:'',note:''},
+  {date:'2023-12-01',year:2023,month:12,type:'מתנות',amount:2800,payment:'',note:''},
+  {date:'2023-06-01',year:2023,month:6,type:'ייעוץ עיסקי',amount:7200,payment:'',note:''},
+  {date:'2022-08-01',year:2022,month:8,type:'ציוד בניה',amount:2670,payment:'',note:''},
+  {date:'2021-11-01',year:2021,month:11,type:'עורך דין',amount:1600,payment:'',note:'משה ליפל - חוזה קסטנמייד'},
+  {date:'2021-11-01',year:2021,month:11,type:'טוען רבני',amount:2000,payment:'',note:'משה יחזקאל - תביעה'},
+  {date:'2021-10-01',year:2021,month:10,type:'שכירות משרד',amount:2145,payment:'',note:''},
+];
+
+const PROJ_EXPENSES_DATA = [
+  {date:'2021-03-22',year:2021,month:3,client:'הרב מוטי פריד',amount:160,supplier:'',type:'',payment:'',detail:'צלי'},
+  {date:'2021-03-22',year:2021,month:3,client:'הרב מוטי פריד',amount:170,supplier:'',type:'',payment:'',detail:'מוישי פרידמן'},
+  {date:'2025-07-21',year:2025,month:7,client:'לביוב - לחי ב"ב',amount:2000,supplier:'',type:'',payment:'העברה',detail:'ציוד'},
+  {date:'2025-08-08',year:2025,month:8,client:'פוברסקי - פרוייקט שלד',amount:1200,supplier:'',type:'',payment:'מזומן',detail:'עלות נוספת'},
+  {date:'2025-09-04',year:2025,month:9,client:'וינברג - צירלזון',amount:3500,supplier:'',type:'',payment:'',detail:'הוצאות שטח'},
+  {date:'2025-10-01',year:2025,month:10,client:'קורניק',amount:8000,supplier:'',type:'',payment:'',detail:'חומרים'},
+  {date:'2025-11-01',year:2025,month:11,client:'שלום לעם - בוגרשוב ת"א',amount:15000,supplier:'',type:'',payment:'',detail:'עבודות נוספות'},
+  {date:'2026-01-01',year:2026,month:1,client:'גוטפריד',amount:451,supplier:'',type:'',payment:'',detail:'שונות'},
+];
+
+// ======= STATE =======
+let data = JSON.parse(localStorage.getItem('fd_data') || 'null') || {
+  projects: JSON.parse(JSON.stringify(PROJECTS_BASE)),
+  expenses: [...EXPENSES_DATA],
+  projExpenses: [...PROJ_EXPENSES_DATA],
+  nextId: 13
+};
+
+let sortField = null, sortAsc = true;
+
+function save(){ localStorage.setItem('fd_data', JSON.stringify(data)); }
+
+// ======= FORMAT =======
+const fmt = n => '₪' + Math.round(Number(n||0)).toLocaleString('he-IL');
+const fmtRaw = n => Math.round(Number(n||0)).toLocaleString('he-IL');
+const pct = (a,b) => b ? Math.round(a/b*100) : 0;
+
+function statusBadge(val, total) {
+  if(!total) return '<span class="badge badge-gray">—</span>';
+  const p = pct(val,total);
+  if(p>=100) return `<span class="badge badge-green">✓ שולם</span>`;
+  if(p>50) return `<span class="badge badge-yellow">חלקי</span>`;
+  return `<span class="badge badge-red">פתוח</span>`;
+}
+
+function balanceColor(v) {
+  if(v <= 0) return 'text-success';
+  if(v < 10000) return 'text-warn';
+  return 'text-danger';
+}
+
+const expIcons = {'שכר עובד':'👷','משכורת מנכל':'💼','שכירות משרד':'🏢','עורך דין':'⚖️','ייעוץ עיסקי':'📊','רכב':'🚗','תקשורת':'📱','מתנות':'🎁','פרסום':'📢','הנהלת חשבונות':'📒','ציוד בניה':'🔧','שכירות מחסן':'📦','טוען רבני':'📜','כללי':'📁','התמחות':'🎓','משרדיות':'🖨️'};
+
+// ======= NAVIGATION =======
+function navigate(page) {
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelector(`[data-page="${page}"]`).classList.add('active');
+  document.getElementById(`page-${page}`).classList.add('active');
+  const titles = {dashboard:'דשבורד',projects:'פרויקטים',stages:'שלבי ביצוע',expenses:'הוצאות עסק','proj-expenses':'הוצאות לפרויקט',reports:'דוחות'};
+  document.getElementById('page-title').textContent = titles[page]||'';
+  renderPage(page);
+}
+document.querySelectorAll('.nav-item').forEach(n=>n.addEventListener('click',()=>navigate(n.dataset.page)));
+function renderPage(p) {
+  if(p==='dashboard') renderDashboard();
+  if(p==='projects') renderProjects();
+  if(p==='stages') renderStagesPage();
+  if(p==='expenses') renderExpenses();
+  if(p==='proj-expenses') renderProjExpenses();
+  if(p==='reports') renderReports();
+}
+
+// ======= DASHBOARD =======
+function renderDashboard() {
+  const projs = data.projects;
+  const totalClient = projs.reduce((s,p)=>s+p.clientTotal,0);
+  const totalClientPaid = projs.reduce((s,p)=>s+p.clientPaid,0);
+  const totalClientBalance = projs.reduce((s,p)=>s+p.clientBalance,0);
+  const totalSub = projs.reduce((s,p)=>s+p.subTotal,0);
+  const totalSubBalance = projs.reduce((s,p)=>s+p.subBalance,0);
+  const totalProfit = projs.reduce((s,p)=>s+p.profitDrawn,0);
+  const totalProfitRemain = projs.reduce((s,p)=>s+p.profitRemain,0);
+  const totalExp = data.expenses.reduce((s,e)=>s+e.amount,0);
+
+  document.getElementById('kpi-total-client').textContent = fmt(totalClient);
+  document.getElementById('kpi-total-client-sub').textContent = `גבוי: ${fmt(totalClientPaid)} (${pct(totalClientPaid,totalClient)}%)`;
+  document.getElementById('kpi-total-sub').textContent = fmt(totalSub);
+  document.getElementById('kpi-sub-pct').textContent = `${pct(totalSub,totalClient)}% מהחוזים`;
+  document.getElementById('kpi-profit').textContent = fmt(totalProfit);
+  document.getElementById('kpi-profit-remain').textContent = `יתרת רווח: ${fmt(totalProfitRemain)}`;
+  document.getElementById('kpi-balance-client').textContent = fmt(totalClientBalance);
+  document.getElementById('kpi-balance-sub').textContent = fmt(totalSubBalance);
+
+  // Bar chart by project
+  const maxV = Math.max(...projs.map(p=>p.clientTotal));
+  const chart = document.getElementById('main-chart');
+  chart.innerHTML = projs.map(p => {
+    const ih = Math.round(p.clientTotal/maxV*150);
+    const eh = Math.round(p.subTotal/maxV*150);
+    const ph = Math.round(Math.max(0,p.profitDrawn)/maxV*150);
+    const shortName = p.name.split(' - ')[0].split(' ').slice(0,2).join(' ');
+    return `<div class="bar-group">
+      <div class="bar-wrap">
+        <div class="bar i" style="height:${ih}px" title="${p.name}: הכנסות ${fmt(p.clientTotal)}"></div>
+        <div class="bar e" style="height:${eh}px" title="${p.name}: קבלן ${fmt(p.subTotal)}"></div>
+        <div class="bar p" style="height:${ph}px" title="${p.name}: רווח ${fmt(p.profitDrawn)}"></div>
+      </div>
+      <div class="bar-label">${shortName}</div>
+    </div>`;
+  }).join('');
+
+  // Projects table
+  document.getElementById('dash-projects').innerHTML = projs.map(p=>`<tr>
+    <td><strong style="font-size:11px">${p.name}</strong></td>
+    <td style="font-size:10px">${p.sub}</td>
+    <td>${statusBadge(p.clientPaid,p.clientTotal)}</td>
+    <td class="${p.clientBalance>0?'text-danger':'text-success'} mono" style="font-size:11px">${fmt(p.clientBalance)}</td>
+    <td class="${p.profitDrawn>=0?'text-success':'text-danger'} mono" style="font-size:11px">${fmt(p.profitDrawn)}</td>
+  </tr>`).join('');
+
+  // Expense categories
+  const catMap = {};
+  data.expenses.forEach(e=>{ catMap[e.type]=(catMap[e.type]||0)+e.amount; });
+  const sorted = Object.entries(catMap).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const maxCat = sorted[0]?.[1]||1;
+  document.getElementById('dash-exp-cats').innerHTML = sorted.map(([cat,amt])=>`
+    <div class="exp-cat-row">
+      <div class="exp-cat-info"><span class="exp-icon">${expIcons[cat]||'📁'}</span>
+        <div><div class="exp-cat-name">${cat}</div><div class="exp-cat-pct">${pct(amt,totalExp)}% מסה"כ</div></div>
+      </div>
+      <div style="text-align:left">
+        <div class="exp-cat-amount">${fmt(amt)}</div>
+        <div class="prog-bg" style="width:80px;margin-top:3px"><div class="prog-fill r" style="width:${pct(amt,maxCat)}%"></div></div>
+      </div>
+    </div>`).join('');
+
+  // Open projects summary
+  const openProjs = projs.filter(p=>p.clientBalance>0||p.subBalance>0);
+  document.getElementById('dash-open-projects').innerHTML = openProjs.map(p=>`
+    <div class="summary-row">
+      <span class="summary-label" style="font-size:11px">${p.name}</span>
+      <div style="text-align:left;font-size:11px">
+        <span class="text-danger">גביה: ${fmt(p.clientBalance)}</span>
+        <span style="margin:0 8px;color:var(--gray-400)">|</span>
+        <span class="text-warn">קבלן: ${fmt(p.subBalance)}</span>
+      </div>
+    </div>`).join('') || '<div class="text-muted" style="font-size:12px">אין יתרות פתוחות</div>';
+}
+
+// ======= PROJECTS =======
+function sortBy(field) {
+  if(sortField===field) sortAsc=!sortAsc; else {sortField=field;sortAsc=false;}
+  renderProjects();
+}
+
+function renderProjects() {
+  const search = (document.getElementById('srch-proj')?.value||'').toLowerCase();
+  const sub = document.getElementById('flt-sub')?.value||'';
+  let list = data.projects.filter(p=>
+    (!search||p.name.toLowerCase().includes(search)) &&
+    (!sub||p.sub===sub)
+  );
+  if(sortField) list.sort((a,b)=>{
+    const va=a[sortField],vb=b[sortField];
+    return sortAsc?(va>vb?1:-1):(va<vb?1:-1);
+  });
+  document.getElementById('proj-count').textContent = `${list.length} פרויקטים`;
+  document.getElementById('projects-body').innerHTML = list.map(p=>`<tr>
+    <td><strong style="font-size:12px">${p.name}</strong></td>
+    <td><span class="badge badge-blue">${p.sub||'—'}</span></td>
+    <td class="mono">${fmt(p.clientTotal)}</td>
+    <td class="mono">${fmt(p.clientPaid)} ${statusBadge(p.clientPaid,p.clientTotal)}</td>
+    <td class="mono ${p.clientBalance>0?'text-danger':'text-success'}">${fmt(p.clientBalance)}</td>
+    <td class="mono">${fmt(p.subTotal)}</td>
+    <td class="mono">${fmt(p.subPaid)}</td>
+    <td class="mono ${p.subBalance>0?'text-warn':''}">${fmt(p.subBalance)}</td>
+    <td class="mono ${p.profitDrawn>=0?'text-success':'text-danger'}">${fmt(p.profitDrawn)}</td>
+    <td class="mono ${p.profitRemain>=0?'text-success':'text-danger'}">${fmt(p.profitRemain)}</td>
+    <td class="mono text-muted">${fmt(p.extra)}</td>
+    <td><div style="display:flex;gap:3px">
+      <button class="btn btn-outline btn-sm" onclick="editProject(${p.id})">✏️</button>
+      <button class="btn btn-danger btn-sm" onclick="delProject(${p.id})">🗑️</button>
+    </div></td>
+  </tr>`).join('');
+}
+
+// ======= STAGES =======
+function renderStagesPage() {
+  const sel = document.getElementById('flt-stage-proj');
+  if(sel.children.length<=1) {
+    data.projects.forEach(p=>{
+      const o=document.createElement('option');o.value=p.name;o.textContent=p.name;sel.appendChild(o);
+    });
+  }
+  renderStages();
+}
+
+function renderStages() {
+  const chosen = document.getElementById('flt-stage-proj')?.value;
+  if(!chosen) return;
+  const proj = data.projects.find(p=>p.name===chosen);
+  const stages = STAGES_DATA[chosen]||[];
+  const cont = document.getElementById('stages-content');
+  if(!proj){ cont.innerHTML='<div class="card"><div class="card-body">לא נמצאו שלבים</div></div>'; return; }
+
+  const totalStagePaid = stages.reduce((s,st)=>s+st.paid,0);
+  cont.innerHTML = `
+    <div class="card">
+      <div class="card-header"><span class="card-title">שלבי ביצוע – ${chosen}</span></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>שלב</th><th>סכום שלב</th><th>שולם</th><th>יתרה</th><th>סטטוס</th></tr></thead>
+        <tbody>${stages.map(st=>`<tr>
+          <td><strong>${st.name}</strong></td>
+          <td class="mono">${fmt(st.total)}</td>
+          <td class="mono text-success">${fmt(st.paid)}</td>
+          <td class="mono ${st.total-st.paid>0?'text-danger':'text-success'}">${fmt(st.total-st.paid)}</td>
+          <td>${statusBadge(st.paid,st.total)}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">סיכום פיננסי – ${chosen}</span></div>
+      <div class="card-body">
+        <div class="summary-row"><span class="summary-label">חוזה לקוח</span><span class="summary-value">${fmt(proj.clientTotal)}</span></div>
+        <div class="summary-row"><span class="summary-label">שולם ע"י לקוח</span><span class="summary-value text-success">${fmt(proj.clientPaid)}</span></div>
+        <div class="summary-row"><span class="summary-label">יתרת לקוח</span><span class="summary-value ${proj.clientBalance>0?'text-danger':'text-success'}">${fmt(proj.clientBalance)}</span></div>
+        <div class="summary-row"><span class="summary-label">עלות קבלן משנה</span><span class="summary-value">${fmt(proj.subTotal)}</span></div>
+        <div class="summary-row"><span class="summary-label">שולם לקבלן</span><span class="summary-value text-success">${fmt(proj.subPaid)}</span></div>
+        <div class="summary-row"><span class="summary-label">יתרת קבלן</span><span class="summary-value text-warn">${fmt(proj.subBalance)}</span></div>
+        <div class="summary-row"><span class="summary-label">הוצאות נוספות</span><span class="summary-value text-muted">${fmt(proj.extra)}</span></div>
+        <div class="summary-row" style="font-weight:700;font-size:13px"><span>רווח גולמי</span><span class="${proj.clientTotal-proj.subTotal-proj.extra>=0?'text-success':'text-danger'}">${fmt(proj.clientTotal-proj.subTotal-proj.extra)}</span></div>
+        <div class="summary-row" style="font-weight:700;font-size:13px"><span>רווח שנמשך</span><span class="${proj.profitDrawn>=0?'text-success':'text-danger'}">${fmt(proj.profitDrawn)}</span></div>
+        <div class="summary-row" style="font-weight:700;font-size:13px"><span>יתרת רווח למשיכה</span><span class="${proj.profitRemain>=0?'text-success':'text-danger'}">${fmt(proj.profitRemain)}</span></div>
+      </div>
+    </div>`;
+}
+
+// ======= EXPENSES =======
+function renderExpenses() {
+  const search = (document.getElementById('srch-exp')?.value||'').toLowerCase();
+  const year = document.getElementById('flt-exp-year')?.value||'';
+  const type = document.getElementById('flt-exp-type')?.value||'';
+
+  // Populate type filter
+  const types = [...new Set(data.expenses.map(e=>e.type))].sort();
+  const sel = document.getElementById('flt-exp-type');
+  if(sel.children.length<=1){
+    types.forEach(t=>{ const o=document.createElement('option');o.value=t;o.textContent=t;sel.appendChild(o); });
+  }
+
+  let list = data.expenses.filter(e=>
+    (!search||(e.note||'').toLowerCase().includes(search)||(e.type||'').toLowerCase().includes(search)) &&
+    (!year||String(e.year)===year) &&
+    (!type||e.type===type)
+  ).sort((a,b)=>b.date.localeCompare(a.date));
+
+  const totalShown = list.reduce((s,e)=>s+e.amount,0);
+  const total = data.expenses.reduce((s,e)=>s+e.amount,0);
+
+  // KPIs
+  const catMap={};
+  data.expenses.forEach(e=>{ catMap[e.type]=(catMap[e.type]||0)+e.amount; });
+  const kpis = [
+    {label:'שכר עובד',key:'שכר עובד',color:'blue'},
+    {label:'שכירות',key:'שכירות משרד',color:'yellow'},
+    {label:'רכב',key:'רכב',color:'green'},
+    {label:'ייעוץ עיסקי',key:'ייעוץ עיסקי',color:'red'},
+  ];
+  document.getElementById('exp-kpis').innerHTML = kpis.map(k=>`
+    <div class="kpi ${k.color}"><div class="kpi-label">${k.label}</div><div class="kpi-value">${fmt(catMap[k.key]||0)}</div>
+    <div class="kpi-sub">${pct(catMap[k.key]||0,total)}% מסה"כ</div></div>`).join('');
+
+  // By category
+  const sorted = Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
+  const maxCat = sorted[0]?.[1]||1;
+  document.getElementById('exp-by-cat').innerHTML = sorted.map(([cat,amt])=>`
+    <div class="exp-cat-row">
+      <div class="exp-cat-info"><span class="exp-icon">${expIcons[cat]||'📁'}</span>
+        <div><div class="exp-cat-name">${cat}</div><div class="exp-cat-pct">${pct(amt,total)}% מסה"כ</div></div>
+      </div>
+      <div style="text-align:left">
+        <div class="exp-cat-amount">${fmt(amt)}</div>
+        <div class="prog-bg" style="width:80px;margin-top:3px"><div class="prog-fill r" style="width:${pct(amt,maxCat)}%"></div></div>
+      </div>
+    </div>`).join('');
+
+  document.getElementById('expenses-body').innerHTML = list.map(e=>`<tr>
+    <td class="text-muted" style="font-size:11px">${e.date}</td>
+    <td><span class="badge badge-yellow">${e.type}</span></td>
+    <td class="mono text-danger">${fmt(e.amount)}</td>
+    <td style="font-size:11px">${e.note||'—'}</td>
+  </tr>`).join('');
+}
+
+// ======= PROJECT EXPENSES =======
+function renderProjExpenses() {
+  const search = (document.getElementById('srch-pexp')?.value||'').toLowerCase();
+  const year = document.getElementById('flt-pexp-year')?.value||'';
+  const client = document.getElementById('flt-pexp-client')?.value||'';
+
+  // Populate client filter
+  const sel = document.getElementById('flt-pexp-client');
+  if(sel.children.length<=1){
+    [...new Set(data.projExpenses.map(e=>e.client))].sort().forEach(c=>{
+      const o=document.createElement('option');o.value=c;o.textContent=c;sel.appendChild(o);
+    });
+  }
+
+  let list = data.projExpenses.filter(e=>
+    (!search||e.client.toLowerCase().includes(search)||e.detail.toLowerCase().includes(search)) &&
+    (!year||String(e.year)===year) &&
+    (!client||e.client===client)
+  ).sort((a,b)=>b.date.localeCompare(a.date));
+
+  const total = list.reduce((s,e)=>s+e.amount,0);
+  document.getElementById('pexp-total').textContent = `סה"כ: ${fmt(total)} | ${list.length} רשומות`;
+
+  document.getElementById('pexp-body').innerHTML = list.map(e=>`<tr>
+    <td class="text-muted" style="font-size:11px">${e.date}</td>
+    <td><strong style="font-size:11px">${e.client}</strong></td>
+    <td class="mono text-danger">${fmt(e.amount)}</td>
+    <td style="font-size:11px">${e.supplier||'—'}</td>
+    <td style="font-size:11px">${e.type||'—'}</td>
+    <td style="font-size:11px">${e.payment||'—'}</td>
+    <td style="font-size:11px">${e.detail||'—'}</td>
+  </tr>`).join('');
+}
+
+// ======= REPORTS =======
+function renderReports() {
+  const projs = data.projects;
+  const totalClient = projs.reduce((s,p)=>s+p.clientTotal,0);
+  const totalSub = projs.reduce((s,p)=>s+p.subTotal,0);
+  const totalProfit = projs.reduce((s,p)=>s+p.profitDrawn,0);
+  const totalExp = data.expenses.reduce((s,e)=>s+e.amount,0);
+
+  document.getElementById('rep-total-income').textContent = fmt(totalClient);
+  document.getElementById('rep-total-sub').textContent = fmt(totalSub);
+  document.getElementById('rep-total-profit').textContent = fmt(totalProfit);
+  document.getElementById('rep-total-exp').textContent = fmt(totalExp);
+
+  // Projects performance
+  document.getElementById('rep-projects-body').innerHTML = [...projs].sort((a,b)=>b.clientTotal-a.clientTotal).map(p=>{
+    const gross = p.clientTotal - p.subTotal - p.extra;
+    const margin = pct(gross, p.clientTotal);
+    const marginColor = margin>30?'text-success':margin>15?'text-warn':'text-danger';
+    return `<tr>
+      <td><strong>${p.name}</strong></td>
+      <td><span class="badge badge-blue">${p.sub}</span></td>
+      <td class="mono">${fmt(p.clientTotal)}</td>
+      <td class="mono text-danger">${fmt(p.subTotal)}</td>
+      <td class="mono ${gross>=0?'text-success':'text-danger'}">${fmt(gross)}</td>
+      <td class="${marginColor}">${margin}%</td>
+      <td class="mono ${p.profitDrawn>=0?'text-success':'text-danger'}">${fmt(p.profitDrawn)}</td>
+    </tr>`;
+  }).join('');
+
+  // Expenses by year
+  const byYear = {};
+  data.expenses.forEach(e=>{ if(e.year){ byYear[e.year]=(byYear[e.year]||0)+e.amount; } });
+  document.getElementById('rep-exp-by-year').innerHTML = Object.entries(byYear).sort((a,b)=>b[0]-a[0]).map(([y,amt])=>`
+    <div class="summary-row">
+      <span class="summary-label">${y}</span>
+      <span class="summary-value text-danger">${fmt(amt)}</span>
+    </div>`).join('');
+
+  // Subcontractors
+  const subs = {};
+  projs.forEach(p=>{
+    if(!p.sub) return;
+    if(!subs[p.sub]) subs[p.sub]={count:0,total:0,paid:0,balance:0};
+    subs[p.sub].count++;
+    subs[p.sub].total+=p.subTotal;
+    subs[p.sub].paid+=p.subPaid;
+    subs[p.sub].balance+=p.subBalance;
+  });
+  document.getElementById('rep-subs-body').innerHTML = Object.entries(subs).map(([name,s])=>`<tr>
+    <td><strong>${name}</strong></td>
+    <td>${s.count}</td>
+    <td class="mono">${fmt(s.total)}</td>
+    <td class="mono">${fmt(Math.round(s.total/s.count))}</td>
+    <td class="mono text-success">${fmt(s.paid)}</td>
+    <td class="mono ${s.balance>0?'text-warn':'text-success'}">${fmt(s.balance)}</td>
+  </tr>`).join('');
+}
+
+// ======= CRUD =======
+let editId = null;
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(o=>o.addEventListener('click',e=>{ if(e.target===o) o.classList.remove('open'); }));
+
+function editProject(id) {
+  const p = data.projects.find(x=>x.id===id);
+  if(!p) return;
+  editId = id;
+  document.getElementById('modal-project-title').textContent = 'עריכת פרויקט';
+  document.getElementById('fp-name').value = p.name;
+  document.getElementById('fp-sub').value = p.sub||'';
+  document.getElementById('fp-client-total').value = p.clientTotal||0;
+  document.getElementById('fp-client-paid').value = p.clientPaid||0;
+  document.getElementById('fp-sub-total').value = p.subTotal||0;
+  document.getElementById('fp-sub-paid').value = p.subPaid||0;
+  document.getElementById('fp-extra').value = p.extra||0;
+  document.getElementById('fp-profit').value = p.profitDrawn||0;
+  openModal('modal-project');
+}
+
+function saveProject() {
+  const name = document.getElementById('fp-name').value.trim();
+  if(!name){ showToast('נא להזין שם', 'error'); return; }
+  const vals = {
+    name, sub: document.getElementById('fp-sub').value,
+    clientTotal: +document.getElementById('fp-client-total').value,
+    clientPaid: +document.getElementById('fp-client-paid').value,
+    clientBalance: +document.getElementById('fp-client-total').value - +document.getElementById('fp-client-paid').value,
+    subTotal: +document.getElementById('fp-sub-total').value,
+    subPaid: +document.getElementById('fp-sub-paid').value,
+    subBalance: +document.getElementById('fp-sub-total').value - +document.getElementById('fp-sub-paid').value,
+    extra: +document.getElementById('fp-extra').value,
+    profitDrawn: +document.getElementById('fp-profit').value,
+    profitRemain: +document.getElementById('fp-client-total').value - +document.getElementById('fp-sub-total').value - (+document.getElementById('fp-extra').value) - +document.getElementById('fp-profit').value,
+  };
+  if(editId) {
+    Object.assign(data.projects.find(p=>p.id===editId), vals);
+    editId = null;
+    document.getElementById('modal-project-title').textContent = 'הוספת פרויקט';
+  } else {
+    data.projects.push({id: data.nextId++, ...vals});
+  }
+  save(); closeModal('modal-project'); renderProjects();
+  showToast('נשמר ✓', 'success');
+}
+
+function delProject(id) {
+  if(!confirm('למחוק פרויקט זה?')) return;
+  data.projects = data.projects.filter(p=>p.id!==id);
+  save(); renderProjects(); showToast('נמחק', 'success');
+}
+
+function saveExpense() {
+  const amount = +document.getElementById('fe-amount').value;
+  if(!amount){ showToast('נא להזין סכום', 'error'); return; }
+  const date = document.getElementById('fe-date').value || new Date().toISOString().slice(0,10);
+  const year = parseInt(date.split('-')[0]);
+  const month = parseInt(date.split('-')[1]);
+  data.expenses.push({ date, year, month, type: document.getElementById('fe-type').value, amount, payment: document.getElementById('fe-payment').value, note: document.getElementById('fe-note').value });
+  save(); closeModal('modal-expense'); renderExpenses();
+  showToast('הוצאה נוספה ✓', 'success');
+}
+
+// ======= EXPORT =======
+function exportCSV() {
+  const headers = ['פרויקט','קבלן משנה','חוזה לקוח','שולם לקוח','יתרת לקוח','עלות קבלן','שולם לקבלן','יתרת קבלן','הוצאות נוספות','רווח נמשך','יתרת רווח'];
+  const rows = data.projects.map(p=>[p.name,p.sub,p.clientTotal,p.clientPaid,p.clientBalance,p.subTotal,p.subPaid,p.subBalance,p.extra,p.profitDrawn,p.profitRemain]);
+  const csv = [headers,...rows].map(r=>r.map(v=>`"${v}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}));
+  a.download = 'feldman_projects.csv'; a.click();
+  showToast('ייצוא CSV ✓', 'success');
+}
+
+// ======= TOAST =======
+function showToast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast show ' + type;
+  setTimeout(()=>t.classList.remove('show'), 2600);
+}
+
+// ======= INIT =======
+document.getElementById('fe-date').value = new Date().toISOString().slice(0,10);
+renderDashboard();
+</script>
+</body>
+</html>

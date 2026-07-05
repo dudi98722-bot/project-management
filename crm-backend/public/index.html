@@ -255,6 +255,7 @@ tr:last-child td { border-bottom: none; }
 </style>
 </head>
 <body>
+<div id="_bootLoader" style="display:none;position:fixed;inset:0;background:#fff;z-index:9999;align-items:center;justify-content:center;flex-direction:column;gap:16px"><div style="font-size:22px;color:#1565c0">טוען נתונים...</div><div style="font-size:14px;color:#888">מוסדות אלכסנדר</div></div>
 
 <!-- LOGIN SCREEN -->
 <style>
@@ -354,67 +355,58 @@ tr:last-child td { border-bottom: none; }
 
 <script>
 (function(){
-  var ADMIN='092ac8c9795ff2c16d3b1e8c096075cc7b8ae2758cff024b3ba6ed5e74f551dd';
-  var ADMIN_USER='יחיאל';
-  var GS='https://script.google.com/macros/s/AKfycbyuJlKaSaz8xWv9Ht48SQUy4sax6POiO8ZR8_kZ5WU6-rACiRi0Ls_h7EPmZ5PK6TBo/exec';
-  async function hashCreds(u,p){
-    var buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(u+':'+p));
-    return Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
-  }
-  function loadUsers(cb){
-    var t=setTimeout(function(){cb([]);},4000);
-    fetch(GS+'?action=loadUsers')
-      .then(function(r){return r.json();})
-      .then(function(d){clearTimeout(t);cb(d.users||[]);})
-      .catch(function(){clearTimeout(t);cb([]);});
-  }
-  function saveUsersRemote(arr){
-    fetch(GS+'?action=saveUsers&data='+encodeURIComponent(JSON.stringify(arr))).catch(function(){});
-  }
-  window._gsUsers=null;
-  window.getUsers=function(){return window._gsUsers||[];};
-  window.saveUsers=function(arr){window._gsUsers=arr;saveUsersRemote(arr);};
-  window.hashCreds=hashCreds;
-  if(sessionStorage.getItem('crm_auth')==='1'){
-    document.getElementById('loginScreen').style.display='none';
-    // pre-load users in background for admin UI
-    loadUsers(function(u){window._gsUsers=u;});
-    return;
-  }
-  window.doLogout=function(){
-    ['crm_auth','crm_user','crm_role'].forEach(function(k){sessionStorage.removeItem(k);});
+  var API = location.origin + '/api';
+  window.API = API;
+  function token(){ return sessionStorage.getItem('crm_token') || ''; }
+  window.apiToken = token;
+  window.apiFetch = function(path, opts){
+    opts = opts || {};
+    opts.headers = opts.headers || {};
+    if(token()) opts.headers['Authorization'] = 'Bearer ' + token();
+    if(opts.body && typeof opts.body !== 'string'){ opts.headers['Content-Type']='application/json'; opts.body = JSON.stringify(opts.body); }
+    return fetch(API + path, opts).then(function(r){
+      // token expired/invalid -> back to login (instead of silently showing empty data)
+      if(r.status===401 && sessionStorage.getItem('crm_token')){
+        ['crm_token','crm_auth','crm_user','crm_role'].forEach(function(k){sessionStorage.removeItem(k);});
+        alert('פג תוקף החיבור. יש להתחבר מחדש.');
+        location.reload();
+      }
+      return r;
+    });
+  };
+  // user-management UI -> API
+  window._apiUsers = [];
+  window.getUsers = function(){ return window._apiUsers || []; };
+  window.loadUsersApi = function(cb){
+    window.apiFetch('/users').then(function(r){return r.json();}).then(function(d){
+      window._apiUsers = Array.isArray(d) ? d : []; if(cb)cb(window._apiUsers);
+    }).catch(function(){ if(cb)cb([]); });
+  };
+  window.saveUsers = function(){ /* handled per-action via API */ };
+  window.hashCreds = function(){ return Promise.resolve(''); };
+
+  window.doLogout = function(){
+    ['crm_token','crm_auth','crm_user','crm_role'].forEach(function(k){sessionStorage.removeItem(k);});
     location.reload();
   };
-  window.doLogin=async function(){
-    var eu=document.getElementById('loginUser').value.trim();
-    var ep=document.getElementById('loginPass').value;
-    var h=await hashCreds(eu,ep);
-    if(eu===ADMIN_USER&&h===ADMIN){
-      sessionStorage.setItem('crm_auth','1');
-      sessionStorage.setItem('crm_user',eu);
-      sessionStorage.setItem('crm_role','admin');
-      document.getElementById('loginScreen').style.display='none';
-      loadUsers(function(u){window._gsUsers=u;if(window.initUserUI)initUserUI();});
-      return;
-    }
-    var err=document.getElementById('loginError2');
-    err.textContent='מאמת...';err.style.color='#999';err.style.display='block';
-    loadUsers(function(users){
-      window._gsUsers=users;
-      err.style.display='none';err.style.color='';
-      for(var i=0;i<users.length;i++){
-        if(users[i].username===eu&&users[i].hash===h){
-          sessionStorage.setItem('crm_auth','1');
-          sessionStorage.setItem('crm_user',eu);
-          sessionStorage.setItem('crm_role',users[i].role||'user');
-          document.getElementById('loginScreen').style.display='none';
-          if(window.initUserUI)initUserUI();
-          return;
-        }
-      }
-      err.textContent='שם משתמש או סיסמא שגויים';err.style.color='';err.style.display='block';
-      document.getElementById('loginPass').value='';
-    });
+  window.doLogin = function(){
+    var eu = document.getElementById('loginUser').value.trim();
+    var ep = document.getElementById('loginPass').value;
+    var err = document.getElementById('loginError2');
+    err.textContent='מאמת...'; err.style.color='#999'; err.style.display='block';
+    fetch(API + '/auth/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username:eu, password:ep})})
+      .then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
+      .then(function(res){
+        if(!res.ok){ err.textContent = res.d.error || 'שם משתמש או סיסמא שגויים'; err.style.color=''; document.getElementById('loginPass').value=''; return; }
+        sessionStorage.setItem('crm_token', res.d.token);
+        sessionStorage.setItem('crm_auth','1');
+        sessionStorage.setItem('crm_user', res.d.user.username);
+        sessionStorage.setItem('crm_role', res.d.user.role);
+        err.style.display='none';
+        document.getElementById('loginScreen').style.display='none';
+        window.bootstrapData();
+      })
+      .catch(function(){ err.textContent='שגיאת חיבור לשרת'; err.style.color=''; });
   };
 })();
 </script>
@@ -1007,11 +999,11 @@ tr:last-child td { border-bottom: none; }
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" onerror="window._chartFailed=true"></script>
 <script>
-/*CONTACTS_DATA*/
-/*TABLE1_DATA*/
-/*TABLE2_DATA*/
-/*VOWS_DATA*/
-/*PAYMENTS_DATA*/
+var CONTACTS_DATA = [];
+const TABLE1 = ["עליה - כהן", "עליה - לוי", "עליה - שלישי", "עליה - רביעי", "מפטיר", "מכירת מקומות תשפ''ג", "מכירת מקומות תשפ''ב", "נדרים ונדבות", "מכירת מקומות יום כיפור תשפ''ג", "הוצאה והכנסה", "הגבה גלילה", "עליה - חמישי", "עליה - שביעי", "עליה - שישי", "פתיחה נעילה", "עליה אחרון", "תפלת גשם", "חתן תורה", "חתן בראשית", "כל הנעורים", "פתיחה", "עליה - שני", "שטעלט וויין", "השתתפות בטיש", "אולם - עזרת נשים", "קידושא רבא-עוגות", "אויספאסטן", "קידושא רבא-קוגל", "קידושא רבא-משקאות", "מכירת מקומות - תשפ\"ד", "יום בחצירך", "מכירת מקומות יוה\"כ - תשפ\"ד", "פתיחה גשם", "מכירת מקומות - תשפ\"ה", "מי שברך"];
+const TABLE2 = ["בראשית", "נח", "לך לך", "וירא", "חיי שרה", "תולדות", "ויצא", "וישלח", "וישב", "מקץ", "ויגש", "ויחי", "סוכות שבת", "שמות", "וארא", "בא", "בשלח", "יתרו", "משפטים", "תרומה", "תצוה", "כי תשא", "ויקהל", "פקודי", "ויקהל-פקודי", "ויקרא", "צו", "שמיני", "תזריע", "מצורע", "אחרי מות", "קדושים", "אמור", "בהר", "בחוקותי", "תזריע-מצורע", "אחרי-קדושים", "בהר-בחוקותי", "במדבר", "נשא", "בהעלותך", "שלח", "קורח", "חוקת", "בלק", "פינחס", "מטות", "מסעי", "חוקת-בלק", "מטות-מסעי", "דברים", "ואתחנן", "עקב", "ראה", "שופטים", "כי תצא", "כי תבוא", "ניצבים", "ניצבים-וילך", "וילך", "האזינו", "ברכה", "ראש השנה יום א'", "ראש השנה יום ב'", "יום כיפור - שחרית", "תשפ\"ב", "תשפ\"ג", "מקום גברים", "מקום נשים", "מקום עמידה", "יום כיפור - מנחה", "סוכות יו\"ט ראשון", "שמחת תורה לילה", "שמחת תורה יו\"ט שני", "שמחת תורה בית א", "שמחת תורה בית ב", "שמחת תורה בנוערינו", "שבת חנוכה", "יא\"צ אמונת משה", "יא\"צ אמרי מנחם", "יא\"צ ישמח ישראל", "יא\"צ אדה\"ז", "יא\"צ תפארת שמואל", "יא\"צ עקידת יצחק", "מנוי שנתי", "יו\"ט א' דפסח", "שחוה\"מ פסח", "שביעי של פסח", "אירוע יום חול", "אירוע שבת", "שבועות", "יז בתמוז", "תשעה באב", "כללי", "יוה\"כ שחרית- תשפ\"ד", "יוה\"כ מנחה - תשפ\"ד", "א' דסוכות - תשפ\"ד", "א' ר\"ה - תשפ\"ד", "ב' ר\"ה - תשפ\"ד", "ליל שמח\"ת - תשפ\"ד", "יום שמח\"ת בית א' - תשפ\"ד", "ליל שמח\"ת - בני חו\"ל - תשפ\"ד", "יום שמח\"ת - בני חו\"ל - תשפ\"ד", "יום שמח\"ת בית ב' - תשפ\"ד", "יום שמח\"ת בית ג' - תשפ\"ד", "י\"ג תשרי תשפ\"ד", "שבת חנוכה תשפד", "ה' טבת תשפ\"ד", "י\"ט טבת תשפ\"ד", "יא\"צ ישמח ישראל-תשפ\"ד", "פסח תשפ\"ד", "שביעי של פסח - תשפ\"ד", "שבועות - תשפ\"ד", "ראש השנה תשפ''ה יום א'", "ראש השנה תשפ''ה יום ב'", "יוה\"כ שחרית תשפ\"ה", "יוה\"כ מנחה תשפ\"ה", "א' דסוכות - תשפ\"ה", "שבת חוה\"מ פסח תשפ\"ד", "ליל שמח\"ת תשפ\"ה", "יום שמח\"ת תשפ\"ה בית א'", "יום שמח\"ת תשפ\"ה בית ב'", "יום שמח\"ת תשפ\"ה בית ג'", "ליל שמח\"ת בני חו\"ל תשפ\"ה", "יום שמח\"ת בני חו\"ל תשפ\"ה", "מקומות בהיכל - מתחם מזרח – מקום מעבר [מתחם 2]", "מקומות בהיכל - מתחם מזרח – מקום רגיל [מתחם 2]", "מקומות בהיכל - מתחם מערב – מקום מעבר [מתחם 4]", "מקומות בהיכל - מתחם מערב – מקום צמוד לקיר [מתחם 4]", "מקומות בהיכל - מתחם מערב – מקום רגיל [מתחם 4]", "מקומות בהיכל - מתחם מרכז – מקום מעבר [מתחם 3]", "מקומות בהיכל - מתחם מרכז – מקום צמוד לקיר [מתחם 3]", "מקומות בהיכל - מתחם מרכז – מקום רגיל [מתחם 3]", "מקומות בהיכל - מתחם עמידה אברכים [מתחם 5]", "מקומות בהיכל - שורות ראשונות – מקום מעבר [מתחם 1]", "מקומות בהיכל - שורות ראשונות – מקום רגיל [מתחם 1]", "מקומות בעזרת נשים - שורה ראשונה - מזרח (מקומות 1-25) [מתחם 7]", "מקומות בעזרת נשים - שורה ראשונה - מרכז (מקומות 26-35) [מתחם 8]", "מקומות בעזרת נשים - שורה שניה - מזרח (מקומות 51-74) [מתחם 10]", "מקומות בעזרת נשים - שורות ישיבה [מתחם 11]", "מקומות בעזרת נשים - שורות ראשונות - מערב (מקומות 36-50 ומקומות 75-97) [מתחם 9]", "שבת חנוכה תשפ\"ה", "יו\"ט א' פסח תשפ\"ה", "שבש\"פ תשפ\"ה", "יו\"ט א' שבועות תשפ\"ה", "יו\"ט ב' שבועות תשפ\"ה", "ראש השנה תשפ\"ו יום א'", "ראש השנה תשפ\"ו יום ב'", "יוכ\"פ שחרית תשפ\"ו", "יוכ\"פ מנחה תשפ\"ו", "א' דסוכות - תשפ''ו", "ב' דסוכות - תשפ''ו", "שבת חוה\"מ סוכות תשפ\"ו", "ליל שמח\"ת תשפ\"ו", "יום שמח\"ת תשפ\"ו בית א'", "יום שמח\"ת תשפ\"ו בית ב'", "יום שמ\"ת תשפ\"ו בית ג'", "ליל שמח\"ת בני חו\"ל תשפ\"ו", "יום שמח\"ת בני חו\"ל תשפ\"ו", "יו\"ט א' פסח תשפ''ו", "שבת חוה\"מ פסח תשפ''ו", "שביעי של פסח תשפ''ו", "חג השבועות תשפ\"ו"];
+var VOWS_DATA = [];
+var PAYMENTS_DATA = [];
 
 /* ===== HEBREW DATE (gematria — works in every browser) ===== */
 function hebGematria(num){
@@ -2624,7 +2616,65 @@ function switchTab(name){
   if(name==='analytics'){renderAnalytics();}
 }
 
-init();
+
+/* ===== API ADAPTER (data load + write sync) ===== */
+function _vowFromApi(v){ return {id:v.id, date:v.date?String(v.date).slice(0,10):'', hebrewDate:v.hebrew_date||'', name:v.name||'', forA:v.for_a||'', forB:v.for_b||'', amount:parseFloat(v.amount)||0, note:v.note||'', place:v.place||'', _user:v._user||''}; }
+function _payFromApi(p){ return {id:p.id, date:p.date?String(p.date).slice(0,10):'', hebrewDate:p.hebrew_date||'', name:p.name||'', vowId:p.vow_id, amount:parseFloat(p.amount)||0, method:p.method||'', numPayments:p.num_payments||1, note:p.note||'', _user:p._user||''}; }
+
+// Map frontend record -> API (snake_case) per type
+function _toApi(type, data){
+  if(type==='vow'){ return {id:data.id, date:data.date, hebrew_date:data.hebrewDate, name:data.name, for_a:data.forA, for_b:data.forB, amount:data.amount, note:data.note, place:data.place}; }
+  if(type==='payment'){ return {id:data.id, date:data.date, hebrew_date:data.hebrewDate, name:data.name, vow_id:data.vowId, amount:data.amount, method:data.method, num_payments:data.numPayments, note:data.note}; }
+  return data; // contact already snake_case
+}
+var _ENDPOINT = {contact:'/contacts', vow:'/vows', payment:'/payments'};
+
+// Override sync: send writes to REST API
+function syncToSheets(type, action, data){
+  var ep = _ENDPOINT[type]; if(!ep) return;
+  var body = _toApi(type, data);
+  var opts;
+  if(action==='delete'){ opts = {method:'DELETE'}; ep = ep + '/' + data.id; }
+  else if(action==='edit'){ opts = {method:'PUT', body:body}; ep = ep + '/' + data.id; }
+  else { opts = {method:'POST', body:body}; }
+  window.apiFetch(ep, opts).then(function(r){
+    if(!r.ok){ r.json().then(function(d){ console.warn('שמירה נכשלה:', d.error||r.status); }); }
+  }).catch(function(){ console.warn('שגיאת רשת בשמירה'); });
+}
+function exportAllToSheets(){ /* disabled - data lives in DB */ }
+
+// Load all data from API, then start the app
+function bootstrapData(){
+  var loader = document.getElementById('_bootLoader');
+  if(loader) loader.style.display='flex';
+  function getArr(path){ return window.apiFetch(path).then(function(r){ return r.ok ? r.json() : []; }).then(function(d){ return Array.isArray(d) ? d : []; }).catch(function(){ return []; }); }
+  Promise.all([ getArr('/contacts/all'), getArr('/vows/all'), getArr('/payments/all') ]).then(function(res){
+    var cts = res[0]||[], vws = res[1]||[], pys = res[2]||[];
+    window.contacts = cts.map(function(c,i){ return Object.assign({}, c, {_idx:i}); });
+    window.filtered = window.contacts.slice();
+    window.cFiltered = window.contacts.slice();
+    window.vows = vws.map(_vowFromApi);
+    window.payments = pys.map(_payFromApi);
+    if(window._apiUsers===undefined) window._apiUsers=[];
+    window.loadUsersApi();
+    // load saved payment methods from server
+    window.apiFetch('/settings/methods').then(function(r){return r.ok?r.json():null;}).then(function(m){
+      if(Array.isArray(m) && m.length){ window.paymentMethods = m; if(window.refreshPaymentMethodSelect) refreshPaymentMethodSelect(); }
+    }).catch(function(){});
+    if(loader) loader.style.display='none';
+    init();
+  }).catch(function(e){
+    if(loader) loader.innerHTML = '<div style="color:#c00;font-size:18px">שגיאה בטעינת הנתונים מהשרת. רענן את הדף.</div>';
+    console.error(e);
+  });
+}
+
+// If already authenticated (refresh), bootstrap immediately; else wait for login
+if(sessionStorage.getItem('crm_token')){
+  document.getElementById('loginScreen').style.display='none';
+  bootstrapData();
+}
+
 </script>
 </body>
 </html>

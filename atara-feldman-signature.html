@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>חתימת מייל – עטרה פלדמן</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;600;700;900&display=swap');
+
+*{margin:0;padding:0;box-sizing:border-box}
+
+body{
+  background:#ddd8e8;
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  font-family:'Heebo',Arial,sans-serif;
+  padding:40px 20px;
+}
+
+/* ─── CARD ─── */
+.card{
+  position:relative;
+  width:560px;
+  height:110px;
+  background:linear-gradient(135deg,#908490 0%,#756b82 35%,#6b6179 60%,#7d7390 100%);
+  border-radius:22px;
+  overflow:hidden;
+  box-shadow:0 12px 40px rgba(90,80,110,.45);
+  /* card entrance */
+  animation:cardIn .7s cubic-bezier(.22,1,.36,1) both;
+}
+@keyframes cardIn{
+  from{opacity:0;transform:scale(.92) translateY(18px)}
+  to  {opacity:1;transform:scale(1)   translateY(0)}
+}
+
+/* ── shimmer sweep ── */
+.card::after{
+  content:'';
+  position:absolute;
+  inset:0;
+  background:linear-gradient(110deg,
+    transparent 30%,
+    rgba(255,255,255,.07) 50%,
+    transparent 70%);
+  background-size:200% 100%;
+  animation:shimmer 3.5s ease-in-out infinite;
+  pointer-events:none;
+}
+@keyframes shimmer{
+  0%  {background-position:200% 0}
+  60% {background-position:-50% 0}
+  100%{background-position:-50% 0}
+}
+
+/* ─── DECORATIVE LEAVES (corners) ─── */
+.leaves{
+  position:absolute;
+  pointer-events:none;
+}
+.leaves-tl{top:-4px;left:-4px;animation:leafIn .9s .1s ease both;opacity:0}
+.leaves-br{bottom:-4px;right:-4px;transform:rotate(180deg);animation:leafIn .9s .15s ease both;opacity:0}
+@keyframes leafIn{
+  from{opacity:0;transform:scale(.4)}
+  to  {opacity:.22;transform:scale(1)}
+}
+.leaves-br{transform-origin:right bottom}
+
+/* ─── LOGO AREA (right side) ─── */
+.logo-area{
+  position:absolute;
+  right:22px; top:50%; transform:translateY(-50%);
+  display:flex;
+  align-items:center;
+  gap:11px;
+}
+
+/* The ש SVG — drawn with stroke animation */
+.shin-svg{
+  animation:svgIn .4s .3s ease both;
+  opacity:0;
+}
+@keyframes svgIn{to{opacity:1}}
+
+.shin-path{
+  stroke-dasharray:220;
+  stroke-dashoffset:220;
+  animation:draw 1.4s .5s cubic-bezier(.4,0,.2,1) forwards;
+}
+@keyframes draw{to{stroke-dashoffset:0}}
+
+.curl-path{
+  stroke-dasharray:80;
+  stroke-dashoffset:80;
+  animation:draw 0.9s 1.7s ease forwards;
+}
+.curl-path2{
+  stroke-dasharray:60;
+  stroke-dashoffset:60;
+  animation:draw 0.7s 2.1s ease forwards;
+}
+
+/* floating pulse on logo after draw */
+.shin-svg{animation:svgIn .4s .3s ease both, logoFloat 3s 2.8s ease-in-out infinite}
+@keyframes logoFloat{
+  0%,100%{transform:translateY(0)}
+  50%     {transform:translateY(-4px)}
+}
+
+/* ─── NAME BLOCK ─── */
+.name-block{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+}
+
+.name{
+  color:white;
+  font-size:26px;
+  font-weight:700;
+  letter-spacing:2px;
+  white-space:nowrap;
+  overflow:hidden;
+  max-width:0;
+  animation:typeIn 0.8s 1.2s cubic-bezier(.4,0,.2,1) forwards;
+  text-shadow:0 2px 10px rgba(0,0,0,.25);
+}
+@keyframes typeIn{to{max-width:220px}}
+
+.tagline{
+  color:rgba(255,255,255,.68);
+  font-size:10px;
+  font-weight:300;
+  letter-spacing:.4px;
+  white-space:nowrap;
+  overflow:hidden;
+  max-width:0;
+  animation:typeIn 0.9s 1.9s ease forwards;
+}
+
+/* divider line that grows */
+.divider{
+  width:0;
+  height:1px;
+  background:rgba(255,255,255,.35);
+  margin:5px 0;
+  animation:growLine .7s 2s ease forwards;
+  align-self:flex-end;
+}
+@keyframes growLine{to{width:160px}}
+
+.main-phone{
+  color:white;
+  font-size:12.5px;
+  font-weight:600;
+  direction:ltr;
+  letter-spacing:.6px;
+  opacity:0;
+  animation:fadeUp .5s 2.5s ease forwards;
+}
+@keyframes fadeUp{
+  from{opacity:0;transform:translateY(6px)}
+  to  {opacity:1;transform:translateY(0)}
+}
+
+/* ─── LEFT PHONE BLOCK ─── */
+.phone-block{
+  position:absolute;
+  left:26px; top:50%; transform:translateY(-50%);
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.p-row{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:5px;
+  direction:rtl;
+  overflow:hidden;
+}
+.p-row:nth-child(1){
+  clip-path:inset(0 100% 0 0);
+  animation:wipeIn .6s 2.3s ease forwards;
+}
+.p-row:nth-child(2){
+  clip-path:inset(0 100% 0 0);
+  animation:wipeIn .6s 2.7s ease forwards;
+}
+@keyframes wipeIn{to{clip-path:inset(0 0% 0 0)}}
+
+.p-label{color:rgba(255,255,255,.62);font-size:10.5px;font-weight:300;white-space:nowrap}
+.p-sep  {color:rgba(255,255,255,.38);font-size:11px}
+.p-num  {color:white;font-size:12px;font-weight:600;direction:ltr;letter-spacing:.4px}
+
+.p-icon{
+  font-size:12px;
+  display:inline-block;
+}
+.p-row:nth-child(1) .p-icon{animation:ring 5s 4s ease-in-out infinite}
+.p-row:nth-child(2) .p-icon{animation:ring 5s 6s ease-in-out infinite}
+@keyframes ring{
+  0%,80%,100%{transform:rotate(0)}
+  82%{transform:rotate(-18deg)}
+  84%{transform:rotate(18deg)}
+  86%{transform:rotate(-12deg)}
+  88%{transform:rotate(6deg)}
+  90%{transform:rotate(0)}
+}
+
+/* ─── HINT BELOW ─── */
+.hint{
+  margin-top:18px;
+  opacity:0;
+  animation:fadeUp .6s 3.2s ease forwards;
+  text-align:center;
+}
+.hint p{font-size:11px;color:#9580b0;margin-bottom:6px}
+.hint button{
+  background:none;
+  border:1.5px solid #b8a8d0;
+  color:#7060a0;
+  font-size:11.5px;
+  padding:5px 18px;
+  border-radius:20px;
+  cursor:pointer;
+  font-family:inherit;
+  transition:all .25s;
+}
+.hint button:hover{background:#7060a0;color:white;border-color:#7060a0}
+</style>
+</head>
+<body>
+
+<div class="card">
+
+  <!-- Leaves top-left -->
+  <svg class="leaves leaves-tl" width="95" height="95" viewBox="0 0 95 95">
+    <g fill="white">
+      <path d="M2 90 Q18 42 52 16 Q32 52 8 86 Z"/>
+      <path d="M12 88 Q30 46 64 22 Q42 56 18 84 Z" opacity=".65"/>
+      <path d="M22 90 Q40 50 72 28 Q52 60 26 88 Z" opacity=".4"/>
+      <path d="M0 72 Q22 38 54 14 Q30 44 6 74 Z" opacity=".3"/>
+    </g>
+  </svg>
+
+  <!-- Leaves bottom-right -->
+  <svg class="leaves leaves-br" width="95" height="95" viewBox="0 0 95 95">
+    <g fill="white">
+      <path d="M2 90 Q18 42 52 16 Q32 52 8 86 Z"/>
+      <path d="M12 88 Q30 46 64 22 Q42 56 18 84 Z" opacity=".65"/>
+      <path d="M22 90 Q40 50 72 28 Q52 60 26 88 Z" opacity=".4"/>
+      <path d="M0 72 Q22 38 54 14 Q30 44 6 74 Z" opacity=".3"/>
+    </g>
+  </svg>
+
+  <!-- RIGHT: Logo + Name -->
+  <div class="logo-area">
+
+    <!-- ש logo drawn with SVG stroke animation -->
+    <svg class="shin-svg" width="72" height="76" viewBox="0 0 72 76" fill="none">
+      <!-- soft circle bg -->
+      <circle cx="36" cy="36" r="34" fill="rgba(255,255,255,0.07)" stroke="rgba(255,255,255,0.18)" stroke-width="1.2"/>
+      <!-- ש body – single path tracing the letter -->
+      <path class="shin-path"
+        d="M16 52 L16 24 Q16 18 22 18 L28 18 L28 40
+           M28 24 L28 18
+           M28 18 Q34 18 34 24 L34 40
+           M34 24 L34 18 Q40 18 46 18 L52 18 Q56 18 56 24 L56 52"
+        stroke="white" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <!-- decorative curl below ש -->
+      <path class="curl-path"
+        d="M14 60 Q24 68 36 65 Q48 62 54 68"
+        stroke="rgba(255,255,255,0.6)" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+      <path class="curl-path2"
+        d="M18 66 Q28 73 40 70"
+        stroke="rgba(255,255,255,0.3)" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+    </svg>
+
+    <div class="name-block">
+      <div class="name">עטרה פלדמן</div>
+      <div class="tagline">להעניק בביטחון&nbsp;&nbsp;קורסים&nbsp;·&nbsp;יעוץ&nbsp;·&nbsp;ליווי</div>
+      <div class="divider"></div>
+      <div class="main-phone">054-8598744</div>
+    </div>
+  </div>
+
+  <!-- LEFT: Two phone rows -->
+  <div class="phone-block">
+    <div class="p-row">
+      <span class="p-label">ליעוץ מקצועי</span>
+      <span class="p-sep">&nbsp;:&nbsp;</span>
+      <span class="p-icon">📞</span>
+      <span class="p-num">054-8598744</span>
+    </div>
+    <div class="p-row">
+      <span class="p-label">קו אמא בטוחה</span>
+      <span class="p-sep">&nbsp;:&nbsp;</span>
+      <span class="p-icon">📱</span>
+      <span class="p-num">073-3579554</span>
+    </div>
+  </div>
+
+</div>
+
+<div class="hint">
+  <p>לשימוש בגמייל / אאוטלוק כחתימה</p>
+  <button onclick="copyHTML()">📋 העתק HTML לחתימה</button>
+</div>
+
+<script>
+function copyHTML(){
+  const h = `<table cellpadding="0" cellspacing="0" style="font-family:Arial,sans-serif;direction:rtl;">
+<tr><td>
+<div style="background:linear-gradient(135deg,#908490 0%,#756b82 35%,#6b6179 60%,#7d7390 100%);
+border-radius:20px;padding:16px 22px 16px 26px;width:520px;display:flex;align-items:center;
+justify-content:space-between;box-shadow:0 6px 20px rgba(90,80,110,.35);">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <div style="width:62px;height:62px;border-radius:50%;border:1px solid rgba(255,255,255,.25);
+    background:rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center;">
+      <span style="color:white;font-size:34px;font-weight:900;font-family:Arial;">ש</span>
+    </div>
+    <div style="text-align:right;">
+      <div style="color:white;font-size:22px;font-weight:700;letter-spacing:2px;">עטרה פלדמן</div>
+      <div style="color:rgba(255,255,255,.65);font-size:10px;font-weight:300;">להעניק בביטחון | קורסים · יעוץ · ליווי</div>
+      <div style="width:140px;height:1px;background:rgba(255,255,255,.3);margin:4px 0;"></div>
+      <div style="color:white;font-size:12px;font-weight:600;direction:ltr;">054-8598744</div>
+    </div>
+  </div>
+  <div style="text-align:right;">
+    <div style="color:white;font-size:11px;margin-bottom:7px;">
+      <span style="color:rgba(255,255,255,.62);">ליעוץ מקצועי : </span>
+      <span style="font-weight:600;direction:ltr;unicode-bidi:plaintext;">054-8598744</span>
+    </div>
+    <div style="color:white;font-size:11px;">
+      <span style="color:rgba(255,255,255,.62);">קו אמא בטוחה : </span>
+      <span style="font-weight:600;direction:ltr;unicode-bidi:plaintext;">073-3579554</span>
+    </div>
+  </div>
+</div>
+</td></tr></table>`;
+  navigator.clipboard.writeText(h).then(()=>{
+    alert('✅ HTML הועתק!\n\nהוספה ל-Gmail:\nהגדרות ⚙ ← ראה את כל ההגדרות ← כללי ← חתימה\nלחץ על סמל HTML (<>) והדבק.');
+  }).catch(()=>alert('שגיאה – נסה Ctrl+U לקוד המקור'));
+}
+</script>
+</body>
+</html>

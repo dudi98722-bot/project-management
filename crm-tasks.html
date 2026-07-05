@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Office Tasks</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M8 50 l28 38 l56 -76' fill='none' stroke='%2316a34a' stroke-width='18' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M8 50 l28 38 l56 -76' fill='none' stroke='%2316a34a' stroke-width='18' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -73,6 +75,15 @@
   .filter-toggle.on { background:var(--primary-light); color:var(--primary); border-color:var(--primary); }
   .filters-label { font-size:12px; font-weight:600; color:var(--gray-400); }
 
+  /* ACTIVE FILTERS INDICATOR */
+  .active-filters { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:14px; background:linear-gradient(135deg,#eef2ff,#f5f3ff); border:1.5px solid var(--primary-light); border-radius:var(--radius); padding:9px 14px; }
+  .active-filters .af-label { font-size:12px; font-weight:700; color:var(--primary); }
+  .active-filters .af-chip { display:flex; align-items:center; gap:6px; background:white; border:1.5px solid var(--primary); color:var(--primary); border-radius:20px; padding:3px 10px; font-size:12px; font-weight:600; }
+  .active-filters .af-chip .af-x { cursor:pointer; font-weight:700; color:var(--gray-400); margin-right:2px; }
+  .active-filters .af-chip .af-x:hover { color:var(--danger); }
+  .active-filters .af-reset { margin-right:auto; background:var(--danger-light); color:var(--danger); border:none; border-radius:20px; padding:5px 14px; font-size:12px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .active-filters .af-reset:hover { background:var(--danger); color:white; }
+
   /* CLIENT SUMMARY BAR */
   .client-summary { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
   .client-chip { display:flex; align-items:center; gap:6px; background:white; border:1.5px solid var(--gray-200); border-radius:20px; padding:4px 12px 4px 8px; font-size:12px; font-weight:600; color:var(--gray-600); cursor:pointer; transition:all 0.15s; }
@@ -83,29 +94,184 @@
   /* TASK CARDS */
   .task-card { background:white; border-radius:14px; padding:13px 16px; margin-bottom:7px; box-shadow:0 2px 8px rgba(0,0,0,0.06); border:1px solid rgba(0,0,0,0.05); border-right:4px solid var(--gray-300); transition:all 0.18s; }
   .task-card:hover { box-shadow:0 6px 20px rgba(0,0,0,0.1); transform:translateY(-1px); }
-  .task-card.is-critical-overdue { border-right-color:var(--danger); background:linear-gradient(135deg,#fff5f5,white); }
+  .task-card.is-critical-overdue { border-right-color:var(--danger); border-right-width:6px; background:linear-gradient(135deg,#f87171,#fca5a5); box-shadow:0 3px 14px rgba(239,68,68,0.45); }
   .task-card.is-overdue { border-right-color:var(--warning); background:linear-gradient(135deg,#fffbf0,white); }
-  .task-card.is-critical { border-right-color:var(--danger); }
+  .task-card.is-critical { border-right-color:var(--danger); border-right-width:5px; background:linear-gradient(135deg,#fff5f5,white); }
   .task-card.is-normal { border-right-color:var(--primary); }
   .task-card.is-future { border-right-color:var(--gray-200); }
 
-  .tc-main { display:flex; align-items:center; gap:12px; }
+  .tc-main { display:flex; flex-direction:column; align-items:stretch; gap:10px; }
   .tc-info { flex:1; min-width:0; }
   .tc-name { font-size:14px; font-weight:600; color:var(--gray-900); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; letter-spacing:-0.1px; }
   .tc-meta { display:flex; align-items:center; gap:5px; margin-top:4px; flex-wrap:wrap; }
   .tc-client { font-size:11px; font-weight:700; color:var(--primary); background:var(--primary-light); padding:2px 8px; border-radius:20px; }
+  .tc-recur { font-size:11px; font-weight:600; color:var(--gray-600); background:var(--gray-100); padding:2px 8px; border-radius:20px; }
   .tc-pill { display:inline-flex; align-items:center; gap:3px; padding:2px 8px; border-radius:20px; font-size:11px; font-weight:600; }
   .pill-date { background:var(--gray-100); color:var(--gray-600); }
   .pill-warn { background:var(--warning-light); color:#92400e; }
   .pill-danger { background:var(--danger-light); color:#991b1b; }
   .pill-deadline { background:#ede9fe; color:#5b21b6; }
-  .tc-actions { display:flex; gap:6px; flex-shrink:0; }
+  .tc-actions { display:flex; gap:8px; flex-shrink:0; padding-top:10px; border-top:1px solid var(--gray-100); }
+  .tc-actions button { flex:1; }
+  .tc-name { white-space:normal; }
   .tc-extra { font-size:12px; color:var(--gray-500); margin-top:8px; padding-top:8px; border-top:1px solid var(--gray-100); display:none; line-height:1.6; }
   .tc-extra.open { display:block; }
   .tc-toggle { background:none; border:none; font-size:11px; color:var(--gray-400); cursor:pointer; padding:0; margin-top:4px; font-family:inherit; }
   .tc-toggle:hover { color:var(--primary); }
   .critical-label { background:var(--danger); color:white; padding:1px 7px; border-radius:20px; font-size:10px; font-weight:700; display:inline-block; }
   .postponed-info { font-size:11px; color:var(--gray-500); margin-top:5px; background:var(--gray-50); border-radius:6px; padding:4px 8px; }
+
+  /* PRIORITY BADGE */
+  .prio-badge { font-size:10px; font-weight:700; padding:2px 8px; border-radius:20px; display:inline-block; }
+  .prio-urgent { background:#fef3c7; color:#b45309; }
+
+  /* ATTENDANCE BUTTON */
+  .attendance-btn { border:none; border-radius:20px; padding:8px 18px; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit; transition:all 0.2s; background:#22c55e; color:white; box-shadow:0 2px 8px rgba(34,197,94,0.4); white-space:nowrap; }
+  .attendance-btn:hover { transform:translateY(-1px); }
+  .attendance-btn.clocked-in { background:#ef4444; box-shadow:0 2px 8px rgba(239,68,68,0.4); }
+
+  /* TASK TIMER (on cards) */
+  .tc-timer { display:flex; align-items:center; gap:6px; font-size:11px; font-weight:700; color:var(--primary); background:var(--primary-light); border-radius:20px; padding:3px 10px; }
+  .btn-timer { border:1.5px solid var(--primary); color:var(--primary); background:white; }
+  .btn-timer.running { background:var(--danger); border-color:var(--danger); color:white; }
+
+  /* TODAY-DONE LIST */
+  .today-done-list { display:flex; flex-direction:column; gap:7px; }
+  .today-done-item { display:flex; align-items:center; gap:9px; background:var(--gray-50); border-radius:10px; padding:9px 12px; font-size:13px; flex-wrap:wrap; }
+  .tdi-check { background:var(--success); color:white; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0; }
+  .tdi-name { font-weight:600; color:var(--gray-900); }
+  .tdi-client { font-size:11px; font-weight:600; color:var(--primary); background:var(--primary-light); padding:2px 8px; border-radius:20px; }
+  .tdi-by { color:white; font-size:11px; font-weight:700; padding:2px 9px; border-radius:20px; }
+  .tdi-time { margin-right:auto; font-size:12px; color:var(--gray-400); font-weight:600; }
+
+  /* EMPLOYEE COMPARISON */
+  .cmp-list { display:flex; flex-direction:column; gap:12px; }
+  .cmp-row { display:flex; align-items:center; gap:10px; }
+  .cmp-name { display:flex; align-items:center; gap:7px; min-width:120px; font-size:13px; font-weight:600; color:var(--gray-700); }
+  .cmp-avatar { width:24px; height:24px; border-radius:50%; color:white; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .cmp-track { flex:1; background:var(--gray-100); border-radius:20px; height:24px; overflow:hidden; }
+  .cmp-fill { height:100%; border-radius:20px; min-width:2px; display:flex; align-items:center; justify-content:flex-end; padding:0 9px; color:white; font-size:12px; font-weight:800; transition:width 0.4s; }
+  .cmp-val { min-width:70px; text-align:left; font-size:12px; color:var(--gray-500); }
+
+  /* HOURS REPORT */
+  .hours-table { width:100%; border-collapse:collapse; background:white; border-radius:12px; overflow:hidden; box-shadow:var(--shadow); margin-bottom:18px; }
+  .hours-table th { background:var(--gray-50); padding:10px 12px; font-size:12px; font-weight:700; color:var(--gray-600); text-align:right; border-bottom:2px solid var(--gray-100); }
+  .hours-table td { padding:10px 12px; font-size:13px; color:var(--gray-700); border-bottom:1px solid var(--gray-50); }
+  .hours-table tr:hover td { background:var(--gray-50); }
+  .hours-table .total-row td { font-weight:800; background:var(--primary-light); color:var(--primary); }
+  .hours-big { font-size:22px; font-weight:800; color:var(--primary); }
+
+  /* NOTIFICATION BELL */
+  .notif-wrap { position:relative; }
+  .notif-bell { background:rgba(255,255,255,0.12); border:none; color:white; font-size:18px; width:38px; height:38px; border-radius:50%; cursor:pointer; position:relative; transition:all 0.2s; }
+  .notif-bell:hover { background:rgba(255,255,255,0.22); }
+  .notif-badge { position:absolute; top:-2px; left:-2px; background:#ef4444; color:white; font-size:10px; font-weight:700; min-width:18px; height:18px; border-radius:10px; display:flex; align-items:center; justify-content:center; padding:0 4px; border:2px solid #312e81; }
+  .notif-panel { display:none; position:absolute; top:48px; left:0; width:340px; max-height:440px; overflow-y:auto; background:white; border-radius:16px; box-shadow:0 20px 50px rgba(0,0,0,0.25); z-index:200; border:1px solid var(--gray-100); }
+  .notif-panel.open { display:block; }
+  .notif-panel-head { padding:14px 16px; font-weight:700; font-size:14px; color:var(--gray-900); border-bottom:1px solid var(--gray-100); display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; background:white; }
+  .notif-panel-head button { background:none; border:none; color:var(--primary); font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; }
+  .notif-item { padding:12px 16px; border-bottom:1px solid var(--gray-50); cursor:pointer; transition:background 0.15s; display:flex; gap:10px; align-items:flex-start; }
+  .notif-item:hover { background:var(--gray-50); }
+  .notif-item.unread { background:#eff6ff; }
+  .notif-item.unread:hover { background:#dbeafe; }
+  .notif-ico { font-size:18px; flex-shrink:0; }
+  .notif-body { flex:1; min-width:0; }
+  .notif-text { font-size:13px; color:var(--gray-700); line-height:1.4; }
+  .notif-time { font-size:11px; color:var(--gray-400); margin-top:3px; }
+  .notif-empty { padding:30px 16px; text-align:center; color:var(--gray-400); font-size:13px; }
+
+  /* COMMENTS */
+  .cmt-thread { display:flex; flex-direction:column; gap:10px; max-height:300px; overflow-y:auto; margin-bottom:14px; }
+  .cmt { background:var(--gray-50); border-radius:12px; padding:10px 12px; }
+  .cmt-head { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+  .cmt-avatar { width:24px; height:24px; border-radius:50%; color:white; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .cmt-author { font-size:12px; font-weight:700; color:var(--gray-900); }
+  .cmt-time { font-size:10px; color:var(--gray-400); }
+  .cmt-text { font-size:13px; color:var(--gray-700); line-height:1.5; white-space:pre-wrap; }
+  .cmt-text .mention { color:var(--primary); font-weight:700; background:var(--primary-light); padding:0 4px; border-radius:5px; }
+  .cmt-empty { text-align:center; color:var(--gray-400); font-size:13px; padding:20px; }
+  .mention-chips { display:flex; gap:5px; flex-wrap:wrap; margin:8px 0; }
+  .mention-chip { background:var(--gray-100); border:1px solid var(--gray-200); border-radius:20px; padding:3px 10px; font-size:12px; font-weight:600; color:var(--gray-600); cursor:pointer; }
+  .mention-chip:hover { background:var(--primary-light); color:var(--primary); border-color:var(--primary); }
+
+  /* KANBAN */
+  .kanban { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; align-items:start; }
+  .kb-col { background:var(--gray-50); border-radius:14px; padding:12px; min-height:200px; border:2px solid transparent; transition:border 0.15s; }
+  .kb-col.drag-over { border-color:var(--primary); background:var(--primary-light); }
+  .kb-col-head { font-weight:700; font-size:13px; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; padding:0 4px; }
+  .kb-count { background:white; border-radius:20px; padding:1px 9px; font-size:11px; font-weight:700; }
+  .kb-card { background:white; border-radius:10px; padding:10px 12px; margin-bottom:8px; box-shadow:0 1px 4px rgba(0,0,0,0.06); cursor:grab; border-right:3px solid var(--gray-300); transition:all 0.15s; }
+  .kb-card:hover { box-shadow:0 4px 12px rgba(0,0,0,0.12); }
+  .kb-card.dragging { opacity:0.4; }
+  .kb-card.overdue { border-right-color:var(--danger); }
+  .kb-card.critical { border-right-color:var(--danger); }
+  .kb-card-title { font-size:13px; font-weight:600; color:var(--gray-900); margin-bottom:4px; }
+  .kb-card-meta { display:flex; gap:5px; flex-wrap:wrap; align-items:center; }
+  .kb-tag { font-size:10px; font-weight:600; padding:1px 7px; border-radius:20px; }
+  .kb-empty { text-align:center; color:var(--gray-300); font-size:12px; padding:20px 0; }
+
+  /* CALENDAR */
+  .cal-head { display:flex; align-items:center; justify-content:center; gap:18px; margin-bottom:14px; }
+  .cal-head h3 { font-size:17px; font-weight:700; color:var(--gray-900); min-width:160px; text-align:center; }
+  .cal-nav { background:white; border:1.5px solid var(--gray-200); border-radius:10px; width:36px; height:36px; cursor:pointer; font-size:16px; font-weight:700; color:var(--primary); }
+  .cal-nav:hover { background:var(--primary-light); }
+  .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+  .cal-dow { text-align:center; font-size:12px; font-weight:700; color:var(--gray-400); padding:6px 0; }
+  .cal-cell { background:white; border-radius:10px; min-height:92px; padding:6px; border:1px solid var(--gray-100); display:flex; flex-direction:column; gap:3px; }
+  .cal-cell.empty { background:transparent; border:none; }
+  .cal-cell.today { border:2px solid var(--primary); background:var(--primary-light); }
+  .cal-daynum { font-size:12px; font-weight:700; color:var(--gray-500); align-self:flex-end; }
+  .cal-cell.today .cal-daynum { color:var(--primary); }
+  .cal-ev { font-size:10px; font-weight:600; padding:2px 5px; border-radius:5px; background:var(--primary-light); color:var(--primary); cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cal-ev.overdue { background:var(--danger-light); color:#991b1b; }
+  .cal-ev.done { background:var(--success-light); color:#065f46; }
+  .cal-more { font-size:10px; color:var(--gray-400); font-weight:600; }
+
+  /* TIMELINE */
+  .tl { position:relative; padding-right:24px; }
+  .tl::before { content:''; position:absolute; right:7px; top:6px; bottom:6px; width:2px; background:var(--gray-200); }
+  .tl-group { position:relative; margin-bottom:18px; }
+  .tl-dot { position:absolute; right:-21px; top:3px; width:14px; height:14px; border-radius:50%; background:var(--primary); border:3px solid white; box-shadow:0 0 0 2px var(--primary-light); }
+  .tl-dot.overdue { background:var(--danger); box-shadow:0 0 0 2px var(--danger-light); }
+  .tl-dot.today { background:var(--warning); box-shadow:0 0 0 2px var(--warning-light); }
+  .tl-date { font-weight:700; font-size:14px; color:var(--gray-900); margin-bottom:8px; }
+  .tl-date small { font-weight:500; color:var(--gray-400); font-size:12px; }
+
+  /* PRINT */
+  @media print {
+    .header, .filters-bar, .no-print, .notif-wrap, .sync-btn, .btn-logout, #sosBanner { display:none !important; }
+    body { background:white; }
+    .view { display:none !important; }
+    .view.active { display:block !important; }
+    .stat-card, .user-stat-card, .chart-container { box-shadow:none !important; border:1px solid #ddd !important; break-inside:avoid; }
+  }
+
+  /* SUBTASKS (checklist on card) */
+  .tc-subtasks { margin-top:8px; }
+  .tc-progress { height:7px; background:var(--gray-100); border-radius:20px; overflow:hidden; }
+  .tc-progress-bar { height:100%; background:linear-gradient(90deg,#22c55e,#16a34a); border-radius:20px; transition:width 0.3s; }
+  .tc-progress-label { font-size:10px; font-weight:600; color:var(--gray-500); margin-top:3px; }
+  .tc-subtask { display:flex; align-items:flex-start; gap:7px; font-size:12px; color:var(--gray-700); padding:3px 0; cursor:pointer; line-height:1.4; }
+  .tc-subtask input { margin-top:2px; }
+  .tc-subtask input { width:15px; height:15px; cursor:pointer; accent-color:var(--success); }
+  .tc-subtask.done { color:var(--gray-400); text-decoration:line-through; }
+  .st-assignee { color:white; font-size:10px; font-weight:700; padding:1px 8px; border-radius:20px; flex-shrink:0; }
+
+  /* SUBTASK EDITOR (in modal) */
+  .subtask-editor { display:flex; flex-direction:column; gap:6px; margin-bottom:6px; }
+  .subtask-row { display:flex; gap:6px; align-items:flex-start; }
+  .subtask-input { flex:1; padding:7px 10px; border:1.5px solid var(--gray-200); border-radius:8px; font-size:13px; font-family:inherit; resize:none; overflow:hidden; min-height:34px; line-height:1.4; }
+  .subtask-assign { padding:7px 6px; border:1.5px solid var(--gray-200); border-radius:8px; font-size:12px; font-family:inherit; background:white; max-width:110px; }
+  .subtask-drag { cursor:grab; color:var(--gray-400); font-size:16px; line-height:1; padding:0 4px; user-select:none; flex-shrink:0; }
+  .subtask-drag:active { cursor:grabbing; }
+  .subtask-row.dragging { opacity:0.4; background:var(--primary-light); border-radius:8px; }
+  .subtask-del { background:var(--danger-light); color:var(--danger); border:none; border-radius:8px; width:30px; height:30px; cursor:pointer; font-weight:700; flex-shrink:0; }
+  .subtask-del:hover { background:var(--danger); color:white; }
+
+  /* CRITICAL SOS BANNER */
+  #sosBanner { display:none; position:sticky; top:64px; z-index:90; margin:0 0 14px; background:linear-gradient(135deg,#dc2626,#ef4444); color:white; border-radius:14px; padding:14px 18px; font-weight:700; box-shadow:0 8px 30px rgba(220,38,38,0.5); cursor:pointer; }
+  #sosBanner .sos-title { font-size:15px; display:flex; align-items:center; gap:8px; }
+  #sosBanner .sos-list { font-size:13px; font-weight:600; margin-top:6px; opacity:0.95; }
 
   /* BUTTONS */
   .btn { padding:8px 18px; border:none; border-radius:10px; cursor:pointer; font-size:13px; font-weight:600; transition:all 0.2s; font-family:inherit; }
@@ -261,19 +427,28 @@
       </button>
       <button class="nav-btn" onclick="showView('upcoming')" id="navUpcoming">יומן 2 חודשים</button>
       <button class="nav-btn" onclick="showView('stats')" id="navStats">סטטיסטיקות</button>
+      <button class="nav-btn" onclick="showView('hours')" id="navHours">⏱️ שעות</button>
       <button class="nav-btn" onclick="showView('archive')" id="navArchive">ארכיון</button>
       <button class="nav-btn" onclick="showView('admin')" id="navAdmin" style="display:none">⚙️ ניהול</button>
     </div>
     <div style="display:flex;align-items:center;gap:10px">
+      <button id="attendanceBtn" class="attendance-btn" onclick="toggleAttendance()">כניסה</button>
       <button class="sync-btn" onclick="syncData()">🔄 סנכרן</button>
+      <div class="notif-wrap">
+        <button id="notifBell" class="notif-bell" onclick="toggleNotifPanel(event)">🔔<span id="notifBadge" class="notif-badge" style="display:none">0</span></button>
+        <div id="notifPanel" class="notif-panel"></div>
+      </div>
       <span id="headerUserName" style="font-size:13px;font-weight:600"></span>
       <div id="headerAvatar" class="header-avatar"></div>
       <button class="btn-logout" onclick="logout()">יציאה</button>
     </div>
   </div>
 
+  <div id="saveWarnBanner" style="display:none;align-items:center;gap:10px;background:linear-gradient(135deg,#dc2626,#ef4444);color:white;padding:12px 20px;font-weight:600;font-size:14px;position:sticky;top:64px;z-index:95;box-shadow:0 4px 20px rgba(220,38,38,0.4)"></div>
+
   <!-- TASKS -->
   <div id="viewTasks" class="view active">
+    <div id="sosBanner" onclick="filters.critical||toggleFilter('critical')"></div>
     <div class="filters-bar">
       <span class="filters-label">סינון:</span>
       <select id="filterClient" class="filter-select" onchange="renderTasks()"><option value="">כל הלקוחות</option></select>
@@ -281,7 +456,15 @@
       <button id="filterCritical" class="filter-toggle" onclick="toggleFilter('critical')">🔴 קריטי</button>
       <button id="filterOverdue" class="filter-toggle" onclick="toggleFilter('overdue')">⚠️ באיחור</button>
       <button id="filterToday" class="filter-toggle" onclick="toggleFilter('today')">📅 להיום</button>
+      <div style="display:flex;gap:4px;margin-right:auto;flex-wrap:wrap">
+        <button id="tasksViewList" onclick="setTasksView('list')" class="btn btn-sm" style="background:var(--primary);color:white">☰ רשימה</button>
+        <button id="tasksViewGroup" onclick="setTasksView('group')" class="btn btn-sm btn-ghost">🏢 לפי לקוח</button>
+        <button id="tasksViewKanban" onclick="setTasksView('kanban')" class="btn btn-sm btn-ghost">📋 קנבן</button>
+        <button id="tasksViewCalendar" onclick="setTasksView('calendar')" class="btn btn-sm btn-ghost">📅 לוח שנה</button>
+        <button id="tasksViewTimeline" onclick="setTasksView('timeline')" class="btn btn-sm btn-ghost">📈 ציר זמן</button>
+      </div>
     </div>
+    <div id="tasksActiveFilters" class="active-filters" style="display:none"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <div id="clientSummary" class="client-summary" style="flex:1"></div>
       <button class="btn btn-primary btn-sm" style="flex-shrink:0;margin-right:10px" onclick="openQuickTaskModal()">＋ משימה חד פעמית</button>
@@ -301,10 +484,28 @@
   <!-- STATS -->
   <div id="viewStats" class="view">
     <div class="section-header">
-      <div class="section-title">סטטיסטיקות</div>
-      <select id="statsUserFilter" class="filter-select" onchange="renderStats()"><option value="">כל המשתמשים</option></select>
+      <div class="section-title">📊 דוחות וביצועים</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="statsUserFilter" class="filter-select" onchange="renderStats()"><option value="">כל המשתמשים</option></select>
+        <button class="btn btn-sm btn-ghost no-print" onclick="exportStatsExcel()">📊 ייצוא אקסל</button>
+        <button class="btn btn-sm btn-ghost no-print" onclick="window.print()">🖨️ הדפסה</button>
+      </div>
     </div>
     <div id="statsContent"></div>
+  </div>
+
+  <!-- HOURS / TIME REPORT -->
+  <div id="viewHours" class="view">
+    <div class="section-header">
+      <div class="section-title">⏱️ דוח שעות עבודה</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="month" id="hoursMonth" class="filter-select" onchange="renderHours()">
+        <select id="hoursUserFilter" class="filter-select" onchange="renderHours()"><option value="">כל העובדים</option></select>
+        <button class="btn btn-sm btn-ghost no-print" onclick="exportHoursExcel()">📊 ייצוא אקסל</button>
+        <button class="btn btn-sm btn-ghost no-print" onclick="window.print()">🖨️ הדפסה</button>
+      </div>
+    </div>
+    <div id="hoursContent"></div>
   </div>
 
   <!-- ARCHIVE -->
@@ -313,6 +514,7 @@
       <span class="filters-label">ארכיון:</span>
       <select id="archiveFilterClient" class="filter-select" onchange="renderArchive()"><option value="">כל הלקוחות</option></select>
       <select id="archiveFilterUser" class="filter-select" onchange="renderArchive()"><option value="">כל המשתמשים</option></select>
+      <button class="btn btn-sm btn-ghost no-print" style="margin-right:auto" onclick="exportArchiveExcel()">📊 ייצוא אקסל</button>
     </div>
     <div id="archiveList"></div>
   </div>
@@ -326,6 +528,24 @@
     </div>
     <div id="adminTasks" class="admin-section active">
       <div class="section-header"><div class="section-title">משימות</div><button class="btn btn-primary" onclick="openTaskModal()">+ משימה חדשה</button></div>
+      <div id="adminTasksToolbar" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
+        <select id="filterRecur" onchange="renderAdminTasks()" style="padding:7px 12px;border-radius:8px;border:1.5px solid var(--gray-200);font-size:13px;background:white;font-family:inherit">
+          <option value="">כל סוגי החזרה</option>
+          <option value="once">חד פעמי</option>
+          <option value="weekly">שבועי</option>
+          <option value="monthly">חודשי</option>
+          <option value="bimonthly">דו-חודשי</option>
+        </select>
+        <select id="filterWorker" onchange="renderAdminTasks()" style="padding:7px 12px;border-radius:8px;border:1.5px solid var(--gray-200);font-size:13px;background:white;font-family:inherit">
+          <option value="">כל העובדים</option>
+        </select>
+        <button class="btn btn-sm btn-ghost" onclick="openDeletedTasks()">🗑️ ארכיון מחיקות</button>
+        <div style="display:flex;gap:4px;margin-right:auto">
+          <button id="viewList" onclick="setAdminView('list')" class="btn btn-sm" style="background:var(--primary);color:white">☰ רשימה</button>
+          <button id="viewGroup" onclick="setAdminView('group')" class="btn btn-sm btn-ghost">🏢 לפי לקוח</button>
+        </div>
+      </div>
+      <div id="adminActiveFilters" class="active-filters" style="display:none"></div>
       <div id="adminTasksList"></div>
     </div>
     <div id="adminUsers" class="admin-section">
@@ -349,10 +569,53 @@
   <div class="modal">
     <h3>✅ ביצוע משימה</h3>
     <div id="completeTaskInfo" style="background:var(--gray-50);border-radius:8px;padding:12px;margin-bottom:16px;font-size:14px;color:var(--gray-700)"></div>
+    <div class="fg"><label>📅 תאריך ביצוע</label><input type="date" id="completeDate"></div>
     <div class="fg"><label>הערה (אופציונלי)</label><textarea id="completeNote" placeholder="הוסף הערה על ביצוע המשימה..."></textarea></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('completeModal')">ביטול</button>
       <button class="btn btn-success" onclick="confirmComplete()">✅ אשר ביצוע</button>
+    </div>
+  </div>
+</div>
+
+<!-- DELETED TASKS ARCHIVE -->
+<div id="deletedTasksModal" class="modal-overlay">
+  <div class="modal">
+    <h3>🗑️ ארכיון מחיקות</h3>
+    <p style="font-size:13px;color:var(--gray-500);margin-bottom:14px">משימות שנמחקו נשמרות כאן ואפשר לשחזר אותן בכל עת.</p>
+    <div id="deletedTasksList"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('deletedTasksModal')">סגור</button>
+    </div>
+  </div>
+</div>
+
+<!-- TASK DETAIL MODAL (comments + transfer) -->
+<div id="taskDetailModal" class="modal-overlay">
+  <div class="modal">
+    <h3 id="tdTitle">💬 משימה</h3>
+    <div id="tdSub" style="font-size:13px;color:var(--gray-500);margin-bottom:14px"></div>
+
+    <div class="fg"><label>↗️ העברת המשימה לעובד</label>
+      <div style="display:flex;gap:8px">
+        <select id="tdTransferUser" style="flex:1;padding:8px 10px;border:1.5px solid var(--gray-200);border-radius:8px;font-family:inherit"></select>
+        <button class="btn btn-primary btn-sm" onclick="transferTask()">העבר</button>
+      </div>
+      <div style="font-size:11px;color:var(--gray-400);margin-top:4px">העובד יתווסף למשימה ויקבל התראה. אתה תמשיך לראות אותה.</div>
+    </div>
+
+    <div style="border-top:1px solid var(--gray-100);margin:16px 0 12px;padding-top:14px">
+      <label style="font-weight:700;font-size:14px;color:var(--gray-900)">💬 תגובות</label>
+    </div>
+    <div id="tdComments" class="cmt-thread"></div>
+    <div class="fg"><label>📌 כוון את ההערה לעובד (אופציונלי — הוא יקבל התראה)</label>
+      <select id="tdDirectTo" style="width:100%;padding:8px 10px;border:1.5px solid var(--gray-200);border-radius:8px;font-family:inherit"></select>
+    </div>
+    <div id="tdMentionChips" class="mention-chips"></div>
+    <div class="fg"><textarea id="tdCommentInput" placeholder="כתוב הערה... (אפשר גם לאזכר עם @)"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('taskDetailModal')">סגור</button>
+      <button class="btn btn-primary" onclick="addComment()">שלח תגובה</button>
     </div>
   </div>
 </div>
@@ -381,7 +644,19 @@
     </div>
     <div class="fg"><label>פירוט המשימה</label><textarea id="tDesc" placeholder="תיאור מפורט..."></textarea></div>
     <div class="fg"><label>💬 הערה פנימית</label><textarea id="tNote" placeholder="הערה פנימית..."></textarea></div>
-    <div class="fg"><label>🔗 קישור</label><input type="url" id="tLink" placeholder="https://..." style="direction:ltr"></div>
+    <div class="fg"><label>🔗 קישור 1</label>
+      <div class="form-row">
+        <input type="text" id="tLinkLabel" placeholder="שם הקישור (לדוגמה: תיקיית דרייב)">
+        <input type="url" id="tLink" placeholder="https://..." style="direction:ltr">
+      </div>
+    </div>
+    <div class="fg"><label>🔗 קישור 2</label>
+      <div class="form-row">
+        <input type="text" id="tLink2Label" placeholder="שם הקישור">
+        <input type="url" id="tLink2" placeholder="https://..." style="direction:ltr">
+      </div>
+    </div>
+    <div class="fg"><label>✉️ מייל לשליחה</label><input type="email" id="tEmail" placeholder="example@mail.com" style="direction:ltr"></div>
     <div class="form-row">
       <div class="fg required"><label>חזרתיות</label>
         <select id="tRecur" onchange="updateRecurFields()">
@@ -405,8 +680,20 @@
     <div id="rfMonthly" class="recur-field"><div class="fg required"><label>יום בחודש (1–28)</label><input type="number" id="tDayOfMonth" min="1" max="28" placeholder="15"></div></div>
     <div id="rfBimonthly" class="recur-field"><div class="fg required"><label>יום בחודש — בחודשי אי-זוגי (1–28)</label><input type="number" id="tBiDayOfMonth" min="1" max="28" placeholder="1"></div></div>
     <div class="fg"><label>תאריך התחלה</label><input type="date" id="tStartDate"></div>
-    <div class="fg"><label>שיוך לעובדים</label><div id="tUsers" class="user-checkboxes"></div></div>
-    <div class="fg"><div class="checkbox-group"><input type="checkbox" id="tCritical"><label for="tCritical">🔴 משימה קריטית</label></div></div>
+    <div class="fg"><label>☑️ תת-משימות (צ'קליסט)</label>
+      <div id="tSubtasks" class="subtask-editor"></div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="addSubtaskRow()">＋ הוסף סעיף</button>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>עדיפות</label>
+        <select id="tPriority">
+          <option value="normal">רגיל</option>
+          <option value="urgent">⚡ דחוף</option>
+        </select>
+      </div>
+      <div class="fg"><label>שיוך לעובדים</label><div id="tUsers" class="user-checkboxes"></div></div>
+    </div>
+    <div class="fg"><div class="checkbox-group"><input type="checkbox" id="tCritical"><label for="tCritical">🔴 משימה קריטית (SOS — מהבהבת באיחור)</label></div></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('taskModal')">ביטול</button>
       <button class="btn btn-primary" onclick="saveTask()">שמור</button>
@@ -446,6 +733,7 @@
     <div class="fg required"><label>שם משתמש (לכניסה)</label><input type="text" id="uUsername" placeholder="username" style="direction:ltr"></div>
     <div class="fg required"><label>סיסמה</label><input type="password" id="uPassword" placeholder="סיסמה"></div>
     <div class="fg"><label>תפקיד</label><input type="text" id="uRole" placeholder="תפקיד"></div>
+    <div class="fg"><label>✉️ מייל (להתראות)</label><input type="email" id="uEmail" placeholder="example@mail.com" style="direction:ltr"></div>
     <div class="fg"><div class="checkbox-group"><input type="checkbox" id="uIsAdmin"><label for="uIsAdmin">הרשאות Admin</label></div></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('userModal')">ביטול</button>
@@ -471,6 +759,22 @@
 
 <script>
 // ============================================================
+// USER COLOR HELPER
+// ============================================================
+function userColor(uid){
+  const colors=[
+    ['#f43f5e','#e11d48'],['#f97316','#ea580c'],['#eab308','#ca8a04'],
+    ['#22c55e','#16a34a'],['#06b6d4','#0891b2'],['#6366f1','#4f46e5'],
+    ['#a855f7','#9333ea'],['#ec4899','#db2777'],['#14b8a6','#0d9488'],
+    ['#84cc16','#65a30d']
+  ];
+  let hash=0;
+  for(let i=0;i<uid.length;i++) hash=(hash*31+uid.charCodeAt(i))&0xffffffff;
+  const [a,b]=colors[Math.abs(hash)%colors.length];
+  return `linear-gradient(135deg,${a},${b})`;
+}
+
+// ============================================================
 // API LAYER
 // ============================================================
 let apiUrl='', localMode=false;
@@ -484,29 +788,76 @@ async function apiGet(){
   const res=await fetch(apiUrl+'?action=getAll');
   const json=await res.json();
   if(!json.ok) throw new Error(json.error);
+  saveHealthOk(); // successful round-trip → connection healthy, clear any stale warning
   return json.data;
+}
+// Central writer — tracks save health so no failed save is ever missed
+let pendingWrites=0, lastWriteAt=0, lastLocalChangeAt=0;
+async function doWrite(payload){
+  pendingWrites++;
+  try{
+    const res=await fetch(apiUrl,{method:'POST',body:JSON.stringify(payload)});
+    const json=await res.json();
+    if(!json.ok) throw new Error(json.error||'שגיאה לא ידועה');
+    saveHealthOk();
+    return json.result;
+  }catch(e){
+    saveHealthFail();
+    throw e;
+  }finally{
+    pendingWrites--;
+    lastWriteAt=Date.now();
+  }
 }
 async function apiSet(col,id,data){
   if(localMode){if(!localData[col])localData[col]={};localData[col][id]=data;saveLocalData();return id;}
-  const res=await fetch(apiUrl,{method:'POST',body:JSON.stringify({action:'set',collection:col,id,data})});
-  const json=await res.json(); if(!json.ok) throw new Error(json.error); return json.result;
+  return doWrite({action:'set',collection:col,id,data});
 }
 async function apiPush(col,data){
   if(localMode){const id='id_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);await apiSet(col,id,{...data,id});return id;}
-  const res=await fetch(apiUrl,{method:'POST',body:JSON.stringify({action:'push',collection:col,data})});
-  const json=await res.json(); if(!json.ok) throw new Error(json.error); return json.result;
+  return doWrite({action:'push',collection:col,data});
 }
 async function apiRemove(col,id){
   if(localMode){if(localData[col])delete localData[col][id];saveLocalData();return;}
-  const res=await fetch(apiUrl,{method:'POST',body:JSON.stringify({action:'remove',collection:col,id})});
-  const json=await res.json(); if(!json.ok) throw new Error(json.error);
+  return doWrite({action:'remove',collection:col,id});
 }
+
+// Save-health banner
+let saveFailCount=0;
+function saveHealthOk(){
+  if(saveFailCount>0){saveFailCount=0;const b=document.getElementById('saveWarnBanner');if(b)b.style.display='none';}
+}
+function saveHealthFail(){
+  saveFailCount++;
+  const b=document.getElementById('saveWarnBanner');
+  if(b){b.style.display='flex';b.innerHTML=`⚠️ <span>שמירה נכשלה! ${saveFailCount} שינויים אולי לא נשמרו בענן. בדוק את חיבור האינטרנט ולחץ "סנכרן" לפני שתסגור.</span> <button onclick="syncData()" style="background:white;color:#b91c1c;border:none;border-radius:8px;padding:5px 14px;font-weight:700;cursor:pointer;font-family:inherit;margin-right:auto">🔄 סנכרן ובדוק</button>`;}
+}
+
+// ============================================================
+// AUTO-UPDATE — every device reloads automatically when a new version is deployed
+// ============================================================
+const APP_VERSION='2026-06-23-14';
+async function checkForUpdate(){
+  if(localMode)return;
+  try{
+    const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});
+    if(!r.ok)return;
+    const j=await r.json();
+    if(j&&j.version&&j.version!==APP_VERSION){
+      showToast('גרסה חדשה — מרענן את הדף...','success');
+      setTimeout(()=>location.reload(true),900);
+    }
+  }catch(e){/* ignore */}
+}
+setInterval(checkForUpdate,60000);
 
 // ============================================================
 // STATE
 // ============================================================
 let currentUser=null;
-let allTasks={}, allInstances={}, allUsers={}, allClients={};
+let allTasks={}, allInstances={}, allUsers={}, allClients={}, allNotifications={}, allAttendance={}, allTimelogs={};
+let tdCurrentKey=null;
+let lastUserStats=[];
 let filters={critical:false,overdue:false,today:false};
 let pendingComplete=null, pendingPostpone=null;
 let editingTaskId=null, editingUserId=null, editingClientId=null;
@@ -514,11 +865,13 @@ let editingTaskId=null, editingUserId=null, editingClientId=null;
 // ============================================================
 // INIT
 // ============================================================
-const DEFAULT_API_URL='https://script.google.com/macros/s/AKfycbyXcorIm0ISDHpRJm7Q_gR4MTI5zK9zkphvjcrINT57hL2vcjdx7pjJ1OY5EY8P4jlRzw/exec';
+const DEFAULT_API_URL='https://script.google.com/macros/s/AKfycbzxhW5STvV19PVfeQNsCMpJeBF_meGy83dIIija3i4UNEyVLYg5I7ZJhIKE4JxnrAWnjA/exec';
 
 window.addEventListener('DOMContentLoaded',async()=>{
   const lm=localStorage.getItem('crm_local_mode');
-  const url=localStorage.getItem('crm_api_url')||DEFAULT_API_URL;
+  // Always use the current deployment URL — force every device onto it
+  localStorage.setItem('crm_api_url',DEFAULT_API_URL);
+  const url=DEFAULT_API_URL;
   if(lm==='1'){localMode=true;loadLocalData();await showLoginScreen();}
   else{apiUrl=url;await showLoginScreen();}
 });
@@ -553,12 +906,12 @@ async function showLoginScreen(){
 
 async function loadAll(){
   const data=await apiGet();
-  allUsers=data.users||{}; allClients=data.clients||{}; allTasks=data.tasks||{}; allInstances=data.instances||{};
+  allUsers=data.users||{}; allClients=data.clients||{}; allTasks=data.tasks||{}; allInstances=data.instances||{}; allNotifications=data.notifications||{}; allAttendance=data.attendance||{}; allTimelogs=data.timelogs||{};
 }
 
 window.syncData=async function(){
   showLoading('מסנכרן...');
-  try{await loadAll();generateInstances();renderCurrentView();showToast('סונכרן ✅','success');}
+  try{await loadAll();generateInstances();renderCurrentView();renderNotifications();showToast('סונכרן ✅','success');}
   catch(e){showToast('שגיאה: '+e.message,'error');}
   hideLoading();
 };
@@ -622,10 +975,46 @@ function loginAs(userId){
   generateInstances();
   populateFilters();
   renderTasks();
+  renderNotifications();
+  renderAttendanceWidget();
+  startAutoSync();
 }
+
+// ============================================================
+// AUTO-SYNC — keep all devices up to date without manual refresh
+// ============================================================
+let pollTimer=null, isRefreshing=false;
+function startAutoSync(){
+  if(pollTimer)clearInterval(pollTimer);
+  pollTimer=setInterval(silentRefresh,20000); // every 20s
+}
+async function silentRefresh(){
+  if(!currentUser||localMode||isRefreshing)return;
+  // Don't disrupt the user mid-edit (any open modal)
+  if(document.querySelector('.modal-overlay.open'))return;
+  // Don't clobber changes that are still saving (or just saved — let the sheet settle)
+  if(pendingWrites>0||dirtyInstances.size>0||(Date.now()-lastWriteAt)<6000||(Date.now()-lastLocalChangeAt)<6000)return;
+  isRefreshing=true;
+  try{
+    const data=await apiGet();
+    // Re-check AFTER the network round-trip: if the user changed something while we
+    // were downloading, DISCARD this snapshot so it can't overwrite the change.
+    if(pendingWrites>0||dirtyInstances.size>0||(Date.now()-lastWriteAt)<6000||(Date.now()-lastLocalChangeAt)<6000){isRefreshing=false;return;}
+    allUsers=data.users||{}; allClients=data.clients||{}; allTasks=data.tasks||{}; allInstances=data.instances||{}; allNotifications=data.notifications||{}; allAttendance=data.attendance||{}; allTimelogs=data.timelogs||{};
+    generateInstances();
+    renderCurrentView();
+    renderNotifications();
+    renderAttendanceWidget();
+  }catch(e){/* silent — banner handles real save errors */}
+  isRefreshing=false;
+}
+// Refresh immediately when the user returns to the tab
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden)silentRefresh(); });
+window.addEventListener('focus',silentRefresh);
 
 window.logout=function(){
   currentUser=null;
+  if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
   document.getElementById('app').style.display='none';
   document.getElementById('loginScreen').style.display='flex';
 };
@@ -633,31 +1022,81 @@ window.logout=function(){
 // ============================================================
 // DATE HELPERS
 // ============================================================
-function todayStr(){return new Date().toISOString().slice(0,10);}
-function dateStr(d){return d.toISOString().slice(0,10);}
-function parseDate(s){return new Date(s+'T00:00:00');}
+function dateStr(d){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`;}
+function todayStr(){return dateStr(new Date());}
+function isoDate(iso){return iso?dateStr(new Date(iso)):'';}
+function parseDate(s){
+  if(!s)return new Date(NaN);
+  s=String(s);
+  // Full ISO timestamp (e.g. from Google Sheets date cells) — parse directly
+  if(s.includes('T')||s.includes('Z'))return new Date(s);
+  return new Date(s+'T00:00:00');
+}
 function addDays(d,n){const r=new Date(d);r.setDate(r.getDate()+n);return r;}
-function formatDate(s){if(!s)return '';return parseDate(s).toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'numeric'});}
-function formatDateShort(s){if(!s)return '';return parseDate(s).toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit'});}
+function formatDate(s){if(!s)return '';const d=parseDate(s);return isNaN(d)?'':d.toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'numeric'});}
+function formatDateShort(s){if(!s)return '';const d=parseDate(s);return isNaN(d)?'':d.toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit'});}
 
 // ============================================================
 // INSTANCE GENERATION
 // ============================================================
+// A period-group identifier: monthly/bimonthly group by month (YYYY-MM),
+// weekly/once group by exact day. Used to detect duplicates of the SAME occurrence
+// even when keys differ (e.g. after editing a task's schedule).
+function periodGroupKey(task,dueDate){
+  const d=dateStr(parseDate(dueDate));
+  if(task&&(task.recur==='monthly'||task.recur==='bimonthly'))return d.slice(0,7);
+  return d;
+}
+// Remove duplicate instances of the same task+period. Keeps the most "important" one.
+function dedupInstances(){
+  const groups={};
+  Object.entries(allInstances).forEach(([key,inst])=>{
+    if(!inst||!inst.taskId)return;
+    const task=allTasks[inst.taskId];
+    const gk=inst.taskId+'|'+periodGroupKey(task,inst.dueDate||inst.periodKey);
+    (groups[gk]=groups[gk]||[]).push(key);
+  });
+  const score=k=>{
+    const i=allInstances[k];let s=0;
+    if(i.status==='completed')s+=100;
+    else if(i.status==='postponed')s+=50;
+    else if(i.status==='inprogress')s+=20;
+    if(i.subtaskState&&Object.keys(i.subtaskState).length)s+=5;
+    if(i.comments&&i.comments.length)s+=5;
+    if(!/[TZ]/.test(k))s+=1; // prefer a clean key
+    return s;
+  };
+  Object.values(groups).forEach(keys=>{
+    if(keys.length<2)return;
+    keys.sort((a,b)=>score(b)-score(a));
+    keys.slice(1).forEach(k=>{ if(dirtyInstances.has(k))return; delete allInstances[k]; apiRemove('instances',k).catch(()=>{}); });
+  });
+}
+
 function generateInstances(){
+  dedupInstances();
   const today=new Date();today.setHours(0,0,0,0);
   const toCreate=[];
+  // Track which task+period groups already have an instance (avoid recreating duplicates)
+  const existingGroups=new Set();
+  Object.values(allInstances).forEach(inst=>{
+    if(!inst||!inst.taskId)return;
+    const t=allTasks[inst.taskId];
+    existingGroups.add(inst.taskId+'|'+periodGroupKey(t,inst.dueDate||inst.periodKey));
+  });
   Object.entries(allTasks).forEach(([tid,task])=>{
-    if(!task)return;
+    if(!task||task.deleted)return;
     const startStr=task.startDate||(task.recur==='once'?task.onceDate:todayStr());
     if(!startStr)return;
     const start=parseDate(startStr);
     getPeriods(task,start,today).forEach(({key,dueDate})=>{
+      const grp=tid+'|'+periodGroupKey(task,dueDate);
+      if(existingGroups.has(grp))return; // already have an instance for this period
       const instKey=`${tid}__${key}`;
-      if(!allInstances[instKey]){
-        const inst={key:instKey,taskId:tid,periodKey:key,dueDate,status:'pending'};
-        allInstances[instKey]=inst;
-        toCreate.push({instKey,inst});
-      }
+      const inst={key:instKey,taskId:tid,periodKey:key,dueDate,status:'pending'};
+      allInstances[instKey]=inst;
+      existingGroups.add(grp);
+      toCreate.push({instKey,inst});
     });
   });
   toCreate.forEach(({instKey,inst})=>apiSet('instances',instKey,inst).catch(()=>{}));
@@ -668,7 +1107,8 @@ function getPeriods(task,start,upTo){
   if(task.recur==='once'){
     if(!task.onceDate)return[];
     const d=parseDate(task.onceDate);
-    if(d<=upTo)periods.push({key:task.onceDate,dueDate:task.onceDate});
+    const nd=dateStr(d); // normalized YYYY-MM-DD — stable key regardless of stored format
+    if(d<=upTo)periods.push({key:nd,dueDate:nd});
   }else if(task.recur==='weekly'){
     let d=new Date(start);
     const dow=parseInt(task.dayOfWeek)||0;
@@ -706,19 +1146,20 @@ function getFuturePeriods(task,fromDate,toDate){
   if(task.recur==='once'){
     if(!task.onceDate)return[];
     const d=parseDate(task.onceDate);
-    if(d>fromDate&&d<=toDate)periods.push({key:task.onceDate,dueDate:task.onceDate});
+    const nd=dateStr(d);
+    if(d>=fromDate&&d<=toDate)periods.push({key:nd,dueDate:nd});
   }else if(task.recur==='weekly'){
     let d=new Date(fromDate);
     const dow=parseInt(task.dayOfWeek)||0;
     while(d.getDay()!==dow)d=addDays(d,1);
     while(d<=toDate){
-      if(d>fromDate)periods.push({key:dateStr(d),dueDate:dateStr(d)});
+      if(d>=fromDate)periods.push({key:dateStr(d),dueDate:dateStr(d)});
       d=addDays(d,7);
     }
   }else if(task.recur==='monthly'){
     const day=parseInt(task.dayOfMonth)||1;
     let d=new Date(fromDate.getFullYear(),fromDate.getMonth(),day);
-    if(d<=fromDate)d=new Date(d.getFullYear(),d.getMonth()+1,day);
+    if(d<fromDate)d=new Date(d.getFullYear(),d.getMonth()+1,day);
     while(d<=toDate){
       const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
       periods.push({key,dueDate:dateStr(d)});
@@ -730,7 +1171,7 @@ function getFuturePeriods(task,fromDate,toDate){
     for(let i=0;i<6;i++){
       const d=new Date(yr,mo,day);
       if(d>toDate)break;
-      if((mo+1)%2===1&&d>fromDate){
+      if((mo+1)%2===1&&d>=fromDate){
         const key=`${yr}-${String(mo+1).padStart(2,'0')}`;
         periods.push({key,dueDate:dateStr(d)});
       }
@@ -748,23 +1189,37 @@ function getPendingInstances(){
   return Object.entries(allInstances)
     .filter(([,inst])=>{
       const task=allTasks[inst.taskId];
-      if(!task)return false;
+      if(!task||task.deleted)return false;
       if(inst.status==='completed')return false;
       if(inst.status==='postponed'&&inst.postponedTo>today)return false;
-      if(task.assignedUsers&&!task.assignedUsers[currentUser.id])return false;
+      if(!currentUser.isAdmin&&task.assignedUsers&&!task.assignedUsers[currentUser.id])return false;
       return true;
     })
     .map(([key,inst])=>({key,inst,task:allTasks[inst.taskId]}));
 }
 
+// Last day allowed to complete = dueDate + slaDays - 1 (you have slaDays days starting on dueDate)
+function lastAllowedDay(inst,task){
+  const extra=(task.slaDays&&task.slaDays>0)?task.slaDays-1:0;
+  return addDays(parseDate(inst.dueDate),extra);
+}
 function getDaysOverDeadline(inst,task){
   if(!task.slaDays||task.slaDays<=0)return null;
-  const due=parseDate(inst.dueDate);
   const today=new Date();today.setHours(0,0,0,0);
-  return Math.floor((today-due)/86400000);
+  return Math.floor((today-lastAllowedDay(inst,task))/86400000); // >0 means the completion window passed
 }
-
-function isCriticalOverdue(inst,task){return task.critical&&inst.dueDate<todayStr();}
+// True only after the real deadline (dueDate + slaDays) has passed
+function isCriticalOverdue(inst,task){
+  if(!task.critical)return false;
+  if(task.slaDays&&task.slaDays>0)return getDaysOverDeadline(inst,task)>0;
+  return inst.dueDate<todayStr(); // no SLA → day after the task date
+}
+// Unified "past deadline" check (SLA-aware)
+function isOverdue(inst,task){
+  const d=getDaysOverDeadline(inst,task);
+  if(d!==null)return d>0;
+  return inst.dueDate<todayStr();
+}
 
 window.renderTasks=function(){
   generateInstances();
@@ -774,7 +1229,7 @@ window.renderTasks=function(){
   if(cf)items=items.filter(({task})=>task.clientId===cf);
   if(uf)items=items.filter(({task})=>task.assignedUsers&&task.assignedUsers[uf]);
   if(filters.critical)items=items.filter(({task})=>task.critical);
-  if(filters.overdue)items=items.filter(({inst,task})=>(getDaysOverDeadline(inst,task)||0)>0||isCriticalOverdue(inst,task));
+  if(filters.overdue)items=items.filter(({inst,task})=>isOverdue(inst,task));
   if(filters.today)items=items.filter(({inst})=>inst.dueDate===todayStr());
 
   items.sort((a,b)=>{
@@ -789,10 +1244,21 @@ window.renderTasks=function(){
   const badge=document.getElementById('pendingBadge');
   badge.textContent=total;badge.style.display=total>0?'inline-block':'none';
 
+  // SOS banner — critical tasks that passed their deadline
+  const sos=getPendingInstances().filter(({inst,task})=>isCriticalOverdue(inst,task));
+  const sosEl=document.getElementById('sosBanner');
+  if(sosEl){
+    if(sos.length){
+      sosEl.style.display='block';
+      sosEl.innerHTML=`<div class="sos-title">🚨 ${sos.length===1?'משימה קריטית לטיפול מיידי!':`${sos.length} משימות קריטיות לטיפול מיידי!`}</div>
+        <div class="sos-list">${sos.map(({task})=>task.name).join(' · ')}</div>`;
+    }else{sosEl.style.display='none';sosEl.innerHTML='';}
+  }
+
   const today=todayStr();
-  const overdue=items.filter(i=>i.inst.dueDate<today);
-  const todayItems=items.filter(i=>i.inst.dueDate===today);
-  const upcomingItems=items.filter(i=>i.inst.dueDate>today);
+  const overdue=items.filter(i=>isOverdue(i.inst,i.task));
+  const upcomingItems=items.filter(i=>!isOverdue(i.inst,i.task)&&i.inst.dueDate>today);
+  const todayItems=items.filter(i=>!isOverdue(i.inst,i.task)&&i.inst.dueDate<=today);
 
   // Client summary chips
   const allPending=getPendingInstances();
@@ -801,7 +1267,7 @@ window.renderTasks=function(){
   allPending.forEach(({inst,task})=>{
     const cid=task.clientId||'_none';
     clientCounts[cid]=(clientCounts[cid]||0)+1;
-    if(inst.dueDate<today||(getDaysOverDeadline(inst,task)||0)>0)clientHasOverdue[cid]=true;
+    if(isOverdue(inst,task))clientHasOverdue[cid]=true;
   });
   const summaryHtml=Object.entries(clientCounts).sort((a,b)=>b[1]-a[1]).map(([cid,cnt])=>{
     const name=allClients[cid]?.name||'ללא לקוח';
@@ -812,12 +1278,550 @@ window.renderTasks=function(){
   }).join('');
   document.getElementById('clientSummary').innerHTML=summaryHtml;
 
+  // Active filters indicator
+  renderTasksActiveFilters(cf,uf);
+
+  // Alternate views
+  if(tasksView==='kanban'){document.getElementById('tasksList').innerHTML=renderKanban(cf,uf);return;}
+  if(tasksView==='calendar'){document.getElementById('tasksList').innerHTML=renderCalendar(items);return;}
+  if(tasksView==='timeline'){document.getElementById('tasksList').innerHTML=renderTimeline(items);return;}
+
   let html='';
-  if(overdue.length){html+=`<div class="period-header">⚠️ באיחור (${overdue.length})</div>`;html+=overdue.map(renderCard).join('');}
-  if(todayItems.length){html+=`<div class="period-header">📅 להיום (${todayItems.length})</div>`;html+=todayItems.map(renderCard).join('');}
-  if(upcomingItems.length){html+=`<div class="period-header">🔜 ממתינות (${upcomingItems.length})</div>`;html+=upcomingItems.map(renderCard).join('');}
-  if(!html)html=`<div class="empty-state"><div class="icon">🎉</div><h3>אין משימות ממתינות!</h3></div>`;
+  if(tasksView==='group'){
+    // Group by client (preserve overdue->today->upcoming order inside each)
+    const ordered=[...overdue,...todayItems,...upcomingItems];
+    const groups={};
+    ordered.forEach(x=>{const cid=x.task.clientId||'__none__';(groups[cid]=groups[cid]||[]).push(x);});
+    const noClient=groups['__none__']||[];delete groups['__none__'];
+    const sorted=Object.entries(groups).sort(([a],[b])=>(allClients[a]?.name||'').localeCompare(allClients[b]?.name||''));
+    html=`<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">`;
+    const grpCard=(title,arr,accent)=>`<div style="background:white;border-radius:12px;border:1.5px solid var(--gray-200);padding:14px;min-width:300px;flex:1;max-width:400px;box-shadow:var(--shadow)">
+      <div style="font-weight:700;font-size:14px;color:${accent};margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid var(--primary-light)">🏢 ${title} <span style="background:var(--primary-light);color:var(--primary);font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600">${arr.length}</span></div>
+      ${arr.map(renderCard).join('')}
+    </div>`;
+    sorted.forEach(([cid,arr])=>{html+=grpCard(allClients[cid]?.name||cid,arr,'var(--primary)');});
+    if(noClient.length)html+=grpCard('ללא לקוח',noClient,'var(--gray-500)');
+    html+=`</div>`;
+    if(!ordered.length)html=`<div class="empty-state"><div class="icon">🎉</div><h3>אין משימות ממתינות!</h3></div>`;
+  } else {
+    if(overdue.length){html+=`<div class="period-header">⚠️ באיחור (${overdue.length})</div>`;html+=overdue.map(renderCard).join('');}
+    if(todayItems.length){html+=`<div class="period-header">📅 להיום (${todayItems.length})</div>`;html+=todayItems.map(renderCard).join('');}
+    if(upcomingItems.length){html+=`<div class="period-header">🔜 ממתינות (${upcomingItems.length})</div>`;html+=upcomingItems.map(renderCard).join('');}
+    if(!html)html=`<div class="empty-state"><div class="icon">🎉</div><h3>אין משימות ממתינות!</h3></div>`;
+  }
   document.getElementById('tasksList').innerHTML=html;
+};
+
+// ============================================================
+// NOTIFICATIONS (in-app bell)
+// ============================================================
+function timeAgo(iso){
+  if(!iso)return'';
+  const diff=(Date.now()-new Date(iso).getTime())/1000;
+  if(diff<60)return'הרגע';
+  if(diff<3600)return`לפני ${Math.floor(diff/60)} דק'`;
+  if(diff<86400)return`לפני ${Math.floor(diff/3600)} שעות`;
+  return`לפני ${Math.floor(diff/86400)} ימים`;
+}
+window.renderNotifications=function(){
+  if(!currentUser)return;
+  const mine=Object.entries(allNotifications)
+    .filter(([,n])=>n.userId===currentUser.id)
+    .map(([id,n])=>({id,...n}))
+    .sort((a,b)=>(b.at||'').localeCompare(a.at||''));
+  const unread=mine.filter(n=>!n.read).length;
+  const badge=document.getElementById('notifBadge');
+  if(badge){badge.textContent=unread;badge.style.display=unread>0?'flex':'none';}
+  const icoMap={mention:'💬',transfer:'↗️',assign:'📌',deadline:'⏰'};
+  const panel=document.getElementById('notifPanel');
+  if(!panel)return;
+  const head=`<div class="notif-panel-head"><span>🔔 התראות</span>${unread?`<button onclick="markAllNotifsRead()">סמן הכל כנקרא</button>`:''}</div>`;
+  if(!mine.length){panel.innerHTML=head+`<div class="notif-empty">אין התראות 🎉</div>`;return;}
+  panel.innerHTML=head+mine.slice(0,30).map(n=>`
+    <div class="notif-item ${n.read?'':'unread'}" onclick="openNotif('${n.id}','${n.taskKey||''}')">
+      <div class="notif-ico">${icoMap[n.type]||'🔔'}</div>
+      <div class="notif-body"><div class="notif-text">${n.text||''}</div><div class="notif-time">${timeAgo(n.at)}</div></div>
+    </div>`).join('');
+};
+window.toggleNotifPanel=function(ev){
+  ev&&ev.stopPropagation();
+  document.getElementById('notifPanel').classList.toggle('open');
+};
+document.addEventListener('click',e=>{
+  const w=document.querySelector('.notif-wrap');
+  if(w&&!w.contains(e.target))document.getElementById('notifPanel')?.classList.remove('open');
+});
+window.openNotif=async function(id,taskKey){
+  await markNotifRead(id);
+  document.getElementById('notifPanel').classList.remove('open');
+  if(taskKey&&allInstances[taskKey])openTaskDetail(taskKey);
+};
+async function markNotifRead(id){
+  const n=allNotifications[id];if(!n||n.read)return;
+  const update={...n,read:true};allNotifications[id]=update;renderNotifications();
+  try{await apiSet('notifications',id,update);}catch(e){}
+}
+window.markAllNotifsRead=async function(){
+  const mine=Object.entries(allNotifications).filter(([,n])=>n.userId===currentUser.id&&!n.read);
+  mine.forEach(([id,n])=>{allNotifications[id]={...n,read:true};});
+  renderNotifications();
+  for(const [id,n] of mine){try{await apiSet('notifications',id,{...n,read:true});}catch(e){}}
+};
+async function notify(userId,type,text,taskKey){
+  if(!userId||userId===currentUser.id)return; // don't notify yourself
+  const data={userId,type,text,taskKey:taskKey||'',read:false,at:new Date().toISOString()};
+  try{const id=await apiPush('notifications',data);allNotifications[id]={...data,id};}catch(e){}
+}
+
+// ============================================================
+// ATTENDANCE (clock in / out) + TASK TIME TRACKING
+// ============================================================
+function fmtDuration(ms){
+  if(ms<0)ms=0;
+  const totalMin=Math.floor(ms/60000);
+  const h=Math.floor(totalMin/60),m=totalMin%60;
+  return h>0?`${h}:${String(m).padStart(2,'0')} שע'`:`${m} דק'`;
+}
+function fmtClock(ms){
+  if(ms<0)ms=0;
+  const s=Math.floor(ms/1000),hh=Math.floor(s/3600),mm=Math.floor((s%3600)/60),ss=s%60;
+  return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+}
+function myOpenAttendance(){
+  return Object.entries(allAttendance).find(([,a])=>a.userId===currentUser.id&&!a.end);
+}
+function myOpenTimer(){
+  return Object.entries(allTimelogs).find(([,t])=>t.userId===currentUser.id&&!t.end);
+}
+window.toggleAttendance=async function(){
+  const open=myOpenAttendance();
+  if(open){
+    const [id,a]=open;
+    const upd={...a,end:new Date().toISOString()};
+    allAttendance[id]=upd;renderAttendanceWidget();
+    try{await apiSet('attendance',id,upd);}catch(e){showToast('שגיאה בשמירה','error');}
+    showToast('יציאה נרשמה 👋','success');
+  }else{
+    const now=new Date();
+    const data={userId:currentUser.id,userName:currentUser.name,start:now.toISOString(),end:'',date:todayStr()};
+    try{const id=await apiPush('attendance',data);allAttendance[id]={...data,id};}catch(e){showToast('שגיאה','error');return;}
+    renderAttendanceWidget();showToast('כניסה נרשמה ✅','success');
+  }
+};
+function renderAttendanceWidget(){
+  const btn=document.getElementById('attendanceBtn');if(!btn||!currentUser)return;
+  const open=myOpenAttendance();
+  if(open){
+    const ms=Date.now()-new Date(open[1].start).getTime();
+    btn.classList.add('clocked-in');
+    btn.textContent=`🔴 יציאה · ${fmtClock(ms)}`;
+  }else{
+    btn.classList.remove('clocked-in');
+    btn.textContent='🟢 כניסה';
+  }
+}
+
+// --- Per-task timer ---
+window.toggleTaskTimer=async function(key){
+  const inst=allInstances[key];if(!inst)return;
+  const task=allTasks[inst.taskId];
+  const open=myOpenTimer();
+  // If a timer is already running, stop it first
+  if(open){
+    const [id,t]=open;
+    const upd={...t,end:new Date().toISOString()};
+    allTimelogs[id]=upd;
+    try{await apiSet('timelogs',id,upd);}catch(e){}
+    // if it was this same task → just stop
+    if(t.taskKey===key){renderTasks();showToast('עצרת את הטיימר ⏹️','success');return;}
+  }
+  // Start a new timer for this task
+  const client=task.clientId?allClients[task.clientId]:null;
+  const data={userId:currentUser.id,userName:currentUser.name,taskKey:key,taskId:inst.taskId,taskName:task.name,clientId:task.clientId||'',clientName:client?client.name:'',start:new Date().toISOString(),end:'',date:todayStr()};
+  try{const id=await apiPush('timelogs',data);allTimelogs[id]={...data,id};}catch(e){showToast('שגיאה','error');return;}
+  renderTasks();showToast('הטיימר התחיל ▶️','success');
+};
+function taskTimerInfo(key){
+  // returns {running, ms} for the current user's timer on this task
+  const open=myOpenTimer();
+  if(open&&open[1].taskKey===key)return{running:true,ms:Date.now()-new Date(open[1].start).getTime()};
+  return{running:false,ms:0};
+}
+
+// Live ticker — updates attendance + running task timer displays every second
+setInterval(()=>{
+  if(!currentUser)return;
+  renderAttendanceWidget();
+  // update any running task-timer label in place
+  document.querySelectorAll('.tc-timer[data-running="1"]').forEach(el=>{
+    const start=Number(el.dataset.start);
+    if(start)el.querySelector('.tc-timer-val').textContent=fmtClock(Date.now()-start);
+  });
+},1000);
+
+// ============================================================
+// HOURS REPORT (monthly)
+// ============================================================
+function durationOf(start,end){
+  if(!start)return 0;
+  const e=end?new Date(end).getTime():Date.now();
+  return Math.max(0,e-new Date(start).getTime());
+}
+window.renderHours=function(){
+  // populate filters once
+  const uf=document.getElementById('hoursUserFilter');
+  if(uf&&uf.options.length<=1){Object.entries(allUsers).forEach(([id,u])=>{const o=document.createElement('option');o.value=id;o.textContent=u.name;uf.appendChild(o);});}
+  const mEl=document.getElementById('hoursMonth');
+  if(mEl&&!mEl.value)mEl.value=todayStr().slice(0,7);
+  const month=mEl?mEl.value:todayStr().slice(0,7);
+  // non-admins locked to themselves
+  if(uf)uf.style.display=currentUser.isAdmin?'':'none';
+  const userFilter=currentUser.isAdmin?(uf?.value||''):currentUser.id;
+
+  const inMonth=d=>d&&String(d).slice(0,7)===month;
+  // Attendance per user
+  const att={};
+  Object.values(allAttendance).forEach(a=>{
+    if(!inMonth(a.date||a.start))return;
+    if(userFilter&&a.userId!==userFilter)return;
+    att[a.userId]=att[a.userId]||{name:a.userName,ms:0,sessions:0};
+    att[a.userId].ms+=durationOf(a.start,a.end);att[a.userId].sessions++;
+  });
+  // Task time per user, and per user×client
+  const taskByUser={},byUserClient={};
+  Object.values(allTimelogs).forEach(t=>{
+    if(!inMonth(t.date||t.start))return;
+    if(userFilter&&t.userId!==userFilter)return;
+    const ms=durationOf(t.start,t.end);
+    taskByUser[t.userId]=taskByUser[t.userId]||{name:t.userName,ms:0,count:0};
+    taskByUser[t.userId].ms+=ms;taskByUser[t.userId].count++;
+    const ck=t.userId+'|'+(t.clientId||'_none');
+    byUserClient[ck]=byUserClient[ck]||{userId:t.userId,userName:t.userName,clientName:t.clientName||'ללא לקוח',ms:0,count:0};
+    byUserClient[ck].ms+=ms;byUserClient[ck].count++;
+  });
+
+  const userIds=[...new Set([...Object.keys(att),...Object.keys(taskByUser)])];
+  let html='';
+  if(!userIds.length){html=`<div class="empty-state"><div class="icon">⏱️</div><h3>אין נתוני שעות לחודש זה</h3></div>`;document.getElementById('hoursContent').innerHTML=html;return;}
+
+  // Summary table: attendance vs task time per employee
+  html+=`<div class="section-title" style="margin-bottom:10px">סיכום לפי עובד — ${month}</div>`;
+  html+=`<table class="hours-table"><thead><tr><th>עובד</th><th>נוכחות (כניסה/יציאה)</th><th>זמן על משימות</th><th>מס' משימות</th></tr></thead><tbody>`;
+  let totAtt=0,totTask=0;
+  userIds.sort((a,b)=>((att[b]?.ms||0)+(taskByUser[b]?.ms||0))-((att[a]?.ms||0)+(taskByUser[a]?.ms||0)));
+  userIds.forEach(uid=>{
+    const name=att[uid]?.name||taskByUser[uid]?.name||allUsers[uid]?.name||uid;
+    const aMs=att[uid]?.ms||0,tMs=taskByUser[uid]?.ms||0;
+    totAtt+=aMs;totTask+=tMs;
+    html+=`<tr><td><strong>${name}</strong></td><td>${fmtDuration(aMs)}</td><td>${fmtDuration(tMs)}</td><td>${taskByUser[uid]?.count||0}</td></tr>`;
+  });
+  html+=`<tr class="total-row"><td>סה"כ</td><td>${fmtDuration(totAtt)}</td><td>${fmtDuration(totTask)}</td><td></td></tr>`;
+  html+=`</tbody></table>`;
+
+  // Per employee × client breakdown
+  const clientRows=Object.values(byUserClient).sort((a,b)=>b.ms-a.ms);
+  if(clientRows.length){
+    html+=`<div class="section-title" style="margin-bottom:10px">פירוט לפי עובד ולקוח</div>`;
+    html+=`<table class="hours-table"><thead><tr><th>עובד</th><th>לקוח</th><th>זמן</th><th>מס' רישומים</th></tr></thead><tbody>`;
+    clientRows.forEach(r=>{html+=`<tr><td>${r.userName}</td><td>🏢 ${r.clientName}</td><td>${fmtDuration(r.ms)}</td><td>${r.count}</td></tr>`;});
+    html+=`</tbody></table>`;
+  }
+  document.getElementById('hoursContent').innerHTML=html;
+};
+window.exportHoursExcel=function(){
+  const month=document.getElementById('hoursMonth')?.value||todayStr().slice(0,7);
+  const userFilter=currentUser.isAdmin?(document.getElementById('hoursUserFilter')?.value||''):currentUser.id;
+  const inMonth=d=>d&&String(d).slice(0,7)===month;
+  const rows=[['עובד','לקוח','משימה','התחלה','סיום','משך (דקות)']];
+  Object.values(allTimelogs).forEach(t=>{
+    if(!inMonth(t.date||t.start))return;
+    if(userFilter&&t.userId!==userFilter)return;
+    const mins=Math.round(durationOf(t.start,t.end)/60000);
+    rows.push([t.userName,t.clientName||'',t.taskName||'',t.start?new Date(t.start).toLocaleString('he-IL'):'',t.end?new Date(t.end).toLocaleString('he-IL'):'(פעיל)',mins]);
+  });
+  rows.push([]);rows.push(['נוכחות:']);
+  rows.push(['עובד','תאריך','כניסה','יציאה','משך (דקות)']);
+  Object.values(allAttendance).forEach(a=>{
+    if(!inMonth(a.date||a.start))return;
+    if(userFilter&&a.userId!==userFilter)return;
+    const mins=Math.round(durationOf(a.start,a.end)/60000);
+    rows.push([a.userName,a.date||'',a.start?new Date(a.start).toLocaleString('he-IL'):'',a.end?new Date(a.end).toLocaleString('he-IL'):'(פעיל)',mins]);
+  });
+  downloadCSV(`דוח_שעות_${month}.csv`,rows);
+  showToast('הקובץ הורד 📊','success');
+};
+
+// ============================================================
+// TASK DETAIL — COMMENTS + TRANSFER
+// ============================================================
+function escapeHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function highlightMentions(text){
+  let t=escapeHtml(text);
+  Object.values(allUsers).forEach(u=>{
+    if(!u.name)return;
+    t=t.split('@'+u.name).join(`<span class="mention">@${u.name}</span>`);
+  });
+  return t;
+}
+window.openTaskDetail=function(key){
+  const inst=allInstances[key];if(!inst)return;
+  const task=allTasks[inst.taskId];if(!task)return;
+  tdCurrentKey=key;
+  const client=task.clientId?allClients[task.clientId]:null;
+  document.getElementById('tdTitle').textContent='💬 '+task.name;
+  document.getElementById('tdSub').textContent=(client?client.name+' · ':'')+'תאריך: '+formatDate(inst.dueDate);
+  // Transfer dropdown — users not already assigned
+  const assigned=task.assignedUsers||{};
+  const opts=Object.entries(allUsers).filter(([id])=>!assigned[id]).map(([id,u])=>`<option value="${id}">${u.name}</option>`).join('');
+  document.getElementById('tdTransferUser').innerHTML=opts||'<option value="">כל העובדים כבר משויכים</option>';
+  // Direct-to dropdown
+  document.getElementById('tdDirectTo').innerHTML='<option value="">— ללא —</option>'+Object.entries(allUsers).filter(([id])=>id!==currentUser.id).map(([id,u])=>`<option value="${id}">${u.name}</option>`).join('');
+  // Mention chips
+  document.getElementById('tdMentionChips').innerHTML=Object.entries(allUsers).filter(([id])=>id!==currentUser.id).map(([id,u])=>`<span class="mention-chip" onclick="insertMention('${u.name.replace(/'/g,'')}')">@${u.name}</span>`).join('');
+  document.getElementById('tdCommentInput').value='';
+  renderComments();
+  document.getElementById('taskDetailModal').classList.add('open');
+};
+function renderComments(){
+  const inst=allInstances[tdCurrentKey];
+  const comments=(inst&&inst.comments)||[];
+  const el=document.getElementById('tdComments');
+  if(!comments.length){el.innerHTML='<div class="cmt-empty">אין תגובות עדיין. כתוב את הראשונה 👇</div>';return;}
+  el.innerHTML=comments.map(c=>`<div class="cmt">
+    <div class="cmt-head">
+      <div class="cmt-avatar" style="background:${userColor(c.userId||'x')}">${(c.userName||'?').charAt(0)}</div>
+      <span class="cmt-author">${c.userName||''}</span>
+      ${c.directedToName?`<span style="background:var(--primary-light);color:var(--primary);font-size:10px;font-weight:700;padding:1px 8px;border-radius:20px">📌 עבור ${c.directedToName}</span>`:''}
+      <span class="cmt-time">${c.at?new Date(c.at).toLocaleString('he-IL',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):''}${c.at?` · ${timeAgo(c.at)}`:''}</span>
+    </div>
+    <div class="cmt-text">${highlightMentions(c.text)}</div>
+  </div>`).join('');
+  el.scrollTop=el.scrollHeight;
+}
+window.insertMention=function(name){
+  const inp=document.getElementById('tdCommentInput');
+  inp.value=(inp.value+(inp.value&&!inp.value.endsWith(' ')?' ':'')+'@'+name+' ');
+  inp.focus();
+};
+window.addComment=async function(){
+  const inp=document.getElementById('tdCommentInput');
+  const text=inp.value.trim();
+  if(!text){showToast('התגובה ריקה','error');return;}
+  const inst=allInstances[tdCurrentKey];if(!inst)return;
+  const task=allTasks[inst.taskId];
+  const directTo=document.getElementById('tdDirectTo').value;
+  const comment={id:'c_'+Date.now()+'_'+Math.random().toString(36).slice(2,5),userId:currentUser.id,userName:currentUser.name,text,at:new Date().toISOString(),directedTo:directTo||'',directedToName:directTo?(allUsers[directTo]?.name||''):''};
+  const comments=[...(inst.comments||[]),comment];
+  const update={...inst,comments};
+  allInstances[tdCurrentKey]=update;
+  inp.value='';document.getElementById('tdDirectTo').value='';
+  renderComments();
+  try{await apiSet('instances',tdCurrentKey,update);}catch(e){showToast('שגיאה בשמירה','error');}
+  // Directed-to → notification
+  const notified={};
+  if(directTo){
+    await notify(directTo,'mention',`${currentUser.name} כתב לך הערה במשימה "${task.name}": ${text.slice(0,60)}`,tdCurrentKey);
+    notified[directTo]=true;
+  }
+  // Mentions → notifications
+  for(const [uid,user] of Object.entries(allUsers)){
+    if(notified[uid])continue;
+    if(user.name&&text.includes('@'+user.name)){
+      await notify(uid,'mention',`${currentUser.name} אזכר אותך במשימה "${task.name}"`,tdCurrentKey);
+    }
+  }
+  renderNotifications();
+  showToast(directTo?`ההערה נשלחה ל${allUsers[directTo]?.name} ✅`:'ההערה נשלחה ✅','success');
+};
+window.transferTask=async function(){
+  const uid=document.getElementById('tdTransferUser').value;
+  if(!uid){showToast('בחר עובד','error');return;}
+  const inst=allInstances[tdCurrentKey];if(!inst)return;
+  const task=allTasks[inst.taskId];
+  const assignedUsers={...(task.assignedUsers||{}),[uid]:true};
+  const updated={...task,assignedUsers};
+  allTasks[inst.taskId]=updated;
+  try{await apiSet('tasks',inst.taskId,{...updated,id:inst.taskId});}catch(e){showToast('שגיאה','error');return;}
+  await notify(uid,'transfer',`${currentUser.name} העביר אליך את המשימה "${task.name}"`,tdCurrentKey);
+  renderNotifications();renderTasks();
+  openTaskDetail(tdCurrentKey); // refresh modal (updates dropdown)
+  showToast(`המשימה הועברה ל${allUsers[uid]?.name} ✅`,'success');
+};
+
+let tasksView='list';
+window.setTasksView=function(v){
+  tasksView=v;
+  const map={list:'tasksViewList',group:'tasksViewGroup',kanban:'tasksViewKanban',calendar:'tasksViewCalendar',timeline:'tasksViewTimeline'};
+  Object.entries(map).forEach(([mode,id])=>{
+    const b=document.getElementById(id);if(!b)return;
+    const on=v===mode;
+    b.style.background=on?'var(--primary)':'';
+    b.style.color=on?'white':'';
+    b.className='btn btn-sm'+(on?'':' btn-ghost');
+  });
+  renderTasks();
+};
+
+// ============================================================
+// KANBAN VIEW
+// ============================================================
+let kbDragKey=null;
+function kbVisibleCompleted(){
+  return Object.entries(allInstances).filter(([,inst])=>{
+    const task=allTasks[inst.taskId];
+    if(!task||task.deleted||inst.status!=='completed')return false;
+    if(task.assignedUsers&&!task.assignedUsers[currentUser.id]&&!currentUser.isAdmin)return false;
+    return true;
+  }).map(([key,inst])=>({key,inst,task:allTasks[inst.taskId]}));
+}
+function renderKanban(cf,uf){
+  const today=todayStr();
+  const f=arr=>arr.filter(({task})=>(!cf||task.clientId===cf)&&(!uf||(task.assignedUsers&&task.assignedUsers[uf])));
+  let pend=f(getPendingInstances());
+  let done=f(kbVisibleCompleted());
+  // recent done only (last 21 days)
+  const cutoff=new Date();cutoff.setDate(cutoff.getDate()-21);
+  done=done.filter(({inst})=>!inst.completedAt||new Date(inst.completedAt)>=cutoff)
+           .sort((a,b)=>(b.inst.completedAt||'').localeCompare(a.inst.completedAt||''));
+  const todo=pend.filter(({inst})=>inst.status!=='inprogress');
+  const prog=pend.filter(({inst})=>inst.status==='inprogress');
+  const kbCard=({key,inst,task})=>{
+    const client=task.clientId?allClients[task.clientId]:null;
+    const overdue=inst.status!=='completed'&&isOverdue(inst,task);
+    const cls=isCriticalOverdue(inst,task)?'critical':overdue?'overdue':'';
+    const subs=task.subtasks||[];const st=inst.subtaskState||{};
+    const doneN=subs.filter(s=>st[s.id]).length;
+    return `<div class="kb-card ${cls}" draggable="true" ondragstart="kbDragStart(event,'${key}')" ondragend="kbDragEnd(event)" onclick="openTaskDetail('${key}')">
+      <div class="kb-card-title">${task.critical?'🔴 ':''}${task.priority==='urgent'?'⚡ ':''}${task.name}</div>
+      <div class="kb-card-meta">
+        ${client?`<span class="kb-tag" style="background:var(--primary-light);color:var(--primary)">${client.name}</span>`:''}
+        ${inst.status==='completed'?`<span class="kb-tag" style="background:var(--success-light);color:#065f46">✓ ${inst.completedAt?formatDate(isoDate(inst.completedAt)):''}</span>`:`<span class="kb-tag" style="background:${overdue?'var(--danger-light)':'var(--gray-100)'};color:${overdue?'#991b1b':'var(--gray-600)'}">📅 ${formatDate(inst.dueDate)}</span>`}
+        ${subs.length?`<span class="kb-tag" style="background:var(--gray-100);color:var(--gray-600)">☑️ ${doneN}/${subs.length}</span>`:''}
+      </div>
+    </div>`;
+  };
+  const col=(title,emoji,arr,target,accent)=>`<div class="kb-col" data-target="${target}" ondragover="kbOver(event)" ondragleave="kbLeave(event)" ondrop="kbDrop(event,'${target}')">
+    <div class="kb-col-head"><span style="color:${accent}">${emoji} ${title}</span><span class="kb-count">${arr.length}</span></div>
+    ${arr.length?arr.map(kbCard).join(''):'<div class="kb-empty">גרור משימות לכאן</div>'}
+  </div>`;
+  return `<div class="kanban">
+    ${col('לביצוע','📥',todo,'todo','var(--gray-700)')}
+    ${col('בעבודה','⚙️',prog,'prog','var(--primary)')}
+    ${col('הושלם','✅',done,'done','var(--success)')}
+  </div>`;
+}
+window.kbDragStart=function(e,key){kbDragKey=key;e.currentTarget.classList.add('dragging');e.stopPropagation();};
+window.kbDragEnd=function(e){e.currentTarget.classList.remove('dragging');};
+window.kbOver=function(e){e.preventDefault();e.currentTarget.classList.add('drag-over');};
+window.kbLeave=function(e){e.currentTarget.classList.remove('drag-over');};
+window.kbDrop=async function(e,target){
+  e.preventDefault();e.currentTarget.classList.remove('drag-over');
+  const key=kbDragKey;kbDragKey=null;if(!key)return;
+  const inst=allInstances[key];if(!inst)return;
+  const task=allTasks[inst.taskId];
+  if(!currentUser.isAdmin&&!(task.assignedUsers&&task.assignedUsers[currentUser.id])){showToast('אין הרשאה','error');return;}
+  let update;
+  if(target==='done'){
+    const subs=task.subtasks||[];const st=inst.subtaskState||{};
+    if(subs.length&&!subs.every(s=>st[s.id])){showToast('יש להשלים את כל הסעיפים לפני סגירה','error');return;}
+    update={...inst,status:'completed',completedBy:currentUser.id,completedByName:currentUser.name,completedAt:new Date().toISOString()};
+  }else if(target==='prog'){
+    update={...inst,status:'inprogress'};
+  }else{
+    update={...inst,status:'pending',completedBy:'',completedByName:'',completedAt:'',completionNote:''};
+  }
+  allInstances[key]=update;renderTasks();
+  try{await apiSet('instances',key,update);}catch(err){showToast('שגיאה בשמירה','error');}
+};
+
+// ============================================================
+// CALENDAR VIEW
+// ============================================================
+let calOffset=0;
+const HE_MONTHS=['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+const HE_DOW=['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+window.calNav=function(d){calOffset+=d;renderTasks();};
+function renderCalendar(items){
+  const base=new Date();base.setDate(1);base.setMonth(base.getMonth()+calOffset);
+  const year=base.getFullYear(),month=base.getMonth();
+  const firstDow=new Date(year,month,1).getDay();
+  const daysInMonth=new Date(year,month+1,0).getDate();
+  const today=todayStr();
+  const byDate={};
+  items.forEach(x=>{(byDate[x.inst.dueDate]=byDate[x.inst.dueDate]||[]).push(x);});
+  let cells='';
+  for(let i=0;i<firstDow;i++)cells+=`<div class="cal-cell empty"></div>`;
+  for(let d=1;d<=daysInMonth;d++){
+    const ds=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const evs=byDate[ds]||[];
+    const isToday=ds===today;
+    const shown=evs.slice(0,3).map(({key,inst,task})=>{
+      const cls=inst.dueDate<today?'overdue':'';
+      return `<div class="cal-ev ${cls}" onclick="openTaskDetail('${key}')" title="${task.name}">${task.critical?'🔴':''}${task.name}</div>`;
+    }).join('');
+    const more=evs.length>3?`<div class="cal-more">+${evs.length-3} נוספות</div>`:'';
+    cells+=`<div class="cal-cell ${isToday?'today':''}"><span class="cal-daynum">${d}</span>${shown}${more}</div>`;
+  }
+  return `<div class="cal-head">
+      <button class="cal-nav" onclick="calNav(1)">›</button>
+      <h3>${HE_MONTHS[month]} ${year}</h3>
+      <button class="cal-nav" onclick="calNav(-1)">‹</button>
+    </div>
+    <div class="cal-grid">${HE_DOW.map(d=>`<div class="cal-dow">${d}</div>`).join('')}${cells}</div>`;
+}
+
+// ============================================================
+// TIMELINE VIEW
+// ============================================================
+function renderTimeline(items){
+  if(!items.length)return `<div class="empty-state"><div class="icon">📈</div><h3>אין משימות להצגה</h3></div>`;
+  const today=todayStr();
+  const sorted=[...items].sort((a,b)=>a.inst.dueDate.localeCompare(b.inst.dueDate));
+  const groups={};
+  sorted.forEach(x=>{(groups[x.inst.dueDate]=groups[x.inst.dueDate]||[]).push(x);});
+  return `<div class="tl">${Object.entries(groups).map(([date,arr])=>{
+    const dotCls=date<today?'overdue':date===today?'today':'';
+    const dayName=HE_DOW[parseDate(date).getDay()];
+    return `<div class="tl-group">
+      <div class="tl-dot ${dotCls}"></div>
+      <div class="tl-date">${formatDate(date)} <small>· יום ${dayName}${date===today?' · היום':date<today?' · באיחור':''}</small></div>
+      ${arr.map(renderCard).join('')}
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function renderTasksActiveFilters(cf,uf){
+  const el=document.getElementById('tasksActiveFilters');if(!el)return;
+  const chips=[];
+  if(cf)chips.push({label:`🏢 ${allClients[cf]?.name||cf}`,clear:`document.getElementById('filterClient').value='';renderTasks()`});
+  if(uf)chips.push({label:`👤 ${allUsers[uf]?.name||uf}`,clear:`document.getElementById('filterUser').value='';renderTasks()`});
+  if(filters.critical)chips.push({label:'🔴 קריטי',clear:`toggleFilter('critical')`});
+  if(filters.overdue)chips.push({label:'⚠️ באיחור',clear:`toggleFilter('overdue')`});
+  if(filters.today)chips.push({label:'📅 להיום',clear:`toggleFilter('today')`});
+  if(!chips.length){el.style.display='none';el.innerHTML='';return;}
+  el.style.display='flex';
+  el.innerHTML=`<span class="af-label">🔍 מסונן לפי:</span>`+
+    chips.map(c=>`<span class="af-chip">${c.label}<span class="af-x" onclick="${c.clear}">✕</span></span>`).join('')+
+    `<button class="af-reset" onclick="resetTasksFilters()">איפוס סינון ✕</button>`;
+}
+window.resetTasksFilters=function(){
+  document.getElementById('filterClient').value='';
+  document.getElementById('filterUser').value='';
+  filters.critical=false;filters.overdue=false;filters.today=false;
+  document.getElementById('filterCritical')?.classList.remove('on');
+  document.getElementById('filterOverdue')?.classList.remove('on');
+  document.getElementById('filterToday')?.classList.remove('on');
+  renderTasks();
+};
+
+// Remember which task-cards have their "details" expanded, so re-renders keep them open
+const expandedDetails=new Set();
+window.toggleDetails=function(btn,key){
+  const open=!expandedDetails.has(key);
+  if(open)expandedDetails.add(key);else expandedDetails.delete(key);
+  const e=document.getElementById('ex_'+key.replace(/[^a-z0-9]/gi,'_'));
+  if(e)e.classList.toggle('open',open);
+  if(btn)btn.textContent=open?'▲ פחות':'▼ פרטים';
 };
 
 function renderCard({key,inst,task}){
@@ -828,34 +1832,68 @@ function renderCard({key,inst,task}){
   const criticalOver=isCriticalOverdue(inst,task);
   const client=task.clientId?allClients[task.clientId]:null;
 
+  const overdue=isOverdue(inst,task);
+  const lad=lastAllowedDay(inst,task);
+  const remaining=Math.floor((lad-today)/86400000)+1; // completion days left, including today
+
   let cardClass=criticalOver?'task-card is-critical-overdue':
-    (daysOver||0)>0?'task-card is-overdue':
+    overdue?'task-card is-overdue':
     task.critical?'task-card is-critical':'task-card is-normal';
 
-  // Date pill
-  let datePill=daysToGo<0
-    ?`<span class="tc-pill pill-danger">⚠️ איחור של ${-daysToGo} ימים</span>`
-    :daysToGo===0?`<span class="tc-pill pill-warn">📅 להיום</span>`
-    :`<span class="tc-pill pill-date">📅 ${formatDate(inst.dueDate)}</span>`;
+  // The task's scheduled date is ALWAYS shown, with a status pill beside it.
+  // "באיחור" appears only once the real deadline (dueDate + slaDays) has passed.
+  let datePill=`<span class="tc-pill pill-date">📅 ${formatDate(inst.dueDate)}</span>`;
+  if(overdue){
+    const late=task.slaDays>0?daysOver:(-daysToGo);
+    datePill+=`<span class="tc-pill pill-danger">⚠️ באיחור${late>0?` ${late} ${late===1?'יום':'ימים'}`:''}</span>`;
+  }else if(daysToGo===0){
+    datePill+=`<span class="tc-pill pill-warn">📌 להיום</span>`;
+  }else if(daysToGo<0){
+    datePill+=remaining<=1
+      ?`<span class="tc-pill pill-warn">⏳ יום אחרון לביצוע</span>`
+      :`<span class="tc-pill pill-deadline">⏳ נותרו ${remaining} ימים</span>`;
+  }
 
-  // Deadline pill (replaces SLA)
+  // Deadline pill
   let deadlinePill='';
   if(task.slaDays>0){
-    deadlinePill=(daysOver||0)>0
-      ?`<span class="tc-pill pill-danger">⏰ חרג ממועד הביצוע ב-${daysOver} ימים</span>`
-      :`<span class="tc-pill pill-deadline">⏰ יש לבצע תוך ${task.slaDays} ימים</span>`;
+    deadlinePill=overdue
+      ?`<span class="tc-pill pill-danger">⏰ חרג ממועד הביצוע ב-${daysOver} ${daysOver===1?'יום':'ימים'}</span>`
+      :(daysToGo>=0?`<span class="tc-pill pill-deadline">⏰ יש לבצע תוך ${task.slaDays} ימים</span>`:'');
   }
 
   const postponeInfo=inst.status==='postponed'?`<div class="postponed-info">↩️ נדחה ל-${formatDate(inst.postponedTo)} | ${inst.postponeReason}</div>`:'';
-  const assignedList=task.assignedUsers?Object.keys(task.assignedUsers).map(id=>allUsers[id]?.name).filter(Boolean):[];
-  const assignedNames=assignedList.join(', ');
+  const assignedPairs=task.assignedUsers?Object.keys(task.assignedUsers).map(uid=>({uid,name:allUsers[uid]?.name})).filter(p=>p.name):[];
 
-  const hasExtra=!!(task.description||task.note||task.link||postponeInfo);
+  // Priority badge
+  const prioBadge=task.priority==='urgent'?`<span class="prio-badge prio-urgent">⚡ דחוף</span>`:'';
+  // Recurrence type badge
+  const recurLabel={weekly:'🔁 שבועי',monthly:'🔁 חודשי',bimonthly:'🔁 דו-חודשי',once:'📌 חד-פעמי'}[task.recur]||'';
+  const recurBadge=recurLabel?`<span class="tc-recur">${recurLabel}</span>`:'';
+
+  // Subtasks checklist + progress
+  const subtasks=task.subtasks||[];
+  const stState=inst.subtaskState||{};
+  const doneCount=subtasks.filter(s=>stState[s.id]).length;
+  const pct=subtasks.length?Math.round(doneCount/subtasks.length*100):0;
+  const canEdit=currentUser.isAdmin||(task.assignedUsers&&task.assignedUsers[currentUser.id]);
+  const tt=taskTimerInfo(key);
+  const subtasksHtml=subtasks.length?`<div class="tc-subtasks">
+    <div class="tc-progress"><div class="tc-progress-bar" style="width:${pct}%"></div></div>
+    <div class="tc-progress-label">${doneCount}/${subtasks.length} הושלמו · ${pct}%</div>
+    ${subtasks.map(s=>{const an=s.assignedTo?allUsers[s.assignedTo]?.name:'';return `<label class="tc-subtask ${stState[s.id]?'done':''}"><input type="checkbox" ${stState[s.id]?'checked':''} ${canEdit?'':'disabled'} onchange="toggleSubtask('${key}','${s.id}')"><span style="flex:1">${s.text}</span>${an?`<span class="st-assignee" style="background:${userColor(s.assignedTo)}">${an}</span>`:''}</label>`;}).join('')}
+  </div>`:'';
+
+  const hasExtra=!!(task.description||task.note||task.link||task.link2||task.email||task.startDate||postponeInfo);
   const extraId='ex_'+key.replace(/[^a-z0-9]/gi,'_');
-  const extraHtml=hasExtra?`<div id="${extraId}" class="tc-extra">
+  const detailsOpen=expandedDetails.has(key);
+  const linkHtml=(url,label)=>url?`<a href="${url}" target="_blank" class="tc-link" style="font-size:11px;margin-left:10px">🔗 ${label||'קישור'}</a>`:'';
+  const extraHtml=hasExtra?`<div id="${extraId}" class="tc-extra ${detailsOpen?'open':''}">
     ${task.description?`<div style="margin-bottom:4px">${task.description}</div>`:''}
     ${task.note?`<div style="color:var(--gray-500);font-size:11px">💬 ${task.note}</div>`:''}
-    ${task.link?`<a href="${task.link}" target="_blank" class="tc-link" style="font-size:11px">🔗 קישור</a>`:''}
+    ${(task.link||task.link2)?`<div style="margin-top:4px">${linkHtml(task.link,task.linkLabel)}${linkHtml(task.link2,task.link2Label)}</div>`:''}
+    ${task.email?`<div style="margin-top:4px;font-size:12px;color:var(--gray-600)">✉️ <a href="mailto:${task.email}" class="tc-link" style="direction:ltr;display:inline-block">${task.email}</a></div>`:''}
+    ${task.startDate?`<div style="color:var(--gray-400);font-size:11px;margin-top:4px">📆 הוקמה בתאריך: ${formatDate(task.startDate)}</div>`:''}
     ${postponeInfo}
   </div>`:'';
 
@@ -865,18 +1903,23 @@ function renderCard({key,inst,task}){
         <div class="tc-name">${criticalOver?'<span class="critical-label">🔴 קריטי</span> ':task.critical?'<span class="critical-label">🔴</span> ':''}${task.name}</div>
         <div class="tc-meta">
           ${client?`<span class="tc-client">${client.name}</span>`:''}
-          ${datePill}${deadlinePill}
+          ${recurBadge}${prioBadge}${datePill}${deadlinePill}
         </div>
-        ${assignedList.length?`<div style="display:flex;align-items:center;gap:5px;margin-top:5px;flex-wrap:wrap">
+        ${subtasksHtml}
+        ${assignedPairs.length?`<div style="display:flex;align-items:center;gap:5px;margin-top:5px;flex-wrap:wrap">
           <span style="font-size:11px;color:var(--gray-400);font-weight:500">שיוך:</span>
-          ${assignedList.map(n=>`<span style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px">${n}</span>`).join('')}
+          ${assignedPairs.map(p=>`<span style="background:${userColor(p.uid)};color:white;font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px">${p.name}</span>`).join('')}
         </div>`:''}
-        ${hasExtra?`<button class="tc-toggle" onclick="var e=document.getElementById('${extraId}');e.classList.toggle('open');this.textContent=e.classList.contains('open')?'▲ פחות':'▼ פרטים'">▼ פרטים</button>`:''}
+        ${hasExtra?`<button class="tc-toggle" onclick="toggleDetails(this,'${key}')">${detailsOpen?'▲ פחות':'▼ פרטים'}</button>`:''}
         ${extraHtml}
+        ${tt.running?`<div class="tc-timer" data-running="1" data-start="${Date.now()-tt.ms}" style="margin-top:6px;width:fit-content">⏱️ <span class="tc-timer-val">${fmtClock(tt.ms)}</span> · רץ עכשיו</div>`:''}
       </div>
       <div class="tc-actions">
         <button class="btn-action-done" onclick="openComplete('${key}')">✓ בצעתי</button>
         <button class="btn-action-delay" onclick="openPostpone('${key}')">↷ דחה</button>
+        <button class="btn-action-delay btn-timer ${tt.running?'running':''}" onclick="toggleTaskTimer('${key}')" title="מדידת זמן עבודה">${tt.running?'⏹️ עצור':'▶️ זמן'}</button>
+        <button class="btn-action-delay" onclick="openTaskDetail('${key}')" title="תגובות והעברה">💬${(inst.comments&&inst.comments.length)?' '+inst.comments.length:''}</button>
+        ${currentUser.isAdmin?`<button class="btn-action-delay" onclick="openTaskModal('${inst.taskId}')" title="עריכת המשימה (מנהל)">✏️ ערוך</button>`:''}
       </div>
     </div>
   </div>`;
@@ -885,12 +1928,51 @@ function renderCard({key,inst,task}){
 // ============================================================
 // COMPLETE / POSTPONE
 // ============================================================
+// Debounced, self-retrying instance save — coalesces rapid changes and always
+// writes the LATEST full state, so out-of-order saves can't overwrite each other.
+const dirtyInstances=new Set();
+const _instSaveTimers={};
+function queueInstanceSave(key){
+  dirtyInstances.add(key);
+  lastLocalChangeAt=Date.now();
+  clearTimeout(_instSaveTimers[key]);
+  _instSaveTimers[key]=setTimeout(()=>{ delete _instSaveTimers[key]; flushInstanceSave(key,0); },500);
+}
+async function flushInstanceSave(key,attempt){
+  if(!allInstances[key]){dirtyInstances.delete(key);return;}
+  try{
+    await apiSet('instances',key,allInstances[key]); // send current (latest) state
+    if(!_instSaveTimers[key]) dirtyInstances.delete(key); // keep dirty if a newer change is already queued
+  }catch(e){
+    const delay=Math.min(1500*(attempt+1),10000);
+    setTimeout(()=>flushInstanceSave(key,attempt+1),delay); // keep retrying until it saves
+  }
+}
+window.toggleSubtask=function(key,stid){
+  const inst=allInstances[key];if(!inst)return;
+  const task=allTasks[inst.taskId];
+  if(!currentUser.isAdmin&&!(task.assignedUsers&&task.assignedUsers[currentUser.id])){showToast('אין הרשאה','error');return;}
+  const state={...(inst.subtaskState||{})};
+  state[stid]=!state[stid];
+  allInstances[key]={...inst,subtaskState:state};
+  renderTasks();
+  queueInstanceSave(key);
+  const subs=task.subtasks||[];
+  if(subs.length&&subs.every(s=>state[s.id]))showToast('🎉 כל הסעיפים הושלמו! אפשר לסמן "בצעתי"','success');
+};
+
 window.openComplete=function(key){
   const inst=allInstances[key],task=allTasks[inst.taskId];
   if(!currentUser.isAdmin&&!(task.assignedUsers&&task.assignedUsers[currentUser.id])){showToast('אין הרשאה לבצע משימה זו','error');return;}
+  const subs=task.subtasks||[];
+  if(subs.length){
+    const st=inst.subtaskState||{};
+    if(!subs.every(s=>st[s.id])){showToast('יש להשלים את כל סעיפי הצ׳קליסט לפני סגירת המשימה','error');return;}
+  }
   pendingComplete=key;
   document.getElementById('completeTaskInfo').innerHTML=`<strong>${task.name}</strong>${task.description?`<br><span style="color:var(--gray-500);font-size:13px">${task.description}</span>`:''}`;
   document.getElementById('completeNote').value='';
+  document.getElementById('completeDate').value=todayStr();
   document.getElementById('completeModal').classList.add('open');
 };
 
@@ -899,7 +1981,9 @@ window.confirmComplete=async function(){
   showLoading('שומר...');
   try{
     const note=document.getElementById('completeNote').value.trim();
-    const update={...allInstances[pendingComplete],status:'completed',completedBy:currentUser.id,completedByName:currentUser.name,completedAt:new Date().toISOString(),completionNote:note};
+    const dateVal=document.getElementById('completeDate').value||todayStr();
+    const completedAt=(dateVal===todayStr())?new Date().toISOString():new Date(dateVal+'T12:00:00').toISOString();
+    const update={...allInstances[pendingComplete],status:'completed',completedBy:currentUser.id,completedByName:currentUser.name,completedAt,completionNote:note};
     await apiSet('instances',pendingComplete,update);
     allInstances[pendingComplete]=update;
     closeModal('completeModal');
@@ -946,17 +2030,31 @@ window.renderUpcoming=function(){
   const items=[];
 
   Object.entries(allTasks).forEach(([tid,task])=>{
-    if(!task)return;
+    if(!task||task.deleted)return;
     if(cf&&task.clientId!==cf)return;
-    if(task.assignedUsers&&!task.assignedUsers[currentUser.id])return;
+    if(task.assignedUsers&&!task.assignedUsers[currentUser.id]&&!currentUser.isAdmin)return;
     const client=task.clientId?allClients[task.clientId]:null;
     const futurePeriods=getFuturePeriods(task,today,twoMonths);
     futurePeriods.forEach(({key,dueDate})=>{
       const instKey=`${tid}__${key}`;
       const existing=allInstances[instKey];
       if(existing&&existing.status==='completed')return;
+      if(existing&&existing.status==='postponed')return; // shown separately below at its new date
       items.push({task,client,dueDate,instKey});
     });
+  });
+
+  // Include postponed instances landing within the 2-month window
+  Object.entries(allInstances).forEach(([instKey,inst])=>{
+    if(inst.status!=='postponed'||!inst.postponedTo)return;
+    const task=allTasks[inst.taskId];
+    if(!task||task.deleted)return;
+    if(cf&&task.clientId!==cf)return;
+    if(task.assignedUsers&&!task.assignedUsers[currentUser.id]&&!currentUser.isAdmin)return;
+    const d=parseDate(inst.postponedTo);
+    if(d<today||d>twoMonths)return;
+    const client=task.clientId?allClients[task.clientId]:null;
+    items.push({task,client,dueDate:inst.postponedTo,instKey,postponed:true});
   });
 
   items.sort((a,b)=>a.dueDate.localeCompare(b.dueDate));
@@ -979,11 +2077,11 @@ window.renderUpcoming=function(){
   let html='';
   Object.values(byMonth).forEach(({label,items:mi})=>{
     html+=`<div class="period-header">📆 ${label}</div>`;
-    html+=mi.map(({task,client,dueDate})=>`
+    html+=mi.map(({task,client,dueDate,postponed})=>`
       <div class="upcoming-card">
         <div class="upcoming-info">
-          <div class="upcoming-name">${task.critical?'🔴 ':''}${task.name}</div>
-          <div class="upcoming-meta">${client?`🏢 ${client.name} · `:''}${{weekly:'שבועי',monthly:'חודשי',bimonthly:'דו-חודשי',once:'חד פעמי'}[task.recur]||''}</div>
+          <div class="upcoming-name">${task.critical?'🔴 ':''}${postponed?'↩️ ':''}${task.name}</div>
+          <div class="upcoming-meta">${client?`🏢 ${client.name} · `:''}${{weekly:'שבועי',monthly:'חודשי',bimonthly:'דו-חודשי',once:'חד פעמי'}[task.recur]||''}${postponed?' · נדחה':''}</div>
         </div>
         <div class="upcoming-date">${formatDate(dueDate)}</div>
       </div>`).join('');
@@ -1007,7 +2105,7 @@ window.renderStats=function(){
   const days=[];
   for(let i=6;i>=0;i--){
     const d=addDays(new Date(),-i),ds=dateStr(d);
-    days.push({label:d.toLocaleDateString('he-IL',{weekday:'short'}),count:fc.filter(x=>x.completedAt&&x.completedAt.slice(0,10)===ds).length});
+    days.push({label:d.toLocaleDateString('he-IL',{weekday:'short'}),count:fc.filter(x=>x.completedAt&&isoDate(x.completedAt)===ds).length});
   }
   const maxBar=Math.max(...days.map(d=>d.count),1);
 
@@ -1016,27 +2114,68 @@ window.renderStats=function(){
   const userStats=Object.entries(allUsers).map(([id,u])=>{
     const uc=completed.filter(i=>i.completedBy===id);
     const pending=Object.entries(allTasks).reduce((acc,[tid,task])=>{
+      if(task.deleted)return acc;
       if(task.assignedUsers&&task.assignedUsers[id]){
         const p=Object.values(allInstances).filter(inst=>inst.taskId===tid&&inst.status!=='completed'&&(inst.status!=='postponed'||inst.postponedTo<=todayStr()));
         return acc+p.length;
       }
       return acc;
     },0);
+    const late=uc.filter(i=>i.completedAt&&i.dueDate&&isoDate(i.completedAt)>i.dueDate).length;
+    const onTime=uc.length-late;
+    const onTimePct=uc.length?Math.round(onTime/uc.length*100):100;
     return{id,name:u.name,
-      today:uc.filter(i=>i.completedAt&&i.completedAt.slice(0,10)===today).length,
-      yesterday:uc.filter(i=>i.completedAt&&i.completedAt.slice(0,10)===yesterday).length,
+      today:uc.filter(i=>i.completedAt&&isoDate(i.completedAt)===today).length,
+      yesterday:uc.filter(i=>i.completedAt&&isoDate(i.completedAt)===yesterday).length,
       week:uc.filter(i=>{if(!i.completedAt)return false;return(new Date()-new Date(i.completedAt))/86400000<=7;}).length,
-      total:uc.length,
+      total:uc.length,late,onTimePct,
       pending};
   });
+  lastUserStats=userStats;
+
+  // What was done TODAY (detailed list)
+  const todayDone=fc.filter(i=>i.completedAt&&isoDate(i.completedAt)===today)
+    .map(i=>({inst:i,task:allTasks[i.taskId]})).filter(x=>x.task)
+    .sort((a,b)=>(b.inst.completedAt||'').localeCompare(a.inst.completedAt||''));
+  const todayDoneHtml=todayDone.length
+    ? `<div class="today-done-list">`+todayDone.map(({inst,task})=>{
+        const cl=task.clientId?allClients[task.clientId]:null;
+        const tm=inst.completedAt?new Date(inst.completedAt).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}):'';
+        return `<div class="today-done-item">
+          <span class="tdi-check">✓</span>
+          <span class="tdi-name">${task.name}</span>
+          ${cl?`<span class="tdi-client">🏢 ${cl.name}</span>`:''}
+          <span class="tdi-by" style="background:${userColor(inst.completedBy||'x')}">${inst.completedByName||'—'}</span>
+          <span class="tdi-time">${tm}</span>
+        </div>`;
+      }).join('')+`</div>`
+    : `<div style="color:var(--gray-400);font-size:13px;padding:10px;text-align:center">עדיין לא בוצעו משימות היום</div>`;
+
+  // Employee comparison (week)
+  const maxWeek=Math.max(...userStats.map(u=>u.week),1);
+  const cmp=[...userStats].sort((a,b)=>b.week-a.week).map(u=>`
+    <div class="cmp-row">
+      <div class="cmp-name"><span class="cmp-avatar" style="background:${userColor(u.id)}">${u.name.charAt(0)}</span>${u.name}</div>
+      <div class="cmp-track"><div class="cmp-fill" style="width:${Math.round(u.week/maxWeek*100)}%;background:${userColor(u.id)}">${u.week>0?u.week:''}</div></div>
+      <div class="cmp-val">היום <strong>${u.today}</strong></div>
+    </div>`).join('');
 
   document.getElementById('statsContent').innerHTML=`
     <div class="stats-grid">
-      <div class="stat-card"><div class="num">${fc.filter(i=>i.completedAt&&i.completedAt.slice(0,10)===today).length}</div><div class="label">בוצע היום</div></div>
-      <div class="stat-card"><div class="num">${fc.filter(i=>i.completedAt&&i.completedAt.slice(0,10)===yesterday).length}</div><div class="label">בוצע אתמול</div></div>
+      <div class="stat-card"><div class="num">${todayDone.length}</div><div class="label">בוצע היום</div></div>
+      <div class="stat-card"><div class="num">${fc.filter(i=>i.completedAt&&isoDate(i.completedAt)===yesterday).length}</div><div class="label">בוצע אתמול</div></div>
       <div class="stat-card"><div class="num">${fc.filter(i=>{if(!i.completedAt)return false;return(new Date()-new Date(i.completedAt))/86400000<=7;}).length}</div><div class="label">שבוע אחרון</div></div>
-      <div class="stat-card"><div class="num">${getPendingInstances().length}</div><div class="label">ממתינות לי כעת</div></div>
+      <div class="stat-card"><div class="num">${getPendingInstances().length}</div><div class="label">ממתינות כעת</div></div>
     </div>
+    <div class="chart-container">
+      <div class="chart-title">✅ מה בוצע היום (${todayDone.length})</div>
+      ${todayDoneHtml}
+    </div>
+    ${(currentUser.isAdmin&&!filterUser&&userStats.length>1)?`
+    <div class="chart-container">
+      <div class="chart-title">👥 השוואת עובדים — בוצע השבוע</div>
+      <div class="cmp-list">${cmp}</div>
+    </div>`:''}
     <div class="chart-container">
       <div class="chart-title">ביצועים — 7 ימים אחרונים</div>
       <div class="bar-chart">${days.map(d=>`<div class="bar-col"><div class="bar-val">${d.count}</div><div class="bar completed" style="height:${Math.round((d.count/maxBar)*120)+4}px"></div><div class="bar-label">${d.label}</div></div>`).join('')}</div>
@@ -1052,9 +2191,44 @@ window.renderStats=function(){
               <div style="font-size:11px;color:var(--gray-400)">${l}</div>
             </div>`).join('')}
         </div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <div style="flex:1;text-align:center;background:var(--success-light);border-radius:8px;padding:6px"><div style="font-size:16px;font-weight:800;color:#065f46">${u.onTimePct}%</div><div style="font-size:10px;color:#047857">בזמן</div></div>
+          <div style="flex:1;text-align:center;background:${u.late>0?'var(--danger-light)':'var(--gray-50)'};border-radius:8px;padding:6px"><div style="font-size:16px;font-weight:800;color:${u.late>0?'#991b1b':'var(--gray-400)'}">${u.late}</div><div style="font-size:10px;color:${u.late>0?'#b91c1c':'var(--gray-400)'}">באיחור</div></div>
+        </div>
         ${u.pending>0?`<div class="pending-row"><span>⏳ ממתינות: ${u.pending} משימות</span></div>`:'<div style="margin-top:8px;text-align:center;font-size:12px;color:var(--success)">✅ אין משימות ממתינות</div>'}
       </div>`).join('')}
     </div>`;
+};
+
+// ============================================================
+// EXCEL / CSV EXPORT
+// ============================================================
+function downloadCSV(filename,rows){
+  const csv=rows.map(r=>r.map(c=>{
+    const s=String(c==null?'':c);
+    return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
+  }).join(',')).join('\r\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=filename;a.click();
+  URL.revokeObjectURL(url);
+}
+window.exportStatsExcel=function(){
+  const rows=[['שם עובד','בוצע היום','בוצע אתמול','שבוע אחרון','סה"כ הושלמו','אחוז בזמן','באיחור','ממתינות']];
+  lastUserStats.forEach(u=>rows.push([u.name,u.today,u.yesterday,u.week,u.total,u.onTimePct+'%',u.late,u.pending]));
+  downloadCSV(`דוח_ביצועים_${todayStr()}.csv`,rows);
+  showToast('הקובץ הורד 📊','success');
+};
+window.exportArchiveExcel=function(){
+  const rows=[['משימה','לקוח','בוצע על ידי','תאריך ביצוע','תאריך יעד','הערה']];
+  Object.values(allInstances).filter(i=>i.status==='completed').forEach(inst=>{
+    const task=allTasks[inst.taskId];if(!task)return;
+    if(!currentUser.isAdmin&&inst.completedBy!==currentUser.id)return;
+    const client=task.clientId?allClients[task.clientId]:null;
+    rows.push([task.name,client?client.name:'',inst.completedByName||'',inst.completedAt?new Date(inst.completedAt).toLocaleDateString('he-IL'):'',formatDate(inst.dueDate),inst.completionNote||'']);
+  });
+  downloadCSV(`ארכיון_משימות_${todayStr()}.csv`,rows);
+  showToast('הקובץ הורד 📊','success');
 };
 
 // ============================================================
@@ -1096,23 +2270,94 @@ window.renderArchive=function(){
 // ============================================================
 // ADMIN - TASKS
 // ============================================================
+let adminView='list';
+window.setAdminView=function(v){
+  adminView=v;
+  document.getElementById('viewList').style.background=v==='list'?'var(--primary)':'';
+  document.getElementById('viewList').style.color=v==='list'?'white':'';
+  document.getElementById('viewList').className='btn btn-sm'+(v==='list'?'':' btn-ghost');
+  document.getElementById('viewGroup').style.background=v==='group'?'var(--primary)':'';
+  document.getElementById('viewGroup').style.color=v==='group'?'white':'';
+  document.getElementById('viewGroup').className='btn btn-sm'+(v==='group'?'':' btn-ghost');
+  renderAdminTasks();
+};
 window.renderAdminTasks=function(){
-  const items=Object.entries(allTasks);
-  if(!items.length){document.getElementById('adminTasksList').innerHTML='<div class="empty-state"><div class="icon">📋</div><h3>אין משימות</h3></div>';return;}
-  document.getElementById('adminTasksList').innerHTML=items.map(([id,task])=>{
+  // Populate worker filter once
+  const wf=document.getElementById('filterWorker');
+  if(wf&&wf.options.length<=1){
+    Object.entries(allUsers).forEach(([id,u])=>{
+      const o=document.createElement('option');o.value=id;o.textContent=u.name;wf.appendChild(o);
+    });
+  }
+  const recurFilter=document.getElementById('filterRecur')?.value||'';
+  const workerFilter=document.getElementById('filterWorker')?.value||'';
+  let items=Object.entries(allTasks).filter(([,t])=>!t.deleted);
+  if(recurFilter) items=items.filter(([,t])=>t.recur===recurFilter);
+  if(workerFilter) items=items.filter(([,t])=>t.assignedUsers&&t.assignedUsers[workerFilter]);
+  // Active filters indicator
+  const afEl=document.getElementById('adminActiveFilters');
+  if(afEl){
+    const recurNames={once:'חד פעמי',weekly:'שבועי',monthly:'חודשי',bimonthly:'דו-חודשי'};
+    const chips=[];
+    if(recurFilter)chips.push({label:`🔁 ${recurNames[recurFilter]||recurFilter}`,clear:`document.getElementById('filterRecur').value='';renderAdminTasks()`});
+    if(workerFilter)chips.push({label:`👤 ${allUsers[workerFilter]?.name||workerFilter}`,clear:`document.getElementById('filterWorker').value='';renderAdminTasks()`});
+    if(!chips.length){afEl.style.display='none';afEl.innerHTML='';}
+    else{afEl.style.display='flex';afEl.innerHTML=`<span class="af-label">🔍 מסונן לפי:</span>`+chips.map(c=>`<span class="af-chip">${c.label}<span class="af-x" onclick="${c.clear}">✕</span></span>`).join('')+`<button class="af-reset" onclick="resetAdminFilters()">איפוס סינון ✕</button>`;}
+  }
+  const container=document.getElementById('adminTasksList');
+  if(!items.length){container.innerHTML='<div class="empty-state"><div class="icon">📋</div><h3>אין משימות</h3></div>';return;}
+
+  function taskCard(id,task){
     const client=task.clientId?allClients[task.clientId]:null;
     const recurLabel={weekly:'שבועי',monthly:'חודשי',bimonthly:'דו-חודשי',once:'חד פעמי'}[task.recur]||'';
+    const assignedPairs=task.assignedUsers?Object.keys(task.assignedUsers).map(uid=>({uid,name:allUsers[uid]?.name})).filter(p=>p.name):[];
     return `<div class="list-item">
       <div style="flex:1">
-        <div class="list-item-title">${task.critical?'🔴 ':''}${task.name}</div>
-        <div class="list-item-sub">${client?`🏢 ${client.name} · `:''}${recurLabel}${task.slaDays>0?` · מועד אחרון: ${task.slaDays} ימים`:''}</div>
+        <div class="list-item-title">${task.critical?'🔴 ':''}${task.name} ${task.priority==='urgent'?'<span class="prio-badge prio-urgent">⚡ דחוף</span>':''}</div>
+        <div class="list-item-sub">${client&&adminView==='list'?`🏢 ${client.name} · `:''}${recurLabel}${task.slaDays>0?` · מועד אחרון: ${task.slaDays} ימים`:''}${task.subtasks&&task.subtasks.length?` · ☑️ ${task.subtasks.length} סעיפים`:''}</div>
+        ${assignedPairs.length?`<div style="display:flex;align-items:center;gap:5px;margin-top:5px;flex-wrap:wrap"><span style="font-size:11px;color:var(--gray-400)">שיוך:</span>${assignedPairs.map(p=>`<span style="background:${userColor(p.uid)};color:white;font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px">${p.name}</span>`).join('')}</div>`:''}
       </div>
       <div style="display:flex;gap:6px">
         <button class="btn btn-ghost btn-sm" onclick="openTaskModal('${id}')">✏️ ערוך</button>
         <button class="btn btn-danger btn-sm" onclick="deleteTask('${id}')">🗑️</button>
       </div>
     </div>`;
-  }).join('');
+  }
+
+  if(adminView==='group'){
+    const groups={};
+    items.forEach(([id,task])=>{
+      const cid=task.clientId||'__none__';
+      if(!groups[cid])groups[cid]=[];
+      groups[cid].push([id,task]);
+    });
+    const noClient=groups['__none__']||[];
+    delete groups['__none__'];
+    const sortedClients=Object.entries(groups).sort(([a],[b])=>(allClients[a]?.name||'').localeCompare(allClients[b]?.name||''));
+    let html=`<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">`;
+    sortedClients.forEach(([cid,tasks])=>{
+      const cname=allClients[cid]?.name||cid;
+      html+=`<div style="background:white;border-radius:12px;border:1.5px solid var(--gray-200);padding:14px;min-width:280px;flex:1;max-width:380px;box-shadow:var(--shadow)">
+        <div style="font-weight:700;font-size:14px;color:var(--primary);margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid var(--primary-light)">🏢 ${cname} <span style="background:var(--primary-light);color:var(--primary);font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600">${tasks.length}</span></div>
+        ${tasks.map(([id,task])=>taskCard(id,task)).join('')}
+      </div>`;
+    });
+    if(noClient.length){
+      html+=`<div style="background:white;border-radius:12px;border:1.5px solid var(--gray-200);padding:14px;min-width:280px;flex:1;max-width:380px;box-shadow:var(--shadow)">
+        <div style="font-weight:700;font-size:14px;color:var(--gray-500);margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid var(--gray-200)">ללא לקוח <span style="background:var(--gray-100);color:var(--gray-500);font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600">${noClient.length}</span></div>
+        ${noClient.map(([id,task])=>taskCard(id,task)).join('')}
+      </div>`;
+    }
+    html+=`</div>`;
+    container.innerHTML=html;
+  } else {
+    container.innerHTML=items.map(([id,task])=>taskCard(id,task)).join('');
+  }
+};
+window.resetAdminFilters=function(){
+  const r=document.getElementById('filterRecur');if(r)r.value='';
+  const w=document.getElementById('filterWorker');if(w)w.value='';
+  renderAdminTasks();
 };
 
 // ============================================================
@@ -1142,12 +2387,17 @@ window.saveQuickTask=async function(){
   if(!date){showToast('חובה לבחור תאריך','error');return;}
   const assignedUsers={};
   document.querySelectorAll('#qtUsers .user-check-btn.selected').forEach(b=>{assignedUsers[b.dataset.uid]=true;});
+  if(!Object.keys(assignedUsers).length){showToast('חובה לשייך את המשימה לפחות לעובד אחד','error');return;}
   const task={name,description:document.getElementById('qtDesc').value.trim(),note:document.getElementById('qtNote').value.trim(),link:document.getElementById('qtLink').value.trim(),clientId,recur:'once',slaDays:parseInt(document.getElementById('qtSla').value)||0,critical:document.getElementById('qtCritical').checked,startDate:date,assignedUsers,onceDate:date,dayOfWeek:null,dayOfMonth:null,biDayOfMonth:null};
   showLoading('שומר...');
   try{
     const id=await apiPush('tasks',task);
     allTasks[id]={...task,id};
     closeModal('quickTaskModal');generateInstances();renderTasks();showToast('משימה נוספה ✅','success');
+    for(const uid of Object.keys(assignedUsers)){
+      await notify(uid,'assign',`${currentUser.name} שייך אליך משימה: "${name}"`,'');
+    }
+    renderNotifications();
   }catch(e){showToast('שגיאה: '+e.message,'error');}
   hideLoading();
 };
@@ -1164,27 +2414,81 @@ window.openTaskModal=function(taskId=null){
     document.getElementById('tDesc').value=t.description||'';
     document.getElementById('tNote').value=t.note||'';
     document.getElementById('tLink').value=t.link||'';
+    document.getElementById('tLinkLabel').value=t.linkLabel||'';
+    document.getElementById('tLink2').value=t.link2||'';
+    document.getElementById('tLink2Label').value=t.link2Label||'';
+    document.getElementById('tEmail').value=t.email||'';
     document.getElementById('tClient').value=t.clientId||'';
     document.getElementById('tRecur').value=t.recur||'once';
     document.getElementById('tSla').value=t.slaDays||0;
-    document.getElementById('tOnceDate').value=t.onceDate||'';
+    document.getElementById('tOnceDate').value=t.onceDate?dateStr(parseDate(t.onceDate)):'';
     document.getElementById('tDayOfWeek').value=t.dayOfWeek||0;
     document.getElementById('tDayOfMonth').value=t.dayOfMonth||'';
     document.getElementById('tBiDayOfMonth').value=t.biDayOfMonth||'';
     document.getElementById('tStartDate').value=t.startDate||'';
     document.getElementById('tCritical').checked=!!t.critical;
+    document.getElementById('tPriority').value=t.priority||'normal';
+    document.getElementById('tSubtasks').innerHTML='';
+    (t.subtasks||[]).forEach(s=>addSubtaskRow(s.text,s.id,s.assignedTo));
     if(t.assignedUsers)document.querySelectorAll('#tUsers .user-check-btn').forEach(b=>{if(t.assignedUsers[b.dataset.uid])b.classList.add('selected');});
   }else{
-    ['tName','tDesc','tNote','tLink','tDayOfMonth','tBiDayOfMonth'].forEach(id=>document.getElementById(id).value='');
+    ['tName','tDesc','tNote','tLink','tLinkLabel','tLink2','tLink2Label','tEmail','tDayOfMonth','tBiDayOfMonth'].forEach(id=>document.getElementById(id).value='');
     document.getElementById('tClient').value='';
     document.getElementById('tRecur').value='once';
     document.getElementById('tSla').value=0;
     document.getElementById('tOnceDate').value=todayStr();
     document.getElementById('tStartDate').value=todayStr();
     document.getElementById('tCritical').checked=false;
+    document.getElementById('tPriority').value='normal';
+    document.getElementById('tSubtasks').innerHTML='';
   }
   updateRecurFields();
   document.getElementById('taskModal').classList.add('open');
+};
+
+let dragSubRow=null;
+function getSubDragAfter(container,y){
+  const els=[...container.querySelectorAll('.subtask-row:not(.dragging)')];
+  return els.reduce((closest,child)=>{
+    const box=child.getBoundingClientRect();
+    const offset=y-box.top-box.height/2;
+    if(offset<0&&offset>closest.offset)return{offset,element:child};
+    return closest;
+  },{offset:-Infinity}).element;
+}
+window.addSubtaskRow=function(text='',stid='',assignedTo=''){
+  if(!stid)stid='st_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
+  const wrap=document.getElementById('tSubtasks');
+  // attach drag-reorder handler once
+  if(!wrap.dataset.dnd){
+    wrap.dataset.dnd='1';
+    wrap.addEventListener('dragover',e=>{
+      if(!dragSubRow)return;
+      e.preventDefault();
+      const after=getSubDragAfter(wrap,e.clientY);
+      if(after==null)wrap.appendChild(dragSubRow);
+      else wrap.insertBefore(dragSubRow,after);
+    });
+  }
+  const row=document.createElement('div');
+  row.className='subtask-row';row.dataset.stid=stid;
+  const handle=document.createElement('span');
+  handle.className='subtask-drag';handle.textContent='⠿';handle.title='גרור לסידור מחדש';handle.draggable=true;
+  handle.ondragstart=e=>{dragSubRow=row;row.classList.add('dragging');e.dataTransfer.effectAllowed='move';};
+  handle.ondragend=()=>{row.classList.remove('dragging');dragSubRow=null;};
+  const inp=document.createElement('textarea');
+  inp.className='subtask-input';inp.placeholder='תיאור הסעיף...';inp.value=text;inp.rows=1;
+  const autoGrow=()=>{inp.style.height='auto';inp.style.height=(inp.scrollHeight+2)+'px';};
+  inp.oninput=autoGrow;setTimeout(autoGrow,0);
+  const sel=document.createElement('select');
+  sel.className='subtask-assign';
+  sel.innerHTML='<option value="">👥 כללי</option>'+Object.entries(allUsers).map(([id,u])=>`<option value="${id}">${u.name}</option>`).join('');
+  sel.value=assignedTo||'';
+  const del=document.createElement('button');
+  del.type='button';del.className='subtask-del';del.textContent='✕';
+  del.onclick=()=>row.remove();
+  row.appendChild(handle);row.appendChild(inp);row.appendChild(sel);row.appendChild(del);
+  wrap.appendChild(row);
 };
 
 window.updateRecurFields=function(){
@@ -1201,23 +2505,68 @@ window.saveTask=async function(){
   if(!clientId){showToast('חובה לבחור לקוח','error');return;}
   const assignedUsers={};
   document.querySelectorAll('#tUsers .user-check-btn.selected').forEach(b=>{assignedUsers[b.dataset.uid]=true;});
-  const task={name,description:document.getElementById('tDesc').value.trim(),note:document.getElementById('tNote').value.trim(),link:document.getElementById('tLink').value.trim(),clientId,recur:document.getElementById('tRecur').value,slaDays:parseInt(document.getElementById('tSla').value)||0,critical:document.getElementById('tCritical').checked,startDate:document.getElementById('tStartDate').value||todayStr(),assignedUsers,onceDate:document.getElementById('tOnceDate').value,dayOfWeek:parseInt(document.getElementById('tDayOfWeek').value)||0,dayOfMonth:parseInt(document.getElementById('tDayOfMonth').value)||null,biDayOfMonth:parseInt(document.getElementById('tBiDayOfMonth').value)||null};
+  if(!Object.keys(assignedUsers).length){showToast('חובה לשייך את המשימה לפחות לעובד אחד','error');return;}
+  const subtasks=[...document.querySelectorAll('#tSubtasks .subtask-row')].map(r=>({id:r.dataset.stid,text:r.querySelector('.subtask-input').value.trim(),assignedTo:r.querySelector('.subtask-assign')?.value||''})).filter(s=>s.text);
+  const task={name,description:document.getElementById('tDesc').value.trim(),note:document.getElementById('tNote').value.trim(),link:document.getElementById('tLink').value.trim(),linkLabel:document.getElementById('tLinkLabel').value.trim(),link2:document.getElementById('tLink2').value.trim(),link2Label:document.getElementById('tLink2Label').value.trim(),email:document.getElementById('tEmail').value.trim(),clientId,recur:document.getElementById('tRecur').value,slaDays:parseInt(document.getElementById('tSla').value)||0,critical:document.getElementById('tCritical').checked,priority:document.getElementById('tPriority').value||'normal',startDate:document.getElementById('tStartDate').value||todayStr(),assignedUsers,subtasks,onceDate:document.getElementById('tOnceDate').value,dayOfWeek:parseInt(document.getElementById('tDayOfWeek').value)||0,dayOfMonth:parseInt(document.getElementById('tDayOfMonth').value)||null,biDayOfMonth:parseInt(document.getElementById('tBiDayOfMonth').value)||null};
+  // Determine newly-assigned users (to notify)
+  const prevAssigned=editingTaskId?(allTasks[editingTaskId]?.assignedUsers||{}):{};
+  const newlyAssigned=Object.keys(assignedUsers).filter(uid=>!prevAssigned[uid]);
   showLoading('שומר...');
   try{
     if(editingTaskId){await apiSet('tasks',editingTaskId,{...task,id:editingTaskId});allTasks[editingTaskId]=task;}
     else{const id=await apiPush('tasks',task);allTasks[id]={...task,id};}
     closeModal('taskModal');generateInstances();renderAdminTasks();renderTasks();showToast('נשמר ✅','success');
+    // Notify newly-assigned users (in-app)
+    for(const uid of newlyAssigned){
+      await notify(uid,'assign',`${currentUser.name} שייך אליך משימה: "${name}"`,'');
+    }
+    if(newlyAssigned.length)renderNotifications();
+  }catch(e){showToast('שגיאה: '+e.message,'error');}
+  hideLoading();
+};
+
+window.openDeletedTasks=function(){
+  renderDeletedTasks();
+  document.getElementById('deletedTasksModal').classList.add('open');
+};
+function renderDeletedTasks(){
+  const deleted=Object.entries(allTasks).filter(([,t])=>t.deleted);
+  const el=document.getElementById('deletedTasksList');
+  if(!deleted.length){el.innerHTML='<div class="empty-state" style="padding:20px"><div class="icon">✅</div><h3>אין משימות שנמחקו</h3></div>';return;}
+  el.innerHTML=deleted.map(([id,t])=>{
+    const client=t.clientId?allClients[t.clientId]:null;
+    const when=t.deletedAt?new Date(t.deletedAt).toLocaleDateString('he-IL'):'';
+    return `<div class="list-item">
+      <div style="flex:1">
+        <div class="list-item-title">${t.name}</div>
+        <div class="list-item-sub">${client?`🏢 ${client.name} · `:''}נמחק ${when}${t.deletedBy?` ע"י ${t.deletedBy}`:''}</div>
+      </div>
+      <button class="btn btn-success btn-sm" onclick="restoreTask('${id}')">↩️ שחזר</button>
+    </div>`;
+  }).join('');
+}
+window.restoreTask=async function(id){
+  showLoading('משחזר...');
+  const t=allTasks[id];
+  const updated={...t,deleted:false,deletedAt:'',deletedBy:''};
+  try{
+    await apiSet('tasks',id,{...updated,id});
+    allTasks[id]=updated;
+    renderDeletedTasks();generateInstances();renderAdminTasks();renderTasks();
+    showToast('המשימה שוחזרה ✅','success');
   }catch(e){showToast('שגיאה: '+e.message,'error');}
   hideLoading();
 };
 
 window.deleteTask=async function(id){
-  if(!confirm('למחוק משימה לצמיתות?'))return;
-  showLoading('מוחק...');
+  if(!confirm('להעביר את המשימה לארכיון המחיקות?\n(אפשר לשחזר בכל עת — שום דבר לא נמחק לצמיתות)'))return;
+  showLoading('מעביר לארכיון...');
+  const task=allTasks[id];
+  const updated={...task,deleted:true,deletedAt:new Date().toISOString(),deletedBy:currentUser.name};
   try{
-    await apiRemove('tasks',id);delete allTasks[id];
-    for(const k of Object.keys(allInstances)){if(allInstances[k].taskId===id){await apiRemove('instances',k);delete allInstances[k];}}
-    renderAdminTasks();renderTasks();showToast('נמחק');
+    await apiSet('tasks',id,{...updated,id});
+    allTasks[id]=updated;
+    renderAdminTasks();renderTasks();showToast('הועבר לארכיון המחיקות 🗑️');
   }catch(e){showToast('שגיאה: '+e.message,'error');}
   hideLoading();
 };
@@ -1244,8 +2593,8 @@ window.renderAdminUsers=function(){
 window.openUserModal=function(userId=null){
   editingUserId=userId;
   document.getElementById('userModalTitle').textContent=userId?'✏️ עריכת משתמש':'👤 משתמש חדש';
-  if(userId){const u=allUsers[userId];document.getElementById('uName').value=u.name||'';document.getElementById('uUsername').value=u.username||'';document.getElementById('uPassword').value=u.password||'';document.getElementById('uRole').value=u.role||'';document.getElementById('uIsAdmin').checked=!!u.isAdmin;}
-  else{['uName','uUsername','uPassword','uRole'].forEach(id=>document.getElementById(id).value='');document.getElementById('uIsAdmin').checked=false;}
+  if(userId){const u=allUsers[userId];document.getElementById('uName').value=u.name||'';document.getElementById('uUsername').value=u.username||'';document.getElementById('uPassword').value=u.password||'';document.getElementById('uRole').value=u.role||'';document.getElementById('uEmail').value=u.email||'';document.getElementById('uIsAdmin').checked=!!u.isAdmin;}
+  else{['uName','uUsername','uPassword','uRole','uEmail'].forEach(id=>document.getElementById(id).value='');document.getElementById('uIsAdmin').checked=false;}
   document.getElementById('userModal').classList.add('open');
 };
 
@@ -1259,7 +2608,7 @@ window.saveUser=async function(){
   // Check username uniqueness
   const dup=Object.entries(allUsers).find(([id,u])=>u.username===username&&id!==editingUserId);
   if(dup){showToast('שם המשתמש כבר קיים','error');return;}
-  const user={name,username,password,role:document.getElementById('uRole').value.trim(),isAdmin:document.getElementById('uIsAdmin').checked};
+  const user={name,username,password,role:document.getElementById('uRole').value.trim(),email:document.getElementById('uEmail').value.trim(),isAdmin:document.getElementById('uIsAdmin').checked};
   showLoading('שומר...');
   try{
     if(editingUserId){await apiSet('users',editingUserId,{...user,id:editingUserId});allUsers[editingUserId]=user;}
@@ -1357,6 +2706,7 @@ window.showView=function(name){
   if(name==='stats')renderStats();
   if(name==='archive')renderArchive();
   if(name==='upcoming')renderUpcoming();
+  if(name==='hours')renderHours();
   if(name==='admin'){renderAdminTasks();renderAdminUsers();renderAdminClients();}
 };
 
@@ -1373,6 +2723,8 @@ function renderCurrentView(){
   else if(id==='viewStats')renderStats();
   else if(id==='viewArchive')renderArchive();
   else if(id==='viewUpcoming')renderUpcoming();
+  else if(id==='viewHours')renderHours();
+  else if(id==='viewAdmin'){const sec=document.querySelector('.admin-section.active')?.id;if(sec==='adminTasks')renderAdminTasks();else if(sec==='adminUsers')renderAdminUsers();else if(sec==='adminClients')renderAdminClients();}
 }
 
 window.closeModal=function(id){document.getElementById(id).classList.remove('open');};

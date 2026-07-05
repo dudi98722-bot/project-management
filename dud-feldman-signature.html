@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>חתימת מייל - דוד פלדמן</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;600;700;900&display=swap');
+
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0f1923;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:'Heebo',Arial,sans-serif;padding:40px 20px;flex-direction:column;gap:24px}
+
+/* ─── OUTER CARD ─── */
+.sig-wrap{
+  position:relative;
+  width:460px;
+}
+
+/* animated border */
+.sig-wrap::before{
+  content:'';
+  position:absolute;
+  inset:-2px;
+  border-radius:20px;
+  background:conic-gradient(from var(--angle,0deg), #00d4e0, #1a8fff, #00d4e0, #0af, #00d4e0);
+  animation:rotateBorder 4s linear infinite;
+  z-index:0;
+}
+@property --angle{syntax:'<angle>';inherits:false;initial-value:0deg}
+@keyframes rotateBorder{to{--angle:360deg}}
+
+.sig{
+  position:relative;
+  z-index:1;
+  background:linear-gradient(145deg,#101e2e,#0d1a28);
+  border-radius:18px;
+  padding:26px 28px 22px;
+  overflow:hidden;
+}
+
+/* grid glow bg */
+.sig::before{
+  content:'';
+  position:absolute;
+  inset:0;
+  background-image:
+    linear-gradient(rgba(0,212,224,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,212,224,0.04) 1px, transparent 1px);
+  background-size:28px 28px;
+  animation:gridMove 8s linear infinite;
+}
+@keyframes gridMove{from{background-position:0 0}to{background-position:28px 28px}}
+
+/* corner glows */
+.sig::after{
+  content:'';
+  position:absolute;
+  top:-60px; right:-60px;
+  width:180px;height:180px;
+  background:radial-gradient(circle, rgba(0,212,224,0.18) 0%, transparent 70%);
+  animation:breathe 5s ease-in-out infinite;
+}
+@keyframes breathe{0%,100%{opacity:.6;transform:scale(1)}50%{opacity:1;transform:scale(1.2)}}
+
+/* ─── LOGO ROW ─── */
+.logo-row{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  margin-bottom:18px;
+  animation:slideDown .6s ease both;
+}
+@keyframes slideDown{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:translateY(0)}}
+
+/* ─── ICON ─── */
+.logo-icon{
+  position:relative;
+  width:52px;height:52px;
+  flex-shrink:0;
+}
+.logo-icon svg{
+  width:52px;height:52px;
+  filter:drop-shadow(0 0 8px rgba(0,212,224,.7));
+  animation:iconPulse 3s ease-in-out infinite;
+}
+@keyframes iconPulse{
+  0%,100%{filter:drop-shadow(0 0 8px rgba(0,212,224,.6))}
+  50%{filter:drop-shadow(0 0 18px rgba(0,212,224,1)) drop-shadow(0 0 30px rgba(26,143,255,.5))}
+}
+
+/* scan-line effect on icon */
+.logo-icon::after{
+  content:'';
+  position:absolute;
+  left:0;top:-100%;width:100%;height:100%;
+  background:linear-gradient(transparent 40%, rgba(0,212,224,.25) 50%, transparent 60%);
+  animation:scan 3s ease-in-out infinite;
+  pointer-events:none;
+}
+@keyframes scan{0%{top:-100%}100%{top:200%}}
+
+/* ─── NAME ─── */
+.logo-text{line-height:1}
+
+.logo-name{
+  font-size:32px;
+  font-weight:900;
+  letter-spacing:-1px;
+  display:flex;
+  align-items:baseline;
+  gap:0;
+}
+
+.name-dud{
+  color:#00d4e0;
+  display:inline-block;
+  animation:floatA 5s ease-in-out infinite;
+  text-shadow:0 0 20px rgba(0,212,224,.6);
+}
+.name-fld{
+  color:#ffffff;
+  display:inline-block;
+  animation:floatB 5s ease-in-out infinite;
+  text-shadow:0 0 20px rgba(255,255,255,.15);
+}
+@keyframes floatA{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes floatB{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+
+/* typewriter tagline */
+.tagline{
+  margin-top:7px;
+  font-size:11px;
+  font-weight:400;
+  color:#4a9bb8;
+  letter-spacing:.5px;
+  white-space:nowrap;
+  overflow:hidden;
+  animation:typeIn 1.8s steps(38,end) .5s both;
+  border-left:1px solid #00d4e0;
+  padding-left:4px;
+}
+@keyframes typeIn{from{width:0;opacity:0}to{width:100%;opacity:1}}
+
+.tagline .dot{color:#00d4e0;margin:0 5px}
+
+/* ─── DIVIDER ─── */
+.divider{
+  height:1px;
+  background:linear-gradient(90deg,transparent,#00d4e0 40%,#1a8fff 60%,transparent);
+  background-size:200% 100%;
+  margin:16px 0;
+  animation:shimmerLine 3s linear infinite;
+}
+@keyframes shimmerLine{
+  0%{background-position:200% 0}
+  100%{background-position:-200% 0}
+}
+
+/* ─── PHONE ─── */
+.phone-row{
+  display:flex;
+  justify-content:center;
+  animation:slideUp .6s .8s ease both;
+}
+@keyframes slideUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+.phone-link{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  text-decoration:none;
+  padding:10px 24px;
+  border-radius:40px;
+  border:1.5px solid rgba(0,212,224,.35);
+  background:rgba(0,212,224,.06);
+  overflow:hidden;
+  transition:all .35s ease;
+}
+
+/* animated shimmer sweep on hover */
+.phone-link::before{
+  content:'';
+  position:absolute;
+  top:0;left:-120%;width:60%;height:100%;
+  background:linear-gradient(90deg,transparent,rgba(0,212,224,.25),transparent);
+  transform:skewX(-20deg);
+  animation:sweep 3.5s ease-in-out infinite;
+}
+@keyframes sweep{0%,100%{left:-120%}50%{left:160%}}
+
+.phone-link:hover{
+  border-color:#00d4e0;
+  background:rgba(0,212,224,.12);
+  transform:translateY(-2px);
+  box-shadow:0 8px 28px rgba(0,212,224,.35),0 0 0 1px rgba(0,212,224,.3);
+}
+
+.phone-icon{
+  font-size:16px;
+  animation:ring 5s 3s ease-in-out infinite;
+  display:inline-block;
+}
+@keyframes ring{
+  0%,88%,100%{transform:rotate(0)}
+  90%{transform:rotate(-18deg)}
+  92%{transform:rotate(18deg)}
+  94%{transform:rotate(-12deg)}
+  96%{transform:rotate(12deg)}
+  98%{transform:rotate(-5deg)}
+}
+
+.phone-num{
+  font-size:19px;
+  font-weight:700;
+  color:#ffffff;
+  letter-spacing:1px;
+  direction:ltr;
+  text-shadow:0 0 12px rgba(0,212,224,.4);
+}
+
+/* ─── PARTICLES ─── */
+.particles{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:0}
+.p{
+  position:absolute;
+  width:2px;height:2px;
+  border-radius:50%;
+  background:#00d4e0;
+  animation:particle var(--d,6s) var(--delay,0s) linear infinite;
+  opacity:0;
+}
+@keyframes particle{
+  0%{transform:translate(var(--sx),var(--sy)) scale(0);opacity:0}
+  20%{opacity:.8}
+  80%{opacity:.4}
+  100%{transform:translate(var(--ex),var(--ey)) scale(1);opacity:0}
+}
+
+/* ─── INSTRUCTIONS ─── */
+.instructions{
+  background:#101e2e;
+  border:1px solid rgba(0,212,224,.2);
+  border-radius:12px;
+  padding:18px 22px;
+  width:460px;
+  font-size:13px;
+  color:#7a9cb8;
+  line-height:1.8;
+  direction:rtl;
+}
+.instructions strong{color:#00d4e0;display:block;font-size:13px;margin-bottom:6px}
+.instructions ol{padding-right:18px}
+.instructions li{margin-bottom:3px}
+
+.copy-btn{
+  margin-top:12px;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  background:linear-gradient(135deg,#00d4e0,#1a8fff);
+  color:#0d1a28;
+  border:none;
+  border-radius:8px;
+  padding:9px 20px;
+  font-size:13px;
+  font-family:'Heebo',Arial,sans-serif;
+  font-weight:800;
+  cursor:pointer;
+  transition:all .3s;
+  letter-spacing:.3px;
+}
+.copy-btn:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,212,224,.5)}
+</style>
+</head>
+<body>
+
+<div class="sig-wrap">
+  <div class="sig">
+
+    <!-- Particles -->
+    <div class="particles" id="pts"></div>
+
+    <!-- Logo Row -->
+    <div class="logo-row" style="position:relative;z-index:1">
+
+      <!-- LOGO ICON — מבוסס על הלוגו המקורי -->
+      <div class="logo-icon">
+        <svg viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="iconGrad" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#00d4e0"/>
+              <stop offset="100%" stop-color="#1a8fff"/>
+            </linearGradient>
+            <linearGradient id="arrowGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#00d4e0"/>
+              <stop offset="100%" stop-color="#0af"/>
+            </linearGradient>
+          </defs>
+          <!-- Rounded square background -->
+          <rect x="1" y="1" width="50" height="50" rx="12" fill="url(#iconGrad)" opacity="0.15"/>
+          <rect x="1" y="1" width="50" height="50" rx="12" stroke="url(#iconGrad)" stroke-width="1.5"/>
+          <!-- Arrow / chevron shape — מייצג "קדימה, התקדמות" -->
+          <!-- Left vertical bar -->
+          <rect x="11" y="13" width="8" height="26" rx="4" fill="url(#iconGrad)"/>
+          <!-- Right chevron -->
+          <path d="M23 13 L39 26 L23 39" stroke="url(#arrowGrad)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+      </div>
+
+      <div class="logo-text" style="position:relative;z-index:1">
+        <div class="logo-name">
+          <span class="name-dud">דוד</span><span class="name-fld">פלדמן</span>
+        </div>
+        <div class="tagline">
+          ליווי פינסי<span class="dot">•</span>ניתוח עסקים<span class="dot">•</span>תכנון אקסל
+        </div>
+      </div>
+    </div>
+
+    <!-- Divider -->
+    <div class="divider" style="position:relative;z-index:1"></div>
+
+    <!-- Phone -->
+    <div class="phone-row" style="position:relative;z-index:1">
+      <a href="tel:0527698722" class="phone-link">
+        <span class="phone-icon">📞</span>
+        <span class="phone-num" dir="ltr">052-769-8722</span>
+      </a>
+    </div>
+
+  </div>
+</div>
+
+<!-- Instructions -->
+<div class="instructions">
+  <strong>📋 איך להוסיף לג'ימייל / אאוטלוק:</strong>
+  <ol>
+    <li>פתח את הקובץ הזה בדפדפן</li>
+    <li>לחץ על כפתור "העתק חתימה" למטה</li>
+    <li>Gmail: הגדרות ← חתימה ← הדבק (Ctrl+V)</li>
+    <li>שמור שינויים ✓</li>
+  </ol>
+  <button class="copy-btn" onclick="copySig()">📋 העתק חתימה</button>
+</div>
+
+<script>
+// Generate particles
+const pts = document.getElementById('pts');
+const cols = ['#00d4e0','#1a8fff','#0af','#ffffff'];
+for(let i=0;i<22;i++){
+  const el = document.createElement('div');
+  el.className='p';
+  const x1 = Math.random()*100, y1 = Math.random()*100;
+  const x2 = (Math.random()-0.5)*120, y2 = (Math.random()-0.5)*80;
+  el.style.cssText=`
+    left:${x1}%;top:${y1}%;
+    --sx:0px;--sy:0px;
+    --ex:${x2}px;--ey:${y2}px;
+    --d:${4+Math.random()*6}s;
+    --delay:${Math.random()*6}s;
+    background:${cols[Math.floor(Math.random()*cols.length)]};
+    width:${1+Math.random()*2}px;
+    height:${1+Math.random()*2}px;
+  `;
+  pts.appendChild(el);
+}
+
+function copySig(){
+  const sig = document.querySelector('.sig-wrap');
+  const range = document.createRange();
+  range.selectNode(sig);
+  window.getSelection().removeAllRanges();
+  window.getSelection().addRange(range);
+  document.execCommand('copy');
+  window.getSelection().removeAllRanges();
+  const btn=document.querySelector('.copy-btn');
+  btn.textContent='✅ הועתק!';
+  setTimeout(()=>{btn.innerHTML='📋 העתק חתימה'},2000);
+}
+</script>
+</body>
+</html>

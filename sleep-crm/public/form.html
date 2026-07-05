@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>שאלון לקראת ייעוץ שינה</title>
+<style>
+  :root{
+    --bg1:#eef2fb; --bg2:#f6eefb; --card:#ffffff; --ink:#2c2740; --muted:#8a86a0;
+    --accent:#7c6cf0; --accent2:#a48bf0; --line:#e7e3f3; --ok:#3fb27f; --req:#e06a8b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Segoe UI',Arial,sans-serif;color:var(--ink);
+    background:linear-gradient(135deg,var(--bg1),var(--bg2));min-height:100vh;padding:24px 14px}
+  .wrap{max-width:760px;margin:0 auto}
+  .hero{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;
+    border-radius:22px;padding:30px 28px;box-shadow:0 12px 30px rgba(124,108,240,.28)}
+  .hero h1{margin:0 0 6px;font-size:26px}
+  .hero .moon{font-size:34px}
+  .hero p{margin:14px 0 0;line-height:1.7;font-size:15px;white-space:pre-line;opacity:.96}
+  .card{background:var(--card);border-radius:18px;padding:22px 22px 8px;margin-top:18px;
+    box-shadow:0 6px 18px rgba(60,50,110,.07)}
+  .sec-title{display:flex;align-items:center;gap:10px;font-size:19px;font-weight:700;
+    color:var(--accent);margin:0 0 6px;padding-bottom:12px;border-bottom:2px solid var(--line)}
+  .q{margin:18px 0}
+  .q label.qlabel{display:block;font-weight:600;margin-bottom:8px;line-height:1.5;font-size:15px}
+  .q .req{color:var(--req);margin-inline-start:4px}
+  input[type=text],textarea{width:100%;border:1.5px solid var(--line);border-radius:12px;
+    padding:11px 13px;font-size:15px;font-family:inherit;color:var(--ink);background:#fcfbff;transition:.15s}
+  input[type=text]:focus,textarea:focus{outline:none;border-color:var(--accent);background:#fff;
+    box-shadow:0 0 0 3px rgba(124,108,240,.12)}
+  textarea{min-height:78px;resize:vertical}
+  .opts{display:flex;flex-direction:column;gap:9px}
+  .opt{display:flex;align-items:flex-start;gap:10px;border:1.5px solid var(--line);border-radius:12px;
+    padding:11px 13px;cursor:pointer;background:#fcfbff;transition:.15s}
+  .opt:hover{border-color:var(--accent2);background:#fff}
+  .opt.on{border-color:var(--accent);background:#f3f0ff}
+  .opt input{margin-top:3px;accent-color:var(--accent);width:18px;height:18px;flex:none}
+  .opt span{line-height:1.45;font-size:14.5px}
+  table.grid{width:100%;border-collapse:collapse;font-size:14px}
+  table.grid th,table.grid td{padding:8px 4px;text-align:center}
+  table.grid th{color:var(--muted);font-weight:600}
+  table.grid td.rowlbl{text-align:right;font-weight:600;width:42%}
+  table.grid tr{border-bottom:1px solid var(--line)}
+  table.grid input{accent-color:var(--accent);width:20px;height:20px;cursor:pointer}
+  .grid-scale-hint{font-size:12.5px;color:var(--muted);margin:4px 0 10px}
+  .submit{display:block;width:100%;border:none;border-radius:14px;padding:16px;font-size:18px;
+    font-weight:700;color:#fff;cursor:pointer;margin:22px 0 8px;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 8px 20px rgba(124,108,240,.32)}
+  .submit:disabled{opacity:.6;cursor:default}
+  .note{text-align:center;color:var(--muted);font-size:13px;margin:10px 0 30px}
+  .done{background:var(--card);border-radius:22px;padding:48px 28px;text-align:center;margin-top:18px;
+    box-shadow:0 6px 18px rgba(60,50,110,.07)}
+  .done .big{font-size:60px}
+  .done h2{color:var(--accent);margin:14px 0 6px}
+  .done p{color:var(--muted);line-height:1.7}
+  .errbox{color:var(--req);font-size:13.5px;margin-top:6px;display:none}
+  @media(max-width:520px){.hero{padding:24px 18px}.hero h1{font-size:22px}table.grid td.rowlbl{font-size:13px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <div class="moon">🌙</div>
+    <h1 id="formTitle"></h1>
+    <p id="formIntro"></p>
+  </div>
+
+  <form id="theForm" autocomplete="off">
+    <div id="sections"></div>
+    <button type="submit" class="submit" id="submitBtn">שליחת השאלון</button>
+    <div class="note">הפרטים נשמרים בצורה מאובטחת ומשמשים את היועצת בלבד 🔒</div>
+  </form>
+
+  <div class="done" id="doneScreen" style="display:none">
+    <div class="big">🎉</div>
+    <h2>השאלון נשלח בהצלחה!</h2>
+    <p>תודה רבה על השיתוף והאמון.<br>היועצת תעבור על הפרטים ותחזור אליכם בהקדם 💜</p>
+  </div>
+</div>
+
+<script src="schema.js"></script>
+<script>
+(function(){
+  var API = location.origin + '/api';
+  document.getElementById('formTitle').textContent = window.FORM_TITLE;
+  document.getElementById('formIntro').textContent = window.FORM_INTRO;
+
+  var host = document.getElementById('sections');
+  function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+
+  window.SLEEP_SCHEMA.forEach(function(sec){
+    var card = document.createElement('div'); card.className='card';
+    card.innerHTML = '<div class="sec-title"><span>'+sec.icon+'</span><span>'+esc(sec.section)+'</span></div>';
+    sec.fields.forEach(function(f){
+      var q = document.createElement('div'); q.className='q';
+      var lbl = '<label class="qlabel">'+esc(f.label)+(f.required?'<span class="req">*</span>':'')+'</label>';
+      var ctrl='';
+      if(f.type==='text'){ ctrl='<input type="text" name="'+f.key+'">'; }
+      else if(f.type==='textarea'){ ctrl='<textarea name="'+f.key+'"></textarea>'; }
+      else if(f.type==='radio'||f.type==='checkbox'){
+        ctrl='<div class="opts" data-key="'+f.key+'" data-multi="'+(f.type==='checkbox')+'">';
+        f.options.forEach(function(o,i){
+          ctrl+='<label class="opt"><input type="'+f.type+'" name="'+f.key+'" value="'+esc(o)+'"><span>'+esc(o)+'</span></label>';
+        });
+        ctrl+='</div>';
+      }
+      else if(f.type==='grid'){
+        ctrl='<div class="grid-scale-hint">1 = הכי נמוך · 5 = הכי גבוה</div><table class="grid" data-key="'+f.key+'"><thead><tr><th></th>';
+        f.scale.forEach(function(n){ ctrl+='<th>'+n+'</th>'; });
+        ctrl+='</tr></thead><tbody>';
+        f.rows.forEach(function(r){
+          ctrl+='<tr data-row="'+r.key+'"><td class="rowlbl">'+esc(r.label)+'</td>';
+          f.scale.forEach(function(n){ ctrl+='<td><input type="radio" name="grid_'+f.key+'_'+r.key+'" value="'+n+'"></td>'; });
+          ctrl+='</tr>';
+        });
+        ctrl+='</tbody></table>';
+      }
+      q.innerHTML = lbl + ctrl + '<div class="errbox">שדה חובה</div>';
+      card.appendChild(q);
+    });
+    host.appendChild(card);
+  });
+
+  // toggle visual state for option boxes
+  host.addEventListener('change', function(e){
+    var opt = e.target.closest('.opt');
+    if(opt){
+      var box = opt.closest('.opts');
+      if(box.getAttribute('data-multi')==='false'){
+        box.querySelectorAll('.opt').forEach(function(o){o.classList.remove('on');});
+      }
+      if(e.target.type==='checkbox'){ opt.classList.toggle('on', e.target.checked); }
+      else { opt.classList.add('on'); }
+    }
+  });
+
+  function collect(){
+    var data={};
+    window.SLEEP_SCHEMA.forEach(function(sec){ sec.fields.forEach(function(f){
+      if(f.type==='text'||f.type==='textarea'){
+        data[f.key]=(document.querySelector('[name="'+f.key+'"]').value||'').trim();
+      } else if(f.type==='radio'){
+        var c=document.querySelector('input[name="'+f.key+'"]:checked'); data[f.key]=c?c.value:'';
+      } else if(f.type==='checkbox'){
+        data[f.key]=Array.prototype.map.call(document.querySelectorAll('input[name="'+f.key+'"]:checked'),function(c){return c.value;});
+      } else if(f.type==='grid'){
+        var g={}; f.rows.forEach(function(r){
+          var c=document.querySelector('input[name="grid_'+f.key+'_'+r.key+'"]:checked'); g[r.key]=c?Number(c.value):null;
+        }); data[f.key]=g;
+      }
+    });});
+    return data;
+  }
+
+  function validate(){
+    var ok=true, first=null;
+    document.querySelectorAll('.errbox').forEach(function(e){e.style.display='none';});
+    window.SLEEP_SCHEMA.forEach(function(sec){ sec.fields.forEach(function(f){
+      if(!f.required) return;
+      var el=document.querySelector('[name="'+f.key+'"]');
+      var val = el ? (el.value||'').trim() : '';
+      if(!val){ ok=false; var eb=el.closest('.q').querySelector('.errbox'); if(eb)eb.style.display='block'; if(!first)first=el; }
+    });});
+    if(first) first.scrollIntoView({behavior:'smooth',block:'center'});
+    return ok;
+  }
+
+  document.getElementById('theForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    if(!validate()) return;
+    var btn=document.getElementById('submitBtn');
+    btn.disabled=true; btn.textContent='שולח...';
+    fetch(API+'/submissions',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({answers:collect()})})
+    .then(function(r){ if(!r.ok) throw 0; return r.json(); })
+    .then(function(){
+      document.getElementById('theForm').style.display='none';
+      document.getElementById('doneScreen').style.display='block';
+      window.scrollTo({top:0,behavior:'smooth'});
+    })
+    .catch(function(){
+      btn.disabled=false; btn.textContent='שליחת השאלון';
+      alert('אירעה שגיאה בשליחה. בדקו את החיבור לאינטרנט ונסו שוב.');
+    });
+  });
+})();
+</script>
+</body>
+</html>

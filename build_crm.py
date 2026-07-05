@@ -20,7 +20,15 @@ with open('C:/Users/בונים ומוגנים/OneDrive/שולחן העבודה/�
 
 template = open('C:/Users/בונים ומוגנים/OneDrive/שולחן העבודה/קלוד/crm_template.html', 'r', encoding='utf-8').read()
 
-out = template.replace('/*CONTACTS_DATA*/', 'const CONTACTS_DATA = ' + json.dumps(contacts, ensure_ascii=False) + ';')
+# Users
+try:
+    with open('C:/Users/בונים ומוגנים/OneDrive/שולחן העבודה/קלוד/users_data.json', 'r', encoding='utf-8') as f:
+        users = json.load(f)
+except:
+    users = []
+
+out = template.replace('/*USERS_DATA*/', json.dumps(users, ensure_ascii=False))
+out = out.replace('/*CONTACTS_DATA*/', 'const CONTACTS_DATA = ' + json.dumps(contacts, ensure_ascii=False) + ';')
 out = out.replace('/*TABLE1_DATA*/', 'const TABLE1 = ' + json.dumps(table1, ensure_ascii=False) + ';')
 out = out.replace('/*TABLE2_DATA*/', 'const TABLE2 = ' + json.dumps(table2, ensure_ascii=False) + ';')
 out = out.replace('/*VOWS_DATA*/', 'const VOWS_DATA = ' + json.dumps(vows, ensure_ascii=False) + ';')

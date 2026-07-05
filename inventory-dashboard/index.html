@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ניהול מלאי - חנות בגדים</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="logo">
+      <span class="logo-icon">👗</span>
+      <span class="logo-text">FashionStock</span>
+    </div>
+    <nav>
+      <a href="#" class="nav-item active" data-page="dashboard">
+        <span class="nav-icon">📊</span> לוח בקרה
+      </a>
+      <a href="#" class="nav-item" data-page="products">
+        <span class="nav-icon">🏷️</span> מוצרים
+      </a>
+      <a href="#" class="nav-item" data-page="add-product">
+        <span class="nav-icon">➕</span> הוספת מוצר
+      </a>
+      <a href="#" class="nav-item" data-page="categories">
+        <span class="nav-icon">📂</span> קטגוריות
+      </a>
+      <a href="#" class="nav-item" data-page="alerts">
+        <span class="nav-icon">🔔</span> התראות
+        <span class="badge" id="alert-badge">0</span>
+      </a>
+    </nav>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-right">
+        <h1 id="page-title">לוח בקרה</h1>
+      </div>
+      <div class="topbar-left">
+        <input type="text" id="global-search" class="search-input" placeholder="חיפוש מוצר..." />
+        <span class="user-avatar">👤</span>
+      </div>
+    </header>
+
+    <!-- Dashboard Page -->
+    <section id="page-dashboard" class="page active">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon" style="background:#e8f4fd;">📦</div>
+          <div class="stat-info">
+            <p class="stat-label">סה"כ מוצרים</p>
+            <p class="stat-value" id="stat-total">0</p>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:#eafaf1;">💰</div>
+          <div class="stat-info">
+            <p class="stat-label">שווי מלאי</p>
+            <p class="stat-value" id="stat-value">₪0</p>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:#fef9e7;">⚠️</div>
+          <div class="stat-info">
+            <p class="stat-label">מלאי נמוך</p>
+            <p class="stat-value" id="stat-low">0</p>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:#fdedec;">❌</div>
+          <div class="stat-info">
+            <p class="stat-label">אזל מהמלאי</p>
+            <p class="stat-value" id="stat-out">0</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="dashboard-grid">
+        <div class="card">
+          <div class="card-header">
+            <h2>מוצרים עם מלאי נמוך</h2>
+          </div>
+          <table class="table">
+            <thead>
+              <tr><th>שם מוצר</th><th>קטגוריה</th><th>מלאי</th><th>סטטוס</th></tr>
+            </thead>
+            <tbody id="low-stock-table"></tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2>התפלגות לפי קטגוריה</h2>
+          </div>
+          <div id="category-chart" class="chart-container"></div>
+        </div>
+      </div>
+
+      <div class="card mt">
+        <div class="card-header">
+          <h2>פעילות אחרונה</h2>
+        </div>
+        <ul id="activity-log" class="activity-list"></ul>
+      </div>
+    </section>
+
+    <!-- Products Page -->
+    <section id="page-products" class="page">
+      <div class="toolbar">
+        <div class="filters">
+          <select id="filter-category" class="select-input">
+            <option value="">כל הקטגוריות</option>
+          </select>
+          <select id="filter-status" class="select-input">
+            <option value="">כל הסטטוסים</option>
+            <option value="ok">תקין</option>
+            <option value="low">מלאי נמוך</option>
+            <option value="out">אזל</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:10px;">
+          <button class="btn btn-secondary" onclick="openImportModal()">📥 ייבוא מ-Excel</button>
+          <button class="btn btn-primary" onclick="showPage('add-product')">+ הוסף מוצר</button>
+        </div>
+      </div>
+      <div class="card">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>שם מוצר</th>
+              <th>קטגוריה</th>
+              <th>מחיר</th>
+              <th>מלאי</th>
+              <th>מידה</th>
+              <th>סטטוס</th>
+              <th>פעולות</th>
+            </tr>
+          </thead>
+          <tbody id="products-table"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Add / Edit Product Page -->
+    <section id="page-add-product" class="page">
+      <div class="card form-card">
+        <div class="card-header">
+          <h2 id="form-title">הוספת מוצר חדש</h2>
+        </div>
+        <form id="product-form" class="product-form">
+          <input type="hidden" id="edit-id" value="" />
+          <div class="form-row">
+            <div class="form-group">
+              <label>שם המוצר</label>
+              <input type="text" id="f-name" class="input" placeholder="למשל: חולצת פולו לבנה" required />
+            </div>
+            <div class="form-group">
+              <label>קטגוריה</label>
+              <select id="f-category" class="input" required>
+                <option value="">בחר קטגוריה</option>
+                <option>חולצות</option>
+                <option>מכנסיים</option>
+                <option>שמלות</option>
+                <option>עליוניות</option>
+                <option>הנעלה</option>
+                <option>אביזרים</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>מחיר (₪)</label>
+              <input type="number" id="f-price" class="input" placeholder="0.00" min="0" step="0.01" required />
+            </div>
+            <div class="form-group">
+              <label>כמות במלאי</label>
+              <input type="number" id="f-stock" class="input" placeholder="0" min="0" required />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>מידה</label>
+              <select id="f-size" class="input">
+                <option value="">ללא מידה</option>
+                <option>XS</option>
+                <option>S</option>
+                <option>M</option>
+                <option>L</option>
+                <option>XL</option>
+                <option>XXL</option>
+                <option>36</option>
+                <option>37</option>
+                <option>38</option>
+                <option>39</option>
+                <option>40</option>
+                <option>41</option>
+                <option>42</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>צבע</label>
+              <input type="text" id="f-color" class="input" placeholder="למשל: לבן, שחור, כחול" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>ספק</label>
+              <input type="text" id="f-supplier" class="input" placeholder="שם הספק" />
+            </div>
+            <div class="form-group">
+              <label>סף התראת מלאי נמוך</label>
+              <input type="number" id="f-threshold" class="input" placeholder="5" min="0" value="5" />
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" id="form-submit-btn">שמור מוצר</button>
+            <button type="button" class="btn btn-secondary" onclick="showPage('products')">ביטול</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- Categories Page -->
+    <section id="page-categories" class="page">
+      <div class="card">
+        <div class="card-header">
+          <h2>קטגוריות מוצרים</h2>
+        </div>
+        <div id="categories-grid" class="categories-grid"></div>
+      </div>
+    </section>
+
+    <!-- Alerts Page -->
+    <section id="page-alerts" class="page">
+      <div class="card">
+        <div class="card-header">
+          <h2>התראות מלאי</h2>
+        </div>
+        <div id="alerts-list"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Toast -->
+  <div id="toast" class="toast"></div>
+
+  <!-- Edit Stock Modal -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <h3 id="modal-title">עדכון מלאי</h3>
+      <input type="hidden" id="modal-product-id" />
+      <div class="form-group mt">
+        <label>כמות חדשה</label>
+        <input type="number" id="modal-stock" class="input" min="0" />
+      </div>
+      <div class="form-actions mt">
+        <button class="btn btn-primary" onclick="saveStockUpdate()">עדכן</button>
+        <button class="btn btn-secondary" onclick="closeModal()">ביטול</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SheetJS for Excel parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="app.js"></script>
+
+  <!-- Excel Import Modal -->
+  <div id="import-modal-overlay" class="modal-overlay hidden">
+    <div class="modal" style="width:560px;max-width:95vw;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h3>ייבוא מקובץ Excel</h3>
+        <button onclick="closeImportModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888;">✕</button>
+      </div>
+
+      <!-- Step 1: Upload -->
+      <div id="import-step-1">
+        <div id="excel-drop-zone" class="excel-drop-zone">
+          <div class="drop-icon">📂</div>
+          <p class="drop-title">גרור קובץ Excel לכאן</p>
+          <p class="drop-sub">או לחץ לבחירת קובץ</p>
+          <input type="file" id="excel-file-input" accept=".xlsx,.xls,.csv" style="display:none" />
+        </div>
+        <p class="import-hint">תומך בקבצי <strong>.xlsx</strong>, <strong>.xls</strong>, <strong>.csv</strong></p>
+        <div class="import-hint" style="margin-top:10px;">
+          <strong>עמודות נתמכות:</strong> שם, קטגוריה, מחיר, מלאי/כמות, מידה, צבע, ספק, סף
+        </div>
+      </div>
+
+      <!-- Step 2: Preview & column mapping -->
+      <div id="import-step-2" style="display:none;">
+        <div id="import-mapping-area"></div>
+        <div id="import-preview-area"></div>
+        <div class="form-actions" style="margin-top:16px;">
+          <button class="btn btn-primary" onclick="confirmImport()">ייבא מוצרים</button>
+          <button class="btn btn-secondary" onclick="resetImport()">חזור</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

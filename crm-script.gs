@@ -16,14 +16,23 @@ const SHEET_NAMES = {
   clients: 'clients',
   tasks: 'tasks',
   instances: 'instances',
+  notifications: 'notifications',
+  attendance: 'attendance',
+  timelogs: 'timelogs',
 };
 
 const REQUIRED_HEADERS = {
-  users: ['id','name','username','password','role','isAdmin'],
+  users: ['id','name','username','password','role','isAdmin','email'],
   clients: ['id','name','info'],
-  tasks: ['id','name','description','clientId','recur','slaDays','critical','startDate','onceDate','dayOfWeek','dayOfMonth','biDayOfMonth','assignedUsers','note','link'],
-  instances: ['key','taskId','periodKey','dueDate','status','completedBy','completedByName','completedAt','completionNote','postponedTo','postponeReason','postponedBy','postponedAt'],
+  tasks: ['id','name','description','clientId','recur','slaDays','critical','priority','startDate','onceDate','dayOfWeek','dayOfMonth','biDayOfMonth','assignedUsers','note','link','linkLabel','link2','link2Label','email','subtasks','deleted','deletedAt','deletedBy'],
+  instances: ['key','taskId','periodKey','dueDate','status','completedBy','completedByName','completedAt','completionNote','postponedTo','postponeReason','postponedBy','postponedAt','subtaskState','comments'],
+  notifications: ['id','userId','type','text','taskKey','read','at'],
+  attendance: ['id','userId','userName','start','end','date'],
+  timelogs: ['id','userId','userName','taskKey','taskId','taskName','clientId','clientName','start','end','date'],
 };
+
+// Fields stored as JSON strings in the sheet
+const JSON_FIELDS = ['assignedUsers','subtasks','subtaskState','comments'];
 
 function getSheet(name) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -60,10 +69,10 @@ function sheetToObjects(sheet) {
     headers.forEach((h, idx) => {
       let val = row[idx];
       // Parse JSON fields
-      if (h === 'assignedUsers' && val) {
-        try { val = JSON.parse(val); } catch(e) { val = {}; }
+      if (JSON_FIELDS.indexOf(h) !== -1 && val) {
+        try { val = JSON.parse(val); } catch(e) { val = (h === 'subtasks' ? [] : {}); }
       }
-      if (h === 'isAdmin' || h === 'critical') val = val === true || val === 'true' || val === 1;
+      if (h === 'isAdmin' || h === 'critical' || h === 'read' || h === 'deleted') val = val === true || val === 'true' || val === 1;
       if ((h === 'slaDays' || h === 'dayOfWeek' || h === 'dayOfMonth' || h === 'biDayOfMonth') && val !== '') {
         val = val === '' ? null : Number(val);
       }
@@ -89,7 +98,7 @@ function generateId() {
 function objToRow(headers, obj) {
   return headers.map(h => {
     let val = obj[h];
-    if (h === 'assignedUsers' && val && typeof val === 'object') val = JSON.stringify(val);
+    if (JSON_FIELDS.indexOf(h) !== -1 && val && typeof val === 'object') val = JSON.stringify(val);
     // Store username/password always as string (prevent numeric passwords from becoming numbers)
     if ((h === 'username' || h === 'password') && val !== undefined && val !== null) val = String(val);
     return val !== undefined && val !== null ? val : '';
@@ -108,6 +117,9 @@ function doGet(e) {
         clients: sheetToObjects(getSheet('clients')),
         tasks: sheetToObjects(getSheet('tasks')),
         instances: sheetToObjects(getSheet('instances')),
+        notifications: sheetToObjects(getSheet('notifications')),
+        attendance: sheetToObjects(getSheet('attendance')),
+        timelogs: sheetToObjects(getSheet('timelogs')),
       };
       return jsonResponse({ ok: true, data });
     }
@@ -117,6 +129,13 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  // LockService: serialize all writes so two simultaneous saves never corrupt a row
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000); // wait up to 30s for other writes to finish
+  } catch (lockErr) {
+    return jsonResponse({ ok: false, error: 'המערכת עסוקה, נסה שוב' });
+  }
   try {
     const body = JSON.parse(e.postData.contents);
     const { action, collection, id, data } = body;
@@ -133,6 +152,28 @@ function doPost(e) {
     return jsonResponse({ ok: false, error: 'Unknown action' });
   } catch(err) {
     return jsonResponse({ ok: false, error: err.message });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ============================================================
+// DAILY BACKUP  (set a daily time-trigger on this function)
+// ============================================================
+function dailyBackup() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const folderName = 'גיבויי מערכת משימות';
+  const folders = DriveApp.getFoldersByName(folderName);
+  const folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
+  const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd_HH-mm');
+  DriveApp.getFileById(ss.getId()).makeCopy('משימות_גיבוי_' + stamp, folder);
+  // Keep only last 30 days of backups
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 30);
+  const files = folder.getFiles();
+  while (files.hasNext()) {
+    const f = files.next();
+    if (f.getDateCreated() < cutoff) f.setTrashed(true);
   }
 }
 

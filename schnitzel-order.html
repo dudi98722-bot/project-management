@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TabitOrder | הזמנת משלוח ואיסוף עצמי שניצל שף</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --yellow: #F5C800;
+  --yellow-light: #FFF5B0;
+  --yellow-pale: #FFFDE8;
+  --olive: #4A4A2A;
+  --olive-dark: #3A3A1E;
+  --olive-light: #6B6B3A;
+  --black: #1A1A1A;
+  --gray1: #F7F7F5;
+  --gray2: #EFEFEC;
+  --gray3: #D8D8D0;
+  --gray4: #9B9B8A;
+  --white: #FFFFFF;
+  --red: #E53535;
+  --shadow: 0 2px 20px rgba(0,0,0,0.08);
+  --shadow-md: 0 8px 32px rgba(0,0,0,0.12);
+  --shadow-lg: 0 20px 60px rgba(0,0,0,0.18);
+  --radius: 16px;
+  --radius-sm: 10px;
+}
+
+body {
+  font-family: 'Heebo', sans-serif;
+  background: #F0EFE8;
+  min-height: 100vh;
+  color: var(--black);
+}
+
+/* ── SCREENS ── */
+.screen { display: none !important; min-height: 100vh; }
+.screen.active { display: flex !important; }
+
+/* ════════════════════════════════════
+   SCREEN 1: ENTER
+════════════════════════════════════ */
+#screen-enter {
+  display: flex;
+  align-items: stretch;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #FDFCF5 0%, #F5F3E0 100%);
+}
+
+.enter-left {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(145deg, #2D2D14 0%, #1A1A08 100%);
+  display: flex; align-items: center; justify-content: center;
+}
+.enter-left-pattern {
+  position: absolute; inset: 0;
+  background-image: radial-gradient(circle at 20% 50%, rgba(245,200,0,0.12) 0%, transparent 50%),
+                    radial-gradient(circle at 80% 20%, rgba(245,200,0,0.08) 0%, transparent 40%);
+}
+.enter-left-text {
+  position: relative; z-index: 1; text-align: center; padding: 40px;
+}
+.enter-left-title {
+  font-size: 48px; font-weight: 900; color: var(--yellow);
+  line-height: 1.1; margin-bottom: 16px;
+}
+.enter-left-sub {
+  font-size: 18px; color: rgba(255,255,255,0.55); font-weight: 400;
+}
+
+.enter-right {
+  width: 420px; flex-shrink: 0;
+  background: var(--white);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 60px 36px;
+  box-shadow: -4px 0 40px rgba(0,0,0,0.08);
+  position: relative;
+}
+
+.enter-logo-wrap {
+  width: 180px; height: 180px;
+  background: var(--yellow);
+  border-radius: 28px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 40px;
+  box-shadow: 0 12px 40px rgba(245,200,0,0.35);
+  position: relative; overflow: hidden;
+}
+.enter-logo-wrap::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(145deg, rgba(255,255,255,0.2) 0%, transparent 60%);
+}
+.logo-text-main {
+  font-size: 42px; font-weight: 900; color: var(--black);
+  text-align: center; line-height: 1;
+  font-style: italic;
+}
+.logo-text-sub {
+  font-size: 11px; font-weight: 600; color: rgba(0,0,0,0.55);
+  margin-top: 4px; text-align: center;
+}
+
+.enter-title {
+  font-size: 22px; font-weight: 800; color: var(--black);
+  margin-bottom: 8px; text-align: center;
+}
+.enter-sub {
+  font-size: 14px; color: var(--gray4); margin-bottom: 36px; text-align: center;
+}
+
+.enter-btn {
+  width: 100%; padding: 17px 24px;
+  border: none; border-radius: var(--radius);
+  font-family: 'Heebo', sans-serif; font-size: 16px; font-weight: 800;
+  cursor: pointer; transition: all 0.25s cubic-bezier(0.34,1.56,0.64,1);
+  position: relative; overflow: hidden; letter-spacing: 0.2px;
+  margin-bottom: 12px;
+}
+.enter-btn-primary {
+  background: linear-gradient(135deg, var(--olive), var(--olive-dark));
+  color: var(--white);
+  box-shadow: 0 6px 20px rgba(74,74,42,0.35);
+}
+.enter-btn-primary:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 30px rgba(74,74,42,0.45);
+}
+.enter-btn-secondary {
+  background: var(--gray1);
+  color: var(--olive);
+  border: 2px solid var(--gray2);
+}
+.enter-btn-secondary:hover {
+  background: var(--gray2);
+  transform: translateY(-2px);
+}
+.enter-btn::after {
+  content: ''; position: absolute; top: 50%; left: 50%;
+  width: 0; height: 0; background: rgba(255,255,255,0.15);
+  border-radius: 50%; transform: translate(-50%,-50%);
+  transition: width 0.4s, height 0.4s, opacity 0.4s;
+}
+.enter-btn:active::after { width: 300px; height: 300px; opacity: 0; }
+
+.enter-top-bar {
+  position: absolute; top: 16px; right: 16px; left: 16px;
+  display: flex; justify-content: flex-start;
+  font-size: 12px; color: var(--gray4); font-weight: 500;
+}
+
+/* ════════════════════════════════════
+   MODAL (Popup)
+════════════════════════════════════ */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(10,10,5,0.6);
+  backdrop-filter: blur(12px);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; visibility: hidden; transition: all 0.25s;
+}
+.modal-overlay.open { opacity: 1; visibility: visible; }
+
+.modal {
+  background: var(--white);
+  border-radius: 24px;
+  padding: 36px 32px;
+  width: 90%; max-width: 420px;
+  position: relative;
+  transform: translateY(24px) scale(0.97);
+  transition: all 0.35s cubic-bezier(0.34,1.56,0.64,1);
+  box-shadow: var(--shadow-lg);
+}
+.modal-overlay.open .modal { transform: translateY(0) scale(1); }
+
+.modal-close {
+  position: absolute; top: 16px; left: 16px;
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--gray1); border: none; cursor: pointer;
+  font-size: 16px; color: var(--gray4); transition: all 0.2s;
+  display: flex; align-items: center; justify-content: center; font-weight: 700;
+}
+.modal-close:hover { background: var(--gray2); color: var(--black); transform: rotate(90deg); }
+
+.modal-title {
+  font-size: 20px; font-weight: 900; color: var(--black); margin-bottom: 6px;
+}
+.modal-subtitle {
+  font-size: 14px; color: var(--gray4); margin-bottom: 28px;
+}
+
+.select-wrap { position: relative; margin-bottom: 24px; }
+.modal-select {
+  width: 100%; padding: 15px 18px;
+  background: var(--gray1); border: 2px solid var(--gray2);
+  border-radius: var(--radius-sm); font-family: 'Heebo', sans-serif;
+  font-size: 15px; font-weight: 600; color: var(--black);
+  appearance: none; outline: none; cursor: pointer; direction: rtl;
+  transition: all 0.2s;
+}
+.modal-select:focus {
+  border-color: var(--yellow);
+  background: var(--yellow-pale);
+  box-shadow: 0 0 0 4px rgba(245,200,0,0.12);
+}
+.select-arrow {
+  position: absolute; left: 16px; top: 50%; transform: translateY(-50%);
+  color: var(--olive); font-size: 14px; pointer-events: none; font-weight: 700;
+}
+
+.modal-btn {
+  width: 100%; padding: 16px;
+  background: linear-gradient(135deg, var(--olive), var(--olive-dark));
+  color: var(--white); border: none; border-radius: var(--radius);
+  font-family: 'Heebo', sans-serif; font-size: 16px; font-weight: 800;
+  cursor: pointer; transition: all 0.25s;
+  box-shadow: 0 6px 20px rgba(74,74,42,0.3);
+  letter-spacing: 0.2px;
+}
+.modal-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(74,74,42,0.4); }
+
+/* ════════════════════════════════════
+   SCREEN 2: MENU
+════════════════════════════════════ */
+#screen-menu {
+  display: none;
+  flex-direction: column;
+  min-height: 100vh;
+  background: #F0EFE8;
+}
+#screen-menu.active { display: flex; }
+
+/* Header */
+.menu-header {
+  background: var(--yellow);
+  padding: 0 24px;
+  height: 60px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 100;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+}
+.menu-header-location {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 600; color: var(--black);
+  opacity: 0.75;
+}
+.menu-header-title {
+  font-size: 20px; font-weight: 900; color: var(--black); letter-spacing: -0.3px;
+}
+.menu-header-time {
+  font-size: 12px; font-weight: 600; color: var(--black); opacity: 0.6;
+  margin-top: 1px;
+}
+.menu-header-right { display: flex; flex-direction: column; align-items: flex-end; }
+.menu-hamburger {
+  width: 36px; height: 36px; background: rgba(0,0,0,0.1); border-radius: 10px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; cursor: pointer; border: none;
+}
+.menu-hamburger span { display: block; width: 18px; height: 2px; background: var(--black); border-radius: 2px; }
+
+/* Category nav */
+.menu-nav {
+  background: var(--yellow-pale);
+  border-bottom: 2px solid rgba(245,200,0,0.3);
+  padding: 0 24px;
+  display: flex; align-items: center; gap: 0;
+  position: sticky; top: 60px; z-index: 99;
+}
+.menu-search {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,0.8); border: 1.5px solid var(--gray3);
+  border-radius: 10px; padding: 8px 14px;
+  margin-left: auto; margin-right: 8px;
+  font-size: 13px; font-weight: 500; color: var(--gray4);
+  cursor: pointer; white-space: nowrap; transition: all 0.2s;
+}
+.menu-search:hover { border-color: var(--yellow); background: var(--white); }
+.menu-search svg { width: 14px; height: 14px; flex-shrink: 0; }
+.menu-cats {
+  display: flex; gap: 0; overflow-x: auto;
+  scrollbar-width: none;
+}
+.menu-cats::-webkit-scrollbar { display: none; }
+.menu-cat {
+  padding: 16px 18px; font-size: 14px; font-weight: 700; color: var(--gray4);
+  cursor: pointer; white-space: nowrap; border-bottom: 3px solid transparent;
+  transition: all 0.2s; position: relative; bottom: -2px;
+}
+.menu-cat:hover { color: var(--olive); }
+.menu-cat.active { color: var(--olive); border-bottom-color: var(--olive); }
+
+/* Main body */
+.menu-body {
+  display: flex; flex: 1; min-height: 0;
+}
+
+/* Cart panel */
+.cart-panel {
+  width: 320px; flex-shrink: 0;
+  background: var(--white);
+  border-right: 1px solid var(--gray2);
+  display: flex; flex-direction: column;
+  position: sticky; top: 120px; height: calc(100vh - 120px);
+  align-self: flex-start;
+}
+.cart-empty {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 32px;
+  text-align: center;
+}
+.cart-basket-icon {
+  width: 80px; height: 80px; margin: 0 auto 20px;
+  opacity: 0.25;
+}
+.cart-empty-title { font-size: 20px; font-weight: 800; color: var(--black); margin-bottom: 8px; }
+.cart-empty-sub { font-size: 14px; color: var(--gray4); line-height: 1.6; }
+.cart-items { flex: 1; overflow-y: auto; padding: 16px; display: none; }
+.cart-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 0; border-bottom: 1px solid var(--gray2);
+}
+.cart-item-name { font-size: 14px; font-weight: 700; }
+.cart-item-price { font-size: 14px; font-weight: 700; color: var(--olive); }
+.cart-item-qty {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--gray1); border-radius: 10px; padding: 4px 10px;
+}
+.cart-qty-btn {
+  width: 22px; height: 22px; border: none; background: none; cursor: pointer;
+  font-size: 18px; font-weight: 700; color: var(--olive); display: flex; align-items: center; justify-content: center;
+}
+.cart-footer {
+  padding: 20px;
+  border-top: 1px solid var(--gray2);
+  background: var(--white);
+}
+.cart-row {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 8px; font-size: 14px; color: var(--gray4);
+}
+.cart-row.total { font-size: 16px; font-weight: 800; color: var(--black); margin-bottom: 16px; }
+.cart-checkout-btn {
+  width: 100%; padding: 16px;
+  background: linear-gradient(135deg, var(--olive), var(--olive-dark));
+  color: var(--white); border: none; border-radius: var(--radius);
+  font-family: 'Heebo', sans-serif; font-size: 16px; font-weight: 800;
+  cursor: pointer; transition: all 0.25s;
+  box-shadow: 0 6px 20px rgba(74,74,42,0.3);
+}
+.cart-checkout-btn:disabled {
+  background: var(--gray3); box-shadow: none; cursor: not-allowed;
+  color: rgba(255,255,255,0.6);
+}
+.cart-checkout-btn:not(:disabled):hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(74,74,42,0.4); }
+
+/* Menu area */
+.menu-area {
+  flex: 1; padding: 24px 28px; overflow-y: auto;
+}
+.menu-section-title {
+  font-size: 16px; font-weight: 800; color: var(--black);
+  padding: 14px 20px;
+  background: linear-gradient(135deg, var(--yellow-pale), rgba(245,200,0,0.12));
+  border-right: 4px solid var(--yellow);
+  border-radius: var(--radius-sm);
+  margin-bottom: 16px; margin-top: 32px;
+}
+.menu-section-title:first-child { margin-top: 0; }
+.menu-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+  margin-bottom: 8px;
+}
+.menu-item {
+  background: var(--white); border-radius: var(--radius);
+  overflow: hidden; cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.34,1.56,0.64,1);
+  box-shadow: var(--shadow);
+  border: 2px solid transparent;
+  display: flex; flex-direction: column;
+}
+.menu-item:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+  border-color: rgba(245,200,0,0.4);
+}
+.menu-item.added {
+  border-color: var(--yellow);
+  background: var(--yellow-pale);
+}
+.menu-item-img {
+  height: 130px; overflow: hidden;
+  background: linear-gradient(135deg, var(--yellow) 0%, #D4AC00 100%);
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+}
+.menu-item-img img {
+  width: 100%; height: 100%; object-fit: cover;
+  transition: transform 0.4s;
+}
+.menu-item:hover .menu-item-img img { transform: scale(1.06); }
+.menu-item-img-placeholder {
+  font-size: 14px; font-weight: 800; color: var(--black);
+  text-align: center; padding: 12px; opacity: 0.7;
+}
+.menu-item-body {
+  padding: 14px; flex: 1; display: flex; flex-direction: column;
+}
+.menu-item-name {
+  font-size: 15px; font-weight: 800; color: var(--black); margin-bottom: 5px;
+}
+.menu-item-desc {
+  font-size: 12px; color: var(--gray4); line-height: 1.5; flex: 1;
+}
+.menu-item-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 12px;
+}
+.menu-item-price { font-size: 15px; font-weight: 800; color: var(--olive); }
+.menu-item-add {
+  width: 32px; height: 32px;
+  background: linear-gradient(135deg, var(--olive), var(--olive-dark));
+  border: none; border-radius: 50%; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; color: var(--white); font-weight: 300;
+  transition: all 0.25s cubic-bezier(0.34,1.56,0.64,1);
+  box-shadow: 0 4px 12px rgba(74,74,42,0.3);
+}
+.menu-item.added .menu-item-add {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  transform: scale(1.1);
+}
+.menu-item-add:hover { transform: scale(1.15); }
+
+/* Cart badge */
+.cart-badge {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: var(--olive); color: var(--white);
+  padding: 14px 28px; border-radius: 50px;
+  font-size: 15px; font-weight: 800;
+  box-shadow: 0 8px 30px rgba(74,74,42,0.4);
+  display: none; align-items: center; gap: 12px; z-index: 200;
+  cursor: pointer; transition: all 0.3s;
+  white-space: nowrap;
+}
+.cart-badge.visible { display: flex; }
+.cart-badge:hover { transform: translateX(-50%) translateY(-2px); box-shadow: 0 12px 36px rgba(74,74,42,0.5); }
+.cart-badge-count {
+  background: var(--yellow); color: var(--black);
+  width: 26px; height: 26px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 900;
+}
+
+/* ════════════════════════════════════
+   UTILITIES
+════════════════════════════════════ */
+.icon-pin { font-size: 14px; }
+
+/* ════════════════════════════════════
+   ITEM MODAL
+════════════════════════════════════ */
+.item-modal {
+  background: var(--white); border-radius: 24px;
+  padding: 0; width: 90%; max-width: 440px;
+  position: relative; overflow: hidden;
+  transform: translateY(24px) scale(0.97);
+  transition: all 0.35s cubic-bezier(0.34,1.56,0.64,1);
+  box-shadow: var(--shadow-lg);
+}
+.modal-overlay.open .item-modal { transform: translateY(0) scale(1); }
+.item-modal-img {
+  height: 180px; background: linear-gradient(135deg, var(--yellow), #D4AC00);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 80px;
+}
+.item-modal-body { padding: 28px 28px 20px; }
+.item-modal-name { font-size: 22px; font-weight: 900; margin-bottom: 8px; }
+.item-modal-desc { font-size: 14px; color: var(--gray4); line-height: 1.7; margin-bottom: 24px; }
+.item-modal-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 28px;
+  border-top: 1px solid var(--gray2);
+}
+.item-modal-price { font-size: 22px; font-weight: 900; color: var(--olive); }
+.item-modal-add-btn {
+  padding: 14px 28px;
+  background: linear-gradient(135deg, var(--olive), var(--olive-dark));
+  color: var(--white); border: none; border-radius: 14px;
+  font-family: 'Heebo', sans-serif; font-size: 15px; font-weight: 800;
+  cursor: pointer; transition: all 0.25s; box-shadow: 0 6px 20px rgba(74,74,42,0.3);
+}
+.item-modal-add-btn:hover { transform: translateY(-2px); }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════
+     SCREEN 1: ENTER
+══════════════════════════════════ -->
+<div id="screen-enter" class="screen active">
+  <div class="enter-left">
+    <div class="enter-left-pattern"></div>
+    <div class="enter-left-text">
+      <div class="enter-left-title">שניצל<br>בחמישה<br>טעמים</div>
+      <div class="enter-left-sub">הזמן אונליין, תקבל טרי מהמטבח</div>
+    </div>
+  </div>
+
+  <div class="enter-right">
+    <div class="enter-top-bar">TabitOrder</div>
+
+    <div class="enter-logo-wrap">
+      <div>
+        <div class="logo-text-main">שניצל<br>שף</div>
+        <div class="logo-text-sub">שניצל בחמישה טעמים</div>
+      </div>
+    </div>
+
+    <div class="enter-title">איך תרצה לקבל?</div>
+    <div class="enter-sub">בחר את אופן ההזמנה המועדף עליך</div>
+
+    <button class="enter-btn enter-btn-primary" onclick="openPickupModal()">
+      🛍️ &nbsp; איסוף עצמי
+    </button>
+    <button class="enter-btn enter-btn-secondary" onclick="openDeliveryModal()">
+      🛵 &nbsp; משלוח
+    </button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     MODAL: PICKUP / DELIVERY
+══════════════════════════════════ -->
+<div class="modal-overlay" id="main-modal" onclick="handleOverlayClick(event)">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div class="modal-title" id="modal-title">איסוף עצמי</div>
+    <div class="modal-subtitle" id="modal-subtitle">מתי מתאים לך לאסוף את ההזמנה?</div>
+    <div class="select-wrap">
+      <select class="modal-select" id="time-select">
+        <option>הכי מוקדם שאפשר</option>
+        <option>בעוד 30 דקות</option>
+        <option>בעוד שעה</option>
+        <option>בחר שעה...</option>
+      </select>
+      <span class="select-arrow">▾</span>
+    </div>
+    <button class="modal-btn" onclick="goToMenu()">המשך</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     MODAL: ITEM DETAIL
+══════════════════════════════════ -->
+<div class="modal-overlay" id="item-modal-overlay" onclick="closeItemModal()">
+  <div class="item-modal" onclick="event.stopPropagation()">
+    <button class="modal-close" onclick="closeItemModal()" style="top:12px;left:12px;background:rgba(255,255,255,0.9);z-index:2">✕</button>
+    <div class="item-modal-img" id="item-modal-emoji">🍗</div>
+    <div class="item-modal-body">
+      <div class="item-modal-name" id="item-modal-name">שניצל קלאסי</div>
+      <div class="item-modal-desc" id="item-modal-desc">תיאור המנה</div>
+    </div>
+    <div class="item-modal-footer">
+      <div class="item-modal-price" id="item-modal-price">₪45</div>
+      <button class="item-modal-add-btn" id="item-modal-add-btn" onclick="addFromModal()">הוסף להזמנה</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SCREEN 2: MENU
+══════════════════════════════════ -->
+<div id="screen-menu" class="screen">
+
+  <div class="menu-header">
+    <button class="menu-hamburger">
+      <span></span><span></span><span></span>
+    </button>
+    <div style="text-align:center">
+      <div class="menu-header-title">שניצל שף</div>
+    </div>
+    <div class="menu-header-right">
+      <div class="menu-header-location">
+        <span class="icon-pin">📍</span>
+        <span>מאיפה אוספים? ירושלים 8, בני ברק</span>
+      </div>
+      <div class="menu-header-time">זמן הכנה משוער: 15 דק'</div>
+    </div>
+  </div>
+
+  <div class="menu-nav">
+    <div class="menu-cats">
+      <div class="menu-cat active" onclick="scrollToSection('main-dishes',this)">עיקריות</div>
+      <div class="menu-cat" onclick="scrollToSection('sides',this)">תוספות צד</div>
+      <div class="menu-cat" onclick="scrollToSection('kids',this)">ילדים</div>
+      <div class="menu-cat" onclick="scrollToSection('drinks-s',this)">שתייה קלה</div>
+      <div class="menu-cat" onclick="scrollToSection('drinks-l',this)">שתייה גדולה</div>
+      <div class="menu-cat" onclick="scrollToSection('bowls',this)">צלוחיות</div>
+      <div class="menu-cat" onclick="scrollToSection('sauces',this)">רטבים</div>
+    </div>
+    <div class="menu-search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      חיפוש מנה
+    </div>
+  </div>
+
+  <div class="menu-body">
+
+    <!-- Cart Panel -->
+    <div class="cart-panel">
+      <div class="cart-empty" id="cart-empty">
+        <svg class="cart-basket-icon" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M15 30h50l-6 30H21L15 30z" stroke="#1A1A1A" stroke-width="3" stroke-linejoin="round"/>
+          <path d="M10 30h60M25 30L32 15M55 30L48 15" stroke="#1A1A1A" stroke-width="3" stroke-linecap="round"/>
+          <circle cx="30" cy="66" r="3" fill="#1A1A1A"/>
+          <circle cx="50" cy="66" r="3" fill="#1A1A1A"/>
+          <path d="M35 44v10M40 44v10M45 44v10" stroke="#1A1A1A" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <div class="cart-empty-title">רעבים?</div>
+        <div class="cart-empty-sub">זה בדיוק הזמן לבחור מה שבא לכם מהתפריט</div>
+      </div>
+      <div class="cart-items" id="cart-items"></div>
+      <div class="cart-footer">
+        <div class="cart-row">
+          <span>סכום ביניים</span>
+          <span>₪ <span id="cart-subtotal">0.00</span></span>
+        </div>
+        <div class="cart-row total">
+          <span>סה"כ לתשלום</span>
+          <span>₪ <span id="cart-total">0.00</span></span>
+        </div>
+        <button class="cart-checkout-btn" id="checkout-btn" disabled onclick="checkout()">לתשלום</button>
+      </div>
+    </div>
+
+    <!-- Menu Area -->
+    <div class="menu-area" id="menu-area">
+
+      <div class="menu-section-title" id="main-dishes">עיקריות</div>
+      <div class="menu-grid">
+        <div class="menu-item" onclick="openItem('ארוחת שניצל בבאגט','מגיע עם ממרחים וסלטים בבאגט.','60','🥖')">
+          <div class="menu-item-img"><div class="menu-item-img-placeholder">שניצל שף</div></div>
+          <div class="menu-item-body">
+            <div class="menu-item-name">ארוחת שניצל בבאגט</div>
+            <div class="menu-item-desc">מגיע עם ממרחים וסלטים בבאגט.</div>
+            <div class="menu-item-footer">
+              <div class="menu-item-price">₪ 60.00</div>
+              <button class="menu-item-add" onclick="event.stopPropagation();addToCart('ארוחת שניצל בבאגט',60,this)">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="menu-item" onclick="openItem('ארוחת באגט חזה עוף','מגיע עם ממרחים וסלטים בבאגט.','60','🍗')">
+          <div class="menu-item-img"><div class="menu-item-img-placeholder">שניצל שף</div></div>
+          <div class="menu-item-body">
+            <div class="menu-item-name">ארוחת באגט חזה עוף</div>
+            <div class="menu-item-desc">מגיע עם ממרחים וסלטים בבאגט.</div>
+            <div class="menu-item-footer">
+              <div class="menu-item-price">₪ 60.00</div>
+              <button class="menu-item-add" onclick="event.stopPropagation();addToCart('ארוחת באגט חזה עוף',60,this)">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="menu-item" onclick="openItem('שניצל באגט','מגיע עם ממרחים וסלטים בבאגט.','45','🥪')">
+          <div class="menu-item-img"><div class="menu-item-img-placeholder">שניצל שף</div></div>
+          <div class="menu-item-body">
+            <div class="menu-item-name">שניצל באגט</div>
+            <div class="menu-item-desc">מגיע עם ממרחים וסלטים בבאגט.</div>
+            <div class="menu-item-footer">
+              <div class="menu-item-price">₪ 45.00</div>
+              <button class="menu-item-add" onclick="event.stopPropagation();addToCart('שניצל באגט',45,this)">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="menu-item" onclick="openItem('באגט חזה עוף','מגיע עם ממרחים וסלטים בבאגט.','45','🍗')">
+          <div class="menu-item-img"><div class="menu-item-img-placeholder">שניצל שף</div></div>
+          <div class="menu-item-body">
+            <div class="menu-item-name">באגט חזה עוף</div>
+            <div class="menu-item-desc">מגיע עם ממרחים וסלטים בבאגט.</div>
+            <div class="menu-item-footer">
+              <div class="menu-item-price">₪ 45.00</div>
+              <button class="menu-item-add" onclick="event.stopPropagation();addToCart('באגט חזה עוף',45,this)">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="menu-item" onclick="openItem('שניצל בצלחת','מוגש עם סלטים, בגט וצ׳יפס.','62','🍽️')">
+          <div class="menu-item-img">
+            <img src="https://images.unsplash.com/photo-1562967914-608f82629710?w=400&h=200&fit=crop" alt="שניצל בצלחת" onerror="this.parentNode.innerHTML='<div class=menu-item-img-placeholder>שניצל שף</div>'">
+          </div>
+          <div class="menu-item-body">
+            <div class="menu-item-name">שניצל בצלחת</div>
+            <div class="menu-item-desc">מוגש עם סלטים, בגט וצ׳יפס.</div>
+            <div class="menu-item-footer">
+              <div class="menu-item-price">₪ 62.00</div>
+              <button class="menu-item-add" onclick="event.stopPropagation();addToCart('שניצל בצלחת',62,this)">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="menu-item" onclick="openItem('סלט שניצל','','52','🥗')">
+          <div class="menu-item-img"><div class="menu-item-img-placeholder">שניצל שף</div></div>
+          <div class="menu-item-body">
+            <div class="menu-item-name">סלט שניצל</div>
+            <div class="menu-item-desc"></div>
+            <div class="menu-item-footer">
+              <div class="menu-item-price">₪ 52.00</div>
+              <button class="menu-item-add" onclick="event.stopPropagation();addToCart('סלט שניצל',52,this)">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="menu-item" onclick="openItem('סלט חזה עוף','סלט המורכב מחזה עוף במרינדה, חסה, עגבניה, מלפפון, מלפפון חמוץ ובצל מטוגן.','52','🥗')">
+          <div class="menu-item-img"><div class="menu-item-img-placeholder">שניצל שף</div></div>
+          <div class="menu-item-body">
+            <div class="menu-item-name">סלט חזה עוף</div>
+            <div class="menu-item-desc">סלט המורכב מחזה עוף במרינדה, חסה, עגבניה, מלפפון, מלפפון חמוץ ובצל מטוגן.</div>
+            <div class="menu-item-footer">
+              <div class="menu-item-price">₪ 52.00</div>
+              <button class="menu-item-add" onclick="event.stopPropagation();addToCart('סלט חזה עוף',52,this)">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="menu-item" onclick="openItem('המגשית מלאה שניצל','','74','🍱')">
+          <div class="menu-item-img">
+            <img src="https://images.unsplash.com/photo-1599921841143-819065a55cc6?w=400&h=200&fit=crop" alt="מגשית" onerror="this.parentNode.innerHTML='<div class=menu-item-img-placeholder>שניצל שף</div>'">
+          </div>
+          <div class="menu-item-body">
+            <div class="menu-item-name">המגשית מלאה שניצל</div>
+            <div class="menu-item-desc"></div>
+            <div class="menu-item-footer">
+              <div class="menu-item-price">₪ 74.00</div>
+              <button class="menu-item-add" onclick="event.stopPropagation();addToCart('המגשית מלאה שניצל',74,this)">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="menu-item" onclick="openItem('עסקית חזה עוף','חזה עוף על הפלנצ׳ה, אורז לבן, צ׳יפס, סלט ירקות.','49','🍗')">
+          <div class="menu-item-img"><div class="menu-item-img-placeholder">שניצל שף</div></div>
+          <div class="menu-item-body">
+            <div class="menu-item-name">עסקית חזה עוף</div>
+            <div class="menu-item-desc">חזה עוף על הפלנצ׳ה, אורז לבן, צ׳יפס, סלט ירקות.</div>
+            <div class="menu-item-footer">
+              <div class="menu-item-price">₪ 49.00</div>
+              <button class="menu-item-add" onclick="event.stopPropagation();addToCart('עסקית חזה עוף',49,this)">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="menu-item" onclick="openItem('שניצלונים','נתחי עוף מתובלים בציפוי פריך.','35','🍗')">
+          <div class="menu-item-img">
+            <img src="https://images.unsplash.com/photo-1567620832903-9fc6debc209f?w=400&h=200&fit=crop" alt="שניצלונים" onerror="this.parentNode.innerHTML='<div class=menu-item-img-placeholder>שניצל שף</div>'">
+          </div>
+          <div class="menu-item-body">
+            <div class="menu-item-name">שניצלונים</div>
+            <div class="menu-item-desc">נתחי עוף מתובלים בציפוי פריך.</div>
+            <div class="menu-item-footer">
+              <div class="menu-item-price">₪ 35.00</div>
+              <button class="menu-item-add" onclick="event.stopPropagation();addToCart('שניצלונים',35,this)">+</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-section-title" id="sides">תוספות צד</div>
+      <div class="menu-grid">
+        <div class="menu-item" onclick="openItem('ציפס קטן','ציפס שניצל שף.','10','🍟')">
+          <div class="menu-item-img">
+            <img src="https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=400&h=200&fit=crop" alt="ציפס קטן" onerror="this.parentNode.innerHTML='<div class=menu-item-img-placeholder>שניצל שף</div>'">
+          </div>
+          <div class="menu-item-body">
+            <div class="menu-item-name">ציפס קטן</div>
+            <div class="menu-item-desc">ציפס שניצל שף.</div>
+            <div class="menu-item-footer">
+              <div class="menu-item-price">₪ 10.00</div>
+              <button class="menu-item-add" onclick="event.stopPropagation();addToCart('ציפס קטן',10,this)">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="menu-item" onclick="openItem('ציפס גדול','','15','🍟')">
+          <div class="menu-item-img"><div class="menu-item-img-placeholder">שניצל שף</div></div>
+          <div class="menu-item-body">
+            <div class="menu-item-name">ציפס גדול</div>
+            <div class="menu-item-desc"></div>
+            <div class="menu-item-footer">
+              <div class="menu-item-price">₪ 15.00</div>
+              <button class="menu-item-add" onclick="event.stopPropagation();addToCart('ציפס גדול',15,this)">+</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-section-title" id="kids">ילדים</div>
+      <div class="menu-grid">
+        <div class="menu-item" onclick="openItem('מנת ילדים שניצל','שניצל קטן עם ציפס לילדים.','38','🧒')">
+          <div class="menu-item-img"><div class="menu-item-img-placeholder">שניצל שף</div></div>
+          <div class="menu-item-body">
+            <div class="menu-item-name">מנת ילדים שניצל</div>
+            <div class="menu-item-desc">שניצל קטן עם ציפס לילדים.</div>
+            <div class="menu-item-footer">
+              <div class="menu-item-price">₪ 38.00</div>
+              <button class="menu-item-add" onclick="event.stopPropagation();addToCart('מנת ילדים שניצל',38,this)">+</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-section-title" id="drinks-s">שתייה קלה</div>
+      <div class="menu-grid">
+        <div class="menu-item" onclick="openItem('קולה','פחית 330 מ"ל.','9','🥤')">
+          <div class="menu-item-img"><div class="menu-item-img-placeholder">שניצל שף</div></div>
+          <div class="menu-item-body">
+            <div class="menu-item-name">קולה</div>
+            <div class="menu-item-desc">פחית 330 מ"ל.</div>
+            <div class="menu-item-footer">
+              <div class="menu-item-price">₪ 9.00</div>
+              <button class="menu-item-add" onclick="event.stopPropagation();addToCart('קולה',9,this)">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="menu-item" onclick="openItem('מים','בקבוק מים 500 מ"ל.','6','💧')">
+          <div class="menu-item-img"><div class="menu-item-img-placeholder">שניצל שף</div></div>
+          <div class="menu-item-body">
+            <div class="menu-item-name">מים</div>
+            <div class="menu-item-desc">בקבוק מים 500 מ"ל.</div>
+            <div class="menu-item-footer">
+              <div class="menu-item-price">₪ 6.00</div>
+              <button class="menu-item-add" onclick="event.stopPropagation();addToCart('מים',6,this)">+</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-section-title" id="drinks-l">שתייה גדולה</div>
+      <div class="menu-grid">
+        <div class="menu-item" onclick="openItem('קולה 1.5 ל׳','בקבוק גדול.','18','🥤')">
+          <div class="menu-item-img"><div class="menu-item-img-placeholder">שניצל שף</div></div>
+          <div class="menu-item-body">
+            <div class="menu-item-name">קולה 1.5 ל׳</div>
+            <div class="menu-item-desc">בקבוק גדול.</div>
+            <div class="menu-item-footer">
+              <div class="menu-item-price">₪ 18.00</div>
+              <button class="menu-item-add" onclick="event.stopPropagation();addToCart('קולה 1.5 ל׳',18,this)">+</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-section-title" id="bowls">צלוחיות</div>
+      <div class="menu-grid">
+        <div class="menu-item" onclick="openItem('סלט ירקות','סלט ירקות טרי.','14','🥗')">
+          <div class="menu-item-img"><div class="menu-item-img-placeholder">שניצל שף</div></div>
+          <div class="menu-item-body">
+            <div class="menu-item-name">סלט ירקות</div>
+            <div class="menu-item-desc">סלט ירקות טרי.</div>
+            <div class="menu-item-footer">
+              <div class="menu-item-price">₪ 14.00</div>
+              <button class="menu-item-add" onclick="event.stopPropagation();addToCart('סלט ירקות',14,this)">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="menu-item" onclick="openItem('סלט קבב','','16','🥗')">
+          <div class="menu-item-img"><div class="menu-item-img-placeholder">שניצל שף</div></div>
+          <div class="menu-item-body">
+            <div class="menu-item-name">סלט קבב</div>
+            <div class="menu-item-desc"></div>
+            <div class="menu-item-footer">
+              <div class="menu-item-price">₪ 16.00</div>
+              <button class="menu-item-add" onclick="event.stopPropagation();addToCart('סלט קבב',16,this)">+</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-section-title" id="sauces">רטבים</div>
+      <div class="menu-grid">
+        <div class="menu-item" onclick="openItem('טחינה','טחינה ביתית.','5','🫙')">
+          <div class="menu-item-img"><div class="menu-item-img-placeholder">שניצל שף</div></div>
+          <div class="menu-item-body">
+            <div class="menu-item-name">טחינה</div>
+            <div class="menu-item-desc">טחינה ביתית.</div>
+            <div class="menu-item-footer">
+              <div class="menu-item-price">₪ 5.00</div>
+              <button class="menu-item-add" onclick="event.stopPropagation();addToCart('טחינה',5,this)">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="menu-item" onclick="openItem('חומוס','חומוס ביתי.','7','🫙')">
+          <div class="menu-item-img"><div class="menu-item-img-placeholder">שניצל שף</div></div>
+          <div class="menu-item-body">
+            <div class="menu-item-name">חומוס</div>
+            <div class="menu-item-desc">חומוס ביתי.</div>
+            <div class="menu-item-footer">
+              <div class="menu-item-price">₪ 7.00</div>
+              <button class="menu-item-add" onclick="event.stopPropagation();addToCart('חומוס',7,this)">+</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="height: 100px;"></div>
+    </div><!-- /menu-area -->
+
+  </div><!-- /menu-body -->
+
+  <!-- Mobile cart badge -->
+  <div class="cart-badge" id="cart-badge" onclick="scrollCart()">
+    <span class="cart-badge-count" id="badge-count">0</span>
+    <span>פריטים בהזמנה</span>
+    <span id="badge-total">₪0</span>
+  </div>
+
+</div><!-- /screen-menu -->
+
+<script>
+// ── STATE ──
+const cart = {};
+let currentItem = null;
+
+// ── SCREEN TRANSITIONS ──
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ── MODALS ──
+function openPickupModal() {
+  document.getElementById('modal-title').textContent = 'איסוף עצמי';
+  document.getElementById('modal-subtitle').textContent = 'מתי מתאים לך לאסוף את ההזמנה?';
+  document.getElementById('main-modal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function openDeliveryModal() {
+  document.getElementById('modal-title').textContent = 'משלוח';
+  document.getElementById('modal-subtitle').textContent = 'מתי מתאים לך לקבל את ההזמנה?';
+  document.getElementById('main-modal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeModal() {
+  document.getElementById('main-modal').classList.remove('open');
+  document.body.style.overflow = '';
+}
+function handleOverlayClick(e) {
+  if (e.target === document.getElementById('main-modal')) closeModal();
+}
+function goToMenu() {
+  closeModal();
+  showScreen('screen-menu');
+}
+
+// ── ITEM MODAL ──
+function openItem(name, desc, price, emoji) {
+  currentItem = { name, price: parseFloat(price) };
+  document.getElementById('item-modal-emoji').textContent = emoji;
+  document.getElementById('item-modal-name').textContent = name;
+  document.getElementById('item-modal-desc').textContent = desc || 'מנה טרייה מהמטבח';
+  document.getElementById('item-modal-price').textContent = '₪' + price + '.00';
+  document.getElementById('item-modal-overlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeItemModal() {
+  document.getElementById('item-modal-overlay').classList.remove('open');
+  document.body.style.overflow = '';
+  currentItem = null;
+}
+function addFromModal() {
+  if (!currentItem) return;
+  const btn = document.getElementById('item-modal-add-btn');
+  btn.textContent = '✓ נוסף!';
+  btn.style.background = '#22c55e';
+  addToCart(currentItem.name, currentItem.price, null);
+  setTimeout(() => {
+    btn.textContent = 'הוסף להזמנה';
+    btn.style.background = '';
+    closeItemModal();
+  }, 800);
+}
+
+// ── CART ──
+function addToCart(name, price, btn) {
+  if (!cart[name]) cart[name] = { price: parseFloat(price), qty: 0 };
+  cart[name].qty++;
+  updateCart();
+  if (btn) {
+    const orig = btn.textContent;
+    btn.textContent = '✓';
+    btn.style.background = 'linear-gradient(135deg, #22c55e, #16a34a)';
+    btn.closest('.menu-item').classList.add('added');
+    setTimeout(() => {
+      btn.textContent = orig;
+      btn.style.background = '';
+      btn.closest('.menu-item').classList.remove('added');
+    }, 1000);
+  }
+}
+
+function updateCart() {
+  const itemsEl = document.getElementById('cart-items');
+  const emptyEl = document.getElementById('cart-empty');
+  const badge = document.getElementById('cart-badge');
+  const checkoutBtn = document.getElementById('checkout-btn');
+
+  let total = 0, totalQty = 0;
+  itemsEl.innerHTML = '';
+
+  Object.entries(cart).forEach(([name, {price, qty}]) => {
+    if (qty <= 0) return;
+    total += price * qty;
+    totalQty += qty;
+    itemsEl.innerHTML += `
+      <div class="cart-item">
+        <div>
+          <div class="cart-item-name">${name}</div>
+          <div class="cart-item-price">₪${price.toFixed(2)}</div>
+        </div>
+        <div class="cart-item-qty">
+          <button class="cart-qty-btn" onclick="changeQty('${name}',-1)">−</button>
+          <span>${qty}</span>
+          <button class="cart-qty-btn" onclick="changeQty('${name}',1)">+</button>
+        </div>
+      </div>`;
+  });
+
+  document.getElementById('cart-subtotal').textContent = total.toFixed(2);
+  document.getElementById('cart-total').textContent = total.toFixed(2);
+  document.getElementById('badge-count').textContent = totalQty;
+  document.getElementById('badge-total').textContent = '₪' + total.toFixed(2);
+
+  const hasItems = totalQty > 0;
+  emptyEl.style.display = hasItems ? 'none' : 'flex';
+  itemsEl.style.display = hasItems ? 'block' : 'none';
+  badge.classList.toggle('visible', hasItems);
+  checkoutBtn.disabled = !hasItems;
+}
+
+function changeQty(name, delta) {
+  cart[name].qty = Math.max(0, cart[name].qty + delta);
+  updateCart();
+}
+
+// ── NAV ──
+function scrollToSection(id, catEl) {
+  document.querySelectorAll('.menu-cat').forEach(c => c.classList.remove('active'));
+  catEl.classList.add('active');
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function scrollCart() {
+  document.querySelector('.cart-panel').scrollIntoView({ behavior: 'smooth' });
+}
+function checkout() {
+  alert('מעבר לתשלום...');
+}
+
+// ESC key
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeModal(); closeItemModal(); }
+});
+</script>
+</body>
+</html>

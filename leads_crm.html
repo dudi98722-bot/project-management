@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>מערכת לידים - קורקינטים</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; color: #1a1a2e; direction: rtl; }
+
+  /* LOGIN */
+  #loginScreen {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  }
+  .login-box {
+    background: white; border-radius: 20px; padding: 40px;
+    text-align: center; width: 340px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  }
+  .login-box h1 { font-size: 2rem; margin-bottom: 6px; color: #0f3460; }
+  .login-box p { color: #666; margin-bottom: 28px; font-size: 0.95rem; }
+  .login-box select, .login-box input {
+    width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px;
+    font-size: 1rem; margin-bottom: 14px; font-family: inherit;
+    transition: border-color 0.2s;
+  }
+  .login-box select:focus, .login-box input:focus { border-color: #0f3460; outline: none; }
+  .btn-login {
+    width: 100%; padding: 13px; background: linear-gradient(135deg, #0f3460, #533483);
+    color: white; border: none; border-radius: 10px; font-size: 1.1rem;
+    cursor: pointer; font-family: inherit; font-weight: 600;
+    transition: opacity 0.2s;
+  }
+  .btn-login:hover { opacity: 0.9; }
+  .add-worker-link { margin-top: 14px; font-size: 0.85rem; color: #888; cursor: pointer; }
+  .add-worker-link span { color: #0f3460; font-weight: 600; cursor: pointer; }
+
+  /* APP */
+  #app { display: none; }
+  header {
+    background: linear-gradient(135deg, #0f3460, #533483);
+    color: white; padding: 0 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    height: 60px; position: sticky; top: 0; z-index: 100;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+  }
+  header h1 { font-size: 1.3rem; }
+  .header-right { display: flex; align-items: center; gap: 14px; }
+  .current-user { font-size: 0.9rem; opacity: 0.85; }
+  .btn-switch { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3);
+    color: white; padding: 6px 14px; border-radius: 8px; cursor: pointer;
+    font-family: inherit; font-size: 0.85rem; }
+
+  /* DASHBOARD */
+  .dashboard { padding: 20px 24px 0; display: flex; gap: 14px; flex-wrap: wrap; }
+  .stat-card {
+    background: white; border-radius: 14px; padding: 16px 22px;
+    flex: 1; min-width: 130px; box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+    border-top: 4px solid #0f3460;
+  }
+  .stat-card.green { border-color: #22c55e; }
+  .stat-card.orange { border-color: #f97316; }
+  .stat-card.purple { border-color: #a855f7; }
+  .stat-num { font-size: 2rem; font-weight: 700; color: #0f3460; }
+  .stat-card.green .stat-num { color: #16a34a; }
+  .stat-card.orange .stat-num { color: #ea580c; }
+  .stat-card.purple .stat-num { color: #9333ea; }
+  .stat-label { font-size: 0.8rem; color: #666; margin-top: 2px; }
+
+  /* TOOLBAR */
+  .toolbar {
+    padding: 16px 24px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+  }
+  .toolbar input, .toolbar select {
+    padding: 9px 14px; border: 2px solid #e0e0e0; border-radius: 9px;
+    font-size: 0.9rem; font-family: inherit; background: white;
+    transition: border-color 0.2s; flex: 1; min-width: 140px; max-width: 220px;
+  }
+  .toolbar input:focus, .toolbar select:focus { border-color: #0f3460; outline: none; }
+  .btn-new {
+    background: linear-gradient(135deg, #0f3460, #533483); color: white;
+    border: none; padding: 9px 20px; border-radius: 9px; cursor: pointer;
+    font-family: inherit; font-size: 0.95rem; font-weight: 600;
+    white-space: nowrap; transition: opacity 0.2s;
+  }
+  .btn-new:hover { opacity: 0.9; }
+  .btn-export {
+    background: white; border: 2px solid #e0e0e0; padding: 9px 16px;
+    border-radius: 9px; cursor: pointer; font-family: inherit; font-size: 0.85rem;
+    color: #444; transition: border-color 0.2s;
+  }
+  .btn-export:hover { border-color: #0f3460; }
+
+  /* TABLE */
+  .table-wrap { padding: 0 24px 24px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; background: white;
+    border-radius: 14px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.07); }
+  thead { background: #f8f9fc; }
+  th { padding: 12px 14px; font-size: 0.82rem; color: #555; font-weight: 600;
+    text-align: right; border-bottom: 2px solid #eee; white-space: nowrap; }
+  td { padding: 11px 14px; font-size: 0.88rem; border-bottom: 1px solid #f0f0f0;
+    vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #fafbff; }
+  .no-leads { text-align: center; padding: 48px; color: #aaa; font-size: 1.1rem; }
+
+  /* STATUS BADGE */
+  .badge {
+    display: inline-block; padding: 3px 10px; border-radius: 20px;
+    font-size: 0.78rem; font-weight: 600; white-space: nowrap;
+  }
+  .badge-new { background: #fef9c3; color: #854d0e; }
+  .badge-active { background: #dbeafe; color: #1e40af; }
+  .badge-waiting { background: #ffedd5; color: #9a3412; }
+  .badge-demo { background: #f3e8ff; color: #6b21a8; }
+  .badge-won { background: #dcfce7; color: #166534; }
+  .badge-lost { background: #fee2e2; color: #991b1b; }
+
+  .model-tag {
+    background: #e0e7ff; color: #3730a3; padding: 2px 9px; border-radius: 6px;
+    font-size: 0.8rem; font-weight: 600;
+  }
+
+  .action-btn {
+    background: none; border: none; cursor: pointer; padding: 4px 8px;
+    border-radius: 6px; font-size: 0.8rem; color: #0f3460;
+    transition: background 0.15s;
+  }
+  .action-btn:hover { background: #e0e7ff; }
+  .action-btn.red { color: #dc2626; }
+  .action-btn.red:hover { background: #fee2e2; }
+
+  /* MODAL */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    z-index: 200; align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: white; border-radius: 18px; padding: 28px;
+    width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  }
+  .modal h2 { font-size: 1.3rem; color: #0f3460; margin-bottom: 20px; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+  .form-group label { font-size: 0.82rem; color: #555; font-weight: 600; }
+  .form-group input, .form-group select, .form-group textarea {
+    padding: 10px 13px; border: 2px solid #e0e0e0; border-radius: 9px;
+    font-size: 0.92rem; font-family: inherit; transition: border-color 0.2s;
+  }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+    border-color: #0f3460; outline: none;
+  }
+  .form-group textarea { resize: vertical; min-height: 70px; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+  .btn-save {
+    background: linear-gradient(135deg, #0f3460, #533483); color: white;
+    border: none; padding: 10px 24px; border-radius: 9px; cursor: pointer;
+    font-family: inherit; font-size: 0.95rem; font-weight: 600;
+  }
+  .btn-cancel {
+    background: #f3f4f6; border: none; padding: 10px 20px; border-radius: 9px;
+    cursor: pointer; font-family: inherit; font-size: 0.95rem; color: #444;
+  }
+
+  /* LEAD DETAIL */
+  .detail-section { background: #f8f9fc; border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+  .detail-row { display: flex; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+  .detail-item { flex: 1; min-width: 150px; }
+  .detail-item label { font-size: 0.75rem; color: #888; display: block; margin-bottom: 2px; }
+  .detail-item span { font-size: 0.92rem; font-weight: 600; color: #1a1a2e; }
+
+  /* HISTORY */
+  .history-item {
+    border-right: 3px solid #0f3460; padding-right: 12px; margin-bottom: 10px;
+  }
+  .history-item .hist-date { font-size: 0.75rem; color: #888; }
+  .history-item .hist-text { font-size: 0.88rem; color: #333; }
+
+  /* WORKERS MODAL */
+  .worker-list { margin-bottom: 14px; }
+  .worker-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px; background: #f8f9fc; border-radius: 8px; margin-bottom: 6px;
+  }
+  .worker-item span { font-size: 0.92rem; }
+
+  @media (max-width: 600px) {
+    .dashboard { padding: 12px; }
+    .toolbar { padding: 10px 12px; }
+    .table-wrap { padding: 0 12px 16px; }
+    header { padding: 0 14px; }
+    .form-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div class="login-box">
+    <h1>🛴 לידים</h1>
+    <p>מערכת מכירות קורקינטים</p>
+    <select id="workerSelect">
+      <option value="">-- בחר עובד --</option>
+    </select>
+    <button class="btn-login" onclick="login()">כניסה</button>
+    <div class="add-worker-link">עובד חדש? <span onclick="showWorkersModal()">הוסף עובד</span></div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <header>
+    <h1>🛴 מערכת לידים - קורקינטים</h1>
+    <div class="header-right">
+      <span class="current-user" id="currentUserLabel"></span>
+      <button class="btn-switch" onclick="switchUser()">החלף משתמש</button>
+      <button class="btn-switch" onclick="showWorkersModal()">⚙ עובדים</button>
+    </div>
+  </header>
+
+  <!-- DASHBOARD -->
+  <div class="dashboard">
+    <div class="stat-card">
+      <div class="stat-num" id="statTotal">0</div>
+      <div class="stat-label">סה"כ לידים פתוחים</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-num" id="statWon">0</div>
+      <div class="stat-label">עסקאות שנסגרו החודש</div>
+    </div>
+    <div class="stat-card orange">
+      <div class="stat-num" id="statMine">0</div>
+      <div class="stat-label">לידים שלי לטיפול</div>
+    </div>
+    <div class="stat-card purple">
+      <div class="stat-num" id="statDemo">0</div>
+      <div class="stat-label">הדגמות מתוכננות</div>
+    </div>
+  </div>
+
+  <!-- TOOLBAR -->
+  <div class="toolbar">
+    <input type="text" id="searchInput" placeholder="🔍 חיפוש שם / טלפון..." oninput="renderTable()">
+    <select id="filterStatus" onchange="renderTable()">
+      <option value="">כל הסטטוסים</option>
+      <option value="new">ליד חדש</option>
+      <option value="active">בטיפול</option>
+      <option value="waiting">ממתין לתשובה</option>
+      <option value="demo">הדגמה מתוכננת</option>
+      <option value="won">נסגר - עסקה!</option>
+      <option value="lost">לא רלוונטי</option>
+    </select>
+    <select id="filterModel" onchange="renderTable()">
+      <option value="">כל הדגמים</option>
+      <option>300X</option>
+      <option>300P</option>
+      <option>200F</option>
+      <option>מיה 4</option>
+    </select>
+    <select id="filterHandler" onchange="renderTable()">
+      <option value="">כל העובדים (מטפל)</option>
+    </select>
+    <select id="filterCreator" onchange="renderTable()">
+      <option value="">כל העובדים (הכניס)</option>
+    </select>
+    <button class="btn-new" onclick="openNewLead()">+ ליד חדש</button>
+    <button class="btn-export" onclick="exportCSV()">📥 ייצוא CSV</button>
+  </div>
+
+  <!-- TABLE -->
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>שם לקוח</th>
+          <th>טלפון</th>
+          <th>דגם</th>
+          <th>סטטוס</th>
+          <th>הוכנס ע"י</th>
+          <th>מטופל ע"י</th>
+          <th>תאריך</th>
+          <th>הערות</th>
+          <th>פעולות</th>
+        </tr>
+      </thead>
+      <tbody id="leadsBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- MODAL: NEW / EDIT LEAD -->
+<div class="modal-overlay" id="leadModal">
+  <div class="modal">
+    <h2 id="modalTitle">ליד חדש</h2>
+    <div class="form-row">
+      <div class="form-group">
+        <label>שם לקוח *</label>
+        <input type="text" id="fName" placeholder="ישראל ישראלי">
+      </div>
+      <div class="form-group">
+        <label>טלפון</label>
+        <input type="tel" id="fPhone" placeholder="050-0000000">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>דגם מבוקש</label>
+        <select id="fModel">
+          <option value="">-- בחר דגם --</option>
+          <option>300X</option>
+          <option>300P</option>
+          <option>200F</option>
+          <option>מיה 4</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>סטטוס</label>
+        <select id="fStatus">
+          <option value="new">🟡 ליד חדש</option>
+          <option value="active">🔵 בטיפול</option>
+          <option value="waiting">🟠 ממתין לתשובה</option>
+          <option value="demo">🟣 הדגמה מתוכננת</option>
+          <option value="won">🟢 נסגר - עסקה!</option>
+          <option value="lost">🔴 לא רלוונטי</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>מטופל ע"י</label>
+        <select id="fHandler"></select>
+      </div>
+      <div class="form-group">
+        <label>מקור הליד</label>
+        <select id="fSource">
+          <option value="">--</option>
+          <option>פייסבוק</option>
+          <option>אינסטגרם</option>
+          <option>גוגל</option>
+          <option>המלצה</option>
+          <option>טלפון נכנס</option>
+          <option>כניסה לחנות</option>
+          <option>אחר</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>הערות</label>
+      <textarea id="fNotes" placeholder="פרטים נוספים..."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('leadModal')">ביטול</button>
+      <button class="btn-save" onclick="saveLead()">שמור</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: LEAD DETAIL -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal" style="max-width:620px">
+    <h2 id="detailName"></h2>
+    <div id="detailContent"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('detailModal')">סגור</button>
+      <button class="btn-save" onclick="editFromDetail()">✏ ערוך</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: WORKERS -->
+<div class="modal-overlay" id="workersModal">
+  <div class="modal" style="max-width:400px">
+    <h2>⚙ ניהול עובדים</h2>
+    <div class="worker-list" id="workerList"></div>
+    <div class="form-group">
+      <label>הוסף עובד חדש</label>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="newWorkerName" placeholder="שם העובד" style="flex:1">
+        <button class="btn-save" onclick="addWorker()">הוסף</button>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('workersModal')">סגור</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ADD NOTE -->
+<div class="modal-overlay" id="noteModal">
+  <div class="modal" style="max-width:400px">
+    <h2>הוסף עדכון</h2>
+    <div class="form-group">
+      <label>סטטוס חדש</label>
+      <select id="noteStatus">
+        <option value="new">🟡 ליד חדש</option>
+        <option value="active">🔵 בטיפול</option>
+        <option value="waiting">🟠 ממתין לתשובה</option>
+        <option value="demo">🟣 הדגמה מתוכננת</option>
+        <option value="won">🟢 נסגר - עסקה!</option>
+        <option value="lost">🔴 לא רלוונטי</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>הערה</label>
+      <textarea id="noteText" placeholder="מה קרה בשיחה? תאריך הדגמה?"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('noteModal')">ביטול</button>
+      <button class="btn-save" onclick="saveNote()">שמור עדכון</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── DATA ───────────────────────────────────────────────
+let leads = JSON.parse(localStorage.getItem('sc_leads') || '[]');
+let workers = JSON.parse(localStorage.getItem('sc_workers') || '["דוד","שרה","משה","רחל"]');
+let currentUser = '';
+let editingId = null;
+let detailId = null;
+
+function save() {
+  localStorage.setItem('sc_leads', JSON.stringify(leads));
+  localStorage.setItem('sc_workers', JSON.stringify(workers));
+}
+
+// ─── LOGIN ───────────────────────────────────────────────
+function populateWorkerSelect() {
+  const sel = document.getElementById('workerSelect');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">-- בחר עובד --</option>';
+  workers.forEach(w => {
+    const o = document.createElement('option');
+    o.value = w; o.textContent = w;
+    sel.appendChild(o);
+  });
+  if (cur) sel.value = cur;
+}
+
+function login() {
+  const sel = document.getElementById('workerSelect');
+  if (!sel.value) { alert('בחר עובד'); return; }
+  currentUser = sel.value;
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('currentUserLabel').textContent = '👤 ' + currentUser;
+  renderAll();
+}
+
+function switchUser() {
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  populateWorkerSelect();
+}
+
+// seed demo data if empty
+if (leads.length < 10) {
+  const names = ['ירון כהן','מיכל לוי','אלי מזרחי','תמר ברק','רון שפירא','נועה גולן','שמעון אברהם','רחל דוד','יוסי פרץ','דינה כץ','אבי שלום','מרים הלוי','גדי מור','ציפי אלון','בועז ריין','לילך שמיר','אורן גרוס','חנה בכר','שי טל','יעל גנות','אמיר פלד','רות כרמי','ניר ספיר','גלית אפל','מוטי זיו','שירה לנדאו','עמיר קדוש','נירית פרידמן','גיא חדד','אורית מנחם','יצחק שוורץ','מזל אוחיון','אסף גולדברג','רנה נחמן','בני קורן','שושנה ליבוביץ','רפי זכריה','איריס נחום','חיים פינטו','לאה עמר','שלמה ויס','פנינה שגיא','ארז נוי','חגית מרקוס','נחמן אלבז','ורד קפלן','גדעון שטרן','מלכה ברוך','אייל הרשקוביץ','שפרה אוזן','יובל קרן','נורית שמש','אדם פישר','הדר גרינברג','עמוס לוינשטיין','טובה פורת','נדב קליין','חיה דגן','ברק אוחנה','שרית ניסים','עמי בן דוד','ליאת שוחט','צבי מנדלבאום','דבורה אפרתי','יואב שרון','נחמה חורי','פרץ אלקלעי','אילנה גבאי','ישי דרור','מינה חסון','בן ציון אזולאי','עידו רוזן','חנוך ברקת','אסתר גורן','ניסים מלכה','ירדנה פרנקל','שאול בוחניק','לימור אביב','חנן שינפלד','בתיה אוחנה','עמיהוד גל','שלי ממן','אברהם ריבלין','גילה מאיר','ראובן בן שלום','דליה קצב','שמואל פישר','נורית לוי','עמנואל שוורץ','שמחה ברגר','אביגיל כהן','מאיר גרינברג','רינת אלדד','מנחם שוורץ','חוה ברנשטיין','אלדד נוי','שולמית זמיר','יפה אסייג','נחמה ביטון'];
+  const prefs = ['050','052','053','054','058'];
+  const models = ['300X','300P','200F','מיה 4'];
+  const statuses = ['new','new','new','active','active','active','waiting','waiting','demo','demo','won','won','won','lost'];
+  const sources = ['פייסבוק','אינסטגראם','גוגל','המלצה','כניסה לחנות','טלפון נכנס','אחר'];
+  const notesList = ['מתעניין מאוד','צריך לחשוב','תקציב מוגבל','רכישה לבן','קורקינט לעבודה','שאל על אחריות','רוצה צבע לבן','מחכה לחג','שילם מקדמה','','' ,''];
+  const baseDate = new Date('2026-06-17');
+  leads = names.slice(0,100).map((name, i) => {
+    const ph = prefs[i % prefs.length] + '-' + (1000000 + ((i * 137 + 42) % 9000000)).toString().slice(0,7);
+    const model = models[i % models.length];
+    const status = statuses[i % statuses.length];
+    const creator = workers[i % workers.length];
+    const handler = workers[(i + 1) % workers.length];
+    const source = sources[i % sources.length];
+    const note = notesList[i % notesList.length];
+    const dt = new Date(baseDate); dt.setDate(dt.getDate() - (i % 60));
+    const date = dt.toISOString().slice(0,10);
+    return { id: i+1, name, phone: ph, model, status, creator, handler, source, notes: note, date, history: [{date, text: 'ליד נוצר ע"י ' + creator}] };
+  });
+  save();
+}
+
+// ─── RENDER ──────────────────────────────────────────────
+const STATUS_LABELS = { new:'🟡 ליד חדש', active:'🔵 בטיפול', waiting:'🟠 ממתין', demo:'🟣 הדגמה', won:'🟢 עסקה!', lost:'🔴 לא רלוונטי' };
+const STATUS_CLASS = { new:'badge-new', active:'badge-active', waiting:'badge-waiting', demo:'badge-demo', won:'badge-won', lost:'badge-lost' };
+
+function renderAll() {
+  renderDashboard();
+  renderTable();
+  populateFilters();
+}
+
+function renderDashboard() {
+  const now = new Date();
+  const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const open = leads.filter(l => !['won','lost'].includes(l.status));
+  const won = leads.filter(l => l.status === 'won' && l.date && l.date.startsWith(ym));
+  const mine = leads.filter(l => l.handler === currentUser && !['won','lost'].includes(l.status));
+  const demo = leads.filter(l => l.status === 'demo');
+  document.getElementById('statTotal').textContent = open.length;
+  document.getElementById('statWon').textContent = won.length;
+  document.getElementById('statMine').textContent = mine.length;
+  document.getElementById('statDemo').textContent = demo.length;
+}
+
+function getFiltered() {
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
+  const fs = document.getElementById('filterStatus').value;
+  const fm = document.getElementById('filterModel').value;
+  const fh = document.getElementById('filterHandler').value;
+  const fc = document.getElementById('filterCreator').value;
+  return leads.filter(l => {
+    if (q && !l.name.toLowerCase().includes(q) && !l.phone.includes(q)) return false;
+    if (fs && l.status !== fs) return false;
+    if (fm && l.model !== fm) return false;
+    if (fh && l.handler !== fh) return false;
+    if (fc && l.creator !== fc) return false;
+    return true;
+  }).sort((a,b) => b.id - a.id);
+}
+
+function renderTable() {
+  const tbody = document.getElementById('leadsBody');
+  const filtered = getFiltered();
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="no-leads">אין לידים להצגה</td></tr>';
+    return;
+  }
+  tbody.innerHTML = filtered.map(l => `
+    <tr>
+      <td><strong style="cursor:pointer;color:#0f3460" onclick="showDetail(${l.id})">${l.name}</strong></td>
+      <td><a href="tel:${l.phone}" style="color:#0f3460;text-decoration:none">${l.phone||'-'}</a></td>
+      <td>${l.model ? `<span class="model-tag">${l.model}</span>` : '-'}</td>
+      <td><span class="badge ${STATUS_CLASS[l.status]}">${STATUS_LABELS[l.status]}</span></td>
+      <td>${l.creator||'-'}</td>
+      <td>${l.handler||'-'}</td>
+      <td style="font-size:0.8rem;color:#888">${l.date||''}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#666;font-size:0.82rem">${l.notes||''}</td>
+      <td>
+        <button class="action-btn" onclick="showDetail(${l.id})">👁</button>
+        <button class="action-btn" onclick="openEdit(${l.id})">✏</button>
+        <button class="action-btn" onclick="openNote(${l.id})">💬</button>
+        <button class="action-btn red" onclick="deleteLead(${l.id})">🗑</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function populateFilters() {
+  ['filterHandler','filterCreator'].forEach(id => {
+    const sel = document.getElementById(id);
+    const cur = sel.value;
+    const label = id === 'filterHandler' ? 'כל העובדים (מטפל)' : 'כל העובדים (הכניס)';
+    sel.innerHTML = `<option value="">${label}</option>`;
+    workers.forEach(w => {
+      const o = document.createElement('option');
+      o.value = w; o.textContent = w;
+      sel.appendChild(o);
+    });
+    sel.value = cur;
+  });
+}
+
+// ─── LEAD CRUD ───────────────────────────────────────────
+function openNewLead() {
+  editingId = null;
+  document.getElementById('modalTitle').textContent = 'ליד חדש';
+  document.getElementById('fName').value = '';
+  document.getElementById('fPhone').value = '';
+  document.getElementById('fModel').value = '';
+  document.getElementById('fStatus').value = 'new';
+  document.getElementById('fNotes').value = '';
+  document.getElementById('fSource').value = '';
+  populateHandlerSelect(currentUser);
+  openModal('leadModal');
+}
+
+function openEdit(id) {
+  editingId = id;
+  const l = leads.find(x => x.id === id);
+  if (!l) return;
+  document.getElementById('modalTitle').textContent = 'עריכת ליד';
+  document.getElementById('fName').value = l.name;
+  document.getElementById('fPhone').value = l.phone||'';
+  document.getElementById('fModel').value = l.model||'';
+  document.getElementById('fStatus').value = l.status;
+  document.getElementById('fNotes').value = l.notes||'';
+  document.getElementById('fSource').value = l.source||'';
+  populateHandlerSelect(l.handler);
+  openModal('leadModal');
+}
+
+function populateHandlerSelect(selected) {
+  const sel = document.getElementById('fHandler');
+  sel.innerHTML = '';
+  workers.forEach(w => {
+    const o = document.createElement('option');
+    o.value = w; o.textContent = w;
+    if (w === selected) o.selected = true;
+    sel.appendChild(o);
+  });
+}
+
+function saveLead() {
+  const name = document.getElementById('fName').value.trim();
+  if (!name) { alert('שם לקוח הוא שדה חובה'); return; }
+  const now = new Date().toISOString().slice(0,10);
+  if (editingId) {
+    const l = leads.find(x => x.id === editingId);
+    const oldStatus = l.status;
+    l.name = name;
+    l.phone = document.getElementById('fPhone').value.trim();
+    l.model = document.getElementById('fModel').value;
+    l.status = document.getElementById('fStatus').value;
+    l.handler = document.getElementById('fHandler').value;
+    l.notes = document.getElementById('fNotes').value.trim();
+    l.source = document.getElementById('fSource').value;
+    if (oldStatus !== l.status) {
+      l.history = l.history || [];
+      l.history.push({ date: now, text: `שינוי סטטוס: ${STATUS_LABELS[oldStatus]} ← ${STATUS_LABELS[l.status]}` });
+    }
+  } else {
+    const newId = leads.length ? Math.max(...leads.map(x=>x.id))+1 : 1;
+    leads.push({
+      id: newId,
+      name,
+      phone: document.getElementById('fPhone').value.trim(),
+      model: document.getElementById('fModel').value,
+      status: document.getElementById('fStatus').value,
+      creator: currentUser,
+      handler: document.getElementById('fHandler').value,
+      source: document.getElementById('fSource').value,
+      notes: document.getElementById('fNotes').value.trim(),
+      date: now,
+      history: [{ date: now, text: `ליד נוצר ע"י ${currentUser}` }]
+    });
+  }
+  save();
+  closeModal('leadModal');
+  renderAll();
+}
+
+function deleteLead(id) {
+  const l = leads.find(x => x.id === id);
+  if (!confirm(`למחוק את הליד של ${l?.name}?`)) return;
+  leads = leads.filter(x => x.id !== id);
+  save();
+  renderAll();
+}
+
+// ─── DETAIL ──────────────────────────────────────────────
+function showDetail(id) {
+  detailId = id;
+  const l = leads.find(x => x.id === id);
+  if (!l) return;
+  document.getElementById('detailName').textContent = l.name;
+  const hist = (l.history||[]).slice().reverse().map(h =>
+    `<div class="history-item"><div class="hist-date">${h.date}</div><div class="hist-text">${h.text}</div></div>`
+  ).join('');
+  document.getElementById('detailContent').innerHTML = `
+    <div class="detail-section">
+      <div class="detail-row">
+        <div class="detail-item"><label>טלפון</label><span>${l.phone||'-'}</span></div>
+        <div class="detail-item"><label>דגם</label><span>${l.model||'-'}</span></div>
+        <div class="detail-item"><label>מקור</label><span>${l.source||'-'}</span></div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-item"><label>סטטוס</label><span class="badge ${STATUS_CLASS[l.status]}">${STATUS_LABELS[l.status]}</span></div>
+        <div class="detail-item"><label>הוכנס ע"י</label><span>${l.creator||'-'}</span></div>
+        <div class="detail-item"><label>מטופל ע"י</label><span>${l.handler||'-'}</span></div>
+      </div>
+      ${l.notes ? `<div style="margin-top:8px;font-size:0.88rem;color:#555"><label style="font-size:0.75rem;color:#888">הערות</label><br>${l.notes}</div>` : ''}
+    </div>
+    <div style="margin-bottom:6px;font-weight:600;font-size:0.85rem;color:#555">היסטוריה</div>
+    ${hist || '<div style="color:#aaa;font-size:0.85rem">אין היסטוריה</div>'}
+    <div style="margin-top:14px">
+      <button class="btn-new" style="font-size:0.85rem;padding:8px 16px" onclick="closeModal('detailModal');openNote(${l.id})">+ הוסף עדכון</button>
+    </div>
+  `;
+  openModal('detailModal');
+}
+
+function editFromDetail() {
+  closeModal('detailModal');
+  openEdit(detailId);
+}
+
+// ─── NOTE ─────────────────────────────────────────────────
+let noteTargetId = null;
+function openNote(id) {
+  noteTargetId = id;
+  const l = leads.find(x => x.id === id);
+  document.getElementById('noteStatus').value = l.status;
+  document.getElementById('noteText').value = '';
+  openModal('noteModal');
+}
+function saveNote() {
+  const l = leads.find(x => x.id === noteTargetId);
+  if (!l) return;
+  const now = new Date().toISOString().slice(0,10);
+  const newStatus = document.getElementById('noteStatus').value;
+  const text = document.getElementById('noteText').value.trim();
+  l.history = l.history || [];
+  let entry = text;
+  if (newStatus !== l.status) {
+    entry = (entry ? entry + ' | ' : '') + `סטטוס: ${STATUS_LABELS[l.status]} → ${STATUS_LABELS[newStatus]}`;
+    l.status = newStatus;
+  }
+  if (entry) l.history.push({ date: now, text: `[${currentUser}] ${entry}` });
+  save();
+  closeModal('noteModal');
+  renderAll();
+}
+
+// ─── WORKERS ─────────────────────────────────────────────
+function showWorkersModal() {
+  renderWorkerList();
+  openModal('workersModal');
+}
+function renderWorkerList() {
+  document.getElementById('workerList').innerHTML = workers.map((w,i) => `
+    <div class="worker-item">
+      <span>${w}</span>
+      <button class="action-btn red" onclick="removeWorker(${i})">הסר</button>
+    </div>
+  `).join('');
+}
+function addWorker() {
+  const n = document.getElementById('newWorkerName').value.trim();
+  if (!n) return;
+  if (workers.includes(n)) { alert('עובד זה כבר קיים'); return; }
+  workers.push(n);
+  document.getElementById('newWorkerName').value = '';
+  save();
+  renderWorkerList();
+  populateWorkerSelect();
+  populateFilters();
+}
+function removeWorker(i) {
+  if (!confirm(`להסיר את ${workers[i]}?`)) return;
+  workers.splice(i, 1);
+  save();
+  renderWorkerList();
+  populateWorkerSelect();
+  populateFilters();
+}
+
+// ─── EXPORT ──────────────────────────────────────────────
+function exportCSV() {
+  const rows = [['שם','טלפון','דגם','סטטוס','הוכנס ע"י','מטופל ע"י','תאריך','מקור','הערות']];
+  leads.forEach(l => rows.push([l.name,l.phone,l.model,STATUS_LABELS[l.status],l.creator,l.handler,l.date,l.source,l.notes]));
+  const csv = '﻿' + rows.map(r => r.map(c => `"${(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'leads.csv';
+  a.click();
+}
+
+// ─── MODAL UTILS ─────────────────────────────────────────
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
+});
+
+// ─── INIT ────────────────────────────────────────────────
+populateWorkerSelect();
+</script>
+</body>
+</html>
