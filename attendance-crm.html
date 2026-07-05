@@ -141,7 +141,7 @@ td.num,th.num{font-variant-numeric:tabular-nums}
   <header>
     <span class="logo">🕐</span>
     <div>
-      <h1>נוכחות ויזניץ</h1>
+      <h1 id="hdrTitle">נוכחות ויזניץ</h1>
       <div class="sub" id="hdrDate"></div>
     </div>
     <div class="grow"></div>
@@ -479,6 +479,11 @@ function enterApp(u){
   me=u;
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('appScreen').hidden=false;
+  // כותרת לפי העמותות של העובד; למנהל — שם המערכת הכללי
+  const amNames=termsOf(u.id).map(x=>amuta(x.amutaId).short);
+  const appTitle=(u.role==='admin'||!amNames.length)?'נוכחות ויזניץ':'נוכחות — '+amNames.join(' + ');
+  document.getElementById('hdrTitle').textContent=appTitle;
+  document.title=appTitle;
   document.getElementById('hdrUser').textContent=u.name;
   const t=todayStr(),h=hebOfDateStr(t);
   document.getElementById('hdrDate').textContent=`יום ${WEEKDAYS[weekdayOf(t)]} · ${fmtDMY(t)} · ${fmtHebFull(h)}`;
@@ -953,18 +958,23 @@ function saveEmp(userId){
     }
   });
   batchOps(ops);
-  // דיווח מאוחד — נשמר ב-settings, לא דורש שינוי בגיליון
+  // דיווח מאוחד — נשמר ב-settings, לא דורש שינוי בגיליון.
+  // אחוזים תקינים מספיקים גם אם שכחו לסמן את התיבה (עם אישור).
   const spOn=document.getElementById('emSplitOn').checked;
-  if(spOn){
-    const pcts={};let sum=0,cnt=0;
-    AMUTOT.forEach(a=>{
-      if(!document.getElementById('tbc-'+a.id).checked)return;
-      const v=+document.getElementById('sp-'+a.id).value||0;
-      if(v>0){pcts[a.id]=v;sum+=v;cnt++}
-    });
-    if(cnt<2||sum!==100){alert('דיווח מאוחד: יש למלא אחוזים ל-2 עמותות לפחות (מהמסומנות), בסכום של בדיוק 100.\nהעובד נשמר — אבל הדיווח המאוחד לא הופעל.')}
-    else setSetting('split_'+u.id,JSON.stringify({on:1,pcts}));
-  } else setSetting('split_'+u.id,'');
+  const pcts={};let sum=0,cnt=0;
+  AMUTOT.forEach(a=>{
+    if(!document.getElementById('tbc-'+a.id).checked)return;
+    const v=+document.getElementById('sp-'+a.id).value||0;
+    if(v>0){pcts[a.id]=v;sum+=v;cnt++}
+  });
+  const valid=cnt>=2&&sum===100;
+  let enable=spOn&&valid;
+  if(!spOn&&valid&&confirm('מילאת אחוזי חלוקה לדיווח מאוחד אבל התיבה לא סומנה — להפעיל את הדיווח המאוחד ('+Object.values(pcts).join('/')+')?'))enable=true;
+  if(spOn&&!valid){
+    alert('דיווח מאוחד לא הופעל: יש למלא אחוזים ל-2 עמותות מסומנות לפחות, בסכום של בדיוק 100 (כרגע: '+sum+'). שאר פרטי העובד נשמרו.');
+  } else {
+    setSetting('split_'+u.id,enable?JSON.stringify({on:1,pcts}):'');
+  }
   if(me.id===u.id)me=u;
   closeModal();render();
 }
