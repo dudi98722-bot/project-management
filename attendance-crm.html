@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>נוכחות ויזניץ — דיווח שעות ל-3 עמותות</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕐</text></svg>">
+<script src="xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#f1f5f9; --card:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e2e8f0;
+  --brand:#1e3a8a; --brand2:#3b82f6; --ok:#059669; --warn:#d97706; --bad:#dc2626;
+  --kupat:#1d4ed8; --apiryon:#059669; --ezrat:#7c3aed;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,'Noto Sans Hebrew',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
+button{font-family:inherit;cursor:pointer}
+input,select,textarea{font-family:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);width:100%}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--brand2);border-color:transparent}
+label{font-size:12.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px}
+.btn{border:none;border-radius:9px;padding:9px 16px;font-size:14px;font-weight:600;transition:.15s}
+.btn:hover{filter:brightness(1.08)}
+.btn-primary{background:var(--brand);color:#fff}
+.btn-blue{background:var(--brand2);color:#fff}
+.btn-ok{background:var(--ok);color:#fff}
+.btn-warn{background:var(--warn);color:#fff}
+.btn-bad{background:var(--bad);color:#fff}
+.btn-ghost{background:#eef2f7;color:var(--ink)}
+.btn-sm{padding:5px 10px;font-size:12.5px;border-radius:7px}
+.btn-big{font-size:19px;padding:16px 20px;border-radius:14px;width:100%}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:0 1px 3px rgba(15,23,42,.05)}
+.grid{display:grid;gap:14px}
+.muted{color:var(--muted)}
+.tag{display:inline-block;padding:2px 9px;border-radius:99px;font-size:11.5px;font-weight:700}
+.flex{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.spread{justify-content:space-between}
+h2{font-size:19px;margin-bottom:4px}
+h3{font-size:16px}
+hr.sep{border:none;border-top:1px solid var(--line);margin:14px 0}
+
+/* ---------- header ---------- */
+header{background:linear-gradient(120deg,#1e3a8a,#312e81 60%,#4c1d95);color:#fff;padding:14px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+header .logo{font-size:26px}
+header h1{font-size:19px;font-weight:800}
+header .sub{font-size:12px;opacity:.75}
+header .grow{flex:1}
+#syncDot{width:10px;height:10px;border-radius:50%;background:#94a3b8;display:inline-block}
+#syncDot.on{background:#34d399}#syncDot.err{background:#f87171}
+#syncTxt{font-size:12px;opacity:.85}
+.hbtn{background:rgba(255,255,255,.14);color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:13px}
+.hbtn:hover{background:rgba(255,255,255,.25)}
+
+/* ---------- nav ---------- */
+nav{background:#fff;border-bottom:1px solid var(--line);padding:0 14px;display:flex;gap:2px;overflow-x:auto}
+nav button{background:none;border:none;padding:12px 15px;font-size:14px;font-weight:600;color:var(--muted);border-bottom:3px solid transparent;white-space:nowrap}
+nav button.on{color:var(--brand);border-bottom-color:var(--brand)}
+main{max-width:1250px;margin:0 auto;padding:18px 14px 60px}
+
+/* ---------- login ---------- */
+#loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1e3a8a,#4c1d95);padding:16px}
+.login-card{background:#fff;border-radius:20px;padding:34px 30px;width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.login-card .big{font-size:44px;text-align:center}
+.login-card h1{text-align:center;font-size:21px;margin:6px 0 2px}
+.login-card .sub{text-align:center;color:var(--muted);font-size:13px;margin-bottom:20px}
+.fld{margin-bottom:12px}
+
+/* ---------- amuta cards / clock ---------- */
+.amuta-card{border-radius:16px;border:1px solid var(--line);background:#fff;overflow:hidden}
+.amuta-card .top{padding:12px 16px;color:#fff;font-weight:800;font-size:15.5px;display:flex;justify-content:space-between;align-items:center}
+.amuta-card .body{padding:16px}
+.clock-status{font-size:14px;margin-bottom:12px}
+.clock-timer{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:1px}
+.banner{border-radius:12px;padding:12px 16px;font-size:14px;font-weight:600;margin-bottom:14px}
+.banner.warn{background:#fef3c7;color:#92400e;border:1px solid #fcd34d}
+.banner.info{background:#dbeafe;color:#1e40af;border:1px solid #93c5fd}
+
+/* ---------- tables ---------- */
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:#fff}
+table{border-collapse:collapse;width:100%;font-size:13px;background:#fff}
+th{background:#f8fafc;font-weight:700;color:#334155;padding:8px 9px;border-bottom:2px solid var(--line);white-space:nowrap;text-align:right}
+td{padding:7px 9px;border-bottom:1px solid #f1f5f9;white-space:nowrap;text-align:right}
+tr:hover td{background:#f8fafc}
+tr.shabbat td{background:#eef2ff}
+tr.holiday td{background:#fef9c3}
+tr.total td{background:#f1f5f9;font-weight:800;border-top:2px solid var(--line)}
+td.num,th.num{font-variant-numeric:tabular-nums}
+.open-punch{color:var(--ok);font-weight:700}
+
+/* ---------- report table (accountant) ---------- */
+.rep table{font-size:12px}
+.rep th{font-size:11.5px}
+.rep .grp{background:#e0e7ff;color:#312e81;text-align:center;font-size:12.5px}
+
+/* ---------- stats / dashboard ---------- */
+.stat{border-radius:14px;padding:14px 16px;color:#fff}
+.stat .n{font-size:26px;font-weight:800}
+.stat .l{font-size:12.5px;opacity:.85}
+.bar-row{display:flex;align-items:center;gap:10px;margin:7px 0}
+.bar-row .nm{width:130px;font-size:13px;font-weight:600}
+.bar-row .bar{flex:1;background:#eef2f7;height:22px;border-radius:99px;overflow:hidden}
+.bar-row .fill{height:100%;border-radius:99px;display:flex;align-items:center;justify-content:flex-end;color:#fff;font-size:11px;font-weight:700;padding-left:8px;min-width:fit-content}
+.bar-row .val{width:90px;font-size:12.5px;font-weight:700;text-align:left}
+.prog{background:#eef2f7;border-radius:99px;height:8px;overflow:hidden;margin-top:5px}
+.prog>div{height:100%;border-radius:99px}
+
+/* ---------- modal ---------- */
+#modalBack{position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;align-items:flex-start;justify-content:center;z-index:50;padding:30px 12px;overflow:auto}
+#modalBack.show{display:flex}
+#modalBox{background:#fff;border-radius:18px;padding:24px;width:100%;max-width:640px;box-shadow:0 25px 70px rgba(0,0,0,.35)}
+#modalBox h2{margin-bottom:14px}
+.frm{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.frm .full{grid-column:1/-1}
+.modal-actions{display:flex;gap:10px;margin-top:18px}
+.term-box{border:1.5px solid var(--line);border-radius:12px;padding:12px;margin-top:10px}
+.term-box.off .term-fields{display:none}
+.term-box .th{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px}
+.term-fields{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
+
+@media(max-width:760px){
+  .frm{grid-template-columns:1fr}
+  .term-fields{grid-template-columns:1fr 1fr}
+  main{padding:12px 8px 60px}
+}
+@media print{ body{background:#fff} header,nav,.no-print{display:none!important} main{max-width:none;padding:0} .card{border:none;box-shadow:none;padding:0} }
+</style>
+</head>
+<body>
+
+<!-- ==================== LOGIN ==================== -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="big">🕐</div>
+    <h1>נוכחות ויזניץ</h1>
+    <div class="sub">דיווח שעות נוכחות — קופת גמ"ח · אפריון · עזרת נישואין</div>
+    <div id="loginBody"></div>
+  </div>
+</div>
+
+<!-- ==================== APP ==================== -->
+<div id="appScreen" hidden>
+  <header>
+    <span class="logo">🕐</span>
+    <div>
+      <h1>נוכחות ויזניץ</h1>
+      <div class="sub" id="hdrDate"></div>
+    </div>
+    <div class="grow"></div>
+    <span id="syncDot"></span><span id="syncTxt"></span>
+    <span style="font-size:14px;font-weight:700" id="hdrUser"></span>
+    <button class="hbtn" onclick="openPassModal()" title="שינוי סיסמה">🔑</button>
+    <button class="hbtn" onclick="logout()">יציאה</button>
+  </header>
+  <nav id="navBar"></nav>
+  <main id="mainArea"></main>
+</div>
+
+<!-- ==================== MODAL ==================== -->
+<div id="modalBack" onclick="if(event.target===this)closeModal()">
+  <div id="modalBox"></div>
+</div>
+
+<script>
+/* ============================================================
+   נוכחות ויזניץ — מערכת דיווח שעות ל-3 עמותות
+   Backend: Google Sheets דרך Apps Script (attendance_sheets.gs)
+   ============================================================ */
+
+/* ==================== עמותות ==================== */
+const AMUTOT = [
+  {id:'kupat',   short:'קופת גמ"ח',    full:'קופת גמ"ח הכללית נוע"מ (ע"ר)',                        color:'var(--kupat)',   hex:'#1d4ed8', icon:'🏦'},
+  {id:'apiryon', short:'אפריון',        full:'אפריון מרכז החסד והעזרה (ע"ר)',                        color:'var(--apiryon)', hex:'#059669', icon:'🤝'},
+  {id:'ezrat',   short:'עזרת נישואין',  full:'מפעל עזרת נישואין לתלמידי ישיבת ויזניץ ב"ב (ע"ר)',   color:'var(--ezrat)',   hex:'#7c3aed', icon:'💍'},
+];
+const amuta = id => AMUTOT.find(a=>a.id===id) || {short:id,full:id,color:'#64748b',hex:'#64748b',icon:'🏢'};
+const REC_TYPES = {work:'עבודה', sick:'מחלה', vacation:'חופשה', holiday:'חג', absence:'העדרות'};
+
+/* ==================== לוח עברי (מנוע מאומת) ==================== */
+const HEBREW_EPOCH=-1373427;
+function gregorianLeap(y){return (y%4===0&&y%100!==0)||y%400===0}
+function rdFromGregorian(y,m,d){let rd=365*(y-1)+Math.floor((y-1)/4)-Math.floor((y-1)/100)+Math.floor((y-1)/400)+Math.floor((367*m-362)/12);if(m>2)rd+=gregorianLeap(y)?-1:-2;return rd+d}
+function gregorianFromRd(rd){let d0=rd-1;const n400=Math.floor(d0/146097);d0%=146097;const n100=Math.floor(d0/36524);d0%=36524;const n4=Math.floor(d0/1461);d0%=1461;const n1=Math.floor(d0/365);let year=400*n400+100*n100+4*n4+n1;if(n100!==4&&n1!==4)year+=1;const priorDays=rd-rdFromGregorian(year,1,1);const correction=rd<rdFromGregorian(year,3,1)?0:(gregorianLeap(year)?1:2);const month=Math.floor((12*(priorDays+correction)+373)/367);const day=rd-rdFromGregorian(year,month,1)+1;return{y:year,m:month,d:day}}
+function hebrewLeap(y){return((7*y+1)%19)<7}
+function hebrewElapsedDays(y){const me=Math.floor((235*y-234)/19);const pe=12084+13753*me;let days=me*29+Math.floor(pe/25920);if(((3*(days+1))%7)<3)days+=1;return days}
+function hebrewYearDelay(y){const c0=hebrewElapsedDays(y-1),c1=hebrewElapsedDays(y),c2=hebrewElapsedDays(y+1);if(c2-c1===356)return 2;if(c1-c0===382)return 1;return 0}
+function hebrewNewYearRd(y){return HEBREW_EPOCH+hebrewElapsedDays(y)+hebrewYearDelay(y)}
+function hebrewYearDays(y){return hebrewNewYearRd(y+1)-hebrewNewYearRd(y)}
+function longCheshvan(y){return hebrewYearDays(y)%10===5}
+function shortKislev(y){return hebrewYearDays(y)%10===3}
+function hebrewMonthsInYear(y){return hebrewLeap(y)?13:12}
+function hebrewMonthDays(y,m){if(m===2||m===4||m===6||m===10||m===13)return 29;if(m===12&&!hebrewLeap(y))return 29;if(m===8&&!longCheshvan(y))return 29;if(m===9&&shortKislev(y))return 29;return 30}
+function rdFromHebrew(y,m,d){let rd=hebrewNewYearRd(y)+d-1;if(m<7){for(let mm=7;mm<=hebrewMonthsInYear(y);mm++)rd+=hebrewMonthDays(y,mm);for(let mm=1;mm<m;mm++)rd+=hebrewMonthDays(y,mm)}else{for(let mm=7;mm<m;mm++)rd+=hebrewMonthDays(y,mm)}return rd}
+function hebrewFromRd(rd){const approx=Math.floor((rd-HEBREW_EPOCH)*98496/35975351)+1;let y=approx-1;while(hebrewNewYearRd(y+1)<=rd)y++;const start=(rd<rdFromHebrew(y,1,1))?7:1;let m=start;while(rd>rdFromHebrew(y,m,hebrewMonthDays(y,m)))m++;const d=rd-rdFromHebrew(y,m,1)+1;return{y,m,d}}
+const MONTH_NAMES={1:'ניסן',2:'אייר',3:'סיוון',4:'תמוז',5:'אב',6:'אלול',7:'תשרי',8:'חשוון',9:'כסלו',10:'טבת',11:'שבט'};
+function hebMonthName(m,leap){if(m===12)return leap?'אדר א׳':'אדר';if(m===13)return'אדר ב׳';return MONTH_NAMES[m]}
+function gematriya(n){const vals=[[400,'ת'],[300,'ש'],[200,'ר'],[100,'ק'],[90,'צ'],[80,'פ'],[70,'ע'],[60,'ס'],[50,'נ'],[40,'מ'],[30,'ל'],[20,'כ'],[10,'י'],[9,'ט'],[8,'ח'],[7,'ז'],[6,'ו'],[5,'ה'],[4,'ד'],[3,'ג'],[2,'ב'],[1,'א']];let s='',x=n;while(x>0){if(x===15){s+='טו';break}if(x===16){s+='טז';break}for(const[v,l]of vals){if(x>=v){s+=l;x-=v;break}}}return s.length>1?s.slice(0,-1)+'״'+s.slice(-1):s+'׳'}
+function hebYearStr(y){return gematriya(Math.floor(y/1000))==='ה׳'?gematriya(y%1000):gematriya(y%1000)}
+function fmtHebFull(h){return `${gematriya(h.d)} ${hebMonthName(h.m,hebrewLeap(h.y))} ${hebYearStr(h.y)}`}
+function fmtHebShort(h){return `${gematriya(h.d)} ${hebMonthName(h.m,hebrewLeap(h.y))}`}
+function rdOfDateStr(ds){const[y,m,d]=ds.split('-').map(Number);return rdFromGregorian(y,m,d)}
+function hebOfDateStr(ds){return hebrewFromRd(rdOfDateStr(ds))}
+const WEEKDAYS=['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+
+/* ==================== SHA-256 (ללא תלות ברשת) ==================== */
+function sha256(ascii){function rightRotate(v,a){return(v>>>a)|(v<<(32-a))}
+ascii=unescape(encodeURIComponent(ascii));
+var mathPow=Math.pow,maxWord=mathPow(2,32),lengthProperty='length',i,j,result='',words=[],asciiBitLength=ascii[lengthProperty]*8,hash=sha256.h=sha256.h||[],k=sha256.k=sha256.k||[],primeCounter=k[lengthProperty],isComposite={};
+for(var candidate=2;primeCounter<64;candidate++){if(!isComposite[candidate]){for(i=0;i<313;i+=candidate){isComposite[i]=candidate}hash[primeCounter]=(mathPow(candidate,.5)*maxWord)|0;k[primeCounter++]=(mathPow(candidate,1/3)*maxWord)|0}}
+ascii+='\x80';while(ascii[lengthProperty]%64-56)ascii+='\x00';
+for(i=0;i<ascii[lengthProperty];i++){j=ascii.charCodeAt(i);if(j>>8)return;words[i>>2]|=j<<((3-i)%4)*8}
+words[words[lengthProperty]]=((asciiBitLength/maxWord)|0);words[words[lengthProperty]]=(asciiBitLength);
+for(j=0;j<words[lengthProperty];){var w=words.slice(j,j+=16),oldHash=hash;hash=hash.slice(0,8);
+for(i=0;i<64;i++){var w15=w[i-15],w2=w[i-2];var a=hash[0],e=hash[4];var temp1=hash[7]+(rightRotate(e,6)^rightRotate(e,11)^rightRotate(e,25))+((e&hash[5])^((~e)&hash[6]))+k[i]+(w[i]=(i<16)?w[i]:(w[i-16]+(rightRotate(w15,7)^rightRotate(w15,18)^(w15>>>3))+w[i-7]+(rightRotate(w2,17)^rightRotate(w2,19)^(w2>>>10)))|0);var temp2=(rightRotate(a,2)^rightRotate(a,13)^rightRotate(a,22))+((a&hash[1])^(a&hash[2])^(hash[1]&hash[2]));
+hash=[(temp1+temp2)|0].concat(hash);hash[4]=(hash[4]+temp1)|0}
+for(i=0;i<8;i++){hash[i]=(hash[i]+oldHash[i])|0}}
+for(i=0;i<8;i++){for(j=3;j+1;j--){var b=(hash[i]>>(j*8))&255;result+=((b<16)?0:'')+b.toString(16)}}
+return result}
+
+/* ==================== state + sync ==================== */
+const LS_STATE='att_state_v1', LS_URL='att_gs_url', LS_SESSION='att_session_v1';
+const DEFAULT_GS_URL='';   // ← לאחר פריסת Apps Script מדביקים כאן את כתובת ה-/exec
+let GS_URL = localStorage.getItem(LS_URL) || DEFAULT_GS_URL;
+const qsGs = new URLSearchParams(location.search).get('gs');
+if(qsGs){GS_URL=qsGs;localStorage.setItem(LS_URL,qsGs)}
+
+let state={users:[],terms:[],records:[],extras:[],holidays:[],settings:{}};
+try{const raw=localStorage.getItem(LS_STATE);if(raw)state=Object.assign(state,JSON.parse(raw))}catch(e){}
+let me=null, currentTab='clock', pollTimer=null, tickTimer=null, modalOpen=false, serverLoaded=false;
+
+function saveLocal(){try{localStorage.setItem(LS_STATE,JSON.stringify(state))}catch(e){}}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function setSync(cls,txt){const d=document.getElementById('syncDot'),t=document.getElementById('syncTxt');if(d){d.className=cls;t.textContent=txt}}
+
+function apiGet(params){
+  if(!GS_URL) return Promise.resolve(null);
+  const q=Object.entries(params).map(([k,v])=>k+'='+encodeURIComponent(v)).join('&');
+  return fetch(GS_URL+'?'+q).then(r=>r.json()).then(j=>{setSync('on','מסונכרן');return j}).catch(e=>{setSync('err','שגיאת רשת');return null});
+}
+function normalizeSettings(rows){const o={};(rows||[]).forEach(r=>o[r.key]=r.value);return o}
+function serverLoad(silent){
+  if(!GS_URL){setSync('','מקומי (ללא שרת)');return Promise.resolve(false)}
+  return apiGet({action:'load',t:Date.now()}).then(j=>{
+    if(!j||j.status==='error'){if(!silent)alert('שגיאה בטעינה מהשרת: '+(j&&j.message||'אין תקשורת'));return false}
+    state.users=j.users||[];state.terms=j.terms||[];state.records=j.records||[];
+    state.extras=j.extras||[];state.holidays=j.holidays||[];state.settings=normalizeSettings(j.settings);
+    serverLoaded=true;saveLocal();return true;
+  });
+}
+function upsert(sheet,obj){ // עדכון מקומי מיידי + שליחה לשרת
+  const arr=state[sheet];const i=arr.findIndex(x=>x.id===obj.id);
+  if(i>=0)arr[i]=obj;else arr.push(obj);
+  saveLocal();
+  return apiGet({action:'upsert',sheet,data:JSON.stringify(obj)});
+}
+function delItem(sheet,id){
+  state[sheet]=state[sheet].filter(x=>x.id!==id);saveLocal();
+  return apiGet({action:'del',sheet,id});
+}
+function setSetting(key,value){
+  state.settings[key]=String(value);saveLocal();
+  return apiGet({action:'setSetting',key,value});
+}
+function batchOps(ops){ // ops=[{op:'upsert',sheet,data:{...}} | {op:'del',sheet,id}]
+  ops.forEach(o=>{
+    if(o.op==='upsert'){const arr=state[o.sheet];const i=arr.findIndex(x=>x.id===o.data.id);if(i>=0)arr[i]=o.data;else arr.push(o.data)}
+    else state[o.sheet]=state[o.sheet].filter(x=>x.id!==o.id);
+  });
+  saveLocal();
+  return apiGet({action:'batch',ops:JSON.stringify(ops)});
+}
+function startPolling(){
+  if(pollTimer)clearInterval(pollTimer);
+  if(!GS_URL)return;
+  pollTimer=setInterval(()=>{if(!modalOpen)serverLoad(true).then(ok=>{if(ok&&!modalOpen)render()})},15000);
+}
+
+/* ==================== date/time helpers ==================== */
+function todayStr(){const n=new Date();return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0')}
+function nowHM(){const n=new Date();return String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0')}
+function curYM(){return todayStr().slice(0,7)}
+function toMin(t){if(!t)return null;const[h,m]=t.split(':').map(Number);return h*60+m}
+function hoursOf(rec){if(!rec.tin||!rec.tout)return 0;let mins=toMin(rec.tout)-toMin(rec.tin);if(mins<0)mins+=1440;return mins/60}
+function fmtH(h){if(!h)return '0';const r=Math.round(h*100)/100;return (''+r).replace(/(\.\d*?)0+$/,'$1').replace(/\.$/,'')}
+function fmtDMY(ds){const[y,m,d]=ds.split('-');return `${d}/${m}/${y.slice(2)}`}
+function weekdayOf(ds){const[y,m,d]=ds.split('-').map(Number);return new Date(y,m-1,d).getDay()}
+function isShabbat(ds){return weekdayOf(ds)===6}
+function holidayOf(ds){return state.holidays.find(h=>h.date===ds)}
+function monthDaysCount(ym){const[y,m]=ym.split('-').map(Number);return new Date(y,m,0).getDate()}
+function ymLabel(ym){const[y,m]=ym.split('-');const names=['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];return names[+m-1]+' '+y}
+function workdaysInMonth(ym,daysPerWeek){ // ימי עבודה תיאורטיים בחודש (ללא שבת/שישי לפי 5/6, בניכוי חגים)
+  const n=monthDaysCount(ym);let c=0;
+  for(let d=1;d<=n;d++){const ds=ym+'-'+String(d).padStart(2,'0');const w=weekdayOf(ds);
+    const isWorkday=(+daysPerWeek===6)?(w<=5):(w<=4);
+    if(isWorkday&&!holidayOf(ds))c++;}
+  return c;
+}
+
+/* ==================== data helpers ==================== */
+const userById=id=>state.users.find(u=>u.id===id);
+const activeUsers=()=>state.users.filter(u=>u.active!=='0'&&u.active!==0);
+function termsOf(userId){return state.terms.filter(t=>t.userId===userId)}
+function termOf(userId,amutaId){return state.terms.find(t=>t.userId===userId&&t.amutaId===amutaId)}
+function myAmutot(userId){return termsOf(userId).map(t=>t.amutaId)}
+function recsOf(userId,amutaId,ym){return state.records.filter(r=>r.userId===userId&&(!amutaId||r.amutaId===amutaId)&&(!ym||r.date.startsWith(ym)))}
+function openPunch(userId,amutaId){return state.records.find(r=>r.userId===userId&&r.amutaId===amutaId&&r.type==='work'&&r.tin&&!r.tout)}
+function anyOpenPunches(userId){return state.records.filter(r=>r.userId===userId&&r.type==='work'&&r.tin&&!r.tout)}
+function forgottenPunches(){const t=todayStr();return state.records.filter(r=>r.type==='work'&&r.tin&&!r.tout&&r.date<t)}
+const canEditSelf=u=>u.role==='admin'||u.canEdit==='1'||u.canEdit===1;
+
+/* חישוב חודשי לעובד בעמותה — בסיס לדוח הרו"ח */
+function calcMonth(userId,amutaId,ym){
+  const recs=recsOf(userId,amutaId,ym);
+  const work=recs.filter(r=>r.type==='work'&&r.tin&&r.tout);
+  const byDay={};work.forEach(r=>{byDay[r.date]=(byDay[r.date]||0)+hoursOf(r)});
+  const days=Object.keys(byDay).length;
+  const hours=Object.values(byDay).reduce((a,b)=>a+b,0);
+  const otOn=state.settings.otEnabled==='1';
+  const base=parseFloat(state.settings.otBase)||8.6, span=parseFloat(state.settings.ot125)||2;
+  let h100=0,h125=0,h150=0;
+  if(otOn){Object.values(byDay).forEach(h=>{h100+=Math.min(h,base);h125+=Math.min(Math.max(h-base,0),span);h150+=Math.max(h-base-span,0)})}
+  else h100=hours;
+  const cnt=t=>recs.filter(r=>r.type===t&&!r.tin).length;
+  const absRecs=recs.filter(r=>r.type==='absence');
+  const absDays=absRecs.filter(r=>!r.tin).length;
+  const absHours=absRecs.filter(r=>r.tin&&r.tout).reduce((a,r)=>a+hoursOf(r),0);
+  return {days,hours,h100,h125,h150,sick:cnt('sick'),vacation:cnt('vacation'),holiday:cnt('holiday'),absDays,absHours,openCount:recs.filter(r=>r.type==='work'&&r.tin&&!r.tout).length};
+}
+function extrasStr(userId,amutaId,ym){
+  return state.extras.filter(x=>x.userId===userId&&x.amutaId===amutaId&&x.month===ym)
+    .map(x=>x.label+(x.amount?': '+x.amount:'')+(x.note?' ('+x.note+')':'')).join(' | ');
+}
+
+/* ==================== auth ==================== */
+function hashPass(p){return sha256('att|'+p)}
+function session(){try{return JSON.parse(localStorage.getItem(LS_SESSION))}catch(e){return null}}
+function renderLogin(msg){
+  document.getElementById('loginScreen').style.display='flex';
+  document.getElementById('appScreen').hidden=true;
+  const body=document.getElementById('loginBody');
+  if(!GS_URL && state.users.length===0){
+    body.innerHTML=`
+      <div class="banner info">הגדרה ראשונית — חבר את המערכת לשרת Google Sheets, או צור מנהל מקומי לניסיון.</div>
+      <div class="fld"><label>כתובת שרת (Apps Script /exec)</label><input id="setupUrl" dir="ltr" placeholder="https://script.google.com/macros/s/..../exec"></div>
+      <button class="btn btn-primary btn-big" onclick="setupConnect()">🔗 התחבר לשרת</button>
+      <hr class="sep">
+      <button class="btn btn-ghost btn-big" onclick="showCreateAdmin()">👤 צור מנהל (מקומי)</button>`;
+    return;
+  }
+  if(state.users.length===0){
+    if(GS_URL&&!serverLoaded){body.innerHTML='<div class="banner info">⏳ טוען נתונים מהשרת...</div>';return}
+    showCreateAdmin();return
+  }
+  body.innerHTML=`
+    ${msg?'<div class="banner warn">'+esc(msg)+'</div>':''}
+    <div class="fld"><label>שם משתמש</label><input id="liUser" autocomplete="username"></div>
+    <div class="fld"><label>סיסמה</label><input id="liPass" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"></div>
+    <button class="btn btn-primary btn-big" onclick="doLogin()">כניסה למערכת</button>
+    ${GS_URL?'':'<div style="text-align:center;margin-top:10px"><button class="btn btn-ghost btn-sm" onclick="openServerSetup()">⚙ הגדר שרת</button></div>'}`;
+  setTimeout(()=>{const el=document.getElementById('liUser');if(el)el.focus()},50);
+}
+function setupConnect(){
+  const url=document.getElementById('setupUrl').value.trim();
+  if(!url.includes('script.google')){alert('כתובת לא תקינה — צריך כתובת /exec של Apps Script');return}
+  GS_URL=url;localStorage.setItem(LS_URL,url);
+  serverLoad(false).then(ok=>{if(ok){startPolling();renderLogin()}});
+}
+function showCreateAdmin(){
+  document.getElementById('loginBody').innerHTML=`
+    <div class="banner info">אין עדיין משתמשים — צור את חשבון המנהל הראשון.</div>
+    <div class="fld"><label>שם מלא</label><input id="adName"></div>
+    <div class="fld"><label>שם משתמש</label><input id="adUser"></div>
+    <div class="fld"><label>סיסמה</label><input id="adPass" type="password"></div>
+    <button class="btn btn-ok btn-big" onclick="createAdmin()">צור מנהל והתחל</button>`;
+}
+function createAdmin(){
+  const name=document.getElementById('adName').value.trim(),un=document.getElementById('adUser').value.trim(),pw=document.getElementById('adPass').value;
+  if(!name||!un||!pw){alert('נא למלא את כל השדות');return}
+  const u={id:uid(),name,username:un,hash:hashPass(pw),role:'admin',canEdit:'1',active:'1'};
+  upsert('users',u);
+  localStorage.setItem(LS_SESSION,JSON.stringify({uid:u.id}));
+  enterApp(u);
+}
+function doLogin(){
+  const un=document.getElementById('liUser').value.trim().toLowerCase(),pw=document.getElementById('liPass').value;
+  const u=state.users.find(x=>String(x.username).toLowerCase()===un);
+  if(!u||u.hash!==hashPass(pw)){renderLogin('שם משתמש או סיסמה שגויים');return}
+  if(u.active==='0'){renderLogin('המשתמש אינו פעיל — פנה למנהל');return}
+  localStorage.setItem(LS_SESSION,JSON.stringify({uid:u.id}));
+  enterApp(u);
+}
+function logout(){localStorage.removeItem(LS_SESSION);me=null;location.reload()}
+function openPassModal(){
+  openModal(`<h2>🔑 שינוי סיסמה</h2>
+    <div class="frm">
+      <div class="full"><label>סיסמה נוכחית</label><input id="cpOld" type="password"></div>
+      <div class="full"><label>סיסמה חדשה</label><input id="cpNew" type="password"></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-primary" onclick="changePass()">שמור</button><button class="btn btn-ghost" onclick="closeModal()">ביטול</button></div>`);
+}
+function changePass(){
+  const o=document.getElementById('cpOld').value,n=document.getElementById('cpNew').value;
+  if(me.hash!==hashPass(o)){alert('הסיסמה הנוכחית שגויה');return}
+  if(!n){alert('נא להזין סיסמה חדשה');return}
+  me.hash=hashPass(n);upsert('users',me);closeModal();alert('הסיסמה עודכנה ✓');
+}
+
+/* ==================== app shell ==================== */
+function enterApp(u){
+  me=u;
+  document.getElementById('loginScreen').style.display='none';
+  document.getElementById('appScreen').hidden=false;
+  document.getElementById('hdrUser').textContent=u.name;
+  const t=todayStr(),h=hebOfDateStr(t);
+  document.getElementById('hdrDate').textContent=`יום ${WEEKDAYS[weekdayOf(t)]} · ${fmtDMY(t)} · ${fmtHebFull(h)}`;
+  buildNav();
+  currentTab = (u.role==='admin')?'dash':'clock';
+  render();
+  startPolling();
+  if(tickTimer)clearInterval(tickTimer);
+  tickTimer=setInterval(()=>{if(currentTab==='clock'&&!modalOpen)updateTimers()},30000);
+}
+function buildNav(){
+  const isAdmin=me.role==='admin', hasTerms=termsOf(me.id).length>0;
+  const tabs=[];
+  if(isAdmin)tabs.push({id:'dash',l:'📊 דשבורד'});
+  if(hasTerms||!isAdmin)tabs.push({id:'clock',l:'🕐 שעון נוכחות'});
+  if(hasTerms||!isAdmin)tabs.push({id:'my',l:'📅 הדוח שלי'});
+  if(isAdmin)tabs.push({id:'recs',l:'📋 דיווחים'},{id:'emps',l:'👥 עובדים'},{id:'report',l:'📑 דוח חודשי'},{id:'settings',l:'⚙️ הגדרות'});
+  document.getElementById('navBar').innerHTML=tabs.map(t=>`<button id="nav-${t.id}" class="${currentTab===t.id?'on':''}" onclick="goTab('${t.id}')">${t.l}</button>`).join('');
+}
+function goTab(id){currentTab=id;buildNav();render()}
+function render(){
+  buildNav();
+  const m=document.getElementById('mainArea');
+  const fn={dash:renderDash,clock:renderClock,my:renderMy,recs:renderRecs,emps:renderEmps,report:renderReport,settings:renderSettings}[currentTab];
+  m.innerHTML=fn?fn():'';
+  if(currentTab==='clock')updateTimers();
+}
+
+/* ==================== שעון נוכחות ==================== */
+function renderClock(){
+  const mine=termsOf(me.id);
+  if(!mine.length)return `<div class="card">אינך משויך לאף עמותה עדיין — פנה למנהל שיוסיף אותך.</div>`;
+  const forgotten=anyOpenPunches(me.id).filter(r=>r.date<todayStr());
+  let html='';
+  if(forgotten.length){
+    html+=`<div class="banner warn">⚠️ שכחת להחתים יציאה! שעון פתוח מ-${forgotten.map(r=>fmtDMY(r.date)+' ('+amuta(r.amutaId).short+')').join(', ')} — ${canEditSelf(me)?'לחץ על הדיווח בטבלה למטה כדי לתקן.':'פנה למנהל לתיקון.'}</div>`;
+  }
+  const t=todayStr(),hol=holidayOf(t);
+  if(isShabbat(t))html+=`<div class="banner info">🕯️ היום שבת קודש</div>`;
+  if(hol)html+=`<div class="banner info">🎉 היום ${esc(hol.name||'חג')}</div>`;
+  html+=`<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">`;
+  mine.forEach(tm=>{
+    const a=amuta(tm.amutaId), op=openPunch(me.id,tm.amutaId);
+    html+=`<div class="amuta-card">
+      <div class="top" style="background:${a.hex}"><span>${a.icon} ${esc(a.short)}</span>${op?'<span class="tag" style="background:rgba(255,255,255,.25);color:#fff">בעבודה</span>':''}</div>
+      <div class="body">
+        ${op?`
+          <div class="clock-status">נכנסת ב-<b>${op.tin}</b>${op.date!==t?' <b style="color:var(--bad)">('+fmtDMY(op.date)+'!)</b>':''}</div>
+          <div class="clock-timer" id="timer-${tm.amutaId}" data-in="${op.date}T${op.tin}">--:--</div>
+          <div style="margin:10px 0"><input id="note-${tm.amutaId}" placeholder="הערה (לא חובה)" value="${esc(op.note||'')}"></div>
+          <button class="btn btn-bad btn-big" onclick="punchOut('${tm.amutaId}')">🔴 החתמת יציאה</button>`
+        :`
+          <div class="clock-status muted">לא בעבודה כרגע</div>
+          <div style="margin:10px 0"><input id="note-${tm.amutaId}" placeholder="הערה (לא חובה)"></div>
+          <button class="btn btn-ok btn-big" onclick="punchIn('${tm.amutaId}')">🟢 החתמת כניסה</button>`}
+      </div>
+    </div>`;
+  });
+  html+=`</div>`;
+  // דיווח יום מחלה/חופשה
+  html+=`<div class="card" style="margin-top:14px">
+    <div class="flex spread"><h3>🤒 דיווח יום מחלה / חופשה</h3></div>
+    <div class="flex" style="margin-top:10px">
+      <div style="min-width:150px"><label>עמותה</label><select id="dayAmuta">${mine.map(tm=>`<option value="${tm.amutaId}">${esc(amuta(tm.amutaId).short)}</option>`).join('')}</select></div>
+      <div><label>תאריך</label><input type="date" id="dayDate" value="${t}"></div>
+      <div style="min-width:120px"><label>סוג</label><select id="dayType"><option value="sick">יום מחלה</option><option value="vacation">יום חופשה</option></select></div>
+      <div style="flex:1;min-width:160px"><label>הערה</label><input id="dayNote" placeholder="לא חובה"></div>
+      <div style="align-self:flex-end"><button class="btn btn-blue" onclick="reportDay()">שלח דיווח</button></div>
+    </div>
+  </div>`;
+  // הדיווחים של היום
+  const todays=state.records.filter(r=>r.userId===me.id&&r.date===t).sort((a,b)=>(a.tin||'').localeCompare(b.tin||''));
+  html+=`<div class="card" style="margin-top:14px"><h3>הדיווחים שלי היום</h3>${recsTable(todays,canEditSelf(me),false)}</div>`;
+  return html;
+}
+function updateTimers(){
+  document.querySelectorAll('[id^="timer-"]').forEach(el=>{
+    const [ds,tm]=el.dataset.in.split('T');
+    const start=new Date(ds+'T'+tm+':00');
+    let mins=Math.max(0,Math.round((Date.now()-start)/60000));
+    el.textContent=String(Math.floor(mins/60)).padStart(2,'0')+':'+String(mins%60).padStart(2,'0');
+  });
+}
+function punchIn(amutaId){
+  const others=anyOpenPunches(me.id).filter(r=>r.amutaId!==amutaId&&r.date===todayStr());
+  if(others.length){
+    const o=others[0];
+    if(confirm(`אתה עדיין מוחתם ב"${amuta(o.amutaId).short}" מ-${o.tin}. לסגור שם עכשיו (${nowHM()}) ולהיכנס כאן?`)){
+      o.tout=nowHM();o.by=me.name;o.ts=new Date().toISOString();upsert('records',o);
+    } else return;
+  }
+  if(openPunch(me.id,amutaId)){alert('כבר קיים שעון פתוח בעמותה זו');return}
+  const noteEl=document.getElementById('note-'+amutaId);
+  const rec={id:uid(),userId:me.id,amutaId,date:todayStr(),tin:nowHM(),tout:'',type:'work',note:noteEl?noteEl.value.trim():'',src:'clock',by:me.name,ts:new Date().toISOString()};
+  upsert('records',rec);render();
+}
+function punchOut(amutaId){
+  const op=openPunch(me.id,amutaId);
+  if(!op){alert('לא נמצא שעון פתוח');return}
+  if(op.date!==todayStr()&&!confirm('השעון נפתח ב-'+fmtDMY(op.date)+' — לסגור אותו בשעה הנוכחית? (עדיף לתקן ידנית)'))return;
+  const noteEl=document.getElementById('note-'+amutaId);
+  op.tout=nowHM();if(noteEl&&noteEl.value.trim())op.note=noteEl.value.trim();
+  op.by=me.name;op.ts=new Date().toISOString();
+  upsert('records',op);render();
+}
+function reportDay(){
+  const amutaId=document.getElementById('dayAmuta').value, date=document.getElementById('dayDate').value,
+        type=document.getElementById('dayType').value, note=document.getElementById('dayNote').value.trim();
+  if(!date){alert('בחר תאריך');return}
+  const dup=state.records.find(r=>r.userId===me.id&&r.amutaId===amutaId&&r.date===date&&r.type===type);
+  if(dup){alert('כבר קיים דיווח '+REC_TYPES[type]+' בתאריך זה');return}
+  upsert('records',{id:uid(),userId:me.id,amutaId,date,tin:'',tout:'',type,note,src:'manual',by:me.name,ts:new Date().toISOString()});
+  alert('הדיווח נשלח ✓');render();
+}
+
+/* ==================== טבלת דיווחים משותפת ==================== */
+function recsTable(recs,editable,showUser){
+  if(!recs.length)return '<div class="muted" style="padding:10px">אין דיווחים</div>';
+  let rows=recs.map(r=>{
+    const cls=isShabbat(r.date)?'shabbat':(holidayOf(r.date)?'holiday':'');
+    return `<tr class="${cls}">
+      <td>${fmtDMY(r.date)}</td><td>${WEEKDAYS[weekdayOf(r.date)]}</td><td>${fmtHebShort(hebOfDateStr(r.date))}</td>
+      ${showUser?`<td>${esc((userById(r.userId)||{}).name||'?')}</td>`:''}
+      <td><span class="tag" style="background:${amuta(r.amutaId).hex}22;color:${amuta(r.amutaId).hex}">${esc(amuta(r.amutaId).short)}</span></td>
+      <td>${REC_TYPES[r.type]||r.type}</td>
+      <td class="num">${r.tin||'—'}</td>
+      <td class="num">${r.tout||(r.type==='work'&&r.tin?'<span class="open-punch">פתוח ▶</span>':'—')}</td>
+      <td class="num">${r.tin&&r.tout?fmtH(hoursOf(r)):''}</td>
+      <td style="white-space:normal;max-width:200px">${esc(r.note||'')}</td>
+      ${editable?`<td><button class="btn btn-ghost btn-sm" onclick="openRecModal('${r.id}')">✎</button> <button class="btn btn-ghost btn-sm" onclick="deleteRec('${r.id}')">🗑</button></td>`:''}
+    </tr>`}).join('');
+  return `<div class="tbl-wrap"><table><thead><tr>
+    <th>תאריך</th><th>יום</th><th>עברי</th>${showUser?'<th>עובד</th>':''}<th>עמותה</th><th>סוג</th><th>כניסה</th><th>יציאה</th><th>שעות</th><th>הערה</th>${editable?'<th></th>':''}
+  </tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+function deleteRec(id){
+  const r=state.records.find(x=>x.id===id);if(!r)return;
+  if(me.role!=='admin'&&r.userId!==me.id)return;
+  if(!confirm('למחוק את הדיווח מ-'+fmtDMY(r.date)+'?'))return;
+  delItem('records',id);render();
+}
+
+/* ==================== מודאל דיווח (עריכה/הוספה) ==================== */
+function openRecModal(recId,presetUserId){
+  const r=recId?state.records.find(x=>x.id===recId):null;
+  if(r&&me.role!=='admin'&&r.userId!==me.id)return;
+  const isAdmin=me.role==='admin';
+  const uidSel=r?r.userId:(presetUserId||me.id);
+  const userOpts=activeUsers().map(u=>`<option value="${u.id}" ${u.id===uidSel?'selected':''}>${esc(u.name)}</option>`).join('');
+  const amutaList=isAdmin?AMUTOT.map(a=>a.id):myAmutot(me.id);
+  const amutaSel=r?r.amutaId:amutaList[0];
+  openModal(`<h2>${r?'✎ עריכת דיווח':'➕ דיווח חדש'}</h2>
+    <div class="frm">
+      ${isAdmin?`<div><label>עובד</label><select id="rmUser">${userOpts}</select></div>`:''}
+      <div><label>עמותה</label><select id="rmAmuta">${amutaList.map(id=>`<option value="${id}" ${id===amutaSel?'selected':''}>${esc(amuta(id).short)}</option>`).join('')}</select></div>
+      <div><label>תאריך</label><input type="date" id="rmDate" value="${r?r.date:todayStr()}"></div>
+      <div><label>סוג</label><select id="rmType" onchange="rmTypeChange()">${Object.entries(REC_TYPES).map(([k,v])=>`<option value="${k}" ${r&&r.type===k?'selected':''}>${v}</option>`).join('')}</select></div>
+      <div id="rmTimes1"><label>שעת כניסה</label><input type="time" id="rmIn" value="${r?r.tin:''}"></div>
+      <div id="rmTimes2"><label>שעת יציאה</label><input type="time" id="rmOut" value="${r?r.tout:''}"></div>
+      <div class="full"><label>הערה</label><input id="rmNote" value="${r?esc(r.note||''):''}"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="saveRecModal('${r?r.id:''}')">💾 שמירה</button>
+      <button class="btn btn-ghost" onclick="closeModal()">ביטול</button>
+    </div>`);
+  rmTypeChange();
+}
+function rmTypeChange(){
+  const t=document.getElementById('rmType').value;
+  const show=(t==='work'||t==='absence');
+  document.getElementById('rmTimes1').style.visibility=show?'visible':'hidden';
+  document.getElementById('rmTimes2').style.visibility=show?'visible':'hidden';
+}
+function saveRecModal(recId){
+  const isAdmin=me.role==='admin';
+  const r=recId?state.records.find(x=>x.id===recId):{id:uid(),src:'manual'};
+  r.userId=isAdmin?document.getElementById('rmUser').value:me.id;
+  r.amutaId=document.getElementById('rmAmuta').value;
+  r.date=document.getElementById('rmDate').value;
+  r.type=document.getElementById('rmType').value;
+  const showT=(r.type==='work'||r.type==='absence');
+  r.tin=showT?document.getElementById('rmIn').value:'';
+  r.tout=showT?document.getElementById('rmOut').value:'';
+  r.note=document.getElementById('rmNote').value.trim();
+  r.by=me.name;r.ts=new Date().toISOString();
+  if(!r.date){alert('חסר תאריך');return}
+  if(r.type==='work'&&!r.tin){alert('חסרה שעת כניסה');return}
+  upsert('records',r);closeModal();render();
+}
+
+/* ==================== הדוח שלי ==================== */
+let myYM=curYM(), myAmutaFilter='';
+function renderMy(){
+  const mine=termsOf(me.id);
+  if(!mine.length)return `<div class="card">אינך משויך לאף עמותה.</div>`;
+  const editable=canEditSelf(me);
+  let html=`<div class="card no-print" style="margin-bottom:14px"><div class="flex">
+    <div><label>חודש</label><input type="month" value="${myYM}" onchange="myYM=this.value;render()"></div>
+    <div><label>עמותה</label><select onchange="myAmutaFilter=this.value;render()">
+      <option value="">כל העמותות</option>
+      ${mine.map(t=>`<option value="${t.amutaId}" ${myAmutaFilter===t.amutaId?'selected':''}>${esc(amuta(t.amutaId).short)}</option>`).join('')}
+    </select></div>
+    ${editable?`<div style="align-self:flex-end"><button class="btn btn-ok" onclick="openRecModal('')">➕ הוסף דיווח</button></div>`:''}
+  </div></div>`;
+  // כרטיסי סיכום פר עמותה
+  html+=`<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(230px,1fr));margin-bottom:14px">`;
+  mine.filter(t=>!myAmutaFilter||t.amutaId===myAmutaFilter).forEach(tm=>{
+    const a=amuta(tm.amutaId),c=calcMonth(me.id,tm.amutaId,myYM);
+    const quota=parseFloat(tm.quotaHours)||0;
+    const pct=quota?Math.min(100,Math.round(c.hours/quota*100)):0;
+    html+=`<div class="stat" style="background:${a.hex}">
+      <div class="l">${a.icon} ${esc(a.short)} · ${ymLabel(myYM)}</div>
+      <div class="n">${fmtH(c.hours)} שעות</div>
+      <div class="l">${c.days} ימי עבודה${c.sick?' · '+c.sick+' מחלה':''}${c.vacation?' · '+c.vacation+' חופשה':''}</div>
+      ${quota?`<div class="prog" style="background:rgba(255,255,255,.3)"><div style="width:${pct}%;background:#fff"></div></div><div class="l" style="margin-top:3px">${pct}% מתקן ${fmtH(quota)} שעות</div>`:''}
+    </div>`;
+  });
+  html+=`</div>`;
+  const recs=state.records.filter(r=>r.userId===me.id&&r.date.startsWith(myYM)&&(!myAmutaFilter||r.amutaId===myAmutaFilter))
+    .sort((a,b)=>a.date.localeCompare(b.date)||String(a.tin).localeCompare(String(b.tin)));
+  html+=`<div class="card"><h3>פירוט דיווחים — ${ymLabel(myYM)}</h3>${recsTable(recs,editable,false)}</div>`;
+  return html;
+}
+
+/* ==================== דשבורד (מנהל) ==================== */
+let dashYM=curYM();
+function renderDash(){
+  const forgotten=forgottenPunches();
+  let html='';
+  if(forgotten.length){
+    html+=`<div class="banner warn">⚠️ ${forgotten.length} עובדים שכחו להחתים יציאה: ${forgotten.map(r=>`<a href="#" onclick="openRecModal('${r.id}');return false" style="color:inherit;text-decoration:underline">${esc((userById(r.userId)||{}).name||'?')} (${fmtDMY(r.date)}, ${esc(amuta(r.amutaId).short)})</a>`).join(' · ')}</div>`;
+  }
+  html+=`<div class="card no-print" style="margin-bottom:14px"><div class="flex">
+    <div><label>חודש</label><input type="month" value="${dashYM}" onchange="dashYM=this.value;render()"></div>
+  </div></div>`;
+  const t=todayStr();
+  html+=`<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(290px,1fr))">`;
+  AMUTOT.forEach(a=>{
+    const empTerms=state.terms.filter(tm=>tm.amutaId===a.id&&userById(tm.userId)&&(userById(tm.userId).active!=='0'));
+    const inNow=state.records.filter(r=>r.amutaId===a.id&&r.type==='work'&&r.tin&&!r.tout&&r.date===t);
+    let totalH=0;
+    const empRows=empTerms.map(tm=>{
+      const u=userById(tm.userId),c=calcMonth(tm.userId,a.id,dashYM);totalH+=c.hours;
+      const quota=parseFloat(tm.quotaHours)||0;
+      const pct=quota?Math.min(100,Math.round(c.hours/quota*100)):null;
+      const on=inNow.some(r=>r.userId===tm.userId);
+      return `<div style="margin:8px 0">
+        <div class="flex spread" style="font-size:13px"><span>${on?'🟢 ':''}<b>${esc(u.name)}</b></span><span class="num">${fmtH(c.hours)} ש' · ${c.days} ימים${pct!==null?' · '+pct+'%':''}</span></div>
+        ${pct!==null?`<div class="prog"><div style="width:${pct}%;background:${a.hex}"></div></div>`:''}
+      </div>`;
+    }).join('');
+    html+=`<div class="amuta-card">
+      <div class="top" style="background:${a.hex}"><span>${a.icon} ${esc(a.short)}</span><span style="font-size:13px;font-weight:600">${inNow.length? inNow.length+' בעבודה כעת':''}</span></div>
+      <div class="body">
+        <div class="flex spread" style="margin-bottom:6px"><span class="muted" style="font-size:12.5px">${ymLabel(dashYM)}</span><b>${fmtH(totalH)} שעות · ${empTerms.length} עובדים</b></div>
+        <hr class="sep">${empRows||'<div class="muted">אין עובדים משויכים</div>'}
+      </div></div>`;
+  });
+  html+=`</div>`;
+  // השוואת עמותות
+  const totals=AMUTOT.map(a=>{
+    let h=0;state.terms.filter(tm=>tm.amutaId===a.id).forEach(tm=>{h+=calcMonth(tm.userId,a.id,dashYM).hours});return {a,h};
+  });
+  const maxH=Math.max(1,...totals.map(x=>x.h));
+  html+=`<div class="card" style="margin-top:14px"><h3>סה"כ שעות ${ymLabel(dashYM)} — השוואה</h3>
+    ${totals.map(x=>`<div class="bar-row"><div class="nm">${x.a.icon} ${esc(x.a.short)}</div><div class="bar"><div class="fill" style="width:${Math.round(x.h/maxH*100)}%;background:${x.a.hex}">${fmtH(x.h)}</div></div><div class="val">${fmtH(x.h)} שעות</div></div>`).join('')}
+  </div>`;
+  return html;
+}
+
+/* ==================== דיווחים (מנהל) ==================== */
+let recFilter={ym:curYM(),amutaId:'',userId:'',type:''};
+function renderRecs(){
+  const f=recFilter;
+  let recs=state.records.filter(r=>(!f.ym||r.date.startsWith(f.ym))&&(!f.amutaId||r.amutaId===f.amutaId)&&(!f.userId||r.userId===f.userId)&&(!f.type||r.type===f.type))
+    .sort((a,b)=>b.date.localeCompare(a.date)||String(b.tin).localeCompare(String(a.tin)));
+  const totH=recs.filter(r=>r.type==='work').reduce((s,r)=>s+hoursOf(r),0);
+  return `<div class="card no-print" style="margin-bottom:14px"><div class="flex">
+      <div><label>חודש</label><input type="month" value="${f.ym}" onchange="recFilter.ym=this.value;render()"></div>
+      <div><label>עמותה</label><select onchange="recFilter.amutaId=this.value;render()"><option value="">הכל</option>${AMUTOT.map(a=>`<option value="${a.id}" ${f.amutaId===a.id?'selected':''}>${esc(a.short)}</option>`).join('')}</select></div>
+      <div><label>עובד</label><select onchange="recFilter.userId=this.value;render()"><option value="">הכל</option>${state.users.map(u=>`<option value="${u.id}" ${f.userId===u.id?'selected':''}>${esc(u.name)}</option>`).join('')}</select></div>
+      <div><label>סוג</label><select onchange="recFilter.type=this.value;render()"><option value="">הכל</option>${Object.entries(REC_TYPES).map(([k,v])=>`<option value="${k}" ${f.type===k?'selected':''}>${v}</option>`).join('')}</select></div>
+      <div style="align-self:flex-end"><button class="btn btn-ok" onclick="openRecModal('')">➕ דיווח חדש</button></div>
+      <div style="align-self:flex-end;margin-inline-start:auto"><b>${recs.length}</b> דיווחים · <b>${fmtH(totH)}</b> שעות</div>
+    </div></div>
+    <div class="card">${recsTable(recs,true,true)}</div>`;
+}
+
+/* ==================== עובדים (מנהל) ==================== */
+function renderEmps(){
+  const rows=state.users.map(u=>{
+    const chips=termsOf(u.id).map(tm=>`<span class="tag" style="background:${amuta(tm.amutaId).hex}22;color:${amuta(tm.amutaId).hex}">${esc(amuta(tm.amutaId).short)}${tm.empType==='monthly'?' · חודשי':' · שעתי'}</span>`).join(' ');
+    return `<tr>
+      <td><b>${esc(u.name)}</b></td><td dir="ltr" style="text-align:right">${esc(u.username)}</td>
+      <td>${u.role==='admin'?'<span class="tag" style="background:#fee2e2;color:#991b1b">מנהל</span>':'עובד'}</td>
+      <td>${chips||'<span class="muted">—</span>'}</td>
+      <td>${canEditSelf(u)?'✓':'—'}</td>
+      <td>${u.active==='0'?'<span class="tag" style="background:#f1f5f9;color:#64748b">לא פעיל</span>':'<span class="tag" style="background:#d1fae5;color:#065f46">פעיל</span>'}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="openEmpModal('${u.id}')">✎ עריכה</button></td>
+    </tr>`}).join('');
+  return `<div class="card">
+    <div class="flex spread" style="margin-bottom:12px"><h2>👥 עובדים (${state.users.length})</h2><button class="btn btn-ok" onclick="openEmpModal('')">➕ עובד חדש</button></div>
+    <div class="tbl-wrap"><table><thead><tr><th>שם</th><th>שם משתמש</th><th>תפקיד</th><th>עמותות</th><th>עריכה עצמית</th><th>סטטוס</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+  </div>`;
+}
+function openEmpModal(userId){
+  const u=userId?userById(userId):null;
+  const termBoxes=AMUTOT.map(a=>{
+    const tm=u?termOf(u.id,a.id):null;
+    return `<div class="term-box ${tm?'':'off'}" id="tb-${a.id}">
+      <div class="th"><input type="checkbox" id="tbc-${a.id}" ${tm?'checked':''} onchange="document.getElementById('tb-${a.id}').classList.toggle('off',!this.checked)" style="width:auto">
+        <span style="color:${a.hex}">${a.icon} ${esc(a.short)}</span></div>
+      <div class="term-fields">
+        <div><label>מס' עובד</label><input id="tf-${a.id}-empNum" value="${tm?esc(tm.empNum||''):''}"></div>
+        <div><label>היקף משרה</label><select id="tf-${a.id}-empType"><option value="hourly" ${tm&&tm.empType==='hourly'?'selected':''}>שעתי</option><option value="monthly" ${tm&&tm.empType==='monthly'?'selected':''}>חודשי</option></select></div>
+        <div><label>תעריף לשעה/חודש</label><input type="number" id="tf-${a.id}-rate" value="${tm?esc(tm.rate||''):''}"></div>
+        <div><label>ימי עבודה בשבוע</label><select id="tf-${a.id}-daysPerWeek"><option value="5" ${!tm||tm.daysPerWeek!=='6'?'selected':''}>5</option><option value="6" ${tm&&tm.daysPerWeek==='6'?'selected':''}>6</option></select></div>
+        <div><label>תקן ימים בחודש</label><input type="number" id="tf-${a.id}-quotaDays" value="${tm?esc(tm.quotaDays||''):''}" placeholder="אוטומטי"></div>
+        <div><label>תקן שעות בחודש</label><input type="number" id="tf-${a.id}-quotaHours" value="${tm?esc(tm.quotaHours||''):''}"></div>
+        <div><label>נסיעות (חודשי ₪)</label><input type="number" id="tf-${a.id}-travel" value="${tm?esc(tm.travel||''):''}"></div>
+        <div><label>תחילת עבודה</label><input type="date" id="tf-${a.id}-startDate" value="${tm?esc(tm.startDate||''):''}"></div>
+        <div><label>הפסקת עבודה</label><input type="date" id="tf-${a.id}-endDate" value="${tm?esc(tm.endDate||''):''}"></div>
+        <div class="full" style="grid-column:1/-1"><label>סיבת הפסקת עבודה</label><input id="tf-${a.id}-endReason" value="${tm?esc(tm.endReason||''):''}"></div>
+      </div>
+    </div>`}).join('');
+  openModal(`<h2>${u?'✎ עריכת עובד — '+esc(u.name):'➕ עובד חדש'}</h2>
+    <div class="frm">
+      <div><label>שם מלא</label><input id="emName" value="${u?esc(u.name):''}"></div>
+      <div><label>שם משתמש</label><input id="emUser" value="${u?esc(u.username):''}"></div>
+      <div><label>${u?'איפוס סיסמה (השאר ריק = ללא שינוי)':'סיסמה'}</label><input id="emPass" type="text" placeholder="${u?'ללא שינוי':''}"></div>
+      <div><label>תפקיד</label><select id="emRole"><option value="emp" ${!u||u.role!=='admin'?'selected':''}>עובד</option><option value="admin" ${u&&u.role==='admin'?'selected':''}>מנהל</option></select></div>
+      <div><label>עריכה עצמית של שעות</label><select id="emCanEdit"><option value="0" ${!u||!canEditSelf(u)?'selected':''}>לא — רק שעון</option><option value="1" ${u&&(u.canEdit==='1')?'selected':''}>כן — יכול לערוך ולהוסיף</option></select></div>
+      <div><label>סטטוס</label><select id="emActive"><option value="1" ${!u||u.active!=='0'?'selected':''}>פעיל</option><option value="0" ${u&&u.active==='0'?'selected':''}>לא פעיל</option></select></div>
+    </div>
+    <h3 style="margin-top:16px">שיוך לעמותות + תנאי העסקה</h3>
+    ${termBoxes}
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="saveEmp('${u?u.id:''}')">💾 שמירה</button>
+      <button class="btn btn-ghost" onclick="closeModal()">ביטול</button>
+      ${u&&u.id!==me.id?`<button class="btn btn-bad" style="margin-inline-start:auto" onclick="deleteEmp('${u.id}')">🗑 מחיקה</button>`:''}
+    </div>`);
+}
+function saveEmp(userId){
+  const name=document.getElementById('emName').value.trim(),un=document.getElementById('emUser').value.trim();
+  if(!name||!un){alert('חסר שם / שם משתמש');return}
+  const dupe=state.users.find(x=>String(x.username).toLowerCase()===un.toLowerCase()&&x.id!==userId);
+  if(dupe){alert('שם המשתמש כבר קיים');return}
+  const u=userId?userById(userId):{id:uid(),hash:''};
+  u.name=name;u.username=un;
+  const pw=document.getElementById('emPass').value;
+  if(pw)u.hash=hashPass(pw);
+  if(!u.hash){alert('חובה להגדיר סיסמה לעובד חדש');return}
+  u.role=document.getElementById('emRole').value;
+  u.canEdit=document.getElementById('emCanEdit').value;
+  u.active=document.getElementById('emActive').value;
+  const ops=[{op:'upsert',sheet:'users',data:u}];
+  AMUTOT.forEach(a=>{
+    const on=document.getElementById('tbc-'+a.id).checked;
+    const ex=termOf(u.id,a.id);
+    if(on){
+      const tm=ex||{id:uid(),userId:u.id,amutaId:a.id};
+      ['empNum','empType','rate','daysPerWeek','quotaDays','quotaHours','travel','startDate','endDate','endReason'].forEach(f=>{
+        tm[f]=document.getElementById(`tf-${a.id}-${f}`).value.trim();
+      });
+      ops.push({op:'upsert',sheet:'terms',data:tm});
+    } else if(ex){
+      ops.push({op:'del',sheet:'terms',id:ex.id});
+    }
+  });
+  batchOps(ops);
+  if(me.id===u.id)me=u;
+  closeModal();render();
+}
+function deleteEmp(userId){
+  const u=userById(userId);
+  if(!confirm('למחוק את '+u.name+'? (הדיווחים ההיסטוריים יישארו). עדיף בדרך כלל לסמן "לא פעיל".'))return;
+  const ops=[{op:'del',sheet:'users',id:userId}];
+  termsOf(userId).forEach(tm=>ops.push({op:'del',sheet:'terms',id:tm.id}));
+  batchOps(ops);closeModal();render();
+}
+
+/* ==================== דוח חודשי (פורמט רו"ח) ==================== */
+let repYM=curYM(), repAmuta='ezrat';
+const REP_HEADERS=['שם','היקף המשרה חודשי / שעתי','תעריף לשעה/חודש','ימי עבודה בשבוע 5/6','מס עובד','ימי עבודה בפועל','מתוך ימי עבודה בחודש (לעובד חודשי)','שעות עבודה בפועל','מתוך שעות עבודה בחודש (לעובד חודשי)','שעות בשיעור 100%','שעות בשיעור 125%','שעות בשיעור 150%','נסיעות','ימי חופשה','ימי מחלה','ימי חג','העדרויות-ימים','העדרויות-שעות','תאריך הפסקת עבודה','סיבת הפסקת עבודה','הערות/ שעות בתעריף מיוחד'];
+function repRowsFor(amutaId,ym){
+  const terms=state.terms.filter(tm=>tm.amutaId===amutaId).filter(tm=>{
+    const u=userById(tm.userId);if(!u)return false;
+    if(u.active!=='0')return true;
+    return recsOf(tm.userId,amutaId,ym).length>0; // לא פעיל אבל עבד בחודש הזה
+  }).sort((a,b)=>((+a.empNum||999)-(+b.empNum||999)));
+  return terms.map(tm=>{
+    const u=userById(tm.userId), c=calcMonth(tm.userId,amutaId,ym);
+    const quotaD=tm.quotaDays||workdaysInMonth(ym,tm.daysPerWeek||'5');
+    const quotaH=tm.quotaHours||'';
+    const endInMonth=tm.endDate&&tm.endDate.startsWith(ym);
+    return {
+      name:u.name, empType:tm.empType==='monthly'?'חודשי':'שעתי', rate:tm.rate||'', dpw:tm.daysPerWeek||'5', empNum:tm.empNum||'',
+      days:c.days, quotaD:tm.empType==='monthly'?quotaD:'', hours:fmtH(c.hours), quotaH:tm.empType==='monthly'?quotaH:'',
+      h100:fmtH(c.h100), h125:c.h125?fmtH(c.h125):'', h150:c.h150?fmtH(c.h150):'',
+      travel:tm.travel||'', vac:c.vacation||'', sick:c.sick||'', hol:c.holiday||'',
+      absD:c.absDays||'', absH:c.absHours?fmtH(c.absHours):'',
+      endDate:endInMonth?fmtDMY(tm.endDate):'', endReason:endInMonth?(tm.endReason||''):'',
+      notes:extrasStr(tm.userId,amutaId,ym)
+    };
+  });
+}
+function repRowArr(r){return [r.name,r.empType,r.rate,r.dpw,r.empNum,r.days,r.quotaD,r.hours,r.quotaH,r.h100,r.h125,r.h150,r.travel,r.vac,r.sick,r.hol,r.absD,r.absH,r.endDate,r.endReason,r.notes]}
+function renderReport(){
+  const tabs=AMUTOT.map(a=>`<button class="btn ${repAmuta===a.id?'btn-primary':'btn-ghost'}" onclick="repAmuta='${a.id}';render()" style="${repAmuta===a.id?'background:'+a.hex:''}">${a.icon} ${esc(a.short)}</button>`).join('')
+    +`<button class="btn ${repAmuta==='all'?'btn-primary':'btn-ghost'}" onclick="repAmuta='all';render()">📊 מרוכז</button>`;
+  let html=`<div class="card no-print" style="margin-bottom:14px"><div class="flex">
+    <div><label>חודש</label><input type="month" value="${repYM}" onchange="repYM=this.value;render()"></div>
+    <div class="flex" style="align-self:flex-end">${tabs}</div>
+    <div class="flex" style="align-self:flex-end;margin-inline-start:auto">
+      <button class="btn btn-ok" onclick="exportReport()">⬇️ ייצוא אקסל</button>
+      <button class="btn btn-ghost" onclick="window.print()">🖨 הדפסה</button>
+    </div>
+  </div></div>`;
+  const list=repAmuta==='all'?AMUTOT.map(a=>a.id):[repAmuta];
+  list.forEach(aid=>{
+    const a=amuta(aid), rows=repRowsFor(aid,repYM);
+    html+=`<div class="card rep" style="margin-bottom:16px">
+      <h3 style="color:${a.hex};margin-bottom:10px">${a.icon} ${esc(a.short)} — טבלת נתוני שכר ${ymLabel(repYM)} <span class="muted" style="font-size:12px;font-weight:400">(${esc(a.full)})</span></h3>
+      <div class="tbl-wrap"><table>
+        <thead>
+          <tr><th></th><th colspan="3" class="grp">נתונים קבועים</th><th colspan="8" class="grp">נתוני שעות וימים</th><th colspan="9" class="grp">רכיבי שכר</th></tr>
+          <tr>${REP_HEADERS.map(h=>`<th>${h}</th>`).join('')}</tr>
+        </thead>
+        <tbody>
+          ${rows.length?rows.map(r=>`<tr>${repRowArr(r).map((v,i)=>`<td class="${i>=2?'num':''}">${esc(v)}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="21" class="muted">אין עובדים / דיווחים בחודש זה</td></tr>`}
+          ${rows.length?`<tr class="total"><td>סה"כ</td><td></td><td></td><td></td><td></td>
+            <td class="num">${rows.reduce((s,r)=>s+(+r.days||0),0)}</td><td></td>
+            <td class="num">${fmtH(rows.reduce((s,r)=>s+(parseFloat(r.hours)||0),0))}</td><td></td>
+            <td class="num">${fmtH(rows.reduce((s,r)=>s+(parseFloat(r.h100)||0),0))}</td>
+            <td class="num">${fmtH(rows.reduce((s,r)=>s+(parseFloat(r.h125)||0),0))}</td>
+            <td class="num">${fmtH(rows.reduce((s,r)=>s+(parseFloat(r.h150)||0),0))}</td>
+            <td></td><td class="num">${rows.reduce((s,r)=>s+(+r.vac||0),0)||''}</td><td class="num">${rows.reduce((s,r)=>s+(+r.sick||0),0)||''}</td><td class="num">${rows.reduce((s,r)=>s+(+r.hol||0),0)||''}</td><td></td><td></td><td></td><td></td><td></td></tr>`:''}
+        </tbody>
+      </table></div>
+    </div>`;
+  });
+  return html;
+}
+function exportReport(){
+  const list=repAmuta==='all'?AMUTOT.map(a=>a.id):[repAmuta];
+  const[gy,gm]=repYM.split('-');
+  const mmyy=gm+'-'+gy.slice(2);
+  if(typeof XLSX!=='undefined'){
+    const wb=XLSX.utils.book_new();
+    wb.Workbook={Views:[{RTL:true}]};
+    list.forEach(aid=>{
+      const a=amuta(aid), rows=repRowsFor(aid,repYM);
+      const aoa=[];
+      aoa.push(['',a.short+'- טבלת נתוני שכר']);
+      const grp=new Array(21).fill('');grp[1]='נתונים קבועים';grp[4]='נתוני שעות וימים';grp[12]='רכיבי שכר';
+      aoa.push(grp);
+      aoa.push(REP_HEADERS);
+      rows.forEach(r=>aoa.push(repRowArr(r).map(v=>{const n=parseFloat(v);return v!==''&&!isNaN(n)&&/^[\d.]+$/.test(String(v))?n:v})));
+      const ws=XLSX.utils.aoa_to_sheet(aoa);
+      ws['!merges']=[
+        {s:{r:0,c:1},e:{r:0,c:8}},
+        {s:{r:1,c:1},e:{r:1,c:3}},
+        {s:{r:1,c:4},e:{r:1,c:11}},
+        {s:{r:1,c:12},e:{r:1,c:20}}
+      ];
+      ws['!cols']=[{wch:20},{wch:12},{wch:11},{wch:9},{wch:8},{wch:10},{wch:12},{wch:10},{wch:12},{wch:9},{wch:9},{wch:9},{wch:9},{wch:8},{wch:8},{wch:8},{wch:10},{wch:10},{wch:12},{wch:14},{wch:24}];
+      XLSX.utils.book_append_sheet(wb,ws,a.short.replace(/["\\\/\[\]\*\?:]/g,'').slice(0,30));
+    });
+    XLSX.writeFile(wb,(list.length>1?'דוח נוכחות מרוכז':amuta(list[0]).short)+' '+mmyy+'.xlsx');
+  } else {
+    // fallback ללא ספרייה — קובץ xls בפורמט HTML
+    let html='<html dir="rtl" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body>';
+    list.forEach(aid=>{
+      const a=amuta(aid), rows=repRowsFor(aid,repYM);
+      html+=`<table border="1"><tr><td></td><td colspan="8" style="font-weight:bold">${esc(a.short)}- טבלת נתוני שכר</td></tr>
+        <tr><td></td><td colspan="3" style="background:#e0e7ff">נתונים קבועים</td><td colspan="8" style="background:#e0e7ff">נתוני שעות וימים</td><td colspan="9" style="background:#e0e7ff">רכיבי שכר</td></tr>
+        <tr>${REP_HEADERS.map(h=>`<td style="font-weight:bold;background:#f1f5f9">${h}</td>`).join('')}</tr>
+        ${rows.map(r=>`<tr>${repRowArr(r).map(v=>`<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</table><br>`;
+    });
+    html+='</body></html>';
+    const blob=new Blob(['﻿'+html],{type:'application/vnd.ms-excel'});
+    const aEl=document.createElement('a');aEl.href=URL.createObjectURL(blob);
+    aEl.download=(list.length>1?'דוח נוכחות מרוכז':amuta(list[0]).short)+' '+mmyy+'.xls';aEl.click();
+  }
+}
+
+/* ==================== הגדרות (מנהל) ==================== */
+function renderSettings(){
+  const s=state.settings;
+  const hebNow=hebrewFromRd(rdFromGregorian(...todayStr().split('-').map(Number))).y;
+  const hols=[...state.holidays].sort((a,b)=>a.date.localeCompare(b.date));
+  const extras=[...state.extras].sort((a,b)=>b.month.localeCompare(a.month));
+  return `
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">
+
+    <div class="card">
+      <h3>🔗 חיבור לשרת (Google Sheets)</h3>
+      <p class="muted" style="font-size:13px;margin:8px 0">הנתונים נשמרים בגיליון Google דרך Apps Script. כל המכשירים מסתנכרנים אוטומטית.</p>
+      <label>כתובת /exec</label>
+      <input id="setGsUrl" dir="ltr" value="${esc(GS_URL)}" placeholder="https://script.google.com/macros/s/.../exec">
+      <div class="flex" style="margin-top:10px">
+        <button class="btn btn-primary btn-sm" onclick="saveGsUrl()">שמור והתחבר</button>
+        <span class="muted" style="font-size:12px">${GS_URL?(serverLoaded?'✓ מחובר ומסונכרן':'ממתין לחיבור...'):'⚠ עובד מקומית בלבד'}</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>⏱ שעות נוספות (פיצול 100/125/150)</h3>
+      <div class="flex" style="margin-top:10px">
+        <div><label>פיצול אוטומטי</label><select id="setOt"><option value="0" ${s.otEnabled!=='1'?'selected':''}>כבוי — הכל ב-100%</option><option value="1" ${s.otEnabled==='1'?'selected':''}>פעיל</option></select></div>
+        <div><label>שעות בסיס ליום (100%)</label><input type="number" step="0.1" id="setOtBase" value="${esc(s.otBase||'8.6')}"></div>
+        <div><label>שעות ב-125%</label><input type="number" step="0.1" id="setOt125" value="${esc(s.ot125||'2')}"></div>
+      </div>
+      <button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="saveOt()">שמור</button>
+    </div>
+
+    <div class="card" style="grid-column:1/-1">
+      <h3>🎉 חגים וימי שבתון</h3>
+      <p class="muted" style="font-size:13px;margin:8px 0">תאריכים המסומנים כחג מסומנים בטבלאות ומנוכים מתקן ימי העבודה. אפשר לטעון אוטומטית את מועדי ישראל לפי הלוח העברי.</p>
+      <div class="flex">
+        <div><label>שנה עברית</label><select id="holYear">${[hebNow-1,hebNow,hebNow+1].map(y=>`<option value="${y}" ${y===hebNow?'selected':''}>${hebYearStr(y)}</option>`).join('')}</select></div>
+        <div><label>כולל חול המועד</label><select id="holChm"><option value="1">כן</option><option value="0">לא</option></select></div>
+        <div style="align-self:flex-end"><button class="btn btn-blue btn-sm" onclick="loadJewishHolidays()">📥 טען מועדי ישראל</button></div>
+        <div style="border-right:1px solid var(--line);padding-right:14px" class="flex">
+          <div><label>תאריך</label><input type="date" id="holDate"></div>
+          <div><label>שם</label><input id="holName" placeholder="ערב חג / פורים..."></div>
+          <div style="align-self:flex-end"><button class="btn btn-ok btn-sm" onclick="addHoliday()">➕ הוסף ידני</button></div>
+        </div>
+      </div>
+      <div class="flex" style="margin-top:12px;gap:6px">
+        ${hols.map(h=>`<span class="tag" style="background:#fef9c3;color:#854d0e;font-size:12px">${fmtDMY(h.date)} ${esc(h.name||'')} <a href="#" onclick="delItem('holidays','${h.id}');render();return false" style="color:#b45309">✕</a></span>`).join('')||'<span class="muted">אין חגים מוגדרים</span>'}
+      </div>
+      <hr class="sep">
+      <h3 style="font-size:14px">סימון "יום חג" לכל העובדים</h3>
+      <p class="muted" style="font-size:12.5px;margin:6px 0">יוצר רשומת "חג" לכל העובדים הפעילים בעמותה בתאריך שנבחר (לעמודת "ימי חג" בדוח).</p>
+      <div class="flex">
+        <div><label>תאריך</label><input type="date" id="hdDate"></div>
+        <div><label>עמותה</label><select id="hdAmuta"><option value="all">כל העמותות</option>${AMUTOT.map(a=>`<option value="${a.id}">${esc(a.short)}</option>`).join('')}</select></div>
+        <div style="align-self:flex-end"><button class="btn btn-warn btn-sm" onclick="markHolidayDay()">🎉 סמן יום חג לעובדים</button></div>
+      </div>
+    </div>
+
+    <div class="card" style="grid-column:1/-1">
+      <h3>💰 תוספות שכר (הבראה, בונוס, ימי חג בתשלום...)</h3>
+      <p class="muted" style="font-size:13px;margin:8px 0">התוספות מופיעות בעמודת ההערות בדוח החודשי לרו"ח.</p>
+      <div class="flex">
+        <div><label>עובד</label><select id="exUser">${activeUsers().map(u=>`<option value="${u.id}">${esc(u.name)}</option>`).join('')}</select></div>
+        <div><label>עמותה</label><select id="exAmuta">${AMUTOT.map(a=>`<option value="${a.id}">${esc(a.short)}</option>`).join('')}</select></div>
+        <div><label>חודש</label><input type="month" id="exMonth" value="${curYM()}"></div>
+        <div><label>סוג</label><input id="exLabel" placeholder="הבראה / בונוס..." list="exTypes"><datalist id="exTypes"><option value="הבראה"><option value="בונוס"><option value="ימי חג בתשלום"><option value="שעות בתעריף מיוחד"></datalist></div>
+        <div><label>סכום/כמות</label><input id="exAmount" type="number"></div>
+        <div style="flex:1"><label>הערה</label><input id="exNote"></div>
+        <div style="align-self:flex-end"><button class="btn btn-ok btn-sm" onclick="addExtra()">➕ הוסף</button></div>
+      </div>
+      ${extras.length?`<div class="tbl-wrap" style="margin-top:12px"><table><thead><tr><th>חודש</th><th>עובד</th><th>עמותה</th><th>סוג</th><th>סכום</th><th>הערה</th><th></th></tr></thead><tbody>
+        ${extras.map(x=>`<tr><td>${esc(x.month)}</td><td>${esc((userById(x.userId)||{}).name||'?')}</td><td>${esc(amuta(x.amutaId).short)}</td><td>${esc(x.label)}</td><td class="num">${esc(x.amount||'')}</td><td>${esc(x.note||'')}</td>
+        <td><button class="btn btn-ghost btn-sm" onclick="delItem('extras','${x.id}');render()">🗑</button></td></tr>`).join('')}
+      </tbody></table></div>`:''}
+    </div>
+
+    <div class="card">
+      <h3>💾 גיבוי</h3>
+      <div class="flex" style="margin-top:10px">
+        <button class="btn btn-ghost btn-sm" onclick="backupJson()">⬇️ הורד גיבוי JSON</button>
+      </div>
+      <p class="muted" style="font-size:12px;margin-top:8px">הנתונים שמורים בגיליון Google — הגיבוי הוא שכבת ביטחון נוספת.</p>
+    </div>
+  </div>`;
+}
+function saveGsUrl(){
+  const url=document.getElementById('setGsUrl').value.trim();
+  GS_URL=url;
+  if(url)localStorage.setItem(LS_URL,url);else localStorage.removeItem(LS_URL);
+  if(url)serverLoad(false).then(ok=>{if(ok){startPolling();render();alert('מחובר ✓')}});
+  else{setSync('','מקומי (ללא שרת)');render()}
+}
+function saveOt(){
+  setSetting('otEnabled',document.getElementById('setOt').value);
+  setSetting('otBase',document.getElementById('setOtBase').value||'8.6');
+  setSetting('ot125',document.getElementById('setOt125').value||'2');
+  alert('נשמר ✓');
+}
+function addHoliday(){
+  const d=document.getElementById('holDate').value,n=document.getElementById('holName').value.trim();
+  if(!d){alert('בחר תאריך');return}
+  if(holidayOf(d)){alert('התאריך כבר מסומן כחג');return}
+  upsert('holidays',{id:uid(),date:d,name:n||'חג'});render();
+}
+function loadJewishHolidays(){
+  const y=+document.getElementById('holYear').value;
+  const chm=document.getElementById('holChm').value==='1';
+  const items=[
+    [7,1,'א׳ ראש השנה'],[7,2,'ב׳ ראש השנה'],[7,10,'יום כיפור'],[7,15,'א׳ סוכות'],[7,22,'שמיני עצרת/שמח"ת'],
+    [1,15,'א׳ פסח'],[1,21,'שביעי של פסח'],[3,6,'שבועות']
+  ];
+  if(chm){
+    for(let d=16;d<=21;d++)items.push([7,d,d===21?'הושענא רבה':'חוה"מ סוכות']);
+    for(let d=16;d<=20;d++)items.push([1,d,'חוה"מ פסח']);
+  }
+  const ops=[];
+  items.forEach(([m,d,name])=>{
+    const g=gregorianFromRd(rdFromHebrew(y,m,d));
+    const ds=g.y+'-'+String(g.m).padStart(2,'0')+'-'+String(g.d).padStart(2,'0');
+    if(!holidayOf(ds))ops.push({op:'upsert',sheet:'holidays',data:{id:uid(),date:ds,name}});
+  });
+  if(!ops.length){alert('כל המועדים כבר קיימים');return}
+  batchOps(ops);render();
+  alert('נוספו '+ops.length+' מועדים לשנת '+hebYearStr(y)+' ✓');
+}
+function markHolidayDay(){
+  const d=document.getElementById('hdDate').value, aid=document.getElementById('hdAmuta').value;
+  if(!d){alert('בחר תאריך');return}
+  const list=aid==='all'?AMUTOT.map(a=>a.id):[aid];
+  const ops=[];
+  list.forEach(amutaId=>{
+    state.terms.filter(tm=>tm.amutaId===amutaId).forEach(tm=>{
+      const u=userById(tm.userId);if(!u||u.active==='0')return;
+      const dup=state.records.find(r=>r.userId===tm.userId&&r.amutaId===amutaId&&r.date===d&&r.type==='holiday');
+      if(!dup)ops.push({op:'upsert',sheet:'records',data:{id:uid(),userId:tm.userId,amutaId,date:d,tin:'',tout:'',type:'holiday',note:holidayOf(d)?holidayOf(d).name:'יום חג',src:'manual',by:me.name,ts:new Date().toISOString()}});
+    });
+  });
+  if(!ops.length){alert('כבר מסומן לכל העובדים');return}
+  batchOps(ops);alert('סומן יום חג ל-'+ops.length+' עובדים ✓');render();
+}
+function addExtra(){
+  const x={id:uid(),userId:document.getElementById('exUser').value,amutaId:document.getElementById('exAmuta').value,
+    month:document.getElementById('exMonth').value,label:document.getElementById('exLabel').value.trim(),
+    amount:document.getElementById('exAmount').value,note:document.getElementById('exNote').value.trim()};
+  if(!x.label){alert('הזן סוג תוספת');return}
+  upsert('extras',x);render();
+}
+function backupJson(){
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='attendance-backup-'+todayStr()+'.json';a.click();
+}
+
+/* ==================== modal infra ==================== */
+function openModal(html){document.getElementById('modalBox').innerHTML=html;document.getElementById('modalBack').classList.add('show');modalOpen=true}
+function closeModal(){document.getElementById('modalBack').classList.remove('show');modalOpen=false}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&modalOpen)closeModal()});
+
+/* ==================== boot ==================== */
+(function boot(){
+  const proceed=()=>{
+    const s=session();
+    const u=s&&userById(s.uid);
+    if(u&&u.active!=='0')enterApp(u);else renderLogin();
+  };
+  proceed(); // כניסה מיידית מהמטמון המקומי
+  if(GS_URL)serverLoad(true).then(ok=>{
+    if(!ok)return;
+    const s=session();
+    const u=s&&userById(s.uid);
+    if(me){
+      if(!u||u.active==='0'){logout();return}
+      me=u;
+      if(!modalOpen)render();
+    } else proceed();
+  });
+})();
+</script>
+</body>
+</html>
