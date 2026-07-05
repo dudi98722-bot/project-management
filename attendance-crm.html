@@ -387,20 +387,18 @@ function monthGridHTML(userId,amutaId,ym,editable){
   </tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
-/* שכר בפועל: שעתי = תעריף×שעות; חודשי = ברוטו יחסי לפי שעות מול התקן */
+/* שכר: שעתי = תעריף×שעות. חודשי = ברוטו קבוע (לא יורד כשעובד פחות) —
+   אבל מחשבים "כמה יוצא לשעה" = ברוטו ÷ שעות שדווחו באותו חודש */
 function payOf(tm,c,ym){
   const rate=parseFloat(tm.rate)||0;
   if(!rate)return null;
   if(tm.empType==='monthly'){
-    const qh=parseFloat(tm.quotaHours)||0;
-    if(qh)return {pay:rate*c.hours/qh, basis:'שעות מול תקן '+fmtH(qh)};
-    const qd=parseFloat(tm.quotaDays)||workdaysInMonth(ym,tm.daysPerWeek||'5');
-    if(qd)return {pay:rate*c.days/qd, basis:'ימים מול תקן '+qd};
-    return null;
+    return {pay:rate, perHour:c.hours?rate/c.hours:null};
   }
-  return {pay:rate*c.hours, basis:'תעריף שעתי'};
+  return {pay:rate*c.hours, perHour:rate};
 }
 function fmtShekel(p){return '₪'+Math.round(p).toLocaleString('he-IL')}
+function fmtShekelDec(p){return '₪'+(Math.round(p*10)/10).toLocaleString('he-IL')}
 
 /* ==================== auth ==================== */
 function hashPass(p){return sha256('att|'+p)}
@@ -845,7 +843,7 @@ function renderEmpCard(){
     html+=`<div class="stat" style="background:${a.hex}">
       <div class="l">${a.icon} ${esc(a.short)} · ${ymLabel(ecYM)}</div>
       <div class="n">${fmtH(c.hours)} ש' · ${c.days} ימים</div>
-      <div class="l">${tm.empType==='monthly'?'ברוטו חודשי':'שעתי'}${p?' · שכר בפועל: '+fmtShekel(p.pay):''}</div>
+      <div class="l">${tm.empType==='monthly'?'ברוטו חודשי':'שעתי'}${p?' · שכר: '+fmtShekel(p.pay):''}${p&&p.perHour?' · יוצא '+fmtShekelDec(p.perHour)+' לשעה':''}</div>
     </div>`;
   });
   html+=`</div>`;
@@ -995,18 +993,19 @@ function cleanTableFor(aid,ym){
       <td class="num">${qh?fmtH(qh)+' ש׳':(qd?qd+' ימים':'—')}</td>
       <td style="min-width:120px">${pct!==null?`<div style="display:flex;gap:6px;align-items:center"><span class="num" style="width:40px;font-weight:700">${pct}%</span><div class="prog" style="flex:1;margin-top:0"><div style="width:${Math.min(100,pct)}%;background:${pct>=100?'var(--ok)':a.hex}"></div></div></div>`:'—'}</td>
       <td class="num">${c.sick||''}</td><td class="num">${c.vacation||''}</td><td class="num">${c.holiday||''}</td>
-      <td class="num"><b>${p?fmtShekel(p.pay):'—'}</b>${p&&tm.empType==='monthly'?`<div class="muted" style="font-size:10.5px">${esc(p.basis)}</div>`:''}</td>
+      <td class="num"><b>${p?fmtShekel(p.pay):'—'}</b></td>
+      <td class="num">${p&&p.perHour?'<b>'+fmtShekelDec(p.perHour)+'</b>':'—'}</td>
     </tr>`;
   }).join('');
   return `<div class="card" style="margin-bottom:16px">
     <h3 style="color:${a.hex};margin-bottom:10px">${a.icon} ${esc(a.short)} — ${ymLabel(ym)}</h3>
     <div class="tbl-wrap"><table><thead><tr>
-      <th>עובד</th><th>מס'</th><th>היקף</th><th>תעריף</th><th>ימי עבודה</th><th>שעות</th><th>תקן</th><th>% מהתקן</th><th>מחלה</th><th>חופשה</th><th>חג</th><th>שכר בפועל</th>
+      <th>עובד</th><th>מס'</th><th>היקף</th><th>תעריף</th><th>ימי עבודה</th><th>שעות</th><th>תקן</th><th>% מהתקן</th><th>מחלה</th><th>חופשה</th><th>חג</th><th>שכר</th><th>₪ לשעה בפועל</th>
     </tr></thead><tbody>
-      ${rows||'<tr><td colspan="12" class="muted">אין עובדים / דיווחים בחודש זה</td></tr>'}
-      ${rows?`<tr class="total"><td>סה"כ</td><td></td><td></td><td></td><td class="num">${totD}</td><td class="num">${fmtH(totH)}</td><td></td><td></td><td></td><td></td><td></td><td class="num">${anyPay?fmtShekel(totPay):''}</td></tr>`:''}
+      ${rows||'<tr><td colspan="13" class="muted">אין עובדים / דיווחים בחודש זה</td></tr>'}
+      ${rows?`<tr class="total"><td>סה"כ</td><td></td><td></td><td></td><td class="num">${totD}</td><td class="num">${fmtH(totH)}</td><td></td><td></td><td></td><td></td><td></td><td class="num">${anyPay?fmtShekel(totPay):''}</td><td class="num">${anyPay&&totH?fmtShekelDec(totPay/totH):''}</td></tr>`:''}
     </tbody></table></div>
-    <p class="muted" style="font-size:12px;margin-top:8px">💡 "שכר בפועל": עובד שעתי = תעריף × שעות · עובד ברוטו חודשי = המשכורת באופן יחסי לשעות/ימים שעבד מול התקן (לא כולל מחלה/חופשה/חג).</p>
+    <p class="muted" style="font-size:12px;margin-top:8px">💡 "שכר": שעתי = תעריף × שעות · ברוטו חודשי = המשכורת הקבועה (לא משתנה). "₪ לשעה בפועל": לעובד חודשי — הברוטו חלקי השעות שדווחו החודש; לעובד שעתי — התעריף שלו.</p>
   </div>`;
 }
 const REP_HEADERS=['שם','היקף המשרה חודשי / שעתי','תעריף לשעה/חודש','ימי עבודה בשבוע 5/6','מס עובד','ימי עבודה בפועל','מתוך ימי עבודה בחודש (לעובד חודשי)','שעות עבודה בפועל','מתוך שעות עבודה בחודש (לעובד חודשי)','שעות בשיעור 100%','שעות בשיעור 125%','שעות בשיעור 150%','נסיעות','ימי חופשה','ימי מחלה','ימי חג','העדרויות-ימים','העדרויות-שעות','תאריך הפסקת עבודה','סיבת הפסקת עבודה','הערות/ שעות בתעריף מיוחד'];
