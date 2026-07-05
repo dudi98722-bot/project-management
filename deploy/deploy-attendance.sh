@@ -11,7 +11,7 @@ DOMAIN="${DOMAIN:-nochehut-vizhnitz.dudi-ananalytics.com}"
 EMAIL="${EMAIL:-dudi98722@gmail.com}"
 WEBROOT="/var/www/nochehut"
 RAW_URL="https://raw.githubusercontent.com/dudi98722-bot/project-management/main/attendance-crm.html"
-XLSX_URL="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"
+XLSX_URL="https://raw.githubusercontent.com/dudi98722-bot/project-management/main/xlsx.full.min.js"
 
 echo "🚀 מתקין את מערכת הנוכחות עבור $DOMAIN"
 echo "============================================"
