@@ -1632,10 +1632,13 @@ function renderSourceTiles(){
       +(hasTpl ? '<span class="tag home">✓ מבנה שמור</span>' : '<span class="tag pending">מבנה יילמד בייבוא הראשון</span>')
       +'</div>';
   }).join('')
-  +'<div class="tile" onclick="gotoTab(\'manual\')">'
-  +'<div class="ticon">📝</div><b>דיווח בטופס</b>'
-  +'<span class="muted">הזנה ידנית של הכנסה/הוצאה</span>'
-  +'<span class="tag acc">מעבר לטופס ←</span></div>';
+  +(function(){
+    const n = db.tx.filter(t=>t.account==='דיווח בטופס' && !t.deleted).length;
+    return '<div class="tile'+(importSource==='דיווח בטופס'?' on':'')+'" onclick="pickSource(\'דיווח בטופס\')">'
+      +'<div class="ticon">📝</div><b>דיווח בטופס</b>'
+      +'<span class="muted">'+(n?n.toLocaleString('he-IL')+' תנועות':'דיווחים ידניים')+'</span>'
+      +'<span class="tag acc" onclick="event.stopPropagation();gotoTab(\'manual\')">פתח טופס ידני ←</span></div>';
+  })();
 }
 
 const dz = document.getElementById('dropZone');
@@ -1817,7 +1820,8 @@ function renderImportBlocks(){
   const wrap = document.getElementById('importBlocks');
   document.getElementById('importActions').style.display = importBlocks.length ? 'block' : 'none';
   wrap.innerHTML = importBlocks.map(b=>{
-    const accOpts = db.accounts.map(a=>'<option'+(a.name===b.account?' selected':'')+'>'+esc(a.name)+'</option>').join('');
+    const accNames = db.accounts.map(a=>a.name).concat(['דיווח בטופס']);
+    const accOpts = accNames.map(n=>'<option'+(n===b.account?' selected':'')+'>'+esc(n)+'</option>').join('');
     const sample = b.rows.slice(0,4);
     return '<div class="block-card">'
       +'<div class="block-head">'

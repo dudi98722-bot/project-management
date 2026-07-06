@@ -295,7 +295,7 @@ function xInitSource(){
   var keep = el('xSource').value;
   el('xSource').innerHTML = accountsList().map(function(a){
     return '<option>'+esc(a.name)+'</option>';
-  }).join('');
+  }).join('') + '<option>דיווח בטופס</option>';
   if(keep) el('xSource').value = keep;
 }
 
@@ -477,8 +477,10 @@ function xRenderBlocks(){
   var wrap = el('xBlocks');
   el('xSendBtn').style.display = xBlocks.length ? 'block' : 'none';
   wrap.innerHTML = xBlocks.map(function(b){
-    var accOpts = accountsList().map(function(a){
-      return '<option'+(a.name===b.account?' selected':'')+'>'+esc(a.name)+'</option>';
+    var accNames = accountsList().map(function(a){ return a.name; });
+    accNames.push('דיווח בטופס');
+    var accOpts = accNames.map(function(n){
+      return '<option'+(n===b.account?' selected':'')+'>'+esc(n)+'</option>';
     }).join('');
     var sample = b.rows.slice(0,3);
     return '<div class="xblock">'
