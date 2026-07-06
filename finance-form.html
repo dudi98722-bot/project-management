@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>דיווח הכנסה / הוצאה</title>
+<script src="xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif}
+body{background:linear-gradient(160deg,#312e81,#4f46e5 55%,#6366f1);min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:24px 14px}
+.card{background:#fff;border-radius:18px;padding:26px 22px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+h1{font-size:20px;color:#1e1b4b;display:flex;align-items:center;gap:8px}
+.sub{color:#64748b;font-size:13px;margin:6px 0 18px}
+label{display:block;font-size:12.5px;color:#64748b;font-weight:600;margin:14px 0 5px}
+input,select,textarea{width:100%;border:1.5px solid #cbd5e1;border-radius:10px;padding:11px 12px;font-size:15px;font-family:inherit;background:#fff}
+input:focus,select:focus,textarea:focus{outline:2px solid #a5b4fc;border-color:#4f46e5}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.seg{display:grid;grid-template-columns:1fr 1fr;border:1.5px solid #cbd5e1;border-radius:10px;overflow:hidden}
+.seg button{border:none;background:#fff;padding:12px;font-size:15px;cursor:pointer;color:#64748b;font-weight:600}
+.seg button.on.biz{background:#dbeafe;color:#2563eb}
+.seg button.on.home{background:#dcfce7;color:#16a34a}
+.seg button.on.exp{background:#fee2e2;color:#dc2626}
+.seg button.on.inc{background:#dcfce7;color:#16a34a}
+.btn{width:100%;border:none;border-radius:12px;padding:14px;font-size:16.5px;font-weight:700;cursor:pointer;background:#4f46e5;color:#fff;margin-top:22px}
+.btn:disabled{opacity:.6;cursor:wait}
+.invoice-row{display:flex;align-items:center;gap:8px;margin-top:14px;background:#eef2ff;border-radius:10px;padding:11px 12px;font-size:13.5px;color:#3730a3}
+.invoice-row input{width:auto}
+.ok-view{text-align:center;padding:30px 8px}
+.ok-view .big{font-size:56px}
+.ok-view h2{color:#16a34a;margin:12px 0 6px}
+.ok-view p{color:#64748b;font-size:14px;margin-bottom:22px}
+.err{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:10px;padding:11px;font-size:13.5px;margin-top:14px;display:none}
+.loading{text-align:center;color:#64748b;padding:40px 0}
+#projWrap,#invWrap{display:none}
+.foot{text-align:center;color:#c7d2fe;font-size:11.5px;margin-top:14px}
+.card.wide{max-width:860px}
+.mode-seg{display:grid;grid-template-columns:1fr 1fr;border:1.5px solid #cbd5e1;border-radius:12px;overflow:hidden;margin-bottom:18px}
+.mode-seg button{border:none;background:#fff;padding:12px;font-size:14.5px;cursor:pointer;color:#64748b;font-weight:600}
+.mode-seg button.on{background:#4f46e5;color:#fff}
+.xdrop{border:2px dashed #a5b4fc;border-radius:12px;padding:22px;text-align:center;color:#64748b;background:#fafaff;cursor:pointer;margin-top:6px}
+.xdrop:hover{background:#eef2ff}
+.xblock{border:1px solid #e2e8f0;border-radius:12px;margin-top:14px;overflow:hidden}
+.xblock-head{background:#f8fafc;padding:9px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-bottom:1px solid #e2e8f0;font-size:13px}
+.xblock-head select{width:auto;padding:6px 8px;font-size:13px}
+.xblock-body{overflow-x:auto;max-height:220px}
+.xblock table{border-collapse:collapse;font-size:11.5px;min-width:560px}
+.xblock th{background:#f8fafc;padding:5px 7px;border-bottom:1px solid #e2e8f0;text-align:right}
+.xblock th select{width:auto;max-width:135px;padding:4px;font-size:11px}
+.xblock td{padding:5px 7px;border-bottom:1px solid #f1f5f9;white-space:nowrap;max-width:150px;overflow:hidden;text-overflow:ellipsis}
+.xtag{display:inline-block;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600}
+.xtag.ok{background:#dcfce7;color:#16a34a}
+.xtag.new{background:#fef3c7;color:#b45309}
+</style>
+</head>
+<body>
+<div>
+<div class="card" id="card">
+  <div class="loading" id="loading">⏳ טוען את הטופס...</div>
+
+  <div class="mode-seg" id="modeSeg" style="display:none">
+    <button type="button" class="on" id="modeSingle" onclick="setMode('single')">📝 דיווח יחיד</button>
+    <button type="button" id="modeExcel" onclick="setMode('excel')">📁 העלאת אקסל</button>
+  </div>
+
+  <div id="formView" style="display:none">
+    <h1>💰 דיווח הכנסה / הוצאה</h1>
+    <div class="sub">הדיווח נכנס ישירות למערכת ניהול הכספים</div>
+
+    <label>שיוך</label>
+    <div class="seg" id="scopeSeg">
+      <button type="button" class="home on" data-v="home">🏠 בית</button>
+      <button type="button" class="biz" data-v="biz">🏢 עסק</button>
+    </div>
+
+    <label>סוג</label>
+    <div class="seg" id="kindSeg">
+      <button type="button" class="exp on" data-v="expense">🔻 הוצאה</button>
+      <button type="button" class="inc" data-v="income">🔺 הכנסה</button>
+    </div>
+
+    <div class="row2">
+      <div><label>סכום (₪)</label><input type="number" id="fAmount" step="0.01" min="0" inputmode="decimal" placeholder="0.00"></div>
+      <div><label>תאריך</label><input type="date" id="fDate"></div>
+    </div>
+
+    <label>קטגוריה</label>
+    <select id="fCat"></select>
+
+    <div id="projWrap">
+      <label>פרויקט</label>
+      <select id="fProj"></select>
+    </div>
+
+    <div class="invoice-row" id="invWrap">
+      <input type="checkbox" id="fInvoice" style="width:18px;height:18px">
+      <label for="fInvoice" style="margin:0;font-weight:400;color:#3730a3">🧾 התקבלה חשבונית (הסכום כולל מע"מ)</label>
+    </div>
+
+    <label>תיאור</label>
+    <input type="text" id="fDesc" placeholder="למשל: קניית חומרים / תשלום מלקוח...">
+
+    <label>שם המדווח (לא חובה)</label>
+    <input type="text" id="fBy" placeholder="מי מדווח?">
+
+    <div class="err" id="err"></div>
+    <button class="btn" id="sendBtn" onclick="send()">📤 שלח דיווח</button>
+  </div>
+
+  <div id="excelView" style="display:none">
+    <h1>📁 העלאת אקסל למערכת</h1>
+    <div class="sub">בנק / אשראי — הקובץ מנותח כאן ונשלח ישירות למערכת. כפילויות מדולגות אוטומטית.</div>
+
+    <label>מאיפה הנתונים?</label>
+    <select id="xSource"></select>
+
+    <div class="xdrop" id="xDrop">📂 לחצו לבחירת קובץ אקסל / CSV<br><span style="font-size:12px">(או גררו לכאן)</span></div>
+    <input type="file" id="xFile" accept=".xlsx,.xls,.csv" multiple style="display:none">
+
+    <label style="margin-top:16px">או הדביקו נתונים מהאקסל (כולל שורת כותרות)</label>
+    <textarea id="xPaste" rows="4" placeholder="סמנו באקסל, העתיקו (Ctrl+C) והדביקו כאן"></textarea>
+    <button class="btn" style="margin-top:10px;background:#e2e8f0;color:#334155" onclick="xAnalyzePaste()">🔎 נתח הדבקה</button>
+
+    <div id="xBlocks"></div>
+    <div class="err" id="xErr"></div>
+    <button class="btn" id="xSendBtn" style="display:none" onclick="xSend()">📤 שלח למערכת</button>
+
+    <div class="ok-view" id="xResult" style="display:none">
+      <div class="big">✅</div>
+      <h2>הנתונים נקלטו!</h2>
+      <p id="xResultText"></p>
+      <button class="btn" onclick="xReset()">📁 העלאה נוספת</button>
+    </div>
+  </div>
+
+  <div class="ok-view" id="okView" style="display:none">
+    <div class="big">✅</div>
+    <h2>הדיווח נקלט!</h2>
+    <p id="okDetails"></p>
+    <button class="btn" onclick="resetForm()">➕ דיווח נוסף</button>
+  </div>
+
+  <div class="ok-view" id="noServer" style="display:none">
+    <div class="big">🔌</div>
+    <h2 style="color:#b45309">הטופס לא חובר עדיין</h2>
+    <p>כתובת השרת (Apps Script) עדיין לא הוגדרה בקובץ הטופס.</p>
+  </div>
+</div>
+<div class="foot">מערכת ניהול כספים · הנתונים נשמרים בגוגל שיטס</div>
+</div>
+
+<script>
+'use strict';
+/* כתובת ה-Apps Script (exec). מוזרקת בפריסה — אפשר גם ?gs=<url> לבדיקה */
+var GS_URL = 'PASTE_GS_URL_HERE';
+try{
+  var qs = new URLSearchParams(location.search).get('gs');
+  if(qs) GS_URL = qs;
+}catch(e){}
+if(GS_URL.indexOf('http') !== 0) GS_URL = '';
+
+var scope = 'home', kind = 'expense';
+var meta = {categories:null, projects:[]};
+var FALLBACK_CATS = {
+  biz_expense: ['חומרים וספקים','קבלני משנה','מנופים','דלק ורכב','כלים וציוד','שכירות','משכורות','ביטוח לאומי','מיסים ומע"מ','ביטוחים','טלפון ותקשורת','עמלות בנק וריבית','אחר'],
+  biz_income: ['תקבול מפרויקט','החזרי מס','אחר'],
+  home_expense: ['מזון וסופר','דלק ורכב','שכירות/משכנתא','חשמל מים וגז','בריאות','חינוך','ביגוד והנעלה','תרומות ומעשרות','פנאי ומסעדות','תקשורת','עמלות בנק','אחר'],
+  home_income: ['משכורת','קצבאות','אחר']
+};
+
+function el(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+document.querySelectorAll('#scopeSeg button').forEach(function(b){
+  b.onclick = function(){ scope = b.dataset.v; segSel('scopeSeg', b); refresh(); };
+});
+document.querySelectorAll('#kindSeg button').forEach(function(b){
+  b.onclick = function(){ kind = b.dataset.v; segSel('kindSeg', b); refresh(); };
+});
+function segSel(segId, btn){
+  document.querySelectorAll('#'+segId+' button').forEach(function(x){ x.classList.remove('on'); });
+  btn.classList.add('on');
+}
+function refresh(){
+  var cats = (meta.categories && meta.categories[scope+'_'+kind]) || FALLBACK_CATS[scope+'_'+kind] || [];
+  el('fCat').innerHTML = '<option value="">— בחר קטגוריה —</option>' + cats.map(function(c){ return '<option>'+esc(c)+'</option>'; }).join('');
+  el('projWrap').style.display = scope==='biz' ? 'block' : 'none';
+  el('invWrap').style.display = (scope==='biz' && kind==='income') ? 'flex' : 'none';
+}
+
+function boot(){
+  el('fDate').value = new Date().toISOString().slice(0,10);
+  if(!GS_URL){
+    el('loading').style.display = 'none';
+    el('noServer').style.display = 'block';
+    return;
+  }
+  fetch(GS_URL + '?action=formmeta')
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      if(j && j.status === 'ok'){
+        meta.categories = j.categories || null;
+        meta.projects = j.projects || [];
+        meta.accounts = j.accounts || null;
+        meta.templates = j.templates || null;
+      }
+    })
+    .catch(function(){ /* ממשיכים עם ברירות מחדל */ })
+    .finally(function(){
+      el('fProj').innerHTML = '<option value="">— ללא פרויקט —</option>' + meta.projects.map(function(p){ return '<option>'+esc(p)+'</option>'; }).join('');
+      refresh();
+      el('loading').style.display = 'none';
+      el('formView').style.display = 'block';
+      el('modeSeg').style.display = 'grid';
+    });
+}
+
+function send(){
+  var amount = Math.abs(parseFloat(el('fAmount').value));
+  var desc = el('fDesc').value.trim();
+  var errEl = el('err');
+  errEl.style.display = 'none';
+  if(!amount){ errEl.textContent = '⚠️ יש להזין סכום'; errEl.style.display = 'block'; return; }
+  if(!desc){ errEl.textContent = '⚠️ יש להזין תיאור'; errEl.style.display = 'block'; return; }
+  var by = el('fBy').value.trim();
+  var today = new Date();
+  var tx = {
+    id: 'f-' + Date.now() + '-' + Math.floor(Math.random()*100000),
+    date: el('fDate').value || today.toISOString().slice(0,10),
+    desc: desc,
+    details: by ? ('דווח ע"י ' + by) : '',
+    amount: amount,
+    kind: kind,
+    account: 'דיווח בטופס',
+    scope: scope,
+    category: el('fCat').value || '',
+    project: scope==='biz' ? (el('fProj').value || '') : '',
+    invoice: (scope==='biz' && kind==='income' && el('fInvoice').checked) ? '1' : '',
+    ref: '',
+    origin: 'טופס חיצוני · ' + today.toLocaleDateString('he-IL')
+  };
+  var btn = el('sendBtn');
+  btn.disabled = true; btn.textContent = '⏳ שולח...';
+  fetch(GS_URL + '?action=addTx&data=' + encodeURIComponent(JSON.stringify(tx)))
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      if(j && j.status === 'ok'){
+        el('okDetails').textContent = (kind==='income'?'הכנסה':'הוצאה') + ' של ' +
+          amount.toLocaleString('he-IL') + ' ₪ (' + (scope==='biz'?'עסק':'בית') + ') נשמרה בהצלחה';
+        el('formView').style.display = 'none';
+        el('okView').style.display = 'block';
+      } else {
+        throw new Error((j && j.message) || 'server error');
+      }
+    })
+    .catch(function(e){
+      errEl.textContent = '⚠️ השליחה נכשלה — בדקו חיבור לאינטרנט ונסו שוב';
+      errEl.style.display = 'block';
+    })
+    .finally(function(){
+      btn.disabled = false; btn.textContent = '📤 שלח דיווח';
+    });
+}
+
+function resetForm(){
+  el('fAmount').value = '';
+  el('fDesc').value = '';
+  el('fInvoice').checked = false;
+  el('fDate').value = new Date().toISOString().slice(0,10);
+  el('okView').style.display = 'none';
+  el('formView').style.display = 'block';
+}
+
+/* ================= מצב העלאת אקסל ================= */
+var DEFAULT_ACCOUNTS = [
+  {name:'עו"ש עסקי', scope:'biz'}, {name:'דיירקט עסקי', scope:'biz'},
+  {name:'עו"ש פרטי', scope:'home'}, {name:'דיירקט פרטי', scope:'home'},
+  {name:'אשראי פרטי', scope:'home'}
+];
+var mode = 'single';
+function setMode(m){
+  mode = m;
+  el('modeSingle').classList.toggle('on', m==='single');
+  el('modeExcel').classList.toggle('on', m==='excel');
+  el('card').classList.toggle('wide', m==='excel');
+  el('formView').style.display = m==='single' ? 'block' : 'none';
+  el('okView').style.display = 'none';
+  el('excelView').style.display = m==='excel' ? 'block' : 'none';
+  el('xResult').style.display = 'none';
+  if(m==='excel') xInitSource();
+}
+function accountsList(){
+  return (meta.accounts && meta.accounts.length) ? meta.accounts : DEFAULT_ACCOUNTS;
+}
+function xInitSource(){
+  var keep = el('xSource').value;
+  el('xSource').innerHTML = accountsList().map(function(a){
+    return '<option>'+esc(a.name)+'</option>';
+  }).join('');
+  if(keep) el('xSource').value = keep;
+}
+
+/* --- ניתוח קובץ: אותה לוגיקה כמו במערכת המרכזית --- */
+var HDR_MAP = [
+  {f:'chargeDate', re:/חיוב לתאריך|תאריך חיוב/},
+  {f:'date', re:/^תאריך(?!.*ערך)|תאריך עסקה|תאריך רכישה|תאריך קנייה/},
+  {f:'debit', re:/^חובה|סכום חיוב|₪.*חיוב|חיוב בש/},
+  {f:'credit', re:/^זכות/},
+  {f:'amount', re:/^סכום עסקה$|^סכום$/},
+  {f:'desc', re:/שם בית עסק|בית עסק|שם העסק|^הפעולה|תיאור|פירוט|שם ספק/},
+  {f:'details', re:/^פרטים|^עבור|^לטובת|הערות/},
+  {f:'ref', re:/אסמכתא|שובר|מס' פעולה/}
+];
+var FIELD_OPTS = [
+  ['ignore','— התעלם —'], ['date','📅 תאריך'], ['desc','📝 תיאור'], ['details','פרטים (תיאור משני)'],
+  ['debit','🔻 חובה (הוצאה)'], ['credit','🔺 זכות (הכנסה)'],
+  ['amountPosInc','סכום (+הכנסה / −הוצאה)'], ['amountPosExp','סכום (+הוצאה / −הכנסה)'],
+  ['ref','אסמכתא'],
+  ['extra1','📎 פרטים נוספים 1'], ['extra2','📎 פרטים נוספים 2'],
+  ['extra3','📎 פרטים נוספים 3'], ['extra4','📎 פרטים נוספים 4']
+];
+var EXTRA_KEYS = ['extra1','extra2','extra3','extra4'];
+function parseDate(v){
+  if(v==null || v==='') return '';
+  if(v instanceof Date && !isNaN(v)) return v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+String(v.getDate()).padStart(2,'0');
+  if(typeof v === 'number' && v>20000 && v<80000){
+    var d = new Date(Math.round((v-25569)*86400*1000));
+    return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');
+  }
+  var s = String(v).trim();
+  var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return m[1]+'-'+m[2]+'-'+m[3];
+  m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/);
+  if(m){
+    var y = +m[3]; if(y<100) y += 2000;
+    return y+'-'+String(+m[2]).padStart(2,'0')+'-'+String(+m[1]).padStart(2,'0');
+  }
+  return '';
+}
+function parseAmount(v){
+  if(v==null || v==='') return null;
+  if(typeof v==='number') return v;
+  var s = String(v).replace(/[^\d.\-]/g,'');
+  if(!s || s==='-' || s==='.') return null;
+  var n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+function normDesc(s){ return String(s||'').replace(/[־–—]+/g,'-').replace(/\s+/g,' ').trim(); }
+function extraVal(v){ return v==null ? '' : (v instanceof Date ? parseDate(v) : String(v).trim()); }
+function guessAccount(title, cols){
+  var t = title || '';
+  var isDirect = /דיירקט|דירקט/.test(t);
+  var isCC = isDirect || /אשראי|כרטיס|ויזה|מקס|ישראכרט|כאל/.test(t) || cols.some(function(c){ return /בית עסק/.test(c.header); });
+  var isHome = /פרטי|אישי/.test(t);
+  var isBiz = /עסקי|עיסקי/.test(t);
+  if(isBiz) return isCC ? 'דיירקט עסקי' : 'עו"ש עסקי';
+  if(isHome){ if(isDirect) return 'דיירקט פרטי'; return isCC ? 'אשראי פרטי' : 'עו"ש פרטי'; }
+  return el('xSource').value || (isCC ? 'דיירקט עסקי' : 'עו"ש עסקי');
+}
+var xBlocks = [];
+function xUid(){ return 'xb-'+Date.now()+'-'+Math.floor(Math.random()*100000); }
+function findHeaderRow(grid){
+  for(var i=0; i<Math.min(grid.length,12); i++){
+    var hits = 0;
+    for(var c=0; c<grid[i].length; c++){
+      var s = String(grid[i][c]||'').trim();
+      if(s && HDR_MAP.some(function(h){ return h.re.test(s); })) hits++;
+    }
+    if(hits>=2) return i;
+  }
+  return -1;
+}
+function xAnalyzeGrid(grid, sourceName){
+  var hr = findHeaderRow(grid);
+  if(hr<0){ xShowErr('לא זוהו כותרות ב"'+sourceName+'" — ודאו שהעתקתם גם את שורת הכותרות'); return; }
+  var headers = grid[hr].map(function(c){ return String(c||'').trim(); });
+  var blocks = [];
+  var cur = null;
+  headers.forEach(function(h, ci){
+    if(h!==''){ if(!cur){ cur={start:ci, end:ci}; blocks.push(cur); } else cur.end=ci; }
+    else cur = null;
+  });
+  blocks.forEach(function(b){
+    var cols = [], used = {};
+    for(var ci=b.start; ci<=b.end; ci++){
+      var h = headers[ci], f = 'ignore';
+      for(var k=0; k<HDR_MAP.length; k++){
+        if(HDR_MAP[k].re.test(h)){ f = HDR_MAP[k].f; break; }
+      }
+      if(f==='chargeDate') f='ignore';
+      if(f!=='ignore'){ if(used[f]) f='ignore'; else used[f]=true; }
+      cols.push({idx:ci, header:h, field:f});
+    }
+    cols.forEach(function(c){ if(c.field==='amount') c.field='amountPosExp'; });
+    var title = '';
+    for(var r=hr-1; r>=0 && !title; r--){
+      for(var ci2=b.start; ci2<=b.end; ci2++){
+        var v = String((grid[r]||[])[ci2]||'').trim();
+        if(v){ title=v; break; }
+      }
+    }
+    var rows = [];
+    for(var r2=hr+1; r2<grid.length; r2++){
+      var row = [];
+      for(var ci3=b.start; ci3<=b.end; ci3++) row.push((grid[r2]||[])[ci3]);
+      if(row.some(function(c){ return c!=null && String(c).trim()!==''; })) rows.push(row);
+    }
+    if(!rows.length) return;
+    // התאמה למבנה שמור מהמערכת
+    var sigTitle = title.replace(/[0-9\/.:\-]+/g,'').replace(/\s+/g,' ').trim();
+    var sig = 'h:' + sigTitle + '#' + cols.map(function(c){ return c.header; }).join('|');
+    var tpl = meta.templates && meta.templates[sig];
+    var account, known = false;
+    if(tpl && tpl.fields && tpl.fields.length===cols.length){
+      account = tpl.account;
+      cols.forEach(function(c,i){ c.field = tpl.fields[i]; });
+      known = true;
+    } else {
+      var strong = /עסקי|עיסקי|פרטי|אישי|דיירקט|דירקט/.test(title);
+      account = strong ? guessAccount(title, cols) : (el('xSource').value || guessAccount(title, cols));
+    }
+    xBlocks.push({id:xUid(), title:title||sourceName, source:sourceName, cols:cols, rows:rows, account:account, known:known});
+  });
+}
+el('xDrop').onclick = function(){ el('xFile').click(); };
+el('xDrop').ondragover = function(e){ e.preventDefault(); };
+el('xDrop').ondrop = function(e){ e.preventDefault(); xHandleFiles(e.dataTransfer.files); };
+el('xFile').onchange = function(e){ xHandleFiles(e.target.files); e.target.value=''; };
+function xHandleFiles(files){
+  if(typeof XLSX==='undefined'){ xShowErr('ספריית האקסל לא נטענה — בדקו חיבור'); return; }
+  Array.prototype.forEach.call(files, function(file){
+    var reader = new FileReader();
+    reader.onload = function(ev){
+      try{
+        var wb = XLSX.read(ev.target.result, {type:'array', cellDates:true});
+        wb.SheetNames.forEach(function(sn){
+          var grid = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, raw:true, defval:''});
+          if(grid.length) xAnalyzeGrid(grid, file.name);
+        });
+        xRenderBlocks();
+      }catch(err){ xShowErr('שגיאה בקריאת '+file.name); }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+function xAnalyzePaste(){
+  var text = el('xPaste').value;
+  if(!text.trim()){ xShowErr('אין נתונים בהדבקה'); return; }
+  var lines = text.replace(/\r/g,'').split('\n').filter(function(l){ return l.trim()!==''; });
+  var grid;
+  if(lines.some(function(l){ return l.indexOf('\t')>=0; })){
+    grid = lines.map(function(l){ return l.split('\t'); });
+  } else { xShowErr('לא זוהה מבנה טבלה — העתיקו ישירות מאקסל'); return; }
+  xAnalyzeGrid(grid, 'הדבקה');
+  el('xPaste').value = '';
+  xRenderBlocks();
+}
+function xShowErr(msg){
+  var e2 = el('xErr');
+  e2.textContent = '⚠️ ' + msg;
+  e2.style.display = 'block';
+  setTimeout(function(){ e2.style.display='none'; }, 5000);
+}
+function xBlk(id){ return xBlocks.find(function(b){ return b.id===id; }); }
+function xSetField(bid, ci, val){
+  var b = xBlk(bid); if(!b) return;
+  if(val!=='ignore') b.cols.forEach(function(c,i){ if(i!==ci && c.field===val) c.field='ignore'; });
+  b.cols[ci].field = val;
+  xRenderBlocks();
+}
+function xRenderBlocks(){
+  var wrap = el('xBlocks');
+  el('xSendBtn').style.display = xBlocks.length ? 'block' : 'none';
+  wrap.innerHTML = xBlocks.map(function(b){
+    var accOpts = accountsList().map(function(a){
+      return '<option'+(a.name===b.account?' selected':'')+'>'+esc(a.name)+'</option>';
+    }).join('');
+    var sample = b.rows.slice(0,3);
+    return '<div class="xblock">'
+      +'<div class="xblock-head">'
+      +'<b>'+esc(b.title)+'</b><span style="color:#94a3b8">('+b.rows.length+' שורות)</span>'
+      +(b.known ? '<span class="xtag ok">✓ מבנה מוכר</span>' : '<span class="xtag new">בדקו את העמודות</span>')
+      +'<span style="margin-right:auto">מקור: <select onchange="xBlk(\''+b.id+'\').account=this.value">'+accOpts+'</select></span>'
+      +'</div>'
+      +'<div class="xblock-body"><table><thead><tr>'
+      + b.cols.map(function(c,i){
+          return '<th><div style="font-weight:400;color:#94a3b8;margin-bottom:3px">'+esc(c.header||('עמודה '+(i+1)))+'</div>'
+            +'<select onchange="xSetField(\''+b.id+'\','+i+',this.value)">'
+            + FIELD_OPTS.map(function(o){ return '<option value="'+o[0]+'"'+(c.field===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')
+            +'</select></th>';
+        }).join('')
+      +'</tr></thead><tbody>'
+      + sample.map(function(r){
+          return '<tr>'+b.cols.map(function(c,i){
+            var v = r[i];
+            return '<td>'+esc(v instanceof Date ? parseDate(v) : String(v==null?'':v).slice(0,25))+'</td>';
+          }).join('')+'</tr>';
+        }).join('')
+      +'</tbody></table></div></div>';
+  }).join('');
+}
+function xBuildRows(){
+  var out = [], skipped = 0;
+  var today = new Date().toLocaleDateString('he-IL');
+  xBlocks.forEach(function(b){
+    var fidx = {};
+    b.cols.forEach(function(c,i){ if(c.field!=='ignore') fidx[c.field]=i; });
+    if(fidx.date===undefined || (fidx.debit===undefined && fidx.credit===undefined && fidx.amountPosInc===undefined && fidx.amountPosExp===undefined)){
+      xShowErr('בטבלה "'+b.title+'" חסר מיפוי תאריך או סכום');
+      return;
+    }
+    b.rows.forEach(function(r){
+      var date = parseDate(r[fidx.date]);
+      if(!date){ skipped++; return; }
+      var kind=null, amount=null;
+      var deb = fidx.debit!==undefined ? parseAmount(r[fidx.debit]) : null;
+      var cred = fidx.credit!==undefined ? parseAmount(r[fidx.credit]) : null;
+      if(deb!==null && deb!==0){ kind = deb>0?'expense':'income'; amount = Math.abs(deb); }
+      else if(cred!==null && cred!==0){ kind = cred>0?'income':'expense'; amount = Math.abs(cred); }
+      else if(fidx.amountPosInc!==undefined || fidx.amountPosExp!==undefined){
+        var i2 = fidx.amountPosInc!==undefined ? fidx.amountPosInc : fidx.amountPosExp;
+        var posIsIncome = fidx.amountPosInc!==undefined;
+        var a = parseAmount(r[i2]);
+        if(a!==null && a!==0){ kind = (a>0)===posIsIncome ? 'income' : 'expense'; amount = Math.abs(a); }
+      }
+      if(kind===null || !amount){ skipped++; return; }
+      var tx = {
+        date: date,
+        desc: normDesc(fidx.desc!==undefined ? r[fidx.desc] : '') || '(ללא תיאור)',
+        details: fidx.details!==undefined ? normDesc(r[fidx.details]) : '',
+        amount: amount, kind: kind, account: b.account,
+        scope:'', category:'', project:'', invoice:'',
+        ref: fidx.ref!==undefined ? String(r[fidx.ref]||'') : '',
+        origin: 'טופס-אקסל: ' + b.source + ' · ' + today
+      };
+      EXTRA_KEYS.forEach(function(k){ tx[k] = fidx[k]!==undefined ? extraVal(r[fidx[k]]) : ''; });
+      out.push(tx);
+    });
+  });
+  return {rows: out, skipped: skipped};
+}
+function xSend(){
+  var built = xBuildRows();
+  if(!built.rows.length){ xShowErr('אין שורות תקינות לשליחה'); return; }
+  var btn = el('xSendBtn');
+  btn.disabled = true;
+  var chunks = [];
+  for(var i=0; i<built.rows.length; i+=150) chunks.push(built.rows.slice(i, i+150));
+  var totals = {added:0, dups:0, auto:0};
+  var idx = 0;
+  function next(){
+    if(idx >= chunks.length){
+      btn.disabled = false; btn.style.display = 'none';
+      xBlocks = []; xRenderBlocks();
+      el('xResultText').textContent = 'נוספו '+totals.added+' תנועות'
+        + (totals.auto ? ' · '+totals.auto+' סווגו אוטומטית' : '')
+        + (totals.dups ? ' · '+totals.dups+' כפולות דולגו' : '')
+        + (built.skipped ? ' · '+built.skipped+' שורות לא תקינות' : '');
+      el('xResult').style.display = 'block';
+      return;
+    }
+    btn.textContent = '⏳ שולח... ('+(idx+1)+'/'+chunks.length+')';
+    fetch(GS_URL, {method:'POST', body: JSON.stringify({action:'importTx', rows: chunks[idx]})})
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(!j || j.status!=='ok') throw new Error((j&&j.message)||'server');
+        totals.added += j.added||0; totals.dups += j.dups||0; totals.auto += j.auto||0;
+        idx++; next();
+      })
+      .catch(function(){
+        btn.disabled = false; btn.textContent = '📤 שלח למערכת';
+        xShowErr('השליחה נכשלה באמצע — לחצו שוב לשליחת השאר (כפולות ידולגו)');
+      });
+  }
+  next();
+}
+function xReset(){
+  xBlocks = [];
+  xRenderBlocks();
+  el('xResult').style.display = 'none';
+  el('xSendBtn').textContent = '📤 שלח למערכת';
+}
+
+boot();
+</script>
+</body>
+</html>

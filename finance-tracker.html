@@ -195,6 +195,7 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
       <option value="home">🏠 בית</option>
       <option value="exclude">🚫 לא נכלל</option>
       <option value="pending">⏳ ממתין לסיווג</option>
+      <option value="deleted">♻️ סל מחזור (נמחקו)</option>
     </select>
     <select id="txCat"><option value="">כל הקטגוריות</option></select>
     <select id="txProj"><option value="">כל הפרויקטים</option></select>
@@ -211,6 +212,7 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
       <option value="home">🏠 בית</option>
       <option value="exclude">🚫 לא לכלול</option>
       <option value="pending">⏳ החזר לממתין</option>
+      <option value="restore">♻️ שחזר מסל המחזור</option>
     </select>
     <select id="txBulkCat"></select>
     <select id="txBulkProj"></select>
@@ -311,10 +313,10 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
     <div class="table-wrap" id="tplTable"></div>
   </div>
   <div class="card">
-    <h3>🗑️ מחיקת נתונים בכמות</h3>
+    <h3>🗑️ מחיקת נתונים בכמות (מחיקה רכה)</h3>
     <p class="muted" style="margin-bottom:10px">
-      מחיקה לפי קובץ ייבוא — מוחקת את כל התנועות שהגיעו מאותה העלאה (שימושי אחרי ייבוא שגוי).<br>
-      דרכים נוספות: במסך "כל התנועות" אפשר לסמן תנועות ✓ ו"למחוק נבחרים", או לסנן (חודש/שיוך/חיפוש) ו"למחוק את המסונן".
+      כל מחיקה במערכת היא <b>מחיקה רכה</b>: התנועות עוברות לסל המחזור ונשארות שמורות בגוגל שיטס — אפשר לשחזר בכל רגע דרך "כל התנועות ← ♻️ סל מחזור".<br>
+      מחיקה לפי קובץ ייבוא (למטה) מעבירה לסל את כל התנועות מאותה העלאה. דרכים נוספות: סימון ✓ + "מחק נבחרים", או סינון + "מחק את המסונן".
     </p>
     <div class="table-wrap" id="originsTable"></div>
   </div>
@@ -335,7 +337,7 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
     <button class="btn sec" onclick="downloadBackup()">⬇️ הורד גיבוי</button>
     <button class="btn sec" onclick="document.getElementById('restoreInput').click()">⬆️ שחזר מגיבוי</button>
     <input type="file" id="restoreInput" accept=".json" style="display:none">
-    <button class="btn danger" style="float:left" onclick="clearAll()">🗑️ מחק את כל הנתונים</button>
+    <button class="btn danger" style="float:left" onclick="clearAll()">🗑️ העבר הכל לסל המחזור</button>
   </div>
 </section>
 
@@ -507,24 +509,27 @@ function txToRow(t){
   return {id:t.id, date:t.date, desc:t.desc, details:t.details||'', amount:String(t.amount),
     kind:t.kind, account:t.account||'', scope:t.scope||'', category:t.category||'',
     project:t.project||'', invoice:t.invoice?'1':'', ref:t.ref||'', origin:t.origin||'',
-    extra1:t.extra1||'', extra2:t.extra2||'', extra3:t.extra3||'', extra4:t.extra4||''};
+    extra1:t.extra1||'', extra2:t.extra2||'', extra3:t.extra3||'', extra4:t.extra4||'',
+    deleted:t.deleted||''};
 }
 function rowToTx(r){
   return {id:r.id, date:r.date||'', desc:r.desc||'', details:r.details||'',
     amount:parseFloat(r.amount)||0, kind:r.kind==='income'?'income':'expense',
     account:r.account||'', scope:r.scope||'', category:r.category||'', project:r.project||'',
     invoice:r.invoice==='1'||r.invoice==='true', ref:r.ref||'', origin:r.origin||'',
-    extra1:r.extra1||'', extra2:r.extra2||'', extra3:r.extra3||'', extra4:r.extra4||''};
+    extra1:r.extra1||'', extra2:r.extra2||'', extra3:r.extra3||'', extra4:r.extra4||'',
+    deleted:r.deleted||''};
 }
 function projToRow(p){
   return {id:p.id, name:p.name, price:String(p.price||0),
-    stages:JSON.stringify(p.stages||[]), budget:JSON.stringify(p.budget||{})};
+    stages:JSON.stringify(p.stages||[]), budget:JSON.stringify(p.budget||{}),
+    deleted:p.deleted||''};
 }
 function rowToProj(r){
   let stages=[], budget={workers:0, materials:0, cranes:0};
   try{ stages = JSON.parse(r.stages||'[]')||[]; }catch(e){}
   try{ budget = Object.assign(budget, JSON.parse(r.budget||'{}')); }catch(e){}
-  return {id:r.id, name:r.name||'', price:parseFloat(r.price)||0, stages, budget};
+  return {id:r.id, name:r.name||'', price:parseFloat(r.price)||0, stages, budget, deleted:r.deleted||''};
 }
 function settingValue(k){
   if(k==='vat') return String(db.vat||18);
@@ -753,14 +758,15 @@ function renderAll(){
   renderSourceTiles();
   renderSettings();
 }
+function liveTx(){ return db.tx.filter(t=>!t.deleted); }
 function refreshBadge(){
-  const n = db.tx.filter(t=>!t.scope).length;
+  const n = db.tx.filter(t=>!t.scope && !t.deleted).length;
   const b = document.getElementById('pendingBadge');
   b.style.display = n ? 'inline-block' : 'none';
   b.textContent = n;
 }
 function allMonths(){
-  const s = new Set(db.tx.map(t=>t.date.slice(0,7)).filter(Boolean));
+  const s = new Set(liveTx().map(t=>t.date.slice(0,7)).filter(Boolean));
   return [...s].sort().reverse();
 }
 let dashMonthVal = null, dashScopeVal = 'all';
@@ -793,13 +799,13 @@ function makeChart(id, cfg){
   if(typeof Chart==='undefined'){ return; }
   charts[id] = new Chart(document.getElementById(id), cfg);
 }
-function classified(){ return db.tx.filter(t=>t.scope==='biz'||t.scope==='home'); }
+function classified(){ return db.tx.filter(t=>(t.scope==='biz'||t.scope==='home') && !t.deleted); }
 function renderDashboard(){
   const month = dashMonthVal || 'all', scope = dashScopeVal;
   const base = classified().filter(t => (scope==='all'||t.scope===scope) && (month==='all'||t.date.slice(0,7)===month));
   const inc = base.filter(t=>t.kind==='income').reduce((s,t)=>s+t.amount,0);
   const exp = base.filter(t=>t.kind==='expense').reduce((s,t)=>s+t.amount,0);
-  const pending = db.tx.filter(t=>!t.scope).length;
+  const pending = db.tx.filter(t=>!t.scope && !t.deleted).length;
   let extra = '';
   if(scope==='all'){
     const bizNet = base.filter(t=>t.scope==='biz').reduce((s,t)=>s+(t.kind==='income'?t.amount:-t.amount),0);
@@ -889,7 +895,7 @@ document.getElementById('selAll').addEventListener('change', e=>{
 function pendingFiltered(){
   const acc = document.getElementById('clsAccFilter').value;
   const q = document.getElementById('clsSearch').value.trim();
-  return db.tx.filter(t=>!t.scope)
+  return db.tx.filter(t=>!t.scope && !t.deleted)
     .filter(t=>!acc || t.account===acc)
     .filter(t=>!q || (t.desc+' '+(t.details||'')).includes(q))
     .sort((a,b)=>b.date.localeCompare(a.date));
@@ -1049,7 +1055,7 @@ document.getElementById('bulkProj').addEventListener('change', function(){
   this.value = name || '';
 });
 function autoScopeByAccount(){
-  const pend = db.tx.filter(t=>!t.scope && db.accounts.some(a=>a.name===t.account));
+  const pend = db.tx.filter(t=>!t.scope && !t.deleted && db.accounts.some(a=>a.name===t.account));
   if(!pend.length){ toast('אין תנועות ממתינות'); return; }
   if(!confirm('לשייך '+pend.length+' תנועות ממתינות לפי סוג המקור?\nמקור עסקי ← עסק · מקור פרטי ← בית\n(בלי קטגוריה — אפשר להשלים אחר כך, וכללים שמורים ממשיכים לפעול)')) return;
   pend.forEach(t=>{
@@ -1098,6 +1104,8 @@ function renderTxTable(){
   let list = db.tx
     .filter(t=>month==='all'||t.date.slice(0,7)===month)
     .filter(t=>{
+      if(scope==='deleted') return !!t.deleted;
+      if(t.deleted) return false;
       if(!scope) return true;
       if(scope==='pending') return !t.scope;
       return t.scope===scope;
@@ -1128,7 +1136,9 @@ function renderTxTable(){
       +'<td>'+esc(t.project||'')+'</td>'
       +'<td class="amt green">'+(t.kind==='income'?fmt2(t.amount):'')+'</td>'
       +'<td class="amt red">'+(t.kind==='expense'?fmt2(t.amount):'')+'</td>'
-      +'<td><button class="btn sm sec" onclick="openEdit(\''+t.id+'\')">✏️</button></td>'
+      +'<td>'+(t.deleted
+        ? '<button class="btn sm sec" title="שחזר מסל המחזור" onclick="restoreTx(\''+t.id+'\')">♻️</button>'
+        : '<button class="btn sm sec" onclick="openEdit(\''+t.id+'\')">✏️</button>')+'</td>'
       +'</tr>').join('')
     + '</tbody><tfoot><tr><td colspan="7">סה"כ ('+list.length+' תנועות'+(list.length>500?', מוצגות 500':'')+')</td>'
     + '<td class="amt green">'+fmt2(inc)+'</td><td class="amt red">'+fmt2(exp)+'</td><td></td></tr></tfoot></table>';
@@ -1156,7 +1166,7 @@ function updateTxBulkBar(){
   const scope = document.getElementById('txBulkScope').value;
   const catSel = document.getElementById('txBulkCat');
   const projSel = document.getElementById('txBulkProj');
-  if(scope==='exclude' || scope==='pending'){
+  if(scope==='exclude' || scope==='pending' || scope==='restore'){
     catSel.style.display='none'; projSel.style.display='none'; return;
   }
   catSel.style.display='';
@@ -1194,37 +1204,48 @@ function applyTxBulk(){
   ids.forEach(id=>{
     const t = db.tx.find(x=>x.id===id);
     if(!t) return;
-    if(scope==='pending'){ t.scope=''; t.category=''; t.project=''; }
+    if(scope==='restore'){ t.deleted=''; }
+    else if(scope==='pending'){ t.scope=''; t.category=''; t.project=''; }
     else { t.scope=scope; t.category=cat; t.project=proj; }
     changed.push(t);
   });
   queueTx(changed);
   txSel.clear();
   save(); renderAll();
-  toast(scope==='pending' ? '⏳ '+changed.length+' תנועות הוחזרו לממתין' : '🏷️ '+changed.length+' תנועות סווגו');
+  toast(scope==='restore' ? '♻️ '+changed.length+' תנועות שוחזרו'
+    : scope==='pending' ? '⏳ '+changed.length+' תנועות הוחזרו לממתין'
+    : '🏷️ '+changed.length+' תנועות סווגו');
+}
+function softDelete(list){
+  const stamp = new Date().toISOString().slice(0,10);
+  list.forEach(t=>{ t.deleted = stamp; });
+  queueTx(list);
+}
+function restoreTx(id){
+  const t = db.tx.find(x=>x.id===id); if(!t) return;
+  t.deleted = '';
+  queueTx([t]);
+  save(); renderAll();
+  toast('♻️ התנועה שוחזרה');
 }
 function deleteSelectedTx(){
-  const ids = [...txSel];
-  if(!ids.length) return;
-  if(!confirm('למחוק '+ids.length+' תנועות נבחרות?'+(GS_URL?'\n(יימחקו גם מהענן)':''))) return;
-  const set = new Set(ids);
-  db.tx = db.tx.filter(t=>!set.has(t.id));
-  queueDelTx(ids);
+  const list = [...txSel].map(id=>db.tx.find(x=>x.id===id)).filter(t=>t && !t.deleted);
+  if(!list.length) return;
+  if(!confirm('להעביר '+list.length+' תנועות נבחרות לסל המחזור?\n(מחיקה רכה — ניתן לשחזר בכל רגע, כלום לא נמחק מגוגל שיטס)')) return;
+  softDelete(list);
   txSel.clear();
   save(); renderAll();
-  toast('🗑️ נמחקו '+ids.length+' תנועות');
+  toast('🗑️ '+list.length+' תנועות הועברו לסל המחזור');
 }
 function deleteFilteredTx(){
-  if(!lastTxFiltered.length){ toast('אין תנועות בסינון הנוכחי'); return; }
-  const ids = lastTxFiltered.map(t=>t.id);
-  if(!confirm('למחוק את כל '+ids.length+' התנועות שבסינון הנוכחי?'+(GS_URL?'\n(יימחקו גם מהענן)':''))) return;
-  if(ids.length>50 && !confirm('בטוח בטוח? '+ids.length+' תנועות יימחקו לצמיתות.')) return;
-  const set = new Set(ids);
-  db.tx = db.tx.filter(t=>!set.has(t.id));
-  queueDelTx(ids);
+  const list = lastTxFiltered.filter(t=>!t.deleted);
+  if(!list.length){ toast('אין תנועות בסינון הנוכחי'); return; }
+  if(!confirm('להעביר את כל '+list.length+' התנועות שבסינון לסל המחזור?\n(מחיקה רכה — ניתן לשחזר בכל רגע)')) return;
+  if(list.length>50 && !confirm('בטוח? '+list.length+' תנועות יועברו לסל המחזור.')) return;
+  softDelete(list);
   txSel.clear();
   save(); renderAll();
-  toast('🗑️ נמחקו '+ids.length+' תנועות');
+  toast('🗑️ '+list.length+' תנועות הועברו לסל המחזור');
 }
 
 /* ================= עריכה ================= */
@@ -1283,11 +1304,10 @@ function saveEdit(){
   closeEdit(); save(); renderAll(); toast('נשמר ✔');
 }
 function deleteFromEdit(){
-  if(!confirm('למחוק את התנועה?')) return;
-  const delId = editId;
-  db.tx = db.tx.filter(x=>x.id!==delId);
-  queueDelTx([delId]);
-  closeEdit(); save(); renderAll(); toast('נמחק');
+  if(!confirm('להעביר את התנועה לסל המחזור? (ניתן לשחזר)')) return;
+  const t = db.tx.find(x=>x.id===editId);
+  if(t) softDelete([t]);
+  closeEdit(); save(); renderAll(); toast('🗑️ הועבר לסל המחזור');
 }
 function closeEdit(){ document.getElementById('editModal').classList.remove('open'); editId=null; }
 document.getElementById('editModal').addEventListener('click', e=>{ if(e.target.id==='editModal') closeEdit(); });
@@ -1298,12 +1318,12 @@ const EXP_GROUPS = [
   {key:'materials', label:'🧱 חומר', cats:['חומרים וספקים','חומר','חומרים']},
   {key:'cranes', label:'🏗️ מנופים', cats:['מנופים']}
 ];
-function projNames(){ return db.projects.map(p=>p.name); }
+function projNames(){ return db.projects.filter(p=>!p.deleted).map(p=>p.name); }
 function newProjObj(name){ return {id:uid(), name, price:0, stages:[], budget:{workers:0, materials:0, cranes:0}}; }
 function vatNet(t){ return t.invoice ? t.amount/(1+(db.vat||18)/100) : t.amount; }
 function pct(a,b){ return b>0 ? Math.round(a/b*100) : 0; }
 function projStats(p){
-  const txs = db.tx.filter(t=>t.project===p.name && t.scope==='biz');
+  const txs = db.tx.filter(t=>t.project===p.name && t.scope==='biz' && !t.deleted);
   const pays = txs.filter(t=>t.kind==='income');
   const paidGross = pays.reduce((s,t)=>s+t.amount,0);
   const paidNet = pays.reduce((s,t)=>s+vatNet(t),0);
@@ -1323,7 +1343,7 @@ let projView = null;
 function renderProjects(){
   const grid = document.getElementById('projGrid');
   const det = document.getElementById('projDetail');
-  const p = db.projects.find(x=>x.name===projView);
+  const p = db.projects.find(x=>x.name===projView && !x.deleted);
   if(p){
     grid.style.display = 'none';
     det.style.display = 'block';
@@ -1333,11 +1353,12 @@ function renderProjects(){
   projView = null;
   det.style.display = 'none';
   grid.style.display = 'grid';
-  if(!db.projects.length){
+  const liveProjects = db.projects.filter(x=>!x.deleted);
+  if(!liveProjects.length){
     grid.innerHTML = '<div class="empty" style="grid-column:1/-1">אין פרויקטים עדיין.<br><br><button class="btn" onclick="openProjModal(null)">+ צור פרויקט ראשון</button></div>';
     return;
   }
-  grid.innerHTML = db.projects.map(p=>{
+  grid.innerHTML = liveProjects.map(p=>{
     const s = projStats(p);
     const payPct = pct(s.paidNet, p.price);
     const expPct = pct(s.expTotal, p.price);
@@ -1464,7 +1485,7 @@ function pmAddStage(){ pmStages.push({desc:'', amount:''}); renderPmStages(); }
 function saveProjModal(){
   const name = document.getElementById('pmName').value.trim();
   if(!name){ toast('⚠️ הזן שם פרויקט'); return; }
-  const dup = db.projects.find(x=>x.name===name && x.id!==pmEditId);
+  const dup = db.projects.find(x=>x.name===name && x.id!==pmEditId && !x.deleted);
   if(dup){ toast('⚠️ כבר קיים פרויקט בשם הזה'); return; }
   const data = {
     name,
@@ -1499,13 +1520,20 @@ function saveProjModal(){
 }
 function deleteProjFromModal(){
   const p = db.projects.find(x=>x.id===pmEditId); if(!p) return;
-  const used = db.tx.filter(t=>t.project===p.name).length;
-  if(!confirm('למחוק את הפרויקט "'+p.name+'"?'+(used?'\n('+used+' תנועות ישמרו את שם הפרויקט אך הוא יוסר מהרשימות)':''))) return;
-  db.projects = db.projects.filter(x=>x.id!==pmEditId);
-  queueProjDel(p.id);
+  const used = db.tx.filter(t=>t.project===p.name && !t.deleted).length;
+  if(!confirm('להעביר את הפרויקט "'+p.name+'" לסל המחזור? (ניתן לשחזר מההגדרות)'+(used?'\n('+used+' תנועות ישמרו את שם הפרויקט)':''))) return;
+  p.deleted = new Date().toISOString().slice(0,10);
+  queueProj(p);
   if(projView===p.name) projView=null;
   closeProjModal(); save(); renderAll();
-  toast('הפרויקט נמחק');
+  toast('🗑️ הפרויקט הועבר לסל המחזור');
+}
+function restoreProject(id){
+  const p = db.projects.find(x=>x.id===id); if(!p) return;
+  p.deleted = '';
+  queueProj(p);
+  save(); renderAll();
+  toast('♻️ הפרויקט "'+p.name+'" שוחזר');
 }
 function closeProjModal(){ document.getElementById('projModal').classList.remove('open'); pmEditId=null; }
 document.getElementById('projModal').addEventListener('click', e=>{ if(e.target.id==='projModal') closeProjModal(); });
@@ -1895,7 +1923,7 @@ function doImport(){
 function exportCSV(){
   const rows = [['תאריך','תיאור','פרטים','מקור','שיוך','קטגוריה','פרויקט','סוג','סכום','חשבונית','פרטים נוספים 1','פרטים נוספים 2','פרטים נוספים 3','פרטים נוספים 4','קובץ מקור']];
   const scopeName = s => s==='biz'?'עסק':s==='home'?'בית':s==='exclude'?'לא נכלל':'ממתין';
-  db.tx.sort((a,b)=>a.date.localeCompare(b.date)).forEach(t=>{
+  liveTx().sort((a,b)=>a.date.localeCompare(b.date)).forEach(t=>{
     rows.push([t.date, t.desc, t.details||'', t.account, scopeName(t.scope), t.category||'', t.project||'', t.kind==='income'?'הכנסה':'הוצאה', t.amount, t.invoice?'כן':'', t.extra1||'', t.extra2||'', t.extra3||'', t.extra4||'', t.origin||'']);
   });
   const csv = '﻿' + rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\r\n');
@@ -1935,27 +1963,28 @@ document.getElementById('restoreInput').addEventListener('change', e=>{
   e.target.value='';
 });
 function clearAll(){
-  if(!confirm('למחוק את כל הנתונים? פעולה זו לא ניתנת לביטול!')) return;
-  if(!confirm('בטוח? מומלץ להוריד גיבוי קודם. למחוק הכל?')) return;
-  let wipeCloud = false;
-  if(GS_URL) wipeCloud = confirm('למחוק גם מהענן (גוגל שיטס)?\nאישור = מחיקה גם בענן · ביטול = מקומית בלבד (בטעינה הבאה הנתונים יחזרו מהענן)');
-  const txIds = db.tx.map(t=>t.id);
-  const projIds = db.projects.map(p=>p.id);
-  db = JSON.parse(JSON.stringify(DEFAULTS));
-  pending = {tx:{}, del:[], projUp:{}, projDel:[], settings:{}};
-  savePending();
-  if(wipeCloud){
-    queueDelTx(txIds);
-    projIds.forEach(id=>queueProjDel(id));
-    queueSetting('rules','templates','categories','accounts','vat');
-  }
-  save(); renderAll(); toast('כל הנתונים נמחקו' + (wipeCloud?' (גם מהענן)':''));
+  const live = db.tx.filter(t=>!t.deleted);
+  const liveP = db.projects.filter(p=>!p.deleted);
+  if(!live.length && !liveP.length){ toast('אין נתונים פעילים'); return; }
+  if(!confirm('להעביר את כל '+live.length+' התנועות ו-'+liveP.length+' הפרויקטים לסל המחזור?\n(מחיקה רכה — הכל נשמר וניתן לשחזור, כלום לא נמחק מגוגל שיטס)')) return;
+  if(!confirm('בטוח?')) return;
+  const stamp = new Date().toISOString().slice(0,10);
+  live.forEach(t=>{ t.deleted = stamp; });
+  liveP.forEach(p=>{ p.deleted = stamp; queueProj(p); });
+  queueTx(live);
+  save(); renderAll();
+  toast('🗑️ הכל הועבר לסל המחזור — ניתן לשחזר מ"כל התנועות ← סל מחזור"');
 }
 
 /* ================= הגדרות ================= */
 function renderSettings(){
-  document.getElementById('setProjects').innerHTML = db.projects.map(p=>
-    '<span class="chip" style="cursor:pointer" onclick="openProjModal(\''+jsq(p.id)+'\')">🏗️ '+esc(p.name)+(p.price?' <small>('+fmt(p.price)+')</small>':'')+'</span>').join('') || '<span class="muted">אין פרויקטים</span>';
+  const liveP = db.projects.filter(p=>!p.deleted);
+  const delP = db.projects.filter(p=>p.deleted);
+  document.getElementById('setProjects').innerHTML = (liveP.map(p=>
+    '<span class="chip" style="cursor:pointer" onclick="openProjModal(\''+jsq(p.id)+'\')">🏗️ '+esc(p.name)+(p.price?' <small>('+fmt(p.price)+')</small>':'')+'</span>').join('') || '<span class="muted">אין פרויקטים</span>')
+    + (delP.length ? '<div class="muted" style="margin-top:8px;font-size:12px">בסל המחזור: '
+        + delP.map(p=>'<span class="chip" style="opacity:.65">'+esc(p.name)+' <button style="color:#16a34a" title="שחזר" onclick="restoreProject(\''+jsq(p.id)+'\')">♻️</button></span>').join('')
+        + '</div>' : '');
   const vatIn = document.getElementById('vatInput');
   if(vatIn && document.activeElement!==vatIn) vatIn.value = db.vat||18;
   const gsIn = document.getElementById('gsUrlInput');
@@ -1968,9 +1997,9 @@ function renderSettings(){
       '<span class="chip">'+esc(c)+'<button onclick="removeCat(\''+k+'\','+i+')">×</button></span>').join('')
       + ' <button class="btn sm ghost" onclick="addCat(\''+k+'\')">+</button>';
   });
-  // מחיקה לפי קובץ ייבוא
+  // מחיקה לפי קובץ ייבוא (רק תנועות פעילות)
   const origins = {};
-  db.tx.forEach(t=>{
+  liveTx().forEach(t=>{
     const o = t.origin || '(ללא מקור רשום)';
     if(!origins[o]) origins[o] = {count:0, sum:0};
     origins[o].count++;
@@ -2033,16 +2062,12 @@ function removeTpl(sig){
 }
 function deleteByOrigin(origin){
   const key = origin==='(ללא מקור רשום)' ? '' : origin;
-  const list = db.tx.filter(t=>(t.origin||'')===key);
+  const list = db.tx.filter(t=>(t.origin||'')===key && !t.deleted);
   if(!list.length) return;
-  if(!confirm('למחוק את כל '+list.length+' התנועות מהייבוא:\n"'+origin+'"?'+(GS_URL?'\n(יימחקו גם מהענן)':''))) return;
-  if(list.length>50 && !confirm('בטוח? '+list.length+' תנועות יימחקו לצמיתות.')) return;
-  const ids = list.map(t=>t.id);
-  const set = new Set(ids);
-  db.tx = db.tx.filter(t=>!set.has(t.id));
-  queueDelTx(ids);
+  if(!confirm('להעביר את כל '+list.length+' התנועות מהייבוא:\n"'+origin+'"\nלסל המחזור? (מחיקה רכה — ניתן לשחזר)')) return;
+  softDelete(list);
   save(); renderAll();
-  toast('🗑️ נמחקו '+ids.length+' תנועות מהייבוא');
+  toast('🗑️ '+list.length+' תנועות מהייבוא הועברו לסל המחזור');
 }
 
 /* ================= אתחול ================= */
