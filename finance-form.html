@@ -424,7 +424,7 @@ function xAnalyzeGrid(grid, sourceName){
       var strong = /עסקי|עיסקי|פרטי|אישי|דיירקט|דירקט/.test(title);
       account = strong ? guessAccount(title, cols) : (el('xSource').value || guessAccount(title, cols));
     }
-    xBlocks.push({id:xUid(), title:title||sourceName, source:sourceName, cols:cols, rows:rows, account:account, known:known});
+    xBlocks.push({id:xUid(), title:title||sourceName, source:sourceName, cols:cols, rows:rows, account:account, known:known, defScope:''});
   });
 }
 el('xDrop').onclick = function(){ el('xFile').click(); };
@@ -488,6 +488,12 @@ function xRenderBlocks(){
       +'<b>'+esc(b.title)+'</b><span style="color:#94a3b8">('+b.rows.length+' שורות)</span>'
       +(b.known ? '<span class="xtag ok">✓ מבנה מוכר</span>' : '<span class="xtag new">בדקו את העמודות</span>')
       +'<span style="margin-right:auto">מקור: <select onchange="xBlk(\''+b.id+'\').account=this.value">'+accOpts+'</select></span>'
+      +'<span>שיוך: <select onchange="xBlk(\''+b.id+'\').defScope=this.value">'
+      +'<option value=""'+(b.defScope===''?' selected':'')+'>לפי הקובץ / ידני</option>'
+      +'<option value="home"'+(b.defScope==='home'?' selected':'')+'>🏠 הכל בית</option>'
+      +'<option value="biz"'+(b.defScope==='biz'?' selected':'')+'>🏢 הכל עסק</option>'
+      +'<option value="exclude"'+(b.defScope==='exclude'?' selected':'')+'>🚫 הכל לא נכלל</option>'
+      +'</select></span>'
       +'</div>'
       +'<div class="xblock-body"><table><thead><tr>'
       + b.cols.map(function(c,i){
@@ -548,6 +554,7 @@ function xBuildRows(){
       var projVal = fidx.project!==undefined ? normDesc(r[fidx.project]) : '';
       var catVal = fidx.category!==undefined ? normDesc(r[fidx.category]) : '';
       if(projVal && !scopeVal) scopeVal='biz';
+      if(b.defScope) scopeVal = b.defScope; // בחירת שיוך לטבלה — גוברת על הקובץ
       var tx = {
         date: date,
         desc: normDesc(fidx.desc!==undefined ? r[fidx.desc] : '') || '(ללא תיאור)',

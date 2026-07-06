@@ -1768,7 +1768,7 @@ function analyzeGrid(grid, sourceName){
     }
     importBlocks.push({
       id: uid(), title: title || sourceName, source: sourceName,
-      cols, rows, account, sig, known, showMap: !known, include: true
+      cols, rows, account, sig, known, showMap: !known, include: true, defScope: ''
     });
   });
 }
@@ -1801,7 +1801,7 @@ function guessNoHeaderBlock(grid, sourceName){
     cols.forEach((c,i)=>{ c.field = tpl.fields[i]; });
     known = true;
   }
-  return {id:uid(), title:sourceName, source:sourceName, cols, rows, account, sig, known, showMap:!known, include:true};
+  return {id:uid(), title:sourceName, source:sourceName, cols, rows, account, sig, known, showMap:!known, include:true, defScope:''};
 }
 function guessAccount(title, cols){
   const t = title || '';
@@ -1830,6 +1830,12 @@ function renderImportBlocks(){
       +'<span class="muted">('+b.rows.length+' שורות · '+esc(b.source)+')</span>'
       +(b.known ? '<span class="tag home">✓ זוהה לפי מבנה שמור</span>' : '<span class="tag pending">מבנה חדש — בדקו את העמודות</span>')
       +'<span style="margin-right:auto">מקור: <select onchange="blk(\''+b.id+'\').account=this.value">'+accOpts+'</select></span>'
+      +'<span>שיוך: <select onchange="blk(\''+b.id+'\').defScope=this.value" title="קובע שיוך לכל השורות בטבלה זו — גובר על מה שכתוב בקובץ">'
+      +'<option value=""'+(b.defScope===''?' selected':'')+'>לפי הקובץ / ידני</option>'
+      +'<option value="home"'+(b.defScope==='home'?' selected':'')+'>🏠 הכל בית</option>'
+      +'<option value="biz"'+(b.defScope==='biz'?' selected':'')+'>🏢 הכל עסק</option>'
+      +'<option value="exclude"'+(b.defScope==='exclude'?' selected':'')+'>🚫 הכל לא נכלל</option>'
+      +'</select></span>'
       +(b.known ? '<button class="btn sm sec" onclick="toggleMap(\''+b.id+'\')">'+(b.showMap?'הסתר מיפוי ▴':'הצג מיפוי ▾')+'</button>' : '')
       +'</div>'
       +'<div class="block-body" style="display:'+(b.showMap?'block':'none')+'"><table><thead><tr>'
@@ -1904,6 +1910,7 @@ function doImport(){
       const projVal = fidx.project!==undefined ? normDesc(r[fidx.project]) : '';
       const catVal = fidx.category!==undefined ? normDesc(r[fidx.category]) : '';
       if(projVal && !scopeVal) scopeVal = 'biz'; // פרויקט = עסק
+      if(b.defScope) scopeVal = b.defScope; // בחירת שיוך לטבלה — גוברת על הקובץ
       const t = {
         id: uid(), date, desc, details, amount, kind,
         account: b.account, scope: scopeVal,
