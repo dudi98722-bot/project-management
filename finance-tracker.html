@@ -475,7 +475,7 @@ function uid(){ return (crypto.randomUUID ? crypto.randomUUID() : Date.now()+'-'
 /* ================= סנכרון לגוגל שיטס ================= */
 const LS_URL = 'finance-gs-url';
 const LS_PENDING = 'finance-pending-v1';
-const DEFAULT_GS_URL = ''; // כתובת ה-Apps Script — מוזרקת אחרי הפריסה
+const DEFAULT_GS_URL = 'https://script.google.com/macros/s/AKfycby96ikBj9g1NQvuXAZVn0oyxn6vBEaMtcF8mCaCcexrDDoGfWD74K7HO8rF8HQpsrBW/exec';
 let GS_URL = localStorage.getItem(LS_URL) || DEFAULT_GS_URL;
 try{
   const qsGs = new URLSearchParams(location.search).get('gs');
@@ -620,27 +620,34 @@ function serverLoad(silent){
   if(!silent) setSync('saving','טוען מהשרת...');
   return apiGet({action:'load'}).then(j=>{
     if(!j || !Array.isArray(j.tx)) throw new Error('bad response');
-    const delSet = new Set(pending.del);
+    // מיזוג בטוח: איחוד לפי מזהה — שום צד לא דורס את השני.
+    // (אין מחיקות פיזיות במערכת, לכן תנועה שקיימת רק מקומית = טרם הועלתה → מעלים אותה)
     const txMap = {};
-    j.tx.forEach(r=>{ if(r.id && !delSet.has(r.id)) txMap[r.id] = rowToTx(r); });
+    j.tx.forEach(r=>{ if(r.id) txMap[r.id] = rowToTx(r); });
+    const localOnlyTx = db.tx.filter(t=>!txMap[t.id] && !pending.tx[t.id]);
     Object.values(pending.tx).forEach(r=>{ txMap[r.id] = rowToTx(r); });
-    db.tx = Object.values(txMap);
-    const pDel = new Set(pending.projDel);
+    db.tx = Object.values(txMap).concat(localOnlyTx);
+    if(localOnlyTx.length) queueTx(localOnlyTx);
     const pMap = {};
-    (j.projects||[]).forEach(r=>{ if(r.id && !pDel.has(r.id)) pMap[r.id] = rowToProj(r); });
+    (j.projects||[]).forEach(r=>{ if(r.id) pMap[r.id] = rowToProj(r); });
+    const localOnlyProj = db.projects.filter(p=>!pMap[p.id] && !pending.projUp[p.id]);
     Object.values(pending.projUp).forEach(r=>{ pMap[r.id] = rowToProj(r); });
-    db.projects = Object.values(pMap);
+    db.projects = Object.values(pMap).concat(localOnlyProj);
+    localOnlyProj.forEach(p=>queueProj(p));
     const s = j.settings || {};
     ['rules','templates','categories','accounts'].forEach(k=>{
       if(pending.settings[k]) return;
       if(s[k]){ try{ const v = JSON.parse(s[k]); if(v) db[k] = v; }catch(e){} }
+      else queueSetting(k); // חסר בשרת — מעלים את המקומי
     });
-    if(s.vat && !pending.settings.vat){ const n = parseFloat(s.vat); if(!isNaN(n)) db.vat = n; }
+    if(s.vat){ if(!pending.settings.vat){ const n = parseFloat(s.vat); if(!isNaN(n)) db.vat = n; } }
+    else queueSetting('vat');
     migrate(db);
     save();
     serverLoaded = true;
     renderAll();
     setSync(hasPending()?'saving':'on', hasPending()?'שומר בענן...':'מסונכרן');
+    if(hasPending()) flush();
     return true;
   }).catch(e=>{
     console.error('server load failed:', e);
@@ -659,32 +666,12 @@ async function connectServer(url){
   if(!/^https:\/\/script\.google/.test(url)){ toast('⚠️ זו לא כתובת Apps Script (צריכה להתחיל ב-https://script.google...)'); return; }
   GS_URL = url; localStorage.setItem(LS_URL, url);
   setSync('saving','בודק חיבור...');
-  try{
-    const j = await apiGet({action:'load'});
-    if(!j || !Array.isArray(j.tx)) throw new Error('bad');
-    // מיזוג בטוח: איחוד לפי מזהה — שום נתון לא הולך לאיבוד
-    const serverIds = new Set(j.tx.map(r=>r.id));
-    const localOnlyTx = db.tx.filter(t=>!serverIds.has(t.id));
-    const serverProjIds = new Set((j.projects||[]).map(r=>r.id));
-    const localOnlyProj = db.projects.filter(p=>!serverProjIds.has(p.id));
-    db.tx = j.tx.map(rowToTx).concat(localOnlyTx);
-    db.projects = (j.projects||[]).map(rowToProj).concat(localOnlyProj);
-    const s = j.settings || {};
-    ['rules','templates','categories','accounts'].forEach(k=>{
-      if(s[k]){ try{ const v = JSON.parse(s[k]); if(v) db[k] = v; }catch(e){} }
-    });
-    if(s.vat){ const n = parseFloat(s.vat); if(!isNaN(n)) db.vat = n; }
-    migrate(db); save();
-    if(localOnlyTx.length) queueTx(localOnlyTx);
-    localOnlyProj.forEach(p=>queueProj(p));
+  const ok = await serverLoad();
+  if(ok){
     queueSetting('rules','templates','categories','accounts','vat');
-    serverLoaded = true;
-    renderAll();
-    toast('✔ מחובר לגוגל שיטס' + (localOnlyTx.length ? ' · מעלה '+localOnlyTx.length+' תנועות מקומיות' : ''));
+    toast('✔ מחובר לגוגל שיטס');
     flush();
-  }catch(e){
-    console.error(e);
-    setSync('err','החיבור נכשל — בדוק את הכתובת');
+  } else {
     toast('⚠️ החיבור נכשל — ודא שהכתובת נכונה ושהפריסה היא "Anyone"');
   }
 }
