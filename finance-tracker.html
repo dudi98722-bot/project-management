@@ -1105,13 +1105,21 @@ document.getElementById('selAll').addEventListener('change', e=>{
   if(e.target.checked) pendingFiltered().forEach(t=>selected.add(t.id));
   renderClassify();
 });
+function txSearchHaystack(t){
+  return [
+    t.date, t.date.split('-').reverse().join('/'),
+    String(t.amount), fmt2(t.amount),
+    t.desc, extraLine(t), t.account, t.category, t.project,
+    t.kind==='income'?'הכנסה':'הוצאה'
+  ].filter(Boolean).join(' ').toLowerCase();
+}
 function pendingFiltered(){
   const acc = document.getElementById('clsAccFilter').value;
-  const q = document.getElementById('clsSearch').value.trim();
+  const q = document.getElementById('clsSearch').value.trim().toLowerCase();
   return db.tx.filter(needsClassify)
     .filter(t=>perms().assignScope || t.scope==='home')
     .filter(t=>!acc || t.account===acc)
-    .filter(t=>!q || (t.desc+' '+(t.details||'')).includes(q))
+    .filter(t=>!q || txSearchHaystack(t).includes(q))
     .sort((a,b)=>b.date.localeCompare(a.date));
 }
 function renderClassify(){
