@@ -19,28 +19,22 @@
  *        {op:'delProject',    ids:[...]}
  *        {op:'setSetting', key:'..', value:'..'}
  *
- * הגדרה (פעם אחת):
- *   1. script.google.com → New project, הדבק את כל הקוד הזה.
- *   2. Deploy → New deployment → Web app
+ * הגדרה (פעם אחת) — הסקריפט "קשור" לגיליון עצמו, כך שהקוד והנתונים
+ * יושבים באותו קובץ ב-Drive:
+ *   1. פתח את גיליון "ניהול כספים בני" (או צור גיליון חדש בשם הזה).
+ *   2. בתוך הגיליון: Extensions (תוספים) → Apps Script (סקריפט של Apps).
+ *   3. מחק את הקוד שבעורך והדבק את כל הקוד הזה במקומו.
+ *   4. Deploy → New deployment → Web app
  *        Execute as: Me   |   Who has access: Anyone
- *   3. אשר הרשאות (Authorize / Allow).
- *   4. העתק את כתובת ה-/exec והדבק אותה במסך ההגדרות של המערכת.
+ *   5. אשר הרשאות (Authorize / Allow).
+ *   6. העתק את כתובת ה-/exec והדבק אותה במסך ההגדרות של המערכת.
  *
- * הסקריפט יוצר לבד גיליון "ניהול כספים בני" ב-Drive בפעם הראשונה.
+ * הסקריפט יוצר לבד את הלשוניות "תנועות"/"פרויקטים"/"הגדרות" בתוך אותו
+ * גיליון בפעם הראשונה — אין קובץ נפרד.
  */
 
-var SHEET_ID = ''; // אופציונלי: ID של גיליון קיים. ריק = ייווצר אוטומטית.
-
 function getSpreadsheet() {
-  var props = PropertiesService.getScriptProperties();
-  if (SHEET_ID) return SpreadsheetApp.openById(SHEET_ID);
-  var saved = props.getProperty('fin_sheet_id');
-  if (saved) {
-    try { return SpreadsheetApp.openById(saved); } catch (e) {}
-  }
-  var ss = SpreadsheetApp.create('ניהול כספים בני');
-  props.setProperty('fin_sheet_id', ss.getId());
-  return ss;
+  return SpreadsheetApp.getActiveSpreadsheet();
 }
 
 var SHEETS = {
@@ -48,8 +42,8 @@ var SHEETS = {
         headers: ['מזהה','תאריך','תיאור','פרטים','סכום','סוג','מקור','שיוך','קטגוריה','פרויקט','חשבונית','אסמכתא','פרטים נוספים 1','פרטים נוספים 2','פרטים נוספים 3','פרטים נוספים 4','קובץ מקור','נמחק'],
         fields:  ['id','date','desc','details','amount','kind','account','scope','category','project','invoice','ref','extra1','extra2','extra3','extra4','origin','deleted'] },
   projects: { name: 'פרויקטים',
-        headers: ['מזהה','שם','מחיר ללא מע"מ','שלבי תשלום (JSON)','צפי הוצאות (JSON)','נמחק'],
-        fields:  ['id','name','price','stages','budget','deleted'] },
+        headers: ['מזהה','שם','מחיר ללא מע"מ','שלבי תשלום (JSON)','צפי הוצאות (JSON)','נמחק','תוספות למחיר (JSON)'],
+        fields:  ['id','name','price','stages','budget','deleted','extras'] },
   settings: { name: 'הגדרות',
         headers: ['key','value'],
         fields:  ['key','value'] }
