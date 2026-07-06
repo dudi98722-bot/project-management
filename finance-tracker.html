@@ -101,6 +101,20 @@ tr:hover td{background:#fafbff}
 #loginOverlay .lcard{background:#fff;border-radius:18px;padding:34px 28px;max-width:360px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.35)}
 #loginCode{font-size:24px;text-align:center;letter-spacing:8px;direction:ltr;width:100%;margin-top:8px}
 #userChip{position:absolute;top:48px;left:18px;background:rgba(255,255,255,.16);border-radius:14px;padding:4px 12px;font-size:11.5px;cursor:pointer;white-space:nowrap;display:none}
+.th-filt{display:inline-flex;align-items:center;gap:3px}
+.cfbtn{border:none;background:none;cursor:pointer;font-size:10px;color:#94a3b8;padding:2px 5px;border-radius:5px;line-height:1}
+.cfbtn:hover{background:#e2e8f0;color:#475569}
+.cfbtn.active{color:#fff;background:var(--primary)}
+#colFilterPopup{position:fixed;z-index:300;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 10px 32px rgba(0,0,0,.2);padding:12px;min-width:230px;max-width:280px;display:none}
+#colFilterPopup h4{font-size:13px;margin-bottom:8px;color:#334155}
+#colFilterPopup .cf-list{max-height:230px;overflow-y:auto;border:1px solid #f1f5f9;border-radius:8px;padding:5px;margin-bottom:8px}
+#colFilterPopup label.cf-item{display:flex;align-items:center;gap:6px;font-size:12.5px;padding:4px 3px;cursor:pointer;border-radius:5px}
+#colFilterPopup label.cf-item:hover{background:#f8fafc}
+#colFilterPopup .cf-actions{display:flex;gap:6px;justify-content:flex-end;margin-top:2px}
+#colFilterPopup input[type=text],#colFilterPopup input[type=date],#colFilterPopup input[type=number]{width:100%;margin-bottom:7px;font-size:13px}
+#colFilterPopup .cf-row2{display:flex;gap:6px}
+#colFilterPopup .cf-row2>input{width:50%}
+#colFilterPopup label.cf-fieldlbl{display:block;font-size:11px;color:var(--muted);margin-bottom:3px}
 .chip{display:inline-flex;align-items:center;gap:6px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:16px;padding:4px 12px;font-size:12.5px;margin:3px}
 .chip button{border:none;background:none;color:#dc2626;cursor:pointer;font-size:14px;font-weight:700}
 .bulkbar{position:sticky;top:52px;z-index:40;background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:10px 14px;display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
@@ -208,6 +222,7 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
     <select id="txProj"><option value="">כל הפרויקטים</option></select>
     <select id="txAcc"><option value="">כל החשבונות</option></select>
     <input type="text" id="txSearch" placeholder="🔍 חיפוש..." style="min-width:130px">
+    <button class="btn sec sm" id="txClearColFiltersBtn" style="display:none" onclick="clearAllColFilters()">🧹 נקה סינוני עמודות</button>
     <button class="btn sec sm" onclick="exportCSV()">📤 ייצוא לאקסל</button>
     <button class="btn danger sm" id="txDelSelBtn" style="display:none" onclick="deleteSelectedTx()"></button>
     <button class="btn sec sm" id="txDelFilteredBtn" onclick="deleteFilteredTx()" title="מוחק את כל התנועות שעונות על הסינון הנוכחי">🗑️ מחק את המסונן</button>
@@ -422,6 +437,7 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
   </div>
 </div>
 <button id="undoFab" onclick="undo()" title="ביטול הפעולה האחרונה (Ctrl+Z)"></button>
+<div id="colFilterPopup" onclick="event.stopPropagation()"></div>
 <div id="toast"></div>
 
 <script>
@@ -1242,6 +1258,152 @@ function applyBulk(){
 /* ================= טבלת תנועות ================= */
 ['txMonth','txScope','txCat','txProj','txAcc','txSearch'].forEach(id=>
   document.getElementById(id).addEventListener('input', renderTxTable));
+/* ================= סינון עמודות בטבלת "כל התנועות" (כמו באקסל) ================= */
+function defaultColFilters(){
+  return {date:{from:'',to:''}, desc:{q:''}, account:{sel:null}, scope:{sel:null},
+    category:{sel:null}, project:{sel:null}, amount:{min:'',max:''}};
+}
+let txColFilters = defaultColFilters();
+let txBaseList = [];
+let cfOpenCol = null;
+function scopeKey(t){
+  if(t.deleted) return 'deleted';
+  if(!t.scope) return 'pending';
+  return t.scope;
+}
+const SCOPE_LABELS = {pending:'⏳ ממתין', biz:'🏢 עסק', home:'🏠 בית', exclude:'🚫 לא נכלל', deleted:'♻️ נמחק'};
+function passesColFilters(t, skip){
+  const f = txColFilters;
+  if(skip!=='date'){
+    if(f.date.from && t.date < f.date.from) return false;
+    if(f.date.to && t.date > f.date.to) return false;
+  }
+  if(skip!=='desc' && f.desc.q){
+    const hay = (t.desc+' '+(t.details||'')).toLowerCase();
+    if(!hay.includes(f.desc.q.toLowerCase())) return false;
+  }
+  if(skip!=='account' && f.account.sel && !f.account.sel.has(t.account||'(ללא חשבון)')) return false;
+  if(skip!=='scope' && f.scope.sel && !f.scope.sel.has(scopeKey(t))) return false;
+  if(skip!=='category' && f.category.sel && !f.category.sel.has(t.category||'(ללא קטגוריה)')) return false;
+  if(skip!=='project' && f.project.sel && !f.project.sel.has(t.project||'(ללא פרויקט)')) return false;
+  if(skip!=='amount'){
+    if(f.amount.min!=='' && t.amount < parseFloat(f.amount.min)) return false;
+    if(f.amount.max!=='' && t.amount > parseFloat(f.amount.max)) return false;
+  }
+  return true;
+}
+function isColFilterActive(col){
+  const f = txColFilters[col];
+  if(col==='date') return !!(f.from||f.to);
+  if(col==='desc') return !!(f.q && f.q.trim());
+  if(col==='amount') return !!(f.min!=='' || f.max!=='');
+  return !!f.sel;
+}
+function anyColFilterActive(){ return Object.keys(txColFilters).some(isColFilterActive); }
+function clearAllColFilters(){ txColFilters = defaultColFilters(); renderTxTable(); closeColFilter(); }
+function colFilterBtn(col, label){
+  const active = isColFilterActive(col);
+  return '<span class="th-filt">'+label+'<button type="button" class="cfbtn'+(active?' active':'')+'" onclick="openColFilter(event,\''+col+'\')" title="סינון עמודה">▾</button></span>';
+}
+function getColValues(col){
+  const rows = txBaseList.filter(t=>passesColFilters(t, col));
+  const counts = {};
+  rows.forEach(t=>{
+    let key;
+    if(col==='account') key = t.account || '(ללא חשבון)';
+    else if(col==='scope') key = scopeKey(t);
+    else if(col==='category') key = t.category || '(ללא קטגוריה)';
+    else key = t.project || '(ללא פרויקט)';
+    counts[key] = (counts[key]||0)+1;
+  });
+  return Object.keys(counts).sort((a,b)=>String(a).localeCompare(String(b),'he'))
+    .map(k=>({key:k, label: col==='scope' ? (SCOPE_LABELS[k]||k) : k, count:counts[k]}));
+}
+function colFilterBodyHTML(col){
+  if(col==='date'){
+    const f = txColFilters.date;
+    return '<h4>📅 סינון לפי תאריך</h4>'
+      +'<label class="cf-fieldlbl">מתאריך</label>'
+      +'<input type="date" value="'+esc(f.from)+'" oninput="txColFilters.date.from=this.value;renderTxTable()">'
+      +'<label class="cf-fieldlbl">עד תאריך</label>'
+      +'<input type="date" value="'+esc(f.to)+'" oninput="txColFilters.date.to=this.value;renderTxTable()">'
+      +'<div class="cf-actions"><button class="btn sm sec" onclick="txColFilters.date={from:\'\',to:\'\'};renderTxTable();closeColFilter()">נקה</button></div>';
+  }
+  if(col==='desc'){
+    const f = txColFilters.desc;
+    return '<h4>📝 חיפוש בתיאור</h4>'
+      +'<input type="text" placeholder="הקלד לחיפוש..." value="'+esc(f.q)+'" oninput="txColFilters.desc.q=this.value;renderTxTable()">'
+      +'<div class="cf-actions"><button class="btn sm sec" onclick="txColFilters.desc={q:\'\'};renderTxTable();closeColFilter()">נקה</button></div>';
+  }
+  if(col==='amount'){
+    const f = txColFilters.amount;
+    return '<h4>💰 סינון לפי סכום</h4>'
+      +'<div class="cf-row2"><input type="number" placeholder="מ-" value="'+esc(f.min)+'" oninput="txColFilters.amount.min=this.value;renderTxTable()">'
+      +'<input type="number" placeholder="עד" value="'+esc(f.max)+'" oninput="txColFilters.amount.max=this.value;renderTxTable()"></div>'
+      +'<div class="cf-actions"><button class="btn sm sec" onclick="txColFilters.amount={min:\'\',max:\'\'};renderTxTable();closeColFilter()">נקה</button></div>';
+  }
+  const labelMap = {account:'חשבון', scope:'שיוך', category:'קטגוריה', project:'פרויקט'};
+  const values = getColValues(col);
+  const sel = txColFilters[col].sel;
+  return '<h4>🔽 סינון לפי '+labelMap[col]+'</h4>'
+    +'<div class="cf-actions" style="justify-content:space-between;margin-bottom:6px">'
+      +'<button class="btn sm ghost" onclick="cfSelectAll(\''+col+'\')">בחר הכל</button>'
+      +'<button class="btn sm ghost" onclick="cfSelectNone(\''+col+'\')">נקה הכל</button>'
+    +'</div>'
+    +'<div class="cf-list">'
+    + (values.length ? values.map(v=>{
+        const checked = !sel || sel.has(v.key);
+        return '<label class="cf-item"><input type="checkbox" '+(checked?'checked':'')+' onchange="cfToggleValue(\''+col+'\',\''+jsq(v.key)+'\',this.checked)"><span>'+esc(v.label)+'</span><span class="muted" style="margin-right:auto;font-size:11px">'+v.count+'</span></label>';
+      }).join('') : '<div class="muted" style="padding:6px;font-size:12px">אין ערכים להצגה</div>')
+    +'</div>'
+    +'<div class="cf-actions"><button class="btn sm sec" onclick="txColFilters[\''+col+'\']={sel:null};renderTxTable();closeColFilter()">נקה סינון</button></div>';
+}
+function cfToggleValue(col, val, checked){
+  const f = txColFilters[col];
+  if(!f.sel) f.sel = new Set(getColValues(col).map(v=>v.key));
+  if(checked) f.sel.add(val); else f.sel.delete(val);
+  renderTxTable();
+  refreshColFilterPopup(col);
+}
+function cfSelectAll(col){ txColFilters[col].sel = null; renderTxTable(); refreshColFilterPopup(col); }
+function cfSelectNone(col){ txColFilters[col].sel = new Set(); renderTxTable(); refreshColFilterPopup(col); }
+function refreshColFilterPopup(col){
+  if(cfOpenCol!==col) return;
+  const popup = document.getElementById('colFilterPopup');
+  if(popup) popup.innerHTML = colFilterBodyHTML(col);
+}
+function openColFilter(e, col){
+  e.stopPropagation();
+  const popup = document.getElementById('colFilterPopup');
+  if(cfOpenCol===col && popup.style.display==='block'){ closeColFilter(); return; }
+  cfOpenCol = col;
+  popup.innerHTML = colFilterBodyHTML(col);
+  const rect = e.currentTarget.getBoundingClientRect();
+  popup.style.display = 'block';
+  let left = rect.left - 230 + rect.width;
+  if(left > window.innerWidth-296) left = window.innerWidth-296;
+  if(left < 8) left = 8;
+  let top = rect.bottom + 6;
+  popup.style.top = top + 'px';
+  popup.style.left = left + 'px';
+  setTimeout(()=>{
+    const el = popup.querySelector('input[type=text],input[type=date],input[type=number]');
+    if(el) el.focus();
+  }, 0);
+}
+function closeColFilter(){
+  cfOpenCol = null;
+  const popup = document.getElementById('colFilterPopup');
+  if(popup) popup.style.display = 'none';
+}
+document.addEventListener('click', e=>{
+  const popup = document.getElementById('colFilterPopup');
+  if(!popup || popup.style.display!=='block') return;
+  if(popup.contains(e.target) || (e.target.closest && e.target.closest('.cfbtn'))) return;
+  closeColFilter();
+});
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeColFilter(); });
+
 function renderTxTable(){
   // רענון אפשרויות פילטרים
   const catSel = document.getElementById('txCat'), projSel = document.getElementById('txProj'), accSel = document.getElementById('txAcc');
@@ -1260,7 +1422,7 @@ function renderTxTable(){
   if(perms().homeOnly) scope = 'home';
   else if(scope==='deleted' && !perms().canDelete) scope = '';
   const q = document.getElementById('txSearch').value.trim();
-  let list = db.tx
+  txBaseList = db.tx
     .filter(t=>month==='all'||t.date.slice(0,7)===month)
     .filter(t=>{
       if(scope==='deleted') return !!t.deleted;
@@ -1272,19 +1434,31 @@ function renderTxTable(){
     .filter(t=>!catSel.value || t.category===catSel.value)
     .filter(t=>!projSel.value || t.project===projSel.value)
     .filter(t=>!accSel.value || t.account===accSel.value)
-    .filter(t=>!q || (t.desc+' '+(t.details||'')+' '+(t.category||'')).includes(q))
+    .filter(t=>!q || (t.desc+' '+(t.details||'')+' '+(t.category||'')).includes(q));
+  let list = txBaseList.filter(t=>passesColFilters(t, null))
     .sort((a,b)=>b.date.localeCompare(a.date));
   const inc = list.filter(t=>t.scope!=='exclude'&&t.kind==='income').reduce((s,t)=>s+t.amount,0);
   const exp = list.filter(t=>t.scope!=='exclude'&&t.kind==='expense').reduce((s,t)=>s+t.amount,0);
   lastTxFiltered = list;
   const listIds = new Set(list.map(t=>t.id));
   txSel = new Set([...txSel].filter(id=>listIds.has(id)));
+  const btnClear = document.getElementById('txClearColFiltersBtn');
+  if(btnClear) btnClear.style.display = anyColFilterActive() ? '' : 'none';
   const scopeTag = t => !t.scope ? '<span class="tag pending">⏳ ממתין</span>'
     : t.scope==='biz' ? '<span class="tag biz">🏢 עסק</span>'
     : t.scope==='home' ? '<span class="tag home">🏠 בית</span>'
     : '<span class="tag exclude">🚫 לא נכלל</span>';
-  document.getElementById('txTableWrap').innerHTML = !list.length ? '<div class="empty">אין תנועות תואמות</div>' :
-    '<table><thead><tr><th><input type="checkbox" '+(txSel.size===list.length&&list.length?'checked':'')+' onchange="txToggleAll(this.checked)" title="בחר את כל המסונן"></th><th>תאריך</th><th>תיאור</th><th>חשבון</th><th>שיוך</th><th>קטגוריה</th><th>פרויקט</th><th>הכנסה</th><th>הוצאה</th><th></th></tr></thead><tbody>'
+  document.getElementById('txTableWrap').innerHTML = !list.length ? '<div class="empty">אין תנועות תואמות'+(anyColFilterActive()?' (בגלל סינוני העמודות — נסו "🧹 נקה סינוני עמודות")':'')+'</div>' :
+    '<table><thead><tr><th><input type="checkbox" '+(txSel.size===list.length&&list.length?'checked':'')+' onchange="txToggleAll(this.checked)" title="בחר את כל המסונן"></th>'
+    +'<th>'+colFilterBtn('date','תאריך')+'</th>'
+    +'<th>'+colFilterBtn('desc','תיאור')+'</th>'
+    +'<th>'+colFilterBtn('account','חשבון')+'</th>'
+    +'<th>'+colFilterBtn('scope','שיוך')+'</th>'
+    +'<th>'+colFilterBtn('category','קטגוריה')+'</th>'
+    +'<th>'+colFilterBtn('project','פרויקט')+'</th>'
+    +'<th>'+colFilterBtn('amount','הכנסה')+'</th>'
+    +'<th>'+colFilterBtn('amount','הוצאה')+'</th>'
+    +'<th></th></tr></thead><tbody>'
     + list.slice(0,500).map(t=>'<tr>'
       +'<td><input type="checkbox" '+(txSel.has(t.id)?'checked':'')+' onchange="txToggleSel(\''+t.id+'\',this.checked)"></td>'
       +'<td style="white-space:nowrap">'+t.date.split('-').reverse().join('/')+'</td>'
