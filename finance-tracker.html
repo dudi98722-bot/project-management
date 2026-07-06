@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ניהול כספים — בית ועסק</title>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="xlsx.full.min.js"></script>
+<script src="chart.umd.min.js"></script>
 <style>
 :root{
   --biz:#2563eb; --biz-bg:#dbeafe;
@@ -17,7 +17,8 @@
 }
 *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif}
 body{background:var(--bg);color:var(--text);min-height:100vh}
-header{background:linear-gradient(135deg,#312e81,#4f46e5 60%,#6366f1);color:#fff;padding:18px 24px}
+header{background:linear-gradient(135deg,#312e81,#4f46e5 60%,#6366f1);color:#fff;padding:18px 24px;position:relative}
+#syncChip{position:absolute;top:16px;left:18px;background:rgba(255,255,255,.16);border-radius:14px;padding:5px 13px;font-size:12px;cursor:pointer;white-space:nowrap}
 header h1{font-size:22px;font-weight:700}
 header p{opacity:.85;font-size:13px;margin-top:4px}
 nav{display:flex;gap:4px;background:#fff;padding:8px 16px;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50;overflow-x:auto}
@@ -120,7 +121,8 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
 
 <header>
   <h1>💰 ניהול כספים — בית ועסק</h1>
-  <p>סיווג הכנסות והוצאות מהבנק והאשראי · מעקב לפי פרויקטים · הנתונים נשמרים במכשיר זה</p>
+  <p>סיווג הכנסות והוצאות מהבנק והאשראי · מעקב לפי פרויקטים</p>
+  <div id="syncChip" onclick="gotoTab('settings')" title="מצב סנכרון — לחיצה להגדרות">⚪ מקומי</div>
 </header>
 
 <nav id="nav">
@@ -199,6 +201,8 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
     <select id="txAcc"><option value="">כל החשבונות</option></select>
     <input type="text" id="txSearch" placeholder="🔍 חיפוש..." style="min-width:130px">
     <button class="btn sec sm" onclick="exportCSV()">📤 ייצוא לאקסל</button>
+    <button class="btn danger sm" id="txDelSelBtn" style="display:none" onclick="deleteSelectedTx()"></button>
+    <button class="btn sec sm" onclick="deleteFilteredTx()" title="מוחק את כל התנועות שעונות על הסינון הנוכחי">🗑️ מחק את המסונן</button>
   </div>
   <div class="card table-wrap" id="txTableWrap"></div>
 </section>
@@ -294,9 +298,28 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
     <div class="table-wrap" id="tplTable"></div>
   </div>
   <div class="card">
+    <h3>🗑️ מחיקת נתונים בכמות</h3>
+    <p class="muted" style="margin-bottom:10px">
+      מחיקה לפי קובץ ייבוא — מוחקת את כל התנועות שהגיעו מאותה העלאה (שימושי אחרי ייבוא שגוי).<br>
+      דרכים נוספות: במסך "כל התנועות" אפשר לסמן תנועות ✓ ו"למחוק נבחרים", או לסנן (חודש/שיוך/חיפוש) ו"למחוק את המסונן".
+    </p>
+    <div class="table-wrap" id="originsTable"></div>
+  </div>
+  <div class="card">
     <h3>🤖 כללי סיווג אוטומטי (<span id="rulesCount"></span>)</h3>
     <p class="muted" style="margin-bottom:10px">כללים שנלמדו מהסיווגים שלך — מוחלים אוטומטית על כל ייבוא חדש.</p>
     <div class="table-wrap" id="rulesTable"></div>
+  </div>
+  <div class="card">
+    <h3>☁️ חיבור לגוגל שיטס (ענן)</h3>
+    <p class="muted" style="margin-bottom:10px">כשהמערכת מחוברת — כל תנועה, פרויקט והגדרה נשמרים בגיליון Google, נטענים מכל מכשיר, וגם הדיווחים מהטופס החיצוני נכנסים אוטומטית. הדביקו את כתובת ה-Web App (exec) של ה-Apps Script:</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <input type="text" id="gsUrlInput" dir="ltr" placeholder="https://script.google.com/macros/s/…/exec" style="flex:1;min-width:250px">
+      <button class="btn" onclick="connectServer(document.getElementById('gsUrlInput').value)">🔗 התחבר</button>
+      <button class="btn sec" onclick="serverLoad()">⟳ טען מהשרת</button>
+      <button class="btn sec" onclick="flush()">⬆ סנכרן עכשיו</button>
+    </div>
+    <div class="muted" id="gsStatus" style="margin-top:8px"></div>
   </div>
   <div class="card">
     <h3>💾 גיבוי ושחזור</h3>
@@ -322,6 +345,10 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
       <div><label>קטגוריה</label><select id="eCat"></select></div>
       <div><label>פרויקט</label><select id="eProj"></select></div>
       <div style="grid-column:1/-1"><label>תיאור</label><input type="text" id="eDesc"></div>
+      <div><label>פרטים נוספים 1</label><input type="text" id="eExtra1"></div>
+      <div><label>פרטים נוספים 2</label><input type="text" id="eExtra2"></div>
+      <div><label>פרטים נוספים 3</label><input type="text" id="eExtra3"></div>
+      <div><label>פרטים נוספים 4</label><input type="text" id="eExtra4"></div>
       <div style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px;color:var(--text)"><input type="checkbox" id="eInvoice"> 🧾 עם חשבונית — יקוזז מע"מ בדוח הפרויקט (רלוונטי להכנסות עסק)</label></div>
     </div>
     <div class="muted" id="eOrigin" style="margin-top:10px"></div>
@@ -434,6 +461,220 @@ function migrate(d){
 }
 function save(){ localStorage.setItem(LS_KEY, JSON.stringify(db)); }
 function uid(){ return (crypto.randomUUID ? crypto.randomUUID() : Date.now()+'-'+Math.random().toString(36).slice(2)); }
+
+/* ================= סנכרון לגוגל שיטס ================= */
+const LS_URL = 'finance-gs-url';
+const LS_PENDING = 'finance-pending-v1';
+const DEFAULT_GS_URL = ''; // כתובת ה-Apps Script — מוזרקת אחרי הפריסה
+let GS_URL = localStorage.getItem(LS_URL) || DEFAULT_GS_URL;
+try{
+  const qsGs = new URLSearchParams(location.search).get('gs');
+  if(qsGs){ GS_URL = qsGs; localStorage.setItem(LS_URL, qsGs); }
+}catch(e){}
+let serverLoaded = false, flushing = false, flushTimer = null;
+let pending = loadPending();
+function loadPending(){
+  try{
+    const p = JSON.parse(localStorage.getItem(LS_PENDING)||'null');
+    if(p && p.tx) return p;
+  }catch(e){}
+  return {tx:{}, del:[], projUp:{}, projDel:[], settings:{}};
+}
+function savePending(){ localStorage.setItem(LS_PENDING, JSON.stringify(pending)); }
+function hasPending(){
+  return Object.keys(pending.tx).length>0 || pending.del.length>0 ||
+    Object.keys(pending.projUp).length>0 || pending.projDel.length>0 ||
+    Object.keys(pending.settings).length>0;
+}
+let lastSync = {state:'off', label:'מקומי — לא מחובר'};
+function setSync(state, label){
+  lastSync = {state, label};
+  const icons = {on:'🟢', saving:'🟡', err:'🔴', off:'⚪'};
+  const chip = document.getElementById('syncChip');
+  if(chip) chip.textContent = (icons[state]||'⚪')+' '+(label||'');
+  const st = document.getElementById('gsStatus');
+  if(st) st.textContent = GS_URL ? ((icons[state]||'')+' '+(label||'')) : '⚠ לא הוגדר חיבור — הנתונים נשמרים בדפדפן זה בלבד';
+}
+function txToRow(t){
+  return {id:t.id, date:t.date, desc:t.desc, details:t.details||'', amount:String(t.amount),
+    kind:t.kind, account:t.account||'', scope:t.scope||'', category:t.category||'',
+    project:t.project||'', invoice:t.invoice?'1':'', ref:t.ref||'', origin:t.origin||'',
+    extra1:t.extra1||'', extra2:t.extra2||'', extra3:t.extra3||'', extra4:t.extra4||''};
+}
+function rowToTx(r){
+  return {id:r.id, date:r.date||'', desc:r.desc||'', details:r.details||'',
+    amount:parseFloat(r.amount)||0, kind:r.kind==='income'?'income':'expense',
+    account:r.account||'', scope:r.scope||'', category:r.category||'', project:r.project||'',
+    invoice:r.invoice==='1'||r.invoice==='true', ref:r.ref||'', origin:r.origin||'',
+    extra1:r.extra1||'', extra2:r.extra2||'', extra3:r.extra3||'', extra4:r.extra4||''};
+}
+function projToRow(p){
+  return {id:p.id, name:p.name, price:String(p.price||0),
+    stages:JSON.stringify(p.stages||[]), budget:JSON.stringify(p.budget||{})};
+}
+function rowToProj(r){
+  let stages=[], budget={workers:0, materials:0, cranes:0};
+  try{ stages = JSON.parse(r.stages||'[]')||[]; }catch(e){}
+  try{ budget = Object.assign(budget, JSON.parse(r.budget||'{}')); }catch(e){}
+  return {id:r.id, name:r.name||'', price:parseFloat(r.price)||0, stages, budget};
+}
+function settingValue(k){
+  if(k==='vat') return String(db.vat||18);
+  return JSON.stringify(db[k]||null);
+}
+function queueTx(list){
+  (Array.isArray(list)?list:[list]).forEach(t=>{ if(t&&t.id) pending.tx[t.id]=txToRow(t); });
+  savePending(); schedFlush();
+}
+function queueDelTx(ids){
+  ids.forEach(id=>{ delete pending.tx[id]; if(!pending.del.includes(id)) pending.del.push(id); });
+  savePending(); schedFlush();
+}
+function queueProj(p){ if(p&&p.id){ pending.projUp[p.id]=projToRow(p); savePending(); schedFlush(); } }
+function queueProjDel(id){
+  delete pending.projUp[id];
+  if(!pending.projDel.includes(id)) pending.projDel.push(id);
+  savePending(); schedFlush();
+}
+function queueSetting(){
+  for(const k of arguments) pending.settings[k]=1;
+  savePending(); schedFlush();
+}
+function schedFlush(){
+  if(!GS_URL){ setSync('off','מקומי — לא מחובר'); return; }
+  clearTimeout(flushTimer);
+  flushTimer = setTimeout(flush, 1200);
+}
+function apiGet(params){
+  const q = new URLSearchParams(params).toString();
+  return fetch(GS_URL+'?'+q).then(r=>r.json());
+}
+function apiPost(payload){
+  return fetch(GS_URL, {method:'POST', body: JSON.stringify(payload)})
+    .then(r=>r.json())
+    .then(j=>{ if(!j || j.status!=='ok') throw new Error((j&&j.message)||'server error'); return j; });
+}
+async function flush(){
+  if(!GS_URL || flushing) return;
+  if(!hasPending()){ setSync('on','מסונכרן'); return; }
+  flushing = true;
+  setSync('saving','שומר בענן...');
+  try{
+    if(pending.del.length){
+      const ids = pending.del.slice();
+      await apiPost({action:'batch', ops:[{op:'delTx', ids:ids}]});
+      pending.del = pending.del.filter(id=>!ids.includes(id));
+      savePending();
+    }
+    if(pending.projDel.length){
+      const ids = pending.projDel.slice();
+      await apiPost({action:'batch', ops:[{op:'delProject', ids:ids}]});
+      pending.projDel = pending.projDel.filter(id=>!ids.includes(id));
+      savePending();
+    }
+    let rows = Object.values(pending.tx);
+    while(rows.length){
+      const chunk = rows.slice(0,150);
+      await apiPost({action:'batch', ops:[{op:'upsertTx', rows:chunk}]});
+      chunk.forEach(r=>delete pending.tx[r.id]);
+      savePending();
+      rows = Object.values(pending.tx);
+      if(rows.length) setSync('saving','שומר בענן... נותרו '+rows.length);
+    }
+    const pr = Object.values(pending.projUp);
+    if(pr.length){
+      await apiPost({action:'batch', ops:[{op:'upsertProject', rows:pr}]});
+      pending.projUp = {}; savePending();
+    }
+    const keys = Object.keys(pending.settings);
+    if(keys.length){
+      await apiPost({action:'batch', ops: keys.map(k=>({op:'setSetting', key:k, value:settingValue(k)}))});
+      pending.settings = {}; savePending();
+    }
+    setSync('on','מסונכרן');
+  }catch(e){
+    console.error('sync flush failed:', e);
+    setSync('err','שגיאת סנכרון — ינוסה שוב אוטומטית');
+    clearTimeout(flushTimer);
+    flushTimer = setTimeout(flush, 25000);
+  }finally{
+    flushing = false;
+    if(hasPending() && !flushTimer) schedFlush();
+  }
+}
+function serverLoad(silent){
+  if(!GS_URL) return Promise.resolve(false);
+  if(!silent) setSync('saving','טוען מהשרת...');
+  return apiGet({action:'load'}).then(j=>{
+    if(!j || !Array.isArray(j.tx)) throw new Error('bad response');
+    const delSet = new Set(pending.del);
+    const txMap = {};
+    j.tx.forEach(r=>{ if(r.id && !delSet.has(r.id)) txMap[r.id] = rowToTx(r); });
+    Object.values(pending.tx).forEach(r=>{ txMap[r.id] = rowToTx(r); });
+    db.tx = Object.values(txMap);
+    const pDel = new Set(pending.projDel);
+    const pMap = {};
+    (j.projects||[]).forEach(r=>{ if(r.id && !pDel.has(r.id)) pMap[r.id] = rowToProj(r); });
+    Object.values(pending.projUp).forEach(r=>{ pMap[r.id] = rowToProj(r); });
+    db.projects = Object.values(pMap);
+    const s = j.settings || {};
+    ['rules','templates','categories','accounts'].forEach(k=>{
+      if(pending.settings[k]) return;
+      if(s[k]){ try{ const v = JSON.parse(s[k]); if(v) db[k] = v; }catch(e){} }
+    });
+    if(s.vat && !pending.settings.vat){ const n = parseFloat(s.vat); if(!isNaN(n)) db.vat = n; }
+    migrate(db);
+    save();
+    serverLoaded = true;
+    renderAll();
+    setSync(hasPending()?'saving':'on', hasPending()?'שומר בענן...':'מסונכרן');
+    return true;
+  }).catch(e=>{
+    console.error('server load failed:', e);
+    if(!silent) setSync('err','אין חיבור לשרת');
+    return false;
+  });
+}
+async function connectServer(url){
+  url = (url||'').trim();
+  if(!url){
+    GS_URL = ''; localStorage.removeItem(LS_URL);
+    setSync('off','מקומי — לא מחובר'); renderSettings();
+    toast('החיבור לענן נותק — עובדים מקומית');
+    return;
+  }
+  if(!/^https:\/\/script\.google/.test(url)){ toast('⚠️ זו לא כתובת Apps Script (צריכה להתחיל ב-https://script.google...)'); return; }
+  GS_URL = url; localStorage.setItem(LS_URL, url);
+  setSync('saving','בודק חיבור...');
+  try{
+    const j = await apiGet({action:'load'});
+    if(!j || !Array.isArray(j.tx)) throw new Error('bad');
+    // מיזוג בטוח: איחוד לפי מזהה — שום נתון לא הולך לאיבוד
+    const serverIds = new Set(j.tx.map(r=>r.id));
+    const localOnlyTx = db.tx.filter(t=>!serverIds.has(t.id));
+    const serverProjIds = new Set((j.projects||[]).map(r=>r.id));
+    const localOnlyProj = db.projects.filter(p=>!serverProjIds.has(p.id));
+    db.tx = j.tx.map(rowToTx).concat(localOnlyTx);
+    db.projects = (j.projects||[]).map(rowToProj).concat(localOnlyProj);
+    const s = j.settings || {};
+    ['rules','templates','categories','accounts'].forEach(k=>{
+      if(s[k]){ try{ const v = JSON.parse(s[k]); if(v) db[k] = v; }catch(e){} }
+    });
+    if(s.vat){ const n = parseFloat(s.vat); if(!isNaN(n)) db.vat = n; }
+    migrate(db); save();
+    if(localOnlyTx.length) queueTx(localOnlyTx);
+    localOnlyProj.forEach(p=>queueProj(p));
+    queueSetting('rules','templates','categories','accounts','vat');
+    serverLoaded = true;
+    renderAll();
+    toast('✔ מחובר לגוגל שיטס' + (localOnlyTx.length ? ' · מעלה '+localOnlyTx.length+' תנועות מקומיות' : ''));
+    flush();
+  }catch(e){
+    console.error(e);
+    setSync('err','החיבור נכשל — בדוק את הכתובת');
+    toast('⚠️ החיבור נכשל — ודא שהכתובת נכונה ושהפריסה היא "Anyone"');
+  }
+}
 
 /* ================= עזרים ================= */
 function fmt(n){ return (n<0?'−':'') + Math.abs(n).toLocaleString('he-IL',{maximumFractionDigits:0}) + ' ₪'; }
@@ -667,7 +908,7 @@ function renderClassify(){
       +'<input type="checkbox" class="selbox" '+(selected.has(t.id)?'checked':'')+' onchange="toggleSel(\''+t.id+'\',this.checked)">'
       +'<span class="muted" style="font-size:12px">'+t.date.split('-').reverse().join('/')+'</span>'
       +'<span class="tag acc" title="'+esc(t.origin||'')+'">'+esc(t.account)+'</span>'
-      +'<span class="desc">'+esc(t.desc)+(t.details?' <span class="muted" style="font-weight:400;font-size:12px">'+esc(t.details)+'</span>':'')+'</span>'
+      +'<span class="desc">'+esc(t.desc)+(extraLine(t)?' <span class="muted" style="font-weight:400;font-size:12px">'+esc(extraLine(t))+'</span>':'')+'</span>'
       +'<span class="amt '+(t.kind==='income'?'green':'red')+'">'+(t.kind==='income'?'+':'−')+fmt2(t.amount)+' ₪</span>'
       +'<div class="classify-actions">'
       +'<button class="cbtn home'+(open&&panelScope==='home'?' on':'')+'" onclick="openPanel(\''+t.id+'\',\'home\')">🏠 בית</button>'
@@ -710,7 +951,7 @@ function savePanel(id){
   let cat = document.getElementById('pnlCat').value;
   if(cat==='__new__'){
     const v = prompt('שם קטגוריה חדשה:');
-    if(v && v.trim()){ db.categories[panelScope+'_'+t.kind].push(v.trim()); cat = v.trim(); } else cat = '';
+    if(v && v.trim()){ db.categories[panelScope+'_'+t.kind].push(v.trim()); cat = v.trim(); queueSetting('categories'); } else cat = '';
   }
   let proj = '';
   const pp = document.getElementById('pnlProj');
@@ -718,35 +959,38 @@ function savePanel(id){
     proj = pp.value;
     if(proj==='__new__'){
       const v = prompt('שם פרויקט חדש:');
-      if(v && v.trim()){ db.projects.push(newProjObj(v.trim())); proj = v.trim(); } else proj = '';
+      if(v && v.trim()){ const np = newProjObj(v.trim()); db.projects.push(np); queueProj(np); proj = v.trim(); } else proj = '';
     }
   }
   t.scope = panelScope; t.category = cat; t.project = proj;
   const inv = document.getElementById('pnlInvoice');
   if(inv) t.invoice = inv.checked;
   const remember = document.getElementById('pnlRemember').checked;
-  let applied = 0;
+  const changed = [t];
   if(remember){
     const key = normDesc(t.desc);
     db.rules[key] = {scope:panelScope, category:cat, project:proj};
+    queueSetting('rules');
     db.tx.filter(x=>!x.scope && normDesc(x.desc)===key).forEach(x=>{
-      x.scope = panelScope; x.category = cat; x.project = proj; applied++;
+      x.scope = panelScope; x.category = cat; x.project = proj; changed.push(x);
     });
   }
+  queueTx(changed);
   openTxId = null; selected.delete(id);
   save(); renderAll();
-  toast('סווג ✔' + (applied ? ' + עוד '+applied+' תנועות דומות' : ''));
+  toast('סווג ✔' + (changed.length>1 ? ' + עוד '+(changed.length-1)+' תנועות דומות' : ''));
 }
 function quickExclude(id){
   const t = db.tx.find(x=>x.id===id); if(!t) return;
   t.scope = 'exclude'; t.category = ''; t.project = '';
   const key = normDesc(t.desc);
-  let applied = 0;
-  db.tx.filter(x=>!x.scope && normDesc(x.desc)===key).forEach(x=>{ x.scope='exclude'; applied++; });
+  const changed = [t];
+  db.tx.filter(x=>!x.scope && normDesc(x.desc)===key).forEach(x=>{ x.scope='exclude'; changed.push(x); });
   db.rules[key] = {scope:'exclude', category:'', project:''};
+  queueSetting('rules'); queueTx(changed);
   selected.delete(id);
   save(); renderAll();
-  toast('לא ייכלל בחישובים' + (applied ? ' (+'+applied+' דומות)' : ''));
+  toast('לא ייכלל בחישובים' + (changed.length>1 ? ' (+'+(changed.length-1)+' דומות)' : ''));
 }
 function toggleSel(id, on){
   if(on) selected.add(id); else selected.delete(id);
@@ -775,6 +1019,7 @@ function autoScopeByAccount(){
     const a = db.accounts.find(x=>x.name===t.account);
     if(a) t.scope = a.scope;
   });
+  queueTx(pend);
   save(); renderAll();
   toast('⚡ '+pend.length+' תנועות שויכו לפי המקור');
 }
@@ -782,15 +1027,16 @@ function applyBulk(){
   const scope = document.getElementById('bulkScope').value;
   const cat = scope==='exclude' ? '' : document.getElementById('bulkCat').value;
   const proj = scope==='biz' ? document.getElementById('bulkProj').value : '';
-  let n = 0;
+  const changed = [];
   selected.forEach(id=>{
     const t = db.tx.find(x=>x.id===id && !x.scope);
-    if(t){ t.scope=scope; t.category=cat; t.project=proj; n++; }
+    if(t){ t.scope=scope; t.category=cat; t.project=proj; changed.push(t); }
   });
+  queueTx(changed);
   selected.clear();
   document.getElementById('selAll').checked = false;
   save(); renderAll();
-  toast(n + ' תנועות סווגו ✔');
+  toast(changed.length + ' תנועות סווגו ✔');
 }
 
 /* ================= טבלת תנועות ================= */
@@ -826,15 +1072,19 @@ function renderTxTable(){
     .sort((a,b)=>b.date.localeCompare(a.date));
   const inc = list.filter(t=>t.scope!=='exclude'&&t.kind==='income').reduce((s,t)=>s+t.amount,0);
   const exp = list.filter(t=>t.scope!=='exclude'&&t.kind==='expense').reduce((s,t)=>s+t.amount,0);
+  lastTxFiltered = list;
+  const listIds = new Set(list.map(t=>t.id));
+  txSel = new Set([...txSel].filter(id=>listIds.has(id)));
   const scopeTag = t => !t.scope ? '<span class="tag pending">⏳ ממתין</span>'
     : t.scope==='biz' ? '<span class="tag biz">🏢 עסק</span>'
     : t.scope==='home' ? '<span class="tag home">🏠 בית</span>'
     : '<span class="tag exclude">🚫 לא נכלל</span>';
   document.getElementById('txTableWrap').innerHTML = !list.length ? '<div class="empty">אין תנועות תואמות</div>' :
-    '<table><thead><tr><th>תאריך</th><th>תיאור</th><th>חשבון</th><th>שיוך</th><th>קטגוריה</th><th>פרויקט</th><th>הכנסה</th><th>הוצאה</th><th></th></tr></thead><tbody>'
+    '<table><thead><tr><th><input type="checkbox" '+(txSel.size===list.length&&list.length?'checked':'')+' onchange="txToggleAll(this.checked)" title="בחר את כל המסונן"></th><th>תאריך</th><th>תיאור</th><th>חשבון</th><th>שיוך</th><th>קטגוריה</th><th>פרויקט</th><th>הכנסה</th><th>הוצאה</th><th></th></tr></thead><tbody>'
     + list.slice(0,500).map(t=>'<tr>'
+      +'<td><input type="checkbox" '+(txSel.has(t.id)?'checked':'')+' onchange="txToggleSel(\''+t.id+'\',this.checked)"></td>'
       +'<td style="white-space:nowrap">'+t.date.split('-').reverse().join('/')+'</td>'
-      +'<td>'+esc(t.desc)+(t.details?'<br><span class="muted" style="font-size:11.5px">'+esc(t.details)+'</span>':'')+'</td>'
+      +'<td>'+esc(t.desc)+(extraLine(t)?'<br><span class="muted" style="font-size:11.5px">'+esc(extraLine(t))+'</span>':'')+'</td>'
       +'<td><span class="tag acc" title="'+esc(t.origin||'')+'">'+esc(t.account)+'</span></td>'
       +'<td>'+scopeTag(t)+'</td>'
       +'<td>'+esc(t.category||'')+'</td>'
@@ -843,8 +1093,45 @@ function renderTxTable(){
       +'<td class="amt red">'+(t.kind==='expense'?fmt2(t.amount):'')+'</td>'
       +'<td><button class="btn sm sec" onclick="openEdit(\''+t.id+'\')">✏️</button></td>'
       +'</tr>').join('')
-    + '</tbody><tfoot><tr><td colspan="6">סה"כ ('+list.length+' תנועות'+(list.length>500?', מוצגות 500':'')+')</td>'
+    + '</tbody><tfoot><tr><td colspan="7">סה"כ ('+list.length+' תנועות'+(list.length>500?', מוצגות 500':'')+')</td>'
     + '<td class="amt green">'+fmt2(inc)+'</td><td class="amt red">'+fmt2(exp)+'</td><td></td></tr></tfoot></table>';
+  updateTxDelBtn();
+}
+let txSel = new Set(), lastTxFiltered = [];
+function txToggleSel(id, on){ if(on) txSel.add(id); else txSel.delete(id); updateTxDelBtn(); }
+function txToggleAll(on){
+  txSel.clear();
+  if(on) lastTxFiltered.forEach(t=>txSel.add(t.id));
+  renderTxTable();
+}
+function updateTxDelBtn(){
+  const b = document.getElementById('txDelSelBtn');
+  if(!b) return;
+  b.style.display = txSel.size ? 'inline-block' : 'none';
+  b.textContent = '🗑️ מחק נבחרים ('+txSel.size+')';
+}
+function deleteSelectedTx(){
+  const ids = [...txSel];
+  if(!ids.length) return;
+  if(!confirm('למחוק '+ids.length+' תנועות נבחרות?'+(GS_URL?'\n(יימחקו גם מהענן)':''))) return;
+  const set = new Set(ids);
+  db.tx = db.tx.filter(t=>!set.has(t.id));
+  queueDelTx(ids);
+  txSel.clear();
+  save(); renderAll();
+  toast('🗑️ נמחקו '+ids.length+' תנועות');
+}
+function deleteFilteredTx(){
+  if(!lastTxFiltered.length){ toast('אין תנועות בסינון הנוכחי'); return; }
+  const ids = lastTxFiltered.map(t=>t.id);
+  if(!confirm('למחוק את כל '+ids.length+' התנועות שבסינון הנוכחי?'+(GS_URL?'\n(יימחקו גם מהענן)':''))) return;
+  if(ids.length>50 && !confirm('בטוח בטוח? '+ids.length+' תנועות יימחקו לצמיתות.')) return;
+  const set = new Set(ids);
+  db.tx = db.tx.filter(t=>!set.has(t.id));
+  queueDelTx(ids);
+  txSel.clear();
+  save(); renderAll();
+  toast('🗑️ נמחקו '+ids.length+' תנועות');
 }
 
 /* ================= עריכה ================= */
@@ -857,6 +1144,7 @@ function openEdit(id){
   document.getElementById('eAmount').value = t.amount;
   document.getElementById('eScope').value = t.scope;
   document.getElementById('eDesc').value = t.desc;
+  EXTRA_KEYS.forEach((k,i)=>{ document.getElementById('eExtra'+(i+1)).value = t[k]||''; });
   document.getElementById('eInvoice').checked = !!t.invoice;
   document.getElementById('eOrigin').textContent = '📌 חשבון: ' + t.account + (t.origin ? ' · מקור: ' + t.origin : '');
   refreshEditSelects(t.category, t.project);
@@ -885,12 +1173,16 @@ function saveEdit(){
   t.category = document.getElementById('eCat').value;
   t.project = document.getElementById('eProj').value;
   t.desc = document.getElementById('eDesc').value;
+  EXTRA_KEYS.forEach((k,i)=>{ t[k] = document.getElementById('eExtra'+(i+1)).value.trim(); });
   t.invoice = document.getElementById('eInvoice').checked;
+  queueTx([t]);
   closeEdit(); save(); renderAll(); toast('נשמר ✔');
 }
 function deleteFromEdit(){
   if(!confirm('למחוק את התנועה?')) return;
-  db.tx = db.tx.filter(x=>x.id!==editId);
+  const delId = editId;
+  db.tx = db.tx.filter(x=>x.id!==delId);
+  queueDelTx([delId]);
   closeEdit(); save(); renderAll(); toast('נמחק');
 }
 function closeEdit(){ document.getElementById('editModal').classList.remove('open'); editId=null; }
@@ -1029,6 +1321,7 @@ function projectDetailHTML(p){
 function toggleInvoice(id){
   const t = db.tx.find(x=>x.id===id); if(!t) return;
   t.invoice = !t.invoice;
+  queueTx([t]);
   save(); renderProjects(); renderDashboard();
 }
 function viewProjectTx(name){
@@ -1084,12 +1377,18 @@ function saveProjModal(){
     const oldName = p.name;
     Object.assign(p, data);
     if(oldName!==name){
-      db.tx.forEach(t=>{ if(t.project===oldName) t.project=name; });
+      const moved = [];
+      db.tx.forEach(t=>{ if(t.project===oldName){ t.project=name; moved.push(t); } });
+      if(moved.length) queueTx(moved);
       Object.values(db.rules).forEach(r=>{ if(r.project===oldName) r.project=name; });
+      queueSetting('rules');
       if(projView===oldName) projView=name;
     }
+    queueProj(p);
   } else {
-    db.projects.push(Object.assign(newProjObj(name), data));
+    const np = Object.assign(newProjObj(name), data);
+    db.projects.push(np);
+    queueProj(np);
   }
   closeProjModal(); save(); renderAll();
   toast('💾 הפרויקט נשמר');
@@ -1099,6 +1398,7 @@ function deleteProjFromModal(){
   const used = db.tx.filter(t=>t.project===p.name).length;
   if(!confirm('למחוק את הפרויקט "'+p.name+'"?'+(used?'\n('+used+' תנועות ישמרו את שם הפרויקט אך הוא יוסר מהרשימות)':''))) return;
   db.projects = db.projects.filter(x=>x.id!==pmEditId);
+  queueProjDel(p.id);
   if(projView===p.name) projView=null;
   closeProjModal(); save(); renderAll();
   toast('הפרויקט נמחק');
@@ -1139,6 +1439,7 @@ function saveManual(){
     project: scope==='biz' ? document.getElementById('mProj').value : '',
     origin: 'טופס ידני · ' + new Date().toLocaleDateString('he-IL')
   });
+  queueTx([db.tx[db.tx.length-1]]);
   document.getElementById('mAmount').value = '';
   document.getElementById('mDesc').value = '';
   save(); renderAll(); toast('💾 התנועה נשמרה');
@@ -1156,11 +1457,18 @@ const HDR_MAP = [
   {f:'ref', re:/אסמכתא|שובר|מס' פעולה/},
 ];
 const FIELD_OPTS = [
-  ['ignore','— התעלם —'], ['date','📅 תאריך'], ['desc','📝 תיאור'], ['details','פרטים נוספים'],
+  ['ignore','— התעלם —'], ['date','📅 תאריך'], ['desc','📝 תיאור'], ['details','פרטים (תיאור משני)'],
   ['debit','🔻 חובה (הוצאה)'], ['credit','🔺 זכות (הכנסה)'],
   ['amountPosInc','סכום (+הכנסה / −הוצאה)'], ['amountPosExp','סכום (+הוצאה / −הכנסה)'],
-  ['ref','אסמכתא']
+  ['ref','אסמכתא'],
+  ['extra1','📎 פרטים נוספים 1'], ['extra2','📎 פרטים נוספים 2'],
+  ['extra3','📎 פרטים נוספים 3'], ['extra4','📎 פרטים נוספים 4']
 ];
+const EXTRA_KEYS = ['extra1','extra2','extra3','extra4'];
+function extraVal(v){ return v==null ? '' : (v instanceof Date ? parseDate(v) : String(v).trim()); }
+function extraLine(t){
+  return [t.details, t.extra1, t.extra2, t.extra3, t.extra4].filter(Boolean).join(' · ');
+}
 let importBlocks = [];
 let importSource = null;
 
@@ -1409,6 +1717,7 @@ function clearImport(){ importBlocks = []; renderImportBlocks(); }
 function doImport(){
   const existing = new Set(db.tx.map(dedupKey));
   let added=0, dups=0, auto=0, skipped=0;
+  const addedList=[];
   importBlocks.filter(b=>b.include).forEach(b=>{
     const fidx = {};
     b.cols.forEach((c,i)=>{ if(c.field!=='ignore') fidx[c.field]=i; });
@@ -1443,6 +1752,7 @@ function doImport(){
         ref: fidx.ref!==undefined ? String(r[fidx.ref]||'') : '',
         origin: b.source + ' · ' + new Date().toLocaleDateString('he-IL')
       };
+      EXTRA_KEYS.forEach(k=>{ t[k] = fidx[k]!==undefined ? extraVal(r[fidx[k]]) : ''; });
       const key = dedupKey(t);
       if(existing.has(key)){ dups++; return; }
       existing.add(key);
@@ -1451,10 +1761,13 @@ function doImport(){
       if(rule){ t.scope=rule.scope; t.category=rule.category; t.project=rule.project; auto++; }
       else if(EXCLUDE_RE.test(desc)){ t.scope='exclude'; auto++; }
       db.tx.push(t);
+      addedList.push(t);
       added++;
     });
   });
   importBlocks = [];
+  if(addedList.length) queueTx(addedList);
+  queueSetting('templates');
   save(); renderImportBlocks(); renderAll();
   let msg = '✔ נוספו '+added+' תנועות';
   if(auto) msg += ' · '+auto+' סווגו אוטומטית';
@@ -1466,10 +1779,10 @@ function doImport(){
 
 /* ================= ייצוא ================= */
 function exportCSV(){
-  const rows = [['תאריך','תיאור','פרטים','מקור','שיוך','קטגוריה','פרויקט','סוג','סכום','חשבונית','קובץ מקור']];
+  const rows = [['תאריך','תיאור','פרטים','מקור','שיוך','קטגוריה','פרויקט','סוג','סכום','חשבונית','פרטים נוספים 1','פרטים נוספים 2','פרטים נוספים 3','פרטים נוספים 4','קובץ מקור']];
   const scopeName = s => s==='biz'?'עסק':s==='home'?'בית':s==='exclude'?'לא נכלל':'ממתין';
   db.tx.sort((a,b)=>a.date.localeCompare(b.date)).forEach(t=>{
-    rows.push([t.date, t.desc, t.details||'', t.account, scopeName(t.scope), t.category||'', t.project||'', t.kind==='income'?'הכנסה':'הוצאה', t.amount, t.invoice?'כן':'', t.origin||'']);
+    rows.push([t.date, t.desc, t.details||'', t.account, scopeName(t.scope), t.category||'', t.project||'', t.kind==='income'?'הכנסה':'הוצאה', t.amount, t.invoice?'כן':'', t.extra1||'', t.extra2||'', t.extra3||'', t.extra4||'', t.origin||'']);
   });
   const csv = '﻿' + rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\r\n');
   const a = document.createElement('a');
@@ -1495,7 +1808,13 @@ document.getElementById('restoreInput').addEventListener('change', e=>{
       db = d;
       for(const k in DEFAULTS) if(db[k]===undefined) db[k]=JSON.parse(JSON.stringify(DEFAULTS[k]));
       migrate(db);
-      save(); renderAll(); toast('✔ שוחזר מגיבוי');
+      save(); renderAll();
+      if(GS_URL){
+        queueTx(db.tx);
+        db.projects.forEach(p=>queueProj(p));
+        queueSetting('rules','templates','categories','accounts','vat');
+        toast('✔ שוחזר מגיבוי — מעלה לענן...');
+      } else toast('✔ שוחזר מגיבוי');
     }catch(err){ toast('⚠️ קובץ גיבוי לא תקין'); }
   };
   reader.readAsText(f);
@@ -1504,8 +1823,19 @@ document.getElementById('restoreInput').addEventListener('change', e=>{
 function clearAll(){
   if(!confirm('למחוק את כל הנתונים? פעולה זו לא ניתנת לביטול!')) return;
   if(!confirm('בטוח? מומלץ להוריד גיבוי קודם. למחוק הכל?')) return;
+  let wipeCloud = false;
+  if(GS_URL) wipeCloud = confirm('למחוק גם מהענן (גוגל שיטס)?\nאישור = מחיקה גם בענן · ביטול = מקומית בלבד (בטעינה הבאה הנתונים יחזרו מהענן)');
+  const txIds = db.tx.map(t=>t.id);
+  const projIds = db.projects.map(p=>p.id);
   db = JSON.parse(JSON.stringify(DEFAULTS));
-  save(); renderAll(); toast('כל הנתונים נמחקו');
+  pending = {tx:{}, del:[], projUp:{}, projDel:[], settings:{}};
+  savePending();
+  if(wipeCloud){
+    queueDelTx(txIds);
+    projIds.forEach(id=>queueProjDel(id));
+    queueSetting('rules','templates','categories','accounts','vat');
+  }
+  save(); renderAll(); toast('כל הנתונים נמחקו' + (wipeCloud?' (גם מהענן)':''));
 }
 
 /* ================= הגדרות ================= */
@@ -1514,6 +1844,9 @@ function renderSettings(){
     '<span class="chip" style="cursor:pointer" onclick="openProjModal(\''+jsq(p.id)+'\')">🏗️ '+esc(p.name)+(p.price?' <small>('+fmt(p.price)+')</small>':'')+'</span>').join('') || '<span class="muted">אין פרויקטים</span>';
   const vatIn = document.getElementById('vatInput');
   if(vatIn && document.activeElement!==vatIn) vatIn.value = db.vat||18;
+  const gsIn = document.getElementById('gsUrlInput');
+  if(gsIn && document.activeElement!==gsIn) gsIn.value = GS_URL;
+  setSync(lastSync.state, lastSync.label);
   document.getElementById('setAccounts').innerHTML = db.accounts.map((a,i)=>
     '<span class="chip">'+esc(a.name)+' <small>('+(a.scope==='biz'?'עסק':'בית')+')</small><button onclick="removeAccount('+i+')">×</button></span>').join('');
   ['biz_expense','biz_income','home_expense','home_income'].forEach(k=>{
@@ -1521,6 +1854,20 @@ function renderSettings(){
       '<span class="chip">'+esc(c)+'<button onclick="removeCat(\''+k+'\','+i+')">×</button></span>').join('')
       + ' <button class="btn sm ghost" onclick="addCat(\''+k+'\')">+</button>';
   });
+  // מחיקה לפי קובץ ייבוא
+  const origins = {};
+  db.tx.forEach(t=>{
+    const o = t.origin || '(ללא מקור רשום)';
+    if(!origins[o]) origins[o] = {count:0, sum:0};
+    origins[o].count++;
+    origins[o].sum += t.amount;
+  });
+  const oe = Object.entries(origins).sort((a,b)=>b[1].count-a[1].count);
+  document.getElementById('originsTable').innerHTML = !oe.length ? '<div class="muted">אין נתונים במערכת</div>' :
+    '<table><thead><tr><th>מקור הייבוא</th><th>תנועות</th><th>סה"כ סכומים</th><th></th></tr></thead><tbody>'
+    + oe.map(([o,v])=>'<tr><td>'+esc(o)+'</td><td>'+v.count+'</td><td class="amt">'+fmt(v.sum)+'</td>'
+      +'<td><button class="btn sm danger" onclick="deleteByOrigin(\''+jsq(o)+'\')">🗑️ מחק הכל</button></td></tr>').join('')
+    + '</tbody></table>';
   const tpls = Object.entries(db.templates);
   document.getElementById('tplCount').textContent = tpls.length + ' מבנים';
   document.getElementById('tplTable').innerHTML = !tpls.length ? '<div class="muted">עדיין אין מבנים שמורים — הם נלמדים בייבוא הראשון מכל מקור</div>' :
@@ -1548,37 +1895,70 @@ function renderSettings(){
 }
 function setVat(v){
   const n = parseFloat(v);
-  if(!isNaN(n) && n>=0 && n<50){ db.vat = n; save(); renderProjects(); toast('מע"מ עודכן ל-'+n+'%'); }
+  if(!isNaN(n) && n>=0 && n<50){ db.vat = n; queueSetting('vat'); save(); renderProjects(); toast('מע"מ עודכן ל-'+n+'%'); }
 }
 function addAccount(){
   const name = prompt('שם החשבון (למשל: אשראי מקס עסקי):');
   if(!name || !name.trim()) return;
   const scope = confirm('האם זה חשבון עסקי?\nאישור = עסקי · ביטול = פרטי') ? 'biz' : 'home';
-  db.accounts.push({name:name.trim(), scope}); save(); renderAll();
+  db.accounts.push({name:name.trim(), scope});
+  queueSetting('accounts'); save(); renderAll();
 }
 function removeAccount(i){
   if(!confirm('להסיר את החשבון "'+db.accounts[i].name+'" מהרשימה?')) return;
-  db.accounts.splice(i,1); save(); renderAll();
+  db.accounts.splice(i,1);
+  queueSetting('accounts'); save(); renderAll();
 }
 function addCat(k){
   const v = prompt('שם קטגוריה חדשה:');
   if(v && v.trim() && !db.categories[k].includes(v.trim())){
-    db.categories[k].push(v.trim()); save(); renderAll();
+    db.categories[k].push(v.trim());
+    queueSetting('categories'); save(); renderAll();
   }
 }
 function removeCat(k,i){
-  db.categories[k].splice(i,1); save(); renderAll();
+  db.categories[k].splice(i,1);
+  queueSetting('categories'); save(); renderAll();
 }
 function removeRule(k){
-  delete db.rules[k]; save(); renderSettings();
+  delete db.rules[k];
+  queueSetting('rules'); save(); renderSettings();
 }
 function removeTpl(sig){
-  delete db.templates[sig]; save(); renderAll();
+  delete db.templates[sig];
+  queueSetting('templates'); save(); renderAll();
   toast('המבנה נמחק — יילמד מחדש בייבוא הבא');
+}
+function deleteByOrigin(origin){
+  const key = origin==='(ללא מקור רשום)' ? '' : origin;
+  const list = db.tx.filter(t=>(t.origin||'')===key);
+  if(!list.length) return;
+  if(!confirm('למחוק את כל '+list.length+' התנועות מהייבוא:\n"'+origin+'"?'+(GS_URL?'\n(יימחקו גם מהענן)':''))) return;
+  if(list.length>50 && !confirm('בטוח? '+list.length+' תנועות יימחקו לצמיתות.')) return;
+  const ids = list.map(t=>t.id);
+  const set = new Set(ids);
+  db.tx = db.tx.filter(t=>!set.has(t.id));
+  queueDelTx(ids);
+  save(); renderAll();
+  toast('🗑️ נמחקו '+ids.length+' תנועות מהייבוא');
 }
 
 /* ================= אתחול ================= */
 renderAll();
+setSync(GS_URL?'saving':'off', GS_URL?'מתחבר...':'מקומי — לא מחובר');
+if(GS_URL){
+  serverLoad().then(()=>{ if(hasPending()) flush(); });
+}
+// רענון שקט מהשרת כל דקה (קולט דיווחים מהטופס החיצוני) — רק כשלא באמצע עבודה
+setInterval(()=>{
+  if(!GS_URL || !serverLoaded || flushing || hasPending()) return;
+  if(document.visibilityState !== 'visible') return;
+  if(document.querySelector('.modal-bg.open')) return;
+  const ae = document.activeElement;
+  if(ae && (ae.tagName==='INPUT' || ae.tagName==='TEXTAREA' || ae.tagName==='SELECT')) return;
+  if(openTxId) return;
+  serverLoad(true);
+}, 60000);
 </script>
 </body>
 </html>
