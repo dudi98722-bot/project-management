@@ -407,7 +407,13 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
     <h3 id="pmTitle">🏗️ פרויקט חדש</h3>
     <div class="form-grid">
       <div><label>שם הפרויקט</label><input type="text" id="pmName" placeholder="למשל: מרפסת משפחת כהן"></div>
-      <div><label>מחיר הפרויקט ללא מע"מ (₪)</label><input type="number" id="pmPrice" step="0.01" min="0" placeholder="0"></div>
+      <div><label>מחיר בסיס ללא מע"מ (₪)</label><input type="number" id="pmPrice" step="0.01" min="0" placeholder="0"></div>
+    </div>
+    <div style="margin-top:16px">
+      <label style="font-size:12.5px;color:var(--muted);font-weight:600">➕ תוספות למחיר (מעלות את מחיר הפרויקט הסופי)</label>
+      <div id="pmExtras" style="margin-top:6px"></div>
+      <button class="btn sm sec" onclick="pmAddExtra()">+ הוסף תוספת</button>
+      <div id="pmExtrasTotal" class="muted" style="margin-top:6px;font-size:12.5px"></div>
     </div>
     <div style="margin-top:16px">
       <label style="font-size:12.5px;color:var(--muted);font-weight:600">שלבי תשלום (לתיעוד — בלי חישובים)</label>
@@ -512,6 +518,7 @@ function migrate(d){
     if(p.price==null) p.price = 0;
     if(!Array.isArray(p.stages)) p.stages = [];
     if(!p.budget) p.budget = {workers:0, materials:0, cranes:0};
+    if(!Array.isArray(p.extras)) p.extras = [];
   });
   if(d.categories && d.categories.biz_expense && !d.categories.biz_expense.includes('מנופים')){
     const i = d.categories.biz_expense.indexOf('קבלני משנה');
@@ -531,7 +538,7 @@ function uid(){ return (crypto.randomUUID ? crypto.randomUUID() : Date.now()+'-'
 /* ================= סנכרון לגוגל שיטס ================= */
 const LS_URL = 'finance-gs-url';
 const LS_PENDING = 'finance-pending-v1';
-const DEFAULT_GS_URL = 'https://script.google.com/macros/s/AKfycby96ikBj9g1NQvuXAZVn0oyxn6vBEaMtcF8mCaCcexrDDoGfWD74K7HO8rF8HQpsrBW/exec';
+const DEFAULT_GS_URL = 'https://script.google.com/macros/s/AKfycbzvw1sJ0dktP3Nw6Ui9zfzIS3a6biotNKoiNdrs7Cl54VcdFgQCDYH5-1xor7fuZfDc/exec';
 let GS_URL = localStorage.getItem(LS_URL) || DEFAULT_GS_URL;
 try{
   const qsGs = new URLSearchParams(location.search).get('gs');
@@ -579,13 +586,15 @@ function rowToTx(r){
 function projToRow(p){
   return {id:p.id, name:p.name, price:String(p.price||0),
     stages:JSON.stringify(p.stages||[]), budget:JSON.stringify(p.budget||{}),
+    extras:JSON.stringify(p.extras||[]),
     deleted:p.deleted||''};
 }
 function rowToProj(r){
-  let stages=[], budget={workers:0, materials:0, cranes:0};
+  let stages=[], budget={workers:0, materials:0, cranes:0}, extras=[];
   try{ stages = JSON.parse(r.stages||'[]')||[]; }catch(e){}
   try{ budget = Object.assign(budget, JSON.parse(r.budget||'{}')); }catch(e){}
-  return {id:r.id, name:r.name||'', price:parseFloat(r.price)||0, stages, budget, deleted:r.deleted||''};
+  try{ extras = JSON.parse(r.extras||'[]')||[]; }catch(e){}
+  return {id:r.id, name:r.name||'', price:parseFloat(r.price)||0, stages, budget, extras, deleted:r.deleted||''};
 }
 function settingValue(k){
   if(k==='vat') return String(db.vat||18);
@@ -1700,7 +1709,9 @@ const EXP_GROUPS = [
   {key:'cranes', label:'🏗️ מנופים', cats:['מנופים']}
 ];
 function projNames(){ return db.projects.filter(p=>!p.deleted).map(p=>p.name); }
-function newProjObj(name){ return {id:uid(), name, price:0, stages:[], budget:{workers:0, materials:0, cranes:0}}; }
+function newProjObj(name){ return {id:uid(), name, price:0, stages:[], budget:{workers:0, materials:0, cranes:0}, extras:[]}; }
+function projExtrasTotal(p){ return (p.extras||[]).reduce((s,e)=>s+(+e.amount||0),0); }
+function projTotalPrice(p){ return (p.price||0) + projExtrasTotal(p); }
 function vatNet(t){ return t.invoice ? t.amount/(1+(db.vat||18)/100) : t.amount; }
 function pct(a,b){ return b>0 ? Math.round(a/b*100) : 0; }
 function projStats(p){
@@ -1741,15 +1752,16 @@ function renderProjects(){
   }
   grid.innerHTML = liveProjects.map(p=>{
     const s = projStats(p);
-    const payPct = pct(s.paidNet, p.price);
-    const expPct = pct(s.expTotal, p.price);
+    const total = projTotalPrice(p);
+    const payPct = pct(s.paidNet, total);
+    const expPct = pct(s.expTotal, total);
     return '<div class="proj-card" onclick="openProjectDetail(\''+jsq(p.name)+'\')">'
       +'<h4>🏗️ '+esc(p.name)+'</h4>'
-      +'<div class="row"><span>מחיר (ללא מע"מ)</span><b>'+fmt(p.price)+'</b></div>'
-      +'<div class="row"><span>שולם נטו</span><b class="green">'+fmt(s.paidNet)+(p.price?' · '+payPct+'%':'')+'</b></div>'
-      +(p.price?'<div class="pbar"><div style="width:'+Math.min(payPct,100)+'%;background:var(--income)"></div></div>':'')
-      +'<div class="row"><span>הוצאות</span><b class="red">'+fmt(s.expTotal)+(p.price?' · '+expPct+'%':'')+'</b></div>'
-      +(p.price?'<div class="pbar"><div style="width:'+Math.min(expPct,100)+'%;background:var(--expense)"></div></div>':'')
+      +'<div class="row"><span>מחיר'+(projExtrasTotal(p)>0?' (כולל תוספות)':' (ללא מע"מ)')+'</span><b>'+fmt(total)+'</b></div>'
+      +'<div class="row"><span>שולם נטו</span><b class="green">'+fmt(s.paidNet)+(total?' · '+payPct+'%':'')+'</b></div>'
+      +(total?'<div class="pbar"><div style="width:'+Math.min(payPct,100)+'%;background:var(--income)"></div></div>':'')
+      +'<div class="row"><span>הוצאות</span><b class="red">'+fmt(s.expTotal)+(total?' · '+expPct+'%':'')+'</b></div>'
+      +(total?'<div class="pbar"><div style="width:'+Math.min(expPct,100)+'%;background:var(--expense)"></div></div>':'')
       +'<div class="row" style="border-top:1px solid var(--border);margin-top:6px;padding-top:8px"><span><b>רווח נוכחי</b></span><b class="'+(s.paidNet-s.expTotal>=0?'green':'red')+'">'+fmt(s.paidNet-s.expTotal)+'</b></div>'
       +'<div class="muted" style="font-size:11.5px;margin-top:6px">'+(s.pays.length+s.exps.length)+' תנועות</div>'
       +'</div>';
@@ -1758,10 +1770,12 @@ function renderProjects(){
 function openProjectDetail(name){ projView = name; gotoTab('projects'); }
 function projectDetailHTML(p){
   const s = projStats(p);
-  const payPct = pct(s.paidNet, p.price);
-  const expPct = pct(s.expTotal, p.price);
+  const extrasTotal = projExtrasTotal(p);
+  const total = projTotalPrice(p);
+  const payPct = pct(s.paidNet, total);
+  const expPct = pct(s.expTotal, total);
   const profit = s.paidNet - s.expTotal;
-  const planned = p.price - s.budgetTotal;
+  const planned = total - s.budgetTotal;
   const vatLabel = (db.vat||18)+'%';
   // טבלת צפי מול ביצוע
   const groupRows = s.groups.map(g=>{
@@ -1793,18 +1807,27 @@ function projectDetailHTML(p){
     +'<button class="btn sm sec" onclick="viewProjectTx(\''+jsq(p.name)+'\')">📋 כל התנועות</button>'
     +'</div>'
     +'<div class="cards-row">'
-    +'<div class="stat"><div class="lbl">מחיר הפרויקט (ללא מע"מ)</div><div class="val">'+fmt(p.price)+'</div></div>'
+    +'<div class="stat"><div class="lbl">מחיר הפרויקט'+(extrasTotal>0?' (כולל תוספות)':' (ללא מע"מ)')+'</div><div class="val">'+fmt(total)
+      +(extrasTotal>0?'<div class="muted" style="font-size:11px;font-weight:400;margin-top:2px">בסיס '+fmt(p.price)+' + תוספות '+fmt(extrasTotal)+'</div>':'')
+      +'</div></div>'
     +'<div class="stat"><div class="lbl">התקבל נטו'+(s.paidGross!==s.paidNet?' (ברוטו '+fmt(s.paidGross)+')':'')+'</div><div class="val green">'+fmt(s.paidNet)+'</div></div>'
     +'<div class="stat"><div class="lbl">הוצאות בפועל</div><div class="val red">'+fmt(s.expTotal)+'</div></div>'
     +'<div class="stat"><div class="lbl">רווח נוכחי (נטו − הוצאות)</div><div class="val '+(profit>=0?'green':'red')+'">'+fmt(profit)+'</div></div>'
     +'<div class="stat"><div class="lbl">רווח מתוכנן (מחיר − צפי)</div><div class="val '+(planned>=0?'green':'red')+'">'+fmt(planned)+'</div></div>'
     +'</div>'
     +'<div class="card"><h3>📈 התקדמות מול המחיר</h3>'
-    +'<div style="display:flex;justify-content:space-between;font-size:13px"><span>💰 תשלומים שהתקבלו (נטו)</span><b>'+payPct+'% · נותר לגבייה: '+fmt(Math.max(p.price-s.paidNet,0))+'</b></div>'
+    +'<div style="display:flex;justify-content:space-between;font-size:13px"><span>💰 תשלומים שהתקבלו (נטו)</span><b>'+payPct+'% · נותר לגבייה: '+fmt(Math.max(total-s.paidNet,0))+'</b></div>'
     +'<div class="pbar" style="height:18px"><div style="width:'+Math.min(payPct,100)+'%;background:var(--income)"></div></div>'
     +'<div style="display:flex;justify-content:space-between;font-size:13px;margin-top:10px"><span>🔻 הוצאות</span><b>'+expPct+'% מהמחיר</b></div>'
     +'<div class="pbar" style="height:18px"><div style="width:'+Math.min(expPct,100)+'%;background:var(--expense)"></div></div>'
     +(payPct>100?'<div class="muted" style="color:#b45309">⚠️ התקבל יותר מהמחיר המוגדר — בדקו את מחיר הפרויקט או את שיוך התשלומים</div>':'')
+    +'</div>'
+    +'<div class="card"><h3>➕ תוספות למחיר ('+(p.extras||[]).length+')</h3>'
+    +((p.extras||[]).length
+      ? (p.extras||[]).map(ex=>'<div class="row"><span>'+esc(ex.desc||'')+'</span><span style="display:flex;align-items:center;gap:8px"><b>'+fmt(+ex.amount||0)+'</b><button style="border:none;background:#fee2e2;color:#dc2626;border-radius:8px;width:24px;height:24px;font-size:14px;font-weight:700;cursor:pointer" title="הסר תוספת" onclick="removeProjectExtra(\''+jsq(p.name)+'\',\''+jsq(ex.id)+'\')">×</button></span></div>').join('')
+      : '<div class="muted">אין תוספות עדיין — לחצו "הוסף תוספת" כשמחיר הפרויקט עולה</div>')
+    +(extrasTotal>0?'<div class="row" style="border-top:1px solid var(--border);margin-top:8px;padding-top:8px"><span><b>סה"כ תוספות</b></span><b>'+fmt(extrasTotal)+'</b></div>':'')
+    +'<button class="btn sm sec" style="margin-top:10px" onclick="addProjectExtra()">+ הוסף תוספת</button>'
     +'</div>'
     +'<div class="charts-grid">'
     +'<div class="card"><h3>🎯 צפי הוצאות מול ביצוע</h3><div class="table-wrap"><table><thead><tr><th>קבוצה</th><th>צפי</th><th>בפועל</th><th>פער</th><th>ניצול</th></tr></thead><tbody>'+groupRows
@@ -1824,6 +1847,28 @@ function projectDetailHTML(p){
       : '<div class="empty">עדיין לא שויכו הוצאות לפרויקט הזה</div>')
     +'</div></div>';
 }
+function addProjectExtra(){
+  const p = db.projects.find(x=>x.name===projView); if(!p) return;
+  const desc = prompt('תיאור התוספת (למשל: "עבודות חשמל נוספות"):');
+  if(!desc || !desc.trim()) return;
+  const amt = Math.abs(parseFloat(prompt('סכום התוספת (₪, ללא מע"מ):')))||0;
+  if(!amt){ toast('⚠️ סכום לא תקין'); return; }
+  pushUndo('הוספת תוספת לפרויקט "'+p.name+'"', [], [], [p]);
+  if(!Array.isArray(p.extras)) p.extras = [];
+  p.extras.push({id:uid(), desc:desc.trim(), amount:amt});
+  queueProj(p);
+  save(); renderProjects();
+  toast('➕ תוספת נוספה: '+fmt(amt)+' · מחיר הפרויקט עודכן ל-'+fmt(projTotalPrice(p)));
+}
+function removeProjectExtra(projName, extraId){
+  const p = db.projects.find(x=>x.name===projName); if(!p) return;
+  if(!confirm('להסיר את התוספת?')) return;
+  pushUndo('הסרת תוספת מפרויקט "'+p.name+'"', [], [], [p]);
+  p.extras = (p.extras||[]).filter(e=>e.id!==extraId);
+  queueProj(p);
+  save(); renderProjects();
+  toast('התוספת הוסרה');
+}
 function toggleInvoice(id){
   const t = db.tx.find(x=>x.id===id); if(!t) return;
   t.invoice = !t.invoice;
@@ -1837,7 +1882,7 @@ function viewProjectTx(name){
   renderTxTable();
 }
 /* --- מודל פרויקט --- */
-let pmEditId = null, pmStages = [];
+let pmEditId = null, pmStages = [], pmExtras = [];
 function openProjModal(id){
   pmEditId = id;
   const p = id ? db.projects.find(x=>x.id===id) : null;
@@ -1850,6 +1895,8 @@ function openProjModal(id){
   pmStages = p ? JSON.parse(JSON.stringify(p.stages||[])) : [];
   if(!pmStages.length) pmStages.push({desc:'', amount:''});
   renderPmStages();
+  pmExtras = p ? JSON.parse(JSON.stringify(p.extras||[])) : [];
+  renderPmExtras();
   document.getElementById('pmDelete').style.display = (p && perms().canDelete) ? 'inline-block' : 'none';
   document.getElementById('projModal').classList.add('open');
 }
@@ -1863,6 +1910,26 @@ function renderPmStages(){
     +'</div>').join('');
 }
 function pmAddStage(){ pmStages.push({desc:'', amount:''}); renderPmStages(); }
+function renderPmExtras(){
+  document.getElementById('pmExtras').innerHTML = pmExtras.map((ex,i)=>
+    '<div class="stage-row">'
+    +'<input type="text" placeholder="תיאור התוספת (למשל: עבודות חשמל נוספות)" value="'+esc(ex.desc||'')+'" oninput="pmExtras['+i+'].desc=this.value">'
+    +'<input type="number" class="amt-in" placeholder="סכום ₪" step="0.01" value="'+esc(ex.amount||'')+'" oninput="pmExtras['+i+'].amount=this.value;renderPmExtrasTotal()">'
+    +'<button class="rm" onclick="pmExtras.splice('+i+',1);renderPmExtras()">×</button>'
+    +'</div>').join('');
+  renderPmExtrasTotal();
+}
+function renderPmExtrasTotal(){
+  const base = Math.abs(parseFloat(document.getElementById('pmPrice').value))||0;
+  const extrasSum = pmExtras.reduce((s,e)=>s+(Math.abs(parseFloat(e.amount))||0),0);
+  const el = document.getElementById('pmExtrasTotal');
+  if(!el) return;
+  el.textContent = extrasSum>0
+    ? 'סה"כ תוספות: '+fmt(extrasSum)+' · מחיר סופי: '+fmt(base+extrasSum)
+    : '';
+}
+function pmAddExtra(){ pmExtras.push({desc:'', amount:''}); renderPmExtras(); }
+document.getElementById('pmPrice').addEventListener('input', renderPmExtrasTotal);
 function saveProjModal(){
   const name = document.getElementById('pmName').value.trim();
   if(!name){ toast('⚠️ הזן שם פרויקט'); return; }
@@ -1872,6 +1939,7 @@ function saveProjModal(){
     name,
     price: Math.abs(parseFloat(document.getElementById('pmPrice').value))||0,
     stages: pmStages.filter(st=>(st.desc||'').trim()!=='' || st.amount).map(st=>({desc:(st.desc||'').trim(), amount: st.amount?Math.abs(parseFloat(st.amount))||0:''})),
+    extras: pmExtras.filter(ex=>(ex.desc||'').trim()!=='' && ex.amount).map(ex=>({id: ex.id||uid(), desc:(ex.desc||'').trim(), amount: Math.abs(parseFloat(ex.amount))||0})),
     budget: {
       workers: Math.abs(parseFloat(document.getElementById('pmBw').value))||0,
       materials: Math.abs(parseFloat(document.getElementById('pmBm').value))||0,
@@ -2429,7 +2497,7 @@ function renderSettings(){
   const liveP = db.projects.filter(p=>!p.deleted);
   const delP = db.projects.filter(p=>p.deleted);
   document.getElementById('setProjects').innerHTML = (liveP.map(p=>
-    '<span class="chip" style="cursor:pointer" onclick="openProjModal(\''+jsq(p.id)+'\')">🏗️ '+esc(p.name)+(p.price?' <small>('+fmt(p.price)+')</small>':'')+'</span>').join('') || '<span class="muted">אין פרויקטים</span>')
+    '<span class="chip" style="cursor:pointer" onclick="openProjModal(\''+jsq(p.id)+'\')">🏗️ '+esc(p.name)+(projTotalPrice(p)?' <small>('+fmt(projTotalPrice(p))+')</small>':'')+'</span>').join('') || '<span class="muted">אין פרויקטים</span>')
     + (delP.length ? '<div class="muted" style="margin-top:8px;font-size:12px">בסל המחזור: '
         + delP.map(p=>'<span class="chip" style="opacity:.65">'+esc(p.name)+' <button style="color:#16a34a" title="שחזר" onclick="restoreProject(\''+jsq(p.id)+'\')">♻️</button></span>').join('')
         + '</div>' : '');
