@@ -302,6 +302,10 @@ function xInitSource(){
 /* --- ניתוח קובץ: אותה לוגיקה כמו במערכת המרכזית --- */
 var HDR_MAP = [
   {f:'chargeDate', re:/חיוב לתאריך|תאריך חיוב/},
+  {f:'project', re:/פרויקט|פרוייקט/},
+  {f:'category', re:/קטגוריה/},
+  {f:'scope', re:/^שיוך/},
+  {f:'kindCol', re:/^סוג$/},
   {f:'date', re:/^תאריך(?!.*ערך)|תאריך עסקה|תאריך רכישה|תאריך קנייה/},
   {f:'debit', re:/^חובה|סכום חיוב|₪.*חיוב|חיוב בש/},
   {f:'credit', re:/^זכות/},
@@ -314,6 +318,8 @@ var FIELD_OPTS = [
   ['ignore','— התעלם —'], ['date','📅 תאריך'], ['desc','📝 תיאור'], ['details','פרטים (תיאור משני)'],
   ['debit','🔻 חובה (הוצאה)'], ['credit','🔺 זכות (הכנסה)'],
   ['amountPosInc','סכום (+הכנסה / −הוצאה)'], ['amountPosExp','סכום (+הוצאה / −הכנסה)'],
+  ['kindCol','סוג (הכנסה/הוצאה)'],
+  ['scope','🏠/🏢 שיוך (בית/עסק)'], ['category','🗂️ קטגוריה'], ['project','🏗️ פרויקט'],
   ['ref','אסמכתא'],
   ['extra1','📎 פרטים נוספים 1'], ['extra2','📎 פרטים נוספים 2'],
   ['extra3','📎 פרטים נוספים 3'], ['extra4','📎 פרטים נוספים 4']
@@ -522,13 +528,33 @@ function xBuildRows(){
         var a = parseAmount(r[i2]);
         if(a!==null && a!==0){ kind = (a>0)===posIsIncome ? 'income' : 'expense'; amount = Math.abs(a); }
       }
+      // עמודת "סוג" גוברת על סימן הסכום
+      if(fidx.kindCol!==undefined){
+        var kv = String(r[fidx.kindCol]||'');
+        if(/הכנס|income|זכות/.test(kv)) kind='income';
+        else if(/הוצא|expense|חובה/.test(kv)) kind='expense';
+      }
       if(kind===null || !amount){ skipped++; return; }
+      // סיווג מתוך הקובץ (שיוך/קטגוריה/פרויקט)
+      var scopeVal = '';
+      if(fidx.scope!==undefined){
+        var sv = String(r[fidx.scope]||'');
+        if(/עסק/.test(sv)) scopeVal='biz';
+        else if(/בית|פרטי/.test(sv)) scopeVal='home';
+        else if(/לא נכלל|מוחרג|החרג/.test(sv)) scopeVal='exclude';
+      }
+      var projVal = fidx.project!==undefined ? normDesc(r[fidx.project]) : '';
+      var catVal = fidx.category!==undefined ? normDesc(r[fidx.category]) : '';
+      if(projVal && !scopeVal) scopeVal='biz';
       var tx = {
         date: date,
         desc: normDesc(fidx.desc!==undefined ? r[fidx.desc] : '') || '(ללא תיאור)',
         details: fidx.details!==undefined ? normDesc(r[fidx.details]) : '',
         amount: amount, kind: kind, account: b.account,
-        scope:'', category:'', project:'', invoice:'',
+        scope: scopeVal,
+        category: (scopeVal && scopeVal!=='exclude') ? catVal : '',
+        project: scopeVal==='biz' ? projVal : '',
+        invoice:'',
         ref: fidx.ref!==undefined ? String(r[fidx.ref]||'') : '',
         origin: 'טופס-אקסל: ' + b.source + ' · ' + today
       };

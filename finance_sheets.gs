@@ -262,6 +262,19 @@ function importTx(rows) {
     toAdd.push(r);
   });
   if (toAdd.length) upsertMany('tx', toAdd);
+  // פרויקטים חדשים שהופיעו בקובץ — נוצרים אוטומטית ברשימת הפרויקטים
+  var known = {};
+  readAll('projects').forEach(function (p) { known[p.name] = true; });
+  var newProjects = [];
+  toAdd.forEach(function (r) {
+    if (r.project && !known[r.project]) {
+      known[r.project] = true;
+      newProjects.push({ id: 'p-' + Date.now() + '-' + Math.floor(Math.random() * 100000),
+        name: r.project, price: '0', stages: '[]',
+        budget: '{"workers":0,"materials":0,"cranes":0}', deleted: '' });
+    }
+  });
+  if (newProjects.length) upsertMany('projects', newProjects);
   return { added: toAdd.length, dups: dups, auto: auto };
 }
 

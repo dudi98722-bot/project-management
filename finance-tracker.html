@@ -1579,6 +1579,10 @@ function saveManual(){
 /* ================= ייבוא ================= */
 const HDR_MAP = [
   {f:'chargeDate', re:/חיוב לתאריך|תאריך חיוב/},
+  {f:'project', re:/פרויקט|פרוייקט/},
+  {f:'category', re:/קטגוריה/},
+  {f:'scope', re:/^שיוך/},
+  {f:'kindCol', re:/^סוג$/},
   {f:'date', re:/^תאריך(?!.*ערך)|תאריך עסקה|תאריך רכישה|תאריך קנייה/},
   {f:'debit', re:/^חובה|סכום חיוב|₪.*חיוב|חיוב בש/},
   {f:'credit', re:/^זכות/},
@@ -1591,6 +1595,8 @@ const FIELD_OPTS = [
   ['ignore','— התעלם —'], ['date','📅 תאריך'], ['desc','📝 תיאור'], ['details','פרטים (תיאור משני)'],
   ['debit','🔻 חובה (הוצאה)'], ['credit','🔺 זכות (הכנסה)'],
   ['amountPosInc','סכום (+הכנסה / −הוצאה)'], ['amountPosExp','סכום (+הוצאה / −הכנסה)'],
+  ['kindCol','סוג (הכנסה/הוצאה)'],
+  ['scope','🏠/🏢 שיוך (בית/עסק)'], ['category','🗂️ קטגוריה'], ['project','🏗️ פרויקט'],
   ['ref','אסמכתא'],
   ['extra1','📎 פרטים נוספים 1'], ['extra2','📎 פרטים נוספים 2'],
   ['extra3','📎 פרטים נוספים 3'], ['extra4','📎 פרטים נוספים 4']
@@ -1847,7 +1853,7 @@ function setColField(bid, ci, val){
 function clearImport(){ importBlocks = []; renderImportBlocks(); }
 function doImport(){
   const existing = new Set(db.tx.map(dedupKey));
-  let added=0, dups=0, auto=0, skipped=0;
+  let added=0, dups=0, auto=0, skipped=0, preCls=0, catChanged=false;
   const addedList=[];
   importBlocks.filter(b=>b.include).forEach(b=>{
     const fidx = {};
@@ -1874,12 +1880,31 @@ function doImport(){
           amount = Math.abs(a);
         }
       }
+      // עמודת "סוג" (הכנסה/הוצאה) גוברת על סימן הסכום — לנתונים מהטופס הישן
+      if(fidx.kindCol!==undefined){
+        const kv = String(r[fidx.kindCol]||'');
+        if(/הכנס|income|זכות/.test(kv)) kind='income';
+        else if(/הוצא|expense|חובה/.test(kv)) kind='expense';
+      }
       if(kind===null || !amount){ skipped++; return; }
       const desc = normDesc(fidx.desc!==undefined ? r[fidx.desc] : '') || '(ללא תיאור)';
       const details = fidx.details!==undefined ? normDesc(r[fidx.details]) : '';
+      // סיווג מתוך הקובץ עצמו (שיוך/קטגוריה/פרויקט) — אם מופו עמודות כאלה
+      let scopeVal = '';
+      if(fidx.scope!==undefined){
+        const sv = String(r[fidx.scope]||'');
+        if(/עסק/.test(sv)) scopeVal='biz';
+        else if(/בית|פרטי/.test(sv)) scopeVal='home';
+        else if(/לא נכלל|מוחרג|החרג/.test(sv)) scopeVal='exclude';
+      }
+      const projVal = fidx.project!==undefined ? normDesc(r[fidx.project]) : '';
+      const catVal = fidx.category!==undefined ? normDesc(r[fidx.category]) : '';
+      if(projVal && !scopeVal) scopeVal = 'biz'; // פרויקט = עסק
       const t = {
         id: uid(), date, desc, details, amount, kind,
-        account: b.account, scope:'', category:'', project:'',
+        account: b.account, scope: scopeVal,
+        category: scopeVal && scopeVal!=='exclude' ? catVal : '',
+        project: scopeVal==='biz' ? projVal : '',
         ref: fidx.ref!==undefined ? String(r[fidx.ref]||'') : '',
         origin: b.source + ' · ' + new Date().toLocaleDateString('he-IL')
       };
@@ -1887,8 +1912,23 @@ function doImport(){
       const key = dedupKey(t);
       if(existing.has(key)){ dups++; return; }
       existing.add(key);
+      if(t.scope) preCls++;
       // החרגה אוטומטית רק לחיוב אשראי מרוכז (מניעת ספירה כפולה) — בלי סיווג נלמד
-      if(EXCLUDE_RE.test(desc)){ t.scope='exclude'; auto++; }
+      else if(EXCLUDE_RE.test(desc)){ t.scope='exclude'; auto++; }
+      // פרויקט חדש מהקובץ — נוצר אוטומטית
+      if(t.project && !db.projects.some(p=>p.name===t.project && !p.deleted)){
+        const np = newProjObj(t.project);
+        db.projects.push(np);
+        queueProj(np);
+      }
+      // קטגוריה חדשה מהקובץ — נוספת לרשימה המתאימה
+      if(t.category && (t.scope==='biz'||t.scope==='home')){
+        const ck = t.scope+'_'+t.kind;
+        if(db.categories[ck] && !db.categories[ck].includes(t.category)){
+          db.categories[ck].push(t.category);
+          catChanged = true;
+        }
+      }
       db.tx.push(t);
       addedList.push(t);
       added++;
@@ -1897,8 +1937,10 @@ function doImport(){
   importBlocks = [];
   if(addedList.length) queueTx(addedList);
   queueSetting('templates');
+  if(catChanged) queueSetting('categories');
   save(); renderImportBlocks(); renderAll();
   let msg = '✔ נוספו '+added+' תנועות';
+  if(preCls) msg += ' · '+preCls+' נכנסו עם סיווג מהקובץ';
   if(auto) msg += ' · '+auto+' הוחרגו (חיוב אשראי מרוכז)';
   if(dups) msg += ' · '+dups+' כפולות דולגו';
   if(skipped) msg += ' · '+skipped+' שורות לא תקינות';
