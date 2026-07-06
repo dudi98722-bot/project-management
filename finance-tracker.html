@@ -104,6 +104,13 @@ tr:hover td{background:#fafbff}
 .proj-card h4{font-size:15px;margin-bottom:10px}
 .proj-card .row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0}
 .empty{text-align:center;color:var(--muted);padding:40px 10px;font-size:14px}
+.pbar{background:#e2e8f0;border-radius:8px;height:13px;overflow:hidden;margin:6px 0}
+.pbar>div{height:100%;border-radius:8px;transition:.3s}
+.stage-row{display:flex;gap:8px;margin-bottom:8px;align-items:center}
+.stage-row input{flex:1}
+.stage-row input.amt-in{flex:0 0 130px}
+.stage-row .rm{border:none;background:#fee2e2;color:#dc2626;border-radius:8px;width:32px;height:32px;cursor:pointer;font-weight:700}
+.detail-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
 .hint{background:#eef2ff;border-radius:8px;padding:10px 14px;font-size:13px;color:#3730a3;margin-bottom:12px;line-height:1.6}
 .table-wrap{overflow-x:auto}
 tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
@@ -198,10 +205,11 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
 
 <!-- ============ פרויקטים ============ -->
 <section id="tab-projects">
-  <div class="toolbar">
-    <select id="projMonth"></select>
-    <button class="btn sm" onclick="addProject()">+ פרויקט חדש</button>
+  <div class="toolbar" id="projToolbar">
+    <button class="btn sm" onclick="openProjModal(null)">+ פרויקט חדש</button>
+    <span class="muted">לחיצה על פרויקט פותחת דוח מצב מלא</span>
   </div>
+  <div id="projDetail" style="display:none"></div>
   <div class="proj-grid" id="projGrid"></div>
 </section>
 
@@ -257,9 +265,13 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
 <section id="tab-settings">
   <div class="charts-grid">
     <div class="card">
-      <h3>🏗️ פרויקטים</h3>
+      <h3>🏗️ פרויקטים <span class="muted" style="font-weight:400;font-size:12px">(לחיצה על פרויקט — עריכה)</span></h3>
       <div id="setProjects"></div>
       <button class="btn sm sec" style="margin-top:8px" onclick="addProject()">+ הוסף פרויקט</button>
+      <div style="margin-top:14px;border-top:1px dashed var(--border);padding-top:12px">
+        <label style="font-size:13px">🧾 שיעור מע"מ לקיזוז בתשלומים עם חשבונית:
+        <input type="number" id="vatInput" step="0.5" min="0" max="49" style="width:80px" onchange="setVat(this.value)"> %</label>
+      </div>
     </div>
     <div class="card">
       <h3>🏦 חשבונות / מקורות</h3>
@@ -310,12 +322,42 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
       <div><label>קטגוריה</label><select id="eCat"></select></div>
       <div><label>פרויקט</label><select id="eProj"></select></div>
       <div style="grid-column:1/-1"><label>תיאור</label><input type="text" id="eDesc"></div>
+      <div style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px;color:var(--text)"><input type="checkbox" id="eInvoice"> 🧾 עם חשבונית — יקוזז מע"מ בדוח הפרויקט (רלוונטי להכנסות עסק)</label></div>
     </div>
     <div class="muted" id="eOrigin" style="margin-top:10px"></div>
     <div style="margin-top:16px;display:flex;gap:8px">
       <button class="btn" onclick="saveEdit()">💾 שמור</button>
       <button class="btn sec" onclick="closeEdit()">ביטול</button>
       <button class="btn danger" style="margin-right:auto" onclick="deleteFromEdit()">🗑️ מחק</button>
+    </div>
+  </div>
+</div>
+
+<!-- מודל פרויקט -->
+<div class="modal-bg" id="projModal">
+  <div class="modal" style="max-width:680px">
+    <h3 id="pmTitle">🏗️ פרויקט חדש</h3>
+    <div class="form-grid">
+      <div><label>שם הפרויקט</label><input type="text" id="pmName" placeholder="למשל: מרפסת משפחת כהן"></div>
+      <div><label>מחיר הפרויקט ללא מע"מ (₪)</label><input type="number" id="pmPrice" step="0.01" min="0" placeholder="0"></div>
+    </div>
+    <div style="margin-top:16px">
+      <label style="font-size:12.5px;color:var(--muted);font-weight:600">שלבי תשלום (לתיעוד — בלי חישובים)</label>
+      <div id="pmStages" style="margin-top:6px"></div>
+      <button class="btn sm sec" onclick="pmAddStage()">+ הוסף שלב</button>
+    </div>
+    <div style="margin-top:16px">
+      <label style="font-size:12.5px;color:var(--muted);font-weight:600">צפי הוצאות (₪, ללא מע"מ)</label>
+      <div class="form-grid" style="margin-top:6px">
+        <div><label>👷 עובדים</label><input type="number" id="pmBw" step="0.01" min="0" placeholder="0"></div>
+        <div><label>🧱 חומר</label><input type="number" id="pmBm" step="0.01" min="0" placeholder="0"></div>
+        <div><label>🏗️ מנופים</label><input type="number" id="pmBc" step="0.01" min="0" placeholder="0"></div>
+      </div>
+    </div>
+    <div style="margin-top:18px;display:flex;gap:8px">
+      <button class="btn" onclick="saveProjModal()">💾 שמור פרויקט</button>
+      <button class="btn sec" onclick="closeProjModal()">ביטול</button>
+      <button class="btn danger" id="pmDelete" style="margin-right:auto;display:none" onclick="deleteProjFromModal()">🗑️ מחק</button>
     </div>
   </div>
 </div>
@@ -330,6 +372,7 @@ const DEFAULTS = {
   tx: [],
   rules: {},
   templates: {},
+  vat: 18,
   projects: [],
   accounts: [
     {name:'עו"ש עסקי', scope:'biz'},
@@ -339,7 +382,7 @@ const DEFAULTS = {
     {name:'אשראי פרטי', scope:'home'}
   ],
   categories: {
-    biz_expense: ['חומרים וספקים','קבלני משנה','דלק ורכב','כלים וציוד','שכירות','משכורות','ביטוח לאומי','מיסים ומע"מ','ביטוחים','טלפון ותקשורת','עמלות בנק וריבית','אחר'],
+    biz_expense: ['חומרים וספקים','קבלני משנה','מנופים','דלק ורכב','כלים וציוד','שכירות','משכורות','ביטוח לאומי','מיסים ומע"מ','ביטוחים','טלפון ותקשורת','עמלות בנק וריבית','אחר'],
     biz_income: ['תקבול מפרויקט','החזרי מס','אחר'],
     home_expense: ['מזון וסופר','דלק ורכב','שכירות/משכנתא','חשמל מים וגז','בריאות','חינוך','ביגוד והנעלה','תרומות ומעשרות','פנאי ומסעדות','תקשורת','עמלות בנק','אחר'],
     home_income: ['משכורת','קצבאות','אחר']
@@ -368,6 +411,20 @@ function migrate(d){
     d.accounts.splice(i>=0?i+1:d.accounts.length, 0, {name:'דיירקט פרטי', scope:'home'});
   }
   d.tx.forEach(t=>{ if(t.account==='דיווח ידני') t.account='דיווח בטופס'; });
+  // גרסה 3: פרויקטים הפכו מרשימת שמות לאובייקטים עם מחיר/שלבים/תקציב
+  d.projects = (d.projects||[]).map(p => typeof p==='string'
+    ? {id:uid(), name:p, price:0, stages:[], budget:{workers:0, materials:0, cranes:0}}
+    : p);
+  d.projects.forEach(p=>{
+    if(!p.id) p.id = uid();
+    if(p.price==null) p.price = 0;
+    if(!Array.isArray(p.stages)) p.stages = [];
+    if(!p.budget) p.budget = {workers:0, materials:0, cranes:0};
+  });
+  if(d.categories && d.categories.biz_expense && !d.categories.biz_expense.includes('מנופים')){
+    const i = d.categories.biz_expense.indexOf('קבלני משנה');
+    d.categories.biz_expense.splice(i>=0?i+1:0, 0, 'מנופים');
+  }
   // סדר קבוע למקורות הבסיס, מותאמים-אישית בסוף
   const order = ['עו"ש עסקי','דיירקט עסקי','עו"ש פרטי','דיירקט פרטי','אשראי פרטי'];
   d.accounts.sort((a,b)=>{
@@ -467,7 +524,7 @@ function buildMonthSelects(){
   if(dashMonthVal===null) dashMonthVal = months[0] || 'all';
   dm.value = [...dm.options].some(o=>o.value===(keep||dashMonthVal)) ? (keep||dashMonthVal) : (months[0]||'all');
   dashMonthVal = dm.value;
-  ['txMonth','projMonth'].forEach(id=>{
+  ['txMonth'].forEach(id=>{
     const el = document.getElementById(id); const k = el.value;
     el.innerHTML = mk(months);
     el.value = [...el.options].some(o=>o.value===k) ? k : 'all';
@@ -632,11 +689,12 @@ function openPanel(id, scope){
 function renderPanel(t){
   const cats = catList(panelScope, t.kind);
   const catOpts = cats.map(c=>'<option>'+esc(c)+'</option>').join('') + '<option value="__new__">+ קטגוריה חדשה...</option>';
-  const projOpts = '<option value="">— ללא פרויקט —</option>' + db.projects.map(p=>'<option>'+esc(p)+'</option>').join('') + '<option value="__new__">+ פרויקט חדש...</option>';
+  const projOpts = '<option value="">— ללא פרויקט —</option>' + projNames().map(p=>'<option>'+esc(p)+'</option>').join('') + '<option value="__new__">+ פרויקט חדש...</option>';
   return '<div class="classify-panel">'
     +'<b style="color:var(--'+panelScope+')">'+(panelScope==='biz'?'🏢 עסק':'🏠 בית')+'</b>'
     +'<select id="pnlCat">'+catOpts+'</select>'
     +(panelScope==='biz' ? '<select id="pnlProj">'+projOpts+'</select>' : '')
+    +(panelScope==='biz' && t.kind==='income' ? '<label style="display:flex;align-items:center;gap:5px;font-size:12.5px"><input type="checkbox" id="pnlInvoice"> עם חשבונית (יקוזז מע"מ בדוח)</label>' : '')
     +'<label style="display:flex;align-items:center;gap:5px;font-size:12.5px"><input type="checkbox" id="pnlRemember" checked> זכור לתנועות דומות</label>'
     +'<button class="btn sm" onclick="savePanel(\''+t.id+'\')">✔ שמור</button>'
     +'</div>';
@@ -660,10 +718,12 @@ function savePanel(id){
     proj = pp.value;
     if(proj==='__new__'){
       const v = prompt('שם פרויקט חדש:');
-      if(v && v.trim()){ db.projects.push(v.trim()); proj = v.trim(); } else proj = '';
+      if(v && v.trim()){ db.projects.push(newProjObj(v.trim())); proj = v.trim(); } else proj = '';
     }
   }
   t.scope = panelScope; t.category = cat; t.project = proj;
+  const inv = document.getElementById('pnlInvoice');
+  if(inv) t.invoice = inv.checked;
   const remember = document.getElementById('pnlRemember').checked;
   let applied = 0;
   if(remember){
@@ -704,7 +764,7 @@ function updateBulkBar(){
   catSel.style.display=''; projSel.style.display = scope==='biz' ? '' : 'none';
   const cats = [...new Set([...catList(scope,'expense'), ...catList(scope,'income')])];
   catSel.innerHTML = '<option value="">— בלי קטגוריה —</option>' + cats.map(c=>'<option>'+esc(c)+'</option>').join('');
-  projSel.innerHTML = '<option value="">— בלי פרויקט —</option>' + db.projects.map(p=>'<option>'+esc(p)+'</option>').join('');
+  projSel.innerHTML = '<option value="">— בלי פרויקט —</option>' + projNames().map(p=>'<option>'+esc(p)+'</option>').join('');
 }
 document.getElementById('bulkScope').addEventListener('change', updateBulkBar);
 function autoScopeByAccount(){
@@ -743,8 +803,8 @@ function renderTxTable(){
   const cats = [...new Set(db.tx.map(t=>t.category).filter(Boolean))].sort();
   catSel.innerHTML = '<option value="">כל הקטגוריות</option>' + cats.map(c=>'<option>'+esc(c)+'</option>').join('');
   catSel.value = cats.includes(kc) ? kc : '';
-  projSel.innerHTML = '<option value="">כל הפרויקטים</option>' + db.projects.map(p=>'<option>'+esc(p)+'</option>').join('');
-  projSel.value = db.projects.includes(kp) ? kp : '';
+  projSel.innerHTML = '<option value="">כל הפרויקטים</option>' + projNames().map(p=>'<option>'+esc(p)+'</option>').join('');
+  projSel.value = projNames().includes(kp) ? kp : '';
   const accs = [...new Set(db.tx.map(t=>t.account))].sort();
   accSel.innerHTML = '<option value="">כל החשבונות</option>' + accs.map(a=>'<option>'+esc(a)+'</option>').join('');
   accSel.value = accs.includes(ka) ? ka : '';
@@ -797,6 +857,7 @@ function openEdit(id){
   document.getElementById('eAmount').value = t.amount;
   document.getElementById('eScope').value = t.scope;
   document.getElementById('eDesc').value = t.desc;
+  document.getElementById('eInvoice').checked = !!t.invoice;
   document.getElementById('eOrigin').textContent = '📌 חשבון: ' + t.account + (t.origin ? ' · מקור: ' + t.origin : '');
   refreshEditSelects(t.category, t.project);
   document.getElementById('editModal').classList.add('open');
@@ -810,7 +871,7 @@ function refreshEditSelects(cat, proj){
   if(cat && ![...cs.options].some(o=>o.value===cat)) cs.innerHTML += '<option>'+esc(cat)+'</option>';
   cs.value = cat || '';
   const ps = document.getElementById('eProj');
-  ps.innerHTML = '<option value="">— ללא —</option>' + db.projects.map(p=>'<option>'+esc(p)+'</option>').join('');
+  ps.innerHTML = '<option value="">— ללא —</option>' + projNames().map(p=>'<option>'+esc(p)+'</option>').join('');
   ps.value = proj || '';
 }
 document.getElementById('eScope').addEventListener('change', ()=>refreshEditSelects('', document.getElementById('eProj').value));
@@ -824,6 +885,7 @@ function saveEdit(){
   t.category = document.getElementById('eCat').value;
   t.project = document.getElementById('eProj').value;
   t.desc = document.getElementById('eDesc').value;
+  t.invoice = document.getElementById('eInvoice').checked;
   closeEdit(); save(); renderAll(); toast('נשמר ✔');
 }
 function deleteFromEdit(){
@@ -835,39 +897,215 @@ function closeEdit(){ document.getElementById('editModal').classList.remove('ope
 document.getElementById('editModal').addEventListener('click', e=>{ if(e.target.id==='editModal') closeEdit(); });
 
 /* ================= פרויקטים ================= */
-document.getElementById('projMonth').addEventListener('change', renderProjects);
+const EXP_GROUPS = [
+  {key:'workers', label:'👷 עובדים', cats:['משכורות','קבלני משנה','עובדים']},
+  {key:'materials', label:'🧱 חומר', cats:['חומרים וספקים','חומר','חומרים']},
+  {key:'cranes', label:'🏗️ מנופים', cats:['מנופים']}
+];
+function projNames(){ return db.projects.map(p=>p.name); }
+function newProjObj(name){ return {id:uid(), name, price:0, stages:[], budget:{workers:0, materials:0, cranes:0}}; }
+function vatNet(t){ return t.invoice ? t.amount/(1+(db.vat||18)/100) : t.amount; }
+function pct(a,b){ return b>0 ? Math.round(a/b*100) : 0; }
+function projStats(p){
+  const txs = db.tx.filter(t=>t.project===p.name && t.scope==='biz');
+  const pays = txs.filter(t=>t.kind==='income');
+  const paidGross = pays.reduce((s,t)=>s+t.amount,0);
+  const paidNet = pays.reduce((s,t)=>s+vatNet(t),0);
+  const exps = txs.filter(t=>t.kind==='expense');
+  const expTotal = exps.reduce((s,t)=>s+t.amount,0);
+  const groups = EXP_GROUPS.map(g=>({
+    ...g,
+    budget: (p.budget||{})[g.key]||0,
+    actual: exps.filter(t=>g.cats.includes(t.category)).reduce((s,t)=>s+t.amount,0)
+  }));
+  const grouped = groups.reduce((s,g)=>s+g.actual,0);
+  const other = expTotal - grouped;
+  const budgetTotal = groups.reduce((s,g)=>s+g.budget,0);
+  return {pays, exps, paidGross, paidNet, expTotal, groups, other, budgetTotal};
+}
+let projView = null;
 function renderProjects(){
-  const month = document.getElementById('projMonth').value || 'all';
   const grid = document.getElementById('projGrid');
+  const det = document.getElementById('projDetail');
+  const p = db.projects.find(x=>x.name===projView);
+  if(p){
+    grid.style.display = 'none';
+    det.style.display = 'block';
+    det.innerHTML = projectDetailHTML(p);
+    return;
+  }
+  projView = null;
+  det.style.display = 'none';
+  grid.style.display = 'grid';
   if(!db.projects.length){
-    grid.innerHTML = '<div class="empty" style="grid-column:1/-1">אין פרויקטים עדיין.<br>הוסיפו פרויקט חדש, או שייכו תנועות עסקיות לפרויקט במסך הסיווג.</div>';
+    grid.innerHTML = '<div class="empty" style="grid-column:1/-1">אין פרויקטים עדיין.<br><br><button class="btn" onclick="openProjModal(null)">+ צור פרויקט ראשון</button></div>';
     return;
   }
   grid.innerHTML = db.projects.map(p=>{
-    const list = db.tx.filter(t=>t.project===p && t.scope==='biz' && (month==='all'||t.date.slice(0,7)===month));
-    const inc = list.filter(t=>t.kind==='income').reduce((s,t)=>s+t.amount,0);
-    const exp = list.filter(t=>t.kind==='expense').reduce((s,t)=>s+t.amount,0);
-    return '<div class="proj-card" onclick="viewProject(\''+esc(p).replace(/'/g,"\\'")+'\')">'
-      +'<h4>🏗️ '+esc(p)+'</h4>'
-      +'<div class="row"><span>הכנסות</span><b class="green">'+fmt(inc)+'</b></div>'
-      +'<div class="row"><span>הוצאות</span><b class="red">'+fmt(exp)+'</b></div>'
-      +'<div class="row" style="border-top:1px solid var(--border);margin-top:6px;padding-top:8px"><span><b>רווח</b></span><b class="'+(inc-exp>=0?'green':'red')+'">'+fmt(inc-exp)+'</b></div>'
-      +'<div class="muted" style="font-size:11.5px;margin-top:6px">'+list.length+' תנועות</div>'
+    const s = projStats(p);
+    const payPct = pct(s.paidNet, p.price);
+    const expPct = pct(s.expTotal, p.price);
+    return '<div class="proj-card" onclick="openProjectDetail(\''+jsq(p.name)+'\')">'
+      +'<h4>🏗️ '+esc(p.name)+'</h4>'
+      +'<div class="row"><span>מחיר (ללא מע"מ)</span><b>'+fmt(p.price)+'</b></div>'
+      +'<div class="row"><span>שולם נטו</span><b class="green">'+fmt(s.paidNet)+(p.price?' · '+payPct+'%':'')+'</b></div>'
+      +(p.price?'<div class="pbar"><div style="width:'+Math.min(payPct,100)+'%;background:var(--income)"></div></div>':'')
+      +'<div class="row"><span>הוצאות</span><b class="red">'+fmt(s.expTotal)+(p.price?' · '+expPct+'%':'')+'</b></div>'
+      +(p.price?'<div class="pbar"><div style="width:'+Math.min(expPct,100)+'%;background:var(--expense)"></div></div>':'')
+      +'<div class="row" style="border-top:1px solid var(--border);margin-top:6px;padding-top:8px"><span><b>רווח נוכחי</b></span><b class="'+(s.paidNet-s.expTotal>=0?'green':'red')+'">'+fmt(s.paidNet-s.expTotal)+'</b></div>'
+      +'<div class="muted" style="font-size:11.5px;margin-top:6px">'+(s.pays.length+s.exps.length)+' תנועות</div>'
       +'</div>';
   }).join('');
 }
-function viewProject(p){
+function openProjectDetail(name){ projView = name; gotoTab('projects'); }
+function projectDetailHTML(p){
+  const s = projStats(p);
+  const payPct = pct(s.paidNet, p.price);
+  const expPct = pct(s.expTotal, p.price);
+  const profit = s.paidNet - s.expTotal;
+  const planned = p.price - s.budgetTotal;
+  const vatLabel = (db.vat||18)+'%';
+  // טבלת צפי מול ביצוע
+  const groupRows = s.groups.map(g=>{
+    const diff = g.budget - g.actual;
+    return '<tr><td>'+g.label+'</td><td class="amt">'+fmt(g.budget)+'</td><td class="amt">'+fmt(g.actual)+'</td>'
+      +'<td class="amt '+(diff>=0?'green':'red')+'">'+fmt(diff)+'</td>'
+      +'<td style="min-width:90px"><div class="pbar" style="margin:0"><div style="width:'+Math.min(pct(g.actual,g.budget),100)+'%;background:'+(g.actual>g.budget&&g.budget>0?'var(--expense)':'#4f46e5')+'"></div></div></td></tr>';
+  }).join('')
+  +'<tr><td>📦 אחר (לא בקבוצות)</td><td class="amt">—</td><td class="amt">'+fmt(s.other)+'</td><td></td><td></td></tr>';
+  // תשלומים
+  const payRows = s.pays.sort((a,b)=>a.date.localeCompare(b.date)).map(t=>
+    '<tr><td style="white-space:nowrap">'+t.date.split('-').reverse().join('/')+'</td>'
+    +'<td>'+esc(t.desc)+'</td>'
+    +'<td class="amt">'+fmt2(t.amount)+'</td>'
+    +'<td style="text-align:center"><input type="checkbox" '+(t.invoice?'checked':'')+' onchange="toggleInvoice(\''+t.id+'\')"></td>'
+    +'<td class="amt green">'+fmt2(vatNet(t))+'</td></tr>').join('');
+  // הוצאות לפי קטגוריה
+  const catSum = {};
+  s.exps.forEach(t=>{ const c=t.category||'ללא קטגוריה'; catSum[c]=(catSum[c]||0)+t.amount; });
+  const expRows = Object.entries(catSum).sort((a,b)=>b[1]-a[1]).map(([c,v])=>
+    '<tr><td>'+esc(c)+'</td><td class="amt red">'+fmt(v)+'</td><td>'+pct(v,s.expTotal)+'%</td></tr>').join('');
+  const stages = (p.stages||[]).length
+    ? '<ol style="padding-right:18px;line-height:2">'+p.stages.map(st=>'<li>'+esc(st.desc||'')+(st.amount?' — <b>'+fmt(+st.amount)+'</b>':'')+'</li>').join('')+'</ol>'
+    : '<div class="muted">לא הוגדרו שלבי תשלום</div>';
+  return '<div class="detail-head">'
+    +'<button class="btn sec sm" onclick="projView=null;renderProjects()">→ חזרה לרשימה</button>'
+    +'<h2 style="font-size:20px">🏗️ '+esc(p.name)+'</h2>'
+    +'<button class="btn sm ghost" onclick="openProjModal(\''+jsq(p.id)+'\')">✏️ עריכת פרויקט</button>'
+    +'<button class="btn sm sec" onclick="viewProjectTx(\''+jsq(p.name)+'\')">📋 כל התנועות</button>'
+    +'</div>'
+    +'<div class="cards-row">'
+    +'<div class="stat"><div class="lbl">מחיר הפרויקט (ללא מע"מ)</div><div class="val">'+fmt(p.price)+'</div></div>'
+    +'<div class="stat"><div class="lbl">התקבל נטו'+(s.paidGross!==s.paidNet?' (ברוטו '+fmt(s.paidGross)+')':'')+'</div><div class="val green">'+fmt(s.paidNet)+'</div></div>'
+    +'<div class="stat"><div class="lbl">הוצאות בפועל</div><div class="val red">'+fmt(s.expTotal)+'</div></div>'
+    +'<div class="stat"><div class="lbl">רווח נוכחי (נטו − הוצאות)</div><div class="val '+(profit>=0?'green':'red')+'">'+fmt(profit)+'</div></div>'
+    +'<div class="stat"><div class="lbl">רווח מתוכנן (מחיר − צפי)</div><div class="val '+(planned>=0?'green':'red')+'">'+fmt(planned)+'</div></div>'
+    +'</div>'
+    +'<div class="card"><h3>📈 התקדמות מול המחיר</h3>'
+    +'<div style="display:flex;justify-content:space-between;font-size:13px"><span>💰 תשלומים שהתקבלו (נטו)</span><b>'+payPct+'% · נותר לגבייה: '+fmt(Math.max(p.price-s.paidNet,0))+'</b></div>'
+    +'<div class="pbar" style="height:18px"><div style="width:'+Math.min(payPct,100)+'%;background:var(--income)"></div></div>'
+    +'<div style="display:flex;justify-content:space-between;font-size:13px;margin-top:10px"><span>🔻 הוצאות</span><b>'+expPct+'% מהמחיר</b></div>'
+    +'<div class="pbar" style="height:18px"><div style="width:'+Math.min(expPct,100)+'%;background:var(--expense)"></div></div>'
+    +(payPct>100?'<div class="muted" style="color:#b45309">⚠️ התקבל יותר מהמחיר המוגדר — בדקו את מחיר הפרויקט או את שיוך התשלומים</div>':'')
+    +'</div>'
+    +'<div class="charts-grid">'
+    +'<div class="card"><h3>🎯 צפי הוצאות מול ביצוע</h3><div class="table-wrap"><table><thead><tr><th>קבוצה</th><th>צפי</th><th>בפועל</th><th>פער</th><th>ניצול</th></tr></thead><tbody>'+groupRows
+    +'</tbody><tfoot><tr><td>סה"כ</td><td class="amt">'+fmt(s.budgetTotal)+'</td><td class="amt">'+fmt(s.expTotal)+'</td><td class="amt '+(s.budgetTotal-s.expTotal>=0?'green':'red')+'">'+fmt(s.budgetTotal-s.expTotal)+'</td><td></td></tr></tfoot></table></div>'
+    +'<p class="muted" style="margin-top:8px;font-size:11.5px">עובדים = משכורות + קבלני משנה · חומר = חומרים וספקים · מנופים = קטגוריית מנופים</p></div>'
+    +'<div class="card"><h3>🪜 שלבי תשלום (לתיעוד)</h3>'+stages+'</div>'
+    +'</div>'
+    +'<div class="charts-grid" style="margin-top:16px">'
+    +'<div class="card"><h3>💰 תשלומים שהתקבלו ('+s.pays.length+')</h3>'
+    +(s.pays.length ? '<div class="table-wrap"><table><thead><tr><th>תאריך</th><th>תיאור</th><th>סכום</th><th>חשבונית?</th><th>נטו (בקיזוז מע"מ '+vatLabel+')</th></tr></thead><tbody>'+payRows
+      +'</tbody><tfoot><tr><td colspan="2">סה"כ</td><td class="amt">'+fmt2(s.paidGross)+'</td><td></td><td class="amt green">'+fmt2(s.paidNet)+'</td></tr></tfoot></table></div>'
+      +'<p class="muted" style="margin-top:8px;font-size:11.5px">✓ בעמודת "חשבונית" = הסכום כולל מע"מ, והנטו מחושב בלעדיו</p>'
+      : '<div class="empty">עדיין לא שויכו תשלומים — סווגו הכנסות עסקיות לפרויקט הזה</div>')
+    +'</div>'
+    +'<div class="card"><h3>🔻 הוצאות לפי קטגוריה ('+s.exps.length+')</h3>'
+    +(s.exps.length ? '<div class="table-wrap"><table><thead><tr><th>קטגוריה</th><th>סכום</th><th>%</th></tr></thead><tbody>'+expRows+'</tbody></table></div>'
+      : '<div class="empty">עדיין לא שויכו הוצאות לפרויקט הזה</div>')
+    +'</div></div>';
+}
+function toggleInvoice(id){
+  const t = db.tx.find(x=>x.id===id); if(!t) return;
+  t.invoice = !t.invoice;
+  save(); renderProjects(); renderDashboard();
+}
+function viewProjectTx(name){
   gotoTab('tx');
-  document.getElementById('txProj').value = p;
+  document.getElementById('txProj').value = name;
   document.getElementById('txMonth').value = 'all';
   renderTxTable();
 }
-function addProject(){
-  const v = prompt('שם הפרויקט:');
-  if(v && v.trim() && !db.projects.includes(v.trim())){
-    db.projects.push(v.trim()); save(); renderAll();
-  }
+/* --- מודל פרויקט --- */
+let pmEditId = null, pmStages = [];
+function openProjModal(id){
+  pmEditId = id;
+  const p = id ? db.projects.find(x=>x.id===id) : null;
+  document.getElementById('pmTitle').textContent = p ? '✏️ עריכת פרויקט' : '🏗️ פרויקט חדש';
+  document.getElementById('pmName').value = p ? p.name : '';
+  document.getElementById('pmPrice').value = p && p.price ? p.price : '';
+  document.getElementById('pmBw').value = p && p.budget.workers ? p.budget.workers : '';
+  document.getElementById('pmBm').value = p && p.budget.materials ? p.budget.materials : '';
+  document.getElementById('pmBc').value = p && p.budget.cranes ? p.budget.cranes : '';
+  pmStages = p ? JSON.parse(JSON.stringify(p.stages||[])) : [];
+  if(!pmStages.length) pmStages.push({desc:'', amount:''});
+  renderPmStages();
+  document.getElementById('pmDelete').style.display = p ? 'inline-block' : 'none';
+  document.getElementById('projModal').classList.add('open');
 }
+function renderPmStages(){
+  document.getElementById('pmStages').innerHTML = pmStages.map((st,i)=>
+    '<div class="stage-row">'
+    +'<span class="muted" style="width:18px">'+(i+1)+'.</span>'
+    +'<input type="text" placeholder="תיאור (למשל: מקדמה 30% בחתימה)" value="'+esc(st.desc||'')+'" oninput="pmStages['+i+'].desc=this.value">'
+    +'<input type="number" class="amt-in" placeholder="סכום ₪" step="0.01" value="'+esc(st.amount||'')+'" oninput="pmStages['+i+'].amount=this.value">'
+    +'<button class="rm" onclick="pmStages.splice('+i+',1);renderPmStages()">×</button>'
+    +'</div>').join('');
+}
+function pmAddStage(){ pmStages.push({desc:'', amount:''}); renderPmStages(); }
+function saveProjModal(){
+  const name = document.getElementById('pmName').value.trim();
+  if(!name){ toast('⚠️ הזן שם פרויקט'); return; }
+  const dup = db.projects.find(x=>x.name===name && x.id!==pmEditId);
+  if(dup){ toast('⚠️ כבר קיים פרויקט בשם הזה'); return; }
+  const data = {
+    name,
+    price: Math.abs(parseFloat(document.getElementById('pmPrice').value))||0,
+    stages: pmStages.filter(st=>(st.desc||'').trim()!=='' || st.amount).map(st=>({desc:(st.desc||'').trim(), amount: st.amount?Math.abs(parseFloat(st.amount))||0:''})),
+    budget: {
+      workers: Math.abs(parseFloat(document.getElementById('pmBw').value))||0,
+      materials: Math.abs(parseFloat(document.getElementById('pmBm').value))||0,
+      cranes: Math.abs(parseFloat(document.getElementById('pmBc').value))||0
+    }
+  };
+  if(pmEditId){
+    const p = db.projects.find(x=>x.id===pmEditId);
+    const oldName = p.name;
+    Object.assign(p, data);
+    if(oldName!==name){
+      db.tx.forEach(t=>{ if(t.project===oldName) t.project=name; });
+      Object.values(db.rules).forEach(r=>{ if(r.project===oldName) r.project=name; });
+      if(projView===oldName) projView=name;
+    }
+  } else {
+    db.projects.push(Object.assign(newProjObj(name), data));
+  }
+  closeProjModal(); save(); renderAll();
+  toast('💾 הפרויקט נשמר');
+}
+function deleteProjFromModal(){
+  const p = db.projects.find(x=>x.id===pmEditId); if(!p) return;
+  const used = db.tx.filter(t=>t.project===p.name).length;
+  if(!confirm('למחוק את הפרויקט "'+p.name+'"?'+(used?'\n('+used+' תנועות ישמרו את שם הפרויקט אך הוא יוסר מהרשימות)':''))) return;
+  db.projects = db.projects.filter(x=>x.id!==pmEditId);
+  if(projView===p.name) projView=null;
+  closeProjModal(); save(); renderAll();
+  toast('הפרויקט נמחק');
+}
+function closeProjModal(){ document.getElementById('projModal').classList.remove('open'); pmEditId=null; }
+document.getElementById('projModal').addEventListener('click', e=>{ if(e.target.id==='projModal') closeProjModal(); });
+function addProject(){ openProjModal(null); }
 
 /* ================= דיווח ידני ================= */
 function renderManualSelects(){
@@ -876,7 +1114,7 @@ function renderManualSelects(){
   const cs = document.getElementById('mCat');
   cs.innerHTML = '<option value="">— ללא —</option>' + catList(scope,kind).map(c=>'<option>'+esc(c)+'</option>').join('');
   const ps = document.getElementById('mProj');
-  ps.innerHTML = '<option value="">— ללא —</option>' + db.projects.map(p=>'<option>'+esc(p)+'</option>').join('');
+  ps.innerHTML = '<option value="">— ללא —</option>' + projNames().map(p=>'<option>'+esc(p)+'</option>').join('');
   document.getElementById('mProjWrap').style.display = scope==='biz' ? '' : 'none';
   if(!document.getElementById('mDate').value)
     document.getElementById('mDate').value = new Date().toISOString().slice(0,10);
@@ -1228,10 +1466,10 @@ function doImport(){
 
 /* ================= ייצוא ================= */
 function exportCSV(){
-  const rows = [['תאריך','תיאור','פרטים','מקור','שיוך','קטגוריה','פרויקט','סוג','סכום','קובץ מקור']];
+  const rows = [['תאריך','תיאור','פרטים','מקור','שיוך','קטגוריה','פרויקט','סוג','סכום','חשבונית','קובץ מקור']];
   const scopeName = s => s==='biz'?'עסק':s==='home'?'בית':s==='exclude'?'לא נכלל':'ממתין';
   db.tx.sort((a,b)=>a.date.localeCompare(b.date)).forEach(t=>{
-    rows.push([t.date, t.desc, t.details||'', t.account, scopeName(t.scope), t.category||'', t.project||'', t.kind==='income'?'הכנסה':'הוצאה', t.amount, t.origin||'']);
+    rows.push([t.date, t.desc, t.details||'', t.account, scopeName(t.scope), t.category||'', t.project||'', t.kind==='income'?'הכנסה':'הוצאה', t.amount, t.invoice?'כן':'', t.origin||'']);
   });
   const csv = '﻿' + rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\r\n');
   const a = document.createElement('a');
@@ -1256,6 +1494,7 @@ document.getElementById('restoreInput').addEventListener('change', e=>{
       if(!confirm('לשחזר מהגיבוי? הנתונים הנוכחיים ('+db.tx.length+' תנועות) יוחלפו ב-'+d.tx.length+' תנועות מהגיבוי.')) return;
       db = d;
       for(const k in DEFAULTS) if(db[k]===undefined) db[k]=JSON.parse(JSON.stringify(DEFAULTS[k]));
+      migrate(db);
       save(); renderAll(); toast('✔ שוחזר מגיבוי');
     }catch(err){ toast('⚠️ קובץ גיבוי לא תקין'); }
   };
@@ -1271,8 +1510,10 @@ function clearAll(){
 
 /* ================= הגדרות ================= */
 function renderSettings(){
-  document.getElementById('setProjects').innerHTML = db.projects.map((p,i)=>
-    '<span class="chip">🏗️ '+esc(p)+'<button onclick="removeProject('+i+')">×</button></span>').join('') || '<span class="muted">אין פרויקטים</span>';
+  document.getElementById('setProjects').innerHTML = db.projects.map(p=>
+    '<span class="chip" style="cursor:pointer" onclick="openProjModal(\''+jsq(p.id)+'\')">🏗️ '+esc(p.name)+(p.price?' <small>('+fmt(p.price)+')</small>':'')+'</span>').join('') || '<span class="muted">אין פרויקטים</span>';
+  const vatIn = document.getElementById('vatInput');
+  if(vatIn && document.activeElement!==vatIn) vatIn.value = db.vat||18;
   document.getElementById('setAccounts').innerHTML = db.accounts.map((a,i)=>
     '<span class="chip">'+esc(a.name)+' <small>('+(a.scope==='biz'?'עסק':'בית')+')</small><button onclick="removeAccount('+i+')">×</button></span>').join('');
   ['biz_expense','biz_income','home_expense','home_income'].forEach(k=>{
@@ -1305,11 +1546,9 @@ function renderSettings(){
       +'<td><button class="btn sm sec" onclick="removeRule(\''+esc(k).replace(/'/g,"\\'")+'\')">🗑️</button></td></tr>').join('')
     + '</tbody></table>';
 }
-function removeProject(i){
-  const p = db.projects[i];
-  const used = db.tx.filter(t=>t.project===p).length;
-  if(used && !confirm('הפרויקט "'+p+'" משויך ל-'+used+' תנועות. להסיר אותו מהרשימה? (התנועות ישמרו את השם)')) return;
-  db.projects.splice(i,1); save(); renderAll();
+function setVat(v){
+  const n = parseFloat(v);
+  if(!isNaN(n) && n>=0 && n<50){ db.vat = n; save(); renderProjects(); toast('מע"מ עודכן ל-'+n+'%'); }
 }
 function addAccount(){
   const name = prompt('שם החשבון (למשל: אשראי מקס עסקי):');
