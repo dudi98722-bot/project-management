@@ -251,7 +251,7 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
 <!-- ============ פרויקטים ============ -->
 <section id="tab-projects">
   <div class="toolbar" id="projToolbar">
-    <button class="btn sm" onclick="openProjModal(null)">+ פרויקט חדש</button>
+    <button class="btn sm" id="projAddBtn" onclick="openProjModal(null)">+ פרויקט חדש</button>
     <span class="muted">לחיצה על פרויקט פותחת דוח מצב מלא</span>
   </div>
   <div id="projDetail" style="display:none"></div>
@@ -467,9 +467,10 @@ const DEFAULTS = {
   templates: {},
   vat: 18,
   users: [
-    {id:'admin', name:'מנהל', role:'admin', code:'1111'},
-    {id:'beni',  name:'בני',  role:'beni',  code:'2222'},
-    {id:'lea',   name:'לאה',  role:'lea',   code:'3333'}
+    {id:'admin',  name:'מנהל',  role:'admin',  code:'1111'},
+    {id:'beni',   name:'בני',   role:'beni',   code:'2222'},
+    {id:'lea',    name:'לאה',   role:'lea',    code:'3333'},
+    {id:'itamar', name:'איתמר', role:'itamar', code:'4444'}
   ],
   projects: [],
   accounts: [
@@ -525,6 +526,7 @@ function migrate(d){
     d.categories.biz_expense.splice(i>=0?i+1:0, 0, 'מנופים');
   }
   if(!Array.isArray(d.users) || !d.users.length) d.users = JSON.parse(JSON.stringify(DEFAULTS.users));
+  if(!d.users.some(u=>u.id==='itamar')) d.users.push({id:'itamar', name:'איתמר', role:'itamar', code:'4444'});
   // סדר קבוע למקורות הבסיס, מותאמים-אישית בסוף
   const order = ['עו"ש עסקי','דיירקט עסקי','עו"ש פרטי','דיירקט פרטי','אשראי פרטי'];
   d.accounts.sort((a,b)=>{
@@ -705,6 +707,8 @@ function serverLoad(silent){
       if(s[k]){ try{ const v = JSON.parse(s[k]); if(v) db[k] = v; }catch(e){} }
       else queueSetting(k); // חסר בשרת — מעלים את המקומי
     });
+    // משתמש חדש שנוסף בקוד (איתמר) — מעלים לענן אם חסר שם
+    if(s.users && s.users.indexOf('"itamar"')<0) queueSetting('users');
     if(s.vat){ if(!pending.settings.vat){ const n = parseFloat(s.vat); if(!isNaN(n)) db.vat = n; } }
     else queueSetting('vat');
     migrate(db);
@@ -787,9 +791,10 @@ function dedupKey(t){ return [t.date, t.kind, (+t.amount).toFixed(2), normDesc(t
 
 /* ================= משתמשים והרשאות ================= */
 const ROLES = {
-  admin: {tabs:['dash','classify','tx','projects','manual','import','settings'], homeOnly:false, assignScope:true, canDelete:true, label:'גישה מלאה'},
-  beni:  {tabs:['dash','classify','projects','manual'], homeOnly:false, assignScope:true, canDelete:false, label:'כל הדוחות · סיווג הכל · דיווח בית ועסק'},
-  lea:   {tabs:['dash','classify','manual'], homeOnly:true, assignScope:false, canDelete:false, label:'דוחות בית · סיווג בית · דיווח בית'}
+  admin:  {tabs:['dash','classify','tx','projects','manual','import','settings'], homeOnly:false, bizOnly:false, assignScope:true, canDelete:true, readOnly:false, label:'גישה מלאה'},
+  beni:   {tabs:['dash','classify','projects','manual'], homeOnly:false, bizOnly:false, assignScope:true, canDelete:false, readOnly:false, label:'כל הדוחות · סיווג הכל · דיווח בית ועסק'},
+  lea:    {tabs:['dash','classify','manual'], homeOnly:true, bizOnly:false, assignScope:false, canDelete:false, readOnly:false, label:'דוחות בית · סיווג בית · דיווח בית'},
+  itamar: {tabs:['dash','projects'], homeOnly:false, bizOnly:true, assignScope:false, canDelete:false, readOnly:true, label:'צפייה בלבד — דשבורד עסק ופרויקטים'}
 };
 let currentUser = null;
 function perms(){ return (currentUser && ROLES[currentUser.role]) || ROLES.lea; }
@@ -862,8 +867,11 @@ function applyRole(){
     if(loggedIn) uc.textContent = '👤 '+currentUser.name+' · יציאה';
   }
   const ds = document.getElementById('dashScope');
-  if(ds) ds.style.display = p.homeOnly ? 'none' : 'inline-flex';
+  if(ds) ds.style.display = (p.homeOnly || p.bizOnly) ? 'none' : 'inline-flex';
   if(p.homeOnly) dashScopeVal = 'home';
+  if(p.bizOnly) dashScopeVal = 'biz';
+  const pab = document.getElementById('projAddBtn');
+  if(pab) pab.style.display = p.readOnly ? 'none' : '';
   const sb = document.getElementById('autoScopeBtn');
   if(sb) sb.style.display = p.assignScope ? '' : 'none';
   const ts = document.getElementById('txScope');
@@ -1812,7 +1820,7 @@ function projectDetailHTML(p){
     '<tr><td style="white-space:nowrap">'+t.date.split('-').reverse().join('/')+'</td>'
     +'<td>'+esc(t.desc)+'</td>'
     +'<td class="amt">'+fmt2(t.amount)+'</td>'
-    +'<td style="text-align:center"><input type="checkbox" '+(t.invoice?'checked':'')+' onchange="toggleInvoice(\''+t.id+'\')"></td>'
+    +'<td style="text-align:center"><input type="checkbox" '+(t.invoice?'checked':'')+(perms().readOnly?' disabled':'')+' onchange="toggleInvoice(\''+t.id+'\')"></td>'
     +'<td class="amt green">'+fmt2(vatNet(t))+'</td></tr>').join('');
   // הוצאות לפי קטגוריה
   const catSum = {};
@@ -1825,7 +1833,7 @@ function projectDetailHTML(p){
   return '<div class="detail-head">'
     +'<button class="btn sec sm" onclick="projView=null;renderProjects()">→ חזרה לרשימה</button>'
     +'<h2 style="font-size:20px">🏗️ '+esc(p.name)+'</h2>'
-    +'<button class="btn sm ghost" onclick="openProjModal(\''+jsq(p.id)+'\')">✏️ עריכת פרויקט</button>'
+    +(perms().readOnly ? '<span class="tag exclude">👁️ צפייה בלבד</span>' : '<button class="btn sm ghost" onclick="openProjModal(\''+jsq(p.id)+'\')">✏️ עריכת פרויקט</button>')
     +(perms().tabs.includes('tx') ? '<button class="btn sm sec" onclick="viewProjectTx(\''+jsq(p.name)+'\')">📋 כל התנועות</button>' : '')
     +'</div>'
     +'<div class="cards-row">'
@@ -1846,10 +1854,12 @@ function projectDetailHTML(p){
     +'</div>'
     +'<div class="card"><h3>➕ תוספות למחיר ('+(p.extras||[]).length+')</h3>'
     +((p.extras||[]).length
-      ? (p.extras||[]).map(ex=>'<div class="row"><span>'+esc(ex.desc||'')+'</span><span style="display:flex;align-items:center;gap:8px"><b>'+fmt(+ex.amount||0)+'</b><button style="border:none;background:#fee2e2;color:#dc2626;border-radius:8px;width:24px;height:24px;font-size:14px;font-weight:700;cursor:pointer" title="הסר תוספת" onclick="removeProjectExtra(\''+jsq(p.name)+'\',\''+jsq(ex.id)+'\')">×</button></span></div>').join('')
-      : '<div class="muted">אין תוספות עדיין — לחצו "הוסף תוספת" כשמחיר הפרויקט עולה</div>')
+      ? (p.extras||[]).map(ex=>'<div class="row"><span>'+esc(ex.desc||'')+'</span><span style="display:flex;align-items:center;gap:8px"><b>'+fmt(+ex.amount||0)+'</b>'
+          +(perms().readOnly ? '' : '<button style="border:none;background:#fee2e2;color:#dc2626;border-radius:8px;width:24px;height:24px;font-size:14px;font-weight:700;cursor:pointer" title="הסר תוספת" onclick="removeProjectExtra(\''+jsq(p.name)+'\',\''+jsq(ex.id)+'\')">×</button>')
+          +'</span></div>').join('')
+      : '<div class="muted">'+(perms().readOnly?'אין תוספות':'אין תוספות עדיין — לחצו "הוסף תוספת" כשמחיר הפרויקט עולה')+'</div>')
     +(extrasTotal>0?'<div class="row" style="border-top:1px solid var(--border);margin-top:8px;padding-top:8px"><span><b>סה"כ תוספות</b></span><b>'+fmt(extrasTotal)+'</b></div>':'')
-    +'<button class="btn sm sec" style="margin-top:10px" onclick="addProjectExtra()">+ הוסף תוספת</button>'
+    +(perms().readOnly ? '' : '<button class="btn sm sec" style="margin-top:10px" onclick="addProjectExtra()">+ הוסף תוספת</button>')
     +'</div>'
     +'<div class="charts-grid">'
     +'<div class="card"><h3>🎯 צפי הוצאות מול ביצוע</h3><div class="table-wrap"><table><thead><tr><th>קבוצה</th><th>צפי</th><th>בפועל</th><th>פער</th><th>ניצול</th></tr></thead><tbody>'+groupRows
@@ -1870,6 +1880,7 @@ function projectDetailHTML(p){
     +'</div></div>';
 }
 function addProjectExtra(){
+  if(perms().readOnly) return;
   const p = db.projects.find(x=>x.name===projView); if(!p) return;
   const desc = prompt('תיאור התוספת (למשל: "עבודות חשמל נוספות"):');
   if(!desc || !desc.trim()) return;
@@ -1883,6 +1894,7 @@ function addProjectExtra(){
   toast('➕ תוספת נוספה: '+fmt(amt)+' · מחיר הפרויקט עודכן ל-'+fmt(projTotalPrice(p)));
 }
 function removeProjectExtra(projName, extraId){
+  if(perms().readOnly) return;
   const p = db.projects.find(x=>x.name===projName); if(!p) return;
   if(!confirm('להסיר את התוספת?')) return;
   pushUndo('הסרת תוספת מפרויקט "'+p.name+'"', [], [], [p]);
@@ -1892,6 +1904,7 @@ function removeProjectExtra(projName, extraId){
   toast('התוספת הוסרה');
 }
 function toggleInvoice(id){
+  if(perms().readOnly){ renderProjects(); return; }
   const t = db.tx.find(x=>x.id===id); if(!t) return;
   t.invoice = !t.invoice;
   queueTx([t]);
@@ -1906,6 +1919,7 @@ function viewProjectTx(name){
 /* --- מודל פרויקט --- */
 let pmEditId = null, pmStages = [], pmExtras = [];
 function openProjModal(id){
+  if(perms().readOnly){ toast('👁️ משתמש צפייה בלבד'); return; }
   pmEditId = id;
   const p = id ? db.projects.find(x=>x.id===id) : null;
   document.getElementById('pmTitle').textContent = p ? '✏️ עריכת פרויקט' : '🏗️ פרויקט חדש';
