@@ -1000,10 +1000,54 @@ function updateBulkBar(){
   if(scope==='exclude'){ catSel.style.display='none'; projSel.style.display='none'; return; }
   catSel.style.display=''; projSel.style.display = scope==='biz' ? '' : 'none';
   const cats = [...new Set([...catList(scope,'expense'), ...catList(scope,'income')])];
-  catSel.innerHTML = '<option value="">— בלי קטגוריה —</option>' + cats.map(c=>'<option>'+esc(c)+'</option>').join('');
-  projSel.innerHTML = '<option value="">— בלי פרויקט —</option>' + projNames().map(p=>'<option>'+esc(p)+'</option>').join('');
+  const kc = catSel.value, kp = projSel.value;
+  catSel.innerHTML = '<option value="">— בלי קטגוריה —</option>' + cats.map(c=>'<option>'+esc(c)+'</option>').join('') + '<option value="__new__">+ קטגוריה חדשה...</option>';
+  if(cats.includes(kc)) catSel.value = kc;
+  projSel.innerHTML = '<option value="">— בלי פרויקט —</option>' + projNames().map(p=>'<option>'+esc(p)+'</option>').join('') + '<option value="__newproj__">+ פרויקט חדש...</option>';
+  if(projNames().includes(kp)) projSel.value = kp;
 }
 document.getElementById('bulkScope').addEventListener('change', updateBulkBar);
+/* יצירת קטגוריה/פרויקט ישירות מתוך כל תיבת בחירה — בלי ללכת להגדרות */
+function promptNewCategory(listKeys){
+  const v = prompt('שם קטגוריה חדשה:');
+  if(!v || !v.trim()) return null;
+  const name = v.trim();
+  listKeys.forEach(k=>{
+    if(db.categories[k] && !db.categories[k].includes(name)) db.categories[k].push(name);
+  });
+  queueSetting('categories'); save();
+  return name;
+}
+function promptNewProject(){
+  const v = prompt('שם פרויקט חדש:');
+  if(!v || !v.trim()) return null;
+  const name = v.trim();
+  if(!db.projects.some(p=>p.name===name)){
+    const np = newProjObj(name);
+    db.projects.push(np);
+    queueProj(np); save();
+  }
+  return name;
+}
+function kindsOfSelection(idSet){
+  const kinds = new Set();
+  idSet.forEach(id=>{ const t = db.tx.find(x=>x.id===id); if(t) kinds.add(t.kind); });
+  return [...kinds];
+}
+document.getElementById('bulkCat').addEventListener('change', function(){
+  if(this.value!=='__new__') return;
+  const scope = document.getElementById('bulkScope').value;
+  const kinds = kindsOfSelection(selected);
+  const name = promptNewCategory((kinds.length?kinds:['expense']).map(k=>scope+'_'+k));
+  updateBulkBar();
+  this.value = name || '';
+});
+document.getElementById('bulkProj').addEventListener('change', function(){
+  if(this.value!=='__newproj__') return;
+  const name = promptNewProject();
+  updateBulkBar();
+  this.value = name || '';
+});
 function autoScopeByAccount(){
   const pend = db.tx.filter(t=>!t.scope && db.accounts.some(a=>a.name===t.account));
   if(!pend.length){ toast('אין תנועות ממתינות'); return; }
@@ -1119,13 +1163,27 @@ function updateTxBulkBar(){
   projSel.style.display = scope==='biz' ? '' : 'none';
   const cats = [...new Set([...catList(scope,'expense'), ...catList(scope,'income')])];
   const kc = catSel.value;
-  catSel.innerHTML = '<option value="">— בלי קטגוריה —</option>' + cats.map(c=>'<option>'+esc(c)+'</option>').join('');
+  catSel.innerHTML = '<option value="">— בלי קטגוריה —</option>' + cats.map(c=>'<option>'+esc(c)+'</option>').join('') + '<option value="__new__">+ קטגוריה חדשה...</option>';
   if(cats.includes(kc)) catSel.value = kc;
   const kp = projSel.value;
-  projSel.innerHTML = '<option value="">— בלי פרויקט —</option>' + projNames().map(p=>'<option>'+esc(p)+'</option>').join('');
+  projSel.innerHTML = '<option value="">— בלי פרויקט —</option>' + projNames().map(p=>'<option>'+esc(p)+'</option>').join('') + '<option value="__newproj__">+ פרויקט חדש...</option>';
   if(projNames().includes(kp)) projSel.value = kp;
 }
 document.getElementById('txBulkScope').addEventListener('change', updateTxBulkBar);
+document.getElementById('txBulkCat').addEventListener('change', function(){
+  if(this.value!=='__new__') return;
+  const scope = document.getElementById('txBulkScope').value;
+  const kinds = kindsOfSelection(txSel);
+  const name = promptNewCategory((kinds.length?kinds:['expense']).map(k=>scope+'_'+k));
+  updateTxBulkBar();
+  this.value = name || '';
+});
+document.getElementById('txBulkProj').addEventListener('change', function(){
+  if(this.value!=='__newproj__') return;
+  const name = promptNewProject();
+  updateTxBulkBar();
+  this.value = name || '';
+});
 function applyTxBulk(){
   const ids = [...txSel];
   if(!ids.length) return;
@@ -1192,13 +1250,24 @@ function refreshEditSelects(cat, proj){
   const cs = document.getElementById('eCat');
   cs.innerHTML = '<option value="">— ללא —</option>' + cats.map(c=>'<option>'+esc(c)+'</option>').join('');
   if(cat && ![...cs.options].some(o=>o.value===cat)) cs.innerHTML += '<option>'+esc(cat)+'</option>';
+  if(scope==='biz'||scope==='home') cs.innerHTML += '<option value="__new__">+ קטגוריה חדשה...</option>';
   cs.value = cat || '';
   const ps = document.getElementById('eProj');
-  ps.innerHTML = '<option value="">— ללא —</option>' + projNames().map(p=>'<option>'+esc(p)+'</option>').join('');
+  ps.innerHTML = '<option value="">— ללא —</option>' + projNames().map(p=>'<option>'+esc(p)+'</option>').join('') + '<option value="__newproj__">+ פרויקט חדש...</option>';
   ps.value = proj || '';
 }
 document.getElementById('eScope').addEventListener('change', ()=>refreshEditSelects('', document.getElementById('eProj').value));
 document.getElementById('eKind').addEventListener('change', ()=>refreshEditSelects('', document.getElementById('eProj').value));
+document.getElementById('eCat').addEventListener('change', function(){
+  if(this.value!=='__new__') return;
+  const name = promptNewCategory([document.getElementById('eScope').value+'_'+document.getElementById('eKind').value]);
+  refreshEditSelects(name||'', document.getElementById('eProj').value);
+});
+document.getElementById('eProj').addEventListener('change', function(){
+  if(this.value!=='__newproj__') return;
+  const name = promptNewProject();
+  refreshEditSelects(document.getElementById('eCat').value, name||'');
+});
 function saveEdit(){
   const t = db.tx.find(x=>x.id===editId); if(!t) return;
   t.date = document.getElementById('eDate').value || t.date;
@@ -1447,15 +1516,27 @@ function renderManualSelects(){
   const scope = document.getElementById('mScope').value;
   const kind = document.getElementById('mKind').value;
   const cs = document.getElementById('mCat');
-  cs.innerHTML = '<option value="">— ללא —</option>' + catList(scope,kind).map(c=>'<option>'+esc(c)+'</option>').join('');
+  cs.innerHTML = '<option value="">— ללא —</option>' + catList(scope,kind).map(c=>'<option>'+esc(c)+'</option>').join('') + '<option value="__new__">+ קטגוריה חדשה...</option>';
   const ps = document.getElementById('mProj');
-  ps.innerHTML = '<option value="">— ללא —</option>' + projNames().map(p=>'<option>'+esc(p)+'</option>').join('');
+  ps.innerHTML = '<option value="">— ללא —</option>' + projNames().map(p=>'<option>'+esc(p)+'</option>').join('') + '<option value="__newproj__">+ פרויקט חדש...</option>';
   document.getElementById('mProjWrap').style.display = scope==='biz' ? '' : 'none';
   if(!document.getElementById('mDate').value)
     document.getElementById('mDate').value = new Date().toISOString().slice(0,10);
 }
 document.getElementById('mScope').addEventListener('change', renderManualSelects);
 document.getElementById('mKind').addEventListener('change', renderManualSelects);
+document.getElementById('mCat').addEventListener('change', function(){
+  if(this.value!=='__new__') return;
+  const name = promptNewCategory([document.getElementById('mScope').value+'_'+document.getElementById('mKind').value]);
+  renderManualSelects();
+  this.value = name || '';
+});
+document.getElementById('mProj').addEventListener('change', function(){
+  if(this.value!=='__newproj__') return;
+  const name = promptNewProject();
+  renderManualSelects();
+  this.value = name || '';
+});
 function saveManual(){
   const amount = Math.abs(parseFloat(document.getElementById('mAmount').value));
   const desc = document.getElementById('mDesc').value.trim();
