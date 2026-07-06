@@ -72,6 +72,12 @@ tr:hover td{background:#fafbff}
 .classify-panel{margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .drop{border:2px dashed #a5b4fc;border-radius:12px;padding:28px;text-align:center;color:var(--muted);background:#fafaff;cursor:pointer;transition:.15s}
 .drop:hover,.drop.over{background:#eef2ff;border-color:var(--primary)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:10px}
+.tile{border:2px solid var(--border);border-radius:12px;padding:14px 10px;text-align:center;cursor:pointer;background:#fff;display:flex;flex-direction:column;gap:4px;align-items:center;transition:.12s}
+.tile:hover{border-color:#a5b4fc}
+.tile.on{border-color:var(--primary);background:#eef2ff;box-shadow:0 0 0 3px #c7d2fe}
+.tile .ticon{font-size:26px}
+.tile .muted{font-size:11.5px}
 .block-card{border:1px solid var(--border);border-radius:12px;margin-bottom:14px;overflow:hidden}
 .block-head{background:#f8fafc;padding:10px 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border)}
 .block-head b{font-size:14px}
@@ -153,6 +159,7 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
     <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="selAll"> בחר הכל</label>
     <select id="clsAccFilter"></select>
     <input type="text" id="clsSearch" placeholder="🔍 חיפוש..." style="flex:1;min-width:140px">
+    <button class="btn sm ghost" onclick="autoScopeByAccount()">⚡ שייך הכל לפי המקור</button>
     <span class="muted" id="clsCount"></span>
   </div>
   <div class="bulkbar" id="bulkbar">
@@ -218,19 +225,23 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
 <!-- ============ ייבוא ============ -->
 <section id="tab-import">
   <div class="hint">
-    📥 אפשר להעלות <b>קובץ אקסל</b> (עו"ש, אשראי — כל פורמט) או <b>להדביק נתונים</b> ישירות מהאקסל.<br>
-    המערכת מזהה את העמודות לבד — גם קובץ משולב עם כמה טבלאות זו לצד זו. אחרי הזיהוי בדקו את המיפוי ולחצו "ייבא". תנועות כפולות מדולגות אוטומטית.
+    📥 <b>פעם ראשונה מכל מקור:</b> בוחרים מקור, מעלים קובץ, בודקים שהעמודות זוהו נכון — והמערכת <b>זוכרת את המבנה</b>.<br>
+    <b>מהפעם השנייה:</b> רק בוחרים מקור ומעלים — הכל מסתדר לבד. תנועות כפולות מדולגות אוטומטית, וכל תנועה שומרת מאיזה מקור היא הגיעה.
+  </div>
+  <div class="card">
+    <h3>1️⃣ מאיפה הנתונים?</h3>
+    <div class="tiles" id="sourceTiles"></div>
   </div>
   <div class="charts-grid">
     <div class="card">
-      <h3>📁 העלאת קבצים</h3>
+      <h3>2️⃣ 📁 העלאת קבצים</h3>
       <div class="drop" id="dropZone">
         גררו לכאן קבצי אקסל / CSV<br>או לחצו לבחירה<br><span style="font-size:12px">(אפשר כמה קבצים ביחד)</span>
       </div>
       <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" multiple style="display:none">
     </div>
     <div class="card">
-      <h3>📋 הדבקת נתונים מאקסל</h3>
+      <h3>2️⃣ 📋 או: הדבקת נתונים מאקסל</h3>
       <textarea id="pasteArea" rows="6" style="width:100%" placeholder="סמנו באקסל את הטבלה (כולל שורת הכותרות), העתיקו (Ctrl+C) והדביקו כאן (Ctrl+V)"></textarea>
       <div style="margin-top:10px"><button class="btn" onclick="analyzePaste()">🔎 נתח את הנתונים</button></div>
     </div>
@@ -266,6 +277,11 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
     </div>
   </div>
   <div class="card">
+    <h3>📐 מבני קבצים שמורים (<span id="tplCount"></span>)</h3>
+    <p class="muted" style="margin-bottom:10px">המבנה של כל סוג אקסל נלמד בייבוא הראשון — ומאז הזיהוי אוטומטי. אם הבנק שינה פורמט, מחקו את המבנה והוא יילמד מחדש.</p>
+    <div class="table-wrap" id="tplTable"></div>
+  </div>
+  <div class="card">
     <h3>🤖 כללי סיווג אוטומטי (<span id="rulesCount"></span>)</h3>
     <p class="muted" style="margin-bottom:10px">כללים שנלמדו מהסיווגים שלך — מוחלים אוטומטית על כל ייבוא חדש.</p>
     <div class="table-wrap" id="rulesTable"></div>
@@ -295,6 +311,7 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
       <div><label>פרויקט</label><select id="eProj"></select></div>
       <div style="grid-column:1/-1"><label>תיאור</label><input type="text" id="eDesc"></div>
     </div>
+    <div class="muted" id="eOrigin" style="margin-top:10px"></div>
     <div style="margin-top:16px;display:flex;gap:8px">
       <button class="btn" onclick="saveEdit()">💾 שמור</button>
       <button class="btn sec" onclick="closeEdit()">ביטול</button>
@@ -312,11 +329,13 @@ const LS_KEY = 'finance-tracker-v1';
 const DEFAULTS = {
   tx: [],
   rules: {},
+  templates: {},
   projects: [],
   accounts: [
     {name:'עו"ש עסקי', scope:'biz'},
-    {name:'אשראי עסקי', scope:'biz'},
+    {name:'דיירקט עסקי', scope:'biz'},
     {name:'עו"ש פרטי', scope:'home'},
+    {name:'דיירקט פרטי', scope:'home'},
     {name:'אשראי פרטי', scope:'home'}
   ],
   categories: {
@@ -333,8 +352,28 @@ function load(){
     if(!raw) return JSON.parse(JSON.stringify(DEFAULTS));
     const d = JSON.parse(raw);
     for(const k in DEFAULTS) if(d[k]===undefined) d[k]=JSON.parse(JSON.stringify(DEFAULTS[k]));
+    migrate(d);
     return d;
   }catch(e){ return JSON.parse(JSON.stringify(DEFAULTS)); }
+}
+function migrate(d){
+  // גרסה 2: "אשראי עסקי" הפך ל"דיירקט עסקי", נוסף "דיירקט פרטי"
+  const oldBizCC = d.accounts.find(a=>a.name==='אשראי עסקי');
+  if(oldBizCC){
+    oldBizCC.name = 'דיירקט עסקי';
+    d.tx.forEach(t=>{ if(t.account==='אשראי עסקי') t.account='דיירקט עסקי'; });
+  }
+  if(!d.accounts.some(a=>a.name==='דיירקט פרטי')){
+    const i = d.accounts.findIndex(a=>a.name==='עו"ש פרטי');
+    d.accounts.splice(i>=0?i+1:d.accounts.length, 0, {name:'דיירקט פרטי', scope:'home'});
+  }
+  d.tx.forEach(t=>{ if(t.account==='דיווח ידני') t.account='דיווח בטופס'; });
+  // סדר קבוע למקורות הבסיס, מותאמים-אישית בסוף
+  const order = ['עו"ש עסקי','דיירקט עסקי','עו"ש פרטי','דיירקט פרטי','אשראי פרטי'];
+  d.accounts.sort((a,b)=>{
+    const ia = order.indexOf(a.name), ib = order.indexOf(b.name);
+    return (ia<0?99:ia) - (ib<0?99:ib);
+  });
 }
 function save(){ localStorage.setItem(LS_KEY, JSON.stringify(db)); }
 function uid(){ return (crypto.randomUUID ? crypto.randomUUID() : Date.now()+'-'+Math.random().toString(36).slice(2)); }
@@ -405,6 +444,7 @@ function renderAll(){
   renderTxTable();
   renderProjects();
   renderManualSelects();
+  renderSourceTiles();
   renderSettings();
 }
 function refreshBadge(){
@@ -569,7 +609,7 @@ function renderClassify(){
       +'<div class="classify-head">'
       +'<input type="checkbox" class="selbox" '+(selected.has(t.id)?'checked':'')+' onchange="toggleSel(\''+t.id+'\',this.checked)">'
       +'<span class="muted" style="font-size:12px">'+t.date.split('-').reverse().join('/')+'</span>'
-      +'<span class="tag acc">'+esc(t.account)+'</span>'
+      +'<span class="tag acc" title="'+esc(t.origin||'')+'">'+esc(t.account)+'</span>'
       +'<span class="desc">'+esc(t.desc)+(t.details?' <span class="muted" style="font-weight:400;font-size:12px">'+esc(t.details)+'</span>':'')+'</span>'
       +'<span class="amt '+(t.kind==='income'?'green':'red')+'">'+(t.kind==='income'?'+':'−')+fmt2(t.amount)+' ₪</span>'
       +'<div class="classify-actions">'
@@ -667,6 +707,17 @@ function updateBulkBar(){
   projSel.innerHTML = '<option value="">— בלי פרויקט —</option>' + db.projects.map(p=>'<option>'+esc(p)+'</option>').join('');
 }
 document.getElementById('bulkScope').addEventListener('change', updateBulkBar);
+function autoScopeByAccount(){
+  const pend = db.tx.filter(t=>!t.scope && db.accounts.some(a=>a.name===t.account));
+  if(!pend.length){ toast('אין תנועות ממתינות'); return; }
+  if(!confirm('לשייך '+pend.length+' תנועות ממתינות לפי סוג המקור?\nמקור עסקי ← עסק · מקור פרטי ← בית\n(בלי קטגוריה — אפשר להשלים אחר כך, וכללים שמורים ממשיכים לפעול)')) return;
+  pend.forEach(t=>{
+    const a = db.accounts.find(x=>x.name===t.account);
+    if(a) t.scope = a.scope;
+  });
+  save(); renderAll();
+  toast('⚡ '+pend.length+' תנועות שויכו לפי המקור');
+}
 function applyBulk(){
   const scope = document.getElementById('bulkScope').value;
   const cat = scope==='exclude' ? '' : document.getElementById('bulkCat').value;
@@ -724,7 +775,7 @@ function renderTxTable(){
     + list.slice(0,500).map(t=>'<tr>'
       +'<td style="white-space:nowrap">'+t.date.split('-').reverse().join('/')+'</td>'
       +'<td>'+esc(t.desc)+(t.details?'<br><span class="muted" style="font-size:11.5px">'+esc(t.details)+'</span>':'')+'</td>'
-      +'<td><span class="tag acc">'+esc(t.account)+'</span></td>'
+      +'<td><span class="tag acc" title="'+esc(t.origin||'')+'">'+esc(t.account)+'</span></td>'
       +'<td>'+scopeTag(t)+'</td>'
       +'<td>'+esc(t.category||'')+'</td>'
       +'<td>'+esc(t.project||'')+'</td>'
@@ -746,6 +797,7 @@ function openEdit(id){
   document.getElementById('eAmount').value = t.amount;
   document.getElementById('eScope').value = t.scope;
   document.getElementById('eDesc').value = t.desc;
+  document.getElementById('eOrigin').textContent = '📌 חשבון: ' + t.account + (t.origin ? ' · מקור: ' + t.origin : '');
   refreshEditSelects(t.category, t.project);
   document.getElementById('editModal').classList.add('open');
 }
@@ -843,10 +895,11 @@ function saveManual(){
     desc, details:'',
     amount,
     kind: document.getElementById('mKind').value,
-    account: 'דיווח ידני',
+    account: 'דיווח בטופס',
     scope,
     category: document.getElementById('mCat').value,
-    project: scope==='biz' ? document.getElementById('mProj').value : ''
+    project: scope==='biz' ? document.getElementById('mProj').value : '',
+    origin: 'טופס ידני · ' + new Date().toLocaleDateString('he-IL')
   });
   document.getElementById('mAmount').value = '';
   document.getElementById('mDesc').value = '';
@@ -871,6 +924,36 @@ const FIELD_OPTS = [
   ['ref','אסמכתא']
 ];
 let importBlocks = [];
+let importSource = null;
+
+function jsq(s){ return esc(String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")); }
+function pickSource(name){
+  importSource = (importSource===name) ? null : name;
+  renderSourceTiles();
+}
+function accIcon(name){
+  if(/עו"ש|עוש/.test(name)) return '🏦';
+  if(/דיירקט|דירקט|אשראי|כרטיס|ויזה|מקס/.test(name)) return '💳';
+  return '📄';
+}
+function renderSourceTiles(){
+  const el = document.getElementById('sourceTiles');
+  if(!el) return;
+  el.innerHTML = db.accounts.map(a=>{
+    const hasTpl = Object.values(db.templates).some(t=>t.account===a.name);
+    const n = db.tx.filter(t=>t.account===a.name).length;
+    return '<div class="tile'+(importSource===a.name?' on':'')+'" onclick="pickSource(\''+jsq(a.name)+'\')">'
+      +'<div class="ticon">'+accIcon(a.name)+'</div>'
+      +'<b>'+esc(a.name)+'</b>'
+      +'<span class="muted">'+(a.scope==='biz'?'עסקי':'פרטי')+(n?' · '+n.toLocaleString('he-IL')+' תנועות':'')+'</span>'
+      +(hasTpl ? '<span class="tag home">✓ מבנה שמור</span>' : '<span class="tag pending">מבנה יילמד בייבוא הראשון</span>')
+      +'</div>';
+  }).join('')
+  +'<div class="tile" onclick="gotoTab(\'manual\')">'
+  +'<div class="ticon">📝</div><b>דיווח בטופס</b>'
+  +'<span class="muted">הזנה ידנית של הכנסה/הוצאה</span>'
+  +'<span class="tag acc">מעבר לטופס ←</span></div>';
+}
 
 const dz = document.getElementById('dropZone');
 dz.addEventListener('click', ()=>document.getElementById('fileInput').click());
@@ -982,9 +1065,24 @@ function analyzeGrid(grid, sourceName){
       if(row.some(c=>c!=null && String(c).trim()!=='')) rows.push(row);
     }
     if(!rows.length) return;
+    // מבנה שמור? זיהוי לפי חתימה: כותרת הטבלה (בלי מספרים/תאריכים) + שמות העמודות
+    const sigTitle = title.replace(/[0-9\/.:\-]+/g,'').replace(/\s+/g,' ').trim();
+    const sig = 'h:' + sigTitle + '#' + cols.map(c=>c.header).join('|');
+    const tpl = db.templates[sig];
+    let account, known = false;
+    if(tpl && Array.isArray(tpl.fields) && tpl.fields.length===cols.length && db.accounts.some(a=>a.name===tpl.account)){
+      account = tpl.account;
+      cols.forEach((c,i)=>{ c.field = tpl.fields[i]; });
+      known = true;
+      // בחירה מפורשת של מקור גוברת (למקרה של שני כרטיסים עם פורמט זהה)
+      if(importSource && importSource!==account) account = importSource;
+    } else {
+      const strongTitle = /עסקי|עיסקי|פרטי|אישי|דיירקט|דירקט/.test(title);
+      account = strongTitle ? guessAccount(title, cols) : (importSource || guessAccount(title, cols));
+    }
     importBlocks.push({
       id: uid(), title: title || sourceName, source: sourceName,
-      cols, rows, account: guessAccount(title, cols), include: true
+      cols, rows, account, sig, known, showMap: !known, include: true
     });
   });
 }
@@ -1009,18 +1107,28 @@ function guessNoHeaderBlock(grid, sourceName){
     cols.push({idx:ci, header:'עמודה '+(ci+1),
       field: ci===dateCol?'date' : ci===descCol?'desc' : ci===amtCol?'amountPosExp' : 'ignore'});
   }
-  return {id:uid(), title:sourceName, source:sourceName, cols, rows, account:guessAccount('',cols), include:true};
+  const sig = 'nohdr:' + w + ':' + (importSource||'');
+  const tpl = db.templates[sig];
+  let account = importSource || guessAccount('', cols), known = false;
+  if(tpl && Array.isArray(tpl.fields) && tpl.fields.length===cols.length && db.accounts.some(a=>a.name===tpl.account)){
+    account = tpl.account;
+    cols.forEach((c,i)=>{ c.field = tpl.fields[i]; });
+    known = true;
+  }
+  return {id:uid(), title:sourceName, source:sourceName, cols, rows, account, sig, known, showMap:!known, include:true};
 }
 function guessAccount(title, cols){
   const t = title || '';
-  const isCC = /אשראי|כרטיס|ויזה|מקס|ישראכרט|כאל|דיירקט|דירקט/.test(t) || cols.some(c=>/בית עסק/.test(c.header));
-  const isHome = /פרטי|בית|אישי/.test(t);
-  const isBiz = /עסקי|עיסקי|עסק/.test(t);
-  let name;
-  if(isBiz) name = isCC ? 'אשראי עסקי' : 'עו"ש עסקי';
-  else if(isHome) name = isCC ? 'אשראי פרטי' : 'עו"ש פרטי';
-  else name = isCC ? 'אשראי עסקי' : 'עו"ש עסקי';
-  return name;
+  const isDirect = /דיירקט|דירקט/.test(t);
+  const isCC = isDirect || /אשראי|כרטיס|ויזה|מקס|ישראכרט|כאל/.test(t) || cols.some(c=>/בית עסק/.test(c.header));
+  const isHome = /פרטי|אישי/.test(t);
+  const isBiz = /עסקי|עיסקי/.test(t);
+  if(isBiz) return isCC ? 'דיירקט עסקי' : 'עו"ש עסקי';
+  if(isHome){
+    if(isDirect) return 'דיירקט פרטי';
+    return isCC ? 'אשראי פרטי' : 'עו"ש פרטי';
+  }
+  return isCC ? 'דיירקט עסקי' : 'עו"ש עסקי';
 }
 function renderImportBlocks(){
   const wrap = document.getElementById('importBlocks');
@@ -1033,9 +1141,11 @@ function renderImportBlocks(){
       +'<input type="checkbox" '+(b.include?'checked':'')+' onchange="blk(\''+b.id+'\').include=this.checked">'
       +'<b>'+esc(b.title)+'</b>'
       +'<span class="muted">('+b.rows.length+' שורות · '+esc(b.source)+')</span>'
-      +'<span style="margin-right:auto">שייך לחשבון: <select onchange="blk(\''+b.id+'\').account=this.value">'+accOpts+'</select></span>'
+      +(b.known ? '<span class="tag home">✓ זוהה לפי מבנה שמור</span>' : '<span class="tag pending">מבנה חדש — בדקו את העמודות</span>')
+      +'<span style="margin-right:auto">מקור: <select onchange="blk(\''+b.id+'\').account=this.value">'+accOpts+'</select></span>'
+      +(b.known ? '<button class="btn sm sec" onclick="toggleMap(\''+b.id+'\')">'+(b.showMap?'הסתר מיפוי ▴':'הצג מיפוי ▾')+'</button>' : '')
       +'</div>'
-      +'<div class="block-body"><table><thead><tr>'
+      +'<div class="block-body" style="display:'+(b.showMap?'block':'none')+'"><table><thead><tr>'
       + b.cols.map((c,i)=>'<th><div class="muted" style="font-weight:400;margin-bottom:3px">'+esc(c.header||('עמודה '+(i+1)))+'</div>'
         +'<select onchange="setColField(\''+b.id+'\','+i+',this.value)">'
         + FIELD_OPTS.map(o=>'<option value="'+o[0]+'"'+(c.field===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')
@@ -1050,6 +1160,7 @@ function formatCell(v){
   return String(v==null?'':v).slice(0,35);
 }
 function blk(id){ return importBlocks.find(b=>b.id===id); }
+function toggleMap(id){ const b = blk(id); if(b){ b.showMap = !b.showMap; renderImportBlocks(); } }
 function setColField(bid, ci, val){
   const b = blk(bid); if(!b) return;
   if(val!=='ignore') b.cols.forEach((c,i)=>{ if(i!==ci && c.field===val) c.field='ignore'; });
@@ -1066,6 +1177,8 @@ function doImport(){
     if(fidx.date===undefined || (fidx.debit===undefined && fidx.credit===undefined && fidx.amountPosInc===undefined && fidx.amountPosExp===undefined)){
       toast('⚠️ בבלוק "'+b.title+'" חסר מיפוי תאריך או סכום'); return;
     }
+    // למידת המבנה: מהייבוא הבא הזיהוי יהיה אוטומטי
+    if(b.sig) db.templates[b.sig] = {account: b.account, fields: b.cols.map(c=>c.field)};
     b.rows.forEach(r=>{
       const date = parseDate(r[fidx.date]);
       if(!date){ skipped++; return; }
@@ -1089,7 +1202,8 @@ function doImport(){
       const t = {
         id: uid(), date, desc, details, amount, kind,
         account: b.account, scope:'', category:'', project:'',
-        ref: fidx.ref!==undefined ? String(r[fidx.ref]||'') : ''
+        ref: fidx.ref!==undefined ? String(r[fidx.ref]||'') : '',
+        origin: b.source + ' · ' + new Date().toLocaleDateString('he-IL')
       };
       const key = dedupKey(t);
       if(existing.has(key)){ dups++; return; }
@@ -1114,10 +1228,10 @@ function doImport(){
 
 /* ================= ייצוא ================= */
 function exportCSV(){
-  const rows = [['תאריך','תיאור','פרטים','חשבון','שיוך','קטגוריה','פרויקט','סוג','סכום']];
+  const rows = [['תאריך','תיאור','פרטים','מקור','שיוך','קטגוריה','פרויקט','סוג','סכום','קובץ מקור']];
   const scopeName = s => s==='biz'?'עסק':s==='home'?'בית':s==='exclude'?'לא נכלל':'ממתין';
   db.tx.sort((a,b)=>a.date.localeCompare(b.date)).forEach(t=>{
-    rows.push([t.date, t.desc, t.details||'', t.account, scopeName(t.scope), t.category||'', t.project||'', t.kind==='income'?'הכנסה':'הוצאה', t.amount]);
+    rows.push([t.date, t.desc, t.details||'', t.account, scopeName(t.scope), t.category||'', t.project||'', t.kind==='income'?'הכנסה':'הוצאה', t.amount, t.origin||'']);
   });
   const csv = '﻿' + rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\r\n');
   const a = document.createElement('a');
@@ -1166,6 +1280,22 @@ function renderSettings(){
       '<span class="chip">'+esc(c)+'<button onclick="removeCat(\''+k+'\','+i+')">×</button></span>').join('')
       + ' <button class="btn sm ghost" onclick="addCat(\''+k+'\')">+</button>';
   });
+  const tpls = Object.entries(db.templates);
+  document.getElementById('tplCount').textContent = tpls.length + ' מבנים';
+  document.getElementById('tplTable').innerHTML = !tpls.length ? '<div class="muted">עדיין אין מבנים שמורים — הם נלמדים בייבוא הראשון מכל מקור</div>' :
+    '<table><thead><tr><th>מקור</th><th>עמודות</th><th></th></tr></thead><tbody>'
+    + tpls.map(([sig,t])=>{
+      let hdrs = 'הדבקה ללא כותרות';
+      if(sig.startsWith('h:')){
+        const body = sig.slice(2);
+        const hash = body.indexOf('#');
+        const ttl = hash>0 ? body.slice(0,hash) : '';
+        hdrs = (ttl ? '«'+ttl+'» — ' : '') + body.slice(hash+1).split('|').filter(Boolean).join(' · ');
+      }
+      return '<tr><td><span class="tag acc">'+esc(t.account)+'</span></td><td style="font-size:12px">'+esc(hdrs.slice(0,120))+'</td>'
+        +'<td><button class="btn sm sec" onclick="removeTpl(\''+jsq(sig)+'\')">🗑️</button></td></tr>';
+    }).join('')
+    + '</tbody></table>';
   const rules = Object.entries(db.rules);
   document.getElementById('rulesCount').textContent = rules.length + ' כללים';
   const scopeName = s => s==='biz'?'🏢 עסק':s==='home'?'🏠 בית':'🚫 לא נכלל';
@@ -1202,6 +1332,10 @@ function removeCat(k,i){
 }
 function removeRule(k){
   delete db.rules[k]; save(); renderSettings();
+}
+function removeTpl(sig){
+  delete db.templates[sig]; save(); renderAll();
+  toast('המבנה נמחק — יילמד מחדש בייבוא הבא');
 }
 
 /* ================= אתחול ================= */
