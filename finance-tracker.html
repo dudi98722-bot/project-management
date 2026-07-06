@@ -97,6 +97,10 @@ tr:hover td{background:#fafbff}
 #toast{position:fixed;bottom:24px;right:50%;transform:translateX(50%);background:#0f172a;color:#fff;padding:11px 22px;border-radius:10px;font-size:14px;display:none;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.25)}
 #undoFab{position:fixed;bottom:22px;left:22px;z-index:150;display:none;border:none;background:#fff;color:#b45309;border:2px solid #fcd34d;border-radius:24px;padding:10px 18px;font-size:13.5px;font-weight:700;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.15);max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #undoFab:hover{background:#fffbeb}
+#loginOverlay{position:fixed;inset:0;z-index:500;background:linear-gradient(135deg,#312e81,#4f46e5 60%,#6366f1);display:none;align-items:center;justify-content:center;padding:16px}
+#loginOverlay .lcard{background:#fff;border-radius:18px;padding:34px 28px;max-width:360px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+#loginCode{font-size:24px;text-align:center;letter-spacing:8px;direction:ltr;width:100%;margin-top:8px}
+#userChip{position:absolute;top:48px;left:18px;background:rgba(255,255,255,.16);border-radius:14px;padding:4px 12px;font-size:11.5px;cursor:pointer;white-space:nowrap;display:none}
 .chip{display:inline-flex;align-items:center;gap:6px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:16px;padding:4px 12px;font-size:12.5px;margin:3px}
 .chip button{border:none;background:none;color:#dc2626;cursor:pointer;font-size:14px;font-weight:700}
 .bulkbar{position:sticky;top:52px;z-index:40;background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:10px 14px;display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
@@ -125,6 +129,7 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
   <h1>💰 גריימן — ניהול כספים</h1>
   <p>סיווג הכנסות והוצאות מהבנק והאשראי · מעקב לפי פרויקטים</p>
   <div id="syncChip" onclick="gotoTab('settings')" title="מצב סנכרון — לחיצה להגדרות">⚪ מקומי</div>
+  <div id="userChip" onclick="logout()" title="לחיצה להחלפת משתמש"></div>
 </header>
 
 <nav id="nav">
@@ -170,7 +175,7 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
     <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="selAll"> בחר הכל</label>
     <select id="clsAccFilter"></select>
     <input type="text" id="clsSearch" placeholder="🔍 חיפוש..." style="flex:1;min-width:140px">
-    <button class="btn sm ghost" onclick="autoScopeByAccount()">⚡ שייך הכל לפי המקור</button>
+    <button class="btn sm ghost" id="autoScopeBtn" onclick="autoScopeByAccount()">⚡ שייך הכל לפי המקור</button>
     <span class="muted" id="clsCount"></span>
   </div>
   <div class="bulkbar" id="bulkbar">
@@ -205,7 +210,7 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
     <input type="text" id="txSearch" placeholder="🔍 חיפוש..." style="min-width:130px">
     <button class="btn sec sm" onclick="exportCSV()">📤 ייצוא לאקסל</button>
     <button class="btn danger sm" id="txDelSelBtn" style="display:none" onclick="deleteSelectedTx()"></button>
-    <button class="btn sec sm" onclick="deleteFilteredTx()" title="מוחק את כל התנועות שעונות על הסינון הנוכחי">🗑️ מחק את המסונן</button>
+    <button class="btn sec sm" id="txDelFilteredBtn" onclick="deleteFilteredTx()" title="מוחק את כל התנועות שעונות על הסינון הנוכחי">🗑️ מחק את המסונן</button>
   </div>
   <div class="bulkbar" id="txBulkbar">
     <b id="txBulkCount"></b>
@@ -323,6 +328,11 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
     <div class="table-wrap" id="originsTable"></div>
   </div>
   <div class="card">
+    <h3>👤 משתמשים וקודי גישה</h3>
+    <p class="muted" style="margin-bottom:10px">כל משתמש נכנס עם קוד אישי. שנו את קודי ברירת המחדל! הקודים נשמרים בענן ותקפים בכל המכשירים.</p>
+    <div class="table-wrap" id="usersTable"></div>
+  </div>
+  <div class="card">
     <h3>☁️ חיבור לגוגל שיטס (ענן)</h3>
     <p class="muted" style="margin-bottom:10px">כשהמערכת מחוברת — כל תנועה, פרויקט והגדרה נשמרים בגיליון Google, נטענים מכל מכשיר, וגם הדיווחים מהטופס החיצוני נכנסים אוטומטית. הדביקו את כתובת ה-Web App (exec) של ה-Apps Script:</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -401,6 +411,16 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
   </div>
 </div>
 
+<div id="loginOverlay">
+  <div class="lcard">
+    <div style="font-size:42px">💰</div>
+    <h2 style="margin:8px 0 4px">גריימן — ניהול כספים</h2>
+    <p class="muted" style="margin-bottom:14px">הזן קוד גישה אישי</p>
+    <input type="password" id="loginCode" inputmode="numeric" placeholder="••••" onkeydown="if(event.key==='Enter')tryLogin()">
+    <div id="loginErr" style="color:#dc2626;min-height:22px;font-size:13px;margin-top:8px"></div>
+    <button class="btn" style="width:100%;font-size:16px" onclick="tryLogin()">🔓 כניסה</button>
+  </div>
+</div>
 <button id="undoFab" onclick="undo()" title="ביטול הפעולה האחרונה (Ctrl+Z)"></button>
 <div id="toast"></div>
 
@@ -413,6 +433,11 @@ const DEFAULTS = {
   rules: {},
   templates: {},
   vat: 18,
+  users: [
+    {id:'admin', name:'מנהל', role:'admin', code:'1111'},
+    {id:'beni',  name:'בני',  role:'beni',  code:'2222'},
+    {id:'lea',   name:'לאה',  role:'lea',   code:'3333'}
+  ],
   projects: [],
   accounts: [
     {name:'עו"ש עסקי', scope:'biz'},
@@ -465,6 +490,7 @@ function migrate(d){
     const i = d.categories.biz_expense.indexOf('קבלני משנה');
     d.categories.biz_expense.splice(i>=0?i+1:0, 0, 'מנופים');
   }
+  if(!Array.isArray(d.users) || !d.users.length) d.users = JSON.parse(JSON.stringify(DEFAULTS.users));
   // סדר קבוע למקורות הבסיס, מותאמים-אישית בסוף
   const order = ['עו"ש עסקי','דיירקט עסקי','עו"ש פרטי','דיירקט פרטי','אשראי פרטי'];
   d.accounts.sort((a,b)=>{
@@ -638,7 +664,7 @@ function serverLoad(silent){
     db.projects = Object.values(pMap).concat(localOnlyProj);
     localOnlyProj.forEach(p=>queueProj(p));
     const s = j.settings || {};
-    ['rules','templates','categories','accounts'].forEach(k=>{
+    ['rules','templates','categories','accounts','users'].forEach(k=>{
       if(pending.settings[k]) return;
       if(s[k]){ try{ const v = JSON.parse(s[k]); if(v) db[k] = v; }catch(e){} }
       else queueSetting(k); // חסר בשרת — מעלים את המקומי
@@ -671,7 +697,7 @@ async function connectServer(url){
   setSync('saving','בודק חיבור...');
   const ok = await serverLoad();
   if(ok){
-    queueSetting('rules','templates','categories','accounts','vat');
+    queueSetting('rules','templates','categories','accounts','users','vat');
     toast('✔ מחובר לגוגל שיטס');
     flush();
   } else {
@@ -722,6 +748,68 @@ function catList(scope, kind){
   return db.categories[scope+'_'+kind] || [];
 }
 function dedupKey(t){ return [t.date, t.kind, (+t.amount).toFixed(2), normDesc(t.desc), t.account].join('|'); }
+
+/* ================= משתמשים והרשאות ================= */
+const ROLES = {
+  admin: {tabs:['dash','classify','tx','projects','manual','import','settings'], homeOnly:false, assignScope:true, canDelete:true, label:'גישה מלאה'},
+  beni:  {tabs:['dash','classify','tx','projects','manual'], homeOnly:false, assignScope:true, canDelete:false, label:'כל הדוחות · סיווג הכל · דיווח בית ועסק'},
+  lea:   {tabs:['dash','classify','tx','manual'], homeOnly:true, assignScope:false, canDelete:false, label:'דוחות בית · סיווג בית · דיווח בית'}
+};
+let currentUser = null;
+function perms(){ return (currentUser && ROLES[currentUser.role]) || ROLES.lea; }
+function tryLogin(){
+  const code = document.getElementById('loginCode').value.trim();
+  const u = (db.users||[]).find(x=>String(x.code)===code);
+  if(!u){
+    document.getElementById('loginErr').textContent = '⚠️ קוד שגוי — נסה שוב';
+    document.getElementById('loginCode').value = '';
+    return;
+  }
+  currentUser = u;
+  localStorage.setItem('finance-user-id', u.id);
+  document.getElementById('loginOverlay').style.display = 'none';
+  renderAll();
+  gotoTab(perms().tabs[0]);
+  toast('שלום '+u.name+' 👋');
+}
+function logout(){
+  if(!confirm('לצאת מהמשתמש '+(currentUser?currentUser.name:'')+'?')) return;
+  localStorage.removeItem('finance-user-id');
+  location.reload();
+}
+function setUserCode(id, v){
+  const u = (db.users||[]).find(x=>x.id===id);
+  if(!u || !String(v).trim()) return;
+  u.code = String(v).trim();
+  queueSetting('users'); save();
+  toast('🔑 קוד הגישה של '+u.name+' עודכן');
+}
+function applyRole(){
+  const p = perms();
+  const loggedIn = !!currentUser;
+  document.querySelectorAll('#nav button').forEach(b=>{
+    if(b.dataset.tab) b.style.display = (!loggedIn || p.tabs.includes(b.dataset.tab)) ? '' : 'none';
+  });
+  const uc = document.getElementById('userChip');
+  if(uc){
+    uc.style.display = loggedIn ? 'block' : 'none';
+    if(loggedIn) uc.textContent = '👤 '+currentUser.name+' · יציאה';
+  }
+  const ds = document.getElementById('dashScope');
+  if(ds) ds.style.display = p.homeOnly ? 'none' : 'inline-flex';
+  if(p.homeOnly) dashScopeVal = 'home';
+  const sb = document.getElementById('autoScopeBtn');
+  if(sb) sb.style.display = p.assignScope ? '' : 'none';
+  const ts = document.getElementById('txScope');
+  if(ts){
+    ts.style.display = p.homeOnly ? 'none' : '';
+    if(!p.canDelete && ts.value==='deleted') ts.value = '';
+  }
+  const dfb = document.getElementById('txDelFilteredBtn');
+  if(dfb) dfb.style.display = p.canDelete ? '' : 'none';
+  const active = document.querySelector('#nav button.active');
+  if(loggedIn && active && active.dataset.tab && !p.tabs.includes(active.dataset.tab)) gotoTab(p.tabs[0]);
+}
 
 /* ================= ביטול פעולה (Ctrl+Z) ================= */
 const undoStack = [];
@@ -811,6 +899,7 @@ function renderAll(){
   renderManualSelects();
   renderSourceTiles();
   renderSettings();
+  applyRole();
 }
 function liveTx(){ return db.tx.filter(t=>!t.deleted); }
 /* דורש טיפול בלשונית הסיווג: בלי שיוך, או משויך לבית/עסק בלי קטגוריה */
@@ -954,6 +1043,7 @@ function pendingFiltered(){
   const acc = document.getElementById('clsAccFilter').value;
   const q = document.getElementById('clsSearch').value.trim();
   return db.tx.filter(needsClassify)
+    .filter(t=>perms().assignScope || t.scope==='home')
     .filter(t=>!acc || t.account===acc)
     .filter(t=>!q || (t.desc+' '+(t.details||'')).includes(q))
     .sort((a,b)=>b.date.localeCompare(a.date));
@@ -985,9 +1075,11 @@ function renderClassify(){
       +'<span class="desc">'+esc(t.desc)+(extraLine(t)?' <span class="muted" style="font-weight:400;font-size:12px">'+esc(extraLine(t))+'</span>':'')+'</span>'
       +'<span class="amt '+(t.kind==='income'?'green':'red')+'">'+(t.kind==='income'?'+':'−')+fmt2(t.amount)+' ₪</span>'
       +'<div class="classify-actions">'
-      +'<button class="cbtn home'+(open&&panelScope==='home'?' on':'')+'" onclick="openPanel(\''+t.id+'\',\'home\')">🏠 בית</button>'
-      +'<button class="cbtn biz'+(open&&panelScope==='biz'?' on':'')+'" onclick="openPanel(\''+t.id+'\',\'biz\')">🏢 עסק</button>'
-      +'<button class="cbtn exc" onclick="quickExclude(\''+t.id+'\')">🚫</button>'
+      +(perms().assignScope
+        ? '<button class="cbtn home'+(open&&panelScope==='home'?' on':'')+'" onclick="openPanel(\''+t.id+'\',\'home\')">🏠 בית</button>'
+          +'<button class="cbtn biz'+(open&&panelScope==='biz'?' on':'')+'" onclick="openPanel(\''+t.id+'\',\'biz\')">🏢 עסק</button>'
+          +'<button class="cbtn exc" onclick="quickExclude(\''+t.id+'\')">🚫</button>'
+        : '<button class="cbtn home'+(open?' on':'')+'" onclick="openPanel(\''+t.id+'\',\'home\')">🗂️ בחר קטגוריה</button>')
       +'</div></div>'
       +(open ? renderPanel(t) : '')
       +'</div>';
@@ -1059,10 +1151,13 @@ function toggleSel(id, on){
 }
 function updateBulkBar(){
   const bar = document.getElementById('bulkbar');
-  const ids = [...selected].filter(id=>db.tx.some(t=>t.id===id && !t.scope));
+  const ids = [...selected].filter(id=>db.tx.some(t=>t.id===id && needsClassify(t)));
   bar.classList.toggle('on', ids.length>0);
   document.getElementById('bulkCount').textContent = ids.length + ' נבחרו →';
-  const scope = document.getElementById('bulkScope').value;
+  const scopeSel0 = document.getElementById('bulkScope');
+  if(!perms().assignScope){ scopeSel0.value='home'; scopeSel0.style.display='none'; }
+  else scopeSel0.style.display='';
+  const scope = scopeSel0.value;
   const catSel = document.getElementById('bulkCat');
   const projSel = document.getElementById('bulkProj');
   if(scope==='exclude'){ catSel.style.display='none'; projSel.style.display='none'; return; }
@@ -1130,7 +1225,7 @@ function autoScopeByAccount(){
   toast('⚡ '+pend.length+' תנועות שויכו לפי המקור');
 }
 function applyBulk(){
-  const scope = document.getElementById('bulkScope').value;
+  const scope = perms().assignScope ? document.getElementById('bulkScope').value : 'home';
   const cat = scope==='exclude' ? '' : document.getElementById('bulkCat').value;
   const proj = scope==='biz' ? document.getElementById('bulkProj').value : '';
   const targets = [...selected].map(id=>db.tx.find(x=>x.id===id)).filter(t=>t && !t.deleted);
@@ -1161,7 +1256,9 @@ function renderTxTable(){
   accSel.value = accs.includes(ka) ? ka : '';
 
   const month = document.getElementById('txMonth').value;
-  const scope = document.getElementById('txScope').value;
+  let scope = document.getElementById('txScope').value;
+  if(perms().homeOnly) scope = 'home';
+  else if(scope==='deleted' && !perms().canDelete) scope = '';
   const q = document.getElementById('txSearch').value.trim();
   let list = db.tx
     .filter(t=>month==='all'||t.date.slice(0,7)===month)
@@ -1199,8 +1296,8 @@ function renderTxTable(){
       +'<td class="amt green">'+(t.kind==='income'?fmt2(t.amount):'')+'</td>'
       +'<td class="amt red">'+(t.kind==='expense'?fmt2(t.amount):'')+'</td>'
       +'<td>'+(t.deleted
-        ? '<button class="btn sm sec" title="שחזר מסל המחזור" onclick="restoreTx(\''+t.id+'\')">♻️</button>'
-        : '<button class="btn sm sec" onclick="openEdit(\''+t.id+'\')">✏️</button>')+'</td>'
+        ? (perms().canDelete ? '<button class="btn sm sec" title="שחזר מסל המחזור" onclick="restoreTx(\''+t.id+'\')">♻️</button>' : '')
+        : (perms().canDelete ? '<button class="btn sm sec" onclick="openEdit(\''+t.id+'\')">✏️</button>' : ''))+'</td>'
       +'</tr>').join('')
     + '</tbody><tfoot><tr><td colspan="7">סה"כ ('+list.length+' תנועות'+(list.length>500?', מוצגות 500':'')+')</td>'
     + '<td class="amt green">'+fmt2(inc)+'</td><td class="amt red">'+fmt2(exp)+'</td><td></td></tr></tfoot></table>';
@@ -1216,7 +1313,7 @@ function txToggleAll(on){
 function updateTxDelBtn(){
   const b = document.getElementById('txDelSelBtn');
   if(!b) return;
-  b.style.display = txSel.size ? 'inline-block' : 'none';
+  b.style.display = (txSel.size && perms().canDelete) ? 'inline-block' : 'none';
   b.textContent = '🗑️ מחק נבחרים ('+txSel.size+')';
   updateTxBulkBar();
 }
@@ -1225,7 +1322,10 @@ function updateTxBulkBar(){
   if(!bar) return;
   bar.classList.toggle('on', txSel.size>0);
   document.getElementById('txBulkCount').textContent = txSel.size + ' נבחרו →';
-  const scope = document.getElementById('txBulkScope').value;
+  const scopeSel0 = document.getElementById('txBulkScope');
+  if(!perms().assignScope){ scopeSel0.value='home'; scopeSel0.style.display='none'; }
+  else scopeSel0.style.display='';
+  const scope = scopeSel0.value;
   const catSel = document.getElementById('txBulkCat');
   const projSel = document.getElementById('txBulkProj');
   if(scope==='exclude' || scope==='pending' || scope==='restore'){
@@ -1259,7 +1359,8 @@ document.getElementById('txBulkProj').addEventListener('change', function(){
 function applyTxBulk(){
   const ids = [...txSel];
   if(!ids.length) return;
-  const scope = document.getElementById('txBulkScope').value;
+  const scope = perms().assignScope ? document.getElementById('txBulkScope').value : 'home';
+  if(scope==='restore' && !perms().canDelete) return;
   const cat = (scope==='biz'||scope==='home') ? document.getElementById('txBulkCat').value : '';
   const proj = scope==='biz' ? document.getElementById('txBulkProj').value : '';
   const targets = ids.map(id=>db.tx.find(x=>x.id===id)).filter(Boolean);
@@ -1534,7 +1635,7 @@ function openProjModal(id){
   pmStages = p ? JSON.parse(JSON.stringify(p.stages||[])) : [];
   if(!pmStages.length) pmStages.push({desc:'', amount:''});
   renderPmStages();
-  document.getElementById('pmDelete').style.display = p ? 'inline-block' : 'none';
+  document.getElementById('pmDelete').style.display = (p && perms().canDelete) ? 'inline-block' : 'none';
   document.getElementById('projModal').classList.add('open');
 }
 function renderPmStages(){
@@ -1610,7 +1711,10 @@ function addProject(){ openProjModal(null); }
 
 /* ================= דיווח ידני ================= */
 function renderManualSelects(){
-  const scope = document.getElementById('mScope').value;
+  const mScopeSel = document.getElementById('mScope');
+  if(perms().homeOnly){ mScopeSel.value = 'home'; mScopeSel.disabled = true; }
+  else mScopeSel.disabled = false;
+  const scope = mScopeSel.value;
   const kind = document.getElementById('mKind').value;
   const cs = document.getElementById('mCat');
   cs.innerHTML = '<option value="">— ללא —</option>' + catList(scope,kind).map(c=>'<option>'+esc(c)+'</option>').join('') + '<option value="__new__">+ קטגוריה חדשה...</option>';
@@ -2050,7 +2154,8 @@ function doImport(){
 function exportCSV(){
   const rows = [['תאריך','תיאור','פרטים','מקור','שיוך','קטגוריה','פרויקט','סוג','סכום','חשבונית','פרטים נוספים 1','פרטים נוספים 2','פרטים נוספים 3','פרטים נוספים 4','קובץ מקור']];
   const scopeName = s => s==='biz'?'עסק':s==='home'?'בית':s==='exclude'?'לא נכלל':'ממתין';
-  liveTx().sort((a,b)=>a.date.localeCompare(b.date)).forEach(t=>{
+  liveTx().filter(t=>!perms().homeOnly || t.scope==='home')
+    .sort((a,b)=>a.date.localeCompare(b.date)).forEach(t=>{
     rows.push([t.date, t.desc, t.details||'', t.account, scopeName(t.scope), t.category||'', t.project||'', t.kind==='income'?'הכנסה':'הוצאה', t.amount, t.invoice?'כן':'', t.extra1||'', t.extra2||'', t.extra3||'', t.extra4||'', t.origin||'']);
   });
   const csv = '﻿' + rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\r\n');
@@ -2113,6 +2218,12 @@ function renderSettings(){
     + (delP.length ? '<div class="muted" style="margin-top:8px;font-size:12px">בסל המחזור: '
         + delP.map(p=>'<span class="chip" style="opacity:.65">'+esc(p.name)+' <button style="color:#16a34a" title="שחזר" onclick="restoreProject(\''+jsq(p.id)+'\')">♻️</button></span>').join('')
         + '</div>' : '');
+  document.getElementById('usersTable').innerHTML =
+    '<table><thead><tr><th>משתמש</th><th>הרשאות</th><th>קוד גישה</th></tr></thead><tbody>'
+    + (db.users||[]).map(u=>'<tr><td>👤 <b>'+esc(u.name)+'</b></td>'
+      +'<td class="muted" style="font-size:12px">'+esc((ROLES[u.role]||{}).label||'')+'</td>'
+      +'<td><input type="text" dir="ltr" style="width:100px" value="'+esc(u.code)+'" onchange="setUserCode(\''+jsq(u.id)+'\',this.value)"></td></tr>').join('')
+    + '</tbody></table>';
   const vatIn = document.getElementById('vatInput');
   if(vatIn && document.activeElement!==vatIn) vatIn.value = db.vat||18;
   const gsIn = document.getElementById('gsUrlInput');
@@ -2199,6 +2310,14 @@ function deleteByOrigin(origin){
 }
 
 /* ================= אתחול ================= */
+(function initUser(){
+  const uid = localStorage.getItem('finance-user-id');
+  if(uid) currentUser = (db.users||[]).find(x=>x.id===uid) || null;
+  if(!currentUser){
+    document.getElementById('loginOverlay').style.display = 'flex';
+    setTimeout(()=>{ try{ document.getElementById('loginCode').focus(); }catch(e){} }, 100);
+  }
+})();
 renderAll();
 setSync(GS_URL?'saving':'off', GS_URL?'מתחבר...':'מקומי — לא מחובר');
 if(GS_URL){
