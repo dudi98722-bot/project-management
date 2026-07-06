@@ -165,7 +165,7 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
 
 <!-- ============ סיווג ============ -->
 <section id="tab-classify">
-  <div class="hint">💡 סווג כל תנועה: <b>בית</b> / <b>עסק</b> / <b>לא לכלול</b> (העברות פנימיות וחיובי אשראי מרוכזים). הסיווג חל רק על התנועה שבחרת — שום דבר לא מסווג אוטומטית. לסיווג מהיר של הרבה תנועות: סמנו ✓ כמה שורות והשתמשו בסרגל למטה.</div>
+  <div class="hint">💡 מוצגות כאן תנועות <b>בלי שיוך</b> וגם תנועות <b>בלי קטגוריה</b> (מסומנות בתג "חסרה קטגוריה"). סווג כל תנועה: <b>בית</b> / <b>עסק</b> / <b>לא לכלול</b>. הסיווג חל רק על מה שבחרת — שום דבר לא מסווג אוטומטית. לסיווג מהיר: סמנו ✓ כמה שורות והשתמשו בסרגל.</div>
   <div class="toolbar">
     <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="selAll"> בחר הכל</label>
     <select id="clsAccFilter"></select>
@@ -809,8 +809,12 @@ function renderAll(){
   renderSettings();
 }
 function liveTx(){ return db.tx.filter(t=>!t.deleted); }
+/* דורש טיפול בלשונית הסיווג: בלי שיוך, או משויך לבית/עסק בלי קטגוריה */
+function needsClassify(t){
+  return !t.deleted && (!t.scope || ((t.scope==='biz'||t.scope==='home') && !t.category));
+}
 function refreshBadge(){
-  const n = db.tx.filter(t=>!t.scope && !t.deleted).length;
+  const n = db.tx.filter(needsClassify).length;
   const b = document.getElementById('pendingBadge');
   b.style.display = n ? 'inline-block' : 'none';
   b.textContent = n;
@@ -855,7 +859,7 @@ function renderDashboard(){
   const base = classified().filter(t => (scope==='all'||t.scope===scope) && (month==='all'||t.date.slice(0,7)===month));
   const inc = base.filter(t=>t.kind==='income').reduce((s,t)=>s+t.amount,0);
   const exp = base.filter(t=>t.kind==='expense').reduce((s,t)=>s+t.amount,0);
-  const pending = db.tx.filter(t=>!t.scope && !t.deleted).length;
+  const pending = db.tx.filter(needsClassify).length;
   let extra = '';
   if(scope==='all'){
     const bizNet = base.filter(t=>t.scope==='biz').reduce((s,t)=>s+(t.kind==='income'?t.amount:-t.amount),0);
@@ -945,7 +949,7 @@ document.getElementById('selAll').addEventListener('change', e=>{
 function pendingFiltered(){
   const acc = document.getElementById('clsAccFilter').value;
   const q = document.getElementById('clsSearch').value.trim();
-  return db.tx.filter(t=>!t.scope && !t.deleted)
+  return db.tx.filter(needsClassify)
     .filter(t=>!acc || t.account===acc)
     .filter(t=>!q || (t.desc+' '+(t.details||'')).includes(q))
     .sort((a,b)=>b.date.localeCompare(a.date));
@@ -953,7 +957,7 @@ function pendingFiltered(){
 function renderClassify(){
   const accSel = document.getElementById('clsAccFilter');
   const keep = accSel.value;
-  const accs = [...new Set(db.tx.filter(t=>!t.scope).map(t=>t.account))];
+  const accs = [...new Set(db.tx.filter(needsClassify).map(t=>t.account))];
   accSel.innerHTML = '<option value="">כל החשבונות</option>' + accs.map(a=>'<option>'+esc(a)+'</option>').join('');
   accSel.value = accs.includes(keep) ? keep : '';
 
@@ -972,6 +976,8 @@ function renderClassify(){
       +'<input type="checkbox" class="selbox" '+(selected.has(t.id)?'checked':'')+' onchange="toggleSel(\''+t.id+'\',this.checked)">'
       +'<span class="muted" style="font-size:12px">'+t.date.split('-').reverse().join('/')+'</span>'
       +'<span class="tag acc" title="'+esc(t.origin||'')+'">'+esc(t.account)+'</span>'
+      +(t.scope==='biz' ? '<span class="tag biz" title="משויך לעסק אך חסרה קטגוריה">🏢 חסרה קטגוריה</span>'
+        : t.scope==='home' ? '<span class="tag home" title="משויך לבית אך חסרה קטגוריה">🏠 חסרה קטגוריה</span>' : '')
       +'<span class="desc">'+esc(t.desc)+(extraLine(t)?' <span class="muted" style="font-weight:400;font-size:12px">'+esc(extraLine(t))+'</span>':'')+'</span>'
       +'<span class="amt '+(t.kind==='income'?'green':'red')+'">'+(t.kind==='income'?'+':'−')+fmt2(t.amount)+' ₪</span>'
       +'<div class="classify-actions">'
@@ -1123,7 +1129,7 @@ function applyBulk(){
   const scope = document.getElementById('bulkScope').value;
   const cat = scope==='exclude' ? '' : document.getElementById('bulkCat').value;
   const proj = scope==='biz' ? document.getElementById('bulkProj').value : '';
-  const targets = [...selected].map(id=>db.tx.find(x=>x.id===id && !x.scope)).filter(Boolean);
+  const targets = [...selected].map(id=>db.tx.find(x=>x.id===id)).filter(t=>t && !t.deleted);
   pushUndo('סיווג קבוצתי ('+targets.length+' תנועות)', targets);
   const changed = [];
   targets.forEach(t=>{ t.scope=scope; t.category=cat; t.project=proj; changed.push(t); });
