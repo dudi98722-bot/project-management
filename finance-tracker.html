@@ -1174,6 +1174,7 @@ function renderPanel(t){
   return '<div class="classify-panel">'
     +'<b style="color:var(--'+panelScope+')">'+(panelScope==='biz'?'🏢 עסק':'🏠 בית')+'</b>'
     +'<select id="pnlCat">'+catOpts+'</select>'
+    +'<button type="button" class="btn sm ghost" onclick="panelAddCategory(\''+t.id+'\')" title="הוסף קטגוריה חדשה לרשימה">+ קטגוריה חדשה</button>'
     +(panelScope==='biz' ? '<select id="pnlProj">'+projOpts+'</select>' : '')
     +(panelScope==='biz' && t.kind==='income' ? '<label style="display:flex;align-items:center;gap:5px;font-size:12.5px"><input type="checkbox" id="pnlInvoice"> עם חשבונית (יקוזז מע"מ בדוח)</label>' : '')
     +'<button class="btn sm" onclick="savePanel(\''+t.id+'\')">✔ שמור</button>'
@@ -1184,6 +1185,19 @@ function handleNewOption(sel, listGetter, listSetter){
   const v = prompt('שם חדש:');
   if(v && v.trim()){ listSetter(v.trim()); save(); return v.trim(); }
   return '';
+}
+function panelAddCategory(txId){
+  const t = db.tx.find(x=>x.id===txId); if(!t) return;
+  const v = prompt('שם קטגוריה חדשה:');
+  if(!v || !v.trim()) return;
+  const name = v.trim();
+  const key = panelScope+'_'+t.kind;
+  if(!db.categories[key].includes(name)) db.categories[key].push(name);
+  queueSetting('categories');
+  save(); renderClassify();
+  const sel = document.getElementById('pnlCat');
+  if(sel) sel.value = name;
+  toast('🗂️ קטגוריה "'+name+'" נוספה');
 }
 function savePanel(id){
   const t = db.tx.find(x=>x.id===id); if(!t) return;
