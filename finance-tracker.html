@@ -163,7 +163,7 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
 
 <!-- ============ סיווג ============ -->
 <section id="tab-classify">
-  <div class="hint">💡 סווג כל תנועה: <b>בית</b> / <b>עסק</b> / <b>לא לכלול</b> (העברות פנימיות וחיובי אשראי מרוכזים). כשמסמנים "זכור" — כל תנועה עתידית מאותו בית עסק תסווג אוטומטית.</div>
+  <div class="hint">💡 סווג כל תנועה: <b>בית</b> / <b>עסק</b> / <b>לא לכלול</b> (העברות פנימיות וחיובי אשראי מרוכזים). הסיווג חל רק על התנועה שבחרת — שום דבר לא מסווג אוטומטית. לסיווג מהיר של הרבה תנועות: סמנו ✓ כמה שורות והשתמשו בסרגל למטה.</div>
   <div class="toolbar">
     <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="selAll"> בחר הכל</label>
     <select id="clsAccFilter"></select>
@@ -304,11 +304,6 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
       דרכים נוספות: במסך "כל התנועות" אפשר לסמן תנועות ✓ ו"למחוק נבחרים", או לסנן (חודש/שיוך/חיפוש) ו"למחוק את המסונן".
     </p>
     <div class="table-wrap" id="originsTable"></div>
-  </div>
-  <div class="card">
-    <h3>🤖 כללי סיווג אוטומטי (<span id="rulesCount"></span>)</h3>
-    <p class="muted" style="margin-bottom:10px">כללים שנלמדו מהסיווגים שלך — מוחלים אוטומטית על כל ייבוא חדש.</p>
-    <div class="table-wrap" id="rulesTable"></div>
   </div>
   <div class="card">
     <h3>☁️ חיבור לגוגל שיטס (ענן)</h3>
@@ -936,7 +931,6 @@ function renderPanel(t){
     +'<select id="pnlCat">'+catOpts+'</select>'
     +(panelScope==='biz' ? '<select id="pnlProj">'+projOpts+'</select>' : '')
     +(panelScope==='biz' && t.kind==='income' ? '<label style="display:flex;align-items:center;gap:5px;font-size:12.5px"><input type="checkbox" id="pnlInvoice"> עם חשבונית (יקוזז מע"מ בדוח)</label>' : '')
-    +'<label style="display:flex;align-items:center;gap:5px;font-size:12.5px"><input type="checkbox" id="pnlRemember" checked> זכור לתנועות דומות</label>'
     +'<button class="btn sm" onclick="savePanel(\''+t.id+'\')">✔ שמור</button>'
     +'</div>';
 }
@@ -965,32 +959,18 @@ function savePanel(id){
   t.scope = panelScope; t.category = cat; t.project = proj;
   const inv = document.getElementById('pnlInvoice');
   if(inv) t.invoice = inv.checked;
-  const remember = document.getElementById('pnlRemember').checked;
-  const changed = [t];
-  if(remember){
-    const key = normDesc(t.desc);
-    db.rules[key] = {scope:panelScope, category:cat, project:proj};
-    queueSetting('rules');
-    db.tx.filter(x=>!x.scope && normDesc(x.desc)===key).forEach(x=>{
-      x.scope = panelScope; x.category = cat; x.project = proj; changed.push(x);
-    });
-  }
-  queueTx(changed);
+  queueTx([t]);
   openTxId = null; selected.delete(id);
   save(); renderAll();
-  toast('סווג ✔' + (changed.length>1 ? ' + עוד '+(changed.length-1)+' תנועות דומות' : ''));
+  toast('סווג ✔');
 }
 function quickExclude(id){
   const t = db.tx.find(x=>x.id===id); if(!t) return;
   t.scope = 'exclude'; t.category = ''; t.project = '';
-  const key = normDesc(t.desc);
-  const changed = [t];
-  db.tx.filter(x=>!x.scope && normDesc(x.desc)===key).forEach(x=>{ x.scope='exclude'; changed.push(x); });
-  db.rules[key] = {scope:'exclude', category:'', project:''};
-  queueSetting('rules'); queueTx(changed);
+  queueTx([t]);
   selected.delete(id);
   save(); renderAll();
-  toast('לא ייכלל בחישובים' + (changed.length>1 ? ' (+'+(changed.length-1)+' דומות)' : ''));
+  toast('לא ייכלל בחישובים');
 }
 function toggleSel(id, on){
   if(on) selected.add(id); else selected.delete(id);
@@ -1756,10 +1736,8 @@ function doImport(){
       const key = dedupKey(t);
       if(existing.has(key)){ dups++; return; }
       existing.add(key);
-      // סיווג אוטומטי
-      const rule = db.rules[normDesc(desc)];
-      if(rule){ t.scope=rule.scope; t.category=rule.category; t.project=rule.project; auto++; }
-      else if(EXCLUDE_RE.test(desc)){ t.scope='exclude'; auto++; }
+      // החרגה אוטומטית רק לחיוב אשראי מרוכז (מניעת ספירה כפולה) — בלי סיווג נלמד
+      if(EXCLUDE_RE.test(desc)){ t.scope='exclude'; auto++; }
       db.tx.push(t);
       addedList.push(t);
       added++;
@@ -1770,7 +1748,7 @@ function doImport(){
   queueSetting('templates');
   save(); renderImportBlocks(); renderAll();
   let msg = '✔ נוספו '+added+' תנועות';
-  if(auto) msg += ' · '+auto+' סווגו אוטומטית';
+  if(auto) msg += ' · '+auto+' הוחרגו (חיוב אשראי מרוכז)';
   if(dups) msg += ' · '+dups+' כפולות דולגו';
   if(skipped) msg += ' · '+skipped+' שורות לא תקינות';
   toast(msg);
@@ -1884,14 +1862,6 @@ function renderSettings(){
         +'<td><button class="btn sm sec" onclick="removeTpl(\''+jsq(sig)+'\')">🗑️</button></td></tr>';
     }).join('')
     + '</tbody></table>';
-  const rules = Object.entries(db.rules);
-  document.getElementById('rulesCount').textContent = rules.length + ' כללים';
-  const scopeName = s => s==='biz'?'🏢 עסק':s==='home'?'🏠 בית':'🚫 לא נכלל';
-  document.getElementById('rulesTable').innerHTML = !rules.length ? '<div class="muted">עדיין אין כללים — הם נוצרים כשמסווגים עם "זכור"</div>' :
-    '<table><thead><tr><th>תיאור התנועה</th><th>שיוך</th><th>קטגוריה</th><th>פרויקט</th><th></th></tr></thead><tbody>'
-    + rules.map(([k,r])=>'<tr><td>'+esc(k)+'</td><td>'+scopeName(r.scope)+'</td><td>'+esc(r.category||'')+'</td><td>'+esc(r.project||'')+'</td>'
-      +'<td><button class="btn sm sec" onclick="removeRule(\''+esc(k).replace(/'/g,"\\'")+'\')">🗑️</button></td></tr>').join('')
-    + '</tbody></table>';
 }
 function setVat(v){
   const n = parseFloat(v);
@@ -1919,10 +1889,6 @@ function addCat(k){
 function removeCat(k,i){
   db.categories[k].splice(i,1);
   queueSetting('categories'); save(); renderAll();
-}
-function removeRule(k){
-  delete db.rules[k];
-  queueSetting('rules'); save(); renderSettings();
 }
 function removeTpl(sig){
   delete db.templates[sig];
