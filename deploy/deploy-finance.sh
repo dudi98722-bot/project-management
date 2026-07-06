@@ -4,17 +4,17 @@
 #  הרצה על השרת (Ubuntu):
 #     sudo bash deploy-finance.sh
 #  אפשר לשנות דומיין:
-#     sudo DOMAIN=kaspim.dudi-ananalytics.com bash deploy-finance.sh
+#     sudo DOMAIN=אחר.dudi-ananalytics.com bash deploy-finance.sh
 #
 #  דרישה מוקדמת: רשומת A ב-Namecheap:
-#     <תת-הדומיין>  ->  64.176.175.180
+#     greiman  ->  64.176.175.180
 #
 #  מותקן גם עדכון אוטומטי: cron מושך את הקבצים מ-GitHub כל 10 דקות,
 #  כך שאחרי כל push ל-main האתר מתעדכן לבד.
 # ============================================================
 set -e
 
-DOMAIN="${DOMAIN:-kaspim.dudi-ananalytics.com}"
+DOMAIN="${DOMAIN:-greiman.dudi-ananalytics.com}"
 EMAIL="${EMAIL:-dudi98722@gmail.com}"
 WEBROOT="/var/www/finance"
 RAW="https://raw.githubusercontent.com/dudi98722-bot/project-management/main"
