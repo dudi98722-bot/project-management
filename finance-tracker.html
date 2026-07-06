@@ -788,8 +788,8 @@ function dedupKey(t){ return [t.date, t.kind, (+t.amount).toFixed(2), normDesc(t
 /* ================= משתמשים והרשאות ================= */
 const ROLES = {
   admin: {tabs:['dash','classify','tx','projects','manual','import','settings'], homeOnly:false, assignScope:true, canDelete:true, label:'גישה מלאה'},
-  beni:  {tabs:['dash','classify','tx','projects','manual'], homeOnly:false, assignScope:true, canDelete:false, label:'כל הדוחות · סיווג הכל · דיווח בית ועסק'},
-  lea:   {tabs:['dash','classify','tx','manual'], homeOnly:true, assignScope:false, canDelete:false, label:'דוחות בית · סיווג בית · דיווח בית'}
+  beni:  {tabs:['dash','classify','projects','manual'], homeOnly:false, assignScope:true, canDelete:false, label:'כל הדוחות · סיווג הכל · דיווח בית ועסק'},
+  lea:   {tabs:['dash','classify','manual'], homeOnly:true, assignScope:false, canDelete:false, label:'דוחות בית · סיווג בית · דיווח בית'}
 };
 let currentUser = null;
 function perms(){ return (currentUser && ROLES[currentUser.role]) || ROLES.lea; }
@@ -1826,7 +1826,7 @@ function projectDetailHTML(p){
     +'<button class="btn sec sm" onclick="projView=null;renderProjects()">→ חזרה לרשימה</button>'
     +'<h2 style="font-size:20px">🏗️ '+esc(p.name)+'</h2>'
     +'<button class="btn sm ghost" onclick="openProjModal(\''+jsq(p.id)+'\')">✏️ עריכת פרויקט</button>'
-    +'<button class="btn sm sec" onclick="viewProjectTx(\''+jsq(p.name)+'\')">📋 כל התנועות</button>'
+    +(perms().tabs.includes('tx') ? '<button class="btn sm sec" onclick="viewProjectTx(\''+jsq(p.name)+'\')">📋 כל התנועות</button>' : '')
     +'</div>'
     +'<div class="cards-row">'
     +'<div class="stat"><div class="lbl">מחיר הפרויקט'+(extrasTotal>0?' (כולל תוספות)':' (ללא מע"מ)')+'</div><div class="val">'+fmt(total)
