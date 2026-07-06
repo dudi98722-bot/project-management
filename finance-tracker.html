@@ -775,9 +775,13 @@ function undo(){
   toast('↩️ בוטל: '+u.label);
 }
 document.addEventListener('keydown', e=>{
-  if((e.ctrlKey||e.metaKey) && !e.shiftKey && (e.key==='z' || e.key==='Z')){
+  // e.code מזהה את המקש הפיזי — עובד גם במקלדת עברית ('ז')
+  const isZ = e.code==='KeyZ' || e.key==='z' || e.key==='Z' || e.key==='ז';
+  if((e.ctrlKey||e.metaKey) && !e.shiftKey && isZ){
     const ae = document.activeElement;
-    if(ae && (ae.tagName==='INPUT' || ae.tagName==='TEXTAREA' || ae.tagName==='SELECT')) return;
+    const typing = ae && (ae.tagName==='TEXTAREA' ||
+      (ae.tagName==='INPUT' && ae.type!=='checkbox' && ae.type!=='radio' && ae.type!=='button'));
+    if(typing) return; // בתוך שדה טקסט — Ctrl+Z רגיל של הדפדפן
     e.preventDefault();
     undo();
   }
