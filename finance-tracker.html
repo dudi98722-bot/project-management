@@ -204,6 +204,19 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
     <button class="btn danger sm" id="txDelSelBtn" style="display:none" onclick="deleteSelectedTx()"></button>
     <button class="btn sec sm" onclick="deleteFilteredTx()" title="מוחק את כל התנועות שעונות על הסינון הנוכחי">🗑️ מחק את המסונן</button>
   </div>
+  <div class="bulkbar" id="txBulkbar">
+    <b id="txBulkCount"></b>
+    <select id="txBulkScope">
+      <option value="biz">🏢 עסק</option>
+      <option value="home">🏠 בית</option>
+      <option value="exclude">🚫 לא לכלול</option>
+      <option value="pending">⏳ החזר לממתין</option>
+    </select>
+    <select id="txBulkCat"></select>
+    <select id="txBulkProj"></select>
+    <button class="btn sm" onclick="applyTxBulk()">🏷️ סווג את הנבחרים</button>
+    <button class="btn sec sm" onclick="txSel.clear();renderTxTable()">בטל בחירה</button>
+  </div>
   <div class="card table-wrap" id="txTableWrap"></div>
 </section>
 
@@ -1089,6 +1102,48 @@ function updateTxDelBtn(){
   if(!b) return;
   b.style.display = txSel.size ? 'inline-block' : 'none';
   b.textContent = '🗑️ מחק נבחרים ('+txSel.size+')';
+  updateTxBulkBar();
+}
+function updateTxBulkBar(){
+  const bar = document.getElementById('txBulkbar');
+  if(!bar) return;
+  bar.classList.toggle('on', txSel.size>0);
+  document.getElementById('txBulkCount').textContent = txSel.size + ' נבחרו →';
+  const scope = document.getElementById('txBulkScope').value;
+  const catSel = document.getElementById('txBulkCat');
+  const projSel = document.getElementById('txBulkProj');
+  if(scope==='exclude' || scope==='pending'){
+    catSel.style.display='none'; projSel.style.display='none'; return;
+  }
+  catSel.style.display='';
+  projSel.style.display = scope==='biz' ? '' : 'none';
+  const cats = [...new Set([...catList(scope,'expense'), ...catList(scope,'income')])];
+  const kc = catSel.value;
+  catSel.innerHTML = '<option value="">— בלי קטגוריה —</option>' + cats.map(c=>'<option>'+esc(c)+'</option>').join('');
+  if(cats.includes(kc)) catSel.value = kc;
+  const kp = projSel.value;
+  projSel.innerHTML = '<option value="">— בלי פרויקט —</option>' + projNames().map(p=>'<option>'+esc(p)+'</option>').join('');
+  if(projNames().includes(kp)) projSel.value = kp;
+}
+document.getElementById('txBulkScope').addEventListener('change', updateTxBulkBar);
+function applyTxBulk(){
+  const ids = [...txSel];
+  if(!ids.length) return;
+  const scope = document.getElementById('txBulkScope').value;
+  const cat = (scope==='biz'||scope==='home') ? document.getElementById('txBulkCat').value : '';
+  const proj = scope==='biz' ? document.getElementById('txBulkProj').value : '';
+  const changed = [];
+  ids.forEach(id=>{
+    const t = db.tx.find(x=>x.id===id);
+    if(!t) return;
+    if(scope==='pending'){ t.scope=''; t.category=''; t.project=''; }
+    else { t.scope=scope; t.category=cat; t.project=proj; }
+    changed.push(t);
+  });
+  queueTx(changed);
+  txSel.clear();
+  save(); renderAll();
+  toast(scope==='pending' ? '⏳ '+changed.length+' תנועות הוחזרו לממתין' : '🏷️ '+changed.length+' תנועות סווגו');
 }
 function deleteSelectedTx(){
   const ids = [...txSel];
