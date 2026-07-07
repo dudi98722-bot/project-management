@@ -32,33 +32,39 @@ function getSpreadsheet() {
 
 var SHEETS = {
   scribes:  { name: 'סופרים',
-              headers: ['id','שם הסופר','מחיר בית יוסף','מחיר ארי'],
-              fields:  ['id','name','by','ari'] },
+              headers: ['id','שם הסופר','דרגה','מחיר בית יוסף','מחיר ארי','לכתר - בית יוסף','לכתר - ארי','נמחק','תאריך מחיקה'],
+              fields:  ['id','name','grade','by','ari','kby','kari','deleted','deletedAt'] },
   computer: { name: 'מגיהי מחשב',
-              headers: ['id','שם המגיה','מחיר ליחי'],
-              fields:  ['id','name','price'] },
+              headers: ['id','שם המגיה','מחיר ליחי','נמחק','תאריך מחיקה'],
+              fields:  ['id','name','price','deleted','deletedAt'] },
   gavra:    { name: 'מגיהי גברא',
-              headers: ['id','שם המגיה','מחיר ליחי'],
-              fields:  ['id','name','price'] },
+              headers: ['id','שם המגיה','מחיר ליחי','נמחק','תאריך מחיקה'],
+              fields:  ['id','name','price','deleted','deletedAt'] },
   mezuzot:  { name: 'מזוזות',
-              headers: ['id','מק"ט','סופר','מוצר','תאריך','מחיר ליחי','הגהת מחשב','גברא 1','גברא 2','אישור הרב','מחיר מופחת','הולוגרמה בד"ץ','נשלח לכתר','תמונה'],
-              fields:  ['id','sku','scribe','product','date','price','comp','g1','g2','approve','adj','holo','keter','img'] },
+              headers: ['id','מק"ט','סופר','מוצר','תאריך','מחיר ליחי','הגהת מחשב','גברא 1','גברא 2','אישור הרב','מחיר מופחת','לקוח (כשר)','מחיר מכירה','הולוגרמה בד"ץ','נשלח לכתר','תמונה','נמחק','תאריך מחיקה'],
+              fields:  ['id','sku','scribe','product','date','price','comp','g1','g2','approve','adj','buyer','salePrice','holo','keter','img','deleted','deletedAt'] },
   payments: { name: 'תשלומים',
-              headers: ['id','שם','תאריך','סכום','הערה'],
-              fields:  ['id','name','date','amount','note'] },
+              headers: ['id','שם','תאריך','סכום','הערה','נמחק','תאריך מחיקה'],
+              fields:  ['id','name','date','amount','note','deleted','deletedAt'] },
   expenses: { name: 'הוצאות',
-              headers: ['id','תאריך','קטגוריה','סכום','הערה'],
-              fields:  ['id','date','category','amount','note'] },
+              headers: ['id','תאריך','קטגוריה','סכום','הערה','נמחק','תאריך מחיקה'],
+              fields:  ['id','date','category','amount','note','deleted','deletedAt'] },
   income:   { name: 'הכנסות',
-              headers: ['id','תאריך','מקור','סכום','הערה'],
-              fields:  ['id','date','source','amount','note'] },
+              headers: ['id','תאריך','מקור','סכום','הערה','נמחק','תאריך מחיקה'],
+              fields:  ['id','date','source','amount','note','deleted','deletedAt'] },
+  keterReceipts: { name: 'תקבולים מכתר',
+              headers: ['id','תאריך','סכום','הערה','נמחק','תאריך מחיקה'],
+              fields:  ['id','date','amount','note','deleted','deletedAt'] },
+  customerReceipts: { name: 'תקבולים מלקוחות',
+              headers: ['id','תאריך','לקוח','סכום','הערה','נמחק','תאריך מחיקה'],
+              fields:  ['id','date','customer','amount','note','deleted','deletedAt'] },
   users:    { name: 'משתמשים',
-              headers: ['id','שם','תפקיד','סיסמה מוצפנת'],
-              fields:  ['id','name','role','hash'] }
+              headers: ['id','שם','תפקיד','סיסמה מוצפנת','נמחק','תאריך מחיקה'],
+              fields:  ['id','name','role','hash','deleted','deletedAt'] }
 };
 
-var TEXT_FIELDS = { sku:1, holo:1, name:1, scribe:1, product:1, comp:1, g1:1, g2:1, approve:1, keter:1, note:1, date:1, img:1, role:1, hash:1, category:1, source:1 };
-var NUM_FIELDS  = { by:1, ari:1, price:1, adj:1, amount:1 };
+var TEXT_FIELDS = { sku:1, holo:1, name:1, scribe:1, product:1, comp:1, g1:1, g2:1, approve:1, keter:1, note:1, date:1, img:1, role:1, hash:1, category:1, source:1, grade:1, buyer:1, customer:1, deletedAt:1 };
+var NUM_FIELDS  = { by:1, ari:1, price:1, adj:1, amount:1, kby:1, kari:1, salePrice:1, deleted:1 };
 
 function doGet(e)  { return handle(e); }
 function doPost(e) { return handle(e); }
@@ -98,7 +104,7 @@ function getSheet(cfg) {
 }
 
 function loadAll() {
-  var out = { scribes: [], computer: [], gavra: [], mezuzot: [], payments: [], expenses: [], income: [], users: [], seq: 1 };
+  var out = { scribes: [], computer: [], gavra: [], mezuzot: [], payments: [], expenses: [], income: [], keterReceipts: [], customerReceipts: [], users: [], seq: 1 };
   Object.keys(SHEETS).forEach(function (key) {
     var cfg = SHEETS[key];
     var s = getSheet(cfg);

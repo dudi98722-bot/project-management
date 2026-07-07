@@ -9,6 +9,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: #2d3748; direction: rtl; }
@@ -116,6 +117,7 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
     <button class="btn btn-light" onclick="exportExcel()">⬇ ייצוא לאקסל</button>
     <button class="btn btn-light" onclick="document.getElementById('importFile').click()">⬆ ייבוא גיבוי</button>
     <input type="file" id="importFile" accept=".json" style="display:none" onchange="importBackup(event)">
+    <button class="btn btn-light" id="btn-bin" onclick="openBin()">🗑 סל מיחזור</button>
     <button class="btn btn-light" onclick="exportBackup()">💾 גיבוי JSON</button>
     <span id="userChip" style="display:none;align-items:center;gap:6px;color:#fff;font-size:.82rem;font-weight:600">
       <span id="userChipName"></span>
@@ -146,11 +148,18 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
 
     <div id="psec-scribes" class="price-sec">
       <div class="card">
-        <h2>סופרים <span class="hint">— מחיר ליחי' לפי סוג מזוזה</span></h2>
+        <h2>סופרים <span class="hint">— מחיר ליחי' לסופר + מחיר מכירה לכתר</span></h2>
         <div class="form-row">
           <div class="form-group"><label>שם הסופר</label><input id="sc-name" placeholder="שם הסופר"></div>
-          <div class="form-group"><label>מחיר מזוזה בית יוסף</label><input id="sc-by" type="number" placeholder="₪"></div>
-          <div class="form-group"><label>מחיר מזוזה ארי</label><input id="sc-ari" type="number" placeholder="₪"></div>
+          <div class="form-group"><label>דרגה</label><select id="sc-grade">
+            <option value="א">דרגה א</option>
+            <option value="אא">דרגה אא</option>
+            <option value="אאא">דרגה אאא</option>
+          </select></div>
+          <div class="form-group"><label>מחיר בית יוסף (לסופר)</label><input id="sc-by" type="number" placeholder="₪"></div>
+          <div class="form-group"><label>מחיר ארי (לסופר)</label><input id="sc-ari" type="number" placeholder="₪"></div>
+          <div class="form-group"><label>מכירה לכתר — בית יוסף</label><input id="sc-kby" type="number" placeholder="₪"></div>
+          <div class="form-group"><label>מכירה לכתר — ארי</label><input id="sc-kari" type="number" placeholder="₪"></div>
           <button class="btn btn-success" onclick="addScribe()">+ הוסף סופר</button>
         </div>
       </div>
@@ -255,17 +264,56 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
 
   <!-- ============ תשלומים ============ -->
   <div class="tab-panel" id="tab-payments">
-    <div class="card">
-      <h2>רישום תשלום <span class="hint">— לסופר או למגיה</span></h2>
-      <div class="form-row">
-        <div class="form-group"><label>שם (סופר / מגיה)</label><select id="pay-name"></select></div>
-        <div class="form-group"><label>תאריך</label><input id="pay-date" type="date"></div>
-        <div class="form-group"><label>סך ששולם</label><input id="pay-amount" type="number" placeholder="₪"></div>
-        <div class="form-group" style="flex:2"><label>הערה</label><input id="pay-note" placeholder="הערה"></div>
-        <button class="btn btn-success" onclick="addPayment()">+ רשום תשלום</button>
-      </div>
+    <div class="section-tabs">
+      <button class="section-tab active" onclick="showPaySec('scribes',this)">תשלומים לסופרים ומגיהים</button>
+      <button class="section-tab" onclick="showPaySec('keter',this)">תקבולים מכתר</button>
+      <button class="section-tab" onclick="showPaySec('customers',this)">תקבולים מלקוחות</button>
     </div>
-    <div class="card"><div class="table-wrap"><table id="tbl-payments"></table></div></div>
+
+    <div id="paysec-scribes" class="pay-sec">
+      <div class="card">
+        <h2>רישום תשלום <span class="hint">— לסופר או למגיה</span></h2>
+        <div class="form-row">
+          <div class="form-group"><label>שם (סופר / מגיה)</label><select id="pay-name"></select></div>
+          <div class="form-group"><label>תאריך</label><input id="pay-date" type="date"></div>
+          <div class="form-group"><label>סך ששולם</label><input id="pay-amount" type="number" placeholder="₪"></div>
+          <div class="form-group" style="flex:2"><label>הערה</label><input id="pay-note" placeholder="הערה"></div>
+          <button class="btn btn-success" onclick="addPayment()">+ רשום תשלום</button>
+        </div>
+      </div>
+      <div class="card"><div class="table-wrap"><table id="tbl-payments"></table></div></div>
+    </div>
+
+    <div id="paysec-keter" class="pay-sec" style="display:none">
+      <div class="card">
+        <h2>תקבול מכתר <span class="hint">— תשלומים שכתר שילמו עבור מזוזות שאושרו</span></h2>
+        <div class="form-row">
+          <div class="form-group"><label>תאריך</label><input id="kr-date" type="date"></div>
+          <div class="form-group"><label>סכום</label><input id="kr-amount" type="number" placeholder="₪"></div>
+          <div class="form-group" style="flex:2"><label>הערה</label><input id="kr-note" placeholder="הערה"></div>
+          <button class="btn btn-success" onclick="addKeterReceipt()">+ רשום תקבול</button>
+        </div>
+      </div>
+      <div class="card"><div class="table-wrap"><table id="tbl-keter-receipts"></table></div></div>
+    </div>
+
+    <div id="paysec-customers" class="pay-sec" style="display:none">
+      <div class="card">
+        <h2>תקבול מלקוח <span class="hint">— תשלומים מלקוחות שקנו מזוזות "כשר"</span></h2>
+        <div class="form-row">
+          <div class="form-group"><label>תאריך</label><input id="cr-date" type="date"></div>
+          <div class="form-group"><label>לקוח</label><input id="cr-customer" placeholder="שם הלקוח"></div>
+          <div class="form-group"><label>סכום</label><input id="cr-amount" type="number" placeholder="₪"></div>
+          <div class="form-group" style="flex:2"><label>הערה</label><input id="cr-note" placeholder="הערה"></div>
+          <button class="btn btn-success" onclick="addCustomerReceipt()">+ רשום תקבול</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>יתרות לקוחות</h2>
+        <div class="table-wrap"><table id="tbl-customer-balance"></table></div>
+      </div>
+      <div class="card"><div class="table-wrap"><table id="tbl-customer-receipts"></table></div></div>
+    </div>
   </div>
 
   <!-- ============ כספים (הוצאות / הכנסות) ============ -->
@@ -310,6 +358,18 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
     <div class="card" id="card-finance">
       <h2>סיכום כספי <span class="hint">— הכנסות צדדיות מול הוצאות</span></h2>
       <div class="table-wrap"><table id="tbl-finance"></table></div>
+    </div>
+    <div class="card" id="card-scribe-report">
+      <h2>דוח סופרים <span class="hint">— כתיבה, אישורים, פסולים וקיזוזים</span></h2>
+      <div class="table-wrap"><table id="tbl-scribe-report"></table></div>
+    </div>
+    <div class="card" id="card-keter">
+      <h2>חשבון כתר <span class="hint">— חיוב על מזוזות שאושרו מול תשלומים</span></h2>
+      <div class="table-wrap"><table id="tbl-keter-summary"></table></div>
+    </div>
+    <div class="card" id="card-customers">
+      <h2>יתרות לקוחות <span class="hint">— מכירות "כשר" ללקוחות אחרים</span></h2>
+      <div class="table-wrap"><table id="tbl-customer-summary"></table></div>
     </div>
     <div class="card" id="card-balances">
       <h2>דוח יתרות — סופרים ומגיהים <button class="btn btn-primary no-print" style="margin-right:auto;font-size:.78rem;padding:5px 12px" onclick="window.print()">🖨 הדפסה</button></h2>
@@ -376,6 +436,26 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
   </div>
 </div>
 
+<!-- print label type chooser -->
+<div class="overlay" id="printChoiceOverlay" onclick="if(event.target===this)closePrintChoice()">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-head"><h3>🖨 הדפסת מדבקות (<span id="print-choice-count">0</span>)</h3><span class="x" onclick="closePrintChoice()">✕</span></div>
+    <div class="modal-body">
+      <p style="font-size:.85rem;color:#4a5568;margin-bottom:14px">מדבקה 50×25 מ"מ — בחר סוג:</p>
+      <button class="btn btn-primary" style="width:100%;margin-bottom:10px;padding:12px" onclick="doPrintLabels('barcode')">▮▯▮ ברקוד + מק"ט</button>
+      <button class="btn btn-success" style="width:100%;padding:12px" onclick="doPrintLabels('info')">מק"ט + סוג מזוזה + דרגת סופר</button>
+    </div>
+  </div>
+</div>
+
+<!-- recycle bin -->
+<div class="overlay" id="binOverlay" onclick="if(event.target===this)closeBin()">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-head"><h3>🗑 סל מיחזור</h3><span class="x" onclick="closeBin()">✕</span></div>
+    <div class="modal-body" id="bin-body"></div>
+  </div>
+</div>
+
 <!-- login gate -->
 <div class="overlay" id="loginOverlay" style="background:linear-gradient(135deg,#1a365d,#2b6cb0)">
   <div class="modal" style="max-width:380px">
@@ -408,8 +488,11 @@ let suppressPullUntil = 0;                   // skip pulling right after a local
 let pushTimer = null;                        // debounce server writes
 let lastPushedJSON = '';                     // what we last sent to the server
 
-function emptyData(){ return { scribes: [], computer: [], gavra: [], mezuzot: [], payments: [], expenses: [], income: [], users: [], seq: 1 }; }
-function itemCount(d){ return (d.scribes||[]).length + (d.computer||[]).length + (d.gavra||[]).length + (d.mezuzot||[]).length + (d.payments||[]).length + (d.expenses||[]).length + (d.income||[]).length + (d.users||[]).length; }
+function emptyData(){ return { scribes: [], computer: [], gavra: [], mezuzot: [], payments: [], expenses: [], income: [], keterReceipts: [], customerReceipts: [], users: [], seq: 1 }; }
+function itemCount(d){ return (d.scribes||[]).length + (d.computer||[]).length + (d.gavra||[]).length + (d.mezuzot||[]).length + (d.payments||[]).length + (d.expenses||[]).length + (d.income||[]).length + (d.keterReceipts||[]).length + (d.customerReceipts||[]).length + (d.users||[]).length; }
+// מחיקה רכה בלבד: פריטים מסומנים deleted=1 ונשארים בנתונים (וגם בגיליון), עם סל מיחזור לשחזור
+function alive(arr){ return (arr||[]).filter(x=>!x.deleted); }
+function softDelete(arr, id){ const x=(arr||[]).find(i=>i.id===id); if(x){ x.deleted=1; x.deletedAt=new Date().toISOString().slice(0,10); } }
 
 function load() {
   // local cache shown instantly until the server responds.
@@ -541,25 +624,33 @@ function showPriceSec(id, btn) {
 function addScribe() {
   const name = document.getElementById('sc-name').value.trim();
   if (!name) return toast('הזן שם סופר');
-  data.scribes.push({ id: uid(), name, by: +document.getElementById('sc-by').value||0, ari: +document.getElementById('sc-ari').value||0 });
-  document.getElementById('sc-name').value=''; document.getElementById('sc-by').value=''; document.getElementById('sc-ari').value='';
+  data.scribes.push({ id: uid(), name,
+    grade: document.getElementById('sc-grade').value,
+    by: +document.getElementById('sc-by').value||0, ari: +document.getElementById('sc-ari').value||0,
+    kby: +document.getElementById('sc-kby').value||0, kari: +document.getElementById('sc-kari').value||0 });
+  ['sc-name','sc-by','sc-ari','sc-kby','sc-kari'].forEach(i=>document.getElementById(i).value='');
   save(); toast('סופר נוסף');
 }
+const GRADES = ['א','אא','אאא'];
 function renderScribes() {
   const t = document.getElementById('tbl-scribes');
-  if (!data.scribes.length) { t.innerHTML = '<tr><td class="empty">אין סופרים עדיין</td></tr>'; return; }
-  let h = '<thead><tr><th>שם הסופר</th><th>מזוזה בית יוסף</th><th>מזוזה ארי</th><th></th></tr></thead><tbody>';
-  data.scribes.forEach(s=>{
+  const arr = alive(data.scribes);
+  if (!arr.length) { t.innerHTML = '<tr><td class="empty">אין סופרים עדיין</td></tr>'; return; }
+  let h = '<thead><tr><th>שם הסופר</th><th>דרגה</th><th>בית יוסף (לסופר)</th><th>ארי (לסופר)</th><th>לכתר — בית יוסף</th><th>לכתר — ארי</th><th></th></tr></thead><tbody>';
+  arr.forEach(s=>{
     h += `<tr>
       <td><input value="${esc(s.name)}" onchange="editScribe('${s.id}','name',this.value)"></td>
+      <td><select onchange="editScribe('${s.id}','grade',this.value)">${GRADES.map(g=>`<option value="${g}"${(s.grade||'א')===g?' selected':''}>דרגה ${g}</option>`).join('')}</select></td>
       <td><input type="number" value="${s.by}" onchange="editScribe('${s.id}','by',this.value)"></td>
       <td><input type="number" value="${s.ari}" onchange="editScribe('${s.id}','ari',this.value)"></td>
+      <td><input type="number" value="${s.kby||''}" placeholder="₪" onchange="editScribe('${s.id}','kby',this.value)"></td>
+      <td><input type="number" value="${s.kari||''}" placeholder="₪" onchange="editScribe('${s.id}','kari',this.value)"></td>
       <td><button class="btn btn-danger" onclick="delScribe('${s.id}')">מחק</button></td></tr>`;
   });
   t.innerHTML = h + '</tbody>';
 }
-function editScribe(id,f,v){ const s=data.scribes.find(x=>x.id===id); if(s){ s[f]= f==='name'?v:(+v||0); save(); } }
-function delScribe(id){ if(!confirm('למחוק סופר?'))return; data.scribes=data.scribes.filter(x=>x.id!==id); save(); }
+function editScribe(id,f,v){ const s=data.scribes.find(x=>x.id===id); if(s){ s[f]= (f==='name'||f==='grade')?v:(+v||0); save(); } }
+function delScribe(id){ if(!confirm('למחוק סופר? (יעבור לסל המיחזור)'))return; softDelete(data.scribes,id); save(); }
 
 // ============ PRICELIST: PROOFREADERS ============
 function addProof(type) {
@@ -572,9 +663,10 @@ function addProof(type) {
 }
 function renderProof(type) {
   const t = document.getElementById('tbl-'+type);
-  if (!data[type].length) { t.innerHTML = '<tr><td class="empty">אין מגיהים עדיין</td></tr>'; return; }
+  const arr = alive(data[type]);
+  if (!arr.length) { t.innerHTML = '<tr><td class="empty">אין מגיהים עדיין</td></tr>'; return; }
   let h = '<thead><tr><th>שם המגיה</th><th>מחיר ליחי\'</th><th></th></tr></thead><tbody>';
-  data[type].forEach(s=>{
+  arr.forEach(s=>{
     h += `<tr>
       <td><input value="${esc(s.name)}" onchange="editProof('${type}','${s.id}','name',this.value)"></td>
       <td><input type="number" value="${s.price}" onchange="editProof('${type}','${s.id}','price',this.value)"></td>
@@ -583,17 +675,17 @@ function renderProof(type) {
   t.innerHTML = h + '</tbody>';
 }
 function editProof(type,id,f,v){ const s=data[type].find(x=>x.id===id); if(s){ s[f]= f==='name'?v:(+v||0); save(); } }
-function delProof(type,id){ if(!confirm('למחוק מגיה?'))return; data[type]=data[type].filter(x=>x.id!==id); save(); }
+function delProof(type,id){ if(!confirm('למחוק מגיה? (יעבור לסל המיחזור)'))return; softDelete(data[type],id); save(); }
 
 // ============ DROPDOWNS ============
 function fillSelects() {
-  const opt = (arr,sel) => arr.map(x=>`<option value="${esc(x.name)}"${x.name===sel?' selected':''}>${esc(x.name)}</option>`).join('');
+  const opt = (arr,sel) => alive(arr).map(x=>`<option value="${esc(x.name)}"${x.name===sel?' selected':''}>${esc(x.name)}</option>`).join('');
   document.getElementById('mz-scribe').innerHTML = '<option value="">בחר סופר</option>'+opt(data.scribes);
   document.getElementById('mz-comp').innerHTML = '<option value="">—</option>'+opt(data.computer);
   document.getElementById('mz-g1').innerHTML = '<option value="">—</option>'+opt(data.gavra);
   document.getElementById('mz-g2').innerHTML = '<option value="">—</option>'+opt(data.gavra);
   // payments: all people
-  const people = [...data.scribes.map(s=>'סופר: '+s.name), ...data.computer.map(s=>'מגיה מחשב: '+s.name), ...data.gavra.map(s=>'מגיה גברא: '+s.name)];
+  const people = [...alive(data.scribes).map(s=>'סופר: '+s.name), ...alive(data.computer).map(s=>'מגיה מחשב: '+s.name), ...alive(data.gavra).map(s=>'מגיה גברא: '+s.name)];
   document.getElementById('pay-name').innerHTML = '<option value="">בחר</option>'+people.map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('');
 }
 function autoPrice() {
@@ -640,10 +732,8 @@ function addMezuza() {
   document.getElementById('mz-qty').value = 1;
   save();
   toast(qty===1 ? ('מזוזה נוספה — ' + created[0].sku) : (qty + ' מזוזות נוספו — ' + created[0].sku + ' … ' + created[created.length-1].sku));
-  // offer to print the SKUs that were just created (the "sale")
-  if (confirm('נוצרו ' + qty + ' מזוזות. להדפיס את רשימת המק"טים?')) {
-    printMezuzot(created, 'מק"טים שנוצרו — ' + (shared.date||''));
-  }
+  // offer to print sticker labels for the SKUs just created
+  printMezuzot(created);
 }
 // effective scribe price after approval
 function scribePay(m) {
@@ -656,42 +746,53 @@ function statusBadge(a) {
   const [c,t] = map[a]||['b-gray',a];
   return `<span class="badge ${c}">${t}</span>`;
 }
-// open a clean printable sheet of SKU labels for the given mezuza list
+// ---- label printing: 50x25mm stickers, two types ----
+let _printList = null;
+// entry point: opens the type chooser for the given mezuza list
 function printMezuzot(list, heading) {
-  if (!list || !list.length) { toast('אין מק"טים להדפסה'); return; }
-  const appUrl = location.origin + location.pathname;
-  const cards = list.map(m=>{
-    const qr = qrDataURL(appUrl + '?sku=' + encodeURIComponent(m.sku));
-    return `
-    <div class="lbl">
-      <div class="sku">${esc(m.sku)}</div>
-      <div class="meta">${esc(m.product||'')}${m.scribe?' · '+esc(m.scribe):''}</div>
-      <div class="meta">${m.date||''}${m.holo?' · הולוגרמה '+esc(m.holo):''}</div>
-      ${qr?`<img class="qr" src="${qr}">`:''}
-    </div>`;
+  list = (list||[]).filter(m=>m && !m.deleted);
+  if (!list.length) { toast('אין מק"טים להדפסה'); return; }
+  _printList = list;
+  document.getElementById('print-choice-count').textContent = list.length;
+  document.getElementById('printChoiceOverlay').classList.add('show');
+}
+function closePrintChoice(){ document.getElementById('printChoiceOverlay').classList.remove('show'); }
+// 1D retail-style barcode (Code 128) as an image
+function barcodeDataURL(text){
+  if (typeof JsBarcode==='undefined') return '';
+  const c = document.createElement('canvas');
+  try { JsBarcode(c, String(text), { format:'CODE128', displayValue:false, margin:0, height:50, width:2 }); }
+  catch(e){ return ''; }
+  return c.toDataURL();
+}
+function doPrintLabels(type){
+  closePrintChoice();
+  const list = _printList || [];
+  if (!list.length) return;
+  const labels = list.map(m=>{
+    if (type==='barcode') {
+      const bc = barcodeDataURL(m.sku);
+      return `<div class="lbl">${bc?`<img class="bc" src="${bc}">`:''}<div class="sku">${esc(m.sku)}</div></div>`;
+    }
+    // info label: SKU + product + scribe grade
+    const s = (data.scribes||[]).find(x=>x.name===m.scribe);
+    const grade = s && s.grade ? 'דרגה ' + s.grade : '';
+    return `<div class="lbl"><div class="sku big">${esc(m.sku)}</div><div class="meta">${esc(m.product||'')}</div><div class="meta">${esc(grade)}</div></div>`;
   }).join('');
-  const html = `<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>${esc(heading)}</title>
+  const html = `<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>מדבקות מק"ט</title>
     <style>
-      *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif}
-      body{padding:18px;color:#1a202c}
-      h1{font-size:18px;margin-bottom:4px}
-      .sub{color:#718096;font-size:12px;margin-bottom:14px}
-      .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-      .lbl{border:1.5px solid #2b6cb0;border-radius:8px;padding:10px 12px;text-align:center;page-break-inside:avoid}
-      .sku{font-size:22px;font-weight:800;letter-spacing:.5px;color:#1a365d}
-      .meta{font-size:11px;color:#4a5568;margin-top:3px}
-      .qr{width:84px;height:84px;margin:8px auto 0;display:block}
-      .total{margin-top:14px;font-size:12px;color:#718096}
-      @media print{.noprint{display:none}}
-      .noprint{margin-bottom:14px}
-      button{padding:8px 18px;border:0;border-radius:8px;background:#2b6cb0;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+      @page { size: 50mm 25mm; margin: 0; }
+      *{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif}
+      body{margin:0}
+      .lbl{width:50mm;height:25mm;display:flex;flex-direction:column;align-items:center;justify-content:center;
+           overflow:hidden;page-break-after:always;text-align:center;padding:1mm}
+      .bc{width:46mm;height:12mm;object-fit:fill}
+      .sku{font-size:9pt;font-weight:700;letter-spacing:.5px;margin-top:1mm}
+      .sku.big{font-size:14pt;font-weight:800}
+      .meta{font-size:9pt;margin-top:.6mm}
     </style></head><body>
-    <div class="noprint"><button onclick="window.print()">🖨 הדפס</button></div>
-    <h1>${esc(heading)}</h1>
-    <div class="sub">סה"כ ${list.length} מק"טים · הופק ${new Date().toLocaleDateString('he-IL')}</div>
-    <div class="grid">${cards}</div>
-    <div class="total">סה"כ ${list.length} מק"טים</div>
-    <script>window.onload=function(){setTimeout(function(){window.print()},250)}<\/script>
+    ${labels}
+    <script>window.onload=function(){setTimeout(function(){window.print()},300)}<\/script>
     </body></html>`;
   const w = window.open('', '_blank');
   if (!w) { toast('הדפדפן חסם חלון — אפשר חלונות קופצים'); return; }
@@ -712,7 +813,7 @@ function renderMezuzot() {
   const q = (document.getElementById('f-search').value||'').toLowerCase();
   const fs = document.getElementById('f-status').value, fk = document.getElementById('f-keter').value;
   const fm = (document.getElementById('f-missing')||{}).value || '';
-  let rows = data.mezuzot.filter(m=>{
+  let rows = alive(data.mezuzot).filter(m=>{
     if (fs && m.approve!==fs) return false;
     if (fk && m.keter!==fk) return false;
     if (fm==='comp' && m.comp) return false;
@@ -742,7 +843,9 @@ function renderMezuzot() {
         <select onchange="editMez('${m.id}','approve',this.value)">
           ${['ממתין','אושר','פסול','כשר'].map(o=>`<option value="${o}"${m.approve===o?' selected':''}>${o}</option>`).join('')}
         </select>
-        ${m.approve==='כשר'&&cv('price')?`<input type="number" value="${m.adj}" title="מחיר מופחת" style="margin-top:4px" onchange="editMez('${m.id}','adj',this.value)">`:''}
+        ${m.approve==='כשר'&&cv('price')?`<input type="number" value="${m.adj}" title="מחיר מופחת לסופר" placeholder="מחיר לסופר" style="margin-top:4px" onchange="editMez('${m.id}','adj',this.value)">
+        <input value="${esc(m.buyer||'')}" placeholder="לקוח" title="שם הלקוח (מכירת כשר)" style="margin-top:4px;min-width:80px" onchange="editMez('${m.id}','buyer',this.value)">
+        <input type="number" value="${m.salePrice||''}" placeholder="מחיר מכירה" title="מחיר מכירה ללקוח" style="margin-top:4px" onchange="editMez('${m.id}','salePrice',this.value)">`:''}
       </td>
       ${cv('scribePay')?`<td class="money">${ILS(scribePay(m))}</td>`:''}
       <td><input value="${esc(m.holo)}" style="min-width:90px" placeholder="—" onchange="editMez('${m.id}','holo',this.value)"></td>
@@ -758,8 +861,8 @@ function renderMezuzot() {
   t.innerHTML = h + '</tbody>';
   updateSelCount();
 }
-function editMez(id,f,v){ const m=data.mezuzot.find(x=>x.id===id); if(m){ m[f]= (f==='adj'||f==='price')?(+v||0):v; save(); } }
-function delMez(id){ if(!confirm('למחוק מזוזה?'))return; data.mezuzot=data.mezuzot.filter(x=>x.id!==id); selectedMez.delete(id); save(); }
+function editMez(id,f,v){ const m=data.mezuzot.find(x=>x.id===id); if(m){ m[f]= (f==='adj'||f==='price'||f==='salePrice')?(+v||0):v; save(); } }
+function delMez(id){ if(!confirm('למחוק מזוזה? (תעבור לסל המיחזור)'))return; softDelete(data.mezuzot,id); selectedMez.delete(id); save(); }
 
 // ---- bulk selection & delete ----
 const selectedMez = new Set();
@@ -804,11 +907,11 @@ function applyBulkUpdate(){
 function deleteSelectedMez(){
   const n = selectedMez.size;
   if (!n) return;
-  if (!confirm('למחוק '+n+' מזוזות מסומנות? פעולה זו תימחק גם בגיליון.')) return;
-  data.mezuzot = data.mezuzot.filter(m=>!selectedMez.has(m.id));
+  if (!confirm('למחוק '+n+' מזוזות מסומנות? (יעברו לסל המיחזור)')) return;
+  data.mezuzot.forEach(m=>{ if(selectedMez.has(m.id)) { m.deleted=1; m.deletedAt=new Date().toISOString().slice(0,10); } });
   selectedMez.clear();
   save(); updateSelCount();
-  toast(n+' מזוזות נמחקו');
+  toast(n+' מזוזות הועברו לסל המיחזור');
 }
 
 // ---- image per mezuza (compressed, stored on the record) ----
@@ -857,7 +960,7 @@ function showMezuzaDetails(id){
   document.getElementById('detailOverlay').classList.add('show');
 }
 function closeDetails(){ document.getElementById('detailOverlay').classList.remove('show'); }
-function findBySku(sku){ sku=String(sku).trim(); return data.mezuzot.find(m=>String(m.sku).trim()===sku); }
+function findBySku(sku){ sku=String(sku).trim(); return alive(data.mezuzot).find(m=>String(m.sku).trim()===sku); }
 
 // ---- barcode / QR scanner ----
 let _scanner = null;
@@ -916,15 +1019,16 @@ function addPayment() {
 }
 function renderPayments() {
   const t = document.getElementById('tbl-payments');
-  if (!data.payments.length) { t.innerHTML = '<tr><td class="empty">אין תשלומים</td></tr>'; return; }
+  const arr = alive(data.payments);
+  if (!arr.length) { t.innerHTML = '<tr><td class="empty">אין תשלומים</td></tr>'; return; }
   let h = '<thead><tr><th>שם</th><th>תאריך</th><th>סך ששולם</th><th>הערה</th><th></th></tr></thead><tbody>';
-  [...data.payments].sort((a,b)=>b.date.localeCompare(a.date)).forEach(p=>{
+  [...arr].sort((a,b)=>b.date.localeCompare(a.date)).forEach(p=>{
     h += `<tr><td>${esc(p.name)}</td><td>${p.date}</td><td class="money">${ILS(p.amount)}</td><td>${esc(p.note)}</td>
       <td><button class="btn btn-danger" onclick="delPay('${p.id}')">מחק</button></td></tr>`;
   });
   t.innerHTML = h + '</tbody>';
 }
-function delPay(id){ if(!confirm('למחוק תשלום?'))return; data.payments=data.payments.filter(x=>x.id!==id); save(); }
+function delPay(id){ if(!confirm('למחוק תשלום? (יעבור לסל המיחזור)'))return; softDelete(data.payments,id); save(); }
 
 // ============ EXPENSES (הוצאות שוטפות) ============
 function addExpense(){
@@ -944,7 +1048,7 @@ function addExpense(){
 }
 function renderExpenses(){
   const t = document.getElementById('tbl-expenses'); if(!t) return;
-  const arr = data.expenses||[];
+  const arr = alive(data.expenses);
   if (!arr.length){ t.innerHTML='<tr><td class="empty">אין הוצאות</td></tr>'; return; }
   let total=0;
   let h='<thead><tr><th>תאריך</th><th>קטגוריה</th><th>סכום</th><th>הערה</th><th></th></tr></thead><tbody>';
@@ -956,7 +1060,7 @@ function renderExpenses(){
   h+=`<tr style="background:#fed7d7;font-weight:800"><td colspan="2">סה"כ הוצאות</td><td class="money">${ILS(total)}</td><td colspan="2"></td></tr>`;
   t.innerHTML=h+'</tbody>';
 }
-function delExpense(id){ if(!confirm('למחוק הוצאה?'))return; data.expenses=data.expenses.filter(x=>x.id!==id); save(); }
+function delExpense(id){ if(!confirm('למחוק הוצאה? (תעבור לסל המיחזור)'))return; softDelete(data.expenses,id); save(); }
 
 // ============ INCOME (הכנסות צדדיות) ============
 function addIncome(){
@@ -976,7 +1080,7 @@ function addIncome(){
 }
 function renderIncome(){
   const t = document.getElementById('tbl-income'); if(!t) return;
-  const arr = data.income||[];
+  const arr = alive(data.income);
   if (!arr.length){ t.innerHTML='<tr><td class="empty">אין הכנסות</td></tr>'; return; }
   let total=0;
   let h='<thead><tr><th>תאריך</th><th>מקור</th><th>סכום</th><th>הערה</th><th></th></tr></thead><tbody>';
@@ -988,38 +1092,139 @@ function renderIncome(){
   h+=`<tr style="background:#c6f6d5;font-weight:800"><td colspan="2">סה"כ הכנסות</td><td class="money">${ILS(total)}</td><td colspan="2"></td></tr>`;
   t.innerHTML=h+'</tbody>';
 }
-function delIncome(id){ if(!confirm('למחוק הכנסה?'))return; data.income=data.income.filter(x=>x.id!==id); save(); }
-function sumExpenses(){ return (data.expenses||[]).reduce((a,b)=>a+(b.amount||0),0); }
-function sumIncome(){ return (data.income||[]).reduce((a,b)=>a+(b.amount||0),0); }
+function delIncome(id){ if(!confirm('למחוק הכנסה? (תעבור לסל המיחזור)'))return; softDelete(data.income,id); save(); }
+function sumExpenses(){ return alive(data.expenses).reduce((a,b)=>a+(b.amount||0),0); }
+function sumIncome(){ return alive(data.income).reduce((a,b)=>a+(b.amount||0),0); }
+
+// ============ תקבולים מכתר ============
+function addKeterReceipt(){
+  if (!can('payments')) return toast('אין הרשאה');
+  const amount = +document.getElementById('kr-amount').value||0;
+  if (!amount) return toast('הזן סכום');
+  if (!data.keterReceipts) data.keterReceipts = [];
+  data.keterReceipts.push({
+    id: uid(),
+    date: document.getElementById('kr-date').value || new Date().toISOString().slice(0,10),
+    amount,
+    note: document.getElementById('kr-note').value.trim()
+  });
+  ['kr-amount','kr-note'].forEach(i=>document.getElementById(i).value='');
+  save(); toast('תקבול מכתר נרשם');
+}
+function renderKeterReceipts(){
+  const t = document.getElementById('tbl-keter-receipts'); if(!t) return;
+  const arr = alive(data.keterReceipts);
+  const charges = keterCharges(), paid = keterPaid();
+  let h = '<thead><tr><th>תאריך</th><th>סכום</th><th>הערה</th><th></th></tr></thead><tbody>';
+  if (!arr.length) h += '<tr><td class="empty" colspan="4">אין תקבולים מכתר</td></tr>';
+  [...arr].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).forEach(r=>{
+    h += `<tr><td>${r.date||''}</td><td class="money">${ILS(r.amount)}</td><td>${esc(r.note)}</td>
+      <td><button class="btn btn-danger" onclick="delKeterReceipt('${r.id}')">מחק</button></td></tr>`;
+  });
+  h += `<tr style="background:#edf2f7;font-weight:800"><td>חיוב מצטבר (מזוזות שאושרו)</td><td class="money">${ILS(charges)}</td><td colspan="2"></td></tr>
+    <tr style="background:#edf2f7;font-weight:800"><td>סה"כ שולם ע"י כתר</td><td class="money">${ILS(paid)}</td><td colspan="2"></td></tr>
+    <tr style="background:${charges-paid>0?'#fed7d7':'#c6f6d5'};font-weight:800"><td>יתרה שכתר חייב</td><td class="money ${charges-paid>0?'pos':'zero'}">${ILS(charges-paid)}</td><td colspan="2"></td></tr>`;
+  t.innerHTML = h + '</tbody>';
+}
+function delKeterReceipt(id){ if(!confirm('למחוק תקבול? (יעבור לסל המיחזור)'))return; softDelete(data.keterReceipts,id); save(); }
+
+// ============ תקבולים מלקוחות (מכירות כשר) ============
+function addCustomerReceipt(){
+  if (!can('payments')) return toast('אין הרשאה');
+  const customer = document.getElementById('cr-customer').value.trim();
+  const amount = +document.getElementById('cr-amount').value||0;
+  if (!customer || !amount) return toast('מלא לקוח וסכום');
+  if (!data.customerReceipts) data.customerReceipts = [];
+  data.customerReceipts.push({
+    id: uid(),
+    date: document.getElementById('cr-date').value || new Date().toISOString().slice(0,10),
+    customer, amount,
+    note: document.getElementById('cr-note').value.trim()
+  });
+  ['cr-customer','cr-amount','cr-note'].forEach(i=>document.getElementById(i).value='');
+  save(); toast('תקבול מלקוח נרשם');
+}
+function renderCustomerReceipts(){
+  const t = document.getElementById('tbl-customer-receipts'); if(!t) return;
+  const arr = alive(data.customerReceipts);
+  let h = '<thead><tr><th>תאריך</th><th>לקוח</th><th>סכום</th><th>הערה</th><th></th></tr></thead><tbody>';
+  if (!arr.length) h += '<tr><td class="empty" colspan="5">אין תקבולים מלקוחות</td></tr>';
+  [...arr].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).forEach(r=>{
+    h += `<tr><td>${r.date||''}</td><td>${esc(r.customer)}</td><td class="money">${ILS(r.amount)}</td><td>${esc(r.note)}</td>
+      <td><button class="btn btn-danger" onclick="delCustomerReceipt('${r.id}')">מחק</button></td></tr>`;
+  });
+  t.innerHTML = h + '</tbody>';
+  // balances per customer
+  const bt = document.getElementById('tbl-customer-balance'); if(!bt) return;
+  const charges = customerCharges(), paid = customerPaid();
+  const names = [...new Set([...Object.keys(charges), ...Object.keys(paid)])].sort();
+  if (!names.length){ bt.innerHTML = '<tr><td class="empty">אין מכירות ללקוחות (מזוזות "כשר" עם שם לקוח)</td></tr>'; return; }
+  let bh = '<thead><tr><th>לקוח</th><th>חיוב (מכירות)</th><th>שולם</th><th>יתרה</th></tr></thead><tbody>';
+  names.forEach(n=>{
+    const c=charges[n]||0, p=paid[n]||0, bal=c-p;
+    bh += `<tr><td>${esc(n)}</td><td class="money">${ILS(c)}</td><td class="money">${ILS(p)}</td><td class="money ${bal>0?'pos':'zero'}">${ILS(bal)}</td></tr>`;
+  });
+  bt.innerHTML = bh + '</tbody>';
+}
+function delCustomerReceipt(id){ if(!confirm('למחוק תקבול? (יעבור לסל המיחזור)'))return; softDelete(data.customerReceipts,id); save(); }
 
 // ============ REPORTS / BALANCES ============
 // build owed amounts per person key "סופר: שם" / "מגיה מחשב: שם" / "מגיה גברא: שם"
+// עלות ההגהות שבוצעו על מזוזה (לפי המחירון הנוכחי)
+function proofCost(m) {
+  let c = 0;
+  if (m.comp) { const p=(data.computer||[]).find(x=>x.name===m.comp); c += p?p.price:0; }
+  if (m.g1)   { const p=(data.gavra||[]).find(x=>x.name===m.g1);   c += p?p.price:0; }
+  if (m.g2)   { const p=(data.gavra||[]).find(x=>x.name===m.g2);   c += p?p.price:0; }
+  return c;
+}
 function computeOwed() {
   const owed = {}; // key -> amount
   const add = (k,v)=>{ if(!k||!v) return; owed[k]=(owed[k]||0)+v; };
-  data.mezuzot.forEach(m=>{
-    add('סופר: '+m.scribe, scribePay(m));
-    if (m.comp) { const p=data.computer.find(x=>x.name===m.comp); add('מגיה מחשב: '+m.comp, p?p.price:0); }
-    if (m.g1) { const p=data.gavra.find(x=>x.name===m.g1); add('מגיה גברא: '+m.g1, p?p.price:0); }
-    if (m.g2) { const p=data.gavra.find(x=>x.name===m.g2); add('מגיה גברא: '+m.g2, p?p.price:0); }
+  alive(data.mezuzot).forEach(m=>{
+    // פסול: הסופר לא מקבל תשלום וגם מקוזז ממנו עלות ההגהות שבוצעו
+    add('סופר: '+m.scribe, scribePay(m) - (m.approve==='פסול' ? proofCost(m) : 0));
+    if (m.comp) { const p=(data.computer||[]).find(x=>x.name===m.comp); add('מגיה מחשב: '+m.comp, p?p.price:0); }
+    if (m.g1) { const p=(data.gavra||[]).find(x=>x.name===m.g1); add('מגיה גברא: '+m.g1, p?p.price:0); }
+    if (m.g2) { const p=(data.gavra||[]).find(x=>x.name===m.g2); add('מגיה גברא: '+m.g2, p?p.price:0); }
   });
   return owed;
 }
 function computePaid() {
   const paid = {};
-  data.payments.forEach(p=>{ paid[p.name]=(paid[p.name]||0)+p.amount; });
+  alive(data.payments).forEach(p=>{ paid[p.name]=(paid[p.name]||0)+p.amount; });
   return paid;
+}
+// ---- חיוב כתר: כל מזוזה שאושרה מחויבת לפי מחיר המכירה לכתר במחירון הסופר ----
+function keterPrice(m) {
+  const s = (data.scribes||[]).find(x=>x.name===m.scribe);
+  if (!s) return 0;
+  return m.product==='מזוזה ארי' ? (s.kari||0) : (s.kby||0);
+}
+function keterCharges(){ return alive(data.mezuzot).filter(m=>m.approve==='אושר').reduce((a,m)=>a+keterPrice(m),0); }
+function keterPaid(){ return alive(data.keterReceipts).reduce((a,r)=>a+(r.amount||0),0); }
+// ---- מכירות "כשר" ללקוחות אחרים ----
+function customerCharges(){
+  const by = {};
+  alive(data.mezuzot).filter(m=>m.approve==='כשר' && m.buyer).forEach(m=>{ by[m.buyer]=(by[m.buyer]||0)+(m.salePrice||0); });
+  return by;
+}
+function customerPaid(){
+  const by = {};
+  alive(data.customerReceipts).forEach(r=>{ by[r.customer]=(by[r.customer]||0)+(r.amount||0); });
+  return by;
 }
 function renderReports() {
   const owed = computeOwed(), paid = computePaid();
   const keys = [...new Set([...Object.keys(owed), ...Object.keys(paid)])].sort();
+  const mez = alive(data.mezuzot);
   // stats
   const totalOwed = Object.values(owed).reduce((a,b)=>a+b,0);
   const totalPaid = Object.values(paid).reduce((a,b)=>a+b,0);
   const money = can('reports_money');
-  const pending = data.mezuzot.filter(m=>m.approve==='ממתין').length;
+  const pending = mez.filter(m=>m.approve==='ממתין').length;
   let statsHtml = `
-    <div class="stat-card"><div class="num">${data.mezuzot.length}</div><div class="lbl">סה"כ מזוזות</div></div>
+    <div class="stat-card"><div class="num">${mez.length}</div><div class="lbl">סה"כ מזוזות</div></div>
     <div class="stat-card" style="border-right-color:#d69e2e"><div class="num">${pending}</div><div class="lbl">ממתינים לאישור</div></div>`;
   if (money) {
     const totInc = sumIncome(), totExp = sumExpenses();
@@ -1053,21 +1258,73 @@ function renderReports() {
     h+=`<tr style="background:#edf2f7;font-weight:800"><td>סה"כ</td><td class="money">${ILS(totalOwed)}</td><td class="money">${ILS(totalPaid)}</td><td class="money pos">${ILS(totalOwed-totalPaid)}</td></tr>`;
     t.innerHTML=h+'</tbody>';
   }
+  // scribe report: written / approved / pasul / kosher / gross / proof deduction / net
+  const srt = document.getElementById('tbl-scribe-report');
+  if (srt) {
+    const byScribe = {};
+    mez.forEach(m=>{
+      if (!byScribe[m.scribe]) byScribe[m.scribe] = { written:0, approved:0, pasul:0, kosher:0, pending:0, gross:0, deduct:0 };
+      const b = byScribe[m.scribe];
+      b.written++;
+      if (m.approve==='אושר') b.approved++;
+      else if (m.approve==='פסול') { b.pasul++; b.deduct += proofCost(m); }
+      else if (m.approve==='כשר') b.kosher++;
+      else b.pending++;
+      b.gross += scribePay(m);
+    });
+    const names = Object.keys(byScribe).sort();
+    if (!names.length) srt.innerHTML = '<tr><td class="empty">אין נתונים</td></tr>';
+    else {
+      let h = '<thead><tr><th>סופר</th><th>נכתבו</th><th>אושרו</th><th>נפסלו</th><th>כשר (לא אושר)</th><th>ממתינים</th><th>זכאות ברוטו</th><th>קיזוז הגהות (פסולים)</th><th>נטו לתשלום</th></tr></thead><tbody>';
+      names.forEach(n=>{
+        const b = byScribe[n];
+        h += `<tr><td><b>${esc(n)}</b></td><td>${b.written}</td><td>${b.approved}</td><td>${b.pasul}</td><td>${b.kosher}</td><td>${b.pending}</td>
+          <td class="money">${ILS(b.gross)}</td><td class="money pos">${b.deduct?'-'+ILS(b.deduct).slice(1):ILS(0)}</td><td class="money">${ILS(b.gross-b.deduct)}</td></tr>`;
+      });
+      srt.innerHTML = h + '</tbody>';
+    }
+  }
+  // keter summary
+  const kt = document.getElementById('tbl-keter-summary');
+  if (kt) {
+    const charges = keterCharges(), kpaid = keterPaid(), approvedCount = mez.filter(m=>m.approve==='אושר').length;
+    kt.innerHTML = `<thead><tr><th>סעיף</th><th>ערך</th></tr></thead><tbody>
+      <tr><td>מזוזות שאושרו (חייבות לכתר)</td><td>${approvedCount}</td></tr>
+      <tr><td>חיוב מצטבר</td><td class="money">${ILS(charges)}</td></tr>
+      <tr><td>שולם ע"י כתר</td><td class="money">${ILS(kpaid)}</td></tr>
+      <tr style="background:${charges-kpaid>0?'#fed7d7':'#c6f6d5'};font-weight:800"><td>יתרה שכתר חייב</td><td class="money ${charges-kpaid>0?'pos':'zero'}">${ILS(charges-kpaid)}</td></tr>
+      </tbody>`;
+  }
+  // customers summary
+  const ct = document.getElementById('tbl-customer-summary');
+  if (ct) {
+    const charges = customerCharges(), cpaid = customerPaid();
+    const names = [...new Set([...Object.keys(charges), ...Object.keys(cpaid)])].sort();
+    if (!names.length) ct.innerHTML = '<tr><td class="empty">אין מכירות ללקוחות</td></tr>';
+    else {
+      let h = '<thead><tr><th>לקוח</th><th>חיוב (מכירות)</th><th>שולם</th><th>יתרה</th></tr></thead><tbody>';
+      names.forEach(n=>{
+        const c=charges[n]||0, p=cpaid[n]||0, bal=c-p;
+        h += `<tr><td>${esc(n)}</td><td class="money">${ILS(c)}</td><td class="money">${ILS(p)}</td><td class="money ${bal>0?'pos':'zero'}">${ILS(bal)}</td></tr>`;
+      });
+      ct.innerHTML = h + '</tbody>';
+    }
+  }
   // status report
   const stCount = {'ממתין':0,'אושר':0,'פסול':0,'כשר':0};
   let keterYes=0;
-  data.mezuzot.forEach(m=>{ stCount[m.approve]=(stCount[m.approve]||0)+1; if(m.keter==='כן')keterYes++; });
+  mez.forEach(m=>{ stCount[m.approve]=(stCount[m.approve]||0)+1; if(m.keter==='כן')keterYes++; });
   const st = document.getElementById('tbl-status');
   st.innerHTML = `<thead><tr><th>סטטוס</th><th>כמות</th></tr></thead><tbody>
     <tr><td>ממתין לאישור</td><td>${stCount['ממתין']}</td></tr>
     <tr><td>אושר</td><td>${stCount['אושר']}</td></tr>
     <tr><td>לא אושר — פסול</td><td>${stCount['פסול']}</td></tr>
     <tr><td>לא אושר — כשר</td><td>${stCount['כשר']}</td></tr>
-    <tr style="background:#edf2f7;font-weight:700"><td>נשלחו לכתר</td><td>${keterYes} / ${data.mezuzot.length}</td></tr>
+    <tr style="background:#edf2f7;font-weight:700"><td>נשלחו לכתר</td><td>${keterYes} / ${mez.length}</td></tr>
     </tbody>`;
   // monthly
   const mon = {};
-  data.mezuzot.forEach(m=>{
+  mez.forEach(m=>{
     const mk = (m.date||'').slice(0,7) || 'ללא תאריך';
     if(!mon[mk]) mon[mk]={count:0, owed:0};
     mon[mk].count++; mon[mk].owed += scribePay(m);
@@ -1087,17 +1344,18 @@ let charts = {};
 function mkChart(id, cfg) { if(charts[id]) charts[id].destroy(); charts[id]=new Chart(document.getElementById(id), cfg); }
 function renderCharts() {
   const palette = ['#2b6cb0','#38a169','#d69e2e','#e53e3e','#805ad5','#319795','#dd6b20','#3182ce'];
+  const mez = alive(data.mezuzot);
   // status
   const stCount = {'ממתין':0,'אושר':0,'פסול':0,'כשר':0};
-  data.mezuzot.forEach(m=>stCount[m.approve]=(stCount[m.approve]||0)+1);
+  mez.forEach(m=>stCount[m.approve]=(stCount[m.approve]||0)+1);
   mkChart('ch-status', { type:'doughnut', data:{ labels:['ממתין','אושר','פסול','כשר'], datasets:[{ data:Object.values(stCount), backgroundColor:['#a0aec0','#38a169','#e53e3e','#d69e2e'] }] }, options:{ plugins:{legend:{position:'bottom'}} } });
   // by scribe
   const byScribe = {};
-  data.mezuzot.forEach(m=>byScribe[m.scribe]=(byScribe[m.scribe]||0)+1);
+  mez.forEach(m=>byScribe[m.scribe]=(byScribe[m.scribe]||0)+1);
   mkChart('ch-scribe', { type:'bar', data:{ labels:Object.keys(byScribe), datasets:[{ label:'מזוזות', data:Object.values(byScribe), backgroundColor:'#2b6cb0' }] }, options:{ plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,ticks:{precision:0}}} } });
   // by month
   const byMon = {};
-  data.mezuzot.forEach(m=>{ const k=(m.date||'').slice(0,7)||'—'; byMon[k]=(byMon[k]||0)+1; });
+  mez.forEach(m=>{ const k=(m.date||'').slice(0,7)||'—'; byMon[k]=(byMon[k]||0)+1; });
   const mk = Object.keys(byMon).sort();
   mkChart('ch-month', { type:'line', data:{ labels:mk, datasets:[{ label:'מזוזות', data:mk.map(k=>byMon[k]), borderColor:'#38a169', backgroundColor:'rgba(56,161,105,.15)', fill:true, tension:.3 }] }, options:{ plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,ticks:{precision:0}}} } });
   // debt
@@ -1124,20 +1382,25 @@ function importBackup(e) {
 }
 function exportExcel() {
   const wb = XLSX.utils.book_new();
-  const ws1 = XLSX.utils.json_to_sheet(data.scribes.map(s=>({'שם סופר':s.name,'מזוזה בית יוסף':s.by,'מזוזה ארי':s.ari})));
+  const ws1 = XLSX.utils.json_to_sheet(alive(data.scribes).map(s=>({'שם סופר':s.name,'דרגה':s.grade||'','בית יוסף (לסופר)':s.by,'ארי (לסופר)':s.ari,'לכתר - בית יוסף':s.kby||0,'לכתר - ארי':s.kari||0})));
   XLSX.utils.book_append_sheet(wb, ws1, 'מחירון סופרים');
-  const wsC = XLSX.utils.json_to_sheet(data.computer.map(s=>({'שם מגיה':s.name,'מחיר ליחי':s.price})));
+  const wsC = XLSX.utils.json_to_sheet(alive(data.computer).map(s=>({'שם מגיה':s.name,'מחיר ליחי':s.price})));
   XLSX.utils.book_append_sheet(wb, wsC, 'הגהת מחשב');
-  const wsG = XLSX.utils.json_to_sheet(data.gavra.map(s=>({'שם מגיה':s.name,'מחיר ליחי':s.price})));
+  const wsG = XLSX.utils.json_to_sheet(alive(data.gavra).map(s=>({'שם מגיה':s.name,'מחיר ליחי':s.price})));
   XLSX.utils.book_append_sheet(wb, wsG, 'הגהת גברא');
-  const ws2 = XLSX.utils.json_to_sheet(data.mezuzot.map(m=>({
+  const ws2 = XLSX.utils.json_to_sheet(alive(data.mezuzot).map(m=>({
     'מק"ט':m.sku,'שם סופר':m.scribe,'מוצר':m.product,'תאריך':m.date,'מחיר ליחי':m.price,
     'הגהת מחשב':m.comp,'גברא 1':m.g1,'גברא 2':m.g2,'אישור הרב':m.approve,'לתשלום לסופר':scribePay(m),
+    'לקוח (כשר)':m.buyer||'','מחיר מכירה':m.salePrice||'',
     'הולוגרמה בדץ':m.holo,'נשלח לכתר':m.keter
   })));
   XLSX.utils.book_append_sheet(wb, ws2, 'מזוזות');
-  const ws3 = XLSX.utils.json_to_sheet(data.payments.map(p=>({'שם':p.name,'תאריך':p.date,'סך ששולם':p.amount,'הערה':p.note})));
+  const ws3 = XLSX.utils.json_to_sheet(alive(data.payments).map(p=>({'שם':p.name,'תאריך':p.date,'סך ששולם':p.amount,'הערה':p.note})));
   XLSX.utils.book_append_sheet(wb, ws3, 'תשלומים');
+  const wsK = XLSX.utils.json_to_sheet(alive(data.keterReceipts).map(r=>({'תאריך':r.date,'סכום':r.amount,'הערה':r.note})));
+  XLSX.utils.book_append_sheet(wb, wsK, 'תקבולים מכתר');
+  const wsCR = XLSX.utils.json_to_sheet(alive(data.customerReceipts).map(r=>({'תאריך':r.date,'לקוח':r.customer,'סכום':r.amount,'הערה':r.note})));
+  XLSX.utils.book_append_sheet(wb, wsCR, 'תקבולים מלקוחות');
   // balances
   const owed=computeOwed(), paid=computePaid();
   const keys=[...new Set([...Object.keys(owed),...Object.keys(paid)])].sort();
@@ -1175,7 +1438,7 @@ const COLUMN_HIDE = {
 let currentUser = null;
 
 function can(cap){
-  if (!data.users || !data.users.length) return true;   // לפני שהוגדרו משתמשים — גישה פתוחה
+  if (!authActive()) return true;   // לפני שהוגדרו משתמשים — גישה פתוחה
   if (!currentUser) return false;
   const p = PERMISSIONS[currentUser.role] || {};
   return !!p[cap];
@@ -1188,21 +1451,21 @@ async function hashPass(name, pass){
 }
 
 // ---- login gate ----
-function authActive(){ return data.users && data.users.length > 0; }
+function authActive(){ return alive(data.users).length > 0; }
 function fillLoginUsers(){
   const sel = document.getElementById('login-user');
-  sel.innerHTML = (data.users||[]).map(u=>`<option value="${u.id}">${esc(u.name)} (${ROLE_LABELS[u.role]||u.role})</option>`).join('');
+  sel.innerHTML = alive(data.users).map(u=>`<option value="${u.id}">${esc(u.name)} (${ROLE_LABELS[u.role]||u.role})</option>`).join('');
 }
 function checkAuth(){
   if (!authActive()){ currentUser = null; document.getElementById('loginOverlay').classList.remove('show'); applyPermissions(); return; }
   const sid = sessionStorage.getItem('mz_user');
-  const u = sid && data.users.find(x=>x.id===sid);
+  const u = sid && alive(data.users).find(x=>x.id===sid);
   if (u){ currentUser = u; document.getElementById('loginOverlay').classList.remove('show'); applyPermissions(); }
   else { currentUser = null; fillLoginUsers(); document.getElementById('loginOverlay').classList.add('show'); }
 }
 async function doLogin(){
   const id = document.getElementById('login-user').value;
-  const u = data.users.find(x=>x.id===id);
+  const u = alive(data.users).find(x=>x.id===id);
   const err = document.getElementById('login-err');
   if (!u){ err.textContent='בחר משתמש'; err.style.display='block'; return; }
   const h = await hashPass(u.name, document.getElementById('login-pass').value);
@@ -1250,9 +1513,12 @@ function applyPermissions(){
   }
   // report sections: money vs status
   const money = can('reports_money');
-  ['card-finance','card-balances','card-monthly'].forEach(id=>{ const c=document.getElementById(id); if(c) c.style.display = money ? '' : 'none'; });
+  ['card-finance','card-balances','card-monthly','card-scribe-report','card-keter','card-customers'].forEach(id=>{ const c=document.getElementById(id); if(c) c.style.display = money ? '' : 'none'; });
   const cs = document.getElementById('card-status'); if (cs) cs.style.display = can('reports_status') ? '' : 'none';
   toggleAddForms();
+  // recycle bin: managers only
+  const bin = document.getElementById('btn-bin');
+  if (bin) bin.style.display = can('users') ? '' : 'none';
   // user chip
   const chip = document.getElementById('userChip');
   if (currentUser){ chip.style.display='inline-flex'; document.getElementById('userChipName').textContent = currentUser.name + ' · ' + (ROLE_LABELS[currentUser.role]||''); }
@@ -1264,8 +1530,9 @@ function toggleAddForms(){
   ['psec-scribes','psec-computer','psec-gavra'].forEach(id=>{ const c=document.querySelector('#'+id+' .card'); if(c) c.style.display=pl; });
   // mezuza add-card (first card in mezuzot tab)
   const mezAdd = document.querySelector('#tab-mezuzot .card'); if (mezAdd) mezAdd.style.display = can('mezuzot_edit') ? '' : 'none';
-  // payment add-card
-  const payAdd = document.querySelector('#tab-payments .card'); if (payAdd) payAdd.style.display = can('payments') ? '' : 'none';
+  // payment / receipt add-cards
+  const pay = can('payments') ? '' : 'none';
+  ['paysec-scribes','paysec-keter','paysec-customers'].forEach(id=>{ const c=document.querySelector('#'+id+' .card'); if(c) c.style.display=pay; });
   // finance add-cards (expenses + income)
   const fin = can('finance') ? '' : 'none';
   ['finsec-expenses','finsec-income'].forEach(id=>{ const c=document.querySelector('#'+id+' .card'); if(c) c.style.display=fin; });
@@ -1275,6 +1542,47 @@ function showFinSec(id, btn){
   document.querySelectorAll('#tab-finance .section-tab').forEach(b=>b.classList.remove('active'));
   document.getElementById('finsec-'+id).style.display='block';
   btn.classList.add('active');
+}
+function showPaySec(id, btn){
+  document.querySelectorAll('.pay-sec').forEach(p=>p.style.display='none');
+  document.querySelectorAll('#tab-payments .section-tab').forEach(b=>b.classList.remove('active'));
+  document.getElementById('paysec-'+id).style.display='block';
+  btn.classList.add('active');
+}
+
+// ============ סל מיחזור ============
+const BIN_GROUPS = [
+  { key:'mezuzot', label:'מזוזות', desc:m=>`${m.sku} · ${m.scribe||''} · ${m.product||''}` },
+  { key:'scribes', label:'סופרים', desc:s=>s.name },
+  { key:'computer', label:'מגיהי מחשב', desc:s=>s.name },
+  { key:'gavra', label:'מגיהי גברא', desc:s=>s.name },
+  { key:'payments', label:'תשלומים', desc:p=>`${p.name} · ${ILS(p.amount)} · ${p.date||''}` },
+  { key:'expenses', label:'הוצאות', desc:x=>`${x.category||''} · ${ILS(x.amount)} · ${x.date||''}` },
+  { key:'income', label:'הכנסות', desc:x=>`${x.source||''} · ${ILS(x.amount)} · ${x.date||''}` },
+  { key:'keterReceipts', label:'תקבולים מכתר', desc:x=>`${ILS(x.amount)} · ${x.date||''}` },
+  { key:'customerReceipts', label:'תקבולים מלקוחות', desc:x=>`${x.customer||''} · ${ILS(x.amount)} · ${x.date||''}` },
+  { key:'users', label:'משתמשים', desc:u=>u.name }
+];
+function openBin(){
+  const body = document.getElementById('bin-body');
+  let h = '', total = 0;
+  BIN_GROUPS.forEach(g=>{
+    const del = (data[g.key]||[]).filter(x=>x.deleted);
+    if (!del.length) return;
+    total += del.length;
+    h += `<h4 style="margin:12px 0 6px;color:#1a365d">${g.label} (${del.length})</h4>`;
+    del.forEach(x=>{
+      h += `<div class="det-row"><span class="k">${esc(g.desc(x))}${x.deletedAt?' <small style="color:#a0aec0">(נמחק '+x.deletedAt+')</small>':''}</span>
+        <span class="v"><button class="btn btn-success" style="padding:4px 12px;font-size:.78rem" onclick="restoreItem('${g.key}','${x.id}')">שחזר</button></span></div>`;
+    });
+  });
+  body.innerHTML = total ? h : '<div class="empty">סל המיחזור ריק</div>';
+  document.getElementById('binOverlay').classList.add('show');
+}
+function closeBin(){ document.getElementById('binOverlay').classList.remove('show'); }
+function restoreItem(key, id){
+  const x = (data[key]||[]).find(i=>i.id===id);
+  if (x){ delete x.deleted; delete x.deletedAt; save(); toast('שוחזר בהצלחה'); openBin(); }
 }
 // disable inline editing in the mezuzot table for view-only roles
 function lockMezuzotEditing(){
@@ -1290,7 +1598,7 @@ async function addUser(){
   const pass = document.getElementById('u-pass').value;
   const role = document.getElementById('u-role').value;
   if (!name || !pass) return toast('מלא שם וסיסמה');
-  if ((data.users||[]).some(u=>u.name===name)) return toast('שם כבר קיים');
+  if (alive(data.users).some(u=>u.name===name)) return toast('שם כבר קיים');
   if (!data.users) data.users = [];
   data.users.push({ id: uid(), name, role, hash: await hashPass(name, pass) });
   document.getElementById('u-name').value=''; document.getElementById('u-pass').value='';
@@ -1299,7 +1607,7 @@ async function addUser(){
 function renderUsers(){
   const t = document.getElementById('tbl-users');
   if (!t) return;
-  const us = data.users||[];
+  const us = alive(data.users);
   if (!us.length){ t.innerHTML = '<tr><td class="empty">אין משתמשים — הוסף את עצמך כמנהל ראשון</td></tr>'; return; }
   let h = '<thead><tr><th>שם</th><th>תפקיד</th><th>סיסמה</th><th></th></tr></thead><tbody>';
   us.forEach(u=>{
@@ -1318,8 +1626,8 @@ async function resetUserPass(id){
   u.hash = await hashPass(u.name, p); save(); toast('הסיסמה עודכנה');
 }
 function delUser(id){
-  if (!confirm('למחוק משתמש?')) return;
-  data.users = data.users.filter(x=>x.id!==id);
+  if (!confirm('למחוק משתמש? (יעבור לסל המיחזור)')) return;
+  softDelete(data.users,id);
   if (currentUser && currentUser.id===id) logout();
   save();
 }
@@ -1327,7 +1635,8 @@ function delUser(id){
 // ============ RENDER ALL ============
 function renderAll() {
   renderScribes(); renderProof('computer'); renderProof('gavra');
-  fillSelects(); renderMezuzot(); renderPayments(); renderExpenses(); renderIncome(); renderReports(); renderUsers();
+  fillSelects(); renderMezuzot(); renderPayments(); renderExpenses(); renderIncome();
+  renderKeterReceipts(); renderCustomerReceipts(); renderReports(); renderUsers();
   lockMezuzotEditing();
   if (document.getElementById('tab-charts').classList.contains('active')) renderCharts();
 }
@@ -1337,6 +1646,8 @@ document.getElementById('mz-date').value = new Date().toISOString().slice(0,10);
 document.getElementById('pay-date').value = new Date().toISOString().slice(0,10);
 document.getElementById('ex-date').value = new Date().toISOString().slice(0,10);
 document.getElementById('in-date').value = new Date().toISOString().slice(0,10);
+document.getElementById('kr-date').value = new Date().toISOString().slice(0,10);
+document.getElementById('cr-date').value = new Date().toISOString().slice(0,10);
 if (GS_URL) startSheetSync(); else setSync('', '— לא מחובר (לחץ ⚙ הגדר שרת)');
 openSkuFromUrl();
 </script>
