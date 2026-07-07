@@ -99,6 +99,17 @@ function getSheet(cfg) {
     s.appendRow(cfg.headers);
     s.getRange(1, 1, 1, cfg.headers.length).setFontWeight('bold').setBackground('#edf2f7');
     s.setFrozenRows(1);
+  } else {
+    // self-heal: keep the header row in sync with the current schema
+    var cur = s.getRange(1, 1, 1, cfg.headers.length).getValues()[0];
+    for (var i = 0; i < cfg.headers.length; i++) {
+      if (String(cur[i]) !== cfg.headers[i]) {
+        s.getRange(1, 1, 1, cfg.headers.length).setValues([cfg.headers])
+         .setFontWeight('bold').setBackground('#edf2f7');
+        s.setFrozenRows(1);
+        break;
+      }
+    }
   }
   return s;
 }

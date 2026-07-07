@@ -441,6 +441,12 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
   <div class="modal" style="max-width:400px">
     <div class="modal-head"><h3>🖨 הדפסת מדבקות (<span id="print-choice-count">0</span>)</h3><span class="x" onclick="closePrintChoice()">✕</span></div>
     <div class="modal-body">
+      <div class="form-group" style="margin-bottom:12px"><label>פריסת הדפסה</label>
+        <select id="print-layout" style="padding:8px 11px;border:1.5px solid #cbd5e0;border-radius:8px;font-family:inherit">
+          <option value="a4">מדפסת רגילה — גיליון A4 (רשת מדבקות 4×11)</option>
+          <option value="single">מדפסת מדבקות — מדבקה 50×25 לכל דף</option>
+        </select>
+      </div>
       <p style="font-size:.85rem;color:#4a5568;margin-bottom:14px">מדבקה 50×25 מ"מ — בחר סוג:</p>
       <button class="btn btn-primary" style="width:100%;margin-bottom:10px;padding:12px" onclick="doPrintLabels('barcode')">▮▯▮ ברקוד + מק"ט</button>
       <button class="btn btn-success" style="width:100%;padding:12px" onclick="doPrintLabels('info')">מק"ט + סוג מזוזה + דרגת סופר</button>
@@ -754,6 +760,8 @@ function printMezuzot(list, heading) {
   if (!list.length) { toast('אין מק"טים להדפסה'); return; }
   _printList = list;
   document.getElementById('print-choice-count').textContent = list.length;
+  const lay = document.getElementById('print-layout');
+  if (lay) lay.value = localStorage.getItem('mezuzah_print_layout') || 'a4';
   document.getElementById('printChoiceOverlay').classList.add('show');
 }
 function closePrintChoice(){ document.getElementById('printChoiceOverlay').classList.remove('show'); }
@@ -766,6 +774,8 @@ function barcodeDataURL(text){
   return c.toDataURL();
 }
 function doPrintLabels(type){
+  const layout = (document.getElementById('print-layout')||{}).value || 'a4';
+  localStorage.setItem('mezuzah_print_layout', layout);
   closePrintChoice();
   const list = _printList || [];
   if (!list.length) return;
@@ -779,19 +789,28 @@ function doPrintLabels(type){
     const grade = s && s.grade ? 'דרגה ' + s.grade : '';
     return `<div class="lbl"><div class="sku big">${esc(m.sku)}</div><div class="meta">${esc(m.product||'')}</div><div class="meta">${esc(grade)}</div></div>`;
   }).join('');
+  // single = each 50x25 label is its own page (dedicated label printer);
+  // a4     = grid of 4x11 labels on a regular A4 sheet, dashed cut guides
+  const pageCss = layout==='single'
+    ? `@page { size: 50mm 25mm; margin: 0; }
+       .lbl{page-break-after:always}`
+    : `@page { size: A4; margin: 5mm; }
+       .wrap{display:flex;flex-wrap:wrap;width:200mm}
+       .lbl{outline:.5px dashed #bbb;page-break-inside:avoid}`;
+  const body = layout==='single' ? labels : `<div class="wrap">${labels}</div>`;
   const html = `<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>מדבקות מק"ט</title>
     <style>
-      @page { size: 50mm 25mm; margin: 0; }
       *{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif}
       body{margin:0}
       .lbl{width:50mm;height:25mm;display:flex;flex-direction:column;align-items:center;justify-content:center;
-           overflow:hidden;page-break-after:always;text-align:center;padding:1mm}
+           overflow:hidden;text-align:center;padding:1mm}
       .bc{width:46mm;height:12mm;object-fit:fill}
       .sku{font-size:9pt;font-weight:700;letter-spacing:.5px;margin-top:1mm}
       .sku.big{font-size:14pt;font-weight:800}
       .meta{font-size:9pt;margin-top:.6mm}
+      ${pageCss}
     </style></head><body>
-    ${labels}
+    ${body}
     <script>window.onload=function(){setTimeout(function(){window.print()},300)}<\/script>
     </body></html>`;
   const w = window.open('', '_blank');
