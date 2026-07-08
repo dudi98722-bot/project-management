@@ -176,6 +176,32 @@ tr:hover .row-actions{opacity:1}
 .ther-card .cnt{font-size:12.5px;color:var(--muted);margin-top:2px}
 .ther-card .big-n{margin-inline-start:auto;font-size:26px;font-weight:800;color:var(--brand)}
 
+/* user chip */
+#user-chip{gap:8px}
+.uav{width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,.9);color:var(--brand-d);display:inline-grid;place-items:center;font-size:11px;font-weight:800}
+
+/* note badge in list */
+.note-badge{display:inline-flex;align-items:center;gap:3px;background:var(--brand-soft);color:var(--brand-d);border-radius:20px;padding:1px 8px;font-size:11px;font-weight:700;margin-inline-start:7px;vertical-align:middle}
+
+/* notes thread in modal */
+.note-thread{display:flex;flex-direction:column;gap:9px;margin-bottom:12px;max-height:280px;overflow-y:auto;padding-inline-end:4px}
+.note-item{background:#f8f9fc;border:1px solid var(--line);border-inline-start:3px solid var(--brand);border-radius:10px;padding:10px 12px}
+.note-item .nmeta{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-bottom:5px}
+.note-item .nuser{display:inline-flex;align-items:center;gap:5px;font-weight:700;color:var(--ink)}
+.note-item .nuser .ua{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:10px;font-weight:800;color:#fff}
+.note-item .ntime{margin-inline-start:auto}
+.note-item .ntext{font-size:14px;line-height:1.5;white-space:pre-wrap}
+.note-item .ndel{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;background:#eef1f8;font-size:12px;opacity:0;transition:.15s}
+.note-item:hover .ndel{opacity:1}
+.note-item .ndel:hover{background:var(--danger);color:#fff}
+.note-empty{color:var(--muted);font-size:13px;padding:10px 0;text-align:center}
+.note-add{display:flex;gap:8px;align-items:flex-end}
+.note-add textarea{flex:1;padding:10px 12px;border:1px solid var(--line);border-radius:10px;outline:none;resize:vertical;min-height:44px;font-size:14px;background:#fff}
+.note-add textarea:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
+.note-add button{background:var(--brand);color:#fff;padding:11px 16px;border-radius:10px;font-weight:700;white-space:nowrap}
+.note-add button:hover{background:var(--brand-d)}
+.meta-line{font-size:11.5px;color:var(--muted);margin-top:14px;padding-top:10px;border-top:1px dashed var(--line);display:flex;gap:14px;flex-wrap:wrap}
+
 /* toast */
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--ink);color:#fff;padding:13px 22px;border-radius:12px;font-weight:600;box-shadow:var(--shadow-lg);z-index:200;opacity:0;transition:.3s;display:flex;align-items:center;gap:10px}
 .toast.show{transform:translateX(-50%) translateY(0);opacity:1}
@@ -208,6 +234,7 @@ tr:hover .row-actions{opacity:1}
     </div>
     <div class="top-spacer"></div>
     <div class="top-actions">
+      <button class="btn btn-ghost" id="user-chip" onclick="changeUser()" title="המשתמש שמזין למערכת — נרשם ליד כל הערה"><span class="uav" id="user-av"></span><span id="user-name">משתמש</span> ▾</button>
       <button class="btn btn-ghost" onclick="exportCSV()">⬇ ייצוא Excel</button>
       <button class="btn btn-ghost" onclick="window.print()">🖨 הדפסה</button>
       <button class="btn btn-primary" onclick="openEdit(null)">➕ מטופל חדש</button>
@@ -335,6 +362,7 @@ function waitText(r){ const w=waitDays(r); if(w==null) return '—';
   const y=Math.floor(mo/12), rm=mo%12; return y+'ש\''+(rm?' '+rm+'ח\'':'');
 }
 function fmtDate(d){ if(!d) return '—'; const p=d.split('-'); return p.length===3? p[2]+'/'+p[1]+'/'+p[0] : d; }
+function fmtDateTime(iso){ if(!iso) return ''; const d=new Date(iso); if(isNaN(d)) return ''; const p=n=>(''+n).padStart(2,'0'); return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; }
 function esc(s){ return (s==null?'':''+s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function alive(){ return DB.records.filter(r=>!r.deleted); }
 function urgClass(u){ return u=='1'?'u1':u=='2'?'u2':u=='3'?'u3':'u0'; }
@@ -414,8 +442,9 @@ function render(){
   tb.innerHTML=rows.map(r=>{
     const th=(r.requestedTherapists||[]).slice(0,3).map(t=>`<span>${esc(t)}</span>`).join('')+((r.requestedTherapists||[]).length>3?`<span>+${r.requestedTherapists.length-3}</span>`:'');
     const st=r.status==='placed'?'<span class="st placed"><span class="d"></span>שובץ</span>':r.status==='na'?'<span class="st na"><span class="d"></span>לא רלוונטי</span>':'<span class="st wait"><span class="d"></span>ממתין</span>';
+    const nc=(r.log||[]).filter(l=>!l.del).length;
     return `<tr onclick="openView('${r.uid}')">
-      <td><span class="nm">${esc(r.name)}</span>${r.preference?`<div class="sub-td">📌 ${esc(r.preference)}</div>`:''}</td>
+      <td><span class="nm">${esc(r.name)}</span>${nc?`<span class="note-badge" title="${nc} הערות">💬 ${nc}</span>`:''}${r.preference?`<div class="sub-td">📌 ${esc(r.preference)}</div>`:''}</td>
       <td class="sub-td">${esc(r.tz)||'—'}</td>
       <td>${ageText(r.birthDate)}</td>
       <td>${esc(r.fund)||'—'}</td>
@@ -577,7 +606,15 @@ function openView(uid){
             <dt>סטטוס/הערת מיון</dt><dd>${esc(r.statusNote)||'—'}</dd>
           </dl>
         </div>
-        ${r.notes?`<div class="detail-block"><h4>הערות</h4><p style="margin:0;background:#f8f9fc;padding:12px;border-radius:10px">${esc(r.notes)}</p></div>`:''}
+        ${r.notes?`<div class="detail-block"><h4>הערות כלליות</h4><p style="margin:0;background:#f8f9fc;padding:12px;border-radius:10px">${esc(r.notes)}</p></div>`:''}
+        <div class="detail-block"><h4>💬 יומן הערות ${(()=>{const n=(r.log||[]).filter(l=>!l.del).length;return n?'('+n+')':'';})()}</h4>
+          <div class="note-thread" id="note-thread">${renderNotes(r)}</div>
+          <div class="note-add">
+            <textarea id="new-note" placeholder="כתוב/י הערה חדשה… (תיחתם בשמך ובתאריך)" onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))addNote('${r.uid}')"></textarea>
+            <button onclick="addNote('${r.uid}')">➕ הוסף</button>
+          </div>
+        </div>
+        ${metaLine(r)}
       </div>
       <div class="modal-f">
         <button class="btn-save" onclick="openEdit('${r.uid}')">✏️ עריכה</button>
@@ -589,7 +626,79 @@ function openView(uid){
 }
 function quickStatus(uid,s){
   const r=DB.records.find(x=>x.uid===uid); if(!r)return;
-  r.status=s; r.placed=(s==='placed'); save(); closeModal(); render(); toast(s==='placed'?'סומן כשובץ ✅':'הוחזר לרשימת ההמתנה','ok');
+  r.status=s; r.placed=(s==='placed'); stamp(r); save(); closeModal(); render(); toast(s==='placed'?'סומן כשובץ ✅':'הוחזר לרשימת ההמתנה','ok');
+}
+
+/* ============ NOTES LOG (per-patient, attributed) ============ */
+function renderNotes(r){
+  const log=(r.log||[]).filter(l=>!l.del).sort((a,b)=>(b.ts||'').localeCompare(a.ts||''));
+  if(!log.length) return `<div class="note-empty">אין הערות עדיין — הוסף/י את הראשונה 👇</div>`;
+  return log.map(l=>`<div class="note-item">
+      <div class="nmeta">
+        <span class="nuser"><span class="ua" style="background:${colorFor(l.user||'?')}">${esc(initials(l.user||'?'))}</span>${esc(l.user||'לא ידוע')}</span>
+        <span class="ntime">${fmtDateTime(l.ts)}</span>
+        <button class="ndel" title="הסר הערה" onclick="delNote('${r.uid}','${l.id}')">🗑</button>
+      </div>
+      <div class="ntext">${esc(l.text)}</div>
+    </div>`).join('');
+}
+function addNote(uid){
+  const u=ensureUser(); if(!u){ toast('נא להזין שם משתמש כדי לרשום הערות','err'); return; }
+  const ta=document.getElementById('new-note'); if(!ta) return;
+  const t=ta.value.trim(); if(!t){ ta.focus(); return; }
+  const r=DB.records.find(x=>x.uid===uid); if(!r) return;
+  if(!r.log) r.log=[];
+  r.log.push({id:cryptoId(), text:t, user:u, ts:new Date().toISOString()});
+  save(); openView(uid); render();
+  toast('ההערה נוספה','ok');
+}
+function delNote(uid,nid){
+  const r=DB.records.find(x=>x.uid===uid); if(!r) return;
+  const n=(r.log||[]).find(l=>l.id===nid); if(!n) return;
+  n.del=true; n.delBy=getUser(); n.delAt=new Date().toISOString(); // soft-hide, keeps history
+  save(); openView(uid); render();
+  toast('ההערה הוסרה','ok');
+}
+function metaLine(r){
+  const parts=[];
+  if(r.createdBy) parts.push(`נוצר ע״י <b>${esc(r.createdBy)}</b>${r.createdAt?' · '+fmtDate((r.createdAt||'').slice(0,10)):''}`);
+  if(r.updatedBy) parts.push(`עודכן לאחרונה ע״י <b>${esc(r.updatedBy)}</b>${r.updatedAt?' · '+fmtDateTime(r.updatedAt):''}`);
+  return parts.length?`<div class="meta-line">${parts.map(p=>'<span>'+p+'</span>').join('')}</div>`:'';
+}
+function stamp(r){ r.updatedBy=getUser()||r.updatedBy; r.updatedAt=new Date().toISOString(); }
+
+/* ============ CURRENT USER ============ */
+const LS_USER='psych_user';
+function getUser(){ return (localStorage.getItem(LS_USER)||'').trim(); }
+function setUser(n){ localStorage.setItem(LS_USER,(n||'').trim()); renderUserChip(); }
+function renderUserChip(){
+  const u=getUser();
+  document.getElementById('user-name').textContent=u||'הגדר שם';
+  document.getElementById('user-av').textContent=u?initials(u):'👤';
+}
+function ensureUser(){ let u=getUser(); if(!u){ askUser(); } return getUser(); }
+function changeUser(){ askUser(); }
+function askUser(){
+  const cur=getUser();
+  document.getElementById('modal-root').innerHTML=`
+  <div class="overlay" onclick="if(event.target===this)closeModal()">
+    <div class="modal" style="max-width:420px">
+      <div class="modal-h"><h2>👤 מי מזין למערכת?</h2><button class="x" onclick="closeModal()">✕</button></div>
+      <div class="modal-b">
+        <div class="fld full"><label>שם המשתמש</label>
+          <input id="u-name" value="${esc(cur)}" placeholder="לדוגמה: רונית / מזכירות" onkeydown="if(event.key==='Enter')saveUser()">
+          <span class="hint">השם יירשם ליד כל הערה שתזין/י, וכן ב״עודכן ע״י״.</span>
+        </div>
+      </div>
+      <div class="modal-f"><button class="btn-save" onclick="saveUser()">💾 שמירה</button><button class="btn-cancel" onclick="closeModal()">ביטול</button></div>
+    </div>
+  </div>`;
+  setTimeout(()=>document.getElementById('u-name')?.focus(),50);
+}
+function saveUser(){
+  const n=(document.getElementById('u-name').value||'').trim();
+  if(!n){ toast('נא להזין שם','err'); return; }
+  setUser(n); closeModal(); toast('שלום '+n+' 👋','ok');
 }
 
 /* ============ MODAL: EDIT ============ */
@@ -659,8 +768,9 @@ function saveEdit(){
     offeredBefore:document.getElementById('e-offered').value==='true',
   };
   data.placed=data.status==='placed';
-  if(editUid){ const r=DB.records.find(x=>x.uid===editUid); Object.assign(r,data); }
-  else { DB.records.push({uid:cryptoId(),deleted:false,createdAt:today(),...data}); }
+  const now=new Date().toISOString(), who=getUser();
+  if(editUid){ const r=DB.records.find(x=>x.uid===editUid); Object.assign(r,data); r.updatedBy=who; r.updatedAt=now; }
+  else { DB.records.push({uid:cryptoId(),deleted:false,createdAt:today(),createdBy:who,updatedBy:who,updatedAt:now,log:[],...data}); }
   save(); closeModal();
   if(curTab==='dash')renderDash(); else if(curTab==='ther')renderTherapists(); else {go('list');}
   toast(editUid?'הרשומה עודכנה':'המטופל נוסף בהצלחה','ok');
@@ -701,7 +811,8 @@ function initFilters(){
   document.getElementById('f-ther').innerHTML='<option value="">כל המטפלים</option>'+L.therapists.map(f=>`<option>${esc(f)}</option>`).join('');
 }
 document.addEventListener('keydown',e=>{ if(e.key==='Escape')closeModal(); });
-initFilters(); updatePills(); renderDash();
+initFilters(); updatePills(); renderUserChip(); renderDash();
+if(!getUser()) setTimeout(askUser,400);
 </script>
 </body>
 </html>
