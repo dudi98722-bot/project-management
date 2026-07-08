@@ -64,13 +64,17 @@ input:focus,select:focus,textarea:focus{outline:2px solid #a5b4fc;border-color:#
   </div>
 
   <div id="formView" style="display:none">
-    <h1>💰 דיווח הכנסה / הוצאה</h1>
-    <div class="sub">הדיווח נכנס ישירות למערכת ניהול הכספים</div>
+    <h1 id="formTitle">💰 דיווח הכנסה / הוצאה</h1>
+    <div class="sub" id="formSub">הדיווח נכנס ישירות למערכת ניהול הכספים</div>
 
-    <label>שיוך</label>
-    <div class="seg" id="scopeSeg">
-      <button type="button" class="home on" data-v="home">🏠 בית</button>
-      <button type="button" class="biz" data-v="biz">🏢 עסק</button>
+    <div id="homeBadge" style="display:none;background:#dcfce7;color:#16a34a;border-radius:10px;padding:10px 14px;font-size:14px;font-weight:600;text-align:center;margin-bottom:6px">🏠 טופס דיווח לבית</div>
+
+    <div id="scopeWrap">
+      <label>שיוך</label>
+      <div class="seg" id="scopeSeg">
+        <button type="button" class="home on" data-v="home">🏠 בית</button>
+        <button type="button" class="biz" data-v="biz">🏢 עסק</button>
+      </div>
     </div>
 
     <label>סוג</label>
@@ -159,6 +163,11 @@ try{
 }catch(e){}
 if(GS_URL.indexOf('http') !== 0) GS_URL = '';
 
+var HOME_ONLY = false;
+try{
+  var hp = new URLSearchParams(location.search).get('home');
+  if(hp==='1' || hp==='true') HOME_ONLY = true;
+}catch(e){}
 var scope = 'home', kind = 'expense';
 var meta = {categories:null, projects:[]};
 var FALLBACK_CATS = {
@@ -182,10 +191,22 @@ function segSel(segId, btn){
   btn.classList.add('on');
 }
 function refresh(){
+  if(HOME_ONLY) scope = 'home';
   var cats = (meta.categories && meta.categories[scope+'_'+kind]) || FALLBACK_CATS[scope+'_'+kind] || [];
   el('fCat').innerHTML = '<option value="">— בחר קטגוריה —</option>' + cats.map(function(c){ return '<option>'+esc(c)+'</option>'; }).join('');
-  el('projWrap').style.display = scope==='biz' ? 'block' : 'none';
-  el('invWrap').style.display = (scope==='biz' && kind==='income') ? 'flex' : 'none';
+  el('projWrap').style.display = (scope==='biz' && !HOME_ONLY) ? 'block' : 'none';
+  el('invWrap').style.display = (scope==='biz' && kind==='income' && !HOME_ONLY) ? 'flex' : 'none';
+}
+function applyHomeOnly(){
+  if(!HOME_ONLY) return;
+  scope = 'home';
+  el('scopeWrap').style.display = 'none';
+  el('homeBadge').style.display = 'block';
+  el('formTitle').textContent = '🏠 דיווח הוצאות והכנסות הבית';
+  el('formSub').textContent = 'הדיווח נכנס אוטומטית תחת "בית"';
+  el('modeExcel').style.display = 'none';
+  el('modeSeg').style.display = 'none';
+  document.title = 'גריימן — דיווח בית';
 }
 
 function boot(){
@@ -208,10 +229,11 @@ function boot(){
     .catch(function(){ /* ממשיכים עם ברירות מחדל */ })
     .finally(function(){
       el('fProj').innerHTML = '<option value="">— ללא פרויקט —</option>' + meta.projects.map(function(p){ return '<option>'+esc(p)+'</option>'; }).join('');
+      applyHomeOnly();
       refresh();
       el('loading').style.display = 'none';
       el('formView').style.display = 'block';
-      el('modeSeg').style.display = 'grid';
+      if(!HOME_ONLY) el('modeSeg').style.display = 'grid';
     });
 }
 
@@ -224,6 +246,7 @@ function send(){
   if(!desc){ errEl.textContent = '⚠️ יש להזין תיאור'; errEl.style.display = 'block'; return; }
   var by = el('fBy').value.trim();
   var today = new Date();
+  var effScope = HOME_ONLY ? 'home' : scope;   // נעילת בית — לא ניתן לדווח לעסק
   var tx = {
     id: 'f-' + Date.now() + '-' + Math.floor(Math.random()*100000),
     date: el('fDate').value || today.toISOString().slice(0,10),
@@ -232,12 +255,12 @@ function send(){
     amount: amount,
     kind: kind,
     account: 'דיווח בטופס',
-    scope: scope,
+    scope: effScope,
     category: el('fCat').value || '',
-    project: scope==='biz' ? (el('fProj').value || '') : '',
-    invoice: (scope==='biz' && kind==='income' && el('fInvoice').checked) ? '1' : '',
+    project: effScope==='biz' ? (el('fProj').value || '') : '',
+    invoice: (effScope==='biz' && kind==='income' && el('fInvoice').checked) ? '1' : '',
     ref: '',
-    origin: 'טופס חיצוני · ' + today.toLocaleDateString('he-IL')
+    origin: (HOME_ONLY ? 'טופס בית · ' : 'טופס חיצוני · ') + today.toLocaleDateString('he-IL')
   };
   var btn = el('sendBtn');
   btn.disabled = true; btn.textContent = '⏳ שולח...';
