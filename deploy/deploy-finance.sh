@@ -40,6 +40,12 @@ curl -fsSL "$RAW/finance-form.html"     -o "$WEBROOT/form.html"
 curl -fsSL "$RAW/bait.html"             -o "$WEBROOT/bait.html"
 curl -fsSL "$RAW/xlsx.full.min.js"      -o "$WEBROOT/xlsx.full.min.js"
 curl -fsSL "$RAW/chart.umd.min.js"      -o "$WEBROOT/chart.umd.min.js"
+# אייקונים + manifest להוספה למסך הבית (PWA)
+curl -fsSL "$RAW/manifest.json"         -o "$WEBROOT/manifest.json"
+curl -fsSL "$RAW/manifest-home.json"    -o "$WEBROOT/manifest-home.json"
+curl -fsSL "$RAW/icon-192.png"          -o "$WEBROOT/icon-192.png"
+curl -fsSL "$RAW/icon-512.png"          -o "$WEBROOT/icon-512.png"
+curl -fsSL "$RAW/apple-touch-icon.png"  -o "$WEBROOT/apple-touch-icon.png"
 echo "   ✅ נשמרו ב-$WEBROOT (index.html=מערכת, form.html=טופס ציבורי)"
 
 # ---- Nginx ----
