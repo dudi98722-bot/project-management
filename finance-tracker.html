@@ -429,6 +429,14 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
         <div><label>🏗️ מנופים</label><input type="number" id="pmBc" step="0.01" min="0" placeholder="0"></div>
       </div>
     </div>
+    <div style="margin-top:16px">
+      <label style="font-size:12.5px;color:var(--muted);font-weight:600">🤝 תיווך</label>
+      <div class="form-grid" style="margin-top:6px">
+        <div><label>עלות התיווך (₪)</label><input type="number" id="pmBrokerAmount" step="0.01" min="0" placeholder="0"></div>
+        <div><label>ספק / שם המתווך</label><input type="text" id="pmBrokerSupplier" placeholder="למשל: תיווך כהן"></div>
+      </div>
+      <div class="muted" style="margin-top:4px;font-size:11.5px">כל הוצאה בקטגוריית "תשלום תיווך" לפרויקט תרד מהחוב הזה.</div>
+    </div>
     <div style="margin-top:18px;display:flex;gap:8px">
       <button class="btn" onclick="saveProjModal()">💾 שמור פרויקט</button>
       <button class="btn sec" onclick="closeProjModal()">ביטול</button>
@@ -482,7 +490,7 @@ const DEFAULTS = {
     {name:'אשראי פרטי', scope:'home'}
   ],
   categories: {
-    biz_expense: ['חומרים וספקים','קבלני משנה','מנופים','דלק ורכב','כלים וציוד','שכירות','משכורות','ביטוח לאומי','מיסים ומע"מ','ביטוחים','טלפון ותקשורת','עמלות בנק וריבית','אחר'],
+    biz_expense: ['חומרים וספקים','קבלני משנה','מנופים','תשלום תיווך','דלק ורכב','כלים וציוד','שכירות','משכורות','ביטוח לאומי','מיסים ומע"מ','ביטוחים','טלפון ותקשורת','עמלות בנק וריבית','אחר'],
     biz_income: ['תקבול מפרויקט','החזרי מס','אחר'],
     home_expense: ['מזון וסופר','דלק ורכב','שכירות/משכנתא','חשמל מים וגז','בריאות','חינוך','ביגוד והנעלה','תרומות ומעשרות','פנאי ומסעדות','תקשורת','עמלות בנק','אחר'],
     home_income: ['משכורת','קצבאות','אחר']
@@ -521,7 +529,12 @@ function migrate(d){
     if(!Array.isArray(p.stages)) p.stages = [];
     if(!p.budget) p.budget = {workers:0, materials:0, cranes:0};
     if(!Array.isArray(p.extras)) p.extras = [];
+    if(!p.broker) p.broker = {amount:0, supplier:''};
   });
+  if(d.categories && d.categories.biz_expense && !d.categories.biz_expense.includes('תשלום תיווך')){
+    const i = d.categories.biz_expense.indexOf('מנופים');
+    d.categories.biz_expense.splice(i>=0?i+1:0, 0, 'תשלום תיווך');
+  }
   if(d.categories && d.categories.biz_expense && !d.categories.biz_expense.includes('מנופים')){
     const i = d.categories.biz_expense.indexOf('קבלני משנה');
     d.categories.biz_expense.splice(i>=0?i+1:0, 0, 'מנופים');
@@ -590,14 +603,16 @@ function projToRow(p){
   return {id:p.id, name:p.name, price:String(p.price||0),
     stages:JSON.stringify(p.stages||[]), budget:JSON.stringify(p.budget||{}),
     extras:JSON.stringify(p.extras||[]),
+    broker:JSON.stringify(p.broker||{amount:0,supplier:''}),
     deleted:p.deleted||''};
 }
 function rowToProj(r){
-  let stages=[], budget={workers:0, materials:0, cranes:0}, extras=[];
+  let stages=[], budget={workers:0, materials:0, cranes:0}, extras=[], broker={amount:0, supplier:''};
   try{ stages = JSON.parse(r.stages||'[]')||[]; }catch(e){}
   try{ budget = Object.assign(budget, JSON.parse(r.budget||'{}')); }catch(e){}
   try{ extras = JSON.parse(r.extras||'[]')||[]; }catch(e){}
-  return {id:r.id, name:r.name||'', price:parseFloat(r.price)||0, stages, budget, extras, deleted:r.deleted||''};
+  try{ broker = Object.assign(broker, JSON.parse(r.broker||'{}')); }catch(e){}
+  return {id:r.id, name:r.name||'', price:parseFloat(r.price)||0, stages, budget, extras, broker, deleted:r.deleted||''};
 }
 function settingValue(k){
   if(k==='vat') return String(db.vat||18);
@@ -1740,7 +1755,8 @@ const EXP_GROUPS = [
   {key:'cranes', label:'🏗️ מנופים', cats:['מנופים']}
 ];
 function projNames(){ return db.projects.filter(p=>!p.deleted).map(p=>p.name); }
-function newProjObj(name){ return {id:uid(), name, price:0, stages:[], budget:{workers:0, materials:0, cranes:0}, extras:[]}; }
+function newProjObj(name){ return {id:uid(), name, price:0, stages:[], budget:{workers:0, materials:0, cranes:0}, extras:[], broker:{amount:0, supplier:''}}; }
+const BROKER_CAT = 'תשלום תיווך';
 function projExtrasTotal(p){ return (p.extras||[]).reduce((s,e)=>s+(+e.amount||0),0); }
 function projTotalPrice(p){ return (p.price||0) + projExtrasTotal(p); }
 function vatNet(t){ return t.invoice ? t.amount/(1+(db.vat||18)/100) : t.amount; }
@@ -1760,7 +1776,11 @@ function projStats(p){
   const grouped = groups.reduce((s,g)=>s+g.actual,0);
   const other = expTotal - grouped;
   const budgetTotal = groups.reduce((s,g)=>s+g.budget,0);
-  return {pays, exps, paidGross, paidNet, expTotal, groups, other, budgetTotal};
+  // תיווך: סה"כ חוב מוגדר, כמה שולם (הוצאות בקטגוריית "תשלום תיווך" לפרויקט), ונותר
+  const brokerOwed = (p.broker && +p.broker.amount) || 0;
+  const brokerPaid = exps.filter(t=>t.category===BROKER_CAT).reduce((s,t)=>s+t.amount,0);
+  const brokerRemaining = brokerOwed - brokerPaid;
+  return {pays, exps, paidGross, paidNet, expTotal, groups, other, budgetTotal, brokerOwed, brokerPaid, brokerRemaining};
 }
 let projView = null;
 function renderProjects(){
@@ -1862,6 +1882,7 @@ function projectDetailHTML(p){
     +(extrasTotal>0?'<div class="row" style="border-top:1px solid var(--border);margin-top:8px;padding-top:8px"><span><b>סה"כ תוספות</b></span><b>'+fmt(extrasTotal)+'</b></div>':'')
     +(perms().readOnly ? '' : '<button class="btn sm sec" style="margin-top:10px" onclick="addProjectExtra()">+ הוסף תוספת</button>')
     +'</div>'
+    + brokerCardHTML(p, s)
     +'<div class="charts-grid">'
     +'<div class="card"><h3>🎯 צפי הוצאות מול ביצוע</h3><div class="table-wrap"><table><thead><tr><th>קבוצה</th><th>צפי</th><th>בפועל</th><th>פער</th><th>ניצול</th></tr></thead><tbody>'+groupRows
     +'</tbody><tfoot><tr><td>סה"כ</td><td class="amt">'+fmt(s.budgetTotal)+'</td><td class="amt">'+fmt(s.expTotal)+'</td><td class="amt '+(s.budgetTotal-s.expTotal>=0?'green':'red')+'">'+fmt(s.budgetTotal-s.expTotal)+'</td><td></td></tr></tfoot></table></div>'
@@ -1879,6 +1900,27 @@ function projectDetailHTML(p){
     +(s.exps.length ? '<div class="table-wrap"><table><thead><tr><th>קטגוריה</th><th>סכום</th><th>%</th></tr></thead><tbody>'+expRows+'</tbody></table></div>'
       : '<div class="empty">עדיין לא שויכו הוצאות לפרויקט הזה</div>')
     +'</div></div>';
+}
+function brokerCardHTML(p, s){
+  const owed = s.brokerOwed, paid = s.brokerPaid, remaining = s.brokerRemaining;
+  if(!owed && !paid) return ''; // אין תיווך מוגדר ולא שולם — לא מציגים כרטיס
+  const payPct = pct(paid, owed);
+  const supplier = (p.broker && p.broker.supplier) ? esc(p.broker.supplier) : 'לא צוין';
+  const brokerPays = s.exps.filter(t=>t.category===BROKER_CAT).sort((a,b)=>a.date.localeCompare(b.date));
+  return '<div class="card"><h3>🤝 תיווך'+(p.broker&&p.broker.supplier?' — '+esc(p.broker.supplier):'')+'</h3>'
+    +'<div class="cards-row" style="margin-bottom:10px">'
+    +'<div class="stat"><div class="lbl">עלות התיווך</div><div class="val">'+fmt(owed)+'</div></div>'
+    +'<div class="stat"><div class="lbl">שולם עד כה</div><div class="val green">'+fmt(paid)+'</div></div>'
+    +'<div class="stat"><div class="lbl">'+(remaining>=0?'נותר לתשלום':'שולם ביתר')+'</div><div class="val '+(remaining>0?'red':'green')+'">'+fmt(Math.abs(remaining))+'</div></div>'
+    +'</div>'
+    +(owed?'<div class="pbar" style="height:16px"><div style="width:'+Math.min(payPct,100)+'%;background:var(--income)"></div></div>'
+      +'<div class="muted" style="font-size:12px;margin-top:4px">'+payPct+'% מהחוב לתיווך שולם</div>':'')
+    +(brokerPays.length
+      ? '<div class="table-wrap" style="margin-top:10px"><table><thead><tr><th>תאריך</th><th>תיאור</th><th>סכום</th></tr></thead><tbody>'
+        + brokerPays.map(t=>'<tr><td style="white-space:nowrap">'+t.date.split('-').reverse().join('/')+'</td><td>'+esc(t.desc)+'</td><td class="amt red">'+fmt2(t.amount)+'</td></tr>').join('')
+        + '</tbody></table></div>'
+      : '<div class="muted" style="margin-top:8px;font-size:12px">עדיין לא דווחו תשלומי תיווך. כדי לשלם: דווחו הוצאה לפרויקט זה בקטגוריית "'+BROKER_CAT+'".</div>')
+    +'</div>';
 }
 function addProjectExtra(){
   if(perms().readOnly) return;
@@ -1929,6 +1971,8 @@ function openProjModal(id){
   document.getElementById('pmBw').value = p && p.budget.workers ? p.budget.workers : '';
   document.getElementById('pmBm').value = p && p.budget.materials ? p.budget.materials : '';
   document.getElementById('pmBc').value = p && p.budget.cranes ? p.budget.cranes : '';
+  document.getElementById('pmBrokerAmount').value = p && p.broker && p.broker.amount ? p.broker.amount : '';
+  document.getElementById('pmBrokerSupplier').value = p && p.broker ? (p.broker.supplier||'') : '';
   pmStages = p ? JSON.parse(JSON.stringify(p.stages||[])) : [];
   if(!pmStages.length) pmStages.push({desc:'', amount:''});
   renderPmStages();
@@ -1981,6 +2025,10 @@ function saveProjModal(){
       workers: Math.abs(parseFloat(document.getElementById('pmBw').value))||0,
       materials: Math.abs(parseFloat(document.getElementById('pmBm').value))||0,
       cranes: Math.abs(parseFloat(document.getElementById('pmBc').value))||0
+    },
+    broker: {
+      amount: Math.abs(parseFloat(document.getElementById('pmBrokerAmount').value))||0,
+      supplier: document.getElementById('pmBrokerSupplier').value.trim()
     }
   };
   if(pmEditId){

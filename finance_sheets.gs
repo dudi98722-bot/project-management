@@ -42,8 +42,8 @@ var SHEETS = {
         headers: ['מזהה','תאריך','תיאור','פרטים','סכום','סוג','מקור','שיוך','קטגוריה','פרויקט','חשבונית','אסמכתא','פרטים נוספים 1','פרטים נוספים 2','פרטים נוספים 3','פרטים נוספים 4','קובץ מקור','נמחק'],
         fields:  ['id','date','desc','details','amount','kind','account','scope','category','project','invoice','ref','extra1','extra2','extra3','extra4','origin','deleted'] },
   projects: { name: 'פרויקטים',
-        headers: ['מזהה','שם','מחיר ללא מע"מ','שלבי תשלום (JSON)','צפי הוצאות (JSON)','נמחק','תוספות למחיר (JSON)'],
-        fields:  ['id','name','price','stages','budget','deleted','extras'] },
+        headers: ['מזהה','שם','מחיר ללא מע"מ','שלבי תשלום (JSON)','צפי הוצאות (JSON)','נמחק','תוספות למחיר (JSON)','תיווך (JSON)'],
+        fields:  ['id','name','price','stages','budget','deleted','extras','broker'] },
   settings: { name: 'הגדרות',
         headers: ['key','value'],
         fields:  ['key','value'] }
