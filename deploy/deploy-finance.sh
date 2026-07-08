@@ -37,6 +37,7 @@ echo "📥 מוריד את הקבצים העדכניים..."
 mkdir -p "$WEBROOT"
 curl -fsSL "$RAW/finance-tracker.html"  -o "$WEBROOT/index.html"
 curl -fsSL "$RAW/finance-form.html"     -o "$WEBROOT/form.html"
+curl -fsSL "$RAW/bait.html"             -o "$WEBROOT/bait.html"
 curl -fsSL "$RAW/xlsx.full.min.js"      -o "$WEBROOT/xlsx.full.min.js"
 curl -fsSL "$RAW/chart.umd.min.js"      -o "$WEBROOT/chart.umd.min.js"
 echo "   ✅ נשמרו ב-$WEBROOT (index.html=מערכת, form.html=טופס ציבורי)"
@@ -75,7 +76,7 @@ certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$EMAIL" --redirec
 # ---- עדכון אוטומטי מ-GitHub כל 10 דקות ----
 echo "🔄 מתקין עדכון אוטומטי (cron)..."
 cat > /etc/cron.d/finance-pull <<CRON
-*/10 * * * * root curl -fsSL $RAW/finance-tracker.html -o $WEBROOT/index.html && curl -fsSL $RAW/finance-form.html -o $WEBROOT/form.html
+*/10 * * * * root curl -fsSL $RAW/finance-tracker.html -o $WEBROOT/index.html && curl -fsSL $RAW/finance-form.html -o $WEBROOT/form.html && curl -fsSL $RAW/bait.html -o $WEBROOT/bait.html
 CRON
 chmod 644 /etc/cron.d/finance-pull
 echo "   ✅ האתר יתעדכן לבד תוך 10 דקות מכל push"
