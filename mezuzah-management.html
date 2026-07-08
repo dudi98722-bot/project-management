@@ -493,6 +493,7 @@ let data = load();
 let suppressPullUntil = 0;                   // skip pulling right after a local change (avoid race)
 let pushTimer = null;                        // debounce server writes
 let lastPushedJSON = '';                     // what we last sent to the server
+let pulledOnce = false;                      // true only after a successful load from the server this session
 
 function emptyData(){ return { scribes: [], computer: [], gavra: [], mezuzot: [], payments: [], expenses: [], income: [], keterReceipts: [], customerReceipts: [], users: [], seq: 1 }; }
 function itemCount(d){ return (d.scribes||[]).length + (d.computer||[]).length + (d.gavra||[]).length + (d.mezuzot||[]).length + (d.payments||[]).length + (d.expenses||[]).length + (d.income||[]).length + (d.keterReceipts||[]).length + (d.customerReceipts||[]).length + (d.users||[]).length; }
@@ -538,6 +539,12 @@ function save() {
 }
 function serverPush() {
   if (!GS_URL) { setSync('', '— לא מחובר'); return; }
+  // הגנה קריטית: אסור לשמור לשרת לפני שטעינה מהשרת הצליחה — אחרת מכשיר עם
+  // נתונים ישנים ידרוס את הנתונים האמיתיים של כולם.
+  if (!pulledOnce) {
+    setSync('err', '⚠ הנתונים מהשרת טרם נטענו — השינוי לא נשמר לענן עדיין');
+    return;
+  }
   suppressPullUntil = Date.now() + 9000;     // don't let a pull clobber this change
   setSync('wait', '⏳ שומר…');
   clearTimeout(pushTimer);
@@ -550,14 +557,27 @@ function serverPush() {
     if (enc.length < 30000) {
       fetch(GS_URL + '?action=save&data=' + enc)
         .then(r=>r.json())
-        .then(res=> setSync(res && res.status==='ok' ? 'ok':'err', res && res.status==='ok' ? '☁ נשמר':'⚠ שגיאת שמירה'))
+        .then(res=>{
+          if (res && res.status==='ok') setSync('ok', '☁ נשמר');
+          else { setSync('err', '⚠ ' + ((res && res.message) || 'שגיאת שמירה')); console.error('save rejected:', res); }
+        })
         .catch(()=> setSync('err', '⚠ שגיאת שמירה'));
     } else {
       const body = new URLSearchParams();
       body.append('action', 'save');
       body.append('data', json);
-      fetch(GS_URL, { method:'POST', mode:'no-cors', body })   // large payload: fire-and-forget
-        .then(()=> setSync('ok', '☁ נשמר'))
+      fetch(GS_URL, { method:'POST', mode:'no-cors', body })   // large payload: no readable response
+        .then(()=>{
+          setSync('ok', '☁ נשמר');
+          // אימות: POST לא מחזיר תשובה, אז בודקים מול השרת שהשמירה באמת נקלטה
+          setTimeout(()=>{
+            fetch(GS_URL + '?action=load&t=' + Date.now()).then(r=>r.json()).then(remote=>{
+              if (remote && !remote.status && itemCount(remote) < itemCount(data)) {
+                setSync('err', '⚠ השמירה לא נקלטה בשרת — רענן את הדף');
+              }
+            }).catch(()=>{});
+          }, 5000);
+        })
         .catch(()=> setSync('err', '⚠ שגיאת שמירה'));
     }
   }, 350);
@@ -575,6 +595,7 @@ function serverPull(initial) {
     .then(r=>r.json())
     .then(remote=>{
       if (!remote || remote.status==='error') { setSync('err','⚠ שגיאת טעינה'); return; }
+      pulledOnce = true;   // מרגע זה מותר לשמור לשרת — יש לנו את תמונת המצב האמיתית
       const remoteCount = itemCount(remote);
       // never let an empty/stale server wipe local data — re-push it instead (initial OR poll)
       if (remoteCount === 0 && itemCount(data) > 0) { serverPush(); setSync('ok','☁ נשמר'); return; }

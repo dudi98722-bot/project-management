@@ -79,7 +79,7 @@ function handle(e) {
     if (p.action === 'save' || p.p) {
       lock.waitLock(20000);
       var payload = JSON.parse(p.data || p.p || '{}');
-      saveAll(payload);
+      saveAll(payload, p.force === '1');
       return json({ status: 'ok' });
     }
     return json({ status: 'idle' });
@@ -140,7 +140,23 @@ function loadAll() {
   return out;
 }
 
-function saveAll(data) {
+function saveAll(data, force) {
+  // הגנה מפני דריסה: בזכות מחיקה רכה, שמירה תקינה לעולם לא מקטינה את מספר השורות.
+  // אם מכשיר עם נתונים ישנים מנסה לשמור פחות שורות מהקיים — נחסום את כל השמירה.
+  if (!force) {
+    var blocked = [];
+    Object.keys(SHEETS).forEach(function (key) {
+      var cfg = SHEETS[key];
+      var s = ss().getSheetByName(cfg.name);
+      if (!s) return;
+      var existing = Math.max(0, s.getLastRow() - 1);
+      var incoming = (data[key] || []).length;
+      if (existing >= 5 && incoming < existing) blocked.push(cfg.name + ': ' + incoming + '<' + existing);
+    });
+    if (blocked.length) {
+      throw new Error('השמירה נחסמה — מכשיר עם נתונים ישנים ניסה לדרוס את הגיליון (' + blocked.join(' | ') + '). רענן את הדף כדי לקבל את הנתונים העדכניים.');
+    }
+  }
   Object.keys(SHEETS).forEach(function (key) {
     var cfg = SHEETS[key];
     var s = getSheet(cfg);
@@ -151,7 +167,10 @@ function saveAll(data) {
     var rows = arr.map(function (item) {
       return cfg.fields.map(function (f) {
         var v = item[f];
-        return (v === undefined || v === null) ? '' : v;
+        if (v === undefined || v === null) v = '';
+        // תא בגיליון מוגבל ל-50,000 תווים — ערך חריג יפיל את כל השמירה באמצע
+        if (typeof v === 'string' && v.length > 45000) v = '';
+        return v;
       });
     });
     s.getRange(2, 1, rows.length, cfg.fields.length).setValues(rows);
