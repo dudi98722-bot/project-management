@@ -228,6 +228,19 @@ function boot(){
     el('noServer').style.display = 'block';
     return;
   }
+  var shown = false;
+  function showForm(){
+    if(shown) return;
+    shown = true;
+    el('fProj').innerHTML = '<option value="">— ללא פרויקט —</option>' + meta.projects.map(function(p){ return '<option>'+esc(p)+'</option>'; }).join('');
+    applyHomeOnly();
+    refresh();
+    el('loading').style.display = 'none';
+    el('formView').style.display = 'block';
+    if(!HOME_ONLY) el('modeSeg').style.display = 'grid';
+  }
+  // הגנה: אם גוגל איטי/חסום — מציגים את הטופס תוך 4 שניות עם קטגוריות ברירת מחדל
+  var safety = setTimeout(showForm, 4000);
   fetch(GS_URL + '?action=formmeta')
     .then(function(r){ return r.json(); })
     .then(function(j){
@@ -240,12 +253,8 @@ function boot(){
     })
     .catch(function(){ /* ממשיכים עם ברירות מחדל */ })
     .finally(function(){
-      el('fProj').innerHTML = '<option value="">— ללא פרויקט —</option>' + meta.projects.map(function(p){ return '<option>'+esc(p)+'</option>'; }).join('');
-      applyHomeOnly();
-      refresh();
-      el('loading').style.display = 'none';
-      el('formView').style.display = 'block';
-      if(!HOME_ONLY) el('modeSeg').style.display = 'grid';
+      clearTimeout(safety);
+      showForm();
     });
 }
 
