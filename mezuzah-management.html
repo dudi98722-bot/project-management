@@ -241,7 +241,7 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
           <option value="g2">חסר גברא 2</option>
           <option value="any">חסר לפחות הגהה אחת</option>
         </select></div>
-        <button class="btn btn-primary" style="margin-right:auto" onclick="openScanner()">📷 סרוק ברקוד</button>
+        <button class="btn btn-primary" style="margin-right:auto" onclick="openWedge()">🔫 סרוק ברקוד</button>
         <button class="btn btn-edit" onclick="printFilteredMezuzot()">🖨 הדפס מק"טים מוצגים</button>
         <button class="btn btn-danger" id="btn-del-selected" style="display:none;padding:8px 14px;font-size:.85rem" onclick="deleteSelectedMez()">🗑 מחק מסומנים (<span id="sel-count">0</span>)</button>
       </div>
@@ -426,9 +426,24 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
 </div>
 
 <!-- barcode / QR scanner -->
+<!-- USB (keyboard-wedge) scanner -->
+<div class="overlay" id="wedgeOverlay" onclick="if(event.target===this)closeWedge()">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-head"><h3>🔫 סריקת ברקוד</h3><span class="x" onclick="closeWedge()">✕</span></div>
+    <div class="modal-body">
+      <input id="wedge-input" placeholder="סרוק ברקוד כאן…" autocomplete="off"
+        style="width:100%;padding:14px;font-size:1.1rem;text-align:center;border:2px solid #2b6cb0;border-radius:10px;font-family:inherit"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();wedgeScan();}">
+      <p style="font-size:.85rem;color:#718096;margin-top:10px">הסמן כבר בשדה — פשוט סרוק עם הסורק. הפרטים ייפתחו מיד, ואפשר לסרוק עוד אחד.</p>
+      <div id="wedge-result" style="margin-top:10px"></div>
+      <button class="btn btn-edit" style="margin-top:12px" onclick="openScanner()">📷 השתמש במצלמה במקום (לטלפון)</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="scanOverlay" onclick="if(event.target===this)closeScanner()">
   <div class="modal">
-    <div class="modal-head"><h3>📷 סריקת ברקוד</h3><span class="x" onclick="closeScanner()">✕</span></div>
+    <div class="modal-head"><h3>📷 סריקת ברקוד (מצלמה)</h3><span class="x" onclick="closeScanner()">✕</span></div>
     <div class="modal-body">
       <div id="scanReader"></div>
       <p style="font-size:.82rem;color:#718096;margin-top:10px">כוון את המצלמה לברקוד / QR שעל המזוזה. הפרטים ייפתחו אוטומטית.</p>
@@ -1063,7 +1078,29 @@ function findBySku(sku){ sku=String(sku).trim(); return alive(data.mezuzot).find
 
 // ---- barcode / QR scanner ----
 let _scanner = null;
+// ---- USB / keyboard-wedge scanner (types the code + Enter into a focused field) ----
+function openWedge(){
+  document.getElementById('wedge-result').innerHTML = '';
+  document.getElementById('wedgeOverlay').classList.add('show');
+  const inp = document.getElementById('wedge-input');
+  inp.value = '';
+  setTimeout(()=>inp.focus(), 50);   // put the cursor in the field so the scanner types into it
+}
+function closeWedge(){ document.getElementById('wedgeOverlay').classList.remove('show'); }
+function wedgeScan(){
+  const inp = document.getElementById('wedge-input');
+  const raw = inp.value.trim();
+  if (!raw) return;
+  let sku = raw;
+  const mm = raw.match(/[?&]sku=([^&]+)/);   // in case the barcode encodes a URL
+  if (mm) sku = decodeURIComponent(mm[1]);
+  const m = findBySku(sku);
+  inp.value = ''; inp.focus();
+  if (m) { closeWedge(); showMezuzaDetails(m.id); }
+  else document.getElementById('wedge-result').innerHTML = '<span class="badge b-red">לא נמצאה מזוזה: '+esc(sku)+'</span>';
+}
 function openScanner(){
+  closeWedge();
   if (typeof Html5Qrcode==='undefined'){ toast('ספריית הסריקה לא נטענה'); return; }
   document.getElementById('scanOverlay').classList.add('show');
   _scanner = new Html5Qrcode('scanReader');
