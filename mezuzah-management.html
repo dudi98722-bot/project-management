@@ -231,7 +231,7 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
         <div class="form-group"><label>סטטוס אישור</label><select id="f-status" onchange="renderMezuzot()">
           <option value="">הכל</option><option value="ממתין">ממתין</option><option value="אושר">אושר</option><option value="פסול">פסול</option><option value="כשר">כשר</option>
         </select></div>
-        <div class="form-group"><label>נשלח לכתר</label><select id="f-keter" onchange="renderMezuzot()">
+        <div class="form-group" id="fg-keter"><label>נשלח לכתר</label><select id="f-keter" onchange="renderMezuzot()">
           <option value="">הכל</option><option value="כן">כן</option><option value="לא">לא</option>
         </select></div>
         <div class="form-group"><label>חסר הגהה</label><select id="f-missing" onchange="renderMezuzot()">
@@ -242,7 +242,7 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
           <option value="any">חסר לפחות הגהה אחת</option>
         </select></div>
         <button class="btn btn-primary" style="margin-right:auto" onclick="openWedge()">🔫 סרוק ברקוד</button>
-        <button class="btn btn-edit" onclick="printFilteredMezuzot()">🖨 הדפס מק"טים מוצגים</button>
+        <button class="btn btn-edit" id="btn-print-filtered" onclick="printFilteredMezuzot()">🖨 הדפס מק"טים מוצגים</button>
         <button class="btn btn-danger" id="btn-del-selected" style="display:none;padding:8px 14px;font-size:.85rem" onclick="deleteSelectedMez()">🗑 מחק מסומנים (<span id="sel-count">0</span>)</button>
       </div>
       <div id="bulk-update" class="bulk-bar" style="display:none">
@@ -392,6 +392,7 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
       <div class="card"><h2>מזוזות לפי סופר</h2><canvas id="ch-scribe"></canvas></div>
       <div class="card"><h2>מזוזות לפי חודש</h2><canvas id="ch-month"></canvas></div>
       <div class="card"><h2>יתרת חוב לפי אדם (₪)</h2><canvas id="ch-debt"></canvas></div>
+      <div class="card"><h2>חשבון כתר (₪)</h2><canvas id="ch-keter-debt"></canvas></div>
     </div>
   </div>
 
@@ -403,9 +404,9 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
         <div class="form-group"><label>שם המשתמש</label><input id="u-name" placeholder="שם"></div>
         <div class="form-group"><label>תפקיד</label><select id="u-role">
           <option value="admin">מנהל</option>
-          <option value="worker">עובד</option>
+          <option value="worker">מגיה</option>
           <option value="supervisor">משגיח</option>
-          <option value="investor">משקיע</option>
+          <option value="investor">לקוח</option>
         </select></div>
         <div class="form-group"><label>סיסמה</label><input id="u-pass" type="text" placeholder="סיסמה"></div>
         <button class="btn btn-success" onclick="addUser()">+ הוסף משתמש</button>
@@ -463,8 +464,8 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
         </select>
       </div>
       <p style="font-size:.85rem;color:#4a5568;margin-bottom:14px">מדבקה 50×25 מ"מ — בחר סוג:</p>
-      <button class="btn btn-primary" style="width:100%;margin-bottom:10px;padding:12px" onclick="doPrintLabels('barcode')">▮▯▮ ברקוד + מק"ט</button>
-      <button class="btn btn-success" style="width:100%;padding:12px" onclick="doPrintLabels('info')">מק"ט + סוג מזוזה + דרגת סופר</button>
+      <button class="btn btn-primary" style="width:100%;margin-bottom:10px;padding:12px" onclick="doPrintLabels('barcode')">א · ברקוד + מק"ט + שם סופר</button>
+      <button class="btn btn-success" style="width:100%;padding:12px" onclick="doPrintLabels('info')">ב · ברקוד + מק"ט + סוג מזוזה + דרגת סופר</button>
     </div>
   </div>
 </div>
@@ -862,14 +863,16 @@ function doPrintLabels(type){
   const list = _printList || [];
   if (!list.length) return;
   const labels = list.map(m=>{
+    const bc = barcodeDataURL(m.sku);
+    const bcImg = bc ? `<img class="bc" src="${bc}">` : '';
     if (type==='barcode') {
-      const bc = barcodeDataURL(m.sku);
-      return `<div class="lbl">${bc?`<img class="bc" src="${bc}">`:''}<div class="sku">${esc(m.sku)}</div></div>`;
+      // סוג א: ברקוד + מק"ט + שם סופר
+      return `<div class="lbl">${bcImg}<div class="sku">${esc(m.sku)}</div><div class="meta">${esc(m.scribe||'')}</div></div>`;
     }
-    // info label: SKU + product + scribe grade
+    // סוג ב: ברקוד + מק"ט + סוג מזוזה + דרגת סופר
     const s = (data.scribes||[]).find(x=>x.name===m.scribe);
     const grade = s && s.grade ? 'דרגה ' + s.grade : '';
-    return `<div class="lbl"><div class="sku big">${esc(m.sku)}</div><div class="meta">${esc(m.product||'')}</div><div class="meta">${esc(grade)}</div></div>`;
+    return `<div class="lbl">${bcImg}<div class="sku">${esc(m.sku)}</div><div class="meta">${esc(m.product||'')}${grade?' · '+esc(grade):''}</div></div>`;
   }).join('');
   // single = each 50x25 label is its own page (dedicated label printer);
   // a4     = grid of 4x11 labels on a regular A4 sheet, dashed cut guides
@@ -932,32 +935,32 @@ function renderMezuzot() {
   rows.forEach(m=>{
     h += `<tr>
       <td><input type="checkbox" ${selectedMez.has(m.id)?'checked':''} onclick="toggleSelectMez('${m.id}',this.checked)"></td>
-      <td><input value="${esc(m.sku)}" style="min-width:72px;font-weight:700" onchange="editMez('${m.id}','sku',this.value)"></td>
-      <td><select style="min-width:90px" onchange="editMez('${m.id}','scribe',this.value)">${optHtml(data.scribes,m.scribe,'—')}</select></td>
-      <td><select style="min-width:110px" onchange="editMez('${m.id}','product',this.value)">${['מזוזה בית יוסף','מזוזה ארי'].map(o=>`<option${m.product===o?' selected':''}>${o}</option>`).join('')}</select></td>
-      <td><input type="date" value="${m.date}" onchange="editMez('${m.id}','date',this.value)"></td>
-      ${cv('price')?`<td><input type="number" value="${m.price}" style="min-width:78px" onchange="editMez('${m.id}','price',this.value)"></td>`:''}
-      ${cv('comp')?`<td><select style="min-width:90px" onchange="editMez('${m.id}','comp',this.value)">${optHtml(data.computer,m.comp,'—')}</select></td>`:''}
-      ${cv('g1')?`<td><select style="min-width:90px" onchange="editMez('${m.id}','g1',this.value)">${optHtml(data.gavra,m.g1,'—')}</select></td>`:''}
-      ${cv('g2')?`<td><select style="min-width:90px" onchange="editMez('${m.id}','g2',this.value)">${optHtml(data.gavra,m.g2,'—')}</select></td>`:''}
+      <td><input data-fld="sku" value="${esc(m.sku)}" style="min-width:72px;font-weight:700" onchange="editMez('${m.id}','sku',this.value)"></td>
+      <td><select data-fld="scribe" style="min-width:90px" onchange="editMez('${m.id}','scribe',this.value)">${optHtml(data.scribes,m.scribe,'—')}</select></td>
+      <td><select data-fld="product" style="min-width:110px" onchange="editMez('${m.id}','product',this.value)">${['מזוזה בית יוסף','מזוזה ארי'].map(o=>`<option${m.product===o?' selected':''}>${o}</option>`).join('')}</select></td>
+      <td><input data-fld="date" type="date" value="${m.date}" onchange="editMez('${m.id}','date',this.value)"></td>
+      ${cv('price')?`<td><input data-fld="price" type="number" value="${m.price}" style="min-width:78px" onchange="editMez('${m.id}','price',this.value)"></td>`:''}
+      ${cv('comp')?`<td><select data-fld="comp" style="min-width:90px" onchange="editMez('${m.id}','comp',this.value)">${optHtml(data.computer,m.comp,'—')}</select></td>`:''}
+      ${cv('g1')?`<td><select data-fld="g1" style="min-width:90px" onchange="editMez('${m.id}','g1',this.value)">${optHtml(data.gavra,m.g1,'—')}</select></td>`:''}
+      ${cv('g2')?`<td><select data-fld="g2" style="min-width:90px" onchange="editMez('${m.id}','g2',this.value)">${optHtml(data.gavra,m.g2,'—')}</select></td>`:''}
       <td>
-        <select onchange="editMez('${m.id}','approve',this.value)">
+        <select data-fld="approve" onchange="editMez('${m.id}','approve',this.value)">
           ${['ממתין','אושר','פסול','כשר'].map(o=>`<option value="${o}"${m.approve===o?' selected':''}>${o}</option>`).join('')}
         </select>
-        ${m.approve==='כשר'&&cv('price')?`<input type="number" value="${m.adj}" title="מחיר מופחת לסופר" placeholder="מחיר לסופר" style="margin-top:4px" onchange="editMez('${m.id}','adj',this.value)">
-        <input value="${esc(m.buyer||'')}" placeholder="לקוח" title="שם הלקוח (מכירת כשר)" style="margin-top:4px;min-width:80px" onchange="editMez('${m.id}','buyer',this.value)">
-        <input type="number" value="${m.salePrice||''}" placeholder="מחיר מכירה" title="מחיר מכירה ללקוח" style="margin-top:4px" onchange="editMez('${m.id}','salePrice',this.value)">`:''}
+        ${m.approve==='כשר'&&cv('price')?`<input data-fld="adj" type="number" value="${m.adj}" title="מחיר מופחת לסופר" placeholder="מחיר לסופר" style="margin-top:4px" onchange="editMez('${m.id}','adj',this.value)">
+        <input data-fld="buyer" value="${esc(m.buyer||'')}" placeholder="לקוח" title="שם הלקוח (מכירת כשר)" style="margin-top:4px;min-width:80px" onchange="editMez('${m.id}','buyer',this.value)">
+        <input data-fld="salePrice" type="number" value="${m.salePrice||''}" placeholder="מחיר מכירה" title="מחיר מכירה ללקוח" style="margin-top:4px" onchange="editMez('${m.id}','salePrice',this.value)">`:''}
       </td>
       ${cv('scribePay')?`<td class="money">${ILS(scribePay(m))}</td>`:''}
-      <td><input value="${esc(m.holo)}" style="min-width:90px" placeholder="—" onchange="editMez('${m.id}','holo',this.value)"></td>
-      ${cv('keter')?`<td><select style="min-width:72px" onchange="editMez('${m.id}','keter',this.value)"><option value="לא"${m.keter==='לא'?' selected':''}>לא</option><option value="כן"${m.keter==='כן'?' selected':''}>כן</option></select></td>`:''}
+      <td><input data-fld="holo" value="${esc(m.holo)}" style="min-width:90px" placeholder="—" onchange="editMez('${m.id}','holo',this.value)"></td>
+      ${cv('keter')?`<td><select data-fld="keter" style="min-width:72px" onchange="editMez('${m.id}','keter',this.value)"><option value="לא"${m.keter==='לא'?' selected':''}>לא</option><option value="כן"${m.keter==='כן'?' selected':''}>כן</option></select></td>`:''}
       <td style="white-space:nowrap;text-align:center">
         ${m.img?`<img class="thumb" src="${m.img}" title="הצג תמונה" onclick="viewImage('${m.id}')">`:''}
-        <button class="btn btn-edit img-btn" title="${m.img?'החלף תמונה':'הוסף תמונה'}" onclick="pickImage('${m.id}')">${m.img?'החלף':'📷'}</button></td>
+        <button class="btn btn-edit img-btn" data-fld="img" title="${m.img?'החלף תמונה':'הוסף תמונה'}" onclick="pickImage('${m.id}')">${m.img?'החלף':'📷'}</button></td>
       <td style="white-space:nowrap">
         <button class="btn btn-edit" title="פרטים" onclick="showMezuzaDetails('${m.id}')">🔍</button>
-        <button class="btn btn-edit" title="הדפס מק״ט" onclick="printMezuzot([data.mezuzot.find(x=>x.id==='${m.id}')],'מק&quot;ט ${esc(m.sku)}')">🖨</button>
-        <button class="btn btn-danger" onclick="delMez('${m.id}')">מחק</button></td></tr>`;
+        <button class="btn btn-edit print-btn" title="הדפס מק״ט" onclick="printMezuzot([data.mezuzot.find(x=>x.id==='${m.id}')],'מק&quot;ט ${esc(m.sku)}')">🖨</button>
+        <button class="btn btn-danger del-btn" onclick="delMez('${m.id}')">מחק</button></td></tr>`;
   });
   t.innerHTML = h + '</tbody>';
   updateSelCount();
@@ -975,13 +978,23 @@ function toggleSelectAll(on){
 function updateSelCount(){
   const n = selectedMez.size;
   const btn = document.getElementById('btn-del-selected');
-  if (btn){ btn.style.display = n ? 'inline-block' : 'none'; document.getElementById('sel-count').textContent = n; }
+  if (btn){ btn.style.display = (n && can('mezuzot_delete')) ? 'inline-block' : 'none'; document.getElementById('sel-count').textContent = n; }
   const bulk = document.getElementById('bulk-update');
   if (bulk){
-    bulk.style.display = (n && can('mezuzot_edit')) ? 'flex' : 'none';
+    bulk.style.display = (n && canEditAny()) ? 'flex' : 'none';
     const bc = document.getElementById('bulk-count'); if (bc) bc.textContent = n;
+    fillBulkFields();
     if (n && !document.getElementById('bulk-value')) renderBulkValue();
   }
+}
+// the bulk-update column list is limited to fields the role may edit
+function fillBulkFields(){
+  const sel = document.getElementById('bulk-field'); if (!sel) return;
+  const opts = [['comp','הגהת מחשב'],['g1','גברא 1'],['g2','גברא 2'],['approve','אישור הרב'],['keter','נשלח לכתר']]
+    .filter(([f])=> canEditField(f));
+  const cur = sel.value;
+  sel.innerHTML = opts.map(([f,l])=>`<option value="${f}">${l}</option>`).join('');
+  if (opts.some(o=>o[0]===cur)) sel.value = cur;
 }
 // build the value control for the bulk-update bar based on the chosen column
 function renderBulkValue(){
@@ -994,10 +1007,10 @@ function renderBulkValue(){
   document.getElementById('bulk-value-wrap').innerHTML = html;
 }
 function applyBulkUpdate(){
-  if (!can('mezuzot_edit')) return toast('אין הרשאה');
+  const f = document.getElementById('bulk-field').value;
+  if (!canEditField(f)) return toast('אין הרשאה');
   const n = selectedMez.size;
   if (!n) return;
-  const f = document.getElementById('bulk-field').value;
   const v = document.getElementById('bulk-value').value;
   const label = document.getElementById('bulk-field').selectedOptions[0].textContent;
   if (!confirm('לעדכן "'+label+'" ל-'+n+' מזוזות מסומנות?')) return;
@@ -1357,16 +1370,22 @@ function renderReports() {
   // stats
   const totalOwed = Object.values(owed).reduce((a,b)=>a+b,0);
   const totalPaid = Object.values(paid).reduce((a,b)=>a+b,0);
+  const role = roleOf();
   const money = can('reports_money');
   const pending = mez.filter(m=>m.approve==='ממתין').length;
+  const kBal = keterCharges() - keterPaid();
   let statsHtml = `
     <div class="stat-card"><div class="num">${mez.length}</div><div class="lbl">סה"כ מזוזות</div></div>
     <div class="stat-card" style="border-right-color:#d69e2e"><div class="num">${pending}</div><div class="lbl">ממתינים לאישור</div></div>`;
-  if (money) {
+  if (role==='investor') {
+    // לקוח: רק סך מה שכתר חייב לי
+    statsHtml += `<div class="stat-card" style="border-right-color:#2b6cb0"><div class="num">${ILS(kBal)}</div><div class="lbl">סה"כ כמה כתר חייב לי</div></div>`;
+  } else if (money) {
     const totInc = sumIncome(), totExp = sumExpenses();
     statsHtml += `
     <div class="stat-card"><div class="num">${ILS(totalOwed)}</div><div class="lbl">סה"כ זכאות (לתשלום)</div></div>
     <div class="stat-card" style="border-right-color:#e53e3e"><div class="num pos">${ILS(totalOwed-totalPaid)}</div><div class="lbl">יתרה לתשלום</div></div>
+    <div class="stat-card" style="border-right-color:#2b6cb0"><div class="num">${ILS(kBal)}</div><div class="lbl">יתרה שכתר חייב</div></div>
     <div class="stat-card" style="border-right-color:#38a169"><div class="num">${ILS(totInc)}</div><div class="lbl">הכנסות צדדיות</div></div>
     <div class="stat-card" style="border-right-color:#dd6b20"><div class="num">${ILS(totExp)}</div><div class="lbl">הוצאות שוטפות</div></div>`;
   }
@@ -1499,6 +1518,9 @@ function renderCharts() {
   const keys=[...new Set([...Object.keys(owed),...Object.keys(paid)])];
   const bals = keys.map(k=>({k, v:(owed[k]||0)-(paid[k]||0)})).filter(x=>x.v>0).sort((a,b)=>b.v-a.v);
   mkChart('ch-debt', { type:'bar', data:{ labels:bals.map(x=>x.k), datasets:[{ label:'יתרה לתשלום', data:bals.map(x=>x.v), backgroundColor:'#e53e3e' }] }, options:{ indexAxis:'y', plugins:{legend:{display:false}}, scales:{x:{beginAtZero:true}} } });
+  // keter account: charged / paid / balance owed to me
+  const kc = keterCharges(), kp = keterPaid();
+  mkChart('ch-keter-debt', { type:'bar', data:{ labels:['חיוב כתר','שולם','יתרה שכתר חייב'], datasets:[{ data:[kc, kp, Math.max(0,kc-kp)], backgroundColor:['#2b6cb0','#38a169','#e53e3e'] }] }, options:{ plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} } });
 }
 
 // ============ EXPORT / IMPORT ============
@@ -1553,16 +1575,23 @@ function dl(blob, name) {
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 // ============ USERS & PERMISSIONS ============
-const ROLE_LABELS = { admin:'מנהל', worker:'עובד', supervisor:'משגיח', investor:'משקיע' };
+const ROLE_LABELS = { admin:'מנהל', worker:'מגיה', supervisor:'משגיח', investor:'לקוח' };
 // הרשאות לכל תפקיד.
-//   reports_status = דוחות סטטוס מזוזות (ממתינים לאישור וכו') — ללא כסף
-//   reports_money  = דוחות כספיים (יתרות, הכנסות/הוצאות, פילוח חודשי)
-//   finance        = לשונית הזנת הוצאות/הכנסות
+//   mezuzot_add   = טופס הוספת מזוזה (מנהל בלבד)
+//   print         = הדפסת מדבקות/ברקודים (מנהל בלבד)
+//   reports_status/reports_money = דוחות סטטוס / דוחות כספיים
 const PERMISSIONS = {
-  admin:      { mezuzot_view:1, mezuzot_edit:1, mezuzot_delete:1, pricelist:1, payments:1, finance:1, reports_status:1, reports_money:1, users:1 },
-  worker:     { mezuzot_view:1, mezuzot_edit:1, mezuzot_delete:1, pricelist:0, payments:0, finance:0, reports_status:0, reports_money:0, users:0 },
-  supervisor: { mezuzot_view:1, mezuzot_edit:1, mezuzot_delete:0, pricelist:0, payments:0, finance:0, reports_status:1, reports_money:0, users:0 },
-  investor:   { mezuzot_view:1, mezuzot_edit:0, mezuzot_delete:0, pricelist:0, payments:0, finance:0, reports_status:1, reports_money:1, users:0 }
+  admin:      { mezuzot_view:1, mezuzot_add:1, mezuzot_delete:1, print:1, pricelist:1, payments:1, finance:1, reports_status:1, reports_money:1, users:1 },
+  worker:     { mezuzot_view:1, mezuzot_add:0, mezuzot_delete:0, print:0, pricelist:0, payments:0, finance:0, reports_status:0, reports_money:0, users:0 },
+  supervisor: { mezuzot_view:1, mezuzot_add:0, mezuzot_delete:0, print:0, pricelist:0, payments:0, finance:0, reports_status:1, reports_money:0, users:0 },
+  investor:   { mezuzot_view:1, mezuzot_add:0, mezuzot_delete:0, print:0, pricelist:0, payments:0, finance:0, reports_status:1, reports_money:1, users:0 }
+};
+// אילו שדות בטבלת המזוזות ניתנים לעריכה לכל תפקיד ('all' = הכל)
+const EDIT_FIELDS = {
+  admin:      'all',
+  worker:     ['comp','g1','g2'],       // מגיה: רק ההגהות
+  supervisor: ['approve','adj','buyer','salePrice'],  // משגיח: רק אישור הרב (והשדות התלויים בו)
+  investor:   []                        // לקוח: קריאה בלבד
 };
 // עמודות שמוסתרות בטבלת המזוזות לכל תפקיד
 const COLUMN_HIDE = {
@@ -1581,6 +1610,17 @@ function can(cap){
 }
 function roleOf(){ return currentUser ? currentUser.role : 'admin'; }
 function colVis(c){ if (!authActive()) return true; return !((COLUMN_HIDE[roleOf()]||[]).includes(c)); }
+function canEditField(f){
+  if (!authActive()) return true;
+  const ef = EDIT_FIELDS[roleOf()];
+  if (ef === 'all') return true;
+  return Array.isArray(ef) && ef.includes(f);
+}
+function canEditAny(){
+  if (!authActive()) return true;
+  const ef = EDIT_FIELDS[roleOf()];
+  return ef === 'all' || (Array.isArray(ef) && ef.length > 0);
+}
 async function hashPass(name, pass){
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(name + ':' + pass));
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -1647,10 +1687,25 @@ function applyPermissions(){
   if (activeBtn && activeBtn.style.display==='none' && firstVisible){
     showTab(firstVisible, document.getElementById('tabbtn-'+firstVisible));
   }
-  // report sections: money vs status
-  const money = can('reports_money');
-  ['card-finance','card-balances','card-monthly','card-scribe-report','card-keter','card-customers'].forEach(id=>{ const c=document.getElementById(id); if(c) c.style.display = money ? '' : 'none'; });
-  const cs = document.getElementById('card-status'); if (cs) cs.style.display = can('reports_status') ? '' : 'none';
+  // report cards — role-specific
+  const role = roleOf();
+  const open = !authActive() || role==='admin';
+  const reportVis = (id) => {
+    if (open) return true;
+    if (role==='investor')  return ['card-keter','card-status'].includes(id);   // לקוח: חשבון כתר + סטטוס בלבד
+    if (role==='supervisor') return id==='card-status';                          // משגיח: סטטוס בלבד
+    return false;
+  };
+  ['card-finance','card-scribe-report','card-keter','card-customers','card-balances','card-status','card-monthly'].forEach(id=>{
+    const c=document.getElementById(id); if(c) c.style.display = reportVis(id) ? '' : 'none';
+  });
+  // chart cards
+  const hideCard = (canvasId, show)=>{ const cv=document.getElementById(canvasId); if(cv){ const card=cv.closest('.card'); if(card) card.style.display = show ? '' : 'none'; } };
+  hideCard('ch-debt', open);                       // יתרת חוב לפי אדם: מנהל בלבד
+  hideCard('ch-keter-debt', can('reports_money')); // חשבון כתר: מנהל + לקוח
+  // mezuzot toolbar
+  const fgk=document.getElementById('fg-keter'); if(fgk) fgk.style.display = colVis('keter') ? '' : 'none';
+  const pf=document.getElementById('btn-print-filtered'); if(pf) pf.style.display = can('print') ? '' : 'none';
   toggleAddForms();
   // recycle bin: managers only
   const bin = document.getElementById('btn-bin');
@@ -1665,7 +1720,7 @@ function toggleAddForms(){
   const pl = can('pricelist') ? '' : 'none';
   ['psec-scribes','psec-computer','psec-gavra'].forEach(id=>{ const c=document.querySelector('#'+id+' .card'); if(c) c.style.display=pl; });
   // mezuza add-card (first card in mezuzot tab)
-  const mezAdd = document.querySelector('#tab-mezuzot .card'); if (mezAdd) mezAdd.style.display = can('mezuzot_edit') ? '' : 'none';
+  const mezAdd = document.querySelector('#tab-mezuzot .card'); if (mezAdd) mezAdd.style.display = can('mezuzot_add') ? '' : 'none';
   // payment / receipt add-cards
   const pay = can('payments') ? '' : 'none';
   ['paysec-scribes','paysec-keter','paysec-customers'].forEach(id=>{ const c=document.querySelector('#'+id+' .card'); if(c) c.style.display=pay; });
@@ -1722,9 +1777,21 @@ function restoreItem(key, id){
 }
 // disable inline editing in the mezuzot table for view-only roles
 function lockMezuzotEditing(){
-  if (can('mezuzot_edit')) return;
-  document.querySelectorAll('#tbl-mezuzot tbody input, #tbl-mezuzot tbody select').forEach(el=>{ el.disabled = true; });
-  document.querySelectorAll('#tbl-mezuzot tbody .btn-danger, #tbl-mezuzot tbody .img-btn').forEach(el=>{ el.style.display='none'; });
+  // disable each editable control unless the role may edit that specific field
+  document.querySelectorAll('#tbl-mezuzot tbody [data-fld]').forEach(el=>{
+    const editable = canEditField(el.getAttribute('data-fld'));
+    if (el.tagName === 'BUTTON') el.style.display = editable ? '' : 'none';   // image button
+    else el.disabled = !editable;
+  });
+  // print + delete buttons per permission
+  const showPrint = can('print') ? '' : 'none';
+  document.querySelectorAll('#tbl-mezuzot tbody .print-btn').forEach(el=> el.style.display = showPrint);
+  const showDel = can('mezuzot_delete') ? '' : 'none';
+  document.querySelectorAll('#tbl-mezuzot tbody .del-btn').forEach(el=> el.style.display = showDel);
+  // hide row-select checkboxes for roles that can neither edit nor delete
+  if (!canEditAny() && !can('mezuzot_delete')) {
+    document.querySelectorAll('#tbl-mezuzot input[type="checkbox"]').forEach(el=> el.style.display='none');
+  }
 }
 
 // ---- users CRUD (admin) ----
