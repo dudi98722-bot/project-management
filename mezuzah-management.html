@@ -490,10 +490,22 @@ const DEFAULT_GS_URL = 'https://script.google.com/macros/s/AKfycbz0Fuyoq1bb8DXF_
 let GS_URL = localStorage.getItem(URLKEY) || DEFAULT_GS_URL;
 let data = load();
 
+const COLLECTIONS = ['scribes','computer','gavra','mezuzot','payments','expenses','income','keterReceipts','customerReceipts','users'];
 let suppressPullUntil = 0;                   // skip pulling right after a local change (avoid race)
 let pushTimer = null;                        // debounce server writes
-let lastPushedJSON = '';                     // what we last sent to the server
-let pulledOnce = false;                      // true only after a successful load from the server this session
+let pulledOnce = false;                      // true only after a successful load this session
+let serverRev = null;                        // revision number last seen from the server (sent as baseRev)
+let baseline = null;                         // deep clone of `data` at the last sync — used to merge on conflict
+let saving = false;                          // a push is in flight
+let pendingSave = false;                     // a save was requested while a push was in flight
+let reconcileTries = 0;
+function clone(x){ return JSON.parse(JSON.stringify(x)); }
+function dataFromRemote(remote){
+  const d = emptyData();
+  COLLECTIONS.forEach(k=>{ d[k] = Array.isArray(remote[k]) ? remote[k] : []; });
+  d.seq = Number(remote.seq)||1;
+  return d;
+}
 
 function emptyData(){ return { scribes: [], computer: [], gavra: [], mezuzot: [], payments: [], expenses: [], income: [], keterReceipts: [], customerReceipts: [], users: [], seq: 1 }; }
 function itemCount(d){ return (d.scribes||[]).length + (d.computer||[]).length + (d.gavra||[]).length + (d.mezuzot||[]).length + (d.payments||[]).length + (d.expenses||[]).length + (d.income||[]).length + (d.keterReceipts||[]).length + (d.customerReceipts||[]).length + (d.users||[]).length; }
@@ -531,90 +543,124 @@ function setServerUrl() {
   else setSync('', '— לא מחובר');
 }
 
-// ---- save: local first (instant), then push to the sheet (debounced) ----
+// ---- save: local cache (best-effort), render, then push to the sheet ----
 function save() {
-  localStorage.setItem(KEY, JSON.stringify(data));
+  try { localStorage.setItem(KEY, JSON.stringify(data)); }
+  catch(e){ console.warn('localStorage מלא — הענן הוא מקור האמת', e); }   // cache is optional
   renderAll();
   serverPush();
 }
-function serverPush() {
-  if (!GS_URL) { setSync('', '— לא מחובר'); return; }
-  // הגנה קריטית: אסור לשמור לשרת לפני שטעינה מהשרת הצליחה — אחרת מכשיר עם
-  // נתונים ישנים ידרוס את הנתונים האמיתיים של כולם.
-  if (!pulledOnce) {
-    setSync('err', '⚠ הנתונים מהשרת טרם נטענו — השינוי לא נשמר לענן עדיין');
-    return;
-  }
-  suppressPullUntil = Date.now() + 9000;     // don't let a pull clobber this change
-  setSync('wait', '⏳ שומר…');
-  clearTimeout(pushTimer);
-  pushTimer = setTimeout(()=>{
-    const json = JSON.stringify(data);
-    lastPushedJSON = json;
-    const enc = encodeURIComponent(json);
-    // GET is reliable through filtered networks (NetFree) and returns a real
-    // confirmation; only fall back to POST when the URL would be too long.
-    if (enc.length < 30000) {
-      fetch(GS_URL + '?action=save&data=' + enc)
-        .then(r=>r.json())
-        .then(res=>{
-          if (res && res.status==='ok') setSync('ok', '☁ נשמר');
-          else { setSync('err', '⚠ ' + ((res && res.message) || 'שגיאת שמירה')); console.error('save rejected:', res); }
-        })
-        .catch(()=> setSync('err', '⚠ שגיאת שמירה'));
-    } else {
-      const body = new URLSearchParams();
-      body.append('action', 'save');
-      body.append('data', json);
-      fetch(GS_URL, { method:'POST', mode:'no-cors', body })   // large payload: no readable response
-        .then(()=>{
-          setSync('ok', '☁ נשמר');
-          // אימות: POST לא מחזיר תשובה, אז בודקים מול השרת שהשמירה באמת נקלטה
-          setTimeout(()=>{
-            fetch(GS_URL + '?action=load&t=' + Date.now()).then(r=>r.json()).then(remote=>{
-              if (remote && !remote.status && itemCount(remote) < itemCount(data)) {
-                setSync('err', '⚠ השמירה לא נקלטה בשרת — רענן את הדף');
-              }
-            }).catch(()=>{});
-          }, 5000);
-        })
-        .catch(()=> setSync('err', '⚠ שגיאת שמירה'));
-    }
-  }, 350);
-}
-
-// ---- pull: read the sheet and adopt it if it changed (poll + on focus) ----
-function stripVolatile(d){ return d; }
 function editingNow(){
   const a = document.activeElement;
   return a && (a.tagName==='INPUT' || a.tagName==='SELECT' || a.tagName==='TEXTAREA');
 }
+function serverPush() {
+  if (!GS_URL) { setSync('', '— לא מחובר'); return; }
+  // אסור לשמור לפני שיש לנו את גרסת השרת — אחרת נדרוס עם נתונים ישנים
+  if (!pulledOnce || serverRev === null) {
+    setSync('err', '⚠ ממתין לטעינה מהשרת — השינוי יישמר כשהחיבור יעלה');
+    return;
+  }
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(doPush, 300);
+}
+function doPush() {
+  if (saving) { pendingSave = true; return; }   // serialize pushes (avoid out-of-order writes)
+  saving = true;
+  setSync('wait', '⏳ שומר…');
+  suppressPullUntil = Date.now() + 15000;
+  const body = new URLSearchParams();
+  body.append('action', 'save');
+  body.append('baseRev', String(serverRev));
+  body.append('data', JSON.stringify(data));
+  fetch(GS_URL, { method:'POST', body })       // readable POST (form-urlencoded, no preflight)
+    .then(r=>r.json())
+    .then(res=>{
+      saving = false;
+      if (res && res.status === 'ok') {
+        serverRev = res.rev;
+        baseline = clone(data);
+        reconcileTries = 0;
+        setSync('ok', '☁ נשמר');
+        if (pendingSave) { pendingSave = false; serverPush(); }
+      } else if (res && res.status === 'conflict') {
+        reconcile();                            // server moved ahead — merge our change and retry
+      } else {
+        setSync('err', '⚠ ' + ((res && res.message) || 'שגיאת שמירה'));
+        console.error('save rejected:', res);
+      }
+    })
+    .catch(err=>{
+      saving = false;
+      setSync('err', '⚠ שגיאת רשת — מנסה שוב…');
+      console.error(err);
+      setTimeout(()=>{ if (!saving) serverPush(); }, 4000);   // retry; never drop the pending change
+    });
+}
+// on conflict: pull fresh server data and re-apply OUR local changes on top of it, then re-push
+function reconcile() {
+  reconcileTries++;
+  if (reconcileTries > 5) { reconcileTries = 0; saving = false; setSync('err', '⚠ התנגשות מתמשכת — רענן את הדף'); return; }
+  setSync('wait', '⏳ ממזג שינויים…');
+  fetch(GS_URL + '?action=load&t=' + Date.now())
+    .then(r=>r.json())
+    .then(fresh=>{
+      if (!fresh || fresh.status === 'error') { saving = false; setSync('err','⚠ שגיאת סנכרון'); return; }
+      data = mergeChanges(baseline || dataFromRemote(fresh), data, fresh);
+      serverRev = (typeof fresh.rev === 'number') ? fresh.rev : 0;
+      try { localStorage.setItem(KEY, JSON.stringify(data)); } catch(e){}
+      checkAuth(); renderAll();
+      saving = false; pendingSave = false;
+      serverPush();                              // push the merged result with the fresh rev
+    })
+    .catch(()=>{ saving = false; setSync('err','⚠ שגיאת סנכרון'); });
+}
+// apply per-record local changes (local vs baseline) on top of fresh server data — no data lost
+function mergeChanges(base, local, fresh) {
+  const result = dataFromRemote(fresh);
+  COLLECTIONS.forEach(key=>{
+    const baseById = {}; (base[key]||[]).forEach(x=> baseById[x.id] = x);
+    const map = {}; (result[key]||[]).forEach(x=> map[x.id] = x);
+    (local[key]||[]).forEach(cur=>{
+      const b = baseById[cur.id];
+      if (!b || JSON.stringify(b) !== JSON.stringify(cur)) map[cur.id] = cur;   // local add/edit wins for that record
+    });
+    result[key] = Object.values(map);
+  });
+  result.seq = Math.max(Number(fresh.seq)||1, Number(local.seq)||1);
+  return result;
+}
+// ---- pull: read the sheet and adopt it if it changed (poll + on focus) ----
 function serverPull(initial) {
   if (!GS_URL) return;
   fetch(GS_URL + '?action=load&t=' + Date.now())
     .then(r=>r.json())
     .then(remote=>{
-      if (!remote || remote.status==='error') { setSync('err','⚠ שגיאת טעינה'); return; }
-      pulledOnce = true;   // מרגע זה מותר לשמור לשרת — יש לנו את תמונת המצב האמיתית
-      const remoteCount = itemCount(remote);
-      // never let an empty/stale server wipe local data — re-push it instead (initial OR poll)
-      if (remoteCount === 0 && itemCount(data) > 0) { serverPush(); setSync('ok','☁ נשמר'); return; }
-      // don't overwrite a change we just made, or while the user is typing
+      if (!remote || remote.status === 'error') { setSync('err','⚠ שגיאת טעינה'); return; }
+      const remoteRev = (typeof remote.rev === 'number') ? remote.rev : 0;
+      pulledOnce = true;
+      const remoteData = dataFromRemote(remote);
+      const remoteCount = itemCount(remoteData);
+      // seed an empty server from local ONLY on the very first load (never on later polls)
+      if (initial && remoteCount === 0 && itemCount(data) > 0) {
+        serverRev = remoteRev; baseline = clone(emptyData()); serverPush(); return;
+      }
+      if (saving) return;                                  // a push is settling — don't disturb it
       if (Date.now() < suppressPullUntil || editingNow()) { setSync('ok','☁ מסונכרן'); return; }
-      const incoming = JSON.stringify(remote);
-      if (incoming !== JSON.stringify(Object.assign(emptyData(), data))) {
-        data = Object.assign(emptyData(), remote);
-        localStorage.setItem(KEY, JSON.stringify(data));
+      if (JSON.stringify(remoteData) !== JSON.stringify(data)) {
+        data = remoteData;
+        try { localStorage.setItem(KEY, JSON.stringify(data)); } catch(e){}
         checkAuth();
         renderAll();
         if (document.getElementById('tab-charts').classList.contains('active')) renderCharts();
         if (initial && !document.getElementById('detailOverlay').classList.contains('show')) openSkuFromUrl();
       }
+      serverRev = remoteRev;
+      baseline = clone(data);
       setSync('ok','☁ מסונכרן');
     })
     .catch(()=> setSync('err','⚠ אין חיבור לשרת'));
 }
-
 let pollTimer = null;
 function startSheetSync() {
   if (!GS_URL) { setSync('', '— לא מחובר (לחץ ⚙ הגדר שרת)'); return; }
@@ -961,23 +1007,36 @@ function pickImage(id){
   inp.onchange = ()=>{
     const f = inp.files[0]; if(!f) return;
     compressImage(f, 600, 0.55, dataUrl=>{
+      if (!dataUrl) { toast('לא ניתן לעבד את התמונה — נסה JPEG'); return; }
       const m = data.mezuzot.find(x=>x.id===id); if(!m) return;
       m.img = dataUrl; save(); toast('תמונה נשמרה');
     });
   };
   inp.click();
 }
+// compress + downscale in a loop until the data-URL fits safely below the sheet cell limit (45000)
 function compressImage(file, maxSize, quality, cb){
+  const LIMIT = 40000;
   const r = new FileReader();
+  r.onerror = ()=> cb('');
   r.onload = ()=>{
     const img = new Image();
+    img.onerror = ()=> cb('');   // undecodable (e.g. HEIC) — report failure instead of silent no-op
     img.onload = ()=>{
-      let {width:w, height:h} = img;
-      if (w>h && w>maxSize){ h=Math.round(h*maxSize/w); w=maxSize; }
-      else if (h>maxSize){ w=Math.round(w*maxSize/h); h=maxSize; }
-      const c = document.createElement('canvas'); c.width=w; c.height=h;
-      c.getContext('2d').drawImage(img,0,0,w,h);
-      cb(c.toDataURL('image/jpeg', quality));
+      let size = maxSize, q = quality, out = '';
+      for (let i=0; i<8; i++){
+        let {width:w, height:h} = img;
+        if (w>h && w>size){ h=Math.round(h*size/w); w=size; }
+        else if (h>size){ w=Math.round(w*size/h); h=size; }
+        else if (w>size){ h=Math.round(h*size/w); w=size; }
+        const c = document.createElement('canvas'); c.width=w; c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        out = c.toDataURL('image/jpeg', q);
+        if (out.length <= LIMIT) break;
+        // still too big — shrink dimensions and quality and try again
+        size = Math.round(size*0.8); q = Math.max(0.3, q-0.1);
+      }
+      cb(out);
     };
     img.src = r.result;
   };

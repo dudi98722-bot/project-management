@@ -52,7 +52,8 @@ function handle(e) {
     var p = (e && e.parameter) ? e.parameter : {};
 
     if (p.action === 'load') {
-      lock.waitLock(15000);
+      // אין נעילה על קריאה: הכתיבה אטומית (עדכון-במקום ללא רגע ריק), אז קריאה
+      // מקבילה לעולם לא רואה גיליון ריק. נעילה על קריאה גרמה ל-timeout בעומס.
       var out = loadAll();
       out.rev = getRev();
       return json(out);
