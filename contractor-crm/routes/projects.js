@@ -138,4 +138,58 @@ router.post('/:id/stages/bulk', authenticate, can('editProjects'), async (req, r
   }
 });
 
+// POST /api/projects/:id/import - ייבוא מצב פתיחה של פרויקט קיים:
+// לכל שורה נוצר שלב + התשלומים שכבר בוצעו (ללקוח ולקבלן).
+// body: { rows: [{ name, client_amount, client_paid, sub_amount, sub_paid }] }
+router.post('/:id/import', authenticate, can('editProjects'), async (req, res) => {
+  const projectId = req.params.id;
+  const list = Array.isArray(req.body.rows) ? req.body.rows : [];
+  if (!list.length) return res.status(400).json({ error: 'אין שורות לייבוא' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const proj = await client.query('SELECT id, subcontractor_id FROM projects WHERE id=$1 AND deleted=false', [projectId]);
+    if (!proj.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'פרויקט לא נמצא' }); }
+    const projSub = proj.rows[0].subcontractor_id || null;
+    const seqRow = await client.query('SELECT COALESCE(MAX(seq),0) AS m FROM stages WHERE project_id=$1', [projectId]);
+    let seq = parseInt(seqRow.rows[0].m) || 0;
+    const stages = [], txs = [];
+    const num = (v) => { const n = parseFloat(String(v == null ? '' : v).replace(/[₪,\s]/g, '')); return isNaN(n) ? 0 : n; };
+
+    for (const row of list) {
+      if (!row || !row.name || !String(row.name).trim()) continue;
+      const ca = num(row.client_amount), sa = num(row.sub_amount), cp = num(row.client_paid), sp = num(row.sub_paid);
+      seq++;
+      const st = await client.query(
+        `INSERT INTO stages (project_id, name, seq, client_amount, sub_amount, subcontractor_id, created_by, updated_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$7) RETURNING *`,
+        [projectId, String(row.name).trim(), seq, ca, sa, projSub, req.user.id]);
+      const stage = st.rows[0]; stages.push(stage);
+      if (cp > 0) {
+        const t = await client.query(
+          `INSERT INTO transactions (type, direction, amount, project_id, stage_id, note, created_by, updated_by)
+           VALUES ('client_payment','in',$1,$2,$3,'ייבוא מצב פתיחה',$4,$4) RETURNING *`,
+          [cp, projectId, stage.id, req.user.id]); txs.push(t.rows[0]);
+      }
+      if (sp > 0) {
+        const t = await client.query(
+          `INSERT INTO transactions (type, direction, amount, project_id, stage_id, subcontractor_id, note, created_by, updated_by)
+           VALUES ('sub_payment','out',$1,$2,$3,$4,'ייבוא מצב פתיחה',$5,$5) RETURNING *`,
+          [sp, projectId, stage.id, projSub, req.user.id]); txs.push(t.rows[0]);
+      }
+    }
+    await client.query('COMMIT');
+    await logAction(req.user, 'import', 'stages', projectId, { stages: stages.length, payments: txs.length });
+    sheets.mirrorMany('stages', stages).catch(() => {});
+    sheets.mirrorMany('transactions', txs).catch(() => {});
+    res.status(201).json({ stages: stages.length, payments: txs.length });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error(e);
+    res.status(500).json({ error: 'שגיאת שרת בייבוא' });
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = router;

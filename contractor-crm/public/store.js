@@ -39,6 +39,7 @@
       update: (id, d) => apiFetch('/projects/' + id, { method: 'PUT', body: d }),
       remove: (id) => apiFetch('/projects/' + id, { method: 'DELETE' }),
       bulkStages: (id, stages) => apiFetch('/projects/' + id + '/stages/bulk', { method: 'POST', body: { stages } }),
+      import: (id, rows) => apiFetch('/projects/' + id + '/import', { method: 'POST', body: { rows } }),
     },
     stages: {
       create: (d) => apiFetch('/stages', { method: 'POST', body: d }),
@@ -215,6 +216,23 @@
           D.stages.push(s); out.push(s);
         });
         return delay(out);
+      },
+      import: (id, rows) => {
+        id = +id;
+        const proj = D.projects.find(p => p.id === id);
+        const projSub = proj ? (proj.subcontractor_id || null) : null;
+        let seq = Math.max(0, ...A(D.stages).filter(s => s.project_id === id).map(s => s.seq));
+        const num = (v) => { const n = parseFloat(String(v == null ? '' : v).replace(/[₪,\s]/g, '')); return isNaN(n) ? 0 : n; };
+        let ns = 0, np = 0;
+        rows.forEach(row => {
+          if (!row || !row.name || !String(row.name).trim()) return;
+          const ca = num(row.client_amount), sa = num(row.sub_amount), cp = num(row.client_paid), sp = num(row.sub_paid);
+          const stage = { id: nid(), project_id: id, name: String(row.name).trim(), seq: ++seq, client_amount: ca, sub_amount: sa, subcontractor_id: projSub, status: 'pending', approved: false, deleted: false };
+          D.stages.push(stage); ns++;
+          if (cp > 0) { D.tx.push({ id: nid(), type: 'client_payment', direction: 'in', amount: cp, date: null, project_id: id, stage_id: stage.id, subcontractor_id: null, supplier: '', purpose: '', method: '', invoice_url: '', note: 'ייבוא מצב פתיחה', deleted: false }); np++; }
+          if (sp > 0) { D.tx.push({ id: nid(), type: 'sub_payment', direction: 'out', amount: sp, date: null, project_id: id, stage_id: stage.id, subcontractor_id: projSub, supplier: '', purpose: '', method: '', invoice_url: '', note: 'ייבוא מצב פתיחה', deleted: false }); np++; }
+        });
+        return delay({ stages: ns, payments: np });
       },
     },
     stages: {

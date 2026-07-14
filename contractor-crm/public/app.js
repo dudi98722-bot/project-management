@@ -215,8 +215,8 @@
         ${stat('שולם לקבלני משנה', money(p.sub_paid), '', 'מתוך ' + money(p.planned_sub) + ' מתוכנן')}
         ${stat('הוצאות כלליות', money(p.project_expenses), 'r')}
       </div>
-      <div class="card"><div style="display:flex;align-items:center;gap:10px"><h3 style="margin:0;flex:1">שלבים</h3>
-        ${c.editProjects ? `<button class="btn sm" id="bulkStages">➕ הזנת שלבים מרוכזת</button><button class="btn ghost sm" id="addStage">שלב בודד</button>` : ''}</div>
+      <div class="card"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0;flex:1">שלבים</h3>
+        ${c.editProjects ? `<button class="btn sm" id="bulkStages">➕ הזנת שלבים מרוכזת</button><button class="btn ghost sm" id="importTable">📥 ייבוא מטבלה</button><button class="btn ghost sm" id="addStage">שלב בודד</button>` : ''}</div>
         <div id="stagesBox" style="margin-top:12px"></div></div>
       <div class="card"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0;flex:1">תנועות בפרויקט</h3>
         ${c.writeTx ? `<button class="btn green sm" data-newtx="client_payment">➕ תשלום מלקוח</button>
@@ -224,7 +224,7 @@
         ${(c.writeTx || c.projectExpenseOnly) ? `<button class="btn ghost sm" data-newtx="project_expense">🧾 הוצאה לפרויקט</button>` : ''}
       </div><div id="projTx" style="margin-top:12px"></div></div>`;
     $('#backBtn').onclick = () => scrProjects();
-    if (c.editProjects) { $('#editProj').onclick = () => projectForm(p); $('#addStage').onclick = () => stageForm(null, p.id); $('#bulkStages').onclick = () => bulkStagesForm(p.id); }
+    if (c.editProjects) { $('#editProj').onclick = () => projectForm(p); $('#addStage').onclick = () => stageForm(null, p.id); $('#bulkStages').onclick = () => bulkStagesForm(p.id); $('#importTable').onclick = () => importTableForm(p.id); }
     if (c.del) $('#delProj').onclick = async () => { if (await confirmDialog('להעביר את הפרויקט לסל המחזור?', 'מחיקה')) { await guard(window.Store.projects.remove(p.id)); toast('הועבר לסל המחזור', 'ok'); scrProjects(); } };
     view().querySelectorAll('[data-newtx]').forEach(b => b.onclick = () => txForm(b.dataset.newtx, { project_id: p.id, stages }));
     renderStages(stages, p, c);
@@ -331,6 +331,83 @@
     const wireDel = () => document.querySelectorAll('#bsBody .bs-del').forEach(b => b.onclick = () => { if (document.querySelectorAll('#bsBody tr').length > 1) b.closest('tr').remove(); });
     $('#bsAdd').onclick = () => { const t = document.createElement('tbody'); t.innerHTML = rowHtml(); $('#bsBody').appendChild(t.firstChild); wireDel(); };
     wireDel();
+  }
+
+  // ============================================================
+  //  IMPORT EXISTING PROJECT FROM PASTED TABLE
+  // ============================================================
+  let _imp2 = null;
+  const impNum = (v) => { const n = parseFloat(String(v == null ? '' : v).replace(/[₪,\s]/g, '')); return isNaN(n) ? null : n; };
+  const fmtc = (v) => { const n = impNum(v); return n == null ? '' : money(n); };
+
+  function importTableForm(pid) {
+    _imp2 = null;
+    openModal('ייבוא שלבים ותשלומים מטבלה', `
+      <p class="mini">הדבק את טבלת הפרויקט מ-Excel/Sheets (כולל שורות הכותרת). המערכת תזהה את העמודות — אפשר לתקן את המיפוי — וייווצרו השלבים והתשלומים שכבר בוצעו. עמודות "יתרה" אינן נדרשות (מחושבות).</p>
+      <div class="field"><label>הדבק כאן</label><textarea id="imp2_text" rows="6" placeholder="הדבק את הטבלה..."></textarea></div>
+      <button class="btn ghost sm" id="imp2_parse">נתח טבלה ↓</button>
+      <div id="imp2_map" style="margin-top:12px"></div>
+      <div id="imp2_preview" style="margin-top:10px;overflow-x:auto"></div>`,
+      [{ label: 'ייבא', cls: 'green', onClick: async (close) => {
+        const rows = collectImportRows2();
+        if (!rows.length) return toast('אין שורות. לחץ "נתח טבלה" ובדוק את המיפוי', 'err');
+        const r = await guard(window.Store.projects.import(pid, rows));
+        close(); toast(`יובאו ${r.stages} שלבים ו-${r.payments} תשלומים`, 'ok'); openProject(pid);
+      } }, { label: 'ביטול', cls: 'ghost', onClick: (c) => c() }]);
+    $('#imp2_parse').onclick = doParse2;
+  }
+  function doParse2() {
+    const lines = (fv('imp2_text') || '').split(/\r?\n/).filter(l => l.trim() !== '');
+    if (!lines.length) { $('#imp2_map').innerHTML = ''; $('#imp2_preview').innerHTML = '<div class="empty">אין נתונים להדבקה</div>'; return; }
+    const grid = lines.map(l => l.split('\t'));
+    const cols = Math.max(...grid.map(r => r.length));
+    grid.forEach(r => { while (r.length < cols) r.push(''); });
+    const isData = grid.map(r => r.filter(c => impNum(c) !== null).length >= 2);
+    const headerRows = grid.filter((r, i) => !isData[i]);
+    const dataRows = grid.filter((r, i) => isData[i]);
+    if (!dataRows.length) { $('#imp2_map').innerHTML = ''; $('#imp2_preview').innerHTML = '<div class="empty">לא זוהו שורות נתונים — ודא שהעתקת כולל העמודות עם המספרים</div>'; return; }
+    const colLabel = [];
+    for (let j = 0; j < cols; j++) colLabel[j] = headerRows.map(r => String(r[j] || '').trim()).filter(Boolean).join(' ') || ('עמודה ' + (j + 1));
+    // עמודת שם = הכי הרבה טקסט לא-מספרי
+    let nameCol = 0, best = -1;
+    for (let j = 0; j < cols; j++) { const t = dataRows.filter(r => r[j] && impNum(r[j]) === null).length; if (t > best) { best = t; nameCol = j; } }
+    const findMarker = (kw) => { for (const r of headerRows) for (let j = 0; j < cols; j++) if (String(r[j] || '').includes(kw)) return j; return -1; };
+    const colClient = findMarker('לקוח'), colSub = findMarker('קבלן');
+    // תווית קבוצה ממוזגת יושבת בעמודה הראשונה של הקבוצה -> עמודה שייכת לתווית האחרונה שלפניה
+    const markers = [];
+    if (colClient >= 0) markers.push({ col: colClient, type: 'client' });
+    if (colSub >= 0) markers.push({ col: colSub, type: 'sub' });
+    markers.sort((a, b) => a.col - b.col);
+    const grp = (j) => { if (!markers.length) return null; let g = markers[0].type; for (const mk of markers) if (mk.col <= j) g = mk.type; return g; };
+    const totals = [], paids = [];
+    for (let j = 0; j < cols; j++) { if (j === nameCol) continue; if (colLabel[j].indexOf('סך') >= 0 && colLabel[j].indexOf('ששולם') < 0 && colLabel[j].indexOf('שולם') < 0) totals.push(j); else if (colLabel[j].indexOf('שולם') >= 0) paids.push(j); }
+    const pick = (arr, want) => { const g = arr.find(j => grp(j) === want); if (g != null) return g; return want === 'client' ? (arr.length ? arr[0] : -1) : (arr.length > 1 ? arr[1] : (arr.length ? arr[0] : -1)); };
+    const map = { name: nameCol, client_amount: pick(totals, 'client'), client_paid: pick(paids, 'client'), sub_amount: pick(totals, 'sub'), sub_paid: pick(paids, 'sub') };
+    _imp2 = { cols, colLabel, dataRows };
+    const optHtml = (sel) => '<option value="-1">— (ללא) —</option>' + Array.from({ length: cols }, (_, j) => `<option value="${j}" ${j === sel ? 'selected' : ''}>${esc((colLabel[j] || '').slice(0, 20))} · עמ' ${j + 1}</option>`).join('');
+    const field = (id, label, sel) => `<div class="field" style="min-width:150px"><label>${label}</label><select class="imp2sel" data-key="${id}">${optHtml(sel)}</select></div>`;
+    $('#imp2_map').innerHTML = `<div class="mini" style="margin-bottom:6px">זוהו ${dataRows.length} שורות. בדוק שהעמודות ממופות נכון:</div>
+      <div class="row">${field('name', 'שם השלב', map.name)}${field('client_amount', 'סכום ללקוח', map.client_amount)}${field('client_paid', 'שולם ע"י לקוח', map.client_paid)}${field('sub_amount', 'סכום לקבלן', map.sub_amount)}${field('sub_paid', 'שולם לקבלן', map.sub_paid)}</div>`;
+    document.querySelectorAll('.imp2sel').forEach(s => s.onchange = renderPrev2);
+    renderPrev2();
+  }
+  function curMap2() { const m = {}; document.querySelectorAll('.imp2sel').forEach(s => m[s.dataset.key] = parseInt(s.value)); return m; }
+  function renderPrev2() {
+    if (!_imp2) return;
+    const m = curMap2();
+    const rows = _imp2.dataRows.slice(0, 10).map(r => `<tr><td>${esc(r[m.name] || '')}</td><td class="num">${fmtc(r[m.client_amount])}</td><td class="num">${fmtc(r[m.client_paid])}</td><td class="num">${fmtc(r[m.sub_amount])}</td><td class="num">${fmtc(r[m.sub_paid])}</td></tr>`).join('');
+    $('#imp2_preview').innerHTML = `<div class="mini" style="margin-bottom:4px">תצוגה מקדימה:</div><table><thead><tr><th>שלב</th><th>סכום לקוח</th><th>שולם לקוח</th><th>סכום קבלן</th><th>שולם קבלן</th></tr></thead><tbody>${rows}</tbody></table>${_imp2.dataRows.length > 10 ? `<div class="mini">...ועוד ${_imp2.dataRows.length - 10} שורות</div>` : ''}`;
+  }
+  function collectImportRows2() {
+    if (!_imp2) return [];
+    const m = curMap2();
+    return _imp2.dataRows.map(r => ({
+      name: String(r[m.name] || '').trim(),
+      client_amount: impNum(r[m.client_amount]) || 0,
+      client_paid: impNum(r[m.client_paid]) || 0,
+      sub_amount: impNum(r[m.sub_amount]) || 0,
+      sub_paid: impNum(r[m.sub_paid]) || 0,
+    })).filter(x => x.name);
   }
 
   // ============================================================
