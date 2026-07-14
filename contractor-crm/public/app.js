@@ -494,7 +494,7 @@
       </div>
       <div class="field"><label>מהות ההוצאה</label><input id="t_purpose"></div>` : ''}
       <div class="field"><label>אמצעי תשלום</label><input id="t_method" placeholder="מזומן / העברה / צ׳ק / אשראי"></div>
-      ${(isProjExp) ? `<div class="field"><label>חשבונית</label><input id="t_file" type="file" accept="image/*,.pdf"><div class="mini" id="t_fileNote"></div></div>` : ''}
+      ${(isProjExp || isBiz) ? `<div class="field"><label>חשבונית</label><input id="t_file" type="file" accept="image/*,.pdf"><div class="mini" id="t_fileNote"></div></div>` : ''}
       <div class="field"><label>הערה</label><input id="t_note"></div>`,
       [{ label: 'שמירה', onClick: async (close) => {
         const amount = parseFloat(fv('t_amount')); if (!(amount > 0)) return toast('הזן סכום תקין', 'err');
@@ -593,9 +593,10 @@
     const box = $('#bizBox');
     if (!rows.length) box.innerHTML = '<div class="empty"><div class="big">🧾</div>אין הוצאות עסק</div>';
     else {
-      box.innerHTML = `<table><thead><tr><th>תאריך</th><th>קטגוריה</th><th>ספק</th><th>מהות</th><th>אמצעי</th><th>סכום</th>${caps().del ? '<th></th>' : ''}</tr></thead><tbody>${rows.map(t => `
+      box.innerHTML = `<table><thead><tr><th>תאריך</th><th>קטגוריה</th><th>ספק</th><th>מהות</th><th>אמצעי</th><th>סכום</th><th>חשבונית</th>${caps().del ? '<th></th>' : ''}</tr></thead><tbody>${rows.map(t => `
         <tr><td>${dfmt(t.date)}</td><td>${t.category ? `<span class="tag-trade">${esc(t.category)}</span>` : ''}</td><td>${esc(t.supplier || '')}</td><td>${esc(t.purpose || '')}</td><td>${esc(t.method || '')}</td>
         <td class="num" style="color:var(--red)">${money(t.amount)}</td>
+        <td>${invoiceLink(t.invoice_url)}</td>
         ${caps().del ? `<td><button class="btn xs red" data-deltx="${t.id}">🗑️</button></td>` : ''}</tr>`).join('')}</tbody></table>`;
       wireTxTable(box, scrBiz);
     }
