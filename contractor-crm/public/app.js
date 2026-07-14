@@ -18,6 +18,7 @@
   const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
   const TYPE_HE = { client_payment: 'תשלום מלקוח', sub_payment: 'תשלום לקבלן משנה', project_expense: 'הוצאה לפרויקט', business_expense: 'הוצאת עסק' };
   const STATUS_HE = { active: 'פעיל', paused: 'מושהה', done: 'הושלם', pending: 'ממתין', in_progress: 'בביצוע' };
+  const SOURCE_HE = { form: 'טופס', bank: 'בנק', credit: 'אשראי', cash: 'מזומן', transfer: 'העברה' };
 
   function toast(msg, type) {
     const t = $('#toast'); t.textContent = msg; t.className = 'show ' + (type || '');
@@ -845,7 +846,7 @@
     box.innerHTML = rows.length ? `<table><thead><tr><th>תאריך</th><th>קטגוריה</th><th>ספק</th><th>סכום</th><th>מקור</th><th></th></tr></thead><tbody>${rows.map(r => `
       <tr><td>${dfmt(r.date)}</td><td>${esc(r.category || '')}</td><td>${esc(r.payee || '')}</td>
       <td class="num"><span class="pill ${r.direction}">${r.direction === 'in' ? '+' : '−'}${money0(r.amount)}</span></td>
-      <td class="mini">${r.source === 'form' ? 'טופס' : r.source === 'credit' ? 'אשראי' : 'בנק'}</td>
+      <td class="mini">${SOURCE_HE[r.source] || r.source || ''}</td>
       <td><button class="btn xs ghost" data-edithome="${r.id}">✏️</button><button class="btn xs red" data-delhome="${r.id}">🗑️</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">אין תנועות בית</div>';
     box.querySelectorAll('[data-edithome]').forEach(b => b.onclick = () => homeForm(rows.find(x => x.id === +b.dataset.edithome)));
     box.querySelectorAll('[data-delhome]').forEach(b => b.onclick = async () => { if (await confirmDialog('להעביר לסל המחזור?', 'מחיקה')) { await guard(window.Store.home.remove(+b.dataset.delhome)); toast('נמחק', 'ok'); scrHome(); } });
@@ -861,39 +862,87 @@
       <div class="row">
         <div class="field"><label>קטגוריה</label><input id="h_cat" value="${esc(r.category || '')}" placeholder="מזון / חשמל / דלק"></div>
         <div class="field"><label>ספק / למי</label><input id="h_payee" value="${esc(r.payee || '')}"></div>
+        <div class="field"><label>אמצעי</label><select id="h_src">
+          <option value="cash" ${(r.source || 'cash') === 'cash' ? 'selected' : ''}>מזומן</option>
+          <option value="credit" ${r.source === 'credit' ? 'selected' : ''}>אשראי</option>
+          <option value="transfer" ${r.source === 'transfer' ? 'selected' : ''}>העברה</option>
+          <option value="bank" ${r.source === 'bank' ? 'selected' : ''}>בנק</option>
+          <option value="form" ${r.source === 'form' ? 'selected' : ''}>אחר</option></select></div>
       </div>
       <div class="field"><label>הערה</label><input id="h_note" value="${esc(r.note || '')}"></div>`,
       [{ label: 'שמירה', onClick: async (close) => {
         const amount = parseFloat(fv('h_amount')); if (!(amount > 0)) return toast('הזן סכום', 'err');
-        const d = { direction: fv('h_dir'), amount, date: fv('h_date') || null, category: fv('h_cat'), payee: fv('h_payee'), note: fv('h_note'), source: 'form' };
+        const d = { direction: fv('h_dir'), amount, date: fv('h_date') || null, category: fv('h_cat'), payee: fv('h_payee'), note: fv('h_note'), source: fv('h_src') || 'cash' };
         await guard(r.id ? window.Store.home.update(r.id, d) : window.Store.home.create(d));
         close(); toast('נשמר', 'ok'); scrHome();
       } }, { label: 'ביטול', cls: 'ghost', onClick: (c) => c() }]);
   }
+  let _homeImp = null;
   async function homeImport() {
     const rules = await guard(window.Store.home.rules());
-    openModal('ייבוא מבנק / אשראי', `
-      <p class="mini">הדבק שורות מהבנק או מכרטיס האשראי. כל שורה: תאריך, תיאור/ספק, סכום — מופרדים ברווח/טאב/פסיק.<br>לדוגמה: <code>05/06/2026 סופר שלי 450</code></p>
-      <div class="field"><label>הדבקה</label><textarea id="imp_text" rows="7" placeholder="הדבק כאן..."></textarea></div>
-      <div class="field"><label>מקור</label><select id="imp_src"><option value="bank">בנק</option><option value="credit">אשראי</option></select></div>
-      <button class="btn ghost sm" id="imp_parse">נתח שורות ↓</button>
-      <div id="imp_preview" style="margin-top:12px"></div>`,
+    const cats = [...new Set((rules || []).map(r => r.category))];
+    openModal('ייבוא מבנק / אשראי / מזומן', `
+      <p class="mini">הדבק שורות מהבנק/אשראי (כדאי לכלול שורת כותרת). לחץ "נתח" ובדוק שהעמודות ממופות נכון — אפשר לתקן.</p>
+      <div class="field"><label>הדבקה</label><textarea id="imp_text" rows="6" placeholder="הדבק כאן..."></textarea></div>
+      <div class="field"><label>מקור</label><select id="imp_src"><option value="bank">בנק</option><option value="credit">אשראי</option><option value="cash">מזומן</option></select></div>
+      <button class="btn ghost sm" id="imp_parse">נתח ↓</button>
+      <div id="imp_map" style="margin-top:10px"></div>
+      <div id="imp_preview" style="margin-top:10px;overflow-x:auto"></div>
+      <datalist id="catlist">${cats.map(c => `<option value="${esc(c)}"></option>`).join('')}</datalist>`,
       [{ label: 'ייבוא', cls: 'green', onClick: async (close) => {
         const rows = collectImportRows();
-        if (!rows.length) return toast('אין שורות. לחץ "נתח שורות" קודם', 'err');
+        if (!rows.length) return toast('אין שורות. לחץ "נתח" קודם', 'err');
         await guard(window.Store.home.import(rows));
         close(); toast(rows.length + ' שורות יובאו', 'ok'); scrHome();
       } }, { label: 'ביטול', cls: 'ghost', onClick: (c) => c() }]);
     $('#imp_parse').onclick = () => {
-      const parsed = parseImport(fv('imp_text'), rules);
-      const cats = [...new Set([...(rules || []).map(r => r.category)])];
-      $('#imp_preview').innerHTML = parsed.length ? `<table><thead><tr><th>תאריך</th><th>ספק</th><th>סכום</th><th>קטגוריה</th></tr></thead><tbody>${parsed.map((p, i) => `
-        <tr data-imp="${i}"><td><input class="ip-date" value="${esc(p.date || '')}" style="width:110px"></td>
-        <td><input class="ip-payee" value="${esc(p.payee || '')}" style="width:150px"></td>
-        <td><input class="ip-amount" type="number" value="${p.amount || ''}" style="width:90px"></td>
-        <td><input class="ip-cat" value="${esc(p.category || '')}" list="catlist" style="width:120px"></td></tr>`).join('')}</tbody></table>
-        <datalist id="catlist">${cats.map(c => `<option value="${esc(c)}">`).join('')}</datalist>` : '<div class="empty">לא זוהו שורות</div>';
+      _homeImp = parseHomeGrid(fv('imp_text'), rules);
+      if (!_homeImp) { $('#imp_map').innerHTML = ''; $('#imp_preview').innerHTML = '<div class="empty">לא זוהו שורות עם סכום</div>'; return; }
+      const { cols, colLabel, auto } = _homeImp;
+      const opt = (sel) => '<option value="-1">— (ללא) —</option>' + Array.from({ length: cols }, (_, j) => `<option value="${j}" ${j === sel ? 'selected' : ''}>${esc((colLabel[j] || '').slice(0, 18))} · עמ' ${j + 1}</option>`).join('');
+      const fld = (k, label, sel) => `<div class="field" style="min-width:140px"><label>${label}</label><select class="hmpsel" data-key="${k}">${opt(sel)}</select></div>`;
+      $('#imp_map').innerHTML = `<div class="mini" style="margin-bottom:6px">זוהו ${_homeImp.dataRows.length} שורות. מיפוי עמודות (תקן אם צריך):</div><div class="row">${fld('date', 'תאריך', auto.date)}${fld('payee', 'תיאור/עסק', auto.payee)}${fld('amount', 'סכום', auto.amount)}${fld('category', 'קטגוריה', auto.category)}</div>`;
+      document.querySelectorAll('.hmpsel').forEach(s => s.onchange = renderHomePrev);
+      renderHomePrev();
     };
+  }
+  function homeMap() { const m = {}; document.querySelectorAll('.hmpsel').forEach(s => m[s.dataset.key] = parseInt(s.value)); return m; }
+  function renderHomePrev() {
+    if (!_homeImp) return;
+    const m = homeMap();
+    const rowsHtml = _homeImp.dataRows.map((r, i) => {
+      const payee = m.payee >= 0 ? String(r[m.payee] || '') : '';
+      let cat = m.category >= 0 ? String(r[m.category] || '') : '';
+      if (!cat) for (const rl of (_homeImp.rules || [])) { if (payee && payee.includes(rl.match_text)) { cat = rl.category; break; } }
+      return `<tr data-imp="${i}">
+        <td><input class="ip-date" value="${esc(m.date >= 0 ? normDate(r[m.date]) : '')}" style="width:110px"></td>
+        <td><input class="ip-payee" value="${esc(payee)}" style="width:150px"></td>
+        <td><input class="ip-amount" type="number" value="${m.amount >= 0 ? (impNum(r[m.amount]) || '') : ''}" style="width:90px"></td>
+        <td><input class="ip-cat" value="${esc(cat)}" list="catlist" style="width:120px"></td></tr>`;
+    }).join('');
+    $('#imp_preview').innerHTML = `<table><thead><tr><th>תאריך</th><th>תיאור/עסק</th><th>סכום</th><th>קטגוריה</th></tr></thead><tbody>${rowsHtml}</tbody></table>`;
+  }
+  function parseHomeGrid(text, rules) {
+    const lines = (text || '').split(/\r?\n/).filter(l => l.trim() !== '');
+    if (!lines.length) return null;
+    const grid = lines.map(l => (l.indexOf('\t') >= 0 ? l.split('\t') : l.split(/ {2,}|,|;/)).map(c => c.trim()));
+    const cols = Math.max(...grid.map(r => r.length)); grid.forEach(r => { while (r.length < cols) r.push(''); });
+    const dateRe = /\d{1,2}[./-]\d{1,2}[./-]\d{2,4}/;
+    const isData = grid.map(r => r.some(c => impNum(c) !== null));
+    const headerRows = grid.filter((r, i) => !isData[i]);
+    const dataRows = grid.filter((r, i) => isData[i]);
+    if (!dataRows.length) return null;
+    const colLabel = []; for (let j = 0; j < cols; j++) colLabel[j] = headerRows.map(r => String(r[j] || '').trim()).filter(Boolean).join(' ') || ('עמודה ' + (j + 1));
+    const byLabel = (kw) => { for (let j = 0; j < cols; j++) if (colLabel[j].indexOf(kw) >= 0) return j; return -1; };
+    let dateCol = byLabel('תאריך'); if (dateCol < 0) for (let j = 0; j < cols; j++) if (dataRows.some(r => dateRe.test(r[j]))) { dateCol = j; break; }
+    let amtCol = byLabel('סכום'); if (amtCol < 0) amtCol = byLabel('חיוב'); if (amtCol < 0) amtCol = byLabel('חובה'); if (amtCol < 0) amtCol = byLabel('זכות');
+    if (amtCol < 0) { const cand = []; for (let j = 0; j < cols; j++) { if (j === dateCol) continue; if (dataRows.filter(r => impNum(r[j]) !== null).length > dataRows.length / 2) cand.push(j); } amtCol = cand.find(j => colLabel[j].indexOf('יתרה') < 0); if (amtCol == null) amtCol = cand.length ? cand[0] : -1; }
+    let catCol = byLabel('קטגוריה');
+    let payCol = byLabel('סוג תנועה'); if (payCol < 0) payCol = byLabel('בית עסק'); if (payCol < 0) payCol = byLabel('תיאור'); if (payCol < 0) payCol = byLabel('ספק'); if (payCol < 0) payCol = byLabel('שם');
+    const textCols = []; for (let j = 0; j < cols; j++) if (j !== dateCol && j !== amtCol && dataRows.some(r => r[j] && impNum(r[j]) === null)) textCols.push(j);
+    if (payCol < 0) { const c = textCols.find(j => j !== catCol); if (c != null) payCol = c; }
+    if (catCol < 0) { const c = textCols.find(j => j !== payCol); if (c != null) catCol = c; }
+    return { dataRows, cols, colLabel, rules: rules || [], auto: { date: dateCol, payee: payCol == null ? -1 : payCol, amount: amtCol, category: catCol == null ? -1 : catCol } };
   }
   function collectImportRows() {
     return [...document.querySelectorAll('#imp_preview tr[data-imp]')].map(tr => ({

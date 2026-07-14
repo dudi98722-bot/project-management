@@ -37,13 +37,13 @@ router.post('/transactions', async (req, res) => {
 
 // PUT /api/home/transactions/:id
 router.put('/transactions/:id', async (req, res) => {
-  const { date, direction, amount, category, payee, note } = req.body || {};
+  const { date, direction, amount, category, payee, note, source } = req.body || {};
   if (!(parseFloat(amount) > 0)) return res.status(400).json({ error: 'סכום חייב להיות גדול מ-0' });
   try {
     const r = await pool.query(
       `UPDATE home_transactions SET date=$1, direction=COALESCE($2,'out'), amount=$3, category=$4, payee=$5,
-        note=$6, updated_by=$7, updated_at=NOW() WHERE id=$8 AND deleted=false RETURNING *`,
-      [date || null, direction, amount, category || null, payee || null, note || null, req.user.id, req.params.id]
+        note=$6, source=COALESCE($7,source), updated_by=$8, updated_at=NOW() WHERE id=$9 AND deleted=false RETURNING *`,
+      [date || null, direction, amount, category || null, payee || null, note || null, source || null, req.user.id, req.params.id]
     );
     if (!r.rows.length) return res.status(404).json({ error: 'רשומה לא נמצאה' });
     if (category && payee) await learnRule(payee, category);

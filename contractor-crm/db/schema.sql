@@ -99,12 +99,14 @@ CREATE TABLE IF NOT EXISTS home_transactions (
   amount DECIMAL(14,2) NOT NULL DEFAULT 0,
   category VARCHAR(100),
   payee VARCHAR(200),        -- ספק/למי שולם
-  source VARCHAR(20) DEFAULT 'form' CHECK (source IN ('form','bank','credit')),
+  source VARCHAR(20) DEFAULT 'form',   -- form / bank / credit / cash / transfer
   note TEXT,
   deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMP, deleted_by INTEGER,
   created_by INTEGER, created_at TIMESTAMP DEFAULT NOW(),
   updated_by INTEGER, updated_at TIMESTAMP DEFAULT NOW()
 );
+-- מיגרציה: מסירים את הגבלת ה-source כדי לאפשר גם cash/transfer
+ALTER TABLE home_transactions DROP CONSTRAINT IF EXISTS home_transactions_source_check;
 
 -- כללי סיווג נלמדים לבית (טקסט -> קטגוריה)
 CREATE TABLE IF NOT EXISTS home_rules (
