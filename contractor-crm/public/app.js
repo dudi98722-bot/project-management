@@ -1076,21 +1076,19 @@
         <div class="mini" style="margin-top:6px">מתוך ${money(total)}</div></div>
     </div>`;
   }
-  // רווח שנמשך לפי פרויקט (עמודות אופקיות)
+  // רווח שנמשך לפי פרויקט (עמודות אופקיות ב-HTML - תומך בעברית RTL)
   function drawDrawnBars(box, rows) {
-    rows = (rows || []).slice().sort((a, b) => (b.actual_profit || 0) - (a.actual_profit || 0)).slice(0, 10);
+    rows = (rows || []).slice().sort((a, b) => (b.actual_profit || 0) - (a.actual_profit || 0)).slice(0, 12);
     if (!rows.length) { box.innerHTML = '<div class="empty">אין נתונים</div>'; return; }
     const max = Math.max(1, ...rows.map(r => Math.abs(r.actual_profit || 0)));
-    const W = 680, rowH = 32, H = rows.length * rowH + 8, pad = 150, barMax = W - pad - 95;
-    let g = '', y = 8;
-    rows.forEach(r => {
-      const v = r.actual_profit || 0, w = Math.max(2, barMax * Math.abs(v) / max), col = v >= 0 ? '#16a34a' : '#dc2626';
-      g += `<text x="${W - 8}" y="${y + rowH / 2 + 4}" text-anchor="end" font-size="13" fill="#334155">${esc(String(r.name).slice(0, 18))}</text>`;
-      g += `<rect x="${pad}" y="${y + 6}" width="${w}" height="${rowH - 14}" rx="4" fill="${col}"><title>${esc(r.name)}: ${money(v)}</title></rect>`;
-      g += `<text x="${pad + w + 6}" y="${y + rowH / 2 + 4}" font-size="12" fill="#64748b">${money0(v)}</text>`;
-      y += rowH;
-    });
-    box.innerHTML = `<svg class="chart-svg" viewBox="0 0 ${W} ${H}">${g}</svg>`;
+    box.innerHTML = rows.map(r => {
+      const v = r.actual_profit || 0, pct = Math.max(2, Math.round(Math.abs(v) / max * 100)), col = v >= 0 ? 'var(--green)' : 'var(--red)';
+      return `<div style="display:flex;align-items:center;gap:12px;margin:8px 0">
+        <div style="width:150px;flex:none;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(r.name)}">${esc(r.name)}</div>
+        <div style="flex:1;background:#eef2f7;border-radius:6px;height:20px;min-width:60px"><div style="width:${pct}%;background:${col};height:100%;border-radius:6px"></div></div>
+        <div style="width:90px;flex:none;text-align:left;font-weight:700;font-size:13px;color:${col}">${money0(v)}</div>
+      </div>`;
+    }).join('');
   }
   function drawProfitChart(box, rows) {
     if (!rows || !rows.length) { box.innerHTML = '<div class="empty">אין נתונים</div>'; return; }
