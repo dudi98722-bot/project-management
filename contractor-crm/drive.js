@@ -1,0 +1,68 @@
+// העלאת חשבוניות ל-Google Drive, עם נפילה חזרה (fallback) לאחסון מקומי.
+// אם לא הוגדרו פרטי חשבון שירות + תיקיית יעד - הקובץ נשמר מקומית תחת uploads/.
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { loadServiceAccount } = require('./gauth');
+
+const UPLOAD_DIR = path.join(__dirname, 'uploads');
+
+function ensureLocalDir() {
+  if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+}
+
+// שם קובץ בלתי ניתן לניחוש (מונע ספירה/גישה לקישורים של אחרים), שומר סיומת בטוחה בלבד
+function safeName(name) {
+  const m = /\.([a-zA-Z0-9]{1,8})$/.exec(name || '');
+  const ext = m ? '.' + m[1].toLowerCase() : '';
+  return crypto.randomUUID() + ext;
+}
+
+function driveConfigured() {
+  return !!(process.env.DRIVE_FOLDER_ID && loadServiceAccount());
+}
+
+async function uploadToDrive(buffer, filename, mimetype) {
+  const { google } = require('googleapis');
+  const creds = loadServiceAccount();
+  const auth = new google.auth.GoogleAuth({
+    credentials: creds,
+    scopes: ['https://www.googleapis.com/auth/drive.file']
+  });
+  const drive = google.drive({ version: 'v3', auth });
+  const { Readable } = require('stream');
+  const res = await drive.files.create({
+    requestBody: { name: filename, parents: [process.env.DRIVE_FOLDER_ID] },
+    media: { mimeType: mimetype || 'application/octet-stream', body: Readable.from(buffer) },
+    fields: 'id, webViewLink'
+  });
+  // הרשאת צפייה לכל מי שיש לו את הקישור
+  try {
+    await drive.permissions.create({
+      fileId: res.data.id,
+      requestBody: { role: 'reader', type: 'anyone' }
+    });
+  } catch (e) { /* לא קריטי */ }
+  return res.data.webViewLink || ('https://drive.google.com/file/d/' + res.data.id + '/view');
+}
+
+function saveLocal(buffer, filename) {
+  ensureLocalDir();
+  const fname = safeName(filename);
+  fs.writeFileSync(path.join(UPLOAD_DIR, fname), buffer);
+  return '/uploads/' + fname;
+}
+
+// נקודת הכניסה הראשית: מקבל buffer ומחזיר URL לחשבונית
+async function saveInvoice(buffer, filename, mimetype) {
+  if (driveConfigured()) {
+    try {
+      return await uploadToDrive(buffer, safeName(filename), mimetype);
+    } catch (e) {
+      console.error('Drive upload failed, saving locally:', e.message);
+    }
+  }
+  return saveLocal(buffer, filename);
+}
+
+module.exports = { saveInvoice, driveConfigured, UPLOAD_DIR };

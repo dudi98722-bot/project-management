@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ניהול קבלן וקבלני משנה</title>
+<style>
+  :root{
+    --bg:#0f172a; --bg2:#1e293b; --panel:#ffffff; --ink:#0f172a; --muted:#64748b;
+    --line:#e2e8f0; --brand:#f59e0b; --brand-d:#d97706; --accent:#0ea5e9;
+    --green:#16a34a; --red:#dc2626; --amber:#f59e0b; --soft:#f8fafc;
+    --shadow:0 1px 3px rgba(15,23,42,.08),0 8px 24px rgba(15,23,42,.06);
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:"Assistant","Segoe UI",Arial,sans-serif;background:var(--soft);color:var(--ink);font-size:15px;line-height:1.5}
+  button{font-family:inherit;cursor:pointer}
+  input,select,textarea{font-family:inherit;font-size:15px}
+  a{color:var(--accent)}
+  .hidden{display:none!important}
+
+  /* ---------- Login ---------- */
+  #loginScreen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(1200px 600px at 70% -10%,#1e293b,#0f172a);padding:20px;z-index:50}
+  .login-card{background:var(--panel);border-radius:20px;box-shadow:var(--shadow);width:100%;max-width:400px;padding:34px 30px;text-align:center}
+  .login-logo{width:64px;height:64px;border-radius:16px;background:linear-gradient(135deg,var(--brand),var(--brand-d));
+    display:flex;align-items:center;justify-content:center;font-size:34px;margin:0 auto 14px}
+  .login-card h1{margin:0 0 4px;font-size:22px}
+  .login-card p.sub{margin:0 0 22px;color:var(--muted);font-size:14px}
+  .field{text-align:right;margin-bottom:14px}
+  .field label{display:block;font-size:13px;color:var(--muted);margin-bottom:5px}
+  .field input,.field select,.field textarea{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;outline:none;transition:border .15s}
+  .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--brand)}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:none;border-radius:10px;padding:11px 18px;font-size:15px;font-weight:600;background:var(--brand);color:#fff;transition:filter .15s,transform .05s}
+  .btn:hover{filter:brightness(.96)} .btn:active{transform:translateY(1px)}
+  .btn.full{width:100%}
+  .btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
+  .btn.accent{background:var(--accent)} .btn.green{background:var(--green)} .btn.red{background:var(--red)}
+  .btn.sm{padding:7px 12px;font-size:13px;border-radius:8px}
+  .btn.xs{padding:4px 9px;font-size:12px;border-radius:7px}
+  .login-err{color:var(--red);font-size:13px;min-height:18px;margin:6px 0}
+  .login-hint{margin-top:16px;font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:14px;text-align:right}
+  .login-hint b{color:var(--ink)}
+
+  /* ---------- App shell ---------- */
+  #app{min-height:100vh;display:flex;flex-direction:column}
+  header.top{background:var(--bg);color:#fff;padding:0 20px;display:flex;align-items:center;gap:14px;height:60px;position:sticky;top:0;z-index:30}
+  header.top .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px}
+  header.top .brand .ico{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--brand),var(--brand-d));display:flex;align-items:center;justify-content:center;font-size:19px}
+  header.top .spacer{flex:1}
+  .demo-badge{background:var(--amber);color:#0f172a;font-size:12px;font-weight:700;padding:4px 10px;border-radius:20px}
+  .user-chip{display:flex;align-items:center;gap:8px;font-size:14px}
+  .user-chip .role{font-size:12px;color:#94a3b8}
+  nav.tabs{background:var(--bg2);display:flex;gap:2px;padding:0 12px;overflow-x:auto;position:sticky;top:60px;z-index:29}
+  nav.tabs button{background:none;border:none;color:#cbd5e1;padding:13px 15px;font-size:14px;font-weight:600;border-bottom:3px solid transparent;white-space:nowrap}
+  nav.tabs button:hover{color:#fff}
+  nav.tabs button.active{color:#fff;border-bottom-color:var(--brand)}
+  main#view{flex:1;padding:22px;max-width:1200px;margin:0 auto;width:100%}
+
+  /* ---------- Components ---------- */
+  .page-head{display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+  .page-head h2{margin:0;font-size:22px}
+  .page-head .spacer{flex:1}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;margin-bottom:16px}
+  .card h3{margin:0 0 12px;font-size:16px}
+  .grid{display:grid;gap:14px}
+  .stat-grid{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
+  .stat .label{font-size:13px;color:var(--muted);margin-bottom:6px}
+  .stat .value{font-size:26px;font-weight:800;letter-spacing:-.5px}
+  .stat .value.g{color:var(--green)} .stat .value.r{color:var(--red)} .stat .value.a{color:var(--brand-d)}
+  .stat .sub{font-size:12px;color:var(--muted);margin-top:4px}
+
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:right;padding:10px 10px;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:600;font-size:13px;background:var(--soft)}
+  tr:hover td{background:#fcfdff}
+  .num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+  .pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}
+  .pill.in{background:#dcfce7;color:#166534} .pill.out{background:#fee2e2;color:#991b1b}
+  .pill.active{background:#e0f2fe;color:#075985} .pill.done{background:#dcfce7;color:#166534} .pill.paused{background:#fef3c7;color:#92400e}
+  .pill.pending{background:#f1f5f9;color:#475569} .pill.in_progress{background:#e0f2fe;color:#075985}
+
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .row > .field{flex:1;min-width:150px;margin-bottom:0}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+  .toolbar .field{margin-bottom:0}
+  .empty{text-align:center;color:var(--muted);padding:40px 10px}
+  .empty .big{font-size:40px;margin-bottom:8px}
+
+  /* progress bar */
+  .bar{height:10px;background:#eef2f7;border-radius:6px;overflow:hidden}
+  .bar > span{display:block;height:100%;background:var(--green)}
+  .bar.warn > span{background:var(--amber)} .bar.bad > span{background:var(--red)}
+
+  /* modal */
+  .modal-bg{position:fixed;inset:0;background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;z-index:60;padding:16px}
+  .modal{background:#fff;border-radius:16px;box-shadow:var(--shadow);width:100%;max-width:560px;max-height:90vh;overflow:auto}
+  .modal .m-head{display:flex;align-items:center;padding:16px 18px;border-bottom:1px solid var(--line)}
+  .modal .m-head h3{margin:0;font-size:17px;flex:1}
+  .modal .m-body{padding:18px}
+  .modal .m-foot{padding:14px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-start}
+  .x{background:none;border:none;font-size:22px;color:var(--muted);cursor:pointer;line-height:1}
+
+  .link{color:var(--accent);cursor:pointer;text-decoration:none;font-weight:600}
+  .muted{color:var(--muted)}
+  .right{text-align:right}.center{text-align:center}
+  .mini{font-size:12px;color:var(--muted)}
+  .tag-trade{background:#eff6ff;color:#1d4ed8;font-size:12px;padding:2px 8px;border-radius:6px}
+
+  /* toast */
+  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--bg);color:#fff;padding:12px 20px;border-radius:10px;box-shadow:var(--shadow);z-index:90;opacity:0;transition:opacity .2s,bottom .2s;pointer-events:none}
+  #toast.show{opacity:1;bottom:30px}
+  #toast.err{background:var(--red)} #toast.ok{background:var(--green)}
+
+  /* charts */
+  .chart-svg{width:100%;height:auto;display:block}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:13px}
+  .legend i{width:12px;height:12px;border-radius:3px;display:inline-block;margin-inline-end:5px;vertical-align:-1px}
+
+  @media(max-width:640px){
+    main#view{padding:14px}
+    .stat .value{font-size:22px}
+    header.top .brand span.t{display:none}
+    th,td{padding:8px 6px}
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== Login ===== -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo">🏗️</div>
+    <h1>ניהול קבלן</h1>
+    <p class="sub">קבלני משנה · פרויקטים · כספים · בית</p>
+    <form id="loginForm" onsubmit="return false">
+      <div class="field"><label>שם משתמש</label><input id="loginUser" autocomplete="username" autofocus></div>
+      <div class="field"><label>סיסמא</label><input id="loginPass" type="password" autocomplete="current-password"></div>
+      <div class="login-err" id="loginErr"></div>
+      <button class="btn full" id="loginBtn" type="submit">כניסה</button>
+    </form>
+    <button class="btn ghost full" id="demoBtn" style="margin-top:10px">🎬 כניסה במצב הדגמה (ללא שרת)</button>
+    <div class="login-hint" id="loginHint">
+      <b>מצב הדגמה</b> מאפשר לנסות את המערכת עם נתונים לדוגמה, בלי להתחבר לשרת.
+    </div>
+  </div>
+</div>
+
+<!-- ===== App ===== -->
+<div id="app" class="hidden">
+  <header class="top">
+    <div class="brand"><span class="ico">🏗️</span><span class="t">ניהול קבלן</span></div>
+    <span class="demo-badge hidden" id="demoBadge">מצב הדגמה</span>
+    <div class="spacer"></div>
+    <div class="user-chip"><div><div id="userName">—</div><div class="role" id="userRole"></div></div></div>
+    <button class="btn ghost sm" id="logoutBtn">יציאה</button>
+  </header>
+  <nav class="tabs" id="tabs"></nav>
+  <main id="view"></main>
+</div>
+
+<div id="modalRoot"></div>
+<div id="toast"></div>
+
+<script src="store.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

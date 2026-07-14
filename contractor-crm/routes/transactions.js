@@ -1,0 +1,126 @@
+const express = require('express');
+const { pool, logAction, softDelete, validId } = require('../db');
+const sheets = require('../sheets');
+const { authenticate, can, canAny } = require('../middleware/auth');
+const router = express.Router();
+
+const TYPES = ['client_payment', 'sub_payment', 'project_expense', 'business_expense'];
+const DIRECTION = { client_payment: 'in', sub_payment: 'out', project_expense: 'out', business_expense: 'out' };
+
+// בדיקת תקינות לפי סוג התנועה
+function validate(type, b) {
+  if (!TYPES.includes(type)) return 'סוג תנועה לא תקין';
+  const amt = parseFloat(b.amount);
+  if (!(amt > 0)) return 'סכום חייב להיות גדול מ-0';
+  if (type === 'client_payment' && (!b.project_id || !b.stage_id)) return 'תשלום לקוח חייב פרויקט ושלב';
+  if (type === 'sub_payment' && (!b.project_id || !b.stage_id || !b.subcontractor_id)) return 'תשלום לקבלן משנה חייב פרויקט, שלב וקבלן';
+  if (type === 'project_expense' && !b.project_id) return 'הוצאה לפרויקט חייבת פרויקט';
+  return null;
+}
+
+// GET /api/transactions?project_id=&stage_id=&type=&from=&to=
+router.get('/', authenticate, can('viewBusiness'), async (req, res) => {
+  const { project_id, stage_id, type, from, to } = req.query;
+  const where = ['t.deleted=false'];
+  const params = [];
+  if (project_id) { params.push(project_id); where.push(`t.project_id=$${params.length}`); }
+  if (stage_id)   { params.push(stage_id);   where.push(`t.stage_id=$${params.length}`); }
+  if (type)       { params.push(type);       where.push(`t.type=$${params.length}`); }
+  if (from)       { params.push(from);       where.push(`t.date>=$${params.length}`); }
+  if (to)         { params.push(to);         where.push(`t.date<=$${params.length}`); }
+  try {
+    const r = await pool.query(
+      `SELECT t.*, p.name AS project_name, s.name AS stage_name, sc.name AS subcontractor_name
+       FROM transactions t
+       LEFT JOIN projects p ON p.id=t.project_id AND p.deleted=false
+       LEFT JOIN stages s ON s.id=t.stage_id AND s.deleted=false
+       LEFT JOIN subcontractors sc ON sc.id=t.subcontractor_id AND sc.deleted=false
+       WHERE ${where.join(' AND ')} ORDER BY t.date DESC NULLS LAST, t.id DESC`,
+      params
+    );
+    res.json(r.rows);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+});
+
+// POST /api/transactions
+router.post('/', authenticate, canAny(['writeTx', 'projectExpenseOnly']), async (req, res) => {
+  const b = req.body || {};
+  const type = b.type;
+  // מי שיש לו רק projectExpenseOnly (עובד שטח) - רשאי אך ורק להזין הוצאה לפרויקט
+  if (!req.caps.writeTx && type !== 'project_expense') {
+    return res.status(403).json({ error: 'אתה רשאי להזין רק הוצאה לפרויקט' });
+  }
+  const err = validate(type, b);
+  if (err) return res.status(400).json({ error: err });
+  try {
+    const r = await pool.query(
+      `INSERT INTO transactions
+        (type, direction, amount, date, project_id, stage_id, subcontractor_id, supplier, purpose, method, invoice_url, note, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13) RETURNING *`,
+      [type, DIRECTION[type], b.amount, b.date || null, b.project_id || null, b.stage_id || null,
+       b.subcontractor_id || null, b.supplier || null, b.purpose || null, b.method || null,
+       b.invoice_url || null, b.note || null, req.user.id]
+    );
+    await logAction(req.user, 'add', 'transactions', r.rows[0].id, { type, amount: b.amount });
+    res.status(201).json(r.rows[0]);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+});
+
+// PUT /api/transactions/:id
+router.put('/:id', authenticate, can('writeTx'), async (req, res) => {
+  const b = req.body || {};
+  try {
+    // שומרים על הסוג המקורי; מעדכנים שדות ניתנים לעריכה
+    const cur = await pool.query('SELECT type FROM transactions WHERE id=$1 AND deleted=false', [req.params.id]);
+    if (!cur.rows.length) return res.status(404).json({ error: 'תנועה לא נמצאה' });
+    const err = validate(cur.rows[0].type, b);
+    if (err) return res.status(400).json({ error: err });
+    const r = await pool.query(
+      `UPDATE transactions SET amount=$1, date=$2, project_id=$3, stage_id=$4, subcontractor_id=$5,
+         supplier=$6, purpose=$7, method=$8, invoice_url=$9, note=$10, updated_by=$11, updated_at=NOW()
+       WHERE id=$12 AND deleted=false RETURNING *`,
+      [b.amount, b.date || null, b.project_id || null, b.stage_id || null, b.subcontractor_id || null,
+       b.supplier || null, b.purpose || null, b.method || null, b.invoice_url || null, b.note || null,
+       req.user.id, req.params.id]
+    );
+    await logAction(req.user, 'edit', 'transactions', req.params.id, { amount: b.amount });
+    res.json(r.rows[0]);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+});
+
+// DELETE /api/transactions/:id - מחיקה רכה
+router.delete('/:id', authenticate, can('viewBusiness'), can('del'), async (req, res) => {
+  try {
+    const ok = await softDelete('transactions', req.params.id, req.user);
+    if (!ok) return res.status(404).json({ error: 'תנועה לא נמצאה' });
+    res.json({ message: 'התנועה הועברה לסל המחזור' });
+  } catch (e) { res.status(500).json({ error: 'שגיאת שרת' }); }
+});
+
+// POST /api/transactions/bulk-delete - מחיקה מרובה (מנהל בלבד). אטומי: הכל או כלום.
+router.post('/bulk-delete', authenticate, can('viewBusiness'), can('multiDelete'), async (req, res) => {
+  const ids = (Array.isArray(req.body.ids) ? req.body.ids : []).map(validId).filter(v => v !== null);
+  if (!ids.length) return res.status(400).json({ error: 'לא נבחרו תנועות תקינות' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    let n = 0;
+    for (const id of ids) {
+      const r = await client.query(
+        'UPDATE transactions SET deleted=true, deleted_at=NOW(), deleted_by=$2 WHERE id=$1 AND deleted=false RETURNING id',
+        [id, req.user.id]);
+      if (r.rows.length) n++;
+    }
+    await client.query('COMMIT');
+    await logAction(req.user, 'bulk_delete', 'transactions', 0, { count: n });
+    pool.query('SELECT * FROM transactions WHERE id = ANY($1)', [ids])   // גיבוי המחיקה ל-Sheets
+      .then(r => sheets.mirrorMany('transactions', r.rows)).catch(() => {});
+    res.json({ message: `${n} תנועות הועברו לסל המחזור`, count: n });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error(e);
+    res.status(500).json({ error: 'שגיאת שרת' });
+  } finally { client.release(); }
+});
+
+module.exports = router;

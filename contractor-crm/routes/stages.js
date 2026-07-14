@@ -1,0 +1,47 @@
+const express = require('express');
+const { pool, logAction, softDelete } = require('../db');
+const { authenticate, can } = require('../middleware/auth');
+const router = express.Router();
+
+// POST /api/stages - הוספת שלב בודד
+router.post('/', authenticate, can('editProjects'), async (req, res) => {
+  const { project_id, name, seq, client_amount, sub_amount, subcontractor_id, status } = req.body;
+  if (!project_id || !name) return res.status(400).json({ error: 'פרויקט ושם שלב חובה' });
+  try {
+    const r = await pool.query(
+      `INSERT INTO stages (project_id, name, seq, client_amount, sub_amount, subcontractor_id, status, created_by, updated_by)
+       VALUES ($1,$2,COALESCE($3,0),COALESCE($4,0),COALESCE($5,0),$6,COALESCE($7,'pending'),$8,$8) RETURNING *`,
+      [project_id, name, seq, client_amount, sub_amount, subcontractor_id || null, status, req.user.id]
+    );
+    await logAction(req.user, 'add', 'stages', r.rows[0].id, { project_id, name });
+    res.status(201).json(r.rows[0]);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+});
+
+// PUT /api/stages/:id
+router.put('/:id', authenticate, can('editProjects'), async (req, res) => {
+  const { name, seq, client_amount, sub_amount, subcontractor_id, status, approved } = req.body;
+  try {
+    const r = await pool.query(
+      `UPDATE stages SET name=$1, seq=COALESCE($2,seq), client_amount=COALESCE($3,0), sub_amount=COALESCE($4,0),
+         subcontractor_id=$5, status=COALESCE($6,status), approved=COALESCE($7,approved),
+         updated_by=$8, updated_at=NOW()
+       WHERE id=$9 AND deleted=false RETURNING *`,
+      [name, seq, client_amount, sub_amount, subcontractor_id || null, status, approved, req.user.id, req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'שלב לא נמצא' });
+    await logAction(req.user, 'edit', 'stages', req.params.id, { name });
+    res.json(r.rows[0]);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+});
+
+// DELETE /api/stages/:id - מחיקה רכה
+router.delete('/:id', authenticate, can('viewBusiness'), can('del'), async (req, res) => {
+  try {
+    const ok = await softDelete('stages', req.params.id, req.user);
+    if (!ok) return res.status(404).json({ error: 'שלב לא נמצא' });
+    res.json({ message: 'השלב הועבר לסל המחזור' });
+  } catch (e) { res.status(500).json({ error: 'שגיאת שרת' }); }
+});
+
+module.exports = router;
