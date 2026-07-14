@@ -112,17 +112,17 @@
     ];
     const sPlumb = D.subs[0].id, sTile = D.subs[2].id, sPaint = D.subs[3].id;
 
-    const p1 = { id: nid(), name: 'שיפוץ דירה - הרצל 5', client_name: 'ישראל כהן', client_phone: '052-9999999', address: 'הרצל 5, בני ברק', status: 'active', expected_profit: 40000, start_date: '2026-06-01', notes: '', deleted: false };
-    const p2 = { id: nid(), name: 'בניית פרגולה - וילה שוהם', client_name: 'רונן לוי', client_phone: '054-8888888', address: 'שוהם', status: 'active', expected_profit: 12000, start_date: '2026-06-20', notes: '', deleted: false };
+    const p1 = { id: nid(), name: 'שיפוץ דירה - הרצל 5', client_name: 'ישראל כהן', client_phone: '052-9999999', address: 'הרצל 5, בני ברק', status: 'active', expected_profit: 40000, subcontractor_id: sPlumb, start_date: '2026-06-01', notes: '', deleted: false };
+    const p2 = { id: nid(), name: 'בניית פרגולה - וילה שוהם', client_name: 'רונן לוי', client_phone: '054-8888888', address: 'שוהם', status: 'active', expected_profit: 12000, subcontractor_id: sTile, start_date: '2026-06-20', notes: '', deleted: false };
     D.projects = [p1, p2];
 
     const st = (pid, name, seq, ca, sa, sub) => ({ id: nid(), project_id: pid, name, seq, client_amount: ca, sub_amount: sa, subcontractor_id: sub, status: 'pending', approved: false, deleted: false });
     D.stages = [
       st(p1.id, 'הריסה + אינסטלציה', 1, 30000, 18000, sPlumb),
-      st(p1.id, 'ריצוף', 2, 40000, 25000, sTile),
-      st(p1.id, 'גמר + צבע', 3, 30000, 15000, sPaint),
-      st(p2.id, 'יסודות', 1, 8000, 4000, null),
-      st(p2.id, 'הרכבה', 2, 12000, 6000, null),
+      st(p1.id, 'ריצוף', 2, 40000, 25000, sPlumb),
+      st(p1.id, 'גמר + צבע', 3, 30000, 15000, sPlumb),
+      st(p2.id, 'יסודות', 1, 8000, 4000, sTile),
+      st(p2.id, 'הרכבה', 2, 12000, 6000, sTile),
     ];
     const stg = D.stages;
 
@@ -158,7 +158,8 @@
     const actual_profit = income - sub_paid - project_expenses;
     return Object.assign({}, p, {
       income, sub_paid, project_expenses, planned_income, planned_sub, expected_profit,
-      actual_profit, profit_gap: actual_profit - expected_profit, planned_profit: planned_income - planned_sub
+      actual_profit, profit_gap: actual_profit - expected_profit, planned_profit: planned_income - planned_sub,
+      subcontractor_name: subName(p.subcontractor_id)
     });
   }
   const subName = (id) => { const s = D.subs.find(x => x.id === id); return (s && !s.deleted) ? s.name : null; };
@@ -199,22 +200,18 @@
       list: () => delay(A(D.projects).map(projSummary).sort((a, b) => b.id - a.id)),
       pick: () => delay(A(D.projects).filter(p => p.status !== 'done').map(p => ({ id: p.id, name: p.name, client_name: p.client_name }))),
       get: (id) => { id = +id; const p = A(D.projects).find(x => x.id === id); if (!p) throw new Error('לא נמצא'); return delay({ project: projSummary(p), stages: A(D.stages).filter(s => s.project_id === id).sort((a, b) => a.seq - b.seq).map(stageWithPaid) }); },
-      create: (d) => { const p = Object.assign({ id: nid(), status: 'active', expected_profit: 0, deleted: false }, d); p.expected_profit = +p.expected_profit || 0; D.projects.push(p); return delay(projSummary(p)); },
-      update: (id, d) => { id = +id; const p = D.projects.find(x => x.id === id); Object.assign(p, d); p.expected_profit = +p.expected_profit || 0; return delay(projSummary(p)); },
+      create: (d) => { const p = Object.assign({ id: nid(), status: 'active', expected_profit: 0, deleted: false }, d); p.expected_profit = +p.expected_profit || 0; p.subcontractor_id = numify(d.subcontractor_id); D.projects.push(p); return delay(projSummary(p)); },
+      update: (id, d) => { id = +id; const p = D.projects.find(x => x.id === id); Object.assign(p, d); p.expected_profit = +p.expected_profit || 0; p.subcontractor_id = numify(d.subcontractor_id); A(D.stages).filter(s => s.project_id === id).forEach(s => s.subcontractor_id = p.subcontractor_id); return delay(projSummary(p)); },
       remove: (id) => { id = +id; const p = D.projects.find(x => x.id === id); if (p && !p.deleted) { p.deleted = true; A(D.stages).filter(s => s.project_id === id).forEach(s => { s.deleted = true; s._cascadeOf = id; }); A(D.tx).filter(t => t.project_id === id).forEach(t => { t.deleted = true; t._cascadeOf = id; }); } return delay({ ok: true }); },
       bulkStages: (id, stages) => {
-        id = +id; let seq = Math.max(0, ...A(D.stages).filter(s => s.project_id === id).map(s => s.seq));
+        id = +id;
+        const proj = D.projects.find(p => p.id === id);
+        const projSub = proj ? (proj.subcontractor_id || null) : null;   // קבלן המשנה של הפרויקט
+        let seq = Math.max(0, ...A(D.stages).filter(s => s.project_id === id).map(s => s.seq));
         const out = [];
         stages.forEach(st => {
           if (!st.name) return;
-          let subId = numify(st.subcontractor_id);
-          if (!subId && st.subcontractor_name && st.subcontractor_name.trim()) {
-            const nm = st.subcontractor_name.trim();
-            let found = D.subs.find(s => !s.deleted && s.name === nm);
-            if (!found) { found = { id: nid(), name: nm, trade: st.subcontractor_trade || '', phone: '', deleted: false }; D.subs.push(found); }
-            subId = found.id;
-          }
-          const s = { id: nid(), project_id: id, name: st.name, seq: ++seq, client_amount: +st.client_amount || 0, sub_amount: +st.sub_amount || 0, subcontractor_id: subId, status: 'pending', approved: false, deleted: false };
+          const s = { id: nid(), project_id: id, name: st.name, seq: ++seq, client_amount: +st.client_amount || 0, sub_amount: +st.sub_amount || 0, subcontractor_id: projSub, status: 'pending', approved: false, deleted: false };
           D.stages.push(s); out.push(s);
         });
         return delay(out);

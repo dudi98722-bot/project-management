@@ -203,6 +203,11 @@
         ${c.editProjects ? `<button class="btn ghost sm" id="editProj">✏️ עריכה</button>` : ''}
         ${c.del ? `<button class="btn red sm" id="delProj">🗑️ מחיקה</button>` : ''}
       </div>
+      <div class="card" style="padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span>👷 <b>קבלן משנה:</b></span>
+        ${p.subcontractor_name ? `<span class="tag-trade" style="font-size:14px">${esc(p.subcontractor_name)}</span>` : `<span class="mini">לא הוגדר${c.editProjects ? ' — לחץ "עריכה" כדי לבחור' : ''}</span>`}
+        ${p.client_name ? `<div class="spacer" style="flex:1"></div><span class="mini">לקוח: ${esc(p.client_name)}${p.client_phone ? ' · ' + esc(p.client_phone) : ''}</span>` : ''}
+      </div>
       <div class="grid stat-grid">
         ${stat('רווח צפוי', money(p.expected_profit), 'a')}
         ${stat('רווח בפועל', money(p.actual_profit), p.actual_profit >= 0 ? 'g' : 'r', gapText(p.profit_gap))}
@@ -228,9 +233,8 @@
   function renderStages(stages, p, c) {
     const box = $('#stagesBox');
     if (!stages.length) { box.innerHTML = '<div class="empty">אין שלבים. הוסף שלבים כדי לחלק את הפרויקט.</div>'; return; }
-    box.innerHTML = `<table><thead><tr><th>#</th><th>שלב</th><th>קבלן משנה</th><th>סכום לקוח</th><th>נכנס</th><th>סכום קבלן</th><th>שולם</th><th>סטטוס</th>${c.editProjects ? '<th></th>' : ''}</tr></thead><tbody>${stages.map(s => `
+    box.innerHTML = `<table><thead><tr><th>#</th><th>שלב</th><th>סכום לקוח</th><th>נכנס</th><th>סכום קבלן</th><th>שולם</th><th>סטטוס</th>${c.editProjects ? '<th></th>' : ''}</tr></thead><tbody>${stages.map(s => `
       <tr><td>${s.seq}</td><td>${esc(s.name)}</td>
-        <td>${s.subcontractor_name ? esc(s.subcontractor_name) : '<span class="mini">—</span>'}</td>
         <td class="num">${money(s.client_amount)}</td>
         <td class="num" style="color:var(--green)">${money(s.paid_in)}</td>
         <td class="num">${money(s.sub_amount)}</td>
@@ -251,8 +255,11 @@
   }
 
   // -- project create/edit form --
-  function projectForm(p) {
+  async function projectForm(p) {
     p = p || {};
+    const subs = await guard(window.Store.subs.list());
+    const subOpts = '<option value="">— ללא קבלן משנה —</option>' + subs.map(x => `<option value="${x.id}" ${p.subcontractor_id === x.id ? 'selected' : ''}>${esc(x.name)}${x.trade ? ' · ' + esc(x.trade) : ''}</option>`).join('');
+    const subHint = subs.length ? '' : '<div class="mini">אין קבלני משנה עדיין — אפשר להוסיף בלשונית "קבלני משנה" ולחזור.</div>';
     openModal(p.id ? 'עריכת פרויקט' : 'פרויקט חדש', `
       <div class="field"><label>שם הפרויקט *</label><input id="f_name" value="${esc(p.name || '')}"></div>
       <div class="row">
@@ -260,6 +267,7 @@
         <div class="field"><label>טלפון לקוח</label><input id="f_phone" value="${esc(p.client_phone || '')}"></div>
       </div>
       <div class="field"><label>כתובת</label><input id="f_addr" value="${esc(p.address || '')}"></div>
+      <div class="field"><label>קבלן המשנה של הפרויקט</label><select id="f_sub">${subOpts}</select>${subHint}</div>
       <div class="row">
         <div class="field"><label>רווח צפוי (₪)</label><input id="f_profit" type="number" value="${p.expected_profit != null ? p.expected_profit : ''}"></div>
         <div class="field"><label>תאריך התחלה</label><input id="f_start" type="date" value="${p.start_date ? String(p.start_date).slice(0, 10) : ''}"></div>
@@ -271,47 +279,43 @@
       <div class="field"><label>הערות</label><textarea id="f_notes" rows="2">${esc(p.notes || '')}</textarea></div>`,
       [{ label: 'שמירה', onClick: async (close) => {
         const name = fv('f_name'); if (!name) return toast('שם פרויקט חובה', 'err');
-        const d = { name, client_name: fv('f_client'), client_phone: fv('f_phone'), address: fv('f_addr'), expected_profit: fv('f_profit') || 0, start_date: fv('f_start') || null, status: fv('f_status'), notes: fv('f_notes') };
+        const d = { name, client_name: fv('f_client'), client_phone: fv('f_phone'), address: fv('f_addr'), subcontractor_id: fv('f_sub') || null, expected_profit: fv('f_profit') || 0, start_date: fv('f_start') || null, status: fv('f_status'), notes: fv('f_notes') };
         await guard(p.id ? window.Store.projects.update(p.id, d) : window.Store.projects.create(d));
         close(); toast('נשמר', 'ok'); p.id ? openProject(p.id) : scrProjects();
       } }, { label: 'ביטול', cls: 'ghost', onClick: (c) => c() }]);
   }
 
-  // -- single stage form --
-  async function stageForm(s, pid) {
+  // -- single stage form -- (קבלן המשנה יורש מהפרויקט, לא נבחר כאן)
+  function stageForm(s, pid) {
     s = s || {};
-    const subs = await guard(window.Store.subs.list());
-    const opts = '<option value="">— ללא —</option>' + subs.map(x => `<option value="${x.id}" ${s.subcontractor_id === x.id ? 'selected' : ''}>${esc(x.name)}${x.trade ? ' · ' + esc(x.trade) : ''}</option>`).join('');
     openModal(s.id ? 'עריכת שלב' : 'שלב חדש', `
       <div class="field"><label>שם השלב *</label><input id="s_name" value="${esc(s.name || '')}"></div>
       <div class="row">
         <div class="field"><label>סכום מהלקוח (₪)</label><input id="s_ca" type="number" value="${s.client_amount != null ? s.client_amount : ''}"></div>
         <div class="field"><label>סכום לקבלן משנה (₪)</label><input id="s_sa" type="number" value="${s.sub_amount != null ? s.sub_amount : ''}"></div>
       </div>
-      <div class="field"><label>קבלן משנה</label><select id="s_sub">${opts}</select></div>
       <div class="field"><label>סטטוס</label><select id="s_status">
         <option value="pending" ${s.status === 'pending' ? 'selected' : ''}>ממתין</option>
         <option value="in_progress" ${s.status === 'in_progress' ? 'selected' : ''}>בביצוע</option>
         <option value="done" ${s.status === 'done' ? 'selected' : ''}>הושלם</option></select></div>`,
       [{ label: 'שמירה', onClick: async (close) => {
         const name = fv('s_name'); if (!name) return toast('שם שלב חובה', 'err');
-        const d = { project_id: pid, name, client_amount: fv('s_ca') || 0, sub_amount: fv('s_sa') || 0, subcontractor_id: fv('s_sub') || null, status: fv('s_status') };
+        const d = { project_id: pid, name, client_amount: fv('s_ca') || 0, sub_amount: fv('s_sa') || 0, status: fv('s_status') };
         await guard(s.id ? window.Store.stages.update(s.id, d) : window.Store.stages.create(d));
         close(); toast('נשמר', 'ok'); openProject(pid);
       } }, { label: 'ביטול', cls: 'ghost', onClick: (c) => c() }]);
   }
 
-  // -- bulk stages form --
+  // -- bulk stages form -- (קבלן המשנה של הפרויקט מוחל על כל השלבים)
   function bulkStagesForm(pid) {
     const rowHtml = (i) => `<tr>
       <td><input class="bs-name" placeholder="שם השלב"></td>
-      <td><input class="bs-ca" type="number" placeholder="לקוח" style="width:90px"></td>
-      <td><input class="bs-sa" type="number" placeholder="קבלן" style="width:90px"></td>
-      <td><input class="bs-sub" placeholder="שם קבלן משנה" style="width:130px"></td>
+      <td><input class="bs-ca" type="number" placeholder="לקוח" style="width:100px"></td>
+      <td><input class="bs-sa" type="number" placeholder="קבלן" style="width:100px"></td>
       <td><button class="x bs-del">&times;</button></td></tr>`;
     openModal('הזנת שלבים מרוכזת', `
-      <p class="mini">מלא שורה לכל שלב: שם, סכום מהלקוח, סכום לקבלן המשנה, ושם קבלן המשנה (ייווצר אוטומטית אם חדש).</p>
-      <table><thead><tr><th>שלב</th><th>לקוח ₪</th><th>קבלן ₪</th><th>קבלן משנה</th><th></th></tr></thead>
+      <p class="mini">מלא שורה לכל שלב: שם, סכום מהלקוח, וסכום לקבלן המשנה. קבלן המשנה של הפרויקט חל אוטומטית על כל השלבים.</p>
+      <table><thead><tr><th>שלב</th><th>לקוח ₪</th><th>קבלן ₪</th><th></th></tr></thead>
       <tbody id="bsBody">${rowHtml(0) + rowHtml(1) + rowHtml(2)}</tbody></table>
       <button class="btn ghost sm" id="bsAdd" style="margin-top:10px">➕ שורה</button>`,
       [{ label: 'שמירת כל השלבים', onClick: async (close) => {
@@ -319,7 +323,6 @@
           name: $('.bs-name', tr).value.trim(),
           client_amount: $('.bs-ca', tr).value || 0,
           sub_amount: $('.bs-sa', tr).value || 0,
-          subcontractor_name: $('.bs-sub', tr).value.trim(),
         })).filter(r => r.name);
         if (!rows.length) return toast('הזן לפחות שלב אחד', 'err');
         await guard(window.Store.projects.bulkStages(pid, rows));
@@ -390,7 +393,7 @@
         if (needStage) {
           d.stage_id = fv('t_stage'); if (!d.stage_id) return toast('בחר שלב', 'err');
           const st = (stages || []).find(x => x.id === +d.stage_id);
-          if (isSub) { d.subcontractor_id = st ? st.subcontractor_id : null; if (!d.subcontractor_id) return toast('לשלב זה לא משויך קבלן משנה', 'err'); }
+          if (isSub) { d.subcontractor_id = st ? st.subcontractor_id : null; if (!d.subcontractor_id) return toast('לא הוגדר קבלן משנה לפרויקט — הגדר אותו בעריכת הפרויקט', 'err'); }
           // חסימת חריגה מסכום השלב
           if (st) {
             const cap = isClient ? (+st.client_amount || 0) : (+st.sub_amount || 0);

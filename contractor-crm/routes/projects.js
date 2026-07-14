@@ -10,7 +10,8 @@ const SUMMARY_COLS = `
   COALESCE((SELECT SUM(amount) FROM transactions t WHERE t.project_id=p.id AND t.type='sub_payment'      AND t.deleted=false),0)::float AS sub_paid,
   COALESCE((SELECT SUM(amount) FROM transactions t WHERE t.project_id=p.id AND t.type='project_expense'  AND t.deleted=false),0)::float AS project_expenses,
   COALESCE((SELECT SUM(client_amount) FROM stages s WHERE s.project_id=p.id AND s.deleted=false),0)::float AS planned_income,
-  COALESCE((SELECT SUM(sub_amount)    FROM stages s WHERE s.project_id=p.id AND s.deleted=false),0)::float AS planned_sub
+  COALESCE((SELECT SUM(sub_amount)    FROM stages s WHERE s.project_id=p.id AND s.deleted=false),0)::float AS planned_sub,
+  (SELECT name FROM subcontractors sc WHERE sc.id=p.subcontractor_id AND sc.deleted=false) AS subcontractor_name
 `;
 
 function withProfit(row) {
@@ -54,13 +55,13 @@ router.get('/:id', authenticate, can('viewBusiness'), async (req, res) => {
 
 // POST /api/projects
 router.post('/', authenticate, can('editProjects'), async (req, res) => {
-  const { name, client_name, client_phone, address, status, expected_profit, start_date, notes } = req.body;
+  const { name, client_name, client_phone, address, status, expected_profit, start_date, notes, subcontractor_id } = req.body;
   if (!name) return res.status(400).json({ error: 'שם פרויקט חובה' });
   try {
     const r = await pool.query(
-      `INSERT INTO projects (name, client_name, client_phone, address, status, expected_profit, start_date, notes, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,COALESCE($5,'active'),COALESCE($6,0),$7,$8,$9,$9) RETURNING *`,
-      [name, client_name, client_phone, address, status, expected_profit, start_date || null, notes, req.user.id]
+      `INSERT INTO projects (name, client_name, client_phone, address, status, expected_profit, subcontractor_id, start_date, notes, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,COALESCE($5,'active'),COALESCE($6,0),$7,$8,$9,$10,$10) RETURNING *`,
+      [name, client_name, client_phone, address, status, expected_profit, subcontractor_id || null, start_date || null, notes, req.user.id]
     );
     await logAction(req.user, 'add', 'projects', r.rows[0].id, { name });
     res.status(201).json(withProfit(Object.assign({ income:0, sub_paid:0, project_expenses:0, planned_income:0, planned_sub:0 }, r.rows[0])));
@@ -69,15 +70,18 @@ router.post('/', authenticate, can('editProjects'), async (req, res) => {
 
 // PUT /api/projects/:id
 router.put('/:id', authenticate, can('editProjects'), async (req, res) => {
-  const { name, client_name, client_phone, address, status, expected_profit, start_date, notes } = req.body;
+  const { name, client_name, client_phone, address, status, expected_profit, start_date, notes, subcontractor_id } = req.body;
   try {
     const r = await pool.query(
       `UPDATE projects SET name=$1, client_name=$2, client_phone=$3, address=$4, status=$5,
-         expected_profit=COALESCE($6,0), start_date=$7, notes=$8, updated_by=$9, updated_at=NOW()
-       WHERE id=$10 AND deleted=false RETURNING *`,
-      [name, client_name, client_phone, address, status, expected_profit, start_date || null, notes, req.user.id, req.params.id]
+         expected_profit=COALESCE($6,0), subcontractor_id=$7, start_date=$8, notes=$9, updated_by=$10, updated_at=NOW()
+       WHERE id=$11 AND deleted=false RETURNING *`,
+      [name, client_name, client_phone, address, status, expected_profit, subcontractor_id || null, start_date || null, notes, req.user.id, req.params.id]
     );
     if (!r.rows.length) return res.status(404).json({ error: 'פרויקט לא נמצא' });
+    // קבלן המשנה הוא ברמת הפרויקט - מסנכרנים את כל השלבים אליו
+    await pool.query('UPDATE stages SET subcontractor_id=$1, updated_at=NOW() WHERE project_id=$2 AND deleted=false',
+      [subcontractor_id || null, req.params.id]);
     await logAction(req.user, 'edit', 'projects', req.params.id, { name });
     res.json(r.rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
@@ -92,8 +96,8 @@ router.delete('/:id', authenticate, can('viewBusiness'), can('del'), async (req,
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-// POST /api/projects/:id/stages/bulk - הזנת שלבים + קבלני משנה במרוכז
-// body: { stages: [{ name, client_amount, sub_amount, subcontractor_id?, subcontractor_name? }] }
+// POST /api/projects/:id/stages/bulk - הזנת שלבים במרוכז (קבלן המשנה יורש מהפרויקט)
+// body: { stages: [{ name, client_amount, sub_amount }] }
 router.post('/:id/stages/bulk', authenticate, can('editProjects'), async (req, res) => {
   const projectId = req.params.id;
   const list = Array.isArray(req.body.stages) ? req.body.stages : [];
@@ -102,8 +106,9 @@ router.post('/:id/stages/bulk', authenticate, can('editProjects'), async (req, r
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const proj = await client.query('SELECT id FROM projects WHERE id=$1 AND deleted=false', [projectId]);
+    const proj = await client.query('SELECT id, subcontractor_id FROM projects WHERE id=$1 AND deleted=false', [projectId]);
     if (!proj.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'פרויקט לא נמצא' }); }
+    const projSub = proj.rows[0].subcontractor_id || null;   // קבלן המשנה של הפרויקט
 
     // מיקום התחלתי לרצף
     const seqRow = await client.query('SELECT COALESCE(MAX(seq),0) AS m FROM stages WHERE project_id=$1', [projectId]);
@@ -112,25 +117,11 @@ router.post('/:id/stages/bulk', authenticate, can('editProjects'), async (req, r
 
     for (const st of list) {
       if (!st || !st.name) continue;
-      let subId = st.subcontractor_id || null;
-      // אם ניתן שם קבלן חדש ללא מזהה - יוצרים/מאתרים לפי שם
-      if (!subId && st.subcontractor_name && st.subcontractor_name.trim()) {
-        const nm = st.subcontractor_name.trim();
-        const found = await client.query('SELECT id FROM subcontractors WHERE name=$1 AND deleted=false LIMIT 1', [nm]);
-        if (found.rows.length) subId = found.rows[0].id;
-        else {
-          const ins = await client.query(
-            'INSERT INTO subcontractors (name, trade, created_by, updated_by) VALUES ($1,$2,$3,$3) RETURNING id',
-            [nm, st.subcontractor_trade || null, req.user.id]
-          );
-          subId = ins.rows[0].id;
-        }
-      }
       seq++;
       const r = await client.query(
         `INSERT INTO stages (project_id, name, seq, client_amount, sub_amount, subcontractor_id, created_by, updated_by)
          VALUES ($1,$2,$3,COALESCE($4,0),COALESCE($5,0),$6,$7,$7) RETURNING *`,
-        [projectId, st.name, seq, st.client_amount, st.sub_amount, subId, req.user.id]
+        [projectId, st.name, seq, st.client_amount, st.sub_amount, projSub, req.user.id]
       );
       created.push(r.rows[0]);
     }

@@ -37,12 +37,15 @@ CREATE TABLE IF NOT EXISTS projects (
   address VARCHAR(300),
   status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active','paused','done')),
   expected_profit DECIMAL(14,2) DEFAULT 0,  -- רווח צפוי (ידני)
+  subcontractor_id BIGINT REFERENCES subcontractors(id) ON DELETE SET NULL,  -- קבלן המשנה של הפרויקט (השלבים יורשים)
   start_date DATE,
   notes TEXT,
   deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMP, deleted_by INTEGER,
   created_by INTEGER, created_at TIMESTAMP DEFAULT NOW(),
   updated_by INTEGER, updated_at TIMESTAMP DEFAULT NOW()
 );
+-- מיגרציה למסדים קיימים (הוספת העמודה אם עדיין אין)
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS subcontractor_id BIGINT REFERENCES subcontractors(id) ON DELETE SET NULL;
 
 -- שלבים בפרויקט
 CREATE TABLE IF NOT EXISTS stages (
