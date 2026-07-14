@@ -575,10 +575,12 @@
     const total = rows.reduce((s, r) => s + (+r.amount || 0), 0);
     view().innerHTML = `
       <div class="page-head"><h2>הוצאות עסק</h2><span class="mini">(ללא שיוך לפרויקט)</span><div class="spacer"></div>
+        ${caps().writeTx ? '<button class="btn ghost" id="bizBulk">📋 הזנה מרוכזת</button>' : ''}
         ${caps().writeTx ? '<button class="btn" data-newtx="business_expense">➕ הוצאת עסק</button>' : ''}</div>
       <div class="grid stat-grid">${stat('סה"כ הוצאות עסק', money(total), 'r')}${stat('מספר הוצאות', String(rows.length))}</div>
       <div class="card" id="bizBox"></div>`;
     view().querySelectorAll('[data-newtx]').forEach(b => b.onclick = () => txForm('business_expense', {}));
+    if ($('#bizBulk')) $('#bizBulk').onclick = () => bulkExpenseForm('business_expense');
     const box = $('#bizBox');
     if (!rows.length) box.innerHTML = '<div class="empty"><div class="big">🧾</div>אין הוצאות עסק</div>';
     else {
@@ -599,10 +601,12 @@
     const total = rows.reduce((s, r) => s + (+r.amount || 0), 0);
     view().innerHTML = `
       <div class="page-head"><h2>הוצאה לפרויקט</h2><span class="mini">(משויכת לפרויקט · אפשר לצרף חשבונית)</span><div class="spacer"></div>
+        ${caps().writeTx ? '<button class="btn ghost" id="peBulk">📋 הזנה מרוכזת</button>' : ''}
         ${(caps().writeTx || caps().projectExpenseOnly) ? '<button class="btn" data-newtx="project_expense">➕ הוצאה לפרויקט</button>' : ''}</div>
       <div class="grid stat-grid">${stat('סה"כ הוצאות לפרויקטים', money(total), 'r')}${stat('מספר הוצאות', String(rows.length))}</div>
       <div class="card" id="peBox"></div>`;
     view().querySelectorAll('[data-newtx]').forEach(b => b.onclick = () => txForm('project_expense', {}));
+    if ($('#peBulk')) $('#peBulk').onclick = () => bulkExpenseForm('project_expense');
     const box = $('#peBox');
     if (!rows.length) box.innerHTML = '<div class="empty"><div class="big">🧱</div>אין הוצאות לפרויקטים</div>';
     else {
@@ -613,6 +617,43 @@
         ${caps().del ? `<td><button class="btn xs red" data-deltx="${t.id}">🗑️</button></td>` : ''}</tr>`).join('')}</tbody></table>`;
       wireTxTable(box, scrProjExp);
     }
+  }
+
+  // -- bulk expense entry (הזנה מרוכזת) --
+  async function bulkExpenseForm(type) {
+    const isProj = type === 'project_expense';
+    let projects = [], categories = [];
+    if (isProj) projects = await guard(window.Store.projects.list());
+    try { categories = await window.Store.tx.categories(); } catch (e) { categories = []; }
+    const projOpts = '<option value="">— פרויקט —</option>' + projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+    const rowHtml = () => `<tr>
+      ${isProj ? `<td><select class="be-proj" style="min-width:130px">${projOpts}</select></td>` : ''}
+      <td><input class="be-date" type="date" value="${today()}" style="width:140px"></td>
+      <td><input class="be-cat" list="be_catList" placeholder="קטגוריה" style="width:115px"></td>
+      <td><input class="be-sup" placeholder="ספק" style="width:105px"></td>
+      <td><input class="be-pur" placeholder="מהות" style="width:115px"></td>
+      <td><input class="be-amt" type="number" placeholder="סכום" style="width:95px"></td>
+      <td><button class="x be-del">&times;</button></td></tr>`;
+    openModal('הזנה מרוכזת — ' + (isProj ? 'הוצאות לפרויקט' : 'הוצאות עסק'), `
+      <datalist id="be_catList">${categories.map(c => `<option value="${esc(c)}"></option>`).join('')}</datalist>
+      <p class="mini">כל שורה = הוצאה אחת.${isProj ? ' חובה לבחור פרויקט בכל שורה.' : ''} (לצירוף חשבונית — השתמש ב"➕ הוצאה" הבודדת.)</p>
+      <div style="overflow-x:auto"><table><thead><tr>${isProj ? '<th>פרויקט</th>' : ''}<th>תאריך</th><th>קטגוריה</th><th>ספק</th><th>מהות</th><th>סכום ₪</th><th></th></tr></thead>
+      <tbody id="beBody">${rowHtml() + rowHtml() + rowHtml()}</tbody></table></div>
+      <button class="btn ghost sm" id="beAdd" style="margin-top:10px">➕ שורה</button>`,
+      [{ label: 'שמירת הכל', cls: 'green', onClick: async (close) => {
+        const rows = [...document.querySelectorAll('#beBody tr')].map(tr => {
+          const g = (sel) => { const el = $(sel, tr); return el ? el.value.trim() : ''; };
+          const o = { date: g('.be-date') || null, category: g('.be-cat'), supplier: g('.be-sup'), purpose: g('.be-pur'), amount: parseFloat(g('.be-amt')) || 0 };
+          if (isProj) { const ps = $('.be-proj', tr); o.project_id = ps ? ps.value : ''; }
+          return o;
+        }).filter(r => r.amount > 0 && (!isProj || r.project_id));
+        if (!rows.length) return toast('הזן לפחות הוצאה אחת עם סכום' + (isProj ? ' ופרויקט' : ''), 'err');
+        const res = await guard(window.Store.tx.bulkExpenses(type, rows));
+        close(); toast('נשמרו ' + res.count + ' הוצאות', 'ok'); refresh();
+      } }, { label: 'ביטול', cls: 'ghost', onClick: (c) => c() }]);
+    const wireDel = () => document.querySelectorAll('#beBody .be-del').forEach(b => b.onclick = () => { if (document.querySelectorAll('#beBody tr').length > 1) b.closest('tr').remove(); });
+    $('#beAdd').onclick = () => { const t = document.createElement('tbody'); t.innerHTML = rowHtml(); $('#beBody').appendChild(t.firstChild); wireDel(); };
+    wireDel();
   }
 
   // ============================================================

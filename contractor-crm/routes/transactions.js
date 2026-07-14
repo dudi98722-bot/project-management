@@ -74,6 +74,41 @@ router.post('/categories', authenticate, can('writeTx'), async (req, res) => {
   res.json(await getExpenseCategories());
 });
 
+// POST /api/transactions/bulk-expenses - הזנת כמה הוצאות בבת אחת
+// body: { type: 'project_expense'|'business_expense', rows: [{ date, category, supplier, purpose, amount, project_id }] }
+router.post('/bulk-expenses', authenticate, can('writeTx'), async (req, res) => {
+  const type = req.body && req.body.type;
+  if (type !== 'project_expense' && type !== 'business_expense') return res.status(400).json({ error: 'סוג הוצאה לא תקין' });
+  const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
+  if (!rows.length) return res.status(400).json({ error: 'אין הוצאות להזנה' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const created = [], cats = new Set();
+    for (const row of rows) {
+      const amt = parseFloat(row.amount);
+      if (!(amt > 0)) continue;
+      if (type === 'project_expense' && !row.project_id) continue;   // חובה פרויקט
+      const r = await client.query(
+        `INSERT INTO transactions (type, direction, amount, date, project_id, supplier, category, purpose, created_by, updated_by)
+         VALUES ($1,'out',$2,$3,$4,$5,$6,$7,$8,$8) RETURNING *`,
+        [type, amt, row.date || null, type === 'project_expense' ? (row.project_id || null) : null,
+         row.supplier || null, row.category || null, row.purpose || null, req.user.id]);
+      created.push(r.rows[0]);
+      if (row.category) cats.add(String(row.category).trim());
+    }
+    await client.query('COMMIT');
+    cats.forEach(c => addExpenseCategory(c).catch(() => {}));
+    await logAction(req.user, 'bulk_add', 'transactions', 0, { type, count: created.length });
+    sheets.mirrorMany('transactions', created).catch(() => {});
+    res.status(201).json({ count: created.length });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error(e);
+    res.status(500).json({ error: 'שגיאת שרת בהזנת ההוצאות' });
+  } finally { client.release(); }
+});
+
 // GET /api/transactions?project_id=&stage_id=&type=&from=&to=
 router.get('/', authenticate, can('viewBusiness'), async (req, res) => {
   const { project_id, stage_id, type, from, to } = req.query;

@@ -59,6 +59,7 @@
       remove: (id) => apiFetch('/transactions/' + id, { method: 'DELETE' }),
       bulkRemove: (ids) => apiFetch('/transactions/bulk-delete', { method: 'POST', body: { ids } }),
       categories: () => apiFetch('/transactions/categories'),
+      bulkExpenses: (type, rows) => apiFetch('/transactions/bulk-expenses', { method: 'POST', body: { type, rows } }),
     },
     home: {
       list: (f) => apiFetch('/home/transactions' + qs(f)),
@@ -267,6 +268,18 @@
       remove: (id) => { id = +id; const t = D.tx.find(x => x.id === id); if (t) t.deleted = true; return delay({ ok: true }); },
       bulkRemove: (ids) => { let n = 0; ids.forEach(id => { const t = D.tx.find(x => x.id === +id); if (t && !t.deleted) { t.deleted = true; n++; } }); return delay({ count: n }); },
       categories: () => delay([...new Set([...DEFAULT_EXPENSE_CATS, ...D.expenseCats, ...A(D.tx).map(t => t.category).filter(Boolean)])]),
+      bulkExpenses: (type, rows) => {
+        let n = 0;
+        rows.forEach(row => {
+          const amt = +row.amount || 0;
+          if (!(amt > 0)) return;
+          if (type === 'project_expense' && !row.project_id) return;
+          learnCat(row.category);
+          D.tx.push({ id: nid(), type, direction: 'out', amount: amt, date: row.date || null, project_id: type === 'project_expense' ? numify(row.project_id) : null, stage_id: null, subcontractor_id: null, supplier: row.supplier || '', category: row.category || '', purpose: row.purpose || '', method: '', invoice_url: '', note: '', deleted: false });
+          n++;
+        });
+        return delay({ count: n });
+      },
     },
     home: {
       list: (f) => { f = f || {}; let rows = A(D.home); if (f.from) rows = rows.filter(r => r.date && r.date >= f.from); if (f.to) rows = rows.filter(r => r.date && r.date <= f.to); rows.sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.id - a.id); return delay(rows); },
