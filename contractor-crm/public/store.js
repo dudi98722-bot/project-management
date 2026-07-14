@@ -58,6 +58,7 @@
       update: (id, d) => apiFetch('/transactions/' + id, { method: 'PUT', body: d }),
       remove: (id) => apiFetch('/transactions/' + id, { method: 'DELETE' }),
       bulkRemove: (ids) => apiFetch('/transactions/bulk-delete', { method: 'POST', body: { ids } }),
+      categories: () => apiFetch('/transactions/categories'),
     },
     home: {
       list: (f) => apiFetch('/home/transactions' + qs(f)),
@@ -101,7 +102,8 @@
   // =====================================================================
   let _id = 1000;
   const nid = () => ++_id;
-  const D = { subs: [], projects: [], stages: [], tx: [], home: [], homeRules: [], users: [] };
+  const DEFAULT_EXPENSE_CATS = ['חומרים', 'כלים', 'שכר עבודה', 'השכרת ציוד', 'הובלה', 'דלק', 'אגרות ורשויות', 'ביטוח', 'משרד', 'אחר'];
+  const D = { subs: [], projects: [], stages: [], tx: [], home: [], homeRules: [], users: [], expenseCats: [] };
 
   function seedDemo() {
     _id = 1000;
@@ -140,12 +142,14 @@
       { id: nid(), date: '2026-06-12', direction: 'out', amount: 200, category: 'דלק', payee: 'פז', source: 'form', note: '', deleted: false },
     ];
     D.homeRules = [];
+    D.expenseCats = [];
   }
 
   // -- computation helpers (mirror server) --
   const A = (arr) => arr.filter(x => !x.deleted);
   const sum = (arr) => arr.reduce((s, x) => s + (parseFloat(x.amount) || 0), 0);
   const numify = (v) => (v === '' || v == null) ? null : (Number(v) || null); // מזהים מגיעים כמחרוזת מ-select
+  const learnCat = (c) => { c = String(c || '').trim(); if (c && !DEFAULT_EXPENSE_CATS.includes(c) && !D.expenseCats.includes(c)) D.expenseCats.push(c); };
 
   function projSummary(p) {
     const txs = A(D.tx).filter(t => t.project_id === p.id);
@@ -258,10 +262,11 @@
         rows.sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.id - a.id);
         return delay(rows);
       },
-      create: (d) => { const sid = numify(d.stage_id); const capErr = txCapError(d.type, sid, +d.amount || 0, null); if (capErr) return Promise.reject(new Error(capErr)); const dir = d.type === 'client_payment' ? 'in' : 'out'; const t = Object.assign({ id: nid(), deleted: false }, d, { direction: dir, amount: +d.amount || 0, project_id: numify(d.project_id), stage_id: sid, subcontractor_id: numify(d.subcontractor_id) }); D.tx.push(t); return delay(t); },
-      update: (id, d) => { id = +id; const sid = numify(d.stage_id); const capErr = txCapError(d.type, sid, +d.amount || 0, id); if (capErr) return Promise.reject(new Error(capErr)); const t = D.tx.find(x => x.id === id); Object.assign(t, d, { amount: +d.amount || 0, project_id: numify(d.project_id), stage_id: sid, subcontractor_id: numify(d.subcontractor_id) }); return delay(t); },
+      create: (d) => { const sid = numify(d.stage_id); const capErr = txCapError(d.type, sid, +d.amount || 0, null); if (capErr) return Promise.reject(new Error(capErr)); learnCat(d.category); const dir = d.type === 'client_payment' ? 'in' : 'out'; const t = Object.assign({ id: nid(), deleted: false }, d, { direction: dir, amount: +d.amount || 0, project_id: numify(d.project_id), stage_id: sid, subcontractor_id: numify(d.subcontractor_id) }); D.tx.push(t); return delay(t); },
+      update: (id, d) => { id = +id; const sid = numify(d.stage_id); const capErr = txCapError(d.type, sid, +d.amount || 0, id); if (capErr) return Promise.reject(new Error(capErr)); learnCat(d.category); const t = D.tx.find(x => x.id === id); Object.assign(t, d, { amount: +d.amount || 0, project_id: numify(d.project_id), stage_id: sid, subcontractor_id: numify(d.subcontractor_id) }); return delay(t); },
       remove: (id) => { id = +id; const t = D.tx.find(x => x.id === id); if (t) t.deleted = true; return delay({ ok: true }); },
       bulkRemove: (ids) => { let n = 0; ids.forEach(id => { const t = D.tx.find(x => x.id === +id); if (t && !t.deleted) { t.deleted = true; n++; } }); return delay({ count: n }); },
+      categories: () => delay([...new Set([...DEFAULT_EXPENSE_CATS, ...D.expenseCats, ...A(D.tx).map(t => t.category).filter(Boolean)])]),
     },
     home: {
       list: (f) => { f = f || {}; let rows = A(D.home); if (f.from) rows = rows.filter(r => r.date && r.date >= f.from); if (f.to) rows = rows.filter(r => r.date && r.date <= f.to); rows.sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.id - a.id); return delay(rows); },

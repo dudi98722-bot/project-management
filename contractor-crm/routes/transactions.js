@@ -42,6 +42,38 @@ function capMsg(info, type) {
     : `הסכום חורג מסכום השלב לקבלן המשנה. נותר לתשלום בשלב: ${rem} ₪`;
 }
 
+// ===== קטגוריות הוצאה (רשימה מנוהלת + הוספה אוטומטית) =====
+const DEFAULT_CATEGORIES = ['חומרים', 'כלים', 'שכר עבודה', 'השכרת ציוד', 'הובלה', 'דלק', 'אגרות ורשויות', 'ביטוח', 'משרד', 'אחר'];
+async function getExpenseCategories() {
+  try {
+    const r = await pool.query("SELECT value FROM settings WHERE key='expense_categories'");
+    const stored = r.rows.length && Array.isArray(r.rows[0].value) ? r.rows[0].value : [];
+    return [...new Set([...DEFAULT_CATEGORIES, ...stored])];
+  } catch (e) { return DEFAULT_CATEGORIES.slice(); }
+}
+async function addExpenseCategory(name) {
+  name = String(name || '').trim(); if (!name) return;
+  try {
+    const r = await pool.query("SELECT value FROM settings WHERE key='expense_categories'");
+    const stored = r.rows.length && Array.isArray(r.rows[0].value) ? r.rows[0].value : [];
+    if (DEFAULT_CATEGORIES.includes(name) || stored.includes(name)) return;
+    stored.push(name);
+    await pool.query(
+      `INSERT INTO settings (key, value) VALUES ('expense_categories', $1::jsonb)
+       ON CONFLICT (key) DO UPDATE SET value=$1::jsonb, updated_at=NOW()`, [JSON.stringify(stored)]);
+  } catch (e) { /* לא קריטי */ }
+}
+
+// GET /api/transactions/categories - רשימת קטגוריות ההוצאה
+router.get('/categories', authenticate, can('viewBusiness'), async (req, res) => {
+  res.json(await getExpenseCategories());
+});
+// POST /api/transactions/categories { name } - הוספת קטגוריה
+router.post('/categories', authenticate, can('writeTx'), async (req, res) => {
+  await addExpenseCategory(req.body && req.body.name);
+  res.json(await getExpenseCategories());
+});
+
 // GET /api/transactions?project_id=&stage_id=&type=&from=&to=
 router.get('/', authenticate, can('viewBusiness'), async (req, res) => {
   const { project_id, stage_id, type, from, to } = req.query;
@@ -81,12 +113,13 @@ router.post('/', authenticate, canAny(['writeTx', 'projectExpenseOnly']), async 
     if (capErr) return res.status(400).json({ error: capMsg(capErr, type) });
     const r = await pool.query(
       `INSERT INTO transactions
-        (type, direction, amount, date, project_id, stage_id, subcontractor_id, supplier, purpose, method, invoice_url, note, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13) RETURNING *`,
+        (type, direction, amount, date, project_id, stage_id, subcontractor_id, supplier, category, purpose, method, invoice_url, note, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$14) RETURNING *`,
       [type, DIRECTION[type], b.amount, b.date || null, b.project_id || null, b.stage_id || null,
-       b.subcontractor_id || null, b.supplier || null, b.purpose || null, b.method || null,
+       b.subcontractor_id || null, b.supplier || null, b.category || null, b.purpose || null, b.method || null,
        b.invoice_url || null, b.note || null, req.user.id]
     );
+    if (b.category) addExpenseCategory(b.category).catch(() => {});
     await logAction(req.user, 'add', 'transactions', r.rows[0].id, { type, amount: b.amount });
     res.status(201).json(r.rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
@@ -105,12 +138,13 @@ router.put('/:id', authenticate, can('writeTx'), async (req, res) => {
     if (capErr) return res.status(400).json({ error: capMsg(capErr, cur.rows[0].type) });
     const r = await pool.query(
       `UPDATE transactions SET amount=$1, date=$2, project_id=$3, stage_id=$4, subcontractor_id=$5,
-         supplier=$6, purpose=$7, method=$8, invoice_url=$9, note=$10, updated_by=$11, updated_at=NOW()
-       WHERE id=$12 AND deleted=false RETURNING *`,
+         supplier=$6, category=$7, purpose=$8, method=$9, invoice_url=$10, note=$11, updated_by=$12, updated_at=NOW()
+       WHERE id=$13 AND deleted=false RETURNING *`,
       [b.amount, b.date || null, b.project_id || null, b.stage_id || null, b.subcontractor_id || null,
-       b.supplier || null, b.purpose || null, b.method || null, b.invoice_url || null, b.note || null,
+       b.supplier || null, b.category || null, b.purpose || null, b.method || null, b.invoice_url || null, b.note || null,
        req.user.id, req.params.id]
     );
+    if (b.category) addExpenseCategory(b.category).catch(() => {});
     await logAction(req.user, 'edit', 'transactions', req.params.id, { amount: b.amount });
     res.json(r.rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }

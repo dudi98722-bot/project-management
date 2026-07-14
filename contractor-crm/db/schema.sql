@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   stage_id BIGINT REFERENCES stages(id) ON DELETE SET NULL,
   subcontractor_id BIGINT REFERENCES subcontractors(id) ON DELETE SET NULL,
   supplier VARCHAR(200),     -- ספק (בהוצאה)
+  category VARCHAR(100),     -- קטגוריית הוצאה (מתוך רשימה)
   purpose VARCHAR(300),      -- מהות ההוצאה
   method VARCHAR(100),       -- אמצעי תשלום
   invoice_url VARCHAR(500),  -- קישור לחשבונית (דרייב/מקומי)
@@ -87,6 +88,8 @@ CREATE TABLE IF NOT EXISTS transactions (
   created_by INTEGER, created_at TIMESTAMP DEFAULT NOW(),
   updated_by INTEGER, updated_at TIMESTAMP DEFAULT NOW()
 );
+-- מיגרציה למסדים קיימים
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS category VARCHAR(100);
 
 -- מודול הבית (נפרד ומחובר)
 CREATE TABLE IF NOT EXISTS home_transactions (

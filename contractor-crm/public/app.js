@@ -86,6 +86,7 @@
     { id: 'projects', label: '🏗️ פרויקטים', show: c => c.viewBusiness, fn: scrProjects },
     { id: 'subs', label: '👷 קבלני משנה', show: c => c.viewBusiness, fn: scrSubs },
     { id: 'tx', label: '💰 תנועות', show: c => c.viewBusiness, fn: scrTx },
+    { id: 'projexp', label: '🧱 הוצאה לפרויקט', show: c => c.viewBusiness, fn: scrProjExp },
     { id: 'biz', label: '🧾 הוצאות עסק', show: c => c.viewBusiness, fn: scrBiz },
     { id: 'payreq', label: '🧮 בקשת תשלום', show: c => c.viewBusiness, fn: scrPayRequest },
     { id: 'reports', label: '📈 דוחות', show: c => c.viewReports, fn: scrReports },
@@ -467,9 +468,10 @@
     // projects for picker (unless business expense)
     let projects = [], stages = ctx.stages || null;
     if (!isBiz) projects = await guard(caps().viewBusiness ? window.Store.projects.list() : window.Store.projects.pick());
+    let categories = [];
+    if (isProjExp || isBiz) { try { categories = await window.Store.tx.categories(); } catch (e) { categories = []; } }
     const projOpts = (sel) => '<option value="">— בחר פרויקט —</option>' + projects.map(p => `<option value="${p.id}" ${+sel === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
     const needStage = isSub || isClient;
-    const driveNote = window.Store.isDemo ? '' : '';
     openModal('הוספת ' + (TYPE_HE[type] || ''), `
       ${!isBiz ? `<div class="field"><label>פרויקט *</label><select id="t_proj">${projOpts(ctx.project_id)}</select></div>` : ''}
       ${needStage ? `<div class="field"><label>שלב *</label><select id="t_stage"><option value="">— בחר שלב —</option></select><div class="mini" id="t_stageRem" style="margin-top:5px"></div></div>` : ''}
@@ -478,8 +480,10 @@
         <div class="field"><label>תאריך</label><input id="t_date" type="date" value="${today()}"></div>
       </div>
       ${(isProjExp || isBiz) ? `<div class="row">
+        <div class="field"><label>קטגוריה</label><input id="t_category" list="t_catList" placeholder="בחר מהרשימה או הקלד חדשה"><datalist id="t_catList">${categories.map(c => `<option value="${esc(c)}"></option>`).join('')}</datalist></div>
         <div class="field"><label>ספק</label><input id="t_supplier"></div>
-        <div class="field"><label>מהות ההוצאה</label><input id="t_purpose"></div></div>` : ''}
+      </div>
+      <div class="field"><label>מהות ההוצאה</label><input id="t_purpose"></div>` : ''}
       <div class="field"><label>אמצעי תשלום</label><input id="t_method" placeholder="מזומן / העברה / צ׳ק / אשראי"></div>
       ${(isProjExp) ? `<div class="field"><label>חשבונית</label><input id="t_file" type="file" accept="image/*,.pdf"><div class="mini" id="t_fileNote"></div></div>` : ''}
       <div class="field"><label>הערה</label><input id="t_note"></div>`,
@@ -499,7 +503,7 @@
             if (amount > remaining + 0.001) return toast(`הסכום חורג מסכום השלב. נותר: ${money(Math.max(0, remaining))}`, 'err');
           }
         }
-        if (isProjExp || isBiz) { d.supplier = fv('t_supplier'); d.purpose = fv('t_purpose'); }
+        if (isProjExp || isBiz) { d.category = fv('t_category'); d.supplier = fv('t_supplier'); d.purpose = fv('t_purpose'); }
         // invoice upload
         const fileEl = document.getElementById('t_file');
         if (fileEl && fileEl.files && fileEl.files[0]) {
@@ -578,11 +582,36 @@
     const box = $('#bizBox');
     if (!rows.length) box.innerHTML = '<div class="empty"><div class="big">🧾</div>אין הוצאות עסק</div>';
     else {
-      box.innerHTML = `<table><thead><tr><th>תאריך</th><th>ספק</th><th>מהות</th><th>אמצעי</th><th>סכום</th>${caps().del ? '<th></th>' : ''}</tr></thead><tbody>${rows.map(t => `
-        <tr><td>${dfmt(t.date)}</td><td>${esc(t.supplier || '')}</td><td>${esc(t.purpose || '')}</td><td>${esc(t.method || '')}</td>
+      box.innerHTML = `<table><thead><tr><th>תאריך</th><th>קטגוריה</th><th>ספק</th><th>מהות</th><th>אמצעי</th><th>סכום</th>${caps().del ? '<th></th>' : ''}</tr></thead><tbody>${rows.map(t => `
+        <tr><td>${dfmt(t.date)}</td><td>${t.category ? `<span class="tag-trade">${esc(t.category)}</span>` : ''}</td><td>${esc(t.supplier || '')}</td><td>${esc(t.purpose || '')}</td><td>${esc(t.method || '')}</td>
         <td class="num" style="color:var(--red)">${money(t.amount)}</td>
         ${caps().del ? `<td><button class="btn xs red" data-deltx="${t.id}">🗑️</button></td>` : ''}</tr>`).join('')}</tbody></table>`;
       wireTxTable(box, scrBiz);
+    }
+  }
+
+  // ============================================================
+  //  PROJECT EXPENSES (הוצאה לפרויקט - חובה פרויקט + חשבונית)
+  // ============================================================
+  async function scrProjExp() {
+    loading();
+    const rows = await guard(window.Store.tx.list({ type: 'project_expense' }));
+    const total = rows.reduce((s, r) => s + (+r.amount || 0), 0);
+    view().innerHTML = `
+      <div class="page-head"><h2>הוצאה לפרויקט</h2><span class="mini">(משויכת לפרויקט · אפשר לצרף חשבונית)</span><div class="spacer"></div>
+        ${(caps().writeTx || caps().projectExpenseOnly) ? '<button class="btn" data-newtx="project_expense">➕ הוצאה לפרויקט</button>' : ''}</div>
+      <div class="grid stat-grid">${stat('סה"כ הוצאות לפרויקטים', money(total), 'r')}${stat('מספר הוצאות', String(rows.length))}</div>
+      <div class="card" id="peBox"></div>`;
+    view().querySelectorAll('[data-newtx]').forEach(b => b.onclick = () => txForm('project_expense', {}));
+    const box = $('#peBox');
+    if (!rows.length) box.innerHTML = '<div class="empty"><div class="big">🧱</div>אין הוצאות לפרויקטים</div>';
+    else {
+      box.innerHTML = `<table><thead><tr><th>תאריך</th><th>פרויקט</th><th>קטגוריה</th><th>ספק</th><th>מהות</th><th>סכום</th><th>חשבונית</th>${caps().del ? '<th></th>' : ''}</tr></thead><tbody>${rows.map(t => `
+        <tr><td>${dfmt(t.date)}</td><td>${esc(t.project_name || '')}</td><td>${t.category ? `<span class="tag-trade">${esc(t.category)}</span>` : ''}</td><td>${esc(t.supplier || '')}</td><td>${esc(t.purpose || '')}</td>
+        <td class="num" style="color:var(--red)">${money(t.amount)}</td>
+        <td>${invoiceLink(t.invoice_url)}</td>
+        ${caps().del ? `<td><button class="btn xs red" data-deltx="${t.id}">🗑️</button></td>` : ''}</tr>`).join('')}</tbody></table>`;
+      wireTxTable(box, scrProjExp);
     }
   }
 
