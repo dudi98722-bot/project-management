@@ -906,22 +906,38 @@
     })).filter(r => r.amount > 0);
   }
   function parseImport(text, rules) {
-    return (text || '').split(/\n/).map(l => l.trim()).filter(Boolean).map(line => {
-      const parts = line.split(/[\t,]|\s{2,}/).map(s => s.trim()).filter(Boolean);
-      let tokens = parts.length >= 2 ? parts : line.split(/\s+/);
-      let date = '', amounts = [], payeeTokens = [];
-      tokens.forEach(tok => {
-        if (!date && /\d{1,2}[./-]\d{1,2}[./-]\d{2,4}/.test(tok)) date = tok;
-        else if (/^[₪]?[\d,]+(\.\d+)?[₪]?$/.test(tok) && parseFloat(tok.replace(/[₪,]/g, '')) > 0) amounts.push(parseFloat(tok.replace(/[₪,]/g, '')));
-        else payeeTokens.push(tok);
-      });
-      // הסכום = הערך המספרי הראשון אחרי התיאור (עמודת יתרה בסוף השורה לא נחשבת)
-      const amount = amounts.length ? amounts[0] : 0;
-      const payee = payeeTokens.join(' ');
-      let category = '';
-      for (const r of (rules || [])) { if (payee && payee.includes(r.match_text)) { category = r.category; break; } }
-      return { date: normDate(date), payee, amount, category };
-    }).filter(r => r.amount > 0);
+    const lines = (text || '').split(/\r?\n/).filter(l => l.trim() !== '');
+    if (!lines.length) return [];
+    // פיצול לעמודות: טאב אם יש, אחרת רווח כפול/פסיק/נקודה-פסיק
+    const grid = lines.map(l => (l.indexOf('\t') >= 0 ? l.split('\t') : l.split(/ {2,}|,|;/)).map(c => c.trim()));
+    const cols = Math.max(...grid.map(r => r.length));
+    grid.forEach(r => { while (r.length < cols) r.push(''); });
+    const dateRe = /\d{1,2}[./-]\d{1,2}[./-]\d{2,4}/;
+    const isData = grid.map(r => r.some(c => impNum(c) !== null));
+    const headerRows = grid.filter((r, i) => !isData[i]);
+    const dataRows = grid.filter((r, i) => isData[i]);
+    if (!dataRows.length) return [];
+    const label = []; for (let j = 0; j < cols; j++) label[j] = headerRows.map(r => String(r[j] || '')).join(' ');
+    const byLabel = (kw) => { for (let j = 0; j < cols; j++) if (label[j].indexOf(kw) >= 0) return j; return -1; };
+    let dateCol = byLabel('תאריך'); if (dateCol < 0) for (let j = 0; j < cols; j++) if (dataRows.some(r => dateRe.test(r[j]))) { dateCol = j; break; }
+    // עמודת סכום: מעדיפים 'סכום/חיוב/חובה', מדלגים על עמודת 'יתרה'; אחרת מספרית ראשונה שאינה יתרה
+    let amtCol = byLabel('סכום'); if (amtCol < 0) amtCol = byLabel('חיוב'); if (amtCol < 0) amtCol = byLabel('חובה');
+    if (amtCol < 0) {
+      const cand = []; for (let j = 0; j < cols; j++) { if (j === dateCol) continue; if (dataRows.filter(r => impNum(r[j]) !== null).length > dataRows.length / 2) cand.push(j); }
+      amtCol = cand.find(j => label[j].indexOf('יתרה') < 0);
+      if (amtCol == null) amtCol = cand.length ? cand[0] : -1;
+    }
+    const catCol = byLabel('קטגוריה');
+    let payCol = byLabel('בית עסק'); if (payCol < 0) payCol = byLabel('ספק'); if (payCol < 0) payCol = byLabel('תיאור'); if (payCol < 0) payCol = byLabel('שם');
+    const used = new Set([dateCol, amtCol, catCol, payCol].filter(x => x >= 0));
+    const textCols = []; for (let j = 0; j < cols; j++) if (!used.has(j) && dataRows.some(r => r[j] && impNum(r[j]) === null)) textCols.push(j);
+    const pay = payCol >= 0 ? payCol : (textCols.length ? textCols[0] : -1);
+    return dataRows.map(r => {
+      const payee = pay >= 0 ? String(r[pay] || '') : '';
+      let category = catCol >= 0 ? String(r[catCol] || '') : '';
+      if (!category) for (const rl of (rules || [])) { if (payee && payee.includes(rl.match_text)) { category = rl.category; break; } }
+      return { date: dateCol >= 0 ? normDate(r[dateCol]) : '', payee, amount: amtCol >= 0 ? (impNum(r[amtCol]) || 0) : 0, category };
+    }).filter(o => o.amount > 0);
   }
   function isValidYMD(s) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
