@@ -1027,16 +1027,23 @@
     loading();
     const [users, roles] = await Promise.all([guard(window.Store.users.list()), guard(window.Store.users.roles())]);
     const roleLabel = (k) => (roles.find(r => r.key === k) || {}).label || k;
+    const myId = (window.Auth.user || {}).id;
     view().innerHTML = `
       <div class="page-head"><h2>משתמשים</h2><div class="spacer"></div><button class="btn" id="newUser">➕ משתמש חדש</button></div>
       <div class="card"><table><thead><tr><th>שם משתמש</th><th>שם מלא</th><th>תפקיד</th><th>סטטוס</th><th></th></tr></thead><tbody>${users.map(u => `
-        <tr><td>${esc(u.username)}</td><td>${esc(u.full_name || '')}</td><td>${esc(roleLabel(u.role))}</td>
+        <tr${u.active === false ? ' style="opacity:.55"' : ''}><td>${esc(u.username)}</td><td>${esc(u.full_name || '')}</td><td>${esc(roleLabel(u.role))}</td>
         <td>${u.active === false ? '<span class="pill out">מושבת</span>' : '<span class="pill in">פעיל</span>'}</td>
-        <td><button class="btn xs ghost" data-edituser="${u.id}">✏️</button><button class="btn xs" data-linkuser="${u.id}" title="קישור גישה ללא סיסמא">🔗</button></td></tr>`).join('')}</tbody></table>
-      <div class="mini" style="margin-top:8px">🔗 = קישור כניסה ללא סיסמא (מתאים במיוחד לעובד שטח).</div></div>`;
+        <td><button class="btn xs ghost" data-edituser="${u.id}">✏️</button><button class="btn xs" data-linkuser="${u.id}" title="קישור גישה ללא סיסמא">🔗</button>${u.id !== myId ? `<button class="btn xs red" data-deluser="${u.id}" title="השבתת משתמש">🗑️</button>` : ''}</td></tr>`).join('')}</tbody></table>
+      <div class="mini" style="margin-top:8px">🔗 = קישור כניסה ללא סיסמא · 🗑️ = השבתת משתמש (ניתן להחזרה דרך ✏️).</div></div>`;
     $('#newUser').onclick = () => userForm(null, roles);
     view().querySelectorAll('[data-edituser]').forEach(b => b.onclick = () => userForm(users.find(x => x.id === +b.dataset.edituser), roles));
     view().querySelectorAll('[data-linkuser]').forEach(b => b.onclick = () => accessLinkModal(users.find(x => x.id === +b.dataset.linkuser)));
+    view().querySelectorAll('[data-deluser]').forEach(b => b.onclick = async () => {
+      const uu = users.find(x => x.id === +b.dataset.deluser);
+      if (await confirmDialog(`להשבית את "${uu.username}"? הוא לא יוכל להתחבר (אפשר להחזיר בעריכה).`, 'השבתה')) {
+        await guard(window.Store.users.remove(uu.id)); toast('המשתמש הושבת', 'ok'); scrUsers();
+      }
+    });
   }
   async function accessLinkModal(u) {
     const res = await guard(window.Store.users.link(u.id));
