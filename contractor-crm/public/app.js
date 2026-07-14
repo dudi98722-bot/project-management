@@ -628,41 +628,82 @@
     }
   }
 
-  // -- bulk expense entry (הזנה מרוכזת) --
+  // -- bulk expense entry (הזנה מרוכזת - בעיקר ע"י הדבקה מאקסל/שיטס) --
   async function bulkExpenseForm(type) {
     const isProj = type === 'project_expense';
     let projects = [], categories = [];
     if (isProj) projects = await guard(window.Store.projects.list());
     try { categories = await window.Store.tx.categories(); } catch (e) { categories = []; }
-    const projOpts = '<option value="">— פרויקט —</option>' + projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
-    const rowHtml = () => `<tr>
-      ${isProj ? `<td><select class="be-proj" style="min-width:130px">${projOpts}</select></td>` : ''}
-      <td><input class="be-date" type="date" value="${today()}" style="width:140px"></td>
-      <td><input class="be-cat" list="be_catList" placeholder="קטגוריה" style="width:115px"></td>
-      <td><input class="be-sup" placeholder="ספק" style="width:105px"></td>
-      <td><input class="be-pur" placeholder="מהות" style="width:115px"></td>
-      <td><input class="be-amt" type="number" placeholder="סכום" style="width:95px"></td>
-      <td><button class="x be-del">&times;</button></td></tr>`;
+    const projOpts = '<option value="">— בחר פרויקט —</option>' + projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+    const rowHtml = (o) => { o = o || {}; return `<tr>
+      <td><input class="be-date" type="date" value="${o.date || today()}" style="width:140px"></td>
+      <td><input class="be-cat" list="be_catList" value="${esc(o.category || '')}" placeholder="קטגוריה" style="width:115px"></td>
+      <td><input class="be-sup" value="${esc(o.supplier || '')}" placeholder="ספק" style="width:110px"></td>
+      <td><input class="be-pur" value="${esc(o.purpose || '')}" placeholder="מהות" style="width:120px"></td>
+      <td><input class="be-amt" type="number" value="${o.amount || ''}" placeholder="סכום" style="width:95px"></td>
+      <td><button class="x be-del">&times;</button></td></tr>`; };
     openModal('הזנה מרוכזת — ' + (isProj ? 'הוצאות לפרויקט' : 'הוצאות עסק'), `
       <datalist id="be_catList">${categories.map(c => `<option value="${esc(c)}"></option>`).join('')}</datalist>
-      <p class="mini">כל שורה = הוצאה אחת.${isProj ? ' חובה לבחור פרויקט בכל שורה.' : ''} (לצירוף חשבונית — השתמש ב"➕ הוצאה" הבודדת.)</p>
-      <div style="overflow-x:auto"><table><thead><tr>${isProj ? '<th>פרויקט</th>' : ''}<th>תאריך</th><th>קטגוריה</th><th>ספק</th><th>מהות</th><th>סכום ₪</th><th></th></tr></thead>
+      ${isProj ? `<div class="field"><label>פרויקט (לכל השורות) *</label><select id="be_proj">${projOpts}</select></div>` : ''}
+      <div class="field"><label>הדבקה מאקסל / שיטס</label><textarea id="be_paste" rows="4" placeholder="הדבק כאן את השורות (תאריך, קטגוריה, ספק, מהות, סכום) ולחץ 'נתח'"></textarea></div>
+      <button class="btn ghost sm" id="be_parse">נתח והמלא טבלה ↓</button>
+      <p class="mini" style="margin-top:8px">אחרי הניתוח אפשר לתקן ידנית בטבלה. (לצירוף חשבונית — "➕ הוצאה" הבודדת.)</p>
+      <div style="overflow-x:auto"><table><thead><tr><th>תאריך</th><th>קטגוריה</th><th>ספק</th><th>מהות</th><th>סכום ₪</th><th></th></tr></thead>
       <tbody id="beBody">${rowHtml() + rowHtml() + rowHtml()}</tbody></table></div>
       <button class="btn ghost sm" id="beAdd" style="margin-top:10px">➕ שורה</button>`,
       [{ label: 'שמירת הכל', cls: 'green', onClick: async (close) => {
+        let project_id = '';
+        if (isProj) { project_id = fv('be_proj'); if (!project_id) return toast('בחר פרויקט', 'err'); }
         const rows = [...document.querySelectorAll('#beBody tr')].map(tr => {
           const g = (sel) => { const el = $(sel, tr); return el ? el.value.trim() : ''; };
           const o = { date: g('.be-date') || null, category: g('.be-cat'), supplier: g('.be-sup'), purpose: g('.be-pur'), amount: parseFloat(g('.be-amt')) || 0 };
-          if (isProj) { const ps = $('.be-proj', tr); o.project_id = ps ? ps.value : ''; }
+          if (isProj) o.project_id = project_id;
           return o;
-        }).filter(r => r.amount > 0 && (!isProj || r.project_id));
-        if (!rows.length) return toast('הזן לפחות הוצאה אחת עם סכום' + (isProj ? ' ופרויקט' : ''), 'err');
+        }).filter(r => r.amount > 0);
+        if (!rows.length) return toast('אין שורות עם סכום', 'err');
         const res = await guard(window.Store.tx.bulkExpenses(type, rows));
         close(); toast('נשמרו ' + res.count + ' הוצאות', 'ok'); refresh();
       } }, { label: 'ביטול', cls: 'ghost', onClick: (c) => c() }]);
     const wireDel = () => document.querySelectorAll('#beBody .be-del').forEach(b => b.onclick = () => { if (document.querySelectorAll('#beBody tr').length > 1) b.closest('tr').remove(); });
+    $('#be_parse').onclick = () => {
+      const parsed = parseExpensePaste(fv('be_paste'));
+      if (!parsed.length) return toast('לא זוהו שורות עם סכום — בדוק את ההדבקה', 'err');
+      $('#beBody').innerHTML = parsed.map(o => rowHtml(o)).join('');
+      wireDel();
+      toast('זוהו ' + parsed.length + ' שורות — בדוק ותקן במידת הצורך', 'ok');
+    };
     $('#beAdd').onclick = () => { const t = document.createElement('tbody'); t.innerHTML = rowHtml(); $('#beBody').appendChild(t.firstChild); wireDel(); };
     wireDel();
+  }
+  // ניתוח הדבקה של הוצאות -> [{date, category, supplier, purpose, amount}]
+  function parseExpensePaste(text) {
+    const lines = (text || '').split(/\r?\n/).filter(l => l.trim() !== '');
+    if (!lines.length) return [];
+    const grid = lines.map(l => (l.indexOf('\t') >= 0 ? l.split('\t') : l.split(/ {2,}|,|;/)).map(c => c.trim()));
+    const cols = Math.max(...grid.map(r => r.length));
+    grid.forEach(r => { while (r.length < cols) r.push(''); });
+    const dateRe = /\d{1,2}[./-]\d{1,2}[./-]\d{2,4}/;
+    const isData = grid.map(r => r.some(c => impNum(c) !== null));
+    const headerRows = grid.filter((r, i) => !isData[i]);
+    const dataRows = grid.filter((r, i) => isData[i]);
+    if (!dataRows.length) return [];
+    const label = []; for (let j = 0; j < cols; j++) label[j] = headerRows.map(r => String(r[j] || '')).join(' ');
+    const byLabel = (kw) => { for (let j = 0; j < cols; j++) if (label[j].indexOf(kw) >= 0) return j; return -1; };
+    let dateCol = byLabel('תאריך'); if (dateCol < 0) for (let j = 0; j < cols; j++) if (dataRows.some(r => dateRe.test(r[j]))) { dateCol = j; break; }
+    let amtCol = byLabel('סכום'); if (amtCol < 0) { let best = -1, bestN = 0; for (let j = 0; j < cols; j++) { if (j === dateCol) continue; const n = dataRows.filter(r => impNum(r[j]) !== null).length; if (n > bestN) { bestN = n; best = j; } } amtCol = best; }
+    const catCol = byLabel('קטגוריה'), supCol = byLabel('ספק');
+    let purCol = byLabel('מהות'); if (purCol < 0) purCol = byLabel('תיאור'); if (purCol < 0) purCol = byLabel('פירוט');
+    const used = new Set([dateCol, amtCol, catCol, supCol, purCol].filter(x => x >= 0));
+    const textCols = []; for (let j = 0; j < cols; j++) if (!used.has(j) && dataRows.some(r => r[j] && impNum(r[j]) === null)) textCols.push(j);
+    const sup = supCol >= 0 ? supCol : (textCols.length ? textCols[0] : -1);
+    const pur = purCol >= 0 ? purCol : (textCols.length > 1 ? textCols[1] : -1);
+    return dataRows.map(r => ({
+      date: dateCol >= 0 ? normDate(r[dateCol]) : '',
+      category: catCol >= 0 ? r[catCol] : '',
+      supplier: sup >= 0 ? r[sup] : '',
+      purpose: pur >= 0 ? r[pur] : '',
+      amount: amtCol >= 0 ? (impNum(r[amtCol]) || 0) : 0,
+    })).filter(o => o.amount > 0);
   }
 
   // ============================================================
