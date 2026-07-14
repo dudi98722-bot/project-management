@@ -16,10 +16,13 @@ router.get('/overview', authenticate, can('viewReports'), async (req, res) => {
       FROM projects p WHERE p.deleted=false ORDER BY p.created_at DESC`);
 
     let totExpected = 0, totActual = 0, totIncome = 0, totOpen = 0, active = 0;
+    let totPlannedIncome = 0, totSubPaid = 0, totPlannedSub = 0, totOpenSub = 0;
     const rows = projects.rows.map(p => {
       const actual = p.income - p.sub_paid - p.project_expenses;
-      const open = Math.max(0, p.planned_income - p.income);   // כמה עוד צפוי להיכנס מהלקוח
+      const open = Math.max(0, p.planned_income - p.income);       // עוד צפוי להיכנס מהלקוח
+      const openSub = Math.max(0, p.planned_sub - p.sub_paid);     // עוד צריך לשלם לקבלן
       totExpected += p.expected_profit; totActual += actual; totIncome += p.income; totOpen += open;
+      totPlannedIncome += p.planned_income; totSubPaid += p.sub_paid; totPlannedSub += p.planned_sub; totOpenSub += openSub;
       if (p.status === 'active') active++;
       return {
         id: p.id, name: p.name, status: p.status,
@@ -37,7 +40,12 @@ router.get('/overview', authenticate, can('viewReports'), async (req, res) => {
       total_expected_profit: totExpected,
       total_actual_profit: totActual,
       total_income: totIncome,
+      total_planned_income: totPlannedIncome,
+      total_sub_paid: totSubPaid,
+      total_planned_sub: totPlannedSub,
       total_open_client: totOpen,
+      total_open_sub: totOpenSub,
+      future_profit: totOpen - totOpenSub,
       total_business_expenses: bizExp.rows[0].s,
       net_business: totActual - bizExp.rows[0].s,
       per_project: rows

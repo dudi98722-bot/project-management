@@ -293,12 +293,17 @@
     reports: {
       overview: () => {
         const rows = A(D.projects).map(projSummary);
-        let te = 0, ta = 0, ti = 0, to = 0, active = 0;
-        rows.forEach(p => { te += p.expected_profit; ta += p.actual_profit; ti += p.income; to += Math.max(0, p.planned_income - p.income); if (p.status === 'active') active++; });
+        let te = 0, ta = 0, ti = 0, to = 0, active = 0, tpi = 0, tsp = 0, tps = 0, tos = 0;
+        rows.forEach(p => {
+          te += p.expected_profit; ta += p.actual_profit; ti += p.income; to += Math.max(0, p.planned_income - p.income);
+          tpi += p.planned_income; tsp += p.sub_paid; tps += p.planned_sub; tos += Math.max(0, p.planned_sub - p.sub_paid);
+          if (p.status === 'active') active++;
+        });
         const biz = sum(A(D.tx).filter(t => t.type === 'business_expense'));
         return delay({
           projects_total: rows.length, projects_active: active,
           total_expected_profit: te, total_actual_profit: ta, total_income: ti, total_open_client: to,
+          total_planned_income: tpi, total_sub_paid: tsp, total_planned_sub: tps, total_open_sub: tos, future_profit: to - tos,
           total_business_expenses: biz, net_business: ta - biz,
           per_project: rows.map(p => ({ id: p.id, name: p.name, status: p.status, planned_income: p.planned_income, income: p.income, planned_sub: p.planned_sub, sub_paid: p.sub_paid, project_expenses: p.project_expenses, expected_profit: p.expected_profit, actual_profit: p.actual_profit, profit_gap: p.profit_gap }))
         });

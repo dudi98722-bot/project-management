@@ -122,11 +122,20 @@
       <div class="page-head"><h2>לוח בקרה</h2><div class="spacer"></div></div>
       <div class="grid stat-grid">
         ${stat('פרויקטים פעילים', o.projects_active + ' / ' + o.projects_total, '')}
-        ${stat('צפוי להיכנס מלקוחות', money(o.total_open_client), '')}
+        ${stat('צפוי להיכנס מלקוחות', money(o.total_open_client), 'g')}
+        ${stat('יתרה לתשלום לקבלני משנה', money(o.total_open_sub), 'r')}
+        ${stat('צפי רווח עתידי', money(o.future_profit), o.future_profit >= 0 ? 'g' : 'r', 'צפוי מלקוחות פחות צפוי לקבלנים')}
         ${stat('הוצאות עסק', money(o.total_business_expenses), 'r')}
-        ${stat('רווח נקי לעסק', money(o.net_business), o.net_business >= 0 ? 'g' : 'r', 'סך שנכנס מלקוחות פחות תשלומים לקבלנים והוצאות')}
       </div>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px">
+        <div class="card"><h3>גבייה מלקוחות</h3><div id="gaugeClient"></div></div>
+        <div class="card"><h3>תשלום לקבלני משנה</h3><div id="gaugeSub"></div></div>
+      </div>
+      <div class="card"><h3>רווח שנמשך לפי פרויקט</h3><div id="barsDrawn"></div></div>
       <div class="card"><h3>פרויקטים</h3>${projectMiniTable(o.per_project)}</div>`;
+    drawRing($('#gaugeClient'), o.total_income, o.total_planned_income, 'נגבה', '#16a34a');
+    drawRing($('#gaugeSub'), o.total_sub_paid, o.total_planned_sub, 'שולם', '#0ea5e9');
+    drawDrawnBars($('#barsDrawn'), o.per_project);
     view().querySelectorAll('[data-openproj]').forEach(a => a.onclick = () => { go('projects'); setTimeout(() => openProject(+a.dataset.openproj), 30); });
   }
   function stat(label, value, cls, sub) {
@@ -1010,6 +1019,38 @@
   //  CHARTS (inline SVG, no dependencies)
   // ============================================================
   const PALETTE = ['#0ea5e9', '#f59e0b', '#16a34a', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#64748b'];
+  // טבעת התקדמות (כמה שולם/נגבה מתוך המתוכנן)
+  function drawRing(box, done, total, label, color) {
+    done = +done || 0; total = +total || 0;
+    const pct = total > 0 ? Math.min(100, Math.round(done / total * 100)) : 0;
+    const mid = 46, circ = 2 * Math.PI * mid, dash = circ * pct / 100;
+    box.innerHTML = `<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+      <svg width="118" height="118" viewBox="0 0 120 120" style="flex:none">
+        <circle cx="60" cy="60" r="${mid}" fill="none" stroke="#eef2f7" stroke-width="14"/>
+        <circle cx="60" cy="60" r="${mid}" fill="none" stroke="${color}" stroke-width="14" stroke-linecap="round" stroke-dasharray="${dash} ${circ}" transform="rotate(-90 60 60)"/>
+        <text x="60" y="67" text-anchor="middle" font-size="25" font-weight="800" fill="#0f172a">${pct}%</text>
+      </svg>
+      <div><div class="mini">${esc(label)} עד כה</div>
+        <div style="font-size:20px;font-weight:800;color:${color}">${money(done)}</div>
+        <div class="mini" style="margin-top:6px">מתוך ${money(total)}</div></div>
+    </div>`;
+  }
+  // רווח שנמשך לפי פרויקט (עמודות אופקיות)
+  function drawDrawnBars(box, rows) {
+    rows = (rows || []).slice().sort((a, b) => (b.actual_profit || 0) - (a.actual_profit || 0)).slice(0, 10);
+    if (!rows.length) { box.innerHTML = '<div class="empty">אין נתונים</div>'; return; }
+    const max = Math.max(1, ...rows.map(r => Math.abs(r.actual_profit || 0)));
+    const W = 680, rowH = 32, H = rows.length * rowH + 8, pad = 150, barMax = W - pad - 95;
+    let g = '', y = 8;
+    rows.forEach(r => {
+      const v = r.actual_profit || 0, w = Math.max(2, barMax * Math.abs(v) / max), col = v >= 0 ? '#16a34a' : '#dc2626';
+      g += `<text x="${W - 8}" y="${y + rowH / 2 + 4}" text-anchor="end" font-size="13" fill="#334155">${esc(String(r.name).slice(0, 18))}</text>`;
+      g += `<rect x="${pad}" y="${y + 6}" width="${w}" height="${rowH - 14}" rx="4" fill="${col}"><title>${esc(r.name)}: ${money(v)}</title></rect>`;
+      g += `<text x="${pad + w + 6}" y="${y + rowH / 2 + 4}" font-size="12" fill="#64748b">${money0(v)}</text>`;
+      y += rowH;
+    });
+    box.innerHTML = `<svg class="chart-svg" viewBox="0 0 ${W} ${H}">${g}</svg>`;
+  }
   function drawProfitChart(box, rows) {
     if (!rows || !rows.length) { box.innerHTML = '<div class="empty">אין נתונים</div>'; return; }
     rows = rows.slice(0, 8);
