@@ -18,6 +18,31 @@ function api() {
   return _api;
 }
 
+// throttle: פריסת הקריאות ל-Sheets כדי לא לחרוג ממכסת הבקשות לדקה (60/דקה)
+let _last = 0; const _queue = []; let _running = false;
+function throttle(fn) {
+  return new Promise((resolve, reject) => { _queue.push({ fn, resolve, reject }); pump(); });
+}
+async function pump() {
+  if (_running) return; _running = true;
+  while (_queue.length) {
+    const job = _queue.shift();
+    const wait = 1200 - (Date.now() - _last);
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    _last = Date.now();
+    try { job.resolve(await job.fn()); } catch (e) { job.reject(e); }
+  }
+  _running = false;
+}
+function _sp() { return api().spreadsheets; }
+const S = {
+  get: (p) => throttle(() => _sp().get(p)),
+  batchUpdate: (p) => throttle(() => _sp().batchUpdate(p)),
+  vGet: (p) => throttle(() => _sp().values.get(p)),
+  vUpdate: (p) => throttle(() => _sp().values.update(p)),
+  vAppend: (p) => throttle(() => _sp().values.append(p)),
+};
+
 const ACTIONS = { title: 'פעולות', header: ['זמן', 'משתמש', 'פעולה', 'טבלה', 'מזהה', 'פרטים'] };
 const TABS = {
   projects:          { title: 'פרויקטים',   cols: ['id', 'name', 'client_name', 'client_phone', 'address', 'status', 'expected_profit', 'start_date', 'notes', 'deleted', 'updated_at'] },
@@ -42,17 +67,17 @@ function ensureTabs() {
   if (_init) return _init;
   _init = (async () => {
     const ss = SHEET_ID();
-    const meta = await api().spreadsheets.get({ spreadsheetId: ss, fields: 'sheets.properties.title' });
+    const meta = await S.get({ spreadsheetId: ss, fields: 'sheets.properties.title' });
     const have = new Set((meta.data.sheets || []).map(s => s.properties.title));
     const wanted = [{ title: ACTIONS.title, header: ACTIONS.header }, ...Object.values(TABS).map(t => ({ title: t.title, header: t.cols }))];
     const toAdd = wanted.filter(w => !have.has(w.title));
     if (toAdd.length) {
-      await api().spreadsheets.batchUpdate({
+      await S.batchUpdate({
         spreadsheetId: ss,
         requestBody: { requests: toAdd.map(w => ({ addSheet: { properties: { title: w.title } } })) },
       });
       for (const w of toAdd) {
-        await api().spreadsheets.values.update({
+        await S.vUpdate({
           spreadsheetId: ss, range: `${q(w.title)}!A1`, valueInputOption: 'RAW',
           requestBody: { values: [w.header] },
         });
@@ -64,7 +89,7 @@ function ensureTabs() {
 
 async function appendAction(user, action, table, id, details) {
   const row = [new Date().toISOString(), (user && user.username) || '', action || '', table || '', String(id || ''), JSON.stringify(details || {})];
-  await api().spreadsheets.values.append({
+  await S.vAppend({
     spreadsheetId: SHEET_ID(), range: `${q(ACTIONS.title)}!A1`,
     valueInputOption: 'RAW', insertDataOption: 'INSERT_ROWS',
     requestBody: { values: [row] },
@@ -76,15 +101,15 @@ async function mirrorRow(table, record) {
   const def = TABS[table];
   if (!def || !record || record.id == null) return;
   const ss = SHEET_ID(), idStr = String(record.id);
-  const got = await api().spreadsheets.values.get({ spreadsheetId: ss, range: `${q(def.title)}!A:A` });
+  const got = await S.vGet({ spreadsheetId: ss, range: `${q(def.title)}!A:A` });
   const colA = got.data.values || [];
   let rowNum = 0;
   for (let i = 1; i < colA.length; i++) { if (String((colA[i] || [])[0]) === idStr) { rowNum = i + 1; break; } }
   const values = [def.cols.map(c => fmt(record[c]))];
   if (rowNum) {
-    await api().spreadsheets.values.update({ spreadsheetId: ss, range: `${q(def.title)}!A${rowNum}`, valueInputOption: 'RAW', requestBody: { values } });
+    await S.vUpdate({ spreadsheetId: ss, range: `${q(def.title)}!A${rowNum}`, valueInputOption: 'RAW', requestBody: { values } });
   } else {
-    await api().spreadsheets.values.append({ spreadsheetId: ss, range: `${q(def.title)}!A1`, valueInputOption: 'RAW', insertDataOption: 'INSERT_ROWS', requestBody: { values } });
+    await S.vAppend({ spreadsheetId: ss, range: `${q(def.title)}!A1`, valueInputOption: 'RAW', insertDataOption: 'INSERT_ROWS', requestBody: { values } });
   }
 }
 
