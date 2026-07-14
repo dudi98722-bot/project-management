@@ -1,5 +1,9 @@
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
 const sheets = require('./sheets');
+
+// PostgreSQL מחזיר BIGINT (int8) כמחרוזת כברירת מחדל. הערכים אצלנו קטנים (מזהים),
+// אז ממירים אותם למספר - כדי שההשוואות בצד הלקוח (x.id === +val) יעבדו, כמו בהדגמה.
+types.setTypeParser(20, (v) => (v === null ? null : parseInt(v, 10)));
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
