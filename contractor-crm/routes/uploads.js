@@ -1,7 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const { authenticate, canAny } = require('../middleware/auth');
-const { saveInvoice, driveConfigured } = require('../drive');
+const { saveInvoice, driveConfigured, storageMode } = require('../drive');
 const router = express.Router();
 
 // מגבילים לסוגי חשבונית בטוחים בלבד (חוסם HTML/SVG/JS שעלולים לרוץ כקוד מהאתר)
@@ -29,16 +29,16 @@ router.post('/invoice', authenticate, canAny(['writeTx', 'projectExpenseOnly']),
   if (!req.file) return res.status(400).json({ error: 'לא צורף קובץ' });
   try {
     const url = await saveInvoice(req.file.buffer, req.file.originalname, req.file.mimetype);
-    res.json({ url, storage: driveConfigured() ? 'drive' : 'local' });
+    res.json({ url, storage: storageMode() });
   } catch (e) {
     console.error('upload error:', e.message);
     res.status(500).json({ error: 'שמירת החשבונית נכשלה' });
   }
 });
 
-// GET /api/uploads/status - האם דרייב מוגדר
+// GET /api/uploads/status - מצב אחסון החשבוניות (appsscript / drive / local)
 router.get('/status', authenticate, (req, res) => {
-  res.json({ drive: driveConfigured() });
+  res.json({ storage: storageMode() });
 });
 
 module.exports = router;

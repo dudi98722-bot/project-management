@@ -53,16 +53,45 @@ function saveLocal(buffer, filename) {
   return '/uploads/' + fname;
 }
 
+// העלאה דרך Apps Script (רץ בשם המשתמש - עובד עם Gmail פרטי, בלי בעיית מכסת חשבון שירות)
+function appsScriptConfigured() { return !!process.env.DRIVE_APPSCRIPT_URL; }
+async function uploadViaAppsScript(buffer, filename, mimetype) {
+  const res = await fetch(process.env.DRIVE_APPSCRIPT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      token: process.env.DRIVE_APPSCRIPT_TOKEN || '',
+      filename, mimeType: mimetype || 'application/octet-stream',
+      base64: buffer.toString('base64'),
+    }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!data || !data.url) throw new Error((data && data.error) || ('apps script status ' + res.status));
+  return data.url;
+}
+
+// מצב אחסון פעיל (לתצוגה)
+function storageMode() {
+  if (appsScriptConfigured()) return 'appsscript';
+  if (driveConfigured()) return 'drive';
+  return 'local';
+}
+
 // נקודת הכניסה הראשית: מקבל buffer ומחזיר URL לחשבונית
 async function saveInvoice(buffer, filename, mimetype) {
-  if (driveConfigured()) {
-    try {
-      return await uploadToDrive(buffer, safeName(filename), mimetype);
-    } catch (e) {
-      console.error('Drive upload failed, saving locally:', e.message);
-    }
+  const safe = safeName(filename);
+  // 1) Apps Script relay (מומלץ ל-Gmail פרטי)
+  if (appsScriptConfigured()) {
+    try { return await uploadViaAppsScript(buffer, safe, mimetype); }
+    catch (e) { console.error('Apps Script upload failed:', e.message); }
   }
+  // 2) חשבון שירות (Workspace / Shared Drive)
+  if (driveConfigured()) {
+    try { return await uploadToDrive(buffer, safe, mimetype); }
+    catch (e) { console.error('Drive upload failed, saving locally:', e.message); }
+  }
+  // 3) מקומי
   return saveLocal(buffer, filename);
 }
 
-module.exports = { saveInvoice, driveConfigured, UPLOAD_DIR };
+module.exports = { saveInvoice, driveConfigured, storageMode, UPLOAD_DIR };
