@@ -87,6 +87,7 @@
     { id: 'subs', label: '👷 קבלני משנה', show: c => c.viewBusiness, fn: scrSubs },
     { id: 'tx', label: '💰 תנועות', show: c => c.viewBusiness, fn: scrTx },
     { id: 'biz', label: '🧾 הוצאות עסק', show: c => c.viewBusiness, fn: scrBiz },
+    { id: 'payreq', label: '🧮 בקשת תשלום', show: c => c.viewBusiness, fn: scrPayRequest },
     { id: 'reports', label: '📈 דוחות', show: c => c.viewReports, fn: scrReports },
     { id: 'field', label: '📥 הזנת הוצאה', show: c => c.projectExpenseOnly && !c.writeTx && !c.viewBusiness, fn: scrField },
     { id: 'home', label: '🏠 בית', show: c => c.home, fn: scrHome },
@@ -388,7 +389,15 @@
         if (!isBiz) { d.project_id = fv('t_proj'); if (!d.project_id) return toast('בחר פרויקט', 'err'); }
         if (needStage) {
           d.stage_id = fv('t_stage'); if (!d.stage_id) return toast('בחר שלב', 'err');
-          if (isSub) { const st = (stages || []).find(x => x.id === +d.stage_id); d.subcontractor_id = st ? st.subcontractor_id : null; if (!d.subcontractor_id) return toast('לשלב זה לא משויך קבלן משנה', 'err'); }
+          const st = (stages || []).find(x => x.id === +d.stage_id);
+          if (isSub) { d.subcontractor_id = st ? st.subcontractor_id : null; if (!d.subcontractor_id) return toast('לשלב זה לא משויך קבלן משנה', 'err'); }
+          // חסימת חריגה מסכום השלב
+          if (st) {
+            const cap = isClient ? (+st.client_amount || 0) : (+st.sub_amount || 0);
+            const paid = isClient ? (+st.paid_in || 0) : (+st.paid_sub || 0);
+            const remaining = cap - paid;
+            if (amount > remaining + 0.001) return toast(`הסכום חורג מסכום השלב. נותר: ${money(Math.max(0, remaining))}`, 'err');
+          }
         }
         if (isProjExp || isBiz) { d.supplier = fv('t_supplier'); d.purpose = fv('t_purpose'); }
         // invoice upload
@@ -746,6 +755,73 @@
         await guard(u.id ? window.Store.users.update(u.id, d) : window.Store.users.create(d));
         close(); toast('נשמר', 'ok'); scrUsers();
       } }, { label: 'ביטול', cls: 'ghost', onClick: (c) => c() }]);
+  }
+
+  // ============================================================
+  //  PAYMENT REQUEST CALCULATOR (חישוב בלבד - לא נשמר)
+  // ============================================================
+  async function scrPayRequest() {
+    loading();
+    const projects = await guard(window.Store.projects.list());
+    view().innerHTML = `
+      <div class="page-head"><h2>מחשבון בקשת תשלום</h2><span class="mini">חישוב בלבד — לא נשמר במערכת</span></div>
+      <div class="card" style="max-width:680px">
+        <p class="muted" style="margin-top:0">כשקבלן משנה מבקש כסף על שלב — בחר את הפרויקט והשלב, הזן את הסכום המבוקש, וקבל מיד כמה יישאר לשלב וכמה הלקוח חייב.</p>
+        <div class="row">
+          <div class="field"><label>פרויקט</label><select id="pr_proj"><option value="">— בחר פרויקט —</option>${projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
+          <div class="field"><label>שלב</label><select id="pr_stage"><option value="">— בחר פרויקט קודם —</option></select></div>
+        </div>
+        <div id="pr_out"></div>
+      </div>`;
+    const projSel = $('#pr_proj'), stageSel = $('#pr_stage');
+    let curStages = [];
+    projSel.onchange = async () => {
+      $('#pr_out').innerHTML = '';
+      if (!projSel.value) { stageSel.innerHTML = '<option value="">— בחר פרויקט קודם —</option>'; return; }
+      const d = await guard(window.Store.projects.get(projSel.value));
+      curStages = d.stages || [];
+      stageSel.innerHTML = '<option value="">— בחר שלב —</option>' + curStages.map(s => `<option value="${s.id}">${esc(s.name)}${s.subcontractor_name ? ' · ' + esc(s.subcontractor_name) : ''}</option>`).join('');
+    };
+    stageSel.onchange = () => {
+      const st = curStages.find(x => x.id === +stageSel.value);
+      if (st) renderPayReq(st); else $('#pr_out').innerHTML = '';
+    };
+  }
+  function renderPayReq(st) {
+    const subAmount = +st.sub_amount || 0, paidSub = +st.paid_sub || 0, subRemaining = subAmount - paidSub;
+    const clientAmount = +st.client_amount || 0, paidIn = +st.paid_in || 0, clientOwes = clientAmount - paidIn;
+    $('#pr_out').innerHTML = `
+      <div style="margin-top:8px">
+        <div class="mini" style="margin-bottom:6px;font-weight:600">💰 מול קבלן המשנה${st.subcontractor_name ? ' (' + esc(st.subcontractor_name) + ')' : ''}</div>
+        <div class="grid stat-grid">
+          ${miniStat('סכום השלב לקבלן', money(subAmount))}
+          ${miniStat('שולם עד כה', money(paidSub))}
+          ${miniStat('נותר לקבלן בשלב', money(subRemaining), subRemaining >= 0 ? 'g' : 'r')}
+        </div>
+        <div class="mini" style="margin:14px 0 6px;font-weight:600">🟢 מול הלקוח</div>
+        <div class="grid stat-grid">
+          ${miniStat('סכום השלב מהלקוח', money(clientAmount))}
+          ${miniStat('נכנס עד כה', money(paidIn))}
+          ${miniStat('הלקוח חייב על השלב', money(clientOwes), clientOwes > 0 ? 'a' : 'g')}
+        </div>
+      </div>
+      <div class="field" style="margin-top:16px"><label>כמה הקבלן מבקש עכשיו (₪)</label><input id="pr_req" type="number" placeholder="0" autofocus></div>
+      <div id="pr_calc"></div>`;
+    $('#pr_req').oninput = () => {
+      const req = parseFloat($('#pr_req').value) || 0;
+      const afterSub = subRemaining - req;
+      const over = req > subRemaining + 0.001;
+      $('#pr_calc').innerHTML = `
+        <div class="card" style="background:var(--soft);border:1px dashed var(--brand);margin:6px 0 0">
+          <table>
+            <tr><td>מבוקש עכשיו</td><td class="num" style="font-weight:800;font-size:16px">${money(req)}</td></tr>
+            <tr><td><b>יתרה לשלב אחרי הבקשה (לקבלן)</b></td><td class="num" style="font-weight:800;font-size:16px;color:${afterSub >= 0 ? 'var(--green)' : 'var(--red)'}">${money(afterSub)}</td></tr>
+            <tr><td>הלקוח חייב על השלב</td><td class="num" style="font-weight:800;font-size:16px;color:var(--brand-d)">${money(clientOwes)}</td></tr>
+          </table>
+          ${over ? `<div class="mini" style="color:var(--red);margin-top:8px">⚠️ הבקשה חורגת מהיתרה לקבלן בשלב (נותר ${money(subRemaining)})</div>` : ''}
+        </div>`;
+    };
+    $('#pr_req').oninput();
   }
 
   // ============================================================

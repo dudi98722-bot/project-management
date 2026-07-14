@@ -18,6 +18,30 @@ function validate(type, b) {
   return null;
 }
 
+// חסימת חריגה: תשלום לקוח/קבלן לא יעבור את סכום השלב.
+// מחזיר {remaining, cap} אם יש חריגה, אחרת null.
+async function stageCapError(stageId, type, amount, excludeId) {
+  if (type !== 'client_payment' && type !== 'sub_payment') return null;
+  if (!stageId) return null;
+  const st = await pool.query('SELECT client_amount, sub_amount FROM stages WHERE id=$1 AND deleted=false', [stageId]);
+  if (!st.rows.length) return null;
+  const cap = parseFloat(type === 'client_payment' ? st.rows[0].client_amount : st.rows[0].sub_amount) || 0;
+  const params = [stageId, type];
+  let excl = '';
+  if (excludeId) { params.push(excludeId); excl = ' AND id<>$3'; }
+  const paid = await pool.query(
+    `SELECT COALESCE(SUM(amount),0)::float AS s FROM transactions WHERE stage_id=$1 AND type=$2 AND deleted=false${excl}`, params);
+  const remaining = cap - paid.rows[0].s;
+  if (amount > remaining + 0.001) return { remaining, cap };
+  return null;
+}
+function capMsg(info, type) {
+  const rem = Math.max(0, Math.round(info.remaining)).toLocaleString('he-IL');
+  return type === 'client_payment'
+    ? `הסכום חורג מסכום השלב מול הלקוח. נותר לגבייה בשלב: ${rem} ₪`
+    : `הסכום חורג מסכום השלב לקבלן המשנה. נותר לתשלום בשלב: ${rem} ₪`;
+}
+
 // GET /api/transactions?project_id=&stage_id=&type=&from=&to=
 router.get('/', authenticate, can('viewBusiness'), async (req, res) => {
   const { project_id, stage_id, type, from, to } = req.query;
@@ -53,6 +77,8 @@ router.post('/', authenticate, canAny(['writeTx', 'projectExpenseOnly']), async 
   const err = validate(type, b);
   if (err) return res.status(400).json({ error: err });
   try {
+    const capErr = await stageCapError(b.stage_id, type, parseFloat(b.amount), null);
+    if (capErr) return res.status(400).json({ error: capMsg(capErr, type) });
     const r = await pool.query(
       `INSERT INTO transactions
         (type, direction, amount, date, project_id, stage_id, subcontractor_id, supplier, purpose, method, invoice_url, note, created_by, updated_by)
@@ -75,6 +101,8 @@ router.put('/:id', authenticate, can('writeTx'), async (req, res) => {
     if (!cur.rows.length) return res.status(404).json({ error: 'תנועה לא נמצאה' });
     const err = validate(cur.rows[0].type, b);
     if (err) return res.status(400).json({ error: err });
+    const capErr = await stageCapError(b.stage_id, cur.rows[0].type, parseFloat(b.amount), req.params.id);
+    if (capErr) return res.status(400).json({ error: capMsg(capErr, cur.rows[0].type) });
     const r = await pool.query(
       `UPDATE transactions SET amount=$1, date=$2, project_id=$3, stage_id=$4, subcontractor_id=$5,
          supplier=$6, purpose=$7, method=$8, invoice_url=$9, note=$10, updated_by=$11, updated_at=NOW()

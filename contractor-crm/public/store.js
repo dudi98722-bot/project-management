@@ -176,6 +176,23 @@
   function inRange(d, f, t) { if (!d) return false; if (f && d < f) return false; if (t && d > t) return false; return true; }
   const delay = (v) => new Promise(r => setTimeout(() => r(v), 60)); // תחושת רשת קלה
 
+  // חסימת חריגה מסכום השלב (תשלום לקוח/קבלן) - מקביל לשרת
+  function txCapError(type, stageId, amount, excludeId) {
+    if (type !== 'client_payment' && type !== 'sub_payment') return null;
+    if (!stageId) return null;
+    const st = D.stages.find(s => s.id === stageId && !s.deleted); if (!st) return null;
+    const cap = +(type === 'client_payment' ? st.client_amount : st.sub_amount) || 0;
+    const paid = A(D.tx).filter(t => t.stage_id === stageId && t.type === type && t.id !== excludeId).reduce((s, t) => s + (+t.amount || 0), 0);
+    const remaining = cap - paid;
+    if (amount > remaining + 0.001) {
+      const rem = Math.max(0, Math.round(remaining)).toLocaleString('he-IL');
+      return type === 'client_payment'
+        ? `הסכום חורג מסכום השלב מול הלקוח. נותר לגבייה בשלב: ${rem} ₪`
+        : `הסכום חורג מסכום השלב לקבלן המשנה. נותר לתשלום בשלב: ${rem} ₪`;
+    }
+    return null;
+  }
+
   const DemoStore = {
     isDemo: true,
     projects: {
@@ -226,8 +243,8 @@
         rows.sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.id - a.id);
         return delay(rows);
       },
-      create: (d) => { const dir = d.type === 'client_payment' ? 'in' : 'out'; const t = Object.assign({ id: nid(), deleted: false }, d, { direction: dir, amount: +d.amount || 0, project_id: numify(d.project_id), stage_id: numify(d.stage_id), subcontractor_id: numify(d.subcontractor_id) }); D.tx.push(t); return delay(t); },
-      update: (id, d) => { id = +id; const t = D.tx.find(x => x.id === id); Object.assign(t, d, { amount: +d.amount || 0, project_id: numify(d.project_id), stage_id: numify(d.stage_id), subcontractor_id: numify(d.subcontractor_id) }); return delay(t); },
+      create: (d) => { const sid = numify(d.stage_id); const capErr = txCapError(d.type, sid, +d.amount || 0, null); if (capErr) return Promise.reject(new Error(capErr)); const dir = d.type === 'client_payment' ? 'in' : 'out'; const t = Object.assign({ id: nid(), deleted: false }, d, { direction: dir, amount: +d.amount || 0, project_id: numify(d.project_id), stage_id: sid, subcontractor_id: numify(d.subcontractor_id) }); D.tx.push(t); return delay(t); },
+      update: (id, d) => { id = +id; const sid = numify(d.stage_id); const capErr = txCapError(d.type, sid, +d.amount || 0, id); if (capErr) return Promise.reject(new Error(capErr)); const t = D.tx.find(x => x.id === id); Object.assign(t, d, { amount: +d.amount || 0, project_id: numify(d.project_id), stage_id: sid, subcontractor_id: numify(d.subcontractor_id) }); return delay(t); },
       remove: (id) => { id = +id; const t = D.tx.find(x => x.id === id); if (t) t.deleted = true; return delay({ ok: true }); },
       bulkRemove: (ids) => { let n = 0; ids.forEach(id => { const t = D.tx.find(x => x.id === +id); if (t && !t.deleted) { t.deleted = true; n++; } }); return delay({ count: n }); },
     },
