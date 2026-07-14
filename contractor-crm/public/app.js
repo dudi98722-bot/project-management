@@ -139,12 +139,37 @@
   function gapText(gap) { if (Math.round(gap) === 0) return 'בדיוק ביעד'; return gap > 0 ? 'מעל היעד ב־' + money(gap) : 'מתחת ליעד ב־' + money(-gap); }
   function projectMiniTable(rows) {
     if (!rows.length) return '<div class="empty">אין פרויקטים עדיין</div>';
-    return `<table><thead><tr><th>פרויקט</th><th>סטטוס</th><th>רווח צפוי</th><th>רווח בפועל</th><th>פער</th></tr></thead><tbody>${rows.map(p => `
-      <tr><td><a class="link" data-openproj="${p.id}">${esc(p.name)}</a></td>
-      <td><span class="pill ${p.status}">${STATUS_HE[p.status] || p.status}</span></td>
-      <td class="num">${money(p.expected_profit)}</td>
-      <td class="num">${money(p.actual_profit)}</td>
-      <td class="num" style="color:${p.profit_gap >= 0 ? 'var(--green)' : 'var(--red)'}">${p.profit_gap >= 0 ? '+' : ''}${money0(p.profit_gap)}</td></tr>`).join('')}</tbody></table>`;
+    const body = rows.map(p => {
+      const clientRem = (p.planned_income || 0) - (p.income || 0);
+      const subRem = (p.planned_sub || 0) - (p.sub_paid || 0);
+      const drawn = p.actual_profit;
+      const rem = (v) => `<td class="num" style="color:${v > 0.5 ? 'var(--brand-d)' : 'var(--muted)'}">${money0(v)}</td>`;
+      return `<tr>
+        <td><a class="link" data-openproj="${p.id}">${esc(p.name)}</a></td>
+        <td class="num">${money0(p.planned_income)}</td>
+        <td class="num" style="color:var(--green)">${money0(p.income)}</td>
+        ${rem(clientRem)}
+        <td class="num">${money0(p.planned_sub)}</td>
+        <td class="num" style="color:var(--red)">${money0(p.sub_paid)}</td>
+        ${rem(subRem)}
+        <td class="num" style="color:var(--red)">${money0(p.project_expenses)}</td>
+        <td class="num" style="font-weight:800;color:${drawn >= 0 ? 'var(--green)' : 'var(--red)'}">${money0(drawn)}</td>
+      </tr>`;
+    }).join('');
+    return `<div style="overflow-x:auto"><table style="min-width:820px"><thead>
+      <tr>
+        <th rowspan="2">פרויקט</th>
+        <th colspan="3" class="center" style="border-inline:1px solid var(--line)">לקוח</th>
+        <th colspan="3" class="center" style="border-inline:1px solid var(--line)">קבלן משנה</th>
+        <th rowspan="2">הוצאות</th>
+        <th rowspan="2">רווח שנמשך</th>
+      </tr>
+      <tr>
+        <th class="num">מחיר</th><th class="num">שילם</th><th class="num">יתרה</th>
+        <th class="num">מחיר</th><th class="num">שולם</th><th class="num">יתרה</th>
+      </tr>
+    </thead><tbody>${body}</tbody></table></div>
+    <div class="mini" style="margin-top:8px">"רווח שנמשך" = מה שנכנס מהלקוח, פחות מה ששולם לקבלן המשנה, פחות ההוצאות.</div>`;
   }
 
   // ============================================================

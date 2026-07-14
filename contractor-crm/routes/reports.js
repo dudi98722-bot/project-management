@@ -11,8 +11,9 @@ router.get('/overview', authenticate, can('viewReports'), async (req, res) => {
         COALESCE((SELECT SUM(amount) FROM transactions t WHERE t.project_id=p.id AND t.type='client_payment'  AND t.deleted=false),0)::float AS income,
         COALESCE((SELECT SUM(amount) FROM transactions t WHERE t.project_id=p.id AND t.type='sub_payment'     AND t.deleted=false),0)::float AS sub_paid,
         COALESCE((SELECT SUM(amount) FROM transactions t WHERE t.project_id=p.id AND t.type='project_expense' AND t.deleted=false),0)::float AS project_expenses,
-        COALESCE((SELECT SUM(client_amount) FROM stages s WHERE s.project_id=p.id AND s.deleted=false),0)::float AS planned_income
-      FROM projects p WHERE p.deleted=false`);
+        COALESCE((SELECT SUM(client_amount) FROM stages s WHERE s.project_id=p.id AND s.deleted=false),0)::float AS planned_income,
+        COALESCE((SELECT SUM(sub_amount)    FROM stages s WHERE s.project_id=p.id AND s.deleted=false),0)::float AS planned_sub
+      FROM projects p WHERE p.deleted=false ORDER BY p.created_at DESC`);
 
     let totExpected = 0, totActual = 0, totIncome = 0, totOpen = 0, active = 0;
     const rows = projects.rows.map(p => {
@@ -20,7 +21,13 @@ router.get('/overview', authenticate, can('viewReports'), async (req, res) => {
       const open = Math.max(0, p.planned_income - p.income);   // כמה עוד צפוי להיכנס מהלקוח
       totExpected += p.expected_profit; totActual += actual; totIncome += p.income; totOpen += open;
       if (p.status === 'active') active++;
-      return { id: p.id, name: p.name, status: p.status, expected_profit: p.expected_profit, actual_profit: actual, profit_gap: actual - p.expected_profit };
+      return {
+        id: p.id, name: p.name, status: p.status,
+        planned_income: p.planned_income, income: p.income,               // מחיר ללקוח, שילם
+        planned_sub: p.planned_sub, sub_paid: p.sub_paid,                 // מחיר לקבלן, שולם
+        project_expenses: p.project_expenses,                             // הוצאות לפרויקט
+        expected_profit: p.expected_profit, actual_profit: actual, profit_gap: actual - p.expected_profit
+      };
     });
 
     const bizExp = await pool.query(`SELECT COALESCE(SUM(amount),0)::float AS s FROM transactions WHERE type='business_expense' AND deleted=false`);

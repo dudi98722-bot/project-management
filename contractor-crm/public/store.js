@@ -282,7 +282,7 @@
           projects_total: rows.length, projects_active: active,
           total_expected_profit: te, total_actual_profit: ta, total_income: ti, total_open_client: to,
           total_business_expenses: biz, net_business: ta - biz,
-          per_project: rows.map(p => ({ id: p.id, name: p.name, status: p.status, expected_profit: p.expected_profit, actual_profit: p.actual_profit, profit_gap: p.profit_gap }))
+          per_project: rows.map(p => ({ id: p.id, name: p.name, status: p.status, planned_income: p.planned_income, income: p.income, planned_sub: p.planned_sub, sub_paid: p.sub_paid, project_expenses: p.project_expenses, expected_profit: p.expected_profit, actual_profit: p.actual_profit, profit_gap: p.profit_gap }))
         });
       },
       project: (id) => {
