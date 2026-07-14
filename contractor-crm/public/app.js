@@ -117,20 +117,15 @@
   async function scrDashboard() {
     loading();
     const o = await guard(window.Store.reports.overview());
-    const gapCls = o.total_actual_profit - o.total_expected_profit >= 0 ? 'g' : 'r';
     view().innerHTML = `
       <div class="page-head"><h2>לוח בקרה</h2><div class="spacer"></div></div>
       <div class="grid stat-grid">
         ${stat('פרויקטים פעילים', o.projects_active + ' / ' + o.projects_total, '')}
-        ${stat('רווח צפוי (סה"כ)', money(o.total_expected_profit), 'a')}
-        ${stat('רווח בפועל (סה"כ)', money(o.total_actual_profit), gapCls, gapText(o.total_actual_profit - o.total_expected_profit))}
         ${stat('צפוי להיכנס מלקוחות', money(o.total_open_client), '')}
         ${stat('הוצאות עסק', money(o.total_business_expenses), 'r')}
-        ${stat('רווח נקי לעסק', money(o.net_business), o.net_business >= 0 ? 'g' : 'r', 'רווח פרויקטים פחות הוצאות עסק')}
+        ${stat('רווח נקי לעסק', money(o.net_business), o.net_business >= 0 ? 'g' : 'r', 'סך שנכנס מלקוחות פחות תשלומים לקבלנים והוצאות')}
       </div>
-      <div class="card"><h3>רווח בפועל מול צפוי — לפי פרויקט</h3><div id="chartProfit"></div></div>
       <div class="card"><h3>פרויקטים</h3>${projectMiniTable(o.per_project)}</div>`;
-    drawProfitChart($('#chartProfit'), o.per_project);
     view().querySelectorAll('[data-openproj]').forEach(a => a.onclick = () => { go('projects'); setTimeout(() => openProject(+a.dataset.openproj), 30); });
   }
   function stat(label, value, cls, sub) {
@@ -477,7 +472,7 @@
     const driveNote = window.Store.isDemo ? '' : '';
     openModal('הוספת ' + (TYPE_HE[type] || ''), `
       ${!isBiz ? `<div class="field"><label>פרויקט *</label><select id="t_proj">${projOpts(ctx.project_id)}</select></div>` : ''}
-      ${needStage ? `<div class="field"><label>שלב *</label><select id="t_stage"><option value="">— בחר שלב —</option></select></div>` : ''}
+      ${needStage ? `<div class="field"><label>שלב *</label><select id="t_stage"><option value="">— בחר שלב —</option></select><div class="mini" id="t_stageRem" style="margin-top:5px"></div></div>` : ''}
       <div class="row">
         <div class="field"><label>סכום (₪) *</label><input id="t_amount" type="number" autofocus></div>
         <div class="field"><label>תאריך</label><input id="t_date" type="date" value="${today()}"></div>
@@ -516,14 +511,26 @@
         close(); toast('נשמר', 'ok');
         if (ctx.project_id) openProject(ctx.project_id); else refresh();
       } }, { label: 'ביטול', cls: 'ghost', onClick: (c) => c() }]);
-    // populate stages on project change
+    // populate stages on project change - רק שלבים שעדיין לא שולמו במלואם, עם הצגת יתרה
     if (needStage) {
       const stageSel = $('#t_stage');
-      const fill = (sts) => { stages = sts; stageSel.innerHTML = '<option value="">— בחר שלב —</option>' + sts.map(s => `<option value="${s.id}">${esc(s.name)}${s.subcontractor_name ? ' · ' + esc(s.subcontractor_name) : ''}</option>`).join(''); };
+      const remEl = $('#t_stageRem');
+      const remOf = (s) => isClient ? ((+s.client_amount || 0) - (+s.paid_in || 0)) : ((+s.sub_amount || 0) - (+s.paid_sub || 0));
+      const updateRem = () => {
+        const st = (stages || []).find(x => x.id === +stageSel.value);
+        if (st) { const r = remOf(st); remEl.innerHTML = `יתרה לשלב זה: <b style="color:var(--brand-d)">${money(Math.max(0, r))}</b>`; }
+        else remEl.textContent = '';
+      };
+      const fill = (raw) => {
+        stages = (raw || []).filter(s => remOf(s) > 0.5);   // מסתירים שלבים ששולמו במלואם
+        stageSel.innerHTML = '<option value="">— בחר שלב —</option>' + stages.map(s => `<option value="${s.id}">${esc(s.name)} · נותר ${money0(remOf(s))} ₪</option>`).join('');
+        remEl.innerHTML = stages.length ? '' : '<span style="color:var(--muted)">כל השלבים שולמו במלואם 🎉</span>';
+        updateRem();
+      };
+      stageSel.onchange = updateRem;
       if (stages) fill(stages);
       const projSel = $('#t_proj');
-      if (projSel) projSel.onchange = async () => { if (!projSel.value) { stageSel.innerHTML = ''; return; } const d = await guard(window.Store.projects.get(projSel.value)); fill(d.stages); };
-      if (ctx.project_id && stages) { /* already filled */ }
+      if (projSel) projSel.onchange = async () => { if (!projSel.value) { stageSel.innerHTML = '<option value="">— בחר שלב —</option>'; remEl.textContent = ''; stages = []; return; } const d = await guard(window.Store.projects.get(projSel.value)); fill(d.stages); };
     }
   }
 
