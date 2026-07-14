@@ -90,6 +90,7 @@
       create: (d) => apiFetch('/users', { method: 'POST', body: d }),
       update: (id, d) => apiFetch('/users/' + id, { method: 'PUT', body: d }),
       remove: (id) => apiFetch('/users/' + id, { method: 'DELETE' }),
+      link: (id) => apiFetch('/users/' + id + '/link', { method: 'POST' }),
     },
   };
   function qs(f) {
@@ -372,6 +373,7 @@
       create: (d) => { const u = Object.assign({ id: nid(), active: true }, d); D.users.push(u); return delay(u); },
       update: (id, d) => { const u = D.users.find(x => x.id === +id) || {}; Object.assign(u, d); return delay(u); },
       remove: (id) => { const u = D.users.find(x => x.id === +id); if (u) u.active = false; return delay({ ok: true }); },
+      link: (id) => delay({ token: 'demo-link-token-' + id }),
     },
   };
   function learn(payee, category) {
@@ -412,7 +414,7 @@
         return null;
       }
     },
-    logout() { setToken(''); sessionStorage.removeItem('cc_user'); this.user = null; window.Store = null; },
+    logout() { setToken(''); sessionStorage.removeItem('cc_user'); localStorage.removeItem('cc_link'); this.user = null; window.Store = null; },
     caps() { return (this.user && this.user.caps) || {}; },
   };
 })();

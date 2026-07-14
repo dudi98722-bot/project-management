@@ -1032,9 +1032,23 @@
       <div class="card"><table><thead><tr><th>שם משתמש</th><th>שם מלא</th><th>תפקיד</th><th>סטטוס</th><th></th></tr></thead><tbody>${users.map(u => `
         <tr><td>${esc(u.username)}</td><td>${esc(u.full_name || '')}</td><td>${esc(roleLabel(u.role))}</td>
         <td>${u.active === false ? '<span class="pill out">מושבת</span>' : '<span class="pill in">פעיל</span>'}</td>
-        <td><button class="btn xs ghost" data-edituser="${u.id}">✏️</button></td></tr>`).join('')}</tbody></table></div>`;
+        <td><button class="btn xs ghost" data-edituser="${u.id}">✏️</button><button class="btn xs" data-linkuser="${u.id}" title="קישור גישה ללא סיסמא">🔗</button></td></tr>`).join('')}</tbody></table>
+      <div class="mini" style="margin-top:8px">🔗 = קישור כניסה ללא סיסמא (מתאים במיוחד לעובד שטח).</div></div>`;
     $('#newUser').onclick = () => userForm(null, roles);
     view().querySelectorAll('[data-edituser]').forEach(b => b.onclick = () => userForm(users.find(x => x.id === +b.dataset.edituser), roles));
+    view().querySelectorAll('[data-linkuser]').forEach(b => b.onclick = () => accessLinkModal(users.find(x => x.id === +b.dataset.linkuser)));
+  }
+  async function accessLinkModal(u) {
+    const res = await guard(window.Store.users.link(u.id));
+    const url = location.origin + '/?k=' + res.token;
+    openModal('קישור גישה — ' + (u.full_name || u.username), `
+      <p class="mini">שלח את הקישור למשתמש. לחיצה עליו מכניסה אותו אוטומטית (בלי סיסמא) לתפקידו, ותקף ל-180 יום. אל תשתף בפומבי — מי שיש לו את הקישור נכנס.</p>
+      <div class="field"><label>הקישור</label><textarea id="lk_url" rows="3" readonly style="direction:ltr;font-size:12px">${esc(url)}</textarea></div>`,
+      [{ label: '📋 העתק קישור', cls: 'green', onClick: () => {
+        const t = document.getElementById('lk_url'); if (t) { t.select(); try { document.execCommand('copy'); } catch (e) {} }
+        if (navigator.clipboard) navigator.clipboard.writeText(url).catch(() => {});
+        toast('הקישור הועתק', 'ok');
+      } }, { label: 'סגור', cls: 'ghost', onClick: (c) => c() }]);
   }
   function userForm(u, roles) {
     u = u || {};
@@ -1212,6 +1226,15 @@
   // ============================================================
   wireLogin();
   (async function init() {
+    // קישור גישה ללא סיסמא: ?k=<token> -> כניסה אוטומטית (נשמר להמשך)
+    const k = new URLSearchParams(location.search).get('k');
+    if (k) {
+      localStorage.setItem('cc_link', k);
+      sessionStorage.setItem('cc_token', k);
+      history.replaceState(null, '', location.pathname);
+    } else if (!sessionStorage.getItem('cc_token') && localStorage.getItem('cc_link')) {
+      sessionStorage.setItem('cc_token', localStorage.getItem('cc_link'));
+    }
     const u = await window.Auth.restore();
     if (u) enterApp();
   })();

@@ -1,10 +1,28 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const { pool, logAction } = require('../db');
 const { authenticate, can, ROLES } = require('../middleware/auth');
 const router = express.Router();
 
 const VALID_ROLES = Object.keys(ROLES);
+
+// POST /api/users/:id/link - קישור גישה ללא סיסמא (טוקן ארוך-טווח) - מנהל בלבד
+router.post('/:id/link', authenticate, can('manageUsers'), async (req, res) => {
+  try {
+    const u = await pool.query('SELECT id, username, role, full_name, active FROM users WHERE id=$1', [req.params.id]);
+    if (!u.rows.length) return res.status(404).json({ error: 'משתמש לא נמצא' });
+    const user = u.rows[0];
+    if (user.active === false) return res.status(400).json({ error: 'המשתמש מושבת' });
+    const token = jwt.sign(
+      { id: user.id, username: user.username, role: user.role, full_name: user.full_name, link: true },
+      process.env.JWT_SECRET,
+      { expiresIn: '180d' }
+    );
+    await logAction(req.user, 'link', 'users', user.id, { role: user.role });
+    res.json({ token });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+});
 
 // GET /api/users
 router.get('/', authenticate, can('manageUsers'), async (req, res) => {
