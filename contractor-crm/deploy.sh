@@ -3,12 +3,12 @@
 #  מערכת ניהול קבלן — התקנה על VPS (Ubuntu): Postgres + Node + Nginx + SSL
 #  הרצה על השרת:  sudo bash deploy.sh
 #  דרישה מוקדמת: רשומת A ב-Namecheap:
-#      kablan.dudi-ananalytics.com  ->  64.176.175.180
+#      feder.dudi-ananalytics.com  ->  64.176.175.180
 #  (החלף את תת-הדומיין ב-DOMAIN למטה אם בחרת שם אחר)
 # ============================================================
 set -e
 
-DOMAIN="${DOMAIN:-kablan.dudi-ananalytics.com}"
+DOMAIN="${DOMAIN:-feder.dudi-ananalytics.com}"
 EMAIL="${EMAIL:-dudi98722@gmail.com}"
 PORT="${PORT:-3600}"
 REPO="https://github.com/dudi98722-bot/project-management.git"
