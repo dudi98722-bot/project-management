@@ -496,7 +496,15 @@
       </div>
       <div class="field"><label>מהות ההוצאה</label><input id="t_purpose"></div>` : ''}
       <div class="field"><label>אמצעי תשלום</label><input id="t_method" placeholder="מזומן / העברה / צ׳ק / אשראי"></div>
-      ${(isProjExp || isBiz) ? `<div class="field"><label>חשבונית</label><input id="t_file" type="file" accept="image/*,.pdf"><div class="mini" id="t_fileNote"></div></div>` : ''}
+      ${(isProjExp || isBiz) ? `<div class="field"><label>חשבונית</label>
+        <input id="t_file" type="file" accept="image/*,.pdf" style="display:none">
+        <input id="t_cam" type="file" accept="image/*" capture="environment" style="display:none">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button type="button" class="btn ghost sm" id="t_fileBtn">📎 העלה קובץ</button>
+          <button type="button" class="btn ghost sm" id="t_camBtn">📷 צלם חשבונית</button>
+          <span class="mini" id="t_fileName" style="color:var(--muted)"></span>
+        </div>
+        <div class="mini" id="t_fileNote"></div></div>` : ''}
       <div class="field"><label>הערה</label><input id="t_note"></div>`,
       [{ label: 'שמירה', onClick: async (close) => {
         const amount = parseFloat(fv('t_amount')); if (!(amount > 0)) return toast('הזן סכום תקין', 'err');
@@ -515,11 +523,13 @@
           }
         }
         if (isProjExp || isBiz) { d.category = fv('t_category'); d.supplier = fv('t_supplier'); d.purpose = fv('t_purpose'); }
-        // invoice upload
+        // invoice upload — מקובץ שהועלה או מצילום
+        const camEl = document.getElementById('t_cam');
         const fileEl = document.getElementById('t_file');
-        if (fileEl && fileEl.files && fileEl.files[0]) {
+        const invFile = (camEl && camEl.files && camEl.files[0]) || (fileEl && fileEl.files && fileEl.files[0]);
+        if (invFile) {
           $('#t_fileNote') && ($('#t_fileNote').textContent = 'מעלה חשבונית...');
-          const up = await guard(window.Store.uploads.invoice(fileEl.files[0]));
+          const up = await guard(window.Store.uploads.invoice(invFile));
           d.invoice_url = up.url;
           if (up.storage === 'local') toast('⚠️ החשבונית נשמרה על השרת בלבד — הדרייב אינו מחובר', 'err');
         }
@@ -527,6 +537,15 @@
         close(); toast('נשמר', 'ok');
         if (ctx.project_id) openProject(ctx.project_id); else refresh();
       } }, { label: 'ביטול', cls: 'ghost', onClick: (c) => c() }]);
+    // כפתורי חשבונית: העלאת קובץ / צילום (capture פותח את המצלמה במובייל)
+    if (isProjExp || isBiz) {
+      const fBtn = $('#t_fileBtn'), cBtn = $('#t_camBtn'), fIn = $('#t_file'), cIn = $('#t_cam'), nm = $('#t_fileName');
+      const showName = (el) => { const f = el.files && el.files[0]; if (f && nm) nm.textContent = '✓ ' + f.name; };
+      if (fBtn) fBtn.onclick = () => fIn.click();
+      if (cBtn) cBtn.onclick = () => cIn.click();
+      if (fIn) fIn.onchange = () => { if (fIn.files[0] && cIn) cIn.value = ''; showName(fIn); };
+      if (cIn) cIn.onchange = () => { if (cIn.files[0] && fIn) fIn.value = ''; showName(cIn); };
+    }
     // populate stages on project change - רק שלבים שעדיין לא שולמו במלואם, עם הצגת יתרה
     if (needStage) {
       const stageSel = $('#t_stage');
