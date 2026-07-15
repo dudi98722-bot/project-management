@@ -1280,7 +1280,7 @@
           </div>
           <div id="pr_stageInfo" class="mini" style="min-height:20px;color:var(--muted)"></div>
           <div class="row" style="align-items:flex-end">
-            <div class="field" style="flex:1"><label>סכום מבוקש (₪)</label><input id="pr_req" type="number" placeholder="0"></div>
+            <div class="field" style="flex:1"><label>סכום מבוקש (₪) — אפשר להשאיר 0</label><input id="pr_req" type="number" placeholder="0 = רק יתרת הלקוח"></div>
             <button class="btn green" id="pr_add" style="flex:none;white-space:nowrap">➕ הוסף לבקשה</button>
           </div>
           <div id="pr_toolbar" style="margin-top:12px"></div>
@@ -1321,8 +1321,8 @@
       if (!selProj) { toast('בחר פרויקט', 'err'); return; }
       const st = selStage;
       if (!st) { toast('בחר שלב', 'err'); return; }
-      const requested = parseFloat($('#pr_req').value) || 0;
-      if (!(requested > 0)) { toast('הזן סכום מבוקש', 'err'); return; }
+      const requested = parseFloat($('#pr_req').value) || 0;   // 0/ריק מותר — מביא רק את יתרת הלקוח
+      if (requested < 0) { toast('הסכום לא יכול להיות שלילי', 'err'); return; }
       const payload = {
         project_id: selProj.id, project_name: selProj.label,
         stage_id: st.id, stage_name: st.name, sub_name: st.subcontractor_name || '',

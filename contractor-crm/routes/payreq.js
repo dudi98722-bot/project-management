@@ -19,8 +19,8 @@ router.get('/', authenticate, can('viewBusiness'), async (req, res) => {
 // POST /api/payment-requests — הוספת שורת בקשה (snapshot מגיע מהלקוח, מחושב מהשלב)
 router.post('/', authenticate, can('viewBusiness'), can('writeTx'), async (req, res) => {
   const b = req.body || {};
-  const requested = parseFloat(b.requested);
-  if (!(requested > 0)) return res.status(400).json({ error: 'סכום מבוקש חייב להיות גדול מ-0' });
+  const requested = parseFloat(b.requested) || 0;   // 0/ריק מותר — שורה שמביאה רק את יתרת הלקוח
+  if (requested < 0) return res.status(400).json({ error: 'הסכום לא יכול להיות שלילי' });
   try {
     const r = await pool.query(`
       INSERT INTO payment_requests
