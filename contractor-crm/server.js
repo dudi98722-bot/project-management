@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const { pool } = require('./db');
 
 const app = express();
 
@@ -18,6 +19,7 @@ app.use('/api/projects',       require('./routes/projects'));
 app.use('/api/stages',         require('./routes/stages'));
 app.use('/api/transactions',   require('./routes/transactions'));
 app.use('/api/home',           require('./routes/home'));
+app.use('/api/payment-requests', require('./routes/payreq'));
 app.use('/api/reports',        require('./routes/reports'));
 app.use('/api/uploads',        require('./routes/uploads'));
 app.use('/api/recycle',        require('./routes/recycle'));
@@ -53,7 +55,22 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'שגיאת שרת' });
 });
 
+// החלת סכימה על העלייה (idempotent — CREATE TABLE IF NOT EXISTS בלבד).
+// מבטיח שטבלאות/עמודות חדשות נוצרות גם אחרי עדכון רגיל (git pull + restart)
+// בלי צורך להריץ scripts/init_db.js ידנית. לעולם לא נוגע בנתונים קיימים.
+async function ensureSchema() {
+  try {
+    const schema = fs.readFileSync(path.join(__dirname, 'db', 'schema.sql'), 'utf8');
+    await pool.query(schema);
+    console.log('✔ סכימה מעודכנת (migrations הוחלו)');
+  } catch (e) {
+    console.error('⚠️ החלת סכימה נכשלה:', e.message);
+  }
+}
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`✅ Contractor CRM running on port ${PORT}  (${process.env.NODE_ENV || 'development'})`);
+ensureSchema().finally(() => {
+  app.listen(PORT, () => {
+    console.log(`✅ Contractor CRM running on port ${PORT}  (${process.env.NODE_ENV || 'development'})`);
+  });
 });

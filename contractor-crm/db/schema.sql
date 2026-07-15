@@ -108,6 +108,23 @@ CREATE TABLE IF NOT EXISTS home_transactions (
 -- מיגרציה: מסירים את הגבלת ה-source כדי לאפשר גם cash/transfer
 ALTER TABLE home_transactions DROP CONSTRAINT IF EXISTS home_transactions_source_check;
 
+-- בקשות תשלום שמורות (בונה הבקשה) — נשמרות עד שהמשתמש מוחק
+--  snapshot של הנתונים בזמן הבקשה, כדי שהרשומה יציבה גם אם השלב משתנה/נמחק
+CREATE TABLE IF NOT EXISTS payment_requests (
+  id BIGSERIAL PRIMARY KEY,
+  project_id BIGINT REFERENCES projects(id) ON DELETE SET NULL,
+  stage_id BIGINT REFERENCES stages(id) ON DELETE SET NULL,
+  project_name VARCHAR(300),
+  stage_name VARCHAR(300),
+  sub_name VARCHAR(200),
+  requested DECIMAL(14,2) NOT NULL DEFAULT 0,
+  sub_remaining DECIMAL(14,2) DEFAULT 0,   -- נותר לקבלן בשלב בזמן הבקשה
+  client_owes DECIMAL(14,2) DEFAULT 0,     -- הלקוח חייב על השלב בזמן הבקשה
+  deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMP, deleted_by INTEGER,
+  created_by INTEGER, created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_payreq_created ON payment_requests(created_at) WHERE deleted=false;
+
 -- כללי סיווג נלמדים לבית (טקסט -> קטגוריה)
 CREATE TABLE IF NOT EXISTS home_rules (
   id SERIAL PRIMARY KEY,

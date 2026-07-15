@@ -10,7 +10,8 @@ const RECYCLE = {
   projects:          { he: 'פרויקטים',     sql: `SELECT id, deleted_at, name AS title, COALESCE(client_name,'') AS subtitle, NULL::float AS amount` },
   stages:            { he: 'שלבים',         sql: `SELECT id, deleted_at, name AS title, '' AS subtitle, client_amount::float AS amount` },
   transactions:      { he: 'תנועות כספיות', sql: `SELECT id, deleted_at, COALESCE(purpose, type) AS title, type AS subtitle, amount::float AS amount` },
-  home_transactions: { he: 'הוצאות בית',    sql: `SELECT id, deleted_at, COALESCE(payee,'הוצאה') AS title, COALESCE(category,'') AS subtitle, amount::float AS amount` }
+  home_transactions: { he: 'הוצאות בית',    sql: `SELECT id, deleted_at, COALESCE(payee,'הוצאה') AS title, COALESCE(category,'') AS subtitle, amount::float AS amount` },
+  payment_requests:  { he: 'בקשות תשלום',   sql: `SELECT id, deleted_at, COALESCE(stage_name,'בקשה') AS title, COALESCE(project_name,'') AS subtitle, requested::float AS amount` }
 };
 
 // GET /api/recycle - כל הרשומות שנמחקו (רכות)

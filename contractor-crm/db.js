@@ -5,6 +5,12 @@ const sheets = require('./sheets');
 // אז ממירים אותם למספר - כדי שההשוואות בצד הלקוח (x.id === +val) יעבדו, כמו בהדגמה.
 types.setTypeParser(20, (v) => (v === null ? null : parseInt(v, 10)));
 
+// עמודות DATE (OID 1082): מחזירים כמחרוזת 'YYYY-MM-DD' גולמית, לא כאובייקט Date.
+// אחרת node-pg בונה Date בחצות מקומי ו-res.json ממיר ל-UTC ISO, מה שמזיז תאריך
+// כמו ה-1 בחודש ליום/חודש הקודם בשרת שאינו UTC (VPS ישראלי) — ומקלקל דוחות חודשיים.
+// הלקוח ממילא מצפה למחרוזת 'YYYY-MM-DD' (slice(0,10)/slice(0,7)).
+types.setTypeParser(1082, (v) => v);
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
@@ -52,7 +58,7 @@ function mirrorProjectChildren(nid) {
 // ===== מחיקה רכה בלבד - לעולם לא מוחקים פיזית =====
 // כל הטבלאות של נתונים מכילות deleted / deleted_at / deleted_by
 const SOFT_TABLES = new Set([
-  'subcontractors', 'projects', 'stages', 'transactions', 'home_transactions'
+  'subcontractors', 'projects', 'stages', 'transactions', 'home_transactions', 'payment_requests'
 ]);
 
 // מזהה חוקי (מספר שלם חיובי). מזהה לא תקין -> false (מתורגם ל-404 ולא ל-500)

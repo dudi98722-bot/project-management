@@ -70,6 +70,12 @@
       rules: () => apiFetch('/home/rules'),
       categories: () => apiFetch('/home/categories'),
     },
+    payreq: {
+      list: () => apiFetch('/payment-requests'),
+      create: (d) => apiFetch('/payment-requests', { method: 'POST', body: d }),
+      remove: (id) => apiFetch('/payment-requests/' + id, { method: 'DELETE' }),
+      clear: () => apiFetch('/payment-requests/clear', { method: 'POST' }),
+    },
     reports: {
       overview: () => apiFetch('/reports/overview'),
       project: (id) => apiFetch('/reports/project/' + id),
@@ -105,7 +111,7 @@
   let _id = 1000;
   const nid = () => ++_id;
   const DEFAULT_EXPENSE_CATS = ['חומרים', 'כלים', 'שכר עבודה', 'השכרת ציוד', 'הובלה', 'דלק', 'אגרות ורשויות', 'ביטוח', 'משרד', 'אחר'];
-  const D = { subs: [], projects: [], stages: [], tx: [], home: [], homeRules: [], users: [], expenseCats: [] };
+  const D = { subs: [], projects: [], stages: [], tx: [], home: [], homeRules: [], users: [], expenseCats: [], payreq: [] };
 
   function seedDemo() {
     _id = 1000;
@@ -164,6 +170,7 @@
     ];
     D.homeRules = [];
     D.expenseCats = [];
+    D.payreq = [];
   }
 
   // -- computation helpers (mirror server) --
@@ -310,6 +317,17 @@
       rules: () => delay(D.homeRules.slice().sort((a, b) => b.match_text.length - a.match_text.length)),
       categories: () => delay([...new Set(A(D.home).map(r => r.category).filter(Boolean))].sort()),
     },
+    payreq: {
+      list: () => delay(A(D.payreq).slice().sort((a, b) => b.id - a.id)),
+      create: (d) => {
+        const r = Object.assign({ id: nid(), deleted: false, created_at: '' }, d, {
+          requested: +d.requested || 0, sub_remaining: +d.sub_remaining || 0, client_owes: +d.client_owes || 0
+        });
+        D.payreq.push(r); return delay(r);
+      },
+      remove: (id) => { id = +id; const r = D.payreq.find(x => x.id === id); if (r) r.deleted = true; return delay({ ok: true }); },
+      clear: () => { let n = 0; A(D.payreq).forEach(r => { r.deleted = true; n++; }); return delay({ count: n }); },
+    },
     reports: {
       overview: () => {
         const rows = A(D.projects).map(projSummary);
@@ -371,10 +389,11 @@
         push('stages', 'שלבים', D.stages, x => x.name, () => '');
         push('transactions', 'תנועות כספיות', D.tx, x => x.purpose || x.type, x => x.type);
         push('home_transactions', 'הוצאות בית', D.home, x => x.payee || 'הוצאה', x => x.category || '');
+        push('payment_requests', 'בקשות תשלום', D.payreq, x => x.stage_name || 'בקשה', x => x.project_name || '');
         return delay(out);
       },
       restore: (table, id) => {
-        const map = { subcontractors: D.subs, projects: D.projects, stages: D.stages, transactions: D.tx, home_transactions: D.home };
+        const map = { subcontractors: D.subs, projects: D.projects, stages: D.stages, transactions: D.tx, home_transactions: D.home, payment_requests: D.payreq };
         const pid = +id; const r = (map[table] || []).find(x => x.id === pid);
         if (r) {
           r.deleted = false;

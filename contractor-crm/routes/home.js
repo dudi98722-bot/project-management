@@ -51,8 +51,8 @@ router.put('/transactions/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-// DELETE /api/home/transactions/:id - מחיקה רכה
-router.delete('/transactions/:id', async (req, res) => {
+// DELETE /api/home/transactions/:id - מחיקה רכה (דורש הרשאת מחיקה — מנהל/מדווח לא מוחקים)
+router.delete('/transactions/:id', can('del'), async (req, res) => {
   try {
     const ok = await softDelete('home_transactions', req.params.id, req.user);
     if (!ok) return res.status(404).json({ error: 'רשומה לא נמצאה' });
