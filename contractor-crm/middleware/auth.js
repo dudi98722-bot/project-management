@@ -12,13 +12,13 @@ const jwt = require('jsonwebtoken');
 //  viewReports   - צפייה בדוחות
 //  home          - מודול הבית
 const ROLES = {
-  // מנהל - הכל
-  admin:     { label:'מנהל',      manageUsers:true,  viewBusiness:true,  editProjects:true,  writeTx:true,  projectExpenseOnly:true,  del:true,  multiDelete:true,  viewReports:true,  home:true  },
+  // מנהל ראשי - הכל (כולל ניהול משתמשים)
+  admin:     { label:'מנהל ראשי', manageUsers:true,  viewBusiness:true,  editProjects:true,  writeTx:true,  projectExpenseOnly:true,  del:true,  multiDelete:true,  viewReports:true,  home:true  },
   // מזכירה - הכל חוץ ממחיקה מרובה וניהול משתמשים
   secretary: { label:'מזכירה',    manageUsers:false, viewBusiness:true,  editProjects:true,  writeTx:true,  projectExpenseOnly:true,  del:true,  multiDelete:false, viewReports:true,  home:false },
-  // בעל עסק - צפייה בכל הדוחות + הזנת נתונים, בלי מחיקה מרובה
-  owner:     { label:'בעל עסק',   manageUsers:false, viewBusiness:true,  editProjects:true,  writeTx:true,  projectExpenseOnly:true,  del:true,  multiDelete:false, viewReports:true,  home:false },
-  // אמיתי - דיווח נתוני עסק + צפייה בדוחות פרויקטים
+  // מנהל - כל ההזנות (פרויקט/עסק/לקוחות/קבלן) + בית + כל הדוחות, בלי ניהול משתמשים
+  owner:     { label:'מנהל',      manageUsers:false, viewBusiness:true,  editProjects:true,  writeTx:true,  projectExpenseOnly:true,  del:true,  multiDelete:false, viewReports:true,  home:true  },
+  // מדווח - כל ההזנות (פרויקט/עסק/לקוחות/קבלן) + צפייה בדוחות העסק, בלי בית
   reporter:  { label:'מדווח',     manageUsers:false, viewBusiness:true,  editProjects:false, writeTx:true,  projectExpenseOnly:true,  del:false, multiDelete:false, viewReports:true,  home:false },
   // עובד שטח - רק הזנת הוצאה לפרויקט + חשבוניות
   field:     { label:'עובד שטח',  manageUsers:false, viewBusiness:false, editProjects:false, writeTx:false, projectExpenseOnly:true,  del:false, multiDelete:false, viewReports:false, home:false },

@@ -369,7 +369,7 @@
     },
     users: {
       list: () => delay(D.users.length ? D.users : [{ id: 1, username: 'admin', role: 'admin', full_name: 'מנהל (הדגמה)', active: true }]),
-      roles: () => delay([['admin', 'מנהל'], ['secretary', 'מזכירה'], ['owner', 'בעל עסק'], ['reporter', 'מדווח'], ['field', 'עובד שטח'], ['home', 'בית']].map(([key, label]) => ({ key, label }))),
+      roles: () => delay([['admin', 'מנהל ראשי'], ['secretary', 'מזכירה'], ['owner', 'מנהל'], ['reporter', 'מדווח'], ['field', 'עובד שטח'], ['home', 'בית']].map(([key, label]) => ({ key, label }))),
       create: (d) => { const u = Object.assign({ id: nid(), active: true }, d); D.users.push(u); return delay(u); },
       update: (id, d) => { const u = D.users.find(x => x.id === +id) || {}; Object.assign(u, d); return delay(u); },
       remove: (id) => { const u = D.users.find(x => x.id === +id); if (u) u.active = false; return delay({ ok: true }); },
