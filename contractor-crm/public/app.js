@@ -203,7 +203,6 @@
       return `<div class="card" style="cursor:pointer" data-proj="${p.id}">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <h3 style="margin:0">${esc(p.name)}</h3>
-          <span class="pill ${p.status}">${STATUS_HE[p.status] || p.status}</span>
           <div class="spacer" style="flex:1"></div>
           <span class="mini">${esc(p.client_name || '')}</span>
         </div>
@@ -212,7 +211,7 @@
           ${miniStat('שולם לקבלני משנה', money(p.sub_paid))}
           ${miniStat('הוצאות פרויקט', money(p.project_expenses))}
           ${miniStat('רווח צפוי', money(p.expected_profit))}
-          ${miniStat('רווח בפועל', money(p.actual_profit), p.actual_profit >= 0 ? 'g' : 'r')}
+          ${miniStat('רווח שנמשך', money(p.actual_profit), p.actual_profit >= 0 ? 'g' : 'r')}
         </div>
         <div style="margin-top:12px">
           <div class="mini" style="margin-bottom:4px">${gapText(p.profit_gap)} (${pct}% מהיעד)</div>
@@ -231,7 +230,7 @@
     view().innerHTML = `
       <div class="page-head">
         <button class="btn ghost sm" id="backBtn">→ חזרה</button>
-        <h2>${esc(p.name)}</h2><span class="pill ${p.status}">${STATUS_HE[p.status] || p.status}</span>
+        <h2>${esc(p.name)}</h2>
         <div class="spacer"></div>
         ${c.editProjects ? `<button class="btn ghost sm" id="editProj">✏️ עריכה</button>` : ''}
         ${c.del ? `<button class="btn red sm" id="delProj">🗑️ מחיקה</button>` : ''}
@@ -243,7 +242,7 @@
       </div>
       <div class="grid stat-grid">
         ${stat('רווח צפוי', money(p.expected_profit), 'a')}
-        ${stat('רווח בפועל', money(p.actual_profit), p.actual_profit >= 0 ? 'g' : 'r', gapText(p.profit_gap))}
+        ${stat('רווח שנמשך', money(p.actual_profit), p.actual_profit >= 0 ? 'g' : 'r', gapText(p.profit_gap))}
         ${stat('נכנס מלקוח', money(p.income), '', 'מתוך ' + money(p.planned_income) + ' מתוכנן')}
         ${stat('שולם לקבלני משנה', money(p.sub_paid), '', 'מתוך ' + money(p.planned_sub) + ' מתוכנן')}
         ${stat('הוצאות כלליות', money(p.project_expenses), 'r')}
