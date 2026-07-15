@@ -5,41 +5,40 @@ const { pool } = require('../db');
 const { authenticate, ROLES } = require('../middleware/auth');
 const router = express.Router();
 
-// הגנת brute-force: חסימת IP אחרי 8 ניסיונות כושלים ב-15 דקות
+// הגנת brute-force: חסימה אחרי 8 ניסיונות כושלים ב-15 דקות, לפי שם המשתמש
+// (ולא לפי IP — שאותו אפשר לזייף דרך כותרת X-Forwarded-For מאחורי nginx).
 const ATTEMPT_LIMIT = 8, WINDOW_MS = 15 * 60 * 1000;
 const attempts = new Map();
-function clientIp(req) {
-  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '';
-}
-function isBlocked(ip) {
-  const a = attempts.get(ip);
+function isBlocked(key) {
+  const a = attempts.get(key);
   if (!a) return false;
-  if (Date.now() - a.first > WINDOW_MS) { attempts.delete(ip); return false; }
+  if (Date.now() - a.first > WINDOW_MS) { attempts.delete(key); return false; }
   return a.count >= ATTEMPT_LIMIT;
 }
-function registerFail(ip) {
-  const a = attempts.get(ip) || { count: 0, first: Date.now() };
+function registerFail(key) {
+  const a = attempts.get(key) || { count: 0, first: Date.now() };
   if (Date.now() - a.first > WINDOW_MS) { a.count = 0; a.first = Date.now(); }
   a.count++;
-  attempts.set(ip, a);
+  attempts.set(key, a);
 }
 
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
-  const ip = clientIp(req);
-  if (isBlocked(ip)) return res.status(429).json({ error: 'יותר מדי ניסיונות התחברות. נסה שוב בעוד 15 דקות' });
-  const { username, password } = req.body;
+  const { username, password } = req.body || {};
   if (!username || !password) return res.status(400).json({ error: 'שם משתמש וסיסמא חובה' });
+  const key = String(username).toLowerCase().trim();
+  if (isBlocked(key)) return res.status(429).json({ error: 'יותר מדי ניסיונות התחברות. נסה שוב בעוד 15 דקות' });
 
   try {
     const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
-    if (result.rows.length === 0) { registerFail(ip); return res.status(401).json({ error: 'שם משתמש או סיסמא שגויים' }); }
+    if (result.rows.length === 0) { registerFail(key); return res.status(401).json({ error: 'שם משתמש או סיסמא שגויים' }); }
 
     const user = result.rows[0];
-    if (user.active === false) return res.status(403).json({ error: 'המשתמש מושבת' });
+    // תמיד משווים סיסמא (כדי שלא ידלוף אילו חשבונות קיימים/מושבתים לפני אימות)
     const valid = await bcrypt.compare(password, user.password_hash);
-    if (!valid) { registerFail(ip); return res.status(401).json({ error: 'שם משתמש או סיסמא שגויים' }); }
-    attempts.delete(ip);
+    if (!valid) { registerFail(key); return res.status(401).json({ error: 'שם משתמש או סיסמא שגויים' }); }
+    if (user.active === false) return res.status(403).json({ error: 'המשתמש מושבת' });
+    attempts.delete(key);
 
     await pool.query('UPDATE users SET last_login = NOW() WHERE id = $1', [user.id]);
 

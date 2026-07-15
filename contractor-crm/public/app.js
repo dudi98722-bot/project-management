@@ -95,7 +95,7 @@
     { id: 'reports', label: '📈 דוחות', show: c => c.viewReports, fn: scrReports },
     { id: 'field', label: '📥 הזנת הוצאה', show: c => c.projectExpenseOnly && !c.writeTx && !c.viewBusiness, fn: scrField },
     { id: 'home', label: '🏠 בית', show: c => c.home, fn: scrHome },
-    { id: 'recycle', label: '♻️ סל מחזור', show: c => c.del, fn: scrRecycle },
+    { id: 'recycle', label: '♻️ סל מחזור', show: c => c.del || c.writeTx, fn: scrRecycle },
     { id: 'users', label: '👤 משתמשים', show: c => c.manageUsers, fn: scrUsers },
   ];
   let activeTab = null;
@@ -1284,40 +1284,6 @@
       source: fv('imp_src') || 'bank',
     })).filter(r => r.amount > 0);
   }
-  function parseImport(text, rules) {
-    const lines = (text || '').split(/\r?\n/).filter(l => l.trim() !== '');
-    if (!lines.length) return [];
-    // פיצול לעמודות: טאב אם יש, אחרת רווח כפול/פסיק/נקודה-פסיק
-    const grid = lines.map(l => (l.indexOf('\t') >= 0 ? l.split('\t') : l.split(/ {2,}|,|;/)).map(c => c.trim()));
-    const cols = Math.max(...grid.map(r => r.length));
-    grid.forEach(r => { while (r.length < cols) r.push(''); });
-    const dateRe = /\d{1,2}[./-]\d{1,2}[./-]\d{2,4}/;
-    const isData = grid.map(r => r.some(c => impNum(c) !== null));
-    const headerRows = grid.filter((r, i) => !isData[i]);
-    const dataRows = grid.filter((r, i) => isData[i]);
-    if (!dataRows.length) return [];
-    const label = []; for (let j = 0; j < cols; j++) label[j] = headerRows.map(r => String(r[j] || '')).join(' ');
-    const byLabel = (kw) => { for (let j = 0; j < cols; j++) if (label[j].indexOf(kw) >= 0) return j; return -1; };
-    let dateCol = byLabel('תאריך'); if (dateCol < 0) for (let j = 0; j < cols; j++) if (dataRows.some(r => dateRe.test(r[j]))) { dateCol = j; break; }
-    // עמודת סכום: מעדיפים 'סכום/חיוב/חובה', מדלגים על עמודת 'יתרה'; אחרת מספרית ראשונה שאינה יתרה
-    let amtCol = byLabel('סכום'); if (amtCol < 0) amtCol = byLabel('חיוב'); if (amtCol < 0) amtCol = byLabel('חובה');
-    if (amtCol < 0) {
-      const cand = []; for (let j = 0; j < cols; j++) { if (j === dateCol) continue; if (dataRows.filter(r => impNum(r[j]) !== null).length > dataRows.length / 2) cand.push(j); }
-      amtCol = cand.find(j => label[j].indexOf('יתרה') < 0);
-      if (amtCol == null) amtCol = cand.length ? cand[0] : -1;
-    }
-    const catCol = byLabel('קטגוריה');
-    let payCol = byLabel('בית עסק'); if (payCol < 0) payCol = byLabel('ספק'); if (payCol < 0) payCol = byLabel('תיאור'); if (payCol < 0) payCol = byLabel('שם');
-    const used = new Set([dateCol, amtCol, catCol, payCol].filter(x => x >= 0));
-    const textCols = []; for (let j = 0; j < cols; j++) if (!used.has(j) && dataRows.some(r => r[j] && impNum(r[j]) === null)) textCols.push(j);
-    const pay = payCol >= 0 ? payCol : (textCols.length ? textCols[0] : -1);
-    return dataRows.map(r => {
-      const payee = pay >= 0 ? String(r[pay] || '') : '';
-      let category = catCol >= 0 ? String(r[catCol] || '') : '';
-      if (!category) for (const rl of (rules || [])) { if (payee && payee.includes(rl.match_text)) { category = rl.category; break; } }
-      return { date: dateCol >= 0 ? normDate(r[dateCol]) : '', payee, amount: amtCol >= 0 ? (impNum(r[amtCol]) || 0) : 0, category };
-    }).filter(o => o.amount > 0);
-  }
   function isValidYMD(s) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
     const [Y, M, D] = s.split('-').map(Number);
@@ -1637,23 +1603,6 @@
         <div style="width:90px;flex:none;text-align:left;font-weight:700;font-size:13px;color:${col}">${money0(v)}</div>
       </div>`;
     }).join('');
-  }
-  function drawProfitChart(box, rows) {
-    if (!rows || !rows.length) { box.innerHTML = '<div class="empty">אין נתונים</div>'; return; }
-    rows = rows.slice(0, 8);
-    const W = 720, H = 60 + rows.length * 46, pad = 130;
-    const max = Math.max(1, ...rows.map(r => Math.max(Math.abs(r.expected_profit), Math.abs(r.actual_profit))));
-    const scale = (v) => (W - pad - 20) * (v / max);
-    let y = 30, bars = '';
-    rows.forEach(r => {
-      const wE = scale(Math.max(0, r.expected_profit)), wA = scale(Math.max(0, r.actual_profit));
-      bars += `<text x="${W - 10}" y="${y + 12}" text-anchor="end" font-size="13" fill="#334155">${esc(r.name.slice(0, 16))}</text>`;
-      bars += `<rect x="${pad}" y="${y}" width="${wE}" height="14" rx="3" fill="#cbd5e1"><title>צפוי ${money(r.expected_profit)}</title></rect>`;
-      bars += `<rect x="${pad}" y="${y + 18}" width="${wA}" height="14" rx="3" fill="${r.actual_profit >= r.expected_profit ? '#16a34a' : '#f59e0b'}"><title>בפועל ${money(r.actual_profit)}</title></rect>`;
-      y += 46;
-    });
-    box.innerHTML = `<svg class="chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${bars}</svg>
-      <div class="legend"><span><i style="background:#cbd5e1"></i>רווח צפוי</span><span><i style="background:#16a34a"></i>רווח בפועל</span></div>`;
   }
   function drawMonthlyChart(box, rows) {
     if (!rows || !rows.length) { box.innerHTML = '<div class="empty">אין נתונים לתצוגה</div>'; return; }

@@ -127,4 +127,40 @@ async function restoreProject(id, user) {
   } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
 }
 
-module.exports = { pool, logAction, softDelete, restore, softDeleteProject, restoreProject, validId, SOFT_TABLES };
+// מחיקת שלב מדביקה (cascade) לתנועות שלו — אחרת תשלומים שנרשמו על השלב
+// ממשיכים להיספר ברמת הפרויקט בזמן שהשלב עצמו נעלם, והמספרים לא מסתדרים.
+async function softDeleteStage(id, user) {
+  const nid = validId(id); if (nid === null) return false;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const r = await client.query(
+      `UPDATE stages SET deleted=true, deleted_at=NOW(), deleted_by=$2 WHERE id=$1 AND deleted=false RETURNING deleted_at`,
+      [nid, user && user.id]);
+    if (!r.rows.length) { await client.query('ROLLBACK'); return false; }
+    const ts = r.rows[0].deleted_at;
+    await client.query(`UPDATE transactions SET deleted=true, deleted_at=$3, deleted_by=$2 WHERE stage_id=$1 AND deleted=false`, [nid, user && user.id, ts]);
+    await client.query('COMMIT');
+    await logAction(user, 'delete', 'stages', nid, { cascade: true });
+    return true;
+  } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
+}
+
+async function restoreStage(id, user) {
+  const nid = validId(id); if (nid === null) return false;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const cur = await client.query('SELECT s.deleted_at FROM stages s JOIN projects p ON p.id=s.project_id WHERE s.id=$1 AND s.deleted=true AND p.deleted=false', [nid]);
+    if (!cur.rows.length) { await client.query('ROLLBACK'); return false; }   // לא משחזרים שלב אם הפרויקט עדיין מחוק
+    const ts = cur.rows[0].deleted_at;
+    await client.query('UPDATE stages SET deleted=false, deleted_at=NULL, deleted_by=NULL WHERE id=$1', [nid]);
+    // מחזירים רק תנועות שנמחקו יחד עם השלב (אותו deleted_at)
+    await client.query(`UPDATE transactions SET deleted=false, deleted_at=NULL, deleted_by=NULL WHERE stage_id=$1 AND deleted=true AND deleted_at=$2`, [nid, ts]);
+    await client.query('COMMIT');
+    await logAction(user, 'restore', 'stages', nid, { cascade: true });
+    return true;
+  } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
+}
+
+module.exports = { pool, logAction, softDelete, restore, softDeleteProject, restoreProject, softDeleteStage, restoreStage, validId, SOFT_TABLES };

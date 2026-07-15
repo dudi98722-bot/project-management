@@ -272,9 +272,9 @@
       },
     },
     stages: {
-      create: (d) => { const s = Object.assign({ id: nid(), seq: 0, client_amount: 0, sub_amount: 0, status: 'pending', approved: false, deleted: false }, d); s.project_id = +s.project_id; s.subcontractor_id = numify(d.subcontractor_id); s.client_amount = +s.client_amount || 0; s.sub_amount = +s.sub_amount || 0; D.stages.push(s); return delay(s); },
-      update: (id, d) => { id = +id; const s = D.stages.find(x => x.id === id); Object.assign(s, d, { subcontractor_id: numify(d.subcontractor_id), client_amount: +d.client_amount || 0, sub_amount: +d.sub_amount || 0 }); return delay(s); },
-      remove: (id) => { id = +id; const s = D.stages.find(x => x.id === id); if (s) s.deleted = true; return delay({ ok: true }); },
+      create: (d) => { const s = Object.assign({ id: nid(), seq: 0, client_amount: 0, sub_amount: 0, status: 'pending', approved: false, deleted: false }, d); s.project_id = +s.project_id; const proj = D.projects.find(p => p.id === s.project_id); s.subcontractor_id = (d.subcontractor_id != null && d.subcontractor_id !== '') ? numify(d.subcontractor_id) : (proj ? (proj.subcontractor_id || null) : null); s.client_amount = +s.client_amount || 0; s.sub_amount = +s.sub_amount || 0; D.stages.push(s); return delay(s); },
+      update: (id, d) => { id = +id; const s = D.stages.find(x => x.id === id); const sub = (d.subcontractor_id != null && d.subcontractor_id !== '') ? numify(d.subcontractor_id) : s.subcontractor_id; Object.assign(s, d, { subcontractor_id: sub, client_amount: +d.client_amount || 0, sub_amount: +d.sub_amount || 0 }); return delay(s); },
+      remove: (id) => { id = +id; const s = D.stages.find(x => x.id === id); if (s && !s.deleted) { s.deleted = true; A(D.tx).filter(t => t.stage_id === id).forEach(t => { t.deleted = true; t._cascadeOfStage = id; }); } return delay({ ok: true }); },
     },
     subs: {
       list: () => delay(A(D.subs).slice().sort((a, b) => a.name.localeCompare(b.name, 'he'))),
@@ -388,10 +388,12 @@
       list: () => {
         const out = [];
         const push = (table, label, arr, title, subtitle) => arr.filter(x => x.deleted).forEach(x => out.push({ _table: table, _label: label, id: x.id, title: title(x), subtitle: subtitle(x), amount: x.amount || null }));
+        const projDel = (pid) => pid != null && D.projects.some(p => p.id === pid && p.deleted);
+        const stageDel = (sid) => sid != null && D.stages.some(s => s.id === sid && s.deleted);
         push('subcontractors', 'קבלני משנה', D.subs, x => x.name, x => x.trade || '');
         push('projects', 'פרויקטים', D.projects, x => x.name, x => x.client_name || '');
-        push('stages', 'שלבים', D.stages, x => x.name, () => '');
-        push('transactions', 'תנועות כספיות', D.tx, x => x.purpose || x.type, x => x.type);
+        push('stages', 'שלבים', D.stages.filter(s => !projDel(s.project_id)), x => x.name, () => '');
+        push('transactions', 'תנועות כספיות', D.tx.filter(t => !projDel(t.project_id) && !stageDel(t.stage_id)), x => x.purpose || x.type, x => x.type);
         push('home_transactions', 'הוצאות בית', D.home, x => x.payee || 'הוצאה', x => x.category || '');
         push('payment_requests', 'בקשות תשלום', D.payreq, x => x.stage_name || 'בקשה', x => x.project_name || '');
         return delay(out);
@@ -404,6 +406,8 @@
           if (table === 'projects') { // שחזור מדביק: מחזיר את מה שנמחק יחד עם הפרויקט
             D.stages.forEach(s => { if (s._cascadeOf === pid) { s.deleted = false; delete s._cascadeOf; } });
             D.tx.forEach(t => { if (t._cascadeOf === pid) { t.deleted = false; delete t._cascadeOf; } });
+          } else if (table === 'stages') { // שחזור שלב מחזיר גם את התנועות שנמחקו איתו
+            D.tx.forEach(t => { if (t._cascadeOfStage === pid) { t.deleted = false; delete t._cascadeOfStage; } });
           }
         }
         return delay({ ok: true });

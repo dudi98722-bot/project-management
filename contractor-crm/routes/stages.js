@@ -1,5 +1,5 @@
 const express = require('express');
-const { pool, logAction, softDelete } = require('../db');
+const { pool, logAction, softDeleteStage } = require('../db');
 const { authenticate, can } = require('../middleware/auth');
 const router = express.Router();
 
@@ -40,9 +40,9 @@ router.put('/:id', authenticate, can('editProjects'), async (req, res) => {
 // DELETE /api/stages/:id - מחיקה רכה
 router.delete('/:id', authenticate, can('viewBusiness'), can('del'), async (req, res) => {
   try {
-    const ok = await softDelete('stages', req.params.id, req.user);
+    const ok = await softDeleteStage(req.params.id, req.user);
     if (!ok) return res.status(404).json({ error: 'שלב לא נמצא' });
-    res.json({ message: 'השלב הועבר לסל המחזור' });
+    res.json({ message: 'השלב והתנועות שלו הועברו לסל המחזור' });
   } catch (e) { res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 

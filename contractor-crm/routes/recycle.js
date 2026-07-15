@@ -1,6 +1,6 @@
 const express = require('express');
-const { pool, restore, restoreProject, SOFT_TABLES } = require('../db');
-const { authenticate, can } = require('../middleware/auth');
+const { pool, restore, restoreProject, restoreStage, SOFT_TABLES } = require('../db');
+const { authenticate, canAny } = require('../middleware/auth');
 const router = express.Router();
 
 // תיאור טבלאות סל המחזור: עברית + עמודות מפורשות לתצוגה אחידה
@@ -14,17 +14,26 @@ const RECYCLE = {
   payment_requests:  { he: 'בקשות תשלום',   sql: `SELECT id, deleted_at, COALESCE(stage_name,'בקשה') AS title, COALESCE(project_name,'') AS subtitle, requested::float AS amount` }
 };
 
+// הרשאה לטבלה בסל המחזור: הבית לפי caps.home; בקשות תשלום גם למי שרשאי למחוק
+// אותן (writeTx) כדי שההבטחה "ניתן לשחזר" תהיה נכונה; שאר העסקי — רק del.
+function tableAllowed(caps, table) {
+  if (table === 'home_transactions') return !!caps.home;
+  if (table === 'payment_requests') return !!caps.viewBusiness && (!!caps.del || !!caps.writeTx);
+  return !!caps.viewBusiness && !!caps.del;
+}
+
 // GET /api/recycle - כל הרשומות שנמחקו (רכות)
-router.get('/', authenticate, can('del'), async (req, res) => {
+router.get('/', authenticate, canAny(['del', 'writeTx']), async (req, res) => {
   try {
     const out = [];
     for (const table of SOFT_TABLES) {
       const meta = RECYCLE[table];
-      if (!meta) continue;
-      // מודול הבית רק למי שיש הרשאת בית; שאר הטבלאות למי שיש viewBusiness
-      if (table === 'home_transactions' && !req.caps.home) continue;
-      if (table !== 'home_transactions' && !req.caps.viewBusiness) continue;
-      const r = await pool.query(`${meta.sql} FROM ${table} WHERE deleted=true ORDER BY deleted_at DESC LIMIT 200`);
+      if (!meta || !tableAllowed(req.caps, table)) continue;
+      // מסתירים "ילדים" שנמחקו יחד עם הורה שעדיין מחוק — משוחזרים רק דרך ההורה
+      let extra = '';
+      if (table === 'stages' || table === 'transactions') extra += ' AND (project_id IS NULL OR project_id NOT IN (SELECT id FROM projects WHERE deleted=true))';
+      if (table === 'transactions') extra += ' AND (stage_id IS NULL OR stage_id NOT IN (SELECT id FROM stages WHERE deleted=true))';
+      const r = await pool.query(`${meta.sql} FROM ${table} WHERE deleted=true${extra} ORDER BY deleted_at DESC LIMIT 200`);
       r.rows.forEach(row => out.push(Object.assign({ _table: table, _label: meta.he }, row)));
     }
     out.sort((a, b) => new Date(b.deleted_at || 0) - new Date(a.deleted_at || 0));
@@ -33,15 +42,14 @@ router.get('/', authenticate, can('del'), async (req, res) => {
 });
 
 // POST /api/recycle/restore - שחזור { table, id }
-router.post('/restore', authenticate, can('del'), async (req, res) => {
+router.post('/restore', authenticate, canAny(['del', 'writeTx']), async (req, res) => {
   const { table, id } = req.body || {};
   if (!SOFT_TABLES.has(table)) return res.status(400).json({ error: 'טבלה לא תקינה' });
-  if (table === 'home_transactions' && !req.caps.home) return res.status(403).json({ error: 'אין הרשאה' });
-  if (table !== 'home_transactions' && !req.caps.viewBusiness) return res.status(403).json({ error: 'אין הרשאה' });
+  if (!tableAllowed(req.caps, table)) return res.status(403).json({ error: 'אין הרשאה' });
   try {
-    // שחזור פרויקט מחזיר גם את השלבים והתנועות שנמחקו יחד איתו
-    const ok = table === 'projects'
-      ? await restoreProject(id, req.user)
+    // פרויקט/שלב משחזרים גם את הילדים שנמחקו יחד איתם
+    const ok = table === 'projects' ? await restoreProject(id, req.user)
+      : table === 'stages' ? await restoreStage(id, req.user)
       : await restore(table, id, req.user);
     if (!ok) return res.status(404).json({ error: 'רשומה לא נמצאה בסל המחזור' });
     res.json({ message: 'הרשומה שוחזרה' });

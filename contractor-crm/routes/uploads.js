@@ -1,7 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const { authenticate, canAny } = require('../middleware/auth');
-const { saveInvoice, driveConfigured, storageMode } = require('../drive');
+const { saveInvoice, storageMode } = require('../drive');
 const router = express.Router();
 
 // מגבילים לסוגי חשבונית בטוחים בלבד (חוסם HTML/SVG/JS שעלולים לרוץ כקוד מהאתר)
