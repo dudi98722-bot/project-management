@@ -139,9 +139,28 @@
       tx({ type: 'business_expense', direction: 'out', amount: 10000, date: '2026-06-30', supplier: '—', purpose: 'משכורת עובד' }),
     ];
     D.home = [
-      { id: nid(), date: '2026-06-03', direction: 'out', amount: 450, category: 'מזון', payee: 'סופר', source: 'form', note: '', deleted: false },
-      { id: nid(), date: '2026-06-07', direction: 'out', amount: 320, category: 'חשמל', payee: 'חברת חשמל', source: 'form', note: '', deleted: false },
-      { id: nid(), date: '2026-06-12', direction: 'out', amount: 200, category: 'דלק', payee: 'פז', source: 'form', note: '', deleted: false },
+      // מאי 2026
+      { id: nid(), date: '2026-05-01', direction: 'in',  amount: 14000, category: 'משכורת', payee: 'מקום עבודה', source: 'transfer', note: '', deleted: false },
+      { id: nid(), date: '2026-05-02', direction: 'out', amount: 4200,  category: 'שכר דירה', payee: 'בעל הבית', source: 'transfer', note: '', deleted: false },
+      { id: nid(), date: '2026-05-05', direction: 'out', amount: 1650,  category: 'מזון', payee: 'סופר', source: 'credit', note: '', deleted: false },
+      { id: nid(), date: '2026-05-09', direction: 'out', amount: 320,   category: 'חשמל', payee: 'חברת חשמל', source: 'bank', note: '', deleted: false },
+      { id: nid(), date: '2026-05-14', direction: 'out', amount: 540,   category: 'דלק', payee: 'פז', source: 'credit', note: '', deleted: false },
+      { id: nid(), date: '2026-05-20', direction: 'out', amount: 900,   category: 'חינוך', payee: 'גן', source: 'transfer', note: '', deleted: false },
+      { id: nid(), date: '2026-05-27', direction: 'out', amount: 380,   category: 'בריאות', payee: 'קופת חולים', source: 'credit', note: '', deleted: false },
+      // יוני 2026
+      { id: nid(), date: '2026-06-01', direction: 'in',  amount: 14000, category: 'משכורת', payee: 'מקום עבודה', source: 'transfer', note: '', deleted: false },
+      { id: nid(), date: '2026-06-02', direction: 'out', amount: 4200,  category: 'שכר דירה', payee: 'בעל הבית', source: 'transfer', note: '', deleted: false },
+      { id: nid(), date: '2026-06-03', direction: 'out', amount: 1980,  category: 'מזון', payee: 'סופר', source: 'credit', note: '', deleted: false },
+      { id: nid(), date: '2026-06-07', direction: 'out', amount: 410,   category: 'חשמל', payee: 'חברת חשמל', source: 'bank', note: '', deleted: false },
+      { id: nid(), date: '2026-06-12', direction: 'out', amount: 620,   category: 'דלק', payee: 'פז', source: 'credit', note: '', deleted: false },
+      { id: nid(), date: '2026-06-18', direction: 'out', amount: 900,   category: 'חינוך', payee: 'גן', source: 'transfer', note: '', deleted: false },
+      { id: nid(), date: '2026-06-22', direction: 'out', amount: 1250,  category: 'פנאי', payee: 'מסעדה + בילוי', source: 'credit', note: '', deleted: false },
+      // יולי 2026
+      { id: nid(), date: '2026-07-01', direction: 'in',  amount: 14000, category: 'משכורת', payee: 'מקום עבודה', source: 'transfer', note: '', deleted: false },
+      { id: nid(), date: '2026-07-02', direction: 'out', amount: 4200,  category: 'שכר דירה', payee: 'בעל הבית', source: 'transfer', note: '', deleted: false },
+      { id: nid(), date: '2026-07-05', direction: 'out', amount: 1720,  category: 'מזון', payee: 'סופר', source: 'credit', note: '', deleted: false },
+      { id: nid(), date: '2026-07-08', direction: 'out', amount: 360,   category: 'חשמל', payee: 'חברת חשמל', source: 'bank', note: '', deleted: false },
+      { id: nid(), date: '2026-07-11', direction: 'out', amount: 480,   category: 'דלק', payee: 'פז', source: 'credit', note: '', deleted: false },
     ];
     D.homeRules = [];
     D.expenseCats = [];

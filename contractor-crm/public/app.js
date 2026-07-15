@@ -19,6 +19,8 @@
   const TYPE_HE = { client_payment: 'תשלום מלקוח', sub_payment: 'תשלום לקבלן משנה', project_expense: 'הוצאה לפרויקט', business_expense: 'הוצאת עסק' };
   const STATUS_HE = { active: 'פעיל', paused: 'מושהה', done: 'הושלם', pending: 'ממתין', in_progress: 'בביצוע' };
   const SOURCE_HE = { form: 'טופס', bank: 'בנק', credit: 'אשראי', cash: 'מזומן', transfer: 'העברה' };
+  const HE_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+  const monLabel = (ym) => { if (!ym) return ''; const p = String(ym).split('-'); return HE_MONTHS[+p[1] - 1] + ' ' + p[0]; };
 
   function toast(msg, type) {
     const t = $('#toast'); t.textContent = msg; t.className = 'show ' + (type || '');
@@ -830,6 +832,7 @@
     const rows = await guard(window.Store.home.list({}));
     view().innerHTML = `
       <div class="page-head"><h2>ניהול הבית</h2><div class="spacer"></div>
+        <button class="btn sm" id="homeReport">📊 דוח חודשי</button>
         <button class="btn green sm" id="homeAdd">➕ הוצאה/הכנסה</button>
         <button class="btn ghost sm" id="homeImport">📋 ייבוא מבנק/אשראי</button></div>
       <div class="grid stat-grid">
@@ -839,6 +842,7 @@
       </div>
       <div class="card"><h3>הוצאות לפי קטגוריה</h3><div id="homeCat"></div></div>
       <div class="card"><h3>תנועות אחרונות</h3><div id="homeRows"></div></div>`;
+    $('#homeReport').onclick = () => scrHomeReport();
     $('#homeAdd').onclick = () => homeForm();
     $('#homeImport').onclick = () => homeImport();
     drawDonut($('#homeCat'), rep.by_category.map(x => ({ label: x.category, value: x.total })));
@@ -850,6 +854,146 @@
       <td><button class="btn xs ghost" data-edithome="${r.id}">✏️</button><button class="btn xs red" data-delhome="${r.id}">🗑️</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">אין תנועות בית</div>';
     box.querySelectorAll('[data-edithome]').forEach(b => b.onclick = () => homeForm(rows.find(x => x.id === +b.dataset.edithome)));
     box.querySelectorAll('[data-delhome]').forEach(b => b.onclick = async () => { if (await confirmDialog('להעביר לסל המחזור?', 'מחיקה')) { await guard(window.Store.home.remove(+b.dataset.delhome)); toast('נמחק', 'ok'); scrHome(); } });
+  }
+  // ============================================================
+  //  דוח בית חודשי — פילוח לפי קטגוריה + גרפים
+  // ============================================================
+  async function scrHomeReport() {
+    loading();
+    const rows = await guard(window.Store.home.list({}));
+    const dated = rows.filter(r => r.date);
+
+    // סדרה חודשית (הכנסות/הוצאות לכל חודש) + רשימת חודשים
+    const monMap = {};
+    dated.forEach(r => {
+      const m = String(r.date).slice(0, 7);
+      const g = monMap[m] || (monMap[m] = { month: m, income: 0, expenses: 0, count: 0 });
+      g[r.direction === 'in' ? 'income' : 'expenses'] += +r.amount || 0;
+      if (r.direction !== 'in') g.count++;
+    });
+    const series = Object.values(monMap).sort((a, b) => a.month.localeCompare(b.month)); // ישן→חדש
+    const monthsDesc = series.map(s => s.month).slice().reverse();                       // חדש→ישן (לבורר)
+
+    if (!series.length) {
+      view().innerHTML = `
+        <div class="page-head"><h2>דוח בית — חודשי</h2><div class="spacer"></div>
+          <button class="btn ghost sm" id="hrBack">→ חזרה לניהול הבית</button></div>
+        <div class="card"><div class="empty"><div class="big">📊</div>אין עדיין תנועות עם תאריך להצגת דוח חודשי</div></div>`;
+      $('#hrBack').onclick = () => scrHome();
+      return;
+    }
+
+    let sel = monthsDesc[0]; // חודש אחרון עם נתונים
+
+    function render() {
+      const monthRows = dated.filter(r => String(r.date).slice(0, 7) === sel);
+      const expRows = monthRows.filter(r => r.direction === 'out');
+      const expTotal = expRows.reduce((s, r) => s + (+r.amount || 0), 0);
+      const incTotal = monthRows.filter(r => r.direction === 'in').reduce((s, r) => s + (+r.amount || 0), 0);
+      const balance = incTotal - expTotal;
+
+      // פילוח לפי קטגוריה (הוצאות בלבד)
+      const catMap = {};
+      expRows.forEach(r => {
+        const c = r.category || 'ללא קטגוריה';
+        const g = catMap[c] || (catMap[c] = { category: c, total: 0, count: 0 });
+        g.total += +r.amount || 0; g.count++;
+      });
+      const cats = Object.values(catMap).sort((a, b) => b.total - a.total);
+
+      // השוואה לחודש קודם (לפי הסדרה הכרונולוגית)
+      const idx = series.findIndex(s => s.month === sel);
+      const prev = idx > 0 ? series[idx - 1] : null;
+      const delta = prev ? expTotal - prev.expenses : null;
+      let deltaSub = '';
+      if (prev) {
+        const pct = prev.expenses > 0 ? Math.round(Math.abs(delta) / prev.expenses * 100) : null;
+        deltaSub = delta === 0 ? 'ללא שינוי מהחודש הקודם'
+          : (delta > 0 ? '▲ ' : '▼ ') + money0(Math.abs(delta)) + ' מ' + monLabel(prev.month) + (pct != null ? ` (${pct}%)` : '');
+      }
+      const avgDay = expTotal / new Date(+sel.slice(0, 4), +sel.slice(5, 7), 0).getDate();
+
+      view().innerHTML = `
+        <div class="page-head"><h2>דוח בית — ${monLabel(sel)}</h2><div class="spacer"></div>
+          <button class="btn ghost sm" id="hrPrint">🖨️ הדפסה</button>
+          <button class="btn ghost sm" id="hrBack">→ חזרה לניהול הבית</button></div>
+
+        <div class="card" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <label style="font-weight:600">חודש:</label>
+          <button class="btn xs ghost" id="hrPrev" ${idx <= 0 ? 'disabled' : ''}>◀ קודם</button>
+          <select id="hrMonth" style="min-width:160px">${monthsDesc.map(m => `<option value="${m}" ${m === sel ? 'selected' : ''}>${monLabel(m)}</option>`).join('')}</select>
+          <button class="btn xs ghost" id="hrNext" ${idx >= series.length - 1 ? 'disabled' : ''}>הבא ▶</button>
+        </div>
+
+        <div class="grid stat-grid">
+          ${stat('הוצאות החודש', money(expTotal), 'r', deltaSub || null)}
+          ${stat('הכנסות החודש', money(incTotal), 'g')}
+          ${stat('מאזן', money(balance), balance >= 0 ? 'g' : 'r')}
+          ${stat('מס\' הוצאות', money0(expRows.length), '', 'ממוצע ' + money(avgDay) + ' ליום')}
+        </div>
+
+        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+          <div class="card" style="flex:1 1 320px;min-width:300px">
+            <h3 style="margin-top:0">התפלגות הוצאות לפי קטגוריה</h3>
+            <div id="hrDonut"></div>
+          </div>
+          <div class="card" style="flex:1 1 340px;min-width:300px">
+            <h3 style="margin-top:0">פילוח קטגוריות</h3>
+            <div id="hrBars"></div>
+            <div id="hrTable" style="margin-top:12px"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-top:0">מגמת הוצאות חודשית</h3>
+          <p class="mini muted" style="margin-top:0">לחץ על עמודה כדי לעבור לחודש. החודש הנבחר מודגש.</p>
+          <div id="hrTrend"></div>
+        </div>`;
+
+      $('#hrBack').onclick = () => scrHome();
+      $('#hrPrint').onclick = () => window.print();
+      $('#hrMonth').onchange = (e) => { sel = e.target.value; render(); };
+      $('#hrPrev').onclick = () => { if (idx > 0) { sel = series[idx - 1].month; render(); } };
+      $('#hrNext').onclick = () => { if (idx < series.length - 1) { sel = series[idx + 1].month; render(); } };
+
+      drawDonut($('#hrDonut'), cats.map(c => ({ label: c.category, value: c.total })));
+      drawCatBars($('#hrBars'), cats);
+      $('#hrTable').innerHTML = cats.length ? `<table><thead><tr><th>קטגוריה</th><th>סכום</th><th>%</th><th>תנועות</th></tr></thead><tbody>${cats.map((c, i) => `
+        <tr><td><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${PALETTE[i % PALETTE.length]};margin-left:6px"></i>${esc(c.category)}</td>
+        <td class="num" style="font-weight:700">${money(c.total)}</td>
+        <td class="num">${expTotal > 0 ? Math.round(c.total / expTotal * 100) : 0}%</td>
+        <td class="num">${c.count}</td></tr>`).join('')}
+        <tr style="border-top:2px solid var(--line);font-weight:800"><td>סה"כ</td><td class="num">${money(expTotal)}</td><td class="num">100%</td><td class="num">${expRows.length}</td></tr>
+        </tbody></table>` : '<div class="empty">אין הוצאות בחודש זה</div>';
+      drawMonthExpenseBars($('#hrTrend'), series, sel);
+      $('#hrTrend').querySelectorAll('.mbar').forEach(b => b.onclick = () => { sel = b.dataset.month; render(); });
+    }
+    render();
+  }
+  function drawCatBars(box, data) {
+    if (!data || !data.length) { box.innerHTML = '<div class="empty">אין הוצאות בחודש זה</div>'; return; }
+    const max = Math.max(1, ...data.map(d => d.total));
+    box.innerHTML = data.map((d, i) => {
+      const pct = Math.max(2, Math.round(d.total / max * 100)), col = PALETTE[i % PALETTE.length];
+      return `<div style="display:flex;align-items:center;gap:10px;margin:7px 0">
+        <div style="width:120px;flex:none;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(d.category)}">${esc(d.category)}</div>
+        <div style="flex:1;background:var(--soft);border-radius:6px;height:18px;min-width:50px"><div style="width:${pct}%;background:${col};height:100%;border-radius:6px"></div></div>
+        <div style="width:84px;flex:none;text-align:left;font-weight:700;font-size:13px">${money0(d.total)}</div>
+      </div>`;
+    }).join('');
+  }
+  function drawMonthExpenseBars(box, series, sel) {
+    if (!series || !series.length) { box.innerHTML = '<div class="empty">אין נתונים</div>'; return; }
+    const W = 720, H = 220, pad = 34;
+    const max = Math.max(1, ...series.map(r => r.expenses));
+    const step = (W - 40) / series.length, bw = Math.min(46, step * 0.55);
+    let g = '';
+    series.forEach((r, i) => {
+      const cx = 20 + step * i + step / 2, h = (H - pad - 24) * (r.expenses / max), y = H - pad - h, on = r.month === sel;
+      g += `<rect class="mbar" data-month="${r.month}" x="${cx - bw / 2}" y="${y}" width="${bw}" height="${Math.max(0, h)}" rx="3" fill="${on ? '#dc2626' : '#fca5a5'}" style="cursor:pointer"><title>${monLabel(r.month)}: ${money(r.expenses)}</title></rect>`;
+      g += `<text x="${cx}" y="${H - pad + 15}" text-anchor="middle" font-size="11" fill="${on ? '#0f172a' : '#64748b'}" font-weight="${on ? '700' : '400'}">${r.month.slice(5)}/${r.month.slice(2, 4)}</text>`;
+    });
+    box.innerHTML = `<svg class="chart-svg" viewBox="0 0 ${W} ${H}">${g}<line x1="20" y1="${H - pad}" x2="${W - 20}" y2="${H - pad}" stroke="#e2e8f0"/></svg>`;
   }
   function homeForm(r) {
     r = r || {};
@@ -1082,65 +1226,119 @@
   async function scrPayRequest() {
     loading();
     const projects = await guard(window.Store.projects.list());
-    view().innerHTML = `
-      <div class="page-head"><h2>מחשבון בקשת תשלום</h2><span class="mini">חישוב בלבד — לא נשמר במערכת</span></div>
-      <div class="card" style="max-width:680px">
-        <p class="muted" style="margin-top:0">כשקבלן משנה מבקש כסף על שלב — בחר את הפרויקט והשלב, הזן את הסכום המבוקש, וקבל מיד כמה יישאר לשלב וכמה הלקוח חייב.</p>
-        <div class="row">
-          <div class="field"><label>פרויקט</label><select id="pr_proj"><option value="">— בחר פרויקט —</option>${projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
-          <div class="field"><label>שלב</label><select id="pr_stage"><option value="">— בחר פרויקט קודם —</option></select></div>
-        </div>
-        <div id="pr_out"></div>
-      </div>`;
-    const projSel = $('#pr_proj'), stageSel = $('#pr_stage');
+    const lines = [];            // {projId, projName, stageId, stageName, subName, requested, subRemaining, clientOwes}
+    const stageCache = {};       // projId -> stages[]
     let curStages = [];
+
+    view().innerHTML = `
+      <div class="page-head"><h2>בונה בקשת תשלום</h2><span class="mini">הוסף כמה שלבים שתרצה — מאותו פרויקט או מכמה — וקבל סיכום לפי פרויקט</span></div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+        <div class="card" style="flex:1 1 480px;min-width:320px">
+          <div class="row">
+            <div class="field"><label>פרויקט</label><select id="pr_proj"><option value="">— בחר פרויקט —</option>${projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
+            <div class="field"><label>שלב</label><select id="pr_stage"><option value="">— בחר פרויקט קודם —</option></select></div>
+          </div>
+          <div id="pr_stageInfo" class="mini" style="min-height:20px;color:var(--muted)"></div>
+          <div class="row" style="align-items:flex-end">
+            <div class="field" style="flex:1"><label>סכום מבוקש (₪)</label><input id="pr_req" type="number" placeholder="0"></div>
+            <button class="btn green" id="pr_add" style="flex:none;white-space:nowrap">➕ הוסף לבקשה</button>
+          </div>
+          <div id="pr_lines" style="margin-top:12px"></div>
+        </div>
+        <div class="card" id="pr_summary" style="flex:1 1 300px;min-width:280px;position:sticky;top:12px;background:var(--soft)"></div>
+      </div>`;
+
+    const projSel = $('#pr_proj'), stageSel = $('#pr_stage');
+
+    function selectedStage() { return curStages.find(x => x.id === +stageSel.value); }
+
+    function showStageInfo() {
+      const st = selectedStage();
+      if (!st) { $('#pr_stageInfo').innerHTML = ''; return; }
+      const subRem = (+st.sub_amount || 0) - (+st.paid_sub || 0);
+      const owes = (+st.client_amount || 0) - (+st.paid_in || 0);
+      $('#pr_stageInfo').innerHTML = `נותר לקבלן בשלב: <b style="color:${subRem >= 0 ? 'var(--green)' : 'var(--red)'}">${money(subRem)}</b> · הלקוח חייב על השלב: <b style="color:var(--brand-d)">${money(owes)}</b>`;
+    }
+
     projSel.onchange = async () => {
-      $('#pr_out').innerHTML = '';
-      if (!projSel.value) { stageSel.innerHTML = '<option value="">— בחר פרויקט קודם —</option>'; return; }
-      const d = await guard(window.Store.projects.get(projSel.value));
-      curStages = d.stages || [];
+      $('#pr_stageInfo').innerHTML = '';
+      const pid = projSel.value;
+      if (!pid) { stageSel.innerHTML = '<option value="">— בחר פרויקט קודם —</option>'; return; }
+      if (!stageCache[pid]) { const d = await guard(window.Store.projects.get(pid)); stageCache[pid] = d.stages || []; }
+      curStages = stageCache[pid];
       stageSel.innerHTML = '<option value="">— בחר שלב —</option>' + curStages.map(s => `<option value="${s.id}">${esc(s.name)}${s.subcontractor_name ? ' · ' + esc(s.subcontractor_name) : ''}</option>`).join('');
     };
-    stageSel.onchange = () => {
-      const st = curStages.find(x => x.id === +stageSel.value);
-      if (st) renderPayReq(st); else $('#pr_out').innerHTML = '';
+    stageSel.onchange = showStageInfo;
+
+    $('#pr_add').onclick = () => {
+      const st = selectedStage();
+      if (!st) { toast('בחר פרויקט ושלב', 'err'); return; }
+      const requested = parseFloat($('#pr_req').value) || 0;
+      if (!(requested > 0)) { toast('הזן סכום מבוקש', 'err'); return; }
+      if (lines.some(l => l.stageId === st.id)) { toast('השלב כבר קיים בבקשה — הסר אותו כדי לשנות', 'err'); return; }
+      lines.push({
+        projId: +projSel.value, projName: projSel.options[projSel.selectedIndex].text,
+        stageId: st.id, stageName: st.name, subName: st.subcontractor_name || '',
+        requested,
+        subRemaining: (+st.sub_amount || 0) - (+st.paid_sub || 0),
+        clientOwes: (+st.client_amount || 0) - (+st.paid_in || 0)
+      });
+      $('#pr_req').value = ''; stageSel.value = ''; $('#pr_stageInfo').innerHTML = '';
+      renderLines(); renderSummary();
+      $('#pr_req').focus();
     };
-  }
-  function renderPayReq(st) {
-    const subAmount = +st.sub_amount || 0, paidSub = +st.paid_sub || 0, subRemaining = subAmount - paidSub;
-    const clientAmount = +st.client_amount || 0, paidIn = +st.paid_in || 0, clientOwes = clientAmount - paidIn;
-    $('#pr_out').innerHTML = `
-      <div style="margin-top:8px">
-        <div class="mini" style="margin-bottom:6px;font-weight:600">💰 מול קבלן המשנה${st.subcontractor_name ? ' (' + esc(st.subcontractor_name) + ')' : ''}</div>
-        <div class="grid stat-grid">
-          ${miniStat('סכום השלב לקבלן', money(subAmount))}
-          ${miniStat('שולם עד כה', money(paidSub))}
-          ${miniStat('נותר לקבלן בשלב', money(subRemaining), subRemaining >= 0 ? 'g' : 'r')}
-        </div>
-        <div class="mini" style="margin:14px 0 6px;font-weight:600">🟢 מול הלקוח</div>
-        <div class="grid stat-grid">
-          ${miniStat('סכום השלב מהלקוח', money(clientAmount))}
-          ${miniStat('נכנס עד כה', money(paidIn))}
-          ${miniStat('הלקוח חייב על השלב', money(clientOwes), clientOwes > 0 ? 'a' : 'g')}
-        </div>
-      </div>
-      <div class="field" style="margin-top:16px"><label>כמה הקבלן מבקש עכשיו (₪)</label><input id="pr_req" type="number" placeholder="0" autofocus></div>
-      <div id="pr_calc"></div>`;
-    $('#pr_req').oninput = () => {
-      const req = parseFloat($('#pr_req').value) || 0;
-      const afterSub = subRemaining - req;
-      const over = req > subRemaining + 0.001;
-      $('#pr_calc').innerHTML = `
-        <div class="card" style="background:var(--soft);border:1px dashed var(--brand);margin:6px 0 0">
-          <table>
-            <tr><td>מבוקש עכשיו</td><td class="num" style="font-weight:800;font-size:16px">${money(req)}</td></tr>
-            <tr><td><b>יתרה לשלב אחרי הבקשה (לקבלן)</b></td><td class="num" style="font-weight:800;font-size:16px;color:${afterSub >= 0 ? 'var(--green)' : 'var(--red)'}">${money(afterSub)}</td></tr>
-            <tr><td>הלקוח חייב על השלב</td><td class="num" style="font-weight:800;font-size:16px;color:var(--brand-d)">${money(clientOwes)}</td></tr>
-          </table>
-          ${over ? `<div class="mini" style="color:var(--red);margin-top:8px">⚠️ הבקשה חורגת מהיתרה לקבלן בשלב (נותר ${money(subRemaining)})</div>` : ''}
-        </div>`;
-    };
-    $('#pr_req').oninput();
+
+    function renderLines() {
+      const box = $('#pr_lines');
+      if (!lines.length) { box.innerHTML = '<div class="empty" style="padding:24px"><div class="big">🧾</div>עדיין לא הוספת שלבים לבקשה</div>'; return; }
+      box.innerHTML = `<table><thead><tr><th>פרויקט</th><th>שלב</th><th>קבלן</th><th>מבוקש</th><th>נותר לקבלן אחרי</th><th>חייב לקוח</th><th></th></tr></thead><tbody>${lines.map((l, i) => {
+        const after = l.subRemaining - l.requested, over = l.requested > l.subRemaining + 0.001;
+        return `<tr>
+          <td>${esc(l.projName)}</td><td>${esc(l.stageName)}</td><td>${esc(l.subName) || '—'}</td>
+          <td class="num" style="font-weight:700">${money(l.requested)}</td>
+          <td class="num" style="color:${after >= 0 ? 'var(--green)' : 'var(--red)'}">${money(after)}${over ? ' ⚠️' : ''}</td>
+          <td class="num" style="color:var(--brand-d)">${money(l.clientOwes)}</td>
+          <td><button class="btn xs red" data-delline="${i}">✕</button></td></tr>`;
+      }).join('')}</tbody></table>`;
+      box.querySelectorAll('[data-delline]').forEach(b => b.onclick = () => { lines.splice(+b.dataset.delline, 1); renderLines(); renderSummary(); });
+    }
+
+    function renderSummary() {
+      const box = $('#pr_summary');
+      if (!lines.length) { box.innerHTML = '<h3 style="margin-top:0">סיכום הבקשה</h3><div class="muted">הוסף שלבים כדי לראות כמה מבוקש מכל פרויקט.</div>'; return; }
+      const byProj = {};
+      lines.forEach(l => {
+        const g = byProj[l.projId] || (byProj[l.projId] = { name: l.projName, requested: 0, owes: 0, count: 0 });
+        g.requested += l.requested; g.owes += l.clientOwes; g.count++;
+      });
+      const grandReq = lines.reduce((s, l) => s + l.requested, 0);
+      const grandOwes = lines.reduce((s, l) => s + l.clientOwes, 0);
+      box.innerHTML = `<h3 style="margin-top:0">סיכום הבקשה</h3>
+        ${Object.values(byProj).map(g => `
+          <div style="padding:10px 0;border-bottom:1px solid var(--line)">
+            <div style="font-weight:700">${esc(g.name)} <span class="mini muted">· ${g.count} שלבים</span></div>
+            <div style="display:flex;justify-content:space-between;margin-top:4px"><span>מבוקש מהפרויקט</span><b>${money(g.requested)}</b></div>
+            <div style="display:flex;justify-content:space-between"><span class="mini">יתרת לקוח לתשלום</span><span class="mini" style="color:var(--brand-d);font-weight:700">${money(g.owes)}</span></div>
+          </div>`).join('')}
+        <div style="display:flex;justify-content:space-between;margin-top:12px;font-size:17px"><b>סה"כ מבוקש</b><b style="color:var(--green)">${money(grandReq)}</b></div>
+        <div style="display:flex;justify-content:space-between;margin-top:2px"><span>סה"כ יתרת לקוח</span><b style="color:var(--brand-d)">${money(grandOwes)}</b></div>
+        <button class="btn ghost" id="pr_copy" style="width:100%;margin-top:14px">📋 העתק לוואטסאפ</button>`;
+      $('#pr_copy').onclick = () => copyRequestText(byProj, grandReq, grandOwes);
+    }
+
+    function copyRequestText(byProj, grandReq, grandOwes) {
+      const d = new Date().toLocaleDateString('he-IL');
+      let txt = `בקשת תשלום — ${d}\n`;
+      Object.values(byProj).forEach(g => {
+        txt += `\n📁 ${g.name}\n`;
+        lines.filter(l => l.projName === g.name).forEach(l => { txt += `  • ${l.stageName}: ${money(l.requested)}\n`; });
+        txt += `  סה"כ פרויקט: ${money(g.requested)} | יתרת לקוח: ${money(g.owes)}\n`;
+      });
+      txt += `\n💰 סה"כ מבוקש: ${money(grandReq)}\n🟢 סה"כ יתרת לקוח: ${money(grandOwes)}`;
+      navigator.clipboard.writeText(txt).then(() => toast('הסיכום הועתק', 'ok'), () => toast('ההעתקה נכשלה', 'err'));
+    }
+
+    renderLines(); renderSummary();
   }
 
   // ============================================================
