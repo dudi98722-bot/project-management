@@ -265,13 +265,12 @@
   function renderStages(stages, p, c) {
     const box = $('#stagesBox');
     if (!stages.length) { box.innerHTML = '<div class="empty">אין שלבים. הוסף שלבים כדי לחלק את הפרויקט.</div>'; return; }
-    box.innerHTML = `<table><thead><tr><th>#</th><th>שלב</th><th>סכום לקוח</th><th>נכנס</th><th>סכום קבלן</th><th>שולם</th><th>סטטוס</th>${c.editProjects ? '<th></th>' : ''}</tr></thead><tbody>${stages.map(s => `
+    box.innerHTML = `<table><thead><tr><th>#</th><th>שלב</th><th>סכום לקוח</th><th>נכנס</th><th>סכום קבלן</th><th>שולם</th>${c.editProjects ? '<th></th>' : ''}</tr></thead><tbody>${stages.map(s => `
       <tr><td>${s.seq}</td><td>${esc(s.name)}</td>
         <td class="num">${money(s.client_amount)}</td>
         <td class="num" style="color:var(--green)">${money(s.paid_in)}</td>
         <td class="num">${money(s.sub_amount)}</td>
         <td class="num" style="color:var(--red)">${money(s.paid_sub)}</td>
-        <td><span class="pill ${s.status}">${STATUS_HE[s.status] || s.status}</span></td>
         ${c.editProjects ? `<td><button class="btn xs ghost" data-editstage="${s.id}">✏️</button>${c.del ? `<button class="btn xs red" data-delstage="${s.id}">🗑️</button>` : ''}</td>` : ''}</tr>`).join('')}</tbody></table>`;
     if (c.editProjects) {
       box.querySelectorAll('[data-editstage]').forEach(b => b.onclick = () => { const s = stages.find(x => x.id === +b.dataset.editstage); stageForm(s, p.id); });
