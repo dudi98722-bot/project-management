@@ -1016,6 +1016,10 @@
       const dCol = (d) => d > 0 ? 'var(--red)' : (d < 0 ? 'var(--green)' : 'var(--muted)');
       const dCell = (d, base) => { if (d === 0) return '—'; const pct = base > 0 ? ' (' + Math.round(Math.abs(d) / base * 100) + '%)' : (base === 0 ? ' (חדש)' : ''); return (d > 0 ? '▲ ' : '▼ ') + money0(Math.abs(d)) + pct; };
 
+      // סיכום כולל לכל החודשים
+      const grandExp = series.reduce((s, m) => s + m.expenses, 0);
+      const grandInc = series.reduce((s, m) => s + m.income, 0);
+
       view().innerHTML = `
         <div class="page-head"><h2>דוח בית — ${monLabel(sel)}</h2><div class="spacer"></div>
           <button class="btn ghost sm" id="hrPrint">🖨️ הדפסה</button>
@@ -1071,6 +1075,18 @@
           <h3 style="margin-top:0">מגמת הוצאות חודשית</h3>
           <p class="mini muted" style="margin-top:0">לחץ על עמודה כדי לעבור לחודש. החודש הנבחר מודגש.</p>
           <div id="hrTrend"></div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-top:0">סיכום הוצאות לפי חודש</h3>
+          <div style="overflow-x:auto"><table><thead><tr><th>חודש</th><th>הוצאות</th><th>הכנסות</th><th>מאזן</th></tr></thead><tbody>
+            ${series.slice().reverse().map(m => { const bal = m.income - m.expenses, on = m.month === sel; return `<tr class="hr-mrow" data-month="${m.month}" style="cursor:pointer${on ? ';background:var(--soft);font-weight:700' : ''}">
+              <td>${monLabel(m.month)}${on ? ' •' : ''}</td>
+              <td class="num" style="font-weight:700;color:var(--red)">${money(m.expenses)}</td>
+              <td class="num" style="color:var(--green)">${money(m.income)}</td>
+              <td class="num" style="color:${bal >= 0 ? 'var(--green)' : 'var(--red)'}">${money(bal)}</td></tr>`; }).join('')}
+            <tr style="border-top:2px solid var(--line);font-weight:800"><td>סה"כ · ${series.length} חודשים</td><td class="num" style="color:var(--red)">${money(grandExp)}</td><td class="num" style="color:var(--green)">${money(grandInc)}</td><td class="num" style="color:${grandInc - grandExp >= 0 ? 'var(--green)' : 'var(--red)'}">${money(grandInc - grandExp)}</td></tr>
+          </tbody></table></div>
         </div>`;
 
       $('#hrBack').onclick = () => scrHome();
@@ -1091,6 +1107,7 @@
         </tbody></table>` : '<div class="empty">אין הוצאות בחודש זה</div>';
       drawMonthExpenseBars($('#hrTrend'), series, sel);
       $('#hrTrend').querySelectorAll('.mbar').forEach(b => b.onclick = () => { sel = b.dataset.month; cmp = adjOf(sel); render(); });
+      view().querySelectorAll('.hr-mrow').forEach(tr => tr.onclick = () => { sel = tr.dataset.month; cmp = adjOf(sel); render(); });
     }
     render();
   }
