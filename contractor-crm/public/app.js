@@ -522,6 +522,7 @@
           $('#t_fileNote') && ($('#t_fileNote').textContent = 'מעלה חשבונית...');
           const up = await guard(window.Store.uploads.invoice(fileEl.files[0]));
           d.invoice_url = up.url;
+          if (up.storage === 'local') toast('⚠️ החשבונית נשמרה על השרת בלבד — הדרייב אינו מחובר', 'err');
         }
         await guard(window.Store.tx.create(d));
         close(); toast('נשמר', 'ok');
