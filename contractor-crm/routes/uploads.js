@@ -28,8 +28,8 @@ function uploadInvoice(req, res, next) {
 router.post('/invoice', authenticate, canAny(['writeTx', 'projectExpenseOnly']), uploadInvoice, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'לא צורף קובץ' });
   try {
-    const url = await saveInvoice(req.file.buffer, req.file.originalname, req.file.mimetype);
-    res.json({ url, storage: storageMode() });
+    const { url, storage } = await saveInvoice(req.file.buffer, req.file.originalname, req.file.mimetype);
+    res.json({ url, storage });
   } catch (e) {
     console.error('upload error:', e.message);
     res.status(500).json({ error: 'שמירת החשבונית נכשלה' });

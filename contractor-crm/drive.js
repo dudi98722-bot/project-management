@@ -77,21 +77,22 @@ function storageMode() {
   return 'local';
 }
 
-// נקודת הכניסה הראשית: מקבל buffer ומחזיר URL לחשבונית
+// נקודת הכניסה הראשית: מקבל buffer ומחזיר { url, storage } — storage משקף
+// את המנגנון שבאמת הצליח (appsscript / drive / local), לא רק את מה שהוגדר.
 async function saveInvoice(buffer, filename, mimetype) {
   const safe = safeName(filename);
   // 1) Apps Script relay (מומלץ ל-Gmail פרטי)
   if (appsScriptConfigured()) {
-    try { return await uploadViaAppsScript(buffer, safe, mimetype); }
+    try { return { url: await uploadViaAppsScript(buffer, safe, mimetype), storage: 'appsscript' }; }
     catch (e) { console.error('Apps Script upload failed:', e.message); }
   }
   // 2) חשבון שירות (Workspace / Shared Drive)
   if (driveConfigured()) {
-    try { return await uploadToDrive(buffer, safe, mimetype); }
+    try { return { url: await uploadToDrive(buffer, safe, mimetype), storage: 'drive' }; }
     catch (e) { console.error('Drive upload failed, saving locally:', e.message); }
   }
   // 3) מקומי
-  return saveLocal(buffer, filename);
+  return { url: saveLocal(buffer, filename), storage: 'local' };
 }
 
 module.exports = { saveInvoice, driveConfigured, storageMode, UPLOAD_DIR };
