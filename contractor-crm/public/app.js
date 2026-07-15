@@ -1223,6 +1223,46 @@
   // ============================================================
   //  PAYMENT REQUEST CALCULATOR (חישוב בלבד - לא נשמר)
   // ============================================================
+  // רכיב חיפוש לחיץ (typeahead): הקלדה → תוצאות תואמות קופצות → בחירה בעכבר/מקלדת.
+  // getItems() מחזיר [{id,label,sub?}] (דינמי). onPick(item|null) נקרא בבחירה/ניקוי.
+  function makeTypeahead(input, list, getItems, onPick) {
+    let picked = null, filtered = [], active = -1;
+    const norm = (s) => String(s == null ? '' : s).toLowerCase();
+    function hi(label, qn) {
+      const s = String(label == null ? '' : label);
+      const i = qn ? norm(s).indexOf(qn) : -1;
+      if (i < 0) return esc(s);
+      return esc(s.slice(0, i)) + '<mark>' + esc(s.slice(i, i + qn.length)) + '</mark>' + esc(s.slice(i + qn.length));
+    }
+    function open(q) {
+      const qn = norm(q).trim();
+      const items = getItems() || [];
+      filtered = (qn ? items.filter(it => norm(it.label).includes(qn) || norm(it.sub).includes(qn)) : items).slice(0, 40);
+      active = -1;
+      if (!filtered.length) { list.innerHTML = '<div class="ta-empty">אין תוצאות</div>'; list.classList.add('open'); return; }
+      list.innerHTML = filtered.map((it, i) => `<div class="ta-item" data-i="${i}">${hi(it.label, qn)}${it.sub ? `<span class="ta-sub">${esc(it.sub)}</span>` : ''}</div>`).join('');
+      list.classList.add('open');
+      list.querySelectorAll('.ta-item').forEach(el => { el.onmousedown = (e) => { e.preventDefault(); choose(filtered[+el.dataset.i]); }; });
+    }
+    function close() { list.classList.remove('open'); active = -1; }
+    function paint() {
+      list.querySelectorAll('.ta-item').forEach((el, i) => el.classList.toggle('active', i === active));
+      const el = list.querySelector('.ta-item.active'); if (el) el.scrollIntoView({ block: 'nearest' });
+    }
+    function choose(it) { if (!it) return; picked = it; input.value = it.label; close(); onPick(it); }
+    input.addEventListener('focus', () => open(input.value));
+    input.addEventListener('input', () => { if (picked && input.value !== picked.label) { picked = null; onPick(null); } open(input.value); });
+    input.addEventListener('keydown', (e) => {
+      if (!list.classList.contains('open')) { if (e.key === 'ArrowDown') open(input.value); return; }
+      if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(active + 1, filtered.length - 1); paint(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(active - 1, 0); paint(); }
+      else if (e.key === 'Enter') { if (active >= 0 && filtered[active]) { e.preventDefault(); choose(filtered[active]); } }
+      else if (e.key === 'Escape') { close(); }
+    });
+    input.addEventListener('blur', () => setTimeout(close, 120));  // דיליי כדי לאפשר לחיצה על פריט
+    return { reset() { picked = null; input.value = ''; close(); }, value() { return picked; } };
+  }
+
   async function scrPayRequest() {
     loading();
     const projects = await guard(window.Store.projects.list());
@@ -1235,8 +1275,8 @@
       <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
         <div class="card" style="flex:1 1 480px;min-width:320px">
           <div class="row">
-            <div class="field"><label>פרויקט</label><select id="pr_proj"><option value="">— בחר פרויקט —</option>${projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
-            <div class="field"><label>שלב</label><select id="pr_stage"><option value="">— בחר פרויקט קודם —</option></select></div>
+            <div class="field"><label>פרויקט</label><div class="ta"><input id="pr_proj_in" placeholder="הקלד לחיפוש פרויקט..." autocomplete="off"><div class="ta-list" id="pr_proj_list"></div></div></div>
+            <div class="field"><label>שלב</label><div class="ta"><input id="pr_stage_in" placeholder="בחר פרויקט קודם" autocomplete="off" disabled><div class="ta-list" id="pr_stage_list"></div></div></div>
           </div>
           <div id="pr_stageInfo" class="mini" style="min-height:20px;color:var(--muted)"></div>
           <div class="row" style="align-items:flex-end">
@@ -1249,35 +1289,42 @@
         <div class="card" id="pr_summary" style="flex:1 1 300px;min-width:280px;position:sticky;top:12px;background:var(--soft)"></div>
       </div>`;
 
-    const projSel = $('#pr_proj'), stageSel = $('#pr_stage');
-
-    function selectedStage() { return curStages.find(x => x.id === +stageSel.value); }
+    let selProj = null, selStage = null;
 
     function showStageInfo() {
-      const st = selectedStage();
+      const st = selStage;
       if (!st) { $('#pr_stageInfo').innerHTML = ''; return; }
       const subRem = (+st.sub_amount || 0) - (+st.paid_sub || 0);
       const owes = (+st.client_amount || 0) - (+st.paid_in || 0);
       $('#pr_stageInfo').innerHTML = `נותר לקבלן בשלב: <b style="color:${subRem >= 0 ? 'var(--green)' : 'var(--red)'}">${money(subRem)}</b> · הלקוח חייב על השלב: <b style="color:var(--brand-d)">${money(owes)}</b>`;
     }
 
-    projSel.onchange = async () => {
-      $('#pr_stageInfo').innerHTML = '';
-      const pid = projSel.value;
-      if (!pid) { stageSel.innerHTML = '<option value="">— בחר פרויקט קודם —</option>'; return; }
-      if (!stageCache[pid]) { const d = await guard(window.Store.projects.get(pid)); stageCache[pid] = d.stages || []; }
-      curStages = stageCache[pid];
-      stageSel.innerHTML = '<option value="">— בחר שלב —</option>' + curStages.map(s => `<option value="${s.id}">${esc(s.name)}${s.subcontractor_name ? ' · ' + esc(s.subcontractor_name) : ''}</option>`).join('');
-    };
-    stageSel.onchange = showStageInfo;
+    // חיפוש שלב לחיץ — תלוי בפרויקט שנבחר (curStages)
+    const stageTA = makeTypeahead($('#pr_stage_in'), $('#pr_stage_list'),
+      () => curStages.map(s => ({ id: s.id, label: s.name, sub: s.subcontractor_name || '' })),
+      (pick) => { selStage = pick ? curStages.find(x => x.id === pick.id) : null; showStageInfo(); });
+
+    // חיפוש פרויקט לחיץ — בחירה טוענת את שלבי הפרויקט לחיפוש השלב
+    makeTypeahead($('#pr_proj_in'), $('#pr_proj_list'),
+      () => projects.map(p => ({ id: p.id, label: p.name })),
+      async (pick) => {
+        selProj = pick; selStage = null; stageTA.reset();
+        $('#pr_stageInfo').innerHTML = '';
+        const stIn = $('#pr_stage_in');
+        if (!pick) { stIn.disabled = true; stIn.placeholder = 'בחר פרויקט קודם'; curStages = []; return; }
+        stIn.disabled = false; stIn.placeholder = 'הקלד לחיפוש שלב...';
+        if (!stageCache[pick.id]) { const d = await guard(window.Store.projects.get(pick.id)); stageCache[pick.id] = d.stages || []; }
+        curStages = stageCache[pick.id];
+      });
 
     $('#pr_add').onclick = async () => {
-      const st = selectedStage();
-      if (!st) { toast('בחר פרויקט ושלב', 'err'); return; }
+      if (!selProj) { toast('בחר פרויקט', 'err'); return; }
+      const st = selStage;
+      if (!st) { toast('בחר שלב', 'err'); return; }
       const requested = parseFloat($('#pr_req').value) || 0;
       if (!(requested > 0)) { toast('הזן סכום מבוקש', 'err'); return; }
       const payload = {
-        project_id: +projSel.value, project_name: projSel.options[projSel.selectedIndex].text,
+        project_id: selProj.id, project_name: selProj.label,
         stage_id: st.id, stage_name: st.name, sub_name: st.subcontractor_name || '',
         requested,
         sub_remaining: (+st.sub_amount || 0) - (+st.paid_sub || 0),
@@ -1285,9 +1332,9 @@
       };
       const saved = await guard(window.Store.payreq.create(payload));
       lines.unshift(saved);
-      $('#pr_req').value = ''; stageSel.value = ''; $('#pr_stageInfo').innerHTML = '';
+      $('#pr_req').value = ''; stageTA.reset(); selStage = null; $('#pr_stageInfo').innerHTML = '';
       render(); toast('נשמר', 'ok');
-      $('#pr_req').focus();
+      $('#pr_stage_in').focus();
     };
 
     function render() {
