@@ -167,6 +167,10 @@
       { id: nid(), date: '2026-07-05', direction: 'out', amount: 1720,  category: 'מזון', payee: 'סופר', source: 'credit', note: '', deleted: false },
       { id: nid(), date: '2026-07-08', direction: 'out', amount: 360,   category: 'חשמל', payee: 'חברת חשמל', source: 'bank', note: '', deleted: false },
       { id: nid(), date: '2026-07-11', direction: 'out', amount: 480,   category: 'דלק', payee: 'פז', source: 'credit', note: '', deleted: false },
+      // שורות מיובאות ללא קטגוריה — ממתינות לסיווג (להדגמת המונה)
+      { id: nid(), date: '2026-07-13', direction: 'out', amount: 240,   category: '', payee: 'רמי לוי', source: 'bank', note: '', deleted: false },
+      { id: nid(), date: '2026-07-14', direction: 'out', amount: 95,    category: '', payee: 'חניון העיר', source: 'credit', note: '', deleted: false },
+      { id: nid(), date: '2026-06-27', direction: 'out', amount: 180,   category: '', payee: '', source: 'cash', note: '', deleted: false },
     ];
     D.homeRules = [];
     D.expenseCats = [];

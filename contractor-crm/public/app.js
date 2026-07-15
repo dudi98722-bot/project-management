@@ -830,6 +830,7 @@
     loading();
     const rep = await guard(window.Store.reports.home({}));
     const rows = await guard(window.Store.home.list({}));
+    const uncat = rows.filter(r => !r.category || !String(r.category).trim());   // ממתינים לסיווג
     view().innerHTML = `
       <div class="page-head"><h2>ניהול הבית</h2><div class="spacer"></div>
         <button class="btn sm" id="homeReport">📊 דוח חודשי</button>
@@ -840,20 +841,90 @@
         ${stat('הוצאות', money(rep.totals.expenses), 'r')}
         ${stat('מאזן', money(rep.totals.balance), rep.totals.balance >= 0 ? 'g' : 'r')}
       </div>
+      <div id="homeUncat"></div>
       <div class="card"><h3>הוצאות לפי קטגוריה</h3><div id="homeCat"></div></div>
-      <div class="card"><h3>תנועות אחרונות</h3><div id="homeRows"></div></div>`;
+      <div class="card"><h3 id="homeRowsTitle">תנועות אחרונות</h3><div id="homeRows"></div></div>`;
     $('#homeReport').onclick = () => scrHomeReport();
     $('#homeAdd').onclick = () => homeForm();
     $('#homeImport').onclick = () => homeImport();
     drawDonut($('#homeCat'), rep.by_category.map(x => ({ label: x.category, value: x.total })));
+
+    if (uncat.length) {
+      $('#homeUncat').innerHTML = `<div class="card" style="background:#fffbeb;border:1px solid var(--amber);display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+        <span style="font-size:22px">🏷️</span>
+        <div style="flex:1;min-width:160px"><b>${uncat.length} תנועות ללא קטגוריה</b> <span class="mini muted">ממתינות לסיווג שלך</span></div>
+        <button class="btn sm" id="homeUncatBtn">סווג עכשיו ←</button></div>`;
+      $('#homeUncatBtn').onclick = () => scrCategorize();
+    }
     const box = $('#homeRows'), cDel = caps().del;
     box.innerHTML = rows.length ? `<table><thead><tr><th>תאריך</th><th>קטגוריה</th><th>ספק</th><th>סכום</th><th>מקור</th><th></th></tr></thead><tbody>${rows.map(r => `
-      <tr><td>${dfmt(r.date)}</td><td>${esc(r.category || '')}</td><td>${esc(r.payee || '')}</td>
+      <tr><td>${dfmt(r.date)}</td><td>${r.category && String(r.category).trim() ? esc(r.category) : '<span style="color:var(--brand-d);font-weight:600">— ללא —</span>'}</td><td>${esc(r.payee || '')}</td>
       <td class="num"><span class="pill ${r.direction}">${r.direction === 'in' ? '+' : '−'}${money0(r.amount)}</span></td>
       <td class="mini">${SOURCE_HE[r.source] || r.source || ''}</td>
       <td><button class="btn xs ghost" data-edithome="${r.id}">✏️</button>${cDel ? `<button class="btn xs red" data-delhome="${r.id}">🗑️</button>` : ''}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">אין תנועות בית</div>';
     box.querySelectorAll('[data-edithome]').forEach(b => b.onclick = () => homeForm(rows.find(x => x.id === +b.dataset.edithome)));
     box.querySelectorAll('[data-delhome]').forEach(b => b.onclick = async () => { if (await confirmDialog('להעביר לסל המחזור?', 'מחיקה')) { await guard(window.Store.home.remove(+b.dataset.delhome)); toast('נמחק', 'ok'); scrHome(); } });
+  }
+
+  // מסך סיווג מרוכז — עוברים על כל התנועות הלא-מסווגות ומסווגים במהירות
+  async function scrCategorize() {
+    loading();
+    const rows = await guard(window.Store.home.list({}));
+    const pending = rows.filter(r => !r.category || !String(r.category).trim());
+    const cats = await guard(window.Store.home.categories());
+    const rules = await guard(window.Store.home.rules());
+    const suggest = (payee) => {
+      const p = String(payee || '').trim(); if (!p) return '';
+      const hit = (rules || []).find(rr => rr.match_text && (p.includes(rr.match_text) || rr.match_text.includes(p)));
+      return hit ? hit.category : '';
+    };
+    view().innerHTML = `
+      <div class="page-head"><h2>סיווג תנועות ממתינות</h2><div class="spacer"></div>
+        <button class="btn ghost sm" id="catBack">→ חזרה לניהול הבית</button></div>
+      <datalist id="catlist">${(cats || []).map(c => `<option value="${esc(c)}"></option>`).join('')}</datalist>
+      <div class="card">
+        <p class="mini muted" style="margin-top:0">הקלד קטגוריה לכל תנועה ולחץ Enter (או "שמור"). נותרו <b id="catLeft">${pending.length}</b>.</p>
+        <div id="catWrap"></div>
+        <div id="catAllWrap"></div>
+      </div>`;
+    $('#catBack').onclick = () => scrHome();
+    const wrap = $('#catWrap');
+    if (!pending.length) { wrap.innerHTML = '<div class="empty"><div class="big">🎉</div>הכול מסווג! אין תנועות שממתינות.</div>'; return; }
+    wrap.innerHTML = `<div style="overflow-x:auto"><table><thead><tr><th>תאריך</th><th>ספק / למי</th><th>סכום</th><th>קטגוריה</th><th></th></tr></thead><tbody>
+      ${pending.map(r => `<tr data-id="${r.id}">
+        <td>${dfmt(r.date)}</td>
+        <td>${esc(r.payee || '—')}</td>
+        <td class="num"><span class="pill ${r.direction}">${r.direction === 'in' ? '+' : '−'}${money0(r.amount)}</span></td>
+        <td><input class="cat-in" list="catlist" value="${esc(suggest(r.payee))}" placeholder="הקלד קטגוריה..." autocomplete="off" style="width:100%;min-width:140px;padding:8px 10px;border:1px solid var(--line);border-radius:8px"></td>
+        <td><button class="btn xs green" data-save>שמור</button></td></tr>`).join('')}
+      </tbody></table></div>`;
+    $('#catAllWrap').innerHTML = `<button class="btn green" id="catSaveAll" style="margin-top:14px">💾 שמור הכל</button>`;
+
+    function updateLeft() {
+      const n = wrap.querySelectorAll('tr[data-id]').length;
+      const left = $('#catLeft'); if (left) left.textContent = n;
+      if (n === 0) { wrap.innerHTML = '<div class="empty"><div class="big">🎉</div>הכול סווג! כל הכבוד.</div>'; $('#catAllWrap').innerHTML = ''; }
+    }
+    async function saveTr(tr, quiet) {
+      const id = +tr.dataset.id, cat = tr.querySelector('.cat-in').value.trim();
+      if (!cat) { if (!quiet) { toast('הקלד קטגוריה', 'err'); tr.querySelector('.cat-in').focus(); } return false; }
+      const r = pending.find(x => x.id === id);
+      await guard(window.Store.home.update(id, { direction: r.direction, amount: r.amount, date: r.date, category: cat, payee: r.payee, note: r.note, source: r.source }));
+      tr.remove(); updateLeft();
+      return true;
+    }
+    wrap.querySelectorAll('tr[data-id]').forEach(tr => {
+      const inp = tr.querySelector('.cat-in');
+      tr.querySelector('[data-save]').onclick = async () => { if (await saveTr(tr, false)) { toast('סווג', 'ok'); const nx = wrap.querySelector('.cat-in'); if (nx) nx.focus(); } };
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); tr.querySelector('[data-save]').onclick(); } });
+    });
+    $('#catSaveAll').onclick = async () => {
+      const trs = [...wrap.querySelectorAll('tr[data-id]')].filter(tr => tr.querySelector('.cat-in').value.trim());
+      if (!trs.length) { toast('לא הוזנו קטגוריות', 'err'); return; }
+      let n = 0;
+      for (const tr of trs) { if (await saveTr(tr, true)) n++; }
+      toast(`${n} תנועות סווגו`, 'ok');
+    };
   }
   // ============================================================
   //  דוח בית חודשי — פילוח לפי קטגוריה + גרפים
@@ -883,9 +954,22 @@
       return;
     }
 
-    let sel = monthsDesc[0]; // חודש אחרון עם נתונים
+    // מפת קטגוריה→סכום הוצאות לחודש נתון
+    const catMapOf = (m) => {
+      const map = {};
+      dated.filter(r => r.direction === 'out' && String(r.date).slice(0, 7) === m).forEach(r => {
+        const c = r.category || 'ללא קטגוריה'; map[c] = (map[c] || 0) + (+r.amount || 0);
+      });
+      return map;
+    };
+    // חודש סמוך להשוואה: קודם אם קיים, אחרת הבא
+    const adjOf = (m) => { const i = series.findIndex(s => s.month === m); if (i > 0) return series[i - 1].month; if (i < series.length - 1) return series[i + 1].month; return null; };
+
+    let sel = monthsDesc[0];   // חודש אחרון עם נתונים
+    let cmp = adjOf(sel);       // חודש להשוואה (ברירת מחדל: הסמוך)
 
     function render() {
+      if (cmp === sel) cmp = adjOf(sel);
       const monthRows = dated.filter(r => String(r.date).slice(0, 7) === sel);
       const expRows = monthRows.filter(r => r.direction === 'out');
       const expTotal = expRows.reduce((s, r) => s + (+r.amount || 0), 0);
@@ -912,6 +996,25 @@
           : (delta > 0 ? '▲ ' : '▼ ') + money0(Math.abs(delta)) + ' מ' + monLabel(prev.month) + (pct != null ? ` (${pct}%)` : '');
       }
       const avgDay = expTotal / new Date(+sel.slice(0, 4), +sel.slice(5, 7), 0).getDate();
+
+      // השוואת קטגוריות — תמיד לפי סדר כרונולוגי (מוקדם→מאוחר) כדי ש-▲=עלה, ▼=ירד יהיו נכונים
+      // גם כשחודש ההשוואה מאוחר יותר מהנבחר. delta = מאוחר − מוקדם.
+      const olderM = cmp ? (cmp < sel ? cmp : sel) : null;
+      const newerM = cmp ? (cmp < sel ? sel : cmp) : null;
+      const olderMap = olderM ? catMapOf(olderM) : {}, newerMap = newerM ? catMapOf(newerM) : {};
+      const olderTotal = Object.values(olderMap).reduce((s, v) => s + v, 0);
+      const newerTotal = Object.values(newerMap).reduce((s, v) => s + v, 0);
+      const allCats = [...new Set([...Object.keys(olderMap), ...Object.keys(newerMap)])];
+      const compRows = allCats.map(c => { const a = olderMap[c] || 0, b = newerMap[c] || 0; return { cat: c, a, b, delta: b - a }; })
+        .sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));
+      let topUp = null, topDown = null;
+      compRows.forEach(r => {
+        if (r.delta > 0 && (!topUp || r.delta > topUp.delta)) topUp = r;
+        if (r.delta < 0 && (!topDown || r.delta < topDown.delta)) topDown = r;
+      });
+      const totalDelta = newerTotal - olderTotal;
+      const dCol = (d) => d > 0 ? 'var(--red)' : (d < 0 ? 'var(--green)' : 'var(--muted)');
+      const dCell = (d, base) => { if (d === 0) return '—'; const pct = base > 0 ? ' (' + Math.round(Math.abs(d) / base * 100) + '%)' : (base === 0 ? ' (חדש)' : ''); return (d > 0 ? '▲ ' : '▼ ') + money0(Math.abs(d)) + pct; };
 
       view().innerHTML = `
         <div class="page-head"><h2>דוח בית — ${monLabel(sel)}</h2><div class="spacer"></div>
@@ -945,6 +1048,26 @@
         </div>
 
         <div class="card">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+            <h3 style="margin:0">השוואת קטגוריות — ${monLabel(sel)} מול</h3>
+            <select id="hrCmp" style="min-width:150px">${monthsDesc.filter(m => m !== sel).map(m => `<option value="${m}" ${m === cmp ? 'selected' : ''}>${monLabel(m)}</option>`).join('')}</select>
+          </div>
+          ${!cmp ? '<div class="muted">אין חודש נוסף להשוואה</div>' : `
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+            ${topUp ? `<span class="pill" style="background:#fef2f2;color:var(--red);border:1px solid #fecaca;padding:5px 10px;border-radius:20px;font-size:13px;font-weight:600">▲ הכי עלתה: ${esc(topUp.cat)} +${money0(topUp.delta)}</span>` : ''}
+            ${topDown ? `<span class="pill" style="background:#f0fdf4;color:var(--green);border:1px solid #bbf7d0;padding:5px 10px;border-radius:20px;font-size:13px;font-weight:600">▼ הכי ירדה: ${esc(topDown.cat)} −${money0(-topDown.delta)}</span>` : ''}
+          </div>
+          <div style="overflow-x:auto"><table><thead><tr><th>קטגוריה</th><th>${esc(monLabel(olderM))}</th><th>${esc(monLabel(newerM))}</th><th>שינוי</th></tr></thead><tbody>
+            ${compRows.map(r => `<tr>
+              <td>${esc(r.cat)}</td>
+              <td class="num">${money(r.a)}</td>
+              <td class="num">${money(r.b)}</td>
+              <td class="num" style="color:${dCol(r.delta)};font-weight:700">${dCell(r.delta, r.a)}</td></tr>`).join('')}
+            <tr style="border-top:2px solid var(--line);font-weight:800"><td>סה"כ הוצאות</td><td class="num">${money(olderTotal)}</td><td class="num">${money(newerTotal)}</td><td class="num" style="color:${dCol(totalDelta)}">${dCell(totalDelta, olderTotal)}</td></tr>
+          </tbody></table></div>`}
+        </div>
+
+        <div class="card">
           <h3 style="margin-top:0">מגמת הוצאות חודשית</h3>
           <p class="mini muted" style="margin-top:0">לחץ על עמודה כדי לעבור לחודש. החודש הנבחר מודגש.</p>
           <div id="hrTrend"></div>
@@ -952,9 +1075,10 @@
 
       $('#hrBack').onclick = () => scrHome();
       $('#hrPrint').onclick = () => window.print();
-      $('#hrMonth').onchange = (e) => { sel = e.target.value; render(); };
-      $('#hrPrev').onclick = () => { if (idx > 0) { sel = series[idx - 1].month; render(); } };
-      $('#hrNext').onclick = () => { if (idx < series.length - 1) { sel = series[idx + 1].month; render(); } };
+      $('#hrMonth').onchange = (e) => { sel = e.target.value; cmp = adjOf(sel); render(); };
+      $('#hrPrev').onclick = () => { if (idx > 0) { sel = series[idx - 1].month; cmp = adjOf(sel); render(); } };
+      $('#hrNext').onclick = () => { if (idx < series.length - 1) { sel = series[idx + 1].month; cmp = adjOf(sel); render(); } };
+      const cmpSel = $('#hrCmp'); if (cmpSel) cmpSel.onchange = (e) => { cmp = e.target.value || null; render(); };
 
       drawDonut($('#hrDonut'), cats.map(c => ({ label: c.category, value: c.total })));
       drawCatBars($('#hrBars'), cats);
@@ -966,7 +1090,7 @@
         <tr style="border-top:2px solid var(--line);font-weight:800"><td>סה"כ</td><td class="num">${money(expTotal)}</td><td class="num">100%</td><td class="num">${expRows.length}</td></tr>
         </tbody></table>` : '<div class="empty">אין הוצאות בחודש זה</div>';
       drawMonthExpenseBars($('#hrTrend'), series, sel);
-      $('#hrTrend').querySelectorAll('.mbar').forEach(b => b.onclick = () => { sel = b.dataset.month; render(); });
+      $('#hrTrend').querySelectorAll('.mbar').forEach(b => b.onclick = () => { sel = b.dataset.month; cmp = adjOf(sel); render(); });
     }
     render();
   }
