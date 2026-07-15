@@ -134,11 +134,13 @@
         <div class="card"><h3>גבייה מלקוחות</h3><div id="gaugeClient"></div></div>
         <div class="card"><h3>תשלום לקבלני משנה</h3><div id="gaugeSub"></div></div>
       </div>
+      <div class="card"><h3>נגבה מהלקוח מול שולם לקבלן — לפי פרויקט</h3><div id="clientVsSub"></div></div>
       <div class="card"><h3>רווח שנמשך לפי פרויקט</h3><div id="barsDrawn"></div></div>
       <div class="card"><h3>פרויקטים</h3>${projectMiniTable(o.per_project)}</div>`;
     drawRing($('#gaugeClient'), o.total_income, o.total_planned_income, 'נגבה', '#16a34a');
     drawRing($('#gaugeSub'), o.total_sub_paid, o.total_planned_sub, 'שולם', '#0ea5e9');
     drawDrawnBars($('#barsDrawn'), o.per_project);
+    drawClientVsSub($('#clientVsSub'), o.per_project);
     view().querySelectorAll('[data-openproj]').forEach(a => a.onclick = () => { go('projects'); setTimeout(() => openProject(+a.dataset.openproj), 30); });
   }
   function stat(label, value, cls, sub) {
@@ -178,6 +180,31 @@
       </tr>
     </thead><tbody>${body}</tbody></table></div>
     <div class="mini" style="margin-top:8px">"רווח שנמשך" = מה שנכנס מהלקוח, פחות מה ששולם לקבלן המשנה, פחות ההוצאות.</div>`;
+  }
+  // נגבה מהלקוח מול שולם לקבלן — לכל פרויקט, זה לצד זה עם אחוזים ופער
+  function drawClientVsSub(box, rows) {
+    if (!rows || !rows.length) { box.innerHTML = '<div class="empty">אין פרויקטים</div>'; return; }
+    box.innerHTML = rows.map(p => {
+      const cTot = +p.planned_income || 0, cGot = +p.income || 0;
+      const sTot = +p.planned_sub || 0, sPaid = +p.sub_paid || 0;
+      const cPct = cTot > 0 ? Math.round(cGot / cTot * 100) : 0;
+      const sPct = sTot > 0 ? Math.round(sPaid / sTot * 100) : 0;
+      const diff = cGot - sPaid;
+      return `<div style="padding:12px 0;border-bottom:1px solid var(--line)">
+        <a class="link" data-openproj="${p.id}" style="font-weight:700">${esc(p.name)}</a>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px">
+          <div style="flex:1;min-width:210px">
+            <div class="mini" style="display:flex;justify-content:space-between;margin-bottom:3px"><span>🟢 נגבה מהלקוח</span><span><b>${money0(cGot)}</b> מתוך ${money0(cTot)} · <b style="color:var(--green)">${cPct}%</b></span></div>
+            <div class="bar"><span style="width:${Math.min(100, cPct)}%;background:var(--green)"></span></div>
+          </div>
+          <div style="flex:1;min-width:210px">
+            <div class="mini" style="display:flex;justify-content:space-between;margin-bottom:3px"><span>🔵 שולם לקבלן</span><span><b>${money0(sPaid)}</b> מתוך ${money0(sTot)} · <b style="color:var(--accent)">${sPct}%</b></span></div>
+            <div class="bar"><span style="width:${Math.min(100, sPct)}%;background:var(--accent)"></span></div>
+          </div>
+        </div>
+        <div class="mini" style="margin-top:7px;color:${diff >= 0 ? 'var(--green)' : 'var(--red)'}">${diff >= 0 ? '↑ נכנס מהלקוח יותר ממה ששולם לקבלן ב-' : '↓ שולם לקבלן יותר ממה שנכנס ב-'}<b>${money(Math.abs(diff))}</b></div>
+      </div>`;
+    }).join('');
   }
 
   // ============================================================
