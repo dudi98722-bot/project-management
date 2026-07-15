@@ -181,7 +181,7 @@
     </thead><tbody>${body}</tbody></table></div>
     <div class="mini" style="margin-top:8px">"רווח שנמשך" = מה שנכנס מהלקוח, פחות מה ששולם לקבלן המשנה, פחות ההוצאות.</div>`;
   }
-  // נגבה מהלקוח מול שולם לקבלן — לכל פרויקט, זה לצד זה עם אחוזים ופער
+  // נגבה מהלקוח מול שולם לקבלן — לכל פרויקט, שני פסים אחד מתחת לשני להשוואה + אחוזים ופער
   function drawClientVsSub(box, rows) {
     if (!rows || !rows.length) { box.innerHTML = '<div class="empty">אין פרויקטים</div>'; return; }
     box.innerHTML = rows.map(p => {
@@ -192,12 +192,12 @@
       const diff = cGot - sPaid;
       return `<div style="padding:12px 0;border-bottom:1px solid var(--line)">
         <a class="link" data-openproj="${p.id}" style="font-weight:700">${esc(p.name)}</a>
-        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px">
-          <div style="flex:1;min-width:210px">
+        <div style="margin-top:8px">
+          <div style="margin-bottom:10px">
             <div class="mini" style="display:flex;justify-content:space-between;margin-bottom:3px"><span>🟢 נגבה מהלקוח</span><span><b>${money0(cGot)}</b> מתוך ${money0(cTot)} · <b style="color:var(--green)">${cPct}%</b></span></div>
             <div class="bar"><span style="width:${Math.min(100, cPct)}%;background:var(--green)"></span></div>
           </div>
-          <div style="flex:1;min-width:210px">
+          <div>
             <div class="mini" style="display:flex;justify-content:space-between;margin-bottom:3px"><span>🔵 שולם לקבלן</span><span><b>${money0(sPaid)}</b> מתוך ${money0(sTot)} · <b style="color:var(--accent)">${sPct}%</b></span></div>
             <div class="bar"><span style="width:${Math.min(100, sPct)}%;background:var(--accent)"></span></div>
           </div>
