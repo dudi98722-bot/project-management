@@ -153,6 +153,7 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
 
 <nav id="nav">
   <button data-tab="dash" class="active">📊 דשבורד</button>
+  <button data-tab="pnl">📈 רווח והפסד</button>
   <button data-tab="classify">🏷️ סיווג <span class="badge" id="pendingBadge" style="display:none">0</span></button>
   <button data-tab="tx">📋 כל התנועות</button>
   <button data-tab="projects">🏗️ פרויקטים</button>
@@ -184,6 +185,24 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
   <div class="charts-grid" style="margin-top:16px">
     <div class="card"><h3>פירוט הוצאות לפי קטגוריה</h3><div id="dashExpTable"></div></div>
     <div class="card"><h3>פירוט הכנסות לפי קטגוריה</h3><div id="dashIncTable"></div></div>
+  </div>
+</section>
+
+<!-- ============ רווח והפסד ============ -->
+<section id="tab-pnl">
+  <div class="toolbar">
+    <select id="pnlYear"></select>
+    <div class="seg" id="pnlScope">
+      <button data-v="biz" class="on">🏢 עסק</button>
+      <button data-v="home">🏠 בית</button>
+      <button data-v="all">הכל</button>
+    </div>
+    <button class="btn sec sm" onclick="printPnL()">🖨️ הדפסה / PDF</button>
+    <button class="btn sec sm" onclick="exportPnL()">📤 ייצוא לאקסל</button>
+  </div>
+  <div class="card table-wrap" id="pnlTableWrap"></div>
+  <div class="muted" style="font-size:12px;margin-top:8px">
+    הסכומים לפי סכום התנועה בפועל. עובדים = משכורות + קבלני משנה · חומר = חומרים וספקים · מנופים = קטגוריית מנופים · שאר הוצאות = כל היתר (כולל תיווך, דלק, שכירות וכו').
   </div>
 </section>
 
@@ -807,10 +826,10 @@ function dedupKey(t){ return [t.date, t.kind, (+t.amount).toFixed(2), normDesc(t
 
 /* ================= משתמשים והרשאות ================= */
 const ROLES = {
-  admin:  {tabs:['dash','classify','tx','projects','manual','import','settings'], homeOnly:false, bizOnly:false, assignScope:true, canDelete:true, readOnly:false, label:'גישה מלאה'},
-  beni:   {tabs:['dash','classify','projects','manual'], homeOnly:false, bizOnly:false, assignScope:true, canDelete:false, readOnly:false, label:'כל הדוחות · סיווג הכל · דיווח בית ועסק'},
+  admin:  {tabs:['dash','pnl','classify','tx','projects','manual','import','settings'], homeOnly:false, bizOnly:false, assignScope:true, canDelete:true, readOnly:false, label:'גישה מלאה'},
+  beni:   {tabs:['dash','pnl','classify','projects','manual'], homeOnly:false, bizOnly:false, assignScope:true, canDelete:false, readOnly:false, label:'כל הדוחות · סיווג הכל · דיווח בית ועסק'},
   lea:    {tabs:['dash','classify','manual'], homeOnly:true, bizOnly:false, assignScope:false, canDelete:false, readOnly:false, label:'דוחות בית · סיווג בית · דיווח בית'},
-  itamar: {tabs:['dash','projects'], homeOnly:false, bizOnly:true, assignScope:false, canDelete:false, readOnly:true, label:'צפייה בלבד — דשבורד עסק ופרויקטים'}
+  itamar: {tabs:['dash','pnl','projects'], homeOnly:false, bizOnly:true, assignScope:false, canDelete:false, readOnly:true, label:'צפייה בלבד — דשבורד עסק ופרויקטים'}
 };
 let currentUser = null;
 function perms(){ return (currentUser && ROLES[currentUser.role]) || ROLES.lea; }
@@ -983,6 +1002,7 @@ function renderAll(){
   refreshBadge();
   buildMonthSelects();
   renderDashboard();
+  renderPnL();
   renderClassify();
   renderTxTable();
   renderProjects();
@@ -1028,6 +1048,114 @@ document.getElementById('dashScope').addEventListener('click', e=>{
   document.querySelectorAll('#dashScope button').forEach(x=>x.classList.remove('on'));
   b.classList.add('on'); dashScopeVal = b.dataset.v; renderDashboard();
 });
+
+/* ================= רווח והפסד ================= */
+let pnlYearVal = null, pnlScopeVal = 'biz';
+const PNL_GROUPS = [
+  {key:'income',    label:'הכנסות',       kind:'income'},
+  {key:'materials', label:'🧱 חומר',       cats:['חומרים וספקים','חומר','חומרים']},
+  {key:'workers',   label:'👷 עובדים',     cats:['משכורות','קבלני משנה','עובדים']},
+  {key:'cranes',    label:'🏗️ מנופים',     cats:['מנופים']}
+];
+function pnlAllYears(){
+  const s = new Set(classified().map(t=>t.date.slice(0,4)).filter(y=>/^\d{4}$/.test(y)));
+  return [...s].sort().reverse();
+}
+function computePnLRow(monthKey, scope){
+  const rows = db.tx.filter(t=>!t.deleted && t.date.slice(0,7)===monthKey
+    && (scope==='all' ? (t.scope==='biz'||t.scope==='home') : t.scope===scope));
+  const inc = rows.filter(t=>t.kind==='income').reduce((s,t)=>s+t.amount,0);
+  const exps = rows.filter(t=>t.kind==='expense');
+  const materials = exps.filter(t=>PNL_GROUPS[1].cats.includes(t.category)).reduce((s,t)=>s+t.amount,0);
+  const workers   = exps.filter(t=>PNL_GROUPS[2].cats.includes(t.category)).reduce((s,t)=>s+t.amount,0);
+  const cranes    = exps.filter(t=>PNL_GROUPS[3].cats.includes(t.category)).reduce((s,t)=>s+t.amount,0);
+  const expTotal  = exps.reduce((s,t)=>s+t.amount,0);
+  const other = expTotal - materials - workers - cranes;
+  return {monthKey, inc, materials, workers, cranes, other, expTotal, balance: inc-expTotal};
+}
+function renderPnL(){
+  const ysel = document.getElementById('pnlYear');
+  const years = pnlAllYears();
+  const keep = ysel.value;
+  ysel.innerHTML = '<option value="all">כל השנים</option>' + years.map(y=>'<option value="'+y+'">'+y+'</option>').join('');
+  if(pnlYearVal===null) pnlYearVal = years[0] || 'all';
+  ysel.value = [...ysel.options].some(o=>o.value===(keep||pnlYearVal)) ? (keep||pnlYearVal) : (years[0]||'all');
+  pnlYearVal = ysel.value;
+  // מגבלת הרשאה: itamar/הכל תלוי בתפקיד
+  const p = perms();
+  const scopeSeg = document.getElementById('pnlScope');
+  if(p.homeOnly){ pnlScopeVal='home'; scopeSeg.style.display='none'; }
+  else if(p.bizOnly){ pnlScopeVal='biz'; scopeSeg.style.display='none'; }
+  else scopeSeg.style.display='inline-flex';
+  document.querySelectorAll('#pnlScope button').forEach(x=>x.classList.toggle('on', x.dataset.v===pnlScopeVal));
+
+  // חודשים בשנה הנבחרת שיש בהם תנועות מסווגות בהיקף הרלוונטי
+  const scope = pnlScopeVal;
+  const monthsSet = new Set(db.tx.filter(t=>!t.deleted
+      && (scope==='all' ? (t.scope==='biz'||t.scope==='home') : t.scope===scope)
+      && (pnlYearVal==='all' || t.date.slice(0,4)===pnlYearVal))
+    .map(t=>t.date.slice(0,7)).filter(Boolean));
+  const months = [...monthsSet].sort().reverse();
+  const rows = months.map(m=>computePnLRow(m, scope));
+  const tot = rows.reduce((a,r)=>({inc:a.inc+r.inc, materials:a.materials+r.materials, workers:a.workers+r.workers,
+    cranes:a.cranes+r.cranes, other:a.other+r.other, expTotal:a.expTotal+r.expTotal, balance:a.balance+r.balance}),
+    {inc:0,materials:0,workers:0,cranes:0,other:0,expTotal:0,balance:0});
+  lastPnLRows = rows; lastPnLTotal = tot; lastPnLScope = scope;
+
+  const scopeName = scope==='biz'?'עסק':scope==='home'?'בית':'הכל';
+  const wrap = document.getElementById('pnlTableWrap');
+  if(!rows.length){ wrap.innerHTML = '<div class="empty">אין נתונים מסווגים ('+scopeName+') לתקופה שנבחרה</div>'; return; }
+  const cell = (v, cls) => '<td class="amt '+(cls||'')+'">'+(v?fmt(v):'—')+'</td>';
+  wrap.innerHTML = '<table id="pnlTable"><thead><tr>'
+    +'<th>חודש</th><th>הכנסות</th><th>🧱 חומר</th><th>👷 עובדים</th><th>🏗️ מנופים</th><th>שאר הוצאות</th><th>סה"כ הוצאות</th><th>רווח / הפסד</th>'
+    +'</tr></thead><tbody>'
+    + rows.map(r=>'<tr>'
+      +'<td style="white-space:nowrap"><b>'+monthLabel(r.monthKey)+'</b></td>'
+      + cell(r.inc,'green')
+      + cell(r.materials,'red') + cell(r.workers,'red') + cell(r.cranes,'red') + cell(r.other,'red')
+      + cell(r.expTotal,'red')
+      + '<td class="amt" style="font-weight:700;color:'+(r.balance>=0?'var(--income)':'var(--expense)')+'">'+fmt(r.balance)+'</td>'
+      +'</tr>').join('')
+    + '</tbody><tfoot><tr><td>סה"כ '+(pnlYearVal==='all'?'':pnlYearVal)+'</td>'
+      + '<td class="amt green">'+fmt(tot.inc)+'</td>'
+      + '<td class="amt red">'+fmt(tot.materials)+'</td><td class="amt red">'+fmt(tot.workers)+'</td>'
+      + '<td class="amt red">'+fmt(tot.cranes)+'</td><td class="amt red">'+fmt(tot.other)+'</td>'
+      + '<td class="amt red">'+fmt(tot.expTotal)+'</td>'
+      + '<td class="amt" style="color:'+(tot.balance>=0?'var(--income)':'var(--expense)')+'">'+fmt(tot.balance)+'</td>'
+      + '</tr></tfoot></table>';
+}
+let lastPnLRows = [], lastPnLTotal = null, lastPnLScope = 'biz';
+document.getElementById('pnlYear').addEventListener('change', e=>{ pnlYearVal=e.target.value; renderPnL(); });
+document.getElementById('pnlScope').addEventListener('click', e=>{
+  const b = e.target.closest('button'); if(!b) return;
+  pnlScopeVal = b.dataset.v; renderPnL();
+});
+function exportPnL(){
+  if(!lastPnLRows.length){ toast('אין נתונים לייצוא'); return; }
+  const rows = [['חודש','הכנסות','חומר','עובדים','מנופים','שאר הוצאות','סה"כ הוצאות','רווח/הפסד']];
+  lastPnLRows.forEach(r=>rows.push([monthLabel(r.monthKey), r.inc, r.materials, r.workers, r.cranes, r.other, r.expTotal, r.balance]));
+  const t = lastPnLTotal;
+  rows.push(['סה"כ', t.inc, t.materials, t.workers, t.cranes, t.other, t.expTotal, t.balance]);
+  const csv = '﻿' + rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8'}));
+  a.download = 'רווח-והפסד-'+(pnlYearVal==='all'?'הכל':pnlYearVal)+'.csv';
+  a.click();
+}
+function printPnL(){
+  const tbl = document.getElementById('pnlTable');
+  if(!tbl){ toast('אין נתונים להדפסה'); return; }
+  const scopeName = lastPnLScope==='biz'?'עסק':lastPnLScope==='home'?'בית':'הכל';
+  const w = window.open('', '_blank');
+  w.document.write('<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8"><title>דוח רווח והפסד</title>'
+    +'<style>body{font-family:Arial;padding:24px}h2{color:#312e81}table{width:100%;border-collapse:collapse;font-size:13px;margin-top:12px}'
+    +'th,td{border:1px solid #cbd5e1;padding:7px 9px;text-align:right}th{background:#e0e7ff}tfoot td{font-weight:700;background:#f1f5f9}'
+    +'.amt{direction:ltr;text-align:left}</style></head><body>'
+    +'<h2>📈 דוח רווח והפסד — '+scopeName+' · '+(pnlYearVal==='all'?'כל השנים':pnlYearVal)+'</h2>'
+    + tbl.outerHTML.replace(/style="[^"]*"/g,'') + '</body></html>');
+  w.document.close();
+  setTimeout(()=>{ w.print(); }, 300);
+}
 
 /* ================= דשבורד ================= */
 let charts = {};
