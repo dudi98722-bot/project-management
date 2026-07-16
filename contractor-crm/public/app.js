@@ -89,6 +89,7 @@
     { id: 'projects', label: '🏗️ פרויקטים', show: c => c.viewBusiness, fn: scrProjects },
     { id: 'subs', label: '👷 קבלני משנה', show: c => c.viewBusiness, fn: scrSubs },
     { id: 'tx', label: '💰 תנועות', show: c => c.viewBusiness, fn: scrTx },
+    { id: 'daily', label: '📅 דוח יומי', show: c => c.viewBusiness, fn: scrDaily },
     { id: 'projexp', label: '🧱 הוצאה לפרויקט', show: c => c.viewBusiness, fn: scrProjExp },
     { id: 'biz', label: '🧾 הוצאות עסק', show: c => c.viewBusiness, fn: scrBiz },
     { id: 'payreq', label: '🧮 בקשת תשלום', show: c => c.viewBusiness, fn: scrPayRequest },
@@ -205,6 +206,70 @@
         <div class="mini" style="margin-top:7px;color:${diff >= 0 ? 'var(--green)' : 'var(--red)'}">${diff >= 0 ? '↑ נכנס מהלקוח יותר ממה ששולם לקבלן ב-' : '↓ שולם לקבלן יותר ממה שנכנס ב-'}<b>${money(Math.abs(diff))}</b></div>
       </div>`;
     }).join('');
+  }
+
+  // ============================================================
+  //  דוח יומי — לכל יום (30 יום אחורה): תקבולים/תשלומים/הוצאות + יתרה
+  // ============================================================
+  const ymd = (dt) => dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+  async function scrDaily() {
+    loading();
+    const DAYS = 30;
+    const toStr = today();
+    const fromDt = new Date(); fromDt.setDate(fromDt.getDate() - (DAYS - 1));
+    const rows = await guard(window.Store.tx.list({ from: ymd(fromDt), to: toStr }));
+
+    // קיבוץ לפי יום
+    const byDay = {};
+    rows.forEach(t => {
+      const d = t.date ? String(t.date).slice(0, 10) : null; if (!d) return;
+      const g = byDay[d] || (byDay[d] = { date: d, income: 0, subPaid: 0, projExp: 0, bizExp: 0, txs: [] });
+      const amt = +t.amount || 0;
+      if (t.type === 'client_payment') g.income += amt;
+      else if (t.type === 'sub_payment') g.subPaid += amt;
+      else if (t.type === 'project_expense') g.projExp += amt;
+      else if (t.type === 'business_expense') g.bizExp += amt;
+      g.txs.push(t);
+    });
+    // רשימת כל הימים (היום למעלה, אחורה)
+    const days = [];
+    for (let i = 0; i < DAYS; i++) { const dt = new Date(); dt.setDate(dt.getDate() - i); const k = ymd(dt); days.push(byDay[k] || { date: k, income: 0, subPaid: 0, projExp: 0, bizExp: 0, txs: [] }); }
+    const tot = days.reduce((a, g) => ({ income: a.income + g.income, subPaid: a.subPaid + g.subPaid, projExp: a.projExp + g.projExp, bizExp: a.bizExp + g.bizExp }), { income: 0, subPaid: 0, projExp: 0, bizExp: 0 });
+    const totBal = tot.income - tot.subPaid - tot.projExp - tot.bizExp;
+    const cell = (v, col) => `<td class="num" style="color:${col}">${v ? money0(v) : '—'}</td>`;
+
+    view().innerHTML = `
+      <div class="page-head"><h2>דוח יומי</h2><span class="mini">${DAYS} הימים האחרונים · לחץ על יום לפירוט</span></div>
+      <div class="card" style="padding:6px;overflow-x:auto"><table style="min-width:780px"><thead><tr>
+        <th>תאריך</th><th class="num">תקבול מלקוחות</th><th class="num">תשלום לקבלן משנה</th><th class="num">הוצאות לפרויקט</th><th class="num">הוצאות עסק</th><th class="num">יתרה יומית</th>
+      </tr></thead><tbody>
+      ${days.map(g => {
+      const bal = g.income - g.subPaid - g.projExp - g.bizExp, isToday = g.date === toStr, empty = !g.txs.length;
+      return `<tr data-day="${g.date}" style="cursor:pointer${isToday ? ';background:var(--soft);font-weight:700' : ''}">
+        <td>${dfmt(g.date)}${isToday ? ' <span class="mini" style="color:var(--brand-d)">היום</span>' : ''}</td>
+        ${cell(g.income, 'var(--green)')}${cell(g.subPaid, 'var(--red)')}${cell(g.projExp, 'var(--red)')}${cell(g.bizExp, 'var(--red)')}
+        <td class="num" style="font-weight:800;color:${bal >= 0 ? 'var(--green)' : 'var(--red)'}">${empty ? '—' : money0(bal)}</td></tr>`;
+    }).join('')}
+      <tr style="border-top:2px solid var(--line);font-weight:800"><td>סה"כ ${DAYS} ימים</td>
+        <td class="num" style="color:var(--green)">${money0(tot.income)}</td><td class="num" style="color:var(--red)">${money0(tot.subPaid)}</td>
+        <td class="num" style="color:var(--red)">${money0(tot.projExp)}</td><td class="num" style="color:var(--red)">${money0(tot.bizExp)}</td>
+        <td class="num" style="color:${totBal >= 0 ? 'var(--green)' : 'var(--red)'}">${money0(totBal)}</td></tr>
+      </tbody></table></div>`;
+
+    const dayMap = {}; days.forEach(g => dayMap[g.date] = g);
+    view().querySelectorAll('[data-day]').forEach(tr => tr.onclick = () => dailyDetail(tr.dataset.day, dayMap[tr.dataset.day]));
+  }
+  function dailyDetail(date, g) {
+    const txs = (g && g.txs) || [];
+    const body = txs.length ? `<div style="overflow-x:auto"><table><thead><tr><th>סוג</th><th>פרטים</th><th>חשבונית</th><th class="num">סכום</th></tr></thead><tbody>${txs.map(t => {
+      const isIn = t.type === 'client_payment';
+      const detail = t.type === 'business_expense' ? [t.supplier, t.purpose].filter(Boolean).join(' · ')
+        : t.type === 'project_expense' ? [t.project_name, t.supplier, t.purpose].filter(Boolean).join(' · ')
+          : [t.project_name, t.stage_name, t.subcontractor_name].filter(Boolean).join(' · ');
+      return `<tr><td>${esc(TYPE_HE[t.type] || t.type)}</td><td class="mini">${esc(detail) || '—'}</td><td>${invoiceLink(t.invoice_url)}</td>
+        <td class="num" style="font-weight:700;color:${isIn ? 'var(--green)' : 'var(--red)'}">${isIn ? '+' : '−'}${money0(t.amount)}</td></tr>`;
+    }).join('')}</tbody></table></div>` : '<div class="empty">אין תנועות ביום זה</div>';
+    openModal('פירוט יום ' + dfmt(date), body, [{ label: 'סגירה', cls: 'ghost', onClick: (c) => c() }]);
   }
 
   // ============================================================
