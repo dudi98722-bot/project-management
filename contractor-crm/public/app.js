@@ -224,30 +224,22 @@
   function renderProjectCards(list) {
     const box = $('#projList');
     if (!list.length) { box.innerHTML = '<div class="empty"><div class="big">🏗️</div>אין פרויקטים. צור פרויקט חדש כדי להתחיל.</div>'; return; }
-    box.innerHTML = list.map(p => {
-      const pct = p.expected_profit > 0 ? Math.max(0, Math.min(100, Math.round(p.actual_profit / p.expected_profit * 100))) : 0;
-      const barCls = p.profit_gap >= 0 ? '' : (p.actual_profit < 0 ? 'bad' : 'warn');
-      return `<div class="card" style="cursor:pointer" data-proj="${p.id}">
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <h3 style="margin:0">${esc(p.name)}</h3>
-          <div class="spacer" style="flex:1"></div>
-          <span class="mini">${esc(p.client_name || '')}</span>
-        </div>
-        <div class="grid stat-grid" style="margin-top:12px">
-          ${miniStat('נכנס מלקוח', money(p.income))}
-          ${miniStat('שולם לקבלני משנה', money(p.sub_paid))}
-          ${miniStat('הוצאות פרויקט', money(p.project_expenses))}
-          ${miniStat('רווח צפוי', money(p.expected_profit))}
-          ${miniStat('רווח שנמשך', money(p.actual_profit), p.actual_profit >= 0 ? 'g' : 'r')}
-        </div>
-        <div style="margin-top:12px">
-          <div class="mini" style="margin-bottom:4px">${gapText(p.profit_gap)} (${pct}% מהיעד)</div>
-          <div class="bar ${barCls}"><span style="width:${pct}%"></span></div>
-        </div></div>`;
-    }).join('');
+    box.innerHTML = `<div class="card" style="padding:6px;overflow-x:auto"><table style="min-width:720px"><thead><tr>
+        <th>פרויקט</th><th class="num">נכנס מלקוח</th><th class="num">שולם לקבלן</th><th class="num">הוצאות</th><th class="num">רווח צפוי</th><th class="num">רווח שנמשך</th><th class="num">% מהיעד</th>
+      </tr></thead><tbody>${list.map(p => {
+        const pct = p.expected_profit > 0 ? Math.max(0, Math.min(100, Math.round(p.actual_profit / p.expected_profit * 100))) : 0;
+        return `<tr data-proj="${p.id}" style="cursor:pointer">
+          <td><b>${esc(p.name)}</b>${p.client_name ? `<div class="mini muted">${esc(p.client_name)}</div>` : ''}</td>
+          <td class="num" style="color:var(--green)">${money0(p.income)}</td>
+          <td class="num" style="color:var(--red)">${money0(p.sub_paid)}</td>
+          <td class="num">${money0(p.project_expenses)}</td>
+          <td class="num">${money0(p.expected_profit)}</td>
+          <td class="num" style="font-weight:800;color:${p.actual_profit >= 0 ? 'var(--green)' : 'var(--red)'}">${money0(p.actual_profit)}</td>
+          <td class="num">${pct}%</td>
+        </tr>`;
+      }).join('')}</tbody></table></div>`;
     box.querySelectorAll('[data-proj]').forEach(c => c.onclick = () => openProject(+c.dataset.proj));
   }
-  function miniStat(label, value, cls) { return `<div class="stat" style="padding:12px"><div class="label">${esc(label)}</div><div class="value ${cls || ''}" style="font-size:19px">${value}</div></div>`; }
 
   async function openProject(id) {
     loading();
