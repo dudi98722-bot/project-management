@@ -431,7 +431,7 @@
   // =====================================================================
   //  AUTH
   // =====================================================================
-  const ADMIN_CAPS = { manageUsers: true, viewBusiness: true, editProjects: true, writeTx: true, projectExpenseOnly: true, del: true, multiDelete: true, viewReports: true, home: true };
+  const ADMIN_CAPS = { manageUsers: true, viewBusiness: true, editProjects: true, editStages: true, writeTx: true, projectExpenseOnly: true, del: true, multiDelete: true, viewReports: true, home: true };
   window.Auth = {
     user: null,
     async login(username, password) {
