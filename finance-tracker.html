@@ -1105,23 +1105,24 @@ function renderPnL(){
   const scopeName = scope==='biz'?'עסק':scope==='home'?'בית':'הכל';
   const wrap = document.getElementById('pnlTableWrap');
   if(!rows.length){ wrap.innerHTML = '<div class="empty">אין נתונים מסווגים ('+scopeName+') לתקופה שנבחרה</div>'; return; }
-  const cell = (v, cls) => '<td class="amt '+(cls||'')+'">'+(v?fmt(v):'—')+'</td>';
+  // המספרים נעטפים ב-span (לא class="amt" על ה-td עצמו — זה שובר את פריסת הטבלה)
+  const cell = (v, cls) => '<td style="text-align:left"><span class="amt '+(cls||'')+'">'+(v?fmt(v):'—')+'</span></td>';
+  const balCell = (v) => '<td style="text-align:left"><span class="amt" style="color:'+(v>=0?'var(--income)':'var(--expense)')+'">'+fmt(v)+'</span></td>';
   wrap.innerHTML = '<table id="pnlTable"><thead><tr>'
-    +'<th>חודש</th><th>הכנסות</th><th>🧱 חומר</th><th>👷 עובדים</th><th>🏗️ מנופים</th><th>שאר הוצאות</th><th>סה"כ הוצאות</th><th>רווח / הפסד</th>'
+    +'<th>חודש</th><th style="text-align:left">הכנסות</th><th style="text-align:left">🧱 חומר</th><th style="text-align:left">👷 עובדים</th><th style="text-align:left">🏗️ מנופים</th><th style="text-align:left">שאר הוצאות</th><th style="text-align:left">סה"כ הוצאות</th><th style="text-align:left">רווח / הפסד</th>'
     +'</tr></thead><tbody>'
     + rows.map(r=>'<tr>'
       +'<td style="white-space:nowrap"><b>'+monthLabel(r.monthKey)+'</b></td>'
       + cell(r.inc,'green')
       + cell(r.materials,'red') + cell(r.workers,'red') + cell(r.cranes,'red') + cell(r.other,'red')
       + cell(r.expTotal,'red')
-      + '<td class="amt" style="font-weight:700;color:'+(r.balance>=0?'var(--income)':'var(--expense)')+'">'+fmt(r.balance)+'</td>'
+      + balCell(r.balance)
       +'</tr>').join('')
-    + '</tbody><tfoot><tr><td>סה"כ '+(pnlYearVal==='all'?'':pnlYearVal)+'</td>'
-      + '<td class="amt green">'+fmt(tot.inc)+'</td>'
-      + '<td class="amt red">'+fmt(tot.materials)+'</td><td class="amt red">'+fmt(tot.workers)+'</td>'
-      + '<td class="amt red">'+fmt(tot.cranes)+'</td><td class="amt red">'+fmt(tot.other)+'</td>'
-      + '<td class="amt red">'+fmt(tot.expTotal)+'</td>'
-      + '<td class="amt" style="color:'+(tot.balance>=0?'var(--income)':'var(--expense)')+'">'+fmt(tot.balance)+'</td>'
+    + '</tbody><tfoot><tr><td style="white-space:nowrap"><b>סה"כ '+(pnlYearVal==='all'?'':pnlYearVal)+'</b></td>'
+      + cell(tot.inc,'green')
+      + cell(tot.materials,'red') + cell(tot.workers,'red') + cell(tot.cranes,'red') + cell(tot.other,'red')
+      + cell(tot.expTotal,'red')
+      + balCell(tot.balance)
       + '</tr></tfoot></table>';
 }
 let lastPnLRows = [], lastPnLTotal = null, lastPnLScope = 'biz';
