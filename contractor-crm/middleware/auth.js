@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 //  manageUsers   - ניהול משתמשים
 //  viewBusiness  - צפייה בצד העסקי (פרויקטים/תנועות)
 //  editProjects  - יצירה/עריכה של פרויקטים, שלבים, קבלני משנה
-//  editStages    - הוספה/עריכה של שלבים בלבד (למדווח — בלי עריכת פרויקטים/קבלנים)
+//  addStages     - הוספת שלבים בלבד (למדווח — בלי עריכה/מחיקה של שלבים ובלי עריכת פרויקטים)
 //  writeTx       - הזנת תנועות (הכנסות/הוצאות)
 //  projectExpenseOnly - רק הזנת הוצאה לפרויקט + העלאת חשבונית (עובד שטח)
 //  del           - מחיקה רכה בודדת
@@ -14,17 +14,17 @@ const jwt = require('jsonwebtoken');
 //  home          - מודול הבית
 const ROLES = {
   // מנהל ראשי - הכל (כולל ניהול משתמשים)
-  admin:     { label:'מנהל ראשי', manageUsers:true,  viewBusiness:true,  editProjects:true,  editStages:true,  writeTx:true,  projectExpenseOnly:true,  del:true,  multiDelete:true,  viewReports:true,  home:true  },
+  admin:     { label:'מנהל ראשי', manageUsers:true,  viewBusiness:true,  editProjects:true,  addStages:true,  writeTx:true,  projectExpenseOnly:true,  del:true,  multiDelete:true,  viewReports:true,  home:true  },
   // מזכירה - הכל חוץ ממחיקה מרובה וניהול משתמשים
-  secretary: { label:'מזכירה',    manageUsers:false, viewBusiness:true,  editProjects:true,  editStages:true,  writeTx:true,  projectExpenseOnly:true,  del:true,  multiDelete:false, viewReports:true,  home:false },
+  secretary: { label:'מזכירה',    manageUsers:false, viewBusiness:true,  editProjects:true,  addStages:true,  writeTx:true,  projectExpenseOnly:true,  del:true,  multiDelete:false, viewReports:true,  home:false },
   // מנהל - כל ההזנות (פרויקט/עסק/לקוחות/קבלן) + בית + כל הדוחות, בלי ניהול משתמשים
-  owner:     { label:'מנהל',      manageUsers:false, viewBusiness:true,  editProjects:true,  editStages:true,  writeTx:true,  projectExpenseOnly:true,  del:false, multiDelete:false, viewReports:true,  home:true  },
-  // מדווח (אמיתי) - כל ההזנות + הוספת/עריכת שלבים (לקוח+קבלן), בלי עריכת פרויקטים/מחיקה
-  reporter:  { label:'מדווח',     manageUsers:false, viewBusiness:true,  editProjects:false, editStages:true,  writeTx:true,  projectExpenseOnly:true,  del:false, multiDelete:false, viewReports:true,  home:false },
+  owner:     { label:'מנהל',      manageUsers:false, viewBusiness:true,  editProjects:true,  addStages:true,  writeTx:true,  projectExpenseOnly:true,  del:false, multiDelete:false, viewReports:true,  home:true  },
+  // מדווח (אמיתי) - כל ההזנות + הוספת שלבים בלבד (לקוח+קבלן), בלי עריכת שלב/פרויקט ובלי מחיקה
+  reporter:  { label:'מדווח',     manageUsers:false, viewBusiness:true,  editProjects:false, addStages:true,  writeTx:true,  projectExpenseOnly:true,  del:false, multiDelete:false, viewReports:true,  home:false },
   // עובד שטח - רק הזנת הוצאה לפרויקט + חשבוניות
-  field:     { label:'עובד שטח',  manageUsers:false, viewBusiness:false, editProjects:false, editStages:false, writeTx:false, projectExpenseOnly:true,  del:false, multiDelete:false, viewReports:false, home:false },
+  field:     { label:'עובד שטח',  manageUsers:false, viewBusiness:false, editProjects:false, addStages:false, writeTx:false, projectExpenseOnly:true,  del:false, multiDelete:false, viewReports:false, home:false },
   // אשה - רק מודול הבית
-  home:      { label:'בית',       manageUsers:false, viewBusiness:false, editProjects:false, editStages:false, writeTx:false, projectExpenseOnly:false, del:true,  multiDelete:false, viewReports:false, home:true  }
+  home:      { label:'בית',       manageUsers:false, viewBusiness:false, editProjects:false, addStages:false, writeTx:false, projectExpenseOnly:false, del:true,  multiDelete:false, viewReports:false, home:true  }
 };
 
 function authenticate(req, res, next) {

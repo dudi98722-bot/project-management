@@ -275,7 +275,7 @@
         ${stat('הוצאות כלליות', money(p.project_expenses), 'r')}
       </div>
       <div class="card"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0;flex:1">שלבים</h3>
-        ${(c.editProjects || c.editStages) ? `<button class="btn sm" id="bulkStages">➕ הזנת שלבים מרוכזת</button><button class="btn ghost sm" id="importTable">📥 ייבוא מטבלה</button><button class="btn ghost sm" id="addStage">שלב בודד</button>` : ''}</div>
+        ${(c.editProjects || c.addStages) ? `<button class="btn sm" id="bulkStages">➕ הזנת שלבים מרוכזת</button><button class="btn ghost sm" id="importTable">📥 ייבוא מטבלה</button><button class="btn ghost sm" id="addStage">שלב בודד</button>` : ''}</div>
         <div id="stagesBox" style="margin-top:12px"></div></div>
       <div class="card"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0;flex:1">תנועות בפרויקט</h3>
         ${c.writeTx ? `<button class="btn green sm" data-newtx="client_payment">➕ תשלום מלקוח</button>
@@ -284,7 +284,7 @@
       </div><div id="projTx" style="margin-top:12px"></div></div>`;
     $('#backBtn').onclick = () => scrProjects();
     if (c.editProjects) $('#editProj').onclick = () => projectForm(p);
-    if (c.editProjects || c.editStages) { $('#addStage').onclick = () => stageForm(null, p.id); $('#bulkStages').onclick = () => bulkStagesForm(p.id); $('#importTable').onclick = () => importTableForm(p.id); }
+    if (c.editProjects || c.addStages) { $('#addStage').onclick = () => stageForm(null, p.id); $('#bulkStages').onclick = () => bulkStagesForm(p.id); $('#importTable').onclick = () => importTableForm(p.id); }
     if (c.del) $('#delProj').onclick = async () => { if (await confirmDialog('להעביר את הפרויקט לסל המחזור?', 'מחיקה')) { await guard(window.Store.projects.remove(p.id)); toast('הועבר לסל המחזור', 'ok'); scrProjects(); } };
     view().querySelectorAll('[data-newtx]').forEach(b => b.onclick = () => txForm(b.dataset.newtx, { project_id: p.id, stages }));
     renderStages(stages, p, c);
@@ -293,14 +293,14 @@
   function renderStages(stages, p, c) {
     const box = $('#stagesBox');
     if (!stages.length) { box.innerHTML = '<div class="empty">אין שלבים. הוסף שלבים כדי לחלק את הפרויקט.</div>'; return; }
-    box.innerHTML = `<table><thead><tr><th>#</th><th>שלב</th><th>סכום לקוח</th><th>נכנס</th><th>סכום קבלן</th><th>שולם</th>${(c.editProjects || c.editStages) ? '<th></th>' : ''}</tr></thead><tbody>${stages.map(s => `
+    box.innerHTML = `<table><thead><tr><th>#</th><th>שלב</th><th>סכום לקוח</th><th>נכנס</th><th>סכום קבלן</th><th>שולם</th>${(c.editProjects || c.del) ? '<th></th>' : ''}</tr></thead><tbody>${stages.map(s => `
       <tr><td>${s.seq}</td><td>${esc(s.name)}</td>
         <td class="num">${money(s.client_amount)}</td>
         <td class="num" style="color:var(--green)">${money(s.paid_in)}</td>
         <td class="num">${money(s.sub_amount)}</td>
         <td class="num" style="color:var(--red)">${money(s.paid_sub)}</td>
-        ${(c.editProjects || c.editStages) ? `<td><button class="btn xs ghost" data-editstage="${s.id}">✏️</button>${c.del ? `<button class="btn xs red" data-delstage="${s.id}">🗑️</button>` : ''}</td>` : ''}</tr>`).join('')}</tbody></table>`;
-    if (c.editProjects || c.editStages) {
+        ${(c.editProjects || c.del) ? `<td>${c.editProjects ? `<button class="btn xs ghost" data-editstage="${s.id}">✏️</button>` : ''}${c.del ? `<button class="btn xs red" data-delstage="${s.id}">🗑️</button>` : ''}</td>` : ''}</tr>`).join('')}</tbody></table>`;
+    if (c.editProjects || c.del) {
       box.querySelectorAll('[data-editstage]').forEach(b => b.onclick = () => { const s = stages.find(x => x.id === +b.dataset.editstage); stageForm(s, p.id); });
       box.querySelectorAll('[data-delstage]').forEach(b => b.onclick = async () => { if (await confirmDialog('למחוק את השלב?', 'מחיקה')) { await guard(window.Store.stages.remove(+b.dataset.delstage)); toast('נמחק', 'ok'); openProject(p.id); } });
     }

@@ -4,7 +4,7 @@ const { authenticate, can, canAny } = require('../middleware/auth');
 const router = express.Router();
 
 // POST /api/stages - הוספת שלב בודד (קבלן המשנה יורש מהפרויקט)
-router.post('/', authenticate, canAny(['editProjects', 'editStages']), async (req, res) => {
+router.post('/', authenticate, canAny(['editProjects', 'addStages']), async (req, res) => {
   const { project_id, name, seq, client_amount, sub_amount, status } = req.body;
   if (!project_id || !name) return res.status(400).json({ error: 'פרויקט ושם שלב חובה' });
   try {
@@ -20,8 +20,8 @@ router.post('/', authenticate, canAny(['editProjects', 'editStages']), async (re
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-// PUT /api/stages/:id
-router.put('/:id', authenticate, canAny(['editProjects', 'editStages']), async (req, res) => {
+// PUT /api/stages/:id - עריכת שלב (רק מי שרשאי לערוך פרויקטים — לא מדווח)
+router.put('/:id', authenticate, can('editProjects'), async (req, res) => {
   const { name, seq, client_amount, sub_amount, subcontractor_id, status, approved } = req.body;
   try {
     const r = await pool.query(

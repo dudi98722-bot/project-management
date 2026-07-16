@@ -98,7 +98,7 @@ router.delete('/:id', authenticate, can('viewBusiness'), can('del'), async (req,
 
 // POST /api/projects/:id/stages/bulk - הזנת שלבים במרוכז (קבלן המשנה יורש מהפרויקט)
 // body: { stages: [{ name, client_amount, sub_amount }] }
-router.post('/:id/stages/bulk', authenticate, canAny(['editProjects', 'editStages']), async (req, res) => {
+router.post('/:id/stages/bulk', authenticate, canAny(['editProjects', 'addStages']), async (req, res) => {
   const projectId = req.params.id;
   const list = Array.isArray(req.body.stages) ? req.body.stages : [];
   if (!list.length) return res.status(400).json({ error: 'אין שלבים להוספה' });
@@ -141,7 +141,7 @@ router.post('/:id/stages/bulk', authenticate, canAny(['editProjects', 'editStage
 // POST /api/projects/:id/import - ייבוא מצב פתיחה של פרויקט קיים:
 // לכל שורה נוצר שלב + התשלומים שכבר בוצעו (ללקוח ולקבלן).
 // body: { rows: [{ name, client_amount, client_paid, sub_amount, sub_paid }] }
-router.post('/:id/import', authenticate, canAny(['editProjects', 'editStages']), async (req, res) => {
+router.post('/:id/import', authenticate, canAny(['editProjects', 'addStages']), async (req, res) => {
   const projectId = req.params.id;
   const list = Array.isArray(req.body.rows) ? req.body.rows : [];
   if (!list.length) return res.status(400).json({ error: 'אין שורות לייבוא' });
