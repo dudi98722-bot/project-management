@@ -1,0 +1,925 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ניהול מלאי — תיקים וארנקים</title>
+<style>
+:root{
+  --bg:#f5f1ea; --panel:#ffffff; --ink:#2b2620; --muted:#8a7f70;
+  --accent:#a9743f; --accent2:#6b4e2e; --accent-soft:#f2e6d6;
+  --good:#2e7d5b; --bad:#c0492f; --line:#e7ddcf; --line2:#efe7da;
+  --shadow:0 1px 3px rgba(60,40,20,.08), 0 6px 20px rgba(60,40,20,.05);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:"Segoe UI","Assistant","Heebo",Arial,sans-serif;
+  background:var(--bg); color:var(--ink); font-size:15px; line-height:1.5;
+}
+h1,h2,h3{margin:0}
+button{font-family:inherit}
+a{color:var(--accent2)}
+
+/* Header */
+header.top{
+  background:linear-gradient(120deg,#4a3320,#6b4e2e 55%,#8a5f34);
+  color:#f7efe3; padding:18px 24px; box-shadow:var(--shadow);
+}
+header.top .row{display:flex;align-items:center;gap:16px;flex-wrap:wrap;max-width:1280px;margin:0 auto}
+header.top h1{font-size:22px;font-weight:700;letter-spacing:.2px}
+header.top .logo{font-size:30px}
+header.top .sub{color:#e6d3ba;font-size:13px;margin-top:2px}
+header.top .spacer{flex:1}
+.hbtn{
+  background:rgba(255,255,255,.12);color:#f7efe3;border:1px solid rgba(255,255,255,.25);
+  padding:8px 14px;border-radius:9px;cursor:pointer;font-size:13px;transition:.15s
+}
+.hbtn:hover{background:rgba(255,255,255,.22)}
+
+/* Tabs */
+nav.tabs{background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+nav.tabs .wrap{display:flex;gap:2px;max-width:1280px;margin:0 auto;padding:0 16px;overflow-x:auto}
+nav.tabs button{
+  background:none;border:none;padding:14px 18px;cursor:pointer;color:var(--muted);
+  font-size:14.5px;font-weight:600;border-bottom:3px solid transparent;white-space:nowrap;transition:.15s
+}
+nav.tabs button:hover{color:var(--ink)}
+nav.tabs button.active{color:var(--accent2);border-bottom-color:var(--accent)}
+
+main{max-width:1280px;margin:0 auto;padding:22px 16px 60px}
+.tab-page{display:none}
+.tab-page.active{display:block;animation:fade .25s}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* Cards */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:22px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px;box-shadow:var(--shadow)}
+.card .label{color:var(--muted);font-size:12.5px;font-weight:600;letter-spacing:.2px}
+.card .value{font-size:26px;font-weight:800;margin-top:6px;letter-spacing:-.5px}
+.card .value.small{font-size:21px}
+.card .foot{font-size:12px;color:var(--muted);margin-top:4px}
+.card.good .value{color:var(--good)}
+.card.bad .value{color:var(--bad)}
+.card.accent{background:linear-gradient(135deg,#fff,#faf3e9)}
+
+/* Panels */
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);margin-bottom:22px;overflow:hidden}
+.panel .phead{display:flex;align-items:center;gap:12px;padding:15px 18px;border-bottom:1px solid var(--line2);flex-wrap:wrap}
+.panel .phead h2{font-size:16px;font-weight:700}
+.panel .phead .spacer{flex:1}
+.panel .pbody{padding:18px}
+.hint{color:var(--muted);font-size:12.5px}
+
+/* Controls */
+select,input[type=text],input[type=number],input[type=date]{
+  font-family:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--line);
+  border-radius:9px;background:#fff;color:var(--ink)
+}
+input:focus,select:focus{outline:none;border-color:var(--accent)}
+.btn{background:var(--accent);color:#fff;border:none;padding:8px 14px;border-radius:9px;cursor:pointer;font-size:13.5px;font-weight:600;transition:.15s}
+.btn:hover{background:var(--accent2)}
+.btn.ghost{background:#fff;color:var(--accent2);border:1px solid var(--line)}
+.btn.ghost:hover{background:var(--accent-soft)}
+.btn.sm{padding:5px 10px;font-size:12.5px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:12px;color:var(--muted);font-weight:600}
+.controls{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+
+/* Table */
+.tbl-wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:9px 11px;text-align:right;border-bottom:1px solid var(--line2);white-space:nowrap}
+th{color:var(--muted);font-weight:700;font-size:12px;background:#faf6f0;position:sticky;top:0;cursor:default}
+tbody tr:hover{background:#faf6ee}
+td.num,th.num{font-variant-numeric:tabular-nums}
+.pos{color:var(--good);font-weight:600}
+.neg{color:var(--bad);font-weight:600}
+tr.total{font-weight:800;background:#f6efe4}
+tr.total td{border-top:2px solid var(--line)}
+.pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11.5px;font-weight:700}
+.pill.cat{background:var(--accent-soft);color:var(--accent2)}
+.pill.sale{background:#e3f2ea;color:var(--good)}
+.pill.purchase{background:#fdeee9;color:var(--bad)}
+.pill.low{background:#fdeee9;color:var(--bad)}
+.pill.ok{background:#e3f2ea;color:var(--good)}
+.bar-cell{min-width:120px}
+.minibar{height:8px;border-radius:6px;background:var(--accent);display:inline-block;vertical-align:middle}
+.minibar-track{background:var(--line2);border-radius:6px;height:8px;display:inline-block;width:90px;vertical-align:middle;overflow:hidden}
+
+/* Chart */
+.chart-svg{width:100%;height:auto;display:block}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin-top:8px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:11px;height:11px;border-radius:3px;display:inline-block}
+
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+@media(max-width:820px){.two-col{grid-template-columns:1fr}}
+
+.iconbtn{background:none;border:none;cursor:pointer;font-size:15px;padding:4px 6px;border-radius:6px}
+.iconbtn:hover{background:var(--accent-soft)}
+.pager{display:flex;gap:8px;align-items:center;justify-content:center;padding:12px;color:var(--muted);font-size:13px}
+.inline-input{width:74px;padding:5px 7px;text-align:center}
+.tag{font-size:11px;color:var(--muted)}
+.notice{background:#faf3e9;border:1px dashed var(--accent);border-radius:10px;padding:10px 14px;color:var(--accent2);font-size:13px;margin-bottom:16px}
+@media print{
+  nav.tabs,header.top .hbtn,.no-print{display:none!important}
+  .panel{box-shadow:none;break-inside:avoid}
+  body{background:#fff}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="row">
+    <div class="logo">👜</div>
+    <div>
+      <h1>ניהול מלאי — תיקים וארנקים</h1>
+      <div class="sub">מעקב מכירות, רווחיות והמלצות הזמנה חודשיות לספק</div>
+    </div>
+    <div class="spacer"></div>
+    <button class="hbtn no-print" onclick="App.exportAll()">⬇ גיבוי נתונים</button>
+    <button class="hbtn no-print" onclick="App.resetDemo()">↻ איפוס נתוני דמו</button>
+  </div>
+</header>
+
+<nav class="tabs no-print">
+  <div class="wrap" id="tabbar">
+    <button data-tab="dashboard" class="active">📊 לוח בקרה</button>
+    <button data-tab="monthly">📈 דוח רווח חודשי</button>
+    <button data-tab="products">🏷️ פילוח מוצרים</button>
+    <button data-tab="reorder">🛒 המלצת הזמנה</button>
+    <button data-tab="inventory">📦 מלאי</button>
+    <button data-tab="transactions">🧾 תנועות</button>
+  </div>
+</nav>
+
+<main>
+  <div id="dashboard" class="tab-page active"></div>
+  <div id="monthly" class="tab-page"></div>
+  <div id="products" class="tab-page"></div>
+  <div id="reorder" class="tab-page"></div>
+  <div id="inventory" class="tab-page"></div>
+  <div id="transactions" class="tab-page"></div>
+</main>
+
+<script>
+/* ============================================================
+   ניהול מלאי — תיקים וארנקים  (קובץ עצמאי, ללא תלות חיצונית)
+   נתונים נשמרים ב-localStorage. מחיקה רכה בלבד (דגל deleted).
+   ============================================================ */
+
+const STORE_KEY = 'bagsInventory_v1';
+const MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+const MONTHS_SHORT = ['ינו','פבר','מרץ','אפר','מאי','יונ','יול','אוג','ספט','אוק','נוב','דצמ'];
+
+/* ---------- כלי מספרים ---------- */
+const nf = new Intl.NumberFormat('he-IL');
+const cf = new Intl.NumberFormat('he-IL',{style:'currency',currency:'ILS',maximumFractionDigits:0});
+const money = n => cf.format(Math.round(n||0));
+const num = n => nf.format(Math.round(n||0));
+const pct = n => (n*100).toFixed(1)+'%';
+
+/* ---------- PRNG דטרמיניסטי (mulberry32) ---------- */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function weightedPick(rng, items, weights){
+  let total=weights.reduce((a,b)=>a+b,0), r=rng()*total;
+  for(let i=0;i<items.length;i++){r-=weights[i];if(r<=0)return items[i]}
+  return items[items.length-1];
+}
+
+/* ---------- קטלוג מוצרים לדוגמה ---------- */
+/* pop = משקל פופולריות (כמה נמכר), cost = עלות קניה, price = מחיר מכירה */
+const SEED_PRODUCTS = [
+  {sku:'BAG-101', name:'תיק יד עור קלאסי שחור', cat:'תיקי יד',   cost:120, price:299, pop:8},
+  {sku:'BAG-102', name:'תיק יד עור חום',        cat:'תיקי יד',   cost:130, price:319, pop:6},
+  {sku:'BAG-103', name:'תיק יד קנבס',            cat:'תיקי יד',   cost:60,  price:159, pop:7},
+  {sku:'BPK-201', name:'תיק גב עירוני',          cat:'תיקי גב',   cost:90,  price:229, pop:9},
+  {sku:'BPK-202', name:'תיק גב ללפטופ "15',      cat:'תיקי גב',   cost:110, price:279, pop:7},
+  {sku:'BPK-203', name:'תיק גב ספורט',           cat:'תיקי גב',   cost:70,  price:179, pop:6},
+  {sku:'WAL-301', name:'ארנק עור גברים',         cat:'ארנקים',    cost:35,  price:99,  pop:12},
+  {sku:'WAL-302', name:'ארנק עור נשים',          cat:'ארנקים',    cost:40,  price:119, pop:12},
+  {sku:'WAL-303', name:'ארנק כרטיסים מינימלי',   cat:'ארנקים',    cost:18,  price:59,  pop:10},
+  {sku:'WAL-304', name:'ארנק RFID מאובטח',       cat:'ארנקים',    cost:28,  price:89,  pop:8},
+  {sku:'CRS-401', name:'תיק צד קטן',             cat:'תיקי צד',   cost:45,  price:129, pop:7},
+  {sku:'CRS-402', name:'תיק צד עור',             cat:'תיקי צד',   cost:75,  price:189, pop:5},
+  {sku:'CRS-403', name:'תיק תלייה קרוסבודי',     cat:'תיקי צד',   cost:55,  price:149, pop:6},
+  {sku:'CRS-404', name:'תיק פאוץ׳ מותן',         cat:'תיקי צד',   cost:40,  price:109, pop:6},
+  {sku:'EVN-501', name:'קלאץ׳ ערב',              cat:'תיקי ערב',  cost:50,  price:139, pop:4},
+  {sku:'EVN-502', name:'תיק ערב מנצנץ',          cat:'תיקי ערב',  cost:65,  price:169, pop:3},
+  {sku:'TRV-601', name:'מזוודה קשיחה "24',       cat:'תיקי נסיעות',cost:180, price:449, pop:3},
+  {sku:'TRV-602', name:'מזוודת עלייה למטוס',      cat:'תיקי נסיעות',cost:150, price:379, pop:4},
+  {sku:'TRV-603', name:'תיק נסיעות דאפל',         cat:'תיקי נסיעות',cost:95,  price:239, pop:5},
+  {sku:'ACC-701', name:'חגורת עור',              cat:'אביזרים',   cost:25,  price:79,  pop:9},
+  {sku:'ACC-702', name:'מחזיק מפתחות עור',       cat:'אביזרים',   cost:12,  price:39,  pop:11},
+  {sku:'ACC-703', name:'נרתיק טאבלט',            cat:'אביזרים',   cost:30,  price:89,  pop:5},
+];
+
+/* עונתיות חנות תיקים בישראל (מדד לפי חודש 0=ינואר) */
+const SEASON = [0.70,0.72,1.10,1.22,0.92,0.80,0.85,1.32,1.42,0.95,1.12,1.28];
+/* צמיחה שנתית של החנות */
+const YEAR_WEIGHT = {2023:20, 2024:28, 2025:34, 2026:18}; // 2026 חלקית (ינו-יול)
+
+/* ---------- יצירת נתוני דמו ---------- */
+function generateData(){
+  const rng = mulberry32(20260716);
+  const products = SEED_PRODUCTS.map((p,i)=>({id:i+1, ...p, stock:0, deleted:false}));
+  const years = [2023,2024,2025,2026];
+  const transactions = [];
+  let tid = 1;
+
+  for(let k=0;k<1000;k++){
+    const isSale = rng() < 0.85;
+    const prod = weightedPick(rng, products, products.map(p=>p.pop));
+    // בחירת שנה
+    const y = weightedPick(rng, years, years.map(v=>YEAR_WEIGHT[v]));
+    // חודשים זמינים (2026 עד יולי)
+    const maxMonth = (y===2026)?6:11;
+    const monthsArr=[], monthW=[];
+    for(let m=0;m<=maxMonth;m++){monthsArr.push(m);monthW.push(SEASON[m]*prod.pop)}
+    const m = weightedPick(rng, monthsArr, monthW);
+    const maxDay = (y===2026 && m===6)?16 : new Date(y,m+1,0).getDate();
+    const day = 1 + Math.floor(rng()*maxDay);
+    const date = `${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+
+    if(isSale){
+      const qty = rng()<0.80?1 : (rng()<0.7?2:3);
+      // הנחה מזדמנת עד 12%
+      const disc = rng()<0.22 ? (0.03+rng()*0.09) : 0;
+      const unitPrice = Math.round(prod.price*(1-disc));
+      transactions.push({id:tid++, date, type:'sale', productId:prod.id, qty,
+        unitPrice, unitCost:prod.cost, deleted:false});
+    }else{
+      const qty = 8 + Math.floor(rng()*33); // חידוש מלאי
+      transactions.push({id:tid++, date, type:'purchase', productId:prod.id, qty,
+        unitPrice:0, unitCost:prod.cost, deleted:false});
+    }
+  }
+  transactions.sort((a,b)=> a.date<b.date?-1:a.date>b.date?1:a.id-b.id);
+
+  // מלאי נוכחי — נגזר מקצב מכירות חודשי (חלק מהמוצרים במלאי נמוך בכוונה)
+  products.forEach(p=>{
+    const sales = transactions.filter(t=>!t.deleted && t.type==='sale' && t.productId===p.id)
+                              .reduce((s,t)=>s+t.qty,0);
+    const monthlyAvg = sales/42; // ~42 חודשי נתונים
+    p.stock = Math.max(0, Math.round(monthlyAvg*(0.4 + rng()*2.1)));
+  });
+
+  return {products, transactions,
+    settings:{safetyPct:25, growthPct:10, leadMonths:1},
+    meta:{created:'2026-07-16'}};
+}
+
+/* ============================================================
+   מצב אפליקציה
+   ============================================================ */
+const App = {
+  data:null,
+  filters:{},
+  page:{transactions:1},
+
+  init(){
+    this.load();
+    document.querySelectorAll('#tabbar button').forEach(b=>{
+      b.onclick=()=>this.switchTab(b.dataset.tab);
+    });
+    this.renderAll();
+  },
+
+  load(){
+    try{
+      const raw = localStorage.getItem(STORE_KEY);
+      if(raw){ this.data = JSON.parse(raw);
+        if(!this.data.settings) this.data.settings={safetyPct:25,growthPct:10,leadMonths:1};
+        return;
+      }
+    }catch(e){console.warn('load failed',e)}
+    this.data = generateData();
+    this.save();
+  },
+  save(){ try{localStorage.setItem(STORE_KEY, JSON.stringify(this.data))}catch(e){console.warn(e)} },
+  resetDemo(){
+    if(!confirm('לאפס את כל הנתונים לנתוני הדמו המקוריים? כל שינוי שביצעת יימחק.'))return;
+    this.data = generateData(); this.save(); this.renderAll();
+  },
+
+  switchTab(id){
+    document.querySelectorAll('#tabbar button').forEach(b=>b.classList.toggle('active', b.dataset.tab===id));
+    document.querySelectorAll('.tab-page').forEach(p=>p.classList.toggle('active', p.id===id));
+    window.scrollTo({top:0,behavior:'smooth'});
+  },
+
+  renderAll(){
+    this.renderDashboard();
+    this.renderMonthly();
+    this.renderProducts();
+    this.renderReorder();
+    this.renderInventory();
+    this.renderTransactions();
+  },
+
+  /* ---------- עזרי נתונים ---------- */
+  prod(id){ return this.data.products.find(p=>p.id===id); },
+  activeProducts(){ return this.data.products.filter(p=>!p.deleted); },
+  sales(){ return this.data.transactions.filter(t=>!t.deleted && t.type==='sale'); },
+  years(){
+    const ys = new Set(this.data.transactions.filter(t=>!t.deleted).map(t=>+t.date.slice(0,4)));
+    return [...ys].sort();
+  },
+  // ממוצע מכירות חודשי (יחידות) למוצר לפי חודש קלנדרי 0-11
+  monthlyAvgSales(productId){
+    const sums=Array(12).fill(0); const yset=Array.from({length:12},()=>new Set());
+    this.sales().filter(t=>t.productId===productId).forEach(t=>{
+      const m=+t.date.slice(5,7)-1; sums[m]+=t.qty; yset[m].add(t.date.slice(0,4));
+    });
+    return sums.map((s,m)=> s/(yset[m].size||1));
+  },
+};
+
+/* ============================================================
+   רכיב גרף עמודות SVG פשוט
+   ============================================================ */
+function barChart(values, labels, opts={}){
+  const w=opts.width||720, h=opts.height||240, pad=opts.pad||34, padTop=16, padBottom=30;
+  const max = Math.max(1, ...values.map(v=>Math.abs(v)));
+  const n=values.length;
+  const bw = (w-pad*2)/n * 0.62;
+  const gap = (w-pad*2)/n;
+  const colorFn = opts.colorFn || (()=>'var(--accent)');
+  const zeroY = h-padBottom;
+  let bars='', axis='';
+  // קווי רשת
+  for(let g=0; g<=4; g++){
+    const y = padTop + (zeroY-padTop)*(g/4);
+    const val = max*(1-g/4);
+    axis+=`<line x1="${pad}" y1="${y}" x2="${w-pad}" y2="${y}" stroke="var(--line2)" stroke-width="1"/>`;
+    axis+=`<text x="${w-pad+4}" y="${y+4}" font-size="10" fill="var(--muted)" text-anchor="start">${opts.money?money(val):num(val)}</text>`;
+  }
+  values.forEach((v,i)=>{
+    const bh = (Math.abs(v)/max)*(zeroY-padTop);
+    const x = pad + gap*i + (gap-bw)/2;
+    const y = zeroY - bh;
+    bars+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0,bh).toFixed(1)}" rx="4" fill="${colorFn(v,i)}"><title>${labels[i]}: ${opts.money?money(v):num(v)}</title></rect>`;
+    bars+=`<text x="${(x+bw/2).toFixed(1)}" y="${h-padBottom+16}" font-size="10.5" fill="var(--muted)" text-anchor="middle">${labels[i]}</text>`;
+    if(opts.valueLabels && bh>14)
+      bars+=`<text x="${(x+bw/2).toFixed(1)}" y="${(y-4).toFixed(1)}" font-size="9.5" fill="var(--muted)" text-anchor="middle">${opts.money?money(v):num(v)}</text>`;
+  });
+  return `<svg class="chart-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet">${axis}${bars}</svg>`;
+}
+function hBarChart(rows, opts={}){ // rows: [{label,value,sub}]
+  const max=Math.max(1,...rows.map(r=>r.value));
+  return `<div style="display:flex;flex-direction:column;gap:9px">`+rows.map(r=>`
+    <div style="display:grid;grid-template-columns:150px 1fr 90px;align-items:center;gap:10px">
+      <div style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.label}">${r.label}</div>
+      <div class="minibar-track" style="width:100%">
+        <span class="minibar" style="width:${(r.value/max*100).toFixed(1)}%;background:${opts.color||'var(--accent)'}"></span>
+      </div>
+      <div style="font-size:12.5px;text-align:left;font-weight:700">${opts.money?money(r.value):num(r.value)}</div>
+    </div>`).join('')+`</div>`;
+}
+
+/* ============================================================
+   1. לוח בקרה
+   ============================================================ */
+App.renderDashboard = function(){
+  const sales=this.sales();
+  let rev=0,cogs=0,units=0;
+  sales.forEach(t=>{rev+=t.unitPrice*t.qty; cogs+=t.unitCost*t.qty; units+=t.qty});
+  const profit=rev-cogs, margin=rev?profit/rev:0;
+  const invValue=this.activeProducts().reduce((s,p)=>s+p.stock*p.cost,0);
+  const invRetail=this.activeProducts().reduce((s,p)=>s+p.stock*p.price,0);
+  const txCount=this.data.transactions.filter(t=>!t.deleted).length;
+
+  const years=this.years();
+  const selYear = this.filters.dashYear || years[years.length-1];
+  // רווח לפי חודש בשנה הנבחרת
+  const monthProfit=Array(12).fill(0);
+  sales.filter(t=>t.date.slice(0,4)==selYear).forEach(t=>{
+    monthProfit[+t.date.slice(5,7)-1]+=(t.unitPrice-t.unitCost)*t.qty;
+  });
+  // Top 5 מוצרים לפי רווח
+  const perProd={};
+  sales.forEach(t=>{perProd[t.productId]=(perProd[t.productId]||0)+(t.unitPrice-t.unitCost)*t.qty});
+  const top=Object.entries(perProd).map(([id,v])=>({label:this.prod(+id)?.name||id,value:v}))
+    .sort((a,b)=>b.value-a.value).slice(0,6);
+
+  document.getElementById('dashboard').innerHTML = `
+  <div class="cards">
+    <div class="card accent"><div class="label">סה״כ מכירות (הכנסות)</div><div class="value">${money(rev)}</div><div class="foot">${num(units)} יחידות נמכרו</div></div>
+    <div class="card"><div class="label">עלות מכר (קניה)</div><div class="value small">${money(cogs)}</div><div class="foot">ממוצע ${money(cogs/(units||1))} ליחידה</div></div>
+    <div class="card good"><div class="label">רווח גולמי</div><div class="value">${money(profit)}</div><div class="foot">שיעור רווח ${pct(margin)}</div></div>
+    <div class="card"><div class="label">שווי מלאי נוכחי (בעלות)</div><div class="value small">${money(invValue)}</div><div class="foot">שווי במחירי מכירה ${money(invRetail)}</div></div>
+    <div class="card"><div class="label">מס׳ תנועות</div><div class="value small">${num(txCount)}</div><div class="foot">מכירות + חידושי מלאי</div></div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="phead"><h2>רווח גולמי לפי חודש</h2><div class="spacer"></div>
+        <select onchange="App.filters.dashYear=this.value;App.renderDashboard()">
+          ${years.map(y=>`<option value="${y}" ${y==selYear?'selected':''}>${y}</option>`).join('')}
+        </select>
+      </div>
+      <div class="pbody">
+        ${barChart(monthProfit, MONTHS_SHORT, {money:true, colorFn:v=>v>=0?'var(--accent)':'var(--bad)'})}
+        <div class="hint" style="margin-top:8px">רווח (מכירה פחות עלות) לכל חודש בשנת ${selYear}.</div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="phead"><h2>מוצרים מובילים ברווח</h2></div>
+      <div class="pbody">${hBarChart(top,{money:true})}</div>
+    </div>
+  </div>`;
+};
+
+/* ============================================================
+   2. דוח רווח חודשי
+   ============================================================ */
+App.renderMonthly = function(){
+  const years=this.years();
+  const selYear = this.filters.monthYear || years[years.length-1];
+  const rows=Array.from({length:12},()=>({rev:0,cogs:0,units:0,orders:0}));
+  this.sales().filter(t=>t.date.slice(0,4)==selYear).forEach(t=>{
+    const m=+t.date.slice(5,7)-1;
+    rows[m].rev+=t.unitPrice*t.qty; rows[m].cogs+=t.unitCost*t.qty;
+    rows[m].units+=t.qty; rows[m].orders++;
+  });
+  const tot={rev:0,cogs:0,units:0,orders:0};
+  rows.forEach(r=>{tot.rev+=r.rev;tot.cogs+=r.cogs;tot.units+=r.units;tot.orders+=r.orders});
+
+  const body = rows.map((r,m)=>{
+    const p=r.rev-r.cogs, mg=r.rev?p/r.rev:0;
+    return `<tr>
+      <td>${MONTHS[m]}</td>
+      <td class="num">${num(r.orders)}</td>
+      <td class="num">${num(r.units)}</td>
+      <td class="num">${money(r.rev)}</td>
+      <td class="num">${money(r.cogs)}</td>
+      <td class="num ${p>=0?'pos':'neg'}">${money(p)}</td>
+      <td class="num">${r.rev?pct(mg):'—'}</td>
+    </tr>`;
+  }).join('');
+  const tp=tot.rev-tot.cogs, tmg=tot.rev?tp/tot.rev:0;
+
+  document.getElementById('monthly').innerHTML=`
+  <div class="panel">
+    <div class="phead"><h2>דוח רווח והפסד חודשי — ${selYear}</h2><div class="spacer"></div>
+      <select onchange="App.filters.monthYear=this.value;App.renderMonthly()">
+        ${years.map(y=>`<option value="${y}" ${y==selYear?'selected':''}>${y}</option>`).join('')}
+      </select>
+      <button class="btn ghost sm" onclick="App.exportMonthlyCSV(${selYear})">⬇ CSV</button>
+      <button class="btn ghost sm" onclick="window.print()">🖨 הדפסה</button>
+    </div>
+    <div class="pbody">
+      <div class="tbl-wrap"><table>
+        <thead><tr>
+          <th>חודש</th><th class="num">עסקאות</th><th class="num">יחידות</th>
+          <th class="num">הכנסות</th><th class="num">עלות מכר</th><th class="num">רווח גולמי</th><th class="num">שיעור רווח</th>
+        </tr></thead>
+        <tbody>${body}
+          <tr class="total">
+            <td>סה״כ ${selYear}</td><td class="num">${num(tot.orders)}</td><td class="num">${num(tot.units)}</td>
+            <td class="num">${money(tot.rev)}</td><td class="num">${money(tot.cogs)}</td>
+            <td class="num ${tp>=0?'pos':'neg'}">${money(tp)}</td><td class="num">${pct(tmg)}</td>
+          </tr>
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="phead"><h2>גרף רווח חודשי</h2></div>
+    <div class="pbody">${barChart(rows.map(r=>r.rev-r.cogs), MONTHS_SHORT, {money:true, colorFn:v=>v>=0?'var(--good)':'var(--bad)'})}</div>
+  </div>`;
+};
+
+/* ============================================================
+   3. פילוח לפי מוצר
+   ============================================================ */
+App.renderProducts = function(){
+  const cats=['הכל',...new Set(this.activeProducts().map(p=>p.cat))];
+  const selCat=this.filters.prodCat||'הכל';
+  const selYear=this.filters.prodYear||'הכל';
+  const years=this.years();
+
+  const agg={};
+  this.activeProducts().forEach(p=>agg[p.id]={p, units:0, rev:0, cogs:0});
+  this.sales().filter(t=> selYear==='הכל'||t.date.slice(0,4)==selYear).forEach(t=>{
+    if(!agg[t.productId])return;
+    agg[t.productId].units+=t.qty; agg[t.productId].rev+=t.unitPrice*t.qty; agg[t.productId].cogs+=t.unitCost*t.qty;
+  });
+  let list=Object.values(agg).filter(a=> selCat==='הכל'||a.p.cat===selCat);
+  list.sort((a,b)=>(b.rev-b.cogs)-(a.rev-a.cogs));
+
+  const tot={units:0,rev:0,cogs:0};
+  list.forEach(a=>{tot.units+=a.units;tot.rev+=a.rev;tot.cogs+=a.cogs});
+
+  const rows=list.map(a=>{
+    const p=a.rev-a.cogs, mg=a.rev?p/a.rev:0;
+    const low = a.p.stock < (this.monthlyAvgSales(a.p.id).reduce((s,x)=>s+x,0)/12);
+    return `<tr>
+      <td><span class="tag">${a.p.sku}</span><br>${a.p.name}</td>
+      <td><span class="pill cat">${a.p.cat}</span></td>
+      <td class="num">${num(a.units)}</td>
+      <td class="num">${money(a.rev)}</td>
+      <td class="num">${money(a.cogs)}</td>
+      <td class="num ${p>=0?'pos':'neg'}">${money(p)}</td>
+      <td class="num">${a.rev?pct(mg):'—'}</td>
+      <td class="num">${money(a.p.price-a.p.cost)}</td>
+      <td class="num">${num(a.p.stock)} ${low?'<span class="pill low">נמוך</span>':''}</td>
+    </tr>`;
+  }).join('');
+  const tp=tot.rev-tot.cogs, tmg=tot.rev?tp/tot.rev:0;
+
+  document.getElementById('products').innerHTML=`
+  <div class="panel">
+    <div class="phead"><h2>פילוח רווחיות לפי מוצר</h2><div class="spacer"></div>
+      <div class="field"><label>קטגוריה</label>
+        <select onchange="App.filters.prodCat=this.value;App.renderProducts()">
+          ${cats.map(c=>`<option ${c===selCat?'selected':''}>${c}</option>`).join('')}
+        </select></div>
+      <div class="field"><label>שנה</label>
+        <select onchange="App.filters.prodYear=this.value;App.renderProducts()">
+          <option ${selYear==='הכל'?'selected':''}>הכל</option>
+          ${years.map(y=>`<option value="${y}" ${y==selYear?'selected':''}>${y}</option>`).join('')}
+        </select></div>
+      <button class="btn ghost sm" onclick="App.exportProductsCSV()">⬇ CSV</button>
+    </div>
+    <div class="pbody">
+      <div class="tbl-wrap"><table>
+        <thead><tr>
+          <th>מוצר</th><th>קטגוריה</th><th class="num">יח׳ שנמכרו</th><th class="num">הכנסות</th>
+          <th class="num">עלות מכר</th><th class="num">רווח</th><th class="num">שיעור</th>
+          <th class="num">רווח ליח׳</th><th class="num">מלאי</th>
+        </tr></thead>
+        <tbody>${rows}
+          <tr class="total">
+            <td>סה״כ (${list.length} מוצרים)</td><td></td><td class="num">${num(tot.units)}</td>
+            <td class="num">${money(tot.rev)}</td><td class="num">${money(tot.cogs)}</td>
+            <td class="num ${tp>=0?'pos':'neg'}">${money(tp)}</td><td class="num">${pct(tmg)}</td><td></td><td></td>
+          </tr>
+        </tbody>
+      </table></div>
+    </div>
+  </div>`;
+};
+
+/* ============================================================
+   4. המלצת הזמנה חודשית לספק  ← הלב של המערכת
+   ============================================================ */
+App.reorderPlan = function(){
+  const s=this.data.settings;
+  const growth = 1 + s.growthPct/100;
+  const safety = 1 + s.safetyPct/100;
+  // לכל מוצר: תכנון הזמנה לכל חודש (יחידות) = ceil(ממוצע היסטורי × צמיחה × בטיחות)
+  return this.activeProducts().map(p=>{
+    const avg=this.monthlyAvgSales(p.id);
+    const plan=avg.map(a=> Math.ceil(a*growth*safety));
+    return {p, avg, plan, annual:plan.reduce((x,y)=>x+y,0)};
+  });
+};
+
+App.renderReorder = function(){
+  const s=this.data.settings;
+  const plans=this.reorderPlan();
+  const selMonth = (this.filters.reMonth!=null)? this.filters.reMonth : new Date().getMonth();
+
+  /* טבלת "מה להזמין עכשיו" לחודש הנבחר */
+  let orderCost=0, orderUnits=0;
+  const nowRows = plans.map(pl=>{
+    const need = Math.max(0, pl.plan[selMonth] - pl.p.stock);
+    const cost = need*pl.p.cost;
+    orderCost+=cost; orderUnits+=need;
+    return {pl, expect:pl.plan[selMonth], stock:pl.p.stock, need, cost};
+  }).filter(r=>r.expect>0).sort((a,b)=>b.need-a.need);
+
+  const nowBody = nowRows.map(r=>`
+    <tr>
+      <td><span class="tag">${r.pl.p.sku}</span><br>${r.pl.p.name}</td>
+      <td><span class="pill cat">${r.pl.p.cat}</span></td>
+      <td class="num">${num(Math.round(r.pl.avg[selMonth]*10)/10)}</td>
+      <td class="num">${num(r.expect)}</td>
+      <td class="num">${num(r.stock)} ${r.stock<r.expect?'<span class="pill low">חוסר</span>':'<span class="pill ok">תקין</span>'}</td>
+      <td class="num" style="font-weight:800;color:var(--accent2)">${r.need>0?num(r.need):'—'}</td>
+      <td class="num">${r.need>0?money(r.cost):'—'}</td>
+    </tr>`).join('');
+
+  /* מטריצת שנה מלאה: מוצר × 12 חודשים */
+  const monthTotals=Array(12).fill(0), monthCost=Array(12).fill(0);
+  plans.forEach(pl=>pl.plan.forEach((q,m)=>{monthTotals[m]+=q; monthCost[m]+=q*pl.p.cost}));
+  const annualUnits=monthTotals.reduce((a,b)=>a+b,0);
+  const annualCost=monthCost.reduce((a,b)=>a+b,0);
+
+  const matrixBody = plans.slice().sort((a,b)=>b.annual-a.annual).map(pl=>`
+    <tr>
+      <td style="position:sticky;right:0;background:#fff;min-width:170px">${pl.p.name}</td>
+      ${pl.plan.map((q,m)=>`<td class="num" style="${m===selMonth?'background:var(--accent-soft);font-weight:700':''}">${q||'·'}</td>`).join('')}
+      <td class="num" style="font-weight:800">${num(pl.annual)}</td>
+    </tr>`).join('');
+
+  document.getElementById('reorder').innerHTML=`
+  <div class="notice">
+    💡 <b>איך זה עובד:</b> המערכת מחשבת לכל מוצר את <b>ממוצע המכירות ההיסטורי בכל חודש קלנדרי</b> (עונתיות),
+    מוסיפה <b>אחוז צמיחה</b> צפוי ו<b>מלאי ביטחון</b>, ומקבלת את כמות ההזמנה המומלצת מהספק. שנו את הפרמטרים והטבלאות יתעדכנו מיד.
+  </div>
+
+  <div class="panel">
+    <div class="phead"><h2>פרמטרים לחישוב</h2></div>
+    <div class="pbody">
+      <div class="controls">
+        <div class="field"><label>מלאי ביטחון (%)</label>
+          <input type="number" min="0" max="200" value="${s.safetyPct}" class="inline-input" style="width:90px"
+            onchange="App.data.settings.safetyPct=+this.value;App.save();App.renderReorder()"></div>
+        <div class="field"><label>צמיחה שנתית צפויה (%)</label>
+          <input type="number" min="-50" max="200" value="${s.growthPct}" class="inline-input" style="width:90px"
+            onchange="App.data.settings.growthPct=+this.value;App.save();App.renderReorder()"></div>
+        <div class="field"><label>חודש להזמנה מיידית</label>
+          <select onchange="App.filters.reMonth=+this.value;App.renderReorder()">
+            ${MONTHS.map((m,i)=>`<option value="${i}" ${i===selMonth?'selected':''}>${m}</option>`).join('')}
+          </select></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cards">
+    <div class="card accent"><div class="label">להזמין עכשיו — ${MONTHS[selMonth]}</div><div class="value">${num(orderUnits)} יח׳</div><div class="foot">עלות הזמנה ${money(orderCost)}</div></div>
+    <div class="card"><div class="label">סה״כ הזמנה שנתית מתוכננת</div><div class="value small">${num(annualUnits)} יח׳</div><div class="foot">בעלות ${money(annualCost)}</div></div>
+    <div class="card"><div class="label">חודש שיא הזמנות</div><div class="value small">${MONTHS[monthTotals.indexOf(Math.max(...monthTotals))]}</div><div class="foot">${num(Math.max(...monthTotals))} יחידות</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="phead"><h2>הזמנה מומלצת ל${MONTHS[selMonth]}</h2><div class="spacer"></div>
+      <button class="btn ghost sm" onclick="App.exportOrderCSV(${selMonth})">⬇ הזמנה CSV</button>
+    </div>
+    <div class="pbody">
+      <div class="tbl-wrap"><table>
+        <thead><tr>
+          <th>מוצר</th><th>קטגוריה</th><th class="num">ממוצע מכירות בחודש</th>
+          <th class="num">צפי (עם ביטחון)</th><th class="num">מלאי נוכחי</th>
+          <th class="num">להזמין</th><th class="num">עלות</th>
+        </tr></thead>
+        <tbody>${nowBody}
+          <tr class="total"><td>סה״כ</td><td></td><td></td><td></td><td></td>
+            <td class="num">${num(orderUnits)}</td><td class="num">${money(orderCost)}</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="phead"><h2>תכנית הזמנה שנתית — כמה להזמין בכל חודש</h2><div class="spacer"></div>
+      <button class="btn ghost sm" onclick="App.exportMatrixCSV()">⬇ מטריצה CSV</button>
+      <button class="btn ghost sm" onclick="window.print()">🖨 הדפסה</button>
+    </div>
+    <div class="pbody">
+      <div class="tbl-wrap"><table>
+        <thead><tr>
+          <th style="position:sticky;right:0;background:#faf6f0">מוצר</th>
+          ${MONTHS_SHORT.map((m,i)=>`<th class="num" style="${i===selMonth?'color:var(--accent2)':''}">${m}</th>`).join('')}
+          <th class="num">שנתי</th>
+        </tr></thead>
+        <tbody>${matrixBody}
+          <tr class="total">
+            <td style="position:sticky;right:0;background:#f6efe4">סה״כ יחידות</td>
+            ${monthTotals.map(v=>`<td class="num">${num(v)}</td>`).join('')}
+            <td class="num">${num(annualUnits)}</td>
+          </tr>
+          <tr class="total">
+            <td style="position:sticky;right:0;background:#f6efe4">עלות הזמנה</td>
+            ${monthCost.map(v=>`<td class="num" style="font-size:11px">${money(v)}</td>`).join('')}
+            <td class="num">${money(annualCost)}</td>
+          </tr>
+        </tbody>
+      </table></div>
+      <div class="legend"><span><i style="background:var(--accent-soft)"></i> החודש שנבחר להזמנה מיידית</span></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="phead"><h2>עומס הזמנות לאורך השנה (יחידות)</h2></div>
+    <div class="pbody">${barChart(monthTotals, MONTHS_SHORT, {colorFn:(v,i)=>i===selMonth?'var(--accent2)':'var(--accent)'})}</div>
+  </div>`;
+};
+
+/* ============================================================
+   5. מלאי
+   ============================================================ */
+App.renderInventory = function(){
+  const showBin = this.filters.invBin;
+  const list = this.data.products.filter(p=> showBin? p.deleted : !p.deleted);
+  const totCost=this.activeProducts().reduce((s,p)=>s+p.stock*p.cost,0);
+  const totRetail=this.activeProducts().reduce((s,p)=>s+p.stock*p.price,0);
+
+  const rows=list.map(p=>{
+    const avgMonthly=this.monthlyAvgSales(p.id).reduce((s,x)=>s+x,0)/12;
+    const low = p.stock < avgMonthly;
+    return `<tr>
+      <td><span class="tag">${p.sku}</span></td>
+      <td>${p.name}</td>
+      <td><span class="pill cat">${p.cat}</span></td>
+      <td class="num"><input type="number" class="inline-input" value="${p.cost}" onchange="App.updateProduct(${p.id},'cost',+this.value)"></td>
+      <td class="num"><input type="number" class="inline-input" value="${p.price}" onchange="App.updateProduct(${p.id},'price',+this.value)"></td>
+      <td class="num">${money(p.price-p.cost)}</td>
+      <td class="num"><input type="number" class="inline-input" value="${p.stock}" onchange="App.updateProduct(${p.id},'stock',+this.value)"></td>
+      <td>${low?'<span class="pill low">מתחת לקצב מכירה</span>':'<span class="pill ok">תקין</span>'}</td>
+      <td class="num">${money(p.stock*p.cost)}</td>
+      <td class="no-print">${showBin
+        ? `<button class="btn ghost sm" onclick="App.restoreProduct(${p.id})">↩ שחזר</button>`
+        : `<button class="iconbtn" title="העבר לסל" onclick="App.deleteProduct(${p.id})">🗑</button>`}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('inventory').innerHTML=`
+  <div class="cards">
+    <div class="card"><div class="label">פריטים פעילים</div><div class="value small">${num(this.activeProducts().length)}</div></div>
+    <div class="card accent"><div class="label">שווי מלאי בעלות</div><div class="value small">${money(totCost)}</div></div>
+    <div class="card"><div class="label">שווי מלאי במחירי מכירה</div><div class="value small">${money(totRetail)}</div><div class="foot">רווח פוטנציאלי ${money(totRetail-totCost)}</div></div>
+  </div>
+  <div class="panel">
+    <div class="phead"><h2>${showBin?'♻️ סל מחזור מוצרים':'ניהול מלאי ומוצרים'}</h2><div class="spacer"></div>
+      ${showBin?'' : '<button class="btn sm" onclick="App.addProductPrompt()">＋ מוצר חדש</button>'}
+      <button class="btn ghost sm" onclick="App.filters.invBin=${!showBin};App.renderInventory()">${showBin?'← חזרה למלאי':'♻️ סל מחזור'}</button>
+    </div>
+    <div class="pbody">
+      <div class="hint" style="margin-bottom:10px">ערכי עלות / מחיר / מלאי ניתנים לעריכה ישירה בטבלה. שינוי נשמר אוטומטית.</div>
+      <div class="tbl-wrap"><table>
+        <thead><tr>
+          <th>מק״ט</th><th>שם מוצר</th><th>קטגוריה</th><th class="num">עלות</th><th class="num">מחיר</th>
+          <th class="num">רווח ליח׳</th><th class="num">מלאי</th><th>סטטוס</th><th class="num">שווי בעלות</th><th class="no-print"></th>
+        </tr></thead>
+        <tbody>${rows||'<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:24px">אין פריטים</td></tr>'}</tbody>
+      </table></div>
+    </div>
+  </div>`;
+};
+App.updateProduct=function(id,field,val){const p=this.prod(id);if(!p)return;p[field]=val;this.save();
+  this.renderDashboard();this.renderProducts();this.renderReorder();this.renderInventory();};
+App.deleteProduct=function(id){const p=this.prod(id);if(!p)return;
+  if(!confirm(`להעביר את "${p.name}" לסל המחזור? (ניתן לשחזר)`))return;
+  p.deleted=true;p.deletedAt='2026-07-16';this.save();this.renderInventory();this.renderProducts();this.renderReorder();};
+App.restoreProduct=function(id){const p=this.prod(id);if(!p)return;p.deleted=false;delete p.deletedAt;this.save();this.renderInventory();this.renderProducts();this.renderReorder();};
+App.addProductPrompt=function(){
+  const name=prompt('שם המוצר:');if(!name)return;
+  const cat=prompt('קטגוריה:','תיקי יד')||'כללי';
+  const cost=+prompt('עלות קניה (₪):','50')||0;
+  const price=+prompt('מחיר מכירה (₪):','120')||0;
+  const stock=+prompt('מלאי התחלתי:','10')||0;
+  const id=Math.max(0,...this.data.products.map(p=>p.id))+1;
+  this.data.products.push({id,sku:'NEW-'+id,name,cat,cost,price,pop:5,stock,deleted:false});
+  this.save();this.renderInventory();this.renderProducts();this.renderReorder();
+};
+
+/* ============================================================
+   6. תנועות
+   ============================================================ */
+App.renderTransactions = function(){
+  const f=this.filters;
+  const showBin=f.txBin;
+  const type=f.txType||'הכל';
+  const year=f.txYear||'הכל';
+  const q=(f.txSearch||'').trim();
+  const years=this.years();
+
+  let list=this.data.transactions.filter(t=> showBin? t.deleted : !t.deleted);
+  if(type!=='הכל') list=list.filter(t=>t.type===type);
+  if(year!=='הכל') list=list.filter(t=>t.date.slice(0,4)==year);
+  if(q) list=list.filter(t=>{const p=this.prod(t.productId);return p && (p.name.includes(q)||p.sku.includes(q))});
+  list.sort((a,b)=> a.date<b.date?1:a.date>b.date?-1:b.id-a.id);
+
+  const per=50; const pages=Math.max(1,Math.ceil(list.length/per));
+  let page=Math.min(this.page.transactions,pages); this.page.transactions=page;
+  const slice=list.slice((page-1)*per, page*per);
+
+  const rows=slice.map(t=>{
+    const p=this.prod(t.productId);
+    const isSale=t.type==='sale';
+    const line = isSale? t.unitPrice*t.qty : t.unitCost*t.qty;
+    const profit = isSale? (t.unitPrice-t.unitCost)*t.qty : 0;
+    return `<tr>
+      <td>${t.date}</td>
+      <td>${isSale?'<span class="pill sale">מכירה</span>':'<span class="pill purchase">קניה/חידוש</span>'}</td>
+      <td><span class="tag">${p?.sku||''}</span> ${p?.name||'—'}</td>
+      <td class="num">${num(t.qty)}</td>
+      <td class="num">${isSale?money(t.unitPrice):money(t.unitCost)}</td>
+      <td class="num">${money(line)}</td>
+      <td class="num ${isSale?(profit>=0?'pos':'neg'):''}">${isSale?money(profit):'—'}</td>
+      <td class="no-print">${showBin
+        ? `<button class="btn ghost sm" onclick="App.restoreTx(${t.id})">↩ שחזר</button>`
+        : `<button class="iconbtn" title="העבר לסל" onclick="App.deleteTx(${t.id})">🗑</button>`}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('transactions').innerHTML=`
+  <div class="panel">
+    <div class="phead"><h2>${showBin?'♻️ סל מחזור תנועות':'תנועות מלאי ומכירות'}</h2><div class="spacer"></div>
+      <span class="hint">${num(list.length)} תנועות</span>
+      ${showBin?'':'<button class="btn sm" onclick="App.addTxPrompt()">＋ תנועה</button>'}
+      <button class="btn ghost sm" onclick="App.exportTxCSV()">⬇ CSV</button>
+      <button class="btn ghost sm" onclick="App.filters.txBin=${!showBin};App.page.transactions=1;App.renderTransactions()">${showBin?'← חזרה':'♻️ סל מחזור'}</button>
+    </div>
+    <div class="pbody">
+      <div class="controls" style="margin-bottom:14px">
+        <div class="field"><label>סוג</label>
+          <select onchange="App.filters.txType=this.value;App.page.transactions=1;App.renderTransactions()">
+            ${['הכל','sale','purchase'].map(v=>`<option value="${v}" ${v===type?'selected':''}>${v==='הכל'?'הכל':v==='sale'?'מכירות':'קניות'}</option>`).join('')}
+          </select></div>
+        <div class="field"><label>שנה</label>
+          <select onchange="App.filters.txYear=this.value;App.page.transactions=1;App.renderTransactions()">
+            <option ${year==='הכל'?'selected':''}>הכל</option>
+            ${years.map(y=>`<option value="${y}" ${y==year?'selected':''}>${y}</option>`).join('')}
+          </select></div>
+        <div class="field" style="flex:1;min-width:180px"><label>חיפוש מוצר / מק״ט</label>
+          <input type="text" value="${q}" placeholder="הקלד שם או מק״ט…"
+            oninput="App.filters.txSearch=this.value;App.page.transactions=1;App.renderTransactions();this.focus()"></div>
+      </div>
+      <div class="tbl-wrap"><table>
+        <thead><tr>
+          <th>תאריך</th><th>סוג</th><th>מוצר</th><th class="num">כמות</th>
+          <th class="num">מחיר ליח׳</th><th class="num">סכום</th><th class="num">רווח</th><th class="no-print"></th>
+        </tr></thead>
+        <tbody>${rows||'<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">אין תנועות</td></tr>'}</tbody>
+      </table></div>
+      ${pages>1?`<div class="pager">
+        <button class="btn ghost sm" ${page<=1?'disabled':''} onclick="App.page.transactions=${page-1};App.renderTransactions()">→ הקודם</button>
+        עמוד ${page} מתוך ${pages}
+        <button class="btn ghost sm" ${page>=pages?'disabled':''} onclick="App.page.transactions=${page+1};App.renderTransactions()">הבא ←</button>
+      </div>`:''}
+    </div>
+  </div>`;
+};
+App.deleteTx=function(id){const t=this.data.transactions.find(x=>x.id===id);if(!t)return;
+  t.deleted=true;t.deletedAt='2026-07-16';this.save();this.renderTransactions();this.renderAll();};
+App.restoreTx=function(id){const t=this.data.transactions.find(x=>x.id===id);if(!t)return;
+  t.deleted=false;delete t.deletedAt;this.save();this.renderTransactions();this.renderAll();};
+App.addTxPrompt=function(){
+  const active=this.activeProducts();
+  const nameList=active.map((p,i)=>`${i+1}. ${p.name}`).join('\n');
+  const pick=+prompt('בחר מוצר (מספר):\n'+nameList);
+  const p=active[pick-1]; if(!p)return;
+  const typ=confirm('אישור = מכירה, ביטול = קניה/חידוש')?'sale':'purchase';
+  const qty=+prompt('כמות:','1')||1;
+  const date=prompt('תאריך (YYYY-MM-DD):','2026-07-16')||'2026-07-16';
+  const id=Math.max(0,...this.data.transactions.map(t=>t.id))+1;
+  this.data.transactions.push({id,date,type:typ,productId:p.id,qty,
+    unitPrice:typ==='sale'?p.price:0, unitCost:p.cost, deleted:false});
+  this.save();this.renderAll();this.switchTab('transactions');
+};
+
+/* ============================================================
+   ייצוא CSV / גיבוי
+   ============================================================ */
+function downloadCSV(filename, rows){
+  const csv='﻿'+rows.map(r=>r.map(c=>{
+    const s=String(c==null?'':c);
+    return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
+  }).join(',')).join('\r\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;a.click();
+}
+App.exportMonthlyCSV=function(year){
+  const rows=[['חודש','עסקאות','יחידות','הכנסות','עלות מכר','רווח גולמי','שיעור רווח']];
+  const acc=Array.from({length:12},()=>({rev:0,cogs:0,units:0,orders:0}));
+  this.sales().filter(t=>t.date.slice(0,4)==year).forEach(t=>{const m=+t.date.slice(5,7)-1;
+    acc[m].rev+=t.unitPrice*t.qty;acc[m].cogs+=t.unitCost*t.qty;acc[m].units+=t.qty;acc[m].orders++});
+  acc.forEach((r,m)=>{const p=r.rev-r.cogs;rows.push([MONTHS[m],r.orders,r.units,r.rev,r.cogs,p,r.rev?(p/r.rev*100).toFixed(1)+'%':''])});
+  downloadCSV(`דוח-רווח-חודשי-${year}.csv`,rows);
+};
+App.exportProductsCSV=function(){
+  const rows=[['מק״ט','מוצר','קטגוריה','יח׳ שנמכרו','הכנסות','עלות מכר','רווח','שיעור','מלאי']];
+  const agg={};this.activeProducts().forEach(p=>agg[p.id]={p,units:0,rev:0,cogs:0});
+  this.sales().forEach(t=>{if(!agg[t.productId])return;agg[t.productId].units+=t.qty;agg[t.productId].rev+=t.unitPrice*t.qty;agg[t.productId].cogs+=t.unitCost*t.qty});
+  Object.values(agg).sort((a,b)=>(b.rev-b.cogs)-(a.rev-a.cogs)).forEach(a=>{const p=a.rev-a.cogs;
+    rows.push([a.p.sku,a.p.name,a.p.cat,a.units,a.rev,a.cogs,p,a.rev?(p/a.rev*100).toFixed(1)+'%':'',a.p.stock])});
+  downloadCSV('פילוח-מוצרים.csv',rows);
+};
+App.exportOrderCSV=function(month){
+  const plans=this.reorderPlan();
+  const rows=[['מק״ט','מוצר','קטגוריה','ממוצע חודשי','צפי','מלאי נוכחי','להזמין','עלות הזמנה']];
+  plans.forEach(pl=>{const need=Math.max(0,pl.plan[month]-pl.p.stock);if(pl.plan[month]<=0)return;
+    rows.push([pl.p.sku,pl.p.name,pl.p.cat,(pl.avg[month]).toFixed(1),pl.plan[month],pl.p.stock,need,need*pl.p.cost])});
+  downloadCSV(`הזמנה-${MONTHS[month]}.csv`,rows);
+};
+App.exportMatrixCSV=function(){
+  const plans=this.reorderPlan();
+  const rows=[['מוצר',...MONTHS,'סה״כ שנתי']];
+  plans.sort((a,b)=>b.annual-a.annual).forEach(pl=>rows.push([pl.p.name,...pl.plan,pl.annual]));
+  const totals=Array(12).fill(0);plans.forEach(pl=>pl.plan.forEach((q,m)=>totals[m]+=q));
+  rows.push(['סה״כ יחידות',...totals,totals.reduce((a,b)=>a+b,0)]);
+  downloadCSV('תכנית-הזמנה-שנתית.csv',rows);
+};
+App.exportTxCSV=function(){
+  const rows=[['תאריך','סוג','מק״ט','מוצר','כמות','מחיר ליח׳','עלות ליח׳','סכום','רווח']];
+  this.data.transactions.filter(t=>!t.deleted).sort((a,b)=>a.date<b.date?1:-1).forEach(t=>{
+    const p=this.prod(t.productId);const isSale=t.type==='sale';
+    rows.push([t.date,isSale?'מכירה':'קניה',p?.sku||'',p?.name||'',t.qty,t.unitPrice,t.unitCost,
+      isSale?t.unitPrice*t.qty:t.unitCost*t.qty, isSale?(t.unitPrice-t.unitCost)*t.qty:0])});
+  downloadCSV('תנועות.csv',rows);
+};
+App.exportAll=function(){
+  const blob=new Blob([JSON.stringify(this.data,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='גיבוי-מלאי-תיקים.json';a.click();
+};
+
+/* אתחול */
+App.init();
+</script>
+</body>
+</html>
