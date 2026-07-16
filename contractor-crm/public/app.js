@@ -352,14 +352,10 @@
       <div class="row">
         <div class="field"><label>סכום מהלקוח (₪)</label><input id="s_ca" type="number" value="${s.client_amount != null ? s.client_amount : ''}"></div>
         <div class="field"><label>סכום לקבלן משנה (₪)</label><input id="s_sa" type="number" value="${s.sub_amount != null ? s.sub_amount : ''}"></div>
-      </div>
-      <div class="field"><label>סטטוס</label><select id="s_status">
-        <option value="pending" ${s.status === 'pending' ? 'selected' : ''}>ממתין</option>
-        <option value="in_progress" ${s.status === 'in_progress' ? 'selected' : ''}>בביצוע</option>
-        <option value="done" ${s.status === 'done' ? 'selected' : ''}>הושלם</option></select></div>`,
+      </div>`,
       [{ label: 'שמירה', onClick: async (close) => {
         const name = fv('s_name'); if (!name) return toast('שם שלב חובה', 'err');
-        const d = { project_id: pid, name, client_amount: fv('s_ca') || 0, sub_amount: fv('s_sa') || 0, status: fv('s_status') };
+        const d = { project_id: pid, name, client_amount: fv('s_ca') || 0, sub_amount: fv('s_sa') || 0 };
         await guard(s.id ? window.Store.stages.update(s.id, d) : window.Store.stages.create(d));
         close(); toast('נשמר', 'ok'); openProject(pid);
       } }, { label: 'ביטול', cls: 'ghost', onClick: (c) => c() }]);
