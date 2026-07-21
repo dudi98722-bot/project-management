@@ -1,0 +1,977 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>מחשבון רווחיות עסקאות פליפ ונדל״ן</title>
+<style>
+:root{
+  --bg:#eef1f6; --card:#ffffff; --ink:#152238; --muted:#657590; --soft:#8a99b0;
+  --brand:#12507a; --brand2:#1c6fa8; --accent:#c99a3a; --accent2:#e0b45a;
+  --good:#178a55; --goodbg:#e7f6ee; --bad:#c9433f; --badbg:#fbeceb;
+  --line:#e2e8f1; --line2:#eef2f7; --shadow:0 1px 3px rgba(20,40,70,.08),0 6px 20px rgba(20,40,70,.06);
+  --r:14px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:'Segoe UI',Roboto,'Helvetica Neue',Arial,'Noto Sans Hebrew','Assistant',sans-serif;
+  background:linear-gradient(180deg,#e9edf4,#eef1f6 260px);color:var(--ink);
+  font-size:15px;line-height:1.5;-webkit-text-size-adjust:100%;
+}
+h1,h2,h3,h4{margin:0;font-weight:700}
+a{color:var(--brand2)}
+input,select,button{font-family:inherit;font-size:inherit;color:inherit}
+.wrap{max-width:1280px;margin:0 auto;padding:0 16px 60px}
+
+/* ===== Topbar ===== */
+.topbar{
+  background:linear-gradient(120deg,#0f3f63,#12507a 55%,#1c6fa8);color:#fff;
+  padding:16px 0;box-shadow:var(--shadow);position:sticky;top:0;z-index:40;
+}
+.topbar .wrap{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding-bottom:0;padding-top:0}
+.brand{display:flex;align-items:center;gap:12px}
+.brand .logo{
+  width:44px;height:44px;border-radius:11px;background:linear-gradient(135deg,var(--accent2),var(--accent));
+  display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 2px 8px rgba(0,0,0,.2)
+}
+.brand h1{font-size:19px;letter-spacing:-.2px}
+.brand .sub{font-size:12px;opacity:.8;font-weight:400}
+.top-actions{margin-inline-start:auto;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.modeSwitch{display:flex;background:rgba(255,255,255,.14);border-radius:10px;padding:3px}
+.modeSwitch button{
+  background:transparent;border:0;color:#fff;padding:8px 16px;border-radius:8px;cursor:pointer;
+  font-weight:600;opacity:.75;transition:.15s;font-size:14px
+}
+.modeSwitch button.active{background:#fff;color:var(--brand);opacity:1;box-shadow:0 1px 4px rgba(0,0,0,.15)}
+
+/* ===== Buttons ===== */
+.btn{
+  border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;
+  padding:8px 14px;border-radius:9px;cursor:pointer;font-weight:600;font-size:13.5px;transition:.15s;
+  display:inline-flex;align-items:center;gap:6px;white-space:nowrap
+}
+.btn:hover{background:rgba(255,255,255,.22)}
+.btn.solid{background:var(--accent);border-color:var(--accent);color:#3a2c07}
+.btn.solid:hover{background:var(--accent2)}
+.btn-ghost{
+  border:1px solid var(--line);background:#fff;color:var(--brand);padding:8px 14px;border-radius:9px;
+  cursor:pointer;font-weight:600;font-size:13.5px;transition:.15s;display:inline-flex;align-items:center;gap:6px
+}
+.btn-ghost:hover{background:#f3f7fb;border-color:var(--brand2)}
+.btn-ghost.danger{color:var(--bad)}
+.btn-ghost.danger:hover{background:var(--badbg);border-color:var(--bad)}
+
+/* ===== Deal bar ===== */
+.dealbar{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);
+  margin-top:18px;padding:14px 16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap
+}
+.dealbar .grow{flex:1;min-width:180px}
+.dealbar label{font-size:11.5px;color:var(--muted);font-weight:700;display:block;margin-bottom:3px}
+.dealbar input,.dealbar select{
+  width:100%;border:1px solid var(--line);border-radius:9px;padding:9px 11px;background:#fbfcfe
+}
+.dealbar input:focus,.dealbar select:focus{outline:none;border-color:var(--brand2);background:#fff}
+.deal-name-input{font-weight:700;font-size:16px}
+
+/* ===== Layout ===== */
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:18px;margin-top:18px;align-items:start}
+@media(max-width:940px){.grid{grid-template-columns:1fr}}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);margin-bottom:16px;overflow:hidden}
+.card > h3{
+  padding:13px 16px;font-size:15px;border-bottom:1px solid var(--line2);
+  display:flex;align-items:center;gap:9px;background:linear-gradient(180deg,#fbfcfe,#f6f9fc)
+}
+.card > h3 .ico{width:26px;height:26px;border-radius:8px;background:#eaf2f9;color:var(--brand);
+  display:flex;align-items:center;justify-content:center;font-size:15px}
+.card > h3 .hint{margin-inline-start:auto;font-size:11.5px;color:var(--soft);font-weight:600}
+.card-body{padding:14px 16px}
+
+/* ===== Fields ===== */
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px}
+.fields.one{grid-template-columns:1fr}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field.full{grid-column:1/-1}
+.field label{font-size:12.5px;color:var(--muted);font-weight:600;display:flex;align-items:center;gap:5px}
+.field label .en{font-size:10.5px;color:var(--soft);font-weight:500}
+.field input,.field select{
+  border:1px solid var(--line);border-radius:9px;padding:9px 11px;background:#fbfcfe;width:100%;
+  text-align:start;transition:.12s
+}
+.field input:focus,.field select:focus{outline:none;border-color:var(--brand2);background:#fff;box-shadow:0 0 0 3px rgba(28,111,168,.1)}
+.field input.calc{background:#f3f6fa;color:var(--muted);font-weight:600}
+.mp{display:grid;grid-template-columns:74px 1fr;gap:7px;align-items:center}
+.mp .pctwrap,.mp .amtwrap{position:relative;display:flex;align-items:center}
+.mp input{width:100%}
+.mp .pct{padding-inline-end:22px}
+.mp .amt{padding-inline-end:24px}
+.mp .u{position:absolute;inset-inline-end:9px;font-size:12px;color:var(--soft);pointer-events:none;font-weight:600}
+.checkline{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);font-weight:600;cursor:pointer;padding:2px 0}
+.checkline input{width:17px;height:17px;accent-color:var(--brand);cursor:pointer}
+.subtle{font-size:11.5px;color:var(--soft);margin-top:2px}
+
+/* ===== Results ===== */
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media(max-width:560px){.kpi-row{grid-template-columns:1fr 1fr}}
+.kpi{
+  background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;box-shadow:var(--shadow);
+  position:relative;overflow:hidden
+}
+.kpi::before{content:"";position:absolute;inset-inline-start:0;top:0;bottom:0;width:4px;background:var(--brand)}
+.kpi.good::before{background:var(--good)} .kpi.bad::before{background:var(--bad)} .kpi.gold::before{background:var(--accent)}
+.kpi .k-label{font-size:12px;color:var(--muted);font-weight:600;margin-bottom:5px}
+.kpi .k-val{font-size:23px;font-weight:800;letter-spacing:-.5px;line-height:1.1}
+.kpi .k-val.pos{color:var(--good)} .kpi .k-val.neg{color:var(--bad)}
+.kpi .k-sub{font-size:11.5px;color:var(--soft);margin-top:3px;font-weight:500}
+
+.hero{
+  background:linear-gradient(120deg,#0f3f63,#12507a);color:#fff;border-radius:var(--r);padding:18px 20px;
+  box-shadow:var(--shadow);margin-bottom:16px;display:flex;flex-wrap:wrap;gap:18px;align-items:center
+}
+.hero .big{flex:1;min-width:160px}
+.hero .big .lab{font-size:13px;opacity:.85;font-weight:600}
+.hero .big .num{font-size:34px;font-weight:800;letter-spacing:-1px;margin-top:2px}
+.hero .big .num.neg{color:#ffc9c4}
+.hero .pill{background:rgba(255,255,255,.14);border-radius:12px;padding:12px 16px;text-align:center;min-width:110px}
+.hero .pill .lab{font-size:11.5px;opacity:.82;font-weight:600}
+.hero .pill .num{font-size:22px;font-weight:800;margin-top:2px}
+
+/* ===== Breakdown table ===== */
+.bk{width:100%;border-collapse:collapse;font-size:13.5px}
+.bk td{padding:8px 6px;border-bottom:1px solid var(--line2)}
+.bk td:last-child{text-align:start;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.bk tr.sub td{color:var(--muted);font-size:12.5px;padding-inline-start:22px;font-weight:500}
+.bk tr.sub td:last-child{font-weight:600;color:var(--ink)}
+.bk tr.total td{border-top:2px solid var(--line);font-weight:800;font-size:14.5px;background:#f8fafc}
+.bk tr.grand td{background:#eef4fa;font-weight:800;font-size:15px;color:var(--brand)}
+.bk .swatch{display:inline-block;width:10px;height:10px;border-radius:3px;margin-inline-end:7px;vertical-align:middle}
+.pos{color:var(--good)} .neg{color:var(--bad)}
+
+/* charts */
+.chart-wrap{display:flex;gap:16px;flex-wrap:wrap;align-items:center;justify-content:center}
+.legend{display:flex;flex-direction:column;gap:6px;font-size:12.5px;min-width:150px}
+.legend .li{display:flex;align-items:center;gap:8px}
+.legend .li .sw{width:11px;height:11px;border-radius:3px}
+.legend .li .nm{flex:1;color:var(--muted)}
+.legend .li .vl{font-weight:700;font-variant-numeric:tabular-nums}
+
+/* sensitivity */
+.sens{width:100%;border-collapse:collapse;font-size:13px;text-align:center}
+.sens th,.sens td{padding:8px 6px;border:1px solid var(--line2)}
+.sens th{background:#f4f8fb;font-weight:700;color:var(--brand);font-size:12px}
+.sens td.base{background:#fff7e6;font-weight:800}
+.sens .rowh{background:#f8fafc;font-weight:700;text-align:start}
+
+/* saved deals */
+.deals-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.deal-chip{
+  border:1px solid var(--line);border-radius:11px;padding:11px 12px;background:#fbfcfe;cursor:pointer;transition:.12s;position:relative
+}
+.deal-chip:hover{border-color:var(--brand2);box-shadow:var(--shadow);background:#fff}
+.deal-chip.active{border-color:var(--brand);background:#eef4fa}
+.deal-chip .dc-name{font-weight:700;font-size:14px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.deal-chip .dc-meta{font-size:11.5px;color:var(--soft)}
+.deal-chip .dc-roi{font-size:13px;font-weight:800;margin-top:5px}
+.deal-chip .dc-mode{position:absolute;top:8px;inset-inline-end:9px;font-size:9.5px;font-weight:700;
+  padding:2px 6px;border-radius:6px;background:#eaf2f9;color:var(--brand)}
+.deal-chip .dc-del{position:absolute;bottom:8px;inset-inline-end:8px;border:0;background:transparent;
+  color:var(--soft);cursor:pointer;font-size:14px;opacity:0;transition:.12s}
+.deal-chip:hover .dc-del{opacity:1}
+.deal-chip .dc-del:hover{color:var(--bad)}
+
+/* compare table */
+.cmp{width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap}
+.cmp th,.cmp td{padding:9px 10px;border-bottom:1px solid var(--line2);text-align:start}
+.cmp thead th{background:#f4f8fb;color:var(--brand);font-weight:700;position:sticky;top:0}
+.cmp tbody tr:hover{background:#f8fafc}
+.cmp .metric{font-weight:700;color:var(--muted)}
+.cmp-scroll{overflow-x:auto}
+
+/* misc */
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.section-title{display:flex;align-items:center;gap:9px;margin:26px 0 12px;font-size:16px;font-weight:800;color:var(--brand)}
+.section-title .bar{width:4px;height:20px;border-radius:3px;background:var(--accent)}
+.empty{text-align:center;color:var(--soft);padding:26px;font-size:13.5px}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px}
+.badge.good{background:var(--goodbg);color:var(--good)}
+.badge.bad{background:var(--badbg);color:var(--bad)}
+.note{background:#fffaf0;border:1px solid #f2e2bf;border-radius:10px;padding:10px 12px;font-size:12px;color:#7a5f1e;margin-top:10px}
+.brrr-only,.flip-only{display:none}
+body[data-mode="flip"] .flip-only{display:block}
+body[data-mode="flip"] .fields .flip-only{display:flex}
+body[data-mode="brrr"] .brrr-only{display:block}
+body[data-mode="brrr"] .fields .brrr-only{display:flex}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;
+  padding:11px 20px;border-radius:10px;font-weight:600;font-size:14px;box-shadow:0 8px 30px rgba(0,0,0,.3);
+  opacity:0;pointer-events:none;transition:.25s;z-index:100}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(-6px)}
+
+/* print */
+@media print{
+  body{background:#fff}
+  .topbar,.top-actions,.no-print,.deal-chip .dc-del,.toolbar{display:none!important}
+  .wrap{max-width:100%}
+  .card,.kpi,.hero{box-shadow:none;break-inside:avoid}
+  .grid{grid-template-columns:1fr 1fr}
+  .print-head{display:flex!important}
+}
+.print-head{display:none;align-items:center;gap:12px;border-bottom:2px solid var(--brand);padding-bottom:10px;margin-bottom:14px}
+.print-head .logo{width:40px;height:40px;border-radius:9px;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px}
+</style>
+</head>
+<body data-mode="flip">
+
+<div class="topbar no-print">
+  <div class="wrap">
+    <div class="brand">
+      <div class="logo">🏠</div>
+      <div>
+        <h1>מחשבון רווחיות עסקאות פליפ</h1>
+        <div class="sub">ניתוח השקעות נדל״ן · פליפ &amp; BRRR · רווח, תשואה ואחוז שנתי</div>
+      </div>
+    </div>
+    <div class="top-actions">
+      <div class="modeSwitch">
+        <button id="modeFlip" class="active" onclick="setMode('flip')">פליפ · מכירה</button>
+        <button id="modeBrrr" onclick="setMode('brrr')">BRRR · השכרה</button>
+      </div>
+      <button class="btn solid" onclick="saveDeal()">💾 שמור עסקה</button>
+      <button class="btn" onclick="newDeal()">＋ חדשה</button>
+      <button class="btn" onclick="window.print()">🖨️ הדפס דוח</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- print header -->
+  <div class="print-head">
+    <div class="logo">🏠</div>
+    <div>
+      <div style="font-weight:800;font-size:18px" id="printTitle">ניתוח עסקה</div>
+      <div style="font-size:12px;color:var(--muted)" id="printSub">מחשבון רווחיות עסקאות פליפ ונדל״ן</div>
+    </div>
+  </div>
+
+  <!-- deal bar -->
+  <div class="dealbar no-print">
+    <div class="grow">
+      <label>שם העסקה</label>
+      <input id="dealName" class="deal-name-input" placeholder="לדוגמה: דירת 4 חד׳ ברמת גן" oninput="recalc()">
+    </div>
+    <div class="grow">
+      <label>כתובת הנכס</label>
+      <input id="dealAddress" placeholder="רחוב, עיר" oninput="recalc()">
+    </div>
+    <div style="width:120px">
+      <label>מטבע</label>
+      <select id="currency" onchange="recalc()">
+        <option value="₪" selected>₪ שקל</option>
+        <option value="£">£ פאונד</option>
+        <option value="$">$ דולר</option>
+        <option value="€">€ יורו</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="grid">
+    <!-- ========== INPUTS ========== -->
+    <div class="col-inputs">
+
+      <!-- Purchase -->
+      <div class="card">
+        <h3><span class="ico">🏷️</span> רכישה ועלויות קנייה <span class="hint">Purchase</span></h3>
+        <div class="card-body">
+          <div class="fields">
+            <div class="field full">
+              <label>מחיר רכישה <span class="en">Purchase price</span></label>
+              <div class="amtwrap"><input type="number" id="purchasePrice" value="1650000" oninput="recalc()"><span class="u cur">₪</span></div>
+            </div>
+            <div class="field">
+              <label>מס רכישה <span class="en">Purchase tax</span></label>
+              <div class="mp">
+                <div class="pctwrap"><input type="number" class="pct" data-base="purchasePrice" data-amt="purchaseTaxAmt" value="8" oninput="pctIn(this)"><span class="u">%</span></div>
+                <div class="amtwrap"><input type="number" class="amt" id="purchaseTaxAmt" data-pct value="132000" oninput="recalc()"><span class="u cur">₪</span></div>
+              </div>
+            </div>
+            <div class="field">
+              <label>דמי תיווך קנייה <span class="en">Buy agent</span></label>
+              <div class="mp">
+                <div class="pctwrap"><input type="number" class="pct" data-base="purchasePrice" data-amt="buyAgentAmt" value="2" oninput="pctIn(this)"><span class="u">%</span></div>
+                <div class="amtwrap"><input type="number" class="amt" id="buyAgentAmt" value="33000" oninput="recalc()"><span class="u cur">₪</span></div>
+              </div>
+            </div>
+            <div class="field">
+              <label>עו״ד רכישה <span class="en">Lawyer</span></label>
+              <div class="mp">
+                <div class="pctwrap"><input type="number" class="pct" data-base="purchasePrice" data-amt="buyLawyerAmt" value="0.6" oninput="pctIn(this)"><span class="u">%</span></div>
+                <div class="amtwrap"><input type="number" class="amt" id="buyLawyerAmt" value="9900" oninput="recalc()"><span class="u cur">₪</span></div>
+              </div>
+            </div>
+            <div class="field">
+              <label>אגרות ושונות רכישה <span class="en">Other</span></label>
+              <div class="amtwrap"><input type="number" id="buyOther" value="4000" oninput="recalc()"><span class="u cur">₪</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Renovation -->
+      <div class="card">
+        <h3><span class="ico">🔨</span> שיפוץ והשבחה <span class="hint">Refurbishment</span></h3>
+        <div class="card-body">
+          <div class="fields">
+            <div class="field">
+              <label>עלות שיפוץ <span class="en">Renovation</span></label>
+              <div class="amtwrap"><input type="number" id="renovation" value="220000" oninput="recalc()"><span class="u cur">₪</span></div>
+            </div>
+            <div class="field">
+              <label>בלת״מ / בלתי צפוי <span class="en">Contingency</span></label>
+              <div class="mp">
+                <div class="pctwrap"><input type="number" class="pct" data-base="renovation" data-amt="contingencyAmt" value="10" oninput="pctIn(this)"><span class="u">%</span></div>
+                <div class="amtwrap"><input type="number" class="amt" id="contingencyAmt" value="22000" oninput="recalc()"><span class="u cur">₪</span></div>
+              </div>
+            </div>
+            <div class="field">
+              <label>היתרים ואגרות בנייה <span class="en">Permits</span></label>
+              <div class="amtwrap"><input type="number" id="permits" value="0" oninput="recalc()"><span class="u cur">₪</span></div>
+            </div>
+            <div class="field">
+              <label>הכנה למכירה / ריהוט <span class="en">Staging</span></label>
+              <div class="amtwrap"><input type="number" id="staging" value="8000" oninput="recalc()"><span class="u cur">₪</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Financing -->
+      <div class="card">
+        <h3><span class="ico">🏦</span> מימון ותקופת החזקה <span class="hint">Finance</span></h3>
+        <div class="card-body">
+          <div class="fields">
+            <div class="field">
+              <label>אחוז מימון (משכנתא/גישור) <span class="en">LTV</span></label>
+              <div class="mp">
+                <div class="pctwrap"><input type="number" id="ltvPct" value="70" oninput="recalc()"><span class="u">%</span></div>
+                <div class="amtwrap"><input type="number" id="loanAmtCalc" class="calc" readonly><span class="u cur">₪</span></div>
+              </div>
+            </div>
+            <div class="field">
+              <label>ריבית שנתית על ההלוואה <span class="en">Interest p.a.</span></label>
+              <div class="pctwrap"><input type="number" id="interestRate" value="6.5" step="0.1" oninput="recalc()"><span class="u">%</span></div>
+            </div>
+            <div class="field">
+              <label>תקופת הפרויקט <span class="en">Holding</span></label>
+              <div class="amtwrap"><input type="number" id="holdingMonths" value="9" oninput="recalc()"><span class="u">חודשים</span></div>
+            </div>
+            <div class="field">
+              <label>עלויות החזקה חודשיות <span class="en">/ month</span></label>
+              <div class="amtwrap"><input type="number" id="monthlyHolding" value="1200" oninput="recalc()"><span class="u cur">₪</span></div>
+            </div>
+            <div class="field full">
+              <label class="checkline"><input type="checkbox" id="financeReno" onchange="recalc()"> מימון גם את השיפוץ (הלוואת בנייה)</label>
+              <label class="checkline"><input type="checkbox" id="financeInterest" onchange="recalc()"> גלגול הריביות למסגרת ההלוואה (הון עצמי נמוך יותר)</label>
+            </div>
+          </div>
+          <div class="subtle">ריבית מימון מחושבת: הלוואה × ריבית שנתית × חודשים ÷ 12</div>
+        </div>
+      </div>
+
+      <!-- SALE (flip) -->
+      <div class="card flip-only">
+        <h3><span class="ico">💰</span> מכירה ומיסוי <span class="hint">Sale &amp; Tax</span></h3>
+        <div class="card-body">
+          <div class="fields">
+            <div class="field full">
+              <label>מחיר מכירה צפוי <span class="en">Sale price</span></label>
+              <div class="amtwrap"><input type="number" id="salePrice" value="2350000" oninput="recalc()"><span class="u cur">₪</span></div>
+            </div>
+            <div class="field">
+              <label>דמי תיווך מכירה <span class="en">Sell agent</span></label>
+              <div class="mp">
+                <div class="pctwrap"><input type="number" class="pct" data-base="salePrice" data-amt="sellAgentAmt" value="2" oninput="pctIn(this)"><span class="u">%</span></div>
+                <div class="amtwrap"><input type="number" class="amt" id="sellAgentAmt" value="47000" oninput="recalc()"><span class="u cur">₪</span></div>
+              </div>
+            </div>
+            <div class="field">
+              <label>עו״ד מכירה <span class="en">Lawyer</span></label>
+              <div class="mp">
+                <div class="pctwrap"><input type="number" class="pct" data-base="salePrice" data-amt="sellLawyerAmt" value="0.5" oninput="pctIn(this)"><span class="u">%</span></div>
+                <div class="amtwrap"><input type="number" class="amt" id="sellLawyerAmt" value="11750" oninput="recalc()"><span class="u cur">₪</span></div>
+              </div>
+            </div>
+            <div class="field">
+              <label>היטל השבחה <span class="en">Betterment levy</span></label>
+              <div class="amtwrap"><input type="number" id="betterment" value="0" oninput="recalc()"><span class="u cur">₪</span></div>
+            </div>
+            <div class="field full">
+              <label class="checkline"><input type="checkbox" id="capGainsOn" checked onchange="recalc()"> חישוב מס שבח על הרווח</label>
+            </div>
+            <div class="field">
+              <label>שיעור מס שבח <span class="en">Cap. gains</span></label>
+              <div class="pctwrap"><input type="number" id="capGainsPct" value="25" oninput="recalc()"><span class="u">%</span></div>
+            </div>
+            <div class="field">
+              <label>רווח חייב במס (עריכה) <span class="en">Taxable</span></label>
+              <div class="amtwrap"><input type="number" id="taxableOverride" placeholder="ברירת מחדל = הרווח הגולמי" oninput="recalc()"><span class="u cur">₪</span></div>
+            </div>
+          </div>
+          <div class="note">מס שבח בישראל = 25% על הרווח הריאלי (לאחר קיזוז עלויות והשבחה מוכרות). זהו אומדן — לתכנון מדויק היוועצו ביועץ מס/שמאי.</div>
+        </div>
+      </div>
+
+      <!-- REFINANCE + RENT (BRRR) -->
+      <div class="card brrr-only">
+        <h3><span class="ico">🔁</span> מימון מחדש והשכרה <span class="hint">Refinance &amp; Rent</span></h3>
+        <div class="card-body">
+          <div class="fields">
+            <div class="field">
+              <label>שווי לאחר שיפוץ (שמאות) <span class="en">ARV</span></label>
+              <div class="amtwrap"><input type="number" id="arv" value="2650000" oninput="recalc()"><span class="u cur">₪</span></div>
+            </div>
+            <div class="field">
+              <label>משכנתא לאחר שיפוץ <span class="en">Refi LTV</span></label>
+              <div class="mp">
+                <div class="pctwrap"><input type="number" id="refiLtv" value="75" oninput="recalc()"><span class="u">%</span></div>
+                <div class="amtwrap"><input type="number" id="refiMortgageCalc" class="calc" readonly><span class="u cur">₪</span></div>
+              </div>
+            </div>
+            <div class="field">
+              <label>ריבית משכנתא שנתית <span class="en">Mortgage rate</span></label>
+              <div class="pctwrap"><input type="number" id="refiRate" value="5.1" step="0.1" oninput="recalc()"><span class="u">%</span></div>
+            </div>
+            <div class="field">
+              <label>שכירות חודשית <span class="en">Rent / month</span></label>
+              <div class="amtwrap"><input type="number" id="monthlyRent" value="7800" oninput="recalc()"><span class="u cur">₪</span></div>
+            </div>
+            <div class="field">
+              <label>דמי ניהול <span class="en">Management</span></label>
+              <div class="mp">
+                <div class="pctwrap"><input type="number" id="mgmtPct" value="8" oninput="recalc()"><span class="u">%</span></div>
+                <div class="amtwrap"><input type="number" id="mgmtCalc" class="calc" readonly><span class="u cur">₪</span></div>
+              </div>
+            </div>
+            <div class="field">
+              <label>אחוז אי-תפוסה (Vacancy) <span class="en">Vacancy</span></label>
+              <div class="pctwrap"><input type="number" id="vacancyPct" value="4" oninput="recalc()"><span class="u">%</span></div>
+            </div>
+            <div class="field">
+              <label>ביטוח שנתי <span class="en">Insurance/yr</span></label>
+              <div class="amtwrap"><input type="number" id="brrrInsurance" value="1800" oninput="recalc()"><span class="u cur">₪</span></div>
+            </div>
+            <div class="field">
+              <label>אחזקה שוטפת שנתית <span class="en">Upkeep/yr</span></label>
+              <div class="amtwrap"><input type="number" id="brrrUpkeep" value="3000" oninput="recalc()"><span class="u cur">₪</span></div>
+            </div>
+          </div>
+          <div class="toolbar" style="margin:12px 0 0">
+            <button class="btn-ghost" onclick="loadLondon()">📄 טען את דוגמת לונדון (מהאקסל)</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ========== RESULTS ========== -->
+    <div class="col-results">
+
+      <!-- HERO -->
+      <div class="hero" id="hero"></div>
+
+      <!-- KPIs -->
+      <div class="kpi-row" id="kpiRow"></div>
+
+      <!-- Cost breakdown + chart -->
+      <div class="card" style="margin-top:16px">
+        <h3><span class="ico">📊</span> פירוט העלויות והשקעה <span class="hint" id="bkHint"></span></h3>
+        <div class="card-body">
+          <div class="chart-wrap" style="margin-bottom:14px">
+            <svg id="donut" width="180" height="180" viewBox="0 0 180 180"></svg>
+            <div class="legend" id="legend"></div>
+          </div>
+          <table class="bk" id="breakdown"></table>
+        </div>
+      </div>
+
+      <!-- Sensitivity -->
+      <div class="card flip-only">
+        <h3><span class="ico">🎯</span> ניתוח רגישות למחיר מכירה <span class="hint">Sensitivity</span></h3>
+        <div class="card-body">
+          <table class="sens" id="sensTable"></table>
+          <div class="subtle" style="margin-top:8px">כיצד משתנים הרווח הנקי והתשואה על ההון אם מחיר המכירה בפועל יהיה גבוה/נמוך מהצפוי.</div>
+        </div>
+      </div>
+
+      <div class="card brrr-only">
+        <h3><span class="ico">🎯</span> תזרים שנתי מהשכרה <span class="hint">Annual cashflow</span></h3>
+        <div class="card-body">
+          <table class="bk" id="brrrFlow"></table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ========== SAVED DEALS ========== -->
+  <div class="section-title no-print"><span class="bar"></span> עסקאות שמורות</div>
+  <div class="card no-print">
+    <div class="card-body">
+      <div class="toolbar">
+        <button class="btn-ghost" onclick="exportJSON()">⬇️ גיבוי (JSON)</button>
+        <label class="btn-ghost" style="cursor:pointer">⬆️ שחזור<input type="file" accept=".json" onchange="importJSON(event)" hidden></label>
+        <button class="btn-ghost" onclick="exportCSV()">📑 ייצוא השוואה (CSV)</button>
+        <button class="btn-ghost" id="binToggle" onclick="toggleBin()">🗑️ סל מחזור</button>
+      </div>
+      <div class="deals-list" id="dealsList"></div>
+    </div>
+  </div>
+
+  <!-- COMPARE -->
+  <div class="section-title no-print" id="cmpTitle" style="display:none"><span class="bar"></span> השוואת עסקאות</div>
+  <div class="card no-print" id="cmpCard" style="display:none">
+    <div class="cmp-scroll"><table class="cmp" id="compare"></table></div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ============ helpers ============ */
+const $ = id => document.getElementById(id);
+const num = id => { const el=$(id); if(!el) return 0; const v=parseFloat(el.value); return isFinite(v)?v:0; };
+let CUR = '₪';
+const fmt = v => (v<0?'-':'') + CUR + Math.abs(Math.round(v)).toLocaleString('he-IL');
+const fmt0 = v => Math.round(v).toLocaleString('he-IL');
+const pct = v => (isFinite(v)?(v*100).toLocaleString('he-IL',{maximumFractionDigits:1}):'0') + '%';
+const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),2000); }
+
+/* percent field -> amount */
+function pctIn(el){
+  const base = num(el.dataset.base);
+  const amtEl = $(el.dataset.amt);
+  const p = parseFloat(el.value)||0;
+  if(amtEl) amtEl.value = Math.round(base*p/100);
+  recalc();
+}
+/* refresh percent displays from amount (when not focused) */
+function refreshPcts(){
+  document.querySelectorAll('input.pct[data-base][data-amt]').forEach(el=>{
+    if(el===document.activeElement) return;
+    const base=num(el.dataset.base), amt=num(el.dataset.amt);
+    el.value = base>0 ? +(amt/base*100).toFixed(2) : el.value;
+  });
+}
+
+let MODE = 'flip';
+function setMode(m){
+  MODE=m; document.body.dataset.mode=m;
+  $('modeFlip').classList.toggle('active',m==='flip');
+  $('modeBrrr').classList.toggle('active',m==='brrr');
+  recalc();
+}
+
+/* ============ core model ============ */
+function model(){
+  const purchase=num('purchasePrice');
+  const buyTax=num('purchaseTaxAmt'), buyAgent=num('buyAgentAmt'),
+        buyLawyer=num('buyLawyerAmt'), buyOther=num('buyOther');
+  const buyingCosts=buyTax+buyAgent+buyLawyer+buyOther;
+
+  const reno=num('renovation'), contingency=num('contingencyAmt'),
+        permits=num('permits'), staging=num('staging');
+  const projectCosts=reno+contingency+permits+staging;
+
+  const ltv=num('ltvPct')/100;
+  const purchaseLoan=purchase*ltv;
+  const renoLoan=$('financeReno').checked ? reno : 0;  // lender funds the build contract; contingency stays as cash
+  const months=Math.max(0,num('holdingMonths'));
+  const rate=num('interestRate')/100;
+
+  // interest on purchase+reno loan over holding period
+  const preInterest=(purchaseLoan+renoLoan)*rate*months/12;
+  const interestLoan=$('financeInterest').checked ? preInterest : 0;
+  const loan=purchaseLoan+renoLoan+interestLoan;
+  const interest=preInterest;
+
+  const holding=num('monthlyHolding')*months;
+  const totalCost=purchase+buyingCosts+projectCosts+holding+interest;
+  const equity=totalCost-loan;
+
+  const m={purchase,buyTax,buyAgent,buyLawyer,buyOther,buyingCosts,
+    reno,contingency,permits,staging,projectCosts,
+    ltv,purchaseLoan,renoLoan,interestLoan,loan,months,rate,interest,holding,
+    totalCost,equity};
+
+  if(MODE==='flip'){
+    const sale=num('salePrice');
+    const sellAgent=num('sellAgentAmt'), sellLawyer=num('sellLawyerAmt');
+    const betterment=num('betterment');
+    const sellingCosts=sellAgent+sellLawyer;
+    const grossProfit=sale-totalCost-sellingCosts-betterment;
+    const ov=num('taxableOverride');
+    const taxable=ov>0?ov:Math.max(0,grossProfit);
+    const capGains=$('capGainsOn').checked ? taxable*num('capGainsPct')/100 : 0;
+    const netProfit=grossProfit-capGains;
+    const roi=equity!==0?netProfit/equity:0;
+    const annSimple=months>0?roi*12/months:roi;
+    const annComp=(months>0&&(1+roi)>0)?Math.pow(1+roi,12/months)-1:annSimple;
+    const margin=sale!==0?netProfit/sale:0;
+    const roiCost=totalCost!==0?netProfit/totalCost:0;
+    Object.assign(m,{sale,sellAgent,sellLawyer,sellingCosts,betterment,
+      grossProfit,taxable,capGains,netProfit,roi,annSimple,annComp,margin,roiCost});
+  } else {
+    const arv=num('arv');
+    const refiMort=arv*num('refiLtv')/100;
+    const moneyOut=refiMort-loan;                 // capital pulled out
+    const equityLeft=equity-moneyOut;             // money left in the deal
+    const monthlyRent=num('monthlyRent');
+    const grossRent=monthlyRent*12;
+    const vacancy=grossRent*num('vacancyPct')/100;
+    const effRent=grossRent-vacancy;
+    const mgmt=grossRent*num('mgmtPct')/100;
+    const insurance=num('brrrInsurance'), upkeep=num('brrrUpkeep');
+    const mortInterest=refiMort*num('refiRate')/100;
+    const runningCosts=mgmt+insurance+upkeep+mortInterest;
+    const netAnnual=effRent-runningCosts;
+    const denom = equityLeft>0?equityLeft:equity;
+    const coc=denom!==0?netAnnual/denom:0;
+    const equityGain=arv-totalCost;
+    Object.assign(m,{arv,refiMort,moneyOut,equityLeft,monthlyRent,grossRent,vacancy,effRent,
+      mgmt,insurance,upkeep,mortInterest,runningCosts,netAnnual,coc,equityGain,denom});
+  }
+  return m;
+}
+
+/* ============ render ============ */
+function recalc(){
+  CUR=$('currency').value;
+  document.querySelectorAll('.u.cur').forEach(e=>e.textContent=CUR);
+  refreshPcts();
+  const m=model();
+
+  // live calc fields
+  $('loanAmtCalc').value = fmt0(m.purchaseLoan);
+  if($('refiMortgageCalc')) $('refiMortgageCalc').value = fmt0(num('arv')*num('refiLtv')/100);
+  if($('mgmtCalc')) $('mgmtCalc').value = fmt0(num('monthlyRent')*12*num('mgmtPct')/100);
+
+  MODE==='flip' ? renderFlip(m) : renderBrrr(m);
+  renderDeals();
+}
+
+function renderFlip(m){
+  const good=m.netProfit>=0;
+  $('hero').innerHTML = `
+    <div class="big">
+      <div class="lab">רווח נקי לאחר מס</div>
+      <div class="num ${good?'':'neg'}">${fmt(m.netProfit)}</div>
+      <div class="lab" style="margin-top:4px">מתוך מחיר מכירה ${fmt(m.sale)} · הון עצמי מושקע ${fmt(m.equity)}</div>
+    </div>
+    <div class="pill"><div class="lab">תשואה על ההון</div><div class="num">${pct(m.roi)}</div></div>
+    <div class="pill"><div class="lab">תשואה שנתית</div><div class="num">${pct(m.annSimple)}</div></div>`;
+
+  $('kpiRow').innerHTML = `
+    ${kpi('רווח גולמי (לפני מס)', fmt(m.grossProfit), m.grossProfit>=0?'good':'bad', 'לפני מס שבח והיטלים')}
+    ${kpi('מס שבח משוער', fmt(m.capGains), 'gold', 'על רווח חייב '+fmt(m.taxable))}
+    ${kpi('תשואה שנתית (מצטבר)', pct(m.annComp), 'good', 'ריבית-דריבית לפי '+m.months+' חודשים')}
+    ${kpi('מרווח על המכירה', pct(m.margin), '', 'רווח נקי ÷ מחיר מכירה')}`;
+
+  // breakdown
+  const seg=[
+    ['מחיר רכישה', m.purchase, '#12507a'],
+    ['מיסי ועלויות קנייה', m.buyingCosts, '#1c6fa8'],
+    ['שיפוץ והשבחה', m.reno+m.contingency+m.permits+m.staging, '#c99a3a'],
+    ['החזקה + ריבית מימון', m.holding+m.interest, '#8a99b0'],
+  ];
+  drawDonut(seg, m.totalCost);
+  $('bkHint').textContent='סה״כ עלות '+fmt(m.totalCost);
+
+  $('breakdown').innerHTML = `
+    ${row('מחיר רכישה', m.purchase, '#12507a')}
+    ${row('מס רכישה', m.buyTax, null, true)}
+    ${row('דמי תיווך קנייה', m.buyAgent, null, true)}
+    ${row('עו״ד ואגרות', m.buyLawyer+m.buyOther, null, true)}
+    ${row('שיפוץ + בלת״מ + היתרים + הכנה', m.reno+m.contingency+m.permits+m.staging, '#c99a3a')}
+    ${row('החזקה שוטפת ('+m.months+' ח׳)', m.holding, '#8a99b0', true)}
+    ${row('ריבית מימון', m.interest, null, true)}
+    ${rowT('סה״כ עלות העסקה', m.totalCost)}
+    ${row('בניכוי מימון (הלוואה)', -m.loan)}
+    ${rowT('הון עצמי מושקע', m.equity)}
+    <tr><td colspan="2" style="height:6px;border:0"></td></tr>
+    ${row('מחיר מכירה', m.sale, '#178a55')}
+    ${row('עלויות מכירה (תיווך+עו״ד)', -m.sellingCosts, null, true)}
+    ${row('היטל השבחה', -m.betterment, null, true)}
+    ${rowT('רווח גולמי לפני מס', m.grossProfit)}
+    ${row('מס שבח', -m.capGains, null, true)}
+    ${rowG('רווח נקי לאחר מס', m.netProfit)}`;
+
+  // sensitivity
+  const deltas=[-0.1,-0.05,0,0.05,0.1];
+  let head='<tr><th class="rowh">מחיר מכירה</th>', rp='<tr><td class="rowh">רווח נקי</td>', rr='<tr><td class="rowh">תשואה על ההון</td>', ra='<tr><td class="rowh">תשואה שנתית</td>';
+  deltas.forEach(d=>{
+    const s=m.sale*(1+d);
+    const gp=s-m.totalCost-m.sellingCosts-m.betterment;
+    const tx=$('capGainsOn').checked?Math.max(0,gp)*num('capGainsPct')/100:0;
+    const np=gp-tx;
+    const roi=m.equity!==0?np/m.equity:0;
+    const ann=m.months>0?roi*12/m.months:roi;
+    const base=d===0?' base':'';
+    head+=`<th class="${base}">${d>0?'+':''}${Math.round(d*100)}%<br><span style="font-weight:600;color:var(--muted)">${fmt0(s)}</span></th>`;
+    rp+=`<td class="${base}">${fmt(np)}</td>`;
+    rr+=`<td class="${base}">${pct(roi)}</td>`;
+    ra+=`<td class="${base}">${pct(ann)}</td>`;
+  });
+  $('sensTable').innerHTML=head+'</tr>'+rp+'</tr>'+rr+'</tr>'+ra+'</tr>';
+}
+
+function renderBrrr(m){
+  const good=m.netAnnual>=0;
+  $('hero').innerHTML=`
+    <div class="big">
+      <div class="lab">רווח שנתי נטו מהשכרה</div>
+      <div class="num ${good?'':'neg'}">${fmt(m.netAnnual)}</div>
+      <div class="lab" style="margin-top:4px">הון שנשאר בעסקה ${fmt(m.equityLeft)} · הון שמשוחרר ${fmt(m.moneyOut)}</div>
+    </div>
+    <div class="pill"><div class="lab">Cash on Cash</div><div class="num">${pct(m.coc)}</div></div>
+    <div class="pill"><div class="lab">רווח הון (שבח נכס)</div><div class="num">${fmt0(m.equityGain)}</div></div>`;
+
+  $('kpiRow').innerHTML=`
+    ${kpi('הון עצמי מקורי', fmt(m.equity), '', 'לפני מימון מחדש')}
+    ${kpi('משוחרר במימון מחדש', fmt(m.moneyOut), m.moneyOut>=0?'good':'bad', 'משכנתא חדשה פחות הגישור')}
+    ${kpi('נשאר מושקע בעסקה', fmt(m.equityLeft), 'gold', 'ההון "הכלוא" בנכס')}
+    ${kpi('שווי לאחר שיפוץ', fmt(m.arv), '', 'מול עלות '+fmt(m.totalCost))}`;
+
+  const seg=[
+    ['מחיר רכישה', m.purchase, '#12507a'],
+    ['מיסי ועלויות קנייה', m.buyingCosts, '#1c6fa8'],
+    ['שיפוץ והשבחה', m.reno+m.contingency+m.permits+m.staging, '#c99a3a'],
+    ['החזקה + ריבית מימון', m.holding+m.interest, '#8a99b0'],
+  ];
+  drawDonut(seg, m.totalCost);
+  $('bkHint').textContent='סה״כ עלות '+fmt(m.totalCost);
+
+  $('breakdown').innerHTML=`
+    ${row('מחיר רכישה', m.purchase, '#12507a')}
+    ${row('מיסי ועלויות קנייה', m.buyingCosts, '#1c6fa8', true)}
+    ${row('שיפוץ + השבחה', m.reno+m.contingency+m.permits+m.staging, '#c99a3a', true)}
+    ${row('החזקה + ריבית מימון', m.holding+m.interest, '#8a99b0', true)}
+    ${rowT('סה״כ עלות העסקה', m.totalCost)}
+    ${row('הלוואת גישור', -m.loan)}
+    ${rowT('הון עצמי מושקע', m.equity)}
+    <tr><td colspan="2" style="height:6px;border:0"></td></tr>
+    ${row('שווי לאחר שיפוץ (שמאות)', m.arv, '#178a55')}
+    ${row('משכנתא חדשה', m.refiMort, null, true)}
+    ${row('החזר הלוואת גישור', -m.loan, null, true)}
+    ${rowT('הון שמשוחרר למשקיע', m.moneyOut)}
+    ${rowG('נשאר מושקע בעסקה', m.equityLeft)}`;
+
+  $('brrrFlow').innerHTML=`
+    ${row('שכירות ברוטו שנתית', m.grossRent, '#178a55')}
+    ${row('אי-תפוסה (Vacancy)', -m.vacancy, null, true)}
+    ${rowT('שכירות אפקטיבית', m.effRent)}
+    ${row('דמי ניהול', -m.mgmt, null, true)}
+    ${row('ביטוח', -m.insurance, null, true)}
+    ${row('אחזקה שוטפת', -m.upkeep, null, true)}
+    ${row('ריבית משכנתא שנתית', -m.mortInterest, null, true)}
+    ${rowT('סה״כ הוצאות שוטפות', -(m.runningCosts))}
+    ${rowG('רווח שנתי נטו', m.netAnnual)}
+    <tr class="sub"><td>תשואה על ההון שנשאר (Cash on Cash)</td><td>${pct(m.coc)}</td></tr>`;
+}
+
+/* ============ small render helpers ============ */
+function kpi(label,val,cls,sub){
+  return `<div class="kpi ${cls||''}"><div class="k-label">${label}</div>
+    <div class="k-val">${val}</div><div class="k-sub">${sub||''}</div></div>`;
+}
+function row(label,val,color,sub){
+  const sw=color?`<span class="swatch" style="background:${color}"></span>`:'';
+  const cls=val<0?'neg':'';
+  return `<tr class="${sub?'sub':''}"><td>${sw}${label}</td><td class="${cls}">${fmt(val)}</td></tr>`;
+}
+function rowT(label,val){return `<tr class="total"><td>${label}</td><td>${fmt(val)}</td></tr>`;}
+function rowG(label,val){return `<tr class="grand"><td>${label}</td><td class="${val<0?'neg':'pos'}">${fmt(val)}</td></tr>`;}
+
+/* ============ donut chart ============ */
+function drawDonut(segments, total){
+  const svg=$('donut'); const cx=90,cy=90,r=64,sw=26;
+  let a=-Math.PI/2, parts='';
+  const t=total||segments.reduce((s,x)=>s+x[1],0)||1;
+  segments.forEach(([nm,val,col])=>{
+    if(val<=0) return;
+    const frac=val/t, a2=a+frac*Math.PI*2;
+    const large=frac>0.5?1:0;
+    const x1=cx+r*Math.cos(a), y1=cy+r*Math.sin(a);
+    const x2=cx+r*Math.cos(a2), y2=cy+r*Math.sin(a2);
+    parts+=`<path d="M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}" fill="none" stroke="${col}" stroke-width="${sw}" stroke-linecap="butt"/>`;
+    a=a2;
+  });
+  svg.innerHTML=parts+`<text x="90" y="84" text-anchor="middle" font-size="12" fill="#657590" font-weight="600">סה״כ עלות</text>
+    <text x="90" y="104" text-anchor="middle" font-size="16" fill="#152238" font-weight="800">${fmt0(t)}</text>`;
+  $('legend').innerHTML=segments.map(([nm,val,col])=>
+    `<div class="li"><span class="sw" style="background:${col}"></span><span class="nm">${nm}</span>
+     <span class="vl">${pct(val/t)}</span></div>`).join('');
+}
+
+/* ============ storage ============ */
+const KEY='flipDeals_v2';
+let deals=[], currentId=null, showBin=false;
+const FIELDS=['dealName','dealAddress','currency','purchasePrice','purchaseTaxAmt','buyAgentAmt','buyLawyerAmt','buyOther',
+  'renovation','contingencyAmt','permits','staging','ltvPct','interestRate','holdingMonths','monthlyHolding',
+  'salePrice','sellAgentAmt','sellLawyerAmt','betterment','capGainsPct','taxableOverride',
+  'arv','refiLtv','refiRate','monthlyRent','mgmtPct','vacancyPct','brrrInsurance','brrrUpkeep'];
+const CHECKS=['financeReno','financeInterest','capGainsOn'];
+
+function loadStore(){ try{deals=JSON.parse(localStorage.getItem(KEY))||[];}catch(e){deals=[];} }
+function saveStore(){ localStorage.setItem(KEY,JSON.stringify(deals)); }
+
+function snapshot(){
+  const o={mode:MODE, vals:{}, checks:{}};
+  FIELDS.forEach(f=>o.vals[f]=$(f)?$(f).value:'');
+  CHECKS.forEach(c=>o.checks[c]=$(c)?$(c).checked:false);
+  return o;
+}
+function applySnapshot(s){
+  setMode(s.mode||'flip');
+  FIELDS.forEach(f=>{ if($(f)&&s.vals&&s.vals[f]!==undefined) $(f).value=s.vals[f]; });
+  CHECKS.forEach(c=>{ if($(c)&&s.checks) $(c).checked=!!s.checks[c]; });
+  recalc();
+}
+
+function saveDeal(){
+  const name=$('dealName').value.trim()||'עסקה ללא שם';
+  const snap=snapshot();
+  const m=model();
+  const summary = MODE==='flip'
+    ? {roi:m.roi, ann:m.annSimple, net:m.netProfit}
+    : {roi:m.coc, ann:m.coc, net:m.netAnnual};
+  if(currentId){
+    const d=deals.find(x=>x.id===currentId);
+    if(d){ d.name=name; d.snap=snap; d.mode=MODE; d.summary=summary; d.ts=stamp(); }
+  }else{
+    currentId='d'+deals.length+'_'+(deals.reduce((mx,d)=>Math.max(mx,+(d.seq||0)),0)+1);
+    deals.push({id:currentId, seq:deals.length+1, name, snap, mode:MODE, summary, ts:stamp(), deleted:false});
+  }
+  saveStore(); renderDeals(); toast('העסקה נשמרה ✓');
+}
+let _seq=0; function stamp(){ return '2026·'+(++_seq); } // monotonic label without Date
+
+function newDeal(){
+  currentId=null;
+  $('dealName').value=''; $('dealAddress').value='';
+  toast('טופס חדש — מלא נתונים ולחץ "שמור"');
+  recalc();
+}
+function loadDeal(id){
+  const d=deals.find(x=>x.id===id); if(!d) return;
+  currentId=id; applySnapshot(d.snap); renderDeals();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function softDelete(id,ev){
+  ev.stopPropagation();
+  const d=deals.find(x=>x.id===id); if(!d) return;
+  d.deleted=true; if(currentId===id) currentId=null;
+  saveStore(); renderDeals(); toast('הועבר לסל המחזור (ניתן לשחזר)');
+}
+function restoreDeal(id,ev){ ev.stopPropagation(); const d=deals.find(x=>x.id===id); if(d){d.deleted=false; saveStore(); renderDeals(); toast('שוחזר ✓');} }
+function purgeDeal(id,ev){ ev.stopPropagation(); if(!confirm('למחוק לצמיתות? פעולה זו אינה הפיכה.')) return; deals=deals.filter(x=>x.id!==id); saveStore(); renderDeals(); }
+function toggleBin(){ showBin=!showBin; $('binToggle').classList.toggle('btn-ghost'); renderDeals(); }
+
+function renderDeals(){
+  const list=$('dealsList'); if(!list) return;
+  const items=deals.filter(d=>!!d.deleted===showBin);
+  if(!items.length){ list.innerHTML=`<div class="empty">${showBin?'סל המחזור ריק':'עדיין אין עסקאות שמורות — מלא נתונים ולחץ "שמור עסקה"'}</div>`; renderCompare(); return; }
+  list.innerHTML=items.map(d=>{
+    const roi=d.summary?d.summary.roi:0, net=d.summary?d.summary.net:0;
+    const cls=net>=0?'pos':'neg';
+    const modeLbl=d.mode==='brrr'?'BRRR':'פליפ';
+    const active=d.id===currentId?'active':'';
+    const del = showBin
+      ? `<button class="dc-del" title="שחזר" style="opacity:1" onclick="restoreDeal('${d.id}',event)">↩️</button>
+         <button class="dc-del" title="מחק לצמיתות" style="opacity:1;inset-inline-end:34px" onclick="purgeDeal('${d.id}',event)">🗑️</button>`
+      : `<button class="dc-del" title="העבר לסל" onclick="softDelete('${d.id}',event)">🗑️</button>`;
+    return `<div class="deal-chip ${active}" onclick="loadDeal('${d.id}')">
+      <span class="dc-mode">${modeLbl}</span>
+      <div class="dc-name">${esc(d.name)}</div>
+      <div class="dc-meta">${d.mode==='brrr'?'תשואה שנתית':'תשואה על ההון'}</div>
+      <div class="dc-roi ${cls}">${pct(roi)} · ${fmt(net)}</div>
+      ${del}</div>`;
+  }).join('');
+  renderCompare();
+}
+
+function renderCompare(){
+  const active=deals.filter(d=>!d.deleted);
+  const show=active.length>=2;
+  $('cmpTitle').style.display=show?'flex':'none';
+  $('cmpCard').style.display=show?'block':'none';
+  if(!show) return;
+  const rows=[
+    ['סוג עסקה', d=>d.mode==='brrr'?'BRRR / השכרה':'פליפ / מכירה'],
+    ['רווח נקי', d=>fmt(d.summary.net)],
+    ['תשואה', d=>pct(d.summary.roi)],
+    ['תשואה שנתית', d=>pct(d.summary.ann)],
+  ];
+  let h='<thead><tr><th class="metric">מדד</th>'+active.map(d=>`<th>${esc(d.name)}</th>`).join('')+'</tr></thead><tbody>';
+  rows.forEach(([lbl,fn])=>{ h+=`<tr><td class="metric">${lbl}</td>`+active.map(d=>`<td>${fn(d)}</td>`).join('')+'</tr>'; });
+  h+='</tbody>';
+  $('compare').innerHTML=h;
+}
+
+/* ============ import / export ============ */
+function exportJSON(){
+  const blob=new Blob([JSON.stringify(deals,null,2)],{type:'application/json'});
+  dl(blob,'flip-deals-backup.json'); toast('גיבוי הורד ✓');
+}
+function importJSON(e){
+  const f=e.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{ try{ const arr=JSON.parse(r.result); if(Array.isArray(arr)){ deals=arr; saveStore(); renderDeals(); toast('שוחזר '+arr.length+' עסקאות ✓'); } }catch(err){ toast('שגיאה בקובץ'); } };
+  r.readAsText(f); e.target.value='';
+}
+function exportCSV(){
+  const active=deals.filter(d=>!d.deleted);
+  if(!active.length){ toast('אין עסקאות לייצוא'); return; }
+  const head=['שם','סוג','רווח נקי','תשואה','תשואה שנתית'];
+  const lines=[head.join(',')];
+  active.forEach(d=>lines.push([csv(d.name), d.mode==='brrr'?'BRRR':'פליפ',
+    Math.round(d.summary.net), (d.summary.roi*100).toFixed(1)+'%', (d.summary.ann*100).toFixed(1)+'%'].join(',')));
+  const blob=new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
+  dl(blob,'flip-deals.csv'); toast('CSV הורד ✓');
+}
+function dl(blob,name){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
+const esc=s=>String(s||'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+const csv=s=>/[",\n]/.test(s)?'"'+String(s).replace(/"/g,'""')+'"':String(s);
+
+/* ============ London example (from the Excel) ============ */
+function loadLondon(){
+  setMode('brrr');
+  $('currency').value='£';
+  $('dealName').value='61 Catisfield Road, Enfield';
+  $('dealAddress').value='Enfield EN3 6BB, London';
+  const set=(id,v)=>{ if($(id)) $(id).value=v; };
+  set('purchasePrice',475000);
+  // buying costs from the sheet: stamp 17000, agent 12000, contingency 25000
+  set('purchaseTaxAmt',17000); set('buyAgentAmt',12000); set('buyLawyerAmt',0); set('buyOther',0);
+  set('renovation',160000); set('contingencyAmt',25000); set('permits',0); set('staging',0);
+  // bridge interest in the sheet = £25,000 financed. Reproduce via rate×months on the 516,250 bridge.
+  set('ltvPct',75); set('interestRate',9.685); set('holdingMonths',6); set('monthlyHolding',0);
+  $('financeReno').checked=true; $('financeInterest').checked=true;
+  set('arv',850000); set('refiLtv',75); set('refiRate',5.1);
+  set('monthlyRent', Math.round(264.66*52*6/12));  // HMO 6 rooms ~= 6883/mo
+  set('mgmtPct',10); set('vacancyPct',0); set('brrrInsurance',750); set('brrrUpkeep',0);
+  currentId=null;
+  recalc();
+  toast('דוגמת לונדון נטענה — השווה למספרים באקסל');
+}
+
+/* ============ boot ============ */
+loadStore();
+recalc();
+</script>
+</body>
+</html>
