@@ -60,7 +60,7 @@ router.post('/', authenticate, can('editProjects'), async (req, res) => {
   try {
     const r = await pool.query(
       `INSERT INTO projects (name, client_name, client_phone, address, status, expected_profit, subcontractor_id, start_date, notes, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,COALESCE($5,'active'),COALESCE($6,0),$7,$8,$9,$10,$10) RETURNING *`,
+       VALUES ($1,$2,$3,$4,COALESCE($5,'active'),COALESCE($6::numeric,0),$7,$8,$9,$10,$10) RETURNING *`,
       [name, client_name, client_phone, address, status, expected_profit, subcontractor_id || null, start_date || null, notes, req.user.id]
     );
     await logAction(req.user, 'add', 'projects', r.rows[0].id, { name });
@@ -74,7 +74,7 @@ router.put('/:id', authenticate, can('editProjects'), async (req, res) => {
   try {
     const r = await pool.query(
       `UPDATE projects SET name=$1, client_name=$2, client_phone=$3, address=$4, status=$5,
-         expected_profit=COALESCE($6,0), subcontractor_id=$7, start_date=$8, notes=$9, updated_by=$10, updated_at=NOW()
+         expected_profit=COALESCE($6::numeric,0), subcontractor_id=$7, start_date=$8, notes=$9, updated_by=$10, updated_at=NOW()
        WHERE id=$11 AND deleted=false RETURNING *`,
       [name, client_name, client_phone, address, status, expected_profit, subcontractor_id || null, start_date || null, notes, req.user.id, req.params.id]
     );
@@ -120,7 +120,7 @@ router.post('/:id/stages/bulk', authenticate, canAny(['editProjects', 'addStages
       seq++;
       const r = await client.query(
         `INSERT INTO stages (project_id, name, seq, client_amount, sub_amount, subcontractor_id, created_by, updated_by)
-         VALUES ($1,$2,$3,COALESCE($4,0),COALESCE($5,0),$6,$7,$7) RETURNING *`,
+         VALUES ($1,$2,$3,COALESCE($4::numeric,0),COALESCE($5::numeric,0),$6,$7,$7) RETURNING *`,
         [projectId, st.name, seq, st.client_amount, st.sub_amount, projSub, req.user.id]
       );
       created.push(r.rows[0]);

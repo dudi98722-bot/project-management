@@ -12,7 +12,7 @@ router.post('/', authenticate, canAny(['editProjects', 'addStages']), async (req
     const subId = proj.rows.length ? proj.rows[0].subcontractor_id : null;
     const r = await pool.query(
       `INSERT INTO stages (project_id, name, seq, client_amount, sub_amount, subcontractor_id, status, created_by, updated_by)
-       VALUES ($1,$2,COALESCE($3,0),COALESCE($4,0),COALESCE($5,0),$6,COALESCE($7,'pending'),$8,$8) RETURNING *`,
+       VALUES ($1,$2,COALESCE($3::int,0),COALESCE($4::numeric,0),COALESCE($5::numeric,0),$6,COALESCE($7,'pending'),$8,$8) RETURNING *`,
       [project_id, name, seq, client_amount, sub_amount, subId, status, req.user.id]
     );
     await logAction(req.user, 'add', 'stages', r.rows[0].id, { project_id, name });
@@ -25,8 +25,8 @@ router.put('/:id', authenticate, can('editProjects'), async (req, res) => {
   const { name, seq, client_amount, sub_amount, subcontractor_id, status, approved } = req.body;
   try {
     const r = await pool.query(
-      `UPDATE stages SET name=$1, seq=COALESCE($2,seq), client_amount=COALESCE($3,0), sub_amount=COALESCE($4,0),
-         subcontractor_id=COALESCE($5,subcontractor_id), status=COALESCE($6,status), approved=COALESCE($7,approved),
+      `UPDATE stages SET name=$1, seq=COALESCE($2::int,seq), client_amount=COALESCE($3::numeric,0), sub_amount=COALESCE($4::numeric,0),
+         subcontractor_id=COALESCE($5::bigint,subcontractor_id), status=COALESCE($6,status), approved=COALESCE($7::boolean,approved),
          updated_by=$8, updated_at=NOW()
        WHERE id=$9 AND deleted=false RETURNING *`,
       [name, seq, client_amount, sub_amount, subcontractor_id || null, status, approved, req.user.id, req.params.id]
