@@ -118,6 +118,8 @@ table.tbl tfoot td{font-weight:800;background:#f8fafc;border-top:2px solid var(-
 
 /* ---------- קבועים ---------- */
 var LSKEY = "apartmentsCRM_v1";
+/* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
+var SERVER_API = "/api?key=f11fad687d3005d8a75809c0dcf84fc782568f34";
 var CLASSIFICATIONS = {investment:"השקעה", ongoing:"שוטף", private:"פרטי"};
 var METHODS = {transfer:"העברה", check:"צ׳ק", cash:"מזומן", other:"אחר"};
 var ROLES = {admin:"מנהל", editor:"עורך", viewer:"צפייה בלבד", partner:"שותף"};
@@ -151,8 +153,12 @@ function loadDB(){
   try{ var raw=localStorage.getItem(LSKEY); if(raw){ DB=JSON.parse(raw); return true; } }catch(e){}
   DB=null; return false;
 }
+function saveLocal(){
+  try{ localStorage.setItem(LSKEY, JSON.stringify(DB)); }catch(e){}
+}
 function save(){
   try{ localStorage.setItem(LSKEY, JSON.stringify(DB)); }catch(e){ toast("שגיאת שמירה מקומית","err"); }
+  serverSave();
   if(DB && DB.settings && DB.settings.sheetsUrl){ pushToSheets(); }
 }
 function blankDB(){
@@ -611,13 +617,37 @@ async function pullFromSheets(){
   }catch(e){ toast("שגיאת חיבור לשיט","err"); }
 }
 
+/* ---- סנכרון מול השרת (VPS) — מקור האמת ---- */
+function serverSave(){
+  try{
+    fetch(SERVER_API,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body:JSON.stringify({action:"save",data:DB})}).catch(function(){});
+  }catch(e){}
+}
+async function serverLoad(){
+  /* מחזיר {data:...} אם השרת ענה (data יכול להיות null=ריק), או {error:true} אם השרת לא זמין */
+  try{
+    var r=await fetch(SERVER_API+"&action=load",{cache:"no-store"});
+    var j=await r.json();
+    if(j&&j.ok){ return {data:(j.data||null)}; }
+    return {error:true};
+  }catch(e){ return {error:true}; }
+}
+
 /* ============================================================
-   אתחול
+   אתחול — השרת הוא מקור האמת; localStorage הוא מטמון מקומי
    ============================================================ */
-function boot(){
-  var existed=loadDB();
-  if(!existed){ DB=blankDB(); seedIfEmpty(); }
-  else if(!DB){ DB=blankDB(); }
+async function boot(){
+  var hadLocal=loadDB();                 // DB מ-localStorage (או null)
+  var res=await serverLoad();            // {data} או {error}
+  if(res.data && Array.isArray(res.data.apartments)){
+    DB=normalizeDB(res.data); saveLocal();            // השרת מנצח -> משתמשים בו וממטמנים מקומית
+  } else if(res.error){
+    if(!hadLocal||!DB){ DB=blankDB(); seedIfEmpty(); } // השרת לא זמין -> סומכים על המקומי, לא דורסים
+  } else {
+    if(hadLocal && DB && Array.isArray(DB.apartments)){ serverSave(); } // השרת ריק -> מזריעים אותו מהמקומי
+    else { DB=blankDB(); seedIfEmpty(); serverSave(); }
+  }
   renderApp();
 }
 </script>
