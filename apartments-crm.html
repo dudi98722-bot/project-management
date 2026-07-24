@@ -1217,6 +1217,10 @@ function importJSON(inp){ var f=inp.files[0]; if(!f) return; var r=new FileReade
 
 /* ---------- ייבוא נתונים ---------- */
 var IMPORT_TYPES={
+  apartments:{label:"דירות / פרויקטים (רשימת שמות)",fields:[
+    {k:"name",l:"שם הדירה / הפרויקט",hints:["שם","פרויקט","דירה"]},
+    {k:"note",l:"הערות",hints:["הער"],opt:true}
+  ]},
   expenses:{label:"הוצאות / שלבים (כולל חלוקת שותפים)",fields:[
     {k:"apartment",l:"דירה / פרויקט",hints:["פרויקט","דירה"],opt:true},
     {k:"date",l:"תאריך",hints:["תאריך"],opt:true},
@@ -1316,7 +1320,9 @@ function moduleImport(){
         '<option value="">— לפי עמודת הדירה בנתונים —</option>'+
         apts.map(function(a){return '<option value="'+a.id+'">'+esc(a.name)+'</option>';}).join("")+'</select></div>'+
     '</div>'+
-    '<div class="field"><label>הדבק מהאקסל (כולל שורת הכותרות)</label>'+
+    '<div class="field"><label><input type="checkbox" id="im-hasheader" checked style="width:auto"> השורה הראשונה היא שורת כותרות</label>'+
+      '<div class="hint">בטל את הסימון אם הדבקת רשימה נקייה בלי כותרות.</div></div>'+
+    '<div class="field"><label>הדבק מהאקסל</label>'+
       '<textarea id="im-data" rows="8" placeholder="סמן באקסל → Ctrl+C → הדבק כאן Ctrl+V"></textarea></div>'+
     '<button class="btn btn-primary" onclick="parseImport()">נתח עמודות ←</button>'+
     '<div class="hint">בהוצאות: זוגות עמודות <b>משלם</b>+<b>אחוז</b> יזוהו אוטומטית ויהפכו לחלוקת השותפים של כל שורה.<br>'+
@@ -1328,17 +1334,29 @@ function parseImport(){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var raw=val("im-data").trim(); if(!raw){ toast("לא הודבקו נתונים","err"); return; }
   var lines=raw.split(/\r?\n/).filter(function(l){return l.trim();});
-  if(lines.length<2){ toast("צריך שורת כותרות + לפחות שורה אחת","err"); return; }
-  var sep=lines[0].indexOf("\t")>=0?"\t":",";
-  var headers=lines[0].split(sep).map(function(s){return s.trim();});
-  var rows=lines.slice(1).map(function(l){return l.split(sep);});
+  var hasHeader=checked("im-hasheader");
+  if(hasHeader && lines.length<2){ toast("צריך שורת כותרות + לפחות שורה אחת (או בטל את סימון הכותרות)","err"); return; }
+  var sep=lines[0].indexOf("\t")>=0?"\t":(lines[0].indexOf(",")>=0?",":"\t");
+  var headers, rows;
+  if(hasHeader){
+    headers=lines[0].split(sep).map(function(s){return s.trim();});
+    rows=lines.slice(1).map(function(l){return l.split(sep);});
+  }else{
+    rows=lines.map(function(l){return l.split(sep);});
+    var maxc=rows.reduce(function(n,r){return Math.max(n,r.length);},1);
+    headers=[]; for(var ci=0;ci<maxc;ci++) headers.push("עמודה "+(ci+1));
+  }
   var type=val("im-type")||"expenses";
   window._imp={headers:headers,rows:rows,type:type,pairs:(type==="expenses"?detectSplitPairs(headers):[])};
 
   var def=IMPORT_TYPES[type];
+  var usedCols={};
   function sel(f){
     var chosen=-1;
     headers.forEach(function(hh,i){ if(chosen<0 && f.hints.some(function(t){return hh.indexOf(t)>=0;})) chosen=i; });
+    // שדה חובה שלא זוהה לפי הכותרת (למשל רשימה בלי כותרות) — קח את העמודה הפנויה הראשונה
+    if(chosen<0 && !f.opt){ for(var i=0;i<headers.length;i++){ if(!usedCols[i]){ chosen=i; break; } } }
+    if(chosen>=0) usedCols[chosen]=1;
     return '<option value="-1">— ללא —</option>'+headers.map(function(hh,i){
       return '<option value="'+i+'"'+(i===chosen?" selected":"")+'>'+esc(hh)+'</option>'; }).join("");
   }
@@ -1379,7 +1397,20 @@ function commitImport(){
     return defApt||null;
   }
 
-  if(imp.type==="expenses"){
+  if(imp.type==="apartments"){
+    if(m.name<0){ toast("חובה למפות את עמודת השם","err"); return; }
+    imp.rows.forEach(function(r){
+      var nm=String(r[m.name]||"").trim();
+      if(!nm){ res.skipped++; return; }
+      if(active(DB.apartments).some(function(a){return String(a.name).trim()===nm;})){
+        res.skipped++; res.reason="כבר קיימת דירה בשם הזה"; return;
+      }
+      var id=findOrCreateApartment(nm);
+      if(id && m.note>=0){ var a=byId(DB.apartments,id); if(a) a.notes=String(r[m.note]||""); }
+      res.created++;
+    });
+  }
+  else if(imp.type==="expenses"){
     if(m.desc<0||m.amount<0){ toast("חובה למפות תיאור וסכום","err"); return; }
     var firstSplit={};
     imp.rows.forEach(function(r){
