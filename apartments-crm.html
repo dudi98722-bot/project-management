@@ -1991,9 +1991,183 @@ function normKey(s){
     .trim().toLowerCase();
 }
 function impNum(v){ var n=parseFloat(String(v==null?"":v).replace(/[^\d.\-]/g,"")); return isFinite(n)?n:0; }
+
+/* ============================================================
+   קריאת קובץ אקסל (.xlsx) ישירות בדפדפן — בלי ספרייה חיצונית.
+   xlsx הוא ZIP של קובצי XML; פותחים עם DecompressionStream המובנה.
+   ============================================================ */
+function readImportFile(inp){
+  var f=inp.files && inp.files[0]; if(!f) return;
+  inp.value="";
+  var nameEl=document.getElementById("im-file-name");
+  if(nameEl) nameEl.textContent="⏳ קורא את "+f.name+"…";
+  var isXlsx=/\.xlsx$/i.test(f.name);
+  if(isXlsx && !window.DecompressionStream){
+    toast("הדפדפן הזה ישן מדי לקריאת xlsx — שמור כ-CSV או הדבק","err");
+    if(nameEl) nameEl.textContent=""; return;
+  }
+  var rd=new FileReader();
+  rd.onerror=function(){ toast("שגיאה בקריאת הקובץ","err"); if(nameEl) nameEl.textContent=""; };
+  if(isXlsx){
+    rd.onload=function(){ parseXlsx(rd.result,f.name).catch(function(e){
+      toast("קריאת ה-xlsx נכשלה: "+e.message,"err"); if(nameEl) nameEl.textContent=""; }); };
+    rd.readAsArrayBuffer(f);
+  }else{
+    rd.onload=function(){
+      var txt=rd.result;
+      // אקסל עברי שומר CSV ב-Windows-1255; אם רואים הרבה תווי החלפה — קוראים שוב בקידוד הנכון
+      if((txt.match(/�/g)||[]).length>3){
+        var rd2=new FileReader();
+        rd2.onload=function(){ fileTextToTextarea(rd2.result,f.name); };
+        rd2.readAsText(f,"windows-1255"); return;
+      }
+      fileTextToTextarea(txt,f.name);
+    };
+    rd.readAsText(f,"utf-8");
+  }
+}
+function fileTextToTextarea(txt,fname){
+  var ta=document.getElementById("im-data"); if(ta) ta.value=txt;
+  var nameEl=document.getElementById("im-file-name");
+  if(nameEl) nameEl.textContent="✅ "+fname;
+  parseImport();
+}
+
+/* ---------- ZIP: איתור הרשומות ופריסתן ---------- */
+async function unzipAll(buf){
+  var u8=new Uint8Array(buf), dv=new DataView(buf);
+  // End Of Central Directory — סורקים מהסוף
+  var eocd=-1;
+  for(var i=u8.length-22;i>=Math.max(0,u8.length-70000);i--){
+    if(dv.getUint32(i,true)===0x06054b50){ eocd=i; break; }
+  }
+  if(eocd<0) throw new Error("קובץ ZIP לא תקין");
+  var count=dv.getUint16(eocd+10,true), cdOfs=dv.getUint32(eocd+16,true);
+  var out={}, p=cdOfs;
+  for(var n=0;n<count;n++){
+    if(dv.getUint32(p,true)!==0x02014b50) break;
+    var method=dv.getUint16(p+10,true);
+    var csize=dv.getUint32(p+20,true);
+    var nlen=dv.getUint16(p+28,true), elen=dv.getUint16(p+30,true), clen=dv.getUint16(p+32,true);
+    var lho=dv.getUint32(p+42,true);
+    var name=new TextDecoder().decode(u8.subarray(p+46,p+46+nlen));
+    // הכותרת המקומית קובעת איפה הדאטה מתחיל
+    var lnlen=dv.getUint16(lho+26,true), lelen=dv.getUint16(lho+28,true);
+    var dataStart=lho+30+lnlen+lelen;
+    var raw=u8.subarray(dataStart,dataStart+csize);
+    if(method===0){ out[name]=raw; }
+    else if(method===8){
+      var ds=new DecompressionStream("deflate-raw");
+      var stream=new Blob([raw]).stream().pipeThrough(ds);
+      out[name]=new Uint8Array(await new Response(stream).arrayBuffer());
+    }
+    p+=46+nlen+elen+clen;
+  }
+  return out;
+}
+function xmlOf(bytes){ return new DOMParser().parseFromString(new TextDecoder("utf-8").decode(bytes),"application/xml"); }
+function colToIdx(ref){ // "BC12" -> 54
+  var m=/^([A-Z]+)/.exec(ref); if(!m) return 0;
+  var c=0; for(var i=0;i<m[1].length;i++) c=c*26+(m[1].charCodeAt(i)-64);
+  return c-1;
+}
+
+/* ---------- XLSX → רשת תאים ---------- */
+async function parseXlsx(buf,fname){
+  var files=await unzipAll(buf);
+  // מחרוזות משותפות
+  var shared=[];
+  if(files["xl/sharedStrings.xml"]){
+    var sst=xmlOf(files["xl/sharedStrings.xml"]);
+    Array.prototype.forEach.call(sst.getElementsByTagName("si"),function(si){
+      var s=""; Array.prototype.forEach.call(si.getElementsByTagName("t"),function(t){ s+=t.textContent; });
+      shared.push(s);
+    });
+  }
+  // שמות גיליונות
+  var sheets=[];
+  if(files["xl/workbook.xml"]){
+    var wb=xmlOf(files["xl/workbook.xml"]);
+    var rels={};
+    if(files["xl/_rels/workbook.xml.rels"]){
+      Array.prototype.forEach.call(xmlOf(files["xl/_rels/workbook.xml.rels"]).getElementsByTagName("Relationship"),function(r){
+        rels[r.getAttribute("Id")]="xl/"+r.getAttribute("Target").replace(/^\//,"").replace(/^xl\//,"");
+      });
+    }
+    Array.prototype.forEach.call(wb.getElementsByTagName("sheet"),function(s){
+      var rid=s.getAttribute("r:id")||s.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships","id");
+      var path=rels[rid]||("xl/worksheets/sheet"+(sheets.length+1)+".xml");
+      if(files[path]) sheets.push({name:s.getAttribute("name")||("גיליון "+(sheets.length+1)),path:path});
+    });
+  }
+  if(!sheets.length){
+    Object.keys(files).forEach(function(k){
+      if(/^xl\/worksheets\/sheet\d+\.xml$/.test(k)) sheets.push({name:k.replace(/^.*\//,""),path:k});
+    });
+  }
+  if(!sheets.length) throw new Error("לא נמצאו גיליונות בקובץ");
+
+  function sheetToGrid(path){
+    var doc=xmlOf(files[path]), rows=[];
+    Array.prototype.forEach.call(doc.getElementsByTagName("row"),function(rowEl){
+      var cells=[];
+      Array.prototype.forEach.call(rowEl.getElementsByTagName("c"),function(c){
+        var idx=colToIdx(c.getAttribute("r")||"");
+        var t=c.getAttribute("t")||"";
+        var v="";
+        if(t==="inlineStr"){
+          var is=c.getElementsByTagName("is")[0];
+          if(is){ Array.prototype.forEach.call(is.getElementsByTagName("t"),function(tt){ v+=tt.textContent; }); }
+        }else{
+          var vEl=c.getElementsByTagName("v")[0];
+          if(vEl){ v=vEl.textContent; if(t==="s") v=shared[Number(v)]!=null?shared[Number(v)]:""; }
+        }
+        cells[idx]=v;
+      });
+      for(var i=0;i<cells.length;i++) if(cells[i]==null) cells[i]="";
+      rows.push(cells);
+    });
+    return rows;
+  }
+
+  if(sheets.length===1){ xlsxGridToTextarea(sheetToGrid(sheets[0].path),fname+" · "+sheets[0].name); return; }
+  // כמה גיליונות — נותנים לבחור
+  openModal({title:"באיזה גיליון להשתמש?",bodyHtml:
+    '<div class="field"><label>הקובץ מכיל '+sheets.length+' גיליונות</label><select id="xl-sheet">'+
+      sheets.map(function(s,i){return '<option value="'+i+'">'+esc(s.name)+'</option>';}).join("")+
+    '</select></div>',
+    saveLabel:"טען גיליון",onSave:function(){
+      var s=sheets[Number(val("xl-sheet"))||0];
+      xlsxGridToTextarea(sheetToGrid(s.path),fname+" · "+s.name);
+    }});
+}
+function xlsxGridToTextarea(grid,label){
+  grid=grid.filter(function(r){ return r.some(function(c){ return String(c).trim()!==""; }); });
+  if(!grid.length){ toast("הגיליון ריק","err"); return; }
+  var tsv=grid.map(function(r){
+    return r.map(function(c){
+      c=String(c==null?"":c);
+      if(/[\t\n\r"]/.test(c)) c='"'+c.replace(/"/g,'""')+'"';
+      return c;
+    }).join("\t");
+  }).join("\n");
+  var ta=document.getElementById("im-data"); if(ta) ta.value=tsv;
+  var nameEl=document.getElementById("im-file-name");
+  if(nameEl) nameEl.textContent="✅ "+label+" ("+grid.length+" שורות)";
+  toast("נטענו "+grid.length+" שורות מהקובץ","ok");
+  parseImport();
+}
 function impDate(v){
   var s=String(v==null?"":v).trim(); if(!s) return todayISO();
   if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+  // מספר סידורי של אקסל (ימים מ-30/12/1899) — כך מגיעים תאריכים מקובץ xlsx
+  if(/^\d+(\.\d+)?$/.test(s)){
+    var n=parseFloat(s);
+    if(n>=15000 && n<=80000){
+      var d=new Date(Date.UTC(1899,11,30)+Math.round(n)*86400000);
+      return d.toISOString().slice(0,10);
+    }
+  }
   var p=s.split(/[\/.\-]/);
   if(p.length===3){ var y=p[2].length===4?p[2]:("20"+p[2]);
     return y+"-"+String(p[1]).trim().padStart(2,"0")+"-"+String(p[0]).trim().padStart(2,"0"); }
@@ -2056,8 +2230,13 @@ function moduleImport(){
     '</div>'+
     '<div class="field"><label><input type="checkbox" id="im-hasheader" checked style="width:auto"> השורה הראשונה היא שורת כותרות</label>'+
       '<div class="hint">בטל את הסימון אם הדבקת רשימה נקייה בלי כותרות.</div></div>'+
-    '<div class="field"><label>הדבק מהאקסל</label>'+
-      '<textarea id="im-data" rows="8" placeholder="סמן באקסל → Ctrl+C → הדבק כאן Ctrl+V"></textarea></div>'+
+    '<div class="field"><label>העלה קובץ או הדבק</label>'+
+      '<div class="toolbar" style="margin-bottom:8px">'+
+        '<button class="btn" onclick="document.getElementById(\'im-file\').click()">📁 העלה קובץ אקסל (.xlsx / .csv)</button>'+
+        '<input type="file" id="im-file" accept=".xlsx,.csv" style="display:none" onchange="readImportFile(this)">'+
+        '<span id="im-file-name" class="muted"></span>'+
+      '</div>'+
+      '<textarea id="im-data" rows="8" placeholder="או: סמן באקסל → Ctrl+C → הדבק כאן Ctrl+V"></textarea></div>'+
     '<button class="btn btn-primary" onclick="parseImport()">נתח עמודות ←</button>'+
     '<div class="hint">בהוצאות: זוגות עמודות <b>משלם</b>+<b>אחוז</b> יזוהו אוטומטית ויהפכו לחלוקת השותפים של כל שורה.<br>'+
     'דירות, שותפים, סוגי הוצאה וחשבונות <b>ייווצרו אוטומטית</b> לפי השם אם עדיין אינם קיימים.</div>'+
