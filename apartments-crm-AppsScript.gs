@@ -1,89 +1,89 @@
 /**************************************************************************
  * מערכת ניהול דירות ושותפויות — צד שרת (Google Apps Script)
  * ------------------------------------------------------------------------
- * מה זה עושה:
- *   - שומר את כל הנתונים מהמערכת בגיליון גוגל (מקור גיבוי מלא, כולל מחיקה רכה)
- *   - מייצר לשוניות קריאות (דירות/שותפים/הוצאות/תשלומים/הפקדות/הכנסות...)
- *   - מאפשר טעינה חזרה למערכת
- *
- * הוראות התקנה (פעם אחת):
- *   1. היכנס ל- https://sheets.google.com  וצור גיליון חדש (ריק).
- *   2. תפריט: הרחבות (Extensions) → Apps Script.
- *   3. מחק את הקוד הקיים, הדבק את כל הקובץ הזה, ושמור (💾).
- *   4. לחץ "פריסה" (Deploy) → "פריסה חדשה" (New deployment).
- *   5. בגלגל השיניים בחר סוג: "אפליקציית אינטרנט" (Web app).
- *   6. "בצע בתור" (Execute as): אני / Me.
- *      "מי בעל גישה" (Who has access): כל אחד / Anyone.
- *   7. לחץ "פרוס" (Deploy), אשר הרשאות, והעתק את כתובת ה-Web app (מסתיימת ב-/exec).
- *   8. במערכת: הגדרות → גוגל שיטס → הדבק את הכתובת → שמור.
- *
- * הערה: הנתונים הקנוניים נשמרים בלשונית מוסתרת "_data" (בפורמט JSON).
- *       הלשוניות הקריאות הן לצפייה/גיבוי בלבד — אל תערוך אותן ידנית.
+ *  - הנתונים נשמרים בגיליון (לשונית מוסתרת "_data" בפורמט JSON)
+ *  - לשוניות קריאות לצפייה וביקורת (נדרסות בכל שמירה — אל תערוך ידנית)
+ *  - אימות בצד השרת: בלי קוד כניסה תקף השרת לא מחזיר ולא שומר כלום
+ *  - שחזור קוד כניסה במייל
  **************************************************************************/
 
-var DATA_SHEET = "_data";
-var CHUNK = 40000;
-
-/* ⚠️ לכאן יישלח קוד השחזור. הכתובת קבועה בשרת בכוונה —
-   כך שגם מי שנכנס לדף לא יכול להפנות שחזור לכתובת שלו. */
-var OWNER_EMAIL = "dudi98722@gmail.com";
+var DATA_SHEET  = "_data";
 var RESET_SHEET = "_reset";
+var CHUNK       = 40000;
+
+/* ⚠️ לכאן יישלח קוד השחזור. קבוע בשרת בכוונה — כך שאיש לא יכול להפנות שחזור לעצמו. */
+var OWNER_EMAIL   = "dudi98722@gmail.com";
 var RESET_MINUTES = 15;
 
+/* ============================ נתיבים ============================ */
 function doGet(e) {
-  var action = (e && e.parameter && e.parameter.action) || "";
-  if (action === "load") {
-    return jsonOut({ ok: true, data: loadData() });
+  var p = (e && e.parameter) || {};
+  var action = p.action || "";
+
+  if (action === "status") {
+    // מידע ציבורי מינימלי בלבד — האם כבר קיים משתמש. בלי נתונים.
+    return jsonOut({ ok: true, hasUsers: hasAnyUser() });
   }
   if (action === "requestReset") {
     return jsonOut(requestReset());
   }
   if (action === "verifyReset") {
-    return jsonOut(verifyReset((e.parameter && e.parameter.code) || ""));
+    return jsonOut(verifyReset(p.code || ""));
   }
   return jsonOut({ ok: true, status: "apartments-crm backend ready" });
 }
 
-/* ---------- שחזור קוד כניסה במייל ---------- */
-function requestReset() {
-  try {
-    var code = String(Math.floor(100000 + Math.random() * 900000));
-    var exp = new Date().getTime() + RESET_MINUTES * 60 * 1000;
-    var sh = ss().getSheetByName(RESET_SHEET) || ss().insertSheet(RESET_SHEET);
-    sh.clear();
-    sh.getRange(1, 1, 1, 2).setValues([[code, exp]]);
-    try { sh.hideSheet(); } catch (err) {}
-    MailApp.sendEmail(OWNER_EMAIL,
-      "קוד שחזור — מערכת ניהול דירות",
-      "קוד השחזור שלך הוא: " + code + "\n\n" +
-      "הקוד תקף ל-" + RESET_MINUTES + " דקות וניתן לשימוש חד-פעמי.\n" +
-      "אם לא ביקשת שחזור — התעלם מהודעה זו ושקול להחליף את קוד הכניסה.");
-    return { ok: true, sentTo: OWNER_EMAIL.replace(/^(.{2}).*(@.*)$/, "$1***$2") };
-  } catch (err) {
-    return { ok: false, error: String(err) };
-  }
-}
-
-function verifyReset(code) {
-  try {
-    var sh = ss().getSheetByName(RESET_SHEET);
-    if (!sh || sh.getLastRow() === 0) return { ok: false, error: "no-request" };
-    var v = sh.getRange(1, 1, 1, 2).getValues()[0];
-    var stored = String(v[0] || "");
-    var exp = Number(v[1] || 0);
-    if (!stored || String(code).trim() !== stored) return { ok: false, error: "bad-code" };
-    if (new Date().getTime() > exp) { sh.clear(); return { ok: false, error: "expired" }; }
-    sh.clear();                      // חד-פעמי
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: String(err) };
-  }
-}
-
 function doPost(e) {
   try {
-    var body = JSON.parse(e.postData.contents);
-    if (body.action === "save") {
+    var body = JSON.parse(e.postData.contents) || {};
+    var action = body.action || "";
+
+    // ---- הקמה ראשונית: מותרת רק כשאין עדיין אף משתמש ----
+    if (action === "bootstrap") {
+      if (hasAnyUser()) return jsonOut({ ok: false, error: "already-initialized" });
+      if (!body.data) return jsonOut({ ok: false, error: "no-data" });
+      saveData(body.data);
+      return jsonOut({ ok: true });
+    }
+
+    // ---- כניסה: מאמת קוד מול המשתמשים ששמורים בגיליון ----
+    if (action === "login") {
+      var u = findUser(body.codeHash);
+      if (!u) return jsonOut({ ok: false, error: "bad-code" });
+      return jsonOut({ ok: true, user: publicUser(u) });
+    }
+
+    // ---- קביעת קוד חדש אחרי שחזור במייל ----
+    if (action === "setCode") {
+      var chk = consumeResetToken(body.resetToken);
+      if (!chk.ok) return jsonOut(chk);
+      var d = loadData();
+      if (!d) return jsonOut({ ok: false, error: "no-data" });
+      d.users = d.users || [];
+      var admin = null;
+      for (var i = 0; i < d.users.length; i++) {
+        if (!d.users[i].deleted && d.users[i].role === "admin") { admin = d.users[i]; break; }
+      }
+      if (admin) { admin.code = body.codeHash; admin.active = true; }
+      else {
+        d.users.push({ id: "u" + new Date().getTime(), name: "מנהל", code: body.codeHash,
+          role: "admin", allowedApartments: [], partnerId: null, active: true, deleted: false });
+      }
+      saveData(d);
+      return jsonOut({ ok: true });
+    }
+
+    // ---- מכאן והלאה חובה קוד כניסה תקף ----
+    var user = findUser(body.codeHash);
+    if (!user) return jsonOut({ ok: false, error: "unauthorized" });
+
+    if (action === "load") {
+      return jsonOut({ ok: true, data: loadData(), user: publicUser(user) });
+    }
+    if (action === "save") {
+      if (user.role === "viewer" || user.role === "partner") {
+        return jsonOut({ ok: false, error: "forbidden" });
+      }
       saveData(body.data);
       return jsonOut({ ok: true, savedAt: new Date().toISOString() });
     }
@@ -100,7 +100,84 @@ function jsonOut(obj) {
 
 function ss() { return SpreadsheetApp.getActiveSpreadsheet(); }
 
-/* ---------- שמירה ---------- */
+/* ============================ אימות ============================ */
+function hasAnyUser() {
+  var d = loadData();
+  if (!d || !d.users) return false;
+  for (var i = 0; i < d.users.length; i++) {
+    if (!d.users[i].deleted && d.users[i].active) return true;
+  }
+  return false;
+}
+
+function findUser(codeHash) {
+  if (!codeHash) return null;
+  var d = loadData();
+  if (!d || !d.users) return null;
+  for (var i = 0; i < d.users.length; i++) {
+    var u = d.users[i];
+    if (!u.deleted && u.active && u.code === codeHash) return u;
+  }
+  return null;
+}
+
+function publicUser(u) {
+  return { id: u.id, name: u.name, role: u.role,
+    allowedApartments: u.allowedApartments || [], partnerId: u.partnerId || null };
+}
+
+/* ==================== שחזור קוד כניסה במייל ==================== */
+function requestReset() {
+  try {
+    var code = String(Math.floor(100000 + Math.random() * 900000));
+    var exp  = new Date().getTime() + RESET_MINUTES * 60 * 1000;
+    var sh = ss().getSheetByName(RESET_SHEET) || ss().insertSheet(RESET_SHEET);
+    sh.clear();
+    sh.getRange(1, 1, 1, 3).setValues([[code, exp, ""]]);
+    try { sh.hideSheet(); } catch (err) {}
+    MailApp.sendEmail(OWNER_EMAIL,
+      "קוד שחזור — מערכת ניהול דירות",
+      "קוד השחזור שלך הוא: " + code + "\n\n" +
+      "הקוד תקף ל-" + RESET_MINUTES + " דקות וניתן לשימוש חד-פעמי.\n" +
+      "אם לא ביקשת שחזור — התעלם מהודעה זו ושקול להחליף את קוד הכניסה.");
+    return { ok: true, sentTo: OWNER_EMAIL.replace(/^(.{2}).*(@.*)$/, "$1***$2") };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+/* מאמת את הקוד מהמייל ומחזיר אסימון קצר-מועד שמתיר קביעת קוד חדש */
+function verifyReset(code) {
+  try {
+    var sh = ss().getSheetByName(RESET_SHEET);
+    if (!sh || sh.getLastRow() === 0) return { ok: false, error: "no-request" };
+    var v = sh.getRange(1, 1, 1, 3).getValues()[0];
+    var stored = String(v[0] || "");
+    var exp    = Number(v[1] || 0);
+    if (!stored || String(code).trim() !== stored) return { ok: false, error: "bad-code" };
+    if (new Date().getTime() > exp) { sh.clear(); return { ok: false, error: "expired" }; }
+    var token = Utilities.getUuid();
+    sh.getRange(1, 1, 1, 3).setValues([["", new Date().getTime() + 10 * 60 * 1000, token]]);
+    return { ok: true, resetToken: token };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+function consumeResetToken(token) {
+  if (!token) return { ok: false, error: "no-token" };
+  var sh = ss().getSheetByName(RESET_SHEET);
+  if (!sh || sh.getLastRow() === 0) return { ok: false, error: "no-request" };
+  var v = sh.getRange(1, 1, 1, 3).getValues()[0];
+  var exp = Number(v[1] || 0);
+  var stored = String(v[2] || "");
+  if (!stored || stored !== token) return { ok: false, error: "bad-token" };
+  if (new Date().getTime() > exp) { sh.clear(); return { ok: false, error: "expired" }; }
+  sh.clear();                       // חד-פעמי
+  return { ok: true };
+}
+
+/* ========================= שמירה וטעינה ========================= */
 function saveData(data) {
   var str = JSON.stringify(data);
   var sh = ss().getSheetByName(DATA_SHEET) || ss().insertSheet(DATA_SHEET);
@@ -112,7 +189,6 @@ function saveData(data) {
   try { sh.hideSheet(); } catch (err) {}
 }
 
-/* ---------- טעינה ---------- */
 function loadData() {
   var sh = ss().getSheetByName(DATA_SHEET);
   if (!sh || sh.getLastRow() === 0) return null;
@@ -122,15 +198,15 @@ function loadData() {
   return JSON.parse(str);
 }
 
-/* ---------- לשוניות קריאות ---------- */
+/* ======================= לשוניות קריאות ======================= */
 function renderReadable(d) {
-  var pMap = mapBy(d.partners, "name");
-  var aMap = mapBy(d.apartments, "name");
-  var mMap = mapBy(d.managers, "name");
-  var cMap = mapBy(d.categories, "name");
+  var pMap   = mapBy(d.partners, "name");
+  var aMap   = mapBy(d.apartments, "name");
+  var mMap   = mapBy(d.managers, "name");
+  var cMap   = mapBy(d.categories, "name");
   var accMap = mapBy(d.accounts, "name");
   var CLS = { investment: "השקעה", ongoing: "שוטף", private: "פרטי" };
-  var yn = function (b) { return b ? "כן" : ""; };
+  var yn  = function (b) { return b ? "כן" : ""; };
   var del = function (x) { return x.deleted ? "נמחק" : "פעיל"; };
 
   writeTab("דירות", ["שם", "הערות", "דמי ניהול", "בנק", "סטטוס"],
