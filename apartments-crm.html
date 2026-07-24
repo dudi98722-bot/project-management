@@ -435,6 +435,9 @@ function renderLogin(){
         '<div class="field"><label>קוד כניסה</label><input id="lg-code" type="password" onkeydown="if(event.key===\'Enter\')doLogin()" placeholder="קוד"></div>'+
         '<button class="btn btn-primary" style="width:100%" onclick="doLogin()">כניסה</button>'
     )+
+    '<div style="margin-top:20px;padding-top:14px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)">'+
+      '<a href="#" onclick="resetLocal();return false;">בעיה בכניסה? אפס את הנתונים המקומיים במכשיר זה</a>'+
+    '</div>'+
     '</div></div>';
   setTimeout(function(){ var el=document.getElementById("lg-code"); if(el) el.focus(); },50);
 }
@@ -453,6 +456,16 @@ async function doLogin(){
   CU=u; toast("ברוך הבא, "+u.name,"ok"); go("dashboard",{});
 }
 function logout(){ CU=null; renderApp(); }
+/* מוצא חירום: מנקה את הנתונים המקומיים בלבד (כתובת השיטס נשמרת, כך שהנתונים ייטענו משם מחדש) */
+function resetLocal(){
+  var connected = !!sheetsUrl();
+  var msg = connected
+    ? "פעולה זו תמחק את העותק המקומי בדפדפן הזה בלבד.\n\nהמערכת מחוברת לגוגל שיטס — הנתונים בטוחים שם וייטענו מחדש אוטומטית.\n\nלהמשיך?"
+    : "פעולה זו תמחק את הנתונים השמורים בדפדפן הזה ותתחיל מחדש.\n\n⚠️ המערכת אינה מחוברת לגוגל שיטס, כך שנתונים שלא סונכרנו יאבדו.\n\nלהמשיך?";
+  if(!confirm(msg)) return;
+  try{ localStorage.removeItem(LSKEY); }catch(e){}
+  location.reload();
+}
 
 /* ============================================================
    דשבורד + סקירת דירה
