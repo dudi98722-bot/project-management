@@ -568,6 +568,7 @@ function viewDashboard(){
     searchBox("apt-q",Q.apts,"חיפוש דירה / פרויקט…","Q.apts=this.value;renderAptGrid()")+
     '<span id="apt-count">'+countLine(all.length,all.length,"דירות")+'</span>'+
     '<div class="sp"></div>'+
+    (can("edit")?'<button class="btn btn-sm" onclick="bulkAptFlags()">⚙️ בנק / ניהול מרוכז</button> ':'')+
     (can("edit")?'<button class="btn btn-primary" onclick="editApartment(null)">➕ דירה חדשה</button>':'')+'</div>';
   if(!all.length) return h+'<div class="empty">אין דירות עדיין. הוסף דירה ראשונה.</div>';
   h+='<div id="apt-grid">'+aptGridHtml()+'</div>';
@@ -614,6 +615,7 @@ function aptGridHtml(){
     th("rem","נותר")+
     th("income","הכנסות")+
     th("bank","יתרת בנק")+
+    '<th style="white-space:nowrap">בנק</th><th style="white-space:nowrap">ניהול</th>'+
     '<th></th></tr></thead><tbody>';
   rows.forEach(function(r){
     var a=r.a, t=r.t, n=apExpenses(a.id).length;
@@ -630,6 +632,14 @@ function aptGridHtml(){
       '<td class="'+(t.remaining>0.01?"neg":"pos")+'">'+money(t.remaining)+'</td>'+
       '<td>'+(t.income?money(t.income):'<span class="muted">—</span>')+'</td>'+
       '<td>'+(a.hasBank?money(t.bank):'<span class="muted">—</span>')+'</td>'+
+      '<td class="center" onclick="event.stopPropagation()">'+
+        (can("edit")?'<input type="checkbox" style="width:auto;cursor:pointer" '+(a.hasBank?"checked":"")+
+          ' onchange="toggleAptFlag(\''+a.id+'\',\'hasBank\',this.checked)" title="בנק זמני">'
+          :(a.hasBank?"✔️":"—"))+'</td>'+
+      '<td class="center" onclick="event.stopPropagation()">'+
+        (can("edit")?'<input type="checkbox" style="width:auto;cursor:pointer" '+(a.hasManagement?"checked":"")+
+          ' onchange="toggleAptFlag(\''+a.id+'\',\'hasManagement\',this.checked)" title="דמי ניהול">'
+          :(a.hasManagement?"✔️":"—"))+'</td>'+
       '<td class="right" style="white-space:nowrap" onclick="event.stopPropagation()">'+
         '<button class="btn btn-ghost btn-sm" onclick="go(\'apartment\',{apartmentId:\''+a.id+'\',tab:\'expenses\'})" title="הוצאות">📋</button>'+
         (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editApartment(\''+a.id+'\')" title="עריכה">✏️</button>':'')+
@@ -638,8 +648,62 @@ function aptGridHtml(){
   h+='</tbody><tfoot><tr><td>סה"כ '+rows.length+' דירות</td><td>'+tot.stages+'</td>'+
     '<td>'+money(tot.cost)+'</td><td>'+money(tot.paid)+'</td>'+
     '<td class="'+(tot.rem>0.01?"neg":"pos")+'">'+money(tot.rem)+'</td>'+
-    '<td>'+money(tot.income)+'</td><td>'+money(tot.bank)+'</td><td></td></tr></tfoot></table></div>';
+    '<td>'+money(tot.income)+'</td><td>'+money(tot.bank)+'</td><td colspan="3"></td></tr></tfoot></table></div>';
   return h;
+}
+/* מתג מהיר מתוך הרשימה — בלי להיכנס לעריכת הדירה */
+function toggleAptFlag(aptId,flag,val){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var a=byId(DB.apartments,aptId); if(!a) return;
+  if(!val && flag==="hasBank"){
+    var deps=apDeposits(aptId).length;
+    var expIds={}; apExpenses(aptId).forEach(function(e){expIds[e.id]=1;});
+    var bankPays=active(DB.payments).filter(function(p){return expIds[p.expenseId]&&accountIsBank(p.accountId);}).length;
+    if(deps||bankPays){
+      if(!confirm('בדירה "'+a.name+'" יש '+deps+' הפקדות ו-'+bankPays+' תשלומים מהבנק.\n\n'+
+        'כיבוי הבנק רק מסתיר את הלשונית — הנתונים נשמרים ויחזרו אם תדליק שוב.\n\nלכבות?')) { rerender(); return; }
+    }
+  }
+  a[flag]=!!val; save();
+  toast('"'+a.name+'" — '+(flag==="hasBank"?"בנק":"דמי ניהול")+(val?" הופעל":" כובה"),"ok");
+  renderAptGrid();
+}
+/* פעולה מרוכזת על כל הדירות המוצגות (מכבד את החיפוש) */
+function bulkAptFlags(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var shown=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);})
+    .filter(function(a){ return matches(Q.apts,a.name+" "+(a.notes||"")); });
+  if(!shown.length){ toast("אין דירות מוצגות","warn"); return; }
+  var withBank=shown.filter(function(a){return a.hasBank;}).length;
+  var withMgmt=shown.filter(function(a){return a.hasManagement;}).length;
+  openModal({title:"הפעלה/כיבוי מרוכז",bodyHtml:
+    '<p class="muted">הפעולה תחול על <b>'+shown.length+' הדירות המוצגות</b> כרגע'+
+    (Q.apts?' (לפי החיפוש "'+esc(Q.apts)+'")':'')+'.</p>'+
+    '<div class="stat-grid" style="margin-bottom:14px">'+
+      stat("עם בנק",withBank+" / "+shown.length)+
+      stat("עם דמי ניהול",withMgmt+" / "+shown.length)+
+    '</div>'+
+    '<div class="section-title">בנק זמני</div>'+
+    '<div class="toolbar">'+
+      '<button class="btn btn-sm" onclick="applyBulkFlag(\'hasBank\',true)">✅ הפעל בכולן</button>'+
+      '<button class="btn btn-danger btn-sm" onclick="applyBulkFlag(\'hasBank\',false)">🚫 כבה בכולן</button></div>'+
+    '<div class="section-title">דמי ניהול</div>'+
+    '<div class="toolbar">'+
+      '<button class="btn btn-sm" onclick="applyBulkFlag(\'hasManagement\',true)">✅ הפעל בכולן</button>'+
+      '<button class="btn btn-danger btn-sm" onclick="applyBulkFlag(\'hasManagement\',false)">🚫 כבה בכולן</button></div>'+
+    '<div class="hint">כיבוי רק מסתיר את הלשונית ומוציא מהחישוב — שום נתון לא נמחק, והכל חוזר בהדלקה מחדש.</div>'});
+}
+function applyBulkFlag(flag,val){
+  var shown=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);})
+    .filter(function(a){ return matches(Q.apts,a.name+" "+(a.notes||"")); });
+  var changed=shown.filter(function(a){ return !!a[flag]!==!!val; });
+  if(!changed.length){ toast("כל הדירות המוצגות כבר במצב הזה","warn"); return; }
+  var what=(flag==="hasBank"?"בנק":"דמי ניהול");
+  if(!confirm((val?"להפעיל ":"לכבות ")+what+" ב-"+changed.length+" דירות?\n\nשום נתון לא נמחק — אפשר להחזיר בכל רגע (וגם Ctrl+Z).")) return;
+  changed.forEach(function(a){ a[flag]=!!val; });
+  save(); closeModal();
+  toast(what+(val?" הופעל":" כובה")+" ב-"+changed.length+" דירות","ok");
+  rerender();
 }
 var APT_SORT={by:"name",dir:"asc"};
 function sortApts(key){
