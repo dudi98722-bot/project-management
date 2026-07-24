@@ -1215,52 +1215,267 @@ function importJSON(inp){ var f=inp.files[0]; if(!f) return; var r=new FileReade
   r.onload=function(){ try{ var d=JSON.parse(r.result); if(d&&Array.isArray(d.apartments)){ DB=normalizeDB(d); save(); toast("שוחזר","ok"); rerender(); } else toast("קובץ לא תקין","err"); }catch(e){ toast("שגיאה בקריאה","err"); } };
   r.readAsText(f); }
 
-/* ---------- ייבוא ---------- */
+/* ---------- ייבוא נתונים ---------- */
+var IMPORT_TYPES={
+  expenses:{label:"הוצאות / שלבים (כולל חלוקת שותפים)",fields:[
+    {k:"apartment",l:"דירה / פרויקט",hints:["פרויקט","דירה"],opt:true},
+    {k:"date",l:"תאריך",hints:["תאריך"],opt:true},
+    {k:"desc",l:"תיאור / פירוט",hints:["פירוט","פירט","תיאור","עבור"]},
+    {k:"amount",l:"סכום",hints:["סכום"]},
+    {k:"category",l:"סוג הוצאה",hints:["סוג"],opt:true},
+    {k:"classification",l:"סיווג (השקעה/שוטף/פרטי)",hints:["השקעה","סיווג","שוטף"],opt:true},
+    {k:"note",l:"הערה",hints:["הערה"],opt:true}
+  ]},
+  payments:{label:"תשלומים",fields:[
+    {k:"apartment",l:"דירה / פרויקט",hints:["פרויקט","דירה"],opt:true},
+    {k:"date",l:"תאריך",hints:["תאריך"],opt:true},
+    {k:"expense",l:"עבור (שם ההוצאה)",hints:["עבור","פירוט","תיאור"]},
+    {k:"amount",l:"סכום",hints:["סכום"]},
+    {k:"payer",l:"מי שילם (שותף)",hints:["משלם","מי שילם"],opt:true},
+    {k:"account",l:"מהחשבון",hints:["שולם מ","חשבון"],opt:true},
+    {k:"method",l:"אמצעי תשלום",hints:["אופן","אמצעי"],opt:true},
+    {k:"invoice",l:"חשבונית",hints:["חשבונית"],opt:true},
+    {k:"note",l:"הערה",hints:["הערה"],opt:true}
+  ]},
+  deposits:{label:"הפקדות לבנק",fields:[
+    {k:"apartment",l:"דירה / פרויקט",hints:["פרויקט","דירה"],opt:true},
+    {k:"date",l:"תאריך",hints:["תאריך"],opt:true},
+    {k:"partner",l:"שותף מפקיד",hints:["שותף","מפקיד","משלם"]},
+    {k:"amount",l:"סכום",hints:["סכום"]},
+    {k:"note",l:"הערה",hints:["הערה"],opt:true}
+  ]},
+  income:{label:"הכנסות",fields:[
+    {k:"apartment",l:"דירה / פרויקט",hints:["פרויקט","דירה"],opt:true},
+    {k:"date",l:"תאריך",hints:["תאריך"],opt:true},
+    {k:"desc",l:"תיאור",hints:["תיאור","פירוט"]},
+    {k:"amount",l:"סכום",hints:["סכום"]},
+    {k:"note",l:"הערה",hints:["הערה"],opt:true}
+  ]}
+};
+function impNum(v){ var n=parseFloat(String(v==null?"":v).replace(/[^\d.\-]/g,"")); return isFinite(n)?n:0; }
+function impDate(v){
+  var s=String(v==null?"":v).trim(); if(!s) return todayISO();
+  if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+  var p=s.split(/[\/.\-]/);
+  if(p.length===3){ var y=p[2].length===4?p[2]:("20"+p[2]);
+    return y+"-"+String(p[1]).trim().padStart(2,"0")+"-"+String(p[0]).trim().padStart(2,"0"); }
+  return todayISO();
+}
+function findOrCreatePartner(name){
+  name=String(name||"").trim(); if(!name) return null;
+  var p=active(DB.partners).find(function(x){return String(x.name).trim()===name;});
+  if(p) return p.id;
+  var id=uid(); DB.partners.push({id:id,name:name,phone:"",notes:"",deleted:false}); return id;
+}
+function findOrCreateApartment(name){
+  name=String(name||"").trim(); if(!name) return null;
+  var a=active(DB.apartments).find(function(x){return String(x.name).trim()===name;});
+  if(a) return a.id;
+  var id=uid(); DB.apartments.push({id:id,name:name,notes:"",hasManagement:false,hasBank:true,deleted:false}); return id;
+}
+function findOrCreateCategory(name){
+  name=String(name||"").trim(); if(!name) return "";
+  var c=active(DB.categories).find(function(x){return String(x.name).trim()===name;});
+  if(c) return c.id;
+  var id=uid(); DB.categories.push({id:id,name:name,deleted:false}); return id;
+}
+function findOrCreateAccount(aptId,name){
+  name=String(name||"").trim(); if(!name) return null;
+  var a=apAccounts(aptId).find(function(x){return String(x.name).trim()===name;});
+  if(a) return a.id;
+  var id=uid();
+  DB.accounts.push({id:id,apartmentId:aptId,name:name,isBank:/בנק|קופה/.test(name),partnerId:null,deleted:false});
+  return id;
+}
+function classifyText(t){ t=String(t||"");
+  if(t.indexOf("פרטי")>=0) return "private";
+  if(t.indexOf("שוטף")>=0) return "ongoing";
+  return "investment"; }
+function methodText(t){ t=String(t||"");
+  if(t.indexOf("צ")>=0) return "check";
+  if(t.indexOf("העבר")>=0) return "transfer";
+  if(t.indexOf("מזומן")>=0) return "cash";
+  return "other"; }
+function detectSplitPairs(headers){
+  var pairs=[];
+  for(var i=0;i<headers.length-1;i++){
+    if(/משלם|שותף/.test(headers[i]) && /אחוז|%/.test(headers[i+1])) pairs.push({n:i,p:i+1});
+  }
+  return pairs;
+}
+
 function moduleImport(){
   var apts=active(DB.apartments);
-  var h='<h2>ייבוא נתונים מאקסל</h2>'+
-    '<div class="card"><p class="muted">העתק שורות מהאקסל (כולל שורת כותרות) והדבק כאן. הפרדה בטאב או פסיק. נייבא כהוצאות עם חלוקת ברירת המחדל של הדירה.</p>'+
-    '<div class="field"><label>דירת יעד</label><select id="im-apt">'+apts.map(function(a){return '<option value="'+a.id+'">'+esc(a.name)+'</option>';}).join("")+'</select></div>'+
-    '<div class="field"><label>הדבק נתונים</label><textarea id="im-data" rows="8" placeholder="תאריך	תיאור	סכום&#10;01/01/2025	שם ההוצאה	100000"></textarea></div>'+
-    '<button class="btn btn-primary" onclick="parseImport()">נתח ותצוגה מקדימה</button></div>'+
-    '<div id="im-preview"></div>';
-  return h;
+  return '<h2>📥 ייבוא נתונים</h2>'+
+   '<div class="card">'+
+    '<div class="form-grid">'+
+      '<div class="field"><label>מה מייבאים?</label><select id="im-type">'+
+        Object.keys(IMPORT_TYPES).map(function(k){return '<option value="'+k+'">'+esc(IMPORT_TYPES[k].label)+'</option>';}).join("")+
+      '</select></div>'+
+      '<div class="field"><label>דירת ברירת מחדל</label><select id="im-apt">'+
+        '<option value="">— לפי עמודת הדירה בנתונים —</option>'+
+        apts.map(function(a){return '<option value="'+a.id+'">'+esc(a.name)+'</option>';}).join("")+'</select></div>'+
+    '</div>'+
+    '<div class="field"><label>הדבק מהאקסל (כולל שורת הכותרות)</label>'+
+      '<textarea id="im-data" rows="8" placeholder="סמן באקסל → Ctrl+C → הדבק כאן Ctrl+V"></textarea></div>'+
+    '<button class="btn btn-primary" onclick="parseImport()">נתח עמודות ←</button>'+
+    '<div class="hint">בהוצאות: זוגות עמודות <b>משלם</b>+<b>אחוז</b> יזוהו אוטומטית ויהפכו לחלוקת השותפים של כל שורה.<br>'+
+    'דירות, שותפים, סוגי הוצאה וחשבונות <b>ייווצרו אוטומטית</b> לפי השם אם עדיין אינם קיימים.</div>'+
+   '</div><div id="im-preview"></div>';
 }
+
 function parseImport(){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
-  var raw=val("im-data").trim(); if(!raw){ toast("אין נתונים","err"); return; }
+  var raw=val("im-data").trim(); if(!raw){ toast("לא הודבקו נתונים","err"); return; }
   var lines=raw.split(/\r?\n/).filter(function(l){return l.trim();});
+  if(lines.length<2){ toast("צריך שורת כותרות + לפחות שורה אחת","err"); return; }
   var sep=lines[0].indexOf("\t")>=0?"\t":",";
   var headers=lines[0].split(sep).map(function(s){return s.trim();});
   var rows=lines.slice(1).map(function(l){return l.split(sep);});
-  window._importRows=rows; window._importHeaders=headers;
-  var opts=function(match){ var terms=[].concat(match||[]); var chosen=-1; headers.forEach(function(hh,i){ if(chosen<0&&terms.some(function(t){return hh.indexOf(t)>=0;})) chosen=i; }); return '<option value="-1">—</option>'+headers.map(function(hh,i){return '<option value="'+i+'"'+(i===chosen?" selected":"")+'>'+esc(hh)+'</option>';}).join(""); };
-  var pv='<div class="card"><h3>מיפוי עמודות</h3><div class="form-grid">'+
-    '<div class="field"><label>תיאור</label><select id="mp-desc">'+opts(["תיאור","פירוט","פירט"])+'</select></div>'+
-    '<div class="field"><label>סכום</label><select id="mp-amount">'+opts("סכום")+'</select></div>'+
-    '<div class="field"><label>תאריך</label><select id="mp-date">'+opts("תאריך")+'</select></div>'+
-    '</div><button class="btn btn-primary" onclick="commitImport()">ייבא '+rows.length+' שורות</button></div>'+
-    '<div class="card"><h3>תצוגה מקדימה</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+headers.map(function(hh){return '<th>'+esc(hh)+'</th>';}).join("")+'</tr></thead><tbody>'+
-    rows.slice(0,8).map(function(r){return '<tr>'+r.map(function(c){return '<td>'+esc(c)+'</td>';}).join("")+'</tr>';}).join("")+'</tbody></table></div>'+(rows.length>8?'<div class="hint">מוצגות 8 מתוך '+rows.length+'</div>':'')+'</div>';
-  document.getElementById("im-preview").innerHTML=pv;
+  var type=val("im-type")||"expenses";
+  window._imp={headers:headers,rows:rows,type:type,pairs:(type==="expenses"?detectSplitPairs(headers):[])};
+
+  var def=IMPORT_TYPES[type];
+  function sel(f){
+    var chosen=-1;
+    headers.forEach(function(hh,i){ if(chosen<0 && f.hints.some(function(t){return hh.indexOf(t)>=0;})) chosen=i; });
+    return '<option value="-1">— ללא —</option>'+headers.map(function(hh,i){
+      return '<option value="'+i+'"'+(i===chosen?" selected":"")+'>'+esc(hh)+'</option>'; }).join("");
+  }
+  var h='<div class="card"><h3>מיפוי עמודות — '+esc(def.label)+'</h3>'+
+    '<p class="muted">בחר לכל שדה את העמודה המתאימה. שדות עם * הם חובה.</p><div class="form-grid">'+
+    def.fields.map(function(f){
+      return '<div class="field"><label>'+esc(f.l)+(f.opt?'':' <span class="neg">*</span>')+'</label>'+
+        '<select id="mp-'+f.k+'">'+sel(f)+'</select></div>'; }).join("")+
+    '</div>';
+  if(type==="expenses"){
+    var pairs=window._imp.pairs;
+    h+='<div class="section-title">חלוקת שותפים</div>'+
+      (pairs.length
+        ? '<div class="hint"><span class="pos">✅ זוהו '+pairs.length+' זוגות</span> — '+
+          pairs.map(function(p){return esc(headers[p.n])+"+"+esc(headers[p.p]);}).join(" · ")+
+          '<br>לכל שורה תיווצר חלוקה משלה לפי הערכים בעמודות האלה.</div>'
+        : '<div class="hint neg">לא זוהו זוגות משלם/אחוז — תוחל חלוקת ברירת המחדל של הדירה.</div>');
+  }
+  h+='<div class="toolbar" style="margin-top:16px"><button class="btn btn-primary" onclick="commitImport()">ייבא '+rows.length+' שורות</button></div></div>';
+  h+='<div class="card"><h3>תצוגה מקדימה</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+
+    headers.map(function(hh){return '<th>'+esc(hh)+'</th>';}).join("")+'</tr></thead><tbody>'+
+    rows.slice(0,8).map(function(r){return '<tr>'+headers.map(function(_,i){return '<td>'+esc(r[i]||"")+'</td>';}).join("")+'</tr>';}).join("")+
+    '</tbody></table></div>'+(rows.length>8?'<div class="hint">מוצגות 8 מתוך '+rows.length+' שורות</div>':'')+'</div>';
+  document.getElementById("im-preview").innerHTML=h;
 }
+
 function commitImport(){
   if(!can("edit")){ toast("אין הרשאה לייבא","err"); return; }
-  var rows=window._importRows||[]; var aptId=val("im-apt");
-  var iDesc=Number(val("mp-desc")), iAmt=Number(val("mp-amount")), iDate=Number(val("mp-date"));
-  if(iDesc<0||iAmt<0){ toast("מפה לפחות תיאור וסכום","err"); return; }
-  var defs=apPartners(aptId).map(function(p){return [p.partnerId,p.defaultPercent];});
-  var count=0;
-  rows.forEach(function(r){
-    var desc=(r[iDesc]||"").trim(); var amt=parseFloat(String(r[iAmt]||"").replace(/[₪,]/g,""))||0;
-    if(!desc&&!amt) return;
-    var dt=todayISO(); if(iDate>=0&&r[iDate]){ var pp=String(r[iDate]).trim().split(/[\/.\-]/); if(pp.length===3) dt=(pp[2].length===4?pp[2]:("20"+pp[2]))+"-"+String(pp[1]).padStart(2,"0")+"-"+String(pp[0]).padStart(2,"0"); }
-    var eid=uid();
-    DB.expenses.push({id:eid,apartmentId:aptId,categoryId:"",classification:"investment",description:desc||"(ללא תיאור)",amount:amt,date:dt,note:"יובא",hasInvoice:false,invoiceLink:"",mgmtEnabled:false,mgmtBaseType:"full",mgmtVatRate:18,deleted:false});
-    defs.forEach(function(d){ DB.expenseSplits.push({id:uid(),expenseId:eid,partnerId:d[0],percent:d[1],deleted:false}); });
-    count++;
-  });
-  save(); toast("יובאו "+count+" הוצאות","ok"); go("apartment",{apartmentId:aptId,tab:"expenses"});
+  var imp=window._imp; if(!imp){ toast("יש לנתח קודם","err"); return; }
+  var m={}; IMPORT_TYPES[imp.type].fields.forEach(function(f){ m[f.k]=Number(val("mp-"+f.k)); });
+  var defApt=val("im-apt");
+  var beforeA=active(DB.apartments).length, beforeP=active(DB.partners).length;
+  var res={created:0,skipped:0,newApts:0,newPartners:0,reason:""};
+
+  function aptFor(r){
+    var name=(m.apartment>=0)?String(r[m.apartment]||"").trim():"";
+    if(name) return findOrCreateApartment(name);
+    return defApt||null;
+  }
+
+  if(imp.type==="expenses"){
+    if(m.desc<0||m.amount<0){ toast("חובה למפות תיאור וסכום","err"); return; }
+    var firstSplit={};
+    imp.rows.forEach(function(r){
+      var aptId=aptFor(r); if(!aptId){ res.skipped++; res.reason="לא נמצאה דירה"; return; }
+      var desc=String(r[m.desc]||"").trim(); var amt=impNum(r[m.amount]);
+      if(!desc && !amt){ res.skipped++; return; }
+      var eid=uid();
+      DB.expenses.push({id:eid,apartmentId:aptId,
+        categoryId:(m.category>=0?findOrCreateCategory(r[m.category]):""),
+        classification:(m.classification>=0?classifyText(r[m.classification]):"investment"),
+        description:desc||"(ללא תיאור)",amount:amt,
+        date:(m.date>=0?impDate(r[m.date]):todayISO()),
+        note:(m.note>=0?String(r[m.note]||""):""),
+        hasInvoice:false,invoiceLink:"",mgmtEnabled:false,mgmtBaseType:"full",mgmtVatRate:18,deleted:false});
+      var split=[];
+      (imp.pairs||[]).forEach(function(pr){
+        var nm=String(r[pr.n]||"").trim(); var pc=impNum(r[pr.p]);
+        if(nm && pc>0){ var pid=findOrCreatePartner(nm); if(pid) split.push({partnerId:pid,percent:pc}); }
+      });
+      if(!split.length){ split=apPartners(aptId).map(function(x){return {partnerId:x.partnerId,percent:x.defaultPercent};}); }
+      split.forEach(function(s){ DB.expenseSplits.push({id:uid(),expenseId:eid,partnerId:s.partnerId,percent:s.percent,deleted:false}); });
+      if(!firstSplit[aptId] && split.length) firstSplit[aptId]=split;
+      res.created++;
+    });
+    // דירה שאין בה עדיין שותפים — נקבע לה ברירת מחדל מהחלוקה הראשונה שיובאה
+    Object.keys(firstSplit).forEach(function(aptId){
+      if(apPartners(aptId).length) return;
+      firstSplit[aptId].forEach(function(s){
+        DB.apartmentPartners.push({id:uid(),apartmentId:aptId,partnerId:s.partnerId,defaultPercent:s.percent,deleted:false});
+      });
+    });
+  }
+  else if(imp.type==="payments"){
+    if(m.expense<0||m.amount<0){ toast("חובה למפות 'עבור' וסכום","err"); return; }
+    imp.rows.forEach(function(r){
+      var aptId=aptFor(r); if(!aptId){ res.skipped++; res.reason="לא נמצאה דירה"; return; }
+      var target=String(r[m.expense]||"").trim();
+      var e=apExpenses(aptId).find(function(x){ return String(x.description).trim()===target; });
+      if(!e){ res.skipped++; res.reason="לא נמצאה הוצאה בשם שב'עבור'"; return; }
+      var amt=impNum(r[m.amount]); if(amt<=0){ res.skipped++; return; }
+      var accId=(m.account>=0)?findOrCreateAccount(aptId,r[m.account]):null;
+      var isBank=accountIsBank(accId);
+      var payer=(!isBank && m.payer>=0)?findOrCreatePartner(r[m.payer]):null;
+      DB.payments.push({id:uid(),expenseId:e.id,
+        date:(m.date>=0?impDate(r[m.date]):todayISO()),amount:amt,
+        accountId:accId,payerPartnerId:payer,
+        method:(m.method>=0?methodText(r[m.method]):"transfer"),
+        recipientType:"supplier",recipientManagerId:null,
+        hasInvoice:(m.invoice>=0 && /כן|✔|✓|v|true|1/i.test(String(r[m.invoice]||""))),
+        invoiceLink:"",note:(m.note>=0?String(r[m.note]||""):""),deleted:false});
+      res.created++;
+    });
+  }
+  else if(imp.type==="deposits"){
+    if(m.partner<0||m.amount<0){ toast("חובה למפות שותף וסכום","err"); return; }
+    imp.rows.forEach(function(r){
+      var aptId=aptFor(r); if(!aptId){ res.skipped++; return; }
+      var pid=findOrCreatePartner(r[m.partner]); var amt=impNum(r[m.amount]);
+      if(!pid||amt<=0){ res.skipped++; return; }
+      var a=byId(DB.apartments,aptId); if(a && !a.hasBank) a.hasBank=true;
+      DB.deposits.push({id:uid(),apartmentId:aptId,partnerId:pid,amount:amt,
+        date:(m.date>=0?impDate(r[m.date]):todayISO()),
+        note:(m.note>=0?String(r[m.note]||""):""),deleted:false});
+      res.created++;
+    });
+  }
+  else if(imp.type==="income"){
+    if(m.desc<0||m.amount<0){ toast("חובה למפות תיאור וסכום","err"); return; }
+    imp.rows.forEach(function(r){
+      var aptId=aptFor(r); if(!aptId){ res.skipped++; return; }
+      var amt=impNum(r[m.amount]);
+      DB.income.push({id:uid(),apartmentId:aptId,description:String(r[m.desc]||"").trim()||"(ללא תיאור)",
+        amount:amt,date:(m.date>=0?impDate(r[m.date]):todayISO()),
+        note:(m.note>=0?String(r[m.note]||""):""),deleted:false});
+      res.created++;
+    });
+  }
+
+  res.newApts=active(DB.apartments).length-beforeA;
+  res.newPartners=active(DB.partners).length-beforeP;
+  save();
+  toast("יובאו "+res.created+" שורות"+(res.skipped?" · דולגו "+res.skipped:""),res.skipped?"warn":"ok");
+  showImportResult(res);
+}
+
+function showImportResult(res){
+  var box=document.getElementById("im-preview"); if(!box) return;
+  box.innerHTML='<div class="card"><h3>✅ הייבוא הושלם</h3><div class="stat-grid">'+
+    stat("נוצרו רשומות",num(res.created))+
+    stat("דולגו",num(res.skipped),res.skipped?"neg":"pos")+
+    stat("דירות חדשות",num(res.newApts))+
+    stat("שותפים חדשים",num(res.newPartners))+
+    '</div>'+
+    (res.skipped?'<div class="hint neg">סיבת הדילוג הנפוצה: '+esc(res.reason||"שורה ריקה")+'. בתשלומים — השם בעמודת "עבור" חייב להיות זהה לתיאור ההוצאה.</div>':'')+
+    '<div class="toolbar" style="margin-top:12px"><button class="btn" onclick="go(\'dashboard\',{})">לדירות ←</button>'+
+    '<button class="btn" onclick="go(\'import\',{})">ייבוא נוסף</button></div></div>';
 }
 
 /* ---------- סל מחזור ---------- */
