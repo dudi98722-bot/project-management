@@ -340,6 +340,11 @@ function bankBalance(aptId){
 }
 // מנהל — מגיע/קיבל/יתרה
 function managerReceivable(aptId,mId){ return round2(apExpenses(aptId).reduce(function(s,e){return s+mgrFeeLiveOnExpense(e.id,mId);},0)); }
+/* דחוי שטרם שוחרר = ההפרש בין הסופי לפעיל */
+function managerDeferredPending(aptId,mId){
+  return round2(apExpenses(aptId).reduce(function(s,e){
+    return s + (mgrFeeFullOnExpense(e.id,mId) - mgrFeeLiveOnExpense(e.id,mId)); },0));
+}
 function managerPaid(aptId,mId){
   var expIds={}; apExpenses(aptId).forEach(function(e){expIds[e.id]=1;});
   return round2(active(DB.payments).filter(function(p){return expIds[p.expenseId]&&p.recipientType==="manager"&&p.recipientManagerId===mId;})
@@ -440,7 +445,7 @@ function topbarHtml(){
 }
 function onApartmentPick(id){ if(id) go("apartment",{apartmentId:id,tab:"overview"}); else go("dashboard",{}); }
 function navHtml(){
-  var items=[["dashboard","🏠 כל הדירות"],["reports","📊 דוח שותפים כללי"]];
+  var items=[["dashboard","🏠 כל הדירות"],["reports","📊 דוח שותפים כללי"],["mgmt","💼 דוח דמי ניהול"]];
   if(can("settings")) items.push(["settings","⚙️ הגדרות"]);
   if(can("edit")) items.push(["import","📥 ייבוא"]);
   if(can("edit")) items.push(["recycle","🗑️ סל מחזור"]);
@@ -457,6 +462,7 @@ function renderView(){
     case "dashboard": c.innerHTML=viewDashboard(); break;
     case "apartment": renderApartment(c); break;
     case "reports": c.innerHTML=viewCrossPartner(); break;
+    case "mgmt": c.innerHTML=moduleMgmtReport(); break;
     case "settings": c.innerHTML=viewSettings(); break;
     case "import": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewImport(); break;
     case "recycle": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewRecycle(); break;
@@ -1245,6 +1251,82 @@ function moduleApartmentReports(aptId){
   });
   h+='</tbody><tfoot><tr><td>סה"כ</td>'+cols.map(function(c){return '<td>'+money(colTot[c])+'</td>';}).join("")+'<td>'+money(grand)+'</td></tr></tfoot></table></div>'+
     '<div class="hint">דוח השלבים מציג חלוקה של סכום ההוצאה בלבד. דמי ניהול נכללים ב"דוח המשלמים" למעלה.</div></div>';
+  return h;
+}
+
+/* ---------- דוח דמי ניהול (חוצה פרויקטים) ---------- */
+function moduleMgmtReport(){
+  var apts=active(DB.apartments).filter(function(a){ return canSeeApartment(a.id) && a.hasManagement; });
+  var h='<div class="toolbar"><h2 style="margin:0">💼 דוח דמי ניהול</h2><div class="sp"></div>'+
+    '<button class="btn btn-sm no-print" onclick="window.print()">🖨️ הדפסה</button></div>';
+  if(!apts.length){
+    return h+'<div class="empty">אין עדיין פרויקט עם דמי ניהול.<br>הפעל בלשונית <b>דמי ניהול</b> של הדירה הרלוונטית.</div>';
+  }
+  var tCur=0,tDef=0,tPaid=0;
+  h+='<div class="card"><h3>סיכום לפי פרויקט</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+
+    '<th>פרויקט</th><th>מנהלים</th><th>נוכחי (מגיע כעת)</th><th>דחוי (עתידי)</th>'+
+    '<th>סה"כ בסוף</th><th>שולם</th><th>נותר לתשלום</th></tr></thead><tbody>';
+  apts.forEach(function(a){
+    var mgrs=apManagers(a.id), cur=0, def=0, paid=0;
+    mgrs.forEach(function(m){
+      cur+=managerReceivable(a.id,m.id);
+      def+=managerDeferredPending(a.id,m.id);
+      paid+=managerPaid(a.id,m.id);
+    });
+    tCur+=cur; tDef+=def; tPaid+=paid;
+    var rem=cur-paid;
+    h+='<tr><td><b>'+esc(a.name)+'</b></td><td>'+mgrs.length+'</td>'+
+      '<td>'+money(cur)+'</td><td class="'+(def>0.01?"neg":"")+'">'+money(def)+'</td>'+
+      '<td><b>'+money(cur+def)+'</b></td><td>'+money(paid)+'</td>'+
+      '<td class="'+(rem>0.01?"neg":"pos")+'">'+money(rem)+'</td></tr>';
+  });
+  h+='</tbody><tfoot><tr><td colspan="2">סה"כ</td><td>'+money(tCur)+'</td><td>'+money(tDef)+'</td>'+
+    '<td>'+money(tCur+tDef)+'</td><td>'+money(tPaid)+'</td><td class="'+((tCur-tPaid)>0.01?"neg":"pos")+'">'+money(tCur-tPaid)+'</td></tr></tfoot></table></div>'+
+    '<div class="hint"><b>נוכחי</b> = מה שמגיע כבר עכשיו (האחוז הנוכחי + דחוי ששוחרר). <b>דחוי</b> = מה שיגיע בעתיד וטרם שוחרר. כל הסכומים כוללים מע"מ.</div></div>';
+
+  // פירוט לפי מנהל
+  h+='<div class="card"><h3>פירוט לפי מנהל</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+
+    '<th>פרויקט</th><th>מנהל</th><th>נוכחי</th><th>דחוי</th><th>סה"כ בסוף</th><th>קיבל</th><th>יתרה</th></tr></thead><tbody>';
+  var any=false;
+  apts.forEach(function(a){
+    apManagers(a.id).forEach(function(m){
+      var cur=managerReceivable(a.id,m.id), def=managerDeferredPending(a.id,m.id), paid=managerPaid(a.id,m.id);
+      if(!cur && !def && !paid) return;
+      any=true;
+      h+='<tr><td>'+esc(a.name)+'</td><td><b>'+esc(m.name)+'</b></td>'+
+        '<td>'+money(cur)+'</td><td class="'+(def>0.01?"neg":"")+'">'+money(def)+'</td>'+
+        '<td>'+money(cur+def)+'</td><td>'+money(paid)+'</td>'+
+        '<td class="'+((cur-paid)>0.01?"neg":"pos")+'">'+money(cur-paid)+'</td></tr>';
+    });
+  });
+  if(!any) h+='<tr><td colspan="7" class="empty">אין עדיין דמי ניהול מחושבים — סמן "יש דמי ניהול" בהוצאות הרלוונטיות</td></tr>';
+  h+='</tbody></table></div></div>';
+
+  // דחויים שממתינים לשחרור
+  var pend=[], ps=0;
+  apts.forEach(function(a){
+    apExpenses(a.id).forEach(function(e){
+      if(!e.mgmtEnabled) return;
+      expMgrFees(e.id).forEach(function(f){
+        var mg=byId(DB.managers,f.managerId); if(!mg||mg.deleted) return;
+        if((Number(f.pctDeferred)||0)>0 && !f.deferredReleased){
+          var amt=mgrFeeFullOnExpense(e.id,f.managerId)-mgrFeeLiveOnExpense(e.id,f.managerId);
+          pend.push({apt:a,e:e,f:f,amt:amt}); ps+=amt;
+        }
+      });
+    });
+  });
+  if(pend.length){
+    h+='<div class="card"><h3>דחויים שממתינים לשחרור ('+pend.length+')</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+
+      '<th>פרויקט</th><th>הוצאה</th><th>מנהל</th><th>% דחוי</th><th>מתי ישוחרר</th><th>סכום</th><th></th></tr></thead><tbody>';
+    pend.forEach(function(x){
+      h+='<tr><td>'+esc(x.apt.name)+'</td><td>'+esc(x.e.description)+'</td><td>'+esc(managerName(x.f.managerId))+'</td>'+
+        '<td>'+num(x.f.pctDeferred)+'%</td><td>'+esc(x.f.deferredLabel||"—")+'</td><td>'+money(x.amt)+'</td>'+
+        '<td class="right no-print">'+(can("edit")?'<button class="btn btn-primary btn-sm" onclick="releaseDeferred(\''+x.f.id+'\')">שחרר</button>':'')+'</td></tr>';
+    });
+    h+='</tbody><tfoot><tr><td colspan="5">סה"כ דחוי שטרם שוחרר</td><td><b>'+money(ps)+'</b></td><td></td></tr></tfoot></table></div>'+
+      '<div class="hint">"שחרר" הופך את הסכום לחוב פעיל: הוא נכנס לעלות הפרויקט, מתחלק בין השותפים, ומאפשר לשלם למנהל.</div></div>';
+  }
   return h;
 }
 
