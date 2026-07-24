@@ -1957,6 +1957,16 @@ function parseDelimited(raw,sep){
   return rows.filter(function(r){ return r.some(function(c){ return String(c).trim()!==""; }); })
              .map(function(r){ return r.map(function(c){ return String(c).replace(/\s+/g," ").trim(); }); });
 }
+/* מפתח השוואה סלחני: מאחד גרשיים/אפוסטרופים, רווחים כפולים, ורישיות.
+   באקסל אותו שם נכתב לפעמים עם ׳ ולפעמים עם ', או עם רווח כפול. */
+function normKey(s){
+  return String(s==null?"":s)
+    .replace(/[‘’׳ʼ'`´]/g,"'")
+    .replace(/[“”״"]/g,'"')
+    .replace(/[‎‏‪-‮]/g,"")
+    .replace(/\s+/g," ")
+    .trim().toLowerCase();
+}
 function impNum(v){ var n=parseFloat(String(v==null?"":v).replace(/[^\d.\-]/g,"")); return isFinite(n)?n:0; }
 function impDate(v){
   var s=String(v==null?"":v).trim(); if(!s) return todayISO();
@@ -2101,7 +2111,7 @@ function commitImport(force){
   var defApt=(document.getElementById("im-apt")?val("im-apt"):(imp.defApt||""));
   var beforeA=active(DB.apartments).length, beforeP=active(DB.partners).length;
   var res={created:0,skipped:0,newApts:0,newPartners:0,reason:"",skippedRows:[],skippedRaw:[],
-           autoExpenses:0,forced:!!force,sumCreated:0,sumSkipped:0};
+           autoExpenses:0,forced:!!force,sumCreated:0,sumSkipped:0,missingNames:{}};
 
   function skip(idx,reason,r){
     res.skipped++; res.reason=reason;
@@ -2195,11 +2205,29 @@ function commitImport(force){
   }
   else if(imp.type==="payments"){
     if(m.expense<0||m.amount<0){ toast("חובה למפות 'עבור' וסכום","err"); return; }
+    /* אינדקס הוצאות לכל דירה: התאמה מדויקת ואחריה התאמה מנורמלת.
+       גם מהיר בהרבה מ-find על כל שורה כשיש אלפי הוצאות. */
+    var expIdx={};
+    function idxFor(aptId){
+      if(expIdx[aptId]) return expIdx[aptId];
+      var ix={exact:{},norm:{}};
+      apExpenses(aptId).forEach(function(x){
+        var d=String(x.description).trim();
+        if(!ix.exact[d]) ix.exact[d]=x;
+        var nk=normKey(d);
+        if(!ix.norm[nk]) ix.norm[nk]=x;
+      });
+      expIdx[aptId]=ix; return ix;
+    }
     imp.rows.forEach(function(r,idx){
       var aptId=aptFor(r); if(!aptId){ skip(idx,"לא זוהתה דירה",r); return; }
       var target=String(r[m.expense]||"").trim();
-      var e=apExpenses(aptId).find(function(x){ return String(x.description).trim()===target; });
+      var ix=idxFor(aptId);
+      var e=ix.exact[target] || ix.norm[normKey(target)];
       var amt=impNum(r[m.amount]);
+      if(!e && target){
+        res.missingNames[target]=(res.missingNames[target]||0)+1;
+      }
       if(!e){
         if(force && target && amt>0){
           // ייבוא כפוי: ההוצאה לא קיימת בגיליון ההוצאות — ניצור אותה לפי התשלום
@@ -2211,7 +2239,8 @@ function commitImport(force){
           apPartners(aptId).forEach(function(x){
             DB.expenseSplits.push({id:uid(),expenseId:neid,partnerId:x.partnerId,percent:x.defaultPercent,deleted:false}); });
           e=byId(DB.expenses,neid); res.autoExpenses++;
-        } else { skip(idx,'לא נמצאה הוצאה בשם "'+target+'" בדירה הזאת',r); return; }
+          idxFor(aptId).exact[target]=e; idxFor(aptId).norm[normKey(target)]=e;
+        } else { skip(idx,'לא נמצאה הוצאה בשם "'+target+'"',r); return; }
       }
       if(amt<=0){ skip(idx,"סכום ריק או אפס",r); return; }
       var pdt=(m.date>=0?impDate(r[m.date]):todayISO());
@@ -2318,6 +2347,20 @@ function showImportResult(res){
       Object.keys(byReason).sort(function(a,b){return byReason[b]-byReason[a];}).map(function(k){
         return '<tr><td>'+esc(k)+'</td><td><b>'+byReason[k]+'</b></td></tr>'; }).join("")+
       '</tbody></table></div>';
+    var miss=Object.keys(res.missingNames||{});
+    if(miss.length){
+      miss.sort(function(a,b){ return res.missingNames[b]-res.missingNames[a]; });
+      var missTot=miss.reduce(function(s,k){return s+res.missingNames[k];},0);
+      h+='<div class="section-title">שמות שלא נמצאה להם הוצאה ('+miss.length+' שמות · '+missTot+' שורות)</div>'+
+        '<div class="hint">אלה השמות מעמודת "עבור" שאין להם הוצאה תואמת בדירה. '+
+        'או שההוצאה לא יובאה, או שהשם כתוב אחרת בגיליון ההוצאות.</div>'+
+        '<div class="table-wrap" style="max-height:260px;overflow:auto"><table class="tbl"><thead><tr>'+
+        '<th>השם בעמודת "עבור"</th><th>כמה שורות</th></tr></thead><tbody>'+
+        miss.slice(0,200).map(function(k){
+          return '<tr><td>'+esc(k)+'</td><td><b>'+res.missingNames[k]+'</b></td></tr>'; }).join("")+
+        '</tbody></table></div>'+
+        (miss.length>200?'<div class="hint">מוצגים 200 מתוך '+miss.length+'</div>':'');
+    }
     h+='<div class="section-title">השורות שדולגו</div>'+
       '<div class="table-wrap" style="max-height:340px;overflow:auto"><table class="tbl"><thead><tr>'+
       '<th>שורה באקסל</th><th>סיבה</th><th>תוכן השורה</th></tr></thead><tbody>'+
