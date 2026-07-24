@@ -45,6 +45,17 @@ const SCROLL_CHILDREN = ['pages_log', 'scribe_payments', 'customer_payments', 'b
 
 function validId(id) { const n = Number(id); return (Number.isInteger(n) && n > 0) ? n : null; }
 
+// שיקוף שורות בן שהושפעו ממחיקה/שחזור מדביקים אל הגיבוי בגיליון.
+// בלי זה הן היו נשארות שם deleted=false, וכל דוח שנבנה מעל הגיליון
+// היה סופר רשומות מחוקות כאילו הן חיות.
+function mirrorChildren(byTable) {
+  if (!sheets) return;
+  for (const table of Object.keys(byTable)) {
+    const rows = byTable[table];
+    if (rows && rows.length) sheets.mirrorMany(table, rows).catch(() => {});
+  }
+}
+
 async function softDelete(table, id, user) {
   if (!SOFT_TABLES.has(table)) throw new Error('bad table');
   const nid = validId(id); if (nid === null) return false;
@@ -79,12 +90,16 @@ async function softDeleteScroll(id, user) {
       [nid, user && user.id]);
     if (!r.rows.length) { await client.query('ROLLBACK'); return false; }
     const ts = r.rows[0].deleted_at;
+    const children = {};
     for (const t of SCROLL_CHILDREN) {
-      await client.query(`UPDATE ${t} SET deleted=true, deleted_at=$3, deleted_by=$2 WHERE scroll_id=$1 AND deleted=false`,
+      const ch = await client.query(
+        `UPDATE ${t} SET deleted=true, deleted_at=$3, deleted_by=$2 WHERE scroll_id=$1 AND deleted=false RETURNING *`,
         [nid, user && user.id, ts]);
+      if (ch.rows.length) children[t] = ch.rows;
     }
     await client.query('COMMIT');
     await logAction(user, 'delete', 'scrolls', nid, { cascade: true }, r.rows[0]);
+    mirrorChildren(children);
     return true;
   } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
 }
@@ -100,11 +115,16 @@ async function restoreScroll(id, user) {
     if (!cur.rows.length) { await client.query('ROLLBACK'); return false; }
     const ts = cur.rows[0].deleted_at;
     const r = await client.query('UPDATE scrolls SET deleted=false, deleted_at=NULL, deleted_by=NULL WHERE id=$1 RETURNING *', [nid]);
+    const children = {};
     for (const t of SCROLL_CHILDREN) {
-      await client.query(`UPDATE ${t} SET deleted=false, deleted_at=NULL, deleted_by=NULL WHERE scroll_id=$1 AND deleted=true AND deleted_at=$2`, [nid, ts]);
+      const ch = await client.query(
+        `UPDATE ${t} SET deleted=false, deleted_at=NULL, deleted_by=NULL WHERE scroll_id=$1 AND deleted=true AND deleted_at=$2 RETURNING *`,
+        [nid, ts]);
+      if (ch.rows.length) children[t] = ch.rows;
     }
     await client.query('COMMIT');
     await logAction(user, 'restore', 'scrolls', nid, { cascade: true }, r.rows[0]);
+    mirrorChildren(children);
     return true;
   } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
 }
@@ -120,10 +140,12 @@ async function softDeletePurchase(id, user) {
       [nid, user && user.id]);
     if (!r.rows.length) { await client.query('ROLLBACK'); return false; }
     const ts = r.rows[0].deleted_at;
-    await client.query(`UPDATE prod_sales SET deleted=true, deleted_at=$3, deleted_by=$2 WHERE purchase_id=$1 AND deleted=false`,
+    const ch = await client.query(
+      `UPDATE prod_sales SET deleted=true, deleted_at=$3, deleted_by=$2 WHERE purchase_id=$1 AND deleted=false RETURNING *`,
       [nid, user && user.id, ts]);
     await client.query('COMMIT');
     await logAction(user, 'delete', 'prod_purchases', nid, { cascade: true }, r.rows[0]);
+    mirrorChildren({ prod_sales: ch.rows });
     return true;
   } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
 }
@@ -137,9 +159,12 @@ async function restorePurchase(id, user) {
     if (!cur.rows.length) { await client.query('ROLLBACK'); return false; }
     const ts = cur.rows[0].deleted_at;
     const r = await client.query('UPDATE prod_purchases SET deleted=false, deleted_at=NULL, deleted_by=NULL WHERE id=$1 RETURNING *', [nid]);
-    await client.query(`UPDATE prod_sales SET deleted=false, deleted_at=NULL, deleted_by=NULL WHERE purchase_id=$1 AND deleted=true AND deleted_at=$2`, [nid, ts]);
+    const ch = await client.query(
+      `UPDATE prod_sales SET deleted=false, deleted_at=NULL, deleted_by=NULL WHERE purchase_id=$1 AND deleted=true AND deleted_at=$2 RETURNING *`,
+      [nid, ts]);
     await client.query('COMMIT');
     await logAction(user, 'restore', 'prod_purchases', nid, { cascade: true }, r.rows[0]);
+    mirrorChildren({ prod_sales: ch.rows });
     return true;
   } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
 }

@@ -1,143 +1,114 @@
-// גיבוי אוטומטי ל-Google Sheets: כל פעולה נרשמת בלשונית "פעולות",
-// וכל טבלה משוקפת בלשונית משלה (הוספה/עריכה/מחיקה -> עדכון השורה לפי מזהה).
-// אם BACKUP_SHEET_ID לא מוגדר או אין חשבון שירות — הכל הופך ל-no-op שקט,
-// והמערכת ממשיכה לעבוד רגיל.
-let google = null;
-try { ({ google } = require('googleapis')); } catch (e) { google = null; }
-const { loadServiceAccount } = require('./gauth');
+// גיבוי אוטומטי לגיליון גוגל דרך Apps Script Web App.
+//
+// כל פעולה נשלחת ל-Web App שמדביק אותה ללשונית "פעולות" ומשקף את הרשומה
+// ללשונית הטבלה. הפעולות נצברות ונשלחות באצווה, כדי לא להציף את מכסת
+// הקריאות של Apps Script וכדי שהמשתמש לא ימתין לגיבוי.
+//
+// אם BACKUP_WEBHOOK_URL לא מוגדר — הכל הופך ל-no-op שקט והמערכת עובדת רגיל.
 
-const SHEET_ID = () => process.env.BACKUP_SHEET_ID || '';
-function enabled() { return !!(google && SHEET_ID() && loadServiceAccount()); }
+const WEBHOOK = () => process.env.BACKUP_WEBHOOK_URL || '';
+const SECRET = () => process.env.BACKUP_SECRET || '';
+function enabled() { return !!(WEBHOOK() && SECRET()); }
 
-let _api = null;
-function api() {
-  if (_api) return _api;
-  const auth = new google.auth.GoogleAuth({
-    credentials: loadServiceAccount(),
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-  });
-  _api = google.sheets({ version: 'v4', auth });
-  return _api;
-}
+const FLUSH_DELAY_MS = 1500;   // המתנה קצרה לצבירת פעולות לאצווה
+const MAX_BATCH = 100;         // גג לגודל אצווה
+const MAX_QUEUE = 5000;        // גג לתור, שלא ינפח זיכרון אם השליחה תקועה
+const MAX_ATTEMPTS = 3;
+const TIMEOUT_MS = 30000;
 
-// throttle: פריסת הקריאות כדי לא לחרוג ממכסת ה-API (כ-60 לדקה)
-let _last = 0; const _queue = []; let _running = false;
-function throttle(fn) {
-  return new Promise((resolve, reject) => { _queue.push({ fn, resolve, reject }); pump(); });
-}
-async function pump() {
-  if (_running) return; _running = true;
-  while (_queue.length) {
-    const job = _queue.shift();
-    const wait = 1200 - (Date.now() - _last);
-    if (wait > 0) await new Promise(r => setTimeout(r, wait));
-    _last = Date.now();
-    try { job.resolve(await job.fn()); } catch (e) { job.reject(e); }
+let queue = [];
+let timer = null;
+let sending = false;
+
+// נקודת הכניסה מ-logAction
+function backup(user, action, table, id, record, details) {
+  if (!enabled()) return Promise.resolve();
+  if (queue.length >= MAX_QUEUE) {
+    console.error('Sheets backup: התור מלא, פעולה נזרקה');
+    return Promise.resolve();
   }
-  _running = false;
-}
-function _sp() { return api().spreadsheets; }
-const S = {
-  get: (p) => throttle(() => _sp().get(p)),
-  batchUpdate: (p) => throttle(() => _sp().batchUpdate(p)),
-  vGet: (p) => throttle(() => _sp().values.get(p)),
-  vUpdate: (p) => throttle(() => _sp().values.update(p)),
-  vAppend: (p) => throttle(() => _sp().values.append(p)),
-};
-
-const ACTIONS = { title: 'פעולות', header: ['זמן', 'משתמש', 'פעולה', 'טבלה', 'מזהה', 'פרטים'] };
-
-const TABS = {
-  contacts:           { title: 'אנשי קשר', cols: ['id', 'first_name', 'last_name', 'phone', 'deleted', 'updated_at'] },
-  products:           { title: 'מוצרים', cols: ['id', 'name', 'parchment_units', 'pages', 'fixed_expense', 'deleted', 'updated_at'] },
-  parchment_sizes:    { title: 'גדלי קלף', cols: ['id', 'name', 'cost_per_unit', 'deleted', 'updated_at'] },
-  list_items:         { title: 'רשימות', cols: ['id', 'list_name', 'value', 'sort', 'is_correction', 'deleted'] },
-  scrolls:            { title: 'ספרי תורה', cols: ['id', 'scribe_id', 'parchment_size_id', 'product_id', 'page_rate', 'sale_date', 'customer_id', 'buyer_total', 'buyer_currency', 'status', 'note', 'deleted', 'updated_at'] },
-  pages_log:          { title: 'עמודים שנכתבו', cols: ['id', 'scroll_id', 'date', 'pages', 'note', 'deleted', 'updated_at'] },
-  scribe_payments:    { title: 'תשלומים לסופר', cols: ['id', 'scroll_id', 'date', 'amount', 'note', 'deleted', 'updated_at'] },
-  customer_payments:  { title: 'תשלומי לקוחות', cols: ['id', 'scroll_id', 'customer_id', 'date', 'amount_ils', 'amount_usd', 'rate', 'cash_in_hand', 'note', 'deleted', 'updated_at'] },
-  book_expenses:      { title: 'הוצאות לספר', cols: ['id', 'scroll_id', 'type', 'date', 'amount', 'note', 'deleted', 'updated_at'] },
-  parchment_expenses: { title: 'הוצאות קלף', cols: ['id', 'scroll_id', 'parchment_size_id', 'date', 'quantity', 'note', 'deleted', 'updated_at'] },
-  business_expenses:  { title: 'הוצאות עסק', cols: ['id', 'date', 'type', 'amount', 'note', 'deleted', 'updated_at'] },
-  prod_purchases:         { title: 'רכישות מוצרים', cols: ['id', 'date', 'scribe_id', 'product_id', 'quantity', 'cost_per_unit', 'extra_cost_per_unit', 'purchase_type', 'note', 'deleted', 'updated_at'] },
-  prod_scribe_payments:   { title: 'תשלומי סופר מוצרים', cols: ['id', 'date', 'scribe_id', 'amount', 'note', 'deleted', 'updated_at'] },
-  prod_sales:             { title: 'מכירות מוצרים', cols: ['id', 'date', 'customer_id', 'purchase_id', 'quantity', 'price_per_unit', 'sale_type', 'deduct_3pct', 'note', 'deleted', 'updated_at'] },
-  prod_customer_payments: { title: 'תשלומי לקוחות מוצרים', cols: ['id', 'date', 'customer_id', 'amount_ils', 'amount_usd', 'rate', 'cash_in_hand', 'note', 'deleted', 'updated_at'] },
-};
-
-function hasTab(table) { return !!TABS[table]; }
-function q(title) { return `'${String(title).replace(/'/g, "''")}'`; }
-function fmt(v) {
-  if (v === null || v === undefined) return '';
-  if (v instanceof Date) return v.toISOString();
-  if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';
-  return v;
-}
-
-// יצירת הלשוניות + הכותרות (פעם אחת, בעצלתיים)
-let _init = null;
-function ensureTabs() {
-  if (_init) return _init;
-  _init = (async () => {
-    const ss = SHEET_ID();
-    const meta = await S.get({ spreadsheetId: ss, fields: 'sheets.properties.title' });
-    const have = new Set((meta.data.sheets || []).map(s => s.properties.title));
-    const wanted = [{ title: ACTIONS.title, header: ACTIONS.header },
-                    ...Object.values(TABS).map(t => ({ title: t.title, header: t.cols }))];
-    const toAdd = wanted.filter(w => !have.has(w.title));
-    if (toAdd.length) {
-      await S.batchUpdate({
-        spreadsheetId: ss,
-        requestBody: { requests: toAdd.map(w => ({ addSheet: { properties: { title: w.title } } })) },
-      });
-      for (const w of toAdd) {
-        await S.vUpdate({
-          spreadsheetId: ss, range: `${q(w.title)}!A1`, valueInputOption: 'RAW',
-          requestBody: { values: [w.header] },
-        });
-      }
-    }
-  })().catch(e => { _init = null; throw e; });
-  return _init;
-}
-
-async function appendAction(user, action, table, id, details) {
-  const row = [new Date().toISOString(), (user && user.username) || '', action || '',
-               table || '', String(id || ''), JSON.stringify(details || {})];
-  await S.vAppend({
-    spreadsheetId: SHEET_ID(), range: `${q(ACTIONS.title)}!A1`,
-    valueInputOption: 'RAW', insertDataOption: 'INSERT_ROWS',
-    requestBody: { values: [row] },
+  queue.push({
+    time: new Date().toISOString(),
+    user: (user && user.username) || '',
+    action: action || '',
+    table: table || '',
+    id: id == null ? '' : String(id),
+    details: details || {},
+    record: record || null,   // הסקריפט בוחר מהרשומה את העמודות שהוא מכיר
   });
+  schedule();
+  return Promise.resolve();
 }
 
-// עדכון-או-הוספה של שורת נתונים לפי מזהה
-async function mirrorRow(table, record) {
-  const def = TABS[table];
-  if (!def || !record || record.id == null) return;
-  const ss = SHEET_ID(), idStr = String(record.id);
-  const got = await S.vGet({ spreadsheetId: ss, range: `${q(def.title)}!A:A` });
-  const colA = got.data.values || [];
-  let rowNum = 0;
-  for (let i = 1; i < colA.length; i++) { if (String((colA[i] || [])[0]) === idStr) { rowNum = i + 1; break; } }
-  const values = [def.cols.map(c => fmt(record[c]))];
-  if (rowNum) {
-    await S.vUpdate({ spreadsheetId: ss, range: `${q(def.title)}!A${rowNum}`, valueInputOption: 'RAW', requestBody: { values } });
-  } else {
-    await S.vAppend({ spreadsheetId: ss, range: `${q(def.title)}!A1`, valueInputOption: 'RAW', insertDataOption: 'INSERT_ROWS', requestBody: { values } });
-  }
+function schedule() {
+  if (timer || sending || !queue.length) return;
+  timer = setTimeout(() => { timer = null; flush(); }, FLUSH_DELAY_MS);
+  if (timer.unref) timer.unref();   // שלא יחזיק את התהליך בחיים
 }
 
-// נקודת הכניסה מ-logAction: רושם פעולה + משקף את השורה (אם יש לה לשונית)
-async function backup(user, action, table, id, record, details) {
-  if (!enabled()) return;
+async function flush() {
+  if (sending || !queue.length) return;
+  sending = true;
+  const batch = queue.splice(0, MAX_BATCH);
   try {
-    await ensureTabs();
-    await appendAction(user, action, table, id, details);
-    if (record && hasTab(table)) await mirrorRow(table, record);
+    await post(batch);
   } catch (e) {
     console.error('Sheets backup failed:', e.message);
+    // מחזירים לראש התור לניסיון נוסף, עד MAX_ATTEMPTS
+    const retry = batch.filter(it => (it._attempts || 0) + 1 < MAX_ATTEMPTS);
+    for (const it of retry) it._attempts = (it._attempts || 0) + 1;
+    const dropped = batch.length - retry.length;
+    if (dropped) console.error(`Sheets backup: ${dropped} פעולות נזנחו אחרי ${MAX_ATTEMPTS} ניסיונות`);
+    queue.unshift(...retry);
+  } finally {
+    sending = false;
+    if (queue.length) setTimeout(schedule, FLUSH_DELAY_MS);
   }
 }
 
-module.exports = { enabled, hasTab, backup };
+async function post(items) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  try {
+    const res = await fetch(WEBHOOK(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secret: SECRET(), items: items.map(strip) }),
+      redirect: 'follow',       // Apps Script מפנה ל-script.googleusercontent.com
+      signal: ctrl.signal,
+    });
+    const text = await res.text();
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
+    // חובה אישור חיובי. תשובה שאינה JSON פירושה שגוגל ענתה במקום הסקריפט
+    // (פריסה סגורה, דף התחברות, חריגת מכסה) — כלומר שום דבר לא נכתב.
+    let data = null;
+    try { data = JSON.parse(text); } catch (e) { /* נטפל למטה */ }
+    if (!data) {
+      throw new Error('תשובה שאינה JSON מה-Web App — ודא שהפריסה פתוחה ל"כל אחד" ושהכתובת מסתיימת ב-/exec: ' + text.slice(0, 200));
+    }
+    if (data.ok !== true) throw new Error(data.error || 'שגיאה מהסקריפט');
+  } finally { clearTimeout(t); }
+}
+
+// שיקוף רשומות בלי לרשום שורה ביומן הפעולות.
+// משמש למחיקה/שחזור מדביקים: שורת האב כבר נרשמה ביומן, ואין טעם להציף
+// אותו בעשרות שורות בן — אבל הן חייבות להתעדכן בגיליון, אחרת הן יישארו
+// שם deleted=FALSE וכל דוח שייבנה מעל הגיליון יספור רשומות מחוקות כחיות.
+function mirrorMany(table, records) {
+  if (!enabled() || !Array.isArray(records) || !records.length) return Promise.resolve();
+  for (const rec of records) {
+    if (!rec || rec.id == null) continue;
+    if (queue.length >= MAX_QUEUE) break;
+    queue.push({ time: new Date().toISOString(), table: table || '', id: String(rec.id), record: rec, silent: true });
+  }
+  schedule();
+  return Promise.resolve();
+}
+
+// מסירים שדות פנימיים לפני השליחה
+function strip(it) {
+  const { _attempts, ...rest } = it;
+  return rest;
+}
+
+module.exports = { enabled, backup, mirrorMany };
