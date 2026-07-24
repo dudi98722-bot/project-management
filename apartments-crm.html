@@ -213,9 +213,6 @@ function normalizeDB(d){
 function seedIfEmpty(){
   if(DB && DB.apartments && DB.apartments.length) return;
   DB = blankDB();
-  // רשימת סוגי הוצאה התחלתית בלבד — ניתנת לעריכה והוספה מההגדרות
-  ["רכישת דירה","עורך דין","רישום בטאבו","תרגום מסמכים","נסיעות וחניה","חותמות","עבודות/שכר","דמי ניהול","שיפוץ","שונות"]
-    .forEach(function(n){ DB.categories.push({id:uid(),name:n,deleted:false}); });
   save();
 }
 
@@ -724,15 +721,16 @@ function moduleExpenses(aptId){
   var exps=apExpenses(aptId);
   var a=byId(DB.apartments,aptId);
   var h='<div class="toolbar"><h3 style="margin:0">הוצאות / שלבים ('+exps.length+')</h3><div class="sp"></div>'+
-    (can("edit")?'<button class="btn btn-primary btn-sm" onclick="openExpenseEditor(null,\''+aptId+'\')">➕ הוצאה חדשה</button>':'')+'</div>';
+    (can("edit")?'<button class="btn btn-primary btn-sm" onclick="openExpenseEditor(null,\''+aptId+'\')">➕ הוצאה חדשה</button>':'')+
+    (can("edit")&&exps.length?' <button class="btn btn-danger btn-sm" onclick="deleteApartmentExpenses(\''+aptId+'\')">🗑️ מחק הכל</button>':'')+'</div>';
   if(!exps.length) return h+'<div class="empty">אין הוצאות עדיין.</div>';
-  h+='<div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>תיאור</th><th>סוג</th><th>סיווג</th><th>סכום</th>'+
+  h+='<div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>תיאור</th><th>סיווג</th><th>סכום</th>'+
     (a.hasManagement?'<th>דמי ניהול</th>':'')+'<th>שולם</th><th>נותר</th><th>סטטוס</th><th></th></tr></thead><tbody>';
   exps.sort(function(x,y){return (x.date<y.date)?1:-1;}).forEach(function(e){
-    var st=expenseStatus(e.id), rem=expenseRemaining(e.id), cat=byId(DB.categories,e.categoryId);
+    var st=expenseStatus(e.id), rem=expenseRemaining(e.id);
     var badge=st==="paid"?'<span class="badge badge-ok">שולם</span>':st==="partial"?'<span class="badge badge-warn">חלקי</span>':'<span class="badge badge-danger">לא שולם</span>';
     h+='<tr><td>'+dateHe(e.date)+'</td><td><b>'+esc(e.description)+'</b>'+(e.hasInvoice?' 📎':'')+'</td>'+
-      '<td>'+esc(cat?cat.name:"—")+'</td><td>'+(CLASSIFICATIONS[e.classification]||"")+'</td>'+
+      '<td>'+(CLASSIFICATIONS[e.classification]||"")+'</td>'+
       '<td>'+money(e.amount)+'</td>'+
       (a.hasManagement?'<td>'+(e.mgmtEnabled?money(expenseMgmtCostLive(e.id)):'—')+'</td>':'')+
       '<td>'+money(expensePaid(e.id))+'</td><td class="'+(rem>0?"neg":"pos")+'">'+money(rem)+'</td><td>'+badge+'</td>'+
@@ -744,7 +742,7 @@ function moduleExpenses(aptId){
   // סיכום
   var tot=exps.reduce(function(s,e){return s+(Number(e.amount)||0);},0);
   var totPaid=exps.reduce(function(s,e){return s+expensePaid(e.id);},0);
-  h+='</tbody><tfoot><tr><td colspan="4">סה"כ</td><td>'+money(tot)+'</td>'+(a.hasManagement?'<td></td>':'')+'<td>'+money(totPaid)+'</td><td>'+money(tot-totPaid)+'</td><td colspan="2"></td></tr></tfoot></table></div>';
+  h+='</tbody><tfoot><tr><td colspan="3">סה"כ</td><td>'+money(tot)+'</td>'+(a.hasManagement?'<td></td>':'')+'<td>'+money(totPaid)+'</td><td>'+money(tot-totPaid)+'</td><td colspan="2"></td></tr></tfoot></table></div>';
   return h;
 }
 function splitRowHtml(pid,pct){
@@ -767,9 +765,8 @@ function openExpenseEditor(eId,aptId){
      '<div class="field"><label>תיאור</label><input id="ex-desc" value="'+esc(e?e.description:"")+'"></div>'+
      '<div class="field"><label>סכום (₪)</label><input id="ex-amount" type="number" step="0.01" value="'+(e?esc(String(e.amount)):"")+'"></div>'+
      '<div class="field"><label>תאריך</label><input id="ex-date" type="date" value="'+(e?esc(e.date):todayISO())+'"></div>'+
-     '<div class="field"><label>סוג הוצאה</label><select id="ex-cat">'+categoryOptions(e?e.categoryId:"")+'</select></div>'+
      '<div class="field"><label>סיווג</label><select id="ex-class">'+classOptions(e?e.classification:"investment")+'</select></div>'+
-     '<div class="field"><label>הערה</label><input id="ex-note" value="'+esc(e?e.note:"")+'"></div>'+
+     '<div class="field full"><label>הערה</label><input id="ex-note" value="'+esc(e?e.note:"")+'" placeholder="הערה חופשית"></div>'+
      '<div class="field full"><label><input type="checkbox" id="ex-inv" style="width:auto" '+(e&&e.hasInvoice?"checked":"")+'> יש חשבונית/קבלה</label><input id="ex-link" placeholder="קישור לקבלה (אופציונלי)" value="'+esc(e?e.invoiceLink:"")+'" style="margin-top:4px"></div>'+
     '</div>'+
     '<div class="section-title">חלוקת שותפים <span class="hint">(מאותחל מברירת המחדל, ניתן לשנות)</span></div>'+
@@ -823,7 +820,8 @@ function saveExpense(eId,aptId){
   if(eId){ e=byId(DB.expenses,eId); }
   else{ e={id:uid(),apartmentId:aptId,deleted:false}; DB.expenses.push(e); eId=e.id; }
   e.description=desc; e.amount=amount; e.date=val("ex-date")||todayISO();
-  e.categoryId=val("ex-cat"); e.classification=val("ex-class"); e.note=val("ex-note");
+  e.categoryId=(document.getElementById("ex-cat")?val("ex-cat"):(e.categoryId||""));
+  e.classification=val("ex-class"); e.note=val("ex-note");
   e.hasInvoice=checked("ex-inv"); e.invoiceLink=val("ex-link");
   e.mgmtEnabled = a.hasManagement ? checked("ex-mgmt") : false;
   e.mgmtBaseType = val("ex-base")||"full"; e.mgmtVatRate = Number(val("ex-vat")); if(isNaN(e.mgmtVatRate)) e.mgmtVatRate=18;
@@ -1125,7 +1123,7 @@ function moduleCrossPartner(){
 /* ---------- הגדרות ---------- */
 function moduleSettings(){
   var tab=state.params.stab||"partners";
-  var tabs=[["partners","ספר שותפים"],["categories","סוגי הוצאה"],["users","משתמשים"],["sheets","גוגל שיטס"],["backup","גיבוי"]];
+  var tabs=[["partners","ספר שותפים"],["users","משתמשים"],["sheets","גוגל שיטס"],["backup","גיבוי"],["danger","מחיקת נתונים"]];
   var h='<h2>הגדרות</h2><div class="tabs">'+tabs.map(function(t){return '<div class="tab'+(tab===t[0]?" active":"")+'" onclick="go(\'settings\',{stab:\''+t[0]+'\'})">'+t[1]+'</div>';}).join("")+'</div>';
   if(tab==="partners"){
     h+='<div class="toolbar"><button class="btn btn-primary btn-sm" onclick="editPartner(null)">➕ שותף</button></div>';
@@ -1135,13 +1133,19 @@ function moduleSettings(){
         '<td class="right"><button class="btn btn-ghost btn-sm" onclick="editPartner(\''+p.id+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="softDelete(\'partners\',\''+p.id+'\',\'למחוק שותף?\')">🗑️</button></td></tr>';
     });
     h+='</tbody></table></div>';
-  } else if(tab==="categories"){
-    h+='<div class="toolbar"><button class="btn btn-primary btn-sm" onclick="editCategory(null)">➕ סוג הוצאה</button></div>';
-    h+='<div class="table-wrap"><table class="tbl"><thead><tr><th>שם</th><th></th></tr></thead><tbody>';
-    active(DB.categories).forEach(function(c){
-      h+='<tr><td>'+esc(c.name)+'</td><td class="right"><button class="btn btn-ghost btn-sm" onclick="editCategory(\''+c.id+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="softDelete(\'categories\',\''+c.id+'\',\'למחוק סוג?\')">🗑️</button></td></tr>';
-    });
-    h+='</tbody></table></div>';
+  } else if(tab==="danger"){
+    var nExp=active(DB.expenses).length, nPay=active(DB.payments).length;
+    h+='<div class="card" style="border:2px solid #fecaca">'+
+      '<h3 style="color:var(--danger)">⚠️ מחיקת נתונים</h3>'+
+      '<p class="muted">שימושי לפני ייבוא מחדש. <b>הכל עובר לסל המחזור וניתן לשחזור</b> — שום דבר לא נמחק פיזית. הדירות, השותפים והאחוזים יישארו.</p>'+
+      '<div class="stat-grid" style="margin-bottom:14px">'+
+        stat("הוצאות פעילות",num(nExp))+
+        stat("תשלומים פעילים",num(nPay))+
+      '</div>'+
+      '<div class="toolbar">'+
+        '<button class="btn btn-danger" onclick="deleteAllExpenses()">🗑️ מחק את כל ההוצאות + התשלומים</button>'+
+        '<button class="btn btn-danger" onclick="deleteAllPayments()">🗑️ מחק רק את התשלומים</button>'+
+      '</div></div>';
   } else if(tab==="users"){
     if(!can("manageUsers")) return h+'<div class="empty">אין הרשאה</div>';
     h+='<div class="toolbar"><button class="btn btn-primary btn-sm" onclick="editUser(null)">➕ משתמש</button></div>';
@@ -1182,6 +1186,39 @@ function editPartner(id){
     onSave:function(){ var n=val("pt-name").trim(); if(!n){toast("שם חסר","err");return false;}
       if(id){p.name=n;p.phone=val("pt-phone");p.notes=val("pt-notes");} else DB.partners.push({id:uid(),name:n,phone:val("pt-phone"),notes:val("pt-notes"),deleted:false});
       save(); toast("נשמר","ok"); rerender(); }});
+}
+/* ---------- מחיקה מרוכזת (רכה — הכל לסל המחזור) ---------- */
+function deleteAllExpenses(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var exps=active(DB.expenses);
+  if(!exps.length){ toast("אין הוצאות למחיקה","warn"); return; }
+  var ids={}; exps.forEach(function(e){ ids[e.id]=1; });
+  var pays=active(DB.payments).filter(function(p){return ids[p.expenseId];});
+  if(!confirm("יימחקו "+exps.length+" הוצאות ו-"+pays.length+" תשלומים שלהן.\n\n"+
+    "הכל עובר לסל המחזור וניתן לשחזר.\nהדירות, השותפים והאחוזים יישארו.\n\nלהמשיך?")) return;
+  exps.forEach(function(e){ e.deleted=true; });
+  pays.forEach(function(p){ p.deleted=true; });
+  save(); toast("נמחקו "+exps.length+" הוצאות ו-"+pays.length+" תשלומים","ok"); rerender();
+}
+function deleteAllPayments(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var pays=active(DB.payments);
+  if(!pays.length){ toast("אין תשלומים למחיקה","warn"); return; }
+  if(!confirm("יימחקו "+pays.length+" תשלומים.\n\nהכל עובר לסל המחזור וניתן לשחזר.\n\nלהמשיך?")) return;
+  pays.forEach(function(p){ p.deleted=true; });
+  save(); toast("נמחקו "+pays.length+" תשלומים","ok"); rerender();
+}
+function deleteApartmentExpenses(aptId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var a=byId(DB.apartments,aptId); var exps=apExpenses(aptId);
+  if(!exps.length){ toast("אין הוצאות בדירה זו","warn"); return; }
+  var ids={}; exps.forEach(function(e){ ids[e.id]=1; });
+  var pays=active(DB.payments).filter(function(p){return ids[p.expenseId];});
+  if(!confirm("יימחקו כל "+exps.length+" ההוצאות ו-"+pays.length+" התשלומים בדירה \""+(a?a.name:"")+"\".\n\n"+
+    "הכל עובר לסל המחזור וניתן לשחזר.\n\nלהמשיך?")) return;
+  exps.forEach(function(e){ e.deleted=true; });
+  pays.forEach(function(p){ p.deleted=true; });
+  save(); toast("נמחקו "+exps.length+" הוצאות","ok"); rerender();
 }
 function editCategory(id){
   var c=id?byId(DB.categories,id):{name:""};
@@ -1226,7 +1263,6 @@ var IMPORT_TYPES={
     {k:"date",l:"תאריך",hints:["תאריך"],opt:true},
     {k:"desc",l:"תיאור / פירוט",hints:["פירוט","פירט","תיאור","עבור"]},
     {k:"amount",l:"סכום",hints:["סכום"]},
-    {k:"category",l:"סוג הוצאה",hints:["סוג"],opt:true},
     {k:"classification",l:"סיווג (השקעה/שוטף/פרטי)",hints:["השקעה","סיווג","שוטף"],opt:true},
     {k:"note",l:"הערה",hints:["הערה"],opt:true}
   ]},
