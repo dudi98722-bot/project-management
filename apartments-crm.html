@@ -186,10 +186,38 @@ function loadDB(){
 function saveLocal(){
   try{ localStorage.setItem(LSKEY, JSON.stringify(DB)); }catch(e){}
 }
+/* ---------- ביטול פעולה (Ctrl+Z) ----------
+   לפני כל שמירה נשמר המצב הקודם. אין צורך לצלם מראש: ב-localStorage
+   עדיין נמצא המצב שלפני השינוי ברגע שקוראים ל-save(). */
+var UNDO=[], UNDO_MAX=30;
+function undoCount(){ return UNDO.length; }
 function save(){
-  try{ localStorage.setItem(LSKEY, JSON.stringify(DB)); }catch(e){ toast("שגיאת שמירה מקומית","err"); }
+  try{
+    var prev=localStorage.getItem(LSKEY);
+    if(prev){ UNDO.push(prev); if(UNDO.length>UNDO_MAX) UNDO.shift(); }
+    localStorage.setItem(LSKEY, JSON.stringify(DB));
+  }catch(e){ toast("שגיאת שמירה מקומית","err"); }
   serverSave();   // כל שינוי נשמר גם בגוגל שיטס
 }
+function undo(){
+  if(!UNDO.length){ toast("אין פעולה לביטול","warn"); return; }
+  var prev=UNDO.pop();
+  try{
+    DB=JSON.parse(prev);
+    localStorage.setItem(LSKEY,prev);
+    serverSave();                       // מסנכרן את המצב המוחזר גם לשיטס
+    closeModal();
+    toast("הפעולה בוטלה"+(UNDO.length?" · עוד "+UNDO.length+" לביטול":""),"ok");
+    rerender();
+  }catch(e){ toast("הביטול נכשל","err"); }
+}
+document.addEventListener("keydown",function(e){
+  if(!(e.ctrlKey||e.metaKey) || e.shiftKey) return;
+  if(e.key!=="z" && e.key!=="Z") return;
+  var t=e.target, tag=((t&&t.tagName)||"").toLowerCase();
+  if(tag==="input"||tag==="textarea"||(t&&t.isContentEditable)) return;  // לא להפריע לעריכת טקסט
+  e.preventDefault(); undo();
+});
 function blankDB(){
   return {meta:{version:1}, partners:[], apartments:[], apartmentPartners:[], managers:[],
     categories:[], expenses:[], expenseSplits:[], expenseManagerFees:[], accounts:[],
@@ -405,6 +433,7 @@ function topbarHtml(){
   var sel='<select onchange="onApartmentPick(this.value)"><option value="">— בחר דירה —</option>'+
     apts.map(function(a){ return '<option value="'+a.id+'"'+(state.params.apartmentId===a.id?" selected":"")+'>'+esc(a.name)+'</option>'; }).join("")+'</select>';
   return '<div class="topbar"><div class="logo">🏢 ניהול דירות</div>'+sel+'<div class="sp"></div>'+
+    '<button class="btn btn-sm" onclick="undo()" title="ביטול הפעולה האחרונה (Ctrl+Z)">↩️ בטל'+(undoCount()?" ("+undoCount()+")":"")+'</button>'+
     syncBadgeHtml()+
     '<div class="who">👤 '+esc(CU.name)+' · '+esc(ROLES[CU.role]||"")+'</div>'+
     '<button class="btn btn-sm" onclick="logout()">יציאה</button></div>';
@@ -569,7 +598,9 @@ function renderApartment(c){
   tabs.push(["income","הכנסות"]);
   tabs.push(["reports","דוחות"]);
   var h='<div class="toolbar"><h2 style="margin:0">🏢 '+esc(a.name)+'</h2>'+
-    (can("edit")?'<button class="btn btn-sm" onclick="editApartment(\''+a.id+'\')">✏️ עריכת דירה</button>':'')+'</div>';
+    (can("edit")?'<button class="btn btn-sm" onclick="editApartment(\''+a.id+'\')">✏️ עריכת דירה</button>':'')+
+    '<div class="sp"></div>'+
+    (can("edit")?'<button class="btn btn-danger btn-sm" onclick="delApartment(\''+a.id+'\')">🗑️ מחק דירה + תנועות</button>':'')+'</div>';
   h+='<div class="tabs">'+tabs.map(function(t){ return '<div class="tab'+(tab===t[0]?" active":"")+'" onclick="go(\'apartment\',{apartmentId:\''+a.id+'\',tab:\''+t[0]+'\'})">'+t[1]+'</div>'; }).join("")+'</div>';
   h+='<div id="apt-body"></div>';
   c.innerHTML=h;
@@ -1208,6 +1239,28 @@ function deleteAllPayments(){
   pays.forEach(function(p){ p.deleted=true; });
   save(); toast("נמחקו "+pays.length+" תשלומים","ok"); rerender();
 }
+/* מחיקת דירה שלמה: הדירה + כל התנועות שלה, בתיוג שמאפשר שחזור יחד */
+function delApartment(aptId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var a=byId(DB.apartments,aptId); if(!a) return;
+  var exps=apExpenses(aptId), eids={}; exps.forEach(function(e){ eids[e.id]=1; });
+  var pays=active(DB.payments).filter(function(p){return eids[p.expenseId];});
+  var splits=active(DB.expenseSplits).filter(function(s){return eids[s.expenseId];});
+  var fees=active(DB.expenseManagerFees).filter(function(f){return eids[f.expenseId];});
+  var deps=apDeposits(aptId), inc=apIncome(aptId);
+  var mgrs=apManagers(aptId), accs=apAccounts(aptId), aps=apPartners(aptId);
+  if(!confirm('למחוק את הדירה "'+a.name+'" וכל התנועות שלה?\n\n'+
+    "• "+exps.length+" הוצאות\n• "+pays.length+" תשלומים\n• "+deps.length+" הפקדות\n• "+inc.length+" הכנסות\n"+
+    "• "+aps.length+" שותפים בדירה\n• "+mgrs.length+" מנהלים\n• "+accs.length+" חשבונות\n\n"+
+    "הכל עובר לסל המחזור, וניתן לשחזר את הדירה עם כל התנועות בלחיצה אחת.\n\nלהמשיך?")) return;
+  var tag="apt:"+aptId;
+  function kill(arr){ arr.forEach(function(x){ x.deleted=true; x.deletedBy=tag; }); }
+  kill(exps); kill(pays); kill(splits); kill(fees); kill(deps); kill(inc); kill(mgrs); kill(accs); kill(aps);
+  a.deleted=true;
+  save();
+  toast('"'+a.name+'" וכל התנועות שלה הועברו לסל המחזור',"ok");
+  go("dashboard",{});
+}
 function deleteApartmentExpenses(aptId){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var a=byId(DB.apartments,aptId); var exps=apExpenses(aptId);
@@ -1718,8 +1771,15 @@ function recycleLabel(entity,it){
   if(entity==="apartmentPartners") return partnerName(it.partnerId)+" ("+num(it.defaultPercent)+"%)";
   return it.name||it.id;
 }
-function restoreItem(entity,id){ if(!can("edit")){ toast("אין הרשאה","err"); return; } var it=byId(DB[entity],id); if(it){ it.deleted=false;
+function restoreItem(entity,id){ if(!can("edit")){ toast("אין הרשאה","err"); return; } var it=byId(DB[entity],id); if(it){ it.deleted=false; delete it.deletedBy;
   if(entity==="managers"){ DB.expenseManagerFees.forEach(function(f){ if(f.managerId===id) f.deleted=false; }); }
+  if(entity==="apartments"){
+    var tag="apt:"+id, n=0;
+    ["expenses","payments","expenseSplits","expenseManagerFees","deposits","income","managers","accounts","apartmentPartners"]
+      .forEach(function(k){ (DB[k]||[]).forEach(function(x){
+        if(x.deleted && x.deletedBy===tag){ x.deleted=false; delete x.deletedBy; n++; } }); });
+    if(n) toast("שוחזרו גם "+n+" תנועות של הדירה","ok");
+  }
   save(); toast("שוחזר","ok"); rerender(); } }
 </script>
 
