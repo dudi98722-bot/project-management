@@ -593,7 +593,7 @@ function renderApartment(c){
   var a=currentApartment(); if(!a){ c.innerHTML='<div class="empty">דירה לא נמצאה</div>'; return; }
   var tab=state.params.tab||"overview";
   var tabs=[["overview","סקירה"],["expenses","הוצאות / שלבים"],["partners","שותפים"]];
-  if(a.hasManagement) tabs.push(["managers","דמי ניהול"]);
+  tabs.push(["managers","דמי ניהול"]);   // תמיד נגיש — בפנים אפשר להפעיל
   if(a.hasBank) tabs.push(["bank","בנק זמני"]);
   tabs.push(["income","הכנסות"]);
   tabs.push(["reports","דוחות"]);
@@ -1025,10 +1025,77 @@ function savePayment(eId,payId){
 }
 
 /* ---------- דמי ניהול (ניהול + לי׳דג׳ר) ---------- */
+function enableManagement(aptId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var a=byId(DB.apartments,aptId); if(!a) return;
+  a.hasManagement=true; save(); toast("דמי ניהול הופעלו בדירה","ok"); rerender();
+}
+function disableManagement(aptId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  if(!confirm("לכבות דמי ניהול בדירה זו?\n\nהמנהלים והנתונים יישמרו, אבל דמי הניהול לא ייכללו בחישובים.")) return;
+  var a=byId(DB.apartments,aptId); a.hasManagement=false; save(); toast("דמי ניהול כובו","ok"); rerender();
+}
+/* הוספת שני מנהלים בבת אחת — המקרה הנפוץ */
+function addTwoManagers(aptId){
+  openModal({title:"הוספת מנהלים",bodyHtml:
+    '<p class="muted">אפשר להוסיף שניים בבת אחת. השאר ריק את מי שלא צריך.</p>'+
+    '<div class="form-grid">'+
+      '<div class="field"><label>מנהל 1 — שם</label><input id="m2-n1" placeholder="שם המנהל"></div>'+
+      '<div class="field"><label>% ברירת מחדל</label><input id="m2-p1" type="number" step="0.01" value="4"></div>'+
+      '<div class="field"><label>מנהל 2 — שם</label><input id="m2-n2" placeholder="שם המנהל"></div>'+
+      '<div class="field"><label>% ברירת מחדל</label><input id="m2-p2" type="number" step="0.01" value="4"></div>'+
+    '</div><div class="hint">האחוז הזה הוא ברירת המחדל בלבד — בכל הוצאה אפשר לשנות אותו, וגם לפצל לאחוז נוכחי + דחוי.</div>',
+    saveLabel:"הוסף",onSave:function(){
+      var n1=val("m2-n1").trim(), n2=val("m2-n2").trim(), c=0;
+      if(n1){ DB.managers.push({id:uid(),apartmentId:aptId,name:n1,defaultFeePercent:Number(val("m2-p1"))||0,deleted:false}); c++; }
+      if(n2){ DB.managers.push({id:uid(),apartmentId:aptId,name:n2,defaultFeePercent:Number(val("m2-p2"))||0,deleted:false}); c++; }
+      if(!c){ toast("יש להזין לפחות שם אחד","err"); return false; }
+      var a=byId(DB.apartments,aptId); if(a) a.hasManagement=true;
+      save(); toast("נוספו "+c+" מנהלים","ok"); rerender();
+    }});
+}
+/* העתקת המנהלים מדירה אחרת — כשאותם אנשים חוזרים בכמה פרויקטים */
+function copyManagersFrom(aptId){
+  var srcs=active(DB.apartments).filter(function(x){ return x.id!==aptId && apManagers(x.id).length; });
+  if(!srcs.length){ toast("אין דירה אחרת עם מנהלים מוגדרים","warn"); return; }
+  openModal({title:"העתקת מנהלים מדירה אחרת",bodyHtml:
+    '<div class="field"><label>מאיזו דירה להעתיק?</label><select id="cm-src">'+
+      srcs.map(function(x){return '<option value="'+x.id+'">'+esc(x.name)+' — '+apManagers(x.id).length+' מנהלים</option>';}).join("")+
+    '</select></div><div class="hint">מנהל שכבר קיים כאן באותו שם לא יועתק שוב.</div>',
+    saveLabel:"העתק",onSave:function(){
+      var src=val("cm-src"), n=0;
+      apManagers(src).forEach(function(m){
+        if(apManagers(aptId).some(function(x){return String(x.name).trim()===String(m.name).trim();})) return;
+        DB.managers.push({id:uid(),apartmentId:aptId,name:m.name,defaultFeePercent:m.defaultFeePercent,deleted:false}); n++;
+      });
+      if(!n){ toast("כל המנהלים כבר קיימים כאן","warn"); return false; }
+      var a=byId(DB.apartments,aptId); if(a) a.hasManagement=true;
+      save(); toast("הועתקו "+n+" מנהלים","ok"); rerender();
+    }});
+}
 function moduleManagers(aptId){
+  var a=byId(DB.apartments,aptId);
   var mgrs=apManagers(aptId);
+  if(!a.hasManagement){
+    return '<div class="card" style="border:2px dashed var(--brand);text-align:center;padding:26px">'+
+      '<div style="font-size:38px">💼</div>'+
+      '<h3 style="margin:10px 0 6px">דמי ניהול אינם מופעלים בדירה הזאת</h3>'+
+      '<p class="muted" style="max-width:520px;margin:0 auto 16px">הפעל כדי להגדיר מנהלים שמקבלים אחוז מההוצאות — כולל אחוז שונה לכל מנהל בכל הוצאה, אחוז נוכחי מול דחוי, ומע"מ.</p>'+
+      (can("edit")?'<button class="btn btn-primary" onclick="enableManagement(\''+aptId+'\')">✅ הפעל דמי ניהול בדירה זו</button>':'')+
+      '</div>';
+  }
   var h='<div class="toolbar"><h3 style="margin:0">מנהלים ודמי ניהול</h3><div class="sp"></div>'+
-    (can("edit")?'<button class="btn btn-primary btn-sm" onclick="editManager(null,\''+aptId+'\')">➕ מנהל</button>':'')+'</div>';
+    (can("edit")?'<button class="btn btn-primary btn-sm" onclick="addTwoManagers(\''+aptId+'\')">➕ הוסף מנהלים</button> '+
+      '<button class="btn btn-sm" onclick="copyManagersFrom(\''+aptId+'\')">📋 העתק מדירה אחרת</button> '+
+      '<button class="btn btn-ghost btn-sm" onclick="disableManagement(\''+aptId+'\')">כבה דמי ניהול</button>':'')+'</div>';
+  if(!mgrs.length){
+    h+='<div class="card" style="border:2px dashed #fecaca;text-align:center;padding:20px">'+
+      '<div style="font-weight:800;color:var(--danger)">עדיין לא הוגדרו מנהלים</div>'+
+      '<div class="muted" style="margin:8px 0">בלי מנהלים לא יופיעו שדות האחוזים בהוצאות. הוסף אותם עכשיו — בדרך כלל שניים.</div>'+
+      (can("edit")?'<button class="btn btn-primary btn-sm" onclick="addTwoManagers(\''+aptId+'\')">➕ הוסף מנהלים</button>':'')+
+      '</div>';
+    return h;
+  }
   // ליֹדג׳ר
   h+='<div class="card"><h3>מאזן מנהלים</h3><div class="table-wrap"><table class="tbl"><thead><tr><th>מנהל</th><th>% ברירת מחדל</th><th>מגיע (פעיל, כולל מע"מ)</th><th>קיבל</th><th>יתרה</th><th></th></tr></thead><tbody>';
   mgrs.forEach(function(m){
