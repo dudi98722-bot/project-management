@@ -786,7 +786,47 @@ function updateSplitSum(){
   var el=document.getElementById("split-sum"); if(el){ el.textContent=num(sum)+"%"; el.className=Math.abs(sum-100)<0.01?"pos":"neg"; }
 }
 function addSplitRow(){ document.getElementById("split-rows").insertAdjacentHTML("beforeend",splitRowHtml("",0)); updateSplitSum(); }
-function toggleMgmt(){ var el=document.getElementById("mgmt-details"); if(el) el.style.display=checked("ex-mgmt")?"block":"none"; }
+function toggleMgmt(){
+  var el=document.getElementById("mgmt-details");
+  if(el) el.style.display=checked("ex-mgmt")?"block":"none";
+  updateMgmtPreview();
+}
+/* תצוגה חיה של חישוב דמי הניהול, מתעדכנת בכל הקלדה */
+function updateMgmtPreview(){
+  var box=document.getElementById("mgmt-preview"); if(!box) return;
+  var rowsEls=document.querySelectorAll("#mgmt-rows [data-mgr]");
+  if(!rowsEls.length){ box.innerHTML=""; return; }
+  var amt=Number(val("ex-amount"))||0;
+  var baseType=val("ex-base")||"full", vat=Number(val("ex-vat"))||0;
+  var b = baseType==="net17" ? amt/1.17 : baseType==="net18" ? amt/1.18 : amt;
+  var vf = 1+vat/100;
+  var out=[], totLive=0, totFull=0;
+  Array.prototype.forEach.call(rowsEls,function(el){
+    var mid=el.getAttribute("data-mgr"), nm=el.getAttribute("data-name")||"";
+    var cur=Number(val("mf-cur-"+mid))||0, def=Number(val("mf-def-"+mid))||0, rel=checked("mf-rel-"+mid);
+    var curAmt=b*cur/100*vf, defAmt=b*def/100*vf;
+    var live=curAmt+(rel?defAmt:0), full=curAmt+defAmt;
+    totLive+=live; totFull+=full;
+    out.push('<tr><td>'+esc(nm)+'</td><td>'+money(curAmt)+'</td><td>'+money(defAmt)+(rel?' <span class="badge badge-ok">שוחרר</span>':'')+
+      '</td><td><b>'+money(live)+'</b></td><td>'+money(full)+'</td></tr>');
+  });
+  box.innerHTML='<div class="table-wrap"><table class="tbl"><thead><tr>'+
+    '<th>מנהל</th><th>נוכחי</th><th>דחוי</th><th>לתשלום עכשיו</th><th>סה"כ בסוף</th></tr></thead><tbody>'+
+    out.join("")+'</tbody><tfoot><tr><td>בסיס: '+money(b)+(vat?' · מע"מ '+vat+'%':' · ללא מע"מ')+
+    '</td><td colspan="2"></td><td><b>'+money(totLive)+'</b></td><td>'+money(totFull)+'</td></tr></tfoot></table></div>'+
+    '<div class="hint">כל הסכומים כוללים מע"מ. "לתשלום עכשיו" = הנוכחי + הדחוי אם שוחרר — וזה גם התקרה לתשלום למנהל.</div>';
+}
+function addManagerFromExpense(aptId,eId){
+  openModal({title:"מנהל חדש",bodyHtml:
+    '<div class="field"><label>שם המנהל</label><input id="mg-name" placeholder="שם"></div>'+
+    '<div class="field"><label>% ברירת מחדל</label><input id="mg-pct" type="number" step="0.01" value="4"></div>',
+    saveLabel:"הוסף וחזור להוצאה",onSave:function(){
+      var n=val("mg-name").trim(); if(!n){ toast("יש להזין שם","err"); return false; }
+      DB.managers.push({id:uid(),apartmentId:aptId,name:n,defaultFeePercent:Number(val("mg-pct"))||0,deleted:false});
+      save(); toast("המנהל נוסף","ok");
+      closeModal(); openExpenseEditor(eId,aptId); return false;
+    }});
+}
 function openExpenseEditor(eId,aptId){
   var a=byId(DB.apartments,aptId);
   var e=eId?byId(DB.expenses,eId):null;
@@ -794,7 +834,7 @@ function openExpenseEditor(eId,aptId){
   var body='<div class="section-title">פרטי ההוצאה</div>'+
     '<div class="form-grid">'+
      '<div class="field"><label>תיאור</label><input id="ex-desc" value="'+esc(e?e.description:"")+'"></div>'+
-     '<div class="field"><label>סכום (₪)</label><input id="ex-amount" type="number" step="0.01" value="'+(e?esc(String(e.amount)):"")+'"></div>'+
+     '<div class="field"><label>סכום (₪)</label><input id="ex-amount" type="number" step="0.01" value="'+(e?esc(String(e.amount)):"")+'" oninput="updateMgmtPreview()"></div>'+
      '<div class="field"><label>תאריך</label><input id="ex-date" type="date" value="'+(e?esc(e.date):todayISO())+'"></div>'+
      '<div class="field"><label>סיווג</label><select id="ex-class">'+classOptions(e?e.classification:"investment")+'</select></div>'+
      '<div class="field full"><label>הערה</label><input id="ex-note" value="'+esc(e?e.note:"")+'" placeholder="הערה חופשית"></div>'+
@@ -812,25 +852,35 @@ function openExpenseEditor(eId,aptId){
       '<div class="field"><label><input type="checkbox" id="ex-mgmt" style="width:auto" onchange="toggleMgmt()" '+(e&&e.mgmtEnabled?"checked":"")+'> יש דמי ניהול על הוצאה זו</label></div>'+
       '<div id="mgmt-details" style="display:'+(e&&e.mgmtEnabled?"block":"none")+'">'+
       '<div class="form-grid">'+
-        '<div class="field"><label>בסיס החישוב</label><select id="ex-base">'+Object.keys(BASE_TYPES).map(function(k){return '<option value="'+k+'"'+(e&&e.mgmtBaseType===k?" selected":"")+'>'+BASE_TYPES[k]+'</option>';}).join("")+'</select></div>'+
-        '<div class="field"><label>מע"מ על דמי הניהול</label><select id="ex-vat">'+[0,17,18].map(function(v){return '<option value="'+v+'"'+((e?e.mgmtVatRate:18)==v?" selected":"")+'>'+(v===0?"ללא":v+"%")+'</option>';}).join("")+'</select></div>'+
+        '<div class="field"><label>בסיס החישוב</label><select id="ex-base" onchange="updateMgmtPreview()">'+Object.keys(BASE_TYPES).map(function(k){return '<option value="'+k+'"'+(e&&e.mgmtBaseType===k?" selected":"")+'>'+BASE_TYPES[k]+'</option>';}).join("")+'</select></div>'+
+        '<div class="field"><label>מע"מ על דמי הניהול</label><select id="ex-vat" onchange="updateMgmtPreview()">'+[0,17,18].map(function(v){return '<option value="'+v+'"'+((e?e.mgmtVatRate:18)==v?" selected":"")+'>'+(v===0?"ללא":v+"%")+'</option>';}).join("")+'</select></div>'+
       '</div>'+
-      mgrs.map(function(m){
+      '<div id="mgmt-rows">'+
+      (mgrs.length ? mgrs.map(function(m){
         var f=e?expMgrFees(eId).find(function(x){return x.managerId===m.id;}):null;
         var cur=f?f.pctCurrent:m.defaultFeePercent, def=f?f.pctDeferred:0, lbl=f?f.deferredLabel:"בסיום הבנייה", rel=f?f.deferredReleased:false;
-        return '<div style="border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:6px"><b>'+esc(m.name)+'</b>'+
-          '<div class="form-grid" style="margin-top:6px">'+
-          '<div class="field"><label>% נוכחי</label><input id="mf-cur-'+m.id+'" type="number" step="0.01" value="'+esc(String(cur))+'"></div>'+
-          '<div class="field"><label>% דחוי</label><input id="mf-def-'+m.id+'" type="number" step="0.01" value="'+esc(String(def))+'"></div>'+
-          '<div class="field"><label>תווית הדחוי</label><input id="mf-lbl-'+m.id+'" value="'+esc(lbl)+'"></div>'+
-          '<div class="field"><label><input type="checkbox" id="mf-rel-'+m.id+'" style="width:auto" '+(rel?"checked":"")+'> הדחוי שוחרר לתשלום</label></div>'+
+        return '<div data-mgr="'+m.id+'" data-name="'+esc(m.name)+'" style="border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:8px">'+
+          '<b>'+esc(m.name)+'</b> <span class="muted">(ברירת מחדל '+num(m.defaultFeePercent)+'%)</span>'+
+          '<div class="form-grid" style="margin-top:8px">'+
+          '<div class="field"><label>% נוכחי</label><input id="mf-cur-'+m.id+'" type="number" step="0.01" value="'+esc(String(cur))+'" oninput="updateMgmtPreview()"></div>'+
+          '<div class="field"><label>% דחוי (ישולם בהמשך)</label><input id="mf-def-'+m.id+'" type="number" step="0.01" value="'+esc(String(def))+'" oninput="updateMgmtPreview()"></div>'+
+          '<div class="field"><label>מתי ישוחרר הדחוי</label><input id="mf-lbl-'+m.id+'" value="'+esc(lbl)+'" placeholder="למשל: בסיום הבנייה"></div>'+
+          '<div class="field"><label><input type="checkbox" id="mf-rel-'+m.id+'" style="width:auto" onchange="updateMgmtPreview()" '+(rel?"checked":"")+'> הדחוי שוחרר לתשלום</label></div>'+
           '</div></div>';
-      }).join("")+
+      }).join("")
+      : '<div style="border:2px dashed #fecaca;border-radius:10px;padding:16px;text-align:center">'+
+        '<div style="font-weight:800;color:var(--danger);font-size:15px">עדיין לא הוגדרו מנהלים בדירה הזאת</div>'+
+        '<div class="muted" style="margin:8px 0">בלי מנהלים אין למי לחשב אחוזים. ברגע שתוסיף מנהל יופיעו כאן שדות ה<b>אחוז הנוכחי</b> וה<b>אחוז הדחוי</b> לכל מנהל.</div>'+
+        (eId ? '<button class="btn btn-primary btn-sm" onclick="addManagerFromExpense(\''+aptId+'\',\''+eId+'\')">➕ הוסף מנהל עכשיו</button>'
+             : '<div class="hint">שמור את ההוצאה תחילה, ואז תוכל להוסיף מנהל מכאן — או בלשונית <b>דמי ניהול</b> של הדירה.</div>')+
+        '</div>')+
+      '</div>'+
+      '<div id="mgmt-preview" style="margin-top:12px"></div>'+
       '<div class="hint">דמי הניהול (כולל מע"מ) מתחלקים בין השותפים לפי חלוקת ההוצאה שלמעלה.</div>'+
       '</div>';
   }
   openModal({title:eId?"עריכת הוצאה":"הוצאה חדשה",wide:true,bodyHtml:body,saveLabel:"שמירה",onSave:function(){ return saveExpense(eId,aptId); }});
-  setTimeout(updateSplitSum,30);
+  setTimeout(function(){ updateSplitSum(); updateMgmtPreview(); },30);
 }
 function saveExpense(eId,aptId){
   var a=byId(DB.apartments,aptId);
