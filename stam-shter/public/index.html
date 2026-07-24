@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>שטרנקוקר — ניהול סת"ם</title>
+<meta name="theme-color" content="#0f172a">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='13' y='7' width='9' height='50' rx='3' fill='%23c98a2e'/%3E%3Crect x='42' y='7' width='9' height='50' rx='3' fill='%23c98a2e'/%3E%3Crect x='21' y='12' width='22' height='40' fill='%23fdf8ec'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#0f172a; --bg2:#1e293b; --panel:#fff; --ink:#0f172a; --muted:#64748b;
+    --line:#e5e7eb; --brand:#0f766e; --brand-d:#115e59; --accent:#0ea5e9;
+    --gold:#c98a2e; --green:#16a34a; --red:#dc2626; --amber:#d97706; --soft:#f6f7f8;
+    --shadow:0 1px 3px rgba(15,23,42,.08),0 8px 24px rgba(15,23,42,.06); --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:"Assistant","Segoe UI",Arial,sans-serif;background:var(--soft);color:var(--ink);font-size:15px;line-height:1.5}
+  button{font-family:inherit;cursor:pointer}
+  input,select,textarea{font-family:inherit;font-size:15px}
+  a{color:var(--accent)}
+  .hidden{display:none!important}
+
+  /* ---------- כניסה ---------- */
+  #loginScreen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 70% -10%,#1e3a4a,#0f172a);padding:20px;z-index:50}
+  .login-card{background:var(--panel);border-radius:20px;box-shadow:var(--shadow);width:100%;max-width:400px;padding:34px 30px;text-align:center}
+  .login-logo{width:64px;height:64px;border-radius:16px;background:linear-gradient(135deg,var(--brand),var(--brand-d));display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 14px}
+  .login-card h1{margin:0 0 4px;font-size:22px}
+  .login-card p.sub{margin:0 0 22px;color:var(--muted);font-size:14px}
+  .login-err{color:var(--red);font-size:13px;min-height:18px;margin:6px 0}
+  .login-hint{margin-top:16px;font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:14px;text-align:right}
+
+  /* ---------- שדות וכפתורים ---------- */
+  .field{text-align:right;margin-bottom:14px}
+  .field label{display:block;font-size:13px;color:var(--muted);margin-bottom:5px}
+  .field input,.field select,.field textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;outline:none;transition:border .15s}
+  .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--brand)}
+  .field .hint{font-size:12px;color:var(--muted);margin-top:4px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:none;border-radius:10px;padding:10px 17px;font-size:15px;font-weight:600;background:var(--brand);color:#fff;transition:filter .15s,transform .05s}
+  .btn:hover{filter:brightness(.95)} .btn:active{transform:translateY(1px)}
+  .btn:disabled{opacity:.55;cursor:not-allowed}
+  .btn.full{width:100%}
+  .btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
+  .btn.accent{background:var(--accent)} .btn.green{background:var(--green)} .btn.red{background:var(--red)} .btn.gold{background:var(--gold)}
+  .btn.sm{padding:7px 12px;font-size:13px;border-radius:8px}
+  .btn.xs{padding:4px 9px;font-size:12px;border-radius:7px}
+
+  /* ---------- מסגרת ---------- */
+  #app{min-height:100vh;display:flex;flex-direction:column}
+  header.top{background:var(--bg);color:#fff;padding:0 18px;display:flex;align-items:center;gap:14px;height:56px;position:sticky;top:0;z-index:30}
+  header.top .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px}
+  header.top .brand .ico{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--brand),var(--brand-d));display:flex;align-items:center;justify-content:center;font-size:17px}
+  header.top .spacer{flex:1}
+  .user-chip{display:flex;align-items:center;gap:8px;font-size:14px;text-align:left}
+  .user-chip .role{font-size:12px;color:#94a3b8}
+  nav.tabs{background:var(--bg2);display:flex;gap:2px;padding:0 10px;overflow-x:auto;position:sticky;top:56px;z-index:29}
+  nav.tabs button{background:none;border:none;color:#cbd5e1;padding:11px 13px;font-size:14px;font-weight:600;border-bottom:3px solid transparent;white-space:nowrap}
+  nav.tabs button:hover{color:#fff}
+  nav.tabs button.active{color:#fff;border-bottom-color:var(--gold)}
+  main#view{flex:1;padding:18px;max-width:1400px;margin:0 auto;width:100%}
+
+  .subtabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;border-bottom:1px solid var(--line);padding-bottom:10px}
+  .subtabs button{background:#fff;border:1px solid var(--line);color:var(--muted);padding:7px 13px;border-radius:20px;font-size:13px;font-weight:600}
+  .subtabs button.active{background:var(--brand);border-color:var(--brand);color:#fff}
+
+  /* ---------- כרטיסים וטבלאות ---------- */
+  .page-head{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+  .page-head h2{margin:0;font-size:21px}
+  .page-head .spacer{flex:1}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;margin-bottom:16px}
+  .card h3{margin:0 0 12px;font-size:16px}
+  .grid{display:grid;gap:13px}
+  .stat-grid{grid-template-columns:repeat(auto-fit,minmax(185px,1fr))}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow)}
+  .stat .label{font-size:13px;color:var(--muted);margin-bottom:5px}
+  .stat .value{font-size:23px;font-weight:800;letter-spacing:-.5px}
+  .stat .value.g{color:var(--green)} .stat .value.r{color:var(--red)} .stat .value.a{color:var(--gold)} .stat .value.b{color:var(--brand)}
+  .stat .sub{font-size:12px;color:var(--muted);margin-top:3px}
+
+  .table-wrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:right;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{color:var(--muted);font-weight:600;font-size:12.5px;background:var(--soft);position:sticky;top:0}
+  tr:hover td{background:#f8fafb}
+  td.wrap,th.wrap{white-space:normal}
+  tfoot td{font-weight:700;background:var(--soft);border-top:2px solid var(--line)}
+  .num{font-variant-numeric:tabular-nums}
+  .pos{color:var(--green)} .neg{color:var(--red)}
+  .pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}
+  .pill.active{background:#e0f2fe;color:#075985} .pill.done{background:#dcfce7;color:#166534}
+  .pill.g{background:#dcfce7;color:#166534} .pill.r{background:#fee2e2;color:#991b1b} .pill.a{background:#fef3c7;color:#92400e} .pill.n{background:#f1f5f9;color:#475569}
+
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .row > .field{flex:1;min-width:150px;margin-bottom:12px}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:13px}
+  .toolbar input,.toolbar select{padding:8px 11px;border:1px solid var(--line);border-radius:9px;background:#fff;min-width:160px}
+  .empty{text-align:center;color:var(--muted);padding:38px 10px}
+  .empty .big{font-size:38px;margin-bottom:8px}
+  .bar{height:8px;background:#eef2f7;border-radius:6px;overflow:hidden;min-width:64px}
+  .bar > span{display:block;height:100%;background:var(--green)}
+  .bar.warn > span{background:var(--amber)}
+  .mbar{display:flex;align-items:flex-end;gap:4px;height:120px}
+  .mbar .b{flex:1;background:var(--brand);border-radius:4px 4px 0 0;min-height:2px;position:relative}
+  .mbar .b.neg{background:var(--red)}
+
+  /* ---------- מודאל ---------- */
+  .modal-bg{position:fixed;inset:0;background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;z-index:60;padding:16px}
+  .modal{background:#fff;border-radius:16px;box-shadow:var(--shadow);width:100%;max-width:620px;max-height:92vh;overflow:auto}
+  .modal.lg{max-width:1000px}
+  .modal .m-head{display:flex;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:#fff;z-index:2}
+  .modal .m-head h3{margin:0;font-size:17px;flex:1}
+  .modal .m-body{padding:18px}
+  .modal .m-foot{padding:13px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-start;position:sticky;bottom:0;background:#fff}
+  .x{background:none;border:none;font-size:22px;color:var(--muted);cursor:pointer;line-height:1}
+  .link{color:var(--accent);cursor:pointer;font-weight:600}
+  .muted{color:var(--muted)} .mini{font-size:12px;color:var(--muted)}
+  .right{text-align:right}.center{text-align:center}
+  .sec-title{font-size:14px;font-weight:700;color:var(--brand-d);margin:18px 0 8px;border-top:1px solid var(--line);padding-top:13px}
+  .sec-title:first-child{margin-top:0;border-top:none;padding-top:0}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:14px}
+  .kv .k{color:var(--muted)}
+  .chk{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+  .chk input{width:auto}
+
+  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--bg);color:#fff;padding:12px 20px;border-radius:10px;box-shadow:var(--shadow);z-index:90;opacity:0;transition:opacity .2s,bottom .2s;pointer-events:none;max-width:90vw;text-align:center}
+  #toast.show{opacity:1;bottom:30px}
+  #toast.err{background:var(--red)} #toast.ok{background:var(--green)}
+
+  @media(max-width:640px){
+    main#view{padding:11px} .stat .value{font-size:20px}
+    header.top .brand span.t{display:none} th,td{padding:7px 6px;font-size:13px}
+  }
+</style>
+</head>
+<body>
+
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo">📜</div>
+    <h1>שטרנקוקר</h1>
+    <p class="sub">ניהול רכישת ומכירת מוצרי סת"ם</p>
+    <form id="loginForm" onsubmit="return false">
+      <div class="field"><label>שם משתמש</label><input id="loginUser" autocomplete="username" autofocus></div>
+      <div class="field"><label>סיסמא</label><input id="loginPass" type="password" autocomplete="current-password"></div>
+      <div class="login-err" id="loginErr"></div>
+      <button class="btn full" id="loginBtn" type="submit">כניסה</button>
+    </form>
+    <div class="login-hint" id="loginHint">ברירת מחדל בפיתוח: <b>admin / admin1234</b></div>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <header class="top">
+    <div class="brand"><span class="ico">📜</span><span class="t">שטרנקוקר</span></div>
+    <div class="spacer"></div>
+    <div class="user-chip"><div><div id="userName">—</div><div class="role" id="userRole"></div></div></div>
+    <button class="btn ghost sm" id="logoutBtn">יציאה</button>
+  </header>
+  <nav class="tabs" id="tabs"></nav>
+  <main id="view"></main>
+</div>
+
+<div id="modalRoot"></div>
+<div id="toast"></div>
+
+<script src="store.js?v=1"></script>
+<script src="app.js?v=1"></script>
+</body>
+</html>
