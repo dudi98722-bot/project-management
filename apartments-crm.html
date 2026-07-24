@@ -595,6 +595,9 @@ function aptGridHtml(){
       case "rem":    r=x.t.remaining-y.t.remaining; break;
       case "income": r=x.t.income-y.t.income; break;
       case "bank":   r=x.t.bank-y.t.bank; break;
+      case "mgmt":     r=x.t.totalMgmt-y.t.totalMgmt; break;
+      case "mgmtPaid": r=x.t.mgrPaidTot-y.t.mgrPaidTot; break;
+      case "mgmtRem":  r=(x.t.totalMgmt-x.t.mgrPaidTot)-(y.t.totalMgmt-y.t.mgrPaidTot); break;
       case "stages": r=apExpenses(x.a.id).length-apExpenses(y.a.id).length; break;
       default:       r=String(x.a.name).localeCompare(String(y.a.name),"he");
     }
@@ -606,21 +609,31 @@ function aptGridHtml(){
     return '<th style="cursor:pointer;white-space:nowrap'+(alignLeft?';text-align:left':'')+'" onclick="sortApts(\''+key+'\')">'+
       esc(label)+(on?'<span style="color:var(--brand)"> '+(dir==="asc"?"▲":"▼")+'</span>':'')+'</th>';
   }
-  var tot={cost:0,paid:0,rem:0,income:0,bank:0,stages:0};
+  var tot={cost:0,paid:0,rem:0,income:0,bank:0,stages:0,mgmt:0,mgmtPaid:0,mgmtRem:0};
+  var anyMgmt=rows.some(function(r){ return r.a.hasManagement; });
   var h='<div class="table-wrap"><table class="tbl"><thead><tr>'+
     th("name","שם הדירה / פרויקט")+
     th("stages","שלבים")+
     th("cost","עלות כוללת")+
     th("paid","שולם")+
     th("rem","נותר")+
+    (anyMgmt?
+      '<th style="background:#eef2ff">'+th("mgmt","דמי ניהול").replace(/^<th[^>]*>/,"").replace(/<\/th>$/,"")+'</th>'
+      :'')+
+    (anyMgmt?'<th style="background:#eef2ff;cursor:pointer;white-space:nowrap" onclick="sortApts(\'mgmtPaid\')">ניהול ששולם'+
+      (APT_SORT.by==="mgmtPaid"?'<span style="color:var(--brand)"> '+(dir==="asc"?"▲":"▼")+'</span>':'')+'</th>':'')+
+    (anyMgmt?'<th style="background:#eef2ff;cursor:pointer;white-space:nowrap" onclick="sortApts(\'mgmtRem\')">ניהול לתשלום'+
+      (APT_SORT.by==="mgmtRem"?'<span style="color:var(--brand)"> '+(dir==="asc"?"▲":"▼")+'</span>':'')+'</th>':'')+
     th("income","הכנסות")+
     th("bank","יתרת בנק")+
     '<th style="white-space:nowrap">בנק</th><th style="white-space:nowrap">ניהול</th>'+
     '<th></th></tr></thead><tbody>';
   rows.forEach(function(r){
     var a=r.a, t=r.t, n=apExpenses(a.id).length;
+    var mRem=round2(t.totalMgmt-t.mgrPaidTot);
     tot.cost+=t.totalCost; tot.paid+=t.paidAll; tot.rem+=t.remaining;
     tot.income+=t.income; tot.bank+=(a.hasBank?t.bank:0); tot.stages+=n;
+    tot.mgmt+=t.totalMgmt; tot.mgmtPaid+=t.mgrPaidTot; tot.mgmtRem+=mRem;
     h+='<tr style="cursor:pointer" onclick="go(\'apartment\',{apartmentId:\''+a.id+'\',tab:\'overview\'})">'+
       '<td><b>'+esc(a.name)+'</b>'+
         (a.hasManagement?' <span class="pill">ניהול</span>':'')+
@@ -630,6 +643,10 @@ function aptGridHtml(){
       '<td>'+money(t.totalCost)+'</td>'+
       '<td>'+money(t.paidAll)+'</td>'+
       '<td class="'+(t.remaining>0.01?"neg":"pos")+'">'+money(t.remaining)+'</td>'+
+      (anyMgmt?'<td style="background:#f7f9ff">'+(a.hasManagement&&t.totalMgmt?money(t.totalMgmt):'<span class="muted">—</span>')+'</td>':'')+
+      (anyMgmt?'<td style="background:#f7f9ff">'+(a.hasManagement&&t.mgrPaidTot?money(t.mgrPaidTot):'<span class="muted">—</span>')+'</td>':'')+
+      (anyMgmt?'<td style="background:#f7f9ff" class="'+(mRem>0.01?"neg":"pos")+'">'+
+        (a.hasManagement&&(t.totalMgmt||t.mgrPaidTot)?money(mRem):'<span class="muted">—</span>')+'</td>':'')+
       '<td>'+(t.income?money(t.income):'<span class="muted">—</span>')+'</td>'+
       '<td>'+(a.hasBank?money(t.bank):'<span class="muted">—</span>')+'</td>'+
       '<td class="center" onclick="event.stopPropagation()">'+
@@ -648,6 +665,9 @@ function aptGridHtml(){
   h+='</tbody><tfoot><tr><td>סה"כ '+rows.length+' דירות</td><td>'+tot.stages+'</td>'+
     '<td>'+money(tot.cost)+'</td><td>'+money(tot.paid)+'</td>'+
     '<td class="'+(tot.rem>0.01?"neg":"pos")+'">'+money(tot.rem)+'</td>'+
+    (anyMgmt?'<td style="background:#eef2ff">'+money(tot.mgmt)+'</td>':'')+
+    (anyMgmt?'<td style="background:#eef2ff">'+money(tot.mgmtPaid)+'</td>':'')+
+    (anyMgmt?'<td style="background:#eef2ff" class="'+(tot.mgmtRem>0.01?"neg":"pos")+'">'+money(tot.mgmtRem)+'</td>':'')+
     '<td>'+money(tot.income)+'</td><td>'+money(tot.bank)+'</td><td colspan="3"></td></tr></tfoot></table></div>';
   return h;
 }
