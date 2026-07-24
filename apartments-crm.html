@@ -1298,6 +1298,37 @@ function moduleManagers(aptId){
       '<td class="right">'+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editManager(\''+m.id+'\',\''+aptId+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="delManager(\''+m.id+'\',\''+aptId+'\')">🗑️</button>':'')+'</td></tr>';
   });
   h+='</tbody></table></div></div>';
+
+  /* ---- תשלומים למנהלים: שלב-שלב, לכל מנהל בנפרד ---- */
+  mgrs.forEach(function(m){
+    var rows=apExpenses(aptId).map(function(e){
+      var due=mgrFeeLiveOnExpense(e.id,m.id);
+      var paid=mgrPaidOnExpense(e.id,m.id);
+      return {e:e,due:due,paid:paid,rem:round2(due-paid)};
+    }).filter(function(r){ return r.due>0.01 || r.paid>0.01; })
+      .sort(function(x,y){ return x.e.date<y.e.date?-1:1; });
+    if(!rows.length) return;
+    var tD=0,tP=0;
+    h+='<div class="card"><h3>💳 תשלומים ל'+esc(m.name)+'</h3>'+
+      '<div class="table-wrap"><table class="tbl"><thead><tr>'+
+      '<th>תאריך</th><th>שלב</th><th>מגיע (כולל מע"מ)</th><th>שולם</th><th>נותר</th><th>סטטוס</th><th></th>'+
+      '</tr></thead><tbody>';
+    rows.forEach(function(r){
+      tD+=r.due; tP+=r.paid;
+      var badge = r.rem<=0.01 ? '<span class="badge badge-ok">שולם</span>'
+                : r.paid>0.01 ? '<span class="badge badge-warn">חלקי</span>'
+                : '<span class="badge badge-danger">לא שולם</span>';
+      h+='<tr><td>'+dateHe(r.e.date)+'</td><td><b>'+esc(r.e.description)+'</b></td>'+
+        '<td>'+money(r.due)+'</td><td>'+money(r.paid)+'</td>'+
+        '<td class="'+(r.rem>0.01?"neg":"pos")+'">'+money(r.rem)+'</td><td>'+badge+'</td>'+
+        '<td class="right">'+(can("edit")&&r.rem>0.01
+          ? '<button class="btn btn-primary btn-sm" onclick="payManager(\''+r.e.id+'\',\''+m.id+'\')">💳 שלם</button>'
+          : '<button class="btn btn-ghost btn-sm" onclick="openPayments(\''+r.e.id+'\')">פירוט</button>')+'</td></tr>';
+    });
+    h+='</tbody><tfoot><tr><td colspan="2">סה"כ</td><td>'+money(tD)+'</td><td>'+money(tP)+'</td>'+
+      '<td class="'+((tD-tP)>0.01?"neg":"pos")+'">'+money(tD-tP)+'</td><td colspan="2"></td></tr></tfoot></table></div></div>';
+  });
+
   // דחויים ממתינים לשחרור
   var pend=[];
   apExpenses(aptId).forEach(function(e){ if(!e.mgmtEnabled) return;
@@ -1335,6 +1366,18 @@ function delManager(mId,aptId){
     DB.expenseManagerFees.forEach(function(f){ if(f.managerId===mId) f.deleted=true; });
     save(); toast("הועבר לסל המחזור","ok"); rerender();
   });
+}
+/* פתיחת תשלום למנהל עם המנהל והסכום שנותר ממולאים מראש */
+function payManager(eId,mId){
+  openPaymentEditor(eId,null);
+  var rec=document.getElementById("pm-recipient");
+  if(!rec || !Array.prototype.some.call(rec.options,function(o){return o.value==="manager";})){
+    toast("דמי ניהול אינם מופעלים על ההוצאה הזאת","err"); closeModal(); return;
+  }
+  rec.value="manager"; onPmRecipient();
+  var sel=document.getElementById("pm-manager"); if(sel) sel.value=mId;
+  var due=round2(mgrFeeLiveOnExpense(eId,mId)-mgrPaidOnExpense(eId,mId));
+  var amt=document.getElementById("pm-amount"); if(amt && due>0) amt.value=due;
 }
 function releaseDeferred(fid){ var f=byId(DB.expenseManagerFees,fid); f.deferredReleased=true; save(); toast("הדחוי שוחרר","ok"); rerender(); }
 
@@ -2036,19 +2079,27 @@ function commitImport(force){
       }
       if(amt<=0){ skip(idx,"סכום ריק או אפס",r); return; }
       var pdt=(m.date>=0?impDate(r[m.date]):todayISO());
-      if(expPayments(e.id).some(function(p){ return Math.abs((Number(p.amount)||0)-amt)<0.01 && p.date===pdt; })){
-        skip(idx,"תשלום זהה כבר קיים (ייבוא חוזר)",r); return;
-      }
       var accId=(m.account>=0)?findOrCreateAccount(aptId,r[m.account]):null;
       var isBank=accountIsBank(accId);
       var payer=(!isBank && m.payer>=0)?findOrCreatePartner(r[m.payer]):null;
+      var pnote=(m.note>=0?String(r[m.note]||""):"");
+      /* זיהוי כפילות חייב לכלול גם מי שילם, מאיזה חשבון ומה ההערה.
+         קודם נבדקו רק סכום+תאריך, ולכן שני תשלומים לגיטימיים של שותפים
+         שונים באותו יום ובאותו סכום — השני נחשב "כפילות" ונזרק. */
+      if(expPayments(e.id).some(function(p){
+           return Math.abs((Number(p.amount)||0)-amt)<0.01 && p.date===pdt &&
+                  (p.payerPartnerId||null)===(payer||null) &&
+                  (p.accountId||null)===(accId||null) &&
+                  String(p.note||"")===pnote; })){
+        skip(idx,"תשלום זהה לחלוטין כבר קיים (ייבוא חוזר)",r); return;
+      }
       DB.payments.push({id:uid(),expenseId:e.id,
         date:pdt,amount:amt,
         accountId:accId,payerPartnerId:payer,
         method:(m.method>=0?methodText(r[m.method]):"transfer"),
         recipientType:"supplier",recipientManagerId:null,
         hasInvoice:(m.invoice>=0 && /כן|✔|✓|v|true|1/i.test(String(r[m.invoice]||""))),
-        invoiceLink:"",note:(m.note>=0?String(r[m.note]||""):""),deleted:false});
+        invoiceLink:"",note:pnote,deleted:false});
       res.created++; res.sumCreated+=amt;
     });
   }
