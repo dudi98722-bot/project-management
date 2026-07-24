@@ -582,21 +582,70 @@ function aptGridHtml(){
   var cnt=document.getElementById("apt-count");
   if(cnt) cnt.innerHTML=countLine(apts.length,all.length,"דירות");
   if(!apts.length) return '<div class="empty">לא נמצאה דירה שמתאימה ל"'+esc(Q.apts)+'"</div>';
-  var h='<div class="grid apt-grid">';
-  apts.forEach(function(a){
-    var t=apartmentTotals(a.id);
-    h+='<div class="card apt-card" onclick="go(\'apartment\',{apartmentId:\''+a.id+'\',tab:\'overview\'})">'+
-      '<h3>'+esc(a.name)+'</h3>'+
-      '<div class="muted" style="margin-bottom:10px;font-size:13px">'+esc(a.notes||"")+'</div>'+
-      '<div style="display:flex;justify-content:space-between;font-size:13px;margin:3px 0"><span class="muted">עלות כוללת</span><b>'+money(t.totalCost)+'</b></div>'+
-      '<div style="display:flex;justify-content:space-between;font-size:13px;margin:3px 0"><span class="muted">שולם</span><b>'+money(t.paidAll)+'</b></div>'+
-      '<div style="display:flex;justify-content:space-between;font-size:13px;margin:3px 0"><span class="muted">נותר</span><b class="'+(t.remaining>0?"neg":"pos")+'">'+money(t.remaining)+'</b></div>'+
-      (a.hasBank?'<div style="display:flex;justify-content:space-between;font-size:13px;margin:3px 0"><span class="muted">יתרת בנק</span><b>'+money(t.bank)+'</b></div>':'')+
-      '<div style="margin-top:8px">'+(a.hasManagement?'<span class="pill">דמי ניהול</span> ':'')+(a.hasBank?'<span class="pill">בנק</span>':'')+'</div>'+
-    '</div>';
+
+  // חישוב פעם אחת לכל דירה — משמש גם למיון וגם לתצוגה
+  var rows=apts.map(function(a){ return {a:a, t:apartmentTotals(a.id)}; });
+  var dir=APT_SORT.dir;
+  rows.sort(function(x,y){
+    var r;
+    switch(APT_SORT.by){
+      case "cost":   r=x.t.totalCost-y.t.totalCost; break;
+      case "paid":   r=x.t.paidAll-y.t.paidAll; break;
+      case "rem":    r=x.t.remaining-y.t.remaining; break;
+      case "income": r=x.t.income-y.t.income; break;
+      case "bank":   r=x.t.bank-y.t.bank; break;
+      case "stages": r=apExpenses(x.a.id).length-apExpenses(y.a.id).length; break;
+      default:       r=String(x.a.name).localeCompare(String(y.a.name),"he");
+    }
+    return dir==="asc"? r : -r;
   });
-  h+='</div>';
+
+  function th(key,label,alignLeft){
+    var on=APT_SORT.by===key;
+    return '<th style="cursor:pointer;white-space:nowrap'+(alignLeft?';text-align:left':'')+'" onclick="sortApts(\''+key+'\')">'+
+      esc(label)+(on?'<span style="color:var(--brand)"> '+(dir==="asc"?"▲":"▼")+'</span>':'')+'</th>';
+  }
+  var tot={cost:0,paid:0,rem:0,income:0,bank:0,stages:0};
+  var h='<div class="table-wrap"><table class="tbl"><thead><tr>'+
+    th("name","שם הדירה / פרויקט")+
+    th("stages","שלבים")+
+    th("cost","עלות כוללת")+
+    th("paid","שולם")+
+    th("rem","נותר")+
+    th("income","הכנסות")+
+    th("bank","יתרת בנק")+
+    '<th></th></tr></thead><tbody>';
+  rows.forEach(function(r){
+    var a=r.a, t=r.t, n=apExpenses(a.id).length;
+    tot.cost+=t.totalCost; tot.paid+=t.paidAll; tot.rem+=t.remaining;
+    tot.income+=t.income; tot.bank+=(a.hasBank?t.bank:0); tot.stages+=n;
+    h+='<tr style="cursor:pointer" onclick="go(\'apartment\',{apartmentId:\''+a.id+'\',tab:\'overview\'})">'+
+      '<td><b>'+esc(a.name)+'</b>'+
+        (a.hasManagement?' <span class="pill">ניהול</span>':'')+
+        (a.hasBank?' <span class="pill">בנק</span>':'')+
+        (a.notes?'<div class="muted" style="font-size:12px">'+esc(a.notes)+'</div>':'')+'</td>'+
+      '<td>'+n+'</td>'+
+      '<td>'+money(t.totalCost)+'</td>'+
+      '<td>'+money(t.paidAll)+'</td>'+
+      '<td class="'+(t.remaining>0.01?"neg":"pos")+'">'+money(t.remaining)+'</td>'+
+      '<td>'+(t.income?money(t.income):'<span class="muted">—</span>')+'</td>'+
+      '<td>'+(a.hasBank?money(t.bank):'<span class="muted">—</span>')+'</td>'+
+      '<td class="right" style="white-space:nowrap" onclick="event.stopPropagation()">'+
+        '<button class="btn btn-ghost btn-sm" onclick="go(\'apartment\',{apartmentId:\''+a.id+'\',tab:\'expenses\'})" title="הוצאות">📋</button>'+
+        (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editApartment(\''+a.id+'\')" title="עריכה">✏️</button>':'')+
+      '</td></tr>';
+  });
+  h+='</tbody><tfoot><tr><td>סה"כ '+rows.length+' דירות</td><td>'+tot.stages+'</td>'+
+    '<td>'+money(tot.cost)+'</td><td>'+money(tot.paid)+'</td>'+
+    '<td class="'+(tot.rem>0.01?"neg":"pos")+'">'+money(tot.rem)+'</td>'+
+    '<td>'+money(tot.income)+'</td><td>'+money(tot.bank)+'</td><td></td></tr></tfoot></table></div>';
   return h;
+}
+var APT_SORT={by:"name",dir:"asc"};
+function sortApts(key){
+  if(APT_SORT.by===key) APT_SORT.dir = (APT_SORT.dir==="asc"?"desc":"asc");
+  else { APT_SORT.by=key; APT_SORT.dir = (key==="name"?"asc":"desc"); }
+  renderAptGrid();
 }
 function editApartment(id){
   var a=id?byId(DB.apartments,id):{name:"",notes:"",hasManagement:false,hasBank:false};
