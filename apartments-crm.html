@@ -1417,12 +1417,17 @@ function commitImport(){
       var aptId=aptFor(r); if(!aptId){ res.skipped++; res.reason="לא נמצאה דירה"; return; }
       var desc=String(r[m.desc]||"").trim(); var amt=impNum(r[m.amount]);
       if(!desc && !amt){ res.skipped++; return; }
+      var dt=(m.date>=0?impDate(r[m.date]):todayISO());
+      // הגנה מפני ייבוא כפול: אותה דירה + תיאור + סכום + תאריך
+      if(apExpenses(aptId).some(function(x){
+           return String(x.description).trim()===desc && Math.abs((Number(x.amount)||0)-amt)<0.01 && x.date===dt; })){
+        res.skipped++; res.reason="הוצאה זהה כבר קיימת (ייבוא חוזר)"; return;
+      }
       var eid=uid();
       DB.expenses.push({id:eid,apartmentId:aptId,
         categoryId:(m.category>=0?findOrCreateCategory(r[m.category]):""),
         classification:(m.classification>=0?classifyText(r[m.classification]):"investment"),
-        description:desc||"(ללא תיאור)",amount:amt,
-        date:(m.date>=0?impDate(r[m.date]):todayISO()),
+        description:desc||"(ללא תיאור)",amount:amt,date:dt,
         note:(m.note>=0?String(r[m.note]||""):""),
         hasInvoice:false,invoiceLink:"",mgmtEnabled:false,mgmtBaseType:"full",mgmtVatRate:18,deleted:false});
       var split=[];
@@ -1451,11 +1456,15 @@ function commitImport(){
       var e=apExpenses(aptId).find(function(x){ return String(x.description).trim()===target; });
       if(!e){ res.skipped++; res.reason="לא נמצאה הוצאה בשם שב'עבור'"; return; }
       var amt=impNum(r[m.amount]); if(amt<=0){ res.skipped++; return; }
+      var pdt=(m.date>=0?impDate(r[m.date]):todayISO());
+      if(expPayments(e.id).some(function(p){ return Math.abs((Number(p.amount)||0)-amt)<0.01 && p.date===pdt; })){
+        res.skipped++; res.reason="תשלום זהה כבר קיים (ייבוא חוזר)"; return;
+      }
       var accId=(m.account>=0)?findOrCreateAccount(aptId,r[m.account]):null;
       var isBank=accountIsBank(accId);
       var payer=(!isBank && m.payer>=0)?findOrCreatePartner(r[m.payer]):null;
       DB.payments.push({id:uid(),expenseId:e.id,
-        date:(m.date>=0?impDate(r[m.date]):todayISO()),amount:amt,
+        date:pdt,amount:amt,
         accountId:accId,payerPartnerId:payer,
         method:(m.method>=0?methodText(r[m.method]):"transfer"),
         recipientType:"supplier",recipientManagerId:null,
@@ -1470,9 +1479,13 @@ function commitImport(){
       var aptId=aptFor(r); if(!aptId){ res.skipped++; return; }
       var pid=findOrCreatePartner(r[m.partner]); var amt=impNum(r[m.amount]);
       if(!pid||amt<=0){ res.skipped++; return; }
+      var ddt=(m.date>=0?impDate(r[m.date]):todayISO());
+      if(apDeposits(aptId).some(function(d){ return d.partnerId===pid && Math.abs((Number(d.amount)||0)-amt)<0.01 && d.date===ddt; })){
+        res.skipped++; res.reason="הפקדה זהה כבר קיימת (ייבוא חוזר)"; return;
+      }
       var a=byId(DB.apartments,aptId); if(a && !a.hasBank) a.hasBank=true;
       DB.deposits.push({id:uid(),apartmentId:aptId,partnerId:pid,amount:amt,
-        date:(m.date>=0?impDate(r[m.date]):todayISO()),
+        date:ddt,
         note:(m.note>=0?String(r[m.note]||""):""),deleted:false});
       res.created++;
     });
@@ -1482,8 +1495,13 @@ function commitImport(){
     imp.rows.forEach(function(r){
       var aptId=aptFor(r); if(!aptId){ res.skipped++; return; }
       var amt=impNum(r[m.amount]);
-      DB.income.push({id:uid(),apartmentId:aptId,description:String(r[m.desc]||"").trim()||"(ללא תיאור)",
-        amount:amt,date:(m.date>=0?impDate(r[m.date]):todayISO()),
+      var idesc=String(r[m.desc]||"").trim()||"(ללא תיאור)";
+      var idt=(m.date>=0?impDate(r[m.date]):todayISO());
+      if(apIncome(aptId).some(function(x){ return String(x.description).trim()===idesc && Math.abs((Number(x.amount)||0)-amt)<0.01 && x.date===idt; })){
+        res.skipped++; res.reason="הכנסה זהה כבר קיימת (ייבוא חוזר)"; return;
+      }
+      DB.income.push({id:uid(),apartmentId:aptId,description:idesc,
+        amount:amt,date:idt,
         note:(m.note>=0?String(r[m.note]||""):""),deleted:false});
       res.created++;
     });
