@@ -24,12 +24,60 @@
 var DATA_SHEET = "_data";
 var CHUNK = 40000;
 
+/* ⚠️ לכאן יישלח קוד השחזור. הכתובת קבועה בשרת בכוונה —
+   כך שגם מי שנכנס לדף לא יכול להפנות שחזור לכתובת שלו. */
+var OWNER_EMAIL = "dudi98722@gmail.com";
+var RESET_SHEET = "_reset";
+var RESET_MINUTES = 15;
+
 function doGet(e) {
   var action = (e && e.parameter && e.parameter.action) || "";
   if (action === "load") {
     return jsonOut({ ok: true, data: loadData() });
   }
+  if (action === "requestReset") {
+    return jsonOut(requestReset());
+  }
+  if (action === "verifyReset") {
+    return jsonOut(verifyReset((e.parameter && e.parameter.code) || ""));
+  }
   return jsonOut({ ok: true, status: "apartments-crm backend ready" });
+}
+
+/* ---------- שחזור קוד כניסה במייל ---------- */
+function requestReset() {
+  try {
+    var code = String(Math.floor(100000 + Math.random() * 900000));
+    var exp = new Date().getTime() + RESET_MINUTES * 60 * 1000;
+    var sh = ss().getSheetByName(RESET_SHEET) || ss().insertSheet(RESET_SHEET);
+    sh.clear();
+    sh.getRange(1, 1, 1, 2).setValues([[code, exp]]);
+    try { sh.hideSheet(); } catch (err) {}
+    MailApp.sendEmail(OWNER_EMAIL,
+      "קוד שחזור — מערכת ניהול דירות",
+      "קוד השחזור שלך הוא: " + code + "\n\n" +
+      "הקוד תקף ל-" + RESET_MINUTES + " דקות וניתן לשימוש חד-פעמי.\n" +
+      "אם לא ביקשת שחזור — התעלם מהודעה זו ושקול להחליף את קוד הכניסה.");
+    return { ok: true, sentTo: OWNER_EMAIL.replace(/^(.{2}).*(@.*)$/, "$1***$2") };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+function verifyReset(code) {
+  try {
+    var sh = ss().getSheetByName(RESET_SHEET);
+    if (!sh || sh.getLastRow() === 0) return { ok: false, error: "no-request" };
+    var v = sh.getRange(1, 1, 1, 2).getValues()[0];
+    var stored = String(v[0] || "");
+    var exp = Number(v[1] || 0);
+    if (!stored || String(code).trim() !== stored) return { ok: false, error: "bad-code" };
+    if (new Date().getTime() > exp) { sh.clear(); return { ok: false, error: "expired" }; }
+    sh.clear();                      // חד-פעמי
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
 }
 
 function doPost(e) {

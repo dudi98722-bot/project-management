@@ -436,6 +436,7 @@ function renderLogin(){
         '<button class="btn btn-primary" style="width:100%" onclick="doLogin()">כניסה</button>'
     )+
     '<div style="margin-top:20px;padding-top:14px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)">'+
+      ((!noUsers && sheetsUrl()) ? '<a href="#" onclick="forgotCode();return false;">🔑 שכחתי את הקוד — שלח קוד שחזור למייל</a><br><br>' : '')+
       '<a href="#" onclick="resetLocal();return false;">בעיה בכניסה? אפס את הנתונים המקומיים במכשיר זה</a>'+
     '</div>'+
     '</div></div>';
@@ -456,6 +457,43 @@ async function doLogin(){
   CU=u; toast("ברוך הבא, "+u.name,"ok"); go("dashboard",{});
 }
 function logout(){ CU=null; renderApp(); }
+/* ---------- שחזור קוד כניסה במייל (דרך Apps Script) ---------- */
+async function forgotCode(){
+  var url=sheetsUrl();
+  if(!url){ toast("נדרש חיבור לגוגל שיטס כדי לשחזר קוד","err"); return; }
+  toast("שולח קוד שחזור למייל…","ok");
+  try{
+    var r=await fetch(url+"?action=requestReset",{cache:"no-store"});
+    var j=await r.json();
+    if(!j||!j.ok){ toast("שליחת הקוד נכשלה"+((j&&j.error)?": "+j.error:""),"err"); return; }
+    openResetCodeModal(j.sentTo||"");
+  }catch(e){ toast("שגיאת חיבור לשרת","err"); }
+}
+function openResetCodeModal(sentTo){
+  openModal({title:"שחזור קוד כניסה",bodyHtml:
+    '<p class="muted">נשלח קוד בן 6 ספרות למייל'+(sentTo?" "+esc(sentTo):"")+'. הקוד תקף ל-15 דקות ולשימוש חד-פעמי.</p>'+
+    '<div class="field"><label>הקוד מהמייל</label><input id="rs-code" inputmode="numeric" placeholder="6 ספרות"></div>'+
+    '<div class="field"><label>קוד כניסה חדש</label><input id="rs-new" type="password" placeholder="בחר קוד חדש"></div>',
+    saveLabel:"אפס קוד",onSave:function(){ doResetCode(); return false; }});
+}
+async function doResetCode(){
+  var code=val("rs-code").trim(), nw=val("rs-new");
+  if(!code||!nw){ toast("יש למלא את שני השדות","err"); return; }
+  var url=sheetsUrl();
+  try{
+    var r=await fetch(url+"?action=verifyReset&code="+encodeURIComponent(code),{cache:"no-store"});
+    var j=await r.json();
+    if(!j||!j.ok){
+      var m={"bad-code":"קוד שגוי","expired":"הקוד פג תוקף — בקש קוד חדש","no-request":"לא נמצאה בקשת שחזור"};
+      toast(m[j&&j.error]||"האימות נכשל","err"); return;
+    }
+    var h=await hashCode(nw);
+    var admin=active(DB.users).find(function(u){return u.role==="admin";});
+    if(admin){ admin.code=h; admin.active=true; }
+    else{ admin={id:uid(),name:"מנהל",code:h,role:"admin",allowedApartments:[],partnerId:null,active:true,deleted:false}; DB.users.push(admin); }
+    save(); closeModal(); CU=admin; toast("הקוד אופס — ברוך הבא","ok"); go("dashboard",{});
+  }catch(e){ toast("שגיאת חיבור לשרת","err"); }
+}
 /* מוצא חירום: מנקה את הנתונים המקומיים בלבד (כתובת השיטס נשמרת, כך שהנתונים ייטענו משם מחדש) */
 function resetLocal(){
   var connected = !!sheetsUrl();
