@@ -1292,6 +1292,29 @@ var IMPORT_TYPES={
     {k:"note",l:"הערה",hints:["הערה"],opt:true}
   ]}
 };
+/* מפרסר טקסט מופרד שמכבד מרכאות — תא באקסל יכול להכיל ירידת שורה,
+   ואז הוא מגיע עטוף במרכאות. פיצול נאיבי לפי \n שבר שורות כאלה לשתיים. */
+function parseDelimited(raw,sep){
+  var rows=[], row=[], field="", i=0, inQ=false;
+  while(i<raw.length){
+    var c=raw.charAt(i);
+    if(inQ){
+      if(c==='"'){
+        if(raw.charAt(i+1)==='"'){ field+='"'; i+=2; continue; }
+        inQ=false; i++; continue;
+      }
+      field+=c; i++; continue;
+    }
+    if(c==='"'){ inQ=true; i++; continue; }
+    if(c===sep){ row.push(field); field=""; i++; continue; }
+    if(c==='\r'){ i++; continue; }
+    if(c==='\n'){ row.push(field); field=""; rows.push(row); row=[]; i++; continue; }
+    field+=c; i++;
+  }
+  if(field!=="" || row.length){ row.push(field); rows.push(row); }
+  return rows.filter(function(r){ return r.some(function(c){ return String(c).trim()!==""; }); })
+             .map(function(r){ return r.map(function(c){ return String(c).replace(/\s+/g," ").trim(); }); });
+}
 function impNum(v){ var n=parseFloat(String(v==null?"":v).replace(/[^\d.\-]/g,"")); return isFinite(n)?n:0; }
 function impDate(v){
   var s=String(v==null?"":v).trim(); if(!s) return todayISO();
@@ -1369,21 +1392,21 @@ function moduleImport(){
 function parseImport(){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var raw=val("im-data").trim(); if(!raw){ toast("לא הודבקו נתונים","err"); return; }
-  var lines=raw.split(/\r?\n/).filter(function(l){return l.trim();});
   var hasHeader=checked("im-hasheader");
-  if(hasHeader && lines.length<2){ toast("צריך שורת כותרות + לפחות שורה אחת (או בטל את סימון הכותרות)","err"); return; }
-  var sep=lines[0].indexOf("\t")>=0?"\t":(lines[0].indexOf(",")>=0?",":"\t");
+  var sep=raw.indexOf("\t")>=0?"\t":",";
+  var all=parseDelimited(raw,sep);
+  if(!all.length){ toast("לא זוהו שורות","err"); return; }
+  if(hasHeader && all.length<2){ toast("צריך שורת כותרות + לפחות שורה אחת (או בטל את סימון הכותרות)","err"); return; }
   var headers, rows;
-  if(hasHeader){
-    headers=lines[0].split(sep).map(function(s){return s.trim();});
-    rows=lines.slice(1).map(function(l){return l.split(sep);});
-  }else{
-    rows=lines.map(function(l){return l.split(sep);});
+  if(hasHeader){ headers=all[0]; rows=all.slice(1); }
+  else{
+    rows=all;
     var maxc=rows.reduce(function(n,r){return Math.max(n,r.length);},1);
     headers=[]; for(var ci=0;ci<maxc;ci++) headers.push("עמודה "+(ci+1));
   }
   var type=val("im-type")||"expenses";
-  window._imp={headers:headers,rows:rows,type:type,pairs:(type==="expenses"?detectSplitPairs(headers):[])};
+  window._imp={headers:headers,rows:rows,type:type,hasHeader:hasHeader,
+    pairs:(type==="expenses"?detectSplitPairs(headers):[])};
 
   var def=IMPORT_TYPES[type];
   var usedCols={};
@@ -1435,10 +1458,12 @@ function commitImport(force){
   }
   var defApt=(document.getElementById("im-apt")?val("im-apt"):(imp.defApt||""));
   var beforeA=active(DB.apartments).length, beforeP=active(DB.partners).length;
-  var res={created:0,skipped:0,newApts:0,newPartners:0,reason:"",skippedRows:[],skippedRaw:[],autoExpenses:0,forced:!!force};
+  var res={created:0,skipped:0,newApts:0,newPartners:0,reason:"",skippedRows:[],skippedRaw:[],
+           autoExpenses:0,forced:!!force,sumCreated:0,sumSkipped:0};
 
   function skip(idx,reason,r){
     res.skipped++; res.reason=reason;
+    if(typeof m.amount==="number" && m.amount>=0 && r) res.sumSkipped+=impNum(r[m.amount]);
     // שורות שדולגו כי הן כפילות — אין טעם לנסות שוב; השאר ניתנות לייבוא כפוי
     if(reason.indexOf("ייבוא חוזר")<0 && r) res.skippedRaw.push(r);
     if(res.skippedRows.length<1000){
@@ -1468,7 +1493,7 @@ function commitImport(force){
   }
   else if(imp.type==="expenses"){
     if(m.desc<0||m.amount<0){ toast("חובה למפות תיאור וסכום","err"); return; }
-    var firstSplit={};
+    var splitFreq={}, noSplit=[];
     imp.rows.forEach(function(r,idx){
       var aptId=aptFor(r); if(!aptId){ skip(idx,"לא זוהתה דירה (עמודת הפרויקט ריקה ולא נבחרה דירת ברירת מחדל)",r); return; }
       var desc=String(r[m.desc]||"").trim(); var amt=impNum(r[m.amount]);
@@ -1492,15 +1517,37 @@ function commitImport(force){
         if(nm && pc>0){ var pid=findOrCreatePartner(nm); if(pid) split.push({partnerId:pid,percent:pc}); }
       });
       if(!split.length){ split=apPartners(aptId).map(function(x){return {partnerId:x.partnerId,percent:x.defaultPercent};}); }
+      // אין חלוקה בשורה וגם אין עדיין ברירת מחדל לדירה — נשלים בסוף הייבוא
+      if(!split.length) noSplit.push({eid:eid,aptId:aptId});
       split.forEach(function(s){ DB.expenseSplits.push({id:uid(),expenseId:eid,partnerId:s.partnerId,percent:s.percent,deleted:false}); });
-      if(!firstSplit[aptId] && split.length) firstSplit[aptId]=split;
-      res.created++;
+      if(split.length){   // סופרים תדירות של כל חלוקה, כדי לבחור ברירת מחדל מייצגת
+        var sig=split.map(function(s){return s.partnerId+":"+s.percent;}).sort().join("|");
+        if(!splitFreq[aptId]) splitFreq[aptId]={};
+        if(!splitFreq[aptId][sig]) splitFreq[aptId][sig]={count:0,split:split};
+        splitFreq[aptId][sig].count++;
+      }
+      res.created++; res.sumCreated+=amt;
     });
-    // דירה שאין בה עדיין שותפים — נקבע לה ברירת מחדל מהחלוקה הראשונה שיובאה
-    Object.keys(firstSplit).forEach(function(aptId){
+    // דירה שאין בה עדיין שותפים — ברירת המחדל היא החלוקה הנפוצה ביותר בייבוא,
+    // ולא הראשונה שנתקלנו בה (שורה חריגה בתחילת הגיליון הייתה מטה את הכל)
+    Object.keys(splitFreq).forEach(function(aptId){
       if(apPartners(aptId).length) return;
-      firstSplit[aptId].forEach(function(s){
+      var best=null;
+      Object.keys(splitFreq[aptId]).forEach(function(sig){
+        var e=splitFreq[aptId][sig];
+        if(!best || e.count>best.count) best=e;
+      });
+      if(!best) return;
+      best.split.forEach(function(s){
         DB.apartmentPartners.push({id:uid(),apartmentId:aptId,partnerId:s.partnerId,defaultPercent:s.percent,deleted:false});
+      });
+    });
+    // עכשיו שיש ברירת מחדל — משלימים חלוקה להוצאות שנוצרו בלי אף שותף,
+    // אחרת העלות שלהן לא משויכת לאיש והדוחות לא יסתכמו לעלות הכוללת
+    noSplit.forEach(function(x){
+      if(expSplits(x.eid).length) return;
+      apPartners(x.aptId).forEach(function(p){
+        DB.expenseSplits.push({id:uid(),expenseId:x.eid,partnerId:p.partnerId,percent:p.defaultPercent,deleted:false});
       });
     });
   }
@@ -1539,7 +1586,7 @@ function commitImport(force){
         recipientType:"supplier",recipientManagerId:null,
         hasInvoice:(m.invoice>=0 && /כן|✔|✓|v|true|1/i.test(String(r[m.invoice]||""))),
         invoiceLink:"",note:(m.note>=0?String(r[m.note]||""):""),deleted:false});
-      res.created++;
+      res.created++; res.sumCreated+=amt;
     });
   }
   else if(imp.type==="deposits"){
@@ -1556,7 +1603,7 @@ function commitImport(force){
       DB.deposits.push({id:uid(),apartmentId:aptId,partnerId:pid,amount:amt,
         date:ddt,
         note:(m.note>=0?String(r[m.note]||""):""),deleted:false});
-      res.created++;
+      res.created++; res.sumCreated+=amt;
     });
   }
   else if(imp.type==="income"){
@@ -1572,7 +1619,7 @@ function commitImport(force){
       DB.income.push({id:uid(),apartmentId:aptId,description:idesc,
         amount:amt,date:idt,
         note:(m.note>=0?String(r[m.note]||""):""),deleted:false});
-      res.created++;
+      res.created++; res.sumCreated+=amt;
     });
   }
 
@@ -1606,7 +1653,13 @@ function showImportResult(res){
     stat("דירות חדשות",num(res.newApts))+
     stat("שותפים חדשים",num(res.newPartners))+
     (res.autoExpenses?stat("הוצאות שנוצרו אוטומטית",num(res.autoExpenses)):"")+
-    '</div>';
+    '</div>'+
+    '<div class="stat-grid" style="margin-top:10px">'+
+      stat("סכום שיובא",money(res.sumCreated))+
+      stat("סכום שדולג",money(res.sumSkipped),res.sumSkipped?"neg":"pos")+
+      stat("סה\"כ בקובץ",money(res.sumCreated+res.sumSkipped))+
+    '</div>'+
+    '<div class="hint">השווה את <b>"סה\"כ בקובץ"</b> לסכום באקסל — כך תדע מיד אם משהו לא נקלט.</div>';
   if(res.skipped){
     var byReason={};
     res.skippedRows.forEach(function(s){ byReason[s.reason]=(byReason[s.reason]||0)+1; });
