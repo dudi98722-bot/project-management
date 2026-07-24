@@ -147,7 +147,7 @@ async function api(payload){
 var SYNC="idle";
 function syncBadgeHtml(){
   var m={idle:["⏳","מתחבר…"],saving:["🔄","שומר לשיטס…"],ok:["✅","מסונכרן לשיטס"],
-         err:["⚠️","שגיאת סנכרון"],local:["💾","מקומי בלבד — לא מחובר"]};
+         err:["⚠️","שגיאת סנכרון — מנסה שוב"],local:["💾","מקומי בלבד — לא מחובר"]};
   var x=m[SYNC]||m.idle;
   return '<span id="sync-badge" class="who" style="cursor:pointer" title="לחץ להגדרות סנכרון" '+
     'onclick="go(\'settings\',{stab:\'sheets\'})">'+x[0]+' '+esc(x[1])+'</span>';
@@ -820,18 +820,41 @@ async function pullFromSheets(){
 }
 
 /* ---- סנכרון מול גוגל שיטס (Apps Script) — מקור האמת ---- */
+/* ---------- תור שמירה ----------
+   כל שמירה שולחת את כל מסד הנתונים. כששולחים כמה בקשות במקביל הן אינן
+   חוזרות בהכרח בסדר שנשלחו, ובקשה ישנה שמגיעה אחרונה דורסת שינויים
+   חדשים — כך "חזרו" סימוני בנק שכובו. לכן: בקשה אחת בלבד בכל רגע,
+   ותמיד עם המצב העדכני. שינויים שנעשו בזמן שליחה נשלחים מיד אחריה. */
+var SAVEQ={inflight:false,dirty:false,timer:null,fails:0};
 function serverSave(){
-  var h=getAuth();
-  if(!h){ setSync("local"); return; }
+  if(!getAuth()){ setSync("local"); return; }
+  SAVEQ.dirty=true;
   setSync("saving");
-  try{
-    fetch(SHEETS_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},
-      body:JSON.stringify({action:"save",codeHash:h,data:DB})})
-      .then(function(r){ return r.json(); })
-      .then(function(j){ setSync(j&&j.ok?"ok":"err"); })
-      .catch(function(){ setSync("err"); });
-  }catch(e){ setSync("err"); }
+  if(SAVEQ.timer) return;
+  SAVEQ.timer=setTimeout(function(){ SAVEQ.timer=null; flushSave(); },350);
 }
+function flushSave(){
+  if(SAVEQ.inflight || !SAVEQ.dirty) return;
+  var h=getAuth(); if(!h){ setSync("local"); return; }
+  SAVEQ.dirty=false; SAVEQ.inflight=true; setSync("saving");
+  var payload=JSON.stringify({action:"save",codeHash:h,data:DB});   // תמונת מצב עדכנית
+  fetch(SHEETS_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:payload})
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      SAVEQ.inflight=false;
+      if(j&&j.ok){ SAVEQ.fails=0; } else { SAVEQ.fails++; SAVEQ.dirty=true; }
+      if(SAVEQ.dirty){ setSync("saving"); setTimeout(flushSave, SAVEQ.fails?1500:0); }
+      else setSync("ok");
+    })
+    .catch(function(){
+      SAVEQ.inflight=false; SAVEQ.fails++; SAVEQ.dirty=true; setSync("err");
+      if(SAVEQ.fails<6) setTimeout(flushSave,2000);   // ניסיון חוזר, שלא ייאבד מידע
+    });
+}
+function hasUnsaved(){ return !!(SAVEQ.dirty||SAVEQ.inflight); }
+window.addEventListener("beforeunload",function(e){
+  if(hasUnsaved()){ e.preventDefault(); e.returnValue=""; return ""; }
+});
 async function serverLoad(){
   var h=getAuth();
   if(!h){ setSync("local"); return {error:true}; }
