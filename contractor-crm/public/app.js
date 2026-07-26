@@ -367,7 +367,7 @@
     const box = $('#projTx'), c = caps();
     if (!rows.length) { box.innerHTML = '<div class="empty">אין תנועות בפרויקט</div>'; return; }
     box.innerHTML = txTable(rows, c);
-    wireTxTable(box, () => openProject(pid));
+    wireTxTable(box, () => openProject(pid), rows);
   }
 
   // -- project create/edit form --
@@ -527,7 +527,8 @@
   // ============================================================
   function txTable(rows, c) {
     const canMulti = c.multiDelete;
-    return `<table><thead><tr>${canMulti ? '<th><input type="checkbox" id="txAll"></th>' : ''}<th>תאריך</th><th>סוג</th><th>פרויקט</th><th>שלב / קבלן</th><th>ספק / מהות</th><th>סכום</th><th>חשבונית</th>${c.del ? '<th></th>' : ''}</tr></thead><tbody>${rows.map(t => `
+    const canAct = c.writeTx || c.del;
+    return `<table><thead><tr>${canMulti ? '<th><input type="checkbox" id="txAll"></th>' : ''}<th>תאריך</th><th>סוג</th><th>פרויקט</th><th>שלב / קבלן</th><th>ספק / מהות</th><th>סכום</th><th>חשבונית</th>${canAct ? '<th></th>' : ''}</tr></thead><tbody>${rows.map(t => `
       <tr>${canMulti ? `<td><input type="checkbox" class="txck" value="${t.id}"></td>` : ''}
         <td>${dfmt(t.date)}</td>
         <td>${TYPE_HE[t.type] || t.type}</td>
@@ -536,11 +537,12 @@
         <td>${esc(t.supplier ? t.supplier + (t.purpose ? ' · ' + t.purpose : '') : (t.purpose || t.note || ''))}</td>
         <td class="num"><span class="pill ${t.direction}">${t.direction === 'in' ? '+' : '−'}${money0(t.amount)}</span></td>
         <td>${invoiceLink(t.invoice_url)}</td>
-        ${c.del ? `<td><button class="btn xs red" data-deltx="${t.id}">🗑️</button></td>` : ''}</tr>`).join('')}</tbody></table>
+        ${canAct ? `<td>${c.writeTx ? `<button class="btn xs ghost" data-edittx="${t.id}">✏️</button>` : ''}${c.del ? `<button class="btn xs red" data-deltx="${t.id}">🗑️</button>` : ''}</td>` : ''}</tr>`).join('')}</tbody></table>
       ${canMulti ? '<div style="margin-top:10px"><button class="btn red sm hidden" id="txBulkDel">מחיקת הנבחרים</button></div>' : ''}`;
   }
-  function wireTxTable(box, reload) {
+  function wireTxTable(box, reload, rows) {
     const c = caps();
+    box.querySelectorAll('[data-edittx]').forEach(b => b.onclick = () => { const t = (rows || []).find(x => x.id === +b.dataset.edittx); if (t) txForm(t.type, { onDone: reload }, t); });
     box.querySelectorAll('[data-deltx]').forEach(b => b.onclick = async () => { if (await confirmDialog('להעביר את התנועה לסל המחזור?', 'מחיקה')) { await guard(window.Store.tx.remove(+b.dataset.deltx)); toast('נמחק', 'ok'); reload(); } });
     if (c.multiDelete) {
       const all = $('#txAll', box), del = $('#txBulkDel', box);
@@ -553,8 +555,11 @@
   }
 
   // transaction create/edit modal. type fixed; ctx may include project_id + stages
-  async function txForm(type, ctx) {
+  async function txForm(type, ctx, tx) {
     ctx = ctx || {};
+    const editing = !!(tx && tx.id);
+    if (editing) type = tx.type;
+    const V = editing ? tx : {};
     const isSub = type === 'sub_payment', isClient = type === 'client_payment', isProjExp = type === 'project_expense', isBiz = type === 'business_expense';
     // projects for picker (unless business expense)
     let projects = [], stages = ctx.stages || null;
@@ -563,20 +568,21 @@
     if (isProjExp || isBiz) { try { categories = await window.Store.tx.categories(); } catch (e) { categories = []; } }
     const projOpts = (sel) => '<option value="">— בחר פרויקט —</option>' + projects.map(p => `<option value="${p.id}" ${+sel === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
     const needStage = isSub || isClient;
-    openModal('הוספת ' + (TYPE_HE[type] || ''), `
-      ${!isBiz ? `<div class="field"><label>פרויקט *</label><select id="t_proj">${projOpts(ctx.project_id)}</select></div>` : ''}
+    openModal((editing ? 'עריכת ' : 'הוספת ') + (TYPE_HE[type] || ''), `
+      ${!isBiz ? `<div class="field"><label>פרויקט *</label><select id="t_proj">${projOpts(editing ? tx.project_id : ctx.project_id)}</select></div>` : ''}
       ${needStage ? `<div class="field"><label>שלב *</label><select id="t_stage"><option value="">— בחר שלב —</option></select><div class="mini" id="t_stageRem" style="margin-top:5px"></div></div>` : ''}
       <div class="row">
-        <div class="field"><label>סכום (₪) *</label><input id="t_amount" type="number" autofocus></div>
-        <div class="field"><label>תאריך</label><input id="t_date" type="date" value="${today()}"></div>
+        <div class="field"><label>סכום (₪) *</label><input id="t_amount" type="number" value="${V.amount != null ? V.amount : ''}" autofocus></div>
+        <div class="field"><label>תאריך</label><input id="t_date" type="date" value="${V.date ? String(V.date).slice(0, 10) : today()}"></div>
       </div>
       ${(isProjExp || isBiz) ? `<div class="row">
-        <div class="field"><label>קטגוריה</label><input id="t_category" list="t_catList" placeholder="בחר מהרשימה או הקלד חדשה"><datalist id="t_catList">${categories.map(c => `<option value="${esc(c)}"></option>`).join('')}</datalist></div>
-        <div class="field"><label>ספק</label><input id="t_supplier"></div>
+        <div class="field"><label>קטגוריה</label><input id="t_category" list="t_catList" value="${esc(V.category || '')}" placeholder="בחר מהרשימה או הקלד חדשה"><datalist id="t_catList">${categories.map(c => `<option value="${esc(c)}"></option>`).join('')}</datalist></div>
+        <div class="field"><label>ספק</label><input id="t_supplier" value="${esc(V.supplier || '')}"></div>
       </div>
-      <div class="field"><label>מהות ההוצאה</label><input id="t_purpose"></div>` : ''}
-      <div class="field"><label>אמצעי תשלום</label><input id="t_method" placeholder="מזומן / העברה / צ׳ק / אשראי"></div>
+      <div class="field"><label>מהות ההוצאה</label><input id="t_purpose" value="${esc(V.purpose || '')}"></div>` : ''}
+      <div class="field"><label>אמצעי תשלום</label><input id="t_method" value="${esc(V.method || '')}" placeholder="מזומן / העברה / צ׳ק / אשראי"></div>
       ${(isProjExp || isBiz) ? `<div class="field"><label>חשבונית</label>
+        ${editing && tx.invoice_url ? `<div class="mini" style="margin-bottom:4px">נוכחית: ${invoiceLink(tx.invoice_url)}</div>` : ''}
         <input id="t_file" type="file" accept="image/*,.pdf" style="display:none">
         <input id="t_cam" type="file" accept="image/*" capture="environment" style="display:none">
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -585,17 +591,18 @@
           <span class="mini" id="t_fileName" style="color:var(--muted)"></span>
         </div>
         <div class="mini" id="t_fileNote"></div></div>` : ''}
-      <div class="field"><label>הערה</label><input id="t_note"></div>`,
+      <div class="field"><label>הערה</label><input id="t_note" value="${esc(V.note || '')}"></div>`,
       [{ label: 'שמירה', onClick: async (close) => {
         const amount = parseFloat(fv('t_amount')); if (!(amount > 0)) return toast('הזן סכום תקין', 'err');
         const d = { type, amount, date: fv('t_date') || null, method: fv('t_method'), note: fv('t_note') };
+        if (editing) d.invoice_url = tx.invoice_url;   // שמירת החשבונית הקיימת אם לא הוחלפה
         if (!isBiz) { d.project_id = fv('t_proj'); if (!d.project_id) return toast('בחר פרויקט', 'err'); }
         if (needStage) {
           d.stage_id = fv('t_stage'); if (!d.stage_id) return toast('בחר שלב', 'err');
           const st = (stages || []).find(x => x.id === +d.stage_id);
-          if (isSub) { d.subcontractor_id = st ? st.subcontractor_id : null; if (!d.subcontractor_id) return toast('לא הוגדר קבלן משנה לפרויקט — הגדר אותו בעריכת הפרויקט', 'err'); }
-          // חסימת חריגה מסכום השלב
-          if (st) {
+          if (isSub) { d.subcontractor_id = st ? st.subcontractor_id : (editing ? tx.subcontractor_id : null); if (!d.subcontractor_id) return toast('לא הוגדר קבלן משנה לפרויקט — הגדר אותו בעריכת הפרויקט', 'err'); }
+          // חסימת חריגה מסכום השלב (בעריכה השרת בודק ומחריג את התנועה הנוכחית)
+          if (!editing && st) {
             const cap = isClient ? (+st.client_amount || 0) : (+st.sub_amount || 0);
             const paid = isClient ? (+st.paid_in || 0) : (+st.paid_sub || 0);
             const remaining = cap - paid;
@@ -613,9 +620,9 @@
           d.invoice_url = up.url;
           if (up.storage === 'local') toast('⚠️ החשבונית נשמרה על השרת בלבד — הדרייב אינו מחובר', 'err');
         }
-        await guard(window.Store.tx.create(d));
+        await guard(editing ? window.Store.tx.update(tx.id, d) : window.Store.tx.create(d));
         close(); toast('נשמר', 'ok');
-        if (ctx.project_id) openProject(ctx.project_id); else refresh();
+        if (ctx.onDone) ctx.onDone(); else if (ctx.project_id) openProject(ctx.project_id); else refresh();
       } }, { label: 'ביטול', cls: 'ghost', onClick: (c) => c() }]);
     // כפתורי חשבונית: העלאת קובץ / צילום (capture פותח את המצלמה במובייל)
     if (isProjExp || isBiz) {
@@ -636,14 +643,15 @@
         if (st) { const r = remOf(st); remEl.innerHTML = `יתרה לשלב זה: <b style="color:var(--brand-d)">${money(Math.max(0, r))}</b>`; }
         else remEl.textContent = '';
       };
-      const fill = (raw) => {
-        stages = (raw || []).filter(s => remOf(s) > 0.5);   // מסתירים שלבים ששולמו במלואם
-        stageSel.innerHTML = '<option value="">— בחר שלב —</option>' + stages.map(s => `<option value="${s.id}">${esc(s.name)} · נותר ${money0(remOf(s))} ₪</option>`).join('');
+      const fill = (raw, keepId) => {
+        stages = (raw || []).filter(s => remOf(s) > 0.5 || s.id === keepId);   // מסתירים שלבים ששולמו — פרט לשלב הנערך
+        stageSel.innerHTML = '<option value="">— בחר שלב —</option>' + stages.map(s => `<option value="${s.id}" ${s.id === keepId ? 'selected' : ''}>${esc(s.name)} · נותר ${money0(remOf(s))} ₪</option>`).join('');
         remEl.innerHTML = stages.length ? '' : '<span style="color:var(--muted)">כל השלבים שולמו במלואם 🎉</span>';
         updateRem();
       };
       stageSel.onchange = updateRem;
-      if (stages) fill(stages);
+      if (editing && tx.project_id) { const d = await guard(window.Store.projects.get(tx.project_id)); fill(d.stages, tx.stage_id); }
+      else if (stages) fill(stages);
       const projSel = $('#t_proj');
       if (projSel) projSel.onchange = async () => { if (!projSel.value) { stageSel.innerHTML = '<option value="">— בחר שלב —</option>'; remEl.textContent = ''; stages = []; return; } const d = await guard(window.Store.projects.get(projSel.value)); fill(d.stages); };
     }
@@ -671,7 +679,7 @@
       const rows = await guard(window.Store.tx.list(f));
       const box = $('#txBox');
       box.innerHTML = rows.length ? txTable(rows, caps()) : '<div class="empty">אין תנועות</div>';
-      wireTxTable(box, load);
+      wireTxTable(box, load, rows);
     };
     $('#fApply').onclick = load;
     load();
@@ -695,12 +703,13 @@
     const box = $('#bizBox');
     if (!rows.length) box.innerHTML = '<div class="empty"><div class="big">🧾</div>אין הוצאות עסק</div>';
     else {
-      box.innerHTML = `<table><thead><tr><th>תאריך</th><th>קטגוריה</th><th>ספק</th><th>מהות</th><th>אמצעי</th><th>סכום</th><th>חשבונית</th>${caps().del ? '<th></th>' : ''}</tr></thead><tbody>${rows.map(t => `
+      const cB = caps();
+      box.innerHTML = `<table><thead><tr><th>תאריך</th><th>קטגוריה</th><th>ספק</th><th>מהות</th><th>אמצעי</th><th>סכום</th><th>חשבונית</th>${(cB.writeTx || cB.del) ? '<th></th>' : ''}</tr></thead><tbody>${rows.map(t => `
         <tr><td>${dfmt(t.date)}</td><td>${t.category ? `<span class="tag-trade">${esc(t.category)}</span>` : ''}</td><td>${esc(t.supplier || '')}</td><td>${esc(t.purpose || '')}</td><td>${esc(t.method || '')}</td>
         <td class="num" style="color:var(--red)">${money(t.amount)}</td>
         <td>${invoiceLink(t.invoice_url)}</td>
-        ${caps().del ? `<td><button class="btn xs red" data-deltx="${t.id}">🗑️</button></td>` : ''}</tr>`).join('')}</tbody></table>`;
-      wireTxTable(box, scrBiz);
+        ${(cB.writeTx || cB.del) ? `<td>${cB.writeTx ? `<button class="btn xs ghost" data-edittx="${t.id}">✏️</button>` : ''}${cB.del ? `<button class="btn xs red" data-deltx="${t.id}">🗑️</button>` : ''}</td>` : ''}</tr>`).join('')}</tbody></table>`;
+      wireTxTable(box, scrBiz, rows);
     }
   }
 
@@ -722,12 +731,13 @@
     const box = $('#peBox');
     if (!rows.length) box.innerHTML = '<div class="empty"><div class="big">🧱</div>אין הוצאות לפרויקטים</div>';
     else {
-      box.innerHTML = `<table><thead><tr><th>תאריך</th><th>פרויקט</th><th>קטגוריה</th><th>ספק</th><th>מהות</th><th>סכום</th><th>חשבונית</th>${caps().del ? '<th></th>' : ''}</tr></thead><tbody>${rows.map(t => `
+      const cPE = caps();
+      box.innerHTML = `<table><thead><tr><th>תאריך</th><th>פרויקט</th><th>קטגוריה</th><th>ספק</th><th>מהות</th><th>סכום</th><th>חשבונית</th>${(cPE.writeTx || cPE.del) ? '<th></th>' : ''}</tr></thead><tbody>${rows.map(t => `
         <tr><td>${dfmt(t.date)}</td><td>${esc(t.project_name || '')}</td><td>${t.category ? `<span class="tag-trade">${esc(t.category)}</span>` : ''}</td><td>${esc(t.supplier || '')}</td><td>${esc(t.purpose || '')}</td>
         <td class="num" style="color:var(--red)">${money(t.amount)}</td>
         <td>${invoiceLink(t.invoice_url)}</td>
-        ${caps().del ? `<td><button class="btn xs red" data-deltx="${t.id}">🗑️</button></td>` : ''}</tr>`).join('')}</tbody></table>`;
-      wireTxTable(box, scrProjExp);
+        ${(cPE.writeTx || cPE.del) ? `<td>${cPE.writeTx ? `<button class="btn xs ghost" data-edittx="${t.id}">✏️</button>` : ''}${cPE.del ? `<button class="btn xs red" data-deltx="${t.id}">🗑️</button>` : ''}</td>` : ''}</tr>`).join('')}</tbody></table>`;
+      wireTxTable(box, scrProjExp, rows);
     }
   }
 
