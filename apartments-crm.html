@@ -2079,6 +2079,7 @@ var IMPORT_TYPES={
     {k:"payer",l:"מי שילם (שותף)",hints:["משלם","מי שילם"],opt:true},
     {k:"account",l:"מהחשבון",hints:["שולם מ","חשבון"],opt:true},
     {k:"method",l:"אמצעי תשלום",hints:["אופן","אמצעי"],opt:true},
+    {k:"classification",l:"סיווג ההוצאה (השקעה/שוטף/פרטי)",hints:["השקעה","סיווג","שוטף"],opt:true},
     {k:"invoice",l:"חשבונית",hints:["חשבונית"],opt:true},
     {k:"note",l:"הערה",hints:["הערה"],opt:true}
   ]},
@@ -2574,7 +2575,8 @@ function commitImport(force){
         if(force && target && amt>0){
           // ייבוא כפוי: ההוצאה לא קיימת בגיליון ההוצאות — ניצור אותה לפי התשלום
           var neid=uid();
-          DB.expenses.push({id:neid,apartmentId:aptId,categoryId:"",classification:"investment",
+          DB.expenses.push({id:neid,apartmentId:aptId,categoryId:"",
+            classification:(m.classification>=0 && String(r[m.classification]||"").trim())?classifyText(r[m.classification]):"investment",
             description:target,amount:amt,date:(m.date>=0?impDate(r[m.date]):todayISO()),
             note:"נוצרה אוטומטית מייבוא תשלומים",hasInvoice:false,invoiceLink:"",
             mgmtEnabled:false,mgmtBaseType:"full",mgmtVatRate:18,deleted:false});
@@ -2585,6 +2587,12 @@ function commitImport(force){
         } else { skip(idx,'לא נמצאה הוצאה בשם "'+target+'"',r); return; }
       }
       if(amt<=0){ skip(idx,"סכום ריק או אפס",r); return; }
+      /* עמודת סיווג בגיליון התשלומים מתייחסת להוצאה — מעדכנים אותה
+         רק כשהתא מלא, כדי לא לדרוס סיווג קיים בשורות שהשאירו ריק */
+      if(m.classification>=0){
+        var clsRaw=String(r[m.classification]||"").trim();
+        if(clsRaw) e.classification=classifyText(clsRaw);
+      }
       var pdt=(m.date>=0?impDate(r[m.date]):todayISO());
       var accId=(m.account>=0)?findOrCreateAccount(aptId,r[m.account]):null;
       var isBank=accountIsBank(accId);
