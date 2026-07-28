@@ -791,7 +791,7 @@ function editApartment(id){
 function renderApartment(c){
   var a=currentApartment(); if(!a){ c.innerHTML='<div class="empty">דירה לא נמצאה</div>'; return; }
   var tab=state.params.tab||"overview";
-  var tabs=[["overview","סקירה"],["expenses","הוצאות / שלבים"],["partners","שותפים"]];
+  var tabs=[["overview","סקירה"],["expenses","הוצאות / שלבים"],["payments","תשלומים"],["partners","שותפים"]];
   tabs.push(["managers","דמי ניהול"]);   // תמיד נגיש — בפנים אפשר להפעיל
   if(a.hasBank) tabs.push(["bank","בנק זמני"]);
   tabs.push(["income","הכנסות"]);
@@ -807,6 +807,7 @@ function renderApartment(c){
   switch(tab){
     case "overview": body.innerHTML=viewApartmentOverview(a.id); break;
     case "expenses": body.innerHTML=viewExpenses(a.id); break;
+    case "payments": body.innerHTML=modulePayments(a.id); break;
     case "partners": body.innerHTML=viewApartmentPartners(a.id); break;
     case "managers": body.innerHTML=viewManagers(a.id); break;
     case "bank": body.innerHTML=viewBank(a.id); break;
@@ -988,7 +989,7 @@ async function boot(){
    מודולים
    ============================================================ */
 /* ---------- חיפוש וסינון ---------- */
-var Q={apts:"",exp:"",expStatus:"",expClass:"",quick:"",partners:"",cross:"",recycle:""};
+var Q={apts:"",exp:"",expStatus:"",expClass:"",quick:"",partners:"",cross:"",recycle:"",pay:"",payWho:"",paySrc:""};
 /* כל מילה בשאילתה חייבת להופיע — מאפשר "עורך דין קופר" ו"קופר דין" כאחד */
 function matches(q,text){
   q=String(q||"").trim().toLowerCase(); if(!q) return true;
@@ -1406,6 +1407,80 @@ function saveExpense(eId,aptId){
     });
   }
   save(); toast("ההוצאה נשמרה","ok"); rerender();
+}
+
+/* ---------- לשונית תשלומים: כל תשלומי הדירה במקום אחד ---------- */
+function apAllPayments(aptId){
+  var expIds={}; apExpenses(aptId).forEach(function(e){ expIds[e.id]=1; });
+  return active(DB.payments).filter(function(p){ return expIds[p.expenseId]; });
+}
+function modulePayments(aptId){
+  var all=apAllPayments(aptId);
+  var h='<div class="toolbar"><h3 style="margin:0">כל התשלומים</h3><div class="sp"></div></div>';
+  if(!all.length) return h+'<div class="empty">אין תשלומים עדיין. רושמים תשלום דרך 💳 בשורת ההוצאה, או ב"תשלום מהיר".</div>';
+  var payers={}; all.forEach(function(p){ if(p.payerPartnerId) payers[p.payerPartnerId]=1; });
+  h+='<div class="toolbar">'+
+    searchBox("pay-q",Q.pay,"חיפוש לפי שלב / הערה / חשבון…","Q.pay=this.value;renderPayTable('+JSON.stringify(aptId)+')")+
+    '<select style="max-width:170px" onchange="Q.payWho=this.value;renderPayTable('+JSON.stringify(aptId)+')">'+
+      '<option value="">כל המשלמים</option>'+
+      Object.keys(payers).map(function(pid){
+        return '<option value="'+pid+'"'+(Q.payWho===pid?" selected":"")+'>'+esc(partnerName(pid))+'</option>'; }).join("")+
+    '</select>'+
+    '<select style="max-width:170px" onchange="Q.paySrc=this.value;renderPayTable('+JSON.stringify(aptId)+')">'+
+      [["","כל המקורות"],["direct","ישירות משותף"],["bank","מהבנק"],["manager","למנהלים (דמי ניהול)"]].map(function(o){
+        return '<option value="'+o[0]+'"'+(Q.paySrc===o[0]?" selected":"")+'>'+o[1]+'</option>'; }).join("")+
+    '</select>'+
+    ((Q.pay||Q.payWho||Q.paySrc)?'<button class="btn btn-ghost btn-sm" onclick="Q.pay=\'\';Q.payWho=\'\';Q.paySrc=\'\';rerender()">✕ נקה</button>':'')+
+    '<div class="sp"></div><span id="pay-count"></span></div>';
+  h+='<div id="pay-table">'+payTableHtml(aptId)+'</div>';
+  return h;
+}
+function renderPayTable(aptId){
+  var el=document.getElementById("pay-table"); if(el) el.innerHTML=payTableHtml(aptId);
+}
+function payTableHtml(aptId){
+  var all=apAllPayments(aptId);
+  var list=all.filter(function(p){
+    var e=byId(DB.expenses,p.expenseId), acc=byId(DB.accounts,p.accountId);
+    var txt=(e?e.description:"")+" "+(p.note||"")+" "+(acc?acc.name:"")+" "+
+            (p.payerPartnerId?partnerName(p.payerPartnerId):"")+" "+
+            (p.recipientType==="manager"?managerName(p.recipientManagerId):"");
+    if(!matches(Q.pay,txt)) return false;
+    if(Q.payWho && p.payerPartnerId!==Q.payWho) return false;
+    if(Q.paySrc==="bank" && !accountIsBank(p.accountId)) return false;
+    if(Q.paySrc==="direct" && (accountIsBank(p.accountId)||p.recipientType==="manager")) return false;
+    if(Q.paySrc==="manager" && p.recipientType!=="manager") return false;
+    return true;
+  });
+  var cnt=document.getElementById("pay-count");
+  if(cnt) cnt.innerHTML=countLine(list.length,all.length,"תשלומים");
+  if(!list.length) return '<div class="empty">לא נמצא תשלום שמתאים לסינון</div>';
+  var tot=0;
+  var h='<div class="table-wrap"><table class="tbl"><thead><tr>'+
+    '<th>תאריך</th><th>עבור (שלב)</th><th>סכום</th><th>חשבון</th><th>מי שילם</th>'+
+    '<th>מוטב</th><th>אמצעי</th><th>חשבונית</th><th>הערה</th><th></th></tr></thead><tbody>';
+  list.sort(function(x,y){ return x.date<y.date?1:-1; }).forEach(function(p){
+    var e=byId(DB.expenses,p.expenseId), acc=byId(DB.accounts,p.accountId);
+    tot+=Number(p.amount)||0;
+    var recip=p.recipientType==="manager"
+      ? '<span class="pill">מנהל: '+esc(managerName(p.recipientManagerId))+'</span>' : 'ספק';
+    h+='<tr><td>'+dateHe(p.date)+'</td>'+
+      '<td><b>'+esc(e?e.description:"—")+'</b></td>'+
+      '<td>'+money(p.amount)+'</td>'+
+      '<td>'+esc(acc?acc.name:"ידני")+(acc&&acc.isBank?" 🏦":"")+'</td>'+
+      '<td>'+(p.payerPartnerId?esc(partnerName(p.payerPartnerId)):(accountIsBank(p.accountId)?'<span class="muted">מהבנק</span>':"—"))+'</td>'+
+      '<td>'+recip+'</td><td>'+(METHODS[p.method]||"")+'</td>'+
+      '<td>'+(p.hasInvoice?"✔️":"")+'</td>'+
+      '<td class="muted" style="max-width:180px;overflow:hidden;text-overflow:ellipsis">'+esc(p.note||"")+'</td>'+
+      '<td class="right" style="white-space:nowrap">'+
+        '<button class="btn btn-ghost btn-sm" onclick="openPayments(\''+p.expenseId+'\')" title="כל תשלומי השלב">💳</button>'+
+        (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="openPaymentEditor(\''+p.expenseId+'\',\''+p.id+'\')">✏️</button>'+
+        '<button class="btn btn-ghost btn-sm" onclick="delPayment(\''+p.id+'\',\''+p.expenseId+'\')">🗑️</button>':'')+'</td></tr>';
+  });
+  var lbl=(list.length===all.length)?'סה"כ':'סה"כ המסונן';
+  h+='</tbody><tfoot><tr><td colspan="2">'+lbl+' ('+list.length+' תשלומים)</td><td>'+money(tot)+'</td>'+
+    '<td colspan="7"></td></tr></tfoot></table></div>';
+  return h;
 }
 
 /* ---------- תשלומים ---------- */
