@@ -278,7 +278,9 @@ function expensePaid(eId){
 }
 function expenseRemaining(eId){ var e=byId(DB.expenses,eId); return round2((e?Number(e.amount):0)-expensePaid(eId)); }
 function expenseStatus(eId){ var e=byId(DB.expenses,eId); var paid=expensePaid(eId); var amt=e?Number(e.amount):0;
-  if(paid<=0) return "unpaid"; if(paid>=amt-0.01) return "paid"; return "partial"; }
+  if(paid<=0) return "unpaid";
+  if(paid>amt+0.01) return "over";          // שולם ביתר — חריגה מאושרת
+  if(paid>=amt-0.01) return "paid"; return "partial"; }
 
 // דמי ניהול
 function mgmtBase(e){ var a=Number(e.amount)||0; if(e.mgmtBaseType==="net17")return a/1.17; if(e.mgmtBaseType==="net18")return a/1.18; return a; }
@@ -1096,12 +1098,14 @@ function expTableHtml(aptId){
     (a.hasManagement?'<th>דמי ניהול</th>':'')+'<th>שולם</th><th>נותר</th><th>סטטוס</th><th></th></tr></thead><tbody>';
   exps.sort(function(x,y){return (x.date<y.date)?1:-1;}).forEach(function(e){
     var st=expenseStatus(e.id), rem=expenseRemaining(e.id);
-    var badge=st==="paid"?'<span class="badge badge-ok">שולם</span>':st==="partial"?'<span class="badge badge-warn">חלקי</span>':'<span class="badge badge-danger">לא שולם</span>';
+    var badge=st==="paid"?'<span class="badge badge-ok">שולם</span>'
+      :st==="over"?'<span class="badge badge-warn">⚠️ ביתר</span>'
+      :st==="partial"?'<span class="badge badge-warn">חלקי</span>':'<span class="badge badge-danger">לא שולם</span>';
     h+='<tr><td>'+dateHe(e.date)+'</td><td><b>'+esc(e.description)+'</b>'+(e.hasInvoice?' 📎':'')+'</td>'+
       '<td>'+(CLASSIFICATIONS[e.classification]||"")+'</td>'+
       '<td>'+money(e.amount)+'</td>'+
       (a.hasManagement?'<td>'+(e.mgmtEnabled?money(expenseMgmtCostLive(e.id)):'—')+'</td>':'')+
-      '<td>'+money(expensePaid(e.id))+'</td><td class="'+(rem>0?"neg":"pos")+'">'+money(rem)+'</td><td>'+badge+'</td>'+
+      '<td>'+money(expensePaid(e.id))+'</td><td class="'+(Math.abs(rem)>0.01?"neg":"pos")+'">'+money(rem)+'</td><td>'+badge+'</td>'+
       '<td class="right" style="white-space:nowrap">'+
         '<button class="btn btn-ghost btn-sm" onclick="openPayments(\''+e.id+'\')" title="תשלומים">💳</button>'+
         (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="openExpenseEditor(\''+e.id+'\',\''+aptId+'\')">✏️</button>'+
@@ -1359,7 +1363,10 @@ function saveExpense(eId,aptId){
     var pctSum=rows.reduce(function(s,r){return s+r.percent;},0);
     if(Math.abs(pctSum-100)>0.01){ toast("סכום חלוקת השותפים חייב להיות 100% (כרגע "+num(pctSum)+"%)","err"); return false; }
   }
-  if(eId){ var paidSoFar=expensePaid(eId); if(amount<paidSoFar-0.01){ toast("סכום ההוצאה ("+money(amount)+") נמוך מהתשלומים שכבר נרשמו ("+money(paidSoFar)+")","err"); return false; } }
+  if(eId){ var paidSoFar=expensePaid(eId);
+    if(amount<paidSoFar-0.01){
+      if(!confirm("סכום השלב החדש ("+money(amount)+") נמוך ממה שכבר שולם ("+money(paidSoFar)+").\n\nהשלב יסומן \"שולם ביתר\". להמשיך?")) return false;
+    } }
   var e;
   if(eId){ e=byId(DB.expenses,eId); }
   else{ e={id:uid(),apartmentId:aptId,deleted:false}; DB.expenses.push(e); eId=e.id; }
@@ -1488,7 +1495,8 @@ function payTableHtml(aptId){
 function openPayments(eId){
   var e=byId(DB.expenses,eId); var pays=expPayments(eId);
   var body='<div class="stat-grid" style="margin-bottom:12px">'+
-    stat("סכום ההוצאה",money(e.amount))+stat("שולם",money(expensePaid(eId)))+stat("נותר",money(expenseRemaining(eId)),expenseRemaining(eId)>0?"neg":"pos")+'</div>';
+    stat("סכום ההוצאה",money(e.amount))+stat("שולם",money(expensePaid(eId)))+
+    stat(expenseRemaining(eId)<-0.01?"חריגה (שולם ביתר)":"נותר",money(expenseRemaining(eId)),Math.abs(expenseRemaining(eId))>0.01?"neg":"pos")+'</div>';
   body+='<div class="toolbar">'+(can("edit")?'<button class="btn btn-primary btn-sm" onclick="openPaymentEditor(\''+eId+'\',null)">➕ תשלום</button>':'')+'</div>';
   if(!pays.length) body+='<div class="empty">אין תשלומים.</div>';
   else{
@@ -1579,7 +1587,11 @@ function savePayment(eId,payId){
   // תקרות
   if(recipientType==="supplier"){
     var others=expPayments(eId).filter(function(x){return x.recipientType!=="manager"&&x.id!==payId;}).reduce(function(s,x){return s+(Number(x.amount)||0);},0);
-    if(others+amount>Number(e.amount)+0.01){ toast("סך התשלומים חורג מסכום ההוצאה ("+money(e.amount)+")","err"); return false; }
+    if(others+amount>Number(e.amount)+0.01){
+      /* חריגה מהשלב מותרת — אבל רק באישור מפורש, שלא תקרה בטעות הקלדה */
+      var over=round2(others+amount-Number(e.amount));
+      if(!confirm("שים לב: סך התשלומים ("+money(others+amount)+") יחרוג מסכום השלב ("+money(e.amount)+") ב-"+money(over)+".\n\nהשלב יסומן \"שולם ביתר\". לאשר את התשלום?")) return false;
+    }
   }else{
     var cap=mgrFeeLiveOnExpense(eId,recipientManagerId);
     var othersM=expPayments(eId).filter(function(x){return x.recipientType==="manager"&&x.recipientManagerId===recipientManagerId&&x.id!==payId;}).reduce(function(s,x){return s+(Number(x.amount)||0);},0);
