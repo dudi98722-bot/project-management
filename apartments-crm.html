@@ -194,12 +194,19 @@ function saveLocal(){
    עדיין נמצא המצב שלפני השינוי ברגע שקוראים ל-save(). */
 var UNDO=[], UNDO_MAX=30;
 function undoCount(){ return UNDO.length; }
+/* סימון "יש שינוי מקומי שטרם הגיע לשרת" — נשמר ב-localStorage (שורד רענון
+   וסגירה), ומנוקה רק אחרי אישור שמירה מהשרת. בכניסה הבאה, אם הסימון קיים,
+   המקומי נדחף לשרת במקום להימחק על ידו. */
+function markDirty(){ try{ localStorage.setItem(LSKEY+"_dirty","1"); }catch(e){} }
+function clearDirtyMark(){ try{ localStorage.removeItem(LSKEY+"_dirty"); }catch(e){} }
+function hasDirtyMark(){ try{ return localStorage.getItem(LSKEY+"_dirty")==="1"; }catch(e){ return false; } }
 function save(){
   try{
     var prev=localStorage.getItem(LSKEY);
     if(prev){ UNDO.push(prev); if(UNDO.length>UNDO_MAX) UNDO.shift(); }
     localStorage.setItem(LSKEY, JSON.stringify(DB));
   }catch(e){ toast("שגיאת שמירה מקומית","err"); }
+  markDirty();
   serverSave();   // כל שינוי נשמר גם בגוגל שיטס
 }
 function undo(){
@@ -208,6 +215,7 @@ function undo(){
   try{
     DB=JSON.parse(prev);
     localStorage.setItem(LSKEY,prev);
+    markDirty();
     serverSave();                       // מסנכרן את המצב המוחזר גם לשיטס
     closeModal();
     toast("הפעולה בוטלה"+(UNDO.length?" · עוד "+UNDO.length+" לביטול":""),"ok");
@@ -517,11 +525,40 @@ async function doLogin(){
   var j=await api({action:"login",codeHash:h});
   if(!j||!j.ok){ toast((j&&j.error==="network")?"אין חיבור לשרת":"קוד שגוי","err"); return; }
   setAuth(h); CU=j.user;
-  var res=await serverLoad();
-  if(res.data && Array.isArray(res.data.apartments)){ DB=normalizeDB(res.data); saveLocal(); }
+  if(hasDirtyMark() && DB && Array.isArray(DB.apartments)){
+    /* המכשיר מחזיק שינוי שטרם הגיע לשרת — דוחפים אותו במקום למשוך ולמחוק */
+    SAVEQ.dirty=true; flushSave();
+    toast("נמצאו שינויים שטרם סונכרנו — נשלחים לשרת","warn");
+  } else {
+    var res=await serverLoad();
+    if(res.data && Array.isArray(res.data.apartments)){ DB=normalizeDB(res.data); saveLocal(); UNDO.length=0; }
+    else if(res.error){
+      /* בלי נתונים עדכניים לא נכנסים למצב עריכה על מטמון ישן */
+      setAuth(""); CU=null;
+      toast("לא הצלחתי לטעון את הנתונים מהשרת — נסה שוב בעוד רגע","err");
+      return;
+    }
+  }
   toast("ברוך הבא, "+CU.name,"ok"); go("dashboard",{});
 }
-function logout(){ setAuth(""); CU=null; renderApp(); }
+function logout(){
+  if(SAVEQ.timer){ clearTimeout(SAVEQ.timer); SAVEQ.timer=null; }
+  if(hasUnsaved()){
+    /* שולחים ניסיון אחרון עם ההרשאה הנוכחית לפני שהיא נמחקת.
+       אם ייכשל — הסימון המקומי נשאר והכניסה הבאה תדחף את המקומי. */
+    var h=getAuth();
+    if(h){
+      try{
+        fetch(SHEETS_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},
+          body:JSON.stringify({action:"save",codeHash:h,data:DB})})
+          .then(function(r){return r.json();})
+          .then(function(res){ if(res&&res.ok) clearDirtyMark(); }).catch(function(){});
+      }catch(e){}
+    }
+  }
+  SAVEQ.dirty=false; SAVEQ.inflight=false; SAVEQ.fails=0;
+  setAuth(""); CU=null; renderApp();
+}
 /* ---------- שחזור קוד כניסה במייל (דרך Apps Script) ---------- */
 async function forgotCode(){
   toast("שולח קוד שחזור למייל…","ok");
@@ -551,8 +588,13 @@ async function doResetCode(){
   var j=await api({action:"login",codeHash:h});
   if(j&&j.ok){
     CU=j.user;
-    var res=await serverLoad();
-    if(res.data && Array.isArray(res.data.apartments)){ DB=normalizeDB(res.data); saveLocal(); }
+    if(hasDirtyMark() && DB && Array.isArray(DB.apartments)){
+      SAVEQ.dirty=true; flushSave();
+      toast("נמצאו שינויים שטרם סונכרנו — נשלחים לשרת","warn");
+    } else {
+      var res=await serverLoad();
+      if(res.data && Array.isArray(res.data.apartments)){ DB=normalizeDB(res.data); saveLocal(); UNDO.length=0; }
+    }
     toast("הקוד עודכן — ברוך הבא","ok"); go("dashboard",{});
   }else{
     setAuth(""); toast("הקוד עודכן — היכנס עם הקוד החדש","ok"); renderApp();
@@ -813,9 +855,18 @@ function viewRecycle(){ return moduleRecycle(); }
 function pushToSheets(){ serverSave(); }
 async function pullFromSheets(){
   if(!sheetsUrl()){ toast("לא הוגדר קישור לשיט","err"); return; }
+  if(SAVEQ.inflight){ toast("שמירה לשרת בעיצומה — המתן רגע ונסה שוב","warn"); return; }
+  if(hasUnsaved()||hasDirtyMark()){
+    if(!confirm("יש שינויים מקומיים שטרם נשמרו לשרת.\n\nטעינה מהשיט תדרוס אותם לצמיתות. להמשיך בכל זאת?")) return;
+  }
+  if(SAVEQ.timer){ clearTimeout(SAVEQ.timer); SAVEQ.timer=null; }
+  SAVEQ.dirty=false; SAVEQ.fails=0; clearDirtyMark();
   var res=await serverLoad();
   if(res.error){ toast("שגיאת חיבור לשיט","err"); return; }
-  if(res.data && Array.isArray(res.data.apartments)){ DB=normalizeDB(res.data); saveLocal(); toast("נטען מהשיט","ok"); rerender(); }
+  if(res.data && Array.isArray(res.data.apartments)){
+    DB=normalizeDB(res.data); saveLocal(); UNDO.length=0;   // סטאק ישן = בסיס לא תקף אחרי משיכה
+    toast("נטען מהשיט","ok"); rerender();
+  }
   else toast("השיט ריק","warn");
 }
 
@@ -829,9 +880,17 @@ var SAVEQ={inflight:false,dirty:false,timer:null,fails:0};
 function serverSave(){
   if(!getAuth()){ setSync("local"); return; }
   SAVEQ.dirty=true;
+  SAVEQ.fails=0;                       // עריכה חדשה מאפסת את מונה הכישלונות — ניסיון מיידי
   setSync("saving");
   if(SAVEQ.timer) return;
   SAVEQ.timer=setTimeout(function(){ SAVEQ.timer=null; flushSave(); },350);
+}
+function scheduleRetry(){
+  /* לעולם לא מפסיקים לנסות — רק מאטים (עד 30 שניות בין ניסיונות).
+     עצירה קשיחה אחרי N כישלונות השאירה שינויים תקועים לנצח. */
+  var delay=Math.min(2000*Math.max(1,SAVEQ.fails), 30000);
+  setSync(SAVEQ.fails>=3 ? "err" : "saving");
+  setTimeout(flushSave, delay);
 }
 function flushSave(){
   if(SAVEQ.inflight || !SAVEQ.dirty) return;
@@ -842,18 +901,45 @@ function flushSave(){
     .then(function(r){ return r.json(); })
     .then(function(j){
       SAVEQ.inflight=false;
-      if(j&&j.ok){ SAVEQ.fails=0; } else { SAVEQ.fails++; SAVEQ.dirty=true; }
-      if(SAVEQ.dirty){ setSync("saving"); setTimeout(flushSave, SAVEQ.fails?1500:0); }
-      else setSync("ok");
+      if(j&&j.ok){
+        SAVEQ.fails=0;
+        if(SAVEQ.dirty){ setSync("saving"); setTimeout(flushSave,0); }   // שינויים שנעשו בזמן השליחה
+        else { clearDirtyMark(); setSync("ok"); }
+        return;
+      }
+      SAVEQ.dirty=true;
+      var err=j&&j.error;
+      if(err==="unauthorized"||err==="forbidden"){
+        /* קוד הכניסה כבר לא תקף (למשל אחרי איפוס ממכשיר אחר).
+           אסור להמשיך לירות — עוצרים, והשינוי שמור מקומית ומסומן,
+           כך שאחרי כניסה מחודשת הוא נדחף לשרת ולא נמחק. */
+        setSync("err"); setAuth(""); CU=null;
+        toast("החיבור לשרת פג — יש להתחבר מחדש. השינויים שלך שמורים ויסונכרנו אחרי הכניסה","err");
+        renderApp(); return;
+      }
+      SAVEQ.fails++; scheduleRetry();
     })
     .catch(function(){
-      SAVEQ.inflight=false; SAVEQ.fails++; SAVEQ.dirty=true; setSync("err");
-      if(SAVEQ.fails<6) setTimeout(flushSave,2000);   // ניסיון חוזר, שלא ייאבד מידע
+      SAVEQ.inflight=false; SAVEQ.fails++; SAVEQ.dirty=true;
+      scheduleRetry();
     });
 }
 function hasUnsaved(){ return !!(SAVEQ.dirty||SAVEQ.inflight); }
+window.addEventListener("online",function(){    // הרשת חזרה — מנסים מיד
+  if(SAVEQ.dirty && !SAVEQ.inflight){ SAVEQ.fails=0; flushSave(); }
+});
 window.addEventListener("beforeunload",function(e){
   if(hasUnsaved()){ e.preventDefault(); e.returnValue=""; return ""; }
+});
+window.addEventListener("pagehide",function(){
+  /* ניסיון אחרון לשלוח לפני סגירה. אם הוא נכשל (או שהנתונים גדולים מדי
+     ל-keepalive) — הסימון המקומי נשאר, והכניסה הבאה תדחף את המקומי. */
+  if(!hasUnsaved()) return;
+  var h=getAuth(); if(!h) return;
+  try{
+    fetch(SHEETS_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body:JSON.stringify({action:"save",codeHash:h,data:DB}),keepalive:true});
+  }catch(e){}
 });
 async function serverLoad(){
   var h=getAuth();
@@ -869,12 +955,29 @@ async function serverLoad(){
 async function boot(){
   var hadLocal=loadDB();
   if(!hadLocal||!DB){ DB=blankDB(); seedIfEmpty(); }
-  if(getAuth()){                       // session פעיל -> משחזרים מהשרת
-    var res=await serverLoad();
-    if(res.data && Array.isArray(res.data.apartments)){
-      DB=normalizeDB(res.data); saveLocal();
-      if(res.user) CU=res.user;
-    } else if(res.reason==="unauthorized"){ setAuth(""); CU=null; }
+  if(getAuth()){                       // session פעיל
+    if(hadLocal && hasDirtyMark()){
+      /* יש שינוי מקומי שלא אושר ע"י השרת (סגירה מהירה / כשל רשת).
+         לא מושכים מהשרת — קודם דוחפים את המקומי, אחרת השינוי נמחק. */
+      var jl=await api({action:"login",codeHash:getAuth()});
+      if(jl&&jl.ok){
+        CU=jl.user;
+        SAVEQ.dirty=true; flushSave();
+        toast("נמצאו שינויים שטרם סונכרנו — נשלחים לשרת עכשיו","warn");
+      } else if(jl&&jl.error==="bad-code"){ setAuth(""); CU=null; }
+      /* כשל רשת: נשארים על המקומי עם הסימון — ננסה שוב בהמשך */
+    } else {
+      var res=await serverLoad();
+      if(res.data && Array.isArray(res.data.apartments)){
+        DB=normalizeDB(res.data); saveLocal(); UNDO.length=0;
+        if(res.user) CU=res.user;
+      } else if(res.reason==="unauthorized"){ setAuth(""); CU=null; }
+      else if(res.error){
+        /* השרת לא זמין: לא עורכים בשקט על עותק ישן — חוזרים למסך הכניסה,
+           שמציג את אזהרת החיבור. הנתונים המקומיים לא נמחקים. */
+        CU=null;
+      }
+    }
   }
   renderApp();
 }
@@ -1082,9 +1185,25 @@ function applyBulkMgmt(aptId){
   var remove=checked("bm-remove");
   var mgrs=apManagers(aptId);
   if(remove){
-    if(!confirm("להסיר דמי ניהול מ-"+ids.length+" שלבים?\n\nהנתונים הקיימים יישמרו ויחזרו אם תחיל שוב.")) return false;
-    ids.forEach(function(eid){ var e=byId(DB.expenses,eid); if(e) e.mgmtEnabled=false; });
-    save(); toast("דמי הניהול הוסרו מ-"+ids.length+" שלבים","ok"); rerender(); return;
+    /* שלב שכבר שולם עליו למנהלים לא ניתן לכיבוי — אחרת התשלומים נספרים
+       בלי צד עלות והמאזן נשבר. מדלגים עליו ומדווחים. */
+    var blocked=[], okIds=[];
+    ids.forEach(function(eid){
+      var mPaid=expPayments(eid).filter(function(p){return p.recipientType==="manager";})
+        .reduce(function(s,p){return s+(Number(p.amount)||0);},0);
+      if(mPaid>0.01) blocked.push(eid); else okIds.push(eid);
+    });
+    if(!okIds.length){
+      toast("בכל השלבים שנבחרו כבר שולמו דמי ניהול — אי אפשר לבטל. מחק קודם את התשלומים למנהלים","err");
+      return false;
+    }
+    if(!confirm("יוסרו דמי ניהול מ-"+okIds.length+" שלבים"+
+      (blocked.length? "\n("+blocked.length+" שלבים ידולגו כי כבר שולם בהם למנהלים)":"")+
+      "\n\nהנתונים הקיימים יישמרו ויחזרו אם תחיל שוב.")) return false;
+    okIds.forEach(function(eid){ var e=byId(DB.expenses,eid); if(e) e.mgmtEnabled=false; });
+    save();
+    toast("דמי הניהול הוסרו מ-"+okIds.length+" שלבים"+(blocked.length?" · "+blocked.length+" דולגו (שולם בהם)":""),blocked.length?"warn":"ok");
+    rerender(); return;
   }
   var base=val("bm-base")||"full", vat=Number(val("bm-vat")); if(isNaN(vat)) vat=18;
   var cfg=mgrs.map(function(m){
@@ -1113,8 +1232,11 @@ function splitRowHtml(pid,pct){
     '<button class="btn btn-ghost btn-sm" onclick="this.closest(\'.split-row\').remove();updateSplitSum()">✕</button></div>';
 }
 function updateSplitSum(){
+  var rows=document.querySelectorAll("#split-rows .split-row");
+  var el=document.getElementById("split-sum"); if(!el) return;
+  if(!rows.length){ el.textContent="ללא חלוקה"; el.className="muted"; return; }
   var sum=0; document.querySelectorAll("#split-rows .sp-pct").forEach(function(i){sum+=Number(i.value)||0;});
-  var el=document.getElementById("split-sum"); if(el){ el.textContent=num(sum)+"%"; el.className=Math.abs(sum-100)<0.01?"pos":"neg"; }
+  el.textContent=num(sum)+"%"; el.className=Math.abs(sum-100)<0.01?"pos":"neg";
 }
 function addSplitRow(){ document.getElementById("split-rows").insertAdjacentHTML("beforeend",splitRowHtml("",0)); updateSplitSum(); }
 function toggleMgmt(){
@@ -1172,6 +1294,9 @@ function openExpenseEditor(eId,aptId){
      '<div class="field full"><label><input type="checkbox" id="ex-inv" style="width:auto" '+(e&&e.hasInvoice?"checked":"")+'> יש חשבונית/קבלה</label><input id="ex-link" placeholder="קישור לקבלה (אופציונלי)" value="'+esc(e?e.invoiceLink:"")+'" style="margin-top:4px"></div>'+
     '</div>'+
     '<div class="section-title">חלוקת שותפים <span class="hint">(מאותחל מברירת המחדל, ניתן לשנות)</span></div>'+
+    (!splits.length && !apPartners(aptId).length
+      ? '<div class="hint" style="margin-bottom:6px">בדירה זו לא הוגדרו שותפים — ההוצאה תישמר <b>ללא חלוקה</b>. אפשר גם להוסיף שותף ידנית בכפתור למטה.</div>'
+      : '')+
     '<div id="split-rows">'+splits.map(function(s){return splitRowHtml(s[0],s[1]);}).join("")+'</div>'+
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">'+
       '<button class="btn btn-sm" onclick="addSplitRow()">➕ הוסף שותף</button>'+
@@ -1224,9 +1349,14 @@ function saveExpense(eId,aptId){
     if(pid){ if(byP[pid]==null){byP[pid]=0;order.push(pid);} byP[pid]+=pct; }
   });
   var rows=order.map(function(pid){ return {partnerId:pid,percent:byP[pid]}; });
-  if(!rows.length){ toast("יש להוסיף לפחות שורת חלוקה אחת","err"); return false; }
-  var pctSum=rows.reduce(function(s,r){return s+r.percent;},0);
-  if(Math.abs(pctSum-100)>0.01){ toast("סכום חלוקת השותפים חייב להיות 100% (כרגע "+num(pctSum)+"%)","err"); return false; }
+  /* חלוקה נדרשת רק בדירה שהוגדרו לה שותפים. דירה אישית
+     (קרן השתלמות, קופת חיסכון...) נשמרת בלי חלוקה כלל. */
+  if(!rows.length){
+    if(apPartners(aptId).length){ toast("יש להוסיף לפחות שורת חלוקה אחת","err"); return false; }
+  } else {
+    var pctSum=rows.reduce(function(s,r){return s+r.percent;},0);
+    if(Math.abs(pctSum-100)>0.01){ toast("סכום חלוקת השותפים חייב להיות 100% (כרגע "+num(pctSum)+"%)","err"); return false; }
+  }
   if(eId){ var paidSoFar=expensePaid(eId); if(amount<paidSoFar-0.01){ toast("סכום ההוצאה ("+money(amount)+") נמוך מהתשלומים שכבר נרשמו ("+money(paidSoFar)+")","err"); return false; } }
   var e;
   if(eId){ e=byId(DB.expenses,eId); }
@@ -1240,6 +1370,16 @@ function saveExpense(eId,aptId){
      כך ששמירה ממצב שבו המקטע לא הוצג מחקה את הנתונים בשקט. */
   var mgmtShown = !!document.getElementById("ex-mgmt");
   if(mgmtShown){
+    if(e.mgmtEnabled && !checked("ex-mgmt")){
+      /* מבטלים דמי ניהול על הוצאה שכבר שולם עליה למנהלים? צד העלות היה
+         מתאפס בעוד התשלומים ממשיכים להיספר — והמאזן נשבר. חוסמים. */
+      var mPaid=round2(expPayments(eId).filter(function(p){return p.recipientType==="manager";})
+        .reduce(function(s,p){return s+(Number(p.amount)||0);},0));
+      if(mPaid>0.01){
+        toast("אי אפשר לבטל דמי ניהול — כבר שולמו "+money(mPaid)+" למנהלים על שלב זה. מחק קודם את התשלומים אליהם","err");
+        return false;
+      }
+    }
     e.mgmtEnabled = checked("ex-mgmt");
     e.mgmtBaseType = val("ex-base") || e.mgmtBaseType || "full";
     var vatRaw = val("ex-vat");
@@ -1791,7 +1931,7 @@ function moduleSettings(){
         stat("אימות","נאכף בשרת ✅")+
       '</div>'+
       '<div class="toolbar">'+
-      '<button class="btn btn-sm" onclick="pushToSheets();toast(\'נשלח לשיט\',\'ok\')">⬆️ שלח עכשיו</button>'+
+      '<button class="btn btn-sm" onclick="markDirty();pushToSheets();toast(\'נשלח — עקוב אחרי חיווי הסנכרון למעלה\',\'ok\')">⬆️ שלח עכשיו</button>'+
       '<button class="btn btn-sm" onclick="pullFromSheets()">⬇️ טען מהשיט</button></div>'+
       '<div class="hint">כל מכשיר מתחבר אוטומטית — אין מה להגדיר. כל שינוי נשמר בגיליון מיד.<br>'+
       'השרת דורש קוד כניסה תקף בכל בקשה, כך שגם מי שמגיע לכתובת ה-Apps Script לא מקבל שום נתון בלי קוד.</div></div>';
