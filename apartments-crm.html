@@ -1011,7 +1011,50 @@ function countLine(shown,total,what){
 function partnerOptions(sel){ return active(DB.partners).map(function(p){return '<option value="'+p.id+'"'+(p.id===sel?" selected":"")+'>'+esc(p.name)+'</option>';}).join(""); }
 function categoryOptions(sel){ return '<option value="">—</option>'+active(DB.categories).map(function(c){return '<option value="'+c.id+'"'+(c.id===sel?" selected":"")+'>'+esc(c.name)+'</option>';}).join(""); }
 function classOptions(sel){ return Object.keys(CLASSIFICATIONS).map(function(k){return '<option value="'+k+'"'+(k===sel?" selected":"")+'>'+CLASSIFICATIONS[k]+'</option>';}).join(""); }
-function accountOptions(aptId,sel){ return '<option value="">— ידני / ללא חשבון —</option>'+apAccounts(aptId).map(function(ac){return '<option value="'+ac.id+'"'+(ac.id===sel?" selected":"")+'>'+esc(ac.name)+(ac.isBank?" 🏦":"")+'</option>';}).join(""); }
+/* חשבונות זמינים לדירה: של הדירה + חשבונות כלליים (apartmentId ריק).
+   כך רשימת החשבונות משותפת לכל הפרויקטים ולא צריך להגדיר אותה מחדש בכל דירה. */
+function availAccounts(aptId){
+  return active(DB.accounts).filter(function(ac){ return !ac.apartmentId || ac.apartmentId===aptId; })
+    .sort(function(a,b){ return (b.isBank?1:0)-(a.isBank?1:0) || String(a.name).localeCompare(String(b.name),"he"); });
+}
+function accountOptions(aptId,sel){
+  return '<option value="">— ידני / ללא חשבון —</option>'+
+    availAccounts(aptId).map(function(ac){
+      return '<option value="'+ac.id+'"'+(ac.id===sel?" selected":"")+'>'+esc(ac.name)+(ac.isBank?" 🏦 (בנק זמני)":"")+'</option>'; }).join("")+
+    '<option value="__new">➕ הוסף חשבון חדש…</option>';
+}
+/* נבחר "הוסף חשבון חדש" בבורר — פותח שדות במקום, בלי לצאת מהטופס */
+function onPmAccountPick(){
+  var sel=document.getElementById("pm-account"); if(!sel) return;
+  var wrap=document.getElementById("pm-newacc");
+  if(sel.value==="__new"){
+    if(wrap) wrap.style.display="block";
+    var nm=document.getElementById("pm-newacc-name"); if(nm) nm.focus();
+  }else{
+    if(wrap) wrap.style.display="none";
+    onPmAccount();
+  }
+}
+function addAccountInline(aptId){
+  var nm=val("pm-newacc-name").trim();
+  if(!nm){ toast("יש להזין שם חשבון","err"); return; }
+  var isBank=checked("pm-newacc-bank");
+  var scope=val("pm-newacc-scope");   // "" = כללי לכל הדירות
+  var k=normKey(nm);
+  var exist=availAccounts(aptId).find(function(a){ return normKey(a.name)===k; });
+  var id;
+  if(exist){ id=exist.id; toast("החשבון כבר קיים — נבחר","warn"); }
+  else{
+    id=uid();
+    DB.accounts.push({id:id,apartmentId:(scope==="apt"?aptId:null),name:nm,isBank:isBank,partnerId:null,deleted:false});
+    save(); toast('נוסף החשבון "'+nm+'"',"ok");
+  }
+  var sel=document.getElementById("pm-account");
+  if(sel){ sel.innerHTML=accountOptions(aptId,id); sel.value=id; }
+  var wrap=document.getElementById("pm-newacc"); if(wrap) wrap.style.display="none";
+  var nmEl=document.getElementById("pm-newacc-name"); if(nmEl) nmEl.value="";
+  onPmAccount();
+}
 
 /* ---------- שותפי דירה ---------- */
 function modulePartners(aptId){
@@ -1558,7 +1601,18 @@ function openPaymentEditor(eId,payId){
   var body='<div class="form-grid">'+
     '<div class="field"><label>תאריך</label><input id="pm-date" type="date" value="'+(p?esc(p.date):todayISO())+'"></div>'+
     '<div class="field"><label>סכום (₪)</label><input id="pm-amount" type="number" step="0.01" value="'+(p?esc(String(p.amount)):"")+'"></div>'+
-    '<div class="field"><label>מהחשבון</label><select id="pm-account" onchange="onPmAccount()">'+accountOptions(aptId,p?p.accountId:"")+'</select></div>'+
+    '<div class="field"><label>מהחשבון</label><select id="pm-account" onchange="onPmAccountPick()">'+accountOptions(aptId,p?p.accountId:"")+'</select></div>'+
+    '<div class="field full" id="pm-newacc" style="display:none;background:#f7f9ff;border:1px solid var(--line);border-radius:10px;padding:10px">'+
+      '<label>שם החשבון החדש</label>'+
+      '<input id="pm-newacc-name" placeholder="למשל: מרכנתיל / חשבון יונה" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addAccountInline(\''+aptId+'\');}">'+
+      '<div class="form-grid" style="margin-top:8px">'+
+        '<div class="field"><label>שיוך</label><select id="pm-newacc-scope">'+
+          '<option value="">כללי — זמין בכל הפרויקטים</option><option value="apt">רק בפרויקט הזה</option></select></div>'+
+        '<div class="field"><label style="font-weight:400"><input type="checkbox" id="pm-newacc-bank" style="width:auto"> זהו <b>בנק זמני</b> (קופה משותפת)</label>'+
+          '<div class="hint">תשלום מחשבון כזה יורד מיתרת הבנק ואינו משויך לשותף</div></div>'+
+      '</div>'+
+      '<button class="btn btn-primary btn-sm" style="margin-top:6px" onclick="addAccountInline(\''+aptId+'\')">➕ הוסף ובחר</button>'+
+    '</div>'+
     /* "מי שילם" מוצג רק כשיש שותפים בדירה — בפרויקט אישי אין את מי לבחור */
     (partners.length
       ? '<div class="field"><label>מי שילם (שותף)</label><select id="pm-payer"><option value="">—</option>'+partners.map(function(ap){return '<option value="'+ap.partnerId+'"'+(p&&p.payerPartnerId===ap.partnerId?" selected":"")+'>'+esc(partnerName(ap.partnerId))+'</option>';}).join("")+'</select></div>'
@@ -1588,7 +1642,9 @@ function onPmRecipient(){ document.getElementById("pm-mgr-wrap").style.display =
 function savePayment(eId,payId){
   var e=byId(DB.expenses,eId);
   var amount=Number(val("pm-amount"))||0; if(amount<=0){ toast("סכום לא תקין","err"); return false; }
-  var accountId=val("pm-account")||null; var isBank=accountIsBank(accountId);
+  var accountId=val("pm-account")||null;
+  if(accountId==="__new"){ toast("סיים להוסיף את החשבון או בחר אחר","err"); return false; }
+  var isBank=accountIsBank(accountId);
   /* כשאין דמי ניהול על השלב בורר המוטב לא מוצג — ברירת המחדל היא הספק */
   var recipientType=val("pm-recipient")||"supplier";
   var recipientManagerId=recipientType==="manager"?(val("pm-manager")||null):null;
@@ -1993,13 +2049,33 @@ function crossListHtml(){
 /* ---------- הגדרות ---------- */
 function moduleSettings(){
   var tab=state.params.stab||"partners";
-  var tabs=[["partners","ספר שותפים"],["users","משתמשים"],["sheets","גוגל שיטס"],["backup","גיבוי"],["danger","מחיקת נתונים"]];
+  var tabs=[["partners","ספר שותפים"],["accounts","חשבונות"],["users","משתמשים"],["sheets","גוגל שיטס"],["backup","גיבוי"],["danger","מחיקת נתונים"]];
   var h='<h2>הגדרות</h2><div class="tabs">'+tabs.map(function(t){return '<div class="tab'+(tab===t[0]?" active":"")+'" onclick="go(\'settings\',{stab:\''+t[0]+'\'})">'+t[1]+'</div>';}).join("")+'</div>';
   if(tab==="partners"){
     h+='<div class="toolbar"><button class="btn btn-primary btn-sm" onclick="editPartner(null)">➕ שותף</button>'+
       searchBox("pt-q",Q.partners,"חיפוש שותף…","Q.partners=this.value;renderPartnersTable()")+
       '<div class="sp"></div><span id="pt-count"></span></div>';
     h+='<div id="pt-table">'+partnersTableHtml()+'</div>';
+  } else if(tab==="accounts"){
+    var accs=active(DB.accounts);
+    h+='<div class="toolbar"><button class="btn btn-primary btn-sm" onclick="editAccount(null)">➕ חשבון</button>'+
+      '<button class="btn btn-sm" onclick="seedCommonAccounts()">📥 טען רשימת חשבונות מוכנה</button>'+
+      '<div class="sp"></div><span class="muted">'+accs.length+' חשבונות</span></div>';
+    h+='<div class="table-wrap"><table class="tbl"><thead><tr><th>שם החשבון</th><th>סוג</th><th>שיוך</th><th>תשלומים</th><th></th></tr></thead><tbody>';
+    if(!accs.length) h+='<tr><td colspan="5" class="empty">אין חשבונות. לחץ "טען רשימת חשבונות מוכנה" או הוסף ידנית.</td></tr>';
+    accs.sort(function(a,b){ return (b.isBank?1:0)-(a.isBank?1:0) || String(a.name).localeCompare(String(b.name),"he"); })
+      .forEach(function(ac){
+      var used=active(DB.payments).filter(function(p){return p.accountId===ac.id;}).length;
+      var apt=ac.apartmentId?byId(DB.apartments,ac.apartmentId):null;
+      h+='<tr><td><b>'+esc(ac.name)+'</b></td>'+
+        '<td>'+(ac.isBank?'<span class="pill">🏦 בנק זמני</span>':'<span class="muted">רגיל</span>')+'</td>'+
+        '<td>'+(apt?esc(apt.name):'<span class="muted">כללי — כל הפרויקטים</span>')+'</td>'+
+        '<td>'+(used||'<span class="muted">—</span>')+'</td>'+
+        '<td class="right"><button class="btn btn-ghost btn-sm" onclick="editAccount(\''+ac.id+'\')">✏️</button> '+
+        '<button class="btn btn-ghost btn-sm" onclick="delAccount(\''+ac.id+'\')">🗑️</button></td></tr>';
+    });
+    h+='</tbody></table></div>'+
+      '<div class="hint">חשבון <b>כללי</b> זמין בכל הפרויקטים. חשבון שמסומן <b>🏦 בנק זמני</b> — תשלום ממנו יורד מיתרת הבנק ואינו משויך לשותף בודד.</div>';
   } else if(tab==="danger"){
     var nExp=active(DB.expenses).length, nPay=active(DB.payments).length;
     h+='<div class="card" style="border:2px solid #fecaca">'+
@@ -2059,6 +2135,51 @@ function partnersTableHtml(){
       '<td class="right"><button class="btn btn-ghost btn-sm" onclick="editPartner(\''+p.id+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="softDelete(\'partners\',\''+p.id+'\',\'למחוק שותף?\')">🗑️</button></td></tr>';
   });
   return h+'</tbody></table></div>';
+}
+/* ---------- ניהול חשבונות ---------- */
+function editAccount(id){
+  var ac=id?byId(DB.accounts,id):{name:"",isBank:false,apartmentId:null};
+  var apts=active(DB.apartments);
+  openModal({title:id?"עריכת חשבון":"חשבון חדש",bodyHtml:
+    '<div class="field"><label>שם החשבון</label><input id="ac-name" value="'+esc(ac.name)+'" placeholder="למשל: מרכנתיל / חשבון יונה"></div>'+
+    '<div class="field"><label>שיוך</label><select id="ac-apt"><option value="">כללי — זמין בכל הפרויקטים</option>'+
+      apts.map(function(a){return '<option value="'+a.id+'"'+(ac.apartmentId===a.id?" selected":"")+'>'+esc(a.name)+'</option>';}).join("")+
+    '</select></div>'+
+    '<div class="field"><label style="font-weight:400"><input type="checkbox" id="ac-bank" style="width:auto" '+(ac.isBank?"checked":"")+'> זהו <b>בנק זמני</b> (קופה משותפת)</label>'+
+      '<div class="hint">תשלום מחשבון כזה יורד מיתרת הבנק ואינו נחשב תרומה של שותף מסוים</div></div>',
+    onSave:function(){
+      var nm=val("ac-name").trim(); if(!nm){ toast("יש להזין שם","err"); return false; }
+      if(id){ ac.name=nm; ac.isBank=checked("ac-bank"); ac.apartmentId=val("ac-apt")||null; }
+      else{
+        var k=normKey(nm);
+        if(active(DB.accounts).some(function(x){return normKey(x.name)===k && (x.apartmentId||null)===(val("ac-apt")||null);})){
+          toast("כבר קיים חשבון בשם הזה","err"); return false;
+        }
+        DB.accounts.push({id:uid(),apartmentId:val("ac-apt")||null,name:nm,isBank:checked("ac-bank"),partnerId:null,deleted:false});
+      }
+      save(); toast("נשמר","ok"); rerender();
+    }});
+}
+function delAccount(id){
+  var used=active(DB.payments).filter(function(p){return p.accountId===id;}).length;
+  var ac=byId(DB.accounts,id);
+  if(used){ toast('אי אפשר למחוק — "'+ac.name+'" משמש ב-'+used+' תשלומים',"err"); return; }
+  softDelete("accounts",id,'למחוק את החשבון "'+ac.name+'"?');
+}
+/* רשימת החשבונות שבשימוש בפועל אצל המשתמש */
+function seedCommonAccounts(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var list=["פרטי","פאגי","הלואה מיוחדת","מרכנתיל","אשראי חיליק","משכנתא","מזרחי","אמריקה",
+    "בנצי אמרי מנחם","לסידור","אמרי מנחם","חשבון יונה","יהב","סקיי גייט","חיליק","טריה",
+    "סיבובי פאגי","שווה ערך","חול","דיסקונט","דיסקונט הרשי","חשבן אחר","פועלים","פרלמן יונה אמרי"];
+  var added=0, skipped=0;
+  list.forEach(function(nm){
+    var k=normKey(nm);
+    if(active(DB.accounts).some(function(x){ return normKey(x.name)===k && !x.apartmentId; })){ skipped++; return; }
+    DB.accounts.push({id:uid(),apartmentId:null,name:nm,isBank:false,partnerId:null,deleted:false}); added++;
+  });
+  if(!added){ toast("כל החשבונות כבר קיימים","warn"); return; }
+  save(); toast("נוספו "+added+" חשבונות"+(skipped?" · "+skipped+" כבר היו":""),"ok"); rerender();
 }
 function editPartner(id){
   var p=id?byId(DB.partners,id):{name:"",phone:"",notes:""};
@@ -2540,10 +2661,11 @@ function findOrCreateCategory(name){
 function findOrCreateAccount(aptId,name){
   name=String(name||"").trim(); if(!name) return null;
   var nk=normKey(name);
-  var a=apAccounts(aptId).find(function(x){return normKey(x.name)===nk;});
+  /* מחפשים גם בחשבונות הכלליים — כך ייבוא לא יוצר עותק לכל פרויקט */
+  var a=availAccounts(aptId).find(function(x){return normKey(x.name)===nk;});
   if(a) return a.id;
   var id=uid();
-  DB.accounts.push({id:id,apartmentId:aptId,name:name,isBank:/בנק|קופה/.test(name),partnerId:null,deleted:false});
+  DB.accounts.push({id:id,apartmentId:null,name:name,isBank:/בנק|קופה/.test(name),partnerId:null,deleted:false});
   return id;
 }
 function classifyText(t){ t=String(t||"");
