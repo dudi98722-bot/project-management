@@ -154,7 +154,7 @@ function syncBadgeHtml(){
 }
 function setSync(s){ SYNC=s; var el=document.getElementById("sync-badge"); if(el){ el.outerHTML=syncBadgeHtml(); } }
 var CLASSIFICATIONS = {investment:"השקעה", ongoing:"שוטף", private:"פרטי"};
-var METHODS = {transfer:"העברה", check:"צ׳ק", cash:"מזומן", other:"אחר"};
+var METHODS = {transfer:"העברה", check:"צ׳ק", cash:"מזומן", equiv:"שווה ערך", other:"אחר"};
 var ROLES = {admin:"מנהל", editor:"עורך", viewer:"צפייה בלבד", partner:"שותף"};
 var BASE_TYPES = {full:"מלא (כל הסכום)", net17:"נטו (מע\"מ 17%)", net18:"נטו (מע\"מ 18%)"};
 
@@ -305,6 +305,57 @@ function expenseMgmtCostLive(eId){ // סך דמי הניהול הפעילים ש
 function mgrPaidOnExpense(eId,mId){
   return round2(expPayments(eId).filter(function(p){return p.recipientType==="manager"&&p.recipientManagerId===mId;})
     .reduce(function(s,p){return s+(Number(p.amount)||0);},0));
+}
+
+/* ---------- תשלום אוטומטי "שווה ערך" על דמי ניהול ----------
+   הגדרה ברמת הפרויקט (a.autoMgmt = {partnerId,pct}): אחוז מדמי הניהול
+   נרשם אוטומטית כתשלום למנהל ששולם ע"י השותף, באמצעי "שווה ערך".
+   דוגמה: דמי ניהול 8,000 והגדרה של 3% → 240 ₪ נרשמים כמשולמים ע"י חיליק.
+   הפונקציה אידמפוטנטית: יוצרת/מעדכנת/מסירה את התשלום האוטומטי לפי המצב,
+   ונצמדת לתקרה — אוטומטי + ידני לעולם לא יעברו את מה שמגיע למנהל. */
+function syncAutoMgmtPayments(eId){
+  var e=byId(DB.expenses,eId); if(!e) return;
+  var a=byId(DB.apartments,e.apartmentId); if(!a) return;
+  var cfg=a.autoMgmt||null;
+  var on = !e.deleted && e.mgmtEnabled && a.hasManagement &&
+           cfg && cfg.partnerId && (Number(cfg.pct)||0)>0;
+  var autos=DB.payments.filter(function(p){ return p.expenseId===eId && p.auto; });
+  var handled={};
+  if(on){
+    expMgrFees(eId).forEach(function(f){
+      var mg=byId(DB.managers,f.managerId); if(!mg||mg.deleted) return;
+      var live=mgrFeeLiveOnExpense(eId,f.managerId);
+      var target=round2(live*(Number(cfg.pct)||0)/100);
+      // תשלומים ידניים קודמים — האוטומטי מצטמצם כדי לא לחרוג מהתקרה
+      var manual=expPayments(eId).filter(function(p){
+        return p.recipientType==="manager"&&p.recipientManagerId===f.managerId&&!p.auto; })
+        .reduce(function(s,p){return s+(Number(p.amount)||0);},0);
+      if(target>round2(live-manual)) target=round2(live-manual);
+      if(target<0) target=0;
+      var ex=autos.find(function(p){ return p.recipientManagerId===f.managerId; });
+      if(target<=0.009){
+        if(ex && !ex.deleted){ ex.deleted=true; ex.deletedBy="autoMgmt"; }
+      } else if(ex){
+        ex.deleted=false; delete ex.deletedBy;
+        ex.amount=target; ex.payerPartnerId=cfg.partnerId; ex.method="equiv";
+        ex.note="אוטומטי — שווה ערך ("+num(cfg.pct)+"% מדמי הניהול)";
+      } else {
+        DB.payments.push({id:uid(),expenseId:eId,date:e.date||todayISO(),amount:target,
+          accountId:null,payerPartnerId:cfg.partnerId,method:"equiv",
+          recipientType:"manager",recipientManagerId:f.managerId,
+          hasInvoice:false,invoiceLink:"",
+          note:"אוטומטי — שווה ערך ("+num(cfg.pct)+"% מדמי הניהול)",auto:true,deleted:false});
+      }
+      handled[f.managerId]=1;
+    });
+  }
+  // אוטומטיים שכבר לא רלוונטיים (ההגדרה כובתה / דמי הניהול בוטלו / מנהל הוסר)
+  autos.forEach(function(p){
+    if((!on || !handled[p.recipientManagerId]) && !p.deleted){ p.deleted=true; p.deletedBy="autoMgmt"; }
+  });
+}
+function syncAutoMgmtApartment(aptId){
+  apExpenses(aptId).forEach(function(e){ syncAutoMgmtPayments(e.id); });
 }
 
 // שותף — כמה אמור לשלם (חלקו בהוצאות + חלקו בדמי הניהול, לפי חלוקת ההוצאה)
@@ -1238,7 +1289,7 @@ function applyBulkMgmt(aptId){
        בלי צד עלות והמאזן נשבר. מדלגים עליו ומדווחים. */
     var blocked=[], okIds=[];
     ids.forEach(function(eid){
-      var mPaid=expPayments(eid).filter(function(p){return p.recipientType==="manager";})
+      var mPaid=expPayments(eid).filter(function(p){return p.recipientType==="manager"&&!p.auto;})
         .reduce(function(s,p){return s+(Number(p.amount)||0);},0);
       if(mPaid>0.01) blocked.push(eid); else okIds.push(eid);
     });
@@ -1249,7 +1300,7 @@ function applyBulkMgmt(aptId){
     if(!confirm("יוסרו דמי ניהול מ-"+okIds.length+" שלבים"+
       (blocked.length? "\n("+blocked.length+" שלבים ידולגו כי כבר שולם בהם למנהלים)":"")+
       "\n\nהנתונים הקיימים יישמרו ויחזרו אם תחיל שוב.")) return false;
-    okIds.forEach(function(eid){ var e=byId(DB.expenses,eid); if(e) e.mgmtEnabled=false; });
+    okIds.forEach(function(eid){ var e=byId(DB.expenses,eid); if(e) e.mgmtEnabled=false; syncAutoMgmtPayments(eid); });
     save();
     toast("דמי הניהול הוסרו מ-"+okIds.length+" שלבים"+(blocked.length?" · "+blocked.length+" דולגו (שולם בהם)":""),blocked.length?"warn":"ok");
     rerender(); return;
@@ -1269,6 +1320,7 @@ function applyBulkMgmt(aptId){
       DB.expenseManagerFees.push({id:uid(),expenseId:eid,managerId:c.id,
         pctCurrent:c.cur,pctDeferred:c.def,deferredLabel:c.lbl,deferredReleased:false,deleted:false});
     });
+    syncAutoMgmtPayments(eid);
   });
   save();
   toast("דמי ניהול הוחלו על "+ids.length+" שלבים","ok");
@@ -1425,7 +1477,8 @@ function saveExpense(eId,aptId){
     if(e.mgmtEnabled && !checked("ex-mgmt")){
       /* מבטלים דמי ניהול על הוצאה שכבר שולם עליה למנהלים? צד העלות היה
          מתאפס בעוד התשלומים ממשיכים להיספר — והמאזן נשבר. חוסמים. */
-      var mPaid=round2(expPayments(eId).filter(function(p){return p.recipientType==="manager";})
+      /* תשלומים אוטומטיים ("שווה ערך") לא חוסמים — הם יוסרו בסנכרון */
+      var mPaid=round2(expPayments(eId).filter(function(p){return p.recipientType==="manager"&&!p.auto;})
         .reduce(function(s,p){return s+(Number(p.amount)||0);},0));
       if(mPaid>0.01){
         toast("אי אפשר לבטל דמי ניהול — כבר שולמו "+money(mPaid)+" למנהלים על שלב זה. מחק קודם את התשלומים אליהם","err");
@@ -1457,6 +1510,7 @@ function saveExpense(eId,aptId){
         deferredLabel:val("mf-lbl-"+m.id)||"",deferredReleased:checked("mf-rel-"+m.id),deleted:false});
     });
   }
+  syncAutoMgmtPayments(eId);   // תשלום "שווה ערך" אוטומטי לפי הגדרת הפרויקט
   save(); toast("ההוצאה נשמרה","ok"); rerender();
 }
 
@@ -1520,7 +1574,7 @@ function payTableHtml(aptId){
       '<td>'+money(p.amount)+'</td>'+
       '<td>'+esc(acc?acc.name:"ידני")+(acc&&acc.isBank?" 🏦":"")+'</td>'+
       '<td>'+(p.payerPartnerId?esc(partnerName(p.payerPartnerId)):(accountIsBank(p.accountId)?'<span class="muted">מהבנק</span>':"—"))+'</td>'+
-      '<td>'+recip+'</td><td>'+(METHODS[p.method]||"")+'</td>'+
+      '<td>'+recip+'</td><td>'+(METHODS[p.method]||"")+(p.auto?' <span class="badge badge-muted">אוטו׳</span>':'')+'</td>'+
       '<td>'+(p.hasInvoice?"✔️":"")+'</td>'+
       '<td class="muted" style="max-width:180px;overflow:hidden;text-overflow:ellipsis">'+esc(p.note||"")+'</td>'+
       '<td class="right" style="white-space:nowrap">'+
@@ -1548,7 +1602,7 @@ function openPayments(eId){
       var acc=byId(DB.accounts,p.accountId); var recip=p.recipientType==="manager"?("מנהל: "+managerName(p.recipientManagerId)):"ספק";
       body+='<tr><td>'+dateHe(p.date)+'</td><td>'+money(p.amount)+'</td><td>'+esc(acc?acc.name:"ידני")+(acc&&acc.isBank?" 🏦":"")+'</td>'+
         '<td>'+(p.payerPartnerId?esc(partnerName(p.payerPartnerId)):(acc&&acc.isBank?"מהבנק":"—"))+'</td>'+
-        '<td>'+esc(recip)+'</td><td>'+(METHODS[p.method]||"")+'</td><td>'+(p.hasInvoice?"✔️":"")+'</td>'+
+        '<td>'+esc(recip)+'</td><td>'+(METHODS[p.method]||"")+(p.auto?' <span class="badge badge-muted">אוטו׳</span>':'')+'</td><td>'+(p.hasInvoice?"✔️":"")+'</td>'+
         '<td class="right">'+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="openPaymentEditor(\''+eId+'\',\''+p.id+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="delPayment(\''+p.id+'\',\''+eId+'\')">🗑️</button>':'')+'</td></tr>';
     });
     body+='</tbody></table></div>';
@@ -1592,10 +1646,25 @@ function renderQuickPayList(){
 }
 function quickPayExpense(eId){ openPaymentEditor(eId,null); }
 
-function delPayment(pid,eId){ var p=byId(DB.payments,pid); confirmDelete("למחוק תשלום זה?",function(){ p.deleted=true; save(); toast("נמחק","ok"); rerender(); openPayments(eId); return false; }); }
+function delPayment(pid,eId){
+  var p=byId(DB.payments,pid);
+  if(p&&p.auto){
+    toast("זה תשלום אוטומטי (שווה ערך) — כדי לבטלו כבה את ההגדרה בלשונית דמי ניהול, או בטל את דמי הניהול על השלב","warn");
+    return;
+  }
+  confirmDelete("למחוק תשלום זה?",function(){
+    p.deleted=true;
+    syncAutoMgmtPayments(eId);   // מחיקת ידני עשויה להחזיר מקום לאוטומטי
+    save(); toast("נמחק","ok"); rerender(); openPayments(eId); return false;
+  });
+}
 function openPaymentEditor(eId,payId){
   var e=byId(DB.expenses,eId); var aptId=e.apartmentId; var a=byId(DB.apartments,aptId);
   var p=payId?byId(DB.payments,payId):null;
+  if(p&&p.auto){
+    toast("זה תשלום אוטומטי (שווה ערך) — הסכום מחושב מההגדרה בלשונית דמי ניהול","warn");
+    return;
+  }
   var mgrs=apManagers(aptId);
   var partners=apPartners(aptId);
   var body='<div class="form-grid">'+
@@ -1662,13 +1731,15 @@ function savePayment(eId,payId){
     }
   }else{
     var cap=mgrFeeLiveOnExpense(eId,recipientManagerId);
-    var othersM=expPayments(eId).filter(function(x){return x.recipientType==="manager"&&x.recipientManagerId===recipientManagerId&&x.id!==payId;}).reduce(function(s,x){return s+(Number(x.amount)||0);},0);
+    /* האוטומטי ("שווה ערך") לא נספר כאן — הוא יצטמצם בסנכרון ויפנה מקום לידני */
+    var othersM=expPayments(eId).filter(function(x){return x.recipientType==="manager"&&x.recipientManagerId===recipientManagerId&&x.id!==payId&&!x.auto;}).reduce(function(s,x){return s+(Number(x.amount)||0);},0);
     if(othersM+amount>cap+0.01){ toast("חורג ממה שמגיע למנהל ("+money(cap)+")","err"); return false; }
   }
   var obj={id:payId||uid(),expenseId:eId,date:val("pm-date")||todayISO(),amount:amount,accountId:accountId,
     payerPartnerId:payer,method:val("pm-method"),recipientType:recipientType,recipientManagerId:recipientManagerId,
     hasInvoice:checked("pm-invoice"),invoiceLink:val("pm-link"),note:val("pm-note"),deleted:false};
   if(payId){ Object.assign(byId(DB.payments,payId),obj); } else DB.payments.push(obj);
+  syncAutoMgmtPayments(eId);   // ידני חדש מצמצם את האוטומטי בהתאם לתקרה
   save(); toast("התשלום נשמר","ok"); rerender(); openPayments(eId); return false;
 }
 
@@ -1744,6 +1815,24 @@ function moduleManagers(aptId){
       '</div>';
     return h;
   }
+  /* הגדרת תשלום אוטומטי "שווה ערך" */
+  var am=a.autoMgmt||null;
+  h+='<div class="card" style="border-right:3px solid var(--brand)"><h3>⚡ תשלום אוטומטי — שווה ערך</h3>'+
+    '<p class="muted" style="margin-top:0">אחוז מדמי הניהול של כל שלב נרשם אוטומטית כתשלום למנהלים ששולם ע"י שותף נבחר, באמצעי "שווה ערך". '+
+    'לדוגמה: דמי ניהול 8,000 והגדרה של 3% → 240 ₪ נרשמים כמשולמים.</p>'+
+    (am&&am.partnerId?'<div style="margin-bottom:10px"><span class="badge badge-ok">פעיל</span> '+
+      esc(partnerName(am.partnerId))+' · '+num(am.pct)+'% מדמי הניהול</div>'
+      :'<div style="margin-bottom:10px"><span class="badge badge-muted">כבוי</span></div>')+
+    (can("edit")?'<div class="form-grid">'+
+      '<div class="field"><label>השותף שנזקף לזכותו</label><select id="am-partner"><option value="">—</option>'+
+        apPartners(aptId).map(function(ap){return '<option value="'+ap.partnerId+'"'+(am&&am.partnerId===ap.partnerId?" selected":"")+'>'+esc(partnerName(ap.partnerId))+'</option>';}).join("")+
+      '</select></div>'+
+      '<div class="field"><label>% מתוך דמי הניהול</label><input id="am-pct" type="number" step="0.01" value="'+(am?esc(String(am.pct)):"3")+'"></div>'+
+    '</div>'+
+    '<div class="toolbar"><button class="btn btn-primary btn-sm" onclick="saveAutoMgmt(\''+aptId+'\')">שמור והחל על כל השלבים</button>'+
+      (am&&am.partnerId?'<button class="btn btn-danger btn-sm" onclick="disableAutoMgmt(\''+aptId+'\')">כבה והסר את האוטומטיים</button>':'')+
+    '</div>':'')+
+    '<div class="hint">האוטומטי מתעדכן לבד: שלב חדש, שינוי אחוזים, שחרור דחוי — הסכום מחושב מחדש. תשלום ידני למנהל מצמצם את האוטומטי כדי לא לחרוג מהזכאות.</div></div>';
   // ליֹדג׳ר
   h+='<div class="card"><h3>מאזן מנהלים</h3><div class="table-wrap"><table class="tbl"><thead><tr><th>מנהל</th><th>% ברירת מחדל</th><th>מגיע (פעיל, כולל מע"מ)</th><th>קיבל</th><th>יתרה</th><th></th></tr></thead><tbody>';
   mgrs.forEach(function(m){
@@ -1834,7 +1923,32 @@ function payManager(eId,mId){
   var due=round2(mgrFeeLiveOnExpense(eId,mId)-mgrPaidOnExpense(eId,mId));
   var amt=document.getElementById("pm-amount"); if(amt && due>0) amt.value=due;
 }
-function releaseDeferred(fid){ var f=byId(DB.expenseManagerFees,fid); f.deferredReleased=true; save(); toast("הדחוי שוחרר","ok"); rerender(); }
+function saveAutoMgmt(aptId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var pid=val("am-partner"), pct=Number(val("am-pct"))||0;
+  if(!pid){ toast("בחר שותף","err"); return; }
+  if(pct<=0||pct>100){ toast("אחוז לא תקין","err"); return; }
+  var a=byId(DB.apartments,aptId);
+  a.autoMgmt={partnerId:pid,pct:pct};
+  syncAutoMgmtApartment(aptId);
+  save();
+  var n=apExpenses(aptId).filter(function(e){return active(DB.payments).some(function(p){return p.expenseId===e.id&&p.auto;});}).length;
+  toast("הופעל — נרשמו תשלומי שווה ערך על "+n+" שלבים","ok");
+  rerender();
+}
+function disableAutoMgmt(aptId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  if(!confirm("לכבות את התשלום האוטומטי?\n\nכל תשלומי השווה-ערך האוטומטיים יוסרו (לסל המחזור). תשלומים ידניים לא נפגעים.")) return;
+  var a=byId(DB.apartments,aptId);
+  a.autoMgmt=null;
+  syncAutoMgmtApartment(aptId);
+  save(); toast("כובה — האוטומטיים הוסרו","ok"); rerender();
+}
+function releaseDeferred(fid){
+  var f=byId(DB.expenseManagerFees,fid); f.deferredReleased=true;
+  syncAutoMgmtPayments(f.expenseId);   // הזכאות גדלה — האוטומטי מתעדכן
+  save(); toast("הדחוי שוחרר","ok"); rerender();
+}
 
 /* ---------- בנק ---------- */
 function moduleBank(aptId){
@@ -2673,6 +2787,7 @@ function classifyText(t){ t=String(t||"");
   if(t.indexOf("שוטף")>=0) return "ongoing";
   return "investment"; }
 function methodText(t){ t=String(t||"");
+  if(t.indexOf("שווה")>=0) return "equiv";
   if(t.indexOf("צ")>=0) return "check";
   if(t.indexOf("העבר")>=0) return "transfer";
   if(t.indexOf("מזומן")>=0) return "cash";
