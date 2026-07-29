@@ -1853,7 +1853,10 @@ function moduleManagers(aptId){
       .sort(function(x,y){ return x.e.date<y.e.date?-1:1; });
     if(!rows.length) return;
     var tD=0,tP=0;
-    h+='<div class="card"><h3>💳 תשלומים ל'+esc(m.name)+'</h3>'+
+    var openCnt=rows.filter(function(r){return r.rem>0.01;}).length;
+    h+='<div class="card"><div class="toolbar" style="margin-bottom:8px"><h3 style="margin:0">💳 תשלומים ל'+esc(m.name)+'</h3><div class="sp"></div>'+
+      (can("edit")&&openCnt?'<button class="btn btn-primary btn-sm" onclick="openBulkPayMgr(\''+aptId+'\',\''+m.id+'\')">💳 תשלום מרוכז ('+openCnt+' פתוחים)</button>':'')+
+      '</div>'+
       '<div class="table-wrap"><table class="tbl"><thead><tr>'+
       '<th>תאריך</th><th>שלב</th><th>מגיע (כולל מע"מ)</th><th>שולם</th><th>נותר</th><th>סטטוס</th><th></th>'+
       '</tr></thead><tbody>';
@@ -1923,6 +1926,84 @@ function payManager(eId,mId){
   var due=round2(mgrFeeLiveOnExpense(eId,mId)-mgrPaidOnExpense(eId,mId));
   var amt=document.getElementById("pm-amount"); if(amt && due>0) amt.value=due;
 }
+/* ---------- תשלום מרוכז למנהל: סוגרים הרבה שלבים בבת אחת ---------- */
+function openBulkPayMgr(aptId,mgrId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var m=byId(DB.managers,mgrId); if(!m) return;
+  var open=apExpenses(aptId).map(function(e){
+    return {e:e, rem:round2(mgrFeeLiveOnExpense(e.id,mgrId)-mgrPaidOnExpense(e.id,mgrId))};
+  }).filter(function(r){ return r.rem>0.01; })
+    .sort(function(x,y){ return x.e.date<y.e.date?-1:1; });
+  if(!open.length){ toast("אין שלבים פתוחים למנהל זה","warn"); return; }
+  var partners=apPartners(aptId);
+  var accOpts='<option value="">— ידני / ללא חשבון —</option>'+
+    availAccounts(aptId).map(function(ac){
+      return '<option value="'+ac.id+'">'+esc(ac.name)+(ac.isBank?" 🏦 (בנק זמני)":"")+'</option>'; }).join("");
+  var body='<p class="muted">הפרטים למטה יחולו על <b>כל השלבים המסומנים</b> — תשלום נפרד לכל שלב, בגובה ה"נותר" שלו.</p>'+
+    '<div class="form-grid">'+
+      '<div class="field"><label>תאריך</label><input id="bp-date" type="date" value="'+todayISO()+'"></div>'+
+      '<div class="field"><label>מהחשבון</label><select id="bp-account" onchange="onBpAccount()">'+accOpts+'</select></div>'+
+      (partners.length
+        ? '<div class="field"><label>מי שילם (שותף)</label><select id="bp-payer"><option value="">—</option>'+
+            partners.map(function(ap){return '<option value="'+ap.partnerId+'">'+esc(partnerName(ap.partnerId))+'</option>';}).join("")+'</select></div>'
+        : '')+
+      '<div class="field"><label>אמצעי תשלום</label><select id="bp-method">'+
+        Object.keys(METHODS).map(function(k){return '<option value="'+k+'"'+(k==="transfer"?" selected":"")+'>'+METHODS[k]+'</option>';}).join("")+'</select></div>'+
+      '<div class="field full"><label>הערה (תיווסף לכל התשלומים)</label><input id="bp-note" value=""></div>'+
+    '</div>'+
+    '<div class="section-title">אילו שלבים לשלם</div>'+
+    '<div class="toolbar"><button class="btn btn-sm" onclick="bulkPaySelAll(true)">✔️ סמן הכל</button>'+
+      '<button class="btn btn-sm" onclick="bulkPaySelAll(false)">✕ נקה</button>'+
+      '<div class="sp"></div><span id="bp-total" class="pill"></span></div>'+
+    '<div class="table-wrap" style="max-height:300px;overflow:auto"><table class="tbl"><thead><tr>'+
+      '<th></th><th>תאריך</th><th>שלב</th><th>נותר לתשלום</th></tr></thead><tbody>'+
+      open.map(function(r){
+        return '<tr><td><input type="checkbox" class="bp-x" value="'+r.e.id+'" data-rem="'+r.rem+'" checked onchange="bulkPayTotal()" style="width:auto"></td>'+
+          '<td>'+dateHe(r.e.date)+'</td><td><b>'+esc(r.e.description)+'</b></td>'+
+          '<td class="neg">'+money(r.rem)+'</td></tr>';
+      }).join("")+
+    '</tbody></table></div>';
+  openModal({title:"💳 תשלום מרוכז ל"+m.name,wide:true,bodyHtml:body,
+    saveLabel:"רשום את התשלומים",onSave:function(){ return applyBulkPayMgr(aptId,mgrId); }});
+  bulkPayTotal();
+}
+function onBpAccount(){
+  var payer=document.getElementById("bp-payer"); if(!payer) return;
+  var isBank=accountIsBank(val("bp-account"));
+  if(isBank){ payer.value=""; payer.disabled=true; } else payer.disabled=false;
+}
+function bulkPaySelAll(v){ document.querySelectorAll(".bp-x").forEach(function(c){c.checked=v;}); bulkPayTotal(); }
+function bulkPayTotal(){
+  var n=0,s=0;
+  document.querySelectorAll(".bp-x:checked").forEach(function(c){ n++; s+=Number(c.getAttribute("data-rem"))||0; });
+  var el=document.getElementById("bp-total");
+  if(el) el.textContent="נבחרו "+n+" · סה\"כ "+money(round2(s));
+}
+function applyBulkPayMgr(aptId,mgrId){
+  var ids=Array.prototype.map.call(document.querySelectorAll(".bp-x:checked"),function(c){return c.value;});
+  if(!ids.length){ toast("לא נבחר אף שלב","err"); return false; }
+  var accountId=val("bp-account")||null;
+  var isBank=accountIsBank(accountId);
+  var payer=isBank?null:(val("bp-payer")||null);
+  if(!isBank&&!payer&&apPartners(aptId).length){ toast("בחר מי שילם, או חשבון בנק","err"); return false; }
+  var date=val("bp-date")||todayISO(), method=val("bp-method")||"transfer", note=val("bp-note")||"";
+  var made=0, sum=0;
+  ids.forEach(function(eid){
+    /* מחשבים את הנותר מחדש ברגע הרישום — בטוח גם אם משהו השתנה בינתיים */
+    var rem=round2(mgrFeeLiveOnExpense(eid,mgrId)-mgrPaidOnExpense(eid,mgrId));
+    if(rem<=0.009) return;
+    DB.payments.push({id:uid(),expenseId:eid,date:date,amount:rem,accountId:accountId,
+      payerPartnerId:payer,method:method,recipientType:"manager",recipientManagerId:mgrId,
+      hasInvoice:false,invoiceLink:"",note:note,deleted:false});
+    syncAutoMgmtPayments(eid);
+    made++; sum+=rem;
+  });
+  if(!made){ toast("לא נותר מה לשלם בשלבים שנבחרו","warn"); return false; }
+  save();
+  toast("נרשמו "+made+" תשלומים · "+money(round2(sum)),"ok");
+  rerender();
+}
+
 function saveAutoMgmt(aptId){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var pid=val("am-partner"), pct=Number(val("am-pct"))||0;
