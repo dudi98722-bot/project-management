@@ -1293,13 +1293,13 @@ function moduleExpenses(aptId){
     (can("edit")&&exps.length?' <button class="btn btn-danger btn-sm" onclick="deleteApartmentExpenses(\''+aptId+'\')">🗑️ מחק הכל</button>':'')+'</div>';
   if(!exps.length) return h+'<div class="empty">אין הוצאות עדיין.</div>';
   h+='<div class="toolbar">'+
-    searchBox("exp-q",Q.exp,"חיפוש לפי שם שלב / הערה…","Q.exp=this.value;renderExpTable('+JSON.stringify(aptId)+')")+
-    '<select style="max-width:170px" onchange="Q.expStatus=this.value;renderExpTable('+JSON.stringify(aptId)+')">'+
+    searchBox("exp-q",Q.exp,"חיפוש לפי שם שלב / הערה…","Q.exp=this.value;renderExpTable()")+
+    '<select style="max-width:170px" onchange="Q.expStatus=this.value;renderExpTable()">'+
       ['','unpaid','partial','paid'].map(function(v){
         var l={"":"כל הסטטוסים","unpaid":"לא שולם","partial":"שולם חלקית","paid":"שולם במלואו"}[v];
         return '<option value="'+v+'"'+(Q.expStatus===v?" selected":"")+'>'+l+'</option>'; }).join("")+
     '</select>'+
-    '<select style="max-width:150px" onchange="Q.expClass=this.value;renderExpTable('+JSON.stringify(aptId)+')">'+
+    '<select style="max-width:150px" onchange="Q.expClass=this.value;renderExpTable()">'+
       '<option value="">כל הסיווגים</option>'+
       Object.keys(CLASSIFICATIONS).map(function(k){
         return '<option value="'+k+'"'+(Q.expClass===k?" selected":"")+'>'+CLASSIFICATIONS[k]+'</option>'; }).join("")+
@@ -1309,7 +1309,10 @@ function moduleExpenses(aptId){
   h+='<div id="exp-table">'+expTableHtml(aptId)+'</div>';
   return h;
 }
+/* הדירה נלקחת מהמצב ולא מפרמטר משורשר לתוך מאפיין HTML —
+   שרשור כזה שבר את הציטוט ובלם את כל הסינונים. */
 function renderExpTable(aptId){
+  aptId=aptId||state.params.apartmentId;
   var el=document.getElementById("exp-table"); if(el) el.innerHTML=expTableHtml(aptId);
 }
 function filteredExpenses(aptId){
@@ -1664,13 +1667,13 @@ function modulePayments(aptId){
   if(!all.length) return h+'<div class="empty">אין תשלומים עדיין. רושמים תשלום דרך 💳 בשורת ההוצאה, או ב"תשלום מהיר".</div>';
   var payers={}; all.forEach(function(p){ if(p.payerPartnerId) payers[p.payerPartnerId]=1; });
   h+='<div class="toolbar">'+
-    searchBox("pay-q",Q.pay,"חיפוש לפי שלב / הערה / חשבון…","Q.pay=this.value;renderPayTable('+JSON.stringify(aptId)+')")+
-    '<select style="max-width:170px" onchange="Q.payWho=this.value;renderPayTable('+JSON.stringify(aptId)+')">'+
+    searchBox("pay-q",Q.pay,"חיפוש לפי שלב / הערה / חשבון…","Q.pay=this.value;renderPayTable()")+
+    '<select style="max-width:170px" onchange="Q.payWho=this.value;renderPayTable()">'+
       '<option value="">כל המשלמים</option>'+
       Object.keys(payers).map(function(pid){
         return '<option value="'+pid+'"'+(Q.payWho===pid?" selected":"")+'>'+esc(partnerName(pid))+'</option>'; }).join("")+
     '</select>'+
-    '<select style="max-width:170px" onchange="Q.paySrc=this.value;renderPayTable('+JSON.stringify(aptId)+')">'+
+    '<select style="max-width:170px" onchange="Q.paySrc=this.value;renderPayTable()">'+
       [["","כל המקורות"],["direct","ישירות משותף"],["bank","מהבנק"],["manager","למנהלים (דמי ניהול)"]].map(function(o){
         return '<option value="'+o[0]+'"'+(Q.paySrc===o[0]?" selected":"")+'>'+o[1]+'</option>'; }).join("")+
     '</select>'+
@@ -1680,6 +1683,7 @@ function modulePayments(aptId){
   return h;
 }
 function renderPayTable(aptId){
+  aptId=aptId||state.params.apartmentId;
   var el=document.getElementById("pay-table"); if(el) el.innerHTML=payTableHtml(aptId);
 }
 function payTableHtml(aptId){
