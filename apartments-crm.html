@@ -782,6 +782,43 @@ function viewDashboard(){
     (can("edit")?'<button class="btn btn-sm" onclick="bulkAptFlags()">⚙️ בנק / ניהול מרוכז</button> ':'')+
     (can("edit")?'<button class="btn btn-primary" onclick="editApartment(null)">➕ דירה חדשה</button>':'')+'</div>';
   if(!all.length) return h+'<div class="empty">אין דירות עדיין. הוסף דירה ראשונה.</div>';
+
+  /* ===== סיכום גלובלי + גרפים ===== */
+  var G={cost:0,paid:0,rem:0,income:0,bank:0,mgmt:0,mgmtPaid:0,stages:0};
+  var perApt=[];
+  all.forEach(function(a){
+    var t=apartmentTotals(a.id);
+    G.cost+=t.totalCost; G.paid+=t.paidAll; G.rem+=t.remaining; G.income+=t.income;
+    G.bank+=(a.hasBank?t.bank:0); G.mgmt+=t.totalMgmt; G.mgmtPaid+=t.mgrPaidTot;
+    G.stages+=apExpenses(a.id).length;
+    perApt.push({a:a,t:t});
+  });
+  h+='<div class="stat-grid">'+
+    stat("סה\"כ עלות בכל הפרויקטים",money(G.cost))+
+    stat("שולם בפועל",money(G.paid),"pos")+
+    stat("נותר לתשלום",money(G.rem),G.rem>0.01?"neg":"pos")+
+    stat("פרויקטים",num(all.length))+
+    stat("שלבים",num(G.stages))+
+    (G.mgmt>0.01?stat("דמי ניהול",money(G.mgmt)):"")+
+    '</div>';
+  h+='<div class="card"><h3>📊 התקדמות כוללת</h3>'+progressBar(G.paid,G.cost,"מתוך העלות הכוללת של כל הפרויקטים")+'</div>';
+
+  var top=perApt.filter(function(r){return r.t.totalCost>0.01;})
+    .sort(function(x,y){return y.t.totalCost-x.t.totalCost;}).slice(0,8);
+  if(top.length){
+    h+='<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">'+
+      '<div class="card"><h3>🏢 הפרויקטים הגדולים</h3>'+
+        barChart(top.map(function(r,i){
+          return {label:r.a.name,value:r.t.totalCost,color:chartColor(i),
+            sub:"שולם "+money(r.t.paidAll)+" · נותר "+money(r.t.remaining)};
+        }))+'</div>'+
+      '<div class="card"><h3>⚠️ החוב הגדול ביותר</h3>'+
+        barChart(perApt.filter(function(r){return r.t.remaining>0.01;})
+          .sort(function(x,y){return y.t.remaining-x.t.remaining;}).slice(0,8)
+          .map(function(r){ return {label:r.a.name,value:r.t.remaining,color:"#ef4444"}; }))+'</div>'+
+    '</div>';
+  }
+
   h+='<div id="apt-grid">'+aptGridHtml()+'</div>';
   return h;
 }
@@ -994,6 +1031,74 @@ function viewApartmentOverview(aptId){
     (a.hasManagement?stat("דמי ניהול (פעיל)",money(t.totalMgmt)):"")+
     (a.hasBank?stat("יתרת בנק צפויה",money(t.bank)):"")+
     '</div>';
+
+  /* ===== התקדמות התשלום ===== */
+  h+='<div class="card"><h3>📊 התקדמות התשלום</h3>'+
+    progressBar(t.paidAll,t.totalCost,"מתוך העלות הכוללת")+
+    '<div class="stat-grid" style="margin:0">'+
+      stat("שולם",money(t.paidAll),"pos")+
+      stat("נותר",money(t.remaining),t.remaining>0.01?"neg":"pos")+
+      (a.hasManagement?stat("מזה דמי ניהול",money(t.totalMgmt)):"")+
+    '</div></div>';
+
+  /* ===== סטטוס שלבים + פילוח סיווג ===== */
+  var exps=apExpenses(aptId);
+  if(exps.length){
+    var byStatus={paid:0,partial:0,unpaid:0,over:0};
+    exps.forEach(function(e){ byStatus[expenseStatus(e.id)]+=Number(e.amount)||0; });
+    var statusData=[
+      {label:"שולם במלואו",value:byStatus.paid,color:"#10b981"},
+      {label:"שולם חלקית",value:byStatus.partial,color:"#f59e0b"},
+      {label:"לא שולם",value:byStatus.unpaid,color:"#ef4444"},
+      {label:"שולם ביתר",value:byStatus.over,color:"#8b5cf6"}
+    ].filter(function(d){return d.value>0.01;});
+    var byCls={};
+    exps.forEach(function(e){ var k=CLASSIFICATIONS[e.classification]||"אחר";
+      byCls[k]=(byCls[k]||0)+(Number(e.amount)||0); });
+    var clsData=Object.keys(byCls).map(function(k,i){ return {label:k,value:byCls[k],color:chartColor(i+1)}; })
+      .sort(function(x,y){return y.value-x.value;});
+
+    h+='<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(330px,1fr))">'+
+      '<div class="card"><h3>סטטוס השלבים</h3>'+donutChart(statusData,180)+'</div>'+
+      '<div class="card"><h3>פילוח לפי סיווג</h3>'+donutChart(clsData,180)+'</div>'+
+    '</div>';
+
+    /* ===== 10 השלבים הגדולים ===== */
+    var top=exps.slice().sort(function(x,y){return (y.amount||0)-(x.amount||0);}).slice(0,10)
+      .map(function(e){
+        var paid=expensePaid(e.id), rem=expenseRemaining(e.id);
+        return {label:e.description, value:Number(e.amount)||0,
+          color:rem<=0.01?"#10b981":(paid>0.01?"#f59e0b":"#94a3b8"),
+          sub:"שולם "+money(paid)+" · נותר "+money(rem)};
+      });
+    h+='<div class="card"><h3>🏆 השלבים הגדולים ביותר</h3>'+barChart(top)+
+      '<div class="hint">🟢 שולם · 🟡 חלקי · ⚪ טרם שולם</div></div>';
+
+    /* ===== קצב התשלומים לפי חודש ===== */
+    var pays=apAllPayments(aptId);
+    if(pays.length>1){
+      var byMonth={};
+      pays.forEach(function(p){ var m=String(p.date||"").slice(0,7); if(!m) return;
+        byMonth[m]=(byMonth[m]||0)+(Number(p.amount)||0); });
+      var months=Object.keys(byMonth).sort().map(function(m){
+        var pp=m.split("-");
+        return {label:pp[1]+"/"+pp[0].slice(2), value:byMonth[m]};
+      });
+      if(months.length>1){
+        h+='<div class="card"><h3>📈 קצב התשלומים לאורך זמן</h3>'+lineChart(months)+
+          '<div class="hint">סך התשלומים שנרשמו בכל חודש</div></div>';
+      }
+    }
+  }
+
+  /* ===== השוואת שותפים ===== */
+  var pRows=reportPartnerIds(aptId).map(function(pid){
+    return {label:partnerName(pid), a:partnerShouldPay(aptId,pid), b:partnerPaid(aptId,pid)};
+  }).filter(function(r){ return r.a>0.01||r.b>0.01; });
+  if(pRows.length){
+    h+='<div class="card"><h3>👥 שותפים — אמור לשלם מול שילם</h3>'+groupedBars(pRows)+'</div>';
+  }
+
   // כרטיסי שותפים
   h+='<div class="card"><h3>שותפים — לתשלום / שולם / יתרה</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+
      '<th>שותף</th><th>% ברירת מחדל</th><th>אמור לשלם</th><th>שילם</th><th>יתרה</th></tr></thead><tbody>';
@@ -1008,6 +1113,135 @@ function viewApartmentOverview(aptId){
   return h;
 }
 function stat(label,value,cls){ return '<div class="stat"><div class="label">'+esc(label)+'</div><div class="value '+(cls||"")+'">'+value+'</div></div>'; }
+
+/* ============================================================
+   תרשימים — SVG מוטמע, בלי ספריות חיצוניות (עובד גם מאחורי סינון)
+   ============================================================ */
+var CHART_COLORS=["#4f46e5","#06b6d4","#f59e0b","#10b981","#ec4899","#8b5cf6","#ef4444","#14b8a6","#f97316","#6366f1"];
+function chartColor(i){ return CHART_COLORS[i%CHART_COLORS.length]; }
+
+/* מד התקדמות אופקי */
+function progressBar(paid,total,label){
+  var pct=total>0?Math.min(100,Math.max(0,paid/total*100)):0;
+  var over=paid>total+0.01;
+  return '<div style="margin-bottom:14px">'+
+    '<div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:5px">'+
+      '<span class="muted">'+esc(label||"")+'</span>'+
+      '<span style="font-weight:700">'+money(paid)+' <span class="muted">מתוך '+money(total)+'</span> · '+
+        '<span style="color:'+(over?"#dc2626":"#4f46e5")+'">'+num(Math.round(pct))+'%</span></span>'+
+    '</div>'+
+    '<div style="height:11px;background:#eceffb;border-radius:99px;overflow:hidden">'+
+      '<div style="height:100%;width:'+pct+'%;border-radius:99px;transition:width .5s cubic-bezier(.2,.9,.3,1);'+
+        'background:'+(over?"linear-gradient(90deg,#f87171,#dc2626)":"linear-gradient(90deg,#4f46e5,#06b6d4)")+'"></div>'+
+    '</div></div>';
+}
+
+/* תרשים טבעת (donut) */
+function donutChart(data,size){
+  size=size||190;
+  var total=data.reduce(function(s,d){return s+(Number(d.value)||0);},0);
+  if(total<=0) return '<div class="empty" style="padding:26px">אין נתונים להצגה</div>';
+  var r=size/2-14, cx=size/2, cy=size/2, circ=2*Math.PI*r, off=0;
+  var rings=data.map(function(d,i){
+    var frac=(Number(d.value)||0)/total, len=circ*frac;
+    var el='<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="'+(d.color||chartColor(i))+'" '+
+      'stroke-width="20" stroke-dasharray="'+len+' '+(circ-len)+'" stroke-dashoffset="'+(-off)+'" '+
+      'transform="rotate(-90 '+cx+' '+cy+')" style="transition:stroke-dasharray .6s"><title>'+
+      esc(d.label)+': '+money(d.value)+'</title></circle>';
+    off+=len; return el;
+  }).join("");
+  var legend=data.map(function(d,i){
+    var pct=total>0?((Number(d.value)||0)/total*100):0;
+    return '<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12.5px">'+
+      '<span style="width:11px;height:11px;border-radius:3px;background:'+(d.color||chartColor(i))+';flex:none"></span>'+
+      '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(d.label)+'</span>'+
+      '<b style="font-variant-numeric:tabular-nums">'+money(d.value)+'</b>'+
+      '<span class="muted" style="width:44px;text-align:left">'+num(Math.round(pct))+'%</span></div>';
+  }).join("");
+  return '<div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap">'+
+    '<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'" style="flex:none">'+rings+
+      '<text x="'+cx+'" y="'+(cy-4)+'" text-anchor="middle" font-size="11" fill="#64748b">סה"כ</text>'+
+      '<text x="'+cx+'" y="'+(cy+15)+'" text-anchor="middle" font-size="15" font-weight="800" fill="#1e293b">'+money(total)+'</text>'+
+    '</svg>'+
+    '<div style="flex:1;min-width:210px">'+legend+'</div></div>';
+}
+
+/* תרשים עמודות אופקי */
+function barChart(data,opt){
+  opt=opt||{};
+  if(!data.length) return '<div class="empty" style="padding:26px">אין נתונים להצגה</div>';
+  var max=Math.max.apply(null,data.map(function(d){return Math.abs(Number(d.value)||0);}));
+  if(max<=0) max=1;
+  return '<div>'+data.map(function(d,i){
+    var v=Number(d.value)||0, w=Math.abs(v)/max*100;
+    var col=d.color||chartColor(i);
+    return '<div style="margin-bottom:11px">'+
+      '<div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px">'+
+        '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:62%">'+esc(d.label)+'</span>'+
+        '<b style="font-variant-numeric:tabular-nums'+(v<0?';color:#dc2626':'')+'">'+money(v)+'</b></div>'+
+      '<div style="height:9px;background:#eceffb;border-radius:99px;overflow:hidden">'+
+        '<div style="height:100%;width:'+w+'%;border-radius:99px;background:'+col+';transition:width .5s"></div>'+
+      '</div>'+
+      (d.sub?'<div class="hint" style="margin-top:2px">'+esc(d.sub)+'</div>':'')+
+    '</div>';
+  }).join("")+'</div>';
+}
+
+/* עמודות מקובצות: אמור לשלם מול שילם */
+function groupedBars(rows){
+  if(!rows.length) return '<div class="empty" style="padding:26px">אין נתונים להצגה</div>';
+  var max=Math.max.apply(null,rows.map(function(r){return Math.max(r.a||0,r.b||0);}));
+  if(max<=0) max=1;
+  return '<div>'+rows.map(function(r){
+    return '<div style="margin-bottom:14px">'+
+      '<div style="font-size:12.5px;font-weight:600;margin-bottom:5px">'+esc(r.label)+'</div>'+
+      '<div style="display:flex;align-items:center;gap:7px;margin-bottom:3px">'+
+        '<span class="muted" style="width:66px;font-size:11.5px">אמור לשלם</span>'+
+        '<div style="flex:1;height:9px;background:#eceffb;border-radius:99px;overflow:hidden">'+
+          '<div style="height:100%;width:'+((r.a||0)/max*100)+'%;background:#4f46e5;border-radius:99px"></div></div>'+
+        '<b style="width:92px;text-align:left;font-size:12px;font-variant-numeric:tabular-nums">'+money(r.a)+'</b></div>'+
+      '<div style="display:flex;align-items:center;gap:7px">'+
+        '<span class="muted" style="width:66px;font-size:11.5px">שילם</span>'+
+        '<div style="flex:1;height:9px;background:#eceffb;border-radius:99px;overflow:hidden">'+
+          '<div style="height:100%;width:'+((r.b||0)/max*100)+'%;background:#10b981;border-radius:99px"></div></div>'+
+        '<b style="width:92px;text-align:left;font-size:12px;font-variant-numeric:tabular-nums">'+money(r.b)+'</b></div>'+
+      '<div style="text-align:left;font-size:12px;margin-top:3px">יתרה: <b class="'+((r.b-r.a)<0?"neg":"pos")+'">'+money(r.b-r.a)+'</b></div>'+
+    '</div>';
+  }).join("")+'</div>';
+}
+
+/* גרף קו/שטח לפי חודשים */
+function lineChart(points,opt){
+  opt=opt||{};
+  if(points.length<2) return '<div class="empty" style="padding:26px">צריך לפחות שני חודשים עם נתונים</div>';
+  var W=640,H=190,pad=34;
+  var max=Math.max.apply(null,points.map(function(p){return p.value;}));
+  if(max<=0) max=1;
+  var stepX=(W-pad*2)/(points.length-1);
+  var xy=points.map(function(p,i){
+    return {x:pad+i*stepX, y:H-pad-(p.value/max)*(H-pad*2), p:p};
+  });
+  var line=xy.map(function(c,i){ return (i?"L":"M")+c.x.toFixed(1)+" "+c.y.toFixed(1); }).join(" ");
+  var area=line+" L"+xy[xy.length-1].x.toFixed(1)+" "+(H-pad)+" L"+xy[0].x.toFixed(1)+" "+(H-pad)+" Z";
+  var dots=xy.map(function(c){
+    return '<circle cx="'+c.x.toFixed(1)+'" cy="'+c.y.toFixed(1)+'" r="3.5" fill="#fff" stroke="#4f46e5" stroke-width="2.5">'+
+      '<title>'+esc(c.p.label)+': '+money(c.p.value)+'</title></circle>';
+  }).join("");
+  var labels=xy.map(function(c,i){
+    if(points.length>8 && i%Math.ceil(points.length/8)!==0) return "";
+    return '<text x="'+c.x.toFixed(1)+'" y="'+(H-pad+16)+'" text-anchor="middle" font-size="10" fill="#94a3b8">'+esc(c.p.label)+'</text>';
+  }).join("");
+  return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block">'+
+    '<defs><linearGradient id="lcg" x1="0" y1="0" x2="0" y2="1">'+
+      '<stop offset="0%" stop-color="#4f46e5" stop-opacity=".28"/>'+
+      '<stop offset="100%" stop-color="#4f46e5" stop-opacity="0"/></linearGradient></defs>'+
+    '<line x1="'+pad+'" y1="'+(H-pad)+'" x2="'+(W-pad)+'" y2="'+(H-pad)+'" stroke="#e2e8f0"/>'+
+    '<line x1="'+pad+'" y1="'+pad+'" x2="'+(W-pad)+'" y2="'+pad+'" stroke="#f1f5f9" stroke-dasharray="3 4"/>'+
+    '<text x="'+(pad-6)+'" y="'+(pad+4)+'" text-anchor="end" font-size="10" fill="#94a3b8">'+money(max)+'</text>'+
+    '<path d="'+area+'" fill="url(#lcg)"/>'+
+    '<path d="'+line+'" fill="none" stroke="#4f46e5" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'+
+    dots+labels+'</svg>';
+}
 
 /* ---- placeholders עד למודולים הנוספים ---- */
 function viewExpenses(id){ return moduleExpenses(id); }
@@ -2251,6 +2485,16 @@ function editIncome(id,aptId){
 function moduleApartmentReports(aptId){
   var a=byId(DB.apartments,aptId);
   var h='<div class="toolbar no-print"><button class="btn btn-sm" onclick="window.print()">🖨️ הדפסה</button></div>';
+  /* גרף פתיחה: יתרות השותפים */
+  var balRows=reportPartnerIds(aptId).map(function(pid){
+    var b=partnerPaid(aptId,pid)-partnerShouldPay(aptId,pid);
+    return {label:partnerName(pid),value:b,color:b<0?"#ef4444":"#10b981"};
+  }).filter(function(r){ return Math.abs(r.value)>0.01; })
+    .sort(function(x,y){ return x.value-y.value; });
+  if(balRows.length){
+    h+='<div class="card"><h3>💰 יתרות השותפים</h3>'+barChart(balRows)+
+      '<div class="hint">🔴 חייב (שילם פחות ממה שהיה אמור) · 🟢 זכאי (שילם יותר)</div></div>';
+  }
   // דוח משלמים
   h+='<div class="card"><h3>דוח משלמים — '+esc(a.name)+'</h3><div class="table-wrap"><table class="tbl"><thead><tr><th>שותף</th><th>אמור לשלם</th><th>שילם</th><th>יתרה לתשלום</th></tr></thead><tbody>';
   var tS=0,tP=0;
@@ -2306,6 +2550,27 @@ function moduleMgmtReport(){
   h+='</tbody><tfoot><tr><td colspan="2">סה"כ</td><td>'+money(tCur)+'</td><td>'+money(tDef)+'</td>'+
     '<td>'+money(tCur+tDef)+'</td><td>'+money(tPaid)+'</td><td class="'+((tCur-tPaid)>0.01?"neg":"pos")+'">'+money(tCur-tPaid)+'</td></tr></tfoot></table></div>'+
     '<div class="hint"><b>נוכחי</b> = מה שמגיע כבר עכשיו (האחוז הנוכחי + דחוי ששוחרר). <b>דחוי</b> = מה שיגיע בעתיד וטרם שוחרר. כל הסכומים כוללים מע"מ.</div></div>';
+
+  /* גרפים: תמונת מצב של דמי הניהול */
+  var mgmtPie=[
+    {label:"שולם למנהלים",value:tPaid,color:"#10b981"},
+    {label:"מגיע וטרם שולם",value:Math.max(0,tCur-tPaid),color:"#f59e0b"},
+    {label:"דחוי (עתידי)",value:tDef,color:"#94a3b8"}
+  ].filter(function(d){return d.value>0.01;});
+  var byMgr={};
+  apts.forEach(function(a){ apManagers(a.id).forEach(function(m){
+    var k=normKey(m.name); if(!byMgr[k]) byMgr[k]={name:m.name,cur:0,paid:0};
+    byMgr[k].cur+=managerReceivable(a.id,m.id); byMgr[k].paid+=managerPaid(a.id,m.id); }); });
+  var mgrRows=Object.keys(byMgr).map(function(k){
+    return {label:byMgr[k].name,a:byMgr[k].cur,b:byMgr[k].paid}; })
+    .filter(function(r){return r.a>0.01||r.b>0.01;});
+  if(mgmtPie.length||mgrRows.length){
+    h+='<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(330px,1fr))">'+
+      (mgmtPie.length?'<div class="card"><h3>תמונת מצב</h3>'+donutChart(mgmtPie,180)+'</div>':'')+
+      (mgrRows.length?'<div class="card"><h3>לפי מנהל — מגיע מול שולם</h3>'+
+        groupedBars(mgrRows.map(function(r){return {label:r.label,a:r.a,b:r.b};}))+'</div>':'')+
+    '</div>';
+  }
 
   // פירוט לפי מנהל
   h+='<div class="card"><h3>פירוט לפי מנהל</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+
