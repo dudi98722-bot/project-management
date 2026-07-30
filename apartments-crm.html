@@ -3812,7 +3812,8 @@ function moduleBank(aptId){
   var h='<div class="stat-grid"><div class="stat" style="border:2px solid var(--brand)"><div class="label">יתרת בנק צפויה</div><div class="value">'+money(out)+'</div></div>'+
     stat("סך הפקדות",money(depSum))+stat("שולם מהבנק",money(paidOut))+'</div>';
   h+='<div class="toolbar"><h3 style="margin:0">הפקדות שותפים</h3><div class="sp"></div>'+
-    (can("edit")?'<button class="btn btn-primary btn-sm" onclick="editDeposit(null,\''+aptId+'\')">➕ הפקדה</button>':'')+'</div>';
+    (can("edit")?'<button class="btn btn-primary btn-sm" onclick="openBulkDeposit(\''+aptId+'\')">➕ הפקדה מרוכזת</button> '+
+      '<button class="btn btn-sm" onclick="editDeposit(null,\''+aptId+'\')">➕ הפקדה בודדת</button>':'')+'</div>';
   h+='<div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>שותף</th><th>סכום</th><th>הערה</th><th></th></tr></thead><tbody>';
   if(!deps.length) h+='<tr><td colspan="5" class="empty">אין הפקדות</td></tr>';
   deps.sort(function(x,y){return x.date<y.date?1:-1;}).forEach(function(d){
@@ -3832,6 +3833,97 @@ function moduleBank(aptId){
   h+='</tbody></table></div></div>';
   return h;
 }
+/* ---------- הפקדה מרוכזת ----------
+   שורה לכל שותף, תאריך והערה משותפים. אפשר גם להזין סכום כולל
+   ולפצל אותו לפי אחוזי ברירת המחדל של הדירה, כי כך בדרך כלל
+   מפקידים לקופה המשותפת. */
+function openBulkDeposit(aptId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var parts=apPartners(aptId);
+  if(!parts.length){ toast("בדירה זו לא הוגדרו שותפים","err"); return; }
+  var rows=parts.map(function(p){
+    return '<tr><td><b>'+esc(partnerName(p.partnerId))+'</b></td>'+
+      '<td class="muted">'+num(p.defaultPercent)+'%</td>'+
+      '<td><input class="bd-amt" data-p="'+p.partnerId+'" data-pct="'+(Number(p.defaultPercent)||0)+'" '+
+        'type="number" step="0.01" placeholder="0" oninput="bdSum()" style="max-width:130px"></td></tr>';
+  }).join("");
+  openModal({title:"➕ הפקדה מרוכזת",wide:true,bodyHtml:
+    '<div class="form-grid">'+
+      '<div class="field"><label>תאריך ההפקדה</label><input id="bd-date" type="date" value="'+todayISO()+'"></div>'+
+      '<div class="field"><label>הערה (לכל ההפקדות)</label><input id="bd-note" placeholder="למשל: העברה לקופה 5/24"></div>'+
+    '</div>'+
+    '<div class="section-title">פיצול אוטומטי <span class="hint">(אופציונלי)</span></div>'+
+    '<div class="toolbar">'+
+      '<input id="bd-total" type="number" step="0.01" placeholder="סכום כולל" style="max-width:150px" '+
+        'onkeydown="if(event.key===\'Enter\'){event.preventDefault();bdSplit();}">'+
+      '<button class="btn btn-sm" onclick="bdSplit()">↔️ פצל לפי אחוזי ברירת המחדל</button>'+
+      '<button class="btn btn-ghost btn-sm" onclick="bdEqual()">= פצל שווה בשווה</button>'+
+      '<button class="btn btn-ghost btn-sm" onclick="bdClear()">✕ נקה</button>'+
+    '</div>'+
+    '<div class="section-title">סכום לכל שותף</div>'+
+    '<div class="table-wrap"><table class="tbl"><thead><tr><th>שותף</th><th>% ברירת מחדל</th><th>סכום להפקדה</th></tr></thead>'+
+    '<tbody>'+rows+'</tbody>'+
+    '<tfoot><tr><td colspan="2">סה"כ</td><td id="bd-sum">'+money(0)+'</td></tr></tfoot></table></div>'+
+    '<div class="hint">שותף שסכומו ריק או 0 — לא תיווצר עבורו הפקדה.</div>',
+    saveLabel:"שמור הפקדות",onSave:function(){ return saveBulkDeposit(aptId); }});
+  setTimeout(bdSum,0);
+}
+function bdRows(){ return Array.prototype.slice.call(document.querySelectorAll(".bd-amt")); }
+function bdSum(){
+  var s=bdRows().reduce(function(t,i){ return t+(Number(i.value)||0); },0);
+  var el=document.getElementById("bd-sum"); if(el) el.innerHTML="<b>"+money(round2(s))+"</b>";
+}
+function bdSplit(){
+  var tot=Number(val("bd-total"))||0;
+  if(tot<=0){ toast("הזן סכום כולל","warn"); return; }
+  var rows=bdRows();
+  var pctSum=rows.reduce(function(s,i){ return s+(Number(i.getAttribute("data-pct"))||0); },0);
+  if(pctSum<=0){ toast("אין אחוזי ברירת מחדל בדירה — השתמש בפיצול שווה","warn"); return; }
+  /* מחלקים לפי אחוזים ומיישרים את השארית באחרון, כדי שהסכום יסתדר בדיוק */
+  var acc=0;
+  rows.forEach(function(i,ix){
+    var v = (ix===rows.length-1)
+      ? round2(tot-acc)
+      : round2(tot*(Number(i.getAttribute("data-pct"))||0)/pctSum);
+    acc=round2(acc+v); i.value=v;
+  });
+  bdSum();
+}
+function bdEqual(){
+  var tot=Number(val("bd-total"))||0;
+  if(tot<=0){ toast("הזן סכום כולל","warn"); return; }
+  var rows=bdRows(), acc=0;
+  rows.forEach(function(i,ix){
+    var v=(ix===rows.length-1)?round2(tot-acc):round2(tot/rows.length);
+    acc=round2(acc+v); i.value=v;
+  });
+  bdSum();
+}
+function bdClear(){ bdRows().forEach(function(i){ i.value=""; }); var t=document.getElementById("bd-total"); if(t) t.value=""; bdSum(); }
+function saveBulkDeposit(aptId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return false; }
+  var date=val("bd-date")||todayISO(), note=val("bd-note")||"";
+  var picked=bdRows().map(function(i){
+    return {partnerId:i.getAttribute("data-p"), amount:round2(Number(i.value)||0)};
+  }).filter(function(x){ return x.amount>0.001; });
+  if(!picked.length){ toast("לא הוזן סכום לאף שותף","err"); return false; }
+  var sum=round2(picked.reduce(function(s,x){ return s+x.amount; },0));
+  /* אותה דירה + אותו תאריך + אותו סכום = כנראה לחיצה כפולה */
+  var dupN=picked.filter(function(x){
+    return apDeposits(aptId).some(function(d){
+      return d.partnerId===x.partnerId && d.date===date && Math.abs((Number(d.amount)||0)-x.amount)<0.01; });
+  }).length;
+  if(dupN && !confirm(dupN+" מההפקדות כבר קיימות באותו תאריך ובאותו סכום.\n\nלהוסיף בכל זאת?")) return false;
+  picked.forEach(function(x){
+    DB.deposits.push({id:uid(),apartmentId:aptId,partnerId:x.partnerId,
+      amount:x.amount,date:date,note:note,deleted:false});
+  });
+  save();
+  toast("נרשמו "+picked.length+" הפקדות בסך "+money(sum),"ok");
+  rerender();
+  return true;
+}
+
 function editDeposit(id,aptId){
   var d=id?byId(DB.deposits,id):{partnerId:"",amount:"",date:todayISO(),note:""};
   openModal({title:id?"עריכת הפקדה":"הפקדה חדשה",bodyHtml:
