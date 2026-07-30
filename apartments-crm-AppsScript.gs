@@ -8,6 +8,10 @@
  **************************************************************************/
 
 var DATA_SHEET  = "_data";
+/* מונה גרסה + טביעת אימות קלה, כדי שבדיקת "יש עדכון?" תהיה זולה
+   ולא תדרוש קריאה וניתוח של כל מסד הנתונים בכל פעם */
+var REV_PROP    = "crm_rev";
+var AUTH_PROP   = "crm_auth";
 var RESET_SHEET = "_reset";
 var CHUNK       = 40000;
 
@@ -73,10 +77,19 @@ function doPost(e) {
       return jsonOut({ ok: true });
     }
 
+    /* בדיקת גרסה בלבד: אימות מהיר מול טביעת הקודים שנשמרת בהגדרות
+       הסקריפט, כדי שסקירה תקופתית לא תטען את כל מסד הנתונים. */
+    if (action === "rev" && quickAuth(body.codeHash)) {
+      return jsonOut({ ok: true, rev: storedRev() });
+    }
+
     // ---- מכאן והלאה חובה קוד כניסה תקף ----
     var user = findUser(body.codeHash);
     if (!user) return jsonOut({ ok: false, error: "unauthorized" });
 
+    if (action === "rev") {
+      return jsonOut({ ok: true, rev: storedRev() });
+    }
     if (action === "load") {
       return jsonOut({ ok: true, data: loadData(), user: publicUser(user) });
     }
@@ -195,7 +208,44 @@ function saveWithRevGuard(data) {
     lock.releaseLock();
   }
 }
+/* מונה הגרסה השמור. נכתב בכל שמירה כדי שאפשר יהיה לענות על
+   "יש עדכון?" בלי לקרוא את כל הגיליון. */
+function storedRev() {
+  try {
+    var v = PropertiesService.getScriptProperties().getProperty(REV_PROP);
+    if (v !== null && v !== "") return Number(v) || 0;
+  } catch (err) {}
+  var d = loadData();
+  return (d && d.meta && Number(d.meta.rev)) || 0;
+}
+/* אימות קל לבדיקת גרסה בלבד — משווה מול רשימת ה-hash-ים השמורה
+   בהגדרות הסקריפט. פעולות שמחזירות נתונים ממשיכות דרך findUser. */
+function quickAuth(codeHash) {
+  if (!codeHash) return false;
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(AUTH_PROP);
+    if (!raw) return false;
+    var list = JSON.parse(raw);
+    for (var i = 0; i < list.length; i++) if (list[i] === codeHash) return true;
+    return false;
+  } catch (err) { return false; }
+}
+function rememberMeta(data) {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    props.setProperty(REV_PROP, String((data && data.meta && Number(data.meta.rev)) || 0));
+    var hashes = [];
+    var users = (data && data.users) || [];
+    for (var i = 0; i < users.length; i++) {
+      var u = users[i];
+      if (!u.deleted && u.active && u.code) hashes.push(u.code);
+    }
+    props.setProperty(AUTH_PROP, JSON.stringify(hashes));
+  } catch (err) { /* לא מכשילים שמירה בגלל מטמון */ }
+}
+
 function saveData(data) {
+  rememberMeta(data);
   var str = JSON.stringify(data);
   var sh = ss().getSheetByName(DATA_SHEET) || ss().insertSheet(DATA_SHEET);
   sh.clear();
