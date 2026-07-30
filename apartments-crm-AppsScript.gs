@@ -84,8 +84,7 @@ function doPost(e) {
       if (user.role === "viewer" || user.role === "partner") {
         return jsonOut({ ok: false, error: "forbidden" });
       }
-      saveData(body.data);
-      return jsonOut({ ok: true, savedAt: new Date().toISOString() });
+      return jsonOut(saveWithRevGuard(body.data));
     }
     return jsonOut({ ok: false, error: "unknown action" });
   } catch (err) {
@@ -178,6 +177,24 @@ function consumeResetToken(token) {
 }
 
 /* ========================= שמירה וטעינה ========================= */
+/* שומר רק אם מונה הגרסה של הנשלח אינו נמוך מהשמור — עותק ישן ממכשיר
+   אחר לא יכול לדרוס עבודה חדשה. נעילה מונעת מרוץ בין שמירות מקבילות. */
+function saveWithRevGuard(data) {
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(20000); } catch (e) { return { ok: false, error: "busy" }; }
+  try {
+    var stored = loadData();
+    var storedRev = (stored && stored.meta && Number(stored.meta.rev)) || 0;
+    var incomingRev = (data && data.meta && Number(data.meta.rev)) || 0;
+    if (storedRev > 0 && incomingRev < storedRev) {
+      return { ok: false, error: "stale-rev", serverRev: storedRev };
+    }
+    saveData(data);
+    return { ok: true, savedAt: new Date().toISOString(), rev: incomingRev };
+  } finally {
+    lock.releaseLock();
+  }
+}
 function saveData(data) {
   var str = JSON.stringify(data);
   var sh = ss().getSheetByName(DATA_SHEET) || ss().insertSheet(DATA_SHEET);

@@ -291,6 +291,9 @@ function save(){
   try{
     var prev=localStorage.getItem(LSKEY);
     if(prev){ UNDO.push(prev); if(UNDO.length>UNDO_MAX) UNDO.shift(); }
+    /* מונה גרסאות: כל שמירה מעלה אותו, והשרת דוחה שמירה עם מונה נמוך
+       מהשמור אצלו — כך עותק ישן ממכשיב אחר לא יכול לדרוס עבודה חדשה */
+    DB.meta=DB.meta||{version:1}; DB.meta.rev=(Number(DB.meta.rev)||0)+1;
     localStorage.setItem(LSKEY, JSON.stringify(DB));
   }catch(e){ toast("שגיאת שמירה מקומית","err"); }
   markDirty();
@@ -300,14 +303,51 @@ function undo(){
   if(!UNDO.length){ toast("אין פעולה לביטול","warn"); return; }
   var prev=UNDO.pop();
   try{
+    var newRev=(DB&&DB.meta&&Number(DB.meta.rev)||0)+1;   // הביטול הוא גרסה חדשה, לא חזרה למונה ישן
     DB=JSON.parse(prev);
-    localStorage.setItem(LSKEY,prev);
+    DB.meta=DB.meta||{version:1}; DB.meta.rev=newRev;
+    localStorage.setItem(LSKEY,JSON.stringify(DB));
     markDirty();
     serverSave();                       // מסנכרן את המצב המוחזר גם לשיטס
     closeModal();
     toast("הפעולה בוטלה"+(UNDO.length?" · עוד "+UNDO.length+" לביטול":""),"ok");
     rerender();
   }catch(e){ toast("הביטול נכשל","err"); }
+}
+/* ---------- גיבויי חירום מקומיים ----------
+   לפני כל החלפה של הנתונים המקומיים (משיכה מהשרת, דחייה בגלל גרסה)
+   העותק הנוכחי נשמר כאן — רשת ביטחון אחרונה, בנוסף להיסטוריית השיט. */
+function stashLocalBackup(reason){
+  try{
+    var raw=JSON.stringify(DB);
+    var st=[]; try{ st=JSON.parse(localStorage.getItem(LSKEY+"_stash")||"[]"); }catch(e){}
+    st.unshift({ts:new Date().toISOString(),reason:reason||"",data:raw});
+    st=st.slice(0,2);   // שניים אחרונים — לא להעמיס על מכסת הדפדפן
+    try{ localStorage.setItem(LSKEY+"_stash",JSON.stringify(st)); }
+    catch(e){ st=st.slice(0,1); try{ localStorage.setItem(LSKEY+"_stash",JSON.stringify(st)); }catch(e2){} }
+  }catch(e){}
+}
+function listStash(){ try{ return JSON.parse(localStorage.getItem(LSKEY+"_stash")||"[]"); }catch(e){ return []; } }
+function restoreStash(i){
+  var st=listStash(); var s=st[i]; if(!s){ toast("הגיבוי לא נמצא","err"); return; }
+  if(!confirm("לשחזר את הגיבוי מ-"+dateHe(s.ts.slice(0,10))+" ("+(s.reason||"ללא סיבה")+")?\n\nהמצב הנוכחי יישמר גם הוא בגיבוי לפני ההחלפה.")) return;
+  stashLocalBackup("לפני שחזור גיבוי חירום");
+  try{
+    var curRev=(DB&&DB.meta&&Number(DB.meta.rev))||0;
+    DB=normalizeDB(JSON.parse(s.data));
+    /* השחזור הוא גרסה חדשה — מונה הגרסה חייב להמשיך קדימה,
+       אחרת השרת ידחה את השחזור עצמו כ"עותק ישן" */
+    DB.meta.rev=Math.max(curRev,(Number(DB.meta.rev)||0));
+    save(); UNDO.length=0;
+    toast("הגיבוי שוחזר ונשלח לשרת","ok"); rerender();
+  }catch(e){ toast("השחזור נכשל","err"); }
+}
+function downloadStash(i){
+  var st=listStash(); var s=st[i]; if(!s) return;
+  var blob=new Blob([s.data],{type:"application/json"});
+  var url=URL.createObjectURL(blob); var a=document.createElement("a");
+  a.href=url; a.download="apartments-stash-"+s.ts.slice(0,19).replace(/[:T]/g,"-")+".json"; a.click();
+  URL.revokeObjectURL(url);
 }
 document.addEventListener("keydown",function(e){
   if(!(e.ctrlKey||e.metaKey) || e.shiftKey) return;
@@ -317,13 +357,14 @@ document.addEventListener("keydown",function(e){
   e.preventDefault(); undo();
 });
 function blankDB(){
-  return {meta:{version:1}, partners:[], apartments:[], apartmentPartners:[], managers:[],
+  return {meta:{version:1,rev:0}, partners:[], apartments:[], apartmentPartners:[], managers:[],
     categories:[], expenses:[], expenseSplits:[], expenseManagerFees:[], accounts:[],
     payments:[], deposits:[], income:[], users:[], settings:{sheetsUrl:"", currency:"₪"}};
 }
 function toNum(v){ var n=Number(v); return isFinite(n)?n:0; }
 function toISO(v){ v=String(v==null?"":v).slice(0,10); return /^\d{4}-\d{2}-\d{2}$/.test(v)?v:""; }
 function normalizeDB(d){
+  d.meta=d.meta||{version:1,rev:0}; if(d.meta.rev==null) d.meta.rev=0;
   (d.expenses||[]).forEach(function(e){ e.amount=toNum(e.amount); e.date=toISO(e.date); e.mgmtVatRate=toNum(e.mgmtVatRate); });
   (d.expenseSplits||[]).forEach(function(s){ s.percent=toNum(s.percent); });
   (d.expenseManagerFees||[]).forEach(function(f){ f.pctCurrent=toNum(f.pctCurrent); f.pctDeferred=toNum(f.pctDeferred); });
@@ -665,20 +706,13 @@ async function doLogin(){
   var j=await api({action:"login",codeHash:h});
   if(!j||!j.ok){ toast((j&&j.error==="network")?"אין חיבור לשרת":"קוד שגוי","err"); return; }
   setAuth(h); CU=j.user;
-  if(hasDirtyMark() && DB && Array.isArray(DB.apartments)){
-    /* המכשיר מחזיק שינוי שטרם הגיע לשרת — דוחפים אותו במקום למשוך ולמחוק */
-    SAVEQ.dirty=true; flushSave();
-    toast("נמצאו שינויים שטרם סונכרנו — נשלחים לשרת","warn");
-  } else {
-    var res=await serverLoad();
-    if(res.data && Array.isArray(res.data.apartments)){ DB=normalizeDB(res.data); saveLocal(); UNDO.length=0; }
-    else if(res.error){
-      /* בלי נתונים עדכניים לא נכנסים למצב עריכה על מטמון ישן */
-      setAuth(""); CU=null;
-      toast("לא הצלחתי לטעון את הנתונים מהשרת — נסה שוב בעוד רגע","err");
-      return;
-    }
+  var rec=await reconcileAfterAuth();
+  if(rec===null){
+    setAuth(""); CU=null;
+    toast("לא הצלחתי לטעון את הנתונים מהשרת — נסה שוב בעוד רגע","err");
+    return;
   }
+  if(rec===false){ toast("האימות נכשל — נסה שוב","err"); return; }
   toast("ברוך הבא, "+CU.name,"ok"); go("dashboard",{});
 }
 function logout(){
@@ -728,13 +762,7 @@ async function doResetCode(){
   var j=await api({action:"login",codeHash:h});
   if(j&&j.ok){
     CU=j.user;
-    if(hasDirtyMark() && DB && Array.isArray(DB.apartments)){
-      SAVEQ.dirty=true; flushSave();
-      toast("נמצאו שינויים שטרם סונכרנו — נשלחים לשרת","warn");
-    } else {
-      var res=await serverLoad();
-      if(res.data && Array.isArray(res.data.apartments)){ DB=normalizeDB(res.data); saveLocal(); UNDO.length=0; }
-    }
+    await reconcileAfterAuth();
     toast("הקוד עודכן — ברוך הבא","ok"); go("dashboard",{});
   }else{
     setAuth(""); toast("הקוד עודכן — היכנס עם הקוד החדש","ok"); renderApp();
@@ -1051,6 +1079,20 @@ function flushSave(){
       }
       SAVEQ.dirty=true;
       var err=j&&j.error;
+      if(err==="stale-rev"){
+        /* השרת מחזיק גרסה חדשה יותר (מכשיר אחר עבד בינתיים).
+           לא דורסים אותה: שומרים את העותק שלנו בגיבוי חירום ומושכים את העדכני. */
+        SAVEQ.dirty=false; setSync("err");
+        stashLocalBackup("שינוי שנדחה — השרת התעדכן ממכשיר אחר");
+        serverLoad().then(function(res){
+          if(res.data && Array.isArray(res.data.apartments)){
+            DB=normalizeDB(res.data); saveLocal(); UNDO.length=0; clearDirtyMark();
+            setSync("ok"); rerender();
+            toast("מכשיר אחר עדכן נתונים במקביל — נטענה הגרסה העדכנית. העותק שלך נשמר ב'גיבוי'","warn");
+          }
+        });
+        return;
+      }
       if(err==="unauthorized"||err==="forbidden"){
         /* קוד הכניסה כבר לא תקף (למשל אחרי איפוס ממכשיר אחר).
            אסור להמשיך לירות — עוצרים, והשינוי שמור מקומית ומסומן,
@@ -1094,32 +1136,42 @@ async function serverLoad(){
 /* ============================================================
    אתחול — השרת הוא מקור האמת; localStorage הוא מטמון מקומי
    ============================================================ */
+/* סנכרון אחרי אימות: מושכים את השרת, משווים מוני גרסאות, ומחליטים —
+   דוחפים את המקומי רק אם הוא באמת חדש יותר. דחיפה עיוורת של עותק ישן
+   היא שמחקה תשלומים בעבר, ולכן ההשוואה כאן קריטית.
+   מחזיר: true=להיכנס, false=אימות נכשל, null=אין רשת */
+async function reconcileAfterAuth(){
+  var res=await serverLoad();
+  if(res.error){
+    if(res.reason==="unauthorized"){ setAuth(""); CU=null; return false; }
+    if(hasDirtyMark() && DB && Array.isArray(DB.apartments)) return true;   // אין רשת אבל יש עבודה מקומית — לא חוסמים
+    return null;
+  }
+  if(res.user) CU=res.user;
+  var srvRev=(res.data&&res.data.meta&&Number(res.data.meta.rev))||0;
+  var locRev=(DB&&DB.meta&&Number(DB.meta.rev))||0;
+  var localDirty=hasDirtyMark() && DB && Array.isArray(DB.apartments);
+  if(localDirty && (res.data===null || locRev>=srvRev)){
+    SAVEQ.dirty=true; flushSave();
+    toast("נמצאו שינויים שטרם סונכרנו — נשלחים לשרת","warn");
+    return true;
+  }
+  if(res.data && Array.isArray(res.data.apartments)){
+    if(localDirty){
+      stashLocalBackup("שינויים מקומיים ישנים — השרת היה מעודכן יותר בכניסה");
+      toast("השרת הכיל גרסה חדשה יותר — נטענה. העותק המקומי נשמר ב'גיבוי'","warn");
+    }
+    DB=normalizeDB(res.data); saveLocal(); UNDO.length=0; clearDirtyMark();
+  }
+  return true;
+}
 async function boot(){
   var hadLocal=loadDB();
   if(!hadLocal||!DB){ DB=blankDB(); seedIfEmpty(); }
   if(getAuth()){                       // session פעיל
-    if(hadLocal && hasDirtyMark()){
-      /* יש שינוי מקומי שלא אושר ע"י השרת (סגירה מהירה / כשל רשת).
-         לא מושכים מהשרת — קודם דוחפים את המקומי, אחרת השינוי נמחק. */
-      var jl=await api({action:"login",codeHash:getAuth()});
-      if(jl&&jl.ok){
-        CU=jl.user;
-        SAVEQ.dirty=true; flushSave();
-        toast("נמצאו שינויים שטרם סונכרנו — נשלחים לשרת עכשיו","warn");
-      } else if(jl&&jl.error==="bad-code"){ setAuth(""); CU=null; }
-      /* כשל רשת: נשארים על המקומי עם הסימון — ננסה שוב בהמשך */
-    } else {
-      var res=await serverLoad();
-      if(res.data && Array.isArray(res.data.apartments)){
-        DB=normalizeDB(res.data); saveLocal(); UNDO.length=0;
-        if(res.user) CU=res.user;
-      } else if(res.reason==="unauthorized"){ setAuth(""); CU=null; }
-      else if(res.error){
-        /* השרת לא זמין: לא עורכים בשקט על עותק ישן — חוזרים למסך הכניסה,
-           שמציג את אזהרת החיבור. הנתונים המקומיים לא נמחקים. */
-        CU=null;
-      }
-    }
+    var r=await reconcileAfterAuth();
+    if(r===null){ CU=null; }           // אין רשת ואין עבודה מקומית — מסך כניסה עם האזהרה
+    else if(r===false){ /* אומת כלא-תקף — כבר נוקה */ }
   }
   renderApp();
 }
@@ -2399,6 +2451,21 @@ function moduleSettings(){
       '<button class="btn btn-sm" onclick="document.getElementById(\'imp-file\').click()">⬆️ שחזור מגיבוי</button>'+
       '<input type="file" id="imp-file" accept=".json" style="display:none" onchange="importJSON(this)"></div>'+
       '<div class="hint">הגיבוי כולל את כל הנתונים כולל סל המחזור.</div></div>';
+    var st=listStash();
+    h+='<div class="card"><h3>🛟 גיבויי חירום אוטומטיים</h3>'+
+      '<p class="muted" style="font-size:13px">נוצרים אוטומטית לפני כל החלפה של הנתונים המקומיים (משיכה מהשרת, דחיית גרסה). בנוסף — כל שמירה נשמרת גם ב<b>היסטוריית הגרסאות של גיליון הגוגל</b> (קובץ ← היסטוריית גרסאות).</p>';
+    if(!st.length) h+='<div class="hint">אין גיבויי חירום כרגע — זה טוב: לא הייתה שום החלפה כפויה.</div>';
+    else{
+      h+='<div class="table-wrap"><table class="tbl"><thead><tr><th>מתי</th><th>סיבה</th><th>גודל</th><th></th></tr></thead><tbody>';
+      st.forEach(function(s,i){
+        h+='<tr><td>'+esc(s.ts.slice(0,19).replace("T"," "))+'</td><td>'+esc(s.reason||"—")+'</td>'+
+          '<td>'+Math.round(s.data.length/1024)+'KB</td>'+
+          '<td class="right"><button class="btn btn-sm" onclick="restoreStash('+i+')">♻️ שחזר</button> '+
+          '<button class="btn btn-ghost btn-sm" onclick="downloadStash('+i+')">⬇️ הורד</button></td></tr>';
+      });
+      h+='</tbody></table></div>';
+    }
+    h+='</div>';
   }
   return h;
 }
