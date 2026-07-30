@@ -108,6 +108,11 @@ label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:5px;font-w
    והכותרת נצמדת לראש אזור הגלילה שלה. עובד תמיד, גם אופקית. */
 .table-wrap{max-height:calc(100vh - 210px);overflow:auto;border:1px solid var(--line);
   border-radius:14px;background:#fff;box-shadow:var(--shadow)}
+/* שורת הכפתור "ייצוא לאקסל" שנתלית מעל כל טבלה */
+.xl-bar{display:flex;justify-content:flex-start;margin:0 0 5px;line-height:1}
+.xl-bar .btn{padding:3px 9px;font-size:11.5px;opacity:.62}
+.xl-bar .btn:hover{opacity:1}
+@media print{.xl-bar{display:none}}
 table.tbl{width:100%;border-collapse:separate;border-spacing:0;background:#fff;font-size:13.5px;
   font-variant-numeric:tabular-nums}
 table.tbl th,table.tbl td{padding:10px 13px;text-align:right;white-space:nowrap}
@@ -290,8 +295,9 @@ function onMethodPick(selId){
   if(sel.value!=="__new") return;
   var name=prompt("שם אמצעי התשלום החדש (למשל: הוראת קבע, ביט, פייבוקס):","");
   name=(name||"").trim();
-  if(!name){ sel.value="transfer"; return; }
-  if(!can("edit")){ toast("אין הרשאה","err"); sel.value="transfer"; return; }
+  var prevM=sel.getAttribute("data-prev")||"transfer";
+  if(!name){ sel.value=prevM; return; }
+  if(!can("edit")){ toast("אין הרשאה","err"); sel.value=prevM; return; }
   DB.settings=DB.settings||{};
   DB.settings.paymentMethods=DB.settings.paymentMethods||{};
   var k=normKey(name).replace(/[^\w֐-׿]+/g,"_").slice(0,30) || ("m"+Date.now().toString(36));
@@ -300,8 +306,43 @@ function onMethodPick(selId){
   DB.settings.paymentMethods[k]=name;
   save(); refreshMethods();
   var cur=sel.id;
-  sel.innerHTML=methodOptions(k); sel.value=k;
+  sel.innerHTML=methodOptions(k); sel.value=k; sel.setAttribute("data-prev",k);
   toast('נוסף אמצעי התשלום "'+name+'"',"ok");
+}
+/* קטגוריות הוצאה (חשמל, אדריכל…) — רשימה פתוחה שהמשתמש מנהל.
+   הרשימה המומלצת היא רק נקודת פתיחה בלחיצה אחת, לא ברירת מחדל כפויה. */
+var CATEGORIES_SUGGESTED = ["אדריכל","יועצים ומתכננים","עורך דין","אגרות והיטלים","קבלן שלד",
+  "חשמל","אינסטלציה","מיזוג אוויר","גבס","טיח","ריצוף וחיפוי","צבע","אלומיניום","נגרות",
+  "מסגרות","איטום","פיתוח וחצר","מעלית","מטבח","דלתות","מדידות","פיקוח","שיפוצים",
+  "חומרי בניין","הובלות ופינוי","ביטוח","מימון וריבית","שיווק ותיווך","הוצאות שוטפות","שונות"];
+function catsSorted(){
+  return active(DB.categories).slice().sort(function(a,b){
+    return String(a.name).localeCompare(String(b.name),"he"); });
+}
+/* קטגוריה שנמחקה מחזירה "" — כך היא לא נראית חיה בדוחות, והשלבים
+   שלה מקובצים לשורת "(קטגוריה שנמחקה)" במקום להיראות כאילו לא נמחקה. */
+function categoryName(id){ var c=id?byId(DB.categories,id):null; return (c&&!c.deleted)?c.name:""; }
+function catOptions(sel){
+  return '<option value="">— ללא קטגוריה —</option>'+
+    catsSorted().map(function(c){
+      return '<option value="'+esc(c.id)+'"'+(c.id===sel?" selected":"")+'>'+esc(c.name)+'</option>'; }).join("")+
+    '<option value="__new">➕ קטגוריה חדשה…</option>';
+}
+/* נבחר "קטגוריה חדשה" — שואלים שם, שומרים, ובוחרים אותה */
+function onCatPick(selId){
+  var sel=document.getElementById(selId); if(!sel) return;
+  if(sel.value!=="__new") return;
+  /* חוזרים לבחירה הקודמת ולא ל"ללא קטגוריה" — אחרת ביטול ה-prompt
+     היה מוחק בשקט את הקטגוריה שכבר הייתה על השלב. */
+  var prev=sel.getAttribute("data-prev")||"";
+  var name=prompt("שם הקטגוריה החדשה (למשל: חשמל, אדריכל, ריצוף):","");
+  name=(name||"").trim();
+  if(!name){ sel.value=prev; return; }
+  if(!can("edit")){ toast("אין הרשאה","err"); sel.value=prev; return; }
+  var id=findOrCreateCategory(name);
+  save();
+  sel.innerHTML=catOptions(id); sel.value=id; sel.setAttribute("data-prev",id);
+  toast('נוספה הקטגוריה "'+name+'"',"ok");
 }
 var ROLES = {admin:"מנהל", editor:"עורך", viewer:"צפייה בלבד", partner:"שותף"};
 var BASE_TYPES = {full:"מלא (כל הסכום)", net17:"נטו (מע\"מ 17%)", net18:"נטו (מע\"מ 18%)"};
@@ -523,6 +564,7 @@ function mgrPaidOnExpense(eId,mId){
    הפונקציה אידמפוטנטית: יוצרת/מעדכנת/מסירה את התשלום האוטומטי לפי המצב,
    ונצמדת לתקרה — אוטומטי + ידני לעולם לא יעברו את מה שמגיע למנהל. */
 function syncAutoMgmtPayments(eId){
+  if(isContainer(eId)) return;   /* מכל: הכסף ודמי הניהול יושבים בתתי-השלבים */
   var e=byId(DB.expenses,eId); if(!e) return;
   var a=byId(DB.apartments,e.apartmentId); if(!a) return;
   var cfg=a.autoMgmt||null;
@@ -678,7 +720,7 @@ function openModal(opt){
        '<button class="btn" onclick="closeModal()">'+(opt.onSave?"ביטול":"סגירה")+'</button>'+
      '</div>'+
     '</div></div>';
-  setTimeout(function(){ attachTableTools(root); },0);
+  setTimeout(function(){ attachTableTools(root); attachExportButtons(root); },0);
 }
 function closeModal(){ document.getElementById("modal-root").innerHTML=""; _modalOnSave=null; }
 function modalSave(){ if(_modalOnSave){ var r=_modalOnSave(); if(r!==false) closeModal(); } else closeModal(); }
@@ -741,7 +783,25 @@ function navHtml(){
   }).join("")+
   (can("edit")?'<div class="nav-item" style="background:var(--brand);color:#fff" onclick="openQuickExpense()">➕ הוצאה מהירה</div>':'')+
   (can("edit")?'<div class="nav-item" style="background:var(--ok);color:#fff" onclick="openQuickPay()">💳 תשלום מהיר</div>':'')+
+  '<div class="nav-item" onclick="openExportMenu()" title="ייצוא הנתונים לאקסל">⬇️ ייצוא לאקסל</div>'+
   '</div>';
+}
+/* תפריט ייצוא מרכזי — חוברת מלאה, דירה בודדת, או הטבלה שעל המסך */
+function openExportMenu(){
+  var apts=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);});
+  var cur=state.params.apartmentId;
+  openModal({title:"⬇️ ייצוא לאקסל",bodyHtml:
+    '<div class="hint" style="margin-bottom:10px">כל קובץ נפתח ישירות באקסל או בגוגל שיטס. '+
+    'מעל כל טבלה במערכת יש גם כפתור "אקסל" שמייצא בדיוק את מה שרואים, כולל הסינון הפעיל.</div>'+
+    '<div class="field"><button class="btn btn-primary" style="width:100%" onclick="closeModal();exportAllData()">'+
+      '📚 כל הנתונים — חוברת מלאה ('+apts.length+' דירות)</button>'+
+      '<div class="hint">גיליון לכל נושא: דירות, שלבים, חלוקות, תשלומים, סיכום שותפים, דמי ניהול, בנק, הכנסות, חשבונות.</div></div>'+
+    (cur?'<div class="field" style="margin-top:10px"><button class="btn" style="width:100%" onclick="closeModal();exportApartmentBook(\''+cur+'\')">'+
+      '🏠 רק הדירה הנוכחית — '+esc((byId(DB.apartments,cur)||{}).name||"")+'</button></div>':'')+
+    '<div class="field" style="margin-top:10px"><label>ייצוא דירה מסוימת</label>'+
+      '<select id="xl-apt">'+apts.map(function(a){return '<option value="'+a.id+'"'+(a.id===cur?" selected":"")+'>'+esc(a.name)+'</option>';}).join("")+'</select>'+
+      '<button class="btn" style="width:100%;margin-top:6px" onclick="var v=val(\'xl-apt\');closeModal();exportApartmentBook(v)">⬇️ ייצוא הדירה שנבחרה</button></div>',
+    saveLabel:null});
 }
 function renderView(){
   var c=document.getElementById("content"); if(!c) return;
@@ -758,7 +818,7 @@ function renderView(){
     case "recycle": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewRecycle(); break;
     default: c.innerHTML=viewDashboard();
   }
-  setTimeout(function(){ attachTableTools(c); },0);   /* סינון ומיון בכל טבלה */
+  setTimeout(function(){ attachTableTools(c); attachExportButtons(c); },0);   /* סינון, מיון וייצוא בכל טבלה */
 }
 
 /* ---------- כניסה ---------- */
@@ -987,7 +1047,7 @@ function aptGridHtml(){
       '<td><b>'+esc(a.name)+'</b>'+
         (a.hasManagement?' <span class="pill">ניהול</span>':'')+
         (a.hasBank?' <span class="pill">בנק</span>':'')+
-        (a.notes?'<div class="muted" style="font-size:12px">'+esc(a.notes)+'</div>':'')+'</td>'+
+        (a.notes?'<div class="muted" data-xl-skip="1" style="font-size:12px">'+esc(a.notes)+'</div>':'')+'</td>'+
       '<td>'+n+'</td>'+
       '<td>'+money(t.totalCost)+'</td>'+
       '<td>'+money(t.paidAll)+'</td>'+
@@ -1510,6 +1570,8 @@ async function boot(){
     else if(r===false){ /* אומת כלא-תקף — כבר נוקה */ }
   }
   renderApp();
+  watchTables();     // כלי טבלה + כפתור ייצוא לכל טבלה, גם אחרי רינדור חלקי
+  watchSelects();    // זיכרון הבחירה הקודמת בבוררים עם "הוסף חדש…"
 }
 </script>
 <script>
@@ -1592,8 +1654,16 @@ function applyColFilters(t){
     if(!f.length){ tf.innerHTML=tf.getAttribute("data-orig"); }
     else{
       var n=t.tHead.rows[0].cells.length, sums=new Array(n).fill(null);
+      /* שורת שלב-אב היא כבר הסיכום של תתי-השלבים שמתחתיה. אם שניהם
+         גלויים, ספירת שניהם הייתה מכפילה את הסכום, את "שולם" ואת "נותר". */
+      var visIds={};
+      Array.prototype.forEach.call(body.rows,function(tr){
+        if(tr.style.display!=="none" && tr.getAttribute("data-eid")) visIds[tr.getAttribute("data-eid")]=1;
+      });
       Array.prototype.forEach.call(body.rows,function(tr){
         if(tr.style.display==="none") return;
+        var par=tr.getAttribute("data-parent");
+        if(par && visIds[par]) return;          // נספר כבר בשורת האב
         for(var i=0;i<n;i++){
           var cell=tr.cells[i]; if(!cell) continue;
           var txt=String(cell.innerText||"").replace(/[^\d.\-]/g,"");
@@ -1632,7 +1702,23 @@ function sortTableByCol(t,col){
     else r=String(ka.s||ka.n||"").localeCompare(String(kb.s||kb.n||""),"he");
     return dir==="asc"?r:-r;
   });
-  rows.forEach(function(tr){ body.appendChild(tr); });
+  /* קיבוץ אב/בנים חייב לשרוד את המיון — אחרת שורות "↳" נוחתות מתחת
+     לשלב שאין להן קשר אליו. ממיינים את שורות האב, וכל בן נצמד לאביו. */
+  var kidsOf={}, tops=[];
+  rows.forEach(function(tr){
+    var par=tr.getAttribute("data-parent");
+    if(par){ (kidsOf[par]=kidsOf[par]||[]).push(tr); } else tops.push(tr);
+  });
+  var seen={};
+  tops.forEach(function(tr){
+    body.appendChild(tr);
+    var id=tr.getAttribute("data-eid");
+    if(id&&kidsOf[id]){ kidsOf[id].forEach(function(k){ body.appendChild(k); seen[id]=1; }); }
+  });
+  /* בן שאביו מסונן החוצה — מוצג לבד, בסוף, כדי שלא ייעלם */
+  Object.keys(kidsOf).forEach(function(pid){
+    if(!seen[pid]) kidsOf[pid].forEach(function(k){ body.appendChild(k); });
+  });
   /* חיווי כיוון על הכותרת */
   var hr=t.tHead.rows[0];
   Array.prototype.forEach.call(hr.cells,function(th,i){
@@ -1650,6 +1736,563 @@ function countLine(shown,total,what){
   if(shown===total) return '<span class="muted">'+total+' '+esc(what)+'</span>';
   return '<span class="pill">מציג '+shown+' מתוך '+total+'</span>';
 }
+
+/* ============================================================
+   ייצוא לאקסל — קובץ xlsx אמיתי, בלי שום ספרייה חיצונית
+   ------------------------------------------------------------
+   xlsx הוא ZIP של קבצי XML. אנחנו בונים את ה-ZIP בשיטת "stored"
+   (בלי דחיסה) — כך צריך רק CRC32, בלי תלות ב-CompressionStream,
+   וזה עובד בכל דפדפן. אקסל וגוגל שיטס פותחים את זה כרגיל.
+   ============================================================ */
+var _crcT=null;
+function crc32(b){
+  if(!_crcT){ _crcT=new Uint32Array(256);
+    for(var i=0;i<256;i++){ var c=i; for(var k=0;k<8;k++) c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1); _crcT[i]=c>>>0; } }
+  var c=0xFFFFFFFF;
+  for(var j=0;j<b.length;j++) c=_crcT[(c^b[j])&0xFF]^(c>>>8);
+  return (c^0xFFFFFFFF)>>>0;
+}
+function zipStore(files){
+  function u16(v){ return [v&255,(v>>8)&255]; }
+  function u32(v){ return [v&255,(v>>8)&255,(v>>16)&255,(v>>>24)&255]; }
+  var parts=[], cd=[], off=0;
+  files.forEach(function(f){
+    var nm=new TextEncoder().encode(f.name), crc=crc32(f.data), len=f.data.length;
+    var lh=[].concat([0x50,0x4B,0x03,0x04],u16(20),u16(0x0800),u16(0),u16(0),u16(0),
+      u32(crc),u32(len),u32(len),u16(nm.length),u16(0));
+    parts.push(new Uint8Array(lh),nm,f.data);
+    cd.push({nm:nm,crc:crc,len:len,off:off});
+    off+=lh.length+nm.length+len;
+  });
+  var cdStart=off, cdParts=[];
+  cd.forEach(function(c){
+    var h=[].concat([0x50,0x4B,0x01,0x02],u16(20),u16(20),u16(0x0800),u16(0),u16(0),u16(0),
+      u32(c.crc),u32(c.len),u32(c.len),u16(c.nm.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(c.off));
+    cdParts.push(new Uint8Array(h),c.nm);
+    off+=h.length+c.nm.length;
+  });
+  var eocd=new Uint8Array([].concat([0x50,0x4B,0x05,0x06],u16(0),u16(0),
+    u16(files.length),u16(files.length),u32(off-cdStart),u32(cdStart),u16(0)));
+  return new Blob(parts.concat(cdParts,[eocd]),
+    {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+}
+
+function xlEsc(s){
+  return String(s==null?"":s).replace(/[&<>"']/g,function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"}[c];
+  }).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,"");   // תווי בקרה פוסלים את הקובץ
+}
+function colLetter(i){ var s=""; i++; while(i>0){ var m=(i-1)%26; s=String.fromCharCode(65+m)+s; i=(i-m-1)/26; } return s; }
+function xlDate(iso){    // מספר סידורי של אקסל: ימים מאז 30/12/1899
+  var p=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso||"")); if(!p) return null;
+  return Math.round((Date.UTC(+p[1],+p[2]-1,+p[3])-Date.UTC(1899,11,30))/86400000);
+}
+/* סגנונות: 0 טקסט · 1 כותרת · 2 כסף · 3 תאריך · 4 אחוז · 5 סיכום-מספר · 6 סיכום-טקסט */
+var XL_STYLES='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+'<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+
+'<numFmts count="3"><numFmt numFmtId="164" formatCode="dd/mm/yyyy"/>'+
+'<numFmt numFmtId="165" formatCode="#,##0.00"/><numFmt numFmtId="166" formatCode="0.##&quot;%&quot;"/></numFmts>'+
+'<fonts count="3">'+
+'<font><sz val="11"/><name val="Arial"/></font>'+
+'<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Arial"/></font>'+
+'<font><b/><sz val="11"/><name val="Arial"/></font></fonts>'+
+'<fills count="3"><fill><patternFill patternType="none"/></fill>'+
+'<fill><patternFill patternType="gray125"/></fill>'+
+'<fill><patternFill patternType="solid"><fgColor rgb="FF4F6BED"/><bgColor indexed="64"/></patternFill></fill></fills>'+
+'<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>'+
+'<border><left/><right/><top style="thin"><color rgb="FF888888"/></top><bottom/><diagonal/></border></borders>'+
+'<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'+
+'<cellXfs count="7">'+
+'<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'+
+'<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>'+
+'<xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'+
+'<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'+
+'<xf numFmtId="166" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'+
+'<xf numFmtId="165" fontId="2" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1"/>'+
+'<xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1"/></cellXfs>'+
+'<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+
+function safeSheetName(s,used){
+  var n=String(s||"גיליון").replace(/[\\\/\?\*\[\]:]/g," ").trim().slice(0,28)||"גיליון";
+  var base=n, i=2; while(used[n]){ n=base.slice(0,26)+" "+(i++); }
+  used[n]=1; return n;
+}
+/* sheets: [{name, rows:[[cell,…]], foot:[[cell,…]]}]
+   cell: מחרוזת/מספר, או {v,t} כאשר t = s|n|money|pct|d  */
+function xlsxBlob(sheets){
+  var files=[], used={}, names=[];
+  function put(nm,str){ files.push({name:nm,data:new TextEncoder().encode(str)}); }
+  var XD='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+
+  sheets.forEach(function(sh,si){
+    var name=safeSheetName(sh.name,used); names.push(name);
+    var body=(sh.rows||[]).filter(function(r){ return r && r.length; });
+    var foot=(sh.foot||[]);
+    var nCols=0;
+    body.concat(foot).forEach(function(r){ if(r.length>nCols) nCols=r.length; });
+    if(!nCols){ nCols=1; body=[["אין נתונים"]]; }
+
+    var widths=new Array(nCols).fill(10);
+    body.concat(foot).forEach(function(r){
+      for(var i=0;i<nCols;i++){
+        var c=r[i]; if(c==null) continue;
+        var v=(typeof c==="object")?c.v:c;
+        var L=String(v==null?"":v).length+3;
+        if(L>widths[i]) widths[i]=Math.min(L,46);
+      }
+    });
+
+    function cellXml(ref,c,foot){
+      if(c==null||c==="") return '<c r="'+ref+'"'+(foot?' s="6"':'')+'/>';
+      var t=(typeof c==="object")?(c.t||"s"):((typeof c==="number")?"n":"s");
+      var v=(typeof c==="object")?c.v:c;
+      if(v===""||v==null) return '<c r="'+ref+'"'+(foot?' s="6"':'')+'/>';
+      if(t==="d"){ var d=xlDate(v); if(d==null) return '<c r="'+ref+'" t="inlineStr"'+(foot?' s="6"':'')+'><is><t>'+xlEsc(v)+'</t></is></c>';
+        return '<c r="'+ref+'" s="3"><v>'+d+'</v></c>'; }
+      if(t==="n"||t==="money"||t==="pct"){
+        var n=Number(v); if(!isFinite(n)) n=0;
+        var s=foot?5:(t==="money"?2:(t==="pct"?4:0));
+        return '<c r="'+ref+'" s="'+s+'"><v>'+n+'</v></c>';
+      }
+      return '<c r="'+ref+'" t="inlineStr"'+(foot?' s="6"':'')+'><is><t xml:space="preserve">'+xlEsc(v)+'</t></is></c>';
+    }
+
+    var xml=XD+'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+
+      '<sheetViews><sheetView rightToLeft="1"'+(si===0?' tabSelected="1"':'')+' workbookViewId="0">'+
+      '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'+
+      '<sheetFormatPr defaultRowHeight="15"/><cols>';
+    for(var i=0;i<nCols;i++) xml+='<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+widths[i]+'" customWidth="1"/>';
+    xml+='</cols><sheetData>';
+    var rn=0;
+    body.forEach(function(r,ri){
+      rn++;
+      xml+='<row r="'+rn+'">';
+      for(var i=0;i<nCols;i++){
+        var c=r[i];
+        if(ri===0){    // שורת כותרת
+          var v=(c&&typeof c==="object")?c.v:c;
+          xml+= (v==null||v==="") ? '<c r="'+colLetter(i)+rn+'" s="1"/>'
+            : '<c r="'+colLetter(i)+rn+'" s="1" t="inlineStr"><is><t xml:space="preserve">'+xlEsc(v)+'</t></is></c>';
+        } else xml+=cellXml(colLetter(i)+rn,c,false);
+      }
+      xml+='</row>';
+    });
+    foot.forEach(function(r){
+      rn++;
+      xml+='<row r="'+rn+'">';
+      for(var i=0;i<nCols;i++) xml+=cellXml(colLetter(i)+rn,r[i],true);
+      xml+='</row>';
+    });
+    xml+='</sheetData>';
+    if(body.length>1) xml+='<autoFilter ref="A1:'+colLetter(nCols-1)+body.length+'"/>';
+    xml+='</worksheet>';
+    put("xl/worksheets/sheet"+(si+1)+".xml",xml);
+  });
+
+  put("[Content_Types].xml",XD+'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'+
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'+
+    '<Default Extension="xml" ContentType="application/xml"/>'+
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'+
+    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'+
+    names.map(function(_,i){ return '<Override PartName="/xl/worksheets/sheet'+(i+1)+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'; }).join("")+
+    '</Types>');
+  put("_rels/.rels",XD+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>');
+  put("xl/workbook.xml",XD+'<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '+
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'+
+    names.map(function(n,i){ return '<sheet name="'+xlEsc(n)+'" sheetId="'+(i+1)+'" r:id="rId'+(i+1)+'"/>'; }).join("")+
+    '</sheets></workbook>');
+  put("xl/_rels/workbook.xml.rels",XD+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+    names.map(function(_,i){ return '<Relationship Id="rId'+(i+1)+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet'+(i+1)+'.xml"/>'; }).join("")+
+    '<Relationship Id="rIdS" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>');
+  put("xl/styles.xml",XL_STYLES);
+  return zipStore(files);
+}
+function downloadBlob(blob,filename){
+  var url=URL.createObjectURL(blob), a=document.createElement("a");
+  a.href=url; a.download=filename; a.style.display="none";
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); },2000);
+}
+function stamp(){ var d=new Date(); function p(x){return ("0"+x).slice(-2);}
+  return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); }
+function saveXlsx(sheets,filename){
+  try{
+    downloadBlob(xlsxBlob(sheets),String(filename).replace(/[\\\/:*?"<>|]/g,"-")+" "+stamp()+".xlsx");
+    toast("הקובץ ירד — ניתן לפתוח באקסל","ok");
+  }catch(err){ toast("הייצוא נכשל: "+err.message,"err"); }
+}
+
+/* ---------- המרת טבלה שעל המסך לגיליון ---------- */
+function xlParse(txt){
+  /* סימני כיווניות נמחקים ולא מוחלפים ברווח, אחרת נוצר רווח מדומה
+     שלא היה על המסך ומחרוזות "₪‎-1,234" לא מזוהות כמספר. */
+  var s=String(txt==null?"":txt).replace(/[‎‏‪-‮]/g,"").replace(/ /g," ").trim();
+  if(!s) return "";
+  var d=/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
+  if(d) return {t:"d",v:d[3]+"-"+("0"+d[2]).slice(-2)+"-"+("0"+d[1]).slice(-2)};
+  /* הערה בסוגריים אחרי הסכום ("₪-1,234 (חייב)") — הערך הוא המספר */
+  var body=s.replace(/\s*\([^()]*\)\s*$/,"").trim()||s;
+  var isMoney=/₪/.test(body), isPct=/%\s*$/.test(body);
+  var core=body.replace(/₪/g,"").replace(/%/g,"").replace(/,/g,"").trim();
+  if(core && /^-?\d+(\.\d+)?$/.test(core)){
+    /* מחרוזת ספרות שאינה ערך מספרי — טלפון, ת"ז, מספר חשבון — נשארת
+       טקסט: אפס מוביל היה נמחק, ומספר ארוך היה מאבד דיוק. */
+    var digits=core.replace(/^-/,"").replace(".","");
+    var looksId = (!isMoney && !isPct) && (/^0\d/.test(core) || digits.length>15);
+    var n=parseFloat(core);
+    if(!looksId && isFinite(n)) return {t:isMoney?"money":(isPct?"pct":"n"),v:n};
+    if(looksId) return s;
+  }
+  /* תא רב-שורתי שבשורתו הראשונה מספר והשאר הערת תצוגה — לוקחים את המספר */
+  if(s.indexOf("\n")>0){
+    var first=xlParse(s.split("\n")[0]);
+    if(first && typeof first==="object" && first.t!=="d") return first;
+  }
+  return s;
+}
+/* פורש שורה לפי colspan, כך שעמודות נשארות מיושרות */
+function xlRowCells(tr,n){
+  var out=new Array(n).fill(null), i=0;
+  Array.prototype.forEach.call(tr.cells,function(c){
+    var span=Math.max(1,Number(c.getAttribute("colspan"))||1);
+    if(i<n) out[i]=c;
+    i+=span;
+  });
+  return out;
+}
+/* טקסט התא לצורך ייצוא. אלמנטים עם data-xl-skip הם הערות תצוגה
+   ("סך תתי-השלבים", תגיות מונה) ולא חלק מהערך — מסירים אותם. */
+function cellText(c){
+  if(!c) return "";
+  var t;
+  if(c.querySelector && c.querySelector("[data-xl-skip]")){
+    var cl=c.cloneNode(true);
+    cl.querySelectorAll("[data-xl-skip]").forEach(function(x){ x.remove(); });
+    t=cl.textContent||"";
+  } else t=c.innerText||c.textContent||"";
+  t=String(t).replace(/[▲▼]/g,"").trim();
+  /* תא שכל תוכנו תיבת סימון — הערך שעל המסך הוא המצב שלה */
+  if(!t){
+    var cb=c.querySelector&&c.querySelector('input[type="checkbox"]');
+    if(cb) return cb.checked?"כן":"לא";
+  }
+  return t;
+}
+/* עמודות שלא מיוצאות: עמודת פעולות (רק כפתורים/פקדים או ריקה),
+   או עמודה שהכותרת שלה מסומנת data-xl-skip (גרף, פס התפלגות וכד'). */
+function xlSkipCols(hr,rows,n){
+  var skip=new Array(n).fill(false);
+  for(var i=0;i<n;i++){
+    if(hr&&hr[i]&&hr[i].hasAttribute&&hr[i].hasAttribute("data-xl-skip")){ skip[i]=true; continue; }
+    var any=false, onlyCtl=true;
+    rows.forEach(function(r){
+      var c=r[i]; if(!c) return;
+      var t=cellText(c); if(!t) return;
+      any=true;
+      var clone=c.cloneNode(true);
+      clone.querySelectorAll("button,input,select,textarea").forEach(function(x){ x.remove(); });
+      if(String(clone.textContent||"").trim()) onlyCtl=false;
+    });
+    var head=hr?cellText(hr[i]):"";
+    if(!head && (!any || onlyCtl)) skip[i]=true;
+  }
+  return skip;
+}
+function tableToSheet(t,name){
+  var head=t.tHead, bodyEl=t.tBodies[0];
+  var hr0=head&&head.rows.length?head.rows[0]:null;
+  var n=0;
+  if(hr0) Array.prototype.forEach.call(hr0.cells,function(c){ n+=Math.max(1,Number(c.getAttribute("colspan"))||1); });
+  if(!n && bodyEl&&bodyEl.rows.length) n=bodyEl.rows[0].cells.length;
+  if(!n) return {name:name,rows:[]};
+
+  var hr=hr0?xlRowCells(hr0,n):null;
+  /* רק שורות שנראות על המסך — כך שהייצוא מכבד את הסינון הפעיל */
+  var visible=[];
+  if(bodyEl) Array.prototype.forEach.call(bodyEl.rows,function(tr){
+    if(tr.style.display==="none") return;
+    if(tr.querySelector("td.empty")) return;
+    visible.push(xlRowCells(tr,n));
+  });
+  var skip=xlSkipCols(hr,visible,n);
+  function pack(cells,raw){
+    var out=[];
+    for(var i=0;i<n;i++){ if(skip[i]) continue; out.push(raw?cellText(cells[i]):xlParse(cellText(cells[i]))); }
+    return out;
+  }
+  var rows=[];
+  rows.push(hr?pack(hr,true):[]);
+  visible.forEach(function(r){ rows.push(pack(r,false)); });
+  var foot=[];
+  if(t.tFoot) Array.prototype.forEach.call(t.tFoot.rows,function(tr){ foot.push(pack(xlRowCells(tr,n),false)); });
+  return {name:name,rows:rows,foot:foot};
+}
+function exportTableEl(t,filename,sheetName){
+  var sh=tableToSheet(t,sheetName||"נתונים");
+  if(sh.rows.length<2){ toast("אין שורות לייצוא","warn"); return; }
+  saveXlsx([sh],filename||"טבלה");
+}
+/* כפתור ייצוא לכל טבלה על המסך */
+var _xlSeq=0, _xlReg={};
+function attachExportButtons(root){
+  var scope=root||document;
+  /* טבלה שנדרסה ברינדור חלקי כבר לא ב-DOM. בלי הניקוי הזה המפה
+     הייתה גדלה בלי גבול ומחזיקה טבלאות מנותקות בזיכרון. */
+  Object.keys(_xlReg).forEach(function(k){
+    if(!document.body.contains(_xlReg[k])) delete _xlReg[k];
+  });
+  scope.querySelectorAll("table.tbl").forEach(function(t){
+    if(t.getAttribute("data-xl")) return;
+    if(!t.tBodies.length||!t.tBodies[0].rows.length) return;
+    if(t.tBodies[0].rows.length===1&&t.tBodies[0].rows[0].querySelector("td.empty")) return;
+    var id="xl"+(++_xlSeq); t.setAttribute("data-xl",id); _xlReg[id]=t;
+    var title=xlTitleFor(t);
+    var bar=document.createElement("div");
+    bar.className="xl-bar";
+    bar.innerHTML='<button class="btn btn-ghost btn-sm" onclick="exportById(\''+id+'\')" '+
+      'title="ייצוא הטבלה לאקסל (מכבד את הסינון הפעיל)">⬇️ אקסל</button>';
+    var wrap=t.closest(".table-wrap")||t;
+    wrap.parentNode.insertBefore(bar,wrap);
+  });
+}
+function xlTitleFor(t){
+  var box=t.closest(".card")||t.closest(".modal")||null;
+  var h=box?box.querySelector("h3,h4,.section-title"):null;
+  var s=h?String(h.innerText||h.textContent||"").trim():"";
+  /* מחלקת תווים עם אימוג'י מתפרקת ליחידות UTF-16 ומשאירה חצי סורוגייט,
+     שהופך ל-"�" בשם הגיליון ובשם הקובץ. עובדים ברמת נקודת קוד. */
+  s=Array.from(s).filter(function(ch){
+    var cp=ch.codePointAt(0);
+    if(cp===0xFE0F||cp===0x200D||cp===0x20E3) return false;
+    if(cp>=0x2190&&cp<=0x27BF) return false;
+    if(cp>=0x2B00&&cp<=0x2BFF) return false;
+    if(cp>=0x1F000&&cp<=0x1FAFF) return false;
+    return true;
+  }).join("").replace(/\s+/g," ").trim();
+  return s.slice(0,40)||"טבלה";
+}
+/* רינדור חלקי (חיפוש, סינון, מיון, בורר שותף…) דורס innerHTML של מכולה
+   פנימית ומוחק איתו את שורת הכפתור ואת שורת הסינון. במקום לזכור לקרוא
+   לזה מתוך כל פונקציית רינדור — משקיפים על ה-DOM ומחזירים את הכלים
+   לכל טבלה חדשה, כך שגם כל טבלה עתידית מכוסה מאליה. */
+var _toolsPending=false;
+function scheduleTableTools(){
+  if(_toolsPending) return;
+  _toolsPending=true;
+  setTimeout(function(){
+    _toolsPending=false;
+    try{ attachTableTools(document); attachExportButtons(document); }catch(e){}
+  },60);
+}
+/* כל בורר שיש בו אופציית "הוסף חדש…" זוכר את ערכו לפני השינוי, כדי
+   שביטול ה-prompt יחזיר את הבחירה במקום למחוק אותה. */
+function watchSelects(){
+  ["focusin","change"].forEach(function(ev){
+    document.addEventListener(ev,function(e){
+      var el=e.target;
+      if(el&&el.tagName==="SELECT"&&el.value!=="__new") el.setAttribute("data-prev",el.value);
+    },true);
+  });
+}
+function watchTables(){
+  if(!window.MutationObserver) return;
+  new MutationObserver(function(muts){
+    for(var i=0;i<muts.length;i++){
+      var ad=muts[i].addedNodes;
+      for(var j=0;j<ad.length;j++){
+        var n=ad[j];
+        if(n.nodeType!==1) continue;
+        if((n.matches&&n.matches("table.tbl"))||(n.querySelector&&n.querySelector("table.tbl"))){
+          scheduleTableTools(); return;
+        }
+      }
+    }
+  }).observe(document.body,{childList:true,subtree:true});
+}
+function exportById(id){
+  var t=_xlReg[id]; if(!t||!document.body.contains(t)){ toast("הטבלה כבר לא על המסך","err"); return; }
+  var nm=xlTitleFor(t);
+  var a=currentApartment();
+  exportTableEl(t,(a?a.name+" — ":"")+nm,nm);
+}
+
+/* ---------- ייצוא נתונים גולמיים (חוברת רב-גיליונות) ----------
+   כאן לא מייצאים את מה שעל המסך אלא את הנתונים עצמם, עם שמות במקום
+   מזהים, כדי שאפשר יהיה לעבוד עם זה באקסל בלי המערכת. */
+function accName(id){ if(!id) return ""; var a=byId(DB.accounts,id); return a?a.name:""; }
+function expDesc(id){ var e=byId(DB.expenses,id); return e?e.description:""; }
+function expApt(id){ var e=byId(DB.expenses,id); return e?(byId(DB.apartments,e.apartmentId)||{}).name||"":""; }
+function parentDesc(e){ return e&&e.parentId?expDesc(e.parentId):""; }
+function M(v){ return {t:"money",v:round2(v)}; }
+function PCT(v){ return {t:"pct",v:Number(v)||0}; }
+function D(v){ return {t:"d",v:v||""}; }
+function methodName(k){ refreshMethods(); return METHODS[k]||k||""; }
+
+function sheetApartments(list){
+  var rows=[["דירה","שותפים","בנק זמני","דמי ניהול","שלבים","סך הוצאות","עלות דמי ניהול","עלות כוללת",
+             "שולם לספקים","שולם למנהלים","נותר","הכנסות","יתרת בנק"]];
+  var t=[0,0,0,0,0,0,0,0];
+  list.forEach(function(a){
+    var T=apartmentTotals(a.id);
+    rows.push([a.name,
+      apPartners(a.id).map(function(p){return partnerName(p.partnerId)+" "+num(p.defaultPercent)+"%";}).join(", "),
+      a.hasBank?"כן":"לא", a.hasManagement?"כן":"לא",
+      {t:"n",v:apExpenses(a.id).length},
+      M(T.totalExpenses),M(T.totalMgmt),M(T.totalCost),M(T.totalPaid),M(T.mgrPaidTot),
+      M(T.remaining),M(T.income),M(T.bank)]);
+    t[0]+=T.totalExpenses; t[1]+=T.totalMgmt; t[2]+=T.totalCost; t[3]+=T.totalPaid;
+    t[4]+=T.mgrPaidTot; t[5]+=T.remaining; t[6]+=T.income; t[7]+=T.bank;
+  });
+  return {name:"דירות",rows:rows,
+    foot:[["סה\"כ","","","","",M(t[0]),M(t[1]),M(t[2]),M(t[3]),M(t[4]),M(t[5]),M(t[6]),M(t[7])]]};
+}
+function sheetExpenses(list){
+  var rows=[["דירה","שלב-אב","תיאור","קטגוריה","סיווג","תאריך","סוג שורה","סכום","עלות דמי ניהול",
+             "שולם לספק","נותר","שולם למנהלים","סטטוס","חשבונית","הערה"]];
+  var ST={paid:"שולם",partial:"חלקי",unpaid:"לא שולם",over:"שולם ביתר"};
+  var t=[0,0,0,0,0];
+  list.forEach(function(a){
+    apExpenses(a.id).slice().sort(function(x,y){return (x.date<y.date)?-1:1;}).forEach(function(e){
+      var cont=isContainer(e.id), rem=expenseRemaining(e.id), mg=expenseMgmtCostLive(e.id);
+      var mgrPaid=round2(expPayments(e.id).filter(function(p){return p.recipientType==="manager";})
+        .reduce(function(s,p){return s+(Number(p.amount)||0);},0));
+      rows.push([a.name,parentDesc(e),e.description,categoryName(e.categoryId),
+        CLASSIFICATIONS[e.classification]||"",D(e.date),
+        cont?"שלב-אב (סיכום)":(e.parentId?"תת-שלב":"שלב"),
+        M(e.amount),M(mg),M(expensePaid(e.id)),M(rem),M(mgrPaid),
+        ST[expenseStatus(e.id)]||"",e.hasInvoice?"יש":"",e.note||""]);
+      /* רק עלים נסכמים — שלב-אב הוא סיכום של הבנים ולא הוצאה בפני עצמה */
+      if(!cont){ t[0]+=Number(e.amount)||0; t[1]+=mg; t[2]+=expensePaid(e.id); t[3]+=rem; t[4]+=mgrPaid; }
+    });
+  });
+  return {name:"שלבים",rows:rows,
+    foot:[["סה\"כ (בלי שלבי-אב, כדי לא לספור פעמיים)","","","","","","",M(t[0]),M(t[1]),M(t[2]),M(t[3]),M(t[4])]]};
+}
+function sheetCategories(list){
+  var rows=[["דירה","קטגוריה","שלבים","סכום","דמי ניהול","עלות כוללת","שולם","נותר","% מהפרויקט"]];
+  var t=[0,0,0,0,0];
+  list.forEach(function(a){
+    var br=categoryBreakdown(a.id);
+    var tot=br.reduce(function(s,r){return s+r.cost;},0);
+    br.forEach(function(r){
+      rows.push([a.name,r.name,{t:"n",v:r.count},M(r.amount),M(r.mgmt),M(r.cost),M(r.paid),M(r.rem),
+        PCT(tot>0?round2(r.cost/tot*100):0)]);
+      t[0]+=r.count; t[1]+=r.amount; t[2]+=r.mgmt; t[3]+=r.paid; t[4]+=r.rem;
+    });
+  });
+  return {name:"לפי קטגוריה",rows:rows,
+    foot:[["סה\"כ","",{t:"n",v:t[0]},M(t[1]),M(t[2]),M(t[1]+t[2]),M(t[3]),M(t[4]),""]]};
+}
+function sheetSplits(list){
+  var rows=[["דירה","שלב","שותף","אחוז","חלקו בעלות"]];
+  list.forEach(function(a){
+    apLeafExpenses(a.id).forEach(function(e){
+      var base=(Number(e.amount)||0)+expenseMgmtCostLive(e.id);
+      expSplits(e.id).forEach(function(s){
+        rows.push([a.name,e.description,partnerName(s.partnerId),PCT(s.percent),M(base*(Number(s.percent)||0)/100)]);
+      });
+    });
+  });
+  return {name:"חלוקת שלבים",rows:rows};
+}
+function sheetPayments(list){
+  var rows=[["דירה","שלב","שלב-אב","תאריך","סכום","שולם ל","מנהל","משלם","מהחשבון","בנק זמני","אמצעי","אוטומטי","הערה"]];
+  var tot=0;
+  list.forEach(function(a){
+    apAllPayments(a.id).slice().sort(function(x,y){return (x.date<y.date)?-1:1;}).forEach(function(p){
+      var e=byId(DB.expenses,p.expenseId)||{};
+      rows.push([a.name,e.description||"",parentDesc(e),D(p.date),M(p.amount),
+        p.recipientType==="manager"?"מנהל":"ספק",
+        p.recipientType==="manager"?managerName(p.recipientManagerId):"",
+        p.payerPartnerId?partnerName(p.payerPartnerId):"",
+        accName(p.accountId), accountIsBank(p.accountId)?"כן":"",
+        methodName(p.method), p.auto?"כן":"", p.note||""]);
+      tot+=Number(p.amount)||0;
+    });
+  });
+  return {name:"תשלומים",rows:rows,foot:[["סה\"כ","","","",M(tot)]]};
+}
+function sheetMgmt(list){
+  var rows=[["דירה","שלב","מנהל","% שוטף","% דחוי","תווית הדחוי","הדחוי שוחרר","בסיס החישוב","מע\"מ","חיוב פעיל","שולם","נותר","דחוי ממתין"]];
+  list.forEach(function(a){
+    if(!a.hasManagement) return;
+    apLeafExpenses(a.id).forEach(function(e){
+      if(!e.mgmtEnabled) return;
+      expMgrFees(e.id).forEach(function(f){
+        var due=mgrFeeLiveOnExpense(e.id,f.managerId), paid=mgrPaidOnExpense(e.id,f.managerId);
+        rows.push([a.name,e.description,managerName(f.managerId),PCT(f.pctCurrent),PCT(f.pctDeferred),
+          f.deferredLabel||"", f.deferredReleased?"כן":"לא",
+          (BASE_TYPES&&BASE_TYPES[e.mgmtBaseType])||e.mgmtBaseType||"", PCT(e.mgmtVatRate),
+          M(due),M(paid),M(round2(due-paid)),
+          M(round2(mgrFeeFullOnExpense(e.id,f.managerId)-due))]);   /* הדחוי שעדיין לא שוחרר */
+      });
+    });
+  });
+  return {name:"דמי ניהול",rows:rows};
+}
+function sheetPartnerSummary(list){
+  /* הסימן זהה למסך: שלילי = חייב, חיובי = זכאי. אחרת סינון באקסל
+     לפי "יתרה שלילית = חייב" היה מחזיר בדיוק את הקבוצה ההפוכה. */
+  var rows=[["דירה","שותף","אמור לשלם","שילם","יתרה (שלילי = חייב)","חובה לפי מה ששולם","הפרש מול ששולם (שלילי = חייב)"]];
+  var t=[0,0,0];
+  list.forEach(function(a){
+    apReportPartnerIds(a.id).forEach(function(pid){
+      var should=partnerShouldPay(a.id,pid), paid=partnerPaid(a.id,pid), due=partnerDueByPaid(a.id,pid);
+      rows.push([a.name,partnerName(pid),M(should),M(paid),M(round2(paid-should)),M(due),M(round2(paid-due))]);
+      t[0]+=should; t[1]+=paid; t[2]+=due;
+    });
+  });
+  return {name:"סיכום שותפים",rows:rows,
+    foot:[["סה\"כ","",M(t[0]),M(t[1]),M(round2(t[1]-t[0])),M(t[2]),M(round2(t[1]-t[2]))]]};
+}
+function sheetBank(list){
+  var rows=[["דירה","תאריך","שותף","סכום","הערה"]]; var tot=0;
+  list.forEach(function(a){
+    apDeposits(a.id).slice().sort(function(x,y){return (x.date<y.date)?-1:1;}).forEach(function(d){
+      rows.push([a.name,D(d.date),partnerName(d.partnerId),M(d.amount),d.note||""]); tot+=Number(d.amount)||0;
+    });
+  });
+  return {name:"הפקדות לבנק",rows:rows,foot:[["סה\"כ","","",M(tot)]]};
+}
+function sheetIncome(list){
+  var rows=[["דירה","תאריך","תיאור","סכום","הערה"]]; var tot=0;
+  list.forEach(function(a){
+    apIncome(a.id).slice().sort(function(x,y){return (x.date<y.date)?-1:1;}).forEach(function(x){
+      rows.push([a.name,D(x.date),x.description||"",M(x.amount),x.note||""]); tot+=Number(x.amount)||0;
+    });
+  });
+  return {name:"הכנסות",rows:rows,foot:[["סה\"כ","","",M(tot)]]};
+}
+function sheetAccounts(list){
+  var rows=[["דירה","חשבון","בנק זמני","תשלומים","סך שיצא"]];
+  var glob=active(DB.accounts).filter(function(x){return !x.apartmentId;});
+  function line(aName,ac){
+    var pays=active(DB.payments).filter(function(p){return p.accountId===ac.id;});
+    rows.push([aName,ac.name,ac.isBank?"כן":"",{t:"n",v:pays.length},
+      M(pays.reduce(function(s,p){return s+(Number(p.amount)||0);},0))]);
+  }
+  glob.forEach(function(ac){ line("(כללי)",ac); });
+  list.forEach(function(a){ apAccounts(a.id).forEach(function(ac){ line(a.name,ac); }); });
+  return {name:"חשבונות",rows:rows};
+}
+function dataSheets(list){
+  return [sheetApartments(list),sheetExpenses(list),sheetCategories(list),sheetSplits(list),
+          sheetPayments(list),sheetPartnerSummary(list),sheetMgmt(list),sheetBank(list),
+          sheetIncome(list),sheetAccounts(list)]
+         .filter(function(sh){ return sh.rows.length>1; });
+}
+function exportAllData(){
+  var list=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);});
+  if(!list.length){ toast("אין דירות לייצוא","warn"); return; }
+  saveXlsx(dataSheets(list),"כל הנתונים — ניהול דירות");
+}
+function exportApartmentBook(aptId){
+  var a=byId(DB.apartments,aptId); if(!a) return;
+  saveXlsx(dataSheets([a]),a.name);
+}
+
+
 
 function partnerOptions(sel){ return active(DB.partners).map(function(p){return '<option value="'+p.id+'"'+(p.id===sel?" selected":"")+'>'+esc(p.name)+'</option>';}).join(""); }
 function categoryOptions(sel){ return '<option value="">—</option>'+active(DB.categories).map(function(c){return '<option value="'+c.id+'"'+(c.id===sel?" selected":"")+'>'+esc(c.name)+'</option>';}).join(""); }
@@ -1781,10 +2424,19 @@ function isContainer(eId){ return expenseChildren(eId).length>0; }
 function apLeafExpenses(aptId){
   return apExpenses(aptId).filter(function(e){ return !isContainer(e.id); });
 }
-/* סכום המכל = סך תתי-השלבים. נקרא אחרי כל שינוי בתת-שלב. */
+/* סכום המכל = סך תתי-השלבים. נקרא אחרי כל שינוי בתת-שלב.
+   גם כשנמחק תת-השלב האחרון הסכום מתאפס: אחרת השלב היה חוזר להיספר
+   כשלב רגיל, עם סכום של בנים שכבר לא קיימים — וללא חלוקת שותפים,
+   כך שהעלות הכוללת הייתה גדלה בלי שאף שותף מחויב בה. */
 function syncParentAmount(pid){
   var p=byId(DB.expenses,pid); if(!p) return;
-  var kids=expenseChildren(pid); if(!kids.length) return;
+  var kids=expenseChildren(pid);
+  if(!kids.length){
+    /* מאפסים רק כשזה מכל לשעבר — בלי חלוקה ובלי תשלומים משלו —
+       כדי שקריאה שגויה לא תמחק סכום של שלב אמיתי. */
+    if(!expSplits(pid).length && !expPayments(pid).length) p.amount=0;
+    return;
+  }
   p.amount=round2(kids.reduce(function(s,k){return s+(Number(k.amount)||0);},0));
 }
 function syncAllParents(aptId){
@@ -1863,13 +2515,14 @@ function expTableHtml(aptId){
       :st==="partial"?'<span class="badge badge-warn">חלקי</span>':'<span class="badge badge-danger">לא שולם</span>';
     var kids=expenseChildren(e.id), cont=kids.length>0;
     var mg=expenseMgmtCostLive(e.id);
-    return '<tr'+(isChild?' style="background:#fbfcff"':(cont?' style="background:#f5f8ff"':''))+'><td>'+dateHe(e.date)+'</td>'+
+    return '<tr data-eid="'+e.id+'"'+(isChild?' data-parent="'+e.parentId+'"':'')+
+      (isChild?' style="background:#fbfcff"':(cont?' style="background:#f5f8ff"':''))+'><td>'+dateHe(e.date)+'</td>'+
       '<td'+(isChild?' style="padding-right:26px"':'')+'>'+
         (isChild?'<span class="muted">↳ </span>':'')+
         '<b>'+esc(e.description)+'</b>'+(e.hasInvoice?' 📎':'')+
-        (cont?' <span class="pill">'+kids.length+' תתי-שלבים</span>':'')+'</td>'+
+        (cont?' <span class="pill" data-xl-skip="1">'+kids.length+' תתי-שלבים</span>':'')+'</td>'+
       '<td>'+(CLASSIFICATIONS[e.classification]||"")+'</td>'+
-      '<td><b>'+money(e.amount)+'</b>'+(cont?'<div class="muted" style="font-size:11px">סך תתי-השלבים</div>':'')+'</td>'+
+      '<td><b>'+money(e.amount)+'</b>'+(cont?'<div class="muted" data-xl-skip="1" style="font-size:11px">סך תתי-השלבים</div>':'')+'</td>'+
       (a.hasManagement?'<td>'+((cont||e.mgmtEnabled)&&mg?money(mg):'—')+'</td>':'')+
       '<td>'+money(expensePaid(e.id))+'</td><td class="'+(Math.abs(rem)>0.01?"neg":"pos")+'">'+money(rem)+'</td><td>'+badge+'</td>'+
       '<td class="right" style="white-space:nowrap">'+
@@ -1910,7 +2563,9 @@ function openBulkMgmt(aptId){
     toast("אין מנהלים מוגדרים — הוסף אותם קודם","err");
     go("apartment",{apartmentId:aptId,tab:"managers"}); return;
   }
-  var list=filteredExpenses(aptId).sort(function(x,y){return x.date<y.date?-1:1;});
+  /* מכל אינו נושא דמי ניהול משלו — הם מוגדרים בכל תת-שלב בנפרד */
+  var list=filteredExpenses(aptId).filter(function(e){ return !isContainer(e.id); })
+    .sort(function(x,y){return x.date<y.date?-1:1;});
   if(!list.length){ toast("אין שלבים להצגה לפי הסינון הנוכחי","warn"); return; }
 
   var body='<div class="hint">מוצגים '+list.length+' שלבים לפי הסינון הנוכחי במסך ההוצאות. '+
@@ -1952,13 +2607,24 @@ function openBulkMgmt(aptId){
     saveLabel:"החל על המסומנים",onSave:function(){ return applyBulkMgmt(aptId); }});
   bulkMgmtCount();
 }
+/* שורת הסינון של הטבלה מסתירה שורות ויזואלית בלבד (display:none) —
+   התיבות שלהן נשארות מסומנות. פעולה מרוכזת חייבת לחול רק על מה
+   שנראה על המסך, אחרת סינון ל-3 שלבים היה משנה את כל 47. */
+function bmVisibleBoxes(sel){
+  return Array.prototype.filter.call(document.querySelectorAll(sel||".bm-x"),function(c){
+    var tr=c.closest("tr");
+    return !tr || tr.style.display!=="none";
+  });
+}
 function bulkMgmtSelectAll(v){
-  document.querySelectorAll(".bm-x").forEach(function(c){ c.checked=v; });
+  bmVisibleBoxes().forEach(function(c){ c.checked=v; });
   bulkMgmtCount();
 }
 function bulkMgmtCount(){
-  var n=document.querySelectorAll(".bm-x:checked").length;
-  var el=document.getElementById("bm-count"); if(el) el.textContent="נבחרו "+n;
+  var n=bmVisibleBoxes(".bm-x:checked").length;
+  var hidden=document.querySelectorAll(".bm-x:checked").length-n;
+  var el=document.getElementById("bm-count");
+  if(el) el.textContent="נבחרו "+n+(hidden?" (מוסתרים בסינון: "+hidden+" — לא ישתנו)":"");
 }
 function bulkMgmtToggleMode(){
   var rm=checked("bm-remove");
@@ -1967,7 +2633,8 @@ function bulkMgmtToggleMode(){
 }
 function applyBulkMgmt(aptId){
   if(!can("edit")){ toast("אין הרשאה","err"); return false; }
-  var ids=Array.prototype.map.call(document.querySelectorAll(".bm-x:checked"),function(c){return c.value;});
+  var ids=bmVisibleBoxes(".bm-x:checked").map(function(c){return c.value;})
+    .filter(function(id){ return !isContainer(id); });      // מכל אינו נושא דמי ניהול
   if(!ids.length){ toast("לא נבחר אף שלב","err"); return false; }
   var remove=checked("bm-remove");
   var mgrs=apManagers(aptId);
@@ -2086,6 +2753,11 @@ function openExpenseEditor(eId,aptId,presetParent){
        (cont?' disabled':'')+' oninput="updateMgmtPreview()"></div>'+
      '<div class="field"><label>תאריך</label><input id="ex-date" type="date" value="'+(e?esc(e.date):todayISO())+'"></div>'+
      '<div class="field"><label>סיווג</label><select id="ex-class">'+classOptions(e?e.classification:"investment")+'</select></div>'+
+     /* לשלב-אב אין קטגוריה משלו — הוא לא נספר באף דוח קטגוריות */
+     (cont?'':
+     '<div class="field"><label>קטגוריה</label><select id="ex-cat" onchange="onCatPick(\'ex-cat\')">'+
+       catOptions(e?e.categoryId:"")+'</select>'+
+       '<div class="hint">לפי מה שהכסף הלך — חשמל, אדריכל, ריצוף. מכאן נבנה דוח הקטגוריות של הפרויקט.</div></div>')+
      (cont?'':
      '<div class="field full"><label>שייך לשלב-אב (תת-שלב)</label>'+
        '<select id="ex-parent">'+expenseParentOptions(aptId,eId,curParent)+'</select>'+
@@ -2168,24 +2840,36 @@ function saveExpense(eId,aptId){
     if(amount<paidSoFar-0.01){
       if(!confirm("סכום השלב החדש ("+money(amount)+") נמוך ממה שכבר שולם ("+money(paidSoFar)+").\n\nהשלב יסומן \"שולם ביתר\". להמשיך?")) return false;
     } }
+
+  /* ---- שיוך לשלב-אב ----
+     כל הוולידציות והאישורים רצים כאן, *לפני* שנוגעים ב-DB. אחרת ביטול
+     ה-confirm של "יהפוך לשלב-אב" היה משאיר הוצאה חצי-שמורה בלי חלוקה,
+     שנספרת בעלות אבל לא מחויבת לאף שותף. */
+  var hasParentField = !!document.getElementById("ex-parent");
+  var oldParent = eId ? (byId(DB.expenses,eId).parentId||null) : null;
+  var pv = null;
+  if(hasParentField){
+    pv = val("ex-parent")||"";
+    if(pv==="__new") pv="";
+    if(eId && pv===eId) pv="";
+    var pe = pv?byId(DB.expenses,pv):null;
+    if(pv && !pe){ toast("שלב-האב שנבחר אינו קיים","err"); return false; }
+    if(pe && pe.apartmentId!==aptId){ toast("שלב-האב שייך לדירה אחרת","err"); return false; }
+    if(pe && pe.parentId){ toast("אפשר תת-שלב רק תחת שלב עצמאי","err"); return false; }
+    if(pv && eId && expenseChildren(eId).length){ toast("לשלב הזה יש תתי-שלבים — לא ניתן לשייך אותו לאב","err"); return false; }
+    /* אב שיש עליו כסף משלו הופך למכל — הכסף שלו עובר לתת-שלב ראשון.
+       זו הפעולה הראשונה שמשנה נתונים, ומכאן והלאה אין עוד ביטולים. */
+    if(pv && pv!==oldParent && !convertToContainer(pv)) return false;
+  }
+
   var e;
   if(eId){ e=byId(DB.expenses,eId); }
   else{ e={id:uid(),apartmentId:aptId,deleted:false}; DB.expenses.push(e); eId=e.id; }
   e.description=desc; e.amount=amount; e.date=val("ex-date")||todayISO();
-  e.categoryId=(document.getElementById("ex-cat")?val("ex-cat"):(e.categoryId||""));
+  if(document.getElementById("ex-cat")){ var cv=val("ex-cat"); e.categoryId=(cv==="__new"?(e.categoryId||""):cv); }
+  else e.categoryId=e.categoryId||"";
   e.classification=val("ex-class"); e.note=val("ex-note");
-  /* שיוך לשלב-אב. חסימת קינון מעל רמה אחת ומניעת מעגל. */
-  var oldParent = e.parentId || null;
-  if(document.getElementById("ex-parent")){
-    var pv=val("ex-parent")||"";
-    if(pv===eId) pv="";
-    var pe=pv?byId(DB.expenses,pv):null;
-    if(pe && pe.parentId){ toast("אפשר תת-שלב רק תחת שלב עצמאי","err"); return false; }
-    if(pv && expenseChildren(eId).length){ toast("לשלב הזה יש תתי-שלבים — לא ניתן לשייך אותו לאב","err"); return false; }
-    /* אב שיש עליו כסף משלו הופך למכל — הכסף שלו עובר לתת-שלב ראשון */
-    if(pv && pv!==oldParent && !convertToContainer(pv)) return false;
-    e.parentId = pv || null;
-  }
+  if(hasParentField) e.parentId = pv || null;
   e.hasInvoice=checked("ex-inv"); e.invoiceLink=val("ex-link");
   /* דמי ניהול — נוגעים בהם אך ורק כשהמקטע באמת הוצג על המסך.
      קודם: כל שמירה מחקה את דמי הניהול ובנתה מחדש רק אם התיבה סומנה,
@@ -2344,6 +3028,7 @@ function openQuickExpense(){
   var apts=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);});
   if(!apts.length){ toast("אין דירות במערכת","err"); return; }
   var cur=state.params.apartmentId||apts[0].id;
+  _qeParentApt=null; _qePayBuilt=false; _qePayApt=null; _qePayTouched=false;
   openModal({title:"➕ הוצאה מהירה",wide:true,bodyHtml:
     '<div class="form-grid">'+
       '<div class="field full"><label>דירה / פרויקט</label><select id="qe-apt" onchange="renderQuickExpenseInfo()">'+
@@ -2353,6 +3038,8 @@ function openQuickExpense(){
       '<div class="field"><label>סכום (₪)</label><input id="qe-amount" type="number" step="0.01" oninput="renderQuickExpenseInfo()"></div>'+
       '<div class="field"><label>תאריך</label><input id="qe-date" type="date" value="'+todayISO()+'"></div>'+
       '<div class="field"><label>סיווג</label><select id="qe-class">'+classOptions("investment")+'</select></div>'+
+      '<div class="field"><label>קטגוריה</label><select id="qe-cat" onchange="onCatPick(\'qe-cat\')">'+catOptions("")+'</select></div>'+
+      '<div class="field full" id="qe-parent-box"></div>'+
       '<div class="field full"><label>הערה</label><input id="qe-note"></div>'+
     '</div>'+
     '<div id="qe-info"></div>'+
@@ -2362,9 +3049,23 @@ function openQuickExpense(){
     saveLabel:"שמור הוצאה",onSave:function(){ return saveQuickExpense(); }});
   renderQuickExpenseInfo();
 }
+/* בחירת שלב-אב בהוצאה מהירה. נבנית מחדש רק כשמחליפים דירה,
+   כדי שהבחירה לא תתאפס בכל הקלדה בשדה הסכום. */
+var _qeParentApt=null;
+function renderQuickParent(aptId){
+  var box=document.getElementById("qe-parent-box"); if(!box) return;
+  if(_qeParentApt===aptId) return;
+  _qeParentApt=aptId;
+  var preset=(state.view==="apartment"&&state.params.quickParent)||"";
+  box.innerHTML='<label>שייך לשלב-אב (תת-שלב)</label>'+
+    '<select id="qe-parent" onchange="renderQuickExpenseInfo()">'+expenseParentOptions(aptId,null,preset)+'</select>'+
+    '<div class="hint">בחר שלב קיים כדי שההוצאה הזו תהיה תת-שלב שלו — למשל "חשמל 6-22" תחת "חשמל". '+
+    'סכום שלב-האב הוא תמיד סך תתי-השלבים שלו.</div>';
+}
 function renderQuickExpenseInfo(){
   var box=document.getElementById("qe-info"); if(!box) return;
   var aptId=val("qe-apt"); var a=byId(DB.apartments,aptId);
+  renderQuickParent(aptId);
   var amt=Number(val("qe-amount"))||0;
   var parts=apPartners(aptId);
   var h="";
@@ -2386,20 +3087,30 @@ function renderQuickExpenseInfo(){
     h+='<div class="hint">בדירה זו יש דמי ניהול — הם אינם מוחלים אוטומטית. הפעל אותם בעריכת השלב או ב"דמי ניהול מרוכז".</div>';
   }
   box.innerHTML=h;
-  if(checked("qe-paynow")) renderQuickPayNow();
+  if(checked("qe-paynow")) renderQuickPayNow(aptId);
 }
 function toggleQuickPayNow(){
   var w=document.getElementById("qe-pay"); if(!w) return;
-  if(checked("qe-paynow")){ w.style.display="block"; renderQuickPayNow(); }
+  if(checked("qe-paynow")){ w.style.display="block"; renderQuickPayNow(true); }
   else w.style.display="none";
 }
-function renderQuickPayNow(){
+/* בלוק התשלום נבנה רק כשמשתנה הדירה — הקלדה בשדה הסכום לא מוחקת
+   את החשבון, המשלם והאמצעי שכבר נבחרו. סכום התשלום ממשיך לעקוב אחרי
+   סכום ההוצאה עד לרגע שבו המשתמש עורך אותו ידנית. */
+var _qePayBuilt=false, _qePayApt=null, _qePayTouched=false;
+function renderQuickPayNow(force){
   var w=document.getElementById("qe-pay"); if(!w) return;
   var aptId=val("qe-apt");
-  var parts=apPartners(aptId);
   var amt=Number(val("qe-amount"))||0;
+  if(_qePayBuilt && _qePayApt===aptId && force!==true){
+    var af=document.getElementById("qe-pay-amount");
+    if(af && !_qePayTouched) af.value=amt||"";
+    return;
+  }
+  _qePayBuilt=true; _qePayApt=aptId; _qePayTouched=false;
+  var parts=apPartners(aptId);
   w.innerHTML='<div class="form-grid">'+
-    '<div class="field"><label>סכום התשלום</label><input id="qe-pay-amount" type="number" step="0.01" value="'+(amt||"")+'"></div>'+
+    '<div class="field"><label>סכום התשלום</label><input id="qe-pay-amount" type="number" step="0.01" oninput="_qePayTouched=true" value="'+(amt||"")+'"></div>'+
     '<div class="field"><label>מהחשבון</label><select id="qe-pay-account" onchange="onQuickPayAccount()">'+
       '<option value="">— ידני / ללא חשבון —</option>'+
       availAccounts(aptId).map(function(ac){
@@ -2431,32 +3142,45 @@ function saveQuickExpense(){
     return normKey(x.description)===normKey(desc) && Math.abs((Number(x.amount)||0)-amount)<0.01 && x.date===date; });
   if(dup && !confirm('כבר קיים שלב "'+dup.description+'" באותו סכום ותאריך.\n\nלהוסיף בכל זאת?')) return false;
 
+  /* ---- כל הוולידציות והאישורים לפני שנוגעים ב-DB ----
+     convertToContainer מפצל שלב קיים לאב+תת-שלב ומעביר אליו חלוקה,
+     דמי ניהול ותשלומים. אם ולידציה מאוחרת הייתה נכשלת, הגלגול-אחור
+     היה מסיר רק את ההוצאה החדשה והפיצול היה נשאר. */
+  var qParent=val("qe-parent")||"";
+  if(qParent==="__new") qParent="";
+  if(qParent){
+    var pe=byId(DB.expenses,qParent);
+    if(!pe || pe.apartmentId!==aptId || pe.parentId){ toast("שלב-האב שנבחר אינו תקין","err"); return false; }
+  }
+  var payNow=checked("qe-paynow"), pAmt=0, accId=null, isBank=false, payer=null;
+  if(payNow){
+    pAmt=Number(val("qe-pay-amount"))||0;
+    if(pAmt>0){
+      accId=val("qe-pay-account")||null;
+      isBank=accountIsBank(accId);
+      payer=isBank?null:(val("qe-pay-payer")||null);
+      if(!isBank && !payer && apPartners(aptId).length){
+        toast("בחר מי שילם, או חשבון בנק — ההוצאה לא נשמרה","err"); return false;
+      }
+      if(pAmt>amount+0.01 && !confirm("התשלום ("+money(pAmt)+") גדול מסכום השלב ("+money(amount)+").\n\nהשלב יסומן \"שולם ביתר\". להמשיך?")) return false;
+    }
+  }
+  /* מכאן והלאה משנים נתונים — אין עוד ביטולים */
+  if(qParent && !convertToContainer(qParent)) return false;
+
   var eid=uid();
-  DB.expenses.push({id:eid,apartmentId:aptId,categoryId:"",classification:val("qe-class")||"investment",
+  DB.expenses.push({id:eid,apartmentId:aptId,categoryId:(val("qe-cat")==="__new"?"":val("qe-cat")||""),
+    classification:val("qe-class")||"investment",
     description:desc,amount:amount,date:date,note:val("qe-note")||"",
-    hasInvoice:false,invoiceLink:"",mgmtEnabled:false,mgmtBaseType:"full",mgmtVatRate:18,deleted:false});
+    hasInvoice:false,invoiceLink:"",mgmtEnabled:false,mgmtBaseType:"full",mgmtVatRate:18,
+    parentId:qParent||null,deleted:false});
   apPartners(aptId).forEach(function(p){
     DB.expenseSplits.push({id:uid(),expenseId:eid,partnerId:p.partnerId,percent:p.defaultPercent,deleted:false});
   });
 
   var payMsg="";
-  if(checked("qe-paynow")){
-    var pAmt=Number(val("qe-pay-amount"))||0;
+  if(payNow){
     if(pAmt>0){
-      var accId=val("qe-pay-account")||null;
-      var isBank=accountIsBank(accId);
-      var payer=isBank?null:(val("qe-pay-payer")||null);
-      if(!isBank && !payer && apPartners(aptId).length){
-        toast("בחר מי שילם, או חשבון בנק — ההוצאה לא נשמרה","err");
-        DB.expenses=DB.expenses.filter(function(x){return x.id!==eid;});
-        DB.expenseSplits=DB.expenseSplits.filter(function(s){return s.expenseId!==eid;});
-        return false;
-      }
-      if(pAmt>amount+0.01 && !confirm("התשלום ("+money(pAmt)+") גדול מסכום השלב ("+money(amount)+").\n\nהשלב יסומן \"שולם ביתר\". להמשיך?")){
-        DB.expenses=DB.expenses.filter(function(x){return x.id!==eid;});
-        DB.expenseSplits=DB.expenseSplits.filter(function(s){return s.expenseId!==eid;});
-        return false;
-      }
       DB.payments.push({id:uid(),expenseId:eid,date:date,amount:pAmt,accountId:accId,
         payerPartnerId:payer,method:val("qe-pay-method")||"transfer",
         recipientType:"supplier",recipientManagerId:null,
@@ -2464,8 +3188,9 @@ function saveQuickExpense(){
       payMsg=" · נרשם תשלום "+money(pAmt);
     }
   }
+  if(qParent) syncParentAmount(qParent);   // סכום שלב-האב = סך תתי-השלבים
   save();
-  toast('נוסף השלב "'+desc+'"'+payMsg,"ok");
+  toast('נוסף '+(qParent?'תת-השלב "'+desc+'" תחת "'+expDesc(qParent)+'"':'השלב "'+desc+'"')+payMsg,"ok");
   go("apartment",{apartmentId:aptId,tab:"expenses"});
 }
 
@@ -2987,10 +3712,77 @@ function moduleApartmentReports(aptId){
     h+='<tr><td>'+esc(partnerName(pid))+'</td><td>'+money(s)+'</td><td>'+money(p)+'</td><td class="'+((p-s)<0?"neg":"pos")+'">'+money(p-s)+'</td></tr>';
   });
   h+='</tbody><tfoot><tr><td>סה"כ</td><td>'+money(tS)+'</td><td>'+money(tP)+'</td><td>'+money(tP-tS)+'</td></tr></tfoot></table></div></div>';
+  h+=categoryReportHtml(aptId);
   // דוח שותפים לפי שלבים
   h+=dueByPaidReportHtml(aptId);
   h+='<div id="partner-report">'+partnerReportHtml(aptId)+'</div>';
   return h;
+}
+
+/* ============================================================
+   דוח קטגוריות — לאן הלך הכסף בפרויקט
+   נספרים רק עלים (שלב-אב הוא סיכום ולא הוצאה), כך שאין ספירה כפולה.
+   ============================================================ */
+function categoryBreakdown(aptId){
+  var map={}, order=[];
+  function slot(key,name){
+    if(!map[key]){ map[key]={key:key,name:name,amount:0,mgmt:0,paid:0,count:0}; order.push(key); }
+    return map[key];
+  }
+  apLeafExpenses(aptId).forEach(function(e){
+    var key=e.categoryId||"__none";
+    var s=slot(key, e.categoryId?(categoryName(e.categoryId)||"(קטגוריה שנמחקה)"):"ללא קטגוריה");
+    s.amount+=Number(e.amount)||0;
+    s.mgmt+=expenseMgmtCostLive(e.id);
+    s.paid+=expensePaid(e.id);
+    s.count++;
+  });
+  var rows=order.map(function(k){ return map[k]; });
+  rows.forEach(function(r){ r.cost=round2(r.amount+r.mgmt); r.rem=round2(r.cost-r.paid);
+    r.amount=round2(r.amount); r.mgmt=round2(r.mgmt); r.paid=round2(r.paid); });
+  /* הגדולה למעלה, ו"ללא קטגוריה" תמיד אחרונה כדי שלא תסתיר את התמונה */
+  rows.sort(function(x,y){
+    if((x.key==="__none")!==(y.key==="__none")) return x.key==="__none"?1:-1;
+    return y.cost-x.cost;
+  });
+  return rows;
+}
+function categoryReportHtml(aptId){
+  var a=byId(DB.apartments,aptId);
+  var rows=categoryBreakdown(aptId);
+  if(!rows.length) return "";
+  var total=rows.reduce(function(s,r){return s+r.cost;},0);
+  var tagged=rows.filter(function(r){return r.key!=="__none";});
+  var h='<div class="card"><h3>🗂️ לפי קטגוריה — '+esc(a.name)+'</h3>';
+  if(!tagged.length){
+    return h+'<div class="empty">עדיין לא שויכה קטגוריה לאף שלב.<br>'+
+      '<span class="hint">פתח שלב לעריכה ובחר קטגוריה (חשמל, אדריכל, ריצוף…), '+
+      'או הוסף קטגוריות בהגדרות → סוגי הוצאה.</span></div></div>';
+  }
+  h+='<div class="table-wrap"><table class="tbl"><thead><tr><th>קטגוריה</th><th>שלבים</th>'+
+    '<th>סכום</th>'+(a.hasManagement?'<th>דמי ניהול</th>':'')+'<th>עלות כוללת</th>'+
+    '<th>שולם</th><th>נותר</th><th>% מהפרויקט</th><th data-xl-skip="1">התפלגות</th></tr></thead><tbody>';
+  var t={amount:0,mgmt:0,cost:0,paid:0,rem:0,count:0};
+  rows.forEach(function(r){
+    var pct=total>0?(r.cost/total*100):0;
+    t.amount+=r.amount; t.mgmt+=r.mgmt; t.cost+=r.cost; t.paid+=r.paid; t.rem+=r.rem; t.count+=r.count;
+    h+='<tr'+(r.key==="__none"?' class="muted"':'')+'><td><b>'+esc(r.name)+'</b></td>'+
+      '<td>'+r.count+'</td><td>'+money(r.amount)+'</td>'+
+      (a.hasManagement?'<td>'+money(r.mgmt)+'</td>':'')+
+      '<td><b>'+money(r.cost)+'</b></td><td>'+money(r.paid)+'</td>'+
+      '<td class="'+(r.rem>0.01?"neg":"pos")+'">'+money(r.rem)+'</td>'+
+      '<td>'+num(round2(pct))+'%</td>'+
+      '<td data-xl-skip="1" style="min-width:120px"><div style="background:#eef1f8;border-radius:6px;height:9px;overflow:hidden">'+
+        '<div style="background:var(--brand);height:9px;width:'+Math.max(1,Math.min(100,pct)).toFixed(1)+'%"></div></div></td></tr>';
+  });
+  h+='</tbody><tfoot><tr><td>סה"כ</td><td>'+t.count+'</td><td>'+money(t.amount)+'</td>'+
+    (a.hasManagement?'<td>'+money(t.mgmt)+'</td>':'')+
+    '<td>'+money(t.cost)+'</td><td>'+money(t.paid)+'</td><td>'+money(t.rem)+'</td>'+
+    '<td>100%</td><td></td></tr></tfoot></table></div>';
+  var none=rows.filter(function(r){return r.key==="__none";})[0];
+  if(none && none.count) h+='<div class="hint" style="margin-top:8px">'+none.count+
+    ' שלבים עדיין בלי קטגוריה ('+money(none.cost)+'). שייך אותם כדי שהדוח יהיה מלא.</div>';
+  return h+'</div>';
 }
 
 /* ============================================================
@@ -3181,13 +3973,13 @@ function partnerReportHtml(aptId){
       var rowTotal=(Number(e.amount)||0)+mgmt;
       grand+=Number(e.amount)||0; grandMgmt+=mgmt;
       body+='<tr><td>'+dateHe(e.date)+'</td><td><b>'+esc(e.description)+'</b>'+
-        (mgmt>0.01?'<div class="hint">כולל דמי ניהול '+money(mgmt)+'</div>':'')+'</td>';
+        (mgmt>0.01?'<div class="hint" data-xl-skip="1">כולל דמי ניהול '+money(mgmt)+'</div>':'')+'</td>';
       cols.forEach(function(c){
         var pct=partnerPctInExpense(e.id,c);
         var v=partnerShareInExpense(e.id,c);
         colTot[c]+=v; colPaid[c]+=partnerPaidOnExpense(e.id,c);
         body+='<td>'+(pct
-          ? '<b>'+money(v)+'</b><div class="hint">'+num(pct)+'%</div>'
+          ? '<b>'+money(v)+'</b><div class="hint" data-xl-skip="1">'+num(pct)+'%</div>'
           : '<span class="muted">—</span>')+'</td>';
       });
       body+='<td><b>'+money(rowTotal)+'</b></td></tr>';
@@ -3195,7 +3987,7 @@ function partnerReportHtml(aptId){
     h+='<div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>שלב</th>'+
       cols.map(function(c){
         var dp=partnerDefaultPct(aptId,c);
-        return '<th>'+esc(partnerName(c))+(dp!=null?'<div class="hint" style="font-weight:400">ברירת מחדל '+num(dp)+'%</div>':'')+'</th>';
+        return '<th>'+esc(partnerName(c))+(dp!=null?'<div class="hint" data-xl-skip="1" style="font-weight:400">ברירת מחדל '+num(dp)+'%</div>':'')+'</th>';
       }).join("")+'<th>סה"כ השלב</th></tr></thead><tbody>'+body+
       '</tbody><tfoot><tr><td colspan="2">סה"כ אמור לשלם</td>'+
         cols.map(function(c){return '<td>'+money(colTot[c])+'</td>';}).join("")+
@@ -3395,13 +4187,38 @@ function crossListHtml(){
 /* ---------- הגדרות ---------- */
 function moduleSettings(){
   var tab=state.params.stab||"partners";
-  var tabs=[["partners","ספר שותפים"],["accounts","חשבונות"],["methods","אמצעי תשלום"],["users","משתמשים"],["sheets","גוגל שיטס"],["backup","גיבוי"],["danger","מחיקת נתונים"]];
+  var tabs=[["partners","ספר שותפים"],["cats","קטגוריות"],["accounts","חשבונות"],["methods","אמצעי תשלום"],["users","משתמשים"],["sheets","גוגל שיטס"],["backup","גיבוי"],["danger","מחיקת נתונים"]];
   var h='<h2>הגדרות</h2><div class="tabs">'+tabs.map(function(t){return '<div class="tab'+(tab===t[0]?" active":"")+'" onclick="go(\'settings\',{stab:\''+t[0]+'\'})">'+t[1]+'</div>';}).join("")+'</div>';
   if(tab==="partners"){
     h+='<div class="toolbar"><button class="btn btn-primary btn-sm" onclick="editPartner(null)">➕ שותף</button>'+
       searchBox("pt-q",Q.partners,"חיפוש שותף…","Q.partners=this.value;renderPartnersTable()")+
       '<div class="sp"></div><span id="pt-count"></span></div>';
     h+='<div id="pt-table">'+partnersTableHtml()+'</div>';
+  } else if(tab==="cats"){
+    var cats=catsSorted();
+    var missing=CATEGORIES_SUGGESTED.filter(function(n){
+      return !cats.some(function(c){ return normKey(c.name)===normKey(n); }); });
+    h+='<div class="toolbar"><button class="btn btn-primary btn-sm" onclick="editCategory(null)">➕ קטגוריה</button>'+
+      (missing.length?'<button class="btn btn-sm" onclick="seedCategories()">📥 טען '+missing.length+' קטגוריות מומלצות</button>':'')+
+      '<div class="sp"></div><span class="muted">'+cats.length+' קטגוריות</span></div>';
+    h+='<div class="table-wrap"><table class="tbl"><thead><tr><th>קטגוריה</th><th>שלבים</th><th>סכום</th><th>שולם</th><th>נותר</th><th></th></tr></thead><tbody>';
+    if(!cats.length) h+='<tr><td colspan="6" class="empty">אין קטגוריות. לחץ "טען קטגוריות מומלצות" או הוסף ידנית.</td></tr>';
+    var tn=0,ta=0,tp=0;
+    cats.forEach(function(c){
+      var exps=active(DB.expenses).filter(function(e){ return e.categoryId===c.id && !isContainer(e.id); });
+      var amt=exps.reduce(function(s,e){return s+(Number(e.amount)||0)+expenseMgmtCostLive(e.id);},0);
+      var pd=exps.reduce(function(s,e){return s+expensePaid(e.id);},0);
+      tn+=exps.length; ta+=amt; tp+=pd;
+      h+='<tr><td><b>'+esc(c.name)+'</b></td><td>'+(exps.length||'<span class="muted">—</span>')+'</td>'+
+        '<td>'+money(amt)+'</td><td>'+money(pd)+'</td>'+
+        '<td class="'+((amt-pd)>0.01?"neg":"pos")+'">'+money(amt-pd)+'</td>'+
+        '<td class="right"><button class="btn btn-ghost btn-sm" onclick="editCategory(\''+c.id+'\')">✏️</button> '+
+        '<button class="btn btn-ghost btn-sm" onclick="delCategory(\''+c.id+'\')">🗑️</button></td></tr>';
+    });
+    h+='</tbody><tfoot><tr><td>סה"כ</td><td>'+tn+'</td><td>'+money(ta)+'</td><td>'+money(tp)+'</td>'+
+      '<td>'+money(ta-tp)+'</td><td></td></tr></tfoot></table></div>'+
+      '<div class="hint">הקטגוריה נבחרת בעריכת שלב (או בהוצאה מהירה), ומזינה את דוח <b>"לפי קטגוריה"</b> '+
+      'בלשונית הדוחות של כל פרויקט. מחיקת קטגוריה לא מוחקת שלבים — הם פשוט חוזרים ל"ללא קטגוריה".</div>';
   } else if(tab==="accounts"){
     var accs=active(DB.accounts);
     h+='<div class="toolbar"><button class="btn btn-primary btn-sm" onclick="editAccount(null)">➕ חשבון</button>'+
@@ -3752,10 +4569,34 @@ function deleteApartmentExpenses(aptId){
   save(); toast("נמחקו "+exps.length+" הוצאות","ok"); rerender();
 }
 function editCategory(id){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var c=id?byId(DB.categories,id):{name:""};
-  openModal({title:id?"עריכת סוג":"סוג הוצאה חדש",bodyHtml:'<div class="field"><label>שם</label><input id="ct-name" value="'+esc(c.name)+'"></div>',
-    onSave:function(){ var n=val("ct-name").trim(); if(!n){toast("שם חסר","err");return false;}
-      if(id) c.name=n; else DB.categories.push({id:uid(),name:n,deleted:false}); save(); toast("נשמר","ok"); rerender(); }});
+  openModal({title:id?"עריכת קטגוריה":"קטגוריה חדשה",
+    bodyHtml:'<div class="field"><label>שם הקטגוריה</label><input id="ct-name" value="'+esc(c.name)+'" placeholder="למשל: חשמל, אדריכל, ריצוף"></div>',
+    onSave:function(){
+      var n=val("ct-name").trim(); if(!n){ toast("שם חסר","err"); return false; }
+      var dup=active(DB.categories).find(function(x){ return normKey(x.name)===normKey(n) && x.id!==id; });
+      if(dup){ toast('הקטגוריה "'+dup.name+'" כבר קיימת',"err"); return false; }
+      if(id) c.name=n; else DB.categories.push({id:uid(),name:n,deleted:false});
+      save(); toast("נשמר","ok"); rerender();
+    }});
+}
+function delCategory(id){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var c=byId(DB.categories,id); if(!c) return;
+  var used=active(DB.expenses).filter(function(e){ return e.categoryId===id; }).length;
+  softDelete("categories",id,'למחוק את הקטגוריה "'+c.name+'"?'+
+    (used?' '+used+' שלבים משויכים אליה — הם יישארו, רק בלי קטגוריה.':''));
+}
+function seedCategories(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var n=0;
+  CATEGORIES_SUGGESTED.forEach(function(name){
+    if(active(DB.categories).some(function(c){ return normKey(c.name)===normKey(name); })) return;
+    DB.categories.push({id:uid(),name:name,deleted:false}); n++;
+  });
+  if(!n){ toast("כל הקטגוריות המומלצות כבר קיימות","warn"); return; }
+  save(); toast("נוספו "+n+" קטגוריות","ok"); rerender();
 }
 function editUser(id){
   var u=id?byId(DB.users,id):{name:"",role:"viewer",allowedApartments:[],partnerId:null,active:true};
@@ -4231,10 +5072,21 @@ function commitImport(force){
   else if(imp.type==="expenses"){
     if(m.desc<0||m.amount<0){ toast("חובה למפות תיאור וסכום","err"); return; }
     var splitFreq={}, noSplit=[];
+    /* קובץ שיוצא מהמערכת מכיל גם את שורת שלב-האב (הסיכום) וגם את
+       תתי-השלבים. אם נייבא את שתיהן הכסף ייספר פעמיים, ולכן כל שורה
+       ששמה מופיע בעמודת "שלב-אב" של שורה אחרת מזוהה כשורת סיכום ומדולגת. */
+    var summaryNames={};
+    if(m.parent>=0) imp.rows.forEach(function(r){
+      var pn=String(r[m.parent]||"").trim(), dn=String(r[m.desc]||"").trim();
+      if(pn && normKey(pn)!==normKey(dn)) summaryNames[normKey(pn)]=pn;
+    });
     imp.rows.forEach(function(r,idx){
       var aptId=aptFor(r); if(!aptId){ skip(idx,"לא זוהתה דירה (עמודת הפרויקט ריקה ולא נבחרה דירת ברירת מחדל)",r); return; }
       var desc=String(r[m.desc]||"").trim(); var amt=impNum(r[m.amount]);
       if(!desc && !amt){ skip(idx,"שורה ריקה — אין תיאור ואין סכום",r); return; }
+      if(desc && summaryNames[normKey(desc)]){
+        skip(idx,'שורת שלב-אב ("'+desc+'") — הסכום שלה הוא סך תתי-השלבים ולכן היא לא מיובאת, כדי שהכסף לא ייספר פעמיים',r); return;
+      }
       var dt=(m.date>=0?impDate(r[m.date]):todayISO());
       // הגנה מפני ייבוא כפול: אותה דירה + תיאור + סכום + תאריך
       if(apExpenses(aptId).some(function(x){
@@ -4316,11 +5168,14 @@ function commitImport(force){
     var expIdx={};
     function idxFor(aptId){
       if(expIdx[aptId]) return expIdx[aptId];
-      var ix={exact:{},norm:{}};
+      /* שלב-אב אינו מקבל תשלומים — הכסף יושב בתת-השלב. אילו היינו
+         מצמידים אליו תשלום, הוא היה נעלם מכל חישובי הכסף (שעובדים על
+         עלים בלבד) אבל כן נספר ברשימת התשלומים. */
+      var ix={exact:{},norm:{},cont:{}};
       apExpenses(aptId).forEach(function(x){
-        var d=String(x.description).trim();
+        var d=String(x.description).trim(), nk=normKey(d);
+        if(isContainer(x.id)){ ix.cont[d]=x; ix.cont[nk]=x; return; }
         if(!ix.exact[d]) ix.exact[d]=x;
-        var nk=normKey(d);
         if(!ix.norm[nk]) ix.norm[nk]=x;
       });
       expIdx[aptId]=ix; return ix;
@@ -4331,6 +5186,11 @@ function commitImport(force){
       var ix=idxFor(aptId);
       var e=ix.exact[target] || ix.norm[normKey(target)];
       var amt=impNum(r[m.amount]);
+      if(!e && target && (ix.cont[target]||ix.cont[normKey(target)])){
+        var ct=ix.cont[target]||ix.cont[normKey(target)];
+        skip(idx,'"'+target+'" הוא שלב-אב — יש לרשום את התשלום באחד מתתי-השלבים שלו ('+
+          expenseChildren(ct.id).map(function(k){return k.description;}).join(", ")+')',r); return;
+      }
       if(!e && target){
         res.missingNames[target]=(res.missingNames[target]||0)+1;
       }
@@ -4502,7 +5362,7 @@ function copySkipped(){
 /* ---------- סל מחזור ---------- */
 function moduleRecycle(){
   var groups=[["apartments","דירות"],["partners","שותפים"],["apartmentPartners","שותפי דירה"],["managers","מנהלים"],
-    ["categories","סוגי הוצאה"],["expenses","הוצאות"],["payments","תשלומים"],["deposits","הפקדות"],["income","הכנסות"],["users","משתמשים"]];
+    ["categories","קטגוריות"],["expenses","הוצאות"],["payments","תשלומים"],["deposits","הפקדות"],["income","הכנסות"],["users","משתמשים"]];
   var h='<h2>🗑️ סל מחזור</h2><p class="muted">פריטים שנמחקו נשמרים כאן וניתן לשחזר אותם. שום דבר לא נמחק פיזית.</p>'+
     '<div class="toolbar">'+searchBox("rc-q",Q.recycle,"חיפוש בפריטים שנמחקו…","Q.recycle=this.value;renderRecycleList()")+'</div>'+
     '<div id="rc-list">'+recycleListHtml()+'</div>';
@@ -4513,7 +5373,7 @@ function renderRecycleList(){
 }
 function recycleListHtml(){
   var groups=[["apartments","דירות"],["partners","שותפים"],["apartmentPartners","שותפי דירה"],["managers","מנהלים"],
-    ["categories","סוגי הוצאה"],["expenses","הוצאות"],["payments","תשלומים"],["deposits","הפקדות"],["income","הכנסות"],["users","משתמשים"]];
+    ["categories","קטגוריות"],["expenses","הוצאות"],["payments","תשלומים"],["deposits","הפקדות"],["income","הכנסות"],["users","משתמשים"]];
   var h='';
   var any=false;
   groups.forEach(function(g){
