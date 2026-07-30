@@ -733,12 +733,21 @@ function reportPartnerIds(aptId){
 function partnerDefaultPct(aptId,pId){ var r=apPartners(aptId).find(function(x){return x.partnerId===pId;}); return r?r.defaultPercent:null; }
 
 // בנק
+function bankIncomes(aptId){ return apIncome(aptId).filter(function(i){ return i.receivedBy==="bank"; }); }
 function bankBalance(aptId){
   var deps=apDeposits(aptId).reduce(function(s,d){return s+(Number(d.amount)||0);},0);
+  /* הכנסה שסומנה "נכנסה לבנק הזמני" מגדילה את היתרה, כמו הפקדה —
+     רק בלי שיוך לשותף, כי זה כסף של הפרויקט */
+  var inc=bankIncomes(aptId).reduce(function(s,i){return s+(Number(i.amount)||0);},0);
   var expIds={}; apLeafExpenses(aptId).forEach(function(e){expIds[e.id]=1;});
   var out=active(DB.payments).filter(function(p){return expIds[p.expenseId]&&accountIsBank(p.accountId);})
     .reduce(function(s,p){return s+(Number(p.amount)||0);},0);
-  return round2(deps-out);
+  return round2(deps+inc-out);
+}
+/* לאן נכנסה ההכנסה — לתצוגה ולייצוא */
+function incomeDestName(i){
+  if(!i||!i.receivedBy) return "";
+  return i.receivedBy==="bank" ? "בנק זמני" : partnerName(i.receivedBy);
 }
 // מנהל — מגיע/קיבל/יתרה
 function managerReceivable(aptId,mId){ return round2(apLeafExpenses(aptId).reduce(function(s,e){return s+mgrFeeLiveOnExpense(e.id,mId);},0)); }
@@ -932,15 +941,15 @@ async function renderLogin(){
         '<div class="field"><label>שם</label><input id="lg-name" value="מנהל"></div>'+
         '<div class="field"><label>קוד כניסה</label><input id="lg-code" type="password" onkeydown="if(event.key===\'Enter\')createAdmin()" placeholder="בחר קוד"></div>'+
         '<button class="btn btn-primary" style="width:100%" onclick="createAdmin()">צור מנהל והיכנס</button>'
-      : '<p>הזן את קוד הכניסה שלך</p>'+
-        '<p class="muted" style="font-size:12.5px;margin-top:-6px">הקוד מזהה גם מי אתה — אין צורך בשם משתמש</p>'+
+      : '<p>הזן שם משתמש וקוד כניסה</p>'+
+        '<div class="field"><label>שם משתמש</label><input id="lg-user" onkeydown="if(event.key===\'Enter\'){event.preventDefault();var c=document.getElementById(\'lg-code\');if(c)c.focus();}" placeholder="השם כפי שהוגדר במערכת"></div>'+
         '<div class="field"><label>קוד כניסה</label><input id="lg-code" type="password" onkeydown="if(event.key===\'Enter\')doLogin()" placeholder="קוד"></div>'+
         '<button class="btn btn-primary" style="width:100%" onclick="doLogin()">כניסה</button>'+
         '<div style="margin-top:20px;padding-top:14px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)">'+
           '<a href="#" onclick="forgotCode();return false;">🔑 שכחתי את הקוד — שלח קוד שחזור למייל</a></div>'
     )+
     '</div></div>';
-  setTimeout(function(){ var el=document.getElementById("lg-code"); if(el) el.focus(); },50);
+  setTimeout(function(){ var el=document.getElementById("lg-user")||document.getElementById("lg-code"); if(el) el.focus(); },50);
 }
 async function createAdmin(){
   var name=val("lg-name").trim()||"מנהל"; var code=val("lg-code");
@@ -955,10 +964,19 @@ async function createAdmin(){
   toast("ברוך הבא, "+name,"ok"); go("dashboard",{});
 }
 async function doLogin(){
-  var code=val("lg-code"); if(!code){ toast("יש להזין קוד","err"); return; }
+  var hasUserField=!!document.getElementById("lg-user");
+  var name=hasUserField?val("lg-user").trim():"";
+  var code=val("lg-code");
+  if(hasUserField && !name){ toast("יש להזין שם משתמש","err"); return; }
+  if(!code){ toast("יש להזין קוד","err"); return; }
   var h=await hashCode(code);
   var j=await api({action:"login",codeHash:h});
-  if(!j||!j.ok){ toast((j&&j.error==="network")?"אין חיבור לשרת":"קוד שגוי","err"); return; }
+  if(!j||!j.ok){ toast((j&&j.error==="network")?"אין חיבור לשרת":"שם המשתמש או קוד הכניסה שגויים","err"); return; }
+  /* הקוד הוא המפתח בשרת; השם חייב להתאים למשתמש שהקוד שייך לו.
+     ההתאמה סלחנית לרווחים (normKey) אבל לא לשם אחר. */
+  if(name && j.user && normKey(String(j.user.name))!==normKey(name)){
+    toast("שם המשתמש אינו תואם לקוד","err"); return;
+  }
   setAuth(h); CU=j.user;
   var rec=await reconcileAfterAuth();
   if(rec===null){
@@ -2424,10 +2442,10 @@ function sheetBank(list){
   return {name:"הפקדות לבנק",rows:rows,foot:[["סה\"כ","","",M(tot)]]};
 }
 function sheetIncome(list){
-  var rows=[["דירה","תאריך","תיאור","סכום","הערה"]]; var tot=0;
+  var rows=[["דירה","תאריך","תיאור","סכום","נכנס ל","הערה"]]; var tot=0;
   list.forEach(function(a){
     apIncome(a.id).slice().sort(function(x,y){return (x.date<y.date)?-1:1;}).forEach(function(x){
-      rows.push([a.name,D(x.date),x.description||"",M(x.amount),x.note||""]); tot+=Number(x.amount)||0;
+      rows.push([a.name,D(x.date),x.description||"",M(x.amount),incomeDestName(x),x.note||""]); tot+=Number(x.amount)||0;
     });
   });
   return {name:"הכנסות",rows:rows,foot:[["סה\"כ","","",M(tot)]]};
@@ -3903,9 +3921,13 @@ function releaseDeferred(fid){
 /* ---------- בנק ---------- */
 function moduleBank(aptId){
   var deps=apDeposits(aptId); var depSum=deps.reduce(function(s,d){return s+(Number(d.amount)||0);},0);
-  var out=bankBalance(aptId); var paidOut=depSum-out;
+  var bankInc=bankIncomes(aptId);
+  var incSum=round2(bankInc.reduce(function(s,i){return s+(Number(i.amount)||0);},0));
+  var out=bankBalance(aptId); var paidOut=round2(depSum+incSum-out);
   var h='<div class="stat-grid"><div class="stat" style="border:2px solid var(--brand)"><div class="label">יתרת בנק צפויה</div><div class="value">'+money(out)+'</div></div>'+
-    stat("סך הפקדות",money(depSum))+stat("שולם מהבנק",money(paidOut))+'</div>';
+    stat("סך הפקדות",money(depSum))+
+    (incSum?stat("הכנסות שנכנסו לבנק",money(incSum)):"")+
+    stat("שולם מהבנק",money(paidOut))+'</div>';
   h+='<div class="toolbar"><h3 style="margin:0">הפקדות שותפים</h3><div class="sp"></div>'+
     (can("edit")?'<button class="btn btn-primary btn-sm" onclick="openBulkDeposit(\''+aptId+'\')">➕ הפקדה מרוכזת</button> '+
       '<button class="btn btn-sm" onclick="openDepositImport(\''+aptId+'\')">📥 העלאת אקסל</button> '+
@@ -3919,6 +3941,14 @@ function moduleBank(aptId){
       '<td class="right">'+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editDeposit(\''+d.id+'\',\''+aptId+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="softDelete(\'deposits\',\''+d.id+'\',\'למחוק הפקדה?\')">🗑️</button>':'')+'</td></tr>';
   });
   h+='</tbody></table></div>';
+  // הכנסות שנכנסו לבנק — נרשמות בלשונית "הכנסות" ומוצגות כאן לשקיפות
+  if(bankInc.length){
+    h+='<div class="card" style="margin-top:16px"><h3>הכנסות שנכנסו לבנק</h3><div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>תיאור</th><th>סכום</th></tr></thead><tbody>';
+    bankInc.slice().sort(function(x,y){return x.date<y.date?1:-1;}).forEach(function(i){
+      h+='<tr><td>'+dateHe(i.date)+'</td><td>'+esc(i.description)+'</td><td>'+money(i.amount)+'</td></tr>';
+    });
+    h+='</tbody></table></div><div class="hint">עריכה — בלשונית "הכנסות" של הפרויקט.</div></div>';
+  }
   // תשלומים מהבנק
   var expIds={}; apExpenses(aptId).forEach(function(e){expIds[e.id]=1;});
   var bankPays=active(DB.payments).filter(function(p){return expIds[p.expenseId]&&accountIsBank(p.accountId);});
@@ -4200,27 +4230,38 @@ function moduleIncome(aptId){
   var inc=apIncome(aptId); var sum=inc.reduce(function(s,i){return s+(Number(i.amount)||0);},0);
   var h='<div class="toolbar"><h3 style="margin:0">הכנסות — סה"כ '+money(sum)+'</h3><div class="sp"></div>'+
     (can("edit")?'<button class="btn btn-primary btn-sm" onclick="editIncome(null,\''+aptId+'\')">➕ הכנסה</button>':'')+'</div>';
-  h+='<div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>תיאור</th><th>סכום</th><th>הערה</th><th></th></tr></thead><tbody>';
-  if(!inc.length) h+='<tr><td colspan="5" class="empty">אין הכנסות</td></tr>';
+  h+='<div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>תיאור</th><th>סכום</th><th>נכנס ל…</th><th>הערה</th><th></th></tr></thead><tbody>';
+  if(!inc.length) h+='<tr><td colspan="6" class="empty">אין הכנסות</td></tr>';
   inc.sort(function(x,y){return x.date<y.date?1:-1;}).forEach(function(i){
-    h+='<tr><td>'+dateHe(i.date)+'</td><td>'+esc(i.description)+'</td><td>'+money(i.amount)+'</td><td>'+esc(i.note||"")+'</td>'+
+    h+='<tr><td>'+dateHe(i.date)+'</td><td>'+esc(i.description)+'</td><td>'+money(i.amount)+'</td>'+
+      '<td>'+(i.receivedBy==="bank"?'<span class="pill">🏦 בנק זמני</span>':esc(incomeDestName(i)||"—"))+'</td>'+
+      '<td>'+esc(i.note||"")+'</td>'+
       '<td class="right">'+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editIncome(\''+i.id+'\',\''+aptId+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="softDelete(\'income\',\''+i.id+'\',\'למחוק הכנסה?\')">🗑️</button>':'')+'</td></tr>';
   });
   h+='</tbody></table></div>';
   return h;
 }
 function editIncome(id,aptId){
-  var it=id?byId(DB.income,id):{description:"",amount:"",date:todayISO(),note:""};
+  var it=id?byId(DB.income,id):{description:"",amount:"",date:todayISO(),note:"",receivedBy:""};
+  var a=byId(DB.apartments,aptId);
   openModal({title:id?"עריכת הכנסה":"הכנסה חדשה",bodyHtml:
     '<div class="field"><label>תיאור</label><input id="in-desc" value="'+esc(it.description)+'"></div>'+
     '<div class="field"><label>סכום (₪)</label><input id="in-amount" type="number" step="0.01" value="'+esc(String(it.amount))+'"></div>'+
     '<div class="field"><label>תאריך</label><input id="in-date" type="date" value="'+esc(String(it.date))+'"></div>'+
+    '<div class="field"><label>למי נכנס הכסף</label><select id="in-dest">'+
+      '<option value="">— לא צוין —</option>'+
+      (a&&a.hasBank?'<option value="bank"'+(it.receivedBy==="bank"?" selected":"")+'>🏦 הבנק הזמני (קופה משותפת)</option>':'')+
+      apPartners(aptId).map(function(p){
+        return '<option value="'+p.partnerId+'"'+(it.receivedBy===p.partnerId?" selected":"")+'>'+esc(partnerName(p.partnerId))+'</option>'; }).join("")+
+    '</select>'+
+    '<div class="hint">'+(a&&a.hasBank?'הכנסה שנכנסת לבנק הזמני מתווספת ליתרת הבנק.':'בפרויקט הזה הבנק הזמני כבוי, ולכן ניתן לבחור רק שותף.')+'</div></div>'+
     '<div class="field"><label>הערה</label><input id="in-note" value="'+esc(it.note||"")+'"></div>',
     onSave:function(){
       var desc=val("in-desc").trim(); var amt=Number(val("in-amount"))||0;
       if(!desc){ toast("תיאור חסר","err"); return false; }
-      if(id){ it.description=desc; it.amount=amt; it.date=val("in-date"); it.note=val("in-note"); }
-      else DB.income.push({id:uid(),apartmentId:aptId,description:desc,amount:amt,date:val("in-date")||todayISO(),note:val("in-note"),deleted:false});
+      var dest=val("in-dest")||"";
+      if(id){ it.description=desc; it.amount=amt; it.date=val("in-date"); it.receivedBy=dest; it.note=val("in-note"); }
+      else DB.income.push({id:uid(),apartmentId:aptId,description:desc,amount:amt,date:val("in-date")||todayISO(),receivedBy:dest,note:val("in-note"),deleted:false});
       save(); toast("נשמר","ok"); rerender();
     }});
 }
@@ -4819,7 +4860,7 @@ function moduleSettings(){
         '<td class="right"><button class="btn btn-ghost btn-sm" onclick="editUser(\''+u.id+'\')">✏️</button>'+(u.id===CU.id?'':' <button class="btn btn-ghost btn-sm" onclick="softDelete(\'users\',\''+u.id+'\',\'למחוק משתמש?\')">🗑️</button>')+'</td></tr>';
     });
     h+='</tbody></table></div><div class="hint">קודי הכניסה נשמרים מוצפנים (SHA-256) ואינם ניתנים לצפייה. '+
-      '<b>הקוד הוא הזהות</b> — בכניסה מזינים אותו בלבד, בלי שם משתמש, ולכן לכל משתמש חייב להיות קוד ייחודי. '+
+      'בכניסה מזינים <b>שם משתמש + קוד</b> — השם חייב להתאים לשם שמוגדר כאן, והקוד ייחודי לכל משתמש. '+
       'שכחת קוד של מישהו? ערוך אותו וקבע לו קוד חדש.</div>';
   } else if(tab==="sheets"){
     var sm={ok:"✅ מסונכרן",saving:"🔄 שומר…",err:"⚠️ שגיאת סנכרון",local:"💾 מקומי בלבד",idle:"⏳ ממתין"};
@@ -5177,7 +5218,7 @@ async function saveUser(id,u){
       allowedApartments:apts,partnerId:pid,active:checked("us-active"),deleted:false});
   }
   save(); closeModal(); rerender();
-  toast(id?'"'+name+'" נשמר':'"'+name+'" נוסף — הוא נכנס עם הקוד שלו, בלי שם משתמש',"ok");
+  toast(id?'"'+name+'" נשמר':'"'+name+'" נוסף — נכנסים עם השם "'+name+'" + הקוד שלו',"ok");
 }
 function exportJSON(){ var blob=new Blob([JSON.stringify(DB,null,2)],{type:"application/json"});
   var url=URL.createObjectURL(blob); var a=document.createElement("a"); a.href=url; a.download="apartments-backup-"+todayISO()+".json"; a.click(); URL.revokeObjectURL(url); }
