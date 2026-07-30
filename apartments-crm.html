@@ -2514,22 +2514,152 @@ function moduleApartmentReports(aptId){
     h+='<tr><td>'+esc(partnerName(pid))+'</td><td>'+money(s)+'</td><td>'+money(p)+'</td><td class="'+((p-s)<0?"neg":"pos")+'">'+money(p-s)+'</td></tr>';
   });
   h+='</tbody><tfoot><tr><td>סה"כ</td><td>'+money(tS)+'</td><td>'+money(tP)+'</td><td>'+money(tP-tS)+'</td></tr></tfoot></table></div></div>';
-  // דוח שלבים (מטריצה)
-  var exps=apExpenses(aptId);
-  var colSet={}; apPartners(aptId).forEach(function(ap){colSet[ap.partnerId]=1;});
-  exps.forEach(function(e){ expSplits(e.id).forEach(function(s){colSet[s.partnerId]=1;}); });
-  var cols=Object.keys(colSet);
-  h+='<div class="card"><h3>דוח שלבים — כמה כל שותף אמור לשלם על כל שלב</h3><div class="table-wrap"><table class="tbl"><thead><tr><th>שלב</th>'+
-    cols.map(function(c){return '<th>'+esc(partnerName(c))+'</th>';}).join("")+'<th>סה"כ</th></tr></thead><tbody>';
-  var colTot={}; cols.forEach(function(c){colTot[c]=0;}); var grand=0;
-  exps.sort(function(x,y){return x.date<y.date?1:-1;}).forEach(function(e){
-    h+='<tr><td><b>'+esc(e.description)+'</b></td>';
-    cols.forEach(function(c){ var v=(partnerPctInExpense(e.id,c)/100)*(Number(e.amount)||0); colTot[c]+=v; h+='<td>'+(v?money(v):"—")+'</td>'; });
-    h+='<td><b>'+money(e.amount)+'</b></td></tr>'; grand+=Number(e.amount)||0;
-  });
-  h+='</tbody><tfoot><tr><td>סה"כ</td>'+cols.map(function(c){return '<td>'+money(colTot[c])+'</td>';}).join("")+'<td>'+money(grand)+'</td></tr></tfoot></table></div>'+
-    '<div class="hint">דוח השלבים מציג חלוקה של סכום ההוצאה בלבד. דמי ניהול נכללים ב"דוח המשלמים" למעלה.</div></div>';
+  // דוח שותפים לפי שלבים
+  h+='<div id="partner-report">'+partnerReportHtml(aptId)+'</div>';
   return h;
+}
+
+/* ============================================================
+   דוח שותפים — כמה כל שותף אמור לשלם על כל שלב, לפי אחוזיו
+   כולל את חלקו בדמי הניהול, כך שהסיכום תואם לדוח המשלמים.
+   ============================================================ */
+var PR={mode:"matrix",partner:"",q:""};
+function renderPartnerReport(){
+  var el=document.getElementById("partner-report");
+  if(el) el.innerHTML=partnerReportHtml(state.params.apartmentId);
+}
+/* חלקו של שותף בשלב: אחוז × (סכום ההוצאה + דמי הניהול הפעילים) */
+function partnerShareInExpense(eId,pid){
+  var e=byId(DB.expenses,eId); if(!e) return 0;
+  var pct=partnerPctInExpense(eId,pid)/100; if(!pct) return 0;
+  return round2(pct*((Number(e.amount)||0)+expenseMgmtCostLive(eId)));
+}
+/* כמה השותף שילם בפועל על השלב (תשלומיו הישירים, לא מהבנק) */
+function partnerPaidOnExpense(eId,pid){
+  return round2(expPayments(eId).filter(function(p){
+    return p.payerPartnerId===pid && !accountIsBank(p.accountId);
+  }).reduce(function(s,p){ return s+(Number(p.amount)||0); },0));
+}
+function partnerReportHtml(aptId){
+  var a=byId(DB.apartments,aptId);
+  var cols=reportPartnerIds(aptId);
+  var exps=apExpenses(aptId).filter(function(e){ return matches(PR.q, e.description+" "+(e.note||"")); })
+    .sort(function(x,y){ return x.date<y.date?-1:1; });
+
+  var h='<div class="card"><div class="toolbar" style="margin-bottom:10px">'+
+    '<h3 style="margin:0">👥 דוח שותפים לפי שלבים</h3>'+
+    '<div class="sp"></div>'+
+    '<div class="no-print" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+
+      searchBox("pr-q",PR.q,"חיפוש שלב…","PR.q=this.value;renderPartnerReport()")+
+      '<select style="max-width:210px" onchange="PR.mode=this.value;PR.partner=\'\';renderPartnerReport()">'+
+        '<option value="matrix"'+(PR.mode==="matrix"?" selected":"")+'>טבלה מלאה — כל השותפים</option>'+
+        '<option value="single"'+(PR.mode==="single"?" selected":"")+'>שותף אחד — פירוט מלא</option>'+
+      '</select>'+
+      (PR.mode==="single"
+        ? '<select style="max-width:170px" onchange="PR.partner=this.value;renderPartnerReport()">'+
+            '<option value="">— בחר שותף —</option>'+
+            cols.map(function(pid){ return '<option value="'+pid+'"'+(PR.partner===pid?" selected":"")+'>'+esc(partnerName(pid))+'</option>'; }).join("")+
+          '</select>'
+        : '')+
+      '<button class="btn btn-sm" onclick="copyPartnerReport()">📋 העתק</button>'+
+    '</div></div>';
+
+  if(!exps.length){
+    return h+'<div class="empty">'+(PR.q?'לא נמצא שלב שמתאים לחיפוש':'אין שלבים בפרויקט')+'</div></div>';
+  }
+
+  /* ---------- מצב א: מטריצה מלאה ---------- */
+  if(PR.mode!=="single"){
+    if(!cols.length) return h+'<div class="empty">לא הוגדרו שותפים בפרויקט זה</div></div>';
+    var colTot={}, colPaid={}; cols.forEach(function(c){colTot[c]=0;colPaid[c]=0;});
+    var grand=0, grandMgmt=0;
+    var body="";
+    exps.forEach(function(e){
+      var mgmt=expenseMgmtCostLive(e.id);
+      var rowTotal=(Number(e.amount)||0)+mgmt;
+      grand+=Number(e.amount)||0; grandMgmt+=mgmt;
+      body+='<tr><td>'+dateHe(e.date)+'</td><td><b>'+esc(e.description)+'</b>'+
+        (mgmt>0.01?'<div class="hint">כולל דמי ניהול '+money(mgmt)+'</div>':'')+'</td>';
+      cols.forEach(function(c){
+        var pct=partnerPctInExpense(e.id,c);
+        var v=partnerShareInExpense(e.id,c);
+        colTot[c]+=v; colPaid[c]+=partnerPaidOnExpense(e.id,c);
+        body+='<td>'+(pct
+          ? '<b>'+money(v)+'</b><div class="hint">'+num(pct)+'%</div>'
+          : '<span class="muted">—</span>')+'</td>';
+      });
+      body+='<td><b>'+money(rowTotal)+'</b></td></tr>';
+    });
+    h+='<div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>שלב</th>'+
+      cols.map(function(c){
+        var dp=partnerDefaultPct(aptId,c);
+        return '<th>'+esc(partnerName(c))+(dp!=null?'<div class="hint" style="font-weight:400">ברירת מחדל '+num(dp)+'%</div>':'')+'</th>';
+      }).join("")+'<th>סה"כ השלב</th></tr></thead><tbody>'+body+
+      '</tbody><tfoot><tr><td colspan="2">סה"כ אמור לשלם</td>'+
+        cols.map(function(c){return '<td>'+money(colTot[c])+'</td>';}).join("")+
+        '<td>'+money(grand+grandMgmt)+'</td></tr>'+
+      '<tr><td colspan="2" class="muted">מזה שולם בפועל</td>'+
+        cols.map(function(c){return '<td class="pos">'+money(colPaid[c])+'</td>';}).join("")+
+        '<td></td></tr>'+
+      '<tr><td colspan="2">יתרה</td>'+
+        cols.map(function(c){ var b=colPaid[c]-colTot[c];
+          return '<td class="'+(b<-0.01?"neg":"pos")+'">'+money(b)+'</td>'; }).join("")+
+        '<td></td></tr></tfoot></table></div>'+
+      '<div class="hint">כל תא = אחוז השותף באותו שלב × (סכום השלב + דמי הניהול שלו). '+
+      'שורת ה"שולם" סופרת תשלומים ישירים של השותף; תשלום מהבנק המשותף אינו משויך לשותף בודד.</div></div>';
+    return h;
+  }
+
+  /* ---------- מצב ב: שותף בודד, פירוט מלא ---------- */
+  if(!PR.partner){
+    return h+'<div class="empty">בחר שותף מהרשימה למעלה כדי לראות את הפירוט המלא שלו</div></div>';
+  }
+  var pid=PR.partner, tShare=0, tPaid=0, rows="";
+  exps.forEach(function(e){
+    var pct=partnerPctInExpense(e.id,pid);
+    if(!pct) return;
+    var mgmt=expenseMgmtCostLive(e.id);
+    var share=partnerShareInExpense(e.id,pid);
+    var paid=partnerPaidOnExpense(e.id,pid);
+    tShare+=share; tPaid+=paid;
+    var bal=paid-share;
+    rows+='<tr><td>'+dateHe(e.date)+'</td><td><b>'+esc(e.description)+'</b></td>'+
+      '<td>'+money(e.amount)+'</td>'+
+      (mgmt>0.01?'<td>'+money(mgmt)+'</td>':'<td><span class="muted">—</span></td>')+
+      '<td><b>'+num(pct)+'%</b></td>'+
+      '<td><b>'+money(share)+'</b></td>'+
+      '<td>'+(paid?money(paid):'<span class="muted">—</span>')+'</td>'+
+      '<td class="'+(bal<-0.01?"neg":"pos")+'">'+money(bal)+'</td></tr>';
+  });
+  if(!rows) return h+'<div class="empty">לשותף זה אין חלק באף שלב שמתאים לסינון</div></div>';
+  h+='<div class="stat-grid" style="margin-bottom:14px">'+
+      stat("אמור לשלם",money(tShare))+
+      stat("שילם ישירות",money(tPaid),"pos")+
+      stat("יתרה",money(tPaid-tShare),(tPaid-tShare)<-0.01?"neg":"pos")+
+    '</div>'+
+    '<div class="table-wrap"><table class="tbl"><thead><tr>'+
+    '<th>תאריך</th><th>שלב</th><th>סכום השלב</th><th>דמי ניהול</th><th>האחוז שלו</th>'+
+    '<th>חלקו לתשלום</th><th>שילם</th><th>יתרה</th></tr></thead><tbody>'+rows+
+    '</tbody><tfoot><tr><td colspan="5">סה"כ '+esc(partnerName(pid))+'</td>'+
+      '<td>'+money(tShare)+'</td><td>'+money(tPaid)+'</td>'+
+      '<td class="'+((tPaid-tShare)<-0.01?"neg":"pos")+'">'+money(tPaid-tShare)+'</td></tr></tfoot></table></div>'+
+    '<div class="hint">"שילם" = תשלומים ישירים שלו על אותו שלב. הפקדות לבנק ותשלומים מהבנק נכללים ביתרה הכוללת בדוח המשלמים למעלה.</div></div>';
+  return h;
+}
+function copyPartnerReport(){
+  var box=document.getElementById("partner-report");
+  var tbl=box&&box.querySelector("table.tbl");
+  if(!tbl){ toast("אין טבלה להעתקה","warn"); return; }
+  var lines=[];
+  tbl.querySelectorAll("tr").forEach(function(tr){
+    var cells=[];
+    tr.querySelectorAll("th,td").forEach(function(c){
+      cells.push(String(c.innerText||"").replace(/\s+/g," ").trim());
+    });
+    if(cells.join("").trim()) lines.push(cells.join("\t"));
+  });
+  try{ navigator.clipboard.writeText(lines.join("\n")); toast("הדוח הועתק — אפשר להדביק באקסל","ok"); }
+  catch(e){ toast("לא ניתן להעתיק בדפדפן הזה","err"); }
 }
 
 /* ---------- דוח דמי ניהול (חוצה פרויקטים) ---------- */
