@@ -440,6 +440,17 @@ function normalizeDB(d){
   (d.payments||[]).forEach(function(p){ p.amount=toNum(p.amount); p.date=toISO(p.date); });
   (d.deposits||[]).forEach(function(x){ x.amount=toNum(x.amount); x.date=toISO(x.date); });
   (d.income||[]).forEach(function(x){ x.amount=toNum(x.amount); x.date=toISO(x.date); });
+  /* שלב שיש לו תתי-שלבים הוא מכל: הסכום שלו חייב להיות סך תתי-השלבים.
+     נתונים שנוצרו לפני המודל הזה מיושרים כאן, כדי שלא תהיה ספירה כפולה. */
+  var kidSum={}, hasKids={};
+  (d.expenses||[]).forEach(function(e){
+    if(e.deleted || !e.parentId) return;
+    hasKids[e.parentId]=1;
+    kidSum[e.parentId]=(kidSum[e.parentId]||0)+(Number(e.amount)||0);
+  });
+  (d.expenses||[]).forEach(function(e){
+    if(hasKids[e.id]) e.amount=Math.round((kidSum[e.id]||0)*100)/100;
+  });
   return d;
 }
 
@@ -468,6 +479,8 @@ function accountIsBank(accId){ if(!accId) return false; var a=byId(DB.accounts,a
 
 // תשלומי ספק להוצאה (מה ששולם על ההוצאה עצמה)
 function expensePaid(eId){
+  /* מכל: מה ששולם = סך תתי-השלבים (לתצוגה; בחישובי הכסף המכל אינו נספר) */
+  if(isContainer(eId)) return round2(expenseChildren(eId).reduce(function(s,k){ return s+expensePaid(k.id); },0));
   return round2(expPayments(eId).filter(function(p){return p.recipientType!=="manager";})
     .reduce(function(s,p){return s+(Number(p.amount)||0);},0));
 }
@@ -494,6 +507,7 @@ function mgrFeeFullOnExpense(eId,mId){ // כולל מע"מ, נוכחי+דחוי 
   return round2(base*tot*mgmtVatFactor(e));
 }
 function expenseMgmtCostLive(eId){ // סך דמי הניהול הפעילים של ההוצאה (עלות שמתחלקת בין השותפים)
+  if(isContainer(eId)) return round2(expenseChildren(eId).reduce(function(s,k){ return s+expenseMgmtCostLive(k.id); },0));
   var e=byId(DB.expenses,eId); if(!e||!e.mgmtEnabled) return 0;
   return round2(expMgrFees(eId).reduce(function(s,f){return s+mgrFeeLiveOnExpense(eId,f.managerId);},0));
 }
@@ -550,20 +564,20 @@ function syncAutoMgmtPayments(eId){
   });
 }
 function syncAutoMgmtApartment(aptId){
-  apExpenses(aptId).forEach(function(e){ syncAutoMgmtPayments(e.id); });
+  apLeafExpenses(aptId).forEach(function(e){ syncAutoMgmtPayments(e.id); });
 }
 
 // שותף — כמה אמור לשלם (חלקו בהוצאות + חלקו בדמי הניהול, לפי חלוקת ההוצאה)
 function partnerPctInExpense(eId,pId){ return expSplits(eId).reduce(function(s,x){ return s+(x.partnerId===pId?(Number(x.percent)||0):0); },0); }
 function partnerShouldPay(aptId,pId){
-  return round2(apExpenses(aptId).reduce(function(sum,e){
+  return round2(apLeafExpenses(aptId).reduce(function(sum,e){
     var pct=partnerPctInExpense(e.id,pId)/100; if(!pct) return sum;
     return sum + pct*(Number(e.amount)||0) + pct*expenseMgmtCostLive(e.id);
   },0));
 }
 // שותף — כמה שילם בפועל (תשלומים ישירים שלו מחשבון שאינו בנק + הפקדותיו לבנק)
 function partnerPaid(aptId,pId){
-  var expIds={}; apExpenses(aptId).forEach(function(e){expIds[e.id]=1;});
+  var expIds={}; apLeafExpenses(aptId).forEach(function(e){expIds[e.id]=1;});
   var direct=active(DB.payments).filter(function(p){
     return expIds[p.expenseId] && !accountIsBank(p.accountId) && p.payerPartnerId===pId;
   }).reduce(function(s,p){return s+(Number(p.amount)||0);},0);
@@ -577,7 +591,7 @@ function apReportPartnerIds(aptId){
   function add(pid){ if(pid && !set[pid]){ set[pid]=1; order.push(pid); } }
   apPartners(aptId).forEach(function(ap){ add(ap.partnerId); });
   var expIdSet={};
-  apExpenses(aptId).forEach(function(e){ expIdSet[e.id]=1; expSplits(e.id).forEach(function(s){ add(s.partnerId); }); });
+  apLeafExpenses(aptId).forEach(function(e){ expIdSet[e.id]=1; expSplits(e.id).forEach(function(s){ add(s.partnerId); }); });
   apDeposits(aptId).forEach(function(d){ add(d.partnerId); });           // מפקידים לבנק
   active(DB.payments).forEach(function(p){ if(expIdSet[p.expenseId] && !accountIsBank(p.accountId)) add(p.payerPartnerId); }); // משלמים ישירים
   return order;
@@ -592,26 +606,26 @@ function partnerDefaultPct(aptId,pId){ var r=apPartners(aptId).find(function(x){
 // בנק
 function bankBalance(aptId){
   var deps=apDeposits(aptId).reduce(function(s,d){return s+(Number(d.amount)||0);},0);
-  var expIds={}; apExpenses(aptId).forEach(function(e){expIds[e.id]=1;});
+  var expIds={}; apLeafExpenses(aptId).forEach(function(e){expIds[e.id]=1;});
   var out=active(DB.payments).filter(function(p){return expIds[p.expenseId]&&accountIsBank(p.accountId);})
     .reduce(function(s,p){return s+(Number(p.amount)||0);},0);
   return round2(deps-out);
 }
 // מנהל — מגיע/קיבל/יתרה
-function managerReceivable(aptId,mId){ return round2(apExpenses(aptId).reduce(function(s,e){return s+mgrFeeLiveOnExpense(e.id,mId);},0)); }
+function managerReceivable(aptId,mId){ return round2(apLeafExpenses(aptId).reduce(function(s,e){return s+mgrFeeLiveOnExpense(e.id,mId);},0)); }
 /* דחוי שטרם שוחרר = ההפרש בין הסופי לפעיל */
 function managerDeferredPending(aptId,mId){
-  return round2(apExpenses(aptId).reduce(function(s,e){
+  return round2(apLeafExpenses(aptId).reduce(function(s,e){
     return s + (mgrFeeFullOnExpense(e.id,mId) - mgrFeeLiveOnExpense(e.id,mId)); },0));
 }
 function managerPaid(aptId,mId){
-  var expIds={}; apExpenses(aptId).forEach(function(e){expIds[e.id]=1;});
+  var expIds={}; apLeafExpenses(aptId).forEach(function(e){expIds[e.id]=1;});
   return round2(active(DB.payments).filter(function(p){return expIds[p.expenseId]&&p.recipientType==="manager"&&p.recipientManagerId===mId;})
     .reduce(function(s,p){return s+(Number(p.amount)||0);},0));
 }
 // סיכומי דירה
 function apartmentTotals(aptId){
-  var exps=apExpenses(aptId);
+  var exps=apLeafExpenses(aptId);
   var totalExpenses=exps.reduce(function(s,e){return s+(Number(e.amount)||0);},0);
   var totalMgmt=exps.reduce(function(s,e){return s+expenseMgmtCostLive(e.id);},0);
   var totalPaid=exps.reduce(function(s,e){return s+expensePaid(e.id);},0);
@@ -676,8 +690,19 @@ function confirmDelete(msg,cb){
 }
 function softDelete(entity,id,msg){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  /* שלב-אב: תתי-השלבים הם הכסף האמיתי. מוחקים יחד איתו, בתיוג שמאפשר
+     שחזור של כל הקבוצה בלחיצה אחת מסל המחזור. */
+  var kidCount = (entity==="expenses") ? expenseChildren(id).length : 0;
+  if(kidCount) msg=(msg||"למחוק פריט זה?")+" לשלב יש "+kidCount+" תתי-שלבים — הם יימחקו יחד איתו (ניתן לשחזר יחד מסל המחזור).";
   confirmDelete(msg||"למחוק פריט זה?",function(){
-    var it=byId(DB[entity],id); if(it){ it.deleted=true; save(); toast("הועבר לסל המחזור","ok"); rerender(); }
+    var it=byId(DB[entity],id); if(!it) return;
+    it.deleted=true;
+    if(entity==="expenses"){
+      var tag="expense:"+id;
+      expenseChildren(id).forEach(function(k){ k.deleted=true; k.deletedBy=tag; });
+      if(it.parentId) syncParentAmount(it.parentId);   // סכום האב נגזר מהתתי-שלבים
+    }
+    save(); toast("הועבר לסל המחזור","ok"); rerender();
   });
 }
 
@@ -1001,7 +1026,7 @@ function toggleAptFlag(aptId,flag,val){
   var a=byId(DB.apartments,aptId); if(!a) return;
   if(!val && flag==="hasBank"){
     var deps=apDeposits(aptId).length;
-    var expIds={}; apExpenses(aptId).forEach(function(e){expIds[e.id]=1;});
+    var expIds={}; apLeafExpenses(aptId).forEach(function(e){expIds[e.id]=1;});
     var bankPays=active(DB.payments).filter(function(p){return expIds[p.expenseId]&&accountIsBank(p.accountId);}).length;
     if(deps||bankPays){
       if(!confirm('בדירה "'+a.name+'" יש '+deps+' הפקדות ו-'+bankPays+' תשלומים מהבנק.\n\n'+
@@ -1119,7 +1144,7 @@ function viewApartmentOverview(aptId){
     '</div></div>';
 
   /* ===== סטטוס שלבים + פילוח סיווג ===== */
-  var exps=apExpenses(aptId);
+  var exps=apLeafExpenses(aptId);
   if(exps.length){
     var byStatus={paid:0,partial:0,unpaid:0,over:0};
     exps.forEach(function(e){ byStatus[expenseStatus(e.id)]+=Number(e.amount)||0; });
@@ -1744,10 +1769,51 @@ function renderExpTable(aptId){
   var el=document.getElementById("exp-table"); if(el) el.innerHTML=expTableHtml(aptId);
 }
 /* ---------- תת-שלבים ----------
-   שיוך הוא לתצוגה ולקיבוץ בלבד: כל תת-שלב הוא הוצאה מלאה עם סכום,
-   חלוקה ותשלומים משלו, כך שאף חישוב כספי לא משתנה ואין ספירה כפולה. */
+   שלב שיש לו תתי-שלבים הוא "מכל": הסכום שלו נגזר מסך תתי-השלבים
+   (חשמל = 15,000 כשמתוכו 7,500 ל-5/22 ו-7,500 ל-6/22), והוא עצמו
+   אינו נספר בחישובים — תתי-השלבים הם ההוצאות האמיתיות, ולכן אין
+   ספירה כפולה. הכסף, החלוקה והתשלומים יושבים בתתי-השלבים. */
 function expenseChildren(eId){
   return active(DB.expenses).filter(function(x){ return x.parentId===eId; });
+}
+function isContainer(eId){ return expenseChildren(eId).length>0; }
+/* ההוצאות שנספרות בכסף: הכל חוץ ממכלים */
+function apLeafExpenses(aptId){
+  return apExpenses(aptId).filter(function(e){ return !isContainer(e.id); });
+}
+/* סכום המכל = סך תתי-השלבים. נקרא אחרי כל שינוי בתת-שלב. */
+function syncParentAmount(pid){
+  var p=byId(DB.expenses,pid); if(!p) return;
+  var kids=expenseChildren(pid); if(!kids.length) return;
+  p.amount=round2(kids.reduce(function(s,k){return s+(Number(k.amount)||0);},0));
+}
+function syncAllParents(aptId){
+  apExpenses(aptId).forEach(function(e){ if(isContainer(e.id)) syncParentAmount(e.id); });
+}
+/* הפיכת שלב קיים למכל: אם יש בו כסף/תשלומים/חלוקה — מעבירים אותם
+   לתת-שלב ראשון, כדי ששום דבר לא ייעלם כשהאב הופך לסיכום. */
+function convertToContainer(pid,silent){
+  var p=byId(DB.expenses,pid); if(!p) return true;
+  if(isContainer(pid)) return true;                     // כבר מכל
+  var pays=expPayments(pid);
+  var hasMoney=(Number(p.amount)||0)>0.01 || pays.length;
+  if(!hasMoney){ return true; }
+  if(!silent && !confirm('"'+p.description+'" יהפוך לשלב-אב שמסכם את תתי-השלבים.\n\n'+
+    'הסכום הקיים ('+money(p.amount)+')'+(pays.length?' ו-'+pays.length+' התשלומים שלו':'')+
+    ' יועברו לתת-שלב ראשון, כדי שלא ייעלמו.\n\nלהמשיך?')) return false;
+  var cid=uid();
+  DB.expenses.push({id:cid,apartmentId:p.apartmentId,categoryId:p.categoryId||"",
+    classification:p.classification,description:p.description,amount:p.amount,date:p.date,
+    note:p.note||"",hasInvoice:p.hasInvoice,invoiceLink:p.invoiceLink||"",
+    mgmtEnabled:p.mgmtEnabled,mgmtBaseType:p.mgmtBaseType,mgmtVatRate:p.mgmtVatRate,
+    parentId:pid,deleted:false});
+  /* מעבירים חלוקה, דמי ניהול ותשלומים לתת-השלב */
+  DB.expenseSplits.forEach(function(s){ if(s.expenseId===pid) s.expenseId=cid; });
+  DB.expenseManagerFees.forEach(function(f){ if(f.expenseId===pid) f.expenseId=cid; });
+  DB.payments.forEach(function(x){ if(x.expenseId===pid) x.expenseId=cid; });
+  p.mgmtEnabled=false; p.hasInvoice=false; p.invoiceLink="";
+  syncParentAmount(pid);
+  return true;
 }
 function expenseParentOptions(aptId,selfId,sel){
   var opts=apExpenses(aptId).filter(function(e){
@@ -1764,6 +1830,11 @@ function addSubExpense(parentId){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var p=byId(DB.expenses,parentId); if(!p) return;
   if(p.parentId){ toast("אפשר תת-שלב רק תחת שלב עצמאי","err"); return; }
+  /* מרגע שיש תת-שלב, השלב הופך למכל שמסכם אותם. כסף שכבר רשום עליו
+     עובר לתת-שלב ראשון כדי שלא ייעלם. */
+  var wasLeaf=!isContainer(parentId);
+  if(!convertToContainer(parentId)) return;
+  if(wasLeaf && isContainer(parentId)){ save(); toast("הכסף שהיה על השלב הועבר לתת-שלב ראשון","ok"); }
   openExpenseEditor(null,p.apartmentId,parentId);
 }
 function filteredExpenses(aptId){
@@ -1790,50 +1861,39 @@ function expTableHtml(aptId){
     var badge=st==="paid"?'<span class="badge badge-ok">שולם</span>'
       :st==="over"?'<span class="badge badge-warn">⚠️ ביתר</span>'
       :st==="partial"?'<span class="badge badge-warn">חלקי</span>':'<span class="badge badge-danger">לא שולם</span>';
-    var kids=expenseChildren(e.id);
-    return '<tr'+(isChild?' style="background:#fbfcff"':'')+'><td>'+dateHe(e.date)+'</td>'+
+    var kids=expenseChildren(e.id), cont=kids.length>0;
+    var mg=expenseMgmtCostLive(e.id);
+    return '<tr'+(isChild?' style="background:#fbfcff"':(cont?' style="background:#f5f8ff"':''))+'><td>'+dateHe(e.date)+'</td>'+
       '<td'+(isChild?' style="padding-right:26px"':'')+'>'+
         (isChild?'<span class="muted">↳ </span>':'')+
         '<b>'+esc(e.description)+'</b>'+(e.hasInvoice?' 📎':'')+
-        (kids.length?' <span class="pill">'+kids.length+' תתי-שלבים</span>':'')+'</td>'+
+        (cont?' <span class="pill">'+kids.length+' תתי-שלבים</span>':'')+'</td>'+
       '<td>'+(CLASSIFICATIONS[e.classification]||"")+'</td>'+
-      '<td>'+money(e.amount)+'</td>'+
-      (a.hasManagement?'<td>'+(e.mgmtEnabled?money(expenseMgmtCostLive(e.id)):'—')+'</td>':'')+
+      '<td><b>'+money(e.amount)+'</b>'+(cont?'<div class="muted" style="font-size:11px">סך תתי-השלבים</div>':'')+'</td>'+
+      (a.hasManagement?'<td>'+((cont||e.mgmtEnabled)&&mg?money(mg):'—')+'</td>':'')+
       '<td>'+money(expensePaid(e.id))+'</td><td class="'+(Math.abs(rem)>0.01?"neg":"pos")+'">'+money(rem)+'</td><td>'+badge+'</td>'+
       '<td class="right" style="white-space:nowrap">'+
-        '<button class="btn btn-ghost btn-sm" onclick="openPayments(\''+e.id+'\')" title="תשלומים">💳</button>'+
+        /* למכל אין תשלומים משלו — הכסף יושב בתתי-השלבים */
+        (cont?'':'<button class="btn btn-ghost btn-sm" onclick="openPayments(\''+e.id+'\')" title="תשלומים">💳</button>')+
         (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="openExpenseEditor(\''+e.id+'\',\''+aptId+'\')" title="עריכה">✏️</button>'+
-        '<button class="btn btn-ghost btn-sm" onclick="addSubExpense(\''+e.id+'\')" title="הוסף תת-שלב">➕</button>'+
+        (isChild?'':'<button class="btn btn-ghost btn-sm" onclick="addSubExpense(\''+e.id+'\')" title="הוסף תת-שלב">➕</button>')+
         '<button class="btn btn-ghost btn-sm" onclick="softDelete(\'expenses\',\''+e.id+'\',\'למחוק הוצאה זו?\')">🗑️</button>':'')+'</td></tr>';
   }
-  /* סיכום קבוצה — אב + תתי-השלבים שלו */
-  function groupSummary(e,kids){
-    var amt=(Number(e.amount)||0), paid=expensePaid(e.id);
-    kids.forEach(function(k){ amt+=(Number(k.amount)||0); paid+=expensePaid(k.id); });
-    return '<tr style="background:#eef2ff"><td></td>'+
-      '<td style="padding-right:26px"><b class="muted">סה"כ '+esc(e.description)+' (כולל תתי-השלבים)</b></td>'+
-      '<td></td><td><b>'+money(amt)+'</b></td>'+
-      (a.hasManagement?'<td></td>':'')+
-      '<td><b>'+money(paid)+'</b></td><td class="'+((amt-paid)>0.01?"neg":"pos")+'"><b>'+money(amt-paid)+'</b></td>'+
-      '<td colspan="2"></td></tr>';
-  }
 
-  /* קיבוץ: אב ואחריו תתי-השלבים שלו. תת-שלב שהאב שלו לא במסונן — מוצג לבד. */
+  /* קיבוץ: אב ואחריו תתי-השלבים שלו. תת-שלב שהאב שלו לא במסונן — מוצג לבד.
+     שורת האב היא כבר הסיכום (סכום, שולם ונותר מגולגלים), ולכן היא נספרת
+     פעם אחת בסיכום התחתון והתתי-שלבים שמתחתיה לא נספרים שוב. */
   var shown={}; exps.forEach(function(e){ shown[e.id]=1; });
   var order=exps.slice().sort(function(x,y){return (x.date<y.date)?1:-1;});
+  var tot=0, totPaid=0;
   order.forEach(function(e){
     if(e.parentId && shown[e.parentId]) return;          // ייוצג תחת האב
     h+=rowFor(e,!!e.parentId);
-    var kids=expenseChildren(e.id).filter(function(k){ return shown[k.id]; })
-      .sort(function(x,y){return (x.date<y.date)?1:-1;});
-    if(kids.length){
-      kids.forEach(function(k){ h+=rowFor(k,true); });
-      h+=groupSummary(e,kids);
-    }
+    tot+=(Number(e.amount)||0); totPaid+=expensePaid(e.id);
+    expenseChildren(e.id).filter(function(k){ return shown[k.id]; })
+      .sort(function(x,y){return (x.date<y.date)?1:-1;})
+      .forEach(function(k){ h+=rowFor(k,true); });
   });
-  // סיכום — של השורות המוצגות אחרי הסינון
-  var tot=exps.reduce(function(s,e){return s+(Number(e.amount)||0);},0);
-  var totPaid=exps.reduce(function(s,e){return s+expensePaid(e.id);},0);
   var lbl=(exps.length===all.length)?'סה"כ':'סה"כ המסונן';
   h+='</tbody><tfoot><tr><td colspan="3">'+lbl+'</td><td>'+money(tot)+'</td>'+(a.hasManagement?'<td></td>':'')+'<td>'+money(totPaid)+'</td><td>'+money(tot-totPaid)+'</td><td colspan="2"></td></tr></tfoot></table></div>';
   return h;
@@ -2012,19 +2072,29 @@ function openExpenseEditor(eId,aptId,presetParent){
   var a=byId(DB.apartments,aptId);
   var e=eId?byId(DB.expenses,eId):null;
   var curParent = e ? (e.parentId||"") : (presetParent||"");
+  var cont = !!(eId && isContainer(eId));      // שלב-אב: הסכום נגזר מתתי-השלבים
+  var kidsN = cont ? expenseChildren(eId).length : 0;
   var splits = e? expSplits(eId).map(function(s){return [s.partnerId,s.percent];}) : apPartners(aptId).map(function(p){return [p.partnerId,p.defaultPercent];});
-  var body='<div class="section-title">פרטי ההוצאה</div>'+
+  var body=(cont?'<div class="hint" style="background:#eef2ff;padding:8px 10px;border-radius:8px;margin-bottom:10px">'+
+      'זהו <b>שלב-אב</b> עם '+kidsN+' תתי-שלבים. הסכום, החלוקה, דמי הניהול והתשלומים יושבים בתתי-השלבים — '+
+      'הסכום כאן הוא הסיכום שלהם ולכן אינו נערך.</div>':'')+
+    '<div class="section-title">פרטי ההוצאה</div>'+
     '<div class="form-grid">'+
      '<div class="field"><label>תיאור</label><input id="ex-desc" value="'+esc(e?e.description:"")+'"></div>'+
-     '<div class="field"><label>סכום (₪)</label><input id="ex-amount" type="number" step="0.01" value="'+(e?esc(String(e.amount)):"")+'" oninput="updateMgmtPreview()"></div>'+
+     '<div class="field"><label>סכום (₪)'+(cont?' <span class="hint">— סך תתי-השלבים</span>':'')+'</label>'+
+       '<input id="ex-amount" type="number" step="0.01" value="'+(e?esc(String(e.amount)):"")+'"'+
+       (cont?' disabled':'')+' oninput="updateMgmtPreview()"></div>'+
      '<div class="field"><label>תאריך</label><input id="ex-date" type="date" value="'+(e?esc(e.date):todayISO())+'"></div>'+
      '<div class="field"><label>סיווג</label><select id="ex-class">'+classOptions(e?e.classification:"investment")+'</select></div>'+
+     (cont?'':
      '<div class="field full"><label>שייך לשלב-אב (תת-שלב)</label>'+
        '<select id="ex-parent">'+expenseParentOptions(aptId,eId,curParent)+'</select>'+
-       '<div class="hint">למשל: "חשמל 5-22" תחת "חשמל". לתת-שלב יש סכום, חלוקה ותשלומים משלו — הוא רק מקובץ תחת האב בתצוגה ובסיכום.</div></div>'+
+       '<div class="hint">למשל: "חשמל 5-22" תחת "חשמל". הסכום, החלוקה והתשלומים נרשמים בתת-השלב, והאב מציג את הסיכום ("חשמל 15,000, מתוכו 7,500 ל-5/22 ו-7,500 ל-6/22").</div></div>')+
      '<div class="field full"><label>הערה</label><input id="ex-note" value="'+esc(e?e.note:"")+'" placeholder="הערה חופשית"></div>'+
      '<div class="field full"><label><input type="checkbox" id="ex-inv" style="width:auto" '+(e&&e.hasInvoice?"checked":"")+'> יש חשבונית/קבלה</label><input id="ex-link" placeholder="קישור לקבלה (אופציונלי)" value="'+esc(e?e.invoiceLink:"")+'" style="margin-top:4px"></div>'+
     '</div>'+
+    /* למכל אין חלוקה ודמי ניהול משלו — הם מוגדרים בכל תת-שלב בנפרד */
+    (cont?'' :
     '<div class="section-title">חלוקת שותפים <span class="hint">(מאותחל מברירת המחדל, ניתן לשנות)</span></div>'+
     (!splits.length && !apPartners(aptId).length
       ? '<div class="hint" style="margin-bottom:6px">בדירה זו לא הוגדרו שותפים — ההוצאה תישמר <b>ללא חלוקה</b>. אפשר גם להוסיף שותף ידנית בכפתור למטה.</div>'
@@ -2032,9 +2102,9 @@ function openExpenseEditor(eId,aptId,presetParent){
     '<div id="split-rows">'+splits.map(function(s){return splitRowHtml(s[0],s[1]);}).join("")+'</div>'+
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">'+
       '<button class="btn btn-sm" onclick="addSplitRow()">➕ הוסף שותף</button>'+
-      '<div>סה"כ: <b id="split-sum">100%</b></div></div>';
+      '<div>סה"כ: <b id="split-sum">100%</b></div></div>');
   // דמי ניהול
-  if(a.hasManagement){
+  if(a.hasManagement && !cont){
     var mgrs=apManagers(aptId);
     body+='<div class="section-title">דמי ניהול</div>'+
       '<div class="field"><label><input type="checkbox" id="ex-mgmt" style="width:auto" onchange="toggleMgmt()" '+(e&&e.mgmtEnabled?"checked":"")+'> יש דמי ניהול על הוצאה זו</label></div>'+
@@ -2074,7 +2144,10 @@ function saveExpense(eId,aptId){
   var a=byId(DB.apartments,aptId);
   var desc=val("ex-desc").trim(); var amount=Number(val("ex-amount"))||0;
   if(!desc){ toast("יש להזין תיאור","err"); return false; }
-  if(amount<=0){ toast("יש להזין סכום","err"); return false; }
+  /* שלב-אב (מכל): הסכום שלו נגזר מסך תתי-השלבים ואינו נערך ידנית */
+  var isCont = !!(eId && isContainer(eId));
+  if(isCont) amount=round2(expenseChildren(eId).reduce(function(s,k){return s+(Number(k.amount)||0);},0));
+  else if(amount<=0){ toast("יש להזין סכום","err"); return false; }
   // חלוקה — איחוד שורות כפולות לאותו שותף + ולידציה
   var byP={}, order=[]; document.querySelectorAll("#split-rows .split-row").forEach(function(r){
     var pid=r.querySelector(".sp-partner").value; var pct=Number(r.querySelector(".sp-pct").value)||0;
@@ -2083,7 +2156,9 @@ function saveExpense(eId,aptId){
   var rows=order.map(function(pid){ return {partnerId:pid,percent:byP[pid]}; });
   /* חלוקה נדרשת רק בדירה שהוגדרו לה שותפים. דירה אישית
      (קרן השתלמות, קופת חיסכון...) נשמרת בלי חלוקה כלל. */
-  if(!rows.length){
+  if(isCont){
+    /* מכל: אין לו חלוקה משלו — היא יושבת בתתי-השלבים */
+  } else if(!rows.length){
     if(apPartners(aptId).length){ toast("יש להוסיף לפחות שורת חלוקה אחת","err"); return false; }
   } else {
     var pctSum=rows.reduce(function(s,r){return s+r.percent;},0);
@@ -2100,12 +2175,15 @@ function saveExpense(eId,aptId){
   e.categoryId=(document.getElementById("ex-cat")?val("ex-cat"):(e.categoryId||""));
   e.classification=val("ex-class"); e.note=val("ex-note");
   /* שיוך לשלב-אב. חסימת קינון מעל רמה אחת ומניעת מעגל. */
+  var oldParent = e.parentId || null;
   if(document.getElementById("ex-parent")){
     var pv=val("ex-parent")||"";
     if(pv===eId) pv="";
     var pe=pv?byId(DB.expenses,pv):null;
     if(pe && pe.parentId){ toast("אפשר תת-שלב רק תחת שלב עצמאי","err"); return false; }
     if(pv && expenseChildren(eId).length){ toast("לשלב הזה יש תתי-שלבים — לא ניתן לשייך אותו לאב","err"); return false; }
+    /* אב שיש עליו כסף משלו הופך למכל — הכסף שלו עובר לתת-שלב ראשון */
+    if(pv && pv!==oldParent && !convertToContainer(pv)) return false;
     e.parentId = pv || null;
   }
   e.hasInvoice=checked("ex-inv"); e.invoiceLink=val("ex-link");
@@ -2135,9 +2213,11 @@ function saveExpense(eId,aptId){
     if(e.mgmtBaseType==null) e.mgmtBaseType="full";
     if(e.mgmtVatRate==null) e.mgmtVatRate=18;
   }
-  // rebuild splits
-  DB.expenseSplits=DB.expenseSplits.filter(function(s){return s.expenseId!==eId;});
-  rows.forEach(function(r){ DB.expenseSplits.push({id:uid(),expenseId:eId,partnerId:r.partnerId,percent:r.percent,deleted:false}); });
+  // rebuild splits — למכל אין חלוקה משלו, לא נוגעים בה
+  if(!isCont){
+    DB.expenseSplits=DB.expenseSplits.filter(function(s){return s.expenseId!==eId;});
+    rows.forEach(function(r){ DB.expenseSplits.push({id:uid(),expenseId:eId,partnerId:r.partnerId,percent:r.percent,deleted:false}); });
+  }
   // rebuild manager fees
   /* בונים מחדש רק כשיש ערכים חדשים על המסך. אם המקטע לא הוצג, או שדמי
      הניהול כבויים — משאירים את הרשומות הקיימות במקום למחוק אותן.
@@ -2151,6 +2231,9 @@ function saveExpense(eId,aptId){
     });
   }
   syncAutoMgmtPayments(eId);   // תשלום "שווה ערך" אוטומטי לפי הגדרת הפרויקט
+  /* סכום המכל נגזר מתתי-השלבים — מסנכרנים את האב הישן ואת החדש */
+  if(oldParent && oldParent!==e.parentId) syncParentAmount(oldParent);
+  if(e.parentId) syncParentAmount(e.parentId);
   save(); toast("ההוצאה נשמרה","ok"); rerender();
 }
 
@@ -2232,6 +2315,10 @@ function payTableHtml(aptId){
 /* ---------- תשלומים ---------- */
 function openPayments(eId){
   var e=byId(DB.expenses,eId); var pays=expPayments(eId);
+  /* מכל: אין לו תשלומים משלו — התשלומים נרשמים בתת-שלב הספציפי */
+  if(isContainer(eId)){
+    toast("\""+e.description+"\" הוא שלב-אב — רשום את התשלום בתת-השלב המתאים","err"); return;
+  }
   var body='<div class="stat-grid" style="margin-bottom:12px">'+
     stat("סכום ההוצאה",money(e.amount))+stat("שולם",money(expensePaid(eId)))+
     stat(expenseRemaining(eId)<-0.01?"חריגה (שולם ביתר)":"נותר",money(expenseRemaining(eId)),Math.abs(expenseRemaining(eId))>0.01?"neg":"pos")+'</div>';
@@ -2397,7 +2484,7 @@ function openQuickPay(){
 }
 function renderQuickPayList(){
   var aptId=val("qp-apt"); var box=document.getElementById("qp-list"); if(!box) return;
-  var allOpen=apExpenses(aptId).filter(function(e){ return expenseRemaining(e.id)>0.01; });
+  var allOpen=apLeafExpenses(aptId).filter(function(e){ return expenseRemaining(e.id)>0.01; });
   var open=allOpen.filter(function(e){ return matches(Q.quick, e.description+" "+(e.note||"")); })
     .sort(function(x,y){ return x.date<y.date?-1:1; });
   if(!allOpen.length){ box.innerHTML='<div class="empty">✅ כל השלבים בדירה זו שולמו במלואם</div>'; return; }
@@ -2483,6 +2570,7 @@ function onPmAccount(){
 function onPmRecipient(){ document.getElementById("pm-mgr-wrap").style.display = val("pm-recipient")==="manager"?"block":"none"; }
 function savePayment(eId,payId){
   var e=byId(DB.expenses,eId);
+  if(isContainer(eId)){ toast("שלב-אב אינו מקבל תשלומים — רשום בתת-השלב","err"); return false; }
   var amount=Number(val("pm-amount"))||0; if(amount<=0){ toast("סכום לא תקין","err"); return false; }
   var accountId=val("pm-account")||null;
   if(accountId==="__new"){ toast("סיים להוסיף את החשבון או בחר אחר","err"); return false; }
@@ -2618,7 +2706,7 @@ function moduleManagers(aptId){
 
   /* ---- תשלומים למנהלים: שלב-שלב, לכל מנהל בנפרד ---- */
   mgrs.forEach(function(m){
-    var rows=apExpenses(aptId).map(function(e){
+    var rows=apLeafExpenses(aptId).map(function(e){
       var due=mgrFeeLiveOnExpense(e.id,m.id);
       var paid=mgrPaidOnExpense(e.id,m.id);
       return {e:e,due:due,paid:paid,rem:round2(due-paid)};
@@ -2651,7 +2739,7 @@ function moduleManagers(aptId){
 
   // דחויים ממתינים לשחרור
   var pend=[];
-  apExpenses(aptId).forEach(function(e){ if(!e.mgmtEnabled) return;
+  apLeafExpenses(aptId).forEach(function(e){ if(!e.mgmtEnabled) return;
     expMgrFees(e.id).forEach(function(f){ if((Number(f.pctDeferred)||0)>0 && !f.deferredReleased) pend.push({e:e,f:f}); });
   });
   if(pend.length){
@@ -2703,7 +2791,7 @@ function payManager(eId,mId){
 function openBulkPayMgr(aptId,mgrId){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var m=byId(DB.managers,mgrId); if(!m) return;
-  var open=apExpenses(aptId).map(function(e){
+  var open=apLeafExpenses(aptId).map(function(e){
     return {e:e, rem:round2(mgrFeeLiveOnExpense(e.id,mgrId)-mgrPaidOnExpense(e.id,mgrId))};
   }).filter(function(r){ return r.rem>0.01; })
     .sort(function(x,y){ return x.e.date<y.e.date?-1:1; });
@@ -2912,7 +3000,7 @@ function moduleApartmentReports(aptId){
 function dueByPaidReportHtml(aptId){
   var pids=reportPartnerIds(aptId);
   if(!pids.length) return "";
-  var exps=apExpenses(aptId);
+  var exps=apLeafExpenses(aptId);
   var totalCost=0,totalOut=0;
   exps.forEach(function(e){ totalCost+=(Number(e.amount)||0)+expenseMgmtCostLive(e.id); totalOut+=expenseOutflow(e.id); });
   if(totalOut<=0.01) return '<div class="card"><h3>⚖️ חובה לפי מה ששולם בפועל</h3>'+
@@ -3014,10 +3102,11 @@ function partnerShareInExpense(eId,pid){
    מהכיס בפועל, ולא מול העלות המלאה שעוד לא שולמה.
    ============================================================ */
 function expenseOutflow(eId){          // כל הכסף שיצא על השלב: לספק ולמנהלים
+  if(isContainer(eId)) return round2(expenseChildren(eId).reduce(function(s,k){ return s+expenseOutflow(k.id); },0));
   return round2(expPayments(eId).reduce(function(s,p){ return s+(Number(p.amount)||0); },0));
 }
 function partnerDueByPaid(aptId,pid){  // חלקו במה שכבר שולם
-  return round2(apExpenses(aptId).reduce(function(s,e){
+  return round2(apLeafExpenses(aptId).reduce(function(s,e){
     var pct=partnerPctInExpense(e.id,pid)/100;
     return pct ? s+pct*expenseOutflow(e.id) : s;
   },0));
@@ -3056,7 +3145,7 @@ function partnerPaidOnExpense(eId,pid){
 function partnerReportHtml(aptId){
   var a=byId(DB.apartments,aptId);
   var cols=reportPartnerIds(aptId);
-  var exps=apExpenses(aptId).filter(function(e){ return matches(PR.q, e.description+" "+(e.note||"")); })
+  var exps=apLeafExpenses(aptId).filter(function(e){ return matches(PR.q, e.description+" "+(e.note||"")); })
     .sort(function(x,y){ return x.date<y.date?-1:1; });
 
   var h='<div class="card"><div class="toolbar" style="margin-bottom:10px">'+
@@ -3247,7 +3336,7 @@ function moduleMgmtReport(){
   // דחויים שממתינים לשחרור
   var pend=[], ps=0;
   apts.forEach(function(a){
-    apExpenses(a.id).forEach(function(e){
+    apLeafExpenses(a.id).forEach(function(e){
       if(!e.mgmtEnabled) return;
       expMgrFees(e.id).forEach(function(f){
         var mg=byId(DB.managers,f.managerId); if(!mg||mg.deleted) return;
@@ -4172,6 +4261,8 @@ function commitImport(force){
               mgmtEnabled:false,mgmtBaseType:"full",mgmtVatRate:18,parentId:null,deleted:false});
             par=byId(DB.expenses,pid2);
           }
+          /* אב שיש עליו כסף משלו הופך למכל — כספו עובר לתת-שלב ראשון בשקט */
+          if(par && !par.parentId) convertToContainer(par.id,true);
           if(par && !par.parentId) byId(DB.expenses,eid).parentId=par.id;
         }
       }
@@ -4214,6 +4305,9 @@ function commitImport(force){
         DB.expenseSplits.push({id:uid(),expenseId:x.eid,partnerId:p.partnerId,percent:p.defaultPercent,deleted:false});
       });
     });
+    /* סכום כל שלב-אב = סך תתי-השלבים שנוצרו תחתיו */
+    var touched={}; imp.rows.forEach(function(r){ var ai=aptFor(r); if(ai) touched[ai]=1; });
+    Object.keys(touched).forEach(function(ai){ syncAllParents(ai); });
   }
   else if(imp.type==="payments"){
     if(m.expense<0||m.amount<0){ toast("חובה למפות 'עבור' וסכום","err"); return; }
@@ -4444,6 +4538,14 @@ function recycleLabel(entity,it){
 }
 function restoreItem(entity,id){ if(!can("edit")){ toast("אין הרשאה","err"); return; } var it=byId(DB[entity],id); if(it){ it.deleted=false; delete it.deletedBy;
   if(entity==="managers"){ DB.expenseManagerFees.forEach(function(f){ if(f.managerId===id) f.deleted=false; }); }
+  if(entity==="expenses"){
+    /* שחזור שלב-אב מחזיר איתו את תתי-השלבים שנמחקו יחד איתו */
+    var etag="expense:"+id, k=0;
+    DB.expenses.forEach(function(x){ if(x.deleted && x.deletedBy===etag){ x.deleted=false; delete x.deletedBy; k++; } });
+    if(k) toast("שוחזרו גם "+k+" תתי-שלבים","ok");
+    if(it.parentId) syncParentAmount(it.parentId);
+    if(isContainer(id)) syncParentAmount(id);
+  }
   if(entity==="apartments"){
     var tag="apt:"+id, n=0;
     ["expenses","payments","expenseSplits","expenseManagerFees","deposits","income","managers","accounts","apartmentPartners"]
