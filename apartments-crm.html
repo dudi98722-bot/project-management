@@ -371,8 +371,70 @@ async function hashCode(code){
     return Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,"0");}).join("");
   }catch(e){ return "plain:"+String(code); }
 }
-function active(list){ return (list||[]).filter(function(x){return !x.deleted;}); }
-function byId(list,id){ return (list||[]).find(function(x){return x.id===id;}); }
+/* ============================================================
+   שכבת אינדוקס לרינדור
+   ------------------------------------------------------------
+   כל שליפה כמו expPayments(eId) סרקה את כל מערך התשלומים מחדש,
+   ורינדור אחד עושה אלפי שליפות כאלה — מה שהפך דוחות גדולים
+   לעשרות מיליוני פעולות ולעיכוב של שניות.
+
+   כאן נבנה אינדקס פעם אחת בתחילת כל רינדור ונמחק בסופו. רינדור
+   אינו משנה נתונים, ולכן האינדקס מובטח עקבי לכל אורכו; בכל מקום
+   אחר (שמירה, עריכה, ייבוא) IX ריק והשליפות מתבצעות ישירות מהנתונים
+   בדיוק כמו קודם. זהו אך ורק זירוז — לא שינוי בהתנהגות.
+   ============================================================ */
+var IX=null;
+var IX_EMPTY=[];
+function ixGroup(arr,key){
+  var m=Object.create(null);
+  for(var i=0;i<arr.length;i++){
+    var x=arr[i]; if(x.deleted) continue;
+    var k=x[key]; if(k==null||k==="") continue;
+    (m[k]||(m[k]=[])).push(x);
+  }
+  return m;
+}
+function ixBuild(){
+  var ix={maps:new WeakMap(),actives:new WeakMap(),leaf:Object.create(null),
+          paid:Object.create(null),mgmt:Object.create(null),outflow:Object.create(null)};
+  ix.payByExp   = ixGroup(DB.payments||[],"expenseId");
+  ix.splitByExp = ixGroup(DB.expenseSplits||[],"expenseId");
+  ix.feeByExp   = ixGroup(DB.expenseManagerFees||[],"expenseId");
+  ix.kidsByPar  = ixGroup(DB.expenses||[],"parentId");
+  ix.expByApt   = ixGroup(DB.expenses||[],"apartmentId");
+  ix.apByApt    = ixGroup(DB.apartmentPartners||[],"apartmentId");
+  ix.mgrByApt   = ixGroup(DB.managers||[],"apartmentId");
+  ix.accByApt   = ixGroup(DB.accounts||[],"apartmentId");
+  ix.depByApt   = ixGroup(DB.deposits||[],"apartmentId");
+  ix.incByApt   = ixGroup(DB.income||[],"apartmentId");
+  return ix;
+}
+function ixIdMap(list){
+  var m=IX.maps.get(list);
+  if(!m){ m=new Map(); for(var i=0;i<list.length;i++) m.set(list[i].id,list[i]); IX.maps.set(list,m); }
+  return m;
+}
+function ixActive(list){
+  var a=IX.actives.get(list);
+  if(!a){ a=list.filter(function(x){return !x.deleted;}); IX.actives.set(list,a); }
+  return a;
+}
+/* עוטף רינדור: בונה אינדקס, מרנדר, ומוחק אותו בכל מקרה */
+function withIndex(fn){
+  var outer=IX;
+  if(!outer) IX=ixBuild();
+  try{ return fn(); }
+  finally{ if(!outer) IX=null; }
+}
+
+function active(list){
+  if(IX&&list) return ixActive(list);
+  return (list||[]).filter(function(x){return !x.deleted;});
+}
+function byId(list,id){
+  if(IX&&list) return ixIdMap(list).get(id);
+  return (list||[]).find(function(x){return x.id===id;});
+}
 
 /* ---------- טעינה/שמירה ---------- */
 function loadDB(){
@@ -509,21 +571,36 @@ function seedIfEmpty(){
 /* ============================================================
    חישובים (הלב של המערכת)
    ============================================================ */
-function apExpenses(aptId){ return active(DB.expenses).filter(function(e){return e.apartmentId===aptId;}); }
-function apPartners(aptId){ return active(DB.apartmentPartners).filter(function(x){return x.apartmentId===aptId;}); }
-function apManagers(aptId){ return active(DB.managers).filter(function(x){return x.apartmentId===aptId;}); }
-function apAccounts(aptId){ return active(DB.accounts).filter(function(x){return x.apartmentId===aptId;}); }
-function apDeposits(aptId){ return active(DB.deposits).filter(function(x){return x.apartmentId===aptId;}); }
-function apIncome(aptId){ return active(DB.income).filter(function(x){return x.apartmentId===aptId;}); }
-function expSplits(eId){ return active(DB.expenseSplits).filter(function(s){return s.expenseId===eId;}); }
-function expPayments(eId){ return active(DB.payments).filter(function(p){return p.expenseId===eId;}); }
-function expMgrFees(eId){ return active(DB.expenseManagerFees).filter(function(f){return f.expenseId===eId;}); }
+function apExpenses(aptId){ if(IX) return IX.expByApt[aptId]||IX_EMPTY;
+  return active(DB.expenses).filter(function(e){return e.apartmentId===aptId;}); }
+function apPartners(aptId){ if(IX) return IX.apByApt[aptId]||IX_EMPTY;
+  return active(DB.apartmentPartners).filter(function(x){return x.apartmentId===aptId;}); }
+function apManagers(aptId){ if(IX) return IX.mgrByApt[aptId]||IX_EMPTY;
+  return active(DB.managers).filter(function(x){return x.apartmentId===aptId;}); }
+function apAccounts(aptId){ if(IX) return IX.accByApt[aptId]||IX_EMPTY;
+  return active(DB.accounts).filter(function(x){return x.apartmentId===aptId;}); }
+function apDeposits(aptId){ if(IX) return IX.depByApt[aptId]||IX_EMPTY;
+  return active(DB.deposits).filter(function(x){return x.apartmentId===aptId;}); }
+function apIncome(aptId){ if(IX) return IX.incByApt[aptId]||IX_EMPTY;
+  return active(DB.income).filter(function(x){return x.apartmentId===aptId;}); }
+function expSplits(eId){ if(IX) return IX.splitByExp[eId]||IX_EMPTY;
+  return active(DB.expenseSplits).filter(function(s){return s.expenseId===eId;}); }
+function expPayments(eId){ if(IX) return IX.payByExp[eId]||IX_EMPTY;
+  return active(DB.payments).filter(function(p){return p.expenseId===eId;}); }
+function expMgrFees(eId){ if(IX) return IX.feeByExp[eId]||IX_EMPTY;
+  return active(DB.expenseManagerFees).filter(function(f){return f.expenseId===eId;}); }
 function partnerName(id){ var p=byId(DB.partners,id); return p?p.name:"—"; }
 function managerName(id){ var m=byId(DB.managers,id); return m?m.name:"—"; }
 function accountIsBank(accId){ if(!accId) return false; var a=byId(DB.accounts,accId); return !!(a&&a.isBank); }
 
 // תשלומי ספק להוצאה (מה ששולם על ההוצאה עצמה)
 function expensePaid(eId){
+  if(IX && IX.paid[eId]!==undefined) return IX.paid[eId];
+  var v=expensePaidCalc(eId);
+  if(IX) IX.paid[eId]=v;
+  return v;
+}
+function expensePaidCalc(eId){
   /* מכל: מה ששולם = סך תתי-השלבים (לתצוגה; בחישובי הכסף המכל אינו נספר) */
   if(isContainer(eId)) return round2(expenseChildren(eId).reduce(function(s,k){ return s+expensePaid(k.id); },0));
   return round2(expPayments(eId).filter(function(p){return p.recipientType!=="manager";})
@@ -552,6 +629,12 @@ function mgrFeeFullOnExpense(eId,mId){ // כולל מע"מ, נוכחי+דחוי 
   return round2(base*tot*mgmtVatFactor(e));
 }
 function expenseMgmtCostLive(eId){ // סך דמי הניהול הפעילים של ההוצאה (עלות שמתחלקת בין השותפים)
+  if(IX && IX.mgmt[eId]!==undefined) return IX.mgmt[eId];
+  var v=expenseMgmtCostLiveCalc(eId);
+  if(IX) IX.mgmt[eId]=v;
+  return v;
+}
+function expenseMgmtCostLiveCalc(eId){
   if(isContainer(eId)) return round2(expenseChildren(eId).reduce(function(s,k){ return s+expenseMgmtCostLive(k.id); },0));
   var e=byId(DB.expenses,eId); if(!e||!e.mgmtEnabled) return 0;
   return round2(expMgrFees(eId).reduce(function(s,f){return s+mgrFeeLiveOnExpense(eId,f.managerId);},0));
@@ -813,7 +896,8 @@ function openExportMenu(){
       '<button class="btn" style="width:100%;margin-top:6px" onclick="var v=val(\'xl-apt\');closeModal();exportApartmentBook(v)">⬇️ ייצוא הדירה שנבחרה</button></div>',
     saveLabel:null});
 }
-function renderView(){
+function renderView(){ return withIndex(renderViewInner); }
+function renderViewInner(){
   var c=document.getElementById("content"); if(!c) return;
   /* במסך דירה יש שורת לשוניות דביקה — כותרות הטבלה נדבקות מתחתיה */
   c.className = "content" + (state.view==="apartment" ? " has-tabs" : "")
@@ -849,6 +933,7 @@ async function renderLogin(){
         '<div class="field"><label>קוד כניסה</label><input id="lg-code" type="password" onkeydown="if(event.key===\'Enter\')createAdmin()" placeholder="בחר קוד"></div>'+
         '<button class="btn btn-primary" style="width:100%" onclick="createAdmin()">צור מנהל והיכנס</button>'
       : '<p>הזן את קוד הכניסה שלך</p>'+
+        '<p class="muted" style="font-size:12.5px;margin-top:-6px">הקוד מזהה גם מי אתה — אין צורך בשם משתמש</p>'+
         '<div class="field"><label>קוד כניסה</label><input id="lg-code" type="password" onkeydown="if(event.key===\'Enter\')doLogin()" placeholder="קוד"></div>'+
         '<button class="btn btn-primary" style="width:100%" onclick="doLogin()">כניסה</button>'+
         '<div style="margin-top:20px;padding-top:14px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)">'+
@@ -993,7 +1078,8 @@ function viewDashboard(){
   }
   return h;
 }
-function renderAptGrid(){
+function renderAptGrid(){ return withIndex(function(){ return renderAptGridInner(); }); }
+function renderAptGridInner(){
   var el=document.getElementById("apt-grid"); if(el) el.innerHTML=aptGridHtml();
 }
 function aptGridHtml(){
@@ -2328,10 +2414,11 @@ function sheetPartnerSummary(list){
     foot:[["סה\"כ","",M(t[0]),M(t[1]),M(round2(t[1]-t[0])),M(t[2]),M(round2(t[1]-t[2]))]]};
 }
 function sheetBank(list){
-  var rows=[["דירה","תאריך","שותף","סכום","הערה"]]; var tot=0;
+  var rows=[["דירה","תאריך","שותף","סכום","אמצעי","הערה"]]; var tot=0;
   list.forEach(function(a){
     apDeposits(a.id).slice().sort(function(x,y){return (x.date<y.date)?-1:1;}).forEach(function(d){
-      rows.push([a.name,D(d.date),partnerName(d.partnerId),M(d.amount),d.note||""]); tot+=Number(d.amount)||0;
+      rows.push([a.name,D(d.date),partnerName(d.partnerId),M(d.amount),methodName(d.method),d.note||""]);
+      tot+=Number(d.amount)||0;
     });
   });
   return {name:"הפקדות לבנק",rows:rows,foot:[["סה\"כ","","",M(tot)]]};
@@ -2488,7 +2575,8 @@ function moduleExpenses(aptId){
 }
 /* הדירה נלקחת מהמצב ולא מפרמטר משורשר לתוך מאפיין HTML —
    שרשור כזה שבר את הציטוט ובלם את כל הסינונים. */
-function renderExpTable(aptId){
+function renderExpTable(aptId){ return withIndex(function(){ return renderExpTableInner(aptId); }); }
+function renderExpTableInner(aptId){
   aptId=aptId||state.params.apartmentId;
   var el=document.getElementById("exp-table"); if(el) el.innerHTML=expTableHtml(aptId);
 }
@@ -2498,11 +2586,15 @@ function renderExpTable(aptId){
    אינו נספר בחישובים — תתי-השלבים הם ההוצאות האמיתיות, ולכן אין
    ספירה כפולה. הכסף, החלוקה והתשלומים יושבים בתתי-השלבים. */
 function expenseChildren(eId){
+  if(IX) return IX.kidsByPar[eId]||IX_EMPTY;
   return active(DB.expenses).filter(function(x){ return x.parentId===eId; });
 }
 function isContainer(eId){ return expenseChildren(eId).length>0; }
 /* ההוצאות שנספרות בכסף: הכל חוץ ממכלים */
 function apLeafExpenses(aptId){
+  if(IX){ var c=IX.leaf[aptId];
+    if(!c){ c=IX.leaf[aptId]=apExpenses(aptId).filter(function(e){ return !isContainer(e.id); }); }
+    return c; }
   return apExpenses(aptId).filter(function(e){ return !isContainer(e.id); });
 }
 /* סכום המכל = סך תתי-השלבים. נקרא אחרי כל שינוי בתת-שלב.
@@ -3124,7 +3216,8 @@ function applyBulkPayEdit(aptId,ids){
   return true;
 }
 
-function renderPayTable(aptId){
+function renderPayTable(aptId){ return withIndex(function(){ return renderPayTableInner(aptId); }); }
+function renderPayTableInner(aptId){
   aptId=aptId||state.params.apartmentId;
   var el=document.getElementById("pay-table"); if(el) el.innerHTML=payTableHtml(aptId);
 }
@@ -3243,7 +3336,8 @@ function renderQuickParent(aptId){
     '<div class="hint">בחר שלב קיים כדי שההוצאה הזו תהיה תת-שלב שלו — למשל "חשמל 6-22" תחת "חשמל". '+
     'סכום שלב-האב הוא תמיד סך תתי-השלבים שלו.</div>';
 }
-function renderQuickExpenseInfo(){
+function renderQuickExpenseInfo(){ return withIndex(function(){ return renderQuickExpenseInfoInner(); }); }
+function renderQuickExpenseInfoInner(){
   var box=document.getElementById("qe-info"); if(!box) return;
   var aptId=val("qe-apt"); var a=byId(DB.apartments,aptId);
   renderQuickParent(aptId);
@@ -3388,7 +3482,8 @@ function openQuickPay(){
     '<div id="qp-list"></div>'});
   renderQuickPayList();
 }
-function renderQuickPayList(){
+function renderQuickPayList(){ return withIndex(function(){ return renderQuickPayListInner(); }); }
+function renderQuickPayListInner(){
   var aptId=val("qp-apt"); var box=document.getElementById("qp-list"); if(!box) return;
   var allOpen=apLeafExpenses(aptId).filter(function(e){ return expenseRemaining(e.id)>0.01; });
   var open=allOpen.filter(function(e){ return matches(Q.quick, e.description+" "+(e.note||"")); })
@@ -3813,11 +3908,14 @@ function moduleBank(aptId){
     stat("סך הפקדות",money(depSum))+stat("שולם מהבנק",money(paidOut))+'</div>';
   h+='<div class="toolbar"><h3 style="margin:0">הפקדות שותפים</h3><div class="sp"></div>'+
     (can("edit")?'<button class="btn btn-primary btn-sm" onclick="openBulkDeposit(\''+aptId+'\')">➕ הפקדה מרוכזת</button> '+
+      '<button class="btn btn-sm" onclick="openDepositImport(\''+aptId+'\')">📥 העלאת אקסל</button> '+
       '<button class="btn btn-sm" onclick="editDeposit(null,\''+aptId+'\')">➕ הפקדה בודדת</button>':'')+'</div>';
-  h+='<div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>שותף</th><th>סכום</th><th>הערה</th><th></th></tr></thead><tbody>';
-  if(!deps.length) h+='<tr><td colspan="5" class="empty">אין הפקדות</td></tr>';
+  refreshMethods();
+  h+='<div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>שותף</th><th>סכום</th><th>אמצעי</th><th>הערה</th><th></th></tr></thead><tbody>';
+  if(!deps.length) h+='<tr><td colspan="6" class="empty">אין הפקדות</td></tr>';
   deps.sort(function(x,y){return x.date<y.date?1:-1;}).forEach(function(d){
-    h+='<tr><td>'+dateHe(d.date)+'</td><td>'+esc(partnerName(d.partnerId))+'</td><td>'+money(d.amount)+'</td><td>'+esc(d.note||"")+'</td>'+
+    h+='<tr><td>'+dateHe(d.date)+'</td><td>'+esc(partnerName(d.partnerId))+'</td><td>'+money(d.amount)+'</td>'+
+      '<td>'+esc(METHODS[d.method]||"")+'</td><td>'+esc(d.note||"")+'</td>'+
       '<td class="right">'+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editDeposit(\''+d.id+'\',\''+aptId+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="softDelete(\'deposits\',\''+d.id+'\',\'למחוק הפקדה?\')">🗑️</button>':'')+'</td></tr>';
   });
   h+='</tbody></table></div>';
@@ -3833,6 +3931,159 @@ function moduleBank(aptId){
   h+='</tbody></table></div></div>';
   return h;
 }
+/* ---------- העלאת אקסל של הפקדות ----------
+   קובץ עם תאריך, סכום ואמצעי תשלום — כל השורות משויכות לשותף אחד
+   שנבחר כאן. שימושי כשמקבלים דף תנועות מהבנק של שותף מסוים. */
+var DIMP={grid:null,map:{date:-1,amount:-1,method:-1,note:-1},aptId:null};
+function openDepositImport(aptId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var parts=apPartners(aptId);
+  if(!parts.length){ toast("בדירה זו לא הוגדרו שותפים","err"); return; }
+  DIMP={grid:null,map:{date:-1,amount:-1,method:-1,note:-1},aptId:aptId};
+  openModal({title:"📥 העלאת הפקדות מאקסל",wide:true,bodyHtml:
+    '<div class="field"><label>כל ההפקדות בקובץ שייכות ל…</label>'+
+      '<select id="di-payer">'+parts.map(function(p){
+        return '<option value="'+p.partnerId+'">'+esc(partnerName(p.partnerId))+'</option>'; }).join("")+
+      '</select>'+
+      '<div class="hint">כל השורות בקובץ יירשמו כהפקדות של השותף הזה.</div></div>'+
+    '<div class="toolbar">'+
+      '<button class="btn btn-primary btn-sm" onclick="document.getElementById(\'di-file\').click()">📁 בחר קובץ (xlsx / csv)</button>'+
+      '<input type="file" id="di-file" accept=".xlsx,.csv,.txt" style="display:none" '+
+        'onchange="readSheetFile(this,onDepositGrid,\'di-file-name\')">'+
+      '<span id="di-file-name" class="muted"></span>'+
+    '</div>'+
+    '<div class="hint">אפשר גם להדביק ישירות מאקסל:</div>'+
+    '<textarea id="di-paste" rows="4" style="width:100%;font-family:monospace;font-size:12px" '+
+      'placeholder="הדבק כאן שורות מאקסל…" oninput="onDepositPaste()"></textarea>'+
+    '<div id="di-map"></div>',
+    saveLabel:"הוסף הפקדות",onSave:function(){ return applyDepositImport(); }});
+}
+function onDepositPaste(){
+  var txt=val("di-paste");
+  if(!txt.trim()){ DIMP.grid=null; document.getElementById("di-map").innerHTML=""; return; }
+  onDepositGrid(parseDelimited(txt, txt.indexOf("\t")>=0?"\t":","),"הדבקה");
+}
+function onDepositGrid(grid){
+  grid=(grid||[]).filter(function(r){ return r.some(function(c){ return String(c).trim()!==""; }); });
+  if(!grid.length){ toast("לא נמצאו שורות","err"); return; }
+  DIMP.grid=grid;
+  var head=grid[0].map(function(c){ return String(c||"").trim(); });
+  /* זיהוי אוטומטי לפי כותרות, עם נפילה לזיהוי לפי תוכן השורה הראשונה */
+  function guess(hints){
+    for(var i=0;i<head.length;i++){
+      var h=normKey(head[i]);
+      for(var k=0;k<hints.length;k++) if(h.indexOf(normKey(hints[k]))>=0) return i;
+    }
+    return -1;
+  }
+  var m={date:guess(["תאריך","date"]),amount:guess(["סכום","סך","amount","זכות","הפקדה"]),
+         method:guess(["אמצעי","צורת","שיטת","method","סוג תשלום"]),
+         note:guess(["הער","פרט","תיאור","אסמכת","note"])};
+  var hasHeader = (m.date>=0||m.amount>=0);
+  if(!hasHeader){
+    /* אין כותרות — מנחשים לפי התוכן: מה שנראה כתאריך ומה שנראה כמספר */
+    var r0=grid[0];
+    for(var i=0;i<r0.length;i++){
+      var v=String(r0[i]||"").trim();
+      if(m.date<0 && (/^\d{4}-\d{2}-\d{2}/.test(v)||/^\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}$/.test(v))) m.date=i;
+      else if(m.amount<0 && impNum(v)>0) m.amount=i;
+    }
+  }
+  DIMP.map=m; DIMP.hasHeader=hasHeader;
+  renderDepositMap();
+}
+function renderDepositMap(){
+  var box=document.getElementById("di-map"); if(!box||!DIMP.grid) return;
+  var head=DIMP.grid[0].map(function(c,i){ return String(c||"").trim()||("עמודה "+(i+1)); });
+  function sel(id,cur){
+    return '<select id="'+id+'" onchange="DIMP.map.'+id.slice(3)+'=Number(this.value);renderDepositPreview()">'+
+      '<option value="-1">— ללא —</option>'+
+      head.map(function(h,i){ return '<option value="'+i+'"'+(i===cur?" selected":"")+'>'+esc(h)+'</option>'; }).join("")+
+      '</select>';
+  }
+  box.innerHTML='<div class="section-title">התאמת עמודות</div>'+
+    '<div class="field"><label><input type="checkbox" id="di-head" style="width:auto" '+
+      (DIMP.hasHeader?"checked":"")+' onchange="DIMP.hasHeader=this.checked;renderDepositPreview()"> '+
+      'השורה הראשונה היא שורת כותרות</label></div>'+
+    '<div class="form-grid">'+
+      '<div class="field"><label>תאריך ההפקדה</label>'+sel("di-date",DIMP.map.date)+'</div>'+
+      '<div class="field"><label>סכום</label>'+sel("di-amount",DIMP.map.amount)+'</div>'+
+      '<div class="field"><label>אמצעי תשלום</label>'+sel("di-method",DIMP.map.method)+'</div>'+
+      '<div class="field"><label>הערה</label>'+sel("di-note",DIMP.map.note)+'</div>'+
+    '</div><div id="di-preview"></div>';
+  renderDepositPreview();
+}
+function depositImportRows(){
+  if(!DIMP.grid) return [];
+  var m=DIMP.map;
+  var rows=DIMP.hasHeader?DIMP.grid.slice(1):DIMP.grid;
+  var outRows=[];
+  rows.forEach(function(r,ix){
+    var amt=m.amount>=0?impNum(r[m.amount]):0;
+    if(!(amt>0.001)) return;                       // שורה בלי סכום אינה הפקדה
+    outRows.push({
+      idx:ix+1,
+      date:m.date>=0?impDate(r[m.date]):todayISO(),
+      amount:round2(amt),
+      method:m.method>=0?impMethod(r[m.method]):"transfer",
+      note:m.note>=0?String(r[m.note]||"").trim():""
+    });
+  });
+  return outRows;
+}
+/* טקסט חופשי של אמצעי תשלום → המפתח במערכת; לא מזוהה = נשמר כאמצעי חדש */
+function impMethod(v){
+  var s=String(v==null?"":v).trim(); if(!s) return "transfer";
+  refreshMethods();
+  var k=Object.keys(METHODS).find(function(x){ return normKey(METHODS[x])===normKey(s); });
+  if(k) return k;
+  var alias={"העברה בנקאית":"transfer","העברה":"transfer","זיכוי":"transfer","הו״ק":"transfer",
+             "הוראת קבע":"transfer","שיק":"check","צק":"check","צ׳ק":"check","המחאה":"check",
+             "כרטיס אשראי":"credit","אשראי":"credit","מזומן":"cash","שווה ערך":"equiv"};
+  var ak=Object.keys(alias).find(function(x){ return normKey(x)===normKey(s); });
+  if(ak) return alias[ak];
+  return "other";
+}
+function renderDepositPreview(){
+  var box=document.getElementById("di-preview"); if(!box) return;
+  var rows=depositImportRows();
+  if(!rows.length){ box.innerHTML='<div class="empty">לא זוהו שורות עם סכום — בדוק את התאמת העמודות</div>'; return; }
+  var sum=round2(rows.reduce(function(s,r){ return s+r.amount; },0));
+  refreshMethods();
+  box.innerHTML='<div class="section-title">תצוגה מקדימה — '+rows.length+' הפקדות, סה"כ '+money(sum)+'</div>'+
+    '<div class="table-wrap" style="max-height:220px"><table class="tbl"><thead><tr>'+
+    '<th>תאריך</th><th>סכום</th><th>אמצעי</th><th>הערה</th></tr></thead><tbody>'+
+    rows.slice(0,12).map(function(r){
+      return '<tr><td>'+dateHe(r.date)+'</td><td>'+money(r.amount)+'</td>'+
+        '<td>'+esc(METHODS[r.method]||r.method)+'</td><td>'+esc(r.note)+'</td></tr>';
+    }).join("")+
+    '</tbody></table></div>'+
+    (rows.length>12?'<div class="hint">מוצגות 12 הראשונות מתוך '+rows.length+'</div>':'');
+}
+function applyDepositImport(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return false; }
+  var aptId=DIMP.aptId, pid=val("di-payer");
+  if(!pid){ toast("בחר את השותף המפקיד","err"); return false; }
+  var rows=depositImportRows();
+  if(!rows.length){ toast("אין שורות לייבוא","err"); return false; }
+  /* אותו שותף + תאריך + סכום = כנראה ייבוא חוזר של אותו קובץ */
+  var dup=rows.filter(function(r){
+    return apDeposits(aptId).some(function(d){
+      return d.partnerId===pid && d.date===r.date && Math.abs((Number(d.amount)||0)-r.amount)<0.01; });
+  }).length;
+  if(dup && !confirm(dup+" מתוך "+rows.length+" ההפקדות כבר קיימות (אותו שותף, תאריך וסכום).\n\nלהוסיף בכל זאת?")) return false;
+  var sum=0;
+  rows.forEach(function(r){
+    DB.deposits.push({id:uid(),apartmentId:aptId,partnerId:pid,amount:r.amount,
+      date:r.date,method:r.method,note:r.note,deleted:false});
+    sum+=r.amount;
+  });
+  save();
+  toast("נוספו "+rows.length+" הפקדות של "+partnerName(pid)+" בסך "+money(round2(sum)),"ok");
+  rerender();
+  return true;
+}
+
 /* ---------- הפקדה מרוכזת ----------
    שורה לכל שותף, תאריך והערה משותפים. אפשר גם להזין סכום כולל
    ולפצל אותו לפי אחוזי ברירת המחדל של הדירה, כי כך בדרך כלל
@@ -3850,6 +4101,7 @@ function openBulkDeposit(aptId){
   openModal({title:"➕ הפקדה מרוכזת",wide:true,bodyHtml:
     '<div class="form-grid">'+
       '<div class="field"><label>תאריך ההפקדה</label><input id="bd-date" type="date" value="'+todayISO()+'"></div>'+
+      '<div class="field"><label>אמצעי תשלום</label><select id="bd-method" onchange="onMethodPick(\'bd-method\')">'+methodOptions("transfer")+'</select></div>'+
       '<div class="field"><label>הערה (לכל ההפקדות)</label><input id="bd-note" placeholder="למשל: העברה לקופה 5/24"></div>'+
     '</div>'+
     '<div class="section-title">פיצול אוטומטי <span class="hint">(אופציונלי)</span></div>'+
@@ -3903,6 +4155,7 @@ function bdClear(){ bdRows().forEach(function(i){ i.value=""; }); var t=document
 function saveBulkDeposit(aptId){
   if(!can("edit")){ toast("אין הרשאה","err"); return false; }
   var date=val("bd-date")||todayISO(), note=val("bd-note")||"";
+  var mth=val("bd-method")||"transfer"; if(mth==="__new") mth="transfer";
   var picked=bdRows().map(function(i){
     return {partnerId:i.getAttribute("data-p"), amount:round2(Number(i.value)||0)};
   }).filter(function(x){ return x.amount>0.001; });
@@ -3916,7 +4169,7 @@ function saveBulkDeposit(aptId){
   if(dupN && !confirm(dupN+" מההפקדות כבר קיימות באותו תאריך ובאותו סכום.\n\nלהוסיף בכל זאת?")) return false;
   picked.forEach(function(x){
     DB.deposits.push({id:uid(),apartmentId:aptId,partnerId:x.partnerId,
-      amount:x.amount,date:date,note:note,deleted:false});
+      amount:x.amount,date:date,method:mth,note:note,deleted:false});
   });
   save();
   toast("נרשמו "+picked.length+" הפקדות בסך "+money(sum),"ok");
@@ -3930,12 +4183,14 @@ function editDeposit(id,aptId){
     '<div class="field"><label>שותף מפקיד</label><select id="dp-partner"><option value="">—</option>'+apPartners(aptId).map(function(ap){return '<option value="'+ap.partnerId+'"'+(d.partnerId===ap.partnerId?" selected":"")+'>'+esc(partnerName(ap.partnerId))+'</option>';}).join("")+'</select></div>'+
     '<div class="field"><label>סכום (₪)</label><input id="dp-amount" type="number" step="0.01" value="'+esc(String(d.amount))+'"></div>'+
     '<div class="field"><label>תאריך</label><input id="dp-date" type="date" value="'+esc(String(d.date))+'"></div>'+
+    '<div class="field"><label>אמצעי תשלום</label><select id="dp-method" onchange="onMethodPick(\'dp-method\')">'+methodOptions(d.method||"transfer")+'</select></div>'+
     '<div class="field"><label>הערה</label><input id="dp-note" value="'+esc(d.note||"")+'"></div>',
     onSave:function(){
       var pid=val("dp-partner"); var amt=Number(val("dp-amount"))||0;
       if(!pid){ toast("בחר שותף","err"); return false; } if(amt<=0){ toast("סכום לא תקין","err"); return false; }
-      if(id){ d.partnerId=pid; d.amount=amt; d.date=val("dp-date"); d.note=val("dp-note"); }
-      else DB.deposits.push({id:uid(),apartmentId:aptId,partnerId:pid,amount:amt,date:val("dp-date")||todayISO(),note:val("dp-note"),deleted:false});
+      var mth=val("dp-method")||"transfer"; if(mth==="__new") mth=d.method||"transfer";
+      if(id){ d.partnerId=pid; d.amount=amt; d.date=val("dp-date"); d.method=mth; d.note=val("dp-note"); }
+      else DB.deposits.push({id:uid(),apartmentId:aptId,partnerId:pid,amount:amt,date:val("dp-date")||todayISO(),method:mth,note:val("dp-note"),deleted:false});
       save(); toast("נשמר","ok"); rerender();
     }});
 }
@@ -4156,7 +4411,8 @@ function dueByPaidReportHtml(aptId){
    כולל את חלקו בדמי הניהול, כך שהסיכום תואם לדוח המשלמים.
    ============================================================ */
 var PR={mode:"matrix",partner:"",q:""};
-function renderPartnerReport(){
+function renderPartnerReport(){ return withIndex(function(){ return renderPartnerReportInner(); }); }
+function renderPartnerReportInner(){
   var el=document.getElementById("partner-report");
   if(el) el.innerHTML=partnerReportHtml(state.params.apartmentId);
 }
@@ -4174,8 +4430,12 @@ function partnerShareInExpense(eId,pid){
    מהכיס בפועל, ולא מול העלות המלאה שעוד לא שולמה.
    ============================================================ */
 function expenseOutflow(eId){          // כל הכסף שיצא על השלב: לספק ולמנהלים
-  if(isContainer(eId)) return round2(expenseChildren(eId).reduce(function(s,k){ return s+expenseOutflow(k.id); },0));
-  return round2(expPayments(eId).reduce(function(s,p){ return s+(Number(p.amount)||0); },0));
+  if(IX && IX.outflow[eId]!==undefined) return IX.outflow[eId];
+  var v = isContainer(eId)
+    ? round2(expenseChildren(eId).reduce(function(s,k){ return s+expenseOutflow(k.id); },0))
+    : round2(expPayments(eId).reduce(function(s,p){ return s+(Number(p.amount)||0); },0));
+  if(IX) IX.outflow[eId]=v;
+  return v;
 }
 function partnerDueByPaid(aptId,pid){  // חלקו במה שכבר שולם
   return round2(apLeafExpenses(aptId).reduce(function(s,e){
@@ -4441,7 +4701,8 @@ function moduleCrossPartner(){
   h+='<div id="cross-list">'+crossListHtml()+'</div>';
   return h;
 }
-function renderCrossList(){
+function renderCrossList(){ return withIndex(function(){ return renderCrossListInner(); }); }
+function renderCrossListInner(){
   var el=document.getElementById("cross-list"); if(el) el.innerHTML=crossListHtml();
 }
 function crossListHtml(){
@@ -4557,7 +4818,9 @@ function moduleSettings(){
       h+='<tr><td>'+esc(u.name)+'</td><td>'+(ROLES[u.role]||"")+'</td><td>'+esc(apts)+'</td><td>'+(u.active?"✔️":"—")+'</td>'+
         '<td class="right"><button class="btn btn-ghost btn-sm" onclick="editUser(\''+u.id+'\')">✏️</button>'+(u.id===CU.id?'':' <button class="btn btn-ghost btn-sm" onclick="softDelete(\'users\',\''+u.id+'\',\'למחוק משתמש?\')">🗑️</button>')+'</td></tr>';
     });
-    h+='</tbody></table></div><div class="hint">קודי הכניסה נשמרים מוצפנים (SHA-256) ואינם ניתנים לצפייה.</div>';
+    h+='</tbody></table></div><div class="hint">קודי הכניסה נשמרים מוצפנים (SHA-256) ואינם ניתנים לצפייה. '+
+      '<b>הקוד הוא הזהות</b> — בכניסה מזינים אותו בלבד, בלי שם משתמש, ולכן לכל משתמש חייב להיות קוד ייחודי. '+
+      'שכחת קוד של מישהו? ערוך אותו וקבע לו קוד חדש.</div>';
   } else if(tab==="sheets"){
     var sm={ok:"✅ מסונכרן",saving:"🔄 שומר…",err:"⚠️ שגיאת סנכרון",local:"💾 מקומי בלבד",idle:"⏳ ממתין"};
     h+='<div class="card"><h3>חיבור לגוגל שיטס</h3>'+
@@ -4594,7 +4857,8 @@ function moduleSettings(){
   }
   return h;
 }
-function renderPartnersTable(){
+function renderPartnersTable(){ return withIndex(function(){ return renderPartnersTableInner(); }); }
+function renderPartnersTableInner(){
   var el=document.getElementById("pt-table"); if(el) el.innerHTML=partnersTableHtml();
 }
 function partnersTableHtml(){
@@ -4894,9 +5158,26 @@ async function saveUser(id,u){
   var name=val("us-name").trim(); if(!name){ toast("שם חסר","err"); return; }
   var apts=Array.prototype.slice.call(document.querySelectorAll(".u-apt:checked")).map(function(c){return c.value;});
   var code=val("us-code"); var pid=val("us-partner")||null;
-  if(id){ u.name=name; u.role=val("us-role"); u.allowedApartments=apts; u.partnerId=pid; u.active=checked("us-active"); if(code) u.code=await hashCode(code); }
-  else{ if(!code){ toast("יש להזין קוד","err"); return; } DB.users.push({id:uid(),name:name,role:val("us-role"),code:await hashCode(code),allowedApartments:apts,partnerId:pid,active:checked("us-active"),deleted:false}); }
-  save(); toast("נשמר","ok"); closeModal(); rerender();
+  var role=val("us-role");
+  /* הקוד הוא הזהות — אין שם משתמש בכניסה. שני משתמשים עם אותו קוד
+     היו נכנסים שניהם לחשבון הראשון שמתאים, וזה נראה כמו "הכניסה
+     לא עובדת". חוסמים מראש. */
+  if(code){
+    var h=await hashCode(code);
+    var clash=active(DB.users).find(function(x){ return x.code===h && x.id!==id; });
+    if(clash){ toast('הקוד הזה כבר שייך למשתמש "'+clash.name+'" — בחר קוד אחר',"err"); return; }
+  }
+  if(id){
+    u.name=name; u.role=role; u.allowedApartments=apts; u.partnerId=pid; u.active=checked("us-active");
+    if(code) u.code=await hashCode(code);
+  }
+  else{
+    if(!code){ toast("יש להזין קוד","err"); return; }
+    DB.users.push({id:uid(),name:name,role:role,code:await hashCode(code),
+      allowedApartments:apts,partnerId:pid,active:checked("us-active"),deleted:false});
+  }
+  save(); closeModal(); rerender();
+  toast(id?'"'+name+'" נשמר':'"'+name+'" נוסף — הוא נכנס עם הקוד שלו, בלי שם משתמש',"ok");
 }
 function exportJSON(){ var blob=new Blob([JSON.stringify(DB,null,2)],{type:"application/json"});
   var url=URL.createObjectURL(blob); var a=document.createElement("a"); a.href=url; a.download="apartments-backup-"+todayISO()+".json"; a.click(); URL.revokeObjectURL(url); }
@@ -4987,10 +5268,13 @@ function impNum(v){ var n=parseFloat(String(v==null?"":v).replace(/[^\d.\-]/g,""
    קריאת קובץ אקסל (.xlsx) ישירות בדפדפן — בלי ספרייה חיצונית.
    xlsx הוא ZIP של קובצי XML; פותחים עם DecompressionStream המובנה.
    ============================================================ */
-function readImportFile(inp){
+function readImportFile(inp){ return readSheetFile(inp,null,"im-file-name"); }
+/* קורא xlsx או CSV ומחזיר רשת תאים ל-onGrid. בלי onGrid — ההתנהגות
+   הישנה: הטקסט נטען למסך הייבוא. */
+function readSheetFile(inp,onGrid,nameElId){
   var f=inp.files && inp.files[0]; if(!f) return;
   inp.value="";
-  var nameEl=document.getElementById("im-file-name");
+  var nameEl=document.getElementById(nameElId||"im-file-name");
   if(nameEl) nameEl.textContent="⏳ קורא את "+f.name+"…";
   var isXlsx=/\.xlsx$/i.test(f.name);
   if(isXlsx && !window.DecompressionStream){
@@ -5000,19 +5284,26 @@ function readImportFile(inp){
   var rd=new FileReader();
   rd.onerror=function(){ toast("שגיאה בקריאת הקובץ","err"); if(nameEl) nameEl.textContent=""; };
   if(isXlsx){
-    rd.onload=function(){ parseXlsx(rd.result,f.name).catch(function(e){
+    rd.onload=function(){ parseXlsx(rd.result,f.name,onGrid,nameEl).catch(function(e){
       toast("קריאת ה-xlsx נכשלה: "+e.message,"err"); if(nameEl) nameEl.textContent=""; }); };
     rd.readAsArrayBuffer(f);
   }else{
     rd.onload=function(){
       var txt=rd.result;
       // אקסל עברי שומר CSV ב-Windows-1255; אם רואים הרבה תווי החלפה — קוראים שוב בקידוד הנכון
+      function done(t){
+        if(onGrid){
+          var g=parseDelimited(t, t.indexOf("	")>=0?"	":",");
+          if(nameEl) nameEl.textContent="✅ "+f.name+" ("+g.length+" שורות)";
+          onGrid(g,f.name);
+        } else fileTextToTextarea(t,f.name);
+      }
       if((txt.match(/�/g)||[]).length>3){
         var rd2=new FileReader();
-        rd2.onload=function(){ fileTextToTextarea(rd2.result,f.name); };
+        rd2.onload=function(){ done(rd2.result); };
         rd2.readAsText(f,"windows-1255"); return;
       }
-      fileTextToTextarea(txt,f.name);
+      done(txt);
     };
     rd.readAsText(f,"utf-8");
   }
@@ -5064,7 +5355,7 @@ function colToIdx(ref){ // "BC12" -> 54
 }
 
 /* ---------- XLSX → רשת תאים ---------- */
-async function parseXlsx(buf,fname){
+async function parseXlsx(buf,fname,onGrid,nameEl){
   var files=await unzipAll(buf);
   // מחרוזות משותפות
   var shared=[];
@@ -5121,7 +5412,14 @@ async function parseXlsx(buf,fname){
     return rows;
   }
 
-  if(sheets.length===1){ xlsxGridToTextarea(sheetToGrid(sheets[0].path),fname+" · "+sheets[0].name); return; }
+  function deliver(grid,label){
+    if(onGrid){
+      grid=grid.filter(function(r){ return r.some(function(c){ return String(c).trim()!==""; }); });
+      if(nameEl) nameEl.textContent="✅ "+label+" ("+grid.length+" שורות)";
+      onGrid(grid,label);
+    } else xlsxGridToTextarea(grid,label);
+  }
+  if(sheets.length===1){ deliver(sheetToGrid(sheets[0].path),fname+" · "+sheets[0].name); return; }
   // כמה גיליונות — נותנים לבחור
   openModal({title:"באיזה גיליון להשתמש?",bodyHtml:
     '<div class="field"><label>הקובץ מכיל '+sheets.length+' גיליונות</label><select id="xl-sheet">'+
@@ -5129,7 +5427,7 @@ async function parseXlsx(buf,fname){
     '</select></div>',
     saveLabel:"טען גיליון",onSave:function(){
       var s=sheets[Number(val("xl-sheet"))||0];
-      xlsxGridToTextarea(sheetToGrid(s.path),fname+" · "+s.name);
+      deliver(sheetToGrid(s.path),fname+" · "+s.name);
     }});
 }
 function xlsxGridToTextarea(grid,label){
@@ -5648,7 +5946,8 @@ function moduleRecycle(){
     '<div id="rc-list">'+recycleListHtml()+'</div>';
   return h;
 }
-function renderRecycleList(){
+function renderRecycleList(){ return withIndex(function(){ return renderRecycleListInner(); }); }
+function renderRecycleListInner(){
   var el=document.getElementById("rc-list"); if(el) el.innerHTML=recycleListHtml();
 }
 function recycleListHtml(){
