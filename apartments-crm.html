@@ -67,7 +67,10 @@ label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:5px;font-w
 .content{max-width:1200px;margin:0 auto;padding:22px 18px 90px}
 
 /* ===== לשוניות משנה ===== */
-.tabs{display:flex;gap:2px;flex-wrap:wrap;border-bottom:2px solid var(--line);margin-bottom:20px}
+/* לשוניות הדירה נשארות גלויות בגלילה, מתחת לסרגל ולניווט */
+.tabs{display:flex;gap:2px;flex-wrap:wrap;border-bottom:2px solid var(--line);margin-bottom:20px;
+  position:sticky;top:99px;z-index:15;background:rgba(255,255,255,.95);backdrop-filter:blur(10px);
+  padding:6px 18px 0;margin-left:-18px;margin-right:-18px}
 .tab{padding:9px 15px;cursor:pointer;font-weight:600;color:var(--muted);font-size:14px;
   border-bottom:3px solid transparent;margin-bottom:-2px;border-radius:8px 8px 0 0;
   transition:color .15s,background .15s;user-select:none}
@@ -92,16 +95,27 @@ label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:5px;font-w
 .apt-card:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
 
 /* ===== טבלאות ===== */
-.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:#fff;box-shadow:var(--shadow)}
-table.tbl{width:100%;border-collapse:collapse;background:#fff;font-size:13.5px;font-variant-numeric:tabular-nums}
+/* CSS כופה overflow-y:auto כשיש overflow-x:auto — ולכן כותרת sticky
+   שמכוונת לגלילת העמוד נחתכת. הפתרון: הטבלה גוללת בתוך עצמה,
+   והכותרת נצמדת לראש אזור הגלילה שלה. עובד תמיד, גם אופקית. */
+.table-wrap{max-height:calc(100vh - 210px);overflow:auto;border:1px solid var(--line);
+  border-radius:14px;background:#fff;box-shadow:var(--shadow)}
+table.tbl{width:100%;border-collapse:separate;border-spacing:0;background:#fff;font-size:13.5px;
+  font-variant-numeric:tabular-nums}
 table.tbl th,table.tbl td{padding:10px 13px;text-align:right;white-space:nowrap}
-table.tbl thead th{background:#f7f8fd;font-weight:700;color:#5b6479;font-size:12px;
-  letter-spacing:.02em;position:sticky;top:0;z-index:1;border-bottom:1.5px solid var(--line)}
+table.tbl thead th{background:#eef1fa;font-weight:700;color:#3f4863;font-size:12px;
+  letter-spacing:.02em;position:sticky;top:0;z-index:5;
+  border-bottom:2px solid #d9deef;
+  box-shadow:0 1px 0 #d9deef, 0 6px 12px -8px rgba(30,41,59,.35)}
+.modal-body .table-wrap{max-height:340px}
 table.tbl tbody td{border-bottom:1px solid #f0f2fa}
 table.tbl tbody tr:last-child td{border-bottom:none}
 table.tbl tbody tr{transition:background .12s}
 table.tbl tbody tr:hover{background:#f6f8ff}
-table.tbl tfoot td{font-weight:800;background:#f7f8fd;border-top:2px solid var(--line)}
+/* שורת הסיכום נדבקת לתחתית אזור הגלילה — הסה"כ תמיד גלוי */
+table.tbl tfoot td{font-weight:800;background:#eef1fa;border-top:2px solid #d9deef;
+  position:sticky;bottom:0;z-index:4;
+  box-shadow:0 -1px 0 #d9deef, 0 -6px 12px -8px rgba(30,41,59,.3)}
 
 /* ===== כפתורים ===== */
 .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 15px;border-radius:10px;
@@ -651,11 +665,14 @@ function navHtml(){
     var act=(state.view===it[0])?" active":"";
     return '<div class="nav-item'+act+'" onclick="go(\''+it[0]+'\',{})">'+it[1]+'</div>';
   }).join("")+
+  (can("edit")?'<div class="nav-item" style="background:var(--brand);color:#fff" onclick="openQuickExpense()">➕ הוצאה מהירה</div>':'')+
   (can("edit")?'<div class="nav-item" style="background:var(--ok);color:#fff" onclick="openQuickPay()">💳 תשלום מהיר</div>':'')+
   '</div>';
 }
 function renderView(){
   var c=document.getElementById("content"); if(!c) return;
+  /* במסך דירה יש שורת לשוניות דביקה — כותרות הטבלה נדבקות מתחתיה */
+  c.className = "content" + (state.view==="apartment" ? " has-tabs" : "");
   switch(state.view){
     case "dashboard": c.innerHTML=viewDashboard(); break;
     case "apartment": renderApartment(c); break;
@@ -1996,6 +2013,140 @@ function openPayments(eId){
   }
   openModal({title:"תשלומים — "+e.description,wide:true,bodyHtml:body});
 }
+/* ---------- הוצאה מהירה: בוחרים דירה ומזינים — בלי לנווט לשום מקום ----------
+   החלוקה נלקחת מברירת המחדל של הדירה; אפשר לרשום תשלום מיד באותו מסך. */
+function openQuickExpense(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var apts=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);});
+  if(!apts.length){ toast("אין דירות במערכת","err"); return; }
+  var cur=state.params.apartmentId||apts[0].id;
+  openModal({title:"➕ הוצאה מהירה",wide:true,bodyHtml:
+    '<div class="form-grid">'+
+      '<div class="field full"><label>דירה / פרויקט</label><select id="qe-apt" onchange="renderQuickExpenseInfo()">'+
+        apts.map(function(a){return '<option value="'+a.id+'"'+(a.id===cur?" selected":"")+'>'+esc(a.name)+'</option>';}).join("")+
+      '</select></div>'+
+      '<div class="field"><label>תיאור השלב</label><input id="qe-desc" placeholder="למשל: קבלן שלד תשלום ב׳" onkeydown="if(event.key===\'Enter\'){event.preventDefault();document.getElementById(\'qe-amount\').focus();}"></div>'+
+      '<div class="field"><label>סכום (₪)</label><input id="qe-amount" type="number" step="0.01" oninput="renderQuickExpenseInfo()"></div>'+
+      '<div class="field"><label>תאריך</label><input id="qe-date" type="date" value="'+todayISO()+'"></div>'+
+      '<div class="field"><label>סיווג</label><select id="qe-class">'+classOptions("investment")+'</select></div>'+
+      '<div class="field full"><label>הערה</label><input id="qe-note"></div>'+
+    '</div>'+
+    '<div id="qe-info"></div>'+
+    '<div class="section-title">רישום תשלום עכשיו (אופציונלי)</div>'+
+    '<div class="field"><label><input type="checkbox" id="qe-paynow" style="width:auto" onchange="toggleQuickPayNow()"> נרשם גם תשלום על השלב הזה</label></div>'+
+    '<div id="qe-pay" style="display:none"></div>',
+    saveLabel:"שמור הוצאה",onSave:function(){ return saveQuickExpense(); }});
+  renderQuickExpenseInfo();
+}
+function renderQuickExpenseInfo(){
+  var box=document.getElementById("qe-info"); if(!box) return;
+  var aptId=val("qe-apt"); var a=byId(DB.apartments,aptId);
+  var amt=Number(val("qe-amount"))||0;
+  var parts=apPartners(aptId);
+  var h="";
+  if(!parts.length){
+    h='<div class="hint">בדירה זו לא הוגדרו שותפים — ההוצאה תישמר <b>ללא חלוקה</b>.</div>';
+  }else{
+    var sum=parts.reduce(function(s,p){return s+(Number(p.defaultPercent)||0);},0);
+    h='<div class="section-title">חלוקה לפי ברירת המחדל של הדירה</div>'+
+      '<div class="table-wrap"><table class="tbl"><thead><tr><th>שותף</th><th>אחוז</th><th>חלקו</th></tr></thead><tbody>'+
+      parts.map(function(p){
+        return '<tr><td>'+esc(partnerName(p.partnerId))+'</td><td>'+num(p.defaultPercent)+'%</td>'+
+          '<td><b>'+money(amt*(Number(p.defaultPercent)||0)/100)+'</b></td></tr>'; }).join("")+
+      '</tbody><tfoot><tr><td>סה"כ</td><td class="'+(Math.abs(sum-100)<0.01?"pos":"neg")+'">'+num(sum)+'%</td>'+
+      '<td>'+money(amt)+'</td></tr></tfoot></table></div>'+
+      (Math.abs(sum-100)>=0.01?'<div class="hint neg">שים לב: אחוזי ברירת המחדל בדירה אינם 100%.</div>':'')+
+      '<div class="hint">אפשר לשנות את החלוקה אחרי השמירה, בעריכת השלב.</div>';
+  }
+  if(a && a.hasManagement && apManagers(aptId).length){
+    h+='<div class="hint">בדירה זו יש דמי ניהול — הם אינם מוחלים אוטומטית. הפעל אותם בעריכת השלב או ב"דמי ניהול מרוכז".</div>';
+  }
+  box.innerHTML=h;
+  if(checked("qe-paynow")) renderQuickPayNow();
+}
+function toggleQuickPayNow(){
+  var w=document.getElementById("qe-pay"); if(!w) return;
+  if(checked("qe-paynow")){ w.style.display="block"; renderQuickPayNow(); }
+  else w.style.display="none";
+}
+function renderQuickPayNow(){
+  var w=document.getElementById("qe-pay"); if(!w) return;
+  var aptId=val("qe-apt");
+  var parts=apPartners(aptId);
+  var amt=Number(val("qe-amount"))||0;
+  w.innerHTML='<div class="form-grid">'+
+    '<div class="field"><label>סכום התשלום</label><input id="qe-pay-amount" type="number" step="0.01" value="'+(amt||"")+'"></div>'+
+    '<div class="field"><label>מהחשבון</label><select id="qe-pay-account" onchange="onQuickPayAccount()">'+
+      '<option value="">— ידני / ללא חשבון —</option>'+
+      availAccounts(aptId).map(function(ac){
+        return '<option value="'+ac.id+'">'+esc(ac.name)+(ac.isBank?" 🏦 (בנק זמני)":"")+'</option>'; }).join("")+
+    '</select></div>'+
+    (parts.length
+      ? '<div class="field"><label>מי שילם</label><select id="qe-pay-payer"><option value="">—</option>'+
+          parts.map(function(p){return '<option value="'+p.partnerId+'">'+esc(partnerName(p.partnerId))+'</option>';}).join("")+
+        '</select></div>'
+      : '')+
+    '<div class="field"><label>אמצעי תשלום</label><select id="qe-pay-method">'+
+      Object.keys(METHODS).map(function(k){return '<option value="'+k+'"'+(k==="transfer"?" selected":"")+'>'+METHODS[k]+'</option>';}).join("")+
+    '</select></div>'+
+  '</div>';
+}
+function onQuickPayAccount(){
+  var payer=document.getElementById("qe-pay-payer"); if(!payer) return;
+  if(accountIsBank(val("qe-pay-account"))){ payer.value=""; payer.disabled=true; }
+  else payer.disabled=false;
+}
+function saveQuickExpense(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return false; }
+  var aptId=val("qe-apt");
+  var desc=val("qe-desc").trim();
+  var amount=Number(val("qe-amount"))||0;
+  if(!desc){ toast("יש להזין תיאור","err"); return false; }
+  if(amount<=0){ toast("יש להזין סכום","err"); return false; }
+  var date=val("qe-date")||todayISO();
+  /* הגנה מכפילות — כמו בייבוא: אותה דירה + תיאור + סכום + תאריך */
+  var dup=apExpenses(aptId).find(function(x){
+    return normKey(x.description)===normKey(desc) && Math.abs((Number(x.amount)||0)-amount)<0.01 && x.date===date; });
+  if(dup && !confirm('כבר קיים שלב "'+dup.description+'" באותו סכום ותאריך.\n\nלהוסיף בכל זאת?')) return false;
+
+  var eid=uid();
+  DB.expenses.push({id:eid,apartmentId:aptId,categoryId:"",classification:val("qe-class")||"investment",
+    description:desc,amount:amount,date:date,note:val("qe-note")||"",
+    hasInvoice:false,invoiceLink:"",mgmtEnabled:false,mgmtBaseType:"full",mgmtVatRate:18,deleted:false});
+  apPartners(aptId).forEach(function(p){
+    DB.expenseSplits.push({id:uid(),expenseId:eid,partnerId:p.partnerId,percent:p.defaultPercent,deleted:false});
+  });
+
+  var payMsg="";
+  if(checked("qe-paynow")){
+    var pAmt=Number(val("qe-pay-amount"))||0;
+    if(pAmt>0){
+      var accId=val("qe-pay-account")||null;
+      var isBank=accountIsBank(accId);
+      var payer=isBank?null:(val("qe-pay-payer")||null);
+      if(!isBank && !payer && apPartners(aptId).length){
+        toast("בחר מי שילם, או חשבון בנק — ההוצאה לא נשמרה","err");
+        DB.expenses=DB.expenses.filter(function(x){return x.id!==eid;});
+        DB.expenseSplits=DB.expenseSplits.filter(function(s){return s.expenseId!==eid;});
+        return false;
+      }
+      if(pAmt>amount+0.01 && !confirm("התשלום ("+money(pAmt)+") גדול מסכום השלב ("+money(amount)+").\n\nהשלב יסומן \"שולם ביתר\". להמשיך?")){
+        DB.expenses=DB.expenses.filter(function(x){return x.id!==eid;});
+        DB.expenseSplits=DB.expenseSplits.filter(function(s){return s.expenseId!==eid;});
+        return false;
+      }
+      DB.payments.push({id:uid(),expenseId:eid,date:date,amount:pAmt,accountId:accId,
+        payerPartnerId:payer,method:val("qe-pay-method")||"transfer",
+        recipientType:"supplier",recipientManagerId:null,
+        hasInvoice:false,invoiceLink:"",note:"",deleted:false});
+      payMsg=" · נרשם תשלום "+money(pAmt);
+    }
+  }
+  save();
+  toast('נוסף השלב "'+desc+'"'+payMsg,"ok");
+  go("apartment",{apartmentId:aptId,tab:"expenses"});
+}
+
 /* ---------- תשלום מהיר: בחר דירה → בחר שלב שטרם שולם במלואו ---------- */
 function openQuickPay(){
   var apts=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);});
