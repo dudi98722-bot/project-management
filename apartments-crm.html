@@ -288,6 +288,10 @@ function markDirty(){ try{ localStorage.setItem(LSKEY+"_dirty","1"); }catch(e){}
 function clearDirtyMark(){ try{ localStorage.removeItem(LSKEY+"_dirty"); }catch(e){} }
 function hasDirtyMark(){ try{ return localStorage.getItem(LSKEY+"_dirty")==="1"; }catch(e){ return false; } }
 function save(){
+  /* שער מרכזי: אף כתיבה לא עוברת אצל משתמש ללא הרשאת עריכה.
+     מכסה גם נתיבים שנקראים ישירות (קונסולה/קישור) ולא רק כפתורים מוסתרים.
+     CU ריק = מסלולי אתחול/כניסה לפני שיש משתמש — מותר. */
+  if(CU && !can("edit")){ toast("אין לך הרשאת עריכה","err"); return; }
   try{
     var prev=localStorage.getItem(LSKEY);
     if(prev){ UNDO.push(prev); if(UNDO.length>UNDO_MAX) UNDO.shift(); }
@@ -329,6 +333,7 @@ function stashLocalBackup(reason){
 }
 function listStash(){ try{ return JSON.parse(localStorage.getItem(LSKEY+"_stash")||"[]"); }catch(e){ return []; } }
 function restoreStash(i){
+  if(CU && !can("edit")){ toast("אין הרשאה","err"); return; }
   var st=listStash(); var s=st[i]; if(!s){ toast("הגיבוי לא נמצא","err"); return; }
   if(!confirm("לשחזר את הגיבוי מ-"+dateHe(s.ts.slice(0,10))+" ("+(s.reason||"ללא סיבה")+")?\n\nהמצב הנוכחי יישמר גם הוא בגיבוי לפני ההחלפה.")) return;
   stashLocalBackup("לפני שחזור גיבוי חירום");
@@ -607,6 +612,7 @@ function confirmDelete(msg,cb){
     saveLabel:"העבר לסל מחזור",onSave:function(){ return cb(); }});
 }
 function softDelete(entity,id,msg){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
   confirmDelete(msg||"למחוק פריט זה?",function(){
     var it=byId(DB[entity],id); if(it){ it.deleted=true; save(); toast("הועבר לסל המחזור","ok"); rerender(); }
   });
@@ -783,6 +789,9 @@ function viewDashboard(){
     (can("edit")?'<button class="btn btn-primary" onclick="editApartment(null)">➕ דירה חדשה</button>':'')+'</div>';
   if(!all.length) return h+'<div class="empty">אין דירות עדיין. הוסף דירה ראשונה.</div>';
 
+  /* רשימת הדירות ראשונה — זה מה שמחפשים כשנכנסים */
+  h+='<div id="apt-grid">'+aptGridHtml()+'</div>';
+
   /* ===== סיכום גלובלי + גרפים ===== */
   var G={cost:0,paid:0,rem:0,income:0,bank:0,mgmt:0,mgmtPaid:0,stages:0};
   var perApt=[];
@@ -793,7 +802,8 @@ function viewDashboard(){
     G.stages+=apExpenses(a.id).length;
     perApt.push({a:a,t:t});
   });
-  h+='<div class="stat-grid">'+
+  h+='<div class="section-title" style="margin-top:22px">סיכום כל הפרויקטים</div>'+
+    '<div class="stat-grid">'+
     stat("סה\"כ עלות בכל הפרויקטים",money(G.cost))+
     stat("שולם בפועל",money(G.paid),"pos")+
     stat("נותר לתשלום",money(G.rem),G.rem>0.01?"neg":"pos")+
@@ -818,8 +828,6 @@ function viewDashboard(){
           .map(function(r){ return {label:r.a.name,value:r.t.remaining,color:"#ef4444"}; }))+'</div>'+
     '</div>';
   }
-
-  h+='<div id="apt-grid">'+aptGridHtml()+'</div>';
   return h;
 }
 function renderAptGrid(){
@@ -962,6 +970,7 @@ function bulkAptFlags(){
     '<div class="hint">כיבוי רק מסתיר את הלשונית ומוציא מהחישוב — שום נתון לא נמחק, והכל חוזר בהדלקה מחדש.</div>'});
 }
 function applyBulkFlag(flag,val){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var shown=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);})
     .filter(function(a){ return matches(Q.apts,a.name+" "+(a.notes||"")); });
   var changed=shown.filter(function(a){ return !!a[flag]!==!!val; });
@@ -1656,6 +1665,7 @@ function bulkMgmtToggleMode(){
   document.querySelectorAll('[id^="bm-cur-"],[id^="bm-def-"],[id^="bm-lbl-"]').forEach(function(el){ el.disabled=rm; });
 }
 function applyBulkMgmt(aptId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return false; }
   var ids=Array.prototype.map.call(document.querySelectorAll(".bm-x:checked"),function(c){return c.value;});
   if(!ids.length){ toast("לא נבחר אף שלב","err"); return false; }
   var remove=checked("bm-remove");
@@ -2357,6 +2367,7 @@ function bulkPayTotal(){
   if(el) el.textContent="נבחרו "+n+" · סה\"כ "+money(round2(s));
 }
 function applyBulkPayMgr(aptId,mgrId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return false; }
   var ids=Array.prototype.map.call(document.querySelectorAll(".bp-x:checked"),function(c){return c.value;});
   if(!ids.length){ toast("לא נבחר אף שלב","err"); return false; }
   var accountId=val("bp-account")||null;
@@ -2911,6 +2922,7 @@ function openMergeTool(){
   openModal({title:"🔀 איחוד דירות כפולות",wide:true,bodyHtml:body});
 }
 function mergeGroup(gi){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var g=window._mergeGroups[gi]; if(!g) return;
   var sel=document.querySelector('input[name="mg-'+gi+'"]:checked');
   if(!sel){ toast("בחר את הדירה שתישאר","err"); return; }
@@ -2922,6 +2934,7 @@ function mergeGroup(gi){
   closeModal(); openMergeTool(); rerender();
 }
 function manualMerge(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var s=val("mg-src"), d=val("mg-dst");
   if(s===d){ toast("בחר שתי דירות שונות","err"); return; }
   var sa=byId(DB.apartments,s), da=byId(DB.apartments,d);
@@ -2992,7 +3005,9 @@ async function saveUser(id,u){
 }
 function exportJSON(){ var blob=new Blob([JSON.stringify(DB,null,2)],{type:"application/json"});
   var url=URL.createObjectURL(blob); var a=document.createElement("a"); a.href=url; a.download="apartments-backup-"+todayISO()+".json"; a.click(); URL.revokeObjectURL(url); }
-function importJSON(inp){ var f=inp.files[0]; if(!f) return; var r=new FileReader();
+function importJSON(inp){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var f=inp.files[0]; if(!f) return; var r=new FileReader();
   r.onload=function(){ try{ var d=JSON.parse(r.result); if(d&&Array.isArray(d.apartments)){ DB=normalizeDB(d); save(); toast("שוחזר","ok"); rerender(); } else toast("קובץ לא תקין","err"); }catch(e){ toast("שגיאה בקריאה","err"); } };
   r.readAsText(f); }
 
