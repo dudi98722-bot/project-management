@@ -885,11 +885,12 @@ function navHtml(){
   }).join("")+
   (can("edit")?'<div class="nav-item" style="background:var(--brand);color:#fff" onclick="openQuickExpense()">➕ הוצאה מהירה</div>':'')+
   (can("edit")?'<div class="nav-item" style="background:var(--ok);color:#fff" onclick="openQuickPay()">💳 תשלום מהיר</div>':'')+
-  '<div class="nav-item" onclick="openExportMenu()" title="ייצוא הנתונים לאקסל">⬇️ ייצוא לאקסל</div>'+
+  (canDownload()?'<div class="nav-item" onclick="openExportMenu()" title="ייצוא הנתונים לאקסל">⬇️ ייצוא לאקסל</div>':'')+
   '</div>';
 }
 /* תפריט ייצוא מרכזי — חוברת מלאה, דירה בודדת, או הטבלה שעל המסך */
 function openExportMenu(){
+  if(!canDownload()){ toast("להורדת קבצים נדרשת הרשאת עריכה — פנה למנהל","err"); return; }
   var apts=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);});
   var cur=state.params.apartmentId;
   openModal({title:"⬇️ ייצוא לאקסל",bodyHtml:
@@ -2093,7 +2094,11 @@ function xlsxBlob(sheets){
   put("xl/styles.xml",XL_STYLES);
   return zipStore(files);
 }
+/* שער מרכזי להורדות: משתמש בהרשאת צפייה בלבד אינו מוריד קבצים.
+   הכפתורים מוסתרים ממנו ממילא, אבל השער כאן חוסם גם קריאה ישירה. */
+function canDownload(){ return !CU || can("edit"); }
 function downloadBlob(blob,filename){
+  if(!canDownload()){ toast("להורדת קבצים נדרשת הרשאת עריכה — פנה למנהל","err"); return; }
   var url=URL.createObjectURL(blob), a=document.createElement("a");
   a.href=url; a.download=filename; a.style.display="none";
   document.body.appendChild(a); a.click();
@@ -2221,6 +2226,7 @@ function exportTableEl(t,filename,sheetName){
 /* כפתור ייצוא לכל טבלה על המסך */
 var _xlSeq=0, _xlReg={};
 function attachExportButtons(root){
+  if(!canDownload()) return;   /* צופה — אין טעם בכפתור שיידחה בשער ההורדות */
   var scope=root||document;
   /* טבלה שנדרסה ברינדור חלקי כבר לא ב-DOM. בלי הניקוי הזה המפה
      הייתה גדלה בלי גבול ומחזיקה טבלאות מנותקות בזיכרון. */
@@ -5220,8 +5226,11 @@ async function saveUser(id,u){
   save(); closeModal(); rerender();
   toast(id?'"'+name+'" נשמר':'"'+name+'" נוסף — נכנסים עם השם "'+name+'" + הקוד שלו',"ok");
 }
-function exportJSON(){ var blob=new Blob([JSON.stringify(DB,null,2)],{type:"application/json"});
-  var url=URL.createObjectURL(blob); var a=document.createElement("a"); a.href=url; a.download="apartments-backup-"+todayISO()+".json"; a.click(); URL.revokeObjectURL(url); }
+function exportJSON(){
+  /* עובר דרך שער ההורדות המרכזי — צופה לא מוריד גם גיבוי JSON */
+  downloadBlob(new Blob([JSON.stringify(DB,null,2)],{type:"application/json"}),
+    "apartments-backup-"+todayISO()+".json");
+}
 function importJSON(inp){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var f=inp.files[0]; if(!f) return; var r=new FileReader();
