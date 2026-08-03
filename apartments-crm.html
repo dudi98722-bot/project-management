@@ -935,8 +935,8 @@ function topbarHtml(){
     apts.map(function(a){ return '<option value="'+a.id+'"'+(state.params.apartmentId===a.id?" selected":"")+'>'+esc(a.name)+'</option>'; }).join("")+'</select>';
   return '<div class="topbar"><div class="logo"><span class="mark">'+LOGO_MARK+'</span>'+
     '<span class="brand"><b>לווי וניהול פרוייקטים</b><small>מעקב הוצאות, תשלומים ושותפויות</small></span></div>'+sel+'<div class="sp"></div>'+
-    '<button class="btn btn-sm" onclick="undo()" title="ביטול הפעולה האחרונה (Ctrl+Z)">↩️ בטל'+(undoCount()?" ("+undoCount()+")":"")+'</button>'+
-    syncBadgeHtml()+
+    (can("edit")?'<button class="btn btn-sm" onclick="undo()" title="ביטול הפעולה האחרונה (Ctrl+Z)">↩️ בטל'+(undoCount()?" ("+undoCount()+")":"")+'</button>':'')+
+    (can("edit")?syncBadgeHtml():'')+
     '<div class="who">👤 '+esc(CU.name)+' · '+esc(ROLES[CU.role]||"")+'</div>'+
     '<button class="btn btn-sm" onclick="logout()">יציאה</button></div>';
 }
@@ -5237,7 +5237,7 @@ function crossListHtml(){
 /* ---------- הגדרות ---------- */
 function moduleSettings(){
   var tab=state.params.stab||"partners";
-  var tabs=[["partners","ספר שותפים"],["cats","קטגוריות"],["accounts","חשבונות"],["methods","אמצעי תשלום"],["users","משתמשים"],["sheets","גוגל שיטס"],["backup","גיבוי"],["danger","מחיקת נתונים"]];
+  var tabs=[["partners","ספר שותפים"],["cats","קטגוריות"],["accounts","חשבונות"],["methods","אמצעי תשלום"],["users","משתמשים"],["sheets","גוגל שיטס"],["backup","גיבוי"]];
   var h='<h2>הגדרות</h2><div class="tabs">'+tabs.map(function(t){return '<div class="tab'+(tab===t[0]?" active":"")+'" onclick="go(\'settings\',{stab:\''+t[0]+'\'})">'+t[1]+'</div>';}).join("")+'</div>';
   if(tab==="partners"){
     h+='<div class="toolbar"><button class="btn btn-primary btn-sm" onclick="editPartner(null)">➕ שותף</button>'+
@@ -5305,19 +5305,6 @@ function moduleSettings(){
     });
     h+='</tbody></table></div>'+
       '<div class="hint">אמצעים מובנים אינם ניתנים למחיקה. אמצעי שנוסף ידנית ומשמש בתשלומים — לא יימחק.</div>';
-  } else if(tab==="danger"){
-    var nExp=active(DB.expenses).length, nPay=active(DB.payments).length;
-    h+='<div class="card" style="border:2px solid #fecaca">'+
-      '<h3 style="color:var(--danger)">⚠️ מחיקת נתונים</h3>'+
-      '<p class="muted">שימושי לפני ייבוא מחדש. <b>הכל עובר לסל המחזור וניתן לשחזור</b> — שום דבר לא נמחק פיזית. הדירות, השותפים והאחוזים יישארו.</p>'+
-      '<div class="stat-grid" style="margin-bottom:14px">'+
-        stat("הוצאות פעילות",num(nExp))+
-        stat("תשלומים פעילים",num(nPay))+
-      '</div>'+
-      '<div class="toolbar">'+
-        '<button class="btn btn-danger" onclick="deleteAllExpenses()">🗑️ מחק את כל ההוצאות + התשלומים</button>'+
-        '<button class="btn btn-danger" onclick="deleteAllPayments()">🗑️ מחק רק את התשלומים</button>'+
-      '</div></div>';
   } else if(tab==="users"){
     if(!can("manageUsers")) return h+'<div class="empty">אין הרשאה</div>';
     h+='<div class="toolbar"><button class="btn btn-primary btn-sm" onclick="editUser(null)">➕ משתמש</button></div>';
