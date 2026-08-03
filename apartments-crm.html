@@ -1,5 +1,5 @@
 <meta charset="utf-8">
-<title>ניהול דירות ושותפויות</title>
+<title>לווי וניהול פרוייקטים</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- אייקון בית ללשונית — SVG מוטמע, בלי בקשת רשת חיצונית -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='13' fill='%232563eb'/%3E%3Cpath d='M32 12L55 32h-6v20H15V32H9z' fill='%23ffffff'/%3E%3Crect x='27' y='38' width='10' height='14' rx='1.5' fill='%232563eb'/%3E%3Crect x='19' y='34' width='6' height='6' rx='1' fill='%232563eb'/%3E%3Crect x='39' y='34' width='6' height='6' rx='1' fill='%232563eb'/%3E%3C/svg%3E">
@@ -44,9 +44,15 @@ label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:5px;font-w
   padding:11px 20px;
   background:linear-gradient(120deg,#1e1b4b 0%,#312e81 45%,#4338ca 100%);
   box-shadow:0 4px 20px rgba(30,27,75,.35)}
-.topbar .logo{font-weight:800;font-size:17px;display:flex;align-items:center;gap:10px;letter-spacing:-.01em}
-.topbar .logo::before{content:"\1F3E0";display:grid;place-items:center;width:34px;height:34px;
-  background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);border-radius:10px;font-size:17px}
+.topbar .logo{display:flex;align-items:center;gap:11px;letter-spacing:-.01em}
+.topbar .logo .mark{display:grid;place-items:center;width:36px;height:36px;flex:none;
+  background:linear-gradient(150deg,#6366f1,#38bdf8);border-radius:11px;
+  box-shadow:0 4px 12px rgba(56,189,248,.35);border:1px solid rgba(255,255,255,.25)}
+.topbar .logo .mark svg{width:21px;height:21px}
+.topbar .logo .brand{display:flex;flex-direction:column;line-height:1.08}
+.topbar .logo .brand b{font-weight:800;font-size:16px}
+.topbar .logo .brand small{font-size:10px;font-weight:600;opacity:.72;letter-spacing:.03em}
+@media(max-width:720px){.topbar .logo .brand small{display:none}.topbar .logo .brand b{font-size:14px}}
 .topbar .sp{flex:1}
 .topbar select{width:auto;min-width:190px;background:rgba(255,255,255,.12);color:#fff;
   border-color:rgba(255,255,255,.28);font-weight:600}
@@ -204,10 +210,13 @@ td.empty{text-align:center;color:var(--muted);padding:22px}
 @keyframes loginbg{0%{background-position:0% 40%}50%{background-position:100% 60%}100%{background-position:0% 40%}}
 .login-card{background:#fff;border-radius:22px;padding:36px 34px;width:100%;max-width:390px;
   box-shadow:0 30px 80px rgba(2,6,23,.5);text-align:center}
-.login-icon{width:74px;height:74px;margin:0 auto 6px;display:grid;place-items:center;font-size:36px;
-  background:linear-gradient(135deg,var(--brand),#38bdf8);border-radius:20px;
-  box-shadow:0 10px 26px rgba(79,70,229,.4)}
-.login-card h1{font-size:21px;margin:14px 0 4px;font-weight:800;letter-spacing:-.01em}
+.login-icon{width:80px;height:80px;margin:0 auto 4px;display:grid;place-items:center;
+  background:linear-gradient(150deg,#4f46e5,#6366f1 45%,#38bdf8);border-radius:22px;
+  box-shadow:0 14px 30px rgba(79,70,229,.42)}
+.login-icon svg{width:44px;height:44px}
+.login-card h1{font-size:22px;margin:16px 0 2px;font-weight:800;letter-spacing:-.01em;
+  background:linear-gradient(90deg,#4338ca,#4f46e5 50%,#0ea5e9);-webkit-background-clip:text;background-clip:text;color:transparent}
+.login-card .brand-tag{color:var(--muted);margin:0 0 18px;font-size:12.5px;font-weight:600;letter-spacing:.02em}
 .login-card p{color:var(--muted);margin:0 0 22px;font-size:13.5px}
 
 /* ===== טוסטים ===== */
@@ -279,6 +288,13 @@ function syncBadgeHtml(){
   return '<span id="sync-badge" class="who"'+clk+'>'+x[0]+' '+esc(x[1])+'</span>';
 }
 function setSync(s){ SYNC=s; var el=document.getElementById("sync-badge"); if(el){ el.outerHTML=syncBadgeHtml(); } }
+/* סמליל המותג — עמודות עולות (מעקב וקידום פרויקטים) */
+var LOGO_MARK = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">'+
+  '<rect x="3.4" y="12.6" width="3.7" height="7.4" rx="1.3" fill="#fff" opacity=".62"/>'+
+  '<rect x="10.15" y="8.4" width="3.7" height="11.6" rx="1.3" fill="#fff" opacity=".82"/>'+
+  '<rect x="16.9" y="4" width="3.7" height="16" rx="1.3" fill="#fff"/>'+
+  '<path d="M3.6 8.8 9 6.2l4.1 1.9 6.8-4.4" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" opacity=".92"/>'+
+  '<circle cx="19.9" cy="3.7" r="1.7" fill="#fde68a"/></svg>';
 var CLASSIFICATIONS = {investment:"השקעה", ongoing:"שוטף", private:"פרטי"};
 /* אמצעי תשלום: בסיס קבוע + אמצעים שהמשתמש מוסיף (נשמרים בנתונים) */
 var METHODS_BASE = {transfer:"העברה", check:"צ׳ק", credit:"אשראי", cash:"מזומן", equiv:"שווה ערך", other:"אחר"};
@@ -917,7 +933,8 @@ function topbarHtml(){
   var apts=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);});
   var sel='<select onchange="onApartmentPick(this.value)"><option value="">— בחר דירה —</option>'+
     apts.map(function(a){ return '<option value="'+a.id+'"'+(state.params.apartmentId===a.id?" selected":"")+'>'+esc(a.name)+'</option>'; }).join("")+'</select>';
-  return '<div class="topbar"><div class="logo">ניהול דירות ושותפויות</div>'+sel+'<div class="sp"></div>'+
+  return '<div class="topbar"><div class="logo"><span class="mark">'+LOGO_MARK+'</span>'+
+    '<span class="brand"><b>לווי וניהול פרוייקטים</b><small>מעקב הוצאות, תשלומים ושותפויות</small></span></div>'+sel+'<div class="sp"></div>'+
     '<button class="btn btn-sm" onclick="undo()" title="ביטול הפעולה האחרונה (Ctrl+Z)">↩️ בטל'+(undoCount()?" ("+undoCount()+")":"")+'</button>'+
     syncBadgeHtml()+
     '<div class="who">👤 '+esc(CU.name)+' · '+esc(ROLES[CU.role]||"")+'</div>'+
@@ -978,14 +995,15 @@ function renderViewInner(){
 /* ---------- כניסה ---------- */
 async function renderLogin(){
   var app=document.getElementById("app");
-  app.innerHTML='<div class="login-wrap"><div class="login-card"><div class="login-icon">🏠</div>'+
-    '<h1>ניהול דירות ושותפויות</h1><p class="muted">בודק חיבור לשרת…</p></div></div>';
+  app.innerHTML='<div class="login-wrap"><div class="login-card"><div class="login-icon">'+LOGO_MARK+'</div>'+
+    '<h1>לווי וניהול פרוייקטים</h1><p class="muted">בודק חיבור לשרת…</p></div></div>';
   var st=await api("action=status");
   var online=!!(st&&st.ok);
   var noUsers=online ? !st.hasUsers : (active(DB.users).length===0);
   app.innerHTML='<div class="login-wrap"><div class="login-card">'+
-    '<div class="login-icon">🏠</div>'+
-    '<h1>ניהול דירות ושותפויות</h1>'+
+    '<div class="login-icon">'+LOGO_MARK+'</div>'+
+    '<h1>לווי וניהול פרוייקטים</h1>'+
+    '<p class="brand-tag">מעקב הוצאות, תשלומים ושותפויות</p>'+
     (!online ? '<p style="color:#b45309">⚠️ אין חיבור לשרת — בדוק אינטרנט ונסה שוב</p>' : '')+
     (noUsers
       ? '<p>הגדרת מנהל ראשוני — בחר שם וקוד כניסה</p>'+
@@ -2568,7 +2586,7 @@ function dataSheets(list){
 function exportAllData(){
   var list=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);});
   if(!list.length){ toast("אין דירות לייצוא","warn"); return; }
-  saveXlsx(dataSheets(list),"כל הנתונים — ניהול דירות");
+  saveXlsx(dataSheets(list),"כל הנתונים — לווי וניהול פרוייקטים");
 }
 function exportApartmentBook(aptId){
   var a=byId(DB.apartments,aptId); if(!a) return;
