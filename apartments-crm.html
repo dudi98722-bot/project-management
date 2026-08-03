@@ -3326,7 +3326,7 @@ function openQuickExpense(){
   var apts=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);});
   if(!apts.length){ toast("אין דירות במערכת","err"); return; }
   var cur=state.params.apartmentId||apts[0].id;
-  _qeParentApt=null; _qePayBuilt=false; _qePayApt=null; _qePayTouched=false;
+  _qeParentApt=null; _qePayBuilt=false; _qePayApt=null; _qePayTouched=false; _qeMgmtApt=null;
   openModal({title:"➕ הוצאה מהירה",wide:true,bodyHtml:
     '<div class="form-grid">'+
       '<div class="field full"><label>דירה / פרויקט</label><select id="qe-apt" onchange="renderQuickExpenseInfo()">'+
@@ -3340,12 +3340,67 @@ function openQuickExpense(){
       '<div class="field full" id="qe-parent-box"></div>'+
       '<div class="field full"><label>הערה</label><input id="qe-note"></div>'+
     '</div>'+
+    '<div id="qe-mgmt-box"></div>'+
     '<div id="qe-info"></div>'+
     '<div class="section-title">רישום תשלום עכשיו (אופציונלי)</div>'+
     '<div class="field"><label><input type="checkbox" id="qe-paynow" style="width:auto" onchange="toggleQuickPayNow()"> נרשם גם תשלום על השלב הזה</label></div>'+
     '<div id="qe-pay" style="display:none"></div>',
     saveLabel:"שמור הוצאה",onSave:function(){ return saveQuickExpense(); }});
   renderQuickExpenseInfo();
+}
+/* דמי ניהול בהוצאה מהירה. המקטע נבנה רק כשמחליפים דירה — הקלדה
+   בשדה הסכום מעדכנת רק את תצוגת הסכום המחושב, לא את השדות. */
+var _qeMgmtApt=null;
+function renderQuickMgmt(aptId){
+  var box=document.getElementById("qe-mgmt-box"); if(!box) return;
+  if(_qeMgmtApt===aptId) return;
+  _qeMgmtApt=aptId;
+  var a=byId(DB.apartments,aptId), mgrs=apManagers(aptId);
+  if(!a||!a.hasManagement){ box.innerHTML=""; return; }
+  if(!mgrs.length){
+    box.innerHTML='<div class="hint">בדירה זו דמי הניהול פעילים אבל לא הוגדרו מנהלים — הוסף אותם בלשונית "דמי ניהול".</div>';
+    return;
+  }
+  box.innerHTML='<div class="section-title">דמי ניהול</div>'+
+    '<div class="field"><label><input type="checkbox" id="qe-mgmt" style="width:auto" onchange="toggleQuickMgmt()"> יש דמי ניהול על הוצאה זו</label></div>'+
+    '<div id="qe-mgmt-details" style="display:none">'+
+      '<div class="form-grid">'+
+        '<div class="field"><label>בסיס החישוב</label><select id="qe-base" onchange="updateQuickMgmtPreview()">'+
+          Object.keys(BASE_TYPES).map(function(k){return '<option value="'+k+'">'+BASE_TYPES[k]+'</option>';}).join("")+
+        '</select></div>'+
+        '<div class="field"><label>מע"מ על דמי הניהול</label><select id="qe-vat" onchange="updateQuickMgmtPreview()">'+
+          '<option value="18">18%</option><option value="17">17%</option><option value="0">בלי מע"מ</option>'+
+        '</select></div>'+
+      '</div>'+
+      mgrs.map(function(m){
+        return '<div class="form-grid">'+
+          '<div class="field"><label>'+esc(m.name)+' — % שוטף</label><input id="qe-mf-cur-'+m.id+'" type="number" step="0.01" value="'+esc(String(m.defaultFeePercent||0))+'" oninput="updateQuickMgmtPreview()"></div>'+
+          '<div class="field"><label>% דחוי</label><input id="qe-mf-def-'+m.id+'" type="number" step="0.01" value="0" oninput="updateQuickMgmtPreview()"></div>'+
+          '<div class="field"><label>תווית הדחוי</label><input id="qe-mf-lbl-'+m.id+'" placeholder="למשל: בסיום הבנייה"></div>'+
+        '</div>'; }).join("")+
+      '<div id="qe-mgmt-prev" class="hint"></div>'+
+    '</div>';
+}
+function toggleQuickMgmt(){
+  var d=document.getElementById("qe-mgmt-details");
+  if(d) d.style.display=checked("qe-mgmt")?"block":"none";
+  updateQuickMgmtPreview();
+}
+function updateQuickMgmtPreview(){
+  var el=document.getElementById("qe-mgmt-prev"); if(!el) return;
+  if(!checked("qe-mgmt")){ el.innerHTML=""; return; }
+  var amt=Number(val("qe-amount"))||0;
+  var bt=val("qe-base")||"full";
+  var base = bt==="net17" ? amt/1.17 : bt==="net18" ? amt/1.18 : amt;
+  var vat=1+(Number(val("qe-vat"))||0)/100;
+  var cur=0, def=0;
+  apManagers(val("qe-apt")).forEach(function(m){
+    cur+=base*(Number(val("qe-mf-cur-"+m.id))||0)/100*vat;
+    def+=base*(Number(val("qe-mf-def-"+m.id))||0)/100*vat;
+  });
+  el.innerHTML=amt?('דמי ניהול פעילים: <b>'+money(round2(cur))+'</b>'+
+    (def>0.005?' · דחוי (עד השחרור): <b>'+money(round2(def))+'</b>':'')):
+    'הזן סכום להוצאה כדי לראות את דמי הניהול המחושבים';
 }
 /* בחירת שלב-אב בהוצאה מהירה. נבנית מחדש רק כשמחליפים דירה,
    כדי שהבחירה לא תתאפס בכל הקלדה בשדה הסכום. */
@@ -3365,6 +3420,8 @@ function renderQuickExpenseInfoInner(){
   var box=document.getElementById("qe-info"); if(!box) return;
   var aptId=val("qe-apt"); var a=byId(DB.apartments,aptId);
   renderQuickParent(aptId);
+  renderQuickMgmt(aptId);
+  updateQuickMgmtPreview();
   var amt=Number(val("qe-amount"))||0;
   var parts=apPartners(aptId);
   var h="";
@@ -3381,9 +3438,6 @@ function renderQuickExpenseInfoInner(){
       '<td>'+money(amt)+'</td></tr></tfoot></table></div>'+
       (Math.abs(sum-100)>=0.01?'<div class="hint neg">שים לב: אחוזי ברירת המחדל בדירה אינם 100%.</div>':'')+
       '<div class="hint">אפשר לשנות את החלוקה אחרי השמירה, בעריכת השלב.</div>';
-  }
-  if(a && a.hasManagement && apManagers(aptId).length){
-    h+='<div class="hint">בדירה זו יש דמי ניהול — הם אינם מוחלים אוטומטית. הפעל אותם בעריכת השלב או ב"דמי ניהול מרוכז".</div>';
   }
   box.innerHTML=h;
   if(checked("qe-paynow")) renderQuickPayNow(aptId);
@@ -3467,15 +3521,29 @@ function saveQuickExpense(){
   /* מכאן והלאה משנים נתונים — אין עוד ביטולים */
   if(qParent && !convertToContainer(qParent)) return false;
 
+  var mgmtOn = !!document.getElementById("qe-mgmt") && checked("qe-mgmt");
+  var mgmtVatRaw = Number(val("qe-vat"));
   var eid=uid();
   DB.expenses.push({id:eid,apartmentId:aptId,categoryId:(val("qe-cat")==="__new"?"":val("qe-cat")||""),
     classification:val("qe-class")||"investment",
     description:desc,amount:amount,date:date,note:val("qe-note")||"",
-    hasInvoice:false,invoiceLink:"",mgmtEnabled:false,mgmtBaseType:"full",mgmtVatRate:18,
+    hasInvoice:false,invoiceLink:"",
+    mgmtEnabled:mgmtOn,
+    mgmtBaseType:mgmtOn?(val("qe-base")||"full"):"full",
+    mgmtVatRate:mgmtOn?(isNaN(mgmtVatRaw)?18:mgmtVatRaw):18,
     parentId:qParent||null,deleted:false});
   apPartners(aptId).forEach(function(p){
     DB.expenseSplits.push({id:uid(),expenseId:eid,partnerId:p.partnerId,percent:p.defaultPercent,deleted:false});
   });
+  if(mgmtOn){
+    apManagers(aptId).forEach(function(m){
+      DB.expenseManagerFees.push({id:uid(),expenseId:eid,managerId:m.id,
+        pctCurrent:Number(val("qe-mf-cur-"+m.id))||0,
+        pctDeferred:Number(val("qe-mf-def-"+m.id))||0,
+        deferredLabel:val("qe-mf-lbl-"+m.id)||"",deferredReleased:false,deleted:false});
+    });
+    syncAutoMgmtPayments(eid);   // תשלום "שווה ערך" אוטומטי, אם מוגדר בפרויקט
+  }
 
   var payMsg="";
   if(payNow){
