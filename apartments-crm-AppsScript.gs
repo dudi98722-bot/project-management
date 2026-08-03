@@ -29,7 +29,7 @@ function doGet(e) {
     return jsonOut({ ok: true, hasUsers: hasAnyUser() });
   }
   if (action === "requestReset") {
-    return jsonOut(requestReset());
+    return jsonOut(requestReset(p.user || ""));
   }
   if (action === "verifyReset") {
     return jsonOut(verifyReset(p.code || ""));
@@ -59,20 +59,36 @@ function doPost(e) {
 
     // ---- קביעת קוד חדש אחרי שחזור במייל ----
     if (action === "setCode") {
-      var chk = consumeResetToken(body.resetToken);
+      var chk = peekResetToken(body.resetToken);
       if (!chk.ok) return jsonOut(chk);
       var d = loadData();
       if (!d) return jsonOut({ ok: false, error: "no-data" });
       d.users = d.users || [];
-      var admin = null;
+      // המשתמש שביקש את השחזור (נשמר עם הבקשה). בקשה ישנה בלי מזהה — המנהל.
+      var target = null;
       for (var i = 0; i < d.users.length; i++) {
-        if (!d.users[i].deleted && d.users[i].role === "admin") { admin = d.users[i]; break; }
+        if (!d.users[i].deleted && chk.userId && d.users[i].id === chk.userId) { target = d.users[i]; break; }
       }
-      if (admin) { admin.code = body.codeHash; admin.active = true; }
+      // אסימון שקושר למשתמש שנמחק בינתיים — נכשל, לא נופלים לחשבון המנהל
+      if (!target && chk.userId) return jsonOut({ ok: false, error: "user-not-found" });
+      if (!target) {                    // בקשה ישנה בלי מזהה (תאימות) — המנהל
+        for (var j2 = 0; j2 < d.users.length; j2++) {
+          if (!d.users[j2].deleted && d.users[j2].role === "admin") { target = d.users[j2]; break; }
+        }
+      }
+      // הקוד הוא הזהות בכניסה — קוד שכבר תפוס אצל משתמש אחר היה ממזג חשבונות
+      for (var k = 0; k < d.users.length; k++) {
+        var o = d.users[k];
+        if (!o.deleted && o.active && o.code === body.codeHash && (!target || o.id !== target.id)) {
+          return jsonOut({ ok: false, error: "code-taken" });
+        }
+      }
+      if (target) { target.code = body.codeHash; target.active = true; }
       else {
         d.users.push({ id: "u" + new Date().getTime(), name: "מנהל", code: body.codeHash,
           role: "admin", allowedApartments: [], partnerId: null, active: true, deleted: false });
       }
+      clearReset();                     // האסימון חד-פעמי — נשרף רק אחרי הצלחה
       saveData(d);
       return jsonOut({ ok: true });
     }
@@ -91,13 +107,14 @@ function doPost(e) {
       return jsonOut({ ok: true, rev: storedRev() });
     }
     if (action === "load") {
-      return jsonOut({ ok: true, data: loadData(), user: publicUser(user) });
+      // כל משתמש מקבל רק את מה ששויך לו, ולעולם לא את ה-hash של הקודים
+      return jsonOut({ ok: true, data: scopeDataForUser(loadData() || {}, user), user: publicUser(user) });
     }
     if (action === "save") {
       if (user.role === "viewer" || user.role === "partner") {
         return jsonOut({ ok: false, error: "forbidden" });
       }
-      return jsonOut(saveWithRevGuard(body.data));
+      return jsonOut(saveWithRevGuard(body.data, user));
     }
     return jsonOut({ ok: false, error: "unknown action" });
   } catch (err) {
@@ -139,60 +156,94 @@ function publicUser(u) {
 }
 
 /* ==================== שחזור קוד כניסה במייל ==================== */
-function requestReset() {
+/* הקוד נשלח למייל שמשויך למשתמש שביקש. מנהל בלי מייל משויך ממשיך
+   לקבל ל-OWNER_EMAIL (תאימות לאחור); משתמש אחר בלי מייל מקבל שגיאה. */
+function normName(s) { return String(s || "").replace(/\s+/g, " ").trim(); }
+function requestReset(userName) {
   try {
+    var d = loadData();
+    var want = normName(userName);
+    var user = null;
+    if (d && d.users) {
+      for (var i = 0; i < d.users.length; i++) {
+        var u = d.users[i];
+        if (u.deleted || !u.active) continue;
+        if (want ? normName(u.name) === want : u.role === "admin") { user = u; break; }
+      }
+    }
+    if (!user) return { ok: false, error: "user-not-found" };
+    var email = String(user.email || "").trim();
+    if (!email && user.role === "admin") email = OWNER_EMAIL;
+    if (!email) return { ok: false, error: "no-email" };
     var code = String(Math.floor(100000 + Math.random() * 900000));
     var exp  = new Date().getTime() + RESET_MINUTES * 60 * 1000;
     var sh = ss().getSheetByName(RESET_SHEET) || ss().insertSheet(RESET_SHEET);
     sh.clear();
-    sh.getRange(1, 1, 1, 3).setValues([[code, exp, ""]]);
+    // עמודה 5 = מונה ניסיונות כושלים (נגד ניחוש בכוח גס)
+    sh.getRange(1, 1, 1, 5).setValues([[code, exp, "", user.id, 0]]);
     try { sh.hideSheet(); } catch (err) {}
-    MailApp.sendEmail(OWNER_EMAIL,
+    MailApp.sendEmail(email,
       "קוד שחזור — מערכת ניהול דירות",
+      "שלום " + user.name + ",\n\n" +
       "קוד השחזור שלך הוא: " + code + "\n\n" +
       "הקוד תקף ל-" + RESET_MINUTES + " דקות וניתן לשימוש חד-פעמי.\n" +
       "אם לא ביקשת שחזור — התעלם מהודעה זו ושקול להחליף את קוד הכניסה.");
-    return { ok: true, sentTo: OWNER_EMAIL.replace(/^(.{2}).*(@.*)$/, "$1***$2") };
+    return { ok: true, sentTo: email.replace(/^(.{2}).*(@.*)$/, "$1***$2") };
   } catch (err) {
     return { ok: false, error: String(err) };
   }
 }
 
-/* מאמת את הקוד מהמייל ומחזיר אסימון קצר-מועד שמתיר קביעת קוד חדש */
+var RESET_MAX_TRIES = 5;
+/* מאמת את הקוד מהמייל ומחזיר אסימון קצר-מועד שמתיר קביעת קוד חדש.
+   נעילה: אחרי RESET_MAX_TRIES ניחושים כושלים הקוד נשרף — כך שקוד בן
+   6 ספרות אינו ניתן לניחוש בכוח גס בחלון תוקפו. */
 function verifyReset(code) {
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(10000); } catch (e) { return { ok: false, error: "busy" }; }
   try {
     var sh = ss().getSheetByName(RESET_SHEET);
     if (!sh || sh.getLastRow() === 0) return { ok: false, error: "no-request" };
-    var v = sh.getRange(1, 1, 1, 3).getValues()[0];
+    var v = sh.getRange(1, 1, 1, 5).getValues()[0];
     var stored = String(v[0] || "");
     var exp    = Number(v[1] || 0);
-    if (!stored || String(code).trim() !== stored) return { ok: false, error: "bad-code" };
+    var tries  = Number(v[4] || 0);
+    if (!stored) return { ok: false, error: "no-request" };
     if (new Date().getTime() > exp) { sh.clear(); return { ok: false, error: "expired" }; }
+    if (String(code).trim() !== stored) {
+      tries++;
+      if (tries >= RESET_MAX_TRIES) { sh.clear(); return { ok: false, error: "too-many" }; }
+      sh.getRange(1, 5).setValue(tries);
+      return { ok: false, error: "bad-code" };
+    }
     var token = Utilities.getUuid();
-    sh.getRange(1, 1, 1, 3).setValues([["", new Date().getTime() + 10 * 60 * 1000, token]]);
+    // שומרים את מזהה המשתמש — כדי שהקוד החדש ייקבע לו ולא למנהל
+    sh.getRange(1, 1, 1, 5).setValues([["", new Date().getTime() + 10 * 60 * 1000, token, String(v[3] || ""), 0]]);
     return { ok: true, resetToken: token };
   } catch (err) {
     return { ok: false, error: String(err) };
-  }
+  } finally { lock.releaseLock(); }
 }
 
-function consumeResetToken(token) {
+/* בודק את האסימון בלי לשרוף אותו — כך כשל "קוד תפוס" לא מאלץ
+   להתחיל את כל השחזור מחדש. הניקוי נעשה רק אחרי הצלחה. */
+function peekResetToken(token) {
   if (!token) return { ok: false, error: "no-token" };
   var sh = ss().getSheetByName(RESET_SHEET);
   if (!sh || sh.getLastRow() === 0) return { ok: false, error: "no-request" };
-  var v = sh.getRange(1, 1, 1, 3).getValues()[0];
+  var v = sh.getRange(1, 1, 1, 4).getValues()[0];
   var exp = Number(v[1] || 0);
   var stored = String(v[2] || "");
   if (!stored || stored !== token) return { ok: false, error: "bad-token" };
   if (new Date().getTime() > exp) { sh.clear(); return { ok: false, error: "expired" }; }
-  sh.clear();                       // חד-פעמי
-  return { ok: true };
+  return { ok: true, userId: String(v[3] || "") };
 }
+function clearReset() { var sh = ss().getSheetByName(RESET_SHEET); if (sh) sh.clear(); }
 
 /* ========================= שמירה וטעינה ========================= */
 /* שומר רק אם מונה הגרסה של הנשלח אינו נמוך מהשמור — עותק ישן ממכשיר
    אחר לא יכול לדרוס עבודה חדשה. נעילה מונעת מרוץ בין שמירות מקבילות. */
-function saveWithRevGuard(data) {
+function saveWithRevGuard(data, user) {
   var lock = LockService.getScriptLock();
   try { lock.waitLock(20000); } catch (e) { return { ok: false, error: "busy" }; }
   try {
@@ -202,7 +253,9 @@ function saveWithRevGuard(data) {
     if (storedRev > 0 && incomingRev < storedRev) {
       return { ok: false, error: "stale-rev", serverRev: storedRev };
     }
-    saveData(data);
+    // מיזוג לפי המשתמש: מה שלא שויך לו לא נדרס, וקודי כניסה נשמרים
+    var toSave = stored ? mergeSaveForUser(stored, data, user || {}) : data;
+    saveData(toSave);
     return { ok: true, savedAt: new Date().toISOString(), rev: incomingRev };
   } finally {
     lock.releaseLock();
@@ -336,3 +389,136 @@ function mapBy(arr, field) {
   (arr || []).forEach(function (x) { m[x.id] = x[field]; });
   return m;
 }
+
+/* ============================================================
+   סינון ומיזוג לפי משתמש — רץ בשרת (Apps Script), ES5 בלבד.
+   מקור האמת הוא הבלוב המלא בשרת. כל משתמש מקבל רק את מה ששויך לו,
+   וכששומר — השרת ממזג בחזרה כך ששום דבר שהוא לא ראה לא נדרס.
+   ============================================================ */
+
+function userCtx(user) {
+  var isAdmin = user && user.role === "admin";
+  var allowed = (user && user.allowedApartments) || [];
+  return { isAdmin: isAdmin, nonAdmin: !isAdmin,
+           limited: !isAdmin && allowed.length > 0, allowed: allowed };
+}
+function aptSetFor(data, ctx) {
+  var set = {};
+  (data.apartments || []).forEach(function (a) {
+    if (ctx.isAdmin || !ctx.limited || ctx.allowed.indexOf(a.id) >= 0) set[a.id] = 1;
+  });
+  return set;
+}
+function expSetFor(data, ctx, aptSet) {
+  var set = {};
+  (data.expenses || []).forEach(function (e) {
+    if (!aptSet[e.apartmentId]) return;
+    if (ctx.nonAdmin && e.hidden) return;
+    set[e.id] = 1;
+  });
+  return set;
+}
+function rowVisible(table, row, ctx, aptSet, expSet) {
+  switch (table) {
+    case "apartments":          return !!aptSet[row.id];
+    case "apartmentPartners":
+    case "managers":
+    case "deposits":
+    case "income":              return !!aptSet[row.apartmentId];
+    case "accounts":            return !row.apartmentId || !!aptSet[row.apartmentId];
+    case "expenses":            return !!expSet[row.id];
+    case "expenseSplits":
+    case "expenseManagerFees":  return !!expSet[row.expenseId];
+    case "payments":            return !!expSet[row.expenseId] && !(ctx.nonAdmin && row.hidden);
+    default:                    return true;
+  }
+}
+var SCOPED_TABLES = ["apartments","apartmentPartners","managers","accounts",
+  "deposits","income","expenses","expenseSplits","expenseManagerFees","payments"];
+
+/* ----- סינון בטעינה ----- */
+function scopeDataForUser(data, user) {
+  var ctx = userCtx(user);
+  var d = JSON.parse(JSON.stringify(data));
+  if (ctx.isAdmin) {
+    d.users = (d.users || []).map(function (u) {
+      var c = {}; for (var k in u) if (u.hasOwnProperty(k)) c[k] = u[k];
+      c.code = "***"; return c;
+    });
+    return d;
+  }
+  d.users = [];
+  var aptSet = aptSetFor(d, ctx), expSet = expSetFor(d, ctx, aptSet);
+  SCOPED_TABLES.forEach(function (T) {
+    d[T] = (d[T] || []).filter(function (r) { return rowVisible(T, r, ctx, aptSet, expSet); });
+  });
+  return d;
+}
+
+/* ----- מיזוג בשמירה ----- */
+function reconcileUserCodes(incoming, stored) {
+  var storedById = {};
+  (stored.users || []).forEach(function (u) { storedById[u.id] = u; });
+  (incoming.users || []).forEach(function (u) {
+    if (!u.code || u.code === "***") u.code = storedById[u.id] ? storedById[u.id].code : "";
+  });
+  var seen = {};
+  (incoming.users || []).forEach(function (u) {
+    if (u.deleted || !u.active || !u.code) return;
+    if (seen[u.code]) { if (storedById[u.id]) u.code = storedById[u.id].code; }   /* קוד כפול — משאירים ישן */
+    else seen[u.code] = 1;
+  });
+}
+function mergeSaveForUser(stored, incoming, user) {
+  var ctx = userCtx(user);
+  if (ctx.isAdmin) { reconcileUserCodes(incoming, stored); return incoming; }
+
+  var result = JSON.parse(JSON.stringify(incoming));
+  result.users = stored.users || [];
+  result.settings = stored.settings || result.settings;
+
+  var aptSet = aptSetFor(stored, ctx), expSet = expSetFor(stored, ctx, aptSet);
+  /* קבוצת הוצאות בהיקף המורשה — משורות ישנות וגם חדשות שנשלחו — כדי
+     לאמת שילדים (חלוקות/תשלומים) מצביעים להוצאה בהיקף המותר */
+  var allowedExp = {};
+  (stored.expenses || []).forEach(function (e) { if (aptSet[e.apartmentId]) allowedExp[e.id] = 1; });
+  (incoming.expenses || []).forEach(function (e) { if (aptSet[e.apartmentId]) allowedExp[e.id] = 1; });
+
+  SCOPED_TABLES.forEach(function (T) {
+    result[T] = result[T] || [];
+    var fromIncoming = {}; result[T].forEach(function (r) { fromIncoming[r.id] = 1; });
+    var storedIds = {}; (stored[T] || []).forEach(function (r) { storedIds[r.id] = 1; });
+
+    /* 1. שחזור כל שורה שהוסתרה מהמשתמש ואינה במה ששלח — לא נאבד דבר */
+    (stored[T] || []).forEach(function (row) {
+      if (!rowVisible(T, row, ctx, aptSet, expSet) && !fromIncoming[row.id]) result[T].push(row);
+    });
+    /* 2. חיטוי לשורות שהמשתמש שלח */
+    result[T] = result[T].filter(function (r) {
+      if (fromIncoming[r.id] && !storedIds[r.id] && !newRowAllowed(T, r, ctx, aptSet, allowedExp))
+        return false;                          /* הזרקה מחוץ להיקף — נזרק */
+      return true;
+    });
+    if (T === "expenses" || T === "payments") {
+      result[T].forEach(function (r) { if (fromIncoming[r.id]) delete r.hidden; }); /* רק מנהל מסתיר */
+    }
+  });
+  return result;
+}
+function newRowAllowed(table, row, ctx, aptSet, allowedExp) {
+  if (!ctx.limited) return true;
+  switch (table) {
+    case "apartments":          return false;
+    case "apartmentPartners":
+    case "managers":
+    case "deposits":
+    case "income":              return !!aptSet[row.apartmentId];
+    case "accounts":            return !row.apartmentId || !!aptSet[row.apartmentId];
+    case "expenses":            return !!aptSet[row.apartmentId];
+    case "expenseSplits":
+    case "expenseManagerFees":
+    case "payments":            return !!allowedExp[row.expenseId];
+    default:                    return true;
+  }
+}
+

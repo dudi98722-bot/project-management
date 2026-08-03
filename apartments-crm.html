@@ -273,8 +273,8 @@ function syncBadgeHtml(){
   var m={idle:["⏳","מתחבר…"],saving:["🔄","שומר לשיטס…"],ok:["✅","מסונכרן לשיטס"],
          err:["⚠️","שגיאת סנכרון — מנסה שוב"],local:["💾","מקומי בלבד — לא מחובר"]};
   var x=m[SYNC]||m.idle;
-  return '<span id="sync-badge" class="who" style="cursor:pointer" title="לחץ להגדרות סנכרון" '+
-    'onclick="go(\'settings\',{stab:\'sheets\'})">'+x[0]+' '+esc(x[1])+'</span>';
+  var clk=can("edit")?' style="cursor:pointer" title="לחץ להגדרות סנכרון" onclick="go(\'settings\',{stab:\'sheets\'})"':'';
+  return '<span id="sync-badge" class="who"'+clk+'>'+x[0]+' '+esc(x[1])+'</span>';
 }
 function setSync(s){ SYNC=s; var el=document.getElementById("sync-badge"); if(el){ el.outerHTML=syncBadgeHtml(); } }
 var CLASSIFICATIONS = {investment:"השקעה", ongoing:"שוטף", private:"פרטי"};
@@ -566,7 +566,9 @@ function normalizeDB(d){
   (d.apartmentPartners||[]).forEach(function(x){ x.defaultPercent=toNum(x.defaultPercent); });
   (d.managers||[]).forEach(function(m){ m.defaultFeePercent=toNum(m.defaultFeePercent); });
   (d.payments||[]).forEach(function(p){ p.amount=toNum(p.amount); p.date=toISO(p.date);
-    if(p.invoiceStatus==null) p.invoiceStatus=p.hasInvoice?"has":""; });
+    if(p.invoiceStatus==null) p.invoiceStatus=p.hasInvoice?"has":"";
+    if(p.hidden==null) p.hidden=false; });
+  (d.expenses||[]).forEach(function(e){ if(e.hidden==null) e.hidden=false; });
   (d.deposits||[]).forEach(function(x){ x.amount=toNum(x.amount); x.date=toISO(x.date); });
   (d.income||[]).forEach(function(x){ x.amount=toNum(x.amount); x.date=toISO(x.date);
     (x.split||[]).forEach(function(sp){ sp.percent=toNum(sp.percent); }); });
@@ -962,7 +964,7 @@ function renderViewInner(){
     case "apartment": renderApartment(c); break;
     case "reports": c.innerHTML=viewCrossPartner(); break;
     case "mgmt": c.innerHTML=moduleMgmtReport(); break;
-    case "settings": c.innerHTML=viewSettings(); break;
+    case "settings": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewSettings(); break;
     case "import": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewImport(); break;
     case "recycle": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewRecycle(); break;
     default: c.innerHTML=viewDashboard();
@@ -1049,13 +1051,29 @@ function logout(){
     }
   }
   SAVEQ.dirty=false; SAVEQ.inflight=false; SAVEQ.fails=0;
+  /* מנקים את המטמון מהדיסק — כך שמי שניגש למחשב אחרי יציאה לא רואה
+     שום נתון (וגם לא שרד hash של קוד כניסה). */
+  try{ localStorage.removeItem(LSKEY); localStorage.removeItem(LSKEY+"_dirty"); localStorage.removeItem(LSKEY+"_stash"); }catch(e){}
+  DB=blankDB(); UNDO.length=0;
   setAuth(""); CU=null; renderApp();
 }
 /* ---------- שחזור קוד כניסה במייל (דרך Apps Script) ---------- */
 async function forgotCode(){
+  /* הקוד נשלח למייל של המשתמש הספציפי — לכן חייבים לדעת מי מבקש */
+  var name=(document.getElementById("lg-user")?val("lg-user").trim():"");
+  if(!name){
+    toast("הזן קודם את שם המשתמש למעלה — קוד השחזור יישלח למייל שמשויך לו","err");
+    var el=document.getElementById("lg-user"); if(el) el.focus();
+    return;
+  }
   toast("שולח קוד שחזור למייל…","ok");
-  var j=await api("action=requestReset");
-  if(!j||!j.ok){ toast("שליחת הקוד נכשלה"+((j&&j.error)?": "+j.error:""),"err"); return; }
+  var j=await api("action=requestReset&user="+encodeURIComponent(name));
+  if(!j||!j.ok){
+    var m={"user-not-found":"לא נמצא משתמש פעיל בשם הזה",
+           "no-email":"למשתמש הזה לא משויך מייל — בקש מהמנהל לקבוע לך קוד חדש (הגדרות ← משתמשים)"};
+    toast(m[j&&j.error]||("שליחת הקוד נכשלה"+((j&&j.error)?": "+j.error:"")),"err");
+    return;
+  }
   openResetCodeModal(j.sentTo||"");
 }
 function openResetCodeModal(sentTo){
@@ -1075,7 +1093,12 @@ async function doResetCode(){
   }
   var h=await hashCode(nw);
   var s=await api({action:"setCode",resetToken:v.resetToken,codeHash:h});
-  if(!s||!s.ok){ toast("קביעת הקוד נכשלה"+((s&&s.error)?": "+s.error:""),"err"); return; }
+  if(!s||!s.ok){
+    toast(s&&s.error==="code-taken"
+      ?"הקוד החדש כבר שייך למשתמש אחר — בחר קוד אחר"
+      :"קביעת הקוד נכשלה"+((s&&s.error)?": "+s.error:""),"err");
+    return;
+  }
   closeModal(); setAuth(h);
   var j=await api({action:"login",codeHash:h});
   if(j&&j.ok){
@@ -2141,7 +2164,7 @@ function xlsxBlob(sheets){
 }
 /* שער מרכזי להורדות: משתמש בהרשאת צפייה בלבד אינו מוריד קבצים.
    הכפתורים מוסתרים ממנו ממילא, אבל השער כאן חוסם גם קריאה ישירה. */
-function canDownload(){ return !CU || can("edit"); }
+function canDownload(){ return can("edit"); }   /* מחייב משתמש מחובר עם הרשאת עריכה */
 function downloadBlob(blob,filename){
   if(!canDownload()){ toast("להורדת קבצים נדרשת הרשאת עריכה — פנה למנהל","err"); return; }
   var url=URL.createObjectURL(blob), a=document.createElement("a");
@@ -2761,7 +2784,7 @@ function expTableHtml(aptId){
       (isChild?' style="background:#fbfcff"':(cont?' style="background:#f5f8ff"':''))+'><td>'+dateHe(e.date)+'</td>'+
       '<td'+(isChild?' style="padding-right:26px"':'')+'>'+
         (isChild?'<span class="muted">↳ </span>':'')+
-        '<b>'+esc(e.description)+'</b>'+(e.hasInvoice?' 📎':'')+
+        '<b>'+esc(e.description)+'</b>'+(e.hidden?' <span class="badge badge-danger" title="מוסתר משאר המשתמשים">🔒 מוסתר</span>':'')+(e.hasInvoice?' 📎':'')+
         (cont?' <span class="pill" data-xl-skip="1">'+kids.length+' תתי-שלבים</span>':'')+'</td>'+
       '<td>'+(CLASSIFICATIONS[e.classification]||"")+'</td>'+
       '<td><b>'+money(e.amount)+'</b>'+(cont?'<div class="muted" data-xl-skip="1" style="font-size:11px">סך תתי-השלבים</div>':'')+'</td>'+
@@ -3009,6 +3032,7 @@ function openExpenseEditor(eId,aptId,presetParent){
        '<div class="hint">למשל: "חשמל 5-22" תחת "חשמל". הסכום, החלוקה והתשלומים נרשמים בתת-השלב, והאב מציג את הסיכום ("חשמל 15,000, מתוכו 7,500 ל-5/22 ו-7,500 ל-6/22").</div></div>')+
      '<div class="field full"><label>הערה</label><input id="ex-note" value="'+esc(e?e.note:"")+'" placeholder="הערה חופשית"></div>'+
      '<div class="field full"><label><input type="checkbox" id="ex-inv" style="width:auto" '+(e&&e.hasInvoice?"checked":"")+'> יש חשבונית/קבלה</label><input id="ex-link" placeholder="קישור לקבלה (אופציונלי)" value="'+esc(e?e.invoiceLink:"")+'" style="margin-top:4px"></div>'+
+     (CU&&CU.role==="admin"?'<div class="field full" style="background:#fff7f7;border:1px solid #f0d0d0;border-radius:10px;padding:8px"><label><input type="checkbox" id="ex-hidden" style="width:auto" '+(e&&e.hidden?"checked":"")+'> 🔒 מוסתר משאר המשתמשים</label><div class="hint">שלב זה (וכל התשלומים והחלוקה שלו) יופיע רק אצל מנהל. משתמשים אחרים לא יראו אותו כלל — גם לא בסכומים ובדוחות.</div></div>':'')+
     '</div>'+
     /* למכל אין חלוקה ודמי ניהול משלו — הם מוגדרים בכל תת-שלב בנפרד */
     (cont?'' :
@@ -3116,6 +3140,8 @@ function saveExpense(eId,aptId){
   e.classification=val("ex-class"); e.note=val("ex-note");
   if(hasParentField) e.parentId = pv || null;
   e.hasInvoice=checked("ex-inv"); e.invoiceLink=val("ex-link");
+  if(CU&&CU.role==="admin"&&document.getElementById("ex-hidden")) e.hidden=checked("ex-hidden");
+  else if(e.hidden==null) e.hidden=false;
   /* דמי ניהול — נוגעים בהם אך ורק כשהמקטע באמת הוצג על המסך.
      קודם: כל שמירה מחקה את דמי הניהול ובנתה מחדש רק אם התיבה סומנה,
      כך ששמירה ממצב שבו המקטע לא הוצג מחקה את הנתונים בשקט. */
@@ -3332,7 +3358,7 @@ function payTableHtml(aptId){
     h+='<tr>'+
       (sel?'<td><input type="checkbox" class="pb-x" value="'+p.id+'" style="width:auto" onchange="pbCount()"></td>':'')+
       '<td>'+dateHe(p.date)+'</td>'+
-      '<td><b>'+esc(e?e.description:"—")+'</b></td>'+
+      '<td><b>'+esc(e?e.description:"—")+'</b>'+(p.hidden?' <span class="badge badge-danger" title="תשלום מוסתר">🔒</span>':'')+'</td>'+
       '<td>'+money(p.amount)+'</td>'+
       '<td>'+esc(acc?acc.name:"ידני")+(acc&&acc.isBank?" 🏦":"")+'</td>'+
       '<td>'+(p.payerPartnerId?esc(partnerName(p.payerPartnerId)):(accountIsBank(p.accountId)?'<span class="muted">מהבנק</span>':"—"))+'</td>'+
@@ -3704,6 +3730,7 @@ function openPaymentEditor(eId,payId){
     '<div class="field full"><label>חשבונית</label><select id="pm-invoice-st">'+
       invoiceStatusOptions(p?payInvoiceStatus(p):"",false)+'</select>'+
       '<input id="pm-link" placeholder="קישור לחשבונית (אופציונלי)" value="'+esc(p?p.invoiceLink:"")+'" style="margin-top:4px"></div>'+
+    (CU&&CU.role==="admin"?'<div class="field full" style="background:#fff7f7;border:1px solid #f0d0d0;border-radius:10px;padding:8px"><label><input type="checkbox" id="pm-hidden" style="width:auto" '+(p&&p.hidden?"checked":"")+'> 🔒 תשלום מוסתר משאר המשתמשים</label><div class="hint">רק מנהל יראה את התשלום הזה.</div></div>':'')+
     '<div class="field full"><label>הערה</label><input id="pm-note" value="'+esc(p?p.note:"")+'"></div>'+
     '</div>'+
     (partners.length?'<div class="hint">תשלום מחשבון בנק 🏦 יורד מיתרת הבנק ואינו משויך לשותף. תשלום מחשבון שותף נחשב לתרומה שלו.</div>':'');
@@ -3757,6 +3784,7 @@ function savePayment(eId,payId){
   var obj={id:payId||uid(),expenseId:eId,date:val("pm-date")||todayISO(),amount:amount,accountId:accountId,
     payerPartnerId:payer,method:val("pm-method"),recipientType:recipientType,recipientManagerId:recipientManagerId,
     invoiceStatus:val("pm-invoice-st")||"",hasInvoice:(val("pm-invoice-st")==="has"),
+    hidden:(CU&&CU.role==="admin"&&document.getElementById("pm-hidden"))?checked("pm-hidden"):(!!(payId&&byId(DB.payments,payId)&&byId(DB.payments,payId).hidden)),
     invoiceLink:val("pm-link"),note:val("pm-note"),deleted:false};
   if(payId){ Object.assign(byId(DB.payments,payId),obj); } else DB.payments.push(obj);
   syncAutoMgmtPayments(eId);   // ידני חדש מצמצם את האוטומטי בהתאם לתקרה
@@ -5050,10 +5078,10 @@ function moduleSettings(){
   } else if(tab==="users"){
     if(!can("manageUsers")) return h+'<div class="empty">אין הרשאה</div>';
     h+='<div class="toolbar"><button class="btn btn-primary btn-sm" onclick="editUser(null)">➕ משתמש</button></div>';
-    h+='<div class="table-wrap"><table class="tbl"><thead><tr><th>שם</th><th>תפקיד</th><th>דירות מורשות</th><th>פעיל</th><th></th></tr></thead><tbody>';
+    h+='<div class="table-wrap"><table class="tbl"><thead><tr><th>שם</th><th>מייל לשחזור</th><th>תפקיד</th><th>דירות מורשות</th><th>פעיל</th><th></th></tr></thead><tbody>';
     active(DB.users).forEach(function(u){
       var apts=(u.allowedApartments&&u.allowedApartments.length)?u.allowedApartments.map(function(id){var a=byId(DB.apartments,id);return a?a.name:"";}).join(", "):"הכל";
-      h+='<tr><td>'+esc(u.name)+'</td><td>'+(ROLES[u.role]||"")+'</td><td>'+esc(apts)+'</td><td>'+(u.active?"✔️":"—")+'</td>'+
+      h+='<tr><td>'+esc(u.name)+'</td><td>'+(u.email?esc(u.email):'<span class="muted">— אין</span>')+'</td><td>'+(ROLES[u.role]||"")+'</td><td>'+esc(apts)+'</td><td>'+(u.active?"✔️":"—")+'</td>'+
         '<td class="right"><button class="btn btn-ghost btn-sm" onclick="editUser(\''+u.id+'\')">✏️</button>'+(u.id===CU.id?'':' <button class="btn btn-ghost btn-sm" onclick="softDelete(\'users\',\''+u.id+'\',\'למחוק משתמש?\')">🗑️</button>')+'</td></tr>';
     });
     h+='</tbody></table></div><div class="hint">קודי הכניסה נשמרים מוצפנים (SHA-256) ואינם ניתנים לצפייה. '+
@@ -5385,6 +5413,8 @@ function editUser(id){
   var aptChecks=active(DB.apartments).map(function(a){return '<label style="font-weight:400"><input type="checkbox" class="u-apt" value="'+a.id+'" style="width:auto" '+((u.allowedApartments||[]).indexOf(a.id)>=0?"checked":"")+'> '+esc(a.name)+'</label>';}).join("");
   openModal({title:id?"עריכת משתמש":"משתמש חדש",bodyHtml:
     '<div class="field"><label>שם</label><input id="us-name" value="'+esc(u.name)+'"></div>'+
+    '<div class="field"><label>מייל לשחזור קוד</label><input id="us-email" type="email" value="'+esc(u.email||"")+'" placeholder="name@gmail.com">'+
+      '<div class="hint">אם המשתמש ישכח את הקוד — קוד השחזור יישלח לכתובת הזו.</div></div>'+
     '<div class="field"><label>תפקיד</label><select id="us-role">'+Object.keys(ROLES).map(function(k){return '<option value="'+k+'"'+(u.role===k?" selected":"")+'>'+ROLES[k]+'</option>';}).join("")+'</select></div>'+
     '<div class="field"><label>שיוך לשותף (לתפקיד "שותף")</label><select id="us-partner"><option value="">—</option>'+active(DB.partners).map(function(p){return '<option value="'+p.id+'"'+(u.partnerId===p.id?" selected":"")+'>'+esc(p.name)+'</option>';}).join("")+'</select></div>'+
     '<div class="field"><label>קוד כניסה '+(id?"(השאר ריק כדי לא לשנות)":"")+'</label><input id="us-code" type="password" placeholder="קוד"></div>'+
@@ -5394,6 +5424,8 @@ function editUser(id){
 }
 async function saveUser(id,u){
   var name=val("us-name").trim(); if(!name){ toast("שם חסר","err"); return; }
+  var email=val("us-email").trim();
+  if(email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ toast("כתובת המייל אינה תקינה","err"); return; }
   var apts=Array.prototype.slice.call(document.querySelectorAll(".u-apt:checked")).map(function(c){return c.value;});
   var code=val("us-code"); var pid=val("us-partner")||null;
   var role=val("us-role");
@@ -5406,12 +5438,12 @@ async function saveUser(id,u){
     if(clash){ toast('הקוד הזה כבר שייך למשתמש "'+clash.name+'" — בחר קוד אחר',"err"); return; }
   }
   if(id){
-    u.name=name; u.role=role; u.allowedApartments=apts; u.partnerId=pid; u.active=checked("us-active");
+    u.name=name; u.email=email; u.role=role; u.allowedApartments=apts; u.partnerId=pid; u.active=checked("us-active");
     if(code) u.code=await hashCode(code);
   }
   else{
     if(!code){ toast("יש להזין קוד","err"); return; }
-    DB.users.push({id:uid(),name:name,role:role,code:await hashCode(code),
+    DB.users.push({id:uid(),name:name,email:email,role:role,code:await hashCode(code),
       allowedApartments:apts,partnerId:pid,active:checked("us-active"),deleted:false});
   }
   save(); closeModal(); rerender();
