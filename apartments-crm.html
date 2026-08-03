@@ -203,21 +203,39 @@ td.empty{text-align:center;color:var(--muted);padding:22px}
   width:32px;height:32px;border-radius:9px;transition:background .15s}
 .x:hover{background:#e5e8f6;color:var(--ink)}
 
-/* ===== מסך כניסה ===== */
-.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
-  background:linear-gradient(135deg,#1e1b4b,#312e81 40%,#4338ca 75%,#6366f1);
-  background-size:200% 200%;animation:loginbg 14s ease infinite}
-@keyframes loginbg{0%{background-position:0% 40%}50%{background-position:100% 60%}100%{background-position:0% 40%}}
-.login-card{background:#fff;border-radius:22px;padding:36px 34px;width:100%;max-width:390px;
-  box-shadow:0 30px 80px rgba(2,6,23,.5);text-align:center}
-.login-icon{width:80px;height:80px;margin:0 auto 4px;display:grid;place-items:center;
-  background:linear-gradient(150deg,#4f46e5,#6366f1 45%,#38bdf8);border-radius:22px;
-  box-shadow:0 14px 30px rgba(79,70,229,.42)}
-.login-icon svg{width:44px;height:44px}
+/* ===== מסך כניסה — יוקרתי בזהב ===== */
+.login-wrap{position:relative;overflow:hidden;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
+  background:
+    radial-gradient(circle at 20% 16%, rgba(245,222,150,.30), transparent 42%),
+    radial-gradient(circle at 84% 82%, rgba(176,141,42,.30), transparent 48%),
+    linear-gradient(135deg,#12100a 0%,#241d0f 38%,#3c2f16 70%,#171208 100%);
+  background-size:100% 100%,100% 100%,200% 200%;animation:loginbg 16s ease infinite}
+/* ברק זהב אלכסוני שנע לאט — נגיעה יוקרתית */
+.login-wrap::before{content:"";position:absolute;inset:-40%;pointer-events:none;
+  background:linear-gradient(115deg,transparent 38%,rgba(245,224,150,.10) 48%,rgba(255,241,196,.16) 50%,rgba(245,224,150,.10) 52%,transparent 62%);
+  animation:goldsheen 9s ease-in-out infinite}
+/* מסגרת עדינה בפינות — כמו כרטיס יוקרה */
+.login-wrap::after{content:"";position:absolute;inset:16px;pointer-events:none;border-radius:20px;
+  border:1px solid rgba(212,175,55,.16);box-shadow:inset 0 0 60px rgba(212,175,55,.06)}
+@keyframes loginbg{0%{background-position:0 0,0 0,0% 40%}50%{background-position:0 0,0 0,100% 60%}100%{background-position:0 0,0 0,0% 40%}}
+@keyframes goldsheen{0%{transform:translateX(-22%)}50%{transform:translateX(22%)}100%{transform:translateX(-22%)}}
+.login-card{position:relative;z-index:1;background:linear-gradient(180deg,#fffdf6,#fff);border-radius:22px;
+  padding:38px 34px;width:100%;max-width:390px;text-align:center;
+  border:1px solid rgba(212,175,55,.4);
+  box-shadow:0 30px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(212,175,55,.12), inset 0 1px 0 rgba(255,255,255,.9)}
+.login-icon{width:82px;height:82px;margin:0 auto 4px;display:grid;place-items:center;border-radius:22px;
+  background:linear-gradient(150deg,#f4e2a1 0%,#d4af37 46%,#9c7317 100%);
+  box-shadow:0 14px 34px rgba(154,115,23,.45), inset 0 1px 2px rgba(255,255,255,.6)}
+.login-icon svg{width:44px;height:44px;filter:drop-shadow(0 1px 2px rgba(90,60,0,.35))}
 .login-card h1{font-size:22px;margin:16px 0 2px;font-weight:800;letter-spacing:-.01em;
-  background:linear-gradient(90deg,#4338ca,#4f46e5 50%,#0ea5e9);-webkit-background-clip:text;background-clip:text;color:transparent}
-.login-card .brand-tag{color:#6366f1;margin:2px 0 20px;font-size:13px;font-weight:600;letter-spacing:.03em}
+  background:linear-gradient(90deg,#8a6410,#c69320 45%,#e6c667);-webkit-background-clip:text;background-clip:text;color:transparent}
+.login-card .brand-tag{color:#a9791c;margin:2px 0 22px;font-size:13px;font-weight:700;letter-spacing:.04em}
 .login-card p{color:var(--muted);margin:0 0 22px;font-size:13.5px}
+.login-card .field input:focus{border-color:#d4af37;box-shadow:0 0 0 3.5px rgba(212,175,55,.2)}
+.login-card .btn-primary{background:linear-gradient(135deg,#caa53c,#b8860b 60%,#9c7317);border:none;
+  box-shadow:0 8px 22px rgba(154,115,23,.4)}
+.login-card .btn-primary:hover{background:linear-gradient(135deg,#d6b24a,#c69320 60%,#a9791c)}
+.login-card a{color:#a9791c}
 
 /* ===== טוסטים ===== */
 #toasts{position:fixed;bottom:18px;left:18px;z-index:90;display:flex;flex-direction:column;gap:8px}
