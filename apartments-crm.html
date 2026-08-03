@@ -165,6 +165,8 @@ table.tbl tfoot td{font-weight:800;background:#eef1fa;border-top:2px solid #d9de
 .badge-warn{background:#fffbeb;color:#b45309;border:1px solid #fde68a}
 .badge-danger{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca}
 .badge-muted{background:#f1f5f9;color:#475569;border:1px solid #e2e8f0}
+.badge-mgmt{background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe;font-weight:600}
+tr.mgmt-row>td{background:#f7f8ff}
 .pill{background:var(--chip);color:var(--brand-d);padding:2.5px 10px;border-radius:999px;
   font-size:11.5px;font-weight:700;border:1px solid #dfe4ff}
 .muted{color:var(--muted)}
@@ -273,7 +275,7 @@ function syncBadgeHtml(){
   var m={idle:["⏳","מתחבר…"],saving:["🔄","שומר לשיטס…"],ok:["✅","מסונכרן לשיטס"],
          err:["⚠️","שגיאת סנכרון — מנסה שוב"],local:["💾","מקומי בלבד — לא מחובר"]};
   var x=m[SYNC]||m.idle;
-  var clk=can("edit")?' style="cursor:pointer" title="לחץ להגדרות סנכרון" onclick="go(\'settings\',{stab:\'sheets\'})"':'';
+  var clk=can("settings")?' style="cursor:pointer" title="לחץ להגדרות סנכרון" onclick="go(\'settings\',{stab:\'sheets\'})"':'';
   return '<span id="sync-badge" class="who"'+clk+'>'+x[0]+' '+esc(x[1])+'</span>';
 }
 function setSync(s){ SYNC=s; var el=document.getElementById("sync-badge"); if(el){ el.outerHTML=syncBadgeHtml(); } }
@@ -569,6 +571,7 @@ function normalizeDB(d){
     if(p.invoiceStatus==null) p.invoiceStatus=p.hasInvoice?"has":"";
     if(p.hidden==null) p.hidden=false; });
   (d.expenses||[]).forEach(function(e){ if(e.hidden==null) e.hidden=false; });
+  (d.apartments||[]).forEach(function(a){ (a.splitPresets||[]).forEach(function(p){ (p.rows||[]).forEach(function(r){ r.percent=toNum(r.percent); }); }); });
   (d.deposits||[]).forEach(function(x){ x.amount=toNum(x.amount); x.date=toISO(x.date); });
   (d.income||[]).forEach(function(x){ x.amount=toNum(x.amount); x.date=toISO(x.date);
     (x.split||[]).forEach(function(sp){ sp.percent=toNum(sp.percent); }); });
@@ -900,7 +903,7 @@ function softDelete(entity,id,msg){
 /* ============================================================
    ניווט / ראוטר
    ============================================================ */
-function go(view,params){ state.view=view; state.params=params||{}; window.scrollTo(0,0); rerender(); }
+function go(view,params){ COLFILT={}; state.view=view; state.params=params||{}; window.scrollTo(0,0); rerender(); }
 function currentApartment(){ return byId(DB.apartments, state.params.apartmentId); }
 function rerender(){ renderApp(); }
 
@@ -964,7 +967,7 @@ function renderViewInner(){
     case "apartment": renderApartment(c); break;
     case "reports": c.innerHTML=viewCrossPartner(); break;
     case "mgmt": c.innerHTML=moduleMgmtReport(); break;
-    case "settings": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewSettings(); break;
+    case "settings": if(!can("settings")){ toast("אין לך גישה להגדרות","err"); go("dashboard",{}); return; } c.innerHTML=viewSettings(); break;
     case "import": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewImport(); break;
     case "recycle": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewRecycle(); break;
     default: c.innerHTML=viewDashboard();
@@ -1834,7 +1837,7 @@ async function boot(){
    מודולים
    ============================================================ */
 /* ---------- חיפוש וסינון ---------- */
-var Q={apts:"",exp:"",expStatus:"",expClass:"",quick:"",partners:"",cross:"",recycle:"",pay:"",payWho:"",paySrc:"",payInv:""};
+var Q={apts:"",exp:"",expStatus:"",expClass:"",quick:"",partners:"",cross:"",recycle:"",pay:"",payWho:"",paySrc:"",payInv:"",ppWho:""};
 /* כל מילה בשאילתה חייבת להופיע — מאפשר "עורך דין קופר" ו"קופר דין" כאחד */
 function matches(q,text){
   q=String(q||"").trim().toLowerCase(); if(!q) return true;
@@ -1850,6 +1853,14 @@ function searchBox(id,val,ph,handler){
    עובד על כל טבלה: מוסיף שורת שדות מתחת לכותרות, ומיון בלחיצה.
    פועל על ה-DOM בלבד, כך שהוא חל על כל דוח בלי שינוי בקוד שלו.
    ============================================================ */
+/* סינון-העמודות יושב ב-DOM, ולכן רינדור מחדש (למשל אחרי עריכת שורה)
+   היה מאפס אותו. שומרים את ערכי הסינון לפי חתימת הכותרות ומשחזרים
+   אותם כשהטבלה נבנית מחדש — כך הסינון שורד עריכה. מתאפס בניווט. */
+var COLFILT={};
+function tableSig(t){
+  var hr=t.tHead&&t.tHead.rows[0]; if(!hr) return "";
+  return Array.prototype.map.call(hr.cells,function(c){ return String(c.textContent||"").replace(/[▲▼]/g,"").trim(); }).join("|");
+}
 function attachTableTools(root){
   var scope=root||document;
   scope.querySelectorAll("table.tbl").forEach(function(t){
@@ -1883,15 +1894,27 @@ function attachTableTools(root){
       inp.addEventListener("input",function(){ applyColFilters(t); });
       inp.addEventListener("click",function(e){ e.stopPropagation(); });
     });
+    /* שחזור סינון קודם של אותה טבלה (שרד עריכה/רינדור) */
+    var saved=COLFILT[tableSig(t)];
+    if(saved){
+      var any=false;
+      fr.querySelectorAll(".col-f").forEach(function(inp){
+        var v=saved[inp.getAttribute("data-col")];
+        if(v){ inp.value=v; any=true; }
+      });
+      if(any) applyColFilters(t);
+    }
   });
 }
 function applyColFilters(t){
   var fr=t.querySelector("thead tr.filter-row"); if(!fr) return;
-  var f=[];
+  var f=[], mem={};
   fr.querySelectorAll(".col-f").forEach(function(inp){
     var v=String(inp.value||"").trim();
-    if(v) f.push({col:Number(inp.getAttribute("data-col")),q:v});
+    if(v){ f.push({col:Number(inp.getAttribute("data-col")),q:v}); mem[inp.getAttribute("data-col")]=v; }
   });
+  /* שומרים את מצב הסינון כדי שישרוד עריכה/רינדור */
+  var sig=tableSig(t); if(f.length) COLFILT[sig]=mem; else delete COLFILT[sig];
   var body=t.tBodies[0], shown=0;
   Array.prototype.forEach.call(body.rows,function(tr){
     var vis=f.every(function(x){
@@ -2615,6 +2638,7 @@ function modulePartners(aptId){
   h+='</tbody><tfoot><tr><td>סה"כ</td><td class="'+(Math.abs(sum-100)<0.01?"pos":"neg")+'">'+num(sum)+'%</td><td></td></tr></tfoot></table></div>';
   if(Math.abs(sum-100)>=0.01) h+='<div class="hint neg">שים לב: סכום האחוזים אינו 100%.</div>';
   h+='</div>';
+  h+=splitPresetsCardHtml(aptId);
   return h;
 }
 function addApartmentPartner(aptId){
@@ -2645,6 +2669,7 @@ function moduleExpenses(aptId){
   var exps=apExpenses(aptId);
   var h='<div class="toolbar"><h3 style="margin:0">הוצאות / שלבים</h3><div class="sp"></div>'+
     (can("edit")?'<button class="btn btn-primary btn-sm" onclick="openExpenseEditor(null,\''+aptId+'\')">➕ הוצאה חדשה</button>':'')+
+    (can("edit")&&exps.length?' <button class="btn btn-sm" onclick="openBulkExpEdit(\''+aptId+'\')">✏️ עדכון מרוכז <span id="eb-count"></span></button>':'')+
     (can("edit")&&exps.length?' <button class="btn btn-sm" onclick="openBulkMgmt(\''+aptId+'\')">💼 דמי ניהול מרוכז</button>':'')+
     (can("edit")&&exps.length?' <button class="btn btn-danger btn-sm" onclick="deleteApartmentExpenses(\''+aptId+'\')">🗑️ מחק הכל</button>':'')+'</div>';
   if(!exps.length) return h+'<div class="empty">אין הוצאות עדיין.</div>';
@@ -2769,7 +2794,10 @@ function expTableHtml(aptId){
   var cnt=document.getElementById("exp-count");
   if(cnt) cnt.innerHTML=countLine(exps.length,all.length,"שלבים");
   if(!exps.length) return '<div class="empty">לא נמצא שלב שמתאים לסינון</div>';
-  var h='<div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>תיאור</th><th>סיווג</th><th>סכום</th>'+
+  var selC=can("edit");
+  var h='<div class="table-wrap"><table class="tbl"><thead><tr>'+
+    (selC?'<th data-xl-skip="1" style="width:30px"><input type="checkbox" title="סמן הכל" style="width:auto" onclick="ebAll(this.checked)"></th>':'')+
+    '<th>תאריך</th><th>תיאור</th><th>סיווג</th><th>סכום</th>'+
     (a.hasManagement?'<th>דמי ניהול</th>':'')+'<th>שולם</th><th>נותר</th><th>סטטוס</th><th></th></tr></thead><tbody>';
 
   /* שורת שלב — נעשה שימוש גם לאב וגם לתת-שלב */
@@ -2781,7 +2809,9 @@ function expTableHtml(aptId){
     var kids=expenseChildren(e.id), cont=kids.length>0;
     var mg=expenseMgmtCostLive(e.id);
     return '<tr data-eid="'+e.id+'"'+(isChild?' data-parent="'+e.parentId+'"':'')+
-      (isChild?' style="background:#fbfcff"':(cont?' style="background:#f5f8ff"':''))+'><td>'+dateHe(e.date)+'</td>'+
+      (isChild?' style="background:#fbfcff"':(cont?' style="background:#f5f8ff"':''))+'>'+
+      (selC?'<td>'+(cont?'':'<input type="checkbox" class="eb-x" value="'+e.id+'" style="width:auto" onchange="ebCount()">')+'</td>':'')+
+      '<td>'+dateHe(e.date)+'</td>'+
       '<td'+(isChild?' style="padding-right:26px"':'')+'>'+
         (isChild?'<span class="muted">↳ </span>':'')+
         '<b>'+esc(e.description)+'</b>'+(e.hidden?' <span class="badge badge-danger" title="מוסתר משאר המשתמשים">🔒 מוסתר</span>':'')+(e.hasInvoice?' 📎':'')+
@@ -2794,7 +2824,6 @@ function expTableHtml(aptId){
         /* למכל אין תשלומים משלו — הכסף יושב בתתי-השלבים */
         (cont?'':'<button class="btn btn-ghost btn-sm" onclick="openPayments(\''+e.id+'\')" title="תשלומים">💳</button>')+
         (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="openExpenseEditor(\''+e.id+'\',\''+aptId+'\')" title="עריכה">✏️</button>'+
-        (isChild?'':'<button class="btn btn-ghost btn-sm" onclick="addSubExpense(\''+e.id+'\')" title="הוסף תת-שלב">➕</button>')+
         '<button class="btn btn-ghost btn-sm" onclick="softDelete(\'expenses\',\''+e.id+'\',\'למחוק הוצאה זו?\')">🗑️</button>':'')+'</td></tr>';
   }
 
@@ -2813,9 +2842,205 @@ function expTableHtml(aptId){
       .forEach(function(k){ h+=rowFor(k,true); });
   });
   var lbl=(exps.length===all.length)?'סה"כ':'סה"כ המסונן';
-  h+='</tbody><tfoot><tr><td colspan="3">'+lbl+'</td><td>'+money(tot)+'</td>'+(a.hasManagement?'<td></td>':'')+'<td>'+money(totPaid)+'</td><td>'+money(tot-totPaid)+'</td><td colspan="2"></td></tr></tfoot></table></div>';
+  h+='</tbody><tfoot><tr><td colspan="'+(selC?4:3)+'">'+lbl+'</td><td>'+money(tot)+'</td>'+(a.hasManagement?'<td></td>':'')+'<td>'+money(totPaid)+'</td><td>'+money(tot-totPaid)+'</td><td colspan="2"></td></tr></tfoot></table></div>';
   return h;
 }
+/* ============================================================
+   עדכון מרוכז להוצאות — כמו בתשלומים
+   ============================================================ */
+function ebVisibleBoxes(sel){ return visibleBoxes(sel||".eb-x"); }
+function ebAll(v){ ebVisibleBoxes().forEach(function(c){ c.checked=v; }); ebCount(); }
+function ebCount(){
+  var n=ebVisibleBoxes(".eb-x:checked").length;
+  var hidden=document.querySelectorAll(".eb-x:checked").length-n;
+  var el=document.getElementById("eb-count");
+  if(el) el.textContent=n?("("+n+(hidden?" · "+hidden+" מוסתרים בסינון לא ישתנו":"")+")"):"";
+}
+function openBulkExpEdit(aptId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var ids=ebVisibleBoxes(".eb-x:checked").map(function(c){ return c.value; });
+  if(!ids.length){ toast("סמן קודם שלבים לעדכון (העמודה הראשונה בטבלה)","warn"); return; }
+  var a=byId(DB.apartments,aptId);
+  var exps=ids.map(function(id){ return byId(DB.expenses,id); }).filter(Boolean);
+  openModal({title:"✏️ עדכון מרוכז — "+exps.length+" שלבים",wide:true,bodyHtml:
+    '<div class="hint" style="margin-bottom:10px">שדה שנשאר על <b>"— ללא שינוי —"</b> לא ישתנה באף שלב.</div>'+
+    '<div class="form-grid">'+
+      '<div class="field"><label>קטגוריה</label><select id="eb-cat" onfocus="this.setAttribute(\'data-prev\',this.value)" onchange="onCatPick(\'eb-cat\')">'+
+        '<option value="__keep">— ללא שינוי —</option>'+
+        '<option value="">ללא קטגוריה</option>'+
+        catsSorted().map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>'; }).join("")+
+        '<option value="__new">➕ קטגוריה חדשה…</option></select></div>'+
+      '<div class="field"><label>סיווג</label><select id="eb-class">'+
+        '<option value="__keep">— ללא שינוי —</option>'+
+        Object.keys(CLASSIFICATIONS).map(function(k){ return '<option value="'+k+'">'+CLASSIFICATIONS[k]+'</option>'; }).join("")+'</select></div>'+
+      '<div class="field"><label>תאריך</label><input id="eb-date" type="date"><div class="hint">ריק = ללא שינוי</div></div>'+
+      (a&&a.hasManagement?'<div class="field"><label>דמי ניהול</label><select id="eb-mgmt">'+
+        '<option value="__keep">— ללא שינוי —</option><option value="on">הפעל</option><option value="off">כבה</option></select></div>':'')+
+    '</div>'+
+    (CU&&CU.role==="admin"?'<div class="field" style="background:#fff7f7;border:1px solid #f0d0d0;border-radius:10px;padding:8px"><label>🔒 הסתרה משאר המשתמשים</label>'+
+      '<select id="eb-hidden"><option value="__keep">— ללא שינוי —</option><option value="on">הסתר</option><option value="off">חשוף</option></select></div>':''),
+    saveLabel:"עדכן "+exps.length+" שלבים",onSave:function(){ return applyBulkExpEdit(aptId,ids); }});
+}
+function applyBulkExpEdit(aptId,ids){
+  if(!can("edit")){ toast("אין הרשאה","err"); return false; }
+  var cat=val("eb-cat"), cls=val("eb-class"), date=val("eb-date");
+  var mg=document.getElementById("eb-mgmt")?val("eb-mgmt"):"__keep";
+  var hid=document.getElementById("eb-hidden")?val("eb-hidden"):"__keep";
+  if((cat==="__keep"||cat==="__new") && cls==="__keep" && !date && mg==="__keep" && hid==="__keep"){
+    toast("לא נבחר מה לעדכן","warn"); return false;
+  }
+  var n=0;
+  ids.forEach(function(id){
+    var e=byId(DB.expenses,id); if(!e||e.deleted) return;
+    if(cat!=="__keep" && cat!=="__new") e.categoryId=cat;
+    if(cls!=="__keep") e.classification=cls;
+    if(date) e.date=date;
+    if(mg==="on") e.mgmtEnabled=true; else if(mg==="off") e.mgmtEnabled=false;
+    if(CU&&CU.role==="admin"){ if(hid==="on") e.hidden=true; else if(hid==="off") e.hidden=false; }
+    n++;
+  });
+  save(); toast("עודכנו "+n+" שלבים","ok"); rerender();
+  return true;
+}
+
+/* ============================================================
+   חלוקות שמורות — ברירות מחדל נוספות בשם, לכל דירה
+   נשמרות על אובייקט הדירה (a.splitPresets), כדי לרכב על מנגנון
+   הסינון והמיזוג בשרת בלי טבלה חדשה.
+   ============================================================ */
+function apSplitPresets(aptId){ var a=byId(DB.apartments,aptId); return (a&&a.splitPresets)||[]; }
+function splitPresetRows(aptId,presetId){
+  if(presetId==="__default"||!presetId)
+    return apPartners(aptId).map(function(p){ return {partnerId:p.partnerId,percent:Number(p.defaultPercent)||0}; });
+  var p=apSplitPresets(aptId).filter(function(x){ return x.id===presetId; })[0];
+  return p?p.rows.map(function(r){return {partnerId:r.partnerId,percent:Number(r.percent)||0};}):[];
+}
+/* קטע ניהול החלוקות בלשונית "שותפים" */
+function splitPresetsCardHtml(aptId){
+  var ps=apSplitPresets(aptId);
+  var h='<div class="card"><div class="toolbar" style="margin-bottom:6px"><h3 style="margin:0">חלוקות שמורות</h3>'+
+    '<div class="hint">ברירות מחדל נוספות בשם — אפשר להחיל אותן על הוצאה בלחיצה</div><div class="sp"></div>'+
+    (can("edit")?'<button class="btn btn-primary btn-sm" onclick="editSplitPreset(\''+aptId+'\',null)">➕ חלוקה חדשה</button>':'')+'</div>';
+  if(!ps.length) return h+'<div class="empty">אין חלוקות שמורות. "חלוקה חדשה" כדי להוסיף (למשל: "חלוקה לפי השקעה", "חלוקה שווה").</div></div>';
+  h+='<div class="table-wrap"><table class="tbl"><thead><tr><th>שם החלוקה</th><th>פירוט</th><th>סה"כ</th><th></th></tr></thead><tbody>';
+  ps.forEach(function(p){
+    var sum=p.rows.reduce(function(s,r){return s+(Number(r.percent)||0);},0);
+    h+='<tr><td><b>'+esc(p.name)+'</b></td><td class="muted">'+
+      esc(p.rows.map(function(r){return partnerName(r.partnerId)+" "+num(r.percent)+"%";}).join(" · "))+'</td>'+
+      '<td class="'+(Math.abs(sum-100)<0.01?"pos":"neg")+'">'+num(sum)+'%</td>'+
+      '<td class="right">'+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editSplitPreset(\''+aptId+'\',\''+p.id+'\')">✏️</button> '+
+      '<button class="btn btn-ghost btn-sm" onclick="delSplitPreset(\''+aptId+'\',\''+p.id+'\')">🗑️</button>':'')+'</td></tr>';
+  });
+  return h+'</tbody></table></div></div>';
+}
+function editSplitPreset(aptId,id){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var ps=apSplitPresets(aptId);
+  var p=id?ps.filter(function(x){return x.id===id;})[0]:{name:"",rows:apPartners(aptId).map(function(x){return {partnerId:x.partnerId,percent:Number(x.defaultPercent)||0};})};
+  if(!p){ toast("החלוקה לא נמצאה","err"); return; }
+  var rows=(p.rows&&p.rows.length)?p.rows:[{partnerId:"",percent:0}];
+  openModal({title:id?"עריכת חלוקה שמורה":"חלוקה שמורה חדשה",wide:true,bodyHtml:
+    '<div class="field"><label>שם החלוקה</label><input id="sp-name" value="'+esc(p.name||"")+'" placeholder="למשל: חלוקה לפי השקעה"></div>'+
+    '<div class="section-title">אחוזים לכל שותף</div>'+
+    '<div id="sp-rows">'+rows.map(function(r){return splitRowHtml(r.partnerId,r.percent);}).join("")+'</div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">'+
+      '<button class="btn btn-sm" onclick="document.getElementById(\'sp-rows\').insertAdjacentHTML(\'beforeend\',splitRowHtml(\'\',0));spSum()">➕ הוסף שותף</button>'+
+      '<div>סה"כ: <b id="sp-sum">0%</b></div></div>',
+    saveLabel:"שמירה",onSave:function(){ return saveSplitPreset(aptId,id); }});
+  setTimeout(spSum,0);
+}
+function spSum(){
+  var s=0; document.querySelectorAll("#sp-rows .sp-pct").forEach(function(i){ s+=Number(i.value)||0; });
+  var el=document.getElementById("sp-sum"); if(el){ el.textContent=num(round2(s))+"%"; el.className=Math.abs(s-100)<0.01?"pos":"neg"; }
+}
+function saveSplitPreset(aptId,id){
+  var name=val("sp-name").trim(); if(!name){ toast("יש להזין שם לחלוקה","err"); return false; }
+  var byP={}, order=[];
+  document.querySelectorAll("#sp-rows .split-row").forEach(function(r){
+    var pid=r.querySelector(".sp-partner").value; var pct=Number(r.querySelector(".sp-pct").value)||0;
+    if(pid){ if(byP[pid]==null){byP[pid]=0;order.push(pid);} byP[pid]+=pct; }
+  });
+  var rows=order.map(function(pid){ return {partnerId:pid,percent:byP[pid]}; });
+  if(!rows.length){ toast("הוסף לפחות שותף אחד","err"); return false; }
+  var sum=rows.reduce(function(s,r){return s+r.percent;},0);
+  if(Math.abs(sum-100)>0.01){ toast("סכום החלוקה חייב להיות 100% (כרגע "+num(sum)+"%)","err"); return false; }
+  var a=byId(DB.apartments,aptId); a.splitPresets=a.splitPresets||[];
+  if(id){ var p=a.splitPresets.filter(function(x){return x.id===id;})[0]; if(p){ p.name=name; p.rows=rows; } }
+  else a.splitPresets.push({id:uid(),name:name,rows:rows});
+  save(); toast("נשמר","ok"); rerender();
+}
+function delSplitPreset(aptId,id){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var a=byId(DB.apartments,aptId); if(!a||!a.splitPresets) return;
+  var p=a.splitPresets.filter(function(x){return x.id===id;})[0];
+  if(!confirm('למחוק את החלוקה "'+(p?p.name:"")+'"?')) return;
+  a.splitPresets=a.splitPresets.filter(function(x){return x.id!==id;});
+  save(); toast("נמחק","ok"); rerender();
+}
+/* בורר "החל חלוקה" בעורך ההוצאה */
+function exSplitChooserHtml(aptId){
+  var ps=apSplitPresets(aptId);
+  if(!apPartners(aptId).length) return "";
+  return '<div class="field full"><label>החל חלוקה שמורה</label><select id="ex-split-preset" onchange="applyExSplit(\''+aptId+'\')">'+
+    '<option value="__keep">— בחר חלוקה להחלה —</option>'+
+    '<option value="__default">ברירת המחדל של הדירה</option>'+
+    ps.map(function(p){ return '<option value="'+p.id+'">'+esc(p.name)+'</option>'; }).join("")+
+    '</select><div class="hint">ממלא את שורות החלוקה למטה לפי החלוקה שנבחרה. אפשר לשנות ידנית אחרי כן.</div></div>';
+}
+function applyExSplit(aptId){
+  var sel=document.getElementById("ex-split-preset"); if(!sel) return;
+  var v=sel.value; sel.value="__keep";
+  if(v==="__keep") return;
+  var rows=splitPresetRows(aptId,v);
+  var box=document.getElementById("split-rows"); if(!box) return;
+  box.innerHTML=rows.map(function(r){ return splitRowHtml(r.partnerId,r.percent); }).join("");
+  updateSplitSum();
+}
+
+/* ============================================================
+   תשלומי שותף — בוחרים שותף ורואים את כל תשלומיו (חוצה דירות)
+   ============================================================ */
+function partnerPaymentsCardHtml(){
+  var parts=active(DB.partners).filter(function(p){ return !(CU&&CU.role==="partner"&&CU.partnerId) || p.id===CU.partnerId; })
+    .slice().sort(function(a,b){ return String(a.name).localeCompare(String(b.name),"he"); });
+  var sel=Q.ppWho||(parts[0]&&parts[0].id)||"";
+  var h='<div class="card"><div class="toolbar" style="margin-bottom:8px"><h3 style="margin:0">💳 תשלומי שותף</h3>'+
+    '<select style="max-width:220px" onchange="Q.ppWho=this.value;renderPartnerPayments()">'+
+      parts.map(function(p){ return '<option value="'+p.id+'"'+(p.id===sel?" selected":"")+'>'+esc(p.name)+'</option>'; }).join("")+
+    '</select><div class="sp"></div></div><div id="pp-body">'+partnerPaymentsBody(sel)+'</div></div>';
+  return h;
+}
+function renderPartnerPayments(){ var el=document.getElementById("pp-body"); if(el) el.innerHTML=partnerPaymentsBody(Q.ppWho); }
+function partnerPaymentsBody(pid){
+  if(!pid) return '<div class="empty">בחר שותף</div>';
+  var apts=active(DB.apartments).filter(function(a){ return canSeeApartment(a.id); });
+  var rows=[], tot=0, depTot=0;
+  apts.forEach(function(a){
+    apAllPayments(a.id).forEach(function(p){
+      if(p.payerPartnerId!==pid) return;
+      var e=byId(DB.expenses,p.expenseId);
+      rows.push({apt:a.name,date:p.date,amount:Number(p.amount)||0,
+        stage:(e?e.description:"—"),mgr:p.recipientType==="manager",recip:p.recipientType==="manager"?managerName(p.recipientManagerId):"ספק",
+        method:METHODS[p.method]||"",inv:invoiceStatusText(p)});
+      tot+=Number(p.amount)||0;
+    });
+    apDeposits(a.id).forEach(function(d){
+      if(d.partnerId!==pid) return;
+      rows.push({apt:a.name,date:d.date,amount:Number(d.amount)||0,stage:"הפקדה לבנק הזמני",recip:"בנק",method:METHODS[d.method]||"",inv:""});
+      depTot+=Number(d.amount)||0;
+    });
+  });
+  if(!rows.length) return '<div class="empty">אין תשלומים לשותף זה</div>';
+  rows.sort(function(x,y){ return x.date<y.date?1:-1; });
+  var h='<div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>דירה</th><th>עבור</th><th>סכום</th><th>מוטב</th><th>אמצעי</th><th>חשבונית</th></tr></thead><tbody>';
+  rows.forEach(function(r){
+    h+='<tr'+(r.mgr?' class="mgmt-row"':'')+'><td>'+dateHe(r.date)+'</td><td>'+esc(r.apt)+'</td><td>'+esc(r.stage)+'</td><td>'+money(r.amount)+'</td>'+
+      '<td>'+(r.mgr?'<span class="badge badge-mgmt">🧾 דמי ניהול</span> ':'')+esc(r.recip)+'</td><td>'+esc(r.method)+'</td><td>'+esc(r.inv)+'</td></tr>';
+  });
+  h+='</tbody><tfoot><tr><td colspan="3">סה"כ ('+rows.length+' תנועות)'+(depTot?' · מזה הפקדות '+money(depTot):'')+'</td><td>'+money(round2(tot+depTot))+'</td><td colspan="3"></td></tr></tfoot></table></div>';
+  return h;
+}
+
 /* ---------- דמי ניהול מרוכז: החלה על הרבה שלבים בבת אחת ---------- */
 function openBulkMgmt(aptId){
   var a=byId(DB.apartments,aptId);
@@ -3026,10 +3251,7 @@ function openExpenseEditor(eId,aptId,presetParent){
      '<div class="field"><label>קטגוריה</label><select id="ex-cat" onchange="onCatPick(\'ex-cat\')">'+
        catOptions(e?e.categoryId:"")+'</select>'+
        '<div class="hint">לפי מה שהכסף הלך — חשמל, אדריכל, ריצוף. מכאן נבנה דוח הקטגוריות של הפרויקט.</div></div>')+
-     (cont?'':
-     '<div class="field full"><label>שייך לשלב-אב (תת-שלב)</label>'+
-       '<select id="ex-parent">'+expenseParentOptions(aptId,eId,curParent)+'</select>'+
-       '<div class="hint">למשל: "חשמל 5-22" תחת "חשמל". הסכום, החלוקה והתשלומים נרשמים בתת-השלב, והאב מציג את הסיכום ("חשמל 15,000, מתוכו 7,500 ל-5/22 ו-7,500 ל-6/22").</div></div>')+
+     ''+
      '<div class="field full"><label>הערה</label><input id="ex-note" value="'+esc(e?e.note:"")+'" placeholder="הערה חופשית"></div>'+
      '<div class="field full"><label><input type="checkbox" id="ex-inv" style="width:auto" '+(e&&e.hasInvoice?"checked":"")+'> יש חשבונית/קבלה</label><input id="ex-link" placeholder="קישור לקבלה (אופציונלי)" value="'+esc(e?e.invoiceLink:"")+'" style="margin-top:4px"></div>'+
      (CU&&CU.role==="admin"?'<div class="field full" style="background:#fff7f7;border:1px solid #f0d0d0;border-radius:10px;padding:8px"><label><input type="checkbox" id="ex-hidden" style="width:auto" '+(e&&e.hidden?"checked":"")+'> 🔒 מוסתר משאר המשתמשים</label><div class="hint">שלב זה (וכל התשלומים והחלוקה שלו) יופיע רק אצל מנהל. משתמשים אחרים לא יראו אותו כלל — גם לא בסכומים ובדוחות.</div></div>':'')+
@@ -3037,6 +3259,7 @@ function openExpenseEditor(eId,aptId,presetParent){
     /* למכל אין חלוקה ודמי ניהול משלו — הם מוגדרים בכל תת-שלב בנפרד */
     (cont?'' :
     '<div class="section-title">חלוקת שותפים <span class="hint">(מאותחל מברירת המחדל, ניתן לשנות)</span></div>'+
+    exSplitChooserHtml(aptId)+
     (!splits.length && !apPartners(aptId).length
       ? '<div class="hint" style="margin-bottom:6px">בדירה זו לא הוגדרו שותפים — ההוצאה תישמר <b>ללא חלוקה</b>. אפשר גם להוסיף שותף ידנית בכפתור למטה.</div>'
       : '')+
@@ -3353,9 +3576,10 @@ function payTableHtml(aptId){
   list.sort(function(x,y){ return x.date<y.date?1:-1; }).forEach(function(p){
     var e=byId(DB.expenses,p.expenseId), acc=byId(DB.accounts,p.accountId);
     tot+=Number(p.amount)||0;
-    var recip=p.recipientType==="manager"
-      ? '<span class="pill">מנהל: '+esc(managerName(p.recipientManagerId))+'</span>' : 'ספק';
-    h+='<tr>'+
+    var isMgr=p.recipientType==="manager";
+    var recip=isMgr
+      ? '<span class="badge badge-mgmt">🧾 דמי ניהול</span> '+esc(managerName(p.recipientManagerId)) : 'ספק';
+    h+='<tr'+(isMgr?' class="mgmt-row"':'')+'>'+
       (sel?'<td><input type="checkbox" class="pb-x" value="'+p.id+'" style="width:auto" onchange="pbCount()"></td>':'')+
       '<td>'+dateHe(p.date)+'</td>'+
       '<td><b>'+esc(e?e.description:"—")+'</b>'+(p.hidden?' <span class="badge badge-danger" title="תשלום מוסתר">🔒</span>':'')+'</td>'+
@@ -3419,7 +3643,7 @@ function openQuickExpense(){
       '<div class="field"><label>תאריך</label><input id="qe-date" type="date" value="'+todayISO()+'"></div>'+
       '<div class="field"><label>סיווג</label><select id="qe-class">'+classOptions("investment")+'</select></div>'+
       '<div class="field"><label>קטגוריה</label><select id="qe-cat" onchange="onCatPick(\'qe-cat\')">'+catOptions("")+'</select></div>'+
-      '<div class="field full" id="qe-parent-box"></div>'+
+''+
       '<div class="field full"><label>הערה</label><input id="qe-note"></div>'+
     '</div>'+
     '<div id="qe-mgmt-box"></div>'+
@@ -4964,6 +5188,7 @@ function moduleCrossPartner(){
   var h='<div class="toolbar"><h2 style="margin:0">דוח שותפים כללי — חוצה דירות</h2>'+
     searchBox("cross-q",Q.cross,"חיפוש שותף…","Q.cross=this.value;renderCrossList()")+
     '<div class="sp"></div><button class="btn btn-sm no-print" onclick="window.print()">🖨️</button></div>';
+  h+=partnerPaymentsCardHtml();
   h+='<div id="cross-list">'+crossListHtml()+'</div>';
   return h;
 }
