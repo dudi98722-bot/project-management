@@ -3255,7 +3255,7 @@ function updateSplitSum(){
 function addSplitRow(){ document.getElementById("split-rows").insertAdjacentHTML("beforeend",splitRowHtml("",0)); updateSplitSum(); }
 function toggleMgmt(){
   var el=document.getElementById("mgmt-details");
-  if(el) el.style.display=checked("ex-mgmt")?"block":"none";
+  if(el) el.style.display=(val("ex-mgmt")==="on")?"block":"none";
   updateMgmtPreview();
 }
 /* תצוגה חיה של חישוב דמי הניהול, מתעדכנת בכל הקלדה */
@@ -3337,7 +3337,11 @@ function openExpenseEditor(eId,aptId,presetParent){
   if(a.hasManagement && !cont){
     var mgrs=apManagers(aptId);
     body+='<div class="section-title">דמי ניהול</div>'+
-      '<div class="field"><label><input type="checkbox" id="ex-mgmt" style="width:auto" onchange="toggleMgmt()" '+(e&&e.mgmtEnabled?"checked":"")+'> יש דמי ניהול על הוצאה זו</label></div>'+
+      '<div class="field"><label>דמי ניהול על הוצאה זו</label><select id="ex-mgmt" onchange="toggleMgmt()">'+
+        (e?'':'<option value="" selected>— בחר: עם / בלי —</option>')+
+        '<option value="on"'+(e&&e.mgmtEnabled?" selected":"")+'>עם דמי ניהול</option>'+
+        '<option value="off"'+(e&&!e.mgmtEnabled?" selected":"")+'>בלי דמי ניהול</option>'+
+      '</select></div>'+
       '<div id="mgmt-details" style="display:'+(e&&e.mgmtEnabled?"block":"none")+'">'+
       '<div class="form-grid">'+
         '<div class="field"><label>בסיס החישוב</label><select id="ex-base" onchange="updateMgmtPreview()">'+Object.keys(BASE_TYPES).map(function(k){return '<option value="'+k+'"'+(e&&e.mgmtBaseType===k?" selected":"")+'>'+BASE_TYPES[k]+'</option>';}).join("")+'</select></div>'+
@@ -3378,6 +3382,9 @@ function saveExpense(eId,aptId){
   var isCont = !!(eId && isContainer(eId));
   if(isCont) amount=round2(expenseChildren(eId).reduce(function(s,k){return s+(Number(k.amount)||0);},0));
   else if(amount<=0){ toast("יש להזין סכום","err"); return false; }
+  /* דמי ניהול — בחירה מפורשת חובה: עם / בלי (לפני יצירת רשומת ההוצאה) */
+  var mgmtSel=document.getElementById("ex-mgmt");
+  if(mgmtSel && mgmtSel.value===""){ toast("יש לבחור: עם דמי ניהול או בלי דמי ניהול","err"); return false; }
   // חלוקה — איחוד שורות כפולות לאותו שותף + ולידציה
   var byP={}, order=[]; document.querySelectorAll("#split-rows .split-row").forEach(function(r){
     var pid=r.querySelector(".sp-partner").value; var pct=Number(r.querySelector(".sp-pct").value)||0;
@@ -3436,7 +3443,7 @@ function saveExpense(eId,aptId){
      כך ששמירה ממצב שבו המקטע לא הוצג מחקה את הנתונים בשקט. */
   var mgmtShown = !!document.getElementById("ex-mgmt");
   if(mgmtShown){
-    if(e.mgmtEnabled && !checked("ex-mgmt")){
+    if(e.mgmtEnabled && val("ex-mgmt")!=="on"){
       /* מבטלים דמי ניהול על הוצאה שכבר שולם עליה למנהלים? צד העלות היה
          מתאפס בעוד התשלומים ממשיכים להיספר — והמאזן נשבר. חוסמים. */
       /* תשלומים אוטומטיים ("שווה ערך") לא חוסמים — הם יוסרו בסנכרון */
@@ -3447,7 +3454,7 @@ function saveExpense(eId,aptId){
         return false;
       }
     }
-    e.mgmtEnabled = checked("ex-mgmt");
+    e.mgmtEnabled = (val("ex-mgmt")==="on");
     e.mgmtBaseType = val("ex-base") || e.mgmtBaseType || "full";
     var vatRaw = val("ex-vat");
     if(vatRaw!==""){ var vn=Number(vatRaw); e.mgmtVatRate = isNaN(vn)?18:vn; }
@@ -3734,7 +3741,11 @@ function renderQuickMgmt(aptId){
     return;
   }
   box.innerHTML='<div class="section-title">דמי ניהול</div>'+
-    '<div class="field"><label><input type="checkbox" id="qe-mgmt" style="width:auto" onchange="toggleQuickMgmt()"> יש דמי ניהול על הוצאה זו</label></div>'+
+    '<div class="field"><label>דמי ניהול על הוצאה זו</label><select id="qe-mgmt" onchange="toggleQuickMgmt()">'+
+      '<option value="" selected>— בחר: עם / בלי —</option>'+
+      '<option value="on">עם דמי ניהול</option>'+
+      '<option value="off">בלי דמי ניהול</option>'+
+    '</select></div>'+
     '<div id="qe-mgmt-details" style="display:none">'+
       '<div class="form-grid">'+
         '<div class="field"><label>בסיס החישוב</label><select id="qe-base" onchange="updateQuickMgmtPreview()">'+
@@ -3755,12 +3766,12 @@ function renderQuickMgmt(aptId){
 }
 function toggleQuickMgmt(){
   var d=document.getElementById("qe-mgmt-details");
-  if(d) d.style.display=checked("qe-mgmt")?"block":"none";
+  if(d) d.style.display=(val("qe-mgmt")==="on")?"block":"none";
   updateQuickMgmtPreview();
 }
 function updateQuickMgmtPreview(){
   var el=document.getElementById("qe-mgmt-prev"); if(!el) return;
-  if(!checked("qe-mgmt")){ el.innerHTML=""; return; }
+  if(val("qe-mgmt")!=="on"){ el.innerHTML=""; return; }
   var amt=Number(val("qe-amount"))||0;
   var bt=val("qe-base")||"full";
   var base = bt==="net17" ? amt/1.17 : bt==="net18" ? amt/1.18 : amt;
@@ -3861,6 +3872,9 @@ function saveQuickExpense(){
   var amount=Number(val("qe-amount"))||0;
   if(!desc){ toast("יש להזין תיאור","err"); return false; }
   if(amount<=0){ toast("יש להזין סכום","err"); return false; }
+  /* דמי ניהול — בחירה מפורשת חובה: עם / בלי (לפני כל שינוי בנתונים) */
+  var qMgmtSel=document.getElementById("qe-mgmt");
+  if(qMgmtSel && qMgmtSel.value===""){ toast("יש לבחור: עם דמי ניהול או בלי דמי ניהול","err"); return false; }
   var date=val("qe-date")||todayISO();
   /* הגנה מכפילות — כמו בייבוא: אותה דירה + תיאור + סכום + תאריך */
   var dup=apExpenses(aptId).find(function(x){
@@ -3893,7 +3907,7 @@ function saveQuickExpense(){
   /* מכאן והלאה משנים נתונים — אין עוד ביטולים */
   if(qParent && !convertToContainer(qParent)) return false;
 
-  var mgmtOn = !!document.getElementById("qe-mgmt") && checked("qe-mgmt");
+  var mgmtOn = !!document.getElementById("qe-mgmt") && val("qe-mgmt")==="on";
   var mgmtVatRaw = Number(val("qe-vat"));
   var eid=uid();
   DB.expenses.push({id:eid,apartmentId:aptId,categoryId:(val("qe-cat")==="__new"?"":val("qe-cat")||""),
