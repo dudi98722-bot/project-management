@@ -455,7 +455,8 @@ function scopeDataForUser(data, user) {
   /* שותף רואה רק את הנתונים האישיים שלו — לא תשלומים, הפקדות או
      חלוקות של שותפים אחרים, וגם לא את שמותיהם. השלבים נשארים כדי
      שיראה מה בפרויקט וכמה חלקו. */
-  if (user.role === "partner" && user.partnerId) {
+  // משתמש (צפייה או שותף) המשויך לשותף — רק הנתונים שלו. השיוך הוא המתג.
+  if ((user.role === "partner" || user.role === "viewer") && user.partnerId) {
     var pid = user.partnerId;
     d.payments        = (d.payments || []).filter(function (p) { return p.payerPartnerId === pid; });
     d.deposits        = (d.deposits || []).filter(function (x) { return x.partnerId === pid; });

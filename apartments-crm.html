@@ -879,6 +879,21 @@ function canSeeApartment(aptId){
   if(!CU.allowedApartments||!CU.allowedApartments.length) return true;   // ריק = כל הדירות
   return CU.allowedApartments.indexOf(aptId)>=0;
 }
+/* משתמש (צפייה/שותף) שמשויך לשותף מסוים — רואה רק את הנתונים שלו.
+   השיוך הוא המתג, בלי קשר לתפקיד "צפייה" מול "שותף". */
+function isPartnerScoped(){ return !!(CU && CU.partnerId && CU.role!=="admin" && CU.role!=="editor"); }
+/* מסנן את ה-DB המקומי לנתוני השותף בלבד — מראה תמונה נכונה מיד,
+   כהגנה נוספת מעבר לסינון בשרת. אידמפוטנטי (אפשר להריץ שוב ושוב). */
+function clientScopePartner(){
+  if(!isPartnerScoped()||!DB) return;
+  var pid=CU.partnerId;
+  DB.payments        = (DB.payments||[]).filter(function(p){ return p.payerPartnerId===pid; });
+  DB.deposits        = (DB.deposits||[]).filter(function(x){ return x.partnerId===pid; });
+  DB.expenseSplits   = (DB.expenseSplits||[]).filter(function(x){ return x.partnerId===pid; });
+  DB.apartmentPartners=(DB.apartmentPartners||[]).filter(function(x){ return x.partnerId===pid; });
+  DB.partners        = (DB.partners||[]).filter(function(x){ return x.id===pid; });
+  DB.income          = (DB.income||[]).filter(function(x){ return x.receivedBy===pid || x.receivedBy==="bank"; });
+}
 
 /* ============================================================
    מודל / טוסט
@@ -943,6 +958,7 @@ function rerender(){ renderApp(); }
 
 function renderApp(){
   if(!CU){ renderLogin(); return; }
+  clientScopePartner();   // משתמש משויך לשותף — רק הנתונים שלו
   var app=document.getElementById("app");
   app.innerHTML = topbarHtml() + navHtml() + '<div class="content" id="content"></div>';
   renderView();
@@ -3051,7 +3067,7 @@ function applyExSplit(aptId){
    תשלומי שותף — בוחרים שותף ורואים את כל תשלומיו (חוצה דירות)
    ============================================================ */
 function partnerPaymentsCardHtml(){
-  var parts=active(DB.partners).filter(function(p){ return !(CU&&CU.role==="partner"&&CU.partnerId) || p.id===CU.partnerId; })
+  var parts=active(DB.partners).filter(function(p){ return !isPartnerScoped() || p.id===CU.partnerId; })
     .slice().sort(function(a,b){ return String(a.name).localeCompare(String(b.name),"he"); });
   var sel=Q.ppWho||(parts[0]&&parts[0].id)||"";
   var h='<div class="card"><div class="toolbar" style="margin-bottom:8px"><h3 style="margin:0">💳 תשלומי שותף</h3>'+
@@ -4867,7 +4883,7 @@ function categoryReportHtml(aptId){
 function dueByPaidReportHtml(aptId){
   /* לשותף מוצגים רק הנתונים שלו, ולכן "חובה לפי ששולם" וההתחשבנות
      בין השותפים אינם רלוונטיים ואף מטעים — מדלגים עליהם. */
-  if(CU&&CU.role==="partner") return "";
+  if(isPartnerScoped()) return "";
   var pids=reportPartnerIds(aptId);
   if(!pids.length) return "";
   var exps=apLeafExpenses(aptId);
@@ -5251,7 +5267,7 @@ function renderCrossListInner(){
 }
 function crossListHtml(){
   var h='';
-  var partners=active(DB.partners).filter(function(p){ return !(CU&&CU.role==="partner"&&CU.partnerId) || p.id===CU.partnerId; })
+  var partners=active(DB.partners).filter(function(p){ return !isPartnerScoped() || p.id===CU.partnerId; })
     .filter(function(p){ return matches(Q.cross,p.name); });
   var any=false;
   partners.forEach(function(p){
