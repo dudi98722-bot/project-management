@@ -452,6 +452,18 @@ function scopeDataForUser(data, user) {
   SCOPED_TABLES.forEach(function (T) {
     d[T] = (d[T] || []).filter(function (r) { return rowVisible(T, r, ctx, aptSet, expSet); });
   });
+  /* שותף רואה רק את הנתונים האישיים שלו — לא תשלומים, הפקדות או
+     חלוקות של שותפים אחרים, וגם לא את שמותיהם. השלבים נשארים כדי
+     שיראה מה בפרויקט וכמה חלקו. */
+  if (user.role === "partner" && user.partnerId) {
+    var pid = user.partnerId;
+    d.payments        = (d.payments || []).filter(function (p) { return p.payerPartnerId === pid; });
+    d.deposits        = (d.deposits || []).filter(function (x) { return x.partnerId === pid; });
+    d.expenseSplits   = (d.expenseSplits || []).filter(function (x) { return x.partnerId === pid; });
+    d.apartmentPartners = (d.apartmentPartners || []).filter(function (x) { return x.partnerId === pid; });
+    d.partners        = (d.partners || []).filter(function (x) { return x.id === pid; });
+    d.income          = (d.income || []).filter(function (x) { return x.receivedBy === pid || x.receivedBy === "bank"; });
+  }
   return d;
 }
 

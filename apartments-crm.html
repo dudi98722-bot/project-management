@@ -2925,13 +2925,27 @@ function applyBulkExpEdit(aptId,ids){
   if((cat==="__keep"||cat==="__new") && cls==="__keep" && !date && mg==="__keep" && hid==="__keep"){
     toast("לא נבחר מה לעדכן","warn"); return false;
   }
+  var mgrs=apManagers(aptId);
+  if(mg==="on" && !mgrs.length){ toast("אין מנהלים מוגדרים בדירה — הוסף אותם קודם בלשונית \"דמי ניהול\"","err"); return false; }
   var n=0;
   ids.forEach(function(id){
-    var e=byId(DB.expenses,id); if(!e||e.deleted) return;
+    var e=byId(DB.expenses,id); if(!e||e.deleted || isContainer(e.id)) return;
     if(cat!=="__keep" && cat!=="__new") e.categoryId=cat;
     if(cls!=="__keep") e.classification=cls;
     if(date) e.date=date;
-    if(mg==="on") e.mgmtEnabled=true; else if(mg==="off") e.mgmtEnabled=false;
+    if(mg==="on"){
+      /* לא מספיק לסמן דגל — צריך גם ליצור את רשומות דמי הניהול לכל מנהל
+         לפי ברירת המחדל שלו, אחרת החישוב יוצא 0 עד עריכה ידנית של השורה. */
+      e.mgmtEnabled=true;
+      if(e.mgmtBaseType==null) e.mgmtBaseType="full";
+      if(e.mgmtVatRate==null) e.mgmtVatRate=18;
+      var have={}; expMgrFees(e.id).forEach(function(f){ have[f.managerId]=1; });
+      mgrs.forEach(function(m){
+        if(!have[m.id]) DB.expenseManagerFees.push({id:uid(),expenseId:e.id,managerId:m.id,
+          pctCurrent:Number(m.defaultFeePercent)||0,pctDeferred:0,deferredLabel:"",deferredReleased:false,deleted:false});
+      });
+      syncAutoMgmtPayments(e.id);   // תשלום "שווה ערך" אוטומטי אם מוגדר בפרויקט
+    } else if(mg==="off"){ e.mgmtEnabled=false; }
     if(CU&&CU.role==="admin"){ if(hid==="on") e.hidden=true; else if(hid==="off") e.hidden=false; }
     n++;
   });
@@ -4851,6 +4865,9 @@ function categoryReportHtml(aptId){
    שלב 1,000,000 שבו שולמו 500,000: שותף 25% חייב כרגע 125,000.
    ============================================================ */
 function dueByPaidReportHtml(aptId){
+  /* לשותף מוצגים רק הנתונים שלו, ולכן "חובה לפי ששולם" וההתחשבנות
+     בין השותפים אינם רלוונטיים ואף מטעים — מדלגים עליהם. */
+  if(CU&&CU.role==="partner") return "";
   var pids=reportPartnerIds(aptId);
   if(!pids.length) return "";
   var exps=apLeafExpenses(aptId);
