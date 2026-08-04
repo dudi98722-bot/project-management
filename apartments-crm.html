@@ -791,9 +791,8 @@ function apReportPartnerIds(aptId){
   return order;
 }
 function reportPartnerIds(aptId){
-  var ids=apReportPartnerIds(aptId);
-  if(CU && CU.role==="partner" && CU.partnerId) ids=ids.filter(function(id){return id===CU.partnerId;});
-  return ids;
+  /* כל שותפי הדירה — הגבלת המשתמש היא ברמת הדירה, לא ברמת השותף */
+  return apReportPartnerIds(aptId);
 }
 function partnerDefaultPct(aptId,pId){ var r=apPartners(aptId).find(function(x){return x.partnerId===pId;}); return r?r.defaultPercent:null; }
 
@@ -879,20 +878,18 @@ function canSeeApartment(aptId){
   if(!CU.allowedApartments||!CU.allowedApartments.length) return true;   // ריק = כל הדירות
   return CU.allowedApartments.indexOf(aptId)>=0;
 }
-/* משתמש (צפייה/שותף) שמשויך לשותף מסוים — רואה רק את הנתונים שלו.
-   השיוך הוא המתג, בלי קשר לתפקיד "צפייה" מול "שותף". */
-function isPartnerScoped(){ return !!(CU && CU.partnerId && CU.role!=="admin" && CU.role!=="editor"); }
-/* מסנן את ה-DB המקומי לנתוני השותף בלבד — מראה תמונה נכונה מיד,
-   כהגנה נוספת מעבר לסינון בשרת. אידמפוטנטי (אפשר להריץ שוב ושוב). */
-function clientScopePartner(){
-  if(!isPartnerScoped()||!DB) return;
-  var pid=CU.partnerId;
-  DB.payments        = (DB.payments||[]).filter(function(p){ return p.payerPartnerId===pid; });
-  DB.deposits        = (DB.deposits||[]).filter(function(x){ return x.partnerId===pid; });
-  DB.expenseSplits   = (DB.expenseSplits||[]).filter(function(x){ return x.partnerId===pid; });
-  DB.apartmentPartners=(DB.apartmentPartners||[]).filter(function(x){ return x.partnerId===pid; });
-  DB.partners        = (DB.partners||[]).filter(function(x){ return x.id===pid; });
-  DB.income          = (DB.income||[]).filter(function(x){ return x.receivedBy===pid || x.receivedBy==="bank"; });
+/* משתמש שהוגבל לדירות מסוימות רואה את *כל* התנועות של אותן דירות —
+   לא משנה מי שילם. רשימות/בוררים של שותפים מצומצמים לשותפים
+   שקשורים לדירות שהוא רשאי לראות בלבד. מנהל, או מי שאין לו הגבלת
+   דירות, רואה את כל השותפים. */
+function visiblePartners(){
+  if(!CU || CU.role==="admin" || !(CU.allowedApartments && CU.allowedApartments.length)) return active(DB.partners);
+  var set={};
+  active(DB.apartments).forEach(function(a){
+    if(!canSeeApartment(a.id)) return;
+    apReportPartnerIds(a.id).forEach(function(pid){ set[pid]=1; });
+  });
+  return active(DB.partners).filter(function(p){ return set[p.id]; });
 }
 
 /* ============================================================
@@ -958,7 +955,6 @@ function rerender(){ renderApp(); }
 
 function renderApp(){
   if(!CU){ renderLogin(); return; }
-  clientScopePartner();   // משתמש משויך לשותף — רק הנתונים שלו
   var app=document.getElementById("app");
   app.innerHTML = topbarHtml() + navHtml() + '<div class="content" id="content"></div>';
   renderView();
@@ -3067,7 +3063,7 @@ function applyExSplit(aptId){
    תשלומי שותף — בוחרים שותף ורואים את כל תשלומיו (חוצה דירות)
    ============================================================ */
 function partnerPaymentsCardHtml(){
-  var parts=active(DB.partners).filter(function(p){ return !isPartnerScoped() || p.id===CU.partnerId; })
+  var parts=visiblePartners()
     .slice().sort(function(a,b){ return String(a.name).localeCompare(String(b.name),"he"); });
   var sel=Q.ppWho||(parts[0]&&parts[0].id)||"";
   var h='<div class="card"><div class="toolbar" style="margin-bottom:8px"><h3 style="margin:0">💳 תשלומי שותף</h3>'+
@@ -4895,9 +4891,6 @@ function categoryReportHtml(aptId){
    שלב 1,000,000 שבו שולמו 500,000: שותף 25% חייב כרגע 125,000.
    ============================================================ */
 function dueByPaidReportHtml(aptId){
-  /* לשותף מוצגים רק הנתונים שלו, ולכן "חובה לפי ששולם" וההתחשבנות
-     בין השותפים אינם רלוונטיים ואף מטעים — מדלגים עליהם. */
-  if(isPartnerScoped()) return "";
   var pids=reportPartnerIds(aptId);
   if(!pids.length) return "";
   var exps=apLeafExpenses(aptId);
@@ -5281,7 +5274,7 @@ function renderCrossListInner(){
 }
 function crossListHtml(){
   var h='';
-  var partners=active(DB.partners).filter(function(p){ return !isPartnerScoped() || p.id===CU.partnerId; })
+  var partners=visiblePartners()
     .filter(function(p){ return matches(Q.cross,p.name); });
   var any=false;
   partners.forEach(function(p){
@@ -5711,9 +5704,10 @@ function editUser(id){
     '<div class="field"><label>מייל לשחזור קוד</label><input id="us-email" type="email" value="'+esc(u.email||"")+'" placeholder="name@gmail.com">'+
       '<div class="hint">אם המשתמש ישכח את הקוד — קוד השחזור יישלח לכתובת הזו.</div></div>'+
     '<div class="field"><label>תפקיד</label><select id="us-role">'+Object.keys(ROLES).map(function(k){return '<option value="'+k+'"'+(u.role===k?" selected":"")+'>'+ROLES[k]+'</option>';}).join("")+'</select></div>'+
-    '<div class="field"><label>שיוך לשותף (לתפקיד "שותף")</label><select id="us-partner"><option value="">—</option>'+active(DB.partners).map(function(p){return '<option value="'+p.id+'"'+(u.partnerId===p.id?" selected":"")+'>'+esc(p.name)+'</option>';}).join("")+'</select></div>'+
     '<div class="field"><label>קוד כניסה '+(id?"(השאר ריק כדי לא לשנות)":"")+'</label><input id="us-code" type="password" placeholder="קוד"></div>'+
-    '<div class="field"><label>דירות מורשות (ריק = הכל)</label><div style="display:flex;flex-direction:column;gap:4px">'+aptChecks+'</div></div>'+
+    '<div class="field"><label>דירות מורשות (ריק = הכל)</label>'+
+      '<div class="hint" style="margin-bottom:4px">מי שמסומנות לו דירות — רואה את <b>כל</b> התנועות שלהן, לא משנה מי שילם. ריק = כל הפרוייקטים.</div>'+
+      '<div style="display:flex;flex-direction:column;gap:4px">'+aptChecks+'</div></div>'+
     '<div class="field"><label><input type="checkbox" id="us-active" style="width:auto" '+(u.active?"checked":"")+'> פעיל</label></div>',
     saveLabel:"שמירה",onSave:function(){ saveUser(id,u); return false; }});
 }
@@ -5722,7 +5716,7 @@ async function saveUser(id,u){
   var email=val("us-email").trim();
   if(email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ toast("כתובת המייל אינה תקינה","err"); return; }
   var apts=Array.prototype.slice.call(document.querySelectorAll(".u-apt:checked")).map(function(c){return c.value;});
-  var code=val("us-code"); var pid=val("us-partner")||null;
+  var code=val("us-code");
   var role=val("us-role");
   /* הקוד הוא הזהות — אין שם משתמש בכניסה. שני משתמשים עם אותו קוד
      היו נכנסים שניהם לחשבון הראשון שמתאים, וזה נראה כמו "הכניסה
@@ -5733,13 +5727,13 @@ async function saveUser(id,u){
     if(clash){ toast('הקוד הזה כבר שייך למשתמש "'+clash.name+'" — בחר קוד אחר',"err"); return; }
   }
   if(id){
-    u.name=name; u.email=email; u.role=role; u.allowedApartments=apts; u.partnerId=pid; u.active=checked("us-active");
+    u.name=name; u.email=email; u.role=role; u.allowedApartments=apts; u.partnerId=null; u.active=checked("us-active");
     if(code) u.code=await hashCode(code);
   }
   else{
     if(!code){ toast("יש להזין קוד","err"); return; }
     DB.users.push({id:uid(),name:name,email:email,role:role,code:await hashCode(code),
-      allowedApartments:apts,partnerId:pid,active:checked("us-active"),deleted:false});
+      allowedApartments:apts,partnerId:null,active:checked("us-active"),deleted:false});
   }
   save(); closeModal(); rerender();
   toast(id?'"'+name+'" נשמר':'"'+name+'" נוסף — נכנסים עם השם "'+name+'" + הקוד שלו',"ok");
