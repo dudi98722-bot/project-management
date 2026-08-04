@@ -384,7 +384,7 @@ function onCatPick(selId){
   sel.innerHTML=catOptions(id); sel.value=id; sel.setAttribute("data-prev",id);
   toast('נוספה הקטגוריה "'+name+'"',"ok");
 }
-var ROLES = {admin:"מנהל", editor:"עורך", viewer:"צפייה בלבד", partner:"שותף"};
+var ROLES = {admin:"מנהל", editor:"עורך", viewer:"צפייה בלבד"};
 /* סטטוס חשבונית לתשלום: יש / ממתין / לא צריך. "" = לא צוין (נתונים
    ישנים). hasInvoice הבוליאני נשמר מסונכרן לתאימות עם ייבוא/ייצוא ישנים. */
 var INVOICE_STATUSES={has:"יש חשבונית",pending:"ממתין לחשבונית",none:"לא צריך חשבונית"};
@@ -596,6 +596,9 @@ function toISO(v){ v=String(v==null?"":v).slice(0,10); return /^\d{4}-\d{2}-\d{2
 function normalizeDB(d){
   d.meta=d.meta||{version:1,rev:0}; if(d.meta.rev==null) d.meta.rev=0;
   d.settings=d.settings||{}; d.settings.paymentMethods=d.settings.paymentMethods||{};
+  /* התפקיד "שותף" בוטל — ההגבלה היא ברמת הדירה. משתמשים ישנים בתפקיד
+     זה מיושרים ל"צפייה בלבד" (התנהגות זהה ממילא). */
+  (d.users||[]).forEach(function(u){ if(u.role==="partner") u.role="viewer"; });
   (d.expenses||[]).forEach(function(e){ e.amount=toNum(e.amount); e.date=toISO(e.date); e.mgmtVatRate=toNum(e.mgmtVatRate); });
   (d.expenseSplits||[]).forEach(function(s){ s.percent=toNum(s.percent); });
   (d.expenseManagerFees||[]).forEach(function(f){ f.pctCurrent=toNum(f.pctCurrent); f.pctDeferred=toNum(f.pctDeferred); });
@@ -875,8 +878,12 @@ function can(action){
 function canSeeApartment(aptId){
   if(!CU) return false;
   if(CU.role==="admin") return true;
-  if(!CU.allowedApartments||!CU.allowedApartments.length) return true;   // ריק = כל הדירות
-  return CU.allowedApartments.indexOf(aptId)>=0;
+  var allowed=CU.allowedApartments||[];
+  if(allowed.length) return allowed.indexOf(aptId)>=0;
+  /* מדור קודם: משתמש ששויך פעם לשותף (partnerId) אך בלי דירות מפורשות —
+     נעול עד שמנהל יקצה לו דירות. fail-closed: לא "כל הדירות" בטעות. */
+  if(CU.partnerId) return false;
+  return true;   // ריק לגמרי (ובלי שיוך ישן) = כל הדירות, בכוונת מנהל
 }
 /* משתמש שהוגבל לדירות מסוימות רואה את *כל* התנועות של אותן דירות —
    לא משנה מי שילם. רשימות/בוררים של שותפים מצומצמים לשותפים
@@ -2625,7 +2632,13 @@ function exportApartmentBook(aptId){
 
 
 
-function partnerOptions(sel){ return active(DB.partners).map(function(p){return '<option value="'+p.id+'"'+(p.id===sel?" selected":"")+'>'+esc(p.name)+'</option>';}).join(""); }
+function partnerOptions(sel){
+  /* מצומצם לשותפים שקשורים לדירות שהמשתמש רשאי לראות. תמיד כולל את
+     הבחירה הנוכחית, גם אם היא מחוץ להיקף, כדי לא לאבד ערך קיים בעריכה. */
+  var list=visiblePartners();
+  if(sel && !list.some(function(p){return p.id===sel;})){ var s=byId(DB.partners,sel); if(s) list=list.concat([s]); }
+  return list.map(function(p){return '<option value="'+p.id+'"'+(p.id===sel?" selected":"")+'>'+esc(p.name)+'</option>';}).join("");
+}
 function categoryOptions(sel){ return '<option value="">—</option>'+active(DB.categories).map(function(c){return '<option value="'+c.id+'"'+(c.id===sel?" selected":"")+'>'+esc(c.name)+'</option>';}).join(""); }
 function classOptions(sel){ return Object.keys(CLASSIFICATIONS).map(function(k){return '<option value="'+k+'"'+(k===sel?" selected":"")+'>'+CLASSIFICATIONS[k]+'</option>';}).join(""); }
 /* חשבונות זמינים לדירה: של הדירה + חשבונות כלליים (apartmentId ריק).
@@ -2691,7 +2704,7 @@ function modulePartners(aptId){
 }
 function addApartmentPartner(aptId){
   var inApt={}; apPartners(aptId).forEach(function(x){inApt[x.partnerId]=1;});
-  var avail=active(DB.partners).filter(function(p){return !inApt[p.id];});
+  var avail=visiblePartners().filter(function(p){return !inApt[p.id];});
   openModal({title:"הוספת שותף לדירה",bodyHtml:
     '<div class="field"><label>בחר שותף קיים</label><select id="apn-existing"><option value="">— חדש —</option>'+
       avail.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>';}).join("")+'</select></div>'+

@@ -399,8 +399,11 @@ function mapBy(arr, field) {
 function userCtx(user) {
   var isAdmin = user && user.role === "admin";
   var allowed = (user && user.allowedApartments) || [];
+  /* משתמש מדור קודם ששויך לשותף (partnerId) אך בלי דירות מפורשות —
+     נעול לכלום עד שמנהל יקצה לו דירות. fail-closed: לא "כל הדירות". */
+  var legacyPartner = !isAdmin && !!(user && user.partnerId) && allowed.length === 0;
   return { isAdmin: isAdmin, nonAdmin: !isAdmin,
-           limited: !isAdmin && allowed.length > 0, allowed: allowed };
+           limited: !isAdmin && (allowed.length > 0 || legacyPartner), allowed: allowed };
 }
 function aptSetFor(data, ctx) {
   var set = {};
@@ -452,11 +455,25 @@ function scopeDataForUser(data, user) {
   SCOPED_TABLES.forEach(function (T) {
     d[T] = (d[T] || []).filter(function (r) { return rowVisible(T, r, ctx, aptSet, expSet); });
   });
-  /* ההגבלה היא ברמת הדירה בלבד: משתמש שהוגבל לדירות מסוימות רואה את
-     כל התנועות שלהן — לא משנה מי שילם. שמות שותפים אינם סוד בתוך
-     הדירה שהוא רשאי לראות, ולכן d.partners נשאר כמו שהוא (המידע
-     הרגיש — הוצאות/תשלומים/דירות אחרות — כבר סונן לפי הדירות). */
+  /* שותפים: רק אלה שקשורים לדירות/לתנועות שכבר סוננו למשתמש. כך גם
+     שם, וגם טלפון/הערות של שותפים מדירות אחרות — לא נשלחים כלל. */
+  d.partners = scopePartnersFor(d);
   return d;
+}
+/* קבוצת מזהי-השותפים המוזכרים בנתונים שכבר סוננו למשתמש */
+function referencedPartnerIds(d) {
+  var s = {};
+  (d.apartmentPartners || []).forEach(function (x) { if (x.partnerId) s[x.partnerId] = 1; });
+  (d.expenseSplits || []).forEach(function (x) { if (x.partnerId) s[x.partnerId] = 1; });
+  (d.deposits || []).forEach(function (x) { if (x.partnerId) s[x.partnerId] = 1; });
+  (d.accounts || []).forEach(function (x) { if (x.partnerId) s[x.partnerId] = 1; });
+  (d.payments || []).forEach(function (x) { if (x.payerPartnerId) s[x.payerPartnerId] = 1; });
+  (d.income || []).forEach(function (x) { if (x.receivedBy && x.receivedBy !== "bank") s[x.receivedBy] = 1; });
+  return s;
+}
+function scopePartnersFor(d) {
+  var ref = referencedPartnerIds(d);
+  return (d.partners || []).filter(function (p) { return ref[p.id]; });
 }
 
 /* ----- מיזוג בשמירה ----- */
@@ -480,6 +497,13 @@ function mergeSaveForUser(stored, incoming, user) {
   var result = JSON.parse(JSON.stringify(incoming));
   result.users = stored.users || [];
   result.settings = stored.settings || result.settings;
+  /* השרת שולח למשתמש מוגבל רק חלק מהשותפים — כדי לא לאבד את השאר
+     בשמירה, ממזגים לפי id: מתחילים מהמאגר המלא השמור, ומעדכנים/מוסיפים
+     את מה שהמשתמש שלח (עריכות ושותפים חדשים גוברים). */
+  var pById = {};
+  (stored.partners || []).forEach(function (p) { pById[p.id] = p; });
+  (incoming.partners || []).forEach(function (p) { pById[p.id] = p; });
+  result.partners = Object.keys(pById).map(function (k) { return pById[k]; });
 
   var aptSet = aptSetFor(stored, ctx), expSet = expSetFor(stored, ctx, aptSet);
   /* קבוצת הוצאות בהיקף המורשה — משורות ישנות וגם חדשות שנשלחו — כדי
