@@ -949,10 +949,10 @@ function renderApp(){
 }
 function topbarHtml(){
   var apts=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);});
-  var sel='<select onchange="onApartmentPick(this.value)"><option value="">— בחר דירה —</option>'+
+  var sel='<select onchange="onApartmentPick(this.value)"><option value="">— בחר פרוייקט —</option>'+
     apts.map(function(a){ return '<option value="'+a.id+'"'+(state.params.apartmentId===a.id?" selected":"")+'>'+esc(a.name)+'</option>'; }).join("")+'</select>';
   return '<div class="topbar"><div class="logo"><span class="mark">'+LOGO_MARK+'</span>'+
-    '<span class="brand"><b>לווי וניהול פרוייקטים</b><small>מעקב הוצאות, תשלומים ושותפויות</small></span></div>'+sel+'<div class="sp"></div>'+
+    '<span class="brand"><b>לווי וניהול פרוייקטים</b><small>תכנון מדויק · ניהול חכם · תוצאה מושלמת</small></span></div>'+sel+'<div class="sp"></div>'+
     (can("edit")?'<button class="btn btn-sm" onclick="undo()" title="ביטול הפעולה האחרונה (Ctrl+Z)">↩️ בטל'+(undoCount()?" ("+undoCount()+")":"")+'</button>':'')+
     (can("edit")?syncBadgeHtml():'')+
     '<div class="who">👤 '+esc(CU.name)+' · '+esc(ROLES[CU.role]||"")+'</div>'+
@@ -960,7 +960,7 @@ function topbarHtml(){
 }
 function onApartmentPick(id){ if(id) go("apartment",{apartmentId:id,tab:"overview"}); else go("dashboard",{}); }
 function navHtml(){
-  var items=[["dashboard","🏠 כל הדירות"],["reports","📊 דוח שותפים כללי"],["mgmt","💼 דוח דמי ניהול"]];
+  var items=[["dashboard","🏠 כל הפרוייקטים"],["reports","📊 דוח שותפים כללי"],["mgmt","💼 דוח דמי ניהול"]];
   if(can("settings")) items.push(["settings","⚙️ הגדרות"]);
   if(can("edit")) items.push(["import","📥 ייבוא"]);
   if(can("edit")) items.push(["recycle","🗑️ סל מחזור"]);
@@ -1154,7 +1154,7 @@ async function doResetCode(){
    ============================================================ */
 function viewDashboard(){
   var all=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);});
-  var h='<div class="toolbar"><h2 style="margin:0">כל הדירות</h2>'+
+  var h='<div class="toolbar"><h2 style="margin:0">כל הפרוייקטים</h2>'+
     searchBox("apt-q",Q.apts,"חיפוש דירה / פרויקט…","Q.apts=this.value;renderAptGrid()")+
     '<span id="apt-count">'+countLine(all.length,all.length,"דירות")+'</span>'+
     '<div class="sp"></div>'+
@@ -3909,7 +3909,7 @@ function openQuickPay(){
   if(!apts.length){ toast("אין דירות במערכת","err"); return; }
   var cur=state.params.apartmentId||apts[0].id;
   openModal({title:"💳 תשלום מהיר",wide:true,bodyHtml:
-    '<div class="field"><label>בחר דירה</label><select id="qp-apt" onchange="renderQuickPayList()">'+
+    '<div class="field"><label>בחר פרוייקט</label><select id="qp-apt" onchange="renderQuickPayList()">'+
       apts.map(function(a){return '<option value="'+a.id+'"'+(a.id===cur?" selected":"")+'>'+esc(a.name)+'</option>';}).join("")+
     '</select></div>'+
     '<div class="field">'+searchBox("qp-q",Q.quick,"חיפוש שלב…","Q.quick=this.value;renderQuickPayList()")+'</div>'+
