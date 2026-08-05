@@ -1484,138 +1484,118 @@
     const projects = await guard(window.Store.projects.list());
     let lines = await guard(window.Store.payreq.list());   // רשומות מהשרת (נשמרות עד מחיקה)
     const stageCache = {};       // projId -> stages[]
-    let curStages = [];
+    let selProj = null;
 
     view().innerHTML = `
-      <div class="page-head"><h2>בונה בקשת תשלום</h2><span class="mini">כל שורה נשמרת בשרת ונשארת עד שתמחק אותה</span></div>
+      <div class="page-head"><h2>בונה בקשת תשלום</h2><span class="mini">בחר פרויקט, הזן כמה הקבלן מבקש בכל שלב, והוסף לבקשה</span></div>
       <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
         <div class="card" style="flex:1 1 480px;min-width:320px">
-          <div class="row">
-            <div class="field"><label>פרויקט</label><div class="ta"><input id="pr_proj_in" placeholder="הקלד לחיפוש פרויקט..." autocomplete="off"><div class="ta-list" id="pr_proj_list"></div></div></div>
-            <div class="field"><label>שלב</label><div class="ta"><input id="pr_stage_in" placeholder="בחר פרויקט קודם" autocomplete="off" disabled><div class="ta-list" id="pr_stage_list"></div></div></div>
-          </div>
-          <div id="pr_stageInfo" class="mini" style="min-height:20px;color:var(--muted)"></div>
-          <div class="row" style="align-items:flex-end">
-            <div class="field" style="flex:1"><label>סכום מבוקש (₪) — אפשר להשאיר 0</label><input id="pr_req" type="number" placeholder="0 = רק יתרת הלקוח"></div>
-            <button class="btn green" id="pr_add" style="flex:none;white-space:nowrap">➕ הוסף לבקשה</button>
-          </div>
-          <div id="pr_toolbar" style="margin-top:12px"></div>
-          <div id="pr_lines" style="margin-top:8px"></div>
+          <div class="field"><label>פרויקט</label><div class="ta"><input id="pr_proj_in" placeholder="הקלד לחיפוש פרויקט..." autocomplete="off"><div class="ta-list" id="pr_proj_list"></div></div></div>
+          <div id="pr_stagesForm" style="margin-top:12px"></div>
         </div>
-        <div class="card" id="pr_summary" style="flex:1 1 300px;min-width:280px;position:sticky;top:12px;background:var(--soft)"></div>
+        <div class="card" id="pr_report" style="flex:1 1 340px;min-width:300px;position:sticky;top:12px;background:var(--soft)"></div>
       </div>`;
 
-    let selProj = null, selStage = null;
-
-    function showStageInfo() {
-      const st = selStage;
-      if (!st) { $('#pr_stageInfo').innerHTML = ''; return; }
-      const subRem = (+st.sub_amount || 0) - (+st.paid_sub || 0);
-      const owes = (+st.client_amount || 0) - (+st.paid_in || 0);
-      $('#pr_stageInfo').innerHTML = `נותר לקבלן בשלב: <b style="color:${subRem >= 0 ? 'var(--green)' : 'var(--red)'}">${money(subRem)}</b> · הלקוח חייב על השלב: <b style="color:var(--brand-d)">${money(owes)}</b>`;
-    }
-
-    // חיפוש שלב לחיץ — תלוי בפרויקט שנבחר (curStages)
-    const stageTA = makeTypeahead($('#pr_stage_in'), $('#pr_stage_list'),
-      () => curStages.map(s => ({ id: s.id, label: s.name, sub: s.subcontractor_name || '' })),
-      (pick) => { selStage = pick ? curStages.find(x => x.id === pick.id) : null; showStageInfo(); });
-
-    // חיפוש פרויקט לחיץ — בחירה טוענת את שלבי הפרויקט לחיפוש השלב
+    // בחירת פרויקט → טוענת ומציגה את שלביו הפתוחים לקבלן
     makeTypeahead($('#pr_proj_in'), $('#pr_proj_list'),
       () => projects.map(p => ({ id: p.id, label: p.name })),
       async (pick) => {
-        selProj = pick; selStage = null; stageTA.reset();
-        $('#pr_stageInfo').innerHTML = '';
-        const stIn = $('#pr_stage_in');
-        if (!pick) { stIn.disabled = true; stIn.placeholder = 'בחר פרויקט קודם'; curStages = []; return; }
-        stIn.disabled = false; stIn.placeholder = 'הקלד לחיפוש שלב...';
+        selProj = pick;
+        if (!pick) { $('#pr_stagesForm').innerHTML = ''; return; }
         if (!stageCache[pick.id]) { const d = await guard(window.Store.projects.get(pick.id)); stageCache[pick.id] = d.stages || []; }
-        curStages = stageCache[pick.id];
+        renderStagesForm();
       });
 
-    $('#pr_add').onclick = async () => {
-      if (!selProj) { toast('בחר פרויקט', 'err'); return; }
-      const st = selStage;
-      if (!st) { toast('בחר שלב', 'err'); return; }
-      const requested = parseFloat($('#pr_req').value) || 0;   // 0/ריק מותר — מביא רק את יתרת הלקוח
-      if (requested < 0) { toast('הסכום לא יכול להיות שלילי', 'err'); return; }
-      const payload = {
-        project_id: selProj.id, project_name: selProj.label,
-        stage_id: st.id, stage_name: st.name, sub_name: st.subcontractor_name || '',
-        requested,
-        sub_remaining: (+st.sub_amount || 0) - (+st.paid_sub || 0),
-        client_owes: (+st.client_amount || 0) - (+st.paid_in || 0)
-      };
-      const saved = await guard(window.Store.payreq.create(payload));
-      lines.unshift(saved);
-      $('#pr_req').value = ''; stageTA.reset(); selStage = null; $('#pr_stageInfo').innerHTML = '';
-      render(); toast('נשמר', 'ok');
-      $('#pr_stage_in').focus();
-    };
+    const existingReq = (projId, stageId) => { const l = lines.find(x => x.project_id === projId && x.stage_id === stageId); return l ? l.requested : null; };
 
-    function render() {
-      const box = $('#pr_lines'), tb = $('#pr_toolbar');
-      if (!lines.length) {
-        tb.innerHTML = '';
-        box.innerHTML = '<div class="empty" style="padding:24px"><div class="big">🧾</div>עדיין לא הוספת שלבים לבקשה</div>';
-        renderSummary(); return;
-      }
-      tb.innerHTML = `<div style="display:flex;align-items:center;gap:8px"><span class="mini muted">${lines.length} שורות שמורות</span><div class="spacer" style="flex:1"></div><button class="btn xs red" id="pr_clear">🗑️ מחק הכל</button></div>`;
-      box.innerHTML = `<table><thead><tr><th>פרויקט</th><th>שלב</th><th>קבלן</th><th>מבוקש</th><th>נותר לקבלן אחרי</th><th>חייב לקוח</th><th></th></tr></thead><tbody>${lines.map(l => {
-        const after = (+l.sub_remaining || 0) - (+l.requested || 0), over = (+l.requested || 0) > (+l.sub_remaining || 0) + 0.001;
-        return `<tr>
-          <td>${esc(l.project_name || '—')}</td><td>${esc(l.stage_name || '—')}</td><td>${esc(l.sub_name) || '—'}</td>
-          <td class="num" style="font-weight:700">${money(l.requested)}</td>
-          <td class="num" style="color:${after >= 0 ? 'var(--green)' : 'var(--red)'}">${money(after)}${over ? ' ⚠️' : ''}</td>
-          <td class="num" style="color:var(--brand-d)">${money(l.client_owes)}</td>
-          <td><button class="btn xs red" data-delline="${l.id}">✕</button></td></tr>`;
-      }).join('')}</tbody></table>`;
-      box.querySelectorAll('[data-delline]').forEach(b => b.onclick = async () => {
-        const id = +b.dataset.delline;
-        await guard(window.Store.payreq.remove(id));
-        lines = lines.filter(l => l.id !== id);
-        render(); toast('נמחק', 'ok');
-      });
-      $('#pr_clear').onclick = async () => {
-        if (!await confirmDialog(`למחוק את כל ${lines.length} השורות? ניתן לשחזר מסל המחזור.`, 'מחיקת הכל')) return;
-        await guard(window.Store.payreq.clear());
-        lines = [];
-        render(); toast('כל הבקשות נמחקו', 'ok');
-      };
-      renderSummary();
+    // טופס הזנה: כל השלבים הפתוחים לקבלן בפרויקט + שדה סכום לכל שלב
+    function renderStagesForm() {
+      const box = $('#pr_stagesForm');
+      if (!selProj) { box.innerHTML = ''; return; }
+      const open = (stageCache[selProj.id] || []).filter(s => ((+s.sub_amount || 0) - (+s.paid_sub || 0)) > 0.5);
+      if (!open.length) { box.innerHTML = '<div class="empty" style="padding:18px">כל השלבים בפרויקט זה שולמו במלואם לקבלן 🎉</div>'; return; }
+      box.innerHTML = `<div class="mini muted" style="margin-bottom:6px">שלבים פתוחים לקבלן — הזן כמה הוא מבקש בכל שלב:</div>
+        <div style="overflow-x:auto"><table><thead><tr><th>שלב</th><th class="num">סכום לקבלן</th><th class="num">נותר</th><th class="num">כמה מבקש</th></tr></thead><tbody>
+        ${open.map(s => { const rem = (+s.sub_amount || 0) - (+s.paid_sub || 0), ex = existingReq(selProj.id, s.id); return `<tr>
+          <td>${esc(s.name)}</td>
+          <td class="num">${money0(s.sub_amount)}</td>
+          <td class="num" style="color:var(--brand-d)">${money0(rem)}</td>
+          <td><input class="pr_amt" data-stage="${s.id}" type="number" placeholder="0" value="${ex != null ? ex : ''}" style="width:110px;padding:7px;border:1px solid var(--line);border-radius:8px"></td></tr>`; }).join('')}
+        </tbody></table></div>
+        <button class="btn green" id="pr_addAll" style="margin-top:12px">➕ הוסף לבקשה</button>`;
+      $('#pr_addAll').onclick = addAll;
     }
 
-    // קיבוץ לפי פרויקט: מבוקש = סכום כל השורות; יתרת לקוח = לפי שלב ייחודי (snapshot אחרון)
+    // הוספת כל השלבים שהוזן בהם סכום (שלב שכבר בבקשה — מוחלף בערך החדש)
+    async function addAll() {
+      const stages = stageCache[selProj.id] || [];
+      const toSet = [];
+      $('#pr_stagesForm').querySelectorAll('.pr_amt').forEach(inp => {
+        const v = inp.value.trim(); if (v === '') return;
+        const amt = parseFloat(v); if (isNaN(amt) || amt < 0) return;
+        toSet.push({ stageId: +inp.dataset.stage, amt });
+      });
+      if (!toSet.length) { toast('הזן סכום בשלב אחד לפחות', 'err'); return; }
+      for (const it of toSet) {
+        const s = stages.find(x => x.id === it.stageId); if (!s) continue;
+        const exist = lines.find(x => x.project_id === selProj.id && x.stage_id === it.stageId);
+        if (exist) { await guard(window.Store.payreq.remove(exist.id)); lines = lines.filter(x => x.id !== exist.id); }
+        const saved = await guard(window.Store.payreq.create({
+          project_id: selProj.id, project_name: selProj.label,
+          stage_id: s.id, stage_name: s.name, sub_name: s.subcontractor_name || '',
+          requested: it.amt,
+          sub_remaining: (+s.sub_amount || 0) - (+s.paid_sub || 0),
+          client_owes: (+s.client_amount || 0) - (+s.paid_in || 0)
+        }));
+        lines.unshift(saved);
+      }
+      toast(`${toSet.length} שלבים נוספו לבקשה`, 'ok');
+      renderStagesForm(); renderReport();
+    }
+
+    // קיבוץ לפי פרויקט: סה"כ לקבלן = סכום כל השלבים; ללקוח = יתרה לפי שלב ייחודי
     function groupByProject() {
-      const groups = [];
-      const byKey = {};
+      const groups = [], byKey = {};
       lines.forEach(l => {
         const key = l.project_id == null ? 'p_null_' + l.id : 'p' + l.project_id;
         let g = byKey[key];
-        if (!g) { g = byKey[key] = { name: l.project_name || '—', requested: 0, owes: 0, count: 0, items: [], seen: {} }; groups.push(g); }
-        g.requested += +l.requested || 0; g.count++; g.items.push(l);
+        if (!g) { g = byKey[key] = { name: l.project_name || '—', requested: 0, owes: 0, items: [], seen: {} }; groups.push(g); }
+        g.requested += +l.requested || 0; g.items.push(l);
         const sk = l.stage_id == null ? 's_null_' + l.id : 's' + l.stage_id;
-        if (!g.seen[sk]) { g.seen[sk] = 1; g.owes += +l.client_owes || 0; }   // שורות ממוינות חדש→ישן, אז הראשון הוא העדכני
+        if (!g.seen[sk]) { g.seen[sk] = 1; g.owes += +l.client_owes || 0; }
       });
       return groups;
     }
 
-    function renderSummary() {
-      const box = $('#pr_summary');
-      if (!lines.length) { box.innerHTML = '<h3 style="margin-top:0">סיכום הבקשה</h3><div class="muted">הוסף שלבים כדי לראות כמה מבוקש מכל פרויקט.</div>'; return; }
+    // דוח הבקשה: פרויקט בגדול → פירוט לפי שלב → סה"כ לקבלן וללקוח → סיכום כללי
+    function renderReport() {
+      const box = $('#pr_report');
+      if (!lines.length) { box.innerHTML = '<h3 style="margin-top:0">הבקשה</h3><div class="muted">בחר פרויקט והזן סכומים לשלבים כדי לבנות את הבקשה.</div>'; return; }
       const groups = groupByProject();
       const grandReq = groups.reduce((s, g) => s + g.requested, 0);
       const grandOwes = groups.reduce((s, g) => s + g.owes, 0);
-      box.innerHTML = `<h3 style="margin-top:0">סיכום הבקשה</h3>
+      box.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><h3 style="margin:0">הבקשה</h3><div class="spacer" style="flex:1"></div><button class="btn xs red" id="pr_clear">🗑️ מחק הכל</button></div>
         ${groups.map(g => `
-          <div style="padding:10px 0;border-bottom:1px solid var(--line)">
-            <div style="font-weight:700">${esc(g.name)} <span class="mini muted">· ${g.count} שורות</span></div>
-            <div style="display:flex;justify-content:space-between;margin-top:4px"><span>מבוקש מהפרויקט</span><b>${money(g.requested)}</b></div>
-            <div style="display:flex;justify-content:space-between"><span class="mini">יתרת לקוח לתשלום</span><span class="mini" style="color:var(--brand-d);font-weight:700">${money(g.owes)}</span></div>
+          <div style="padding:10px 0;border-bottom:2px solid var(--line)">
+            <div style="font-weight:800;font-size:17px;color:var(--brand-d)">${esc(g.name)}</div>
+            <table style="width:100%;margin-top:6px"><tbody>${g.items.map(l => `<tr>
+              <td>${esc(l.stage_name || '')}</td>
+              <td class="num" style="font-weight:700">${money(l.requested)}</td>
+              <td style="width:26px;text-align:left"><button class="btn xs red" data-delline="${l.id}">✕</button></td></tr>`).join('')}</tbody></table>
+            <div style="display:flex;justify-content:space-between;margin-top:6px;font-weight:700"><span>סה"כ לקבלן</span><span style="color:var(--green)">${money(g.requested)}</span></div>
+            <div style="display:flex;justify-content:space-between"><span class="mini">סה"כ ללקוח (יתרה)</span><span class="mini" style="color:var(--brand-d);font-weight:700">${money(g.owes)}</span></div>
           </div>`).join('')}
-        <div style="display:flex;justify-content:space-between;margin-top:12px;font-size:17px"><b>סה"כ מבוקש</b><b style="color:var(--green)">${money(grandReq)}</b></div>
-        <div style="display:flex;justify-content:space-between;margin-top:2px"><span>סה"כ יתרת לקוח</span><b style="color:var(--brand-d)">${money(grandOwes)}</b></div>
+        <div style="display:flex;justify-content:space-between;margin-top:12px;font-size:17px"><b>סה"כ מבוקש לקבלן</b><b style="color:var(--green)">${money(grandReq)}</b></div>
+        <div style="display:flex;justify-content:space-between;margin-top:2px"><span>סה"כ ללקוח</span><b style="color:var(--brand-d)">${money(grandOwes)}</b></div>
         <button class="btn ghost" id="pr_copy" style="width:100%;margin-top:14px">📋 העתק לוואטסאפ</button>`;
+      box.querySelectorAll('[data-delline]').forEach(b => b.onclick = async () => {
+        const id = +b.dataset.delline; await guard(window.Store.payreq.remove(id));
+        lines = lines.filter(l => l.id !== id); renderReport(); renderStagesForm(); toast('נמחק', 'ok');
+      });
+      $('#pr_clear').onclick = async () => {
+        if (!await confirmDialog(`למחוק את כל הבקשה (${lines.length} שלבים)? ניתן לשחזר מסל המחזור.`, 'מחיקת הכל')) return;
+        await guard(window.Store.payreq.clear()); lines = []; renderReport(); renderStagesForm(); toast('כל הבקשה נמחקה', 'ok');
+      };
       $('#pr_copy').onclick = () => copyRequestText(groups, grandReq, grandOwes);
     }
 
@@ -1625,13 +1605,13 @@
       groups.forEach(g => {
         txt += `\n📁 ${g.name}\n`;
         g.items.forEach(l => { txt += `  • ${l.stage_name || ''}: ${money(l.requested)}\n`; });
-        txt += `  סה"כ פרויקט: ${money(g.requested)} | יתרת לקוח: ${money(g.owes)}\n`;
+        txt += `  סה"כ לקבלן: ${money(g.requested)} | ללקוח: ${money(g.owes)}\n`;
       });
-      txt += `\n💰 סה"כ מבוקש: ${money(grandReq)}\n🟢 סה"כ יתרת לקוח: ${money(grandOwes)}`;
-      navigator.clipboard.writeText(txt).then(() => toast('הסיכום הועתק', 'ok'), () => toast('ההעתקה נכשלה', 'err'));
+      txt += `\n💰 סה"כ מבוקש לקבלן: ${money(grandReq)}\n🟢 סה"כ ללקוח: ${money(grandOwes)}`;
+      navigator.clipboard.writeText(txt).then(() => toast('הבקשה הועתקה', 'ok'), () => toast('ההעתקה נכשלה', 'err'));
     }
 
-    render();
+    renderReport();
   }
 
   // ============================================================
