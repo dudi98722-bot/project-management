@@ -407,8 +407,15 @@ function invoiceStatusOptions(sel,withUnchanged){
     '<option value="none"'+(sel==="none"?" selected":"")+'>לא צריך חשבונית</option>';
 }
 var BASE_TYPES = {full:"מלא (כל הסכום)", net17:"נטו (מע\"מ 17%)", net18:"נטו (מע\"מ 18%)"};
-/* ההערה שנרשמת אוטומטית על תשלום "שווה ערך" של דמי ניהול */
+/* ההערה והתווית של תשלום "שווה ערך" האוטומטי של דמי ניהול */
 var AUTO_MGMT_NOTE = "חיליק פנימי";
+/* אמצעי התשלום כפי שמוצג בטבלאות. תשלום אוטומטי מוצג בשם שלו
+   במקום "שווה ערך" + תג "אוטו׳" — כך הוא מזוהה מיד בכל מקום. */
+function payMethodLabel(p){ return p&&p.auto ? AUTO_MGMT_NOTE : (METHODS[p&&p.method]||""); }
+function payMethodCell(p){
+  return p&&p.auto ? '<span class="badge badge-muted">'+esc(AUTO_MGMT_NOTE)+'</span>'
+                   : esc(METHODS[p&&p.method]||"");
+}
 
 /* ---------- מצב ---------- */
 var DB = null;
@@ -2699,7 +2706,7 @@ function sheetPayments(list){
         p.recipientType==="manager"?managerName(p.recipientManagerId):"",
         p.payerPartnerId?partnerName(p.payerPartnerId):"",
         accName(p.accountId), accountIsBank(p.accountId)?"כן":"",
-        methodName(p.method), p.auto?"כן":"", invoiceStatusText(p), p.note||""]);
+        payMethodLabel(p), p.auto?"כן":"", invoiceStatusText(p), p.note||""]);
       tot+=Number(p.amount)||0;
     });
   });
@@ -3252,7 +3259,7 @@ function partnerPaymentsBody(pid){
       var e=byId(DB.expenses,p.expenseId);
       rows.push({apt:a.name,date:p.date,amount:Number(p.amount)||0,
         stage:(e?e.description:"—"),mgr:p.recipientType==="manager",recip:p.recipientType==="manager"?managerName(p.recipientManagerId):"ספק",
-        method:METHODS[p.method]||"",inv:invoiceStatusText(p)});
+        method:payMethodLabel(p),inv:invoiceStatusText(p)});
       tot+=Number(p.amount)||0;
     });
     apDeposits(a.id).forEach(function(d){
@@ -3998,7 +4005,7 @@ function payTableHtml(aptId){
       '<td>'+money(p.amount)+'</td>'+
       '<td>'+esc(acc?acc.name:"ידני")+(acc&&acc.isBank?" 🏦":"")+'</td>'+
       '<td>'+(p.payerPartnerId?esc(partnerName(p.payerPartnerId)):(accountIsBank(p.accountId)?'<span class="muted">מהבנק</span>':"—"))+'</td>'+
-      '<td>'+recip+'</td><td>'+(METHODS[p.method]||"")+(p.auto?' <span class="badge badge-muted">אוטו׳</span>':'')+'</td>'+
+      '<td>'+recip+'</td><td>'+payMethodCell(p)+'</td>'+
       '<td>'+invoiceCellHtml(p)+'</td>'+
       '<td class="muted" style="max-width:180px;overflow:hidden;text-overflow:ellipsis">'+esc(p.note||"")+'</td>'+
       '<td class="right" style="white-space:nowrap">'+
@@ -4030,7 +4037,7 @@ function openPayments(eId){
       var acc=byId(DB.accounts,p.accountId); var recip=p.recipientType==="manager"?("מנהל: "+managerName(p.recipientManagerId)):"ספק";
       body+='<tr><td>'+dateHe(p.date)+'</td><td>'+money(p.amount)+'</td><td>'+esc(acc?acc.name:"ידני")+(acc&&acc.isBank?" 🏦":"")+'</td>'+
         '<td>'+(p.payerPartnerId?esc(partnerName(p.payerPartnerId)):(acc&&acc.isBank?"מהבנק":"—"))+'</td>'+
-        '<td>'+esc(recip)+'</td><td>'+(METHODS[p.method]||"")+(p.auto?' <span class="badge badge-muted">אוטו׳</span>':'')+'</td><td>'+invoiceCellHtml(p)+'</td>'+
+        '<td>'+esc(recip)+'</td><td>'+payMethodCell(p)+'</td><td>'+invoiceCellHtml(p)+'</td>'+
         '<td class="right">'+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="openPaymentEditor(\''+eId+'\',\''+p.id+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="delPayment(\''+p.id+'\',\''+eId+'\')">🗑️</button>':'')+'</td></tr>';
     });
     body+='</tbody></table></div>';
@@ -5614,7 +5621,7 @@ function moduleMgmtReport(){
       pAny=true; pTot+=Number(p.amount)||0;
       payRows+='<tr><td>'+dateHe(p.date)+'</td><td>'+esc(a.name)+'</td><td>'+esc(e?e.description:"—")+'</td>'+
         '<td>'+esc(managerName(p.recipientManagerId))+'</td><td><b>'+money(p.amount)+'</b></td>'+
-        '<td>'+esc(METHODS[p.method]||p.method||"")+'</td><td>'+esc(invoiceStatusText(p))+'</td>'+
+        '<td>'+esc(payMethodLabel(p))+'</td><td>'+esc(invoiceStatusText(p))+'</td>'+
         '<td>'+esc(p.note||"")+'</td></tr>';
     });
   });
