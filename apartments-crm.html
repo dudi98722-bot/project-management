@@ -713,6 +713,23 @@ function expenseMgmtCostLiveCalc(eId){
   var e=byId(DB.expenses,eId); if(!e||!e.mgmtEnabled) return 0;
   return round2(expMgrFees(eId).reduce(function(s,f){return s+mgrFeeLiveOnExpense(eId,f.managerId);},0));
 }
+/* סימון מצב דמי הניהול של שלב — שלושה מצבים:
+   ✔ יש דמי ניהול · ✖ נקבע במפורש שאין · ריק = טרם סומן.
+   ההבחנה בין "אין" ל"טרם סומן" נשענת על mgmtSet, שנרשם רק כשמישהו
+   באמת בחר "עם / בלי". שורות ישנות שיובאו בלי שנשאלה השאלה
+   נשארות ריקות — וכך אפשר לאתר בדיוק מה עוד לא הוכרע. */
+function mgmtState(e,cont){
+  if(cont) return "";                 // מכל — הסימון יושב בתתי-השלבים
+  if(e.mgmtEnabled) return "yes";
+  if(e.mgmtSet) return "no";
+  return "";
+}
+function mgmtMarkCell(e,cont){
+  var st=mgmtState(e,cont);
+  if(st==="yes") return '<span class="badge badge-ok" title="יש דמי ניהול">✔</span>';
+  if(st==="no")  return '<span class="badge badge-danger" title="אין דמי ניהול">✖</span>';
+  return '';
+}
 function mgrPaidOnExpense(eId,mId){
   return round2(expPayments(eId).filter(function(p){return p.recipientType==="manager"&&p.recipientManagerId===mId;})
     .reduce(function(s,p){return s+(Number(p.amount)||0);},0));
@@ -2972,7 +2989,8 @@ function expTableHtml(aptId){
   var h='<div class="table-wrap"><table class="tbl"><thead><tr>'+
     (selC?'<th data-xl-skip="1" style="width:30px"><input type="checkbox" title="סמן הכל" style="width:auto" onclick="ebAll(this.checked)"></th>':'')+
     '<th>תאריך</th><th>תיאור</th><th>סיווג</th><th>סכום</th>'+
-    (a.hasManagement?'<th>דמי ניהול</th>':'')+'<th>שולם</th><th>נותר</th><th>סטטוס</th><th></th></tr></thead><tbody>';
+    (a.hasManagement?'<th title="✔ יש דמי ניהול · ✖ אין · ריק = טרם סומן">דמי ניהול?</th><th>דמי ניהול</th>':'')+
+    '<th>שולם</th><th>נותר</th><th>סטטוס</th><th></th></tr></thead><tbody>';
 
   /* שורת שלב — נעשה שימוש גם לאב וגם לתת-שלב */
   function rowFor(e,isChild){
@@ -2992,7 +3010,7 @@ function expTableHtml(aptId){
         (cont?' <span class="pill" data-xl-skip="1">'+kids.length+' תתי-שלבים</span>':'')+'</td>'+
       '<td>'+(CLASSIFICATIONS[e.classification]||"")+'</td>'+
       '<td><b>'+money(e.amount)+'</b>'+(cont?'<div class="muted" data-xl-skip="1" style="font-size:11px">סך תתי-השלבים</div>':'')+'</td>'+
-      (a.hasManagement?'<td>'+((cont||e.mgmtEnabled)&&mg?money(mg):'—')+'</td>':'')+
+      (a.hasManagement?'<td>'+mgmtMarkCell(e,cont)+'</td><td>'+((cont||e.mgmtEnabled)&&mg?money(mg):'—')+'</td>':'')+
       '<td>'+money(expensePaid(e.id))+'</td><td class="'+(Math.abs(rem)>0.01?"neg":"pos")+'">'+money(rem)+'</td><td>'+badge+'</td>'+
       '<td class="right" style="white-space:nowrap">'+
         /* למכל אין תשלומים משלו — הכסף יושב בתתי-השלבים */
@@ -3016,7 +3034,7 @@ function expTableHtml(aptId){
       .forEach(function(k){ h+=rowFor(k,true); });
   });
   var lbl=(exps.length===all.length)?'סה"כ':'סה"כ המסונן';
-  h+='</tbody><tfoot><tr><td colspan="'+(selC?4:3)+'">'+lbl+'</td><td>'+money(tot)+'</td>'+(a.hasManagement?'<td></td>':'')+'<td>'+money(totPaid)+'</td><td>'+money(tot-totPaid)+'</td><td colspan="2"></td></tr></tfoot></table></div>';
+  h+='</tbody><tfoot><tr><td colspan="'+(selC?4:3)+'">'+lbl+'</td><td>'+money(tot)+'</td>'+(a.hasManagement?'<td></td><td></td>':'')+'<td>'+money(totPaid)+'</td><td>'+money(tot-totPaid)+'</td><td colspan="2"></td></tr></tfoot></table></div>';
   return h;
 }
 /* ============================================================
@@ -3074,7 +3092,7 @@ function applyBulkExpEdit(aptId,ids){
     if(mg==="on"){
       /* לא מספיק לסמן דגל — צריך גם ליצור את רשומות דמי הניהול לכל מנהל
          לפי ברירת המחדל שלו, אחרת החישוב יוצא 0 עד עריכה ידנית של השורה. */
-      e.mgmtEnabled=true;
+      e.mgmtEnabled=true; e.mgmtSet=true;
       if(e.mgmtBaseType==null) e.mgmtBaseType="full";
       if(e.mgmtVatRate==null) e.mgmtVatRate=18;
       var have={}; expMgrFees(e.id).forEach(function(f){ have[f.managerId]=1; });
@@ -3083,7 +3101,7 @@ function applyBulkExpEdit(aptId,ids){
           pctCurrent:Number(m.defaultFeePercent)||0,pctDeferred:0,deferredLabel:"",deferredReleased:false,deleted:false});
       });
       syncAutoMgmtPayments(e.id);   // תשלום "שווה ערך" אוטומטי אם מוגדר בפרויקט
-    } else if(mg==="off"){ e.mgmtEnabled=false; }
+    } else if(mg==="off"){ e.mgmtEnabled=false; e.mgmtSet=true; }
     if(CU&&CU.role==="admin"){ if(hid==="on") e.hidden=true; else if(hid==="off") e.hidden=false; }
     n++;
   });
@@ -3335,7 +3353,7 @@ function applyBulkMgmt(aptId){
     if(!confirm("יוסרו דמי ניהול מ-"+okIds.length+" שלבים"+
       (blocked.length? "\n("+blocked.length+" שלבים ידולגו כי כבר שולם בהם למנהלים)":"")+
       "\n\nהנתונים הקיימים יישמרו ויחזרו אם תחיל שוב.")) return false;
-    okIds.forEach(function(eid){ var e=byId(DB.expenses,eid); if(e) e.mgmtEnabled=false; syncAutoMgmtPayments(eid); });
+    okIds.forEach(function(eid){ var e=byId(DB.expenses,eid); if(e){ e.mgmtEnabled=false; e.mgmtSet=true; } syncAutoMgmtPayments(eid); });
     save();
     toast("דמי הניהול הוסרו מ-"+okIds.length+" שלבים"+(blocked.length?" · "+blocked.length+" דולגו (שולם בהם)":""),blocked.length?"warn":"ok");
     rerender(); return;
@@ -3349,7 +3367,7 @@ function applyBulkMgmt(aptId){
   }
   ids.forEach(function(eid){
     var e=byId(DB.expenses,eid); if(!e) return;
-    e.mgmtEnabled=true; e.mgmtBaseType=base; e.mgmtVatRate=vat;
+    e.mgmtEnabled=true; e.mgmtSet=true; e.mgmtBaseType=base; e.mgmtVatRate=vat;
     DB.expenseManagerFees=DB.expenseManagerFees.filter(function(f){return f.expenseId!==eid;});
     cfg.forEach(function(c){
       DB.expenseManagerFees.push({id:uid(),expenseId:eid,managerId:c.id,
@@ -3577,6 +3595,7 @@ function saveExpense(eId,aptId){
       }
     }
     e.mgmtEnabled = (val("ex-mgmt")==="on");
+    e.mgmtSet = true;                 // נבחר במפורש "עם / בלי"
     e.mgmtBaseType = val("ex-base") || e.mgmtBaseType || "full";
     var vatRaw = val("ex-vat");
     if(vatRaw!==""){ var vn=Number(vatRaw); e.mgmtVatRate = isNaN(vn)?18:vn; }
@@ -4209,7 +4228,7 @@ function saveQuickExpense(){
     classification:val("qe-class")||"investment",
     description:desc,amount:amount,date:date,note:val("qe-note")||"",
     hasInvoice:false,invoiceLink:"",
-    mgmtEnabled:mgmtOn,
+    mgmtEnabled:mgmtOn, mgmtSet:!!document.getElementById("qe-mgmt"),
     mgmtBaseType:mgmtOn?(val("qe-base")||"full"):"full",
     mgmtVatRate:mgmtOn?(isNaN(mgmtVatRaw)?18:mgmtVatRaw):18,
     parentId:qParent||null,deleted:false});
