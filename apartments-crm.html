@@ -3602,9 +3602,182 @@ function modulePayments(aptId){
     '</select>'+
     ((Q.pay||Q.payWho||Q.paySrc||Q.payInv)?'<button class="btn btn-ghost btn-sm" onclick="Q.pay=\'\';Q.payWho=\'\';Q.paySrc=\'\';Q.payInv=\'\';rerender()">✕ נקה</button>':'')+
     (can("edit")?'<button class="btn btn-primary btn-sm" onclick="openBulkPayEdit(\''+aptId+'\')">✏️ עדכון מרוכז <span id="pb-count"></span></button>':'')+
+    (can("edit")?'<button class="btn btn-sm" onclick="openNoteImport(\''+aptId+'\')">📝 ייבוא הערות מאקסל</button>':'')+
     '<div class="sp"></div><span id="pay-count"></span></div>';
   h+='<div id="pay-table">'+payTableHtml(aptId)+'</div>';
   return h;
+}
+
+/* ---------- ייבוא הערות לתשלומים מאקסל ----------
+   מעלים קובץ שבו כל שורה מזוהה לפי פרוייקט + תיאור השלב + סכום +
+   תאריך, ומעדכנים ממנו את שדה ההערה. לא נוצר ולא נמחק שום תשלום —
+   רק ההערה מתעדכנת, ורק בשורות שהותאמו בוודאות (התאמה יחידה). */
+var NIMP={grid:null,hasHeader:true,aptId:null,map:{apt:-1,desc:-1,amount:-1,date:-1,note:-1},mode:"replace"};
+function openNoteImport(aptId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  NIMP={grid:null,hasHeader:true,aptId:aptId,map:{apt:-1,desc:-1,amount:-1,date:-1,note:-1},mode:"replace"};
+  openModal({title:"📝 ייבוא הערות לתשלומים",wide:true,bodyHtml:
+    '<div class="hint">כל שורה בקובץ מותאמת לתשלום קיים לפי <b>פרוייקט + תיאור השלב + סכום + תאריך</b>, '+
+      'ורק ההערה מתעדכנת. לא נוצרים ולא נמחקים תשלומים. '+
+      'אם אין עמודת פרוייקט — ההתאמה תהיה בתוך "'+esc((byId(DB.apartments,aptId)||{}).name||"")+'" בלבד.</div>'+
+    '<div class="toolbar">'+
+      '<button class="btn btn-primary btn-sm" onclick="document.getElementById(\'ni-file\').click()">📁 בחר קובץ (xlsx / csv)</button>'+
+      '<input type="file" id="ni-file" accept=".xlsx,.csv,.txt" style="display:none" onchange="readSheetFile(this,onNoteGrid,\'ni-file-name\')">'+
+      '<span id="ni-file-name" class="muted"></span>'+
+    '</div>'+
+    '<div class="hint">אפשר גם להדביק ישירות מאקסל:</div>'+
+    '<textarea id="ni-paste" rows="4" style="width:100%;font-family:monospace;font-size:12px" '+
+      'placeholder="הדבק כאן שורות מאקסל…" oninput="onNotePaste()"></textarea>'+
+    '<div id="ni-map"></div>',
+    saveLabel:"עדכן הערות",onSave:function(){ return applyNoteImport(); }});
+}
+function onNotePaste(){
+  var txt=val("ni-paste");
+  if(!txt.trim()){ NIMP.grid=null; document.getElementById("ni-map").innerHTML=""; return; }
+  onNoteGrid(parseDelimited(txt, txt.indexOf("\t")>=0?"\t":","),"הדבקה");
+}
+function onNoteGrid(grid){
+  grid=(grid||[]).filter(function(r){ return r.some(function(c){ return String(c).trim()!==""; }); });
+  if(!grid.length){ toast("לא נמצאו שורות","err"); return; }
+  NIMP.grid=grid;
+  var head=grid[0].map(function(c){ return String(c||"").trim(); });
+  function guess(hints){
+    for(var i=0;i<head.length;i++){
+      var hh=normKey(head[i]);
+      for(var k=0;k<hints.length;k++) if(hh.indexOf(normKey(hints[k]))>=0) return i;
+    }
+    return -1;
+  }
+  NIMP.map={apt:guess(["פרוייקט","פרויקט","דירה","project"]),
+            desc:guess(["תיאור","שלב","עבור","פירוט","description"]),
+            amount:guess(["סכום","סך","amount","תשלום"]),
+            date:guess(["תאריך","date"]),
+            note:guess(["הער","note","remark"])};
+  NIMP.hasHeader = (NIMP.map.amount>=0||NIMP.map.date>=0||NIMP.map.note>=0);
+  renderNoteMap();
+}
+function renderNoteMap(){
+  var box=document.getElementById("ni-map"); if(!box||!NIMP.grid) return;
+  var head=NIMP.grid[0].map(function(c,i){ return String(c||"").trim()||("עמודה "+(i+1)); });
+  function sel(key,cur){
+    return '<select onchange="NIMP.map.'+key+'=Number(this.value);renderNotePreview()">'+
+      '<option value="-1">— ללא —</option>'+
+      head.map(function(hh,i){ return '<option value="'+i+'"'+(i===cur?" selected":"")+'>'+esc(hh)+'</option>'; }).join("")+
+      '</select>';
+  }
+  box.innerHTML='<div class="section-title">התאמת עמודות</div>'+
+    '<div class="field"><label><input type="checkbox" style="width:auto" '+(NIMP.hasHeader?"checked":"")+
+      ' onchange="NIMP.hasHeader=this.checked;renderNotePreview()"> השורה הראשונה היא שורת כותרות</label></div>'+
+    '<div class="form-grid">'+
+      '<div class="field"><label>פרוייקט <span class="hint">(אופציונלי)</span></label>'+sel("apt",NIMP.map.apt)+'</div>'+
+      '<div class="field"><label>תיאור השלב</label>'+sel("desc",NIMP.map.desc)+'</div>'+
+      '<div class="field"><label>סכום</label>'+sel("amount",NIMP.map.amount)+'</div>'+
+      '<div class="field"><label>תאריך</label>'+sel("date",NIMP.map.date)+'</div>'+
+      '<div class="field"><label>הערה <span class="hint">(מה שיוכנס)</span></label>'+sel("note",NIMP.map.note)+'</div>'+
+    '</div>'+
+    '<div class="field"><label>הערה קיימת בתשלום</label>'+
+      '<select onchange="NIMP.mode=this.value;renderNotePreview()">'+
+        '<option value="replace"'+(NIMP.mode==="replace"?" selected":"")+'>להחליף בהערה מהקובץ</option>'+
+        '<option value="append"'+(NIMP.mode==="append"?" selected":"")+'>להוסיף בסוף (לשמור את הקיימת)</option>'+
+        '<option value="keep"'+(NIMP.mode==="keep"?" selected":"")+'>לא לגעת — למלא רק היכן שריק</option>'+
+      '</select></div>'+
+    '<div id="ni-preview"></div>';
+  renderNotePreview();
+}
+/* מתאים כל שורה בקובץ לתשלומים במערכת. מחזיר לכל שורה את רשימת
+   ההתאמות — כדי שנוכל להבחין בין "לא נמצא" ל"נמצא יותר מאחד". */
+function noteImportMatches(){
+  if(!NIMP.grid) return [];
+  var m=NIMP.map;
+  var rows=NIMP.hasHeader?NIMP.grid.slice(1):NIMP.grid;
+  /* מאגר התשלומים לחיפוש: כל הפרוייקטים אם יש עמודת פרוייקט, אחרת הנוכחי */
+  var pool=[];
+  var apts = m.apt>=0 ? active(DB.apartments).filter(function(a){ return canSeeApartment(a.id); })
+                      : [byId(DB.apartments,NIMP.aptId)].filter(Boolean);
+  apts.forEach(function(a){
+    apAllPayments(a.id).forEach(function(p){
+      var e=byId(DB.expenses,p.expenseId);
+      pool.push({p:p,aptKey:normKey(a.name),descKey:normKey(e?e.description:""),
+                 amount:round2(Number(p.amount)||0),date:p.date});
+    });
+  });
+  return rows.map(function(r,ix){
+    var note=m.note>=0?String(r[m.note]==null?"":r[m.note]).trim():"";
+    var aptKey=m.apt>=0?normKey(r[m.apt]):null;
+    var descKey=m.desc>=0?normKey(r[m.desc]):null;
+    var amount=m.amount>=0?round2(impNum(r[m.amount])):null;
+    var date=m.date>=0?impDate(r[m.date]):null;
+    var hits=pool.filter(function(x){
+      if(aptKey!=null && aptKey!=="" && x.aptKey!==aptKey) return false;
+      if(descKey!=null && descKey!=="" && x.descKey!==descKey) return false;
+      if(amount!=null && Math.abs(x.amount-amount)>0.01) return false;
+      if(date && x.date!==date) return false;
+      return true;
+    });
+    return {idx:ix+1,note:note,hits:hits,
+            label:[m.desc>=0?String(r[m.desc]||""):"",amount!=null?money(amount):"",date?dateHe(date):""].filter(Boolean).join(" · ")};
+  }).filter(function(x){ return x.note!==""; });   // שורה בלי הערה — אין מה לייבא
+}
+function renderNotePreview(){
+  var box=document.getElementById("ni-preview"); if(!box) return;
+  var m=NIMP.map;
+  if(m.note<0){ box.innerHTML='<div class="empty">בחר את עמודת ההערה</div>'; return; }
+  var keys=[m.desc>=0,m.amount>=0,m.date>=0].filter(Boolean).length;
+  if(keys<2){ box.innerHTML='<div class="hint neg">בחר לפחות שניים מבין: תיאור השלב, סכום, תאריך — אחרת ההתאמה לא בטוחה.</div>'; return; }
+  var res=noteImportMatches();
+  if(!res.length){ box.innerHTML='<div class="empty">לא נמצאו שורות עם הערה</div>'; return; }
+  var one=res.filter(function(x){ return x.hits.length===1; });
+  var none=res.filter(function(x){ return x.hits.length===0; });
+  var many=res.filter(function(x){ return x.hits.length>1; });
+  var h='<div class="section-title">תצוגה מקדימה</div>'+
+    '<div class="stat-grid">'+
+      stat("יעודכנו",String(one.length),"pos")+
+      stat("לא נמצאה התאמה",String(none.length),none.length?"neg":"")+
+      stat("יותר מהתאמה אחת",String(many.length),many.length?"neg":"")+
+    '</div>';
+  if(one.length){
+    h+='<div class="table-wrap" style="max-height:200px"><table class="tbl"><thead><tr>'+
+      '<th>שורה בקובץ</th><th>התשלום שזוהה</th><th>הערה שתיכנס</th></tr></thead><tbody>'+
+      one.slice(0,12).map(function(x){
+        var e=byId(DB.expenses,x.hits[0].p.expenseId);
+        return '<tr><td class="muted">'+x.idx+'</td><td>'+esc(e?e.description:"—")+' · '+money(x.hits[0].amount)+' · '+dateHe(x.hits[0].date)+'</td><td>'+esc(x.note)+'</td></tr>';
+      }).join("")+'</tbody></table></div>'+
+      (one.length>12?'<div class="hint">מוצגות 12 מתוך '+one.length+'</div>':'');
+  }
+  if(none.length){
+    h+='<div class="section-title">לא נמצאה התאמה ('+none.length+') — לא יעודכנו</div>'+
+      '<div class="table-wrap" style="max-height:150px"><table class="tbl"><thead><tr><th>שורה</th><th>מה חיפשנו</th><th>הערה</th></tr></thead><tbody>'+
+      none.slice(0,10).map(function(x){ return '<tr><td class="muted">'+x.idx+'</td><td>'+esc(x.label)+'</td><td>'+esc(x.note)+'</td></tr>'; }).join("")+
+      '</tbody></table></div>'+(none.length>10?'<div class="hint">מוצגות 10 מתוך '+none.length+'</div>':'');
+  }
+  if(many.length){
+    h+='<div class="section-title neg">יותר מהתאמה אחת ('+many.length+') — לא יעודכנו</div>'+
+      '<div class="hint">כמה תשלומים תואמים לאותה שורה. הוסף עמודת תאריך/סכום/פרוייקט כדי לדייק.</div>'+
+      '<div class="table-wrap" style="max-height:150px"><table class="tbl"><thead><tr><th>שורה</th><th>מה חיפשנו</th><th>כמה נמצאו</th></tr></thead><tbody>'+
+      many.slice(0,10).map(function(x){ return '<tr><td class="muted">'+x.idx+'</td><td>'+esc(x.label)+'</td><td>'+x.hits.length+'</td></tr>'; }).join("")+
+      '</tbody></table></div>';
+  }
+  box.innerHTML=h;
+}
+function applyNoteImport(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return false; }
+  if(NIMP.map.note<0){ toast("בחר את עמודת ההערה","err"); return false; }
+  var keys=[NIMP.map.desc>=0,NIMP.map.amount>=0,NIMP.map.date>=0].filter(Boolean).length;
+  if(keys<2){ toast("בחר לפחות שני שדות זיהוי (תיאור / סכום / תאריך)","err"); return false; }
+  var res=noteImportMatches();
+  var one=res.filter(function(x){ return x.hits.length===1; });
+  if(!one.length){ toast("אף שורה לא הותאמה לתשלום קיים","err"); return false; }
+  var skipped=res.length-one.length;
+  if(skipped && !confirm(one.length+" הערות יעודכנו.\n"+skipped+" שורות לא הותאמו ויידלגו.\n\nלהמשיך?")) return false;
+  var n=0;
+  one.forEach(function(x){
+    var p=x.hits[0].p, old=String(p.note||"").trim();
+    if(NIMP.mode==="keep" && old) return;
+    p.note = NIMP.mode==="append" && old ? (old+" | "+x.note) : x.note;
+    n++;
+  });
+  save(); toast("עודכנו "+n+" הערות"+(skipped?" ("+skipped+" דולגו)":""),"ok"); rerender();
+  return true;
 }
 /* ---------- עדכון מרוכז של תשלומים ----------
    מסמנים כמה תשלומים ומעדכנים יחד מאיפה שולמו, מי שילם, האמצעי או
