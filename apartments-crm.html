@@ -1574,6 +1574,31 @@ function viewApartmentOverview(aptId){
 function stat(label,value,cls){ return '<div class="stat"><div class="label">'+esc(label)+'</div><div class="value '+(cls||"")+'">'+value+'</div></div>'; }
 
 /* ============================================================
+   בורר תצוגות — מסך שיש בו כמה דוחות/רשימות מציג רק את מה שנבחר,
+   במקום לשפוך הכל יחד. defs = [{key,label,show,render}].
+   pk הוא מפתח ייחודי במסך; הבחירה נשמרת ב-state.params ומתאפסת
+   בניווט. דוח יחיד — מוצג בלי בורר מיותר.
+   ============================================================ */
+function reportPicker(pk,defs,opts){
+  opts=opts||{};
+  var avail=(defs||[]).filter(function(d){ return d && d.show!==false; });
+  if(!avail.length) return opts.empty||"";
+  if(avail.length===1) return avail[0].render();
+  var sel=state.params[pk]||opts.def||avail[0].key;
+  if(sel!=="all" && !avail.some(function(d){ return d.key===sel; })) sel=avail[0].key;
+  var bar='<div class="toolbar no-print" style="flex-wrap:wrap;gap:6px">'+
+    '<span class="muted" style="align-self:center">'+esc(opts.title||"בחר תצוגה")+':</span>'+
+    avail.map(function(d){
+      return '<button class="btn btn-sm'+(sel===d.key?" btn-primary":"")+'" onclick="setReportPick(\''+pk+'\',\''+d.key+'\')">'+d.label+'</button>';
+    }).join("")+
+    '<button class="btn btn-sm'+(sel==="all"?" btn-primary":"")+'" onclick="setReportPick(\''+pk+'\',\'all\')">📚 הכל</button>'+
+    (opts.extra||"")+'</div>';
+  var chosen = sel==="all" ? avail : avail.filter(function(d){ return d.key===sel; });
+  return bar+chosen.map(function(d){ return d.render(); }).join("");
+}
+function setReportPick(pk,k){ state.params[pk]=k; rerender(); }
+
+/* ============================================================
    תרשימים — SVG מוטמע, בלי ספריות חיצוניות (עובד גם מאחורי סינון)
    ============================================================ */
 var CHART_COLORS=["#4f46e5","#06b6d4","#f59e0b","#10b981","#ec4899","#8b5cf6","#ef4444","#14b8a6","#f97316","#6366f1"];
@@ -4481,9 +4506,10 @@ function moduleManagers(aptId){
       '</div>';
     return h;
   }
+  var autoH="", balH="", mgrCards=[], pendH="";
   /* הגדרת תשלום אוטומטי "שווה ערך" */
   var am=a.autoMgmt||null;
-  h+='<div class="card" style="border-right:3px solid var(--brand)"><h3>⚡ תשלום אוטומטי — שווה ערך</h3>'+
+  autoH='<div class="card" style="border-right:3px solid var(--brand)"><h3>⚡ תשלום אוטומטי — שווה ערך</h3>'+
     '<p class="muted" style="margin-top:0">אחוז מדמי הניהול של כל שלב נרשם אוטומטית כתשלום למנהלים ששולם ע"י שותף נבחר, באמצעי "שווה ערך". '+
     'לדוגמה: דמי ניהול 8,000 והגדרה של 3% → 240 ₪ נרשמים כמשולמים.</p>'+
     (am&&am.partnerId?'<div style="margin-bottom:10px"><span class="badge badge-ok">פעיל</span> '+
@@ -4500,14 +4526,14 @@ function moduleManagers(aptId){
     '</div>':'')+
     '<div class="hint">האוטומטי מתעדכן לבד: שלב חדש, שינוי אחוזים, שחרור דחוי — הסכום מחושב מחדש. תשלום ידני למנהל מצמצם את האוטומטי כדי לא לחרוג מהזכאות.</div></div>';
   // ליֹדג׳ר
-  h+='<div class="card"><h3>מאזן מנהלים</h3><div class="table-wrap"><table class="tbl"><thead><tr><th>מנהל</th><th>% ברירת מחדל</th><th>מגיע (פעיל, כולל מע"מ)</th><th>קיבל</th><th>יתרה</th><th></th></tr></thead><tbody>';
+  balH='<div class="card"><h3>מאזן מנהלים</h3><div class="table-wrap"><table class="tbl"><thead><tr><th>מנהל</th><th>% ברירת מחדל</th><th>מגיע (פעיל, כולל מע"מ)</th><th>קיבל</th><th>יתרה</th><th></th></tr></thead><tbody>';
   mgrs.forEach(function(m){
     var rec=managerReceivable(aptId,m.id), paid=managerPaid(aptId,m.id), bal=rec-paid;
-    h+='<tr><td>'+esc(m.name)+'</td><td>'+num(m.defaultFeePercent)+'%</td><td>'+money(rec)+'</td><td>'+money(paid)+'</td>'+
+    balH+='<tr><td>'+esc(m.name)+'</td><td>'+num(m.defaultFeePercent)+'%</td><td>'+money(rec)+'</td><td>'+money(paid)+'</td>'+
       '<td class="'+(bal>0?"neg":"pos")+'">'+money(bal)+'</td>'+
       '<td class="right">'+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editManager(\''+m.id+'\',\''+aptId+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="delManager(\''+m.id+'\',\''+aptId+'\')">🗑️</button>':'')+'</td></tr>';
   });
-  h+='</tbody></table></div></div>';
+  balH+='</tbody></table></div></div>';
 
   /* ---- תשלומים למנהלים: שלב-שלב, לכל מנהל בנפרד ---- */
   mgrs.forEach(function(m){
@@ -4520,7 +4546,7 @@ function moduleManagers(aptId){
     if(!rows.length) return;
     var tD=0,tP=0;
     var openCnt=rows.filter(function(r){return r.rem>0.01;}).length;
-    h+='<div class="card"><div class="toolbar" style="margin-bottom:8px"><h3 style="margin:0">💳 תשלומים ל'+esc(m.name)+'</h3><div class="sp"></div>'+
+    var cardH='<div class="card"><div class="toolbar" style="margin-bottom:8px"><h3 style="margin:0">💳 תשלומים ל'+esc(m.name)+'</h3><div class="sp"></div>'+
       (can("edit")&&openCnt?'<button class="btn btn-primary btn-sm" onclick="openBulkPayMgr(\''+aptId+'\',\''+m.id+'\')">💳 תשלום מרוכז ('+openCnt+' פתוחים)</button>':'')+
       '</div>'+
       '<div class="table-wrap"><table class="tbl"><thead><tr>'+
@@ -4531,15 +4557,16 @@ function moduleManagers(aptId){
       var badge = r.rem<=0.01 ? '<span class="badge badge-ok">שולם</span>'
                 : r.paid>0.01 ? '<span class="badge badge-warn">חלקי</span>'
                 : '<span class="badge badge-danger">לא שולם</span>';
-      h+='<tr><td>'+dateHe(r.e.date)+'</td><td><b>'+esc(r.e.description)+'</b></td>'+
+      cardH+='<tr><td>'+dateHe(r.e.date)+'</td><td><b>'+esc(r.e.description)+'</b></td>'+
         '<td>'+money(r.due)+'</td><td>'+money(r.paid)+'</td>'+
         '<td class="'+(r.rem>0.01?"neg":"pos")+'">'+money(r.rem)+'</td><td>'+badge+'</td>'+
         '<td class="right">'+(can("edit")&&r.rem>0.01
           ? '<button class="btn btn-primary btn-sm" onclick="payManager(\''+r.e.id+'\',\''+m.id+'\')">💳 שלם</button>'
           : '<button class="btn btn-ghost btn-sm" onclick="openPayments(\''+r.e.id+'\')">פירוט</button>')+'</td></tr>';
     });
-    h+='</tbody><tfoot><tr><td colspan="2">סה"כ</td><td>'+money(tD)+'</td><td>'+money(tP)+'</td>'+
+    cardH+='</tbody><tfoot><tr><td colspan="2">סה"כ</td><td>'+money(tD)+'</td><td>'+money(tP)+'</td>'+
       '<td class="'+((tD-tP)>0.01?"neg":"pos")+'">'+money(tD-tP)+'</td><td colspan="2"></td></tr></tfoot></table></div></div>';
+    mgrCards.push({id:m.id,name:m.name,open:openCnt,html:cardH});
   });
 
   // דחויים ממתינים לשחרור
@@ -4548,15 +4575,23 @@ function moduleManagers(aptId){
     expMgrFees(e.id).forEach(function(f){ if((Number(f.pctDeferred)||0)>0 && !f.deferredReleased) pend.push({e:e,f:f}); });
   });
   if(pend.length){
-    h+='<div class="card"><h3>דחויים ממתינים לשחרור</h3><div class="table-wrap"><table class="tbl"><thead><tr><th>הוצאה</th><th>מנהל</th><th>% דחוי</th><th>תווית</th><th>סכום דחוי (כולל מע"מ)</th><th></th></tr></thead><tbody>';
+    pendH='<div class="card"><h3>דחויים ממתינים לשחרור</h3><div class="table-wrap"><table class="tbl"><thead><tr><th>הוצאה</th><th>מנהל</th><th>% דחוי</th><th>תווית</th><th>סכום דחוי (כולל מע"מ)</th><th></th></tr></thead><tbody>';
     pend.forEach(function(x){
       var full=mgrFeeFullOnExpense(x.e.id,x.f.managerId), live=mgrFeeLiveOnExpense(x.e.id,x.f.managerId);
-      h+='<tr><td>'+esc(x.e.description)+'</td><td>'+esc(managerName(x.f.managerId))+'</td><td>'+num(x.f.pctDeferred)+'%</td><td>'+esc(x.f.deferredLabel||"")+'</td><td>'+money(full-live)+'</td>'+
+      pendH+='<tr><td>'+esc(x.e.description)+'</td><td>'+esc(managerName(x.f.managerId))+'</td><td>'+num(x.f.pctDeferred)+'%</td><td>'+esc(x.f.deferredLabel||"")+'</td><td>'+money(full-live)+'</td>'+
         '<td class="right">'+(can("edit")?'<button class="btn btn-sm btn-primary" onclick="releaseDeferred(\''+x.f.id+'\')">שחרר לתשלום</button>':'')+'</td></tr>';
     });
-    h+='</tbody></table></div></div>';
+    pendH+='</tbody></table></div></div>';
   }
-  return h;
+  /* כל התצוגות של הלשונית — בוחרים אחת במקום לראות הכל יחד */
+  var defs=[{key:"bal",label:"⚖️ מאזן מנהלים",render:function(){ return balH; }}];
+  mgrCards.forEach(function(c){
+    defs.push({key:"m_"+c.id,label:"💳 תשלומים ל"+esc(c.name)+(c.open?' <span class="pill">'+c.open+'</span>':''),
+               render:function(){ return c.html; }});
+  });
+  defs.push({key:"pend",label:"⏳ דחויים ממתינים ("+pend.length+")",show:pend.length>0,render:function(){ return pendH; }});
+  defs.push({key:"auto",label:"⚡ תשלום אוטומטי",render:function(){ return autoH; }});
+  return h+reportPicker("mgrView",defs,{title:"בחר תצוגה"});
 }
 function editManager(id,aptId){
   var m=id?byId(DB.managers,id):{name:"",defaultFeePercent:4};
@@ -4707,38 +4742,43 @@ function moduleBank(aptId){
     stat("סך הפקדות",money(depSum))+
     (incSum?stat("הכנסות שנכנסו לבנק",money(incSum)):"")+
     stat("שולם מהבנק",money(paidOut))+'</div>';
-  h+='<div class="toolbar"><h3 style="margin:0">הפקדות שותפים</h3><div class="sp"></div>'+
+  var depH='<div class="toolbar"><h3 style="margin:0">הפקדות שותפים</h3><div class="sp"></div>'+
     (can("edit")?'<button class="btn btn-primary btn-sm" onclick="openBulkDeposit(\''+aptId+'\')">➕ הפקדה מרוכזת</button> '+
       '<button class="btn btn-sm" onclick="openDepositImport(\''+aptId+'\')">📥 העלאת אקסל</button> '+
       '<button class="btn btn-sm" onclick="editDeposit(null,\''+aptId+'\')">➕ הפקדה בודדת</button>':'')+'</div>';
   refreshMethods();
-  h+='<div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>שותף</th><th>סכום</th><th>אמצעי</th><th>מחשבון</th><th>הערה</th><th></th></tr></thead><tbody>';
-  if(!deps.length) h+='<tr><td colspan="7" class="empty">אין הפקדות</td></tr>';
+  depH+='<div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>שותף</th><th>סכום</th><th>אמצעי</th><th>מחשבון</th><th>הערה</th><th></th></tr></thead><tbody>';
+  if(!deps.length) depH+='<tr><td colspan="7" class="empty">אין הפקדות</td></tr>';
   deps.sort(function(x,y){return x.date<y.date?1:-1;}).forEach(function(d){
-    h+='<tr><td>'+dateHe(d.date)+'</td><td>'+esc(partnerName(d.partnerId))+'</td><td>'+money(d.amount)+'</td>'+
+    depH+='<tr><td>'+dateHe(d.date)+'</td><td>'+esc(partnerName(d.partnerId))+'</td><td>'+money(d.amount)+'</td>'+
       '<td>'+esc(METHODS[d.method]||"")+'</td><td>'+esc(d.fromAccount||"")+'</td><td>'+esc(d.note||"")+'</td>'+
       '<td class="right">'+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editDeposit(\''+d.id+'\',\''+aptId+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="softDelete(\'deposits\',\''+d.id+'\',\'למחוק הפקדה?\')">🗑️</button>':'')+'</td></tr>';
   });
-  h+='</tbody></table></div>';
+  depH+='</tbody></table></div>';
   // הכנסות שנכנסו לבנק — נרשמות בלשונית "הכנסות" ומוצגות כאן לשקיפות
+  var incH="";
   if(bankInc.length){
-    h+='<div class="card" style="margin-top:16px"><h3>הכנסות שנכנסו לבנק</h3><div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>תיאור</th><th>סכום</th><th>נזקף לשותפים</th></tr></thead><tbody>';
+    incH='<div class="card"><h3>הכנסות שנכנסו לבנק</h3><div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>תיאור</th><th>סכום</th><th>נזקף לשותפים</th></tr></thead><tbody>';
     bankInc.slice().sort(function(x,y){return x.date<y.date?1:-1;}).forEach(function(i){
-      h+='<tr><td>'+dateHe(i.date)+'</td><td>'+esc(i.description)+'</td><td>'+money(i.amount)+'</td><td class="muted">'+esc(incomeSplitLabel(i))+'</td></tr>';
+      incH+='<tr><td>'+dateHe(i.date)+'</td><td>'+esc(i.description)+'</td><td>'+money(i.amount)+'</td><td class="muted">'+esc(incomeSplitLabel(i))+'</td></tr>';
     });
-    h+='</tbody></table></div><div class="hint">עריכה — בלשונית "הכנסות" של הפרויקט.</div></div>';
+    incH+='</tbody></table></div><div class="hint">עריכה — בלשונית "הכנסות" של הפרויקט.</div></div>';
   }
   // תשלומים מהבנק
   var expIds={}; apExpenses(aptId).forEach(function(e){expIds[e.id]=1;});
   var bankPays=active(DB.payments).filter(function(p){return expIds[p.expenseId]&&accountIsBank(p.accountId);});
-  h+='<div class="card" style="margin-top:16px"><h3>תשלומים שיצאו מהבנק</h3><div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>עבור</th><th>סכום</th></tr></thead><tbody>';
-  if(!bankPays.length) h+='<tr><td colspan="3" class="empty">אין</td></tr>';
+  var outH='<div class="card"><h3>תשלומים שיצאו מהבנק</h3><div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>עבור</th><th>סכום</th></tr></thead><tbody>';
+  if(!bankPays.length) outH+='<tr><td colspan="3" class="empty">אין</td></tr>';
   bankPays.sort(function(x,y){return x.date<y.date?1:-1;}).forEach(function(p){
     var e=byId(DB.expenses,p.expenseId);
-    h+='<tr><td>'+dateHe(p.date)+'</td><td>'+esc(e?e.description:"—")+(p.recipientType==="manager"?" — דמי ניהול":"")+'</td><td>'+money(p.amount)+'</td></tr>';
+    outH+='<tr><td>'+dateHe(p.date)+'</td><td>'+esc(e?e.description:"—")+(p.recipientType==="manager"?" — דמי ניהול":"")+'</td><td>'+money(p.amount)+'</td></tr>';
   });
-  h+='</tbody></table></div></div>';
-  return h;
+  outH+='</tbody></table></div></div>';
+  return h+reportPicker("bankView",[
+    {key:"dep",label:"💰 הפקדות שותפים",render:function(){ return depH; }},
+    {key:"inc",label:"📥 הכנסות שנכנסו לבנק",show:bankInc.length>0,render:function(){ return incH; }},
+    {key:"out",label:"📤 תשלומים שיצאו",render:function(){ return outH; }}
+  ],{title:"בחר תצוגה"});
 }
 /* ---------- העלאת אקסל של הפקדות ----------
    קובץ עם תאריך, סכום ואמצעי תשלום — כל השורות משויכות לשותף אחד
@@ -5136,20 +5176,9 @@ function moduleApartmentReports(aptId){
     {key:"due",label:"⚖️ חובה והתחשבנות",show:true,render:function(){ return dueByPaidReportHtml(aptId); }},
     {key:"stages",label:"📋 שותפים לפי שלבים",show:true,render:function(){ return '<div id="partner-report">'+partnerReportHtml(aptId)+'</div>'; }}
   ];
-  var avail=defs.filter(function(d){ return d.show; });
-  var sel=state.params.rep||avail[0].key;
-  if(sel!=="all" && !avail.some(function(d){ return d.key===sel; })) sel=avail[0].key;
-
-  var h='<div class="toolbar no-print" style="flex-wrap:wrap;gap:6px">'+
-    '<span class="muted" style="align-self:center">בחר דוח:</span>'+
-    avail.map(function(d){ return '<button class="btn btn-sm'+(sel===d.key?" btn-primary":"")+'" onclick="setApReport(\''+d.key+'\')">'+d.label+'</button>'; }).join("")+
-    '<button class="btn btn-sm'+(sel==="all"?" btn-primary":"")+'" onclick="setApReport(\'all\')">📚 הכל</button>'+
-    '<div class="sp"></div><button class="btn btn-sm" onclick="window.print()">🖨️ הדפסה</button></div>';
-  var chosen = sel==="all" ? avail : avail.filter(function(d){ return d.key===sel; });
-  h+=chosen.map(function(d){ return d.render(); }).join("");
-  return h;
+  return reportPicker("rep",defs,{title:"בחר דוח",
+    extra:'<div class="sp"></div><button class="btn btn-sm" onclick="window.print()">🖨️ הדפסה</button>'});
 }
-function setApReport(k){ state.params.rep=k; rerender(); }
 
 /* ============================================================
    דוח קטגוריות — לאן הלך הכסף בפרויקט
@@ -5488,7 +5517,7 @@ function moduleMgmtReport(){
       : 'אין עדיין פרויקט עם דמי ניהול.<br>הפעל בלשונית <b>דמי ניהול</b> של הפרוייקט הרלוונטי.')+'</div>';
   }
   var tCur=0,tDef=0,tPaid=0;
-  h+='<div class="card"><h3>סיכום לפי פרויקט</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+
+  var sumH='<div class="card"><h3>סיכום לפי פרויקט</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+
     '<th>פרויקט</th><th>מנהלים</th><th>נוכחי (מגיע כעת)</th><th>דחוי (עתידי)</th>'+
     '<th>סה"כ בסוף</th><th>שולם</th><th>נותר לתשלום</th></tr></thead><tbody>';
   apts.forEach(function(a){
@@ -5500,14 +5529,15 @@ function moduleMgmtReport(){
     });
     tCur+=cur; tDef+=def; tPaid+=paid;
     var rem=cur-paid;
-    h+='<tr><td><b>'+esc(a.name)+'</b></td><td>'+mgrs.length+'</td>'+
+    sumH+='<tr><td><b>'+esc(a.name)+'</b></td><td>'+mgrs.length+'</td>'+
       '<td>'+money(cur)+'</td><td class="'+(def>0.01?"neg":"")+'">'+money(def)+'</td>'+
       '<td><b>'+money(cur+def)+'</b></td><td>'+money(paid)+'</td>'+
       '<td class="'+(rem>0.01?"neg":"pos")+'">'+money(rem)+'</td></tr>';
   });
-  h+='</tbody><tfoot><tr><td colspan="2">סה"כ</td><td>'+money(tCur)+'</td><td>'+money(tDef)+'</td>'+
+  sumH+='</tbody><tfoot><tr><td colspan="2">סה"כ</td><td>'+money(tCur)+'</td><td>'+money(tDef)+'</td>'+
     '<td>'+money(tCur+tDef)+'</td><td>'+money(tPaid)+'</td><td class="'+((tCur-tPaid)>0.01?"neg":"pos")+'">'+money(tCur-tPaid)+'</td></tr></tfoot></table></div>'+
     '<div class="hint"><b>נוכחי</b> = מה שמגיע כבר עכשיו (האחוז הנוכחי + דחוי ששוחרר). <b>דחוי</b> = מה שיגיע בעתיד וטרם שוחרר. כל הסכומים כוללים מע"מ.</div></div>';
+  var chartH="";
 
   /* גרפים: תמונת מצב של דמי הניהול */
   var mgmtPie=[
@@ -5523,7 +5553,7 @@ function moduleMgmtReport(){
     return {label:byMgr[k].name,a:byMgr[k].cur,b:byMgr[k].paid}; })
     .filter(function(r){return r.a>0.01||r.b>0.01;});
   if(mgmtPie.length||mgrRows.length){
-    h+='<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(330px,1fr))">'+
+    chartH='<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(330px,1fr))">'+
       (mgmtPie.length?'<div class="card"><h3>תמונת מצב</h3>'+donutChart(mgmtPie,180)+'</div>':'')+
       (mgrRows.length?'<div class="card"><h3>לפי מנהל — מגיע מול שולם</h3>'+
         groupedBars(mgrRows.map(function(r){return {label:r.label,a:r.a,b:r.b};}))+'</div>':'')+
@@ -5531,7 +5561,7 @@ function moduleMgmtReport(){
   }
 
   // פירוט לפי מנהל
-  h+='<div class="card"><h3>פירוט לפי מנהל</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+
+  var byMgrH='<div class="card"><h3>פירוט לפי מנהל</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+
     '<th>פרויקט</th><th>מנהל</th><th>נוכחי</th><th>דחוי</th><th>סה"כ בסוף</th><th>קיבל</th><th>יתרה</th></tr></thead><tbody>';
   var any=false;
   apts.forEach(function(a){
@@ -5539,14 +5569,14 @@ function moduleMgmtReport(){
       var cur=managerReceivable(a.id,m.id), def=managerDeferredPending(a.id,m.id), paid=managerPaid(a.id,m.id);
       if(!cur && !def && !paid) return;
       any=true;
-      h+='<tr><td>'+esc(a.name)+'</td><td><b>'+esc(m.name)+'</b></td>'+
+      byMgrH+='<tr><td>'+esc(a.name)+'</td><td><b>'+esc(m.name)+'</b></td>'+
         '<td>'+money(cur)+'</td><td class="'+(def>0.01?"neg":"")+'">'+money(def)+'</td>'+
         '<td>'+money(cur+def)+'</td><td>'+money(paid)+'</td>'+
         '<td class="'+((cur-paid)>0.01?"neg":"pos")+'">'+money(cur-paid)+'</td></tr>';
     });
   });
-  if(!any) h+='<tr><td colspan="7" class="empty">אין עדיין דמי ניהול מחושבים — סמן "יש דמי ניהול" בהוצאות הרלוונטיות</td></tr>';
-  h+='</tbody></table></div></div>';
+  if(!any) byMgrH+='<tr><td colspan="7" class="empty">אין עדיין דמי ניהול מחושבים — סמן "יש דמי ניהול" בהוצאות הרלוונטיות</td></tr>';
+  byMgrH+='</tbody></table></div></div>';
 
   /* השלבים שיש בהם דמי ניהול — וכמה בכל שלב */
   var stRows="", sA=0,sCur=0,sDef=0,sPaid=0, stAny=false;
@@ -5566,7 +5596,7 @@ function moduleMgmtReport(){
         '<td>'+money(paid)+'</td><td class="'+((cur-paid)>0.01?"neg":"pos")+'">'+money(round2(cur-paid))+'</td></tr>';
     });
   });
-  h+='<div class="card"><h3>📋 שלבים עם דמי ניהול</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+
+  var stagesH='<div class="card"><h3>📋 שלבים עם דמי ניהול</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+
     '<th>פרויקט</th><th>שלב</th><th>תאריך</th><th>סכום השלב</th><th>דמי ניהול נוכחי</th>'+
     '<th>דחוי</th><th>סה"כ בסוף</th><th>שולם</th><th>נותר</th></tr></thead><tbody>'+
     (stAny?stRows:'<tr><td colspan="9" class="empty">אין שלבים עם דמי ניהול</td></tr>')+
@@ -5588,7 +5618,7 @@ function moduleMgmtReport(){
         '<td>'+esc(p.note||"")+'</td></tr>';
     });
   });
-  h+='<div class="card"><h3>💳 תשלומים ששולמו עבור דמי ניהול</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+
+  var paysH='<div class="card"><h3>💳 תשלומים ששולמו עבור דמי ניהול</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+
     '<th>תאריך</th><th>פרויקט</th><th>שלב</th><th>מנהל</th><th>סכום</th><th>אמצעי</th><th>חשבונית</th><th>הערה</th>'+
     '</tr></thead><tbody>'+
     (pAny?payRows:'<tr><td colspan="8" class="empty">עדיין לא נרשמו תשלומים למנהלים</td></tr>')+
@@ -5609,18 +5639,26 @@ function moduleMgmtReport(){
       });
     });
   });
+  var pendH="";
   if(pend.length){
-    h+='<div class="card"><h3>דחויים שממתינים לשחרור ('+pend.length+')</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+
+    pendH='<div class="card"><h3>דחויים שממתינים לשחרור ('+pend.length+')</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+
       '<th>פרויקט</th><th>הוצאה</th><th>מנהל</th><th>% דחוי</th><th>מתי ישוחרר</th><th>סכום</th><th></th></tr></thead><tbody>';
     pend.forEach(function(x){
-      h+='<tr><td>'+esc(x.apt.name)+'</td><td>'+esc(x.e.description)+'</td><td>'+esc(managerName(x.f.managerId))+'</td>'+
+      pendH+='<tr><td>'+esc(x.apt.name)+'</td><td>'+esc(x.e.description)+'</td><td>'+esc(managerName(x.f.managerId))+'</td>'+
         '<td>'+num(x.f.pctDeferred)+'%</td><td>'+esc(x.f.deferredLabel||"—")+'</td><td>'+money(x.amt)+'</td>'+
         '<td class="right no-print">'+(can("edit")?'<button class="btn btn-primary btn-sm" onclick="releaseDeferred(\''+x.f.id+'\')">שחרר</button>':'')+'</td></tr>';
     });
-    h+='</tbody><tfoot><tr><td colspan="5">סה"כ דחוי שטרם שוחרר</td><td><b>'+money(ps)+'</b></td><td></td></tr></tfoot></table></div>'+
+    pendH+='</tbody><tfoot><tr><td colspan="5">סה"כ דחוי שטרם שוחרר</td><td><b>'+money(ps)+'</b></td><td></td></tr></tfoot></table></div>'+
       '<div class="hint">"שחרר" הופך את הסכום לחוב פעיל: הוא נכנס לעלות הפרויקט, מתחלק בין השותפים, ומאפשר לשלם למנהל.</div></div>';
   }
-  return h;
+  return h+reportPicker("mgmtView",[
+    {key:"sum",label:"📊 סיכום לפי פרויקט",render:function(){ return sumH; }},
+    {key:"charts",label:"📈 גרפים",show:!!chartH,render:function(){ return chartH; }},
+    {key:"bymgr",label:"👤 פירוט לפי מנהל",render:function(){ return byMgrH; }},
+    {key:"stages",label:"📋 שלבים עם דמי ניהול",render:function(){ return stagesH; }},
+    {key:"pays",label:"💳 תשלומים ששולמו",render:function(){ return paysH; }},
+    {key:"pend",label:"⏳ דחויים ממתינים ("+pend.length+")",show:pend.length>0,render:function(){ return pendH; }}
+  ],{title:"בחר דוח"});
 }
 
 /* ---------- דוח שותפים כללי (חוצה פרוייקטים) ---------- */
@@ -5628,8 +5666,10 @@ function moduleCrossPartner(){
   var h='<div class="toolbar"><h2 style="margin:0">דוח שותפים כללי — חוצה פרוייקטים</h2>'+
     searchBox("cross-q",Q.cross,"חיפוש שותף…","Q.cross=this.value;renderCrossList()")+
     '<div class="sp"></div><button class="btn btn-sm no-print" onclick="window.print()">🖨️</button></div>';
-  h+=partnerPaymentsCardHtml();
-  h+='<div id="cross-list">'+crossListHtml()+'</div>';
+  h+=reportPicker("crossView",[
+    {key:"pp",label:"💳 תשלומי שותף",render:function(){ return partnerPaymentsCardHtml(); }},
+    {key:"list",label:"📋 יתרות לפי שותף",render:function(){ return '<div id="cross-list">'+crossListHtml()+'</div>'; }}
+  ],{title:"בחר תצוגה"});
   return h;
 }
 function renderCrossList(){ return withIndex(function(){ return renderCrossListInner(); }); }
