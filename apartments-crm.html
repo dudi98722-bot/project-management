@@ -1463,7 +1463,10 @@ function renderApartment(c){
   var a=currentApartment(); if(!a){ c.innerHTML='<div class="empty">פרוייקט לא נמצא</div>'; return; }
   if(!canSeeApartment(a.id)){ c.innerHTML='<div class="empty">אין לך הרשאה לצפות בפרויקט הזה</div>'; return; }
   var tab=state.params.tab||"overview";
-  var tabs=[["overview","סקירה"],["expenses","הוצאות / שלבים"],["payments","תשלומים"],["partners","שותפים"]];
+  /* לשונית "שותפים" היא הגדרות בלבד — אחוזי ברירת מחדל וחלוקות
+     שמורות. מי שקיבל קישור לצפייה לא אמור לראות אותה. */
+  var tabs=[["overview","סקירה"],["expenses","הוצאות / שלבים"],["payments","תשלומים"]];
+  if(can("edit")) tabs.push(["partners","שותפים"]);
   tabs.push(["managers","דמי ניהול"]);   // תמיד נגיש — בפנים אפשר להפעיל
   if(a.hasBank) tabs.push(["bank","בנק זמני"]);
   tabs.push(["income","הכנסות"]);
@@ -1480,7 +1483,7 @@ function renderApartment(c){
     case "overview": body.innerHTML=viewApartmentOverview(a.id); break;
     case "expenses": body.innerHTML=viewExpenses(a.id); break;
     case "payments": body.innerHTML=modulePayments(a.id); break;
-    case "partners": body.innerHTML=viewApartmentPartners(a.id); break;
+    case "partners": body.innerHTML=can("edit")?viewApartmentPartners(a.id):'<div class="empty">אין לך הרשאה לצפות בהגדרות השותפים</div>'; break;
     case "managers": body.innerHTML=viewManagers(a.id); break;
     case "bank": body.innerHTML=viewBank(a.id); break;
     case "income": body.innerHTML=viewIncome(a.id); break;
