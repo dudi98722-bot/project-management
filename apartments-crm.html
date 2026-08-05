@@ -81,7 +81,7 @@ label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:5px;font-w
 .tbl-compact table.tbl td:not(:first-child),.tbl-compact table.tbl th:not(:first-child){white-space:nowrap}
 
 /* ===== לשוניות משנה ===== */
-/* לשוניות הדירה נשארות גלויות בגלילה, מתחת לסרגל ולניווט */
+/* לשוניות הפרוייקט נשארות גלויות בגלילה, מתחת לסרגל ולניווט */
 .tabs{display:flex;gap:2px;flex-wrap:wrap;border-bottom:2px solid var(--line);margin-bottom:20px;
   position:sticky;top:99px;z-index:15;background:rgba(255,255,255,.95);backdrop-filter:blur(10px);
   padding:6px 18px 0;margin-left:-18px;margin-right:-18px}
@@ -268,7 +268,7 @@ td.empty{text-align:center;color:var(--muted);padding:22px}
 <script>
 "use strict";
 /* ============================================================
-   מערכת ניהול דירות ושותפויות — קובץ עצמאי
+   מערכת ניהול פרוייקטים ושותפויות — קובץ עצמאי
    אחסון: localStorage (מקור אמת מקומי) + סנכרון אופציונלי ל-Google Sheets
    ============================================================ */
 
@@ -596,7 +596,7 @@ function toISO(v){ v=String(v==null?"":v).slice(0,10); return /^\d{4}-\d{2}-\d{2
 function normalizeDB(d){
   d.meta=d.meta||{version:1,rev:0}; if(d.meta.rev==null) d.meta.rev=0;
   d.settings=d.settings||{}; d.settings.paymentMethods=d.settings.paymentMethods||{};
-  /* התפקיד "שותף" בוטל — ההגבלה היא ברמת הדירה. משתמשים ישנים בתפקיד
+  /* התפקיד "שותף" בוטל — ההגבלה היא ברמת הפרוייקט. משתמשים ישנים בתפקיד
      זה מיושרים ל"צפייה בלבד" (התנהגות זהה ממילא). */
   (d.users||[]).forEach(function(u){ if(u.role==="partner") u.role="viewer"; });
   (d.expenses||[]).forEach(function(e){ e.amount=toNum(e.amount); e.date=toISO(e.date); e.mgmtVatRate=toNum(e.mgmtVatRate); });
@@ -606,6 +606,8 @@ function normalizeDB(d){
   (d.managers||[]).forEach(function(m){ m.defaultFeePercent=toNum(m.defaultFeePercent); });
   (d.payments||[]).forEach(function(p){ p.amount=toNum(p.amount); p.date=toISO(p.date);
     if(p.invoiceStatus==null) p.invoiceStatus=p.hasInvoice?"has":"";
+    /* תשלום אוטומטי "שווה ערך" על דמי ניהול — לעולם לא צריך חשבונית */
+    if(p.auto){ p.invoiceStatus="none"; p.hasInvoice=false; }
     if(p.hidden==null) p.hidden=false; });
   (d.expenses||[]).forEach(function(e){ if(e.hidden==null) e.hidden=false; });
   (d.apartments||[]).forEach(function(a){ (a.splitPresets||[]).forEach(function(p){ (p.rows||[]).forEach(function(r){ r.percent=toNum(r.percent); }); }); });
@@ -742,12 +744,13 @@ function syncAutoMgmtPayments(eId){
       } else if(ex){
         ex.deleted=false; delete ex.deletedBy;
         ex.amount=target; ex.payerPartnerId=cfg.partnerId; ex.method="equiv";
+        ex.invoiceStatus="none"; ex.hasInvoice=false;   // "שווה ערך" — לא צריך חשבונית
         ex.note="אוטומטי — שווה ערך ("+num(cfg.pct)+"% מדמי הניהול)";
       } else {
         DB.payments.push({id:uid(),expenseId:eId,date:e.date||todayISO(),amount:target,
           accountId:null,payerPartnerId:cfg.partnerId,method:"equiv",
           recipientType:"manager",recipientManagerId:f.managerId,
-          hasInvoice:false,invoiceLink:"",
+          hasInvoice:false,invoiceLink:"",invoiceStatus:"none",
           note:"אוטומטי — שווה ערך ("+num(cfg.pct)+"% מדמי הניהול)",auto:true,deleted:false});
       }
       handled[f.managerId]=1;
@@ -782,7 +785,7 @@ function partnerPaid(aptId,pId){
   return round2(direct+deps+inc);
 }
 function partnerBalance(aptId,pId){ return round2(partnerPaid(aptId,pId)-partnerShouldPay(aptId,pId)); }
-// קבוצת השותפים לדוחות = שותפי-הדירה ∪ כל שותף שמופיע בחלוקת הוצאה (שלא ייעלם כסף מהדוח)
+// קבוצת השותפים לדוחות = שותפי-הפרוייקט ∪ כל שותף שמופיע בחלוקת הוצאה (שלא ייעלם כסף מהדוח)
 function apReportPartnerIds(aptId){
   var set={}, order=[];
   function add(pid){ if(pid && !set[pid]){ set[pid]=1; order.push(pid); } }
@@ -794,7 +797,7 @@ function apReportPartnerIds(aptId){
   return order;
 }
 function reportPartnerIds(aptId){
-  /* כל שותפי הדירה — הגבלת המשתמש היא ברמת הדירה, לא ברמת השותף */
+  /* כל שותפי הפרוייקט — הגבלת המשתמש היא ברמת הפרוייקט, לא ברמת השותף */
   return apReportPartnerIds(aptId);
 }
 function partnerDefaultPct(aptId,pId){ var r=apPartners(aptId).find(function(x){return x.partnerId===pId;}); return r?r.defaultPercent:null; }
@@ -817,7 +820,7 @@ function incomeDestName(i){
   return i.receivedBy==="bank" ? "בנק זמני" : partnerName(i.receivedBy);
 }
 /* ---------- חלוקת הכנסה בין השותפים ----------
-   שרשרת: חלוקה שנקבעה על ההכנסה עצמה ← ברירת המחדל שנקבעה לדירה
+   שרשרת: חלוקה שנקבעה על ההכנסה עצמה ← ברירת המחדל שנקבעה לפרוייקט
    ← אחוזי השותפים הרגילים. הכנסה שנכנסה לבנק הזמני נזקפת לשותפים
    לפי החלוקה הזו — כאילו כל אחד הפקיד את חלקו. */
 function apIncomeDefaultSplit(aptId){
@@ -847,7 +850,7 @@ function managerPaid(aptId,mId){
   return round2(active(DB.payments).filter(function(p){return expIds[p.expenseId]&&p.recipientType==="manager"&&p.recipientManagerId===mId;})
     .reduce(function(s,p){return s+(Number(p.amount)||0);},0));
 }
-// סיכומי דירה
+// סיכומי פרוייקט
 function apartmentTotals(aptId){
   var exps=apLeafExpenses(aptId);
   var totalExpenses=exps.reduce(function(s,e){return s+(Number(e.amount)||0);},0);
@@ -873,22 +876,22 @@ function can(action){
   if(CU.role==="viewer"||CU.role==="partner") return action==="view";
   return false;
 }
-/* "דירות מורשות" חלות על כל תפקיד חוץ ממנהל. קודם הן נאכפו רק על
-   תפקיד "שותף", כך שצופה שהוגבל לדירה אחת ראה בפועל את כולן. */
+/* "פרוייקטים מורשים" חלות על כל תפקיד חוץ ממנהל. קודם הן נאכפו רק על
+   תפקיד "שותף", כך שצופה שהוגבל לפרוייקט אחת ראה בפועל את כולן. */
 function canSeeApartment(aptId){
   if(!CU) return false;
   if(CU.role==="admin") return true;
   var allowed=CU.allowedApartments||[];
   if(allowed.length) return allowed.indexOf(aptId)>=0;
-  /* מדור קודם: משתמש ששויך פעם לשותף (partnerId) אך בלי דירות מפורשות —
-     נעול עד שמנהל יקצה לו דירות. fail-closed: לא "כל הדירות" בטעות. */
+  /* מדור קודם: משתמש ששויך פעם לשותף (partnerId) אך בלי פרוייקטים מפורשים —
+     נעול עד שמנהל יקצה לו פרוייקטים. fail-closed: לא "כל הפרוייקטים" בטעות. */
   if(CU.partnerId) return false;
-  return true;   // ריק לגמרי (ובלי שיוך ישן) = כל הדירות, בכוונת מנהל
+  return true;   // ריק לגמרי (ובלי שיוך ישן) = כל הפרוייקטים, בכוונת מנהל
 }
-/* משתמש שהוגבל לדירות מסוימות רואה את *כל* התנועות של אותן דירות —
+/* משתמש שהוגבל לפרוייקטים מסוימים רואה את *כל* התנועות של אותם פרוייקטים —
    לא משנה מי שילם. רשימות/בוררים של שותפים מצומצמים לשותפים
-   שקשורים לדירות שהוא רשאי לראות בלבד. מנהל, או מי שאין לו הגבלת
-   דירות, רואה את כל השותפים. */
+   שקשורים לפרוייקטים שהוא רשאי לראות בלבד. מנהל, או מי שאין לו הגבלת
+   פרוייקטים, רואה את כל השותפים. */
 function visiblePartners(){
   if(!CU || CU.role==="admin" || !(CU.allowedApartments && CU.allowedApartments.length)) return active(DB.partners);
   var set={};
@@ -992,7 +995,7 @@ function navHtml(){
   (canDownload()?'<div class="nav-item" onclick="openExportMenu()" title="ייצוא הנתונים לאקסל">⬇️ ייצוא לאקסל</div>':'')+
   '</div>';
 }
-/* תפריט ייצוא מרכזי — חוברת מלאה, דירה בודדת, או הטבלה שעל המסך */
+/* תפריט ייצוא מרכזי — חוברת מלאה, פרוייקט בודד, או הטבלה שעל המסך */
 function openExportMenu(){
   if(!canDownload()){ toast("להורדת קבצים נדרשת הרשאת עריכה — פנה למנהל","err"); return; }
   var apts=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);});
@@ -1001,19 +1004,19 @@ function openExportMenu(){
     '<div class="hint" style="margin-bottom:10px">כל קובץ נפתח ישירות באקסל או בגוגל שיטס. '+
     'מעל כל טבלה במערכת יש גם כפתור "אקסל" שמייצא בדיוק את מה שרואים, כולל הסינון הפעיל.</div>'+
     '<div class="field"><button class="btn btn-primary" style="width:100%" onclick="closeModal();exportAllData()">'+
-      '📚 כל הנתונים — חוברת מלאה ('+apts.length+' דירות)</button>'+
-      '<div class="hint">גיליון לכל נושא: דירות, שלבים, חלוקות, תשלומים, סיכום שותפים, דמי ניהול, בנק, הכנסות, חשבונות.</div></div>'+
+      '📚 כל הנתונים — חוברת מלאה ('+apts.length+' פרוייקטים)</button>'+
+      '<div class="hint">גיליון לכל נושא: פרוייקטים, שלבים, חלוקות, תשלומים, סיכום שותפים, דמי ניהול, בנק, הכנסות, חשבונות.</div></div>'+
     (cur?'<div class="field" style="margin-top:10px"><button class="btn" style="width:100%" onclick="closeModal();exportApartmentBook(\''+cur+'\')">'+
-      '🏠 רק הדירה הנוכחית — '+esc((byId(DB.apartments,cur)||{}).name||"")+'</button></div>':'')+
-    '<div class="field" style="margin-top:10px"><label>ייצוא דירה מסוימת</label>'+
+      '🏠 רק הפרוייקט הנוכחית — '+esc((byId(DB.apartments,cur)||{}).name||"")+'</button></div>':'')+
+    '<div class="field" style="margin-top:10px"><label>ייצוא פרוייקט מסוימת</label>'+
       '<select id="xl-apt">'+apts.map(function(a){return '<option value="'+a.id+'"'+(a.id===cur?" selected":"")+'>'+esc(a.name)+'</option>';}).join("")+'</select>'+
-      '<button class="btn" style="width:100%;margin-top:6px" onclick="var v=val(\'xl-apt\');closeModal();exportApartmentBook(v)">⬇️ ייצוא הדירה שנבחרה</button></div>',
+      '<button class="btn" style="width:100%;margin-top:6px" onclick="var v=val(\'xl-apt\');closeModal();exportApartmentBook(v)">⬇️ ייצוא הפרוייקט שנבחר</button></div>',
     saveLabel:null});
 }
 function renderView(){ return withIndex(renderViewInner); }
 function renderViewInner(){
   var c=document.getElementById("content"); if(!c) return;
-  /* במסך דירה יש שורת לשוניות דביקה — כותרות הטבלה נדבקות מתחתיה */
+  /* במסך פרוייקט יש שורת לשוניות דביקה — כותרות הטבלה נדבקות מתחתיה */
   c.className = "content" + (state.view==="apartment" ? " has-tabs" : "")
               + (state.view==="dashboard" ? " tbl-compact" : "");
   switch(state.view){
@@ -1169,20 +1172,20 @@ async function doResetCode(){
 }
 
 /* ============================================================
-   דשבורד + סקירת דירה
+   דשבורד + סקירת פרוייקט
    ============================================================ */
 function viewDashboard(){
   var all=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);});
   var h='<div class="toolbar"><h2 style="margin:0">כל הפרוייקטים</h2>'+
-    searchBox("apt-q",Q.apts,"חיפוש דירה / פרויקט…","Q.apts=this.value;renderAptGrid()")+
-    '<span id="apt-count">'+countLine(all.length,all.length,"דירות")+'</span>'+
+    searchBox("apt-q",Q.apts,"חיפוש פרוייקט / פרויקט…","Q.apts=this.value;renderAptGrid()")+
+    '<span id="apt-count">'+countLine(all.length,all.length,"פרוייקטים")+'</span>'+
     '<div class="sp"></div>'+
     (can("edit")?'<button class="btn btn-sm" onclick="openMergeTool()">🔀 איחוד כפילויות</button> ':'')+
     (can("edit")?'<button class="btn btn-sm" onclick="bulkAptFlags()">⚙️ בנק / ניהול מרוכז</button> ':'')+
-    (can("edit")?'<button class="btn btn-primary" onclick="editApartment(null)">➕ דירה חדשה</button>':'')+'</div>';
-  if(!all.length) return h+'<div class="empty">אין דירות עדיין. הוסף דירה ראשונה.</div>';
+    (can("edit")?'<button class="btn btn-primary" onclick="editApartment(null)">➕ פרוייקט חדש</button>':'')+'</div>';
+  if(!all.length) return h+'<div class="empty">אין פרוייקטים עדיין. הוסף פרוייקט ראשון.</div>';
 
-  /* רשימת הדירות ראשונה — זה מה שמחפשים כשנכנסים */
+  /* רשימת הפרוייקטים ראשונה — זה מה שמחפשים כשנכנסים */
   h+='<div id="apt-grid">'+aptGridHtml()+'</div>';
 
   /* ===== סיכום גלובלי + גרפים ===== */
@@ -1231,10 +1234,10 @@ function aptGridHtml(){
   var all=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);});
   var apts=all.filter(function(a){ return matches(Q.apts,a.name+" "+(a.notes||"")); });
   var cnt=document.getElementById("apt-count");
-  if(cnt) cnt.innerHTML=countLine(apts.length,all.length,"דירות");
-  if(!apts.length) return '<div class="empty">לא נמצאה דירה שמתאימה ל"'+esc(Q.apts)+'"</div>';
+  if(cnt) cnt.innerHTML=countLine(apts.length,all.length,"פרוייקטים");
+  if(!apts.length) return '<div class="empty">לא נמצא פרוייקט שמתאים ל"'+esc(Q.apts)+'"</div>';
 
-  // חישוב פעם אחת לכל דירה — משמש גם למיון וגם לתצוגה
+  // חישוב פעם אחת לכל פרוייקט — משמש גם למיון וגם לתצוגה
   var rows=apts.map(function(a){ return {a:a, t:apartmentTotals(a.id)}; });
   var dir=APT_SORT.dir;
   rows.sort(function(x,y){
@@ -1262,7 +1265,7 @@ function aptGridHtml(){
   var tot={cost:0,paid:0,rem:0,income:0,bank:0,stages:0,mgmt:0,mgmtPaid:0,mgmtRem:0};
   var anyMgmt=rows.some(function(r){ return r.a.hasManagement; });
   var h='<div class="table-wrap"><table class="tbl"><thead><tr>'+
-    th("name","שם הדירה / פרויקט")+
+    th("name","שם הפרוייקט / פרויקט")+
     th("stages","שלבים")+
     th("cost","עלות כוללת")+
     th("paid","שולם")+
@@ -1312,7 +1315,7 @@ function aptGridHtml(){
         (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editApartment(\''+a.id+'\')" title="עריכה">✏️</button>':'')+
       '</td></tr>';
   });
-  h+='</tbody><tfoot><tr><td>סה"כ '+rows.length+' דירות</td><td>'+tot.stages+'</td>'+
+  h+='</tbody><tfoot><tr><td>סה"כ '+rows.length+' פרוייקטים</td><td>'+tot.stages+'</td>'+
     '<td>'+money(tot.cost)+'</td><td>'+money(tot.paid)+'</td>'+
     '<td class="'+(tot.rem>0.01?"neg":"pos")+'">'+money(tot.rem)+'</td>'+
     (anyMgmt?'<td style="background:#eef2ff">'+money(tot.mgmt)+'</td>':'')+
@@ -1321,7 +1324,7 @@ function aptGridHtml(){
     '<td>'+money(tot.income)+'</td><td>'+money(tot.bank)+'</td><td colspan="3"></td></tr></tfoot></table></div>';
   return h;
 }
-/* מתג מהיר מתוך הרשימה — בלי להיכנס לעריכת הדירה */
+/* מתג מהיר מתוך הרשימה — בלי להיכנס לעריכת הפרוייקט */
 function toggleAptFlag(aptId,flag,val){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var a=byId(DB.apartments,aptId); if(!a) return;
@@ -1330,7 +1333,7 @@ function toggleAptFlag(aptId,flag,val){
     var expIds={}; apLeafExpenses(aptId).forEach(function(e){expIds[e.id]=1;});
     var bankPays=active(DB.payments).filter(function(p){return expIds[p.expenseId]&&accountIsBank(p.accountId);}).length;
     if(deps||bankPays){
-      if(!confirm('בדירה "'+a.name+'" יש '+deps+' הפקדות ו-'+bankPays+' תשלומים מהבנק.\n\n'+
+      if(!confirm('בפרוייקט "'+a.name+'" יש '+deps+' הפקדות ו-'+bankPays+' תשלומים מהבנק.\n\n'+
         'כיבוי הבנק רק מסתיר את הלשונית — הנתונים נשמרים ויחזרו אם תדליק שוב.\n\nלכבות?')) { rerender(); return; }
     }
   }
@@ -1338,16 +1341,16 @@ function toggleAptFlag(aptId,flag,val){
   toast('"'+a.name+'" — '+(flag==="hasBank"?"בנק":"דמי ניהול")+(val?" הופעל":" כובה"),"ok");
   renderAptGrid();
 }
-/* פעולה מרוכזת על כל הדירות המוצגות (מכבד את החיפוש) */
+/* פעולה מרוכזת על כל הפרוייקטים המוצגים (מכבד את החיפוש) */
 function bulkAptFlags(){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var shown=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);})
     .filter(function(a){ return matches(Q.apts,a.name+" "+(a.notes||"")); });
-  if(!shown.length){ toast("אין דירות מוצגות","warn"); return; }
+  if(!shown.length){ toast("אין פרוייקטים מוצגים","warn"); return; }
   var withBank=shown.filter(function(a){return a.hasBank;}).length;
   var withMgmt=shown.filter(function(a){return a.hasManagement;}).length;
   openModal({title:"הפעלה/כיבוי מרוכז",bodyHtml:
-    '<p class="muted">הפעולה תחול על <b>'+shown.length+' הדירות המוצגות</b> כרגע'+
+    '<p class="muted">הפעולה תחול על <b>'+shown.length+' הפרוייקטים המוצגים</b> כרגע'+
     (Q.apts?' (לפי החיפוש "'+esc(Q.apts)+'")':'')+'.</p>'+
     '<div class="stat-grid" style="margin-bottom:14px">'+
       stat("עם בנק",withBank+" / "+shown.length)+
@@ -1368,12 +1371,12 @@ function applyBulkFlag(flag,val){
   var shown=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);})
     .filter(function(a){ return matches(Q.apts,a.name+" "+(a.notes||"")); });
   var changed=shown.filter(function(a){ return !!a[flag]!==!!val; });
-  if(!changed.length){ toast("כל הדירות המוצגות כבר במצב הזה","warn"); return; }
+  if(!changed.length){ toast("כל הפרוייקטים המוצגים כבר במצב הזה","warn"); return; }
   var what=(flag==="hasBank"?"בנק":"דמי ניהול");
-  if(!confirm((val?"להפעיל ":"לכבות ")+what+" ב-"+changed.length+" דירות?\n\nשום נתון לא נמחק — אפשר להחזיר בכל רגע (וגם Ctrl+Z).")) return;
+  if(!confirm((val?"להפעיל ":"לכבות ")+what+" ב-"+changed.length+" פרוייקטים?\n\nשום נתון לא נמחק — אפשר להחזיר בכל רגע (וגם Ctrl+Z).")) return;
   changed.forEach(function(a){ a[flag]=!!val; });
   save(); closeModal();
-  toast(what+(val?" הופעל":" כובה")+" ב-"+changed.length+" דירות","ok");
+  toast(what+(val?" הופעל":" כובה")+" ב-"+changed.length+" פרוייקטים","ok");
   rerender();
 }
 var APT_SORT={by:"name",dir:"asc"};
@@ -1384,10 +1387,10 @@ function sortApts(key){
 }
 function editApartment(id){
   var a=id?byId(DB.apartments,id):{name:"",notes:"",hasManagement:false,hasBank:false};
-  openModal({title:id?"עריכת דירה":"דירה חדשה",bodyHtml:
+  openModal({title:id?"עריכת פרוייקט":"פרוייקט חדש",bodyHtml:
     '<div class="field"><label>שם / כתובת</label><input id="ap-name" value="'+esc(a.name)+'"></div>'+
     '<div class="field"><label>הערות</label><textarea id="ap-notes" rows="2">'+esc(a.notes||"")+'</textarea></div>'+
-    '<div class="field"><label><input type="checkbox" id="ap-mgmt" '+(a.hasManagement?"checked":"")+' style="width:auto"> יש דמי ניהול בדירה זו</label></div>'+
+    '<div class="field"><label><input type="checkbox" id="ap-mgmt" '+(a.hasManagement?"checked":"")+' style="width:auto"> יש דמי ניהול בפרוייקט זה</label></div>'+
     '<div class="field"><label><input type="checkbox" id="ap-bank" '+(a.hasBank?"checked":"")+' style="width:auto"> יש בנק זמני (קופה משותפת)</label></div>',
     onSave:function(){
       var name=val("ap-name").trim(); if(!name){ toast("יש להזין שם","err"); return false; }
@@ -1398,7 +1401,7 @@ function editApartment(id){
 }
 
 function renderApartment(c){
-  var a=currentApartment(); if(!a){ c.innerHTML='<div class="empty">דירה לא נמצאה</div>'; return; }
+  var a=currentApartment(); if(!a){ c.innerHTML='<div class="empty">פרוייקט לא נמצא</div>'; return; }
   if(!canSeeApartment(a.id)){ c.innerHTML='<div class="empty">אין לך הרשאה לצפות בפרויקט הזה</div>'; return; }
   var tab=state.params.tab||"overview";
   var tabs=[["overview","סקירה"],["expenses","הוצאות / שלבים"],["payments","תשלומים"],["partners","שותפים"]];
@@ -1407,9 +1410,9 @@ function renderApartment(c){
   tabs.push(["income","הכנסות"]);
   tabs.push(["reports","דוחות"]);
   var h='<div class="toolbar"><h2 style="margin:0">🏢 '+esc(a.name)+'</h2>'+
-    (can("edit")?'<button class="btn btn-sm" onclick="editApartment(\''+a.id+'\')">✏️ עריכת דירה</button>':'')+
+    (can("edit")?'<button class="btn btn-sm" onclick="editApartment(\''+a.id+'\')">✏️ עריכת פרוייקט</button>':'')+
     '<div class="sp"></div>'+
-    (can("edit")?'<button class="btn btn-danger btn-sm" onclick="delApartment(\''+a.id+'\')">🗑️ מחק דירה + תנועות</button>':'')+'</div>';
+    (can("edit")?'<button class="btn btn-danger btn-sm" onclick="delApartment(\''+a.id+'\')">🗑️ מחק פרוייקט + תנועות</button>':'')+'</div>';
   h+='<div class="tabs">'+tabs.map(function(t){ return '<div class="tab'+(tab===t[0]?" active":"")+'" onclick="go(\'apartment\',{apartmentId:\''+a.id+'\',tab:\''+t[0]+'\'})">'+t[1]+'</div>'; }).join("")+'</div>';
   h+='<div id="apt-body"></div>';
   c.innerHTML=h;
@@ -1942,43 +1945,61 @@ function attachTableTools(root){
       var c=fr.insertCell(-1);
       var label=String(hr.cells[i]?hr.cells[i].textContent:"").replace(/[▲▼]/g,"").trim();
       if(!label){ c.innerHTML=""; continue; }
-      c.innerHTML='<input class="col-f" data-col="'+i+'" placeholder="סנן…" '+
-        'style="padding:4px 7px;font-size:11.5px;border-radius:7px;min-width:60px">';
+      c.innerHTML='<div style="display:flex;gap:2px;align-items:center">'+
+        '<input class="col-f" data-col="'+i+'" placeholder="סנן…" style="padding:4px 6px;font-size:11.5px;border-radius:7px;min-width:44px;flex:1">'+
+        '<button type="button" class="col-pick-btn" data-col="'+i+'" title="בחר ערכים (כמו אקסל)" style="padding:2px 5px;font-size:11px;line-height:1;border:1px solid var(--line,#d8dee9);border-radius:6px;background:#fff;cursor:pointer">▾</button>'+
+        '</div>';
     }
     fr.querySelectorAll(".col-f").forEach(function(inp){
       inp.addEventListener("input",function(){ applyColFilters(t); });
       inp.addEventListener("click",function(e){ e.stopPropagation(); });
     });
-    /* שחזור סינון קודם של אותה טבלה (שרד עריכה/רינדור) */
+    fr.querySelectorAll(".col-pick-btn").forEach(function(btn){
+      btn.addEventListener("click",function(e){ e.stopPropagation(); e.preventDefault(); openColPicker(t,Number(btn.getAttribute("data-col")),btn); });
+    });
+    /* שחזור סינון קודם של אותה טבלה — טקסט + בחירות-מרובות (שרד עריכה/רינדור) */
     var saved=COLFILT[tableSig(t)];
     if(saved){
       var any=false;
-      fr.querySelectorAll(".col-f").forEach(function(inp){
-        var v=saved[inp.getAttribute("data-col")];
+      if(saved.t) fr.querySelectorAll(".col-f").forEach(function(inp){
+        var v=saved.t[inp.getAttribute("data-col")];
         if(v){ inp.value=v; any=true; }
       });
+      if(saved.p && Object.keys(saved.p).length) any=true;
       if(any) applyColFilters(t);
     }
   });
 }
+/* מצב הסינון לכל טבלה: t = טקסט חופשי לפי עמודה, p = בחירה-מרובה
+   (סט ערכים) לפי עמודה — בדיוק כמו סינון עמודה באקסל. */
+function colFilterState(t){ var sig=tableSig(t); if(!COLFILT[sig]) COLFILT[sig]={t:{},p:{}}; return COLFILT[sig]; }
+function cellVal(cell){ return String(cell.innerText||cell.textContent||"").replace(/\s+/g," ").trim(); }
 function applyColFilters(t){
   var fr=t.querySelector("thead tr.filter-row"); if(!fr) return;
-  var f=[], mem={};
+  var st=colFilterState(t);
+  st.t={};
   fr.querySelectorAll(".col-f").forEach(function(inp){
     var v=String(inp.value||"").trim();
-    if(v){ f.push({col:Number(inp.getAttribute("data-col")),q:v}); mem[inp.getAttribute("data-col")]=v; }
+    if(v) st.t[inp.getAttribute("data-col")]=v;
   });
-  /* שומרים את מצב הסינון כדי שישרוד עריכה/רינדור */
-  var sig=tableSig(t); if(f.length) COLFILT[sig]=mem; else delete COLFILT[sig];
+  var texts=[]; Object.keys(st.t).forEach(function(col){ texts.push({col:Number(col),q:st.t[col]}); });
+  var picks=[]; Object.keys(st.p||{}).forEach(function(col){ if(Object.keys(st.p[col]||{}).length) picks.push({col:Number(col),set:st.p[col]}); });
+  var anyFilter=texts.length||picks.length;
+  var sig=tableSig(t); if(!anyFilter) delete COLFILT[sig];
+  /* מסמנים את כפתורי הבחירה שפעילים בהם סינון */
+  fr.querySelectorAll(".col-pick-btn").forEach(function(btn){
+    var on=st.p&&st.p[btn.getAttribute("data-col")]&&Object.keys(st.p[btn.getAttribute("data-col")]).length;
+    btn.style.background=on?"var(--accent,#3b5bdb)":"#fff"; btn.style.color=on?"#fff":"";
+    btn.style.borderColor=on?"var(--accent,#3b5bdb)":"var(--line,#d8dee9)";
+  });
   var body=t.tBodies[0], shown=0;
   Array.prototype.forEach.call(body.rows,function(tr){
-    var vis=f.every(function(x){
-      var cell=tr.cells[x.col];
-      return cell ? matches(x.q, cell.innerText||cell.textContent||"") : false;
-    });
+    var vis = texts.every(function(x){ var cell=tr.cells[x.col]; return cell ? matches(x.q, cell.innerText||cell.textContent||"") : false; })
+           && picks.every(function(x){ var cell=tr.cells[x.col]; return cell ? !!x.set[cellVal(cell)] : false; });
     tr.style.display=vis?"":"none";
     if(vis) shown++;
   });
+  var f=anyFilter?[1]:[];   /* תאימות: הקוד למטה בודק f.length לסיכום */
   /* שורת סיכום חיה של המסונן: מסכמת עמודות מספריות */
   var tf=t.tFoot;
   if(tf&&tf.rows.length){
@@ -2013,6 +2034,63 @@ function applyColFilters(t){
       tf.innerHTML='<tr>'+cells+'</tr>';
     }
   }
+}
+/* ---------- בוחר ערכים מרובה (סינון עמודה כמו אקסל) ---------- */
+var _openPicker=null;
+function _pickerOutside(e){ if(_openPicker && !_openPicker.contains(e.target)) closeColPicker(); }
+function closeColPicker(){ if(_openPicker){ _openPicker.remove(); _openPicker=null; document.removeEventListener("mousedown",_pickerOutside,true); } }
+function openColPicker(t,col,btn){
+  var reopen = _openPicker && _openPicker.getAttribute("data-col")===String(col);
+  closeColPicker();
+  if(reopen) return;   /* לחיצה שנייה על אותו כפתור — סוגרת */
+  var st=colFilterState(t); st.p=st.p||{};
+  var cur=st.p[col]||{};
+  /* ערכים ייחודיים בעמודה — מכל השורות, גם המוסתרות */
+  var seen={}, list=[];
+  Array.prototype.forEach.call(t.tBodies[0].rows,function(tr){
+    var cell=tr.cells[col]; if(!cell) return;
+    var v=cellVal(cell);
+    if(!(v in seen)){ seen[v]=1; list.push(v); }
+  });
+  function isNum(x){ return /\d/.test(x) && /^[₪\s\-]*[\d.,]+\s*%?$/.test(x); }
+  list.sort(function(a,b){
+    if(isNum(a)&&isNum(b)) return parseFloat(a.replace(/[^\d.\-]/g,""))-parseFloat(b.replace(/[^\d.\-]/g,""));
+    return String(a).localeCompare(String(b),"he");
+  });
+  var panel=document.createElement("div");
+  panel.setAttribute("data-col",String(col));
+  panel.style.cssText="position:absolute;z-index:9999;background:#fff;border:1px solid var(--line,#d8dee9);border-radius:10px;box-shadow:0 12px 34px rgba(0,0,0,.20);padding:8px;max-height:340px;overflow:auto;min-width:190px;font-size:12.5px;direction:rtl";
+  var rows=list.map(function(v){
+    return '<label class="cp-item" style="display:flex;gap:6px;align-items:center;padding:3px 2px;cursor:pointer;border-radius:6px">'+
+      '<input type="checkbox" class="cp-cb" data-v="'+esc(v)+'" '+(cur[v]?"checked":"")+' style="width:auto"> '+
+      '<span>'+(v===""?'<span class="muted">(ריק)</span>':esc(v))+'</span></label>';
+  }).join("");
+  panel.innerHTML='<div style="display:flex;gap:10px;margin-bottom:6px">'+
+      '<a href="#" class="cp-all" style="text-decoration:none;font-weight:700;color:var(--accent,#3b5bdb)">✔ הכל</a>'+
+      '<a href="#" class="cp-none" style="text-decoration:none;font-weight:700;color:var(--danger,#ef4444)">✖ נקה</a></div>'+
+    '<input class="cp-search" placeholder="חיפוש בערכים…" style="width:100%;box-sizing:border-box;padding:4px 7px;margin-bottom:6px;border:1px solid var(--line,#d8dee9);border-radius:7px">'+
+    '<div class="cp-list">'+rows+'</div>';
+  document.body.appendChild(panel);
+  var r=btn.getBoundingClientRect();
+  panel.style.top=(window.scrollY+r.bottom+4)+"px";
+  var left=window.scrollX+r.right-panel.offsetWidth;
+  panel.style.left=Math.max(4,left)+"px";
+  _openPicker=panel;
+  function commit(){
+    var set={};
+    panel.querySelectorAll(".cp-cb").forEach(function(cb){ if(cb.checked) set[cb.getAttribute("data-v")]=1; });
+    if(Object.keys(set).length) st.p[col]=set; else delete st.p[col];
+    applyColFilters(t);
+  }
+  panel.querySelectorAll(".cp-cb").forEach(function(cb){ cb.addEventListener("change",commit); });
+  panel.querySelector(".cp-all").addEventListener("click",function(e){ e.preventDefault(); panel.querySelectorAll(".cp-item").forEach(function(it){ if(it.style.display!=="none") it.querySelector(".cp-cb").checked=true; }); commit(); });
+  panel.querySelector(".cp-none").addEventListener("click",function(e){ e.preventDefault(); panel.querySelectorAll(".cp-cb").forEach(function(cb){ cb.checked=false; }); commit(); });
+  panel.querySelector(".cp-search").addEventListener("input",function(){
+    var q=this.value.trim();
+    panel.querySelectorAll(".cp-item").forEach(function(it){ it.style.display=(!q||it.textContent.indexOf(q)>=0)?"":"none"; });
+  });
+  panel.addEventListener("mousedown",function(e){ e.stopPropagation(); });
+  setTimeout(function(){ document.addEventListener("mousedown",_pickerOutside,true); },0);
 }
 function sortTableByCol(t,col){
   var body=t.tBodies[0]; if(!body) return;
@@ -2467,7 +2545,7 @@ function D(v){ return {t:"d",v:v||""}; }
 function methodName(k){ refreshMethods(); return METHODS[k]||k||""; }
 
 function sheetApartments(list){
-  var rows=[["דירה","שותפים","בנק זמני","דמי ניהול","שלבים","סך הוצאות","עלות דמי ניהול","עלות כוללת",
+  var rows=[["פרוייקט","שותפים","בנק זמני","דמי ניהול","שלבים","סך הוצאות","עלות דמי ניהול","עלות כוללת",
              "שולם לספקים","שולם למנהלים","נותר","הכנסות","יתרת בנק"]];
   var t=[0,0,0,0,0,0,0,0];
   list.forEach(function(a){
@@ -2481,11 +2559,11 @@ function sheetApartments(list){
     t[0]+=T.totalExpenses; t[1]+=T.totalMgmt; t[2]+=T.totalCost; t[3]+=T.totalPaid;
     t[4]+=T.mgrPaidTot; t[5]+=T.remaining; t[6]+=T.income; t[7]+=T.bank;
   });
-  return {name:"דירות",rows:rows,
+  return {name:"פרוייקטים",rows:rows,
     foot:[["סה\"כ","","","","",M(t[0]),M(t[1]),M(t[2]),M(t[3]),M(t[4]),M(t[5]),M(t[6]),M(t[7])]]};
 }
 function sheetExpenses(list){
-  var rows=[["דירה","שלב-אב","תיאור","קטגוריה","סיווג","תאריך","סוג שורה","סכום","עלות דמי ניהול",
+  var rows=[["פרוייקט","שלב-אב","תיאור","קטגוריה","סיווג","תאריך","סוג שורה","סכום","עלות דמי ניהול",
              "שולם לספק","נותר","שולם למנהלים","סטטוס","חשבונית","הערה"]];
   var ST={paid:"שולם",partial:"חלקי",unpaid:"לא שולם",over:"שולם ביתר"};
   var t=[0,0,0,0,0];
@@ -2507,7 +2585,7 @@ function sheetExpenses(list){
     foot:[["סה\"כ (בלי שלבי-אב, כדי לא לספור פעמיים)","","","","","","",M(t[0]),M(t[1]),M(t[2]),M(t[3]),M(t[4])]]};
 }
 function sheetCategories(list){
-  var rows=[["דירה","קטגוריה","שלבים","סכום","דמי ניהול","עלות כוללת","שולם","נותר","% מהפרויקט"]];
+  var rows=[["פרוייקט","קטגוריה","שלבים","סכום","דמי ניהול","עלות כוללת","שולם","נותר","% מהפרויקט"]];
   var t=[0,0,0,0,0];
   list.forEach(function(a){
     var br=categoryBreakdown(a.id);
@@ -2522,7 +2600,7 @@ function sheetCategories(list){
     foot:[["סה\"כ","",{t:"n",v:t[0]},M(t[1]),M(t[2]),M(t[1]+t[2]),M(t[3]),M(t[4]),""]]};
 }
 function sheetSplits(list){
-  var rows=[["דירה","שלב","שותף","אחוז","חלקו בעלות"]];
+  var rows=[["פרוייקט","שלב","שותף","אחוז","חלקו בעלות"]];
   list.forEach(function(a){
     apLeafExpenses(a.id).forEach(function(e){
       var base=(Number(e.amount)||0)+expenseMgmtCostLive(e.id);
@@ -2534,7 +2612,7 @@ function sheetSplits(list){
   return {name:"חלוקת שלבים",rows:rows};
 }
 function sheetPayments(list){
-  var rows=[["דירה","שלב","שלב-אב","תאריך","סכום","שולם ל","מנהל","משלם","מהחשבון","בנק זמני","אמצעי","אוטומטי","חשבונית","הערה"]];
+  var rows=[["פרוייקט","שלב","שלב-אב","תאריך","סכום","שולם ל","מנהל","משלם","מהחשבון","בנק זמני","אמצעי","אוטומטי","חשבונית","הערה"]];
   var tot=0;
   list.forEach(function(a){
     apAllPayments(a.id).slice().sort(function(x,y){return (x.date<y.date)?-1:1;}).forEach(function(p){
@@ -2551,7 +2629,7 @@ function sheetPayments(list){
   return {name:"תשלומים",rows:rows,foot:[["סה\"כ","","","",M(tot)]]};
 }
 function sheetMgmt(list){
-  var rows=[["דירה","שלב","מנהל","% שוטף","% דחוי","תווית הדחוי","הדחוי שוחרר","בסיס החישוב","מע\"מ","חיוב פעיל","שולם","נותר","דחוי ממתין"]];
+  var rows=[["פרוייקט","שלב","מנהל","% שוטף","% דחוי","תווית הדחוי","הדחוי שוחרר","בסיס החישוב","מע\"מ","חיוב פעיל","שולם","נותר","דחוי ממתין"]];
   list.forEach(function(a){
     if(!a.hasManagement) return;
     apLeafExpenses(a.id).forEach(function(e){
@@ -2571,7 +2649,7 @@ function sheetMgmt(list){
 function sheetPartnerSummary(list){
   /* הסימן זהה למסך: שלילי = חייב, חיובי = זכאי. אחרת סינון באקסל
      לפי "יתרה שלילית = חייב" היה מחזיר בדיוק את הקבוצה ההפוכה. */
-  var rows=[["דירה","שותף","אמור לשלם","שילם","יתרה (שלילי = חייב)","חובה לפי מה ששולם","הפרש מול ששולם (שלילי = חייב)"]];
+  var rows=[["פרוייקט","שותף","אמור לשלם","שילם","יתרה (שלילי = חייב)","חובה לפי מה ששולם","הפרש מול ששולם (שלילי = חייב)"]];
   var t=[0,0,0];
   list.forEach(function(a){
     apReportPartnerIds(a.id).forEach(function(pid){
@@ -2584,7 +2662,7 @@ function sheetPartnerSummary(list){
     foot:[["סה\"כ","",M(t[0]),M(t[1]),M(round2(t[1]-t[0])),M(t[2]),M(round2(t[1]-t[2]))]]};
 }
 function sheetBank(list){
-  var rows=[["דירה","תאריך","שותף","סכום","אמצעי","מחשבון","הערה"]]; var tot=0;
+  var rows=[["פרוייקט","תאריך","שותף","סכום","אמצעי","מחשבון","הערה"]]; var tot=0;
   list.forEach(function(a){
     apDeposits(a.id).slice().sort(function(x,y){return (x.date<y.date)?-1:1;}).forEach(function(d){
       rows.push([a.name,D(d.date),partnerName(d.partnerId),M(d.amount),methodName(d.method),d.fromAccount||"",d.note||""]);
@@ -2594,7 +2672,7 @@ function sheetBank(list){
   return {name:"הפקדות לבנק",rows:rows,foot:[["סה\"כ","","",M(tot)]]};
 }
 function sheetIncome(list){
-  var rows=[["דירה","תאריך","תיאור","סכום","נכנס ל","חלוקה","הערה"]]; var tot=0;
+  var rows=[["פרוייקט","תאריך","תיאור","סכום","נכנס ל","חלוקה","הערה"]]; var tot=0;
   list.forEach(function(a){
     apIncome(a.id).slice().sort(function(x,y){return (x.date<y.date)?-1:1;}).forEach(function(x){
       rows.push([a.name,D(x.date),x.description||"",M(x.amount),incomeDestName(x),incomeSplitLabel(x),x.note||""]); tot+=Number(x.amount)||0;
@@ -2603,7 +2681,7 @@ function sheetIncome(list){
   return {name:"הכנסות",rows:rows,foot:[["סה\"כ","","",M(tot)]]};
 }
 function sheetAccounts(list){
-  var rows=[["דירה","חשבון","בנק זמני","תשלומים","סך שיצא"]];
+  var rows=[["פרוייקט","חשבון","בנק זמני","תשלומים","סך שיצא"]];
   var glob=active(DB.accounts).filter(function(x){return !x.apartmentId;});
   function line(aName,ac){
     var pays=active(DB.payments).filter(function(p){return p.accountId===ac.id;});
@@ -2622,7 +2700,7 @@ function dataSheets(list){
 }
 function exportAllData(){
   var list=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);});
-  if(!list.length){ toast("אין דירות לייצוא","warn"); return; }
+  if(!list.length){ toast("אין פרוייקטים לייצוא","warn"); return; }
   saveXlsx(dataSheets(list),"כל הנתונים — לווי וניהול פרוייקטים");
 }
 function exportApartmentBook(aptId){
@@ -2633,7 +2711,7 @@ function exportApartmentBook(aptId){
 
 
 function partnerOptions(sel){
-  /* מצומצם לשותפים שקשורים לדירות שהמשתמש רשאי לראות. תמיד כולל את
+  /* מצומצם לשותפים שקשורים לפרוייקטים שהמשתמש רשאי לראות. תמיד כולל את
      הבחירה הנוכחית, גם אם היא מחוץ להיקף, כדי לא לאבד ערך קיים בעריכה. */
   var list=visiblePartners();
   if(sel && !list.some(function(p){return p.id===sel;})){ var s=byId(DB.partners,sel); if(s) list=list.concat([s]); }
@@ -2641,8 +2719,8 @@ function partnerOptions(sel){
 }
 function categoryOptions(sel){ return '<option value="">—</option>'+active(DB.categories).map(function(c){return '<option value="'+c.id+'"'+(c.id===sel?" selected":"")+'>'+esc(c.name)+'</option>';}).join(""); }
 function classOptions(sel){ return Object.keys(CLASSIFICATIONS).map(function(k){return '<option value="'+k+'"'+(k===sel?" selected":"")+'>'+CLASSIFICATIONS[k]+'</option>';}).join(""); }
-/* חשבונות זמינים לדירה: של הדירה + חשבונות כלליים (apartmentId ריק).
-   כך רשימת החשבונות משותפת לכל הפרויקטים ולא צריך להגדיר אותה מחדש בכל דירה. */
+/* חשבונות זמינים לפרוייקט: של הפרוייקט + חשבונות כלליים (apartmentId ריק).
+   כך רשימת החשבונות משותפת לכל הפרויקטים ולא צריך להגדיר אותה מחדש בכל פרוייקט. */
 function availAccounts(aptId){
   return active(DB.accounts).filter(function(ac){ return !ac.apartmentId || ac.apartmentId===aptId; })
     .sort(function(a,b){ return (b.isBank?1:0)-(a.isBank?1:0) || String(a.name).localeCompare(String(b.name),"he"); });
@@ -2669,7 +2747,7 @@ function addAccountInline(aptId){
   var nm=val("pm-newacc-name").trim();
   if(!nm){ toast("יש להזין שם חשבון","err"); return; }
   var isBank=checked("pm-newacc-bank");
-  var scope=val("pm-newacc-scope");   // "" = כללי לכל הדירות
+  var scope=val("pm-newacc-scope");   // "" = כללי לכל הפרוייקטים
   var k=normKey(nm);
   var exist=availAccounts(aptId).find(function(a){ return normKey(a.name)===k; });
   var id;
@@ -2686,15 +2764,15 @@ function addAccountInline(aptId){
   onPmAccount();
 }
 
-/* ---------- שותפי דירה ---------- */
+/* ---------- שותפי פרוייקט ---------- */
 function modulePartners(aptId){
   var rows=apPartners(aptId); var sum=rows.reduce(function(s,r){return s+(Number(r.defaultPercent)||0);},0);
-  var h='<div class="toolbar"><h3 style="margin:0">שותפי הדירה ואחוזי ברירת מחדל</h3><div class="sp"></div>'+
+  var h='<div class="toolbar"><h3 style="margin:0">שותפי הפרוייקט ואחוזי ברירת מחדל</h3><div class="sp"></div>'+
     (can("edit")?'<button class="btn btn-primary btn-sm" onclick="addApartmentPartner(\''+aptId+'\')">➕ הוסף שותף</button>':'')+'</div>';
   h+='<div class="card"><div class="table-wrap"><table class="tbl"><thead><tr><th>שותף</th><th>% ברירת מחדל</th><th></th></tr></thead><tbody>';
   rows.forEach(function(r){
     h+='<tr><td>'+esc(partnerName(r.partnerId))+'</td><td>'+num(r.defaultPercent)+'%</td><td class="right">'+
-      (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editApPartner(\''+r.id+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="softDelete(\'apartmentPartners\',\''+r.id+'\',\'להסיר שותף זה מהדירה?\')">🗑️</button>':'')+'</td></tr>';
+      (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editApPartner(\''+r.id+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="softDelete(\'apartmentPartners\',\''+r.id+'\',\'להסיר שותף זה מהפרוייקט?\')">🗑️</button>':'')+'</td></tr>';
   });
   h+='</tbody><tfoot><tr><td>סה"כ</td><td class="'+(Math.abs(sum-100)<0.01?"pos":"neg")+'">'+num(sum)+'%</td><td></td></tr></tfoot></table></div>';
   if(Math.abs(sum-100)>=0.01) h+='<div class="hint neg">שים לב: סכום האחוזים אינו 100%.</div>';
@@ -2705,7 +2783,7 @@ function modulePartners(aptId){
 function addApartmentPartner(aptId){
   var inApt={}; apPartners(aptId).forEach(function(x){inApt[x.partnerId]=1;});
   var avail=visiblePartners().filter(function(p){return !inApt[p.id];});
-  openModal({title:"הוספת שותף לדירה",bodyHtml:
+  openModal({title:"הוספת שותף לפרוייקט",bodyHtml:
     '<div class="field"><label>בחר שותף קיים</label><select id="apn-existing"><option value="">— חדש —</option>'+
       avail.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>';}).join("")+'</select></div>'+
     '<div class="field"><label>או שם שותף חדש</label><input id="apn-new" placeholder="שם"></div>'+
@@ -2751,7 +2829,7 @@ function moduleExpenses(aptId){
   h+='<div id="exp-table">'+expTableHtml(aptId)+'</div>';
   return h;
 }
-/* הדירה נלקחת מהמצב ולא מפרמטר משורשר לתוך מאפיין HTML —
+/* הפרוייקט נלקח מהמצב ולא מפרמטר משורשר לתוך מאפיין HTML —
    שרשור כזה שבר את הציטוט ובלם את כל הסינונים. */
 function renderExpTable(aptId){ return withIndex(function(){ return renderExpTableInner(aptId); }); }
 function renderExpTableInner(aptId){
@@ -2951,7 +3029,7 @@ function applyBulkExpEdit(aptId,ids){
     toast("לא נבחר מה לעדכן","warn"); return false;
   }
   var mgrs=apManagers(aptId);
-  if(mg==="on" && !mgrs.length){ toast("אין מנהלים מוגדרים בדירה — הוסף אותם קודם בלשונית \"דמי ניהול\"","err"); return false; }
+  if(mg==="on" && !mgrs.length){ toast("אין מנהלים מוגדרים בפרוייקט — הוסף אותם קודם בלשונית \"דמי ניהול\"","err"); return false; }
   var n=0;
   ids.forEach(function(id){
     var e=byId(DB.expenses,id); if(!e||e.deleted || isContainer(e.id)) return;
@@ -2979,8 +3057,8 @@ function applyBulkExpEdit(aptId,ids){
 }
 
 /* ============================================================
-   חלוקות שמורות — ברירות מחדל נוספות בשם, לכל דירה
-   נשמרות על אובייקט הדירה (a.splitPresets), כדי לרכב על מנגנון
+   חלוקות שמורות — ברירות מחדל נוספות בשם, לכל פרוייקט
+   נשמרות על אובייקט הפרוייקט (a.splitPresets), כדי לרכב על מנגנון
    הסינון והמיזוג בשרת בלי טבלה חדשה.
    ============================================================ */
 function apSplitPresets(aptId){ var a=byId(DB.apartments,aptId); return (a&&a.splitPresets)||[]; }
@@ -3058,7 +3136,7 @@ function exSplitChooserHtml(aptId){
   if(!apPartners(aptId).length) return "";
   return '<div class="field full"><label>החל חלוקה שמורה</label><select id="ex-split-preset" onchange="applyExSplit(\''+aptId+'\')">'+
     '<option value="__keep">— בחר חלוקה להחלה —</option>'+
-    '<option value="__default">ברירת המחדל של הדירה</option>'+
+    '<option value="__default">ברירת המחדל של הפרוייקט</option>'+
     ps.map(function(p){ return '<option value="'+p.id+'">'+esc(p.name)+'</option>'; }).join("")+
     '</select><div class="hint">ממלא את שורות החלוקה למטה לפי החלוקה שנבחרה. אפשר לשנות ידנית אחרי כן.</div></div>';
 }
@@ -3073,7 +3151,7 @@ function applyExSplit(aptId){
 }
 
 /* ============================================================
-   תשלומי שותף — בוחרים שותף ורואים את כל תשלומיו (חוצה דירות)
+   תשלומי שותף — בוחרים שותף ורואים את כל תשלומיו (חוצה פרוייקטים)
    ============================================================ */
 function partnerPaymentsCardHtml(){
   var parts=visiblePartners()
@@ -3107,7 +3185,7 @@ function partnerPaymentsBody(pid){
   });
   if(!rows.length) return '<div class="empty">אין תשלומים לשותף זה</div>';
   rows.sort(function(x,y){ return x.date<y.date?1:-1; });
-  var h='<div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>דירה</th><th>עבור</th><th>סכום</th><th>מוטב</th><th>אמצעי</th><th>חשבונית</th></tr></thead><tbody>';
+  var h='<div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>פרוייקט</th><th>עבור</th><th>סכום</th><th>מוטב</th><th>אמצעי</th><th>חשבונית</th></tr></thead><tbody>';
   rows.forEach(function(r){
     h+='<tr'+(r.mgr?' class="mgmt-row"':'')+'><td>'+dateHe(r.date)+'</td><td>'+esc(r.apt)+'</td><td>'+esc(r.stage)+'</td><td>'+money(r.amount)+'</td>'+
       '<td>'+(r.mgr?'<span class="badge badge-mgmt">🧾 דמי ניהול</span> ':'')+esc(r.recip)+'</td><td>'+esc(r.method)+'</td><td>'+esc(r.inv)+'</td></tr>';
@@ -3120,7 +3198,7 @@ function partnerPaymentsBody(pid){
 function openBulkMgmt(aptId){
   var a=byId(DB.apartments,aptId);
   if(!a.hasManagement){
-    toast("דמי ניהול כבויים בדירה — הפעל בלשונית \"דמי ניהול\"","err");
+    toast("דמי ניהול כבויים בפרוייקט — הפעל בלשונית \"דמי ניהול\"","err");
     go("apartment",{apartmentId:aptId,tab:"managers"}); return;
   }
   var mgrs=apManagers(aptId);
@@ -3336,7 +3414,7 @@ function openExpenseEditor(eId,aptId,presetParent){
     '<div class="section-title">חלוקת שותפים <span class="hint">(מאותחל מברירת המחדל, ניתן לשנות)</span></div>'+
     exSplitChooserHtml(aptId)+
     (!splits.length && !apPartners(aptId).length
-      ? '<div class="hint" style="margin-bottom:6px">בדירה זו לא הוגדרו שותפים — ההוצאה תישמר <b>ללא חלוקה</b>. אפשר גם להוסיף שותף ידנית בכפתור למטה.</div>'
+      ? '<div class="hint" style="margin-bottom:6px">בפרוייקט זה לא הוגדרו שותפים — ההוצאה תישמר <b>ללא חלוקה</b>. אפשר גם להוסיף שותף ידנית בכפתור למטה.</div>'
       : '')+
     '<div id="split-rows">'+splits.map(function(s){return splitRowHtml(s[0],s[1]);}).join("")+'</div>'+
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">'+
@@ -3370,10 +3448,10 @@ function openExpenseEditor(eId,aptId,presetParent){
           '</div></div>';
       }).join("")
       : '<div style="border:2px dashed #fecaca;border-radius:10px;padding:16px;text-align:center">'+
-        '<div style="font-weight:800;color:var(--danger);font-size:15px">עדיין לא הוגדרו מנהלים בדירה הזאת</div>'+
+        '<div style="font-weight:800;color:var(--danger);font-size:15px">עדיין לא הוגדרו מנהלים בפרוייקט הזה</div>'+
         '<div class="muted" style="margin:8px 0">בלי מנהלים אין למי לחשב אחוזים. ברגע שתוסיף מנהל יופיעו כאן שדות ה<b>אחוז הנוכחי</b> וה<b>אחוז הדחוי</b> לכל מנהל.</div>'+
         (eId ? '<button class="btn btn-primary btn-sm" onclick="addManagerFromExpense(\''+aptId+'\',\''+eId+'\')">➕ הוסף מנהל עכשיו</button>'
-             : '<div class="hint">שמור את ההוצאה תחילה, ואז תוכל להוסיף מנהל מכאן — או בלשונית <b>דמי ניהול</b> של הדירה.</div>')+
+             : '<div class="hint">שמור את ההוצאה תחילה, ואז תוכל להוסיף מנהל מכאן — או בלשונית <b>דמי ניהול</b> של הפרוייקט.</div>')+
         '</div>')+
       '</div>'+
       '<div id="mgmt-preview" style="margin-top:12px"></div>'+
@@ -3400,7 +3478,7 @@ function saveExpense(eId,aptId){
     if(pid){ if(byP[pid]==null){byP[pid]=0;order.push(pid);} byP[pid]+=pct; }
   });
   var rows=order.map(function(pid){ return {partnerId:pid,percent:byP[pid]}; });
-  /* חלוקה נדרשת רק בדירה שהוגדרו לה שותפים. דירה אישית
+  /* חלוקה נדרשת רק בפרוייקט שהוגדרו לה שותפים. פרוייקט אישי
      (קרן השתלמות, קופת חיסכון...) נשמרת בלי חלוקה כלל. */
   if(isCont){
     /* מכל: אין לו חלוקה משלו — היא יושבת בתתי-השלבים */
@@ -3428,7 +3506,7 @@ function saveExpense(eId,aptId){
     if(eId && pv===eId) pv="";
     var pe = pv?byId(DB.expenses,pv):null;
     if(pv && !pe){ toast("שלב-האב שנבחר אינו קיים","err"); return false; }
-    if(pe && pe.apartmentId!==aptId){ toast("שלב-האב שייך לדירה אחרת","err"); return false; }
+    if(pe && pe.apartmentId!==aptId){ toast("שלב-האב שייך לפרוייקט אחר","err"); return false; }
     if(pe && pe.parentId){ toast("אפשר תת-שלב רק תחת שלב עצמאי","err"); return false; }
     if(pv && eId && expenseChildren(eId).length){ toast("לשלב הזה יש תתי-שלבים — לא ניתן לשייך אותו לאב","err"); return false; }
     /* אב שיש עליו כסף משלו הופך למכל — הכסף שלו עובר לתת-שלב ראשון.
@@ -3497,7 +3575,7 @@ function saveExpense(eId,aptId){
   save(); toast("ההוצאה נשמרה","ok"); rerender();
 }
 
-/* ---------- לשונית תשלומים: כל תשלומי הדירה במקום אחד ---------- */
+/* ---------- לשונית תשלומים: כל תשלומי הפרוייקט במקום אחד ---------- */
 function apAllPayments(aptId){
   var expIds={}; apExpenses(aptId).forEach(function(e){ expIds[e.id]=1; });
   return active(DB.payments).filter(function(p){ return expIds[p.expenseId]; });
@@ -3707,17 +3785,17 @@ function openPayments(eId){
   }
   openModal({title:"תשלומים — "+e.description,wide:true,bodyHtml:body});
 }
-/* ---------- הוצאה מהירה: בוחרים דירה ומזינים — בלי לנווט לשום מקום ----------
-   החלוקה נלקחת מברירת המחדל של הדירה; אפשר לרשום תשלום מיד באותו מסך. */
+/* ---------- הוצאה מהירה: בוחרים פרוייקט ומזינים — בלי לנווט לשום מקום ----------
+   החלוקה נלקחת מברירת המחדל של הפרוייקט; אפשר לרשום תשלום מיד באותו מסך. */
 function openQuickExpense(){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var apts=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);});
-  if(!apts.length){ toast("אין דירות במערכת","err"); return; }
+  if(!apts.length){ toast("אין פרוייקטים במערכת","err"); return; }
   var cur=state.params.apartmentId||apts[0].id;
   _qeParentApt=null; _qePayBuilt=false; _qePayApt=null; _qePayTouched=false; _qeMgmtApt=null;
   openModal({title:"➕ הוצאה מהירה",wide:true,bodyHtml:
     '<div class="form-grid">'+
-      '<div class="field full"><label>דירה / פרויקט</label><select id="qe-apt" onchange="renderQuickExpenseInfo()">'+
+      '<div class="field full"><label>פרוייקט / פרויקט</label><select id="qe-apt" onchange="renderQuickExpenseInfo()">'+
         apts.map(function(a){return '<option value="'+a.id+'"'+(a.id===cur?" selected":"")+'>'+esc(a.name)+'</option>';}).join("")+
       '</select></div>'+
       '<div class="field"><label>תיאור השלב</label><input id="qe-desc" placeholder="למשל: קבלן שלד תשלום ב׳" onkeydown="if(event.key===\'Enter\'){event.preventDefault();document.getElementById(\'qe-amount\').focus();}"></div>'+
@@ -3736,7 +3814,7 @@ function openQuickExpense(){
     saveLabel:"שמור הוצאה",onSave:function(){ return saveQuickExpense(); }});
   renderQuickExpenseInfo();
 }
-/* דמי ניהול בהוצאה מהירה. המקטע נבנה רק כשמחליפים דירה — הקלדה
+/* דמי ניהול בהוצאה מהירה. המקטע נבנה רק כשמחליפים פרוייקט — הקלדה
    בשדה הסכום מעדכנת רק את תצוגת הסכום המחושב, לא את השדות. */
 var _qeMgmtApt=null;
 function renderQuickMgmt(aptId){
@@ -3746,7 +3824,7 @@ function renderQuickMgmt(aptId){
   var a=byId(DB.apartments,aptId), mgrs=apManagers(aptId);
   if(!a||!a.hasManagement){ box.innerHTML=""; return; }
   if(!mgrs.length){
-    box.innerHTML='<div class="hint">בדירה זו דמי הניהול פעילים אבל לא הוגדרו מנהלים — הוסף אותם בלשונית "דמי ניהול".</div>';
+    box.innerHTML='<div class="hint">בפרוייקט זה דמי הניהול פעילים אבל לא הוגדרו מנהלים — הוסף אותם בלשונית "דמי ניהול".</div>';
     return;
   }
   box.innerHTML='<div class="section-title">דמי ניהול</div>'+
@@ -3794,7 +3872,7 @@ function updateQuickMgmtPreview(){
     (def>0.005?' · דחוי (עד השחרור): <b>'+money(round2(def))+'</b>':'')):
     'הזן סכום להוצאה כדי לראות את דמי הניהול המחושבים';
 }
-/* בחירת שלב-אב בהוצאה מהירה. נבנית מחדש רק כשמחליפים דירה,
+/* בחירת שלב-אב בהוצאה מהירה. נבנית מחדש רק כשמחליפים פרוייקט,
    כדי שהבחירה לא תתאפס בכל הקלדה בשדה הסכום. */
 var _qeParentApt=null;
 function renderQuickParent(aptId){
@@ -3818,17 +3896,17 @@ function renderQuickExpenseInfoInner(){
   var parts=apPartners(aptId);
   var h="";
   if(!parts.length){
-    h='<div class="hint">בדירה זו לא הוגדרו שותפים — ההוצאה תישמר <b>ללא חלוקה</b>.</div>';
+    h='<div class="hint">בפרוייקט זה לא הוגדרו שותפים — ההוצאה תישמר <b>ללא חלוקה</b>.</div>';
   }else{
     var sum=parts.reduce(function(s,p){return s+(Number(p.defaultPercent)||0);},0);
-    h='<div class="section-title">חלוקה לפי ברירת המחדל של הדירה</div>'+
+    h='<div class="section-title">חלוקה לפי ברירת המחדל של הפרוייקט</div>'+
       '<div class="table-wrap"><table class="tbl"><thead><tr><th>שותף</th><th>אחוז</th><th>חלקו</th></tr></thead><tbody>'+
       parts.map(function(p){
         return '<tr><td>'+esc(partnerName(p.partnerId))+'</td><td>'+num(p.defaultPercent)+'%</td>'+
           '<td><b>'+money(amt*(Number(p.defaultPercent)||0)/100)+'</b></td></tr>'; }).join("")+
       '</tbody><tfoot><tr><td>סה"כ</td><td class="'+(Math.abs(sum-100)<0.01?"pos":"neg")+'">'+num(sum)+'%</td>'+
       '<td>'+money(amt)+'</td></tr></tfoot></table></div>'+
-      (Math.abs(sum-100)>=0.01?'<div class="hint neg">שים לב: אחוזי ברירת המחדל בדירה אינם 100%.</div>':'')+
+      (Math.abs(sum-100)>=0.01?'<div class="hint neg">שים לב: אחוזי ברירת המחדל בפרוייקט אינם 100%.</div>':'')+
       '<div class="hint">אפשר לשנות את החלוקה אחרי השמירה, בעריכת השלב.</div>';
   }
   box.innerHTML=h;
@@ -3839,7 +3917,7 @@ function toggleQuickPayNow(){
   if(checked("qe-paynow")){ w.style.display="block"; renderQuickPayNow(true); }
   else w.style.display="none";
 }
-/* בלוק התשלום נבנה רק כשמשתנה הדירה — הקלדה בשדה הסכום לא מוחקת
+/* בלוק התשלום נבנה רק כשמשתנה הפרוייקט — הקלדה בשדה הסכום לא מוחקת
    את החשבון, המשלם והאמצעי שכבר נבחרו. סכום התשלום ממשיך לעקוב אחרי
    סכום ההוצאה עד לרגע שבו המשתמש עורך אותו ידנית. */
 var _qePayBuilt=false, _qePayApt=null, _qePayTouched=false;
@@ -3885,7 +3963,7 @@ function saveQuickExpense(){
   var qMgmtSel=document.getElementById("qe-mgmt");
   if(qMgmtSel && qMgmtSel.value===""){ toast("יש לבחור: עם דמי ניהול או בלי דמי ניהול","err"); return false; }
   var date=val("qe-date")||todayISO();
-  /* הגנה מכפילות — כמו בייבוא: אותה דירה + תיאור + סכום + תאריך */
+  /* הגנה מכפילות — כמו בייבוא: אותו פרוייקט + תיאור + סכום + תאריך */
   var dup=apExpenses(aptId).find(function(x){
     return normKey(x.description)===normKey(desc) && Math.abs((Number(x.amount)||0)-amount)<0.01 && x.date===date; });
   if(dup && !confirm('כבר קיים שלב "'+dup.description+'" באותו סכום ותאריך.\n\nלהוסיף בכל זאת?')) return false;
@@ -3956,10 +4034,10 @@ function saveQuickExpense(){
   go("apartment",{apartmentId:aptId,tab:"expenses"});
 }
 
-/* ---------- תשלום מהיר: בחר דירה → בחר שלב שטרם שולם במלואו ---------- */
+/* ---------- תשלום מהיר: בחר פרוייקט → בחר שלב שטרם שולם במלואו ---------- */
 function openQuickPay(){
   var apts=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);});
-  if(!apts.length){ toast("אין דירות במערכת","err"); return; }
+  if(!apts.length){ toast("אין פרוייקטים במערכת","err"); return; }
   var cur=state.params.apartmentId||apts[0].id;
   openModal({title:"💳 תשלום מהיר",wide:true,bodyHtml:
     '<div class="field"><label>בחר פרוייקט</label><select id="qp-apt" onchange="renderQuickPayList()">'+
@@ -3975,7 +4053,7 @@ function renderQuickPayListInner(){
   var allOpen=apLeafExpenses(aptId).filter(function(e){ return expenseRemaining(e.id)>0.01; });
   var open=allOpen.filter(function(e){ return matches(Q.quick, e.description+" "+(e.note||"")); })
     .sort(function(x,y){ return x.date<y.date?-1:1; });
-  if(!allOpen.length){ box.innerHTML='<div class="empty">✅ כל השלבים בדירה זו שולמו במלואם</div>'; return; }
+  if(!allOpen.length){ box.innerHTML='<div class="empty">✅ כל השלבים בפרוייקט זה שולמו במלואם</div>'; return; }
   if(!open.length){ box.innerHTML='<div class="empty">לא נמצא שלב שמתאים לחיפוש</div>'; return; }
   var h='<div class="section-title">שלבים שטרם שולמו במלואם ('+open.length+
     (open.length!==allOpen.length?' מתוך '+allOpen.length:'')+')</div>'+
@@ -3989,7 +4067,7 @@ function renderQuickPayListInner(){
       '<td class="neg">'+money(rem)+'</td>'+
       '<td class="right"><button class="btn btn-primary btn-sm" onclick="quickPayExpense(\''+e.id+'\')">💳 שלם</button></td></tr>';
   });
-  h+='</tbody><tfoot><tr><td colspan="4">סה"כ נותר בדירה</td><td class="neg">'+money(tot)+'</td><td></td></tr></tfoot></table></div>';
+  h+='</tbody><tfoot><tr><td colspan="4">סה"כ נותר בפרוייקט</td><td class="neg">'+money(tot)+'</td><td></td></tr></tfoot></table></div>';
   box.innerHTML=h;
 }
 function quickPayExpense(eId){ openPaymentEditor(eId,null); }
@@ -4030,7 +4108,7 @@ function openPaymentEditor(eId,payId){
       '</div>'+
       '<button class="btn btn-primary btn-sm" style="margin-top:6px" onclick="addAccountInline(\''+aptId+'\')">➕ הוסף ובחר</button>'+
     '</div>'+
-    /* "מי שילם" מוצג רק כשיש שותפים בדירה — בפרויקט אישי אין את מי לבחור */
+    /* "מי שילם" מוצג רק כשיש שותפים בפרוייקט — בפרויקט אישי אין את מי לבחור */
     (partners.length
       ? '<div class="field"><label id="pm-payer-lbl">מי שילם (שותף)</label><select id="pm-payer"><option value="">—</option>'+partners.map(function(ap){return '<option value="'+ap.partnerId+'"'+(p&&p.payerPartnerId===ap.partnerId?" selected":"")+'>'+esc(partnerName(ap.partnerId))+'</option>';}).join("")+'</select></div>'
       : '')+
@@ -4054,7 +4132,7 @@ function onPmAccount(){
   var sel=document.getElementById("pm-account"); if(!sel) return;
   var accId=sel.value; var acc=byId(DB.accounts,accId);
   var payer=document.getElementById("pm-payer");
-  if(!payer) return;   // דירה בלי שותפים — אין שדה משלם
+  if(!payer) return;   // פרוייקט בלי שותפים — אין שדה משלם
   if(acc&&acc.isBank){ payer.value=""; payer.disabled=true; }
   else{ payer.disabled=false; if(acc&&acc.partnerId&&!payer.value) payer.value=acc.partnerId; }
 }
@@ -4078,7 +4156,7 @@ function savePayment(eId,payId){
   var recipientManagerId=recipientType==="manager"?(val("pm-manager")||null):null;
   if(recipientType==="manager"&&!recipientManagerId){ toast("בחר מנהל","err"); return false; }
   var payer=isBank?null:(val("pm-payer")||null);
-  /* משלם נדרש רק בדירה שיש בה שותפים — בפרויקט אישי אין את מי לשייך */
+  /* משלם נדרש רק בפרוייקט שיש בה שותפים — בפרויקט אישי אין את מי לשייך */
   if(!isBank&&!payer&&apPartners(e.apartmentId).length){ toast("בחר מי שילם, או חשבון בנק","err"); return false; }
   // תקרות
   if(recipientType==="supplier"){
@@ -4108,11 +4186,11 @@ function savePayment(eId,payId){
 function enableManagement(aptId){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var a=byId(DB.apartments,aptId); if(!a) return;
-  a.hasManagement=true; save(); toast("דמי ניהול הופעלו בדירה","ok"); rerender();
+  a.hasManagement=true; save(); toast("דמי ניהול הופעלו בפרוייקט","ok"); rerender();
 }
 function disableManagement(aptId){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
-  if(!confirm("לכבות דמי ניהול בדירה זו?\n\nהמנהלים והנתונים יישמרו, אבל דמי הניהול לא ייכללו בחישובים.")) return;
+  if(!confirm("לכבות דמי ניהול בפרוייקט זה?\n\nהמנהלים והנתונים יישמרו, אבל דמי הניהול לא ייכללו בחישובים.")) return;
   var a=byId(DB.apartments,aptId); a.hasManagement=false; save(); toast("דמי ניהול כובו","ok"); rerender();
 }
 /* הוספת שני מנהלים בבת אחת — המקרה הנפוץ */
@@ -4134,12 +4212,12 @@ function addTwoManagers(aptId){
       save(); toast("נוספו "+c+" מנהלים","ok"); rerender();
     }});
 }
-/* העתקת המנהלים מדירה אחרת — כשאותם אנשים חוזרים בכמה פרויקטים */
+/* העתקת המנהלים מפרוייקט אחר — כשאותם אנשים חוזרים בכמה פרויקטים */
 function copyManagersFrom(aptId){
   var srcs=active(DB.apartments).filter(function(x){ return x.id!==aptId && apManagers(x.id).length; });
-  if(!srcs.length){ toast("אין דירה אחרת עם מנהלים מוגדרים","warn"); return; }
-  openModal({title:"העתקת מנהלים מדירה אחרת",bodyHtml:
-    '<div class="field"><label>מאיזו דירה להעתיק?</label><select id="cm-src">'+
+  if(!srcs.length){ toast("אין פרוייקט אחר עם מנהלים מוגדרים","warn"); return; }
+  openModal({title:"העתקת מנהלים מפרוייקט אחר",bodyHtml:
+    '<div class="field"><label>מאיזו פרוייקט להעתיק?</label><select id="cm-src">'+
       srcs.map(function(x){return '<option value="'+x.id+'">'+esc(x.name)+' — '+apManagers(x.id).length+' מנהלים</option>';}).join("")+
     '</select></div><div class="hint">מנהל שכבר קיים כאן באותו שם לא יועתק שוב.</div>',
     saveLabel:"העתק",onSave:function(){
@@ -4159,14 +4237,14 @@ function moduleManagers(aptId){
   if(!a.hasManagement){
     return '<div class="card" style="border:2px dashed var(--brand);text-align:center;padding:26px">'+
       '<div style="font-size:38px">💼</div>'+
-      '<h3 style="margin:10px 0 6px">דמי ניהול אינם מופעלים בדירה הזאת</h3>'+
+      '<h3 style="margin:10px 0 6px">דמי ניהול אינם מופעלים בפרוייקט הזה</h3>'+
       '<p class="muted" style="max-width:520px;margin:0 auto 16px">הפעל כדי להגדיר מנהלים שמקבלים אחוז מההוצאות — כולל אחוז שונה לכל מנהל בכל הוצאה, אחוז נוכחי מול דחוי, ומע"מ.</p>'+
-      (can("edit")?'<button class="btn btn-primary" onclick="enableManagement(\''+aptId+'\')">✅ הפעל דמי ניהול בדירה זו</button>':'')+
+      (can("edit")?'<button class="btn btn-primary" onclick="enableManagement(\''+aptId+'\')">✅ הפעל דמי ניהול בפרוייקט זה</button>':'')+
       '</div>';
   }
   var h='<div class="toolbar"><h3 style="margin:0">מנהלים ודמי ניהול</h3><div class="sp"></div>'+
     (can("edit")?'<button class="btn btn-primary btn-sm" onclick="addTwoManagers(\''+aptId+'\')">➕ הוסף מנהלים</button> '+
-      '<button class="btn btn-sm" onclick="copyManagersFrom(\''+aptId+'\')">📋 העתק מדירה אחרת</button> '+
+      '<button class="btn btn-sm" onclick="copyManagersFrom(\''+aptId+'\')">📋 העתק מפרוייקט אחר</button> '+
       '<button class="btn btn-ghost btn-sm" onclick="disableManagement(\''+aptId+'\')">כבה דמי ניהול</button>':'')+'</div>';
   if(!mgrs.length){
     h+='<div class="card" style="border:2px dashed #fecaca;text-align:center;padding:20px">'+
@@ -4442,7 +4520,7 @@ var DIMP={grid:null,map:{date:-1,amount:-1,method:-1,from:-1,note:-1},aptId:null
 function openDepositImport(aptId){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var parts=apPartners(aptId);
-  if(!parts.length){ toast("בדירה זו לא הוגדרו שותפים","err"); return; }
+  if(!parts.length){ toast("בפרוייקט זה לא הוגדרו שותפים","err"); return; }
   DIMP={grid:null,map:{date:-1,amount:-1,method:-1,from:-1,note:-1},aptId:aptId};
   openModal({title:"📥 העלאת הפקדות מאקסל",wide:true,bodyHtml:
     '<div class="field"><label>כל ההפקדות בקובץ שייכות ל…</label>'+
@@ -4593,12 +4671,12 @@ function applyDepositImport(){
 
 /* ---------- הפקדה מרוכזת ----------
    שורה לכל שותף, תאריך והערה משותפים. אפשר גם להזין סכום כולל
-   ולפצל אותו לפי אחוזי ברירת המחדל של הדירה, כי כך בדרך כלל
+   ולפצל אותו לפי אחוזי ברירת המחדל של הפרוייקט, כי כך בדרך כלל
    מפקידים לקופה המשותפת. */
 function openBulkDeposit(aptId){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var parts=apPartners(aptId);
-  if(!parts.length){ toast("בדירה זו לא הוגדרו שותפים","err"); return; }
+  if(!parts.length){ toast("בפרוייקט זה לא הוגדרו שותפים","err"); return; }
   var rows=parts.map(function(p){
     return '<tr><td><b>'+esc(partnerName(p.partnerId))+'</b></td>'+
       '<td class="muted">'+num(p.defaultPercent)+'%</td>'+
@@ -4638,7 +4716,7 @@ function bdSplit(){
   if(tot<=0){ toast("הזן סכום כולל","warn"); return; }
   var rows=bdRows();
   var pctSum=rows.reduce(function(s,i){ return s+(Number(i.getAttribute("data-pct"))||0); },0);
-  if(pctSum<=0){ toast("אין אחוזי ברירת מחדל בדירה — השתמש בפיצול שווה","warn"); return; }
+  if(pctSum<=0){ toast("אין אחוזי ברירת מחדל בפרוייקט — השתמש בפיצול שווה","warn"); return; }
   /* מחלקים לפי אחוזים ומיישרים את השארית באחרון, כדי שהסכום יסתדר בדיוק */
   var acc=0;
   rows.forEach(function(i,ix){
@@ -4670,7 +4748,7 @@ function saveBulkDeposit(aptId){
   }).filter(function(x){ return x.amount>0.001; });
   if(!picked.length){ toast("לא הוזן סכום לאף שותף","err"); return false; }
   var sum=round2(picked.reduce(function(s,x){ return s+x.amount; },0));
-  /* אותה דירה + אותו תאריך + אותו סכום = כנראה לחיצה כפולה */
+  /* אותו פרוייקט + אותו תאריך + אותו סכום = כנראה לחיצה כפולה */
   var dupN=picked.filter(function(x){
     return apDeposits(aptId).some(function(d){
       return d.partnerId===x.partnerId && d.date===date && Math.abs((Number(d.amount)||0)-x.amount)<0.01; });
@@ -4775,12 +4853,12 @@ function editIncome(id,aptId){
       save(); toast("נשמר","ok"); rerender();
     }});
 }
-/* ברירת המחדל לחלוקת הכנסות בדירה — נקבעת פעם אחת וחלה על כל הכנסה
+/* ברירת המחדל לחלוקת הכנסות בפרוייקט — נקבעת פעם אחת וחלה על כל הכנסה
    שלא נקבעה לה חלוקה משלה */
 function editIncomeSplitDefault(aptId){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var parts=apPartners(aptId);
-  if(!parts.length){ toast("בדירה זו לא הוגדרו שותפים","err"); return; }
+  if(!parts.length){ toast("בפרוייקט זה לא הוגדרו שותפים","err"); return; }
   var a=byId(DB.apartments,aptId);
   var cur={}; (a.incomeSplit||[]).forEach(function(x){ cur[x.partnerId]=x.percent; });
   openModal({title:"⚙️ חלוקת ברירת מחדל להכנסות — "+a.name,bodyHtml:
@@ -4804,34 +4882,47 @@ function editIncomeSplitDefault(aptId){
     }});
 }
 
-/* ---------- דוחות דירה ---------- */
+/* ---------- דוחות פרוייקט ---------- */
 function moduleApartmentReports(aptId){
   var a=byId(DB.apartments,aptId);
-  var h='<div class="toolbar no-print"><button class="btn btn-sm" onclick="window.print()">🖨️ הדפסה</button></div>';
   /* גרף פתיחה: יתרות השותפים */
   var balRows=reportPartnerIds(aptId).map(function(pid){
     var b=partnerPaid(aptId,pid)-partnerShouldPay(aptId,pid);
     return {label:partnerName(pid),value:b,color:b<0?"#ef4444":"#10b981"};
   }).filter(function(r){ return Math.abs(r.value)>0.01; })
     .sort(function(x,y){ return x.value-y.value; });
-  if(balRows.length){
-    h+='<div class="card"><h3>💰 יתרות השותפים</h3>'+barChart(balRows)+
-      '<div class="hint">🔴 חייב (שילם פחות ממה שהיה אמור) · 🟢 זכאי (שילם יותר)</div></div>';
-  }
-  // דוח משלמים
-  h+='<div class="card"><h3>דוח משלמים — '+esc(a.name)+'</h3><div class="table-wrap"><table class="tbl"><thead><tr><th>שותף</th><th>אמור לשלם</th><th>שילם</th><th>יתרה לתשלום</th></tr></thead><tbody>';
-  var tS=0,tP=0;
-  reportPartnerIds(aptId).forEach(function(pid){
-    var s=partnerShouldPay(aptId,pid), p=partnerPaid(aptId,pid); tS+=s;tP+=p;
-    h+='<tr><td>'+esc(partnerName(pid))+'</td><td>'+money(s)+'</td><td>'+money(p)+'</td><td class="'+((p-s)<0?"neg":"pos")+'">'+money(p-s)+'</td></tr>';
-  });
-  h+='</tbody><tfoot><tr><td>סה"כ</td><td>'+money(tS)+'</td><td>'+money(tP)+'</td><td>'+money(tP-tS)+'</td></tr></tfoot></table></div></div>';
-  h+=categoryReportHtml(aptId);
-  // דוח שותפים לפי שלבים
-  h+=dueByPaidReportHtml(aptId);
-  h+='<div id="partner-report">'+partnerReportHtml(aptId)+'</div>';
+
+  /* כל דוח נבנה רק אם נבחר — כדי לא להעמיס, וכדי שלא יהיה מבלבל */
+  var defs=[
+    {key:"bal",label:"💰 יתרות השותפים",show:balRows.length>0,render:function(){
+      return '<div class="card"><h3>💰 יתרות השותפים</h3>'+barChart(balRows)+
+        '<div class="hint">🔴 חייב (שילם פחות ממה שהיה אמור) · 🟢 זכאי (שילם יותר)</div></div>'; }},
+    {key:"payers",label:"👥 דוח משלמים",show:true,render:function(){
+      var s2='<div class="card"><h3>דוח משלמים — '+esc(a.name)+'</h3><div class="table-wrap"><table class="tbl"><thead><tr><th>שותף</th><th>אמור לשלם</th><th>שילם</th><th>יתרה לתשלום</th></tr></thead><tbody>';
+      var tS=0,tP=0;
+      reportPartnerIds(aptId).forEach(function(pid){
+        var s=partnerShouldPay(aptId,pid), p=partnerPaid(aptId,pid); tS+=s;tP+=p;
+        s2+='<tr><td>'+esc(partnerName(pid))+'</td><td>'+money(s)+'</td><td>'+money(p)+'</td><td class="'+((p-s)<0?"neg":"pos")+'">'+money(p-s)+'</td></tr>';
+      });
+      return s2+'</tbody><tfoot><tr><td>סה"כ</td><td>'+money(tS)+'</td><td>'+money(tP)+'</td><td>'+money(tP-tS)+'</td></tr></tfoot></table></div></div>'; }},
+    {key:"category",label:"📁 לפי קטגוריה",show:true,render:function(){ return categoryReportHtml(aptId); }},
+    {key:"due",label:"⚖️ חובה והתחשבנות",show:true,render:function(){ return dueByPaidReportHtml(aptId); }},
+    {key:"stages",label:"📋 שותפים לפי שלבים",show:true,render:function(){ return '<div id="partner-report">'+partnerReportHtml(aptId)+'</div>'; }}
+  ];
+  var avail=defs.filter(function(d){ return d.show; });
+  var sel=state.params.rep||avail[0].key;
+  if(sel!=="all" && !avail.some(function(d){ return d.key===sel; })) sel=avail[0].key;
+
+  var h='<div class="toolbar no-print" style="flex-wrap:wrap;gap:6px">'+
+    '<span class="muted" style="align-self:center">בחר דוח:</span>'+
+    avail.map(function(d){ return '<button class="btn btn-sm'+(sel===d.key?" btn-primary":"")+'" onclick="setApReport(\''+d.key+'\')">'+d.label+'</button>'; }).join("")+
+    '<button class="btn btn-sm'+(sel==="all"?" btn-primary":"")+'" onclick="setApReport(\'all\')">📚 הכל</button>'+
+    '<div class="sp"></div><button class="btn btn-sm" onclick="window.print()">🖨️ הדפסה</button></div>';
+  var chosen = sel==="all" ? avail : avail.filter(function(d){ return d.key===sel; });
+  h+=chosen.map(function(d){ return d.render(); }).join("");
   return h;
 }
+function setApReport(k){ state.params.rep=k; rerender(); }
 
 /* ============================================================
    דוח קטגוריות — לאן הלך הכסף בפרויקט
@@ -4966,22 +5057,6 @@ function dueByPaidReportHtml(aptId){
       '<div class="hint">התוכנית מחושבת במינימום העברות: מי שהכניס פחות מחלקו מעביר למי שהכניס יותר.</div>';
   }
 
-  /* מטריצת "מי שילם יותר ממי" */
-  if(pids.length>1){
-    h+='<div class="section-title">📊 השוואה בין כל שני שותפים</div>'+
-      '<div class="table-wrap"><table class="tbl"><thead><tr><th>שותף</th>'+
-      pids.map(function(p){return '<th>'+esc(partnerName(p))+'</th>';}).join("")+'</tr></thead><tbody>'+
-      pids.map(function(a){
-        return '<tr><td><b>'+esc(partnerName(a))+'</b></td>'+
-          pids.map(function(b){
-            if(a===b) return '<td class="muted">—</td>';
-            var d=round2(bal[a]-bal[b]);
-            return '<td class="'+(d>0.01?"pos":d<-0.01?"neg":"muted")+'">'+
-              (Math.abs(d)<0.01?"שווה":(d>0?"+":"")+money(d))+'</td>';
-          }).join("")+'</tr>'; }).join("")+
-      '</tbody></table></div>'+
-      '<div class="hint">🟢 חיובי = השורה הכניסה יותר מהעמודה · 🔴 שלילי = הכניסה פחות.</div>';
-  }
   return h+'</div>';
 }
 
@@ -5181,7 +5256,7 @@ function moduleMgmtReport(){
   var h='<div class="toolbar"><h2 style="margin:0">💼 דוח דמי ניהול</h2><div class="sp"></div>'+
     '<button class="btn btn-sm no-print" onclick="window.print()">🖨️ הדפסה</button></div>';
   if(!apts.length){
-    return h+'<div class="empty">אין עדיין פרויקט עם דמי ניהול.<br>הפעל בלשונית <b>דמי ניהול</b> של הדירה הרלוונטית.</div>';
+    return h+'<div class="empty">אין עדיין פרויקט עם דמי ניהול.<br>הפעל בלשונית <b>דמי ניהול</b> של הפרוייקט הרלוונטית.</div>';
   }
   var tCur=0,tDef=0,tPaid=0;
   h+='<div class="card"><h3>סיכום לפי פרויקט</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+
@@ -5272,9 +5347,9 @@ function moduleMgmtReport(){
   return h;
 }
 
-/* ---------- דוח שותפים כללי (חוצה דירות) ---------- */
+/* ---------- דוח שותפים כללי (חוצה פרוייקטים) ---------- */
 function moduleCrossPartner(){
-  var h='<div class="toolbar"><h2 style="margin:0">דוח שותפים כללי — חוצה דירות</h2>'+
+  var h='<div class="toolbar"><h2 style="margin:0">דוח שותפים כללי — חוצה פרוייקטים</h2>'+
     searchBox("cross-q",Q.cross,"חיפוש שותף…","Q.cross=this.value;renderCrossList()")+
     '<div class="sp"></div><button class="btn btn-sm no-print" onclick="window.print()">🖨️</button></div>';
   h+=partnerPaymentsCardHtml();
@@ -5294,7 +5369,7 @@ function crossListHtml(){
     var apts=active(DB.apartments).filter(function(a){ return canSeeApartment(a.id) && apReportPartnerIds(a.id).indexOf(p.id)>=0; });
     if(!apts.length) return; any=true;
     var tS=0,tP=0;
-    h+='<div class="card"><h3>'+esc(p.name)+'</h3><div class="table-wrap"><table class="tbl"><thead><tr><th>דירה</th><th>אמור לשלם</th><th>שילם</th><th>יתרה</th></tr></thead><tbody>';
+    h+='<div class="card"><h3>'+esc(p.name)+'</h3><div class="table-wrap"><table class="tbl"><thead><tr><th>פרוייקט</th><th>אמור לשלם</th><th>שילם</th><th>יתרה</th></tr></thead><tbody>';
     apts.forEach(function(a){
       var s=partnerShouldPay(a.id,p.id), pd=partnerPaid(a.id,p.id); tS+=s;tP+=pd;
       h+='<tr><td>'+esc(a.name)+'</td><td>'+money(s)+'</td><td>'+money(pd)+'</td><td class="'+((pd-s)<0?"neg":"pos")+'">'+money(pd-s)+'</td></tr>';
@@ -5379,7 +5454,7 @@ function moduleSettings(){
   } else if(tab==="users"){
     if(!can("manageUsers")) return h+'<div class="empty">אין הרשאה</div>';
     h+='<div class="toolbar"><button class="btn btn-primary btn-sm" onclick="editUser(null)">➕ משתמש</button></div>';
-    h+='<div class="table-wrap"><table class="tbl"><thead><tr><th>שם</th><th>מייל לשחזור</th><th>תפקיד</th><th>דירות מורשות</th><th>פעיל</th><th></th></tr></thead><tbody>';
+    h+='<div class="table-wrap"><table class="tbl"><thead><tr><th>שם</th><th>מייל לשחזור</th><th>תפקיד</th><th>פרוייקטים מורשים</th><th>פעיל</th><th></th></tr></thead><tbody>';
     active(DB.users).forEach(function(u){
       var apts=(u.allowedApartments&&u.allowedApartments.length)?u.allowedApartments.map(function(id){var a=byId(DB.apartments,id);return a?a.name:"";}).join(", "):"הכל";
       h+='<tr><td>'+esc(u.name)+'</td><td>'+(u.email?esc(u.email):'<span class="muted">— אין</span>')+'</td><td>'+(ROLES[u.role]||"")+'</td><td>'+esc(apts)+'</td><td>'+(u.active?"✔️":"—")+'</td>'+
@@ -5530,7 +5605,7 @@ function deleteAllExpenses(){
   var ids={}; exps.forEach(function(e){ ids[e.id]=1; });
   var pays=active(DB.payments).filter(function(p){return ids[p.expenseId];});
   if(!confirm("יימחקו "+exps.length+" הוצאות ו-"+pays.length+" תשלומים שלהן.\n\n"+
-    "הכל עובר לסל המחזור וניתן לשחזר.\nהדירות, השותפים והאחוזים יישארו.\n\nלהמשיך?")) return;
+    "הכל עובר לסל המחזור וניתן לשחזר.\nהפרוייקטים, השותפים והאחוזים יישארו.\n\nלהמשיך?")) return;
   exps.forEach(function(e){ e.deleted=true; });
   pays.forEach(function(p){ p.deleted=true; });
   save(); toast("נמחקו "+exps.length+" הוצאות ו-"+pays.length+" תשלומים","ok"); rerender();
@@ -5543,9 +5618,9 @@ function deleteAllPayments(){
   pays.forEach(function(p){ p.deleted=true; });
   save(); toast("נמחקו "+pays.length+" תשלומים","ok"); rerender();
 }
-/* ---------- איחוד דירות כפולות ----------
-   "הלפרין  17" (רווח כפול) ו"הלפרין 17" נוצרו כשתי דירות. המיזוג מעביר
-   את כל התנועות לדירת היעד ומעביר את הכפולה לסל המחזור. */
+/* ---------- איחוד פרוייקטים כפולים ----------
+   "הלפרין  17" (רווח כפול) ו"הלפרין 17" נוצרו כשני פרוייקטים. המיזוג מעביר
+   את כל התנועות לפרוייקט היעד ומעביר את הכפולה לסל המחזור. */
 function mergeApartments(srcId,dstId){
   if(srcId===dstId) return 0;
   var src=byId(DB.apartments,srcId), dst=byId(DB.apartments,dstId);
@@ -5553,7 +5628,7 @@ function mergeApartments(srcId,dstId){
   var moved=0;
   // הוצאות (החלוקות, דמי הניהול והתשלומים שלהן עוברים איתן דרך expenseId)
   active(DB.expenses).forEach(function(e){ if(e.apartmentId===srcId){ e.apartmentId=dstId; moved++; } });
-  // שותפי דירה — לא מכפילים שותף שכבר קיים ביעד
+  // שותפי פרוייקט — לא מכפילים שותף שכבר קיים ביעד
   var dstP={}; apPartners(dstId).forEach(function(x){ dstP[x.partnerId]=1; });
   active(DB.apartmentPartners).forEach(function(x){
     if(x.apartmentId!==srcId) return;
@@ -5604,48 +5679,48 @@ function openMergeTool(){
       ' <span class="muted">— '+n+' שלבים · '+pay+' תשלומים</span></span></label>';
   }
   var body= groups.length
-    ? '<p class="muted">נמצאו '+groups.length+' קבוצות של דירות עם אותו שם בפועל (הבדל של רווחים/גרשיים). '+
-      'בחר בכל קבוצה את הדירה <b>שתישאר</b> — כל השאר ימוזגו לתוכה.</p>'+
+    ? '<p class="muted">נמצאו '+groups.length+' קבוצות של פרוייקטים עם אותו שם בפועל (הבדל של רווחים/גרשיים). '+
+      'בחר בכל קבוצה את הפרוייקט <b>שתישאר</b> — כל השאר ימוזגו לתוכה.</p>'+
       groups.map(function(g,gi){
         return '<div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px">'+
           g.map(function(a){return aptLine(a,gi);}).join("")+
           '<button class="btn btn-primary btn-sm" style="margin-top:6px" onclick="mergeGroup('+gi+')">🔀 מזג את הקבוצה</button></div>';
       }).join("")
-    : '<p class="pos">✅ לא נמצאו דירות כפולות לפי שם.</p>';
+    : '<p class="pos">✅ לא נמצאו פרוייקטים כפולים לפי שם.</p>';
   body+='<div class="section-title">מיזוג ידני</div>'+
     '<div class="form-grid">'+
-      '<div class="field"><label>דירה למיזוג (תיעלם)</label><select id="mg-src">'+
+      '<div class="field"><label>פרוייקט למיזוג (תיעלם)</label><select id="mg-src">'+
         apts.map(function(a){return '<option value="'+a.id+'">'+esc(a.name)+'</option>';}).join("")+'</select></div>'+
       '<div class="field"><label>לתוך (תישאר)</label><select id="mg-dst">'+
         apts.map(function(a){return '<option value="'+a.id+'">'+esc(a.name)+'</option>';}).join("")+'</select></div>'+
     '</div>'+
     '<button class="btn btn-sm" onclick="manualMerge()">🔀 מזג ידנית</button>'+
-    '<div class="hint">המיזוג מעביר הכל: שלבים, תשלומים, שותפים, מנהלים, חשבונות, הפקדות והכנסות. הדירה שמוזגה עוברת לסל המחזור.</div>';
-  openModal({title:"🔀 איחוד דירות כפולות",wide:true,bodyHtml:body});
+    '<div class="hint">המיזוג מעביר הכל: שלבים, תשלומים, שותפים, מנהלים, חשבונות, הפקדות והכנסות. הפרוייקט שמוזג עוברת לסל המחזור.</div>';
+  openModal({title:"🔀 איחוד פרוייקטים כפולים",wide:true,bodyHtml:body});
 }
 function mergeGroup(gi){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var g=window._mergeGroups[gi]; if(!g) return;
   var sel=document.querySelector('input[name="mg-'+gi+'"]:checked');
-  if(!sel){ toast("בחר את הדירה שתישאר","err"); return; }
+  if(!sel){ toast("בחר את הפרוייקט שתישאר","err"); return; }
   var dstId=sel.value;
   var srcs=g.filter(function(a){return a.id!==dstId;});
-  if(!confirm(srcs.length+' דירות ימוזגו לתוך "'+byId(DB.apartments,dstId).name+'".\n\nכל התנועות עוברות, והכפולות עוברות לסל המחזור. אפשר לבטל ב-Ctrl+Z.\n\nלהמשיך?')) return;
+  if(!confirm(srcs.length+' פרוייקטים ימוזגו לתוך "'+byId(DB.apartments,dstId).name+'".\n\nכל התנועות עוברות, והכפולות עוברות לסל המחזור. אפשר לבטל ב-Ctrl+Z.\n\nלהמשיך?')) return;
   srcs.forEach(function(a){ mergeApartments(a.id,dstId); });
-  save(); toast("מוזגו "+srcs.length+" דירות","ok");
+  save(); toast("מוזגו "+srcs.length+" פרוייקטים","ok");
   closeModal(); openMergeTool(); rerender();
 }
 function manualMerge(){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var s=val("mg-src"), d=val("mg-dst");
-  if(s===d){ toast("בחר שתי דירות שונות","err"); return; }
+  if(s===d){ toast("בחר שני פרוייקטים שונים","err"); return; }
   var sa=byId(DB.apartments,s), da=byId(DB.apartments,d);
   if(!confirm('"'+sa.name+'" תמוזג לתוך "'+da.name+'" ותעבור לסל המחזור.\n\nלהמשיך?')) return;
   mergeApartments(s,d);
   save(); toast("מוזג","ok"); closeModal(); openMergeTool(); rerender();
 }
 
-/* מחיקת דירה שלמה: הדירה + כל התנועות שלה, בתיוג שמאפשר שחזור יחד */
+/* מחיקת פרוייקט שלם: הפרוייקט + כל התנועות שלה, בתיוג שמאפשר שחזור יחד */
 function delApartment(aptId){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var a=byId(DB.apartments,aptId); if(!a) return;
@@ -5655,10 +5730,10 @@ function delApartment(aptId){
   var fees=active(DB.expenseManagerFees).filter(function(f){return eids[f.expenseId];});
   var deps=apDeposits(aptId), inc=apIncome(aptId);
   var mgrs=apManagers(aptId), accs=apAccounts(aptId), aps=apPartners(aptId);
-  if(!confirm('למחוק את הדירה "'+a.name+'" וכל התנועות שלה?\n\n'+
+  if(!confirm('למחוק את הפרוייקט "'+a.name+'" וכל התנועות שלה?\n\n'+
     "• "+exps.length+" הוצאות\n• "+pays.length+" תשלומים\n• "+deps.length+" הפקדות\n• "+inc.length+" הכנסות\n"+
-    "• "+aps.length+" שותפים בדירה\n• "+mgrs.length+" מנהלים\n• "+accs.length+" חשבונות\n\n"+
-    "הכל עובר לסל המחזור, וניתן לשחזר את הדירה עם כל התנועות בלחיצה אחת.\n\nלהמשיך?")) return;
+    "• "+aps.length+" שותפים בפרוייקט\n• "+mgrs.length+" מנהלים\n• "+accs.length+" חשבונות\n\n"+
+    "הכל עובר לסל המחזור, וניתן לשחזר את הפרוייקט עם כל התנועות בלחיצה אחת.\n\nלהמשיך?")) return;
   var tag="apt:"+aptId;
   function kill(arr){ arr.forEach(function(x){ x.deleted=true; x.deletedBy=tag; }); }
   kill(exps); kill(pays); kill(splits); kill(fees); kill(deps); kill(inc); kill(mgrs); kill(accs); kill(aps);
@@ -5670,10 +5745,10 @@ function delApartment(aptId){
 function deleteApartmentExpenses(aptId){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var a=byId(DB.apartments,aptId); var exps=apExpenses(aptId);
-  if(!exps.length){ toast("אין הוצאות בדירה זו","warn"); return; }
+  if(!exps.length){ toast("אין הוצאות בפרוייקט זה","warn"); return; }
   var ids={}; exps.forEach(function(e){ ids[e.id]=1; });
   var pays=active(DB.payments).filter(function(p){return ids[p.expenseId];});
-  if(!confirm("יימחקו כל "+exps.length+" ההוצאות ו-"+pays.length+" התשלומים בדירה \""+(a?a.name:"")+"\".\n\n"+
+  if(!confirm("יימחקו כל "+exps.length+" ההוצאות ו-"+pays.length+" התשלומים בפרוייקט \""+(a?a.name:"")+"\".\n\n"+
     "הכל עובר לסל המחזור וניתן לשחזר.\n\nלהמשיך?")) return;
   exps.forEach(function(e){ e.deleted=true; });
   pays.forEach(function(p){ p.deleted=true; });
@@ -5718,8 +5793,8 @@ function editUser(id){
       '<div class="hint">אם המשתמש ישכח את הקוד — קוד השחזור יישלח לכתובת הזו.</div></div>'+
     '<div class="field"><label>תפקיד</label><select id="us-role">'+Object.keys(ROLES).map(function(k){return '<option value="'+k+'"'+(u.role===k?" selected":"")+'>'+ROLES[k]+'</option>';}).join("")+'</select></div>'+
     '<div class="field"><label>קוד כניסה '+(id?"(השאר ריק כדי לא לשנות)":"")+'</label><input id="us-code" type="password" placeholder="קוד"></div>'+
-    '<div class="field"><label>דירות מורשות (ריק = הכל)</label>'+
-      '<div class="hint" style="margin-bottom:4px">מי שמסומנות לו דירות — רואה את <b>כל</b> התנועות שלהן, לא משנה מי שילם. ריק = כל הפרוייקטים.</div>'+
+    '<div class="field"><label>פרוייקטים מורשים (ריק = הכל)</label>'+
+      '<div class="hint" style="margin-bottom:4px">מי שמסומנות לו פרוייקטים — רואה את <b>כל</b> התנועות שלהן, לא משנה מי שילם. ריק = כל הפרוייקטים.</div>'+
       '<div style="display:flex;flex-direction:column;gap:4px">'+aptChecks+'</div></div>'+
     '<div class="field"><label><input type="checkbox" id="us-active" style="width:auto" '+(u.active?"checked":"")+'> פעיל</label></div>',
     saveLabel:"שמירה",onSave:function(){ saveUser(id,u); return false; }});
@@ -5764,12 +5839,12 @@ function importJSON(inp){
 
 /* ---------- ייבוא נתונים ---------- */
 var IMPORT_TYPES={
-  apartments:{label:"דירות / פרויקטים (רשימת שמות)",fields:[
-    {k:"name",l:"שם הדירה / הפרויקט",hints:["שם","פרויקט","דירה"]},
+  apartments:{label:"פרוייקטים / פרויקטים (רשימת שמות)",fields:[
+    {k:"name",l:"שם הפרוייקט / הפרויקט",hints:["שם","פרויקט","פרוייקט"]},
     {k:"note",l:"הערות",hints:["הער"],opt:true}
   ]},
   expenses:{label:"הוצאות / שלבים (כולל חלוקת שותפים)",fields:[
-    {k:"apartment",l:"דירה / פרויקט",hints:["פרויקט","דירה"],opt:true},
+    {k:"apartment",l:"פרוייקט / פרויקט",hints:["פרויקט","פרוייקט"],opt:true},
     {k:"date",l:"תאריך",hints:["תאריך"],opt:true},
     {k:"desc",l:"תיאור / פירוט",hints:["פירוט","פירט","תיאור","עבור"]},
     {k:"amount",l:"סכום",hints:["סכום"]},
@@ -5778,7 +5853,7 @@ var IMPORT_TYPES={
     {k:"note",l:"הערה",hints:["הערה"],opt:true}
   ]},
   payments:{label:"תשלומים",fields:[
-    {k:"apartment",l:"דירה / פרויקט",hints:["פרויקט","דירה"],opt:true},
+    {k:"apartment",l:"פרוייקט / פרויקט",hints:["פרויקט","פרוייקט"],opt:true},
     {k:"date",l:"תאריך",hints:["תאריך"],opt:true},
     {k:"expense",l:"עבור (שם ההוצאה)",hints:["עבור","פירוט","תיאור"]},
     {k:"amount",l:"סכום",hints:["סכום"]},
@@ -5790,14 +5865,14 @@ var IMPORT_TYPES={
     {k:"note",l:"הערה",hints:["הערה"],opt:true}
   ]},
   deposits:{label:"הפקדות לבנק",fields:[
-    {k:"apartment",l:"דירה / פרויקט",hints:["פרויקט","דירה"],opt:true},
+    {k:"apartment",l:"פרוייקט / פרויקט",hints:["פרויקט","פרוייקט"],opt:true},
     {k:"date",l:"תאריך",hints:["תאריך"],opt:true},
     {k:"partner",l:"שותף מפקיד",hints:["שותף","מפקיד","משלם"]},
     {k:"amount",l:"סכום",hints:["סכום"]},
     {k:"note",l:"הערה",hints:["הערה"],opt:true}
   ]},
   income:{label:"הכנסות",fields:[
-    {k:"apartment",l:"דירה / פרויקט",hints:["פרויקט","דירה"],opt:true},
+    {k:"apartment",l:"פרוייקט / פרויקט",hints:["פרויקט","פרוייקט"],opt:true},
     {k:"date",l:"תאריך",hints:["תאריך"],opt:true},
     {k:"desc",l:"תיאור",hints:["תיאור","פירוט"]},
     {k:"amount",l:"סכום",hints:["סכום"]},
@@ -6038,7 +6113,7 @@ function impDate(v){
   return todayISO();
 }
 /* התאמה סלחנית (normKey) בכל החיפושים: "הלפרין  17" עם רווח כפול ו"הלפרין 17"
-   הם אותה דירה. התאמה מדויקת יצרה כפילויות שנראות זהות בעין. */
+   הם אותו פרוייקט. התאמה מדויקת יצרה כפילויות שנראות זהות בעין. */
 function findOrCreatePartner(name){
   name=String(name||"").trim(); if(!name) return null;
   var k=normKey(name);
@@ -6100,8 +6175,8 @@ function moduleImport(){
       '<div class="field"><label>מה מייבאים?</label><select id="im-type">'+
         Object.keys(IMPORT_TYPES).map(function(k){return '<option value="'+k+'">'+esc(IMPORT_TYPES[k].label)+'</option>';}).join("")+
       '</select></div>'+
-      '<div class="field"><label>דירת ברירת מחדל</label><select id="im-apt">'+
-        '<option value="">— לפי עמודת הדירה בנתונים —</option>'+
+      '<div class="field"><label>פרוייקט ברירת מחדל</label><select id="im-apt">'+
+        '<option value="">— לפי עמודת הפרוייקט בנתונים —</option>'+
         apts.map(function(a){return '<option value="'+a.id+'">'+esc(a.name)+'</option>';}).join("")+'</select></div>'+
     '</div>'+
     '<div class="field"><label><input type="checkbox" id="im-hasheader" checked style="width:auto"> השורה הראשונה היא שורת כותרות</label>'+
@@ -6115,7 +6190,7 @@ function moduleImport(){
       '<textarea id="im-data" rows="8" placeholder="או: סמן באקסל → Ctrl+C → הדבק כאן Ctrl+V"></textarea></div>'+
     '<button class="btn btn-primary" onclick="parseImport()">נתח עמודות ←</button>'+
     '<div class="hint">בהוצאות: זוגות עמודות <b>משלם</b>+<b>אחוז</b> יזוהו אוטומטית ויהפכו לחלוקת השותפים של כל שורה.<br>'+
-    'דירות, שותפים, סוגי הוצאה וחשבונות <b>ייווצרו אוטומטית</b> לפי השם אם עדיין אינם קיימים.</div>'+
+    'פרוייקטים, שותפים, סוגי הוצאה וחשבונות <b>ייווצרו אוטומטית</b> לפי השם אם עדיין אינם קיימים.</div>'+
    '</div><div id="im-preview"></div>';
 }
 
@@ -6162,7 +6237,7 @@ function parseImport(){
         ? '<div class="hint"><span class="pos">✅ זוהו '+pairs.length+' זוגות</span> — '+
           pairs.map(function(p){return esc(headers[p.n])+"+"+esc(headers[p.p]);}).join(" · ")+
           '<br>לכל שורה תיווצר חלוקה משלה לפי הערכים בעמודות האלה.</div>'
-        : '<div class="hint neg">לא זוהו זוגות משלם/אחוז — תוחל חלוקת ברירת המחדל של הדירה.</div>');
+        : '<div class="hint neg">לא זוהו זוגות משלם/אחוז — תוחל חלוקת ברירת המחדל של הפרוייקט.</div>');
   }
   h+='<div class="toolbar" style="margin-top:16px"><button class="btn btn-primary" onclick="commitImport()">ייבא '+rows.length+' שורות</button></div></div>';
   h+='<div class="card"><h3>תצוגה מקדימה</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+
@@ -6215,7 +6290,7 @@ function commitImport(force){
       if(!nm){ skip(idx,"שורה ריקה",r); return; }
       var nmk=normKey(nm);
       if(active(DB.apartments).some(function(a){return normKey(a.name)===nmk;})){
-        skip(idx,"כבר קיימת דירה בשם הזה",r); return;
+        skip(idx,"כבר קיים פרוייקט בשם הזה",r); return;
       }
       var id=findOrCreateApartment(nm);
       if(id && m.note>=0){ var a=byId(DB.apartments,id); if(a) a.notes=String(r[m.note]||""); }
@@ -6234,14 +6309,14 @@ function commitImport(force){
       if(pn && normKey(pn)!==normKey(dn)) summaryNames[normKey(pn)]=pn;
     });
     imp.rows.forEach(function(r,idx){
-      var aptId=aptFor(r); if(!aptId){ skip(idx,"לא זוהתה דירה (עמודת הפרויקט ריקה ולא נבחרה דירת ברירת מחדל)",r); return; }
+      var aptId=aptFor(r); if(!aptId){ skip(idx,"לא זוהה פרוייקט (עמודת הפרויקט ריקה ולא נבחר פרוייקט ברירת מחדל)",r); return; }
       var desc=String(r[m.desc]||"").trim(); var amt=impNum(r[m.amount]);
       if(!desc && !amt){ skip(idx,"שורה ריקה — אין תיאור ואין סכום",r); return; }
       if(desc && summaryNames[normKey(desc)]){
         skip(idx,'שורת שלב-אב ("'+desc+'") — הסכום שלה הוא סך תתי-השלבים ולכן היא לא מיובאת, כדי שהכסף לא ייספר פעמיים',r); return;
       }
       var dt=(m.date>=0?impDate(r[m.date]):todayISO());
-      // הגנה מפני ייבוא כפול: אותה דירה + תיאור + סכום + תאריך
+      // הגנה מפני ייבוא כפול: אותו פרוייקט + תיאור + סכום + תאריך
       if(apExpenses(aptId).some(function(x){
            return String(x.description).trim()===desc && Math.abs((Number(x.amount)||0)-amt)<0.01 && x.date===dt; })){
         skip(idx,"הוצאה זהה כבר קיימת (ייבוא חוזר)",r); return;
@@ -6277,7 +6352,7 @@ function commitImport(force){
         if(nm && pc>0){ var pid=findOrCreatePartner(nm); if(pid) split.push({partnerId:pid,percent:pc}); }
       });
       if(!split.length){ split=apPartners(aptId).map(function(x){return {partnerId:x.partnerId,percent:x.defaultPercent};}); }
-      // אין חלוקה בשורה וגם אין עדיין ברירת מחדל לדירה — נשלים בסוף הייבוא
+      // אין חלוקה בשורה וגם אין עדיין ברירת מחדל לפרוייקט — נשלים בסוף הייבוא
       if(!split.length) noSplit.push({eid:eid,aptId:aptId});
       split.forEach(function(s){ DB.expenseSplits.push({id:uid(),expenseId:eid,partnerId:s.partnerId,percent:s.percent,deleted:false}); });
       if(split.length){   // סופרים תדירות של כל חלוקה, כדי לבחור ברירת מחדל מייצגת
@@ -6288,7 +6363,7 @@ function commitImport(force){
       }
       res.created++; res.sumCreated+=amt;
     });
-    // דירה שאין בה עדיין שותפים — ברירת המחדל היא החלוקה הנפוצה ביותר בייבוא,
+    // פרוייקט שאין בה עדיין שותפים — ברירת המחדל היא החלוקה הנפוצה ביותר בייבוא,
     // ולא הראשונה שנתקלנו בה (שורה חריגה בתחילת הגיליון הייתה מטה את הכל)
     Object.keys(splitFreq).forEach(function(aptId){
       if(apPartners(aptId).length) return;
@@ -6316,7 +6391,7 @@ function commitImport(force){
   }
   else if(imp.type==="payments"){
     if(m.expense<0||m.amount<0){ toast("חובה למפות 'עבור' וסכום","err"); return; }
-    /* אינדקס הוצאות לכל דירה: התאמה מדויקת ואחריה התאמה מנורמלת.
+    /* אינדקס הוצאות לכל פרוייקט: התאמה מדויקת ואחריה התאמה מנורמלת.
        גם מהיר בהרבה מ-find על כל שורה כשיש אלפי הוצאות. */
     var expIdx={};
     function idxFor(aptId){
@@ -6334,7 +6409,7 @@ function commitImport(force){
       expIdx[aptId]=ix; return ix;
     }
     imp.rows.forEach(function(r,idx){
-      var aptId=aptFor(r); if(!aptId){ skip(idx,"לא זוהתה דירה",r); return; }
+      var aptId=aptFor(r); if(!aptId){ skip(idx,"לא זוהה פרוייקט",r); return; }
       var target=String(r[m.expense]||"").trim();
       var ix=idxFor(aptId);
       var e=ix.exact[target] || ix.norm[normKey(target)];
@@ -6398,7 +6473,7 @@ function commitImport(force){
   else if(imp.type==="deposits"){
     if(m.partner<0||m.amount<0){ toast("חובה למפות שותף וסכום","err"); return; }
     imp.rows.forEach(function(r,idx){
-      var aptId=aptFor(r); if(!aptId){ skip(idx,"לא זוהתה דירה",r); return; }
+      var aptId=aptFor(r); if(!aptId){ skip(idx,"לא זוהה פרוייקט",r); return; }
       var pid=findOrCreatePartner(r[m.partner]); var amt=impNum(r[m.amount]);
       if(!pid||amt<=0){ skip(idx,"חסר שותף או סכום",r); return; }
       var ddt=(m.date>=0?impDate(r[m.date]):todayISO());
@@ -6415,7 +6490,7 @@ function commitImport(force){
   else if(imp.type==="income"){
     if(m.desc<0||m.amount<0){ toast("חובה למפות תיאור וסכום","err"); return; }
     imp.rows.forEach(function(r,idx){
-      var aptId=aptFor(r); if(!aptId){ skip(idx,"לא זוהתה דירה",r); return; }
+      var aptId=aptFor(r); if(!aptId){ skip(idx,"לא זוהה פרוייקט",r); return; }
       var amt=impNum(r[m.amount]);
       var idesc=String(r[m.desc]||"").trim()||"(ללא תיאור)";
       var idt=(m.date>=0?impDate(r[m.date]):todayISO());
@@ -6444,7 +6519,7 @@ function retrySkipped(){
   if(!confirm("ייובאו "+rows.length+" השורות שדולגו.\n\n"+
     (imp.type==="payments"
       ? "לתשלום שלא נמצאה לו הוצאה — תיווצר הוצאה חדשה בשם שבעמודת \"עבור\", בסכום התשלום.\n\n"
-      : "שורות ללא דירה ישויכו לדירת ברירת המחדל שבחרת למעלה.\n\n")+
+      : "שורות ללא פרוייקט ישויכו לפרוייקט ברירת המחדל שבחרת למעלה.\n\n")+
     "כפילויות ידולגו בכל מקרה. להמשיך?")) return;
   imp.rows=rows;
   commitImport(true);
@@ -6456,7 +6531,7 @@ function showImportResult(res){
   var h='<div class="card"><h3>✅ הייבוא הושלם'+(res.forced?" (ייבוא כפוי)":"")+'</h3><div class="stat-grid">'+
     stat("נוצרו רשומות",num(res.created))+
     stat("דולגו",num(res.skipped),res.skipped?"neg":"pos")+
-    stat("דירות חדשות",num(res.newApts))+
+    stat("פרוייקטים חדשים",num(res.newApts))+
     stat("שותפים חדשים",num(res.newPartners))+
     (res.autoExpenses?stat("הוצאות שנוצרו אוטומטית",num(res.autoExpenses)):"")+
     '</div>'+
@@ -6479,7 +6554,7 @@ function showImportResult(res){
       miss.sort(function(a,b){ return res.missingNames[b]-res.missingNames[a]; });
       var missTot=miss.reduce(function(s,k){return s+res.missingNames[k];},0);
       h+='<div class="section-title">שמות שלא נמצאה להם הוצאה ('+miss.length+' שמות · '+missTot+' שורות)</div>'+
-        '<div class="hint">אלה השמות מעמודת "עבור" שאין להם הוצאה תואמת בדירה. '+
+        '<div class="hint">אלה השמות מעמודת "עבור" שאין להם הוצאה תואמת בפרוייקט. '+
         'או שההוצאה לא יובאה, או שהשם כתוב אחרת בגיליון ההוצאות.</div>'+
         '<div class="table-wrap" style="max-height:260px;overflow:auto"><table class="tbl"><thead><tr>'+
         '<th>השם בעמודת "עבור"</th><th>כמה שורות</th></tr></thead><tbody>'+
@@ -6501,7 +6576,7 @@ function showImportResult(res){
       '<button class="btn" onclick="copySkipped()">📋 העתק רשימה</button></div>'+
       ((res.skippedRaw&&res.skippedRaw.length)?'<div class="hint">"ייבא בכל זאת" מייבא רק את מה שדולג מסיבה שניתן לעקוף. כפילויות תמיד ידולגו.</div>':'');
   }
-  h+='<div class="toolbar" style="margin-top:12px"><button class="btn" onclick="go(\'dashboard\',{})">לדירות ←</button>'+
+  h+='<div class="toolbar" style="margin-top:12px"><button class="btn" onclick="go(\'dashboard\',{})">לפרוייקטים ←</button>'+
     '<button class="btn" onclick="go(\'import\',{})">ייבוא נוסף</button></div></div>';
   box.innerHTML=h;
 }
@@ -6515,7 +6590,7 @@ function copySkipped(){
 
 /* ---------- סל מחזור ---------- */
 function moduleRecycle(){
-  var groups=[["apartments","דירות"],["partners","שותפים"],["apartmentPartners","שותפי דירה"],["managers","מנהלים"],
+  var groups=[["apartments","פרוייקטים"],["partners","שותפים"],["apartmentPartners","שותפי פרוייקט"],["managers","מנהלים"],
     ["categories","קטגוריות"],["expenses","הוצאות"],["payments","תשלומים"],["deposits","הפקדות"],["income","הכנסות"],["users","משתמשים"]];
   var h='<h2>🗑️ סל מחזור</h2><p class="muted">פריטים שנמחקו נשמרים כאן וניתן לשחזר אותם. שום דבר לא נמחק פיזית.</p>'+
     '<div class="toolbar">'+searchBox("rc-q",Q.recycle,"חיפוש בפריטים שנמחקו…","Q.recycle=this.value;renderRecycleList()")+'</div>'+
@@ -6527,7 +6602,7 @@ function renderRecycleListInner(){
   var el=document.getElementById("rc-list"); if(el) el.innerHTML=recycleListHtml();
 }
 function recycleListHtml(){
-  var groups=[["apartments","דירות"],["partners","שותפים"],["apartmentPartners","שותפי דירה"],["managers","מנהלים"],
+  var groups=[["apartments","פרוייקטים"],["partners","שותפים"],["apartmentPartners","שותפי פרוייקט"],["managers","מנהלים"],
     ["categories","קטגוריות"],["expenses","הוצאות"],["payments","תשלומים"],["deposits","הפקדות"],["income","הכנסות"],["users","משתמשים"]];
   var h='';
   var any=false;
@@ -6566,7 +6641,7 @@ function restoreItem(entity,id){ if(!can("edit")){ toast("אין הרשאה","er
     ["expenses","payments","expenseSplits","expenseManagerFees","deposits","income","managers","accounts","apartmentPartners"]
       .forEach(function(k){ (DB[k]||[]).forEach(function(x){
         if(x.deleted && x.deletedBy===tag){ x.deleted=false; delete x.deletedBy; n++; } }); });
-    if(n) toast("שוחזרו גם "+n+" תנועות של הדירה","ok");
+    if(n) toast("שוחזרו גם "+n+" תנועות של הפרוייקט","ok");
   }
   save(); toast("שוחזר","ok"); rerender(); } }
 </script>
