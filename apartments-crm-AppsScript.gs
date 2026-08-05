@@ -111,7 +111,7 @@ function doPost(e) {
       return jsonOut({ ok: true, data: scopeDataForUser(loadData() || {}, user), user: publicUser(user) });
     }
     if (action === "save") {
-      if (user.role === "viewer" || user.role === "partner") {
+      if (user.role === "viewer" || user.role === "partner" || user.role === "mgmt") {
         return jsonOut({ ok: false, error: "forbidden" });
       }
       return jsonOut(saveWithRevGuard(body.data, user));
@@ -455,6 +455,19 @@ function scopeDataForUser(data, user) {
   SCOPED_TABLES.forEach(function (T) {
     d[T] = (d[T] || []).filter(function (r) { return rowVisible(T, r, ctx, aptSet, expSet); });
   });
+  /* תפקיד "דמי ניהול": מנהל שמקבל דמי ניהול. מקבל אך ורק את השלבים
+     שיש בהם דמי ניהול ואת התשלומים למנהלים — בלי חלוקת שותפים,
+     תשלומי ספקים, הפקדות, הכנסות וחשבונות. */
+  if (user.role === "mgmt") {
+    var mgOk = {};
+    (d.expenses || []).forEach(function (e) { if (e.mgmtEnabled) mgOk[e.id] = 1; });
+    d.expenses = (d.expenses || []).filter(function (e) { return mgOk[e.id]; });
+    d.payments = (d.payments || []).filter(function (p) { return mgOk[p.expenseId] && p.recipientType === "manager"; });
+    d.expenseManagerFees = (d.expenseManagerFees || []).filter(function (f) { return mgOk[f.expenseId]; });
+    d.expenseSplits = []; d.deposits = []; d.income = [];
+    d.partners = []; d.apartmentPartners = []; d.accounts = [];
+    return d;
+  }
   /* שותפים: רק אלה שקשורים לדירות/לתנועות שכבר סוננו למשתמש. כך גם
      שם, וגם טלפון/הערות של שותפים מדירות אחרות — לא נשלחים כלל. */
   d.partners = scopePartnersFor(d);

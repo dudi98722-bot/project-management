@@ -384,7 +384,7 @@ function onCatPick(selId){
   sel.innerHTML=catOptions(id); sel.value=id; sel.setAttribute("data-prev",id);
   toast('נוספה הקטגוריה "'+name+'"',"ok");
 }
-var ROLES = {admin:"מנהל", editor:"עורך", viewer:"צפייה בלבד"};
+var ROLES = {admin:"מנהל", editor:"עורך", viewer:"צפייה בלבד", mgmt:"דמי ניהול"};
 /* סטטוס חשבונית לתשלום: יש / ממתין / לא צריך. "" = לא צוין (נתונים
    ישנים). hasInvoice הבוליאני נשמר מסונכרן לתאימות עם ייבוא/ייצוא ישנים. */
 var INVOICE_STATUSES={has:"יש חשבונית",pending:"ממתין לחשבונית",none:"לא צריך חשבונית"};
@@ -407,6 +407,8 @@ function invoiceStatusOptions(sel,withUnchanged){
     '<option value="none"'+(sel==="none"?" selected":"")+'>לא צריך חשבונית</option>';
 }
 var BASE_TYPES = {full:"מלא (כל הסכום)", net17:"נטו (מע\"מ 17%)", net18:"נטו (מע\"מ 18%)"};
+/* ההערה שנרשמת אוטומטית על תשלום "שווה ערך" של דמי ניהול */
+var AUTO_MGMT_NOTE = "חיליק פנימי";
 
 /* ---------- מצב ---------- */
 var DB = null;
@@ -607,7 +609,11 @@ function normalizeDB(d){
   (d.payments||[]).forEach(function(p){ p.amount=toNum(p.amount); p.date=toISO(p.date);
     if(p.invoiceStatus==null) p.invoiceStatus=p.hasInvoice?"has":"";
     /* תשלום אוטומטי "שווה ערך" על דמי ניהול — לעולם לא צריך חשבונית */
-    if(p.auto){ p.invoiceStatus="none"; p.hasInvoice=false; }
+    if(p.auto){
+      p.invoiceStatus="none"; p.hasInvoice=false;
+      /* ההערה האוטומטית הישנה מיושרת לשם החדש. הערה שנערכה ידנית נשמרת. */
+      if(/^אוטומטי\s*—\s*שווה ערך/.test(String(p.note||""))) p.note=AUTO_MGMT_NOTE;
+    }
     if(p.hidden==null) p.hidden=false; });
   (d.expenses||[]).forEach(function(e){ if(e.hidden==null) e.hidden=false; });
   (d.apartments||[]).forEach(function(a){ (a.splitPresets||[]).forEach(function(p){ (p.rows||[]).forEach(function(r){ r.percent=toNum(r.percent); }); }); });
@@ -745,13 +751,13 @@ function syncAutoMgmtPayments(eId){
         ex.deleted=false; delete ex.deletedBy;
         ex.amount=target; ex.payerPartnerId=cfg.partnerId; ex.method="equiv";
         ex.invoiceStatus="none"; ex.hasInvoice=false;   // "שווה ערך" — לא צריך חשבונית
-        ex.note="אוטומטי — שווה ערך ("+num(cfg.pct)+"% מדמי הניהול)";
+        ex.note=AUTO_MGMT_NOTE;
       } else {
         DB.payments.push({id:uid(),expenseId:eId,date:e.date||todayISO(),amount:target,
           accountId:null,payerPartnerId:cfg.partnerId,method:"equiv",
           recipientType:"manager",recipientManagerId:f.managerId,
           hasInvoice:false,invoiceLink:"",invoiceStatus:"none",
-          note:"אוטומטי — שווה ערך ("+num(cfg.pct)+"% מדמי הניהול)",auto:true,deleted:false});
+          note:AUTO_MGMT_NOTE,auto:true,deleted:false});
       }
       handled[f.managerId]=1;
     });
@@ -873,8 +879,29 @@ function can(action){
   if(!CU) return false;
   if(CU.role==="admin") return true;
   if(CU.role==="editor") return action!=="manageUsers"&&action!=="settings";
-  if(CU.role==="viewer"||CU.role==="partner") return action==="view";
+  if(CU.role==="viewer"||CU.role==="partner"||CU.role==="mgmt") return action==="view";
   return false;
+}
+/* משתמש מסוג "דמי ניהול" — מנהל שמקבל דמי ניהול. רואה רק את השלבים
+   שיש בהם דמי ניהול (וכמה), ורק את התשלומים למנהלים, בפרוייקטים
+   שקושרו לו. אין לו גישה לחלוקת שותפים, תשלומי ספקים, בנק והכנסות. */
+function isMgmtUser(){ return !!(CU && CU.role==="mgmt"); }
+/* מסנן את ה-DB המקומי לנתוני דמי הניהול בלבד — תמונה נכונה מיד,
+   וכהגנה נוספת מעבר לסינון בשרת. אידמפוטנטי. */
+function clientScopeMgmt(){
+  if(!isMgmtUser()||!DB) return;
+  var okExp={};
+  (DB.expenses||[]).forEach(function(e){
+    if(!canSeeApartment(e.apartmentId)) return;
+    if(e.mgmtEnabled) okExp[e.id]=1;
+  });
+  DB.expenses      = (DB.expenses||[]).filter(function(e){ return okExp[e.id]; });
+  DB.payments      = (DB.payments||[]).filter(function(p){ return okExp[p.expenseId] && p.recipientType==="manager"; });
+  DB.expenseManagerFees=(DB.expenseManagerFees||[]).filter(function(f){ return okExp[f.expenseId]; });
+  DB.managers      = (DB.managers||[]).filter(function(m){ return canSeeApartment(m.apartmentId); });
+  DB.apartments    = (DB.apartments||[]).filter(function(a){ return canSeeApartment(a.id); });
+  /* לא רלוונטי לדמי ניהול — ולא אמור להיחשף */
+  DB.expenseSplits=[]; DB.deposits=[]; DB.income=[]; DB.partners=[]; DB.apartmentPartners=[]; DB.accounts=[];
 }
 /* "פרוייקטים מורשים" חלות על כל תפקיד חוץ ממנהל. קודם הן נאכפו רק על
    תפקיד "שותף", כך שצופה שהוגבל לפרוייקט אחת ראה בפועל את כולן. */
@@ -965,13 +992,15 @@ function rerender(){ renderApp(); }
 
 function renderApp(){
   if(!CU){ renderLogin(); return; }
+  clientScopeMgmt();   // משתמש "דמי ניהול" — רק נתוני דמי הניהול
   var app=document.getElementById("app");
   app.innerHTML = topbarHtml() + navHtml() + '<div class="content" id="content"></div>';
   renderView();
 }
 function topbarHtml(){
   var apts=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);});
-  var sel='<select onchange="onApartmentPick(this.value)"><option value="">— בחר פרוייקט —</option>'+
+  /* למשתמש "דמי ניהול" אין מסכי פרוייקט — הבורר רק היה מוביל למבוי סתום */
+  var sel=isMgmtUser()?'':'<select onchange="onApartmentPick(this.value)"><option value="">— בחר פרוייקט —</option>'+
     apts.map(function(a){ return '<option value="'+a.id+'"'+(state.params.apartmentId===a.id?" selected":"")+'>'+esc(a.name)+'</option>'; }).join("")+'</select>';
   return '<div class="topbar"><div class="logo"><span class="mark">'+LOGO_MARK+'</span>'+
     '<span class="brand"><b>לווי וניהול פרוייקטים</b><small>תכנון מדויק · ניהול חכם · תוצאה מושלמת</small></span></div>'+sel+'<div class="sp"></div>'+
@@ -982,6 +1011,10 @@ function topbarHtml(){
 }
 function onApartmentPick(id){ if(id) go("apartment",{apartmentId:id,tab:"overview"}); else go("dashboard",{}); }
 function navHtml(){
+  /* משתמש "דמי ניהול" — מסך אחד בלבד, הכל סביב דמי הניהול שלו */
+  if(isMgmtUser()){
+    return '<div class="nav"><div class="nav-item active" onclick="go(\'mgmt\',{})">💼 דמי ניהול</div></div>';
+  }
   var items=[["dashboard","🏠 כל הפרוייקטים"],["reports","📊 דוח שותפים כללי"],["mgmt","💼 דוח דמי ניהול"]];
   if(can("settings")) items.push(["settings","⚙️ הגדרות"]);
   if(can("edit")) items.push(["import","📥 ייבוא"]);
@@ -1019,6 +1052,8 @@ function renderViewInner(){
   /* במסך פרוייקט יש שורת לשוניות דביקה — כותרות הטבלה נדבקות מתחתיה */
   c.className = "content" + (state.view==="apartment" ? " has-tabs" : "")
               + (state.view==="dashboard" ? " tbl-compact" : "");
+  /* משתמש "דמי ניהול" נעול על מסך דמי הניהול — גם אם ינסה לנווט אחרת */
+  if(isMgmtUser() && state.view!=="mgmt"){ state.view="mgmt"; state.params={}; }
   switch(state.view){
     case "dashboard": c.innerHTML=viewDashboard(); break;
     case "apartment": renderApartment(c); break;
@@ -5429,7 +5464,9 @@ function moduleMgmtReport(){
   var h='<div class="toolbar"><h2 style="margin:0">💼 דוח דמי ניהול</h2><div class="sp"></div>'+
     '<button class="btn btn-sm no-print" onclick="window.print()">🖨️ הדפסה</button></div>';
   if(!apts.length){
-    return h+'<div class="empty">אין עדיין פרויקט עם דמי ניהול.<br>הפעל בלשונית <b>דמי ניהול</b> של הפרוייקט הרלוונטית.</div>';
+    return h+'<div class="empty">'+(isMgmtUser()
+      ? 'עדיין לא שויכו אליך פרוייקטים עם דמי ניהול. פנה למנהל המערכת.'
+      : 'אין עדיין פרויקט עם דמי ניהול.<br>הפעל בלשונית <b>דמי ניהול</b> של הפרוייקט הרלוונטי.')+'</div>';
   }
   var tCur=0,tDef=0,tPaid=0;
   h+='<div class="card"><h3>סיכום לפי פרויקט</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+
@@ -5491,6 +5528,53 @@ function moduleMgmtReport(){
   });
   if(!any) h+='<tr><td colspan="7" class="empty">אין עדיין דמי ניהול מחושבים — סמן "יש דמי ניהול" בהוצאות הרלוונטיות</td></tr>';
   h+='</tbody></table></div></div>';
+
+  /* השלבים שיש בהם דמי ניהול — וכמה בכל שלב */
+  var stRows="", sA=0,sCur=0,sDef=0,sPaid=0, stAny=false;
+  apts.forEach(function(a){
+    apLeafExpenses(a.id).forEach(function(e){
+      if(!e.mgmtEnabled) return;
+      var cur=expenseMgmtCostLive(e.id);
+      var full=round2(expMgrFees(e.id).reduce(function(s,f){ return s+mgrFeeFullOnExpense(e.id,f.managerId); },0));
+      var def=round2(full-cur);
+      var paid=round2(expPayments(e.id).filter(function(p){return p.recipientType==="manager";})
+        .reduce(function(s,p){return s+(Number(p.amount)||0);},0));
+      if(!full && !paid) return;
+      stAny=true; sA+=Number(e.amount)||0; sCur+=cur; sDef+=def; sPaid+=paid;
+      stRows+='<tr><td>'+esc(a.name)+'</td><td><b>'+esc(e.description)+'</b></td><td>'+dateHe(e.date)+'</td>'+
+        '<td>'+money(e.amount)+'</td><td><b>'+money(cur)+'</b></td>'+
+        '<td class="'+(def>0.01?"neg":"")+'">'+money(def)+'</td><td>'+money(full)+'</td>'+
+        '<td>'+money(paid)+'</td><td class="'+((cur-paid)>0.01?"neg":"pos")+'">'+money(round2(cur-paid))+'</td></tr>';
+    });
+  });
+  h+='<div class="card"><h3>📋 שלבים עם דמי ניהול</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+
+    '<th>פרויקט</th><th>שלב</th><th>תאריך</th><th>סכום השלב</th><th>דמי ניהול נוכחי</th>'+
+    '<th>דחוי</th><th>סה"כ בסוף</th><th>שולם</th><th>נותר</th></tr></thead><tbody>'+
+    (stAny?stRows:'<tr><td colspan="9" class="empty">אין שלבים עם דמי ניהול</td></tr>')+
+    '</tbody>'+(stAny?'<tfoot><tr><td colspan="3">סה"כ</td><td>'+money(round2(sA))+'</td><td>'+money(round2(sCur))+'</td>'+
+      '<td>'+money(round2(sDef))+'</td><td>'+money(round2(sCur+sDef))+'</td><td>'+money(round2(sPaid))+'</td>'+
+      '<td class="'+((sCur-sPaid)>0.01?"neg":"pos")+'">'+money(round2(sCur-sPaid))+'</td></tr></tfoot>':'')+
+    '</table></div><div class="hint">רק שלבים שהוגדר להם "עם דמי ניהול". הסכומים כוללים מע"מ.</div></div>';
+
+  /* התשלומים שכבר שולמו עבור דמי ניהול */
+  var payRows="", pTot=0, pAny=false;
+  apts.forEach(function(a){
+    apAllPayments(a.id).forEach(function(p){
+      if(p.recipientType!=="manager") return;
+      var e=byId(DB.expenses,p.expenseId);
+      pAny=true; pTot+=Number(p.amount)||0;
+      payRows+='<tr><td>'+dateHe(p.date)+'</td><td>'+esc(a.name)+'</td><td>'+esc(e?e.description:"—")+'</td>'+
+        '<td>'+esc(managerName(p.recipientManagerId))+'</td><td><b>'+money(p.amount)+'</b></td>'+
+        '<td>'+esc(METHODS[p.method]||p.method||"")+'</td><td>'+esc(invoiceStatusText(p))+'</td>'+
+        '<td>'+esc(p.note||"")+'</td></tr>';
+    });
+  });
+  h+='<div class="card"><h3>💳 תשלומים ששולמו עבור דמי ניהול</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+
+    '<th>תאריך</th><th>פרויקט</th><th>שלב</th><th>מנהל</th><th>סכום</th><th>אמצעי</th><th>חשבונית</th><th>הערה</th>'+
+    '</tr></thead><tbody>'+
+    (pAny?payRows:'<tr><td colspan="8" class="empty">עדיין לא נרשמו תשלומים למנהלים</td></tr>')+
+    '</tbody>'+(pAny?'<tfoot><tr><td colspan="4">סה"כ שולם</td><td><b>'+money(round2(pTot))+'</b></td><td colspan="3"></td></tr></tfoot>':'')+
+    '</table></div></div>';
 
   // דחויים שממתינים לשחרור
   var pend=[], ps=0;
@@ -6065,7 +6149,9 @@ function parseDelimited(raw,sep){
       }
       field+=c; i++; continue;
     }
-    if(c==='"'){ inQ=true; i++; continue; }
+    /* גרשיים פותחים ציטוט רק בתחילת שדה. באמצע מילה הם תו רגיל —
+       אחרת טקסט עברי כמו מע"מ / סה"כ / ע"ש היה בולע את שורות ההמשך. */
+    if(c==='"' && field===""){ inQ=true; i++; continue; }
     if(c===sep){ row.push(field); field=""; i++; continue; }
     if(c==='\r'){ i++; continue; }
     if(c==='\n'){ row.push(field); field=""; rows.push(row); row=[]; i++; continue; }
@@ -6235,23 +6321,45 @@ async function parseXlsx(buf,fname,onGrid,nameEl){
     return rows;
   }
 
-  function deliver(grid,label){
-    if(onGrid){
-      grid=grid.filter(function(r){ return r.some(function(c){ return String(c).trim()!==""; }); });
-      if(nameEl) nameEl.textContent="✅ "+label+" ("+grid.length+" שורות)";
-      onGrid(grid,label);
-    } else xlsxGridToTextarea(grid,label);
+  function nonEmpty(grid){ return grid.filter(function(r){ return r.some(function(c){ return String(c).trim()!==""; }); }); }
+
+  /* יעד שהוא מסך פתוח (onGrid) — בוחרים גיליון *בתוך* אותו מסך.
+     קודם נפתח כאן מודל בחירה, והוא דרס את מסך הייבוא עצמו: הנתונים
+     נמסרו ל-DOM שכבר לא היה קיים, וזה נראה כאילו הקובץ לא נקלט. */
+  if(onGrid){
+    XLPICK={fname:fname,nameEl:nameEl,onGrid:onGrid,
+            grids:sheets.map(function(s){ return {name:s.name,grid:nonEmpty(sheetToGrid(s.path))}; })};
+    var first=0;
+    for(var si=0;si<XLPICK.grids.length;si++) if(XLPICK.grids[si].grid.length){ first=si; break; }
+    xlPickSheet(first);
+    return;
   }
-  if(sheets.length===1){ deliver(sheetToGrid(sheets[0].path),fname+" · "+sheets[0].name); return; }
-  // כמה גיליונות — נותנים לבחור
+  if(sheets.length===1){ xlsxGridToTextarea(sheetToGrid(sheets[0].path),fname+" · "+sheets[0].name); return; }
+  // מסך הייבוא הרגיל (לא מודל) — שם מודל בחירה בטוח
   openModal({title:"באיזה גיליון להשתמש?",bodyHtml:
     '<div class="field"><label>הקובץ מכיל '+sheets.length+' גיליונות</label><select id="xl-sheet">'+
       sheets.map(function(s,i){return '<option value="'+i+'">'+esc(s.name)+'</option>';}).join("")+
     '</select></div>',
     saveLabel:"טען גיליון",onSave:function(){
       var s=sheets[Number(val("xl-sheet"))||0];
-      deliver(sheetToGrid(s.path),fname+" · "+s.name);
+      xlsxGridToTextarea(sheetToGrid(s.path),fname+" · "+s.name);
     }});
+}
+/* בורר הגיליון מוצג בשורת שם-הקובץ, בתוך המסך שביקש את הנתונים */
+var XLPICK=null;
+function xlPickSheet(i){
+  if(!XLPICK) return;
+  var g=XLPICK.grids[i]; if(!g) return;
+  if(XLPICK.nameEl){
+    XLPICK.nameEl.innerHTML='✅ '+esc(XLPICK.fname)+' ('+g.grid.length+' שורות)'+
+      (XLPICK.grids.length>1
+        ? ' <select onchange="xlPickSheet(Number(this.value))" style="max-width:170px">'+
+          XLPICK.grids.map(function(x,ix){
+            return '<option value="'+ix+'"'+(ix===i?" selected":"")+'>'+esc(x.name)+' ('+x.grid.length+' שורות)</option>'; }).join("")+
+          '</select>'
+        : '');
+  }
+  XLPICK.onGrid(g.grid, XLPICK.fname+" · "+g.name);
 }
 function xlsxGridToTextarea(grid,label){
   grid=grid.filter(function(r){ return r.some(function(c){ return String(c).trim()!==""; }); });
