@@ -743,6 +743,16 @@ function mgmtState(e,cont){
   if(e.mgmtSet) return "no";
   return "";
 }
+/* סכום דמי הניהול בשורת השלב:
+     יש דמי ניהול      -> הסכום (גם ₪0 אם עדיין לא הוגדרו אחוזים)
+     נקבע שאין         -> ₪0, כדי שיהיה ברור שזו הכרעה ולא חוסר נתונים
+     טרם סומן          -> פס, כי באמת לא ידוע */
+function mgmtAmountCell(e,cont,mg){
+  if(cont) return mg?money(mg):'—';
+  if(e.mgmtEnabled) return money(mg);
+  if(e.mgmtSet) return money(0);
+  return '—';
+}
 function mgmtMarkCell(e,cont){
   var st=mgmtState(e,cont);
   if(st==="yes") return '<span class="badge badge-ok" title="יש דמי ניהול">✔</span>';
@@ -1994,7 +2004,7 @@ async function boot(){
    מודולים
    ============================================================ */
 /* ---------- חיפוש וסינון ---------- */
-var Q={apts:"",exp:"",expStatus:"",expClass:"",quick:"",partners:"",cross:"",recycle:"",pay:"",payWho:"",paySrc:"",payInv:"",ppWho:""};
+var Q={apts:"",exp:"",expStatus:"",expClass:"",quick:"",partners:"",cross:"",recycle:"",pay:"",payWho:"",paySrc:"",payInv:"",ppWho:"",apPayWho:""};
 /* כל מילה בשאילתה חייבת להופיע — מאפשר "עורך דין קופר" ו"קופר דין" כאחד */
 function matches(q,text){
   q=String(q||"").trim().toLowerCase(); if(!q) return true;
@@ -3057,7 +3067,7 @@ function expTableHtml(aptId){
         (cont?' <span class="pill" data-xl-skip="1">'+kids.length+' תתי-שלבים</span>':'')+'</td>'+
       '<td>'+(CLASSIFICATIONS[e.classification]||"")+'</td>'+
       '<td><b>'+money(e.amount)+'</b>'+(cont?'<div class="muted" data-xl-skip="1" style="font-size:11px">סך תתי-השלבים</div>':'')+'</td>'+
-      (a.hasManagement?'<td>'+mgmtMarkCell(e,cont)+'</td><td>'+((cont||e.mgmtEnabled)&&mg?money(mg):'—')+'</td>':'')+
+      (a.hasManagement?'<td>'+mgmtMarkCell(e,cont)+'</td><td>'+mgmtAmountCell(e,cont,mg)+'</td>':'')+
       '<td>'+money(expensePaid(e.id))+'</td><td class="'+(Math.abs(rem)>0.01?"neg":"pos")+'">'+money(rem)+'</td><td>'+badge+'</td>'+
       '<td class="right" style="white-space:nowrap">'+
         /* למכל אין תשלומים משלו — הכסף יושב בתתי-השלבים */
@@ -5194,6 +5204,7 @@ function moduleApartmentReports(aptId){
         s2+='<tr><td>'+esc(partnerName(pid))+'</td><td>'+money(s)+'</td><td>'+money(p)+'</td><td class="'+((p-s)<0?"neg":"pos")+'">'+money(p-s)+'</td></tr>';
       });
       return s2+'</tbody><tfoot><tr><td>סה"כ</td><td>'+money(tS)+'</td><td>'+money(tP)+'</td><td>'+money(tP-tS)+'</td></tr></tfoot></table></div></div>'; }},
+    {key:"payer",label:"💳 כל התשלומים של משלם",show:true,render:function(){ return payerReportHtml(aptId); }},
     {key:"category",label:"📁 לפי קטגוריה",show:true,render:function(){ return categoryReportHtml(aptId); }},
     {key:"due",label:"⚖️ חובה והתחשבנות",show:true,render:function(){ return dueByPaidReportHtml(aptId); }},
     {key:"stages",label:"📋 שותפים לפי שלבים",show:true,render:function(){ return '<div id="partner-report">'+partnerReportHtml(aptId)+'</div>'; }}
@@ -5272,6 +5283,86 @@ function categoryReportHtml(aptId){
    דוח "לפי מה ששולם בפועל" + התחשבנות בין השותפים
    שלב 1,000,000 שבו שולמו 500,000: שותף 25% חייב כרגע 125,000.
    ============================================================ */
+/* ============================================================
+   דוח "כל התשלומים של משלם" — בוחרים משלם ומקבלים את כל מה שהכניס
+   לפרויקט: ישירות להוצאות, לדמי ניהול, והפקדות לבנק הזמני.
+   הסכום כאן שווה בדיוק ל"שילם" שמופיע בשאר הדוחות (partnerPaid),
+   ולכן נכללת גם זקיפת חלקו בהכנסה שנכנסה לבנק — אם יש כזו.
+   תשלום שיצא מהבנק הזמני אינו נזקף למשלם: הכסף כבר נספר כשהופקד.
+   ============================================================ */
+function payerReportHtml(aptId){
+  var ids=reportPartnerIds(aptId);
+  if(!ids.length) return '<div class="card"><h3>💳 כל התשלומים של משלם</h3><div class="empty">אין שותפים בפרויקט</div></div>';
+  var sel=(Q.apPayWho && ids.indexOf(Q.apPayWho)>=0) ? Q.apPayWho : ids[0];
+  return '<div class="card"><div class="toolbar" style="margin-bottom:8px">'+
+    '<h3 style="margin:0">💳 כל התשלומים של משלם</h3>'+
+    '<select style="max-width:220px" onchange="Q.apPayWho=this.value;renderPayerReport(\''+aptId+'\')">'+
+      ids.map(function(pid){ return '<option value="'+pid+'"'+(pid===sel?" selected":"")+'>'+esc(partnerName(pid))+'</option>'; }).join("")+
+    '</select><div class="sp"></div></div>'+
+    '<div id="payer-rep-body">'+payerReportBody(aptId,sel)+'</div></div>';
+}
+function renderPayerReport(aptId){
+  var el=document.getElementById("payer-rep-body");
+  if(el) el.innerHTML=payerReportBody(aptId,Q.apPayWho);
+}
+function payerReportBody(aptId,pid){
+  if(!pid) return '<div class="empty">בחר משלם</div>';
+  var expIds={}; apLeafExpenses(aptId).forEach(function(e){ expIds[e.id]=1; });
+  var rows=[], tExp=0, tMgmt=0, tDep=0, tInc=0;
+  active(DB.payments).forEach(function(p){
+    if(!expIds[p.expenseId] || p.payerPartnerId!==pid) return;
+    if(accountIsBank(p.accountId)) return;   // יצא מהקופה המשותפת, לא מכיסו
+    var e=byId(DB.expenses,p.expenseId);
+    var isM=(p.recipientType==="manager");
+    var amt=Number(p.amount)||0;
+    if(isM) tMgmt+=amt; else tExp+=amt;
+    rows.push({date:p.date,kind:isM?"mgmt":"exp",
+      what:(e?e.description:"—")+(isM?" · "+managerName(p.recipientManagerId):""),
+      amount:amt,method:payMethodLabel(p),inv:invoiceStatusText(p),note:p.note||""});
+  });
+  apDeposits(aptId).forEach(function(d){
+    if(d.partnerId!==pid) return;
+    var amt=Number(d.amount)||0; tDep+=amt;
+    rows.push({date:d.date,kind:"dep",
+      what:"הפקדה לבנק הזמני"+(d.fromAccount?" · "+d.fromAccount:""),
+      amount:amt,method:METHODS[d.method]||"",inv:"",note:d.note||""});
+  });
+  bankIncomes(aptId).forEach(function(i){
+    var pct=incomePartnerPct(i,pid); if(!pct) return;
+    var amt=(Number(i.amount)||0)*pct/100; tInc+=amt;
+    rows.push({date:i.date,kind:"inc",what:"חלקו בהכנסה שנכנסה לבנק · "+(i.description||""),
+      amount:amt,method:"",inv:"",note:num(pct)+"% מתוך "+money(i.amount)});
+  });
+  if(!rows.length) return '<div class="empty">אין תנועות למשלם הזה בפרויקט</div>';
+  rows.sort(function(x,y){ return x.date<y.date?1:-1; });
+  var tot=round2(tExp+tMgmt+tDep+tInc);
+  var KIND={exp:'<span class="badge badge-muted">הוצאה</span>',
+            mgmt:'<span class="badge badge-mgmt">🧾 דמי ניהול</span>',
+            dep:'<span class="badge badge-ok">הפקדה לבנק</span>',
+            inc:'<span class="badge badge-warn">הכנסה לבנק</span>'};
+  var h='<div class="stat-grid">'+
+      stat("שילם ישירות להוצאות",money(round2(tExp)))+
+      stat("שילם לדמי ניהול",money(round2(tMgmt)))+
+      stat("הפקיד לבנק הזמני",money(round2(tDep)))+
+      (tInc>0.01?stat("חלקו בהכנסות לבנק",money(round2(tInc))):"")+
+      stat("סה\"כ הכניס",money(tot),"pos")+
+    '</div>'+
+    '<div class="table-wrap"><table class="tbl"><thead><tr>'+
+    '<th>תאריך</th><th>סוג</th><th>עבור</th><th>סכום</th><th>אמצעי</th><th>חשבונית</th><th>הערה</th>'+
+    '</tr></thead><tbody>';
+  rows.forEach(function(r){
+    h+='<tr'+(r.kind==="mgmt"?' class="mgmt-row"':'')+'><td>'+dateHe(r.date)+'</td>'+
+      '<td>'+KIND[r.kind]+'</td><td>'+esc(r.what)+'</td><td><b>'+money(r.amount)+'</b></td>'+
+      '<td>'+esc(r.method)+'</td><td>'+esc(r.inv)+'</td><td>'+esc(r.note)+'</td></tr>';
+  });
+  h+='</tbody><tfoot><tr><td colspan="3">סה"כ ('+rows.length+' תנועות)</td>'+
+    '<td>'+money(tot)+'</td><td colspan="3"></td></tr></tfoot></table></div>'+
+    '<div class="hint">הסכום כאן זהה ל"שילם" שמופיע בדוח המשלמים ובדוח ההתחשבנות. '+
+    'תשלום שיצא מ<b>הבנק הזמני</b> אינו מופיע כאן — הכסף כבר נספר למשלם ברגע שהפקיד אותו לבנק, '+
+    'וספירה נוספת הייתה כופלת אותו.</div>';
+  return h;
+}
+
 function dueByPaidReportHtml(aptId){
   var pids=reportPartnerIds(aptId);
   if(!pids.length) return "";
