@@ -1,0 +1,1747 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>מערכת שידוכים — פרק ב'</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='13' fill='%23f8f4f6'/><circle cx='25' cy='34' r='14' fill='none' stroke='%236b2444' stroke-width='4'/><circle cx='39' cy='34' r='14' fill='none' stroke='%23d4af37' stroke-width='4'/></svg>">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', Arial, sans-serif; background: #f8f4f6; color: #2d3748; direction: rtl; }
+
+header {
+  background: linear-gradient(135deg, #4a162f, #8c3a5e);
+  color: white; padding: 13px 22px;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+header h1 { font-size: 1.25rem; font-weight: 700; }
+header .spacer { flex: 1; }
+header .actions { display: flex; gap: 7px; flex-wrap: wrap; }
+
+.tabs { display: flex; background: #8c3a5e; padding: 0 14px; gap: 2px; overflow-x: auto; }
+.tab-btn { padding: 11px 18px; border: none; background: transparent; color: rgba(255,255,255,0.72); cursor: pointer; font-size: 0.9rem; font-weight: 600; border-bottom: 3px solid transparent; transition: all 0.2s; font-family: inherit; white-space: nowrap; }
+.tab-btn:hover { color: white; background: rgba(255,255,255,0.1); }
+.tab-btn.active { color: white; border-bottom-color: #d4af37; background: rgba(255,255,255,0.12); }
+
+.content { padding: 20px; max-width: 1500px; margin: 0 auto; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+.card { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); padding: 18px; margin-bottom: 16px; }
+.card h2 { font-size: 1rem; font-weight: 700; color: #4a162f; margin-bottom: 13px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.card h2 .hint { font-size: 0.72rem; font-weight: 500; color: #718096; }
+
+.form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+.form-group { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 128px; }
+.form-group.wide { min-width: 100%; }
+.form-group label { font-size: 0.78rem; font-weight: 600; color: #4a5568; }
+.form-group input, .form-group select, .form-group textarea { padding: 8px 10px; border: 1.5px solid #ddd0d7; border-radius: 8px; font-size: 0.88rem; font-family: inherit; background: #fdfafb; direction: rtl; transition: border-color 0.2s; width: 100%; }
+.form-group textarea { resize: vertical; min-height: 58px; }
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: #8c3a5e; background: white; }
+
+.btn { padding: 8px 16px; border: none; border-radius: 8px; font-size: 0.86rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.2s; white-space: nowrap; }
+.btn-primary { background: #8c3a5e; color: white; }
+.btn-primary:hover { background: #4a162f; }
+.btn-success { background: #276749; color: white; }
+.btn-success:hover { background: #1c4532; }
+.btn-gold { background: #b8912a; color: white; }
+.btn-gold:hover { background: #8f7020; }
+.btn-light { background: rgba(255,255,255,0.18); color: white; }
+.btn-light:hover { background: rgba(255,255,255,0.32); }
+.btn-sm { padding: 5px 10px; font-size: 0.76rem; }
+.btn-danger { background: #e53e3e; color: white; padding: 5px 9px; font-size: 0.76rem; }
+.btn-danger:hover { background: #c53030; }
+.btn-edit { background: #8c3a5e; color: white; padding: 5px 9px; font-size: 0.76rem; }
+.btn-edit:hover { background: #4a162f; }
+.btn-neutral { background: #e2e8f0; color: #4a5568; }
+.btn-neutral:hover { background: #cbd5e0; }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+th, td { padding: 8px 9px; text-align: right; border-bottom: 1px solid #eee4e9; }
+th { background: #f6ecf1; color: #4a162f; font-weight: 700; font-size: 0.76rem; white-space: nowrap; position: sticky; top: 0; z-index: 3; }
+tbody tr:hover { background: #fdf7fa; }
+.table-wrap { overflow: auto; max-height: calc(100vh - 300px); }
+.clickable { cursor: pointer; }
+
+.badge { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 0.71rem; font-weight: 700; white-space: nowrap; }
+.b-green { background: #c6f6d5; color: #22543d; }
+.b-red { background: #fed7d7; color: #742a2a; }
+.b-yellow { background: #fefcbf; color: #744210; }
+.b-gray { background: #e2e8f0; color: #4a5568; }
+.b-blue { background: #bee3f8; color: #2a4365; }
+.b-purple { background: #f3d9e6; color: #6b2444; }
+.b-gold { background: #f6e8c3; color: #6b5310; }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.stat-card { background: white; border-radius: 12px; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); border-right: 4px solid #8c3a5e; }
+.stat-card.gold { border-right-color: #d4af37; }
+.stat-card.green { border-right-color: #276749; }
+.stat-card .num { font-size: 1.65rem; font-weight: 800; color: #4a162f; }
+.stat-card .lbl { font-size: 0.78rem; color: #718096; margin-top: 2px; }
+
+.charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.empty { text-align: center; color: #a0aec0; padding: 28px; font-size: 0.9rem; }
+.filters { display: flex; gap: 9px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 13px; }
+.filters .form-group { min-width: 110px; flex: 0 1 150px; }
+.filters .form-group.grow { flex: 1 1 200px; }
+
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #276749; color: white; padding: 12px 26px; border-radius: 10px; font-weight: 600; box-shadow: 0 4px 14px rgba(0,0,0,0.25); opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 3000; max-width: 90vw; text-align: center; }
+.toast.show { opacity: 1; }
+
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: flex-start; justify-content: center; z-index: 1000; padding: 16px; overflow: auto; }
+.overlay.show { display: flex; }
+.modal { background: #fff; border-radius: 14px; max-width: 980px; width: 100%; margin: auto; box-shadow: 0 10px 40px rgba(0,0,0,.3); }
+.modal.narrow { max-width: 560px; }
+.modal-head { background: linear-gradient(135deg,#4a162f,#8c3a5e); color: #fff; padding: 13px 18px; display: flex; align-items: center; gap: 10px; border-radius: 14px 14px 0 0; position: sticky; top: 0; z-index: 10; flex-wrap: wrap; }
+.modal-head h3 { flex: 1; font-size: 1.05rem; min-width: 180px; }
+.modal-head .x { cursor: pointer; font-size: 1.5rem; line-height: 1; opacity: .85; background: none; border: none; color: #fff; }
+.modal-body { padding: 16px 18px 20px; }
+.modal-foot { padding: 12px 18px; border-top: 1px solid #eee4e9; display: flex; gap: 8px; justify-content: flex-start; flex-wrap: wrap; background: #fdfafb; border-radius: 0 0 14px 14px; position: sticky; bottom: 0; }
+
+fieldset { border: 1px solid #eee4e9; border-radius: 10px; padding: 12px 14px 14px; margin-bottom: 12px; }
+legend { font-size: 0.82rem; font-weight: 700; color: #8c3a5e; padding: 0 7px; }
+
+.inlaw-row { display: flex; gap: 7px; margin-bottom: 6px; align-items: center; }
+.inlaw-row input { flex: 1; min-width: 70px; padding: 6px 8px; border: 1.5px solid #ddd0d7; border-radius: 7px; font-family: inherit; font-size: 0.83rem; background: #fdfafb; }
+.inlaw-row .idx { font-size: 0.75rem; color: #a0aec0; width: 18px; flex: none; }
+
+.score-bar { height: 8px; border-radius: 999px; background: #eee4e9; overflow: hidden; min-width: 70px; }
+.score-bar i { display: block; height: 100%; border-radius: 999px; }
+.chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.chip { font-size: 0.7rem; padding: 2px 7px; border-radius: 6px; background: #edf2f7; color: #4a5568; white-space: nowrap; }
+.chip.ok { background: #d8f2e1; color: #22543d; }
+.chip.no { background: #fbdada; color: #742a2a; }
+.chip.mid { background: #fdf3cf; color: #6b5310; }
+
+.pill-tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+.pill { padding: 6px 14px; border-radius: 8px; background: #eee4e9; color: #6b2444; cursor: pointer; font-size: 0.83rem; font-weight: 600; border: none; font-family: inherit; }
+.pill.active { background: #8c3a5e; color: white; }
+
+.list-mini { display: flex; flex-direction: column; gap: 7px; }
+.mini-row { display: flex; gap: 9px; align-items: center; padding: 8px 10px; border: 1px solid #eee4e9; border-radius: 9px; font-size: 0.85rem; }
+.mini-row.overdue { border-color: #feb2b2; background: #fff5f5; }
+.mini-row .grow { flex: 1; }
+.muted { color: #718096; font-size: 0.78rem; }
+.nowrap { white-space: nowrap; }
+.rating { color: #d4af37; letter-spacing: 1px; }
+a { color: #8c3a5e; }
+.files-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.file-row { display: flex; gap: 8px; align-items: center; padding: 7px 9px; border: 1px solid #eee4e9; border-radius: 8px; font-size: 0.84rem; }
+.drop { border: 2px dashed #ddd0d7; border-radius: 10px; padding: 18px; text-align: center; color: #718096; font-size: 0.86rem; cursor: pointer; }
+.drop.hot { border-color: #8c3a5e; background: #fdf7fa; color: #4a162f; }
+@media print { header, .tabs, .actions, .no-print { display: none !important; } .card { box-shadow: none; } }
+@media (max-width: 700px) { .content { padding: 12px; } header h1 { font-size: 1.05rem; } .table-wrap { max-height: none; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>💍 מערכת שידוכים — פרק ב'</h1>
+  <span id="syncStatus" class="badge b-gray" style="font-size:.72rem">— לא מחובר</span>
+  <span class="spacer"></span>
+  <div class="actions">
+    <button class="btn btn-light btn-sm" onclick="openImport()">⬆ ייבוא מאקסל</button>
+    <button class="btn btn-light btn-sm" onclick="exportExcel()">⬇ ייצוא לאקסל</button>
+    <button class="btn btn-light btn-sm" onclick="setServerUrl()">⚙ הגדר שרת</button>
+  </div>
+</header>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="showTab('dash',this)">🏠 לוח בקרה</button>
+  <button class="tab-btn" onclick="showTab('men',this)">👨 גברים</button>
+  <button class="tab-btn" onclick="showTab('women',this)">👩 נשים</button>
+  <button class="tab-btn" onclick="showTab('matches',this)">💞 הצעות</button>
+  <button class="tab-btn" onclick="showTab('smart',this)">🔍 התאמה חכמה</button>
+  <button class="tab-btn" onclick="showTab('follow',this)">✅ מעקב ומשימות</button>
+  <button class="tab-btn" onclick="showTab('settings',this)">⚙ הגדרות</button>
+</div>
+
+<div class="content">
+
+  <!-- ============ לוח בקרה ============ -->
+  <div id="tab-dash" class="tab-panel active">
+    <div class="stats" id="dashStats"></div>
+    <div class="card">
+      <h2>⏰ לטיפול עכשיו <span class="hint">משימות שהגיע זמנן + הצעות שממתינות להמשך</span></h2>
+      <div id="dashTodo" class="list-mini"></div>
+    </div>
+    <div class="charts-grid">
+      <div class="card"><h2>מועמדים לפי חסידות</h2><canvas id="chHas" height="210"></canvas></div>
+      <div class="card"><h2>התפלגות גילאים</h2><canvas id="chAge" height="210"></canvas></div>
+      <div class="card"><h2>הצעות לפי סטטוס</h2><canvas id="chMatch" height="210"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ============ גברים / נשים ============ -->
+  <div id="tab-men" class="tab-panel"></div>
+  <div id="tab-women" class="tab-panel"></div>
+
+  <!-- ============ הצעות ============ -->
+  <div id="tab-matches" class="tab-panel">
+    <div class="card">
+      <h2>💞 הצעות שידוך
+        <span class="hint">כל הצעה מקשרת בין מועמד למועמדת ושומרת את כל מהלך הבירורים והפגישות</span>
+      </h2>
+      <div class="filters">
+        <div class="form-group grow"><label>חיפוש</label><input id="mf-q" oninput="renderMatches()" placeholder="שם, הערה, בירור..."></div>
+        <div class="form-group"><label>סטטוס</label><select id="mf-status" onchange="renderMatches()"></select></div>
+        <div class="form-group" style="flex:none"><label>&nbsp;</label><button class="btn btn-primary" onclick="openMatch()">+ הצעה חדשה</button></div>
+      </div>
+      <div class="table-wrap"><table id="matchTable"></table></div>
+    </div>
+  </div>
+
+  <!-- ============ התאמה חכמה ============ -->
+  <div id="tab-smart" class="tab-panel">
+    <div class="card">
+      <h2>🔍 התאמה חכמה <span class="hint">בוחרים מועמד — המערכת מדרגת את כל הצד השני לפי גיל, חסידות, עיר, ילדים, לבוש, גובה ועוד</span></h2>
+      <div class="filters">
+        <div class="form-group grow"><label>בחר מועמד/ת</label><select id="sm-cand" onchange="renderSmart()"></select></div>
+        <div class="form-group"><label>ציון מינימלי</label><input type="number" id="sm-min" value="45" min="0" max="100" oninput="renderSmart()"></div>
+        <div class="form-group"><label>הצג</label><select id="sm-show" onchange="renderSmart()">
+          <option value="new">רק מי שטרם הוצע</option><option value="all">הכל</option></select></div>
+      </div>
+      <div id="smartOut"></div>
+    </div>
+  </div>
+
+  <!-- ============ מעקב ============ -->
+  <div id="tab-follow" class="tab-panel">
+    <div class="card">
+      <h2>✅ משימות ותזכורות</h2>
+      <div class="form-row" style="margin-bottom:12px">
+        <div class="form-group grow"><label>משימה</label><input id="tk-title" placeholder="להתקשר לרב… / לברר על…"></div>
+        <div class="form-group" style="flex:0 0 150px"><label>תאריך יעד</label><input type="date" id="tk-date"></div>
+        <div class="form-group grow"><label>הערה</label><input id="tk-note"></div>
+        <div class="form-group" style="flex:none"><label>&nbsp;</label><button class="btn btn-primary" onclick="addTask()">+ הוסף</button></div>
+      </div>
+      <div class="pill-tabs">
+        <button class="pill active" onclick="setTaskFilter('open',this)">פתוחות</button>
+        <button class="pill" onclick="setTaskFilter('done',this)">שבוצעו</button>
+        <button class="pill" onclick="setTaskFilter('all',this)">הכל</button>
+      </div>
+      <div id="taskList" class="list-mini"></div>
+    </div>
+    <div class="card">
+      <h2>📅 הצעות עם המשך טיפול</h2>
+      <div id="followMatches" class="list-mini"></div>
+    </div>
+  </div>
+
+  <!-- ============ הגדרות ============ -->
+  <div id="tab-settings" class="tab-panel">
+    <div class="card">
+      <h2>📋 רשימות נפתחות <span class="hint">הערכים האלו מופיעים בכל הטפסים והסינונים</span></h2>
+      <div id="listsBox"></div>
+    </div>
+    <div class="card">
+      <h2>☁ חיבור ל-Google Sheets ולדרייב</h2>
+      <p class="muted" style="margin-bottom:10px">הנתונים נשמרים בגיליון גוגל, ולכל מועמד נפתחת אוטומטית תיקייה בדרייב לתמונות, רזומה ומסמכים. הדבק כאן את כתובת ה-Apps Script (מסתיימת ב-<code>/exec</code>).</p>
+      <div class="form-row">
+        <div class="form-group grow"><label>כתובת השרת</label><input id="cfg-url" placeholder="https://script.google.com/macros/s/.../exec"></div>
+        <div class="form-group" style="flex:none"><label>&nbsp;</label><button class="btn btn-primary" onclick="saveServerUrl()">שמור וחבר</button></div>
+      </div>
+      <div class="form-row" style="margin-top:10px">
+        <label style="display:flex;gap:7px;align-items:center;font-size:.86rem;font-weight:600;color:#4a5568">
+          <input type="checkbox" id="cfg-autofolder" onchange="saveAutoFolder()" style="width:16px;height:16px">
+          לפתוח אוטומטית תיקייה בדרייב לכל מועמד חדש
+        </label>
+      </div>
+    </div>
+    <div class="card">
+      <h2>💾 גיבוי מקומי</h2>
+      <div class="form-row">
+        <button class="btn btn-neutral" onclick="exportBackup()">⬇ הורד גיבוי (JSON)</button>
+        <button class="btn btn-neutral" onclick="document.getElementById('backupFile').click()">⬆ שחזר מגיבוי</button>
+        <input type="file" id="backupFile" accept=".json" style="display:none" onchange="importBackup(event)">
+      </div>
+    </div>
+    <div class="card">
+      <h2>🗑 סל מיחזור <span class="hint">מחיקה היא רכה — אפשר תמיד לשחזר</span></h2>
+      <div id="binBox" class="list-mini"></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- ============ מודל מועמד ============ -->
+<div class="overlay" id="candOverlay">
+ <div class="modal">
+  <div class="modal-head">
+    <h3 id="candTitle">כרטיס מועמד</h3>
+    <button class="btn btn-light btn-sm" onclick="openFilesFromCand()">📁 תיקייה וקבצים</button>
+    <button class="x" onclick="closeCand()">&times;</button>
+  </div>
+  <div class="modal-body">
+    <fieldset><legend>פרטים אישיים</legend>
+      <div class="form-row">
+        <div class="form-group"><label>משפחה</label><input id="c-family"></div>
+        <div class="form-group"><label>שם פרטי</label><input id="c-first"></div>
+        <div class="form-group"><label>תאריך לידה</label><input type="date" id="c-birth" onchange="updAge()"></div>
+        <div class="form-group"><label>גיל (אם אין תאריך)</label><input type="number" id="c-ageManual" oninput="updAge()"></div>
+        <div class="form-group" style="flex:0 0 90px"><label>גיל</label><input id="c-ageShow" disabled style="background:#f0e6eb;font-weight:700"></div>
+      </div>
+      <div class="form-row" style="margin-top:9px">
+        <div class="form-group"><label>מצב משפחתי</label><input id="c-marital" list="dl-marital"></div>
+        <div class="form-group"><label>טלפון</label><input id="c-phone" inputmode="tel"></div>
+        <div class="form-group"><label>עיר מגורים</label><input id="c-city" list="dl-city"></div>
+        <div class="form-group"><label>כתובת</label><input id="c-address"></div>
+      </div>
+    </fieldset>
+
+    <fieldset><legend>ילדים</legend>
+      <div class="form-row">
+        <div class="form-group"><label>מס' ילדים</label><input id="c-kidsCount" list="dl-kids" placeholder="ללא ילדים / 3"></div>
+        <div class="form-group" style="flex:3"><label>פרטי ילדים</label><input id="c-kidsDetails" placeholder="גילאים, אצל מי הם וכו'"></div>
+      </div>
+    </fieldset>
+
+    <fieldset><legend>רקע והופעה</legend>
+      <div class="form-row">
+        <div class="form-group"><label>חסידות</label><input id="c-hasidut" list="dl-hasidut"></div>
+        <div class="form-group"><label>מצב נפשי</label><input id="c-mental" list="dl-mental"></div>
+        <div class="form-group"><label>תקשורת</label><input id="c-comm" list="dl-comm"></div>
+        <div class="form-group"><label>גובה (ס"מ)</label><input id="c-height" inputmode="numeric"></div>
+        <div class="form-group"><label>מבנה</label><input id="c-build" list="dl-build"></div>
+        <div class="form-group"><label>לבוש</label><input id="c-dress" list="dl-dress"></div>
+      </div>
+    </fieldset>
+
+    <fieldset><legend>משפחה</legend>
+      <div class="form-row">
+        <div class="form-group"><label>שם אבא</label><input id="c-fatherName"></div>
+        <div class="form-group"><label>עיסוק אבא</label><input id="c-fatherJob"></div>
+        <div class="form-group"><label>שם אמא</label><input id="c-motherName"></div>
+        <div class="form-group"><label>עיסוק אמא</label><input id="c-motherJob"></div>
+        <div class="form-group"><label>מגורי ההורים</label><input id="c-parentsLiving" list="dl-city"></div>
+      </div>
+    </fieldset>
+
+    <fieldset><legend>מחותנים</legend>
+      <div id="inlawRows"></div>
+      <button class="btn btn-neutral btn-sm" onclick="addInlawRow()" style="margin-top:6px">+ הוסף מחותן</button>
+    </fieldset>
+
+    <fieldset><legend>פרק א' — הנישואין הקודמים</legend>
+      <div class="form-row">
+        <div class="form-group"><label>שם הגרוש/ה</label><input id="c-exName"></div>
+        <div class="form-group"><label>חסידות</label><input id="c-exHasidut" list="dl-hasidut"></div>
+        <div class="form-group"><label>עיר</label><input id="c-exCity" list="dl-city"></div>
+        <div class="form-group"><label>שנות נישואים</label><input id="c-marriageYears" inputmode="numeric"></div>
+        <div class="form-group"><label>תאריך גירושים</label><input type="date" id="c-divorceDate" onchange="updDiv()"></div>
+        <div class="form-group" style="flex:0 0 110px"><label>שנים מאז</label><input id="c-divShow" disabled style="background:#f0e6eb;font-weight:700"></div>
+      </div>
+    </fieldset>
+
+    <fieldset><legend id="wantLegend">מעוניין/ת ב…</legend>
+      <div class="form-row">
+        <div class="form-group"><label>טווח גיל</label><input id="c-wantAge" placeholder="לדוגמה 28-36"></div>
+        <div class="form-group"><label>חסידות מועדפת</label><input id="c-wantHasidut" placeholder="מופרד בפסיקים"></div>
+        <div class="form-group"><label>ערים מועדפות</label><input id="c-wantCities" placeholder="מופרד בפסיקים"></div>
+        <div class="form-group"><label>לבוש</label><input id="c-wantDress" list="dl-dress"></div>
+        <div class="form-group"><label>יחס לילדים</label><input id="c-wantKids" list="dl-wantkids" placeholder="ללא ילדים / לא משנה"></div>
+      </div>
+      <div class="form-row" style="margin-top:9px">
+        <div class="form-group"><label>תכונות רצויות</label><textarea id="c-wantTraits"></textarea></div>
+        <div class="form-group"><label>בקשות מיוחדות</label><textarea id="c-wantSpecial"></textarea></div>
+      </div>
+    </fieldset>
+
+    <fieldset><legend>בירורים והערות</legend>
+      <div class="form-row">
+        <div class="form-group"><label>טלפונים לבירורים</label><textarea id="c-refPhones"></textarea></div>
+        <div class="form-group"><label>הערות מיוחדות</label><textarea id="c-specialNotes"></textarea></div>
+      </div>
+    </fieldset>
+
+    <fieldset><legend>ניהול</legend>
+      <div class="form-row">
+        <div class="form-group"><label>סטטוס</label><select id="c-status"></select></div>
+        <div class="form-group"><label>דירוג</label><select id="c-rating">
+          <option value="0">—</option><option value="1">★</option><option value="2">★★</option>
+          <option value="3">★★★</option><option value="4">★★★★</option><option value="5">★★★★★</option></select></div>
+        <div class="form-group"><label>מקור ההפניה</label><input id="c-source" list="dl-source"></div>
+      </div>
+      <div class="form-row" style="margin-top:9px">
+        <div class="form-group"><label>קישור לתיקייה בדרייב</label><input id="c-folderUrl" placeholder="נוצר אוטומטית"></div>
+        <div class="form-group"><label>רזומה</label><input id="c-resumeUrl"></div>
+        <div class="form-group"><label>תמונה</label><input id="c-photoUrl"></div>
+      </div>
+    </fieldset>
+
+    <div id="candMatchesBox"></div>
+  </div>
+  <div class="modal-foot">
+    <button class="btn btn-primary" onclick="saveCand()">💾 שמור</button>
+    <button class="btn btn-gold" onclick="saveCand(true)">💾 שמור וחפש התאמות</button>
+    <button class="btn btn-neutral" onclick="closeCand()">ביטול</button>
+    <span class="spacer" style="flex:1"></span>
+    <button class="btn btn-danger" id="candDelBtn" onclick="delCand()">🗑 מחק</button>
+  </div>
+ </div>
+</div>
+
+<!-- ============ מודל הצעה ============ -->
+<div class="overlay" id="matchOverlay">
+ <div class="modal narrow" style="max-width:720px">
+  <div class="modal-head"><h3 id="matchTitle">הצעת שידוך</h3><button class="x" onclick="closeMatch()">&times;</button></div>
+  <div class="modal-body">
+    <div class="form-row">
+      <div class="form-group"><label>הבחור</label><select id="m-man"></select></div>
+      <div class="form-group"><label>הבת</label><select id="m-woman"></select></div>
+    </div>
+    <div id="matchScoreBox" style="margin:12px 0"></div>
+    <div class="form-row">
+      <div class="form-group"><label>תאריך ההצעה</label><input type="date" id="m-date"></div>
+      <div class="form-group"><label>סטטוס</label><select id="m-status"></select></div>
+      <div class="form-group"><label>מי הציע</label><input id="m-proposedBy" list="dl-source"></div>
+    </div>
+    <div class="form-row" style="margin-top:9px">
+      <div class="form-group wide"><label>בירורים שנעשו</label><textarea id="m-inquiries" style="min-height:70px"></textarea></div>
+    </div>
+    <div class="form-row" style="margin-top:9px">
+      <div class="form-group wide"><label>פגישות <span class="muted">(שורה לכל פגישה: תאריך | הערה)</span></label><textarea id="m-meetingsTxt" style="min-height:60px" placeholder="2026-08-10 | פגישה ראשונה, הלך טוב"></textarea></div>
+    </div>
+    <div class="form-row" style="margin-top:9px">
+      <div class="form-group"><label>המשך טיפול</label><input id="m-nextStep" placeholder="להתקשר לאבא של הבת"></div>
+      <div class="form-group" style="flex:0 0 150px"><label>תאריך המשך</label><input type="date" id="m-nextDate"></div>
+    </div>
+    <div class="form-row" style="margin-top:9px">
+      <div class="form-group"><label>סיבת סגירה</label><input id="m-closeReason"></div>
+      <div class="form-group"><label>הערות</label><input id="m-note"></div>
+    </div>
+  </div>
+  <div class="modal-foot">
+    <button class="btn btn-primary" onclick="saveMatch()">💾 שמור</button>
+    <button class="btn btn-neutral" onclick="closeMatch()">ביטול</button>
+    <span style="flex:1"></span>
+    <button class="btn btn-danger" id="matchDelBtn" onclick="delMatch()">🗑 מחק</button>
+  </div>
+ </div>
+</div>
+
+<!-- ============ מודל קבצים ============ -->
+<div class="overlay" id="filesOverlay">
+ <div class="modal narrow">
+  <div class="modal-head"><h3 id="filesTitle">תיקייה וקבצים</h3><button class="x" onclick="closeFiles()">&times;</button></div>
+  <div class="modal-body">
+    <div id="filesInfo" class="muted" style="margin-bottom:10px"></div>
+    <div class="form-row" style="margin-bottom:12px">
+      <button class="btn btn-primary btn-sm" onclick="openDriveFolder()">📂 פתח בדרייב</button>
+      <button class="btn btn-neutral btn-sm" onclick="createFolder()">➕ צור/חדש תיקייה</button>
+      <button class="btn btn-neutral btn-sm" onclick="loadFiles()">🔄 רענן</button>
+    </div>
+    <div class="drop" id="dropZone" onclick="document.getElementById('upFile').click()">
+      גרור לכאן קובץ, או לחץ לבחירה — תמונה, רזומה, מסמך…
+      <input type="file" id="upFile" multiple style="display:none" onchange="uploadFiles(this.files)">
+    </div>
+    <div id="filesList" class="files-list"></div>
+  </div>
+  <div class="modal-foot"><button class="btn btn-neutral" onclick="closeFiles()">סגור</button></div>
+ </div>
+</div>
+
+<!-- ============ מודל ייבוא ============ -->
+<div class="overlay" id="importOverlay">
+ <div class="modal narrow">
+  <div class="modal-head"><h3>ייבוא מקובץ האקסל</h3><button class="x" onclick="closeImport()">&times;</button></div>
+  <div class="modal-body">
+    <p class="muted" style="margin-bottom:12px">בחר את הקובץ <b>"שידוכים מחולק נשים גברים.xlsx"</b>. המערכת קוראת את הגיליונות <b>גברים</b> ו<b>נשים</b> לפי המבנה הקיים שלך — כולל המחותנים, פרטי פרק א' והבקשות. מי שכבר קיים (אותה משפחה + שם פרטי) יעודכן ולא ישוכפל.</p>
+    <div class="drop" id="impDrop" onclick="document.getElementById('impFile').click()">
+      גרור לכאן את קובץ האקסל או לחץ לבחירה
+      <input type="file" id="impFile" accept=".xlsx,.xls" style="display:none" onchange="importExcel(this.files[0])">
+    </div>
+    <div id="impResult" style="margin-top:12px"></div>
+  </div>
+  <div class="modal-foot"><button class="btn btn-neutral" onclick="closeImport()">סגור</button></div>
+ </div>
+</div>
+
+<datalist id="dl-hasidut"></datalist>
+<datalist id="dl-city"></datalist>
+<datalist id="dl-dress"></datalist>
+<datalist id="dl-build"></datalist>
+<datalist id="dl-comm"></datalist>
+<datalist id="dl-mental"></datalist>
+<datalist id="dl-source"></datalist>
+<datalist id="dl-marital"><option value="גרוש"><option value="גרושה"><option value="אלמן"><option value="אלמנה"><option value="רווק"><option value="רווקה"></datalist>
+<datalist id="dl-kids"><option value="ללא ילדים"><option value="1"><option value="2"><option value="3"><option value="4"><option value="5"></datalist>
+<datalist id="dl-wantkids"><option value="לא משנה"><option value="ללא ילדים"><option value="עד 2 ילדים"><option value="גם עם ילדים"></datalist>
+
+<script>
+/* =========================================================================
+   מערכת שידוכים — פרק ב'
+   קובץ אחד. הנתונים נשמרים ב-localStorage וב-Google Sheets (אם הוגדר שרת),
+   והקבצים של כל מועמד נשמרים בתיקייה ייעודית בדרייב.
+   ========================================================================= */
+
+const KEY    = 'shidduchim_v1';
+const URLKEY = 'shidduchim_gs_url';
+const AFKEY  = 'shidduchim_autofolder';
+const DEFAULT_GS_URL = '';                       // ימולא דרך "הגדר שרת"
+let GS_URL = localStorage.getItem(URLKEY) || DEFAULT_GS_URL;
+let autoFolder = localStorage.getItem(AFKEY) !== '0';
+
+const COLLECTIONS = ['cands','matches','tasks','lists'];
+
+const DEFAULT_LISTS = {
+  hasidut: ['באבוב','באבוב 45','גור','ויזניץ','בעלז','סאטמר','סערט ויזניץ','תולדות אהרן','תולדות אברהם יצחק','קרלין','ספינקא','נדבורנה','צאנז','ערלוי','דושינסקיא','חב"ד','ברסלב','ליטאי','ספרדי','אחר'],
+  city:    ['בני ברק','ירושלים','ביתר עילית','בית שמש','צפת','טבריה','קרית גת','עמנואל','אלעד','חיפה','חריש','מודיעין עילית','אשדוד','רכסים','נתיבות','חוץ לארץ'],
+  dress:   ['חסידי מלא','שטריימל','כובע וחליפה','חסידי מודרני','מודרני','מטפחת','פאה','פאה וכובע'],
+  build:   ['רזה','ממוצע','מלא','חסון','גבוה'],
+  comm:    ['כשר','חכם כשר','חכם','רגיל','ללא'],
+  mental:  ['תקין','טיפול בעבר','בטיפול','רגיש','לא ידוע'],
+  status:  ['פנוי','בהצעה','בפגישות','בהמתנה','מאורס','נישא','לא פעיל'],
+  source:  ['עצמי','המלצה','שדכן אחר','פנייה עצמית','רב / מורה','משפחה']
+};
+const LIST_LABELS = { hasidut:'חסידויות', city:'ערים', dress:'לבוש', build:'מבנה גוף', comm:'תקשורת', mental:'מצב נפשי', status:'סטטוס מועמד', source:'מקור הפניה' };
+const MATCH_STATUSES = ['הוצע','בבירורים','הצד שלו הסכים','הצד שלה הסכימה','נקבעה פגישה','בפגישות','בהמתנה','הופסק','אירוסין','נישאו'];
+const MATCH_OPEN = ['הוצע','בבירורים','הצד שלו הסכים','הצד שלה הסכימה','נקבעה פגישה','בפגישות','בהמתנה'];
+
+function emptyData(){ return { cands: [], matches: [], tasks: [], lists: [], seq: 1, mseq: 1 }; }
+let data = load();
+
+let suppressPullUntil = 0, pushTimer = null, pulledOnce = false;
+let serverRev = null, baseline = null, saving = false, pendingSave = false, reconcileTries = 0;
+let curCand = null, curMatch = null, curFilesCand = null, taskFilter = 'open';
+let charts = {};
+
+function clone(x){ return JSON.parse(JSON.stringify(x)); }
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function today(){ return new Date().toISOString().slice(0,10); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function alive(arr){ return (arr||[]).filter(x=>!x.deleted); }
+function softDelete(arr, id){ const x=(arr||[]).find(i=>i.id===id); if(x){ x.deleted=1; x.deletedAt=today(); } }
+function restore(arr, id){ const x=(arr||[]).find(i=>i.id===id); if(x){ x.deleted=0; x.deletedAt=''; } }
+
+function load(){
+  try { const d = JSON.parse(localStorage.getItem(KEY)); if(d) return Object.assign(emptyData(), d); } catch(e){}
+  return emptyData();
+}
+function dataFromRemote(remote){
+  const d = emptyData();
+  COLLECTIONS.forEach(k=>{ d[k] = Array.isArray(remote[k]) ? remote[k] : []; });
+  d.seq  = Number(remote.seq)||1;
+  d.mseq = Number(remote.mseq)||1;
+  return d;
+}
+function itemCount(d){ return COLLECTIONS.reduce((n,k)=> n + (d[k]||[]).length, 0); }
+
+/* ---------- סנכרון מול הגיליון ---------- */
+function setSync(state, txt){
+  const el = document.getElementById('syncStatus'); if(!el) return;
+  el.className = 'badge ' + ({ok:'b-green', wait:'b-yellow', err:'b-red'}[state] || 'b-gray');
+  el.textContent = txt;
+}
+function setServerUrl(){
+  const v = prompt('הדבק כאן את כתובת ה-Apps Script (מסתיימת ב-/exec):', GS_URL || '');
+  if(v === null) return;
+  applyServerUrl(v.trim());
+}
+function saveServerUrl(){ applyServerUrl(document.getElementById('cfg-url').value.trim()); }
+function applyServerUrl(url){
+  if(url && !/\/exec$/.test(url)){ alert('הכתובת צריכה להסתיים ב-/exec'); return; }
+  GS_URL = url; localStorage.setItem(URLKEY, url);
+  const f = document.getElementById('cfg-url'); if(f) f.value = url;
+  if(url){ toast('השרת הוגדר'); startSheetSync(); } else setSync('', '— לא מחובר');
+}
+function saveAutoFolder(){
+  autoFolder = document.getElementById('cfg-autofolder').checked;
+  localStorage.setItem(AFKEY, autoFolder ? '1' : '0');
+}
+function save(){
+  try { localStorage.setItem(KEY, JSON.stringify(data)); }
+  catch(e){ console.warn('localStorage מלא — הענן הוא מקור האמת', e); }
+  renderAll();
+  serverPush();
+}
+function editingNow(){
+  const a = document.activeElement;
+  return a && (a.tagName==='INPUT' || a.tagName==='SELECT' || a.tagName==='TEXTAREA');
+}
+function serverPush(){
+  if(!GS_URL){ setSync('', '— לא מחובר'); return; }
+  if(!pulledOnce || serverRev === null){ setSync('err','⚠ ממתין לטעינה מהשרת — השינוי יישמר כשהחיבור יעלה'); return; }
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(doPush, 300);
+}
+function doPush(){
+  if(saving){ pendingSave = true; return; }
+  saving = true; setSync('wait','⏳ שומר…');
+  suppressPullUntil = Date.now() + 15000;
+  const body = new URLSearchParams();
+  body.append('action','save');
+  body.append('baseRev', String(serverRev));
+  body.append('data', JSON.stringify(data));
+  fetch(GS_URL, { method:'POST', body })
+    .then(r=>r.json())
+    .then(res=>{
+      saving = false;
+      if(res && res.status === 'ok'){
+        serverRev = res.rev; baseline = clone(data); reconcileTries = 0;
+        setSync('ok','☁ נשמר');
+        if(pendingSave){ pendingSave = false; serverPush(); }
+      } else if(res && res.status === 'conflict'){ reconcile(); }
+      else { setSync('err','⚠ ' + ((res && res.message) || 'שגיאת שמירה')); console.error('save rejected:', res); }
+    })
+    .catch(err=>{
+      saving = false; setSync('err','⚠ שגיאת רשת — מנסה שוב…'); console.error(err);
+      setTimeout(()=>{ if(!saving) serverPush(); }, 4000);
+    });
+}
+function reconcile(){
+  reconcileTries++;
+  if(reconcileTries > 5){ reconcileTries = 0; saving = false; setSync('err','⚠ התנגשות מתמשכת — רענן את הדף'); return; }
+  setSync('wait','⏳ ממזג שינויים…');
+  fetch(GS_URL + '?action=load&t=' + Date.now())
+    .then(r=>r.json())
+    .then(fresh=>{
+      if(!fresh || fresh.status === 'error'){ saving = false; setSync('err','⚠ שגיאת סנכרון'); return; }
+      data = mergeChanges(baseline || dataFromRemote(fresh), data, fresh);
+      serverRev = (typeof fresh.rev === 'number') ? fresh.rev : 0;
+      try { localStorage.setItem(KEY, JSON.stringify(data)); } catch(e){}
+      renderAll(); saving = false; pendingSave = false; serverPush();
+    })
+    .catch(()=>{ saving = false; setSync('err','⚠ שגיאת סנכרון'); });
+}
+function mergeChanges(base, local, fresh){
+  const result = dataFromRemote(fresh);
+  COLLECTIONS.forEach(key=>{
+    const baseById = {}; (base[key]||[]).forEach(x=> baseById[x.id] = x);
+    const map = {}; (result[key]||[]).forEach(x=> map[x.id] = x);
+    (local[key]||[]).forEach(cur=>{
+      const b = baseById[cur.id];
+      if(!b || JSON.stringify(b) !== JSON.stringify(cur)) map[cur.id] = cur;
+    });
+    result[key] = Object.values(map);
+  });
+  result.seq  = Math.max(Number(fresh.seq)||1,  Number(local.seq)||1);
+  result.mseq = Math.max(Number(fresh.mseq)||1, Number(local.mseq)||1);
+  return result;
+}
+function serverPull(initial){
+  if(!GS_URL) return;
+  fetch(GS_URL + '?action=load&t=' + Date.now())
+    .then(r=>r.json())
+    .then(remote=>{
+      if(!remote || remote.status === 'error'){ setSync('err','⚠ שגיאת טעינה'); return; }
+      const remoteRev = (typeof remote.rev === 'number') ? remote.rev : 0;
+      pulledOnce = true;
+      const remoteData = dataFromRemote(remote);
+      if(initial && itemCount(remoteData) === 0 && itemCount(data) > 0){
+        serverRev = remoteRev; baseline = clone(emptyData()); serverPush(); return;
+      }
+      if(saving) return;
+      if(Date.now() < suppressPullUntil || editingNow()){ setSync('ok','☁ מסונכרן'); return; }
+      if(JSON.stringify(remoteData) !== JSON.stringify(data)){
+        data = remoteData;
+        try { localStorage.setItem(KEY, JSON.stringify(data)); } catch(e){}
+        renderAll();
+      }
+      serverRev = remoteRev; baseline = clone(data);
+      setSync('ok','☁ מסונכרן');
+    })
+    .catch(()=> setSync('err','⚠ אין חיבור לשרת'));
+}
+let pollTimer = null;
+function startSheetSync(){
+  if(!GS_URL){ setSync('','— לא מחובר (לחץ ⚙ הגדר שרת)'); return; }
+  setSync('wait','⏳ טוען מהשרת…');
+  serverPull(true);
+  clearInterval(pollTimer);
+  pollTimer = setInterval(()=>serverPull(false), 15000);
+}
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) serverPull(false); });
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+/* ---------- רשימות ---------- */
+function listVals(type){
+  const custom = alive(data.lists).filter(l=>l.type===type).map(l=>l.value);
+  return custom.length ? custom : (DEFAULT_LISTS[type] || []);
+}
+function seedLists(){
+  if(alive(data.lists).length) return;
+  Object.keys(DEFAULT_LISTS).forEach(type=>{
+    DEFAULT_LISTS[type].forEach(value=> data.lists.push({ id: uid(), type, value }));
+  });
+}
+function fillDatalists(){
+  Object.keys(LIST_LABELS).forEach(type=>{
+    const dl = document.getElementById('dl-'+type);
+    if(dl) dl.innerHTML = listVals(type).map(v=>`<option value="${esc(v)}">`).join('');
+  });
+}
+function fillSelect(el, vals, cur, blank){
+  if(!el) return;
+  el.innerHTML = (blank ? `<option value="">${esc(blank)}</option>` : '') +
+    vals.map(v=>`<option value="${esc(v)}"${v===cur?' selected':''}>${esc(v)}</option>`).join('');
+  if(cur && !vals.includes(cur)) { el.insertAdjacentHTML('beforeend', `<option value="${esc(cur)}" selected>${esc(cur)}</option>`); }
+}
+
+/* ---------- עזרי מועמד ---------- */
+function candName(c){ return ((c.family||'') + ' ' + (c.first||'')).trim() || 'ללא שם'; }
+function candById(id){ return (data.cands||[]).find(c=>c.id===id); }
+function ageOf(c){
+  if(c.birth){
+    const b = new Date(c.birth);
+    if(!isNaN(b)){
+      const t = new Date(); let a = t.getFullYear() - b.getFullYear();
+      const m = t.getMonth() - b.getMonth();
+      if(m < 0 || (m === 0 && t.getDate() < b.getDate())) a--;
+      if(a > 0 && a < 120) return a;
+    }
+  }
+  return Math.round(Number(c.ageManual)) || 0;
+}
+function yearsSince(d){
+  if(!d) return '';
+  const x = new Date(d); if(isNaN(x)) return '';
+  const y = (Date.now() - x.getTime()) / (365.25*24*3600*1000);
+  return y > 0 ? Math.floor(y) : '';
+}
+function kidsNum(c){
+  const s = String(c.kidsCount||'').trim();
+  if(!s) return null;
+  if(/ללא|אין|0/.test(s) && !/\d[1-9]/.test(s)) return 0;
+  const m = s.match(/\d+/); return m ? +m[0] : null;
+}
+function parseRange(s){
+  if(!s) return null;
+  const nums = String(s).match(/\d+/g);
+  if(!nums) return null;
+  if(nums.length >= 2){ const a=+nums[0], b=+nums[1]; return [Math.min(a,b), Math.max(a,b)]; }
+  const n = +nums[0];
+  if(/עד/.test(s)) return [0, n];
+  if(/מעל|מגיל|מ-/.test(s)) return [n, 200];
+  return [n-3, n+3];
+}
+function splitList(s){ return String(s||'').split(/[,;\n|]/).map(x=>x.trim()).filter(Boolean); }
+function hasRoot(h){ return String(h||'').trim().split(/\s+/)[0] || ''; }
+function parseInlaws(txt){
+  return String(txt||'').split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{
+    const p = l.split('|').map(x=>x.trim());
+    return { name:p[0]||'', city:p[1]||'', hasidut:p[2]||'', note:p[3]||'' };
+  });
+}
+function joinInlaws(rows){
+  return rows.filter(r=>r.name||r.city||r.hasidut||r.note)
+    .map(r=>[r.name,r.city,r.hasidut,r.note].map(x=>String(x||'').replace(/[|\n\r]/g,' ').trim()).join(' | ')).join('\n');
+}
+function statusBadge(s){
+  const cls = { 'פנוי':'b-green','בהצעה':'b-yellow','בפגישות':'b-blue','בהמתנה':'b-gray','מאורס':'b-purple','נישא':'b-purple','לא פעיל':'b-gray' }[s] || 'b-gray';
+  return `<span class="badge ${cls}">${esc(s||'—')}</span>`;
+}
+function matchBadge(s){
+  const cls = { 'הוצע':'b-gray','בבירורים':'b-yellow','הצד שלו הסכים':'b-blue','הצד שלה הסכימה':'b-blue','נקבעה פגישה':'b-gold','בפגישות':'b-gold','בהמתנה':'b-gray','הופסק':'b-red','אירוסין':'b-green','נישאו':'b-green' }[s] || 'b-gray';
+  return `<span class="badge ${cls}">${esc(s||'—')}</span>`;
+}
+
+/* =====================  מנוע ההתאמה  ===================== */
+function matchScore(man, woman){
+  const R = []; let score = 0;
+  const am = ageOf(man), aw = ageOf(woman);
+
+  // גיל — 25
+  let ageP = 0;
+  if(am && aw){
+    const gap = Math.abs(am - aw);
+    const rm = parseRange(man.wantAge), rw = parseRange(woman.wantAge);
+    const inM = !rm || (aw >= rm[0] && aw <= rm[1]);
+    const inW = !rw || (am >= rw[0] && am <= rw[1]);
+    if(inM && inW) ageP = 25;
+    else if(inM || inW) ageP = 15;
+    else ageP = 5;
+    if(gap > 12) ageP = Math.min(ageP, 8);
+    if(aw > am + 3) ageP = Math.max(0, ageP - 6);
+    R.push({ k: (inM&&inW)?'ok':(inM||inW)?'mid':'no', t:`גיל ${am}/${aw} (פער ${gap})` });
+  } else { ageP = 10; R.push({ k:'mid', t:'גיל חסר' }); }
+  score += ageP;
+
+  // חסידות — 20
+  const hm = String(man.hasidut||'').trim(), hw = String(woman.hasidut||'').trim();
+  const wantHm = splitList(man.wantHasidut), wantHw = splitList(woman.wantHasidut);
+  let hasP = 0;
+  if(hm && hw && hm === hw){ hasP = 20; R.push({ k:'ok', t:`חסידות: ${hm}` }); }
+  else if(hm && hw && hasRoot(hm) === hasRoot(hw)){ hasP = 16; R.push({ k:'ok', t:`חסידות קרובה: ${hm} / ${hw}` }); }
+  else if((wantHm.length && wantHm.some(x=>x===hw||hasRoot(x)===hasRoot(hw))) || (wantHw.length && wantHw.some(x=>x===hm||hasRoot(x)===hasRoot(hm)))){
+    hasP = 17; R.push({ k:'ok', t:'חסידות לפי ההעדפה' });
+  }
+  else if(!hm || !hw){ hasP = 9; R.push({ k:'mid', t:'חסידות חסרה' }); }
+  else { hasP = 4; R.push({ k:'no', t:`חסידות שונה: ${hm} / ${hw}` }); }
+  score += hasP;
+
+  // עיר — 12
+  const cm = String(man.city||'').trim(), cw = String(woman.city||'').trim();
+  const wcM = splitList(man.wantCities), wcW = splitList(woman.wantCities);
+  let cityP = 0;
+  if(cm && cw && cm === cw){ cityP = 12; R.push({ k:'ok', t:`אותה עיר: ${cm}` }); }
+  else if(wcM.includes(cw) || wcW.includes(cm)){ cityP = 11; R.push({ k:'ok', t:'עיר לפי ההעדפה' }); }
+  else if(!cm || !cw){ cityP = 6; R.push({ k:'mid', t:'עיר חסרה' }); }
+  else { cityP = 4; R.push({ k:'mid', t:`ערים שונות: ${cm} / ${cw}` }); }
+  score += cityP;
+
+  // ילדים — 15
+  const km = kidsNum(man), kw = kidsNum(woman);
+  const prefM = String(man.wantKids||''), prefW = String(woman.wantKids||'');
+  let kidP = 0;
+  const blocks = (pref, n) => n !== null && n > 0 && /ללא ילדים|בלי ילדים/.test(pref);
+  if(blocks(prefM, kw) || blocks(prefW, km)){ kidP = 2; R.push({ k:'no', t:'ילדים — לא תואם את הבקשה' }); }
+  else if(km === 0 && kw === 0){ kidP = 15; R.push({ k:'ok', t:'שניהם ללא ילדים' }); }
+  else if(km !== null && kw !== null){
+    kidP = /לא משנה/.test(prefM+prefW) ? 13 : 10;
+    R.push({ k:'ok', t:`ילדים: ${km} / ${kw}` });
+  }
+  else { kidP = 8; R.push({ k:'mid', t:'מספר ילדים חסר' }); }
+  score += kidP;
+
+  // לבוש — 8
+  const dm = String(man.dress||'').trim(), dw = String(woman.dress||'').trim();
+  const wdM = String(man.wantDress||'').trim(), wdW = String(woman.wantDress||'').trim();
+  let dressP = 0;
+  if((wdM && wdM === dw) || (wdW && wdW === dm)){ dressP = 8; R.push({ k:'ok', t:'לבוש לפי הבקשה' }); }
+  else if(dm && dw && dm === dw){ dressP = 8; R.push({ k:'ok', t:`לבוש: ${dm}` }); }
+  else if(!dm || !dw){ dressP = 4; }
+  else { dressP = 3; R.push({ k:'mid', t:`לבוש שונה: ${dm} / ${dw}` }); }
+  score += dressP;
+
+  // גובה — 8
+  const gm = parseInt(man.height, 10), gw = parseInt(woman.height, 10);
+  let hP = 0;
+  if(gm && gw){
+    if(gm >= gw + 5){ hP = 8; R.push({ k:'ok', t:`גובה ${gm}/${gw}` }); }
+    else if(gm >= gw){ hP = 6; R.push({ k:'mid', t:`גובה קרוב ${gm}/${gw}` }); }
+    else { hP = 2; R.push({ k:'no', t:`היא גבוהה ממנו ${gm}/${gw}` }); }
+  } else hP = 4;
+  score += hP;
+
+  // תקשורת — 5
+  const tm = String(man.comm||'').trim(), tw = String(woman.comm||'').trim();
+  if(tm && tw && tm === tw){ score += 5; R.push({ k:'ok', t:`תקשורת: ${tm}` }); }
+  else if(!tm || !tw) score += 3;
+  else { score += 2; R.push({ k:'mid', t:`תקשורת: ${tm} / ${tw}` }); }
+
+  // מצב נפשי — 7
+  const nm = String(man.mental||'').trim(), nw = String(woman.mental||'').trim();
+  const okM = /תקין/.test(nm), okW = /תקין/.test(nw);
+  if(okM && okW) score += 7;
+  else if((okM && nw && !okW) || (okW && nm && !okM)){ score += 3; R.push({ k:'mid', t:'מצב נפשי — לבדוק' }); }
+  else if(nm && nw) score += 5;
+  else score += 4;
+
+  return { score: Math.max(0, Math.min(100, Math.round(score))), reasons: R };
+}
+function scoreColor(s){ return s >= 75 ? '#276749' : s >= 55 ? '#b8912a' : s >= 40 ? '#dd6b20' : '#c53030'; }
+function scoreBar(s){
+  return `<div style="display:flex;align-items:center;gap:7px">
+    <b style="color:${scoreColor(s)};min-width:32px">${s}</b>
+    <div class="score-bar" style="flex:1"><i style="width:${s}%;background:${scoreColor(s)}"></i></div></div>`;
+}
+function pairExists(manId, womanId){
+  return alive(data.matches).some(m=>m.manId===manId && m.womanId===womanId);
+}
+
+/* =====================  לשוניות  ===================== */
+function showTab(id, btn){
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  if(btn) btn.classList.add('active');
+  if(id === 'dash') renderCharts();
+  if(id === 'smart') renderSmartPicker();
+}
+
+/* =====================  רשימות מועמדים  ===================== */
+function listPanelHtml(g){
+  const t = g === 'm' ? 'גברים' : 'נשים';
+  return `<div class="card">
+    <h2>${g==='m'?'👨':'👩'} ${t} <span class="hint" id="cnt-${g}"></span></h2>
+    <div class="filters">
+      <div class="form-group grow"><label>חיפוש חופשי</label><input id="f-${g}-q" oninput="renderList('${g}')" placeholder="שם, חסידות, עיר, הערה…"></div>
+      <div class="form-group"><label>חסידות</label><select id="f-${g}-has" onchange="renderList('${g}')"></select></div>
+      <div class="form-group"><label>עיר</label><select id="f-${g}-city" onchange="renderList('${g}')"></select></div>
+      <div class="form-group"><label>סטטוס</label><select id="f-${g}-status" onchange="renderList('${g}')"></select></div>
+      <div class="form-group" style="flex:0 0 86px"><label>גיל מ־</label><input type="number" id="f-${g}-a1" oninput="renderList('${g}')"></div>
+      <div class="form-group" style="flex:0 0 86px"><label>עד</label><input type="number" id="f-${g}-a2" oninput="renderList('${g}')"></div>
+      <div class="form-group"><label>מיון</label><select id="f-${g}-sort" onchange="renderList('${g}')">
+        <option value="upd">עודכן לאחרונה</option><option value="name">שם</option><option value="age">גיל</option><option value="rating">דירוג</option></select></div>
+      <div class="form-group" style="flex:none"><label>&nbsp;</label><button class="btn btn-primary" onclick="openCand(null,'${g}')">+ ${g==='m'?'מועמד':'מועמדת'} חדש${g==='m'?'':'ה'}</button></div>
+    </div>
+    <div class="table-wrap"><table id="tbl-${g}"></table></div>
+  </div>`;
+}
+function renderList(g){
+  const panel = document.getElementById('tab-' + (g==='m'?'men':'women'));
+  if(!panel.dataset.built){ panel.innerHTML = listPanelHtml(g); panel.dataset.built = '1'; }
+
+  const fHas = document.getElementById(`f-${g}-has`), fCity = document.getElementById(`f-${g}-city`), fSt = document.getElementById(`f-${g}-status`);
+  if(!fHas.dataset.filled){
+    fillSelect(fHas, listVals('hasidut'), '', 'כל החסידויות');
+    fillSelect(fCity, listVals('city'), '', 'כל הערים');
+    fillSelect(fSt, listVals('status'), '', 'כל הסטטוסים');
+    fHas.dataset.filled = '1';
+  }
+
+  const q = (document.getElementById(`f-${g}-q`).value||'').trim();
+  const has = fHas.value, city = fCity.value, st = fSt.value;
+  const a1 = +document.getElementById(`f-${g}-a1`).value || 0;
+  const a2 = +document.getElementById(`f-${g}-a2`).value || 999;
+  const sort = document.getElementById(`f-${g}-sort`).value;
+
+  let rows = alive(data.cands).filter(c=>c.gender===g);
+  if(q){ const s = q.toLowerCase(); rows = rows.filter(c=> JSON.stringify(c).toLowerCase().includes(s)); }
+  if(has) rows = rows.filter(c=>c.hasidut===has);
+  if(city) rows = rows.filter(c=>c.city===city);
+  if(st) rows = rows.filter(c=>c.status===st);
+  rows = rows.filter(c=>{ const a = ageOf(c); return a === 0 ? (a1 === 0) : (a >= a1 && a <= a2); });
+
+  rows.sort((x,y)=>{
+    if(sort==='name')   return candName(x).localeCompare(candName(y),'he');
+    if(sort==='age')    return ageOf(x) - ageOf(y);
+    if(sort==='rating') return (+y.rating||0) - (+x.rating||0);
+    return String(y.updated||'').localeCompare(String(x.updated||''));
+  });
+
+  document.getElementById(`cnt-${g}`).textContent = `${rows.length} מתוך ${alive(data.cands).filter(c=>c.gender===g).length}`;
+
+  const head = `<thead><tr><th>#</th><th>שם</th><th>גיל</th><th>חסידות</th><th>עיר</th><th>ילדים</th><th>גובה</th><th>לבוש</th><th>סטטוס</th><th>הצעות</th><th>דירוג</th><th>קבצים</th><th></th></tr></thead>`;
+  const body = rows.length ? rows.map(c=>{
+    const nm = alive(data.matches).filter(m=> m.manId===c.id || m.womanId===c.id).length;
+    return `<tr class="clickable" onclick="openCand('${c.id}')">
+      <td class="muted">${esc(c.seq||'')}</td>
+      <td><b>${esc(candName(c))}</b>${c.phone?`<div class="muted">${esc(c.phone)}</div>`:''}</td>
+      <td>${ageOf(c)||'—'}</td>
+      <td>${esc(c.hasidut||'—')}</td>
+      <td>${esc(c.city||'—')}</td>
+      <td>${esc(c.kidsCount||'—')}</td>
+      <td>${esc(c.height||'—')}</td>
+      <td>${esc(c.dress||'—')}</td>
+      <td>${statusBadge(c.status)}</td>
+      <td>${nm ? `<span class="badge b-blue">${nm}</span>` : '<span class="muted">—</span>'}</td>
+      <td class="rating">${'★'.repeat(+c.rating||0) || '—'}</td>
+      <td onclick="event.stopPropagation()">${c.folderUrl ? `<a href="${esc(c.folderUrl)}" target="_blank" rel="noopener">📂</a>` : ''}
+          <button class="btn btn-neutral btn-sm" onclick="openFiles('${c.id}')">📎</button></td>
+      <td class="nowrap" onclick="event.stopPropagation()">
+        <button class="btn btn-edit" onclick="smartFor('${c.id}')">🔍 התאמות</button></td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="13" class="empty">אין רשומות תואמות</td></tr>`;
+  document.getElementById(`tbl-${g}`).innerHTML = head + '<tbody>' + body + '</tbody>';
+}
+
+/* =====================  כרטיס מועמד  ===================== */
+const CAND_FIELDS = ['family','first','birth','ageManual','marital','phone','kidsCount','kidsDetails','hasidut','mental','comm','city','address','height','build','dress','fatherName','fatherJob','motherName','motherJob','parentsLiving','specialNotes','refPhones','exName','exHasidut','exCity','marriageYears','divorceDate','wantAge','wantHasidut','wantCities','wantDress','wantTraits','wantKids','wantSpecial','folderUrl','resumeUrl','photoUrl','source'];
+
+function openCand(id, gender){
+  const isNew = !id;
+  curCand = isNew ? { id: uid(), gender: gender||'m', status:'פנוי', rating:0, created: today() } : clone(candById(id));
+  if(!curCand){ toast('הרשומה לא נמצאה'); return; }
+  fillDatalists();
+  const g = curCand.gender;
+  document.getElementById('candTitle').textContent =
+    (isNew ? (g==='m'?'מועמד חדש':'מועמדת חדשה') : 'כרטיס — ' + candName(curCand)) + (curCand.seq ? ` (#${curCand.seq})` : '');
+  document.getElementById('wantLegend').textContent = g==='m' ? "מעוניין ב… (בת הזוג)" : "מעוניינת ב… (בן הזוג)";
+  CAND_FIELDS.forEach(f=>{ const el = document.getElementById('c-'+f); if(el) el.value = curCand[f] == null ? '' : curCand[f]; });
+  fillSelect(document.getElementById('c-status'), listVals('status'), curCand.status || 'פנוי');
+  document.getElementById('c-rating').value = String(+curCand.rating || 0);
+  renderInlaws(parseInlaws(curCand.inlawsTxt));
+  updAge(); updDiv();
+  document.getElementById('candDelBtn').style.display = isNew ? 'none' : '';
+  renderCandMatches(isNew ? null : curCand.id);
+  document.getElementById('candOverlay').classList.add('show');
+}
+function closeCand(){ document.getElementById('candOverlay').classList.remove('show'); curCand = null; }
+function updAge(){
+  if(!curCand) return;
+  const tmp = { birth: document.getElementById('c-birth').value, ageManual: document.getElementById('c-ageManual').value };
+  document.getElementById('c-ageShow').value = ageOf(tmp) || '';
+}
+function updDiv(){
+  const y = yearsSince(document.getElementById('c-divorceDate').value);
+  document.getElementById('c-divShow').value = y === '' ? '' : y;
+}
+function renderInlaws(rows){
+  if(!rows.length) rows = [{name:'',city:'',hasidut:'',note:''}];
+  document.getElementById('inlawRows').innerHTML = rows.map((r,i)=>`
+    <div class="inlaw-row">
+      <span class="idx">${i+1}</span>
+      <input placeholder="שם" value="${esc(r.name)}">
+      <input placeholder="עיר" value="${esc(r.city)}" list="dl-city">
+      <input placeholder="חסידות" value="${esc(r.hasidut)}" list="dl-hasidut">
+      <input placeholder="הערה" value="${esc(r.note)}" style="flex:2">
+      <button class="btn btn-danger" onclick="this.parentElement.remove()">✕</button>
+    </div>`).join('');
+}
+function addInlawRow(){
+  const box = document.getElementById('inlawRows');
+  const rows = collectInlaws(); rows.push({name:'',city:'',hasidut:'',note:''});
+  renderInlaws(rows);
+  const inputs = box.querySelectorAll('.inlaw-row:last-child input');
+  if(inputs[0]) inputs[0].focus();
+}
+function collectInlaws(){
+  return Array.from(document.querySelectorAll('#inlawRows .inlaw-row')).map(row=>{
+    const v = Array.from(row.querySelectorAll('input')).map(i=>i.value.trim());
+    return { name:v[0]||'', city:v[1]||'', hasidut:v[2]||'', note:v[3]||'' };
+  });
+}
+function saveCand(thenSmart){
+  if(!curCand) return;
+  CAND_FIELDS.forEach(f=>{ const el = document.getElementById('c-'+f); if(el) curCand[f] = el.value.trim(); });
+  curCand.status    = document.getElementById('c-status').value;
+  curCand.rating    = +document.getElementById('c-rating').value || 0;
+  curCand.inlawsTxt = joinInlaws(collectInlaws());
+  curCand.updated   = today();
+  if(!curCand.family && !curCand.first){ toast('צריך לפחות שם משפחה או שם פרטי'); return; }
+
+  const existing = candById(curCand.id);
+  let isNew = false;
+  if(existing){ Object.assign(existing, curCand); }
+  else {
+    isNew = true;
+    curCand.seq = data.seq++;
+    data.cands.push(curCand);
+  }
+  const savedId = curCand.id, savedName = candName(curCand);
+  closeCand();
+  save();
+  toast(isNew ? 'נוסף: ' + savedName : 'נשמר: ' + savedName);
+  if(isNew && autoFolder && GS_URL) ensureFolder(savedId, true);
+  if(thenSmart) smartFor(savedId);
+}
+function delCand(){
+  if(!curCand) return;
+  const n = alive(data.matches).filter(m=> m.manId===curCand.id || m.womanId===curCand.id).length;
+  if(!confirm(`למחוק את ${candName(curCand)}?` + (n ? `\nיש ${n} הצעות שקשורות אליו — הן יישארו בסל המיחזור.` : '') + '\nהמחיקה רכה — אפשר לשחזר מההגדרות.')) return;
+  softDelete(data.cands, curCand.id);
+  alive(data.matches).filter(m=> m.manId===curCand.id || m.womanId===curCand.id).forEach(m=> softDelete(data.matches, m.id));
+  closeCand(); save(); toast('נמחק');
+}
+function renderCandMatches(id){
+  const box = document.getElementById('candMatchesBox');
+  if(!id){ box.innerHTML = ''; return; }
+  const ms = alive(data.matches).filter(m=> m.manId===id || m.womanId===id);
+  if(!ms.length){ box.innerHTML = ''; return; }
+  box.innerHTML = `<fieldset><legend>הצעות קיימות (${ms.length})</legend><div class="list-mini">` +
+    ms.map(m=>{
+      const other = candById(m.manId===id ? m.womanId : m.manId);
+      return `<div class="mini-row"><span class="grow"><b>${esc(other?candName(other):'—')}</b>
+        <span class="muted"> ${esc(m.date||'')}</span></span>${matchBadge(m.status)}
+        <button class="btn btn-neutral btn-sm" onclick="closeCand();openMatch('${m.id}')">פתח</button></div>`;
+    }).join('') + '</div></fieldset>';
+}
+
+/* =====================  קבצים ותיקיית דרייב  ===================== */
+function openFilesFromCand(){
+  if(!curCand) return;
+  const id = curCand.id;
+  if(!candById(id)){ toast('שמור קודם את הכרטיס'); return; }
+  openFiles(id);
+}
+function openFiles(id){
+  curFilesCand = candById(id);
+  if(!curFilesCand) return;
+  document.getElementById('filesTitle').textContent = 'תיקייה וקבצים — ' + candName(curFilesCand);
+  document.getElementById('filesInfo').innerHTML = curFilesCand.folderUrl
+    ? `תיקייה בדרייב: <a href="${esc(curFilesCand.folderUrl)}" target="_blank" rel="noopener">פתח</a>`
+    : (GS_URL ? 'עדיין אין תיקייה — לחץ "צור/חדש תיקייה".' : 'כדי לנהל קבצים צריך להגדיר שרת (⚙ הגדר שרת).');
+  document.getElementById('filesList').innerHTML = '';
+  document.getElementById('filesOverlay').classList.add('show');
+  if(curFilesCand.folderUrl && GS_URL) loadFiles();
+}
+function closeFiles(){ document.getElementById('filesOverlay').classList.remove('show'); curFilesCand = null; }
+function openDriveFolder(){
+  if(curFilesCand && curFilesCand.folderUrl) window.open(curFilesCand.folderUrl, '_blank', 'noopener');
+  else toast('אין עדיין תיקייה');
+}
+function createFolder(){ if(curFilesCand) ensureFolder(curFilesCand.id); }
+
+function ensureFolder(id, silent){
+  const c = candById(id);
+  if(!c) return;
+  if(!GS_URL){ if(!silent) toast('צריך להגדיר שרת קודם'); return; }
+  const body = new URLSearchParams();
+  body.append('action','folder');
+  body.append('cid', c.id);
+  body.append('gender', c.gender);
+  body.append('name', candName(c));
+  if(!silent) toast('יוצר תיקייה…');
+  fetch(GS_URL, { method:'POST', body }).then(r=>r.json()).then(res=>{
+    if(res && res.status === 'ok'){
+      const live = candById(id); if(live) live.folderUrl = res.url;
+      if(curCand && curCand.id === id){ curCand.folderUrl = res.url; const el = document.getElementById('c-folderUrl'); if(el) el.value = res.url; }
+      save();
+      if(curFilesCand && curFilesCand.id === id){ openFiles(id); }
+      if(!silent) toast('התיקייה מוכנה');
+    } else if(!silent) toast('שגיאה: ' + ((res && res.message) || 'לא נוצרה תיקייה'));
+  }).catch(()=>{ if(!silent) toast('שגיאת רשת ביצירת התיקייה'); });
+}
+function loadFiles(){
+  if(!curFilesCand || !GS_URL) return;
+  const box = document.getElementById('filesList');
+  box.innerHTML = '<div class="muted">טוען…</div>';
+  fetch(GS_URL + '?action=files&cid=' + encodeURIComponent(curFilesCand.id) + '&t=' + Date.now())
+    .then(r=>r.json()).then(res=>{
+      if(!res || res.status !== 'ok'){ box.innerHTML = '<div class="muted">אין קבצים או שהתיקייה לא נוצרה עדיין</div>'; return; }
+      box.innerHTML = res.files.length ? res.files.map(f=>`
+        <div class="file-row"><span style="flex:1">${esc(f.name)}</span>
+          <span class="muted">${Math.round((f.size||0)/1024)} KB</span>
+          <a class="btn btn-neutral btn-sm" href="${esc(f.url)}" target="_blank" rel="noopener">פתח</a></div>`).join('')
+        : '<div class="muted">התיקייה ריקה</div>';
+    }).catch(()=> box.innerHTML = '<div class="muted">שגיאה בטעינת הקבצים</div>');
+}
+function uploadFiles(files){
+  if(!curFilesCand){ return; }
+  if(!GS_URL){ toast('צריך להגדיר שרת'); return; }
+  const list = Array.from(files||[]);
+  if(!list.length) return;
+  let done = 0;
+  toast(`מעלה ${list.length} קבצים…`);
+  list.forEach(f=>{
+    if(f.size > 20*1024*1024){ toast(`"${f.name}" גדול מ-20MB — העלה ישירות בדרייב`); return; }
+    const rd = new FileReader();
+    rd.onload = ev=>{
+      const body = new URLSearchParams();
+      body.append('action','upload');
+      body.append('cid', curFilesCand.id);
+      body.append('gender', curFilesCand.gender);
+      body.append('name', candName(curFilesCand));
+      body.append('fname', f.name);
+      body.append('mime', f.type || 'application/octet-stream');
+      body.append('b64', String(ev.target.result).split(',')[1]);
+      fetch(GS_URL, { method:'POST', body }).then(r=>r.json()).then(res=>{
+        done++;
+        if(res && res.status === 'ok'){
+          const live = candById(curFilesCand.id);
+          if(live && res.folderUrl && !live.folderUrl){ live.folderUrl = res.folderUrl; save(); }
+          if(live && /תמונה|photo|\.(jpe?g|png|heic|webp)$/i.test(f.name) && !live.photoUrl){ live.photoUrl = res.url; save(); }
+          if(live && /רזומה|resume|cv/i.test(f.name) && !live.resumeUrl){ live.resumeUrl = res.url; save(); }
+        }
+        if(done === list.length){ toast('הועלה'); loadFiles(); }
+      }).catch(()=>{ done++; toast('שגיאה בהעלאה'); });
+    };
+    rd.readAsDataURL(f);
+  });
+}
+
+/* =====================  הצעות  ===================== */
+function renderMatches(){
+  const sel = document.getElementById('mf-status');
+  if(!sel.dataset.filled){ fillSelect(sel, MATCH_STATUSES, '', 'כל הסטטוסים'); sel.dataset.filled = '1'; }
+  const q = (document.getElementById('mf-q').value||'').trim().toLowerCase();
+  const st = sel.value;
+  let rows = alive(data.matches);
+  if(st) rows = rows.filter(m=>m.status===st);
+  if(q) rows = rows.filter(m=>{
+    const man = candById(m.manId), w = candById(m.womanId);
+    return (JSON.stringify(m) + (man?candName(man):'') + (w?candName(w):'')).toLowerCase().includes(q);
+  });
+  rows.sort((a,b)=> String(b.date||'').localeCompare(String(a.date||'')));
+
+  const head = `<thead><tr><th>#</th><th>הבחור</th><th>הבת</th><th>ציון</th><th>תאריך</th><th>סטטוס</th><th>המשך טיפול</th><th>תאריך המשך</th><th>הערות</th><th></th></tr></thead>`;
+  const body = rows.length ? rows.map(m=>{
+    const man = candById(m.manId), w = candById(m.womanId);
+    const sc = (man && w) ? matchScore(man, w).score : 0;
+    const overdue = m.nextDate && m.nextDate <= today() && MATCH_OPEN.includes(m.status);
+    return `<tr class="clickable" onclick="openMatch('${m.id}')">
+      <td class="muted">${esc(m.seq||'')}</td>
+      <td><b>${esc(man?candName(man):'—')}</b><div class="muted">${man?(ageOf(man)||'')+' · '+esc(man.hasidut||''):''}</div></td>
+      <td><b>${esc(w?candName(w):'—')}</b><div class="muted">${w?(ageOf(w)||'')+' · '+esc(w.hasidut||''):''}</div></td>
+      <td style="min-width:110px">${(man&&w)?scoreBar(sc):'—'}</td>
+      <td class="nowrap">${esc(m.date||'')}</td>
+      <td>${matchBadge(m.status)}</td>
+      <td>${esc(m.nextStep||'')}</td>
+      <td class="nowrap ${overdue?'':''}">${overdue?`<span class="badge b-red">${esc(m.nextDate)}</span>`:esc(m.nextDate||'')}</td>
+      <td class="muted">${esc((m.note||'').slice(0,50))}</td>
+      <td onclick="event.stopPropagation()"><button class="btn btn-edit" onclick="openMatch('${m.id}')">פתח</button></td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="10" class="empty">אין הצעות</td></tr>`;
+  document.getElementById('matchTable').innerHTML = head + '<tbody>' + body + '</tbody>';
+}
+function candOptions(g){
+  return alive(data.cands).filter(c=>c.gender===g)
+    .sort((a,b)=>candName(a).localeCompare(candName(b),'he'))
+    .map(c=>({ id:c.id, label: candName(c) + (ageOf(c) ? ` (${ageOf(c)})` : '') + (c.hasidut ? ' · ' + c.hasidut : '') }));
+}
+function fillCandSelect(el, g, cur){
+  const opts = candOptions(g);
+  el.innerHTML = '<option value="">— בחר —</option>' +
+    opts.map(o=>`<option value="${o.id}"${o.id===cur?' selected':''}>${esc(o.label)}</option>`).join('');
+}
+function openMatch(id, manId, womanId){
+  const isNew = !id;
+  curMatch = isNew
+    ? { id: uid(), manId: manId||'', womanId: womanId||'', date: today(), status:'הוצע', created: today() }
+    : clone(alive(data.matches).find(m=>m.id===id));
+  if(!curMatch){ toast('ההצעה לא נמצאה'); return; }
+  document.getElementById('matchTitle').textContent = isNew ? 'הצעת שידוך חדשה' : `הצעה #${curMatch.seq||''}`;
+  fillCandSelect(document.getElementById('m-man'), 'm', curMatch.manId);
+  fillCandSelect(document.getElementById('m-woman'), 'w', curMatch.womanId);
+  fillSelect(document.getElementById('m-status'), MATCH_STATUSES, curMatch.status || 'הוצע');
+  ['date','proposedBy','inquiries','meetingsTxt','nextStep','nextDate','closeReason','note'].forEach(f=>{
+    const el = document.getElementById('m-'+f); if(el) el.value = curMatch[f] == null ? '' : curMatch[f];
+  });
+  document.getElementById('m-man').onchange = document.getElementById('m-woman').onchange = renderMatchScore;
+  renderMatchScore();
+  document.getElementById('matchDelBtn').style.display = isNew ? 'none' : '';
+  document.getElementById('matchOverlay').classList.add('show');
+  fillDatalists();
+}
+function renderMatchScore(){
+  const man = candById(document.getElementById('m-man').value);
+  const w   = candById(document.getElementById('m-woman').value);
+  const box = document.getElementById('matchScoreBox');
+  if(!man || !w){ box.innerHTML = '<div class="muted">בחר את שני הצדדים כדי לראות את ניתוח ההתאמה</div>'; return; }
+  const r = matchScore(man, w);
+  box.innerHTML = `<div style="border:1px solid #eee4e9;border-radius:10px;padding:11px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <b style="color:#4a162f">ציון התאמה</b><div style="flex:1">${scoreBar(r.score)}</div></div>
+    <div class="chips">${r.reasons.map(x=>`<span class="chip ${x.k}">${esc(x.t)}</span>`).join('')}</div></div>`;
+}
+function closeMatch(){ document.getElementById('matchOverlay').classList.remove('show'); curMatch = null; }
+function saveMatch(){
+  if(!curMatch) return;
+  curMatch.manId   = document.getElementById('m-man').value;
+  curMatch.womanId = document.getElementById('m-woman').value;
+  if(!curMatch.manId || !curMatch.womanId){ toast('צריך לבחור את שני הצדדים'); return; }
+  ['date','proposedBy','inquiries','meetingsTxt','nextStep','nextDate','closeReason','note'].forEach(f=>{
+    const el = document.getElementById('m-'+f); if(el) curMatch[f] = el.value.trim();
+  });
+  curMatch.status = document.getElementById('m-status').value;
+  const man = candById(curMatch.manId), w = candById(curMatch.womanId);
+  curMatch.manName = man ? candName(man) : '';
+  curMatch.womanName = w ? candName(w) : '';
+
+  const dup = alive(data.matches).find(m=> m.id !== curMatch.id && m.manId === curMatch.manId && m.womanId === curMatch.womanId);
+  if(dup && !confirm('כבר קיימת הצעה בין השניים. להוסיף בכל זאת?')) return;
+
+  const ex = (data.matches||[]).find(m=>m.id===curMatch.id);
+  if(ex) Object.assign(ex, curMatch);
+  else { curMatch.seq = data.mseq++; data.matches.push(curMatch); }
+
+  // סטטוס המועמדים מתעדכן לפי ההצעה
+  if(MATCH_OPEN.includes(curMatch.status)){
+    [man, w].forEach(c=>{ if(c && c.status === 'פנוי'){ c.status = 'בהצעה'; c.updated = today(); } });
+  }
+  if(curMatch.status === 'אירוסין' || curMatch.status === 'נישאו'){
+    [man, w].forEach(c=>{ if(c){ c.status = curMatch.status === 'נישאו' ? 'נישא' : 'מאורס'; c.updated = today(); } });
+  }
+  closeMatch(); save(); toast('ההצעה נשמרה');
+}
+function delMatch(){
+  if(!curMatch) return;
+  if(!confirm('למחוק את ההצעה?')) return;
+  softDelete(data.matches, curMatch.id);
+  closeMatch(); save(); toast('נמחק');
+}
+
+/* =====================  התאמה חכמה  ===================== */
+function renderSmartPicker(keepValue){
+  const sel = document.getElementById('sm-cand');
+  const cur = keepValue || sel.value;
+  const men = candOptions('m'), women = candOptions('w');
+  sel.innerHTML = '<option value="">— בחר מועמד/ת —</option>' +
+    `<optgroup label="גברים">${men.map(o=>`<option value="${o.id}">${esc(o.label)}</option>`).join('')}</optgroup>` +
+    `<optgroup label="נשים">${women.map(o=>`<option value="${o.id}">${esc(o.label)}</option>`).join('')}</optgroup>`;
+  if(cur) sel.value = cur;
+  renderSmart();
+}
+function smartFor(id){
+  showTab('smart', document.querySelectorAll('.tab-btn')[4]);
+  renderSmartPicker(id);
+}
+function renderSmart(){
+  const out = document.getElementById('smartOut');
+  const id = document.getElementById('sm-cand').value;
+  const c = candById(id);
+  if(!c){ out.innerHTML = '<div class="empty">בחר מועמד/ת מהרשימה למעלה</div>'; return; }
+  const min = +document.getElementById('sm-min').value || 0;
+  const showAll = document.getElementById('sm-show').value === 'all';
+  const other = alive(data.cands).filter(x=> x.gender !== c.gender && !['מאורס','נישא','לא פעיל'].includes(x.status));
+
+  let rows = other.map(x=>{
+    const man = c.gender === 'm' ? c : x, w = c.gender === 'm' ? x : c;
+    const r = matchScore(man, w);
+    return { x, r, exists: pairExists(man.id, w.id) };
+  }).filter(o=> o.r.score >= min).filter(o=> showAll || !o.exists);
+  rows.sort((a,b)=> b.r.score - a.r.score);
+
+  out.innerHTML = `<div style="margin-bottom:10px">
+      <b style="color:#4a162f">${esc(candName(c))}</b>
+      <span class="muted"> · ${ageOf(c)||'?'} · ${esc(c.hasidut||'ללא חסידות')} · ${esc(c.city||'ללא עיר')} · ילדים: ${esc(c.kidsCount||'—')}</span>
+      <span class="muted"> · מחפש/ת: ${esc(c.wantAge||'—')} ${esc(c.wantHasidut?('· '+c.wantHasidut):'')}</span>
+    </div>` +
+    (rows.length ? `<div class="table-wrap"><table>
+      <thead><tr><th>ציון</th><th>שם</th><th>גיל</th><th>חסידות</th><th>עיר</th><th>ילדים</th><th>למה מתאים</th><th></th></tr></thead>
+      <tbody>${rows.map(o=>`
+        <tr>
+          <td style="min-width:120px">${scoreBar(o.r.score)}</td>
+          <td class="clickable" onclick="openCand('${o.x.id}')"><b>${esc(candName(o.x))}</b>${o.exists?' <span class="badge b-gray">הוצע</span>':''}</td>
+          <td>${ageOf(o.x)||'—'}</td><td>${esc(o.x.hasidut||'—')}</td><td>${esc(o.x.city||'—')}</td><td>${esc(o.x.kidsCount||'—')}</td>
+          <td><div class="chips">${o.r.reasons.map(z=>`<span class="chip ${z.k}">${esc(z.t)}</span>`).join('')}</div></td>
+          <td class="nowrap"><button class="btn btn-primary btn-sm" onclick="newMatchFrom('${c.id}','${o.x.id}')">+ צור הצעה</button></td>
+        </tr>`).join('')}</tbody></table></div>`
+      : '<div class="empty">אין התאמות מעל הציון שנבחר — נסה להוריד את הציון המינימלי</div>');
+}
+function newMatchFrom(aId, bId){
+  const a = candById(aId), b = candById(bId);
+  if(!a || !b) return;
+  const manId = a.gender === 'm' ? a.id : b.id;
+  const womanId = a.gender === 'm' ? b.id : a.id;
+  openMatch(null, manId, womanId);
+}
+
+/* =====================  משימות ומעקב  ===================== */
+function addTask(){
+  const title = document.getElementById('tk-title').value.trim();
+  if(!title){ toast('מה המשימה?'); return; }
+  data.tasks.push({ id: uid(), title, date: document.getElementById('tk-date').value,
+    note: document.getElementById('tk-note').value.trim(), done: 0, created: today() });
+  ['tk-title','tk-date','tk-note'].forEach(i=> document.getElementById(i).value = '');
+  save(); toast('המשימה נוספה');
+}
+function setTaskFilter(f, btn){
+  taskFilter = f;
+  document.querySelectorAll('#tab-follow .pill').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  renderTasks();
+}
+function toggleTask(id){
+  const t = alive(data.tasks).find(x=>x.id===id);
+  if(t){ t.done = t.done ? 0 : 1; save(); }
+}
+function renderTasks(){
+  let rows = alive(data.tasks);
+  if(taskFilter === 'open') rows = rows.filter(t=>!t.done);
+  if(taskFilter === 'done') rows = rows.filter(t=>t.done);
+  rows.sort((a,b)=> String(a.date||'9999').localeCompare(String(b.date||'9999')));
+  const box = document.getElementById('taskList');
+  box.innerHTML = rows.length ? rows.map(t=>{
+    const over = !t.done && t.date && t.date <= today();
+    return `<div class="mini-row ${over?'overdue':''}">
+      <input type="checkbox" ${t.done?'checked':''} onchange="toggleTask('${t.id}')" style="width:17px;height:17px">
+      <span class="grow" style="${t.done?'text-decoration:line-through;color:#a0aec0':''}"><b>${esc(t.title)}</b>
+        ${t.note?`<div class="muted">${esc(t.note)}</div>`:''}</span>
+      ${t.date ? `<span class="badge ${over?'b-red':'b-gray'}">${esc(t.date)}</span>` : ''}
+      <button class="btn btn-danger" onclick="delTask('${t.id}')">✕</button></div>`;
+  }).join('') : '<div class="empty">אין משימות</div>';
+
+  const fm = alive(data.matches).filter(m=> m.nextDate && MATCH_OPEN.includes(m.status))
+    .sort((a,b)=> String(a.nextDate).localeCompare(String(b.nextDate)));
+  document.getElementById('followMatches').innerHTML = fm.length ? fm.map(m=>{
+    const man = candById(m.manId), w = candById(m.womanId);
+    const over = m.nextDate <= today();
+    return `<div class="mini-row ${over?'overdue':''}">
+      <span class="grow"><b>${esc(man?candName(man):'—')} — ${esc(w?candName(w):'—')}</b>
+        <div class="muted">${esc(m.nextStep||'')}</div></span>
+      ${matchBadge(m.status)}
+      <span class="badge ${over?'b-red':'b-gray'}">${esc(m.nextDate)}</span>
+      <button class="btn btn-neutral btn-sm" onclick="openMatch('${m.id}')">פתח</button></div>`;
+  }).join('') : '<div class="empty">אין הצעות עם תאריך המשך</div>';
+}
+function delTask(id){ softDelete(data.tasks, id); save(); }
+
+/* =====================  לוח בקרה  ===================== */
+function renderDash(){
+  const men = alive(data.cands).filter(c=>c.gender==='m');
+  const women = alive(data.cands).filter(c=>c.gender==='w');
+  const act = c => !['מאורס','נישא','לא פעיל'].includes(c.status);
+  const ms = alive(data.matches);
+  const open = ms.filter(m=>MATCH_OPEN.includes(m.status));
+  const eng = ms.filter(m=>m.status==='אירוסין'||m.status==='נישאו');
+  const meetings = ms.filter(m=>m.status==='בפגישות'||m.status==='נקבעה פגישה');
+  document.getElementById('dashStats').innerHTML = `
+    <div class="stat-card"><div class="num">${men.filter(act).length}</div><div class="lbl">גברים פעילים</div></div>
+    <div class="stat-card"><div class="num">${women.filter(act).length}</div><div class="lbl">נשים פעילות</div></div>
+    <div class="stat-card gold"><div class="num">${open.length}</div><div class="lbl">הצעות פתוחות</div></div>
+    <div class="stat-card gold"><div class="num">${meetings.length}</div><div class="lbl">בפגישות</div></div>
+    <div class="stat-card green"><div class="num">${eng.length}</div><div class="lbl">אירוסין / נישואין</div></div>
+    <div class="stat-card"><div class="num">${alive(data.tasks).filter(t=>!t.done).length}</div><div class="lbl">משימות פתוחות</div></div>`;
+
+  const items = [];
+  alive(data.tasks).filter(t=>!t.done && t.date && t.date <= today())
+    .forEach(t=> items.push({ d:t.date, html:`<span class="grow">📌 <b>${esc(t.title)}</b> <span class="muted">${esc(t.note||'')}</span></span><span class="badge b-red">${esc(t.date)}</span>` }));
+  alive(data.matches).filter(m=> m.nextDate && m.nextDate <= today() && MATCH_OPEN.includes(m.status))
+    .forEach(m=>{
+      const man = candById(m.manId), w = candById(m.womanId);
+      items.push({ d:m.nextDate, html:`<span class="grow">💞 <b>${esc(man?candName(man):'—')} — ${esc(w?candName(w):'—')}</b>
+        <span class="muted">${esc(m.nextStep||'')}</span></span><span class="badge b-red">${esc(m.nextDate)}</span>
+        <button class="btn btn-neutral btn-sm" onclick="openMatch('${m.id}')">פתח</button>` });
+    });
+  items.sort((a,b)=> String(a.d).localeCompare(String(b.d)));
+  document.getElementById('dashTodo').innerHTML = items.length
+    ? items.map(i=>`<div class="mini-row overdue">${i.html}</div>`).join('')
+    : '<div class="empty">אין מה שדורש טיפול היום — הכל מעודכן 👌</div>';
+}
+function mkChart(id, cfg){
+  const el = document.getElementById(id); if(!el) return;
+  if(charts[id]) charts[id].destroy();
+  charts[id] = new Chart(el.getContext('2d'), cfg);
+}
+function renderCharts(){
+  if(typeof Chart === 'undefined') return;
+  const cands = alive(data.cands);
+  const byHas = {};
+  cands.forEach(c=>{ const k = c.hasidut || 'לא צוין'; byHas[k] = (byHas[k]||0)+1; });
+  const hk = Object.keys(byHas).sort((a,b)=>byHas[b]-byHas[a]).slice(0,10);
+  mkChart('chHas', { type:'bar',
+    data:{ labels:hk, datasets:[{ label:'מועמדים', data:hk.map(k=>byHas[k]), backgroundColor:'#8c3a5e' }] },
+    options:{ plugins:{legend:{display:false}}, scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } } } });
+
+  const buckets = ['20-25','26-30','31-35','36-40','41-45','46+'];
+  const bIdx = a => a<=25?0 : a<=30?1 : a<=35?2 : a<=40?3 : a<=45?4 : 5;
+  const men = new Array(6).fill(0), women = new Array(6).fill(0);
+  cands.forEach(c=>{ const a = ageOf(c); if(!a) return; (c.gender==='m'?men:women)[bIdx(a)]++; });
+  mkChart('chAge', { type:'bar',
+    data:{ labels:buckets, datasets:[
+      { label:'גברים', data:men, backgroundColor:'#4a162f' },
+      { label:'נשים', data:women, backgroundColor:'#d4af37' }] },
+    options:{ scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } } } });
+
+  const byStatus = {};
+  alive(data.matches).forEach(m=>{ const k = m.status || 'לא צוין'; byStatus[k] = (byStatus[k]||0)+1; });
+  const sk = Object.keys(byStatus);
+  mkChart('chMatch', { type:'doughnut',
+    data:{ labels:sk, datasets:[{ data:sk.map(k=>byStatus[k]),
+      backgroundColor:['#8c3a5e','#d4af37','#2b6cb0','#276749','#dd6b20','#718096','#c53030','#6b2444','#b8912a','#4a5568'] }] },
+    options:{ plugins:{ legend:{ position:'bottom', labels:{ boxWidth:12, font:{size:11} } } } } });
+}
+
+/* =====================  הגדרות + סל מיחזור  ===================== */
+function renderSettings(){
+  document.getElementById('cfg-url').value = GS_URL || '';
+  document.getElementById('cfg-autofolder').checked = autoFolder;
+  document.getElementById('listsBox').innerHTML = Object.keys(LIST_LABELS).map(type=>{
+    const vals = alive(data.lists).filter(l=>l.type===type);
+    return `<fieldset><legend>${esc(LIST_LABELS[type])}</legend>
+      <div class="chips" style="margin-bottom:8px">${vals.map(l=>
+        `<span class="chip">${esc(l.value)} <a href="#" onclick="delListVal('${l.id}');return false" style="color:#c53030;text-decoration:none">✕</a></span>`).join('') || '<span class="muted">ריק — נטענים ערכי ברירת המחדל</span>'}</div>
+      <div class="form-row"><div class="form-group grow"><input id="nl-${type}" placeholder="ערך חדש" onkeydown="if(event.key==='Enter')addListVal('${type}')"></div>
+      <div class="form-group" style="flex:none"><button class="btn btn-neutral btn-sm" onclick="addListVal('${type}')">+ הוסף</button></div></div>
+    </fieldset>`;
+  }).join('');
+  renderBin();
+}
+function addListVal(type){
+  const el = document.getElementById('nl-'+type);
+  const v = el.value.trim(); if(!v) return;
+  if(alive(data.lists).some(l=>l.type===type && l.value===v)){ toast('כבר קיים'); return; }
+  data.lists.push({ id: uid(), type, value: v });
+  el.value = ''; save(); fillDatalists();
+}
+function delListVal(id){ softDelete(data.lists, id); save(); fillDatalists(); }
+function renderBin(){
+  const rows = [];
+  (data.cands||[]).filter(x=>x.deleted).forEach(x=> rows.push({ t:'מועמד', n:candName(x), d:x.deletedAt, k:'cands', id:x.id }));
+  (data.matches||[]).filter(x=>x.deleted).forEach(x=> rows.push({ t:'הצעה', n:(x.manName||'')+' — '+(x.womanName||''), d:x.deletedAt, k:'matches', id:x.id }));
+  (data.tasks||[]).filter(x=>x.deleted).forEach(x=> rows.push({ t:'משימה', n:x.title, d:x.deletedAt, k:'tasks', id:x.id }));
+  (data.lists||[]).filter(x=>x.deleted).forEach(x=> rows.push({ t:'ערך רשימה', n:x.value, d:x.deletedAt, k:'lists', id:x.id }));
+  document.getElementById('binBox').innerHTML = rows.length ? rows.map(r=>`
+    <div class="mini-row"><span class="badge b-gray">${esc(r.t)}</span>
+      <span class="grow">${esc(r.n)}</span><span class="muted">${esc(r.d||'')}</span>
+      <button class="btn btn-neutral btn-sm" onclick="restoreItem('${r.k}','${r.id}')">↩ שחזר</button></div>`).join('')
+    : '<div class="empty">הסל ריק</div>';
+}
+function restoreItem(k, id){ restore(data[k], id); save(); toast('שוחזר'); }
+
+/* =====================  ייבוא / ייצוא אקסל  ===================== */
+function openImport(){ document.getElementById('impResult').innerHTML = ''; document.getElementById('importOverlay').classList.add('show'); }
+function closeImport(){ document.getElementById('importOverlay').classList.remove('show'); }
+
+function xlDate(v){
+  if(v === null || v === undefined || v === '') return '';
+  // תאריך באקסל הוא חסר אזור-זמן. קוראים ב-UTC כדי שלא ייגרע יום בהמרה.
+  if(v instanceof Date && !isNaN(v)){
+    return v.getUTCFullYear() + '-' + String(v.getUTCMonth()+1).padStart(2,'0') + '-' + String(v.getUTCDate()).padStart(2,'0');
+  }
+  if(typeof v === 'number'){
+    const d = new Date(Date.UTC(1899,11,30) + v*86400000);
+    return d.toISOString().slice(0,10);
+  }
+  const s = String(v).trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m) return m[0];
+  m = s.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4})/);
+  if(m){ let y = +m[3]; if(y < 100) y += (y > 40 ? 1900 : 2000);
+    return y + '-' + String(+m[2]).padStart(2,'0') + '-' + String(+m[1]).padStart(2,'0'); }
+  return s;
+}
+function cell(v){
+  if(v === null || v === undefined) return '';
+  if(v instanceof Date) return xlDate(v);
+  const s = String(v).trim();
+  return (s === 'False' || s === 'True' || s === 'None' || s === 'nan') ? '' : s;
+}
+function importExcel(file){
+  if(!file) return;
+  const res = document.getElementById('impResult');
+  res.innerHTML = '<div class="muted">קורא את הקובץ…</div>';
+  const rd = new FileReader();
+  rd.onload = ev=>{
+    try {
+      // בלי cellDates — תאריכים מגיעים כמספר סידורי ומומרים ב-UTC (ראה xlDate)
+      const wb = XLSX.read(new Uint8Array(ev.target.result), { type:'array' });
+      let added = 0, updated = 0, listsAdded = 0;
+      const log = [];
+
+      // חסידויות + ערים מגיליון ההגדרות
+      const st = wb.Sheets['הגדרות'];
+      if(st){
+        const rows = XLSX.utils.sheet_to_json(st, { header:1, defval:'' });
+        // שורת הכותרות של גיליון ההגדרות המקורי מכילה גם "חסידויות" וגם "עיר".
+        // התנאי הכפול מונע בלבול עם גיליון "רשימות" שהמערכת עצמה מייצאת.
+        const hdr = rows.findIndex(r=> r.some(x=>String(x).trim()==='חסידויות') && r.some(x=>String(x).trim()==='עיר'));
+        if(hdr >= 0){
+          const ch = rows[hdr].findIndex(x=>String(x).trim()==='חסידויות');
+          const cc = rows[hdr].findIndex(x=>String(x).trim()==='עיר');
+          for(let i = hdr+1; i < rows.length; i++){
+            [[ch,'hasidut'],[cc,'city']].forEach(([col,type])=>{
+              if(col < 0) return;
+              const v = cell(rows[i][col]);
+              if(v && !alive(data.lists).some(l=>l.type===type && l.value===v)){
+                data.lists.push({ id: uid(), type, value: v }); listsAdded++;
+              }
+            });
+          }
+        }
+      }
+
+      [['גברים','m'],['נשים','w']].forEach(([sheetName, gender])=>{
+        const ws = wb.Sheets[sheetName];
+        if(!ws){ log.push(`הגיליון "${sheetName}" לא נמצא`); return; }
+        const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:'', raw:true });
+        const hi = rows.findIndex(r=> r.some(x=>String(x).trim()==='שם פרטי'));
+        if(hi < 0){ log.push(`בגיליון "${sheetName}" לא נמצאה שורת כותרות`); return; }
+        const H = rows[hi].map(x=>String(x==null?'':x).trim());
+        const at = (name, from) => H.indexOf(name, from||0);
+
+        // בלוקי מחותנים: שם | עיר | חסידות | הערה
+        const blocks = []; let last = 0;
+        for(let i = 0; i < H.length-3; i++){
+          if(H[i]==='שם' && H[i+1]==='עיר' && H[i+2]==='חסידות' && H[i+3]==='הערה'){ blocks.push(i); last = i+4; i += 3; }
+        }
+        const iExName = at('שם הגרושה', last) >= 0 ? at('שם הגרושה', last) : at('שם הגרוש/ה', last);
+        const after = iExName >= 0 ? iExName : last;
+        const C = {
+          folder: at('קישור לתיקייה'), family: at('משפחה'), first: at('שם פרטי'),
+          birth: at('תאריך לידה'), ageCalc: at('גיל מחושב'), marital: at('מצב משפחתי'), kidsCount: at("מס' ילדים"),
+          kidsDetails: at('פרטי ילדים'), hasidut: at('חסידות'), mental: at('מצב נפשי'),
+          comm: at('תקשורת'), city: at('עיר מגורים'), address: at('כתובת'), height: at('גובה'),
+          build: at('מבנה'), dress: at('לבוש'), fatherName: at('שם אבא'), fatherJob: at('עיסוק אבא'),
+          motherName: at('שם אמא'), motherJob: at('עיסוק אמא'), parentsLiving: at('מגורים'),
+          specialNotes: at('הערות מיוחדות', last), refPhones: at('טלפונים לבירורים', last),
+          exName: iExName, exHasidut: at('חסידות', after), exCity: at('עיר', after),
+          marriageYears: at('מספר שנות נישואים ראשוניים', after), divorceDate: at('תאריך גירושים', after),
+          wantAge: at('גיל', at('סך שנים מהגירושים', after) + 1),
+          wantDress: at('לבוש', after), wantTraits: at('תכונות', after),
+          wantSpecial: at('בקשות מיוחדות', after), resume: at('רזומה', after), photo: at('תמונה', after)
+        };
+        const get = (row, key) => C[key] >= 0 ? cell(row[C[key]]) : '';
+
+        let n = 0;
+        for(let r = hi+1; r < rows.length; r++){
+          const row = rows[r];
+          const family = get(row,'family'), first = get(row,'first');
+          if(!family && !first) continue;
+          n++;
+
+          const inlaws = blocks.map(b=>({
+            name: cell(row[b]), city: cell(row[b+1]), hasidut: cell(row[b+2]), note: cell(row[b+3])
+          })).filter(x=>x.name||x.city||x.hasidut||x.note);
+
+          // הקישור לתיקייה יושב כהיפר-קישור בתא, לא כטקסט
+          let folderUrl = '';
+          if(C.folder >= 0){
+            const addr = XLSX.utils.encode_cell({ r: r, c: C.folder });
+            const cl = ws[addr];
+            if(cl && cl.l && cl.l.Target) folderUrl = cl.l.Target;
+          }
+
+          // אם אין תאריך לידה — לוקחים את הגיל שנרשם בעמודת "גיל מחושב"
+          const birth = xlDate(row[C.birth]);
+          const ageCol = C.ageCalc >= 0 ? parseInt(cell(row[C.ageCalc]), 10) : NaN;
+
+          const rec = {
+            gender, family, first,
+            birth, ageManual: (!birth && ageCol > 0 && ageCol < 120) ? String(ageCol) : '',
+            marital: get(row,'marital'),
+            kidsCount: get(row,'kidsCount'), kidsDetails: get(row,'kidsDetails'),
+            hasidut: get(row,'hasidut'), mental: get(row,'mental'), comm: get(row,'comm'),
+            city: get(row,'city'), address: get(row,'address'), height: get(row,'height'),
+            build: get(row,'build'), dress: get(row,'dress'),
+            fatherName: get(row,'fatherName'), fatherJob: get(row,'fatherJob'),
+            motherName: get(row,'motherName'), motherJob: get(row,'motherJob'),
+            parentsLiving: get(row,'parentsLiving'),
+            inlawsTxt: joinInlaws(inlaws),
+            specialNotes: get(row,'specialNotes'), refPhones: get(row,'refPhones'),
+            exName: get(row,'exName'), exHasidut: get(row,'exHasidut'), exCity: get(row,'exCity'),
+            marriageYears: get(row,'marriageYears'), divorceDate: xlDate(row[C.divorceDate]),
+            wantAge: get(row,'wantAge'), wantDress: get(row,'wantDress'),
+            wantTraits: get(row,'wantTraits'), wantSpecial: get(row,'wantSpecial'),
+            resumeUrl: get(row,'resume'), photoUrl: get(row,'photo'),
+            updated: today()
+          };
+          if(folderUrl) rec.folderUrl = folderUrl;
+          Object.keys(rec).forEach(k=>{ if(rec[k] === '') delete rec[k]; });
+          rec.gender = gender; rec.family = family; rec.first = first;
+
+          const ex = alive(data.cands).find(c=> c.gender===gender &&
+            (c.family||'') === family && (c.first||'') === first);
+          if(ex){ Object.assign(ex, rec); updated++; }
+          else {
+            data.cands.push(Object.assign({ id: uid(), seq: data.seq++, status:'פנוי', rating:0, created: today() }, rec));
+            added++;
+          }
+        }
+        log.push(`${sheetName}: נסרקו ${n} שורות`);
+      });
+
+      save();
+      res.innerHTML = `<div class="card" style="margin:0;background:#f0fff4;border:1px solid #c6f6d5">
+        <b style="color:#22543d">הייבוא הסתיים</b>
+        <div style="margin-top:6px;font-size:.87rem">
+          נוספו <b>${added}</b> מועמדים חדשים · עודכנו <b>${updated}</b> קיימים · נוספו <b>${listsAdded}</b> ערכים לרשימות
+          <div class="muted" style="margin-top:5px">${log.map(esc).join(' · ')}</div>
+        </div></div>`;
+      toast(`יובאו ${added + updated} רשומות`);
+    } catch(err){
+      console.error(err);
+      res.innerHTML = `<div class="card" style="margin:0;background:#fff5f5;border:1px solid #fed7d7"><b style="color:#742a2a">שגיאה בקריאת הקובץ</b><div class="muted">${esc(err.message||err)}</div></div>`;
+    }
+  };
+  rd.readAsArrayBuffer(file);
+}
+
+function exportExcel(){
+  const wb = XLSX.utils.book_new();
+  const INLAW_N = 10;
+  const heb = ["א'","ב'","ג'","ד'","ה'","ו'","ז'","ח'","ט'","י'"];
+
+  [['גברים','m'],['נשים','w']].forEach(([name, g])=>{
+    const r1 = [], r2 = [], r3 = [];
+    const head = ['','קישור לתיקייה','משפחה','שם פרטי','תאריך לידה','גיל מחושב','מצב משפחתי',"מס' ילדים",'פרטי ילדים','חסידות','מצב נפשי','תקשורת','עיר מגורים','כתובת','גובה','מבנה','לבוש','שם אבא','עיסוק אבא','שם אמא','עיסוק אמא','מגורים','טלפון'];
+    head.forEach(h=> r3.push(h));
+    while(r1.length < r3.length) r1.push('');
+    while(r2.length < r3.length) r2.push('');
+    for(let i = 0; i < INLAW_N; i++){
+      r1.push('מחותן ' + heb[i], '', '', '', '');
+      r2.push('', '', '', '', '');
+      r3.push('', 'שם', 'עיר', 'חסידות', 'הערה');
+    }
+    const tail = ['הערות מיוחדות','טלפונים לבירורים','שם הגרוש/ה','חסידות','עיר','מספר שנות נישואים ראשוניים','תאריך גירושים','סך שנים מהגירושים'];
+    tail.forEach(h=>{ r1.push(''); r2.push(''); r3.push(h); });
+    const want = ['גיל','חסידות מבוקשת','ערים מבוקשות','לבוש','תכונות','בקשות מיוחדות','יחס לילדים'];
+    want.forEach((h,i)=>{ r1.push(''); r2.push(i===0 ? (g==='m'?'מעוניין בבת זוג':'מעוניינת בבן זוג') : ''); r3.push(h); });
+    ['רזומה','תמונה','סטטוס','דירוג','מקור','עודכן'].forEach(h=>{ r1.push(''); r2.push(''); r3.push(h); });
+
+    const aoa = [r1, r2, r3];
+    alive(data.cands).filter(c=>c.gender===g).sort((a,b)=>(a.seq||0)-(b.seq||0)).forEach(c=>{
+      const row = ['', c.folderUrl||'', c.family||'', c.first||'', c.birth||'', ageOf(c)||'',
+        c.marital||'', c.kidsCount||'', c.kidsDetails||'', c.hasidut||'', c.mental||'', c.comm||'',
+        c.city||'', c.address||'', c.height||'', c.build||'', c.dress||'', c.fatherName||'',
+        c.fatherJob||'', c.motherName||'', c.motherJob||'', c.parentsLiving||'', c.phone||''];
+      const il = parseInlaws(c.inlawsTxt);
+      for(let i = 0; i < INLAW_N; i++){
+        const x = il[i] || { name:'', city:'', hasidut:'', note:'' };
+        row.push('', x.name, x.city, x.hasidut, x.note);
+      }
+      row.push(c.specialNotes||'', c.refPhones||'', c.exName||'', c.exHasidut||'', c.exCity||'',
+        c.marriageYears||'', c.divorceDate||'', yearsSince(c.divorceDate));
+      row.push(c.wantAge||'', c.wantHasidut||'', c.wantCities||'', c.wantDress||'', c.wantTraits||'', c.wantSpecial||'', c.wantKids||'');
+      row.push(c.resumeUrl||'', c.photoUrl||'', c.status||'', c.rating||'', c.source||'', c.updated||'');
+      aoa.push(row);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), name);
+  });
+
+  const mAoa = [["מס'",'הבחור','הבת','ציון התאמה','תאריך הצעה','סטטוס','מי הציע','בירורים','פגישות','המשך טיפול','תאריך המשך','סיבת סגירה','הערות']];
+  alive(data.matches).sort((a,b)=>(a.seq||0)-(b.seq||0)).forEach(m=>{
+    const man = candById(m.manId), w = candById(m.womanId);
+    mAoa.push([m.seq||'', man?candName(man):(m.manName||''), w?candName(w):(m.womanName||''),
+      (man&&w)?matchScore(man,w).score:'', m.date||'', m.status||'', m.proposedBy||'',
+      m.inquiries||'', m.meetingsTxt||'', m.nextStep||'', m.nextDate||'', m.closeReason||'', m.note||'']);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(mAoa), 'הצעות');
+
+  const tAoa = [['משימה','תאריך יעד','בוצע','הערה']];
+  alive(data.tasks).forEach(t=> tAoa.push([t.title||'', t.date||'', t.done?'כן':'לא', t.note||'']));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(tAoa), 'משימות');
+
+  const sAoa = [['סוג','ערך']];
+  Object.keys(LIST_LABELS).forEach(type=> listVals(type).forEach(v=> sAoa.push([LIST_LABELS[type], v])));
+  // בכוונה לא "הגדרות" — כדי שייבוא חוזר לא יבלבל בין שם-הרשימה לערכיה
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sAoa), 'רשימות');
+
+  XLSX.writeFile(wb, 'שידוכים ' + today() + '.xlsx');
+  toast('הקובץ יורד');
+}
+
+function exportBackup(){
+  const blob = new Blob([JSON.stringify(data, null, 1)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'shidduchim-backup-' + today() + '.json';
+  a.click(); URL.revokeObjectURL(a.href);
+  toast('הגיבוי ירד');
+}
+function importBackup(ev){
+  const f = ev.target.files[0]; if(!f) return;
+  const rd = new FileReader();
+  rd.onload = e=>{
+    try {
+      const d = JSON.parse(e.target.result);
+      if(!d || !Array.isArray(d.cands)) throw new Error('קובץ לא תקין');
+      if(!confirm('לשחזר מהגיבוי? הנתונים הנוכחיים יוחלפו.')) return;
+      data = Object.assign(emptyData(), d);
+      save(); toast('שוחזר');
+    } catch(err){ alert('שגיאה: ' + err.message); }
+  };
+  rd.readAsText(f);
+  ev.target.value = '';
+}
+
+/* =====================  ציור כללי + אתחול  ===================== */
+function renderAll(){
+  fillDatalists();
+  renderDash();
+  renderList('m');
+  renderList('w');
+  renderMatches();
+  renderTasks();
+  renderSettings();
+  if(document.getElementById('tab-smart').classList.contains('active')) renderSmartPicker();
+  if(document.getElementById('tab-dash').classList.contains('active')) renderCharts();
+}
+
+// גרירת קבצים לאזורי ההעלאה
+['dropZone','impDrop'].forEach(id=>{
+  const z = document.getElementById(id);
+  if(!z) return;
+  ['dragenter','dragover'].forEach(e=> z.addEventListener(e, ev=>{ ev.preventDefault(); z.classList.add('hot'); }));
+  ['dragleave','drop'].forEach(e=> z.addEventListener(e, ev=>{ ev.preventDefault(); z.classList.remove('hot'); }));
+  z.addEventListener('drop', ev=>{
+    const files = ev.dataTransfer && ev.dataTransfer.files;
+    if(!files || !files.length) return;
+    if(id === 'dropZone') uploadFiles(files); else importExcel(files[0]);
+  });
+});
+document.addEventListener('keydown', e=>{
+  if(e.key === 'Escape'){
+    ['candOverlay','matchOverlay','filesOverlay','importOverlay'].forEach(id=>
+      document.getElementById(id).classList.remove('show'));
+  }
+});
+
+seedLists();
+renderAll();
+if(GS_URL) startSheetSync(); else setSync('', '— מקומי בלבד (⚙ הגדר שרת לסנכרון)');
+</script>
+</body>
+</html>
