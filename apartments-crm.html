@@ -416,6 +416,18 @@ function payMethodCell(p){
   return p&&p.auto ? '<span class="badge badge-muted">'+esc(AUTO_MGMT_NOTE)+'</span>'
                    : esc(METHODS[p&&p.method]||"");
 }
+/* עמודת "חשבון". לתשלום האוטומטי אין חשבון אמיתי — הוא מוצג באותו
+   שם כמו בעמודת "אמצעי", כדי שהשורה תהיה עקבית ומזוהה במבט אחד. */
+function payAccountLabel(p){
+  if(p&&p.auto) return AUTO_MGMT_NOTE;
+  var acc=byId(DB.accounts,p&&p.accountId);
+  return acc?acc.name:"ידני";
+}
+function payAccountCell(p){
+  if(p&&p.auto) return '<span class="badge badge-muted">'+esc(AUTO_MGMT_NOTE)+'</span>';
+  var acc=byId(DB.accounts,p&&p.accountId);
+  return esc(acc?acc.name:"ידני")+(acc&&acc.isBank?" 🏦":"");
+}
 
 /* ---------- מצב ---------- */
 var DB = null;
@@ -2708,7 +2720,7 @@ function sheetPayments(list){
         p.recipientType==="manager"?"מנהל":"ספק",
         p.recipientType==="manager"?managerName(p.recipientManagerId):"",
         p.payerPartnerId?partnerName(p.payerPartnerId):"",
-        accName(p.accountId), accountIsBank(p.accountId)?"כן":"",
+        payAccountLabel(p), accountIsBank(p.accountId)?"כן":"",
         payMethodLabel(p), p.auto?"כן":"", invoiceStatusText(p), p.note||""]);
       tot+=Number(p.amount)||0;
     });
@@ -4006,7 +4018,7 @@ function payTableHtml(aptId){
       '<td>'+dateHe(p.date)+'</td>'+
       '<td><b>'+esc(e?e.description:"—")+'</b>'+(p.hidden?' <span class="badge badge-danger" title="תשלום מוסתר">🔒</span>':'')+'</td>'+
       '<td>'+money(p.amount)+'</td>'+
-      '<td>'+esc(acc?acc.name:"ידני")+(acc&&acc.isBank?" 🏦":"")+'</td>'+
+      '<td>'+payAccountCell(p)+'</td>'+
       '<td>'+(p.payerPartnerId?esc(partnerName(p.payerPartnerId)):(accountIsBank(p.accountId)?'<span class="muted">מהבנק</span>':"—"))+'</td>'+
       '<td>'+recip+'</td><td>'+payMethodCell(p)+'</td>'+
       '<td>'+invoiceCellHtml(p)+'</td>'+
@@ -4038,7 +4050,7 @@ function openPayments(eId){
     body+='<div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>סכום</th><th>חשבון</th><th>מי שילם</th><th>מוטב</th><th>אמצעי</th><th>חשבונית</th><th></th></tr></thead><tbody>';
     pays.sort(function(x,y){return x.date<y.date?1:-1;}).forEach(function(p){
       var acc=byId(DB.accounts,p.accountId); var recip=p.recipientType==="manager"?("מנהל: "+managerName(p.recipientManagerId)):"ספק";
-      body+='<tr><td>'+dateHe(p.date)+'</td><td>'+money(p.amount)+'</td><td>'+esc(acc?acc.name:"ידני")+(acc&&acc.isBank?" 🏦":"")+'</td>'+
+      body+='<tr><td>'+dateHe(p.date)+'</td><td>'+money(p.amount)+'</td><td>'+payAccountCell(p)+'</td>'+
         '<td>'+(p.payerPartnerId?esc(partnerName(p.payerPartnerId)):(acc&&acc.isBank?"מהבנק":"—"))+'</td>'+
         '<td>'+esc(recip)+'</td><td>'+payMethodCell(p)+'</td><td>'+invoiceCellHtml(p)+'</td>'+
         '<td class="right">'+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="openPaymentEditor(\''+eId+'\',\''+p.id+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="delPayment(\''+p.id+'\',\''+eId+'\')">🗑️</button>':'')+'</td></tr>';
