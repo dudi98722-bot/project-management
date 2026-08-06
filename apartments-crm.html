@@ -3938,9 +3938,26 @@ function openBulkPayEdit(aptId){
         '<option value="">— ללא שינוי —</option>'+methodOptions("")+'</select></div>'+
       '<div class="field"><label>תאריך</label><input id="pb-date" type="date"><div class="hint">ריק = ללא שינוי</div></div>'+
       '<div class="field"><label>חשבונית</label><select id="pb-inv">'+invoiceStatusOptions("__keep",true)+'</select></div>'+
+      '<div class="field full"><label>הערה</label>'+
+        '<select id="pb-note-mode" onchange="onPbNoteMode()" style="margin-bottom:5px">'+
+          '<option value="keep">— ללא שינוי —</option>'+
+          '<option value="set">להחליף בהערה שאכתוב</option>'+
+          '<option value="append">להוסיף בסוף ההערה הקיימת</option>'+
+          '<option value="clear">למחוק את ההערה</option>'+
+        '</select>'+
+        '<input id="pb-note" placeholder="ההערה שתיכנס לכל התשלומים שנבחרו" disabled>'+
+      '</div>'+
     '</div>',
     saveLabel:"עדכן "+pays.length+" תשלומים",onSave:function(){ return applyBulkPayEdit(aptId,ids); }});
   onPbAccount();
+}
+function onPbNoteMode(){
+  var m=val("pb-note-mode"), inp=document.getElementById("pb-note");
+  if(!inp) return;
+  var on=(m==="set"||m==="append");
+  inp.disabled=!on;
+  if(!on) inp.value="";
+  if(on) inp.focus();
 }
 function onPbAccount(){
   var payer=document.getElementById("pb-payer"); if(!payer) return;
@@ -3959,7 +3976,10 @@ function applyBulkPayEdit(aptId,ids){
   var acc=val("pb-account"), payer=document.getElementById("pb-payer")?val("pb-payer"):"";
   var method=val("pb-method"), date=val("pb-date");
   var invSt=val("pb-inv")||"__keep";
-  if(!acc && !payer && !method && !date && invSt==="__keep"){ toast("לא נבחר מה לעדכן","warn"); return false; }
+  var noteMode=val("pb-note-mode")||"keep", noteTxt=val("pb-note").trim();
+  if(!acc && !payer && !method && !date && invSt==="__keep" && noteMode==="keep"){ toast("לא נבחר מה לעדכן","warn"); return false; }
+  if((noteMode==="set"||noteMode==="append") && !noteTxt){
+    toast("כתוב את ההערה שתיכנס, או בחר \"ללא שינוי\" בשדה ההערה","err"); return false; }
 
   var accId = acc==="__none" ? null : (acc||undefined);
   var isBankTarget = accId ? accountIsBank(accId) : false;
@@ -3976,6 +3996,9 @@ function applyBulkPayEdit(aptId,ids){
     if(method) p.method=method;
     if(date) p.date=date;
     if(invSt!=="__keep"){ p.invoiceStatus=invSt; p.hasInvoice=(invSt==="has"); }
+    if(noteMode==="set") p.note=noteTxt;
+    else if(noteMode==="append"){ var old=String(p.note||"").trim(); p.note = old ? (old+" | "+noteTxt) : noteTxt; }
+    else if(noteMode==="clear") p.note="";
     n++;
   });
   if(!n){ toast(skippedAuto?"כל התשלומים שנבחרו הם אוטומטיים — לא שונה דבר":"לא עודכן דבר","warn"); return false; }
