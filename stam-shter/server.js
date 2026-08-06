@@ -35,9 +35,10 @@ app.use('/api/prod/scribe-payments', require('./routes/prod-scribe-payments'));
 app.use('/api/prod/sales', require('./routes/prod-sales'));
 app.use('/api/prod/customer-payments', require('./routes/prod-customer-payments'));
 
-// דוחות + סל מחזור
+// דוחות + סל מחזור + ייבוא
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/recycle', require('./routes/recycle'));
+app.use('/api/import', require('./routes/import'));
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 

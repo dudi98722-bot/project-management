@@ -87,5 +87,9 @@
       list: (table) => apiFetch('/recycle/' + table),
       restore: (table, id) => apiFetch('/recycle/' + table + '/' + id + '/restore', { method: 'POST' }),
     },
+    import: {
+      spec: () => apiFetch('/import/spec'),
+      run: (table, rows, options, dryRun) => apiFetch('/import/' + table, { method: 'POST', body: { rows, options, dryRun } }),
+    },
   };
 })();

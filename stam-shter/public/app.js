@@ -6,6 +6,7 @@
 let ME = null, TAB = 'dash';
 const SUB = { prod: 'purchases', reports: 'overview', settings: 'contacts', system: 'recycle' };
 const C = { contacts: [], products: [], sizes: [], expBook: [], expBiz: [], scrolls: [], purchases: [] };
+const IMPORT = { spec: null, table: '', text: '', opts: { createMissingContacts: false } };
 
 // ============ עזרים ============
 const $ = (id) => document.getElementById(id);
@@ -1195,6 +1196,153 @@ async function pageUsers() {
   document.querySelectorAll('[data-eu]').forEach(b => b.onclick = () => openU(users.find(u => u.id === +b.dataset.eu)));
 }
 
+// ============ ייבוא ============
+// פענוח הדבקה מגוגל שיטס/אקסל -> מערך אובייקטים לפי מיפוי עמודות.
+function parseImportPaste(spec, text) {
+  const lines = String(text || '').replace(/\r/g, '').split('\n').filter(l => l.trim() !== '');
+  if (!lines.length) return { rows: [], mapping: [], hasHeader: false };
+  const cells = lines.map(l => l.split('\t').map(c => c.trim()));
+
+  // מילון: תווית או מפתח מנורמלים -> key
+  const lookup = {};
+  for (const c of spec.cols) {
+    lookup[c.label.replace(/\s+/g, ' ').trim()] = c.key;
+    lookup[c.key] = c.key;
+  }
+  const first = cells[0];
+  let matched = 0;
+  for (const cell of first) if (lookup[cell] !== undefined) matched++;
+  const hasHeader = first.length > 1 && matched >= Math.max(2, Math.ceil(first.filter(Boolean).length / 2));
+
+  let mapping;
+  if (hasHeader) mapping = first.map(cell => lookup[cell] !== undefined ? lookup[cell] : null);
+  else mapping = spec.cols.map(c => c.key);   // לפי סדר
+
+  const dataRows = hasHeader ? cells.slice(1) : cells;
+  const rows = dataRows.map(cs => {
+    const o = {};
+    for (let i = 0; i < mapping.length; i++) if (mapping[i]) o[mapping[i]] = cs[i];
+    return o;
+  });
+  return { rows, mapping, hasHeader };
+}
+
+function importSpecFor(table) { return (IMPORT.spec || []).find(s => s.table === table); }
+
+function pageImport() {
+  if (!IMPORT.spec) {
+    Store.import.spec().then(s => { IMPORT.spec = s; if (!IMPORT.table && s.length) IMPORT.table = 'contacts'; render(); })
+      .catch(e => { $('view').innerHTML = `<div class="card" style="color:var(--red)">${esc(e.message)}</div>`; });
+    $('view').innerHTML = `<div class="card muted">טוען…</div>`;
+    return;
+  }
+  const spec = importSpecFor(IMPORT.table) || IMPORT.spec[0];
+  IMPORT.table = spec.table;
+  const hasContactRef = spec.cols.some(c => c.ref === 'contacts');
+
+  const colChip = (c) => {
+    let tag = '';
+    if (c.ref) tag = ' <span class="mini">(לפי שם)</span>';
+    else if (c.refId) tag = ' <span class="mini">(מס\' מזהה)</span>';
+    else if (c.type === 'date') tag = ' <span class="mini">(תאריך)</span>';
+    else if (c.type === 'num' || c.type === 'int') tag = ' <span class="mini">(מספר)</span>';
+    return `<span class="pill n" style="margin:2px">${esc(c.label)}${c.required ? ' *' : ''}${tag}</span>`;
+  };
+
+  $('view').innerHTML = `
+    <div class="page-head"><h2>ייבוא נתונים</h2>
+      <span class="mini">מדביקים שורות מגוגל שיטס / אקסל — המערכת מתאימה עמודות ומפענחת שמות</span></div>
+
+    <div class="card">
+      <div class="row">
+        <div class="field" style="max-width:320px"><label>לאיזו טבלה לייבא?</label>
+          <select id="impTable">${IMPORT.spec.map(s =>
+            `<option value="${s.table}" ${s.table === IMPORT.table ? 'selected' : ''}>${esc(s.label)}</option>`).join('')}</select></div>
+      </div>
+      <div class="sec-title">עמודות (בסדר הזה, או עם שורת כותרת תואמת)</div>
+      <div>${spec.cols.map(colChip).join('')}</div>
+      <div class="mini" style="margin-top:8px">* = חובה. עמודות הפניה (סופר/רוכש/מוצר/גודל) — כתוב את <b>השם</b> כפי שהוא רשום, או את מספר המזהה.
+        עמודות "מס' מזהה" (ספר/רכישה) — המספר <b>#</b> מהטבלה במערכת.</div>
+      <div style="margin-top:8px"><button class="btn ghost sm" id="copyHead">📋 העתק שורת כותרות</button></div>
+    </div>
+
+    <div class="card">
+      <div class="field"><label>הדבק כאן את השורות</label>
+        <textarea id="impText" rows="9" placeholder="הדבק כאן ישירות מגוגל שיטס (Ctrl+V)…" style="width:100%;font-family:monospace;font-size:13px">${esc(IMPORT.text)}</textarea></div>
+      ${hasContactRef ? `<div class="chk"><input type="checkbox" id="impCreate" ${IMPORT.opts.createMissingContacts ? 'checked' : ''}>
+        <label for="impCreate">צור אנשי קשר חסרים אוטומטית (שם שלא נמצא ברשימה ייווצר)</label></div>` : ''}
+      <div class="toolbar">
+        <button class="btn ghost" id="impPreview">🔎 בדיקה מקדימה</button>
+        <button class="btn green" id="impRun" disabled>⬆ ייבא</button>
+      </div>
+      <div id="impResult"></div>
+    </div>`;
+
+  const spec2 = spec;
+  $('impTable').onchange = (e) => { IMPORT.table = e.target.value; IMPORT.text = ''; render(); };
+  $('impText').oninput = (e) => { IMPORT.text = e.target.value; };
+  if ($('impCreate')) $('impCreate').onchange = (e) => { IMPORT.opts.createMissingContacts = e.target.checked; };
+  $('copyHead').onclick = () => {
+    const hdr = spec2.cols.map(c => c.label).join('\t');
+    navigator.clipboard.writeText(hdr).then(() => toast('הכותרות הועתקו — הדבק בשורה הראשונה בגיליון', 'ok'))
+      .catch(() => toast('העתקה נכשלה', 'err'));
+  };
+
+  const doPreview = async (thenRun) => {
+    const parsed = parseImportPaste(spec2, IMPORT.text);
+    if (!parsed.rows.length) return toast('אין שורות להדבקה', 'err');
+    const btnP = $('impPreview'), btnR = $('impRun');
+    btnP.disabled = true;
+    try {
+      const r = await Store.import.run(IMPORT.table, parsed.rows, IMPORT.opts, true);
+      renderPreview(parsed, r);
+      btnR.disabled = r.valid === 0;
+      if (thenRun && r.valid > 0) doRun(parsed);
+    } catch (e) { toast(e.message, 'err'); }
+    finally { btnP.disabled = false; }
+  };
+
+  const renderPreview = (parsed, r) => {
+    const bad = r.rows.filter(x => !x.ok).slice(0, 200);
+    $('impResult').innerHTML = `
+      <div class="grid stat-grid" style="margin-top:6px">
+        <div class="stat"><div class="label">שורות שזוהו</div><div class="value">${r.total}</div>
+          <div class="sub">${parsed.hasHeader ? 'עם שורת כותרת' : 'מופה לפי סדר העמודות'}</div></div>
+        <div class="stat"><div class="label">תקינות</div><div class="value g">${r.valid}</div></div>
+        <div class="stat"><div class="label">שגויות</div><div class="value ${r.invalid ? 'r' : ''}">${r.invalid}</div></div>
+        ${r.new_contacts ? `<div class="stat"><div class="label">אנשי קשר חדשים</div><div class="value a">${r.new_contacts}</div></div>` : ''}
+      </div>
+      ${bad.length ? `<div class="card" style="margin-top:8px"><h3>שורות שיידלגו (${r.invalid})</h3>
+        ${tableHTML([{ label: 'שורה', render: x => x.line }, { label: 'בעיה', cls: 'wrap', render: x => esc(x.error || '') }], bad)}
+        ${r.invalid > bad.length ? `<div class="mini">…ועוד ${r.invalid - bad.length}</div>` : ''}</div>` : ''}
+      ${r.valid ? `<div class="mini" style="margin-top:6px">✅ ${r.valid} שורות מוכנות לייבוא. לחץ "ייבא".</div>`
+                : `<div class="mini neg" style="margin-top:6px">אין שורות תקינות לייבוא.</div>`}`;
+  };
+
+  const doRun = async (parsed) => {
+    if (!(await confirmBox(`לייבא ${IMPORT.table === spec2.table ? spec2.label : ''} — כל השורות התקינות?`))) return;
+    const btnR = $('impRun'); btnR.disabled = true;
+    try {
+      const r = await Store.import.run(IMPORT.table, parsed.rows, IMPORT.opts, false);
+      const skipped = (r.skipped || []).slice(0, 200);
+      $('impResult').innerHTML = `
+        <div class="grid stat-grid" style="margin-top:6px">
+          <div class="stat"><div class="label">נוצרו</div><div class="value g">${r.created}</div></div>
+          ${r.new_contacts_created ? `<div class="stat"><div class="label">אנשי קשר חדשים</div><div class="value a">${r.new_contacts_created}</div></div>` : ''}
+          <div class="stat"><div class="label">דולגו</div><div class="value ${r.skipped && r.skipped.length ? 'r' : ''}">${(r.skipped || []).length}</div></div>
+        </div>
+        ${skipped.length ? `<div class="card" style="margin-top:8px"><h3>שורות שדולגו</h3>
+          ${tableHTML([{ label: 'שורה', render: x => x.line }, { label: 'בעיה', cls: 'wrap', render: x => esc(x.error || '') }], skipped)}</div>` : ''}`;
+      toast(`יובאו ${r.created} שורות`, 'ok');
+      IMPORT.text = '';
+      await reloadCaches();
+    } catch (e) { toast(e.message, 'err'); btnR.disabled = false; }
+  };
+
+  $('impPreview').onclick = () => doPreview(false);
+  $('impRun').onclick = () => { const parsed = parseImportPaste(spec2, IMPORT.text); if (parsed.rows.length) doRun(parsed); };
+}
+
 // ============ ניווט ============
 const TABS = [
   { k: 'dash', label: 'דשבורד', fn: pageDash },
@@ -1206,12 +1354,15 @@ const TABS = [
   { k: 'bizexp', label: 'הוצאות עסק', fn: pageBizExp },
   { k: 'prod', label: 'מוצרים', fn: pageProd },
   { k: 'reports', label: 'דוחות', fn: pageReports },
+  { k: 'import', label: 'ייבוא', fn: pageImport, cap: 'edit' },
   { k: 'settings', label: 'הגדרות', fn: pageSettings },
   { k: 'system', label: 'מערכת', fn: pageSystem },
 ];
 
+function visibleTabs() { return TABS.filter(t => !t.cap || (ME.caps && ME.caps[t.cap])); }
+
 function renderTabs() {
-  $('tabs').innerHTML = TABS.map(t =>
+  $('tabs').innerHTML = visibleTabs().map(t =>
     `<button data-tab="${t.k}" class="${TAB === t.k ? 'active' : ''}">${esc(t.label)}</button>`).join('');
   document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { TAB = b.dataset.tab; render(); });
 }
