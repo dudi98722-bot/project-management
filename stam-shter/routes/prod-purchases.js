@@ -18,7 +18,7 @@ module.exports = crudRouter('prod_purchases', [
   softDeleteFn: softDeletePurchase,   // מחיקה מדביקה למכירות שנגזרו מהחבילה
   viewSql: `SELECT t.*,
               p.name AS product_name,
-              TRIM(COALESCE(sc.first_name,'') || ' ' || COALESCE(sc.last_name,'')) AS scribe_name,
+              sc.name AS scribe_name,
               COALESCE(sd.sold, 0) AS sold_qty,
               (t.quantity - COALESCE(sd.sold, 0)) AS remaining_qty,
               (t.cost_per_unit + t.extra_cost_per_unit) AS unit_cost,

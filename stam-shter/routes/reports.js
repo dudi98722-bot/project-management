@@ -127,7 +127,7 @@ router.get('/scribe-balances', async (req, res) => {
         LEFT JOIN (SELECT scribe_id, SUM(quantity*cost_per_unit) owed FROM prod_purchases WHERE deleted=false GROUP BY scribe_id) pu ON pu.scribe_id=c.id
         LEFT JOIN (SELECT scribe_id, SUM(amount) paid FROM prod_scribe_payments WHERE deleted=false GROUP BY scribe_id) pa ON pa.scribe_id=c.id
         WHERE c.deleted=false AND (pu.owed IS NOT NULL OR pa.paid IS NOT NULL)`),
-      pool.query('SELECT id, first_name, last_name, phone FROM contacts WHERE deleted=false'),
+      pool.query('SELECT id, name, phone FROM contacts WHERE deleted=false'),
     ]);
     const byId = new Map(contacts.rows.map(c => [c.id, c]));
     const acc = new Map();
@@ -135,7 +135,7 @@ router.get('/scribe-balances', async (req, res) => {
       if (!acc.has(id)) {
         const c = byId.get(id) || {};
         acc.set(id, {
-          id, name: `${c.first_name || ''} ${c.last_name || ''}`.trim(), phone: c.phone || '',
+          id, name: c.name || '', phone: c.phone || '',
           scroll_balance: 0, scroll_future: 0, scrolls_count: 0,
           product_owed: 0, product_paid: 0, product_balance: 0, total_balance: 0,
         });
@@ -178,7 +178,7 @@ router.get('/customer-balances', async (req, res) => {
                    WHERE s.deleted=false GROUP BY s.customer_id) sl ON sl.customer_id=c.id
         LEFT JOIN (SELECT customer_id, SUM(${PAID_TOTAL}) paid FROM prod_customer_payments WHERE deleted=false GROUP BY customer_id) pm ON pm.customer_id=c.id
         WHERE c.deleted=false AND (sl.revenue IS NOT NULL OR pm.paid IS NOT NULL)`),
-      pool.query('SELECT id, first_name, last_name, phone FROM contacts WHERE deleted=false'),
+      pool.query('SELECT id, name, phone FROM contacts WHERE deleted=false'),
     ]);
     const byId = new Map(contacts.rows.map(c => [c.id, c]));
     const acc = new Map();
@@ -186,7 +186,7 @@ router.get('/customer-balances', async (req, res) => {
       if (!acc.has(id)) {
         const c = byId.get(id) || {};
         acc.set(id, {
-          id, name: `${c.first_name || ''} ${c.last_name || ''}`.trim(), phone: c.phone || '',
+          id, name: c.name || '', phone: c.phone || '',
           scroll_due_now: 0, scroll_due_total: 0, scrolls_count: 0,
           product_revenue: 0, product_paid: 0, product_balance: 0,
         });
@@ -277,7 +277,7 @@ router.get('/inventory', async (req, res) => {
   try {
     const r = await pool.query(`
       SELECT pp.*, p.name AS product_name,
-        TRIM(COALESCE(sc.first_name,'') || ' ' || COALESCE(sc.last_name,'')) AS scribe_name,
+        sc.name AS scribe_name,
         COALESCE(sd.sold,0) AS sold_qty,
         (pp.quantity - COALESCE(sd.sold,0)) AS remaining_qty,
         (pp.cost_per_unit + pp.extra_cost_per_unit) AS unit_cost,
@@ -321,7 +321,7 @@ router.get('/scribe/:id', async (req, res) => {
     const prodPaid = sum(payments.rows, 'amount');
     const scrollBalance = sum(scrolls, 'scribe_balance');
     res.json({
-      contact: { ...c, name: `${c.first_name || ''} ${c.last_name || ''}`.trim() },
+      contact: c,
       scrolls,
       scroll_totals: {
         count: scrolls.length,
@@ -366,7 +366,7 @@ router.get('/customer/:id', async (req, res) => {
     const prodRevenue = sum(sales.rows, 'total_sale');
     const prodPaid = sum(prodPays.rows, 'paid_actual');
     res.json({
-      contact: { ...c, name: `${c.first_name || ''} ${c.last_name || ''}`.trim() },
+      contact: c,
       scrolls,
       scroll_payments: scrollPays.rows,
       scroll_totals: {

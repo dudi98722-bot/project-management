@@ -17,8 +17,7 @@ const SPEC = {
   contacts: {
     label: 'אנשי קשר',
     cols: [
-      { key: 'first_name', label: 'שם' },
-      { key: 'last_name', label: 'משפחה' },
+      { key: 'name', label: 'שם', required: true },
       { key: 'phone', label: 'טלפון' },
     ],
   },
@@ -187,7 +186,7 @@ const norm = (s) => String(s == null ? '' : s).trim().replace(/\s+/g, ' ').toLow
 // בונה את מפות ההפניה מהמסד
 async function loadContext() {
   const [contacts, products, sizes, scrolls, purchases, sold] = await Promise.all([
-    pool.query('SELECT id, first_name, last_name FROM contacts WHERE deleted=false'),
+    pool.query('SELECT id, name FROM contacts WHERE deleted=false'),
     pool.query('SELECT id, name FROM products WHERE deleted=false'),
     pool.query('SELECT id, name FROM parchment_sizes WHERE deleted=false'),
     pool.query('SELECT id FROM scrolls WHERE deleted=false'),
@@ -196,7 +195,7 @@ async function loadContext() {
   ]);
   const contactMap = new Map();   // name(lower) -> [ids]
   for (const c of contacts.rows) {
-    const nm = norm(`${c.first_name || ''} ${c.last_name || ''}`);
+    const nm = norm(c.name);
     if (!contactMap.has(nm)) contactMap.set(nm, []);
     contactMap.get(nm).push(c.id);
   }
@@ -230,7 +229,8 @@ const REF_IDSET = { contacts: 'contactIds', products: 'productIds', parchment_si
 const REFID_IDSET = { scrolls: 'scrollIds', prod_purchases: 'purchaseIds' };
 
 // מפענח שורה אחת -> { ok, error, data:{col:val}, newContact:{first,last}|null }
-function resolveRow(table, raw, ctx, opts) {
+// partial=true (מצב עדכון): עמודה ריקה נחשבת "לא נגעו בה" ולכן שדה חובה ריק אינו שגיאה.
+function resolveRow(table, raw, ctx, opts, partial) {
   const spec = SPEC[table];
   const data = {};
   let newContact = null;
@@ -238,6 +238,7 @@ function resolveRow(table, raw, ctx, opts) {
   for (const col of spec.cols) {
     let val = raw[col.key];
     if (val !== undefined && val !== null) val = String(val).trim();
+    if (partial && (val === undefined || val === '')) { continue; }
 
     // --- הפניה לפי שם ---
     if (col.ref) {
@@ -253,8 +254,7 @@ function resolveRow(table, raw, ctx, opts) {
       if (hits && hits.length > 1) return { ok: false, error: `"${val}" מופיע יותר מפעם אחת ב${col.ref === 'contacts' ? 'אנשי הקשר' : 'רשימה'} — לא ניתן להכריע` };
       // לא נמצא
       if (col.ref === 'contacts' && opts.createMissingContacts) {
-        const parts = val.split(/\s+/);
-        newContact = { first: parts[0] || val, last: parts.slice(1).join(' ') || '', nameKey: norm(val) };
+        newContact = { name: val, nameKey: norm(val) };
         data[col.key] = { __newContact: newContact.nameKey };   // ייושב בהכנסה
         continue;
       }
@@ -310,7 +310,10 @@ router.get('/spec', authenticate, can('view'), (req, res) => {
   })));
 });
 
-// POST /:table   body: { rows:[{key:val}], options:{createMissingContacts}, dryRun }
+// POST /:table
+//   body: { rows:[{key:val}], options:{createMissingContacts}, dryRun, mode:'create'|'update' }
+// mode='update' — כל שורה חייבת לכלול id, ורק העמודות שהופיעו בהדבקה מתעדכנות.
+// זה מאפשר לתקן המונית עמודה אחת (למשל מחיר) בלי לדרוס את שאר השדות.
 router.post('/:table', authenticate, can('edit'), async (req, res) => {
   const table = req.params.table;
   const spec = SPEC[table];
@@ -319,20 +322,44 @@ router.post('/:table', authenticate, can('edit'), async (req, res) => {
   const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
   const opts = req.body.options || {};
   const dryRun = !!req.body.dryRun;
+  const mode = req.body.mode === 'update' ? 'update' : 'create';
   if (!rows.length) return res.status(400).json({ error: 'לא התקבלו שורות' });
   if (rows.length > 5000) return res.status(400).json({ error: 'מקסימום 5000 שורות בייבוא אחד — חלק לחלקים' });
 
   try {
     const ctx = await loadContext();
 
+    // במצב עדכון — מזהי השורות הקיימות בטבלה, לאימות שכל id באמת קיים
+    let existingIds = null;
+    if (mode === 'update') {
+      const r = await pool.query(`SELECT id FROM ${table} WHERE deleted=false`);
+      existingIds = new Set(r.rows.map(x => x.id));
+    }
+
     // שלב פענוח (שני המצבים)
-    const resolved = rows.map((raw, i) => ({ line: i + 1, ...resolveRow(table, raw, ctx, opts) }));
+    const resolved = rows.map((raw, i) => {
+      const base = { line: i + 1 };
+      if (mode === 'update') {
+        const rawId = raw.id === undefined ? raw['id'] : raw.id;
+        const idStr = String(rawId == null ? '' : rawId).trim();
+        if (!idStr) return { ...base, ok: false, error: 'חסר מזהה (id) — בעדכון חייבים לכלול עמודת מזהה' };
+        if (!/^\d+$/.test(idStr)) return { ...base, ok: false, error: `מזהה לא תקין "${idStr}"` };
+        if (!existingIds.has(+idStr)) return { ...base, ok: false, error: `מזהה ${idStr} לא קיים בטבלה` };
+        const rr = resolveRow(table, raw, ctx, opts, true);
+        if (!rr.ok) return { ...base, ...rr };
+        // רק העמודות שהמשתמש באמת הדביק מתעדכנות
+        const touched = spec.cols.map(c => c.key).filter(k => raw[k] !== undefined && String(raw[k]).trim() !== '');
+        if (!touched.length) return { ...base, ok: false, error: 'לא הודבקה אף עמודה לעדכון' };
+        return { ...base, ...rr, id: +idStr, touched };
+      }
+      return { ...base, ...resolveRow(table, raw, ctx, opts, false) };
+    });
     const valid = resolved.filter(r => r.ok);
-    const invalid = resolved.filter(r => !r.ok);
     const newContactNames = [...new Set(valid.filter(r => r.newContact).map(r => r.newContact.nameKey))];
 
-    // בדיקת מלאי מקדימה למכירות מוצרים (על עותק של היתרות)
-    if (table === 'prod_sales') {
+    // בדיקת מלאי מקדימה למכירות מוצרים (על עותק של היתרות).
+    // רלוונטית ליצירה בלבד; בעדכון היתרה כבר משקפת את השורה עצמה.
+    if (table === 'prod_sales' && mode === 'create') {
       const rem = new Map(ctx.remaining);
       for (const r of valid) {
         const pid = r.data.purchase_id, q = Number(r.data.quantity) || 0;
@@ -346,9 +373,13 @@ router.post('/:table', authenticate, can('edit'), async (req, res) => {
 
     if (dryRun) {
       return res.json({
-        table, total: rows.length, valid: valid2.length, invalid: invalid2.length,
+        table, mode, total: rows.length, valid: valid2.length, invalid: invalid2.length,
         new_contacts: newContactNames.length,
-        rows: resolved.map(r => ({ line: r.line, ok: r.ok, error: r.error || null, willCreateContact: !!r.newContact })),
+        rows: resolved.map(r => ({
+          line: r.line, ok: r.ok, error: r.error || null,
+          willCreateContact: !!r.newContact,
+          fields: r.touched ? r.touched.length : undefined,
+        })),
       });
     }
 
@@ -368,30 +399,43 @@ router.post('/:table', authenticate, can('edit'), async (req, res) => {
         for (const r of valid2) if (r.newContact) byKey.set(r.newContact.nameKey, r.newContact);
         for (const nc of byKey.values()) {
           const ins = await client.query(
-            'INSERT INTO contacts (first_name, last_name, created_by, updated_by) VALUES ($1,$2,$3,$3) RETURNING *',
-            [nc.first, nc.last || null, req.user.id]);
+            'INSERT INTO contacts (name, created_by, updated_by) VALUES ($1,$2,$2) RETURNING *',
+            [nc.name, req.user.id]);
           createdContacts.set(nc.nameKey, ins.rows[0].id);
           insertedRecords.push({ __table: 'contacts', rec: ins.rows[0] });
         }
       }
 
+      const resolveVal = (v) => {
+        if (v && typeof v === 'object' && v.__newContact) return createdContacts.get(v.__newContact) || null;
+        return v === undefined ? null : v;
+      };
+
       for (const r of valid2) {
-        // החלפת מצייני אנשי קשר חדשים ב-id האמיתי
-        const vals = cols.map(k => {
-          const v = r.data[k];
-          if (v && typeof v === 'object' && v.__newContact) return createdContacts.get(v.__newContact) || null;
-          return v === undefined ? null : v;
-        });
-        const ph = cols.map((_, i) => `$${i + 1}`).join(',');
         await client.query('SAVEPOINT s');
         try {
-          const ins = await client.query(
-            `INSERT INTO ${table} (${cols.join(',')}, created_by, updated_by)
-             VALUES (${ph}, $${cols.length + 1}, $${cols.length + 1}) RETURNING *`,
-            [...vals, req.user.id]);
+          let out;
+          if (mode === 'update') {
+            // רק העמודות שהודבקו בפועל
+            const upCols = r.touched;
+            const vals = upCols.map(k => resolveVal(r.data[k]));
+            const set = upCols.map((c, i) => `${c}=$${i + 1}`).join(', ');
+            out = await client.query(
+              `UPDATE ${table} SET ${set}, updated_by=$${upCols.length + 1}, updated_at=NOW()
+               WHERE id=$${upCols.length + 2} AND deleted=false RETURNING *`,
+              [...vals, req.user.id, r.id]);
+            if (!out.rows.length) throw new Error('השורה לא נמצאה או נמחקה');
+          } else {
+            const vals = cols.map(k => resolveVal(r.data[k]));
+            const ph = cols.map((_, i) => `$${i + 1}`).join(',');
+            out = await client.query(
+              `INSERT INTO ${table} (${cols.join(',')}, created_by, updated_by)
+               VALUES (${ph}, $${cols.length + 1}, $${cols.length + 1}) RETURNING *`,
+              [...vals, req.user.id]);
+          }
           await client.query('RELEASE SAVEPOINT s');
           created++;
-          insertedRecords.push({ __table: table, rec: ins.rows[0] });
+          insertedRecords.push({ __table: table, rec: out.rows[0] });
         } catch (e) {
           await client.query('ROLLBACK TO SAVEPOINT s');
           await client.query('RELEASE SAVEPOINT s');

@@ -9,7 +9,7 @@ module.exports = crudRouter('prod_scribe_payments', [
   orderBy: 't.date DESC NULLS LAST, t.id DESC',
   filterCols: ['scribe_id'],
   viewSql: `SELECT t.*,
-              TRIM(COALESCE(sc.first_name,'') || ' ' || COALESCE(sc.last_name,'')) AS scribe_name
+              sc.name AS scribe_name
             FROM prod_scribe_payments t
             LEFT JOIN contacts sc ON sc.id = t.scribe_id`,
 });

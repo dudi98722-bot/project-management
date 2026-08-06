@@ -6,7 +6,7 @@ const router = express.Router();
 
 // טבלה -> תווית בעברית + ביטוי לתיאור השורה בתצוגה
 const TABLES = {
-  contacts:               { label: 'אנשי קשר',              desc: `TRIM(COALESCE(first_name,'')||' '||COALESCE(last_name,''))` },
+  contacts:               { label: 'אנשי קשר',              desc: 'name' },
   products:               { label: 'מוצרים',                desc: 'name' },
   parchment_sizes:        { label: 'גדלי קלף',              desc: 'name' },
   list_items:             { label: 'ערכי רשימות',           desc: 'value' },

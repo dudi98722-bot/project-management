@@ -27,7 +27,7 @@ const ACTIONS = { title: 'פעולות', cols: ['זמן', 'משתמש', 'פעו�
 // לכל טבלה במערכת — לשונית משלה והעמודות שישוקפו אליה.
 // זהו מקור האמת היחיד לעמודות; השרת שולח את הרשומה המלאה והסקריפט בוחר מה לכתוב.
 const TABS = {
-  contacts:               { title: 'אנשי קשר',             cols: ['id', 'first_name', 'last_name', 'phone', 'deleted', 'updated_at'] },
+  contacts:               { title: 'אנשי קשר',             cols: ['id', 'name', 'phone', 'deleted', 'updated_at'] },
   products:               { title: 'מוצרים',               cols: ['id', 'name', 'parchment_units', 'pages', 'fixed_expense', 'deleted', 'updated_at'] },
   parchment_sizes:        { title: 'גדלי קלף',             cols: ['id', 'name', 'cost_per_unit', 'deleted', 'updated_at'] },
   list_items:             { title: 'רשימות',               cols: ['id', 'list_name', 'value', 'sort', 'is_correction', 'deleted'] },

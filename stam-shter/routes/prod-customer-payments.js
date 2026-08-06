@@ -12,7 +12,7 @@ module.exports = crudRouter('prod_customer_payments', [
   orderBy: 't.date DESC NULLS LAST, t.id DESC',
   filterCols: ['customer_id'],
   viewSql: `SELECT t.*,
-              TRIM(COALESCE(cu.first_name,'') || ' ' || COALESCE(cu.last_name,'')) AS customer_name,
+              cu.name AS customer_name,
               (t.amount_ils + t.amount_usd * t.rate) AS paid_actual,
               (CASE WHEN t.amount_usd > 0 THEN t.amount_usd * t.rate - t.cash_in_hand ELSE 0 END) AS peritah
             FROM prod_customer_payments t

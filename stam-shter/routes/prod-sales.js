@@ -22,8 +22,8 @@ const VIEW = `
 SELECT t.*,
   pp.product_id,
   p.name AS product_name,
-  TRIM(COALESCE(sc.first_name,'') || ' ' || COALESCE(sc.last_name,'')) AS scribe_name,
-  TRIM(COALESCE(cu.first_name,'') || ' ' || COALESCE(cu.last_name,'')) AS customer_name,
+  sc.name AS scribe_name,
+  cu.name AS customer_name,
   (COALESCE(pp.cost_per_unit,0) + COALESCE(pp.extra_cost_per_unit,0)) AS unit_cost,
   (t.quantity * t.price_per_unit) AS total_sale,
   ((t.quantity * t.price_per_unit)

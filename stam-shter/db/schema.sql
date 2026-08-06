@@ -24,13 +24,25 @@ CREATE TABLE IF NOT EXISTS users (
 -- התפקיד נקבע בעסקה עצמה ולא באיש הקשר.
 CREATE TABLE IF NOT EXISTS contacts (
   id BIGSERIAL PRIMARY KEY,
-  first_name VARCHAR(120),
-  last_name  VARCHAR(120),
+  name       VARCHAR(300),   -- שם מלא, שדה אחד
   phone      VARCHAR(50),
   deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMP, deleted_by INTEGER,
   created_by INTEGER, created_at TIMESTAMP DEFAULT NOW(),
   updated_by INTEGER, updated_at TIMESTAMP DEFAULT NOW()
 );
+-- מיגרציה: פיצול שם/משפחה אוחד לשדה name יחיד.
+-- העמודות הישנות נשארות (מסדים קיימים), אך אינן בשימוש.
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS name VARCHAR(300);
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_name='contacts' AND column_name='first_name') THEN
+    UPDATE contacts
+       SET name = NULLIF(TRIM(COALESCE(first_name,'') || ' ' || COALESCE(last_name,'')), '')
+     WHERE name IS NULL OR name = '';
+    ALTER TABLE contacts ALTER COLUMN first_name DROP NOT NULL;
+    ALTER TABLE contacts ALTER COLUMN last_name  DROP NOT NULL;
+  END IF;
+END $$;
 
 -- רשימות ערכים: סוגי הוצאות לספר / סוגי הוצאות עסק
 --   list_name IN ('expense_book','expense_business')

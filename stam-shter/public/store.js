@@ -89,7 +89,7 @@
     },
     import: {
       spec: () => apiFetch('/import/spec'),
-      run: (table, rows, options, dryRun) => apiFetch('/import/' + table, { method: 'POST', body: { rows, options, dryRun } }),
+      run: (table, rows, options, dryRun, mode) => apiFetch('/import/' + table, { method: 'POST', body: { rows, options, dryRun, mode } }),
     },
   };
 })();
