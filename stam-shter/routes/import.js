@@ -37,6 +37,16 @@ const SPEC = {
       { key: 'cost_per_unit', label: 'עלות ליחידה', type: 'num' },
     ],
   },
+  // ערכי רשימות. list_name מוצמד אוטומטית מהלשונית שממנה פותחים.
+  list_items: {
+    label: 'ערכי רשימות',
+    noAudit: true,
+    cols: [
+      { key: 'value', label: 'ערך', required: true },
+      { key: 'list_name', label: 'שם הרשימה', type: 'listname' },
+      { key: 'is_correction', label: 'נחשב כתיקונים (כן/לא)', type: 'bool' },
+    ],
+  },
   scrolls: {
     label: 'ס"ת',
     cols: [
@@ -160,6 +170,8 @@ const SPEC = {
     ],
   },
 };
+
+const VALID_LISTS = new Set(['expense_book', 'expense_business']);
 
 // ---------- המרות ----------
 function toNum(v) {
@@ -292,6 +304,9 @@ function resolveRow(table, raw, ctx, opts, partial) {
       data[col.key] = /done|הושלם|סיום|גמור/i.test(val || '') ? 'done' : 'active';
     } else if (col.type === 'ptype') {
       data[col.key] = /קומיסיון|commission/i.test(val || '') ? 'קומיסיון' : 'רגיל';
+    } else if (col.type === 'listname') {
+      if (!VALID_LISTS.has(val)) return { ok: false, error: `שם רשימה לא מוכר: "${val}"` };
+      data[col.key] = val;
     } else {
       data[col.key] = (val === '' || val === undefined) ? null : val;
     }
@@ -385,6 +400,7 @@ router.post('/:table', authenticate, can('edit'), async (req, res) => {
 
     // --- הכנסה אמיתית ---
     const cols = spec.cols.map(c => c.key);
+    const noAudit = !!spec.noAudit;   // טבלאות בלי created_by/updated_by (list_items)
     const client = await pool.connect();
     const skipped = [];
     let created = 0;
@@ -420,18 +436,25 @@ router.post('/:table', authenticate, can('edit'), async (req, res) => {
             const upCols = r.touched;
             const vals = upCols.map(k => resolveVal(r.data[k]));
             const set = upCols.map((c, i) => `${c}=$${i + 1}`).join(', ');
-            out = await client.query(
-              `UPDATE ${table} SET ${set}, updated_by=$${upCols.length + 1}, updated_at=NOW()
-               WHERE id=$${upCols.length + 2} AND deleted=false RETURNING *`,
-              [...vals, req.user.id, r.id]);
+            out = noAudit
+              ? await client.query(
+                  `UPDATE ${table} SET ${set} WHERE id=$${upCols.length + 1} AND deleted=false RETURNING *`,
+                  [...vals, r.id])
+              : await client.query(
+                  `UPDATE ${table} SET ${set}, updated_by=$${upCols.length + 1}, updated_at=NOW()
+                   WHERE id=$${upCols.length + 2} AND deleted=false RETURNING *`,
+                  [...vals, req.user.id, r.id]);
             if (!out.rows.length) throw new Error('השורה לא נמצאה או נמחקה');
           } else {
             const vals = cols.map(k => resolveVal(r.data[k]));
             const ph = cols.map((_, i) => `$${i + 1}`).join(',');
-            out = await client.query(
-              `INSERT INTO ${table} (${cols.join(',')}, created_by, updated_by)
-               VALUES (${ph}, $${cols.length + 1}, $${cols.length + 1}) RETURNING *`,
-              [...vals, req.user.id]);
+            out = noAudit
+              ? await client.query(
+                  `INSERT INTO ${table} (${cols.join(',')}) VALUES (${ph}) RETURNING *`, vals)
+              : await client.query(
+                  `INSERT INTO ${table} (${cols.join(',')}, created_by, updated_by)
+                   VALUES (${ph}, $${cols.length + 1}, $${cols.length + 1}) RETURNING *`,
+                  [...vals, req.user.id]);
           }
           await client.query('RELEASE SAVEPOINT s');
           created++;

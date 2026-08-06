@@ -196,17 +196,19 @@ function wireRowActions(cfg, rows) {
 async function entityPage(cfg) {
   const rows = await cfg.load();
   const cols = cfg.cols.concat([actionsCol(cfg)]);
-  $('view').innerHTML = `
+  $('view').innerHTML += `
     <div class="page-head">
       <h2>${esc(cfg.title)}</h2>
       ${cfg.subtitle ? `<span class="mini">${esc(cfg.subtitle)}</span>` : ''}
       <div class="spacer"></div>
+      ${bulkBtn(cfg.bulk, cfg.title, cfg.bulkPreset)}
       ${ME.caps.edit ? `<button class="btn" id="addBtn">+ הוספה</button>` : ''}
     </div>
     ${cfg.note ? `<div class="card mini">${cfg.note}</div>` : ''}
     <div class="card">${tableHTML(cols, rows, { totals: cfg.totals })}</div>`;
   if ($('addBtn')) $('addBtn').onclick = () => openForm(cfg, null);
   wireRowActions(cfg, rows);
+  wireBulkBtns();
 }
 
 // ============ טעינת מטמון ============
@@ -225,7 +227,7 @@ async function pageDash() {
   const d = await Store.reports.overview();
   const st = (label, val, cls, sub) => `<div class="stat"><div class="label">${label}</div>
     <div class="value ${cls || ''}">${val}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>`;
-  $('view').innerHTML = `
+  $('view').innerHTML += `
     <div class="page-head"><h2>דשבורד</h2></div>
     <div class="grid stat-grid">
       ${st('רווח נקי', money(d.net_profit), d.net_profit >= 0 ? 'g' : 'r', 'ס"ת + מוצרים − פריטה − הוצאות עסק')}
@@ -259,14 +261,16 @@ async function pageScrolls() {
     { label: '', cls: 'center', render: r => `<button class="btn ghost xs" data-card="${r.id}">כרטיס</button>` },
     actionsCol(cfg),
   ];
-  $('view').innerHTML = `
+  $('view').innerHTML += `
     <div class="page-head"><h2>ס"ת</h2><div class="spacer"></div>
+      ${bulkBtn('scrolls', 'ס"ת')}
       ${ME.caps.edit ? `<button class="btn" id="addBtn">+ ספר חדש</button>` : ''}</div>
     <div class="card">${tableHTML(cols, rows, {
       totals: true,
       })}</div>`;
   if ($('addBtn')) $('addBtn').onclick = () => openForm(cfg, null);
   wireRowActions(cfg, rows);
+  wireBulkBtns();
   document.querySelectorAll('[data-card]').forEach(b => b.onclick = () => showScrollCard(+b.dataset.card));
 }
 
@@ -413,20 +417,23 @@ async function pageScribePay() {
     actionsCol(pageCfg),
   ];
 
-  $('view').innerHTML = `
+  $('view').innerHTML += `
     <div class="page-head"><h2>תשלום לסופר</h2></div>
     <div class="card">
       <div class="page-head"><h3>תשלומים לסופר</h3><div class="spacer"></div>
+        ${bulkBtn('scribe_payments', 'תשלומים לסופר')}
         ${ME.caps.edit ? `<button class="btn sm" id="addPay">+ תשלום</button>` : ''}</div>
       ${tableHTML(payCols, pays, { totals: true })}
     </div>
     <div class="card">
       <div class="page-head"><h3>עמודים שנכתבו</h3><div class="spacer"></div>
+        ${bulkBtn('pages_log', 'עמודים שנכתבו')}
         ${ME.caps.edit ? `<button class="btn sm gold" id="addPage">+ רישום עמודים</button>` : ''}</div>
       ${tableHTML(pageCols, pages, { totals: true })}
     </div>`;
   if ($('addPay')) $('addPay').onclick = () => openForm(payCfg, null);
   if ($('addPage')) $('addPage').onclick = () => openForm(pageCfg, null);
+  wireBulkBtns();
 
   // חיווט ידני — שתי טבלאות באותו דף
   const wire = (sel, cfg, rows) => {
@@ -451,7 +458,7 @@ async function pageScribePay() {
 function pageCustPay() {
   const scrollById = (id) => C.scrolls.find(s => s.id === id);
   return entityPage({
-    title: 'תשלומי לקוחות', store: Store.customerPayments,
+    title: 'תשלומי לקוחות', bulk: 'customer_payments', store: Store.customerPayments,
     load: () => Store.customerPayments.list(),
     labelOf: (r) => `תשלום ${money(r.paid_actual)}`,
     defaults: () => ({ date: today() }),
@@ -487,7 +494,7 @@ function pageCustPay() {
 function pageBookExp() {
   const scrollById = (id) => C.scrolls.find(s => s.id === id);
   return entityPage({
-    title: 'הוצאות לספר', store: Store.bookExpenses,
+    title: 'הוצאות לספר', bulk: 'book_expenses', store: Store.bookExpenses,
     load: () => Store.bookExpenses.list(),
     labelOf: (r) => `${r.type || 'הוצאה'} ${money(r.amount)}`,
     defaults: () => ({ date: today() }),
@@ -514,7 +521,7 @@ function pageBookExp() {
 function pageParchExp() {
   const scrollById = (id) => C.scrolls.find(s => s.id === id);
   return entityPage({
-    title: 'הוצאות קלף', store: Store.parchmentExpenses,
+    title: 'הוצאות קלף', bulk: 'parchment_expenses', store: Store.parchmentExpenses,
     load: () => Store.parchmentExpenses.list(),
     labelOf: (r) => `${r.quantity} יחידות קלף`,
     defaults: () => ({ date: today() }),
@@ -542,7 +549,7 @@ function pageParchExp() {
 // ============ הוצאות עסק ============
 function pageBizExp() {
   return entityPage({
-    title: 'הוצאות עסק', store: Store.businessExpenses,
+    title: 'הוצאות עסק', bulk: 'business_expenses', store: Store.businessExpenses,
     load: () => Store.businessExpenses.list(),
     labelOf: (r) => `${r.type || 'הוצאה'} ${money(r.amount)}`,
     defaults: () => ({ date: today() }),
@@ -580,7 +587,7 @@ function pageProd() {
 
 function prodPurchases() {
   return entityPage({
-    title: 'רכישות מוצרים', store: Store.prodPurchases,
+    title: 'רכישות מוצרים', bulk: 'prod_purchases', store: Store.prodPurchases,
     load: () => Store.prodPurchases.list(),
     labelOf: (r) => `${r.product_name} מ${r.scribe_name}`,
     defaults: () => ({ date: today(), purchase_type: 'רגיל' }),
@@ -614,7 +621,7 @@ function prodPurchases() {
 
 function prodSales() {
   return entityPage({
-    title: 'מכירות מוצרים', store: Store.prodSales,
+    title: 'מכירות מוצרים', bulk: 'prod_sales', store: Store.prodSales,
     load: () => Store.prodSales.list(),
     labelOf: (r) => `${r.quantity} × ${r.product_name}`,
     defaults: () => ({ date: today(), sale_type: 'רגיל' }),
@@ -649,7 +656,7 @@ function prodSales() {
 
 function prodScribePay() {
   return entityPage({
-    title: 'תשלומים לסופר (מוצרים)', store: Store.prodScribePayments,
+    title: 'תשלומים לסופר (מוצרים)', bulk: 'prod_scribe_payments', store: Store.prodScribePayments,
     load: () => Store.prodScribePayments.list(),
     labelOf: (r) => `תשלום ${money(r.amount)}`,
     defaults: () => ({ date: today() }),
@@ -671,7 +678,7 @@ function prodScribePay() {
 
 function prodCustPay() {
   return entityPage({
-    title: 'תשלומי לקוחות (מוצרים)', store: Store.prodCustomerPayments,
+    title: 'תשלומי לקוחות (מוצרים)', bulk: 'prod_customer_payments', store: Store.prodCustomerPayments,
     load: () => Store.prodCustomerPayments.list(),
     labelOf: (r) => `תשלום ${money(r.paid_actual)}`,
     defaults: () => ({ date: today() }),
@@ -1009,7 +1016,7 @@ function pageSettings() {
 
 function setContacts() {
   return entityPage({
-    title: 'אנשי קשר', store: Store.contacts,
+    title: 'אנשי קשר', bulk: 'contacts', store: Store.contacts,
     load: () => Store.contacts.list(),
     labelOf: (r) => contactName(r),
     note: 'רשימה אחת — ממנה נבחרים גם הסופרים וגם הרוכשים. התפקיד נקבע בעסקה עצמה.',
@@ -1026,7 +1033,7 @@ function setContacts() {
 
 function setProducts() {
   return entityPage({
-    title: 'מוצרים', store: Store.products,
+    title: 'מוצרים', bulk: 'products', store: Store.products,
     load: () => Store.products.list(),
     labelOf: (r) => r.name,
     note: 'מספר העמודים משמש לחישוב מחיר-לעמוד ולהתקדמות. יחידות הקלף מזינות את "צפי קלף".',
@@ -1047,7 +1054,7 @@ function setProducts() {
 
 function setSizes() {
   return entityPage({
-    title: 'גדלי קלף', store: Store.sizes,
+    title: 'גדלי קלף', bulk: 'parchment_sizes', store: Store.sizes,
     load: () => Store.sizes.list(),
     labelOf: (r) => r.name,
     fields: [
@@ -1080,6 +1087,7 @@ async function setList(listName, title, withCorrection) {
   });
   $('view').innerHTML += `
     <div class="page-head"><h2>${esc(title)}</h2><div class="spacer"></div>
+      ${bulkBtn('list_items', title, { list_name: listName })}
       ${ME.caps.edit ? `<button class="btn" id="addLi">+ הוספה</button>` : ''}</div>
     ${withCorrection ? `<div class="card mini">ערך המסומן כ<b>תיקונים</b> נזקף לצד הסופר במקום להיחשב הוצאה לספר. אפשר לסמן יותר מאחד.</div>` : ''}
     <div class="card">${tableHTML(cols, rows)}</div>`;
@@ -1103,6 +1111,7 @@ async function setList(listName, title, withCorrection) {
     };
   };
   if ($('addLi')) $('addLi').onclick = () => openLi(null);
+  wireBulkBtns();
   document.querySelectorAll('[data-ed]').forEach(b => b.onclick = () => openLi(rows.find(r => r.id === +b.dataset.ed)));
   document.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
     const r = rows.find(x => x.id === +b.dataset.rm);
@@ -1228,16 +1237,29 @@ function parseImportPaste(spec, text, mode) {
 
 function importSpecFor(table) { return (IMPORT.spec || []).find(s => s.table === table); }
 
-function pageImport() {
-  if (!IMPORT.spec) {
-    Store.import.spec().then(s => { IMPORT.spec = s; if (!IMPORT.table && s.length) IMPORT.table = 'contacts'; render(); })
-      .catch(e => { $('view').innerHTML = `<div class="card" style="color:var(--red)">${esc(e.message)}</div>`; });
-    $('view').innerHTML = `<div class="card muted">טוען…</div>`;
-    return;
-  }
-  const spec = importSpecFor(IMPORT.table) || IMPORT.spec[0];
-  IMPORT.table = spec.table;
-  const hasContactRef = spec.cols.some(c => c.ref === 'contacts');
+// טעינת מפרט הייבוא פעם אחת
+function ensureImportSpec() {
+  if (IMPORT.spec) return Promise.resolve(IMPORT.spec);
+  return Store.import.spec().then(s => { IMPORT.spec = s; return s; });
+}
+
+// ===== פאנל ייבוא/עדכון מרוכז =====
+// אותו רכיב משמש גם כלשונית מלאה וגם כחלון שנפתח מתוך כל טבלה.
+//   host             - האלמנט שאליו מרנדרים
+//   opts.lockedTable - נעילה לטבלה אחת (מתוך לשונית) ; ריק = בורר טבלאות
+//   opts.preset      - ערכים שמוצמדים לכל שורה ולא מודבקים (למשל שם הרשימה)
+//   opts.onDone      - נקרא אחרי ייבוא מוצלח
+let _impSeq = 0;
+function importPanel(host, opts) {
+  opts = opts || {};
+  const P = 'ip' + (++_impSeq) + '_';
+  const q = (id) => document.getElementById(P + id);
+  const preset = opts.preset || {};
+  const presetKeys = Object.keys(preset);
+  const st = {
+    table: opts.lockedTable || IMPORT.table || (IMPORT.spec[0] && IMPORT.spec[0].table),
+    mode: 'create', text: '', createContacts: false,
+  };
 
   const colChip = (c) => {
     let tag = '';
@@ -1248,109 +1270,167 @@ function pageImport() {
     return `<span class="pill n" style="margin:2px">${esc(c.label)}${c.required ? ' *' : ''}${tag}</span>`;
   };
 
-  const isUpd = IMPORT.mode === 'update';
-  $('view').innerHTML = `
+  function draw() {
+    const spec = importSpecFor(st.table) || IMPORT.spec[0];
+    st.table = spec.table;
+    // עמודות שהמשתמש מדביק בפועל (בלי אלו שמוצמדות מראש)
+    const cols = spec.cols.filter(c => presetKeys.indexOf(c.key) < 0);
+    const hasContactRef = cols.some(c => c.ref === 'contacts');
+    const isUpd = st.mode === 'update';
+
+    host.innerHTML = `
+      <div class="card">
+        <div class="row">
+          ${opts.lockedTable ? '' : `<div class="field" style="max-width:300px"><label>טבלה</label>
+            <select id="${P}table">${IMPORT.spec.map(s =>
+              `<option value="${s.table}" ${s.table === st.table ? 'selected' : ''}>${esc(s.label)}</option>`).join('')}</select></div>`}
+          <div class="field" style="max-width:300px"><label>פעולה</label>
+            <select id="${P}mode">
+              <option value="create" ${!isUpd ? 'selected' : ''}>הוספת שורות חדשות</option>
+              <option value="update" ${isUpd ? 'selected' : ''}>עדכון שורות קיימות (לפי מזהה)</option>
+            </select></div>
+        </div>
+        <div class="sec-title">עמודות ${isUpd ? '— עמודה ראשונה <b>מזהה</b>, ואחריה רק מה שרוצים לשנות' : '(בסדר הזה, או עם שורת כותרת תואמת)'}</div>
+        <div>${isUpd ? '<span class="pill a" style="margin:2px">מזהה *</span>' : ''}${cols.map(colChip).join('')}</div>
+        <div class="mini" style="margin-top:8px">${isUpd
+          ? 'בעדכון מתעדכנות <b>רק העמודות שהדבקת</b> — שאר השדות נשארים כמו שהם. תא ריק = לא נוגעים בשדה.'
+          : '* = חובה. עמודות הפניה (סופר/רוכש/מוצר/גודל) — כתוב את <b>השם</b> כפי שהוא רשום, או את מספר המזהה. עמודות "מס\' מזהה" (ספר/רכישה) — המספר <b>#</b> מהטבלה.'}</div>
+        <div style="margin-top:8px"><button class="btn ghost sm" id="${P}head">📋 העתק שורת כותרות</button></div>
+      </div>
+
+      <div class="card">
+        <div class="field"><label>הדבק כאן את השורות</label>
+          <textarea id="${P}text" rows="8" placeholder="הדבק כאן ישירות מגוגל שיטס (Ctrl+V)…" style="width:100%;font-family:monospace;font-size:13px">${esc(st.text)}</textarea></div>
+        ${hasContactRef && !isUpd ? `<div class="chk"><input type="checkbox" id="${P}create" ${st.createContacts ? 'checked' : ''}>
+          <label for="${P}create">צור אנשי קשר חסרים אוטומטית</label></div>` : ''}
+        <div class="toolbar">
+          <button class="btn ghost" id="${P}prev">🔎 בדיקה מקדימה</button>
+          <button class="btn ${isUpd ? 'gold' : 'green'}" id="${P}run" disabled>${isUpd ? '✎ עדכן' : '⬆ ייבא'}</button>
+        </div>
+        <div id="${P}res"></div>
+      </div>`;
+
+    // חיווט
+    if (q('table')) q('table').onchange = (e) => { st.table = e.target.value; st.text = ''; draw(); };
+    q('mode').onchange = (e) => { st.mode = e.target.value; st.text = ''; draw(); };
+    q('text').oninput = (e) => { st.text = e.target.value; };
+    if (q('create')) q('create').onchange = (e) => { st.createContacts = e.target.checked; };
+    q('head').onclick = () => {
+      const hdr = (isUpd ? ['מזהה'] : []).concat(cols.map(c => c.label)).join('\t');
+      navigator.clipboard.writeText(hdr).then(() => toast('הכותרות הועתקו — הדבק בשורה הראשונה בגיליון', 'ok'))
+        .catch(() => toast('העתקה נכשלה', 'err'));
+    };
+
+    // המפרט לפענוח כולל רק את העמודות שמדביקים
+    const parseSpec = { cols };
+    const runOpts = () => ({ createMissingContacts: st.createContacts });
+    const withPreset = (rows) => presetKeys.length
+      ? rows.map(r => Object.assign({}, preset, r)) : rows;
+
+    const renderPreview = (parsed, r) => {
+      const bad = r.rows.filter(x => !x.ok).slice(0, 200);
+      q('res').innerHTML = `
+        <div class="grid stat-grid" style="margin-top:6px">
+          <div class="stat"><div class="label">שורות שזוהו</div><div class="value">${r.total}</div>
+            <div class="sub">${parsed.hasHeader ? 'עם שורת כותרת' : 'מופה לפי סדר העמודות'}</div></div>
+          <div class="stat"><div class="label">תקינות</div><div class="value g">${r.valid}</div></div>
+          <div class="stat"><div class="label">שגויות</div><div class="value ${r.invalid ? 'r' : ''}">${r.invalid}</div></div>
+          ${r.new_contacts ? `<div class="stat"><div class="label">אנשי קשר חדשים</div><div class="value a">${r.new_contacts}</div></div>` : ''}
+        </div>
+        ${bad.length ? `<div class="card" style="margin-top:8px"><h3>שורות שיידלגו (${r.invalid})</h3>
+          ${tableHTML([{ label: 'שורה', render: x => x.line }, { label: 'בעיה', cls: 'wrap', render: x => esc(x.error || '') }], bad)}
+          ${r.invalid > bad.length ? `<div class="mini">…ועוד ${r.invalid - bad.length}</div>` : ''}</div>` : ''}
+        ${r.valid ? `<div class="mini" style="margin-top:6px">✅ ${r.valid} שורות מוכנות. לחץ "${isUpd ? 'עדכן' : 'ייבא'}".</div>`
+                  : `<div class="mini neg" style="margin-top:6px">אין שורות תקינות.</div>`}`;
+    };
+
+    q('prev').onclick = async () => {
+      const parsed = parseImportPaste(parseSpec, st.text, st.mode);
+      if (!parsed.rows.length) return toast('אין שורות להדבקה', 'err');
+      q('prev').disabled = true;
+      try {
+        const r = await Store.import.run(st.table, withPreset(parsed.rows), runOpts(), true, st.mode);
+        renderPreview(parsed, r);
+        q('run').disabled = r.valid === 0;
+      } catch (e) { toast(e.message, 'err'); }
+      finally { q('prev').disabled = false; }
+    };
+
+    q('run').onclick = async () => {
+      const spec3 = importSpecFor(st.table);
+      const parsed = parseImportPaste(parseSpec, st.text, st.mode);
+      if (!parsed.rows.length) return toast('אין שורות להדבקה', 'err');
+      if (!(await confirmBox(`${isUpd ? 'לעדכן' : 'לייבא'} ${spec3.label} — כל השורות התקינות?`))) return;
+      q('run').disabled = true;
+      try {
+        const r = await Store.import.run(st.table, withPreset(parsed.rows), runOpts(), false, st.mode);
+        const skipped = (r.skipped || []).slice(0, 200);
+        q('res').innerHTML = `
+          <div class="grid stat-grid" style="margin-top:6px">
+            <div class="stat"><div class="label">${isUpd ? 'עודכנו' : 'נוצרו'}</div><div class="value g">${r.created}</div></div>
+            ${r.new_contacts_created ? `<div class="stat"><div class="label">אנשי קשר חדשים</div><div class="value a">${r.new_contacts_created}</div></div>` : ''}
+            <div class="stat"><div class="label">דולגו</div><div class="value ${skipped.length ? 'r' : ''}">${(r.skipped || []).length}</div></div>
+          </div>
+          ${skipped.length ? `<div class="card" style="margin-top:8px"><h3>שורות שדולגו</h3>
+            ${tableHTML([{ label: 'שורה', render: x => x.line }, { label: 'בעיה', cls: 'wrap', render: x => esc(x.error || '') }], skipped)}</div>` : ''}`;
+        toast(`${isUpd ? 'עודכנו' : 'יובאו'} ${r.created} שורות`, 'ok');
+        st.text = '';
+        await reloadCaches();
+        if (opts.onDone) opts.onDone();
+      } catch (e) { toast(e.message, 'err'); q('run').disabled = false; }
+    };
+  }
+
+  draw();
+}
+
+// חלון ייבוא/עדכון לטבלה מסוימת — נפתח מכל לשונית
+function openImportModal(table, label, preset) {
+  ensureImportSpec().then(() => {
+    if (!importSpecFor(table)) return toast('הטבלה אינה נתמכת לייבוא', 'err');
+    const m = modal({ title: `ייבוא / עדכון מרוכז — ${label || ''}`, wide: true, body: '<div id="impHost"></div>' });
+    let changed = false;
+    importPanel(m.el.querySelector('#impHost'), {
+      lockedTable: table, preset: preset || null,
+      onDone: () => { changed = true; },
+    });
+    // רענון הטבלה שמאחור רק אם באמת נכנסו נתונים
+    const origClose = m.close;
+    const closeAndRefresh = () => { origClose(); if (changed) render(); };
+    m.el.querySelector('.x').onclick = closeAndRefresh;
+    m.el.onclick = (e) => { if (e.target === m.el) closeAndRefresh(); };
+  }).catch(e => toast(e.message, 'err'));
+}
+
+// כפתור "מרוכז" שמופיע בכותרת כל לשונית
+function bulkBtn(table, label, preset) {
+  if (!ME.caps.edit || !table) return '';
+  const p = preset ? ` data-bulkpreset='${esc(JSON.stringify(preset))}'` : '';
+  return `<button class="btn ghost" data-bulk="${esc(table)}" data-bulklabel="${esc(label || '')}"${p}>⇅ מרוכז</button>`;
+}
+
+function wireBulkBtns() {
+  document.querySelectorAll('[data-bulk]').forEach(b => {
+    b.onclick = () => {
+      let preset = null;
+      if (b.dataset.bulkpreset) { try { preset = JSON.parse(b.dataset.bulkpreset); } catch (e) {} }
+      openImportModal(b.dataset.bulk, b.dataset.bulklabel, preset);
+    };
+  });
+}
+
+function pageImport() {
+  if (!IMPORT.spec) {
+    ensureImportSpec().then(() => render())
+      .catch(e => { $('view').innerHTML = `<div class="card" style="color:var(--red)">${esc(e.message)}</div>`; });
+    $('view').innerHTML = `<div class="card muted">טוען…</div>`;
+    return;
+  }
+  $('view').innerHTML += `
     <div class="page-head"><h2>ייבוא ועדכון מרוכז</h2>
       <span class="mini">מדביקים שורות מגוגל שיטס / אקסל — המערכת מתאימה עמודות ומפענחת שמות</span></div>
-
-    <div class="card">
-      <div class="row">
-        <div class="field" style="max-width:300px"><label>טבלה</label>
-          <select id="impTable">${IMPORT.spec.map(s =>
-            `<option value="${s.table}" ${s.table === IMPORT.table ? 'selected' : ''}>${esc(s.label)}</option>`).join('')}</select></div>
-        <div class="field" style="max-width:300px"><label>פעולה</label>
-          <select id="impMode">
-            <option value="create" ${!isUpd ? 'selected' : ''}>הוספת שורות חדשות</option>
-            <option value="update" ${isUpd ? 'selected' : ''}>עדכון שורות קיימות (לפי מזהה)</option>
-          </select></div>
-      </div>
-      <div class="sec-title">עמודות ${isUpd ? '— בעדכון: עמודה ראשונה <b>מזהה</b>, ואחריה רק מה שרוצים לשנות' : '(בסדר הזה, או עם שורת כותרת תואמת)'}</div>
-      <div>${isUpd ? '<span class="pill a" style="margin:2px">מזהה *</span>' : ''}${spec.cols.map(colChip).join('')}</div>
-      <div class="mini" style="margin-top:8px">${isUpd
-        ? 'בעדכון מתעדכנות <b>רק העמודות שהדבקת</b> — שאר השדות נשארים כמו שהם. תא ריק = לא נוגעים בשדה.'
-        : '* = חובה. עמודות הפניה (סופר/רוכש/מוצר/גודל) — כתוב את <b>השם</b> כפי שהוא רשום, או את מספר המזהה. עמודות "מס\' מזהה" (ספר/רכישה) — המספר <b>#</b> מהטבלה במערכת.'}</div>
-      <div style="margin-top:8px"><button class="btn ghost sm" id="copyHead">📋 העתק שורת כותרות</button></div>
-    </div>
-
-    <div class="card">
-      <div class="field"><label>הדבק כאן את השורות</label>
-        <textarea id="impText" rows="9" placeholder="הדבק כאן ישירות מגוגל שיטס (Ctrl+V)…" style="width:100%;font-family:monospace;font-size:13px">${esc(IMPORT.text)}</textarea></div>
-      ${hasContactRef && !isUpd ? `<div class="chk"><input type="checkbox" id="impCreate" ${IMPORT.opts.createMissingContacts ? 'checked' : ''}>
-        <label for="impCreate">צור אנשי קשר חסרים אוטומטית (שם שלא נמצא ברשימה ייווצר)</label></div>` : ''}
-      <div class="toolbar">
-        <button class="btn ghost" id="impPreview">🔎 בדיקה מקדימה</button>
-        <button class="btn ${isUpd ? 'gold' : 'green'}" id="impRun" disabled>${isUpd ? '✎ עדכן' : '⬆ ייבא'}</button>
-      </div>
-      <div id="impResult"></div>
-    </div>`;
-
-  const spec2 = spec;
-  $('impTable').onchange = (e) => { IMPORT.table = e.target.value; IMPORT.text = ''; render(); };
-  $('impMode').onchange = (e) => { IMPORT.mode = e.target.value; IMPORT.text = ''; render(); };
-  $('impText').oninput = (e) => { IMPORT.text = e.target.value; };
-  if ($('impCreate')) $('impCreate').onchange = (e) => { IMPORT.opts.createMissingContacts = e.target.checked; };
-  $('copyHead').onclick = () => {
-    const hdr = (isUpd ? ['מזהה'] : []).concat(spec2.cols.map(c => c.label)).join('\t');
-    navigator.clipboard.writeText(hdr).then(() => toast('הכותרות הועתקו — הדבק בשורה הראשונה בגיליון', 'ok'))
-      .catch(() => toast('העתקה נכשלה', 'err'));
-  };
-
-  const doPreview = async () => {
-    const parsed = parseImportPaste(spec2, IMPORT.text, IMPORT.mode);
-    if (!parsed.rows.length) return toast('אין שורות להדבקה', 'err');
-    const btnP = $('impPreview'), btnR = $('impRun');
-    btnP.disabled = true;
-    try {
-      const r = await Store.import.run(IMPORT.table, parsed.rows, IMPORT.opts, true, IMPORT.mode);
-      renderPreview(parsed, r);
-      btnR.disabled = r.valid === 0;
-    } catch (e) { toast(e.message, 'err'); }
-    finally { btnP.disabled = false; }
-  };
-
-  const renderPreview = (parsed, r) => {
-    const bad = r.rows.filter(x => !x.ok).slice(0, 200);
-    $('impResult').innerHTML = `
-      <div class="grid stat-grid" style="margin-top:6px">
-        <div class="stat"><div class="label">שורות שזוהו</div><div class="value">${r.total}</div>
-          <div class="sub">${parsed.hasHeader ? 'עם שורת כותרת' : 'מופה לפי סדר העמודות'}</div></div>
-        <div class="stat"><div class="label">תקינות</div><div class="value g">${r.valid}</div></div>
-        <div class="stat"><div class="label">שגויות</div><div class="value ${r.invalid ? 'r' : ''}">${r.invalid}</div></div>
-        ${r.new_contacts ? `<div class="stat"><div class="label">אנשי קשר חדשים</div><div class="value a">${r.new_contacts}</div></div>` : ''}
-      </div>
-      ${bad.length ? `<div class="card" style="margin-top:8px"><h3>שורות שיידלגו (${r.invalid})</h3>
-        ${tableHTML([{ label: 'שורה', render: x => x.line }, { label: 'בעיה', cls: 'wrap', render: x => esc(x.error || '') }], bad)}
-        ${r.invalid > bad.length ? `<div class="mini">…ועוד ${r.invalid - bad.length}</div>` : ''}</div>` : ''}
-      ${r.valid ? `<div class="mini" style="margin-top:6px">✅ ${r.valid} שורות מוכנות לייבוא. לחץ "ייבא".</div>`
-                : `<div class="mini neg" style="margin-top:6px">אין שורות תקינות לייבוא.</div>`}`;
-  };
-
-  const doRun = async (parsed) => {
-    const verb = isUpd ? 'לעדכן' : 'לייבא';
-    if (!(await confirmBox(`${verb} ${spec2.label} — כל השורות התקינות?`))) return;
-    const btnR = $('impRun'); btnR.disabled = true;
-    try {
-      const r = await Store.import.run(IMPORT.table, parsed.rows, IMPORT.opts, false, IMPORT.mode);
-      const skipped = (r.skipped || []).slice(0, 200);
-      $('impResult').innerHTML = `
-        <div class="grid stat-grid" style="margin-top:6px">
-          <div class="stat"><div class="label">${isUpd ? 'עודכנו' : 'נוצרו'}</div><div class="value g">${r.created}</div></div>
-          ${r.new_contacts_created ? `<div class="stat"><div class="label">אנשי קשר חדשים</div><div class="value a">${r.new_contacts_created}</div></div>` : ''}
-          <div class="stat"><div class="label">דולגו</div><div class="value ${r.skipped && r.skipped.length ? 'r' : ''}">${(r.skipped || []).length}</div></div>
-        </div>
-        ${skipped.length ? `<div class="card" style="margin-top:8px"><h3>שורות שדולגו</h3>
-          ${tableHTML([{ label: 'שורה', render: x => x.line }, { label: 'בעיה', cls: 'wrap', render: x => esc(x.error || '') }], skipped)}</div>` : ''}`;
-      toast(`${isUpd ? 'עודכנו' : 'יובאו'} ${r.created} שורות`, 'ok');
-      IMPORT.text = '';
-      await reloadCaches();
-    } catch (e) { toast(e.message, 'err'); btnR.disabled = false; }
-  };
-
-  $('impPreview').onclick = () => doPreview();
-  $('impRun').onclick = () => {
-    const parsed = parseImportPaste(spec2, IMPORT.text, IMPORT.mode);
-    if (parsed.rows.length) doRun(parsed);
-  };
+    <div id="impHost"></div>`;
+  importPanel($('impHost'), {});
 }
 
 // ============ ניווט ============
@@ -1378,7 +1458,7 @@ function renderTabs() {
 }
 
 function renderSubtabs(group, subs) {
-  $('view').innerHTML = `<div class="subtabs">${subs.map(s =>
+  $('view').innerHTML += `<div class="subtabs">${subs.map(s =>
     `<button data-sub="${s.k}" class="${SUB[group] === s.k ? 'active' : ''}">${esc(s.label)}</button>`).join('')}</div>`;
   setTimeout(() => {
     document.querySelectorAll('[data-sub]').forEach(b =>
@@ -1389,6 +1469,7 @@ function renderSubtabs(group, subs) {
 async function render() {
   renderTabs();
   const tab = TABS.find(t => t.k === TAB) || TABS[0];
+  $('view').innerHTML = '';
   try {
     await tab.fn();
     // חיווט תתי-לשוניות אחרי שהדף התרנדר
