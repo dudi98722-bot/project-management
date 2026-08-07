@@ -20,9 +20,9 @@ module.exports = crudRouter('prod_purchases', [
               p.name AS product_name,
               sc.name AS scribe_name,
               COALESCE(sd.sold, 0) AS sold_qty,
-              (t.quantity - COALESCE(sd.sold, 0)) AS remaining_qty,
-              (t.cost_per_unit + t.extra_cost_per_unit) AS unit_cost,
-              (t.quantity * t.cost_per_unit) AS owed_scribe
+              (COALESCE(t.quantity,0) - COALESCE(sd.sold, 0)) AS remaining_qty,
+              (COALESCE(t.cost_per_unit,0) + COALESCE(t.extra_cost_per_unit,0)) AS unit_cost,
+              (COALESCE(t.quantity,0) * COALESCE(t.cost_per_unit,0)) AS owed_scribe
             FROM prod_purchases t
             LEFT JOIN products p  ON p.id  = t.product_id
             LEFT JOIN contacts sc ON sc.id = t.scribe_id

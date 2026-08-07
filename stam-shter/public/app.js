@@ -1221,8 +1221,15 @@ function parseImportPaste(spec, text, mode) {
   for (const cell of first) if (lookup[cell] !== undefined) matched++;
   const hasHeader = first.length > 1 && matched >= Math.max(2, Math.ceil(first.filter(Boolean).length / 2));
 
-  let mapping;
-  if (hasHeader) mapping = first.map(cell => lookup[cell] !== undefined ? lookup[cell] : null);
+  let mapping, dropped = [];
+  if (hasHeader) {
+    mapping = first.map(cell => {
+      const norm = cell.replace(/\s+/g, ' ').trim();
+      if (lookup[norm] !== undefined) return lookup[norm];
+      if (norm !== '') dropped.push(norm);   // עמודה שכותרתה לא זוהתה — תושלך; חובה להראות למשתמש
+      return null;
+    });
+  }
   else if (mode === 'update') mapping = ['id'].concat(spec.cols.map(c => c.key));   // עמודה ראשונה = מזהה
   else mapping = spec.cols.map(c => c.key);   // לפי סדר
 
@@ -1232,7 +1239,7 @@ function parseImportPaste(spec, text, mode) {
     for (let i = 0; i < mapping.length; i++) if (mapping[i]) o[mapping[i]] = cs[i];
     return o;
   });
-  return { rows, mapping, hasHeader };
+  return { rows, mapping, hasHeader, dropped };
 }
 
 function importSpecFor(table) { return (IMPORT.spec || []).find(s => s.table === table); }
@@ -1294,7 +1301,7 @@ function importPanel(host, opts) {
         <div>${isUpd ? '<span class="pill a" style="margin:2px">מזהה *</span>' : ''}${cols.map(colChip).join('')}</div>
         <div class="mini" style="margin-top:8px">${isUpd
           ? 'בעדכון מתעדכנות <b>רק העמודות שהדבקת</b> — שאר השדות נשארים כמו שהם. תא ריק = לא נוגעים בשדה.'
-          : '* = חובה. עמודות הפניה (סופר/רוכש/מוצר/גודל) — כתוב את <b>השם</b> כפי שהוא רשום, או את מספר המזהה. עמודות "מס\' מזהה" (ספר/רכישה) — המספר <b>#</b> מהטבלה.'}</div>
+          : '* = חובה. עמודות הפניה (סופר/רוכש/מוצר/גודל) — כתוב את <b>השם</b> כפי שהוא רשום במערכת. עמודות "מס\' מזהה" (ספר/רכישה) — המספר <b>#</b> מהטבלה.'}</div>
         <div style="margin-top:8px"><button class="btn ghost sm" id="${P}head">📋 העתק שורת כותרות</button></div>
       </div>
 
@@ -1330,6 +1337,11 @@ function importPanel(host, opts) {
     const renderPreview = (parsed, r) => {
       const bad = r.rows.filter(x => !x.ok).slice(0, 200);
       q('res').innerHTML = `
+        ${parsed.dropped && parsed.dropped.length ? `
+          <div class="card" style="margin-top:6px;border-color:var(--red)">
+            <b style="color:var(--red)">⚠ עמודות שלא זוהו ויושלכו:</b> ${parsed.dropped.map(esc).join(' · ')}
+            <div class="mini">אם הן חשובות — תקן את הכותרות (כפתור "העתק שורת כותרות") לפני הייבוא.</div>
+          </div>` : ''}
         <div class="grid stat-grid" style="margin-top:6px">
           <div class="stat"><div class="label">שורות שזוהו</div><div class="value">${r.total}</div>
             <div class="sub">${parsed.hasHeader ? 'עם שורת כותרת' : 'מופה לפי סדר העמודות'}</div></div>
@@ -1375,6 +1387,7 @@ function importPanel(host, opts) {
             ${tableHTML([{ label: 'שורה', render: x => x.line }, { label: 'בעיה', cls: 'wrap', render: x => esc(x.error || '') }], skipped)}</div>` : ''}`;
         toast(`${isUpd ? 'עודכנו' : 'יובאו'} ${r.created} שורות`, 'ok');
         st.text = '';
+        if (q('text')) q('text').value = '';   // שלא יישאר מה שכבר יובא — הדבקה כפולה בטעות
         await reloadCaches();
         if (opts.onDone) opts.onDone();
       } catch (e) { toast(e.message, 'err'); q('run').disabled = false; }

@@ -96,11 +96,13 @@ async function post(items) {
 // שם deleted=FALSE וכל דוח שייבנה מעל הגיליון יספור רשומות מחוקות כחיות.
 function mirrorMany(table, records) {
   if (!enabled() || !Array.isArray(records) || !records.length) return Promise.resolve();
+  let dropped = 0;
   for (const rec of records) {
     if (!rec || rec.id == null) continue;
-    if (queue.length >= MAX_QUEUE) break;
+    if (queue.length >= MAX_QUEUE) { dropped++; continue; }
     queue.push({ time: new Date().toISOString(), table: table || '', id: String(rec.id), record: rec, silent: true });
   }
+  if (dropped) console.error(`Sheets backup: התור מלא — ${dropped} רשומות של ${table} לא גובו לשיטס`);
   schedule();
   return Promise.resolve();
 }

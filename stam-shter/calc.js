@@ -53,9 +53,11 @@ LEFT JOIN (
   WHERE e.deleted=false GROUP BY e.scroll_id
 ) pe ON pe.scroll_id = s.id
 LEFT JOIN (
+  -- COALESCE על כל רכיב: NULL באחד השדות היה מעלים את התשלום כולו מהסכום
   SELECT scroll_id,
-    SUM(amount_ils + amount_usd * rate) AS paid,
-    SUM(CASE WHEN amount_usd > 0 THEN amount_usd * rate - cash_in_hand ELSE 0 END) AS peritah
+    SUM(COALESCE(amount_ils,0) + COALESCE(amount_usd,0) * COALESCE(rate,0)) AS paid,
+    SUM(CASE WHEN COALESCE(amount_usd,0) > 0
+        THEN COALESCE(amount_usd,0) * COALESCE(rate,0) - COALESCE(cash_in_hand,0) ELSE 0 END) AS peritah
   FROM customer_payments WHERE deleted=false GROUP BY scroll_id
 ) cp ON cp.scroll_id = s.id
 WHERE s.deleted = false`;

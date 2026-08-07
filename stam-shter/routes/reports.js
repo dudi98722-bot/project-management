@@ -9,12 +9,13 @@ const router = express.Router();
 
 router.use(authenticate, can('viewReports'));
 
-// ביטויי הרווח של מכירת מוצר, לשימוש חוזר בשאילתות
-const SALE_TOTAL = '(s.quantity * s.price_per_unit)';
-const SALE_COST  = '(s.quantity * (COALESCE(pp.cost_per_unit,0) + COALESCE(pp.extra_cost_per_unit,0)))';
-const SALE_3PCT  = '(CASE WHEN s.deduct_3pct THEN s.quantity * s.price_per_unit * 0.03 ELSE 0 END)';
-const PERITAH    = '(CASE WHEN amount_usd > 0 THEN amount_usd * rate - cash_in_hand ELSE 0 END)';
-const PAID_TOTAL = '(amount_ils + amount_usd * rate)';
+// ביטויי הרווח של מכירת מוצר, לשימוש חוזר בשאילתות.
+// COALESCE על כל רכיב — NULL אחד היה מעלים את השורה כולה מהסכומים.
+const SALE_TOTAL = '(COALESCE(s.quantity,0) * COALESCE(s.price_per_unit,0))';
+const SALE_COST  = '(COALESCE(s.quantity,0) * (COALESCE(pp.cost_per_unit,0) + COALESCE(pp.extra_cost_per_unit,0)))';
+const SALE_3PCT  = `(CASE WHEN s.deduct_3pct THEN ${'(COALESCE(s.quantity,0) * COALESCE(s.price_per_unit,0))'} * 0.03 ELSE 0 END)`;
+const PERITAH    = '(CASE WHEN COALESCE(amount_usd,0) > 0 THEN COALESCE(amount_usd,0) * COALESCE(rate,0) - COALESCE(cash_in_hand,0) ELSE 0 END)';
+const PAID_TOTAL = '(COALESCE(amount_ils,0) + COALESCE(amount_usd,0) * COALESCE(rate,0))';
 
 const sum = (rows, key) => r2(rows.reduce((a, x) => a + n(x[key]), 0));
 

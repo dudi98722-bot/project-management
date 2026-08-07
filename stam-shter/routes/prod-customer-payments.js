@@ -13,8 +13,9 @@ module.exports = crudRouter('prod_customer_payments', [
   filterCols: ['customer_id'],
   viewSql: `SELECT t.*,
               cu.name AS customer_name,
-              (t.amount_ils + t.amount_usd * t.rate) AS paid_actual,
-              (CASE WHEN t.amount_usd > 0 THEN t.amount_usd * t.rate - t.cash_in_hand ELSE 0 END) AS peritah
+              (COALESCE(t.amount_ils,0) + COALESCE(t.amount_usd,0) * COALESCE(t.rate,0)) AS paid_actual,
+              (CASE WHEN COALESCE(t.amount_usd,0) > 0
+                THEN COALESCE(t.amount_usd,0) * COALESCE(t.rate,0) - COALESCE(t.cash_in_hand,0) ELSE 0 END) AS peritah
             FROM prod_customer_payments t
             LEFT JOIN contacts cu ON cu.id = t.customer_id`,
 });

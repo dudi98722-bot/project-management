@@ -97,7 +97,7 @@ const SPEC = {
     label: 'הוצאות לספר',
     cols: [
       { key: 'scroll_id', label: 'מזהה ספר (#)', refId: 'scrolls', required: true },
-      { key: 'type', label: 'סוג הוצאה' },
+      { key: 'type', label: 'סוג הוצאה', listRef: 'expense_book' },
       { key: 'date', label: 'תאריך', type: 'date' },
       { key: 'amount', label: 'סכום', type: 'num' },
       { key: 'note', label: 'הערה' },
@@ -117,7 +117,7 @@ const SPEC = {
     label: 'הוצאות עסק',
     cols: [
       { key: 'date', label: 'תאריך', type: 'date' },
-      { key: 'type', label: 'סוג הוצאה' },
+      { key: 'type', label: 'סוג הוצאה', listRef: 'expense_business' },
       { key: 'amount', label: 'סכום', type: 'num' },
       { key: 'note', label: 'הערה' },
     ],
@@ -174,10 +174,27 @@ const SPEC = {
 const VALID_LISTS = new Set(['expense_book', 'expense_business']);
 
 // ---------- המרות ----------
+// פרסר מספרים קפדני. עקרונות:
+//   תא ריק בשדה מספרי -> 0 (לא NULL! NULL מרעיל את חישובי הסכומים ב-SQL:
+//     amount_ils + amount_usd*rate מחזיר NULL אם רכיב אחד NULL, והתשלום
+//     נעלם מהיתרות בלי שום סימן).
+//   ערך שאינו מספר נקי -> undefined (שגיאה שמוצגת למשתמש), ולא "ניקוי"
+//     אגרסיבי שהופך תאריך שנחת בעמודת סכום ל-12,052,026 ש"ח.
+//   "500-" ו-"(500)" (פורמט חשבונאי) -> ‎-500, לא ‎+500.
 function toNum(v) {
-  if (v === null || v === undefined || String(v).trim() === '') return null;
-  const n = parseFloat(String(v).replace(/[₪$,\s]/g, '').replace(/[^\d.\-]/g, ''));
-  return isNaN(n) ? undefined : n;   // undefined = שגיאת פענוח
+  if (v === null || v === undefined) return 0;
+  let s = String(v).trim();
+  if (s === '') return 0;
+  let neg = false;
+  const paren = s.match(/^\((.*)\)$/);                       // (500)
+  if (paren) { neg = true; s = paren[1].trim(); }
+  if (/-$/.test(s)) { neg = !neg; s = s.slice(0, -1).trim(); }  // 500-
+  if (/^-/.test(s)) { neg = !neg; s = s.slice(1).trim(); }
+  s = s.replace(/[₪$\s]/g, '');
+  s = s.replace(/,(?=\d{3}(\D|$))/g, '');                    // פסיקי אלפים בלבד
+  if (!/^\d+(\.\d+)?$/.test(s)) return undefined;            // כל השאר — שגיאה
+  const n = parseFloat(s);
+  return neg ? -n : n;
 }
 function normDate(v) {
   if (v === null || v === undefined || String(v).trim() === '') return null;
@@ -193,18 +210,30 @@ function normDate(v) {
   }
   return undefined;   // פורמט לא מזוהה
 }
-const norm = (s) => String(s == null ? '' : s).trim().replace(/\s+/g, ' ').toLowerCase();
+// נרמול שמות להשוואה: מסיר תווי כיווניות נסתרים (שמגיעים מהעתקה מגיליונות),
+// ניקוד, ומאחד גרש/גרשיים — אחרת "ישראל" ו"ישראל‏" נחשבים שני אנשים.
+const norm = (s) => String(s == null ? '' : s)
+  .replace(/[‎‏‪-‮﻿]/g, '')
+  .replace(/[֑-ׇ]/g, '')
+  .replace(/[׳״'"`´]/g, '')
+  .trim().replace(/\s+/g, ' ').toLowerCase();
 
 // בונה את מפות ההפניה מהמסד
 async function loadContext() {
-  const [contacts, products, sizes, scrolls, purchases, sold] = await Promise.all([
+  const [contacts, products, sizes, scrolls, purchases, sold, lists] = await Promise.all([
     pool.query('SELECT id, name FROM contacts WHERE deleted=false'),
     pool.query('SELECT id, name FROM products WHERE deleted=false'),
     pool.query('SELECT id, name FROM parchment_sizes WHERE deleted=false'),
     pool.query('SELECT id FROM scrolls WHERE deleted=false'),
     pool.query('SELECT id, quantity FROM prod_purchases WHERE deleted=false'),
     pool.query('SELECT purchase_id, COALESCE(SUM(quantity),0) AS s FROM prod_sales WHERE deleted=false GROUP BY purchase_id'),
+    pool.query('SELECT list_name, value FROM list_items WHERE deleted=false'),
   ]);
+  // ערכי הרשימות: norm(ערך) -> הערך הקנוני כפי שהוא שמור
+  const listVals = {};
+  for (const r of lists.rows) {
+    (listVals[r.list_name] = listVals[r.list_name] || new Map()).set(norm(r.value), r.value);
+  }
   const contactMap = new Map();   // name(lower) -> [ids]
   for (const c of contacts.rows) {
     const nm = norm(c.name);
@@ -233,6 +262,7 @@ async function loadContext() {
     scrollIds: new Set(scrolls.rows.map(s => s.id)),
     purchaseIds: new Set(purchases.rows.map(p => p.id)),
     remaining,
+    listVals,
   };
 }
 
@@ -240,12 +270,14 @@ const REF_MAP = { contacts: 'contactMap', products: 'productMap', parchment_size
 const REF_IDSET = { contacts: 'contactIds', products: 'productIds', parchment_sizes: 'sizeIds' };
 const REFID_IDSET = { scrolls: 'scrollIds', prod_purchases: 'purchaseIds' };
 
-// מפענח שורה אחת -> { ok, error, data:{col:val}, newContact:{first,last}|null }
+// מפענח שורה אחת -> { ok, error, data:{col:val}, newContacts:[{name,nameKey}] }
 // partial=true (מצב עדכון): עמודה ריקה נחשבת "לא נגעו בה" ולכן שדה חובה ריק אינו שגיאה.
 function resolveRow(table, raw, ctx, opts, partial) {
   const spec = SPEC[table];
   const data = {};
-  let newContact = null;
+  // מערך ולא משתנה יחיד — בשורת ס"ת יש גם סופר וגם רוכש, ואם שניהם
+  // חדשים חייבים לזכור את שניהם, אחרת אחד מהם נכנס NULL בשקט.
+  const newContacts = [];
 
   for (const col of spec.cols) {
     let val = raw[col.key];
@@ -258,16 +290,20 @@ function resolveRow(table, raw, ctx, opts, partial) {
         if (col.required) return { ok: false, error: `חסר ערך בעמודה "${col.label}"` };
         data[col.key] = null; continue;
       }
-      // מספר שהוא id קיים -> קבל כמות שהוא
-      if (/^\d+$/.test(val) && ctx[REF_IDSET[col.ref]].has(+val)) { data[col.key] = +val; continue; }
+      // ערך שכולו ספרות בעמודת שם הוא כמעט תמיד קוד מהמערכת הישנה —
+      // התאמה שלו למזהה פנימי הייתה משייכת את השורה לאדם אקראי.
+      if (/^\d+$/.test(val)) {
+        return { ok: false, error: `"${val}" בעמודת "${col.label}" נראה כמו קוד — יש לכתוב את השם עצמו` };
+      }
       const map = ctx[REF_MAP[col.ref]];
       const hits = map.get(norm(val));
       if (hits && hits.length === 1) { data[col.key] = hits[0]; continue; }
       if (hits && hits.length > 1) return { ok: false, error: `"${val}" מופיע יותר מפעם אחת ב${col.ref === 'contacts' ? 'אנשי הקשר' : 'רשימה'} — לא ניתן להכריע` };
       // לא נמצא
       if (col.ref === 'contacts' && opts.createMissingContacts) {
-        newContact = { name: val, nameKey: norm(val) };
-        data[col.key] = { __newContact: newContact.nameKey };   // ייושב בהכנסה
+        const nameKey = norm(val);
+        newContacts.push({ name: val, nameKey });
+        data[col.key] = { __newContact: nameKey };   // ייושב בהכנסה
         continue;
       }
       const what = col.ref === 'contacts' ? 'איש קשר' : (col.ref === 'products' ? 'מוצר' : 'גודל קלף');
@@ -307,11 +343,19 @@ function resolveRow(table, raw, ctx, opts, partial) {
     } else if (col.type === 'listname') {
       if (!VALID_LISTS.has(val)) return { ok: false, error: `שם רשימה לא מוכר: "${val}"` };
       data[col.key] = val;
+    } else if (col.listRef) {
+      // סוג הוצאה חייב להתאים לערך ברשימה — אחרת ניתוב "תיקונים" נשבר בשקט
+      if (!val) { data[col.key] = null; continue; }
+      const canonical = (ctx.listVals[col.listRef] || new Map()).get(norm(val));
+      if (canonical === undefined) {
+        return { ok: false, error: `סוג הוצאה לא מוכר: "${val}" — הוסף אותו קודם בהגדרות` };
+      }
+      data[col.key] = canonical;
     } else {
       data[col.key] = (val === '' || val === undefined) ? null : val;
     }
   }
-  return { ok: true, data, newContact };
+  return { ok: true, data, newContacts };
 }
 
 // ---------- מסלולים ----------
@@ -370,13 +414,26 @@ router.post('/:table', authenticate, can('edit'), async (req, res) => {
       return { ...base, ...resolveRow(table, raw, ctx, opts, false) };
     });
     const valid = resolved.filter(r => r.ok);
-    const newContactNames = [...new Set(valid.filter(r => r.newContact).map(r => r.newContact.nameKey))];
+    const newContactNames = [...new Set(valid.flatMap(r => r.newContacts || []).map(nc => nc.nameKey))];
 
-    // בדיקת מלאי מקדימה למכירות מוצרים (על עותק של היתרות).
-    // רלוונטית ליצירה בלבד; בעדכון היתרה כבר משקפת את השורה עצמה.
+    // כמות חייבת להיות חיובית ברכש ובמכירות — אחרת נוצר מלאי פנטום,
+    // וכמות שלילית במכירה הייתה עוקפת את בדיקת המלאי.
+    if (table === 'prod_sales' || table === 'prod_purchases') {
+      for (const r of valid) {
+        if (!r.ok) continue;
+        const touchedQty = mode === 'create' || (r.touched && r.touched.includes('quantity'));
+        if (touchedQty && !(Number(r.data.quantity) > 0)) {
+          r.ok = false; r.error = 'הכמות חייבת להיות מספר גדול מאפס';
+        }
+      }
+    }
+
+    // בדיקת מלאי מקדימה למכירות מוצרים (על עותק של היתרות) — לתצוגה
+    // המקדימה. הבדיקה המחייבת נעשית שוב בתוך הטרנזקציה, עם נעילה.
     if (table === 'prod_sales' && mode === 'create') {
       const rem = new Map(ctx.remaining);
       for (const r of valid) {
+        if (!r.ok) continue;
         const pid = r.data.purchase_id, q = Number(r.data.quantity) || 0;
         const left = rem.has(pid) ? rem.get(pid) : 0;
         if (q > left) { r.ok = false; r.error = `אין מספיק מלאי בחבילה ${pid} — נשארו ${left}`; }
@@ -392,7 +449,7 @@ router.post('/:table', authenticate, can('edit'), async (req, res) => {
         new_contacts: newContactNames.length,
         rows: resolved.map(r => ({
           line: r.line, ok: r.ok, error: r.error || null,
-          willCreateContact: !!r.newContact,
+          willCreateContact: !!(r.newContacts && r.newContacts.length),
           fields: r.touched ? r.touched.length : undefined,
         })),
       });
@@ -408,11 +465,30 @@ router.post('/:table', authenticate, can('edit'), async (req, res) => {
     try {
       await client.query('BEGIN');
 
-      // יצירת אנשי קשר חסרים (פעם אחת לכל שם)
+      // בדיקת המלאי המחייבת — בתוך הטרנזקציה, עם נעילת שורות הרכישה.
+      // הבדיקה המקדימה שלמעלה נעשתה על נתונים ישנים; בלי הנעילה שתי
+      // בקשות מקבילות היו יכולות לחרוג יחד מהמלאי.
+      let txnRemaining = null;
+      if (table === 'prod_sales' && mode === 'create') {
+        const pids = [...new Set(valid2.map(r => Number(r.data.purchase_id)).filter(Boolean))];
+        txnRemaining = new Map();
+        if (pids.length) {
+          const remRes = await client.query(
+            `SELECT pp.id, pp.quantity - COALESCE((SELECT SUM(s.quantity) FROM prod_sales s
+               WHERE s.purchase_id = pp.id AND s.deleted=false), 0) AS rem
+             FROM prod_purchases pp
+             WHERE pp.id = ANY($1::bigint[]) AND pp.deleted=false
+             FOR UPDATE OF pp`,
+            [pids]);
+          for (const x of remRes.rows) txnRemaining.set(Number(x.id), Number(x.rem));
+        }
+      }
+
+      // יצירת אנשי קשר חסרים (פעם אחת לכל שם — כולל כששניים באותה שורה)
       const createdContacts = new Map();   // nameKey -> id
       if (opts.createMissingContacts) {
         const byKey = new Map();
-        for (const r of valid2) if (r.newContact) byKey.set(r.newContact.nameKey, r.newContact);
+        for (const r of valid2) for (const nc of (r.newContacts || [])) byKey.set(nc.nameKey, nc);
         for (const nc of byKey.values()) {
           const ins = await client.query(
             'INSERT INTO contacts (name, created_by, updated_by) VALUES ($1,$2,$2) RETURNING *',
@@ -422,14 +498,42 @@ router.post('/:table', authenticate, can('edit'), async (req, res) => {
         }
       }
 
+      // ציין איש-קשר-חדש שלא נוצר הוא באג — עדיף שהשורה תיכשל בקול
+      // מאשר שתיכנס עם NULL בשקט.
       const resolveVal = (v) => {
-        if (v && typeof v === 'object' && v.__newContact) return createdContacts.get(v.__newContact) || null;
+        if (v && typeof v === 'object' && v.__newContact) {
+          const id = createdContacts.get(v.__newContact);
+          if (!id) throw new Error(`איש הקשר "${v.__newContact}" לא נוצר — השורה דולגה`);
+          return id;
+        }
         return v === undefined ? null : v;
       };
 
       for (const r of valid2) {
         await client.query('SAVEPOINT s');
         try {
+          // מלאי במכירות: יצירה — מול היתרות הנעולות; עדכון של כמות/חבילה —
+          // בדיקה פרטנית עם נעילה, בניכוי המכירה עצמה.
+          if (table === 'prod_sales' && mode === 'create' && txnRemaining) {
+            const pid = Number(r.data.purchase_id), q = Number(r.data.quantity) || 0;
+            const left = txnRemaining.has(pid) ? txnRemaining.get(pid) : 0;
+            if (q > left) throw new Error(`אין מספיק מלאי בחבילה ${pid} — נשארו ${left}`);
+            txnRemaining.set(pid, left - q);
+          }
+          if (table === 'prod_sales' && mode === 'update' &&
+              (r.touched.includes('quantity') || r.touched.includes('purchase_id'))) {
+            const cur = await client.query('SELECT purchase_id, quantity FROM prod_sales WHERE id=$1 AND deleted=false', [r.id]);
+            if (!cur.rows.length) throw new Error('השורה לא נמצאה או נמחקה');
+            const pid = r.touched.includes('purchase_id') ? Number(r.data.purchase_id) : Number(cur.rows[0].purchase_id);
+            const q = r.touched.includes('quantity') ? Number(r.data.quantity) : Number(cur.rows[0].quantity);
+            const pr = await client.query('SELECT quantity FROM prod_purchases WHERE id=$1 AND deleted=false FOR UPDATE', [pid]);
+            if (!pr.rows.length) throw new Error('חבילת הרכישה לא נמצאה');
+            const sold = await client.query(
+              'SELECT COALESCE(SUM(quantity),0) AS s FROM prod_sales WHERE purchase_id=$1 AND deleted=false AND id<>$2', [pid, r.id]);
+            const left = Number(pr.rows[0].quantity) - Number(sold.rows[0].s);
+            if (q > left) throw new Error(`אין מספיק מלאי — נשארו ${left} יחידות בחבילה`);
+          }
+
           let out;
           if (mode === 'update') {
             // רק העמודות שהודבקו בפועל
@@ -486,7 +590,7 @@ router.post('/:table', authenticate, can('edit'), async (req, res) => {
     res.json({
       table, created,
       skipped: invalid2.map(r => ({ line: r.line, error: r.error })).concat(skipped),
-      new_contacts_created: [...new Set(valid2.filter(r => r.newContact).map(r => r.newContact.nameKey))].length,
+      new_contacts_created: [...new Set(valid2.flatMap(r => r.newContacts || []).map(nc => nc.nameKey))].length,
     });
   } catch (e) {
     console.error(e); res.status(500).json({ error: 'שגיאת שרת' });

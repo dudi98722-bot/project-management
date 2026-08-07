@@ -271,6 +271,29 @@ CREATE TABLE IF NOT EXISTS settings (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
+-- ניקוי נתונים: המרת NULL ל-0 בעמודות כספיות/כמותיות.
+-- NULL בעמודה אחת מרעיל ביטויים כמו amount_ils + amount_usd*rate (התוצאה NULL,
+-- ו-SUM מדלג עליה) — התשלום היה נעלם מהיתרות. idempotent וזול אחרי הריצה הראשונה.
+UPDATE customer_payments SET amount_ils=COALESCE(amount_ils,0), amount_usd=COALESCE(amount_usd,0),
+  rate=COALESCE(rate,0), cash_in_hand=COALESCE(cash_in_hand,0)
+  WHERE amount_ils IS NULL OR amount_usd IS NULL OR rate IS NULL OR cash_in_hand IS NULL;
+UPDATE prod_customer_payments SET amount_ils=COALESCE(amount_ils,0), amount_usd=COALESCE(amount_usd,0),
+  rate=COALESCE(rate,0), cash_in_hand=COALESCE(cash_in_hand,0)
+  WHERE amount_ils IS NULL OR amount_usd IS NULL OR rate IS NULL OR cash_in_hand IS NULL;
+UPDATE scribe_payments SET amount=0 WHERE amount IS NULL;
+UPDATE prod_scribe_payments SET amount=0 WHERE amount IS NULL;
+UPDATE book_expenses SET amount=0 WHERE amount IS NULL;
+UPDATE business_expenses SET amount=0 WHERE amount IS NULL;
+UPDATE pages_log SET pages=0 WHERE pages IS NULL;
+UPDATE parchment_expenses SET quantity=0 WHERE quantity IS NULL;
+UPDATE scrolls SET page_rate=COALESCE(page_rate,0), buyer_total=COALESCE(buyer_total,0)
+  WHERE page_rate IS NULL OR buyer_total IS NULL;
+UPDATE prod_purchases SET quantity=COALESCE(quantity,0), cost_per_unit=COALESCE(cost_per_unit,0),
+  extra_cost_per_unit=COALESCE(extra_cost_per_unit,0)
+  WHERE quantity IS NULL OR cost_per_unit IS NULL OR extra_cost_per_unit IS NULL;
+UPDATE prod_sales SET quantity=COALESCE(quantity,0), price_per_unit=COALESCE(price_per_unit,0)
+  WHERE quantity IS NULL OR price_per_unit IS NULL;
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id SERIAL PRIMARY KEY,
   user_id INTEGER, username VARCHAR(100),

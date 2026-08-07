@@ -25,10 +25,10 @@ SELECT t.*,
   sc.name AS scribe_name,
   cu.name AS customer_name,
   (COALESCE(pp.cost_per_unit,0) + COALESCE(pp.extra_cost_per_unit,0)) AS unit_cost,
-  (t.quantity * t.price_per_unit) AS total_sale,
-  ((t.quantity * t.price_per_unit)
-    - (t.quantity * (COALESCE(pp.cost_per_unit,0) + COALESCE(pp.extra_cost_per_unit,0)))
-    - (CASE WHEN t.deduct_3pct THEN t.quantity * t.price_per_unit * 0.03 ELSE 0 END)
+  (COALESCE(t.quantity,0) * COALESCE(t.price_per_unit,0)) AS total_sale,
+  ((COALESCE(t.quantity,0) * COALESCE(t.price_per_unit,0))
+    - (COALESCE(t.quantity,0) * (COALESCE(pp.cost_per_unit,0) + COALESCE(pp.extra_cost_per_unit,0)))
+    - (CASE WHEN t.deduct_3pct THEN COALESCE(t.quantity,0) * COALESCE(t.price_per_unit,0) * 0.03 ELSE 0 END)
   ) AS total_profit
 FROM prod_sales t
 LEFT JOIN prod_purchases pp ON pp.id = t.purchase_id
