@@ -153,7 +153,7 @@ async function removeRow(store, id, label) {
 function tableHTML(cols, rows, opts) {
   opts = opts || {};
   if (!rows.length) return `<div class="empty"><div class="big">📭</div>אין נתונים להצגה</div>`;
-  const head = cols.map(c => `<th class="${c.cls || ''}">${esc(c.label)}</th>`).join('');
+  const head = cols.map(c => `<th class="${c.cls || ''}">${c.labelHtml || esc(c.label)}</th>`).join('');
   const body = rows.map((r, i) => `<tr ${opts.rowAttr ? opts.rowAttr(r) : ''}>${
     cols.map(c => `<td class="${c.cls || ''}">${c.render(r, i)}</td>`).join('')}</tr>`).join('');
   let foot = '';
@@ -165,6 +165,62 @@ function tableHTML(cols, rows, opts) {
 }
 
 const sumBy = (rows, k) => rows.reduce((a, r) => a + N(r[k]), 0);
+
+// ===== מחיקה מרוכזת בבחירה =====
+// עמודת סימון בטבלה. הבחירה מוגבלת לטבלה אחת בכל רגע — כדי שפס הפעולה
+// הצף תמיד ידע מאיזו טבלה מוחקים.
+function selCol(table) {
+  return {
+    label: '', cls: 'center',
+    labelHtml: `<input type="checkbox" data-selall="${esc(table)}" title="בחר הכל">`,
+    render: (r) => `<input type="checkbox" data-sel="${esc(table)}" value="${r.id}">`,
+  };
+}
+
+function updateSelBar() {
+  let bar = $('selBar');
+  const checked = [...document.querySelectorAll('input[data-sel]:checked')];
+  if (!checked.length) { if (bar) bar.remove(); return; }
+  const table = checked[0].dataset.sel;
+  const ids = checked.map(c => +c.value);
+  if (!bar) { bar = document.createElement('div'); bar.id = 'selBar'; document.body.appendChild(bar); }
+  bar.innerHTML = `<span>נבחרו <b>${ids.length}</b></span>
+    <button class="btn red sm" id="delSelBtn">🗑 מחק נבחרים</button>
+    <button class="btn ghost sm" id="clearSelBtn">ביטול</button>`;
+  $('delSelBtn').onclick = async () => {
+    if (!(await confirmBox(`להעביר ${ids.length} שורות לסל המחזור? (ניתן לשחזר מלשונית מערכת)`))) return;
+    try {
+      const r = await Store.import.bulkDelete(table, ids);
+      toast(`הועברו לסל המחזור: ${r.deleted}${r.failed.length ? ` · נכשלו: ${r.failed.length}` : ''}`, 'ok');
+      await reloadCaches(); render();
+    } catch (e) { toast(e.message, 'err'); }
+  };
+  $('clearSelBtn').onclick = () => {
+    document.querySelectorAll('input[data-sel]:checked').forEach(c => { c.checked = false; });
+    updateSelBar();
+  };
+}
+
+function wireSelection() {
+  document.querySelectorAll('input[data-selall]').forEach(h => {
+    h.onchange = () => {
+      const t = h.dataset.selall;
+      document.querySelectorAll('input[data-sel]').forEach(c => {
+        c.checked = (c.dataset.sel === t) ? h.checked : false;
+      });
+      document.querySelectorAll('input[data-selall]').forEach(o => { if (o !== h) o.checked = false; });
+      updateSelBar();
+    };
+  });
+  document.querySelectorAll('input[data-sel]').forEach(c => {
+    c.onchange = () => {
+      document.querySelectorAll('input[data-sel]:checked').forEach(o => {
+        if (o.dataset.sel !== c.dataset.sel) o.checked = false;
+      });
+      updateSelBar();
+    };
+  });
+}
 
 // ---- עמודת פעולות ----
 function actionsCol(cfg) {
@@ -196,6 +252,7 @@ function wireRowActions(cfg, rows) {
 async function entityPage(cfg) {
   const rows = await cfg.load();
   const cols = cfg.cols.concat([actionsCol(cfg)]);
+  if (ME.caps.del && cfg.bulk) cols.unshift(selCol(cfg.bulk));
   $('view').innerHTML += `
     <div class="page-head">
       <h2>${esc(cfg.title)}</h2>
@@ -209,6 +266,7 @@ async function entityPage(cfg) {
   if ($('addBtn')) $('addBtn').onclick = () => openForm(cfg, null);
   wireRowActions(cfg, rows);
   wireBulkBtns();
+  wireSelection();
 }
 
 // ============ טעינת מטמון ============
@@ -246,6 +304,7 @@ async function pageScrolls() {
   const rows = C.scrolls;
   const cfg = scrollCfg();
   const cols = [
+    ...(ME.caps.del ? [selCol('scrolls')] : []),
     { label: '#', render: r => r.id },
     { label: 'מוצר', render: r => esc(r.product_name || '—') },
     { label: 'סופר', render: r => esc(r.scribe_name || '—') },
@@ -271,6 +330,7 @@ async function pageScrolls() {
   if ($('addBtn')) $('addBtn').onclick = () => openForm(cfg, null);
   wireRowActions(cfg, rows);
   wireBulkBtns();
+  wireSelection();
   document.querySelectorAll('[data-card]').forEach(b => b.onclick = () => showScrollCard(+b.dataset.card));
 }
 
@@ -401,6 +461,7 @@ async function pageScribePay() {
   };
 
   const payCols = [
+    ...(ME.caps.del ? [selCol('scribe_payments')] : []),
     { label: 'ספר', render: r => { const s = scrollById(r.scroll_id); return s ? esc(scrollLabel(s)) : '—'; } },
     { label: 'תאריך', render: r => dt(r.date) },
     { label: 'סכום ששולם', cls: 'num', render: r => mCell(r.amount), total: rows => mCell(sumBy(rows, 'amount')) },
@@ -409,6 +470,7 @@ async function pageScribePay() {
     actionsCol(payCfg),
   ];
   const pageCols = [
+    ...(ME.caps.del ? [selCol('pages_log')] : []),
     { label: 'ספר', render: r => { const s = scrollById(r.scroll_id); return s ? esc(scrollLabel(s)) : '—'; } },
     { label: 'תאריך', render: r => dt(r.date) },
     { label: 'עמודים שנכתבו', cls: 'num', render: r => numCell(r.pages), total: rows => numCell(sumBy(rows, 'pages')) },
@@ -452,6 +514,7 @@ async function pageScribePay() {
   if (tables[1]) { tables[1].querySelectorAll('[data-edit],[data-del]').forEach(b => b.dataset.grp = 'page'); }
   wire('[data-grp="pay"]', payCfg, pays);
   wire('[data-grp="page"]', pageCfg, pages);
+  wireSelection();
 }
 
 // ============ תשלומי לקוחות (ס"ת) ============
@@ -1071,6 +1134,7 @@ function setSizes() {
 async function setList(listName, title, withCorrection) {
   const rows = await Store.lists.one(listName);
   const cols = [
+    ...(ME.caps.del ? [selCol('list_items')] : []),
     { label: 'ערך', render: r => esc(r.value) },
   ];
   if (withCorrection) cols.push({
@@ -1112,6 +1176,7 @@ async function setList(listName, title, withCorrection) {
   };
   if ($('addLi')) $('addLi').onclick = () => openLi(null);
   wireBulkBtns();
+  wireSelection();
   document.querySelectorAll('[data-ed]').forEach(b => b.onclick = () => openLi(rows.find(r => r.id === +b.dataset.ed)));
   document.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
     const r = rows.find(x => x.id === +b.dataset.rm);
@@ -1244,6 +1309,21 @@ function parseImportPaste(spec, text, mode) {
 
 function importSpecFor(table) { return (IMPORT.spec || []).find(s => s.table === table); }
 
+// ספריית האקסל נטענת בעצלתיים — רק כשמעלים קובץ בפעם הראשונה,
+// כדי לא להכביד 900KB על כל טעינת דף.
+function loadXLSX() {
+  if (window.XLSX) return Promise.resolve();
+  if (loadXLSX._p) return loadXLSX._p;
+  loadXLSX._p = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'xlsx.full.min.js';
+    s.onload = () => resolve();
+    s.onerror = () => { loadXLSX._p = null; reject(new Error('טעינת ספריית האקסל נכשלה')); };
+    document.head.appendChild(s);
+  });
+  return loadXLSX._p;
+}
+
 // טעינת מפרט הייבוא פעם אחת
 function ensureImportSpec() {
   if (IMPORT.spec) return Promise.resolve(IMPORT.spec);
@@ -1284,6 +1364,7 @@ function importPanel(host, opts) {
     const cols = spec.cols.filter(c => presetKeys.indexOf(c.key) < 0);
     const hasContactRef = cols.some(c => c.ref === 'contacts');
     const isUpd = st.mode === 'update';
+    const isDel = st.mode === 'delete';
 
     host.innerHTML = `
       <div class="card">
@@ -1293,26 +1374,35 @@ function importPanel(host, opts) {
               `<option value="${s.table}" ${s.table === st.table ? 'selected' : ''}>${esc(s.label)}</option>`).join('')}</select></div>`}
           <div class="field" style="max-width:300px"><label>פעולה</label>
             <select id="${P}mode">
-              <option value="create" ${!isUpd ? 'selected' : ''}>הוספת שורות חדשות</option>
+              <option value="create" ${st.mode === 'create' ? 'selected' : ''}>הוספת שורות חדשות</option>
               <option value="update" ${isUpd ? 'selected' : ''}>עדכון שורות קיימות (לפי מזהה)</option>
+              ${ME.caps.del ? `<option value="delete" ${isDel ? 'selected' : ''}>מחיקת שורות (לפי מזהה)</option>` : ''}
             </select></div>
         </div>
-        <div class="sec-title">עמודות ${isUpd ? '— עמודה ראשונה <b>מזהה</b>, ואחריה רק מה שרוצים לשנות' : '(בסדר הזה, או עם שורת כותרת תואמת)'}</div>
-        <div>${isUpd ? '<span class="pill a" style="margin:2px">מזהה *</span>' : ''}${cols.map(colChip).join('')}</div>
-        <div class="mini" style="margin-top:8px">${isUpd
-          ? 'בעדכון מתעדכנות <b>רק העמודות שהדבקת</b> — שאר השדות נשארים כמו שהם. תא ריק = לא נוגעים בשדה.'
-          : '* = חובה. עמודות הפניה (סופר/רוכש/מוצר/גודל) — כתוב את <b>השם</b> כפי שהוא רשום במערכת. עמודות "מס\' מזהה" (ספר/רכישה) — המספר <b>#</b> מהטבלה.'}</div>
-        <div style="margin-top:8px"><button class="btn ghost sm" id="${P}head">📋 העתק שורת כותרות</button></div>
+        <div class="sec-title">עמודות ${isDel ? '— עמודה אחת: <b>מזהה</b>' : (isUpd ? '— עמודה ראשונה <b>מזהה</b>, ואחריה רק מה שרוצים לשנות' : '(בסדר הזה, או עם שורת כותרת תואמת)')}</div>
+        <div>${isDel ? '<span class="pill r" style="margin:2px">מזהה *</span>'
+                     : (isUpd ? '<span class="pill a" style="margin:2px">מזהה *</span>' : '') + cols.map(colChip).join('')}</div>
+        <div class="mini" style="margin-top:8px">${isDel
+          ? 'הדבק עמודת מזהים (המספר <b>#</b> מהטבלה). השורות יועברו ל<b>סל המחזור</b> — ניתן לשחזר מלשונית מערכת. מחיקת ספר מורידה איתו את היומנים שלו, ומחיקת רכישה את המכירות שנגזרו ממנה.'
+          : (isUpd
+            ? 'בעדכון מתעדכנות <b>רק העמודות שהדבקת</b> — שאר השדות נשארים כמו שהם. תא ריק = לא נוגעים בשדה.'
+            : '* = חובה. עמודות הפניה (סופר/רוכש/מוצר/גודל) — כתוב את <b>השם</b> כפי שהוא רשום במערכת. עמודות "מס\' מזהה" (ספר/רכישה) — המספר <b>#</b> מהטבלה.')}</div>
+        ${isDel ? '' : `<div style="margin-top:8px"><button class="btn ghost sm" id="${P}head">📋 העתק שורת כותרות</button></div>`}
       </div>
 
       <div class="card">
-        <div class="field"><label>הדבק כאן את השורות</label>
+        <div class="toolbar" style="margin-bottom:6px">
+          <button class="btn ghost sm" id="${P}file">📁 טעינה מקובץ אקסל</button>
+          <input type="file" id="${P}fileInp" accept=".xlsx,.xls,.xlsm,.csv,.ods" style="display:none">
+          <span class="mini" id="${P}fileInfo"></span>
+        </div>
+        <div class="field"><label>${isDel ? 'הדבק כאן את המזהים למחיקה — או טען קובץ' : 'הדבק כאן את השורות — או טען קובץ אקסל'}</label>
           <textarea id="${P}text" rows="8" placeholder="הדבק כאן ישירות מגוגל שיטס (Ctrl+V)…" style="width:100%;font-family:monospace;font-size:13px">${esc(st.text)}</textarea></div>
-        ${hasContactRef && !isUpd ? `<div class="chk"><input type="checkbox" id="${P}create" ${st.createContacts ? 'checked' : ''}>
+        ${hasContactRef && !isUpd && !isDel ? `<div class="chk"><input type="checkbox" id="${P}create" ${st.createContacts ? 'checked' : ''}>
           <label for="${P}create">צור אנשי קשר חסרים אוטומטית</label></div>` : ''}
         <div class="toolbar">
           <button class="btn ghost" id="${P}prev">🔎 בדיקה מקדימה</button>
-          <button class="btn ${isUpd ? 'gold' : 'green'}" id="${P}run" disabled>${isUpd ? '✎ עדכן' : '⬆ ייבא'}</button>
+          <button class="btn ${isDel ? 'red' : (isUpd ? 'gold' : 'green')}" id="${P}run" disabled>${isDel ? '🗑 מחק' : (isUpd ? '✎ עדכן' : '⬆ ייבא')}</button>
         </div>
         <div id="${P}res"></div>
       </div>`;
@@ -1322,10 +1412,56 @@ function importPanel(host, opts) {
     q('mode').onchange = (e) => { st.mode = e.target.value; st.text = ''; draw(); };
     q('text').oninput = (e) => { st.text = e.target.value; };
     if (q('create')) q('create').onchange = (e) => { st.createContacts = e.target.checked; };
-    q('head').onclick = () => {
+    if (q('head')) q('head').onclick = () => {
       const hdr = (isUpd ? ['מזהה'] : []).concat(cols.map(c => c.label)).join('\t');
       navigator.clipboard.writeText(hdr).then(() => toast('הכותרות הועתקו — הדבק בשורה הראשונה בגיליון', 'ok'))
         .catch(() => toast('העתקה נכשלה', 'err'));
+    };
+
+    // העלאת קובץ אקסל -> ממלא את תיבת ההדבקה באותו פורמט (טאבים),
+    // כך שכל שאר הצינור — זיהוי כותרות, בדיקה מקדימה, ייבוא — זהה להדבקה.
+    q('file').onclick = () => q('fileInp').click();
+    q('fileInp').onchange = async (e) => {
+      const f = e.target.files[0];
+      e.target.value = '';   // שאפשר יהיה לבחור את אותו קובץ שוב
+      if (!f) return;
+      try {
+        await loadXLSX();
+        const wb = XLSX.read(await f.arrayBuffer());
+        if (!wb.SheetNames.length) return toast('הקובץ ריק', 'err');
+        const fill = (name) => {
+          const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: false, defval: '' });
+          const text = rows
+            .map(r => r.map(c => String(c == null ? '' : c).replace(/[\t\r\n]+/g, ' ').trim()).join('\t'))
+            .filter(l => l.replace(/\t/g, '').trim() !== '')
+            .join('\n');
+          st.text = text;
+          q('text').value = text;
+          const info = `${f.name} · גיליון "${name}" · ${text ? text.split('\n').length : 0} שורות`;
+          const sel = q('fileInfo').querySelector('select');
+          if (!sel) q('fileInfo').textContent = info;
+          else q('fileInfo').querySelector('span').textContent = info;
+          toast('הקובץ נטען — לחץ "בדיקה מקדימה"', 'ok');
+        };
+        if (wb.SheetNames.length > 1) {
+          // כמה גיליונות — נותנים לבחור, וטוענים את הראשון כברירת מחדל
+          q('fileInfo').innerHTML = `גיליון: <select id="${P}sheet">${wb.SheetNames.map(n =>
+            `<option>${esc(n)}</option>`).join('')}</select> <span></span>`;
+          q('sheet').onchange = (ev) => fill(ev.target.value);
+        }
+        fill(wb.SheetNames[0]);
+      } catch (err) { toast('קריאת הקובץ נכשלה: ' + err.message, 'err'); }
+    };
+
+    // פענוח מזהים למחיקה: העמודה הראשונה בכל שורה, בלי שורת כותרת
+    const parseIds = () => {
+      const ids = [], bad = [];
+      for (const line of String(st.text || '').replace(/\r/g, '').split('\n')) {
+        const cell = (line.split('\t')[0] || '').trim();
+        if (!cell || /^(מזהה|id|#)$/i.test(cell)) continue;
+        if (/^\d+$/.test(cell)) ids.push(+cell); else bad.push(cell);
+      }
+      return { ids: [...new Set(ids)], bad };
     };
 
     // המפרט לפענוח כולל רק את העמודות שמדביקים
@@ -1357,6 +1493,19 @@ function importPanel(host, opts) {
     };
 
     q('prev').onclick = async () => {
+      if (isDel) {
+        const { ids, bad } = parseIds();
+        if (!ids.length && !bad.length) return toast('אין מזהים להדבקה', 'err');
+        q('res').innerHTML = `
+          <div class="grid stat-grid" style="margin-top:6px">
+            <div class="stat"><div class="label">מזהים למחיקה</div><div class="value r">${ids.length}</div></div>
+            <div class="stat"><div class="label">ערכים לא תקינים</div><div class="value ${bad.length ? 'r' : ''}">${bad.length}</div></div>
+          </div>
+          ${bad.length ? `<div class="mini neg" style="margin-top:6px">לא מזהים: ${bad.slice(0, 20).map(esc).join(' · ')}${bad.length > 20 ? ' …' : ''}</div>` : ''}
+          ${ids.length ? `<div class="mini" style="margin-top:6px">לחיצה על "מחק" תעביר את השורות לסל המחזור.</div>` : ''}`;
+        q('run').disabled = ids.length === 0;
+        return;
+      }
       const parsed = parseImportPaste(parseSpec, st.text, st.mode);
       if (!parsed.rows.length) return toast('אין שורות להדבקה', 'err');
       q('prev').disabled = true;
@@ -1370,6 +1519,28 @@ function importPanel(host, opts) {
 
     q('run').onclick = async () => {
       const spec3 = importSpecFor(st.table);
+      if (isDel) {
+        const { ids } = parseIds();
+        if (!ids.length) return toast('אין מזהים למחיקה', 'err');
+        if (!(await confirmBox(`להעביר ${ids.length} שורות מ"${spec3.label}" לסל המחזור?`))) return;
+        q('run').disabled = true;
+        try {
+          const r = await Store.import.bulkDelete(st.table, ids);
+          q('res').innerHTML = `
+            <div class="grid stat-grid" style="margin-top:6px">
+              <div class="stat"><div class="label">הועברו לסל המחזור</div><div class="value g">${r.deleted}</div></div>
+              <div class="stat"><div class="label">נכשלו</div><div class="value ${r.failed.length ? 'r' : ''}">${r.failed.length}</div></div>
+            </div>
+            ${r.failed.length ? `<div class="card" style="margin-top:8px"><h3>מזהים שנכשלו</h3>
+              ${tableHTML([{ label: 'מזהה', render: x => x.id }, { label: 'סיבה', cls: 'wrap', render: x => esc(x.error || '') }], r.failed.slice(0, 200))}</div>` : ''}`;
+          toast(`נמחקו ${r.deleted} שורות`, 'ok');
+          st.text = '';
+          if (q('text')) q('text').value = '';
+          await reloadCaches();
+          if (opts.onDone) opts.onDone();
+        } catch (e) { toast(e.message, 'err'); q('run').disabled = false; }
+        return;
+      }
       const parsed = parseImportPaste(parseSpec, st.text, st.mode);
       if (!parsed.rows.length) return toast('אין שורות להדבקה', 'err');
       if (!(await confirmBox(`${isUpd ? 'לעדכן' : 'לייבא'} ${spec3.label} — כל השורות התקינות?`))) return;
@@ -1483,6 +1654,7 @@ async function render() {
   renderTabs();
   const tab = TABS.find(t => t.k === TAB) || TABS[0];
   $('view').innerHTML = '';
+  const sb = $('selBar'); if (sb) sb.remove();   // מעבר דף מבטל בחירה
   try {
     await tab.fn();
     // חיווט תתי-לשוניות אחרי שהדף התרנדר

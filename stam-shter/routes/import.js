@@ -3,7 +3,7 @@
 // (סופר/רוכש/מוצר/גודל -> id), מנרמל תאריכים, מוודא כל שורה, ומכניס בטרנזקציה.
 // dryRun מחזיר תצוגה מקדימה בלי לכתוב כלום.
 const express = require('express');
-const { pool, logAction } = require('../db');
+const { pool, logAction, softDelete, softDeleteScroll, softDeletePurchase } = require('../db');
 const { authenticate, can } = require('../middleware/auth');
 const router = express.Router();
 
@@ -367,6 +367,32 @@ router.get('/spec', authenticate, can('view'), (req, res) => {
       ref: c.ref || null, refId: c.refId || null, type: c.type || 'text',
     })),
   })));
+});
+
+// ---------- מחיקה מרוכזת ----------
+// מחיקה רכה לפי רשימת מזהים — לסל המחזור, עם אותן הדבקות כמו במסכים:
+// ספר מוריד איתו את היומנים שלו, רכישה מורידה את המכירות שנגזרו ממנה.
+router.post('/:table/delete', authenticate, can('del'), async (req, res) => {
+  const table = req.params.table;
+  if (!SPEC[table]) return res.status(400).json({ error: 'טבלה לא נתמכת' });
+  const ids = [...new Set((Array.isArray(req.body.ids) ? req.body.ids : [])
+    .map(Number).filter(n => Number.isInteger(n) && n > 0))];
+  if (!ids.length) return res.status(400).json({ error: 'לא התקבלו מזהים' });
+  if (ids.length > 5000) return res.status(400).json({ error: 'מקסימום 5000 מזהים במחיקה אחת' });
+  const fn = table === 'scrolls' ? (id) => softDeleteScroll(id, req.user)
+           : table === 'prod_purchases' ? (id) => softDeletePurchase(id, req.user)
+           : (id) => softDelete(table, id, req.user);
+  let deleted = 0; const failed = [];
+  try {
+    for (const id of ids) {
+      try {
+        if (await fn(id)) deleted++;
+        else failed.push({ id, error: 'לא נמצא (או שכבר נמחק)' });
+      } catch (e) { failed.push({ id, error: e.message }); }
+    }
+    await logAction(req.user, 'bulk-delete', table, null, { deleted, failed: failed.length });
+    res.json({ deleted, failed });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
 // POST /:table
