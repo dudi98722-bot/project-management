@@ -376,7 +376,7 @@ async function showScrollCard(id) {
     <div class="sec-title">צד סופר</div>
     <div class="kv">
       ${kv('מחיר לעמוד', money(s.page_rate))}
-      ${kv('מחיר לספר (מלא)', money(s.scribe_book_price))}
+      ${kv('שכר הסופר לספר מלא', money(s.scribe_book_price))}
       ${kv('סך לתשלום לפי התקדמות', money(s.scribe_due_progress))}
       ${kv('שולם לסופר', money(s.scribe_paid))}
       ${kv('תיקונים ששולמו', money(s.corrections_paid))}
@@ -1275,22 +1275,37 @@ function parseImportPaste(spec, text, mode) {
   if (!lines.length) return { rows: [], mapping: [], hasHeader: false };
   const cells = lines.map(l => l.split('\t').map(c => c.trim()));
 
-  // מילון: תווית או מפתח מנורמלים -> key
+  // מילון: תווית או מפתח מנורמלים -> key.
+  // מזהים גם וריאציות נפוצות: "שם סופר" במקום "סופר", "מטבע" בלי הסוגריים.
   const lookup = { 'מזהה': 'id', '#': 'id', 'id': 'id' };
   for (const c of spec.cols) {
-    lookup[c.label.replace(/\s+/g, ' ').trim()] = c.key;
+    const L = c.label.replace(/\s+/g, ' ').trim();
+    lookup[L] = c.key;
     lookup[c.key] = c.key;
+    const short = L.split(' (')[0].trim();
+    if (lookup[short] === undefined) lookup[short] = c.key;
   }
+  const findKey = (cellRaw) => {
+    const cell = String(cellRaw || '').replace(/\s+/g, ' ').trim();
+    if (cell === '') return undefined;
+    if (lookup[cell] !== undefined) return lookup[cell];
+    const noParen = cell.split(' (')[0].trim();
+    if (lookup[noParen] !== undefined) return lookup[noParen];
+    const noShem = cell.replace(/^שם\s+/, '').trim();
+    if (lookup[noShem] !== undefined) return lookup[noShem];
+    return undefined;
+  };
   const first = cells[0];
   let matched = 0;
-  for (const cell of first) if (lookup[cell] !== undefined) matched++;
+  for (const cell of first) if (findKey(cell) !== undefined) matched++;
   const hasHeader = first.length > 1 && matched >= Math.max(2, Math.ceil(first.filter(Boolean).length / 2));
 
   let mapping, dropped = [];
   if (hasHeader) {
     mapping = first.map(cell => {
-      const norm = cell.replace(/\s+/g, ' ').trim();
-      if (lookup[norm] !== undefined) return lookup[norm];
+      const k = findKey(cell);
+      if (k !== undefined) return k;
+      const norm = String(cell || '').replace(/\s+/g, ' ').trim();
       if (norm !== '') dropped.push(norm);   // עמודה שכותרתה לא זוהתה — תושלך; חובה להראות למשתמש
       return null;
     });
@@ -1398,6 +1413,7 @@ function importPanel(host, opts) {
         </div>
         <div class="field"><label>${isDel ? 'הדבק כאן את המזהים למחיקה — או טען קובץ' : 'הדבק כאן את השורות — או טען קובץ אקסל'}</label>
           <textarea id="${P}text" rows="8" placeholder="הדבק כאן ישירות מגוגל שיטס (Ctrl+V)…" style="width:100%;font-family:monospace;font-size:13px">${esc(st.text)}</textarea></div>
+        <div id="${P}map"></div>
         ${hasContactRef && !isUpd && !isDel ? `<div class="chk"><input type="checkbox" id="${P}create" ${st.createContacts ? 'checked' : ''}>
           <label for="${P}create">צור אנשי קשר חסרים אוטומטית</label></div>` : ''}
         <div class="toolbar">
@@ -1408,8 +1424,8 @@ function importPanel(host, opts) {
       </div>`;
 
     // חיווט
-    if (q('table')) q('table').onchange = (e) => { st.table = e.target.value; st.text = ''; draw(); };
-    q('mode').onchange = (e) => { st.mode = e.target.value; st.text = ''; draw(); };
+    if (q('table')) q('table').onchange = (e) => { st.table = e.target.value; st.text = ''; st.map = null; draw(); };
+    q('mode').onchange = (e) => { st.mode = e.target.value; st.text = ''; st.map = null; draw(); };
     q('text').oninput = (e) => { st.text = e.target.value; };
     if (q('create')) q('create').onchange = (e) => { st.createContacts = e.target.checked; };
     if (q('head')) q('head').onclick = () => {
@@ -1436,12 +1452,14 @@ function importPanel(host, opts) {
             .filter(l => l.replace(/\t/g, '').trim() !== '')
             .join('\n');
           st.text = text;
+          st.map = null;   // קובץ חדש = מבנה עמודות חדש
           q('text').value = text;
           const info = `${f.name} · גיליון "${name}" · ${text ? text.split('\n').length : 0} שורות`;
           const sel = q('fileInfo').querySelector('select');
           if (!sel) q('fileInfo').textContent = info;
           else q('fileInfo').querySelector('span').textContent = info;
-          toast('הקובץ נטען — לחץ "בדיקה מקדימה"', 'ok');
+          if (typeof renderMap === 'function') renderMap();
+          toast('הקובץ נטען — בדוק את מיפוי העמודות ולחץ "בדיקה מקדימה"', 'ok');
         };
         if (wb.SheetNames.length > 1) {
           // כמה גיליונות — נותנים לבחור, וטוענים את הראשון כברירת מחדל
@@ -1469,6 +1487,70 @@ function importPanel(host, opts) {
     const runOpts = () => ({ createMissingContacts: st.createContacts });
     const withPreset = (rows) => presetKeys.length
       ? rows.map(r => Object.assign({}, preset, r)) : rows;
+
+    const getCells = () => String(st.text || '').replace(/\r/g, '').split('\n')
+      .filter(l => l.trim() !== '').map(l => l.split('\t').map(c => c.trim()));
+
+    // בונה את השורות לפי המיפוי בתוקף: הזיהוי האוטומטי, או מה שהמשתמש
+    // קבע ידנית בעורך המיפוי. זו ההגנה מפני עמודה שנוחתת בשדה הלא נכון —
+    // המשתמש רואה בדיוק מה הולך לאן, ויכול לתקן.
+    const buildRows = () => {
+      const cells = getCells();
+      if (!cells.length) return { rows: [], mapping: [], hasHeader: false, dropped: [], nCols: 0, headRow: null, sample: [] };
+      const auto = parseImportPaste(parseSpec, st.text, st.mode);
+      const nCols = Math.max(...cells.map(r => r.length));
+      let mapping = auto.mapping.slice();
+      while (mapping.length < nCols) mapping.push(null);
+      mapping = mapping.slice(0, nCols);
+      if (st.map && st.map.length === nCols) mapping = st.map;
+      const dataRows = auto.hasHeader ? cells.slice(1) : cells;
+      const rows = dataRows.map(cs => {
+        const o = {};
+        for (let i = 0; i < mapping.length; i++) if (mapping[i]) o[mapping[i]] = cs[i];
+        return o;
+      });
+      const headRow = auto.hasHeader ? cells[0] : null;
+      const dropped = [];
+      mapping.forEach((m, i) => {
+        if (!m) dropped.push(headRow ? ((headRow[i] || '').trim() || 'עמודה ' + (i + 1)) : 'עמודה ' + (i + 1));
+      });
+      return { rows, mapping, hasHeader: auto.hasHeader, dropped, nCols, headRow,
+               sample: (auto.hasHeader ? cells[1] : cells[0]) || [] };
+    };
+
+    // עורך המיפוי — טבלה: עמודה בהדבקה / דוגמה / לאיזה שדה נכנסת
+    const renderMap = () => {
+      if (isDel || !q('map')) { if (q('map')) q('map').innerHTML = ''; return; }
+      const b = buildRows();
+      if (!b.nCols) { q('map').innerHTML = ''; return; }
+      if (!st.map || st.map.length !== b.nCols) st.map = b.mapping.slice();
+      const fieldOpts = (sel) => {
+        let o = `<option value="">— התעלם —</option>`;
+        if (isUpd) o += `<option value="id" ${sel === 'id' ? 'selected' : ''}>מזהה</option>`;
+        o += cols.map(c => `<option value="${c.key}" ${sel === c.key ? 'selected' : ''}>${esc(c.label)}</option>`).join('');
+        return o;
+      };
+      const used = {};
+      st.map.forEach(m => { if (m) used[m] = (used[m] || 0) + 1; });
+      q('map').innerHTML = `
+        <div class="sec-title">מיפוי עמודות <span class="mini">${b.hasHeader ? '(זוהתה שורת כותרת)' : '(אין כותרת — לפי סדר)'} — בדוק שכל עמודה נכנסת לשדה הנכון</span></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>עמודה בהדבקה</th><th>דוגמה מהשורה הראשונה</th><th>נכנסת לשדה</th></tr></thead>
+          <tbody>${st.map.map((m, i) => `<tr>
+            <td>${b.headRow ? esc(b.headRow[i] || ('עמודה ' + (i + 1))) : 'עמודה ' + (i + 1)}</td>
+            <td class="mini">${esc(String(b.sample[i] === undefined ? '' : b.sample[i]).slice(0, 30))}</td>
+            <td><select data-mapi="${i}"${m && used[m] > 1 ? ' style="border-color:var(--red)"' : ''}>${fieldOpts(m)}</select></td>
+          </tr>`).join('')}</tbody>
+        </table></div>
+        ${Object.values(used).some(v => v > 1) ? '<div class="mini neg">⚠ אותו שדה ממופה ליותר מעמודה אחת — תקן לפני ייבוא</div>' : ''}`;
+      q('map').querySelectorAll('[data-mapi]').forEach(s => {
+        s.onchange = () => {
+          st.map[+s.dataset.mapi] = s.value || null;
+          renderMap();
+          q('run').disabled = true;   // מיפוי השתנה — חובה בדיקה מקדימה מחדש
+        };
+      });
+    };
 
     const renderPreview = (parsed, r) => {
       const bad = r.rows.filter(x => !x.ok).slice(0, 200);
@@ -1506,8 +1588,9 @@ function importPanel(host, opts) {
         q('run').disabled = ids.length === 0;
         return;
       }
-      const parsed = parseImportPaste(parseSpec, st.text, st.mode);
+      const parsed = buildRows();
       if (!parsed.rows.length) return toast('אין שורות להדבקה', 'err');
+      renderMap();
       q('prev').disabled = true;
       try {
         const r = await Store.import.run(st.table, withPreset(parsed.rows), runOpts(), true, st.mode);
@@ -1541,8 +1624,11 @@ function importPanel(host, opts) {
         } catch (e) { toast(e.message, 'err'); q('run').disabled = false; }
         return;
       }
-      const parsed = parseImportPaste(parseSpec, st.text, st.mode);
+      const parsed = buildRows();
       if (!parsed.rows.length) return toast('אין שורות להדבקה', 'err');
+      // מיפוי כפול = ערכים ידרסו זה את זה — לא ממשיכים
+      const seen = {};
+      for (const m of parsed.mapping) { if (m) { if (seen[m]) return toast('אותו שדה ממופה ליותר מעמודה אחת — תקן במיפוי העמודות', 'err'); seen[m] = 1; } }
       if (!(await confirmBox(`${isUpd ? 'לעדכן' : 'לייבא'} ${spec3.label} — כל השורות התקינות?`))) return;
       q('run').disabled = true;
       try {
@@ -1563,6 +1649,9 @@ function importPanel(host, opts) {
         if (opts.onDone) opts.onDone();
       } catch (e) { toast(e.message, 'err'); q('run').disabled = false; }
     };
+
+    // הדבקה שכבר קיימת (חזרה לפאנל) — מציגים מיד את המיפוי
+    if (st.text && !isDel) renderMap();
   }
 
   draw();
