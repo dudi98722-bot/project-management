@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>פסיכולוגיה מסילות — רשימת המתנה ושיבוץ מטפלים</title>
+<style>
+:root{
+  --bg:#f4f6fb; --card:#fff; --line:#e3e8f0; --text:#1c2433; --muted:#66738a;
+  --primary:#2856a8; --primary-dark:#1d4185; --primary-light:#e8effc;
+  --green:#1d8a53; --green-light:#e2f5eb; --red:#c0392b; --red-light:#fdecea;
+  --amber:#b7791f; --amber-light:#fdf3df;
+  --radius:12px; --shadow:0 1px 3px rgba(20,30,60,.08),0 4px 16px rgba(20,30,60,.06);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Segoe UI",Arial,"Noto Sans Hebrew",sans-serif;background:var(--bg);color:var(--text);font-size:15px}
+button{font-family:inherit;cursor:pointer}
+input,select,textarea{font-family:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text);width:100%}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--primary-light);border-color:var(--primary)}
+label{font-size:13px;color:var(--muted);display:block;margin-bottom:4px;font-weight:600}
+.field{margin-bottom:12px}
+h1{font-size:20px}h2{font-size:17px;margin-bottom:12px}h3{font-size:15px}
+
+/* ===== מסך התחברות ===== */
+#login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh}
+#login-screen .box{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:36px;width:360px;max-width:92vw}
+#login-screen .logo{text-align:center;margin-bottom:20px}
+#login-screen .logo .icon{font-size:40px}
+#login-screen .logo h1{margin-top:8px;color:var(--primary)}
+#login-screen .logo p{color:var(--muted);font-size:13px;margin-top:4px}
+
+/* ===== מבנה ראשי ===== */
+#app{display:none;min-height:100vh}
+header{background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+.header-in{max-width:1250px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;color:var(--primary);font-size:17px}
+nav{display:flex;gap:4px;flex-wrap:wrap}
+nav button{background:none;border:none;padding:8px 14px;border-radius:8px;font-size:14px;color:var(--muted);font-weight:600}
+nav button:hover{background:var(--bg)}
+nav button.active{background:var(--primary-light);color:var(--primary)}
+.spacer{flex:1}
+.userbox{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:10px}
+main{max-width:1250px;margin:0 auto;padding:20px 16px 60px}
+
+/* ===== כפתורים ===== */
+.btn{display:inline-flex;align-items:center;gap:6px;border:none;border-radius:8px;padding:9px 16px;font-size:14px;font-weight:600;background:var(--primary);color:#fff}
+.btn:hover{background:var(--primary-dark)}
+.btn.sec{background:var(--card);color:var(--text);border:1px solid var(--line)}
+.btn.sec:hover{background:var(--bg)}
+.btn.danger{background:var(--red)}
+.btn.green{background:var(--green)}
+.btn.sm{padding:5px 10px;font-size:13px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* ===== כרטיסים וטבלאות ===== */
+.card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;margin-bottom:18px}
+.toolbar{display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:14px}
+.toolbar .field{margin:0}
+.toolbar input,.toolbar select{width:auto;min-width:130px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{background:var(--bg);text-align:right;padding:9px 10px;font-size:12.5px;color:var(--muted);border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:hover td{background:#f9fbfe}
+.table-wrap{overflow-x:auto}
+.empty{text-align:center;color:var(--muted);padding:30px 0}
+
+/* ===== תגיות ===== */
+.badge{display:inline-block;padding:3px 9px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap}
+.b-red{background:var(--red-light);color:var(--red)}
+.b-amber{background:var(--amber-light);color:var(--amber)}
+.b-green{background:var(--green-light);color:var(--green)}
+.b-blue{background:var(--primary-light);color:var(--primary)}
+.b-gray{background:#eef1f6;color:var(--muted)}
+
+/* ===== מודאל ===== */
+.modal-bg{position:fixed;inset:0;background:rgba(15,25,45,.45);z-index:50;display:flex;align-items:flex-start;justify-content:center;padding:4vh 12px;overflow-y:auto}
+.modal{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px;width:640px;max-width:100%;margin-bottom:4vh}
+.modal h2{display:flex;justify-content:space-between;align-items:center}
+.modal .x{background:none;border:none;font-size:20px;color:var(--muted)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 14px}
+@media(max-width:600px){.grid2,.grid3{grid-template-columns:1fr}}
+.modal-actions{display:flex;gap:10px;justify-content:flex-start;margin-top:16px;border-top:1px solid var(--line);padding-top:14px}
+
+/* ===== רשת שעות ===== */
+.hours-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+@media(max-width:600px){.hours-grid{grid-template-columns:repeat(4,1fr)}}
+.hour-chip{border:1px solid var(--line);border-radius:8px;padding:6px 2px;text-align:center;font-size:12.5px;background:#fff;color:var(--muted);user-select:none}
+.hour-chip.on{background:var(--primary-light);border-color:var(--primary);color:var(--primary);font-weight:700}
+.hours-tools{display:flex;gap:8px;margin-bottom:8px}
+
+/* ===== רשת לו"ז מטפל ===== */
+.sched-table{border-collapse:collapse;width:100%}
+.sched-table th,.sched-table td{border:1px solid var(--line);padding:0;text-align:center}
+.sched-table th{padding:6px 4px;font-size:12px}
+.sched-table th.hcol{width:64px}
+.sched-cell{width:100%;height:26px;border:none;background:#fff;padding:0}
+.sched-cell.on{background:var(--primary)}
+.sched-day-toggle{background:none;border:none;color:var(--primary);font-size:11px;display:block;margin:2px auto 0}
+
+/* ===== לוח שנה ===== */
+.cal-table{border-collapse:collapse;width:100%;font-size:13px}
+.cal-table th,.cal-table td{border:1px solid var(--line);padding:4px 6px;text-align:center;min-width:100px}
+.cal-table th{background:var(--bg);font-size:12.5px}
+.cal-table td.hlabel{background:var(--bg);font-weight:600;color:var(--muted);min-width:64px;white-space:nowrap}
+.cal-slot-off{background:#f2f4f8;color:#c2c9d6}
+.cal-slot-free{background:var(--green-light);color:var(--green);font-size:12px}
+.cal-slot-busy{background:var(--primary-light);color:var(--primary);font-weight:600;cursor:pointer}
+.cal-slot-busy small{display:block;color:var(--muted);font-weight:400;font-size:11px}
+.cal-slot-past{opacity:.55}
+.cal-nav{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.cal-nav .title{font-weight:700;min-width:210px;text-align:center}
+
+/* ===== זמינות ===== */
+.avail-therapist{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.avail-therapist .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.slot-chips{display:flex;flex-wrap:wrap;gap:6px}
+.slot-chip{background:var(--green-light);color:var(--green);border:1px solid #bfe6d2;border-radius:8px;padding:4px 9px;font-size:12.5px;cursor:pointer}
+.slot-chip:hover{background:#d0efe0}
+
+/* ===== קבוצות ===== */
+.group-row{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:8px;flex-wrap:wrap}
+.member-chip{background:var(--primary-light);color:var(--primary);border-radius:99px;padding:3px 10px;font-size:12.5px}
+.checkbox-list{display:grid;grid-template-columns:1fr 1fr;gap:6px;max-height:220px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;padding:10px}
+.checkbox-list label{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text);font-weight:400;margin:0}
+.checkbox-list input{width:auto}
+
+/* ===== טוסט ===== */
+#toast{position:fixed;bottom:24px;right:50%;transform:translateX(50%);background:var(--text);color:#fff;padding:12px 22px;border-radius:10px;font-size:14px;z-index:99;display:none;box-shadow:var(--shadow);max-width:90vw;text-align:center}
+#toast.err{background:var(--red)}
+#toast.show{display:block}
+
+.hint{font-size:12.5px;color:var(--muted);margin-top:4px}
+.age-view{font-weight:700;color:var(--primary)}
+.stat-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+.stat-card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;text-align:center}
+.stat-card .num{font-size:26px;font-weight:800;color:var(--primary)}
+.stat-card .lbl{font-size:12.5px;color:var(--muted);margin-top:2px}
+</style>
+</head>
+<body>
+
+<!-- מסך התחברות -->
+<div id="login-screen">
+  <div class="box">
+    <div class="logo">
+      <div class="icon">🗓️</div>
+      <h1>פסיכולוגיה מסילות</h1>
+      <p>רשימת המתנה · שיבוץ מטפלים · לוח שנה</p>
+    </div>
+    <form id="login-form">
+      <div class="field"><label>שם משתמש</label><input id="login-user" autocomplete="username" required></div>
+      <div class="field"><label>סיסמא</label><input id="login-pass" type="password" autocomplete="current-password" required></div>
+      <div id="login-err" style="color:var(--red);font-size:13px;margin-bottom:10px;display:none"></div>
+      <button class="btn" style="width:100%;justify-content:center">כניסה</button>
+    </form>
+  </div>
+</div>
+
+<!-- אפליקציה -->
+<div id="app">
+  <header>
+    <div class="header-in">
+      <div class="brand">🗓️ פסיכולוגיה מסילות</div>
+      <nav id="nav"></nav>
+      <div class="spacer"></div>
+      <div class="userbox">
+        <span id="user-name"></span>
+        <button class="btn sec sm" onclick="logout()">יציאה</button>
+      </div>
+    </div>
+  </header>
+  <main id="main"></main>
+</div>
+
+<div id="modal-root"></div>
+<div id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
