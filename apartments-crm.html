@@ -5452,7 +5452,12 @@ function editIncome(id,aptId){
       ? '<div class="field full"><label>אילו יחידות הושכרו</label>'+
         '<div style="padding:4px 0">'+unitChecksHtml("in-unit",aptId,it.units)+'</div>'+
         '<div class="hint">אפשר לסמן כמה יחידות באותה הזמנה.</div></div>'
-      : '')+
+      /* בלי רשימת יחידות אין מה לסמן — אומרים את זה במפורש במקום להשמיט
+         את השדה בשקט, ומאפשרים להגדיר אותה מכאן. */
+      : (can("edit")?'<div class="field full"><label>יחידות השכרה</label>'+
+        '<div class="hint">בפרוייקט הזה לא הוגדרו יחידות השכרה, ולכן אין מה לסמן. '+
+        'אחרי ההגדרה יופיעו כאן סימוני היחידות בכל הכנסה.</div>'+
+        '<button class="btn btn-sm" style="margin-top:5px" onclick="closeModal();editRentalUnits(\''+aptId+'\')">🏠 הגדר יחידות השכרה</button></div>':''))+
     '<div class="field"><label>למי נכנס הכסף</label><select id="in-dest">'+
       '<option value="">— לא צוין —</option>'+
       (a&&a.hasBank?'<option value="bank"'+(it.receivedBy==="bank"?" selected":"")+'>🏦 הבנק הזמני (קופה משותפת)</option>':'')+
