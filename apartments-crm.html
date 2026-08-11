@@ -2983,7 +2983,13 @@ function moduleExpenses(aptId){
       Object.keys(CLASSIFICATIONS).map(function(k){
         return '<option value="'+k+'"'+(Q.expClass===k?" selected":"")+'>'+CLASSIFICATIONS[k]+'</option>'; }).join("")+
     '</select>'+
-    ((Q.exp||Q.expStatus||Q.expClass)?'<button class="btn btn-ghost btn-sm" onclick="Q.exp=\'\';Q.expStatus=\'\';Q.expClass=\'\';rerender()">✕ נקה</button>':'')+
+    '<select style="max-width:160px" onchange="Q.expCat=this.value;renderExpTable()">'+
+      '<option value="">כל הקטגוריות</option>'+
+      '<option value="__none"'+(Q.expCat==="__none"?" selected":"")+'>ללא קטגוריה</option>'+
+      catsSorted().map(function(c){
+        return '<option value="'+c.id+'"'+(Q.expCat===c.id?" selected":"")+'>'+esc(c.name)+'</option>'; }).join("")+
+    '</select>'+
+    ((Q.exp||Q.expStatus||Q.expClass||Q.expCat)?'<button class="btn btn-ghost btn-sm" onclick="Q.exp=\'\';Q.expStatus=\'\';Q.expClass=\'\';Q.expCat=\'\';rerender()">✕ נקה</button>':'')+
     '<div class="sp"></div><span id="exp-count"></span></div>';
   h+='<div id="exp-table">'+expTableHtml(aptId)+'</div>';
   return h;
@@ -3082,6 +3088,15 @@ function filteredExpenses(aptId){
     if(!matches(Q.exp, e.description+" "+(e.note||""))) return false;
     if(Q.expStatus && expenseStatus(e.id)!==Q.expStatus) return false;
     if(Q.expClass && e.classification!==Q.expClass) return false;
+    /* סינון קטגוריה — שלב-אב לא נופל בסינון: הוא מוצג אם תת-שלב שלו עובר */
+    if(Q.expCat){
+      var isCont=expenseChildren(e.id).length>0;
+      if(!isCont){
+        if(Q.expCat==="__none"){ if(e.categoryId&&categoryName(e.categoryId)) return false; }
+        else if(e.categoryId!==Q.expCat) return false;
+      }else if(!expenseChildren(e.id).some(function(k){
+        return Q.expCat==="__none" ? !(k.categoryId&&categoryName(k.categoryId)) : k.categoryId===Q.expCat; })) return false;
+    }
     return true;
   });
 }
@@ -3095,7 +3110,7 @@ function expTableHtml(aptId){
   var selC=can("edit");
   var h='<div class="table-wrap"><table class="tbl"><thead><tr>'+
     (selC?'<th data-xl-skip="1" style="width:30px"><input type="checkbox" title="סמן הכל" style="width:auto" onclick="ebAll(this.checked)"></th>':'')+
-    '<th>תאריך</th><th>תיאור</th><th>סיווג</th><th>סכום</th>'+
+    '<th>תאריך</th><th>תיאור</th><th>קטגוריה</th><th>סיווג</th><th>סכום</th>'+
     (a.hasManagement?'<th title="✔ יש דמי ניהול · ✖ אין · ריק = טרם סומן">דמי ניהול?</th><th>דמי ניהול</th>':'')+
     '<th>שולם</th><th>נותר</th><th>סטטוס</th><th></th></tr></thead><tbody>';
 
@@ -3115,6 +3130,8 @@ function expTableHtml(aptId){
         (isChild?'<span class="muted">↳ </span>':'')+
         '<b>'+esc(e.description)+'</b>'+(e.hidden?' <span class="badge badge-danger" title="מוסתר משאר המשתמשים">🔒 מוסתר</span>':'')+(e.hasInvoice?' 📎':'')+
         (cont?' <span class="pill" data-xl-skip="1">'+kids.length+' תתי-שלבים</span>':'')+'</td>'+
+      /* לשלב-אב אין קטגוריה משלו — הקטגוריות יושבות בתתי-השלבים */
+      '<td>'+(cont?'<span class="muted">—</span>':esc(categoryName(e.categoryId)||""))+'</td>'+
       '<td>'+(CLASSIFICATIONS[e.classification]||"")+'</td>'+
       '<td><b>'+money(e.amount)+'</b>'+(cont?'<div class="muted" data-xl-skip="1" style="font-size:11px">סך תתי-השלבים</div>':'')+'</td>'+
       (a.hasManagement?'<td>'+mgmtMarkCell(e,cont)+'</td><td>'+mgmtAmountCell(e,cont,mg)+'</td>':'')+
@@ -3141,7 +3158,7 @@ function expTableHtml(aptId){
       .forEach(function(k){ h+=rowFor(k,true); });
   });
   var lbl=(exps.length===all.length)?'סה"כ':'סה"כ המסונן';
-  h+='</tbody><tfoot><tr><td colspan="'+(selC?4:3)+'">'+lbl+'</td><td>'+money(tot)+'</td>'+(a.hasManagement?'<td></td><td></td>':'')+'<td>'+money(totPaid)+'</td><td>'+money(tot-totPaid)+'</td><td colspan="2"></td></tr></tfoot></table></div>';
+  h+='</tbody><tfoot><tr><td colspan="'+(selC?5:4)+'">'+lbl+'</td><td>'+money(tot)+'</td>'+(a.hasManagement?'<td></td><td></td>':'')+'<td>'+money(totPaid)+'</td><td>'+money(tot-totPaid)+'</td><td colspan="2"></td></tr></tfoot></table></div>';
   return h;
 }
 /* ============================================================
@@ -5185,6 +5202,7 @@ function moduleIncome(aptId){
   var h='<div class="toolbar"><h3 style="margin:0">הכנסות — סה"כ '+money(sum)+
     (anyTracked?' <span class="hint">· שולם '+money(paidSum)+' · חוב פתוח '+money(debtSum)+'</span>':'')+'</h3><div class="sp"></div>'+
     (can("edit")?'<button class="btn btn-primary btn-sm" onclick="editIncome(null,\''+aptId+'\')">➕ הכנסה</button> '+
+      '<button class="btn btn-sm" onclick="openBulkIncome(\''+aptId+'\')">📋 הכנסה מרוכזת</button> '+
       '<button class="btn btn-sm" onclick="editIncomeSplitDefault(\''+aptId+'\')">⚙️ חלוקת ברירת מחדל</button>':'')+'</div>';
   h+='<div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>תיאור</th><th>סכום</th><th>שולם</th><th>יתרת חוב</th><th>נכנס ל…</th><th>הערה</th><th></th></tr></thead><tbody>';
   if(!inc.length) h+='<tr><td colspan="8" class="empty">אין הכנסות</td></tr>';
@@ -5263,6 +5281,60 @@ function delIncomePay(incId,payId,aptId){
   if(!confirm("למחוק תשלום של "+money(g.amount)+"?")) return;
   g.deleted=true;
   save(); toast("נמחק","ok"); rerender(); openIncomePays(incId,aptId);
+}
+/* ---------- הכנסה מרוכזת — כמה הכנסות בבת אחת ----------
+   שורות ריקות מדולגות בשקט, כך שאפשר להשאיר שורות מיותרות ולא להילחם בטופס. */
+function openBulkIncome(aptId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var a=byId(DB.apartments,aptId);
+  var destSel='<option value="">— לא צוין —</option>'+
+    (a&&a.hasBank?'<option value="bank">🏦 הבנק הזמני (קופה משותפת)</option>':'')+
+    apPartners(aptId).map(function(p){
+      return '<option value="'+p.partnerId+'">'+esc(partnerName(p.partnerId))+'</option>'; }).join("");
+  openModal({title:"📋 הכנסה מרוכזת — "+(a?a.name:""),wide:true,bodyHtml:
+    '<div class="form-grid" style="margin-bottom:8px">'+
+      '<div class="field"><label>למי נכנס הכסף (לכל השורות)</label><select id="bi-dest">'+destSel+'</select></div>'+
+      '<div class="field"><label>תאריך ברירת מחדל</label><input id="bi-date" type="date" value="'+todayISO()+'">'+
+        '<div class="hint">שורה בלי תאריך משלה תקבל את התאריך הזה</div></div>'+
+    '</div>'+
+    '<div class="table-wrap"><table class="tbl"><thead><tr>'+
+      '<th style="width:140px">תאריך</th><th>תיאור</th><th style="width:120px">סכום (₪)</th><th>הערה</th><th style="width:30px"></th>'+
+    '</tr></thead><tbody id="bi-rows"></tbody></table></div>'+
+    '<button class="btn btn-sm" style="margin-top:8px" onclick="addBulkIncomeRow()">➕ שורה</button>'+
+    '<div class="hint" style="margin-top:6px">נשמרות רק שורות שיש בהן תיאור וסכום. חלוקת השותפים — לפי ברירת המחדל של הפרוייקט.</div>',
+    saveLabel:"שמור הכל",onSave:function(){ return saveBulkIncome(aptId); }});
+  for(var i=0;i<5;i++) addBulkIncomeRow();
+}
+function addBulkIncomeRow(){
+  var tb=document.getElementById("bi-rows"); if(!tb) return;
+  var tr=document.createElement("tr"); tr.className="bi-row";
+  tr.innerHTML='<td><input type="date" class="bi-d"></td>'+
+    '<td><input class="bi-desc" placeholder="למשל: שכירות יולי — דירה 2"></td>'+
+    '<td><input type="number" step="0.01" class="bi-amt"></td>'+
+    '<td><input class="bi-note"></td>'+
+    '<td><button class="btn btn-ghost btn-sm" title="הסר שורה" onclick="this.closest(\'tr\').remove()">✕</button></td>';
+  tb.appendChild(tr);
+}
+function saveBulkIncome(aptId){
+  var dest=val("bi-dest")||"", defDate=val("bi-date")||todayISO();
+  var rows=[], bad=0;
+  document.querySelectorAll("#bi-rows .bi-row").forEach(function(tr){
+    var desc=(tr.querySelector(".bi-desc").value||"").trim();
+    var amt=Number(tr.querySelector(".bi-amt").value)||0;
+    var d=tr.querySelector(".bi-d").value||defDate;
+    var note=(tr.querySelector(".bi-note").value||"").trim();
+    if(!desc && !amt && !note) return;              // שורה ריקה — מדולגת
+    if(!desc || amt<=0){ bad++; tr.style.background="#fef2f2"; return; }
+    tr.style.background="";
+    rows.push({desc:desc,amount:amt,date:d,note:note});
+  });
+  if(bad){ toast("יש "+bad+" שורות חסרות (תיאור או סכום) — הן מסומנות באדום. השלם או רוקן אותן","err"); return false; }
+  if(!rows.length){ toast("לא הוזנה אף שורה","warn"); return false; }
+  rows.forEach(function(r){
+    DB.income.push({id:uid(),apartmentId:aptId,description:r.desc,amount:r.amount,
+      date:r.date,receivedBy:dest,split:null,note:r.note,deleted:false});
+  });
+  save(); toast("נוספו "+rows.length+" הכנסות","ok"); rerender();
 }
 function editIncome(id,aptId){
   var it=id?byId(DB.income,id):{description:"",amount:"",date:todayISO(),note:"",receivedBy:"",split:null};
