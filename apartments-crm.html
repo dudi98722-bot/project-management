@@ -644,7 +644,7 @@ document.addEventListener("keydown",function(e){
 function blankDB(){
   return {meta:{version:1,rev:0}, partners:[], apartments:[], apartmentPartners:[], managers:[],
     categories:[], expenses:[], expenseSplits:[], expenseManagerFees:[], accounts:[],
-    payments:[], deposits:[], income:[], bankMoves:[], users:[], settings:{sheetsUrl:"", currency:"₪", paymentMethods:{}}};
+    payments:[], deposits:[], income:[], bankMoves:[], stmtBanks:[], users:[], settings:{sheetsUrl:"", currency:"₪", paymentMethods:{}}};
 }
 function toNum(v){ var n=Number(v); return isFinite(n)?n:0; }
 function toISO(v){ v=String(v==null?"":v).slice(0,10); return /^\d{4}-\d{2}-\d{2}$/.test(v)?v:""; }
@@ -683,6 +683,18 @@ function normalizeDB(d){
       if(g.sentToCpa==null) g.sentToCpa=!!(g.date && g.date<CPA_CUTOFF); }); });
   /* בנק זמני שהופעל לפני מודל חשבונות הבנק — מקבל חשבון משלו */
   (d.apartments||[]).forEach(function(a){ ensureBankAccount(a,d); });
+  /* רשימת הבנקים של התאמת הבנק — נפרדת מהבנקים הזמניים של הפרוייקטים.
+     שורות ותיקות שנקלטו כשהשיוך היה לחשבון פרוייקט מקבלות בנק ברשימה
+     על שם אותו חשבון, כדי שלא יאבדו את הזיהוי. */
+  d.stmtBanks=d.stmtBanks||[];
+  (d.bankMoves||[]).forEach(function(m){
+    if(m.stmtBankId || !m.accountId) return;
+    var ac=(d.accounts||[]).filter(function(x){ return x.id===m.accountId; })[0];
+    var nm=ac?ac.name:"בנק";
+    var sb=d.stmtBanks.filter(function(x){ return !x.deleted && normKey(x.name)===normKey(nm); })[0];
+    if(!sb){ sb={id:uid(),name:nm,deleted:false}; d.stmtBanks.push(sb); }
+    m.stmtBankId=sb.id;
+  });
   d.bankMoves=d.bankMoves||[];
   (d.bankMoves||[]).forEach(function(m){ m.amount=toNum(m.amount); m.date=toISO(m.date);
     m.matches=(m.matches||[]).filter(function(x){ return !x.deleted; });
@@ -1115,6 +1127,21 @@ function bankBalance(aptId,bankId){
    עדיין לא מוסבר, לבטל התאמה שגויה, ולפצל שורה אחת לכמה הזמנות.
    ההתאמה היא שיוצרת את תשלום ההזמנה — אין הזנה כפולה.
    ============================================================ */
+/* רשימת הבנקים להתאמה — מוגדרת על ידי המשתמש, גלובלית: בנק אחד יכול
+   לשרת כמה פרוייקטים, ואין לו קשר ל"בנק זמני" של אף פרוייקט. */
+function stmtBanks(){ return active(DB.stmtBanks||[]); }
+function stmtBankName(id){ var b=id?byId(DB.stmtBanks,id):null; return b?b.name:""; }
+function addStmtBank(name){
+  name=String(name||"").trim(); if(!name) return null;
+  var ex=stmtBanks().filter(function(b){ return normKey(b.name)===normKey(name); })[0];
+  if(ex) return ex;
+  var b={id:uid(),name:name,deleted:false};
+  DB.stmtBanks=DB.stmtBanks||[]; DB.stmtBanks.push(b);
+  return b;
+}
+function moveBankLabel(m){
+  return stmtBankName(m.stmtBankId) || (m.accountId?bankName(m.accountId):"—");
+}
 function allBankMoves(){ return active(DB.bankMoves); }
 function moveMatches(m){ return (m&&m.matches||[]).filter(function(x){ return !x.deleted; }); }
 function moveAllocated(m){ return round2(moveMatches(m).reduce(function(s,x){ return s+(Number(x.amount)||0); },0)); }
@@ -1133,12 +1160,8 @@ function moveStatusHtml(m){
   if(st==="ignored") return '<span class="badge badge-muted badge-unit">התעלם</span>';
   return '<span class="badge badge-danger badge-unit">לא מותאם</span>';
 }
-/* הבנק שאליו שייכת השורה — קובע גם את הפרוייקט המשוער */
-function moveAptId(m){
-  if(m.apartmentId) return m.apartmentId;
-  var ac=m.accountId?byId(DB.accounts,m.accountId):null;
-  return (ac&&ac.apartmentId)||"";
-}
+/* הפרוייקט של השורה — נקבע רק בהתאמה (הבנק משרת כמה פרוייקטים) */
+function moveAptId(m){ return m.apartmentId||""; }
 /* כל חשבונות הבנק במערכת — דף בנק יכול לשרת כמה פרוייקטים */
 function allBankAccounts(){
   return active(DB.accounts).filter(function(ac){ return ac.isBank; });
@@ -1157,7 +1180,11 @@ function moveCandidates(m,aptId){
   var rem=moveRemaining(m);
   var desc=normKey(m.description||"");
   var out=[];
-  apIncome(aptId).forEach(function(i){
+  /* בלי פרוייקט — מחפשים בכל הפרוייקטים שהמשתמש רואה */
+  var pool=aptId?apIncome(aptId)
+    :active(DB.apartments).filter(function(a){ return canSeeApartment(a.id); })
+      .reduce(function(arr,a){ return arr.concat(apIncome(a.id)); },[]);
+  pool.forEach(function(i){
     var debt=incomeDebt(i);
     if(debt<=0.01) return;
     var score=0, why=[];
@@ -1197,10 +1224,14 @@ function autoMatchPick(m,aptId){
 function applyMoveMatch(m,inc,amount){
   amount=round2(Number(amount)||0);
   if(amount<=0) return null;
+  /* היעד לא נקבע כאן — הבנק שהודבק הוא חשבון אמיתי שמשרת כמה פרוייקטים,
+     לא ה"בנק הזמני" של הפרוייקט. שם הבנק נשמר בהערת התשלום.
+     (שורות ותיקות שקושרו לחשבון פרוייקט שומרות את היעד הישן.) */
+  var bankNm=moveBankLabel(m);
   var g={id:uid(),date:m.date,amount:amount,method:"transfer",
-    receivedBy:m.accountId?("bank:"+m.accountId):"",
+    receivedBy:(!m.stmtBankId&&m.accountId)?("bank:"+m.accountId):"",
     invoices:"",sentToCpa:!!(m.date&&m.date<CPA_CUTOFF),
-    note:("מדף הבנק"+(m.description?" · "+m.description:"")).slice(0,120),deleted:false};
+    note:("מדף הבנק"+(bankNm&&bankNm!=="—"?" "+bankNm:"")+(m.description?" · "+m.description:"")).slice(0,120),deleted:false};
   if(!inc.payments) inc.payments=[];
   inc.payments.push(g);
   m.matches=m.matches||[];
@@ -1316,7 +1347,7 @@ function clientScopeMgmt(){
   DB.apartments    = (DB.apartments||[]).filter(function(a){ return canSeeApartment(a.id); });
   /* לא רלוונטי לדמי ניהול — ולא אמור להיחשף */
   DB.expenseSplits=[]; DB.deposits=[]; DB.income=[]; DB.partners=[]; DB.apartmentPartners=[]; DB.accounts=[];
-  DB.bankMoves=[];
+  DB.bankMoves=[]; DB.stmtBanks=[];
 }
 /* "פרוייקטים מורשים" חלות על כל תפקיד חוץ ממנהל. קודם הן נאכפו רק על
    תפקיד "שותף", כך שצופה שהוגבל לפרוייקט אחת ראה בפועל את כולן. */
@@ -6179,10 +6210,10 @@ function delIncomePay(incId,payId,aptId,back){
    ============================================================ */
 var BQ={bank:"",apt:"",status:"open",q:""};
 function viewBankMatch(){
-  var banks=allBankAccounts();
+  var banks=stmtBanks();
   var all=allBankMoves().filter(function(m){ return canSeeApartment(moveAptId(m))||!moveAptId(m); });
   var list=all.filter(function(m){
-    if(BQ.bank && m.accountId!==BQ.bank) return false;
+    if(BQ.bank && (m.stmtBankId||m.accountId)!==BQ.bank) return false;
     if(BQ.apt && moveAptId(m)!==BQ.apt) return false;
     var st=moveStatus(m);
     if(BQ.status==="open" && (st==="matched"||st==="ignored")) return false;
@@ -6197,11 +6228,7 @@ function viewBankMatch(){
 
   var h='<h2>🏦 התאמת בנק</h2>'+
     '<div class="hint" style="margin-bottom:12px">מדביקים כאן שורות מדף הבנק (אפשר עשרות בבת אחת), ומשייכים כל שורה להזמנה שטרם שולמה. '+
-    'ההתאמה יוצרת את תשלום ההזמנה אוטומטית — אין צורך לרשום אותו בנפרד.</div>';
-  if(!banks.length){
-    return h+'<div class="card"><div class="empty">עוד לא הוגדר חשבון בנק זמני באף פרוייקט.<br>'+
-      'מגדירים בלשונית "בנק זמני" של הפרוייקט → "🏦 בנק זמני נוסף".</div></div>';
-  }
+    'בנק אחד יכול לשרת כמה פרוייקטים — הפרוייקט נקבע בהתאמה. ההתאמה יוצרת את תשלום ההזמנה אוטומטית.</div>';
   h+='<div class="stat-grid" style="margin-bottom:14px">'+
     stat("שורות שלא הותאמו",openMoves.length)+
     stat("סכום שלא מוסבר",money(openSum))+
@@ -6215,7 +6242,7 @@ function viewBankMatch(){
     searchBox("bm-q",BQ.q,"חיפוש בתיאור / אסמכתא…","BQ.q=this.value;rerender()")+
     '<select style="max-width:200px" onchange="BQ.bank=this.value;rerender()">'+
       '<option value="">כל הבנקים</option>'+
-      banks.map(function(b){ return '<option value="'+b.id+'"'+(BQ.bank===b.id?" selected":"")+'>🏦 '+esc(bankAccountLabel(b.id))+'</option>'; }).join("")+
+      banks.map(function(b){ return '<option value="'+b.id+'"'+(BQ.bank===b.id?" selected":"")+'>🏦 '+esc(b.name)+'</option>'; }).join("")+
     '</select>'+
     '<select style="max-width:180px" onchange="BQ.apt=this.value;rerender()">'+
       '<option value="">כל הפרוייקטים</option>'+
@@ -6235,7 +6262,7 @@ function viewBankMatch(){
     var mm=moveMatches(m);
     var aid=moveAptId(m);
     h+='<tr><td>'+dateHe(m.date)+'</td><td><b>'+money(m.amount)+'</b></td>'+
-      '<td>'+esc(bankName(m.accountId))+'</td>'+
+      '<td>'+esc(moveBankLabel(m))+'</td>'+
       '<td title="'+esc(m.description||"")+'" style="max-width:220px;overflow:hidden;text-overflow:ellipsis">'+esc(m.description||"—")+'</td>'+
       '<td>'+(aid?esc(apartmentName(aid)):'<span class="muted">—</span>')+'</td>'+
       '<td>'+moveStatusHtml(m)+'</td>'+
@@ -6281,18 +6308,19 @@ function runAutoMatch(){
   var open=allBankMoves().filter(moveIsOpen);
   var plan=[];
   open.forEach(function(m){
-    var aid=moveAptId(m); if(!aid) return;            // בלי פרוייקט אין מול מה להתאים
-    var pick=autoMatchPick(m,aid); if(!pick) return;
+    /* שורה בלי פרוייקט נבדקת מול כל הפרוייקטים — הבנק משרת כמה */
+    var pick=autoMatchPick(m,moveAptId(m)); if(!pick) return;
     plan.push({m:m,inc:pick.inc,amount:Math.min(moveRemaining(m),pick.debt),why:pick.why});
   });
   if(!plan.length){ toast("לא נמצאה אף התאמה ודאית — התאם ידנית","warn"); return; }
   openModal({title:"⚡ התאמה אוטומטית — "+plan.length+" שורות",wide:true,bodyHtml:
     '<div class="hint" style="margin-bottom:10px">רק שורות שבהן יש <b>מועמד יחיד בסכום זהה</b>. כל השאר נשארות להתאמה ידנית.</div>'+
-    '<div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>סכום</th><th>תיאור מהבנק</th><th>יותאם להזמנה</th><th>למה</th></tr></thead><tbody>'+
+    '<div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>סכום</th><th>תיאור מהבנק</th><th>יותאם להזמנה</th><th>פרוייקט</th><th>למה</th></tr></thead><tbody>'+
     plan.map(function(p){
       return '<tr><td>'+dateHe(p.m.date)+'</td><td>'+money(p.amount)+'</td>'+
         '<td class="muted">'+esc(p.m.description||"—")+'</td>'+
         '<td><b>'+esc(p.inc.description)+'</b></td>'+
+        '<td>'+esc(apartmentName(p.inc.apartmentId))+'</td>'+
         '<td class="muted">'+esc(p.why.join(" · "))+'</td></tr>';
     }).join("")+'</tbody></table></div>',
     saveLabel:"בצע "+plan.length+" התאמות",onSave:function(){
@@ -6311,10 +6339,10 @@ function openMoveMatch(id){
       stat("נותר להתאמה",money(moveRemaining(m)),moveRemaining(m)>0.01?"neg":"pos")+
     '</div>'+
     (m.description?'<div class="hint" style="margin-bottom:10px">התיאור מהבנק: <b>'+esc(m.description)+'</b>'+(m.ref?' · אסמכתא '+esc(m.ref):'')+'</div>':'')+
-    '<div class="field"><label>שייך לפרוייקט</label><select id="mv-apt" onchange="renderMoveCandidates(\''+id+'\')">'+
-      '<option value="">— בחר פרוייקט —</option>'+
+    '<div class="field"><label>פרוייקט</label><select id="mv-apt" onchange="renderMoveCandidates(\''+id+'\')">'+
+      '<option value="">🔍 כל הפרוייקטים</option>'+
       apts.map(function(a){ return '<option value="'+a.id+'"'+(aid===a.id?" selected":"")+'>'+esc(a.name)+'</option>'; }).join("")+
-    '</select></div>'+
+    '</select><div class="hint">אפשר להשאיר על "כל הפרוייקטים" — המועמדים מוצגים עם שם הפרוייקט שלהם.</div></div>'+
     '<div id="mv-cands"></div>',
     saveLabel:null});
   renderMoveCandidates(id);
@@ -6340,18 +6368,18 @@ function renderMoveCandidates(id){
     box.innerHTML=h+'<div class="empty" style="margin-top:10px">✔ השורה מותאמת במלואה</div>';
     return;
   }
-  if(!aptId){ box.innerHTML=h+'<div class="empty" style="margin-top:10px">בחר פרוייקט כדי לראות הזמנות עם חוב פתוח</div>'; return; }
   var cands=moveCandidates(m,aptId);
   if(!cands.length){
-    box.innerHTML=h+'<div class="empty" style="margin-top:10px">אין בפרוייקט הזה הזמנות עם חוב פתוח</div>';
+    box.innerHTML=h+'<div class="empty" style="margin-top:10px">'+(aptId?"אין בפרוייקט הזה הזמנות עם חוב פתוח":"אין באף פרוייקט הזמנות עם חוב פתוח")+'</div>';
     return;
   }
   h+='<div class="section-title">הזמנות עם חוב פתוח <span class="hint">(ממוינות לפי התאמה · נותר להתאמה '+money(rem)+')</span></div>'+
-    '<div class="table-wrap"><table class="tbl"><thead><tr><th>הזמנה</th><th>תאריך</th><th>מחיר</th><th>חוב</th><th>למה מוצע</th><th>סכום להתאמה</th><th></th></tr></thead><tbody>';
+    '<div class="table-wrap"><table class="tbl"><thead><tr><th>הזמנה</th>'+(aptId?'':'<th>פרוייקט</th>')+'<th>תאריך</th><th>מחיר</th><th>חוב</th><th>למה מוצע</th><th>סכום להתאמה</th><th></th></tr></thead><tbody>';
   cands.slice(0,20).forEach(function(c){
     var suggest=round2(Math.min(rem,c.debt));
     h+='<tr'+(c.score>=100?' style="background:#f0fdf4"':'')+'>'+
       '<td><b>'+esc(c.inc.description)+'</b>'+(incomeUnits(c.inc).length?'<div class="hint">'+esc(incomeUnits(c.inc).join(" · "))+'</div>':'')+'</td>'+
+      (aptId?'':'<td>'+esc(apartmentName(c.inc.apartmentId))+'</td>')+
       '<td>'+dateHe(c.inc.date)+'</td><td>'+money(c.inc.amount)+'</td>'+
       '<td class="neg"><b>'+money(c.debt)+'</b></td>'+
       '<td class="muted">'+(c.why.length?esc(c.why.join(" · ")):'<span class="muted">—</span>')+'</td>'+
@@ -6386,21 +6414,17 @@ function undoMatchFromUi(moveId,matchId){
 var BIMP={grid:null,hasHeader:true,map:{date:-1,amount:-1,credit:-1,debit:-1,desc:-1,ref:-1},accountId:""};
 function openBankMoveImport(){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
-  var banks=allBankAccounts();
-  /* פרוייקטים שעוד אין להם בנק זמני — מוצעים בהמשך הרשימה, ובחירה
-     בהם מפעילה את הבנק ויוצרת את החשבון במקום. כך לא צריך לנחש למה
-     פרוייקט מסוים לא מופיע. */
-  var withBank={}; banks.forEach(function(b){ if(b.apartmentId) withBank[b.apartmentId]=1; });
-  var noBank=active(DB.apartments).filter(function(a){ return canSeeApartment(a.id)&&!withBank[a.id]; });
-  if(!banks.length && !noBank.length){ toast("אין פרוייקטים במערכת","err"); return; }
-  BIMP={grid:null,hasHeader:true,map:{date:-1,amount:-1,credit:-1,debit:-1,desc:-1,ref:-1},accountId:BQ.bank||(banks[0]&&banks[0].id)||""};
+  var banks=stmtBanks();
+  BIMP={grid:null,hasHeader:true,map:{date:-1,amount:-1,credit:-1,debit:-1,desc:-1,ref:-1},
+    stmtBankId:BQ.bank||(banks[0]&&banks[0].id)||""};
   openModal({title:"📥 הדבקת שורות מדף הבנק",wide:true,bodyHtml:
-    '<div class="field"><label>לאיזה חשבון בנק שייכות השורות</label><select id="bi-acc" onchange="onBankAccPick()">'+
-      banks.map(function(b){ return '<option value="'+b.id+'"'+(BIMP.accountId===b.id?" selected":"")+'>🏦 '+esc(bankAccountLabel(b.id))+'</option>'; }).join("")+
-      (noBank.length?'<optgroup label="— פרוייקטים בלי בנק זמני (בחירה תפעיל אותו) —">'+
-        noBank.map(function(a){ return '<option value="__new:'+a.id+'">➕ '+esc(a.name)+'</option>'; }).join("")+'</optgroup>':'')+
+    '<div class="field"><label>מאיזה בנק השורות</label><select id="bi-acc" onchange="onBankAccPick()">'+
+      (banks.length?'':'<option value="">— אין עדיין בנקים ברשימה —</option>')+
+      banks.map(function(b){ return '<option value="'+b.id+'"'+(BIMP.stmtBankId===b.id?" selected":"")+'>🏦 '+esc(b.name)+'</option>'; }).join("")+
+      '<option value="__add">➕ בנק חדש…</option>'+
     '</select>'+
-    '<div class="hint">מופיעים רק פרוייקטים שהבנק הזמני שלהם פעיל. פרוייקט אחר — בחר אותו מהרשימה והבנק יופעל בו מיד.</div></div>'+
+    '<div class="hint">זו הרשימה שלך — הבנקים האמיתיים שמהם אתה מדביק דפי תנועות. '+
+    'בנק אחד יכול לשמש כמה פרוייקטים; הפרוייקט נקבע רק בהתאמה של כל שורה.</div></div>'+
     '<div class="toolbar" style="margin-top:8px">'+
       '<button class="btn btn-primary btn-sm" onclick="document.getElementById(\'bm-file\').click()">📁 קובץ (xlsx / csv)</button>'+
       '<input type="file" id="bm-file" accept=".xlsx,.csv,.txt" style="display:none" onchange="readSheetFile(this,onBankGrid,\'bm-file-name\')">'+
@@ -6412,23 +6436,20 @@ function openBankMoveImport(){
     '<div id="bm-map"></div>',
     saveLabel:"הוסף שורות",onSave:function(){ return applyBankImport(); }});
 }
-/* נבחר פרוייקט בלי בנק — מפעילים את הבנק הזמני ויוצרים את החשבון במקום */
+/* נבחר "➕ בנק חדש" — שואלים שם, מוסיפים לרשימה ובוחרים אותו */
 function onBankAccPick(){
   var sel=document.getElementById("bi-acc"); if(!sel) return;
   var v=sel.value;
-  if(v.indexOf("__new:")!==0){ BIMP.accountId=v; renderBankPreview(); return; }
-  var a=byId(DB.apartments,v.slice(6)); if(!a) return;
-  a.hasBank=true; ensureBankAccount(a);
-  var b=aptBankAccounts(a.id)[0];
-  save(); toast('הבנק הזמני הופעל ב"'+a.name+'"',"ok");
-  BIMP.accountId=b?b.id:"";
-  /* בונים את הרשימה מחדש — הפרוייקט עבר מקבוצת "בלי בנק" לרשימה הרגילה */
-  var banks=allBankAccounts();
-  var withBank={}; banks.forEach(function(x){ if(x.apartmentId) withBank[x.apartmentId]=1; });
-  var noBank=active(DB.apartments).filter(function(x){ return canSeeApartment(x.id)&&!withBank[x.id]; });
-  sel.innerHTML=banks.map(function(x){ return '<option value="'+x.id+'"'+(BIMP.accountId===x.id?" selected":"")+'>🏦 '+esc(bankAccountLabel(x.id))+'</option>'; }).join("")+
-    (noBank.length?'<optgroup label="— פרוייקטים בלי בנק זמני (בחירה תפעיל אותו) —">'+
-      noBank.map(function(x){ return '<option value="__new:'+x.id+'">➕ '+esc(x.name)+'</option>'; }).join("")+'</optgroup>':'');
+  if(v!=="__add"){ BIMP.stmtBankId=v; renderBankPreview(); return; }
+  var name=prompt("שם הבנק (למשל: מרכנתיל 342, מזרחי עסקי):","");
+  name=(name||"").trim();
+  if(!name){ sel.value=BIMP.stmtBankId||""; return; }
+  var b=addStmtBank(name);
+  save(); toast('נוסף הבנק "'+b.name+'" לרשימה',"ok");
+  BIMP.stmtBankId=b.id;
+  sel.innerHTML=stmtBanks().map(function(x){
+      return '<option value="'+x.id+'"'+(BIMP.stmtBankId===x.id?" selected":"")+'>🏦 '+esc(x.name)+'</option>'; }).join("")+
+    '<option value="__add">➕ בנק חדש…</option>';
   renderBankPreview();
 }
 function onBankPaste(){
@@ -6496,9 +6517,9 @@ function bankImportRows(){
   });
   return out;
 }
-function bankRowIsDup(r,accId){
+function bankRowIsDup(r,bankId){
   return allBankMoves().some(function(m){
-    return m.accountId===accId && m.date===r.date &&
+    return (m.stmtBankId||m.accountId)===bankId && m.date===r.date &&
       Math.abs((Number(m.amount)||0)-r.amount)<0.01 &&
       (r.ref ? String(m.ref||"")===r.ref : normKey(m.description||"")===normKey(r.description));
   });
@@ -6507,7 +6528,7 @@ function renderBankPreview(){
   var box=document.getElementById("bm-preview"); if(!box) return;
   var rows=bankImportRows();
   if(!rows.length){ box.innerHTML='<div class="empty">לא זוהו שורות של כניסת כסף — בדוק את התאמת העמודות</div>'; return; }
-  var accId=BIMP.accountId;
+  var accId=BIMP.stmtBankId;
   var dup=rows.filter(function(r){ return bankRowIsDup(r,accId); }).length;
   var sum=round2(rows.reduce(function(s,r){ return s+r.amount; },0));
   box.innerHTML='<div class="section-title">תצוגה מקדימה — '+rows.length+' שורות, סה"כ '+money(sum)+
@@ -6524,15 +6545,14 @@ function renderBankPreview(){
 }
 function applyBankImport(){
   if(!can("edit")){ toast("אין הרשאה","err"); return false; }
-  var accId=BIMP.accountId;
-  if(!accId){ toast("בחר חשבון בנק","err"); return false; }
+  var accId=BIMP.stmtBankId;
+  if(!accId){ toast("בחר בנק מהרשימה (או ➕ בנק חדש)","err"); return false; }
   var rows=bankImportRows();
   if(!rows.length){ toast("אין שורות לייבוא","err"); return false; }
   var added=0, skipped=0;
   rows.forEach(function(r){
     if(bankRowIsDup(r,accId)){ skipped++; return; }
-    var ac=byId(DB.accounts,accId);
-    DB.bankMoves.push({id:uid(),accountId:accId,apartmentId:(ac&&ac.apartmentId)||"",
+    DB.bankMoves.push({id:uid(),stmtBankId:accId,apartmentId:"",
       date:r.date,amount:r.amount,description:r.description,ref:r.ref,
       matches:[],ignored:false,note:"",deleted:false});
     added++;
