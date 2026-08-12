@@ -1,23 +1,34 @@
 #!/bin/bash
 # ============================================================
-#  חיבור "פסיכולוגיה מסילות" ל-Google Sheets — בפקודה אחת
+#  חיבור "פסיכולוגיה מסילות" ל-Google Sheets
 #
-#  שלב 1 (בלי פרמטרים) — מוצא חשבון שירות קיים ומראה למי לשתף את הגיליון:
-#     sudo bash setup-sheets-therapy.sh
+#  הדרך הקצרה — הסקריפט יוצר את הגיליון ונותן לך אליו גישה, בלי שיתוף ידני:
+#     sudo bash setup-sheets-therapy.sh --create you@gmail.com
 #
-#  שלב 2 — מחבר, מפעיל מחדש ובודק. אפשר להדביק את הקישור המלא לגיליון:
+#  הדרך השנייה — גיליון שיצרת בעצמך ושיתפת עם חשבון השירות:
 #     sudo bash setup-sheets-therapy.sh "https://docs.google.com/spreadsheets/d/1AbC.../edit"
 #
+#  בלי פרמטרים — מציג את כתובת חשבון השירות (למי לשתף) ואת שתי האפשרויות:
+#     sudo bash setup-sheets-therapy.sh
+#
 #  אפשר גם להצביע על קובץ חשבון שירות ספציפי:
-#     sudo SA=/root/my-key.json bash setup-sheets-therapy.sh 1AbC...XyZ
+#     sudo SA=/root/my-key.json bash setup-sheets-therapy.sh --create you@gmail.com
 # ============================================================
 set -e
 
 APP="/opt/therapy-crm/app"
 SERVICE="therapy-crm"
 TARGET="$APP/service-account.json"
-# מקבל קישור מלא לגיליון או מזהה בלבד — מחלץ את המזהה בכל מקרה
-SHEET_ID=$(echo "$1" | sed -E 's|.*/spreadsheets/d/([A-Za-z0-9_-]+).*|\1|')
+
+CREATE_FOR=""
+if [ "$1" = "--create" ]; then
+  CREATE_FOR="$2"
+  [ -n "$CREATE_FOR" ] || { echo "❌ חסרה כתובת מייל: sudo bash setup-sheets-therapy.sh --create you@gmail.com"; exit 1; }
+  SHEET_ID=""
+else
+  # מקבל קישור מלא לגיליון או מזהה בלבד — מחלץ את המזהה בכל מקרה
+  SHEET_ID=$(echo "$1" | sed -E 's|.*/spreadsheets/d/([A-Za-z0-9_-]+).*|\1|')
+fi
 
 echo "🔗 חיבור פסיכולוגיה מסילות ל-Google Sheets"
 echo "============================================"
@@ -65,25 +76,45 @@ if [ "$FOUND" != "$TARGET" ]; then
 fi
 chmod 600 "$TARGET"
 
-# ---------- 3. בלי מזהה גיליון — עוצרים ומסבירים ----------
+# ---------- 3. יצירת גיליון אוטומטית ----------
+if [ -n "$CREATE_FOR" ]; then
+  echo "📄 יוצר גיליון חדש ונותן גישה ל-$CREATE_FOR ..."
+  cd "$APP"
+  set +e
+  SHEET_ID=$(node scripts/create_sheet.js "$CREATE_FOR"); RC=$?
+  set -e
+  if [ $RC -ne 0 ] || [ -z "$SHEET_ID" ]; then
+    echo ""
+    echo "   אפשר במקום זה ליצור גיליון ידנית, לשתף אותו עם $EMAIL (הרשאת Editor),"
+    echo "   ואז להריץ:  sudo bash setup-sheets-therapy.sh \"<הקישור לגיליון>\""
+    exit 1
+  fi
+fi
+
+# ---------- 4. בלי מזהה גיליון — מציגים את שתי האפשרויות ----------
 if [ -z "$SHEET_ID" ]; then
   echo ""
   echo "============================================"
-  echo "📋 נשארו לך שני דברים:"
+  echo "בחר איך להמשיך:"
   echo ""
-  echo "1. פתח גיליון חדש ב-https://sheets.google.com"
-  echo "   לחץ Share ושתף אותו עם הכתובת הזו, בהרשאת Editor:"
+  echo "▸ הדרך הקצרה — הסקריפט יוצר את הגיליון ונותן לך גישה (בלי שיתוף ידני):"
+  echo ""
+  echo "      sudo bash setup-sheets-therapy.sh --create המייל_שלך@gmail.com"
+  echo ""
+  echo "▸ אם אתה מעדיף ליצור את הגיליון בעצמך:"
+  echo "  פתח גיליון ב-https://sheets.google.com, לחץ Share ושתף עם הכתובת הזו"
+  echo "  בהרשאת Editor:"
   echo ""
   echo "      $EMAIL"
   echo ""
-  echo "2. העתק את הקישור של הגיליון מהדפדפן והרץ שוב איתו (במרכאות):"
+  echo "  ואז הרץ עם הקישור לגיליון (במרכאות):"
   echo ""
   echo "      sudo bash setup-sheets-therapy.sh \"<הדבק כאן את הקישור>\""
   echo "============================================"
   exit 0
 fi
 
-# ---------- 4. עדכון .env ----------
+# ---------- 5. עדכון .env ----------
 echo "$SHEET_ID" | grep -qE '^[A-Za-z0-9_-]{20,}$' \
   || { echo "❌ '$SHEET_ID' לא נראה כמו מזהה גיליון. העתק רק את החלק שבין /d/ ל-/edit"; exit 1; }
 
@@ -96,7 +127,7 @@ grep -q '^GOOGLE_SERVICE_ACCOUNT_FILE=' "$APP/.env" \
   || echo "GOOGLE_SERVICE_ACCOUNT_FILE=./service-account.json" >> "$APP/.env"
 echo "✔ ההגדרות עודכנו"
 
-# ---------- 5. בדיקת חיבור אמיתית ----------
+# ---------- 6. בדיקת חיבור אמיתית ----------
 echo "🧪 בודק חיבור לגיליון..."
 cd "$APP"
 set +e
@@ -110,11 +141,12 @@ if [ $RC -ne 0 ]; then
   exit 1
 fi
 
-# ---------- 6. הפעלה מחדש ----------
+# ---------- 7. הפעלה מחדש ----------
 systemctl restart "$SERVICE"
 sleep 2
 echo ""
 echo "============================================"
 echo "✅ הסנכרון פעיל. כל שינוי במערכת יופיע בגיליון תוך שניות."
 echo "   https://docs.google.com/spreadsheets/d/$SHEET_ID/edit"
+[ -n "$CREATE_FOR" ] && echo "   (הגיליון משותף איתך — תמצא אותו ב-Google Drive תחת 'Shared with me')"
 echo "============================================"
