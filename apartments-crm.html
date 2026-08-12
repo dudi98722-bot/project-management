@@ -6387,12 +6387,20 @@ var BIMP={grid:null,hasHeader:true,map:{date:-1,amount:-1,credit:-1,debit:-1,des
 function openBankMoveImport(){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var banks=allBankAccounts();
-  if(!banks.length){ toast("הגדר קודם חשבון בנק זמני בפרוייקט","err"); return; }
-  BIMP={grid:null,hasHeader:true,map:{date:-1,amount:-1,credit:-1,debit:-1,desc:-1,ref:-1},accountId:BQ.bank||banks[0].id};
+  /* פרוייקטים שעוד אין להם בנק זמני — מוצעים בהמשך הרשימה, ובחירה
+     בהם מפעילה את הבנק ויוצרת את החשבון במקום. כך לא צריך לנחש למה
+     פרוייקט מסוים לא מופיע. */
+  var withBank={}; banks.forEach(function(b){ if(b.apartmentId) withBank[b.apartmentId]=1; });
+  var noBank=active(DB.apartments).filter(function(a){ return canSeeApartment(a.id)&&!withBank[a.id]; });
+  if(!banks.length && !noBank.length){ toast("אין פרוייקטים במערכת","err"); return; }
+  BIMP={grid:null,hasHeader:true,map:{date:-1,amount:-1,credit:-1,debit:-1,desc:-1,ref:-1},accountId:BQ.bank||(banks[0]&&banks[0].id)||""};
   openModal({title:"📥 הדבקת שורות מדף הבנק",wide:true,bodyHtml:
-    '<div class="field"><label>לאיזה חשבון בנק שייכות השורות</label><select id="bi-acc" onchange="BIMP.accountId=this.value">'+
+    '<div class="field"><label>לאיזה חשבון בנק שייכות השורות</label><select id="bi-acc" onchange="onBankAccPick()">'+
       banks.map(function(b){ return '<option value="'+b.id+'"'+(BIMP.accountId===b.id?" selected":"")+'>🏦 '+esc(bankAccountLabel(b.id))+'</option>'; }).join("")+
-    '</select></div>'+
+      (noBank.length?'<optgroup label="— פרוייקטים בלי בנק זמני (בחירה תפעיל אותו) —">'+
+        noBank.map(function(a){ return '<option value="__new:'+a.id+'">➕ '+esc(a.name)+'</option>'; }).join("")+'</optgroup>':'')+
+    '</select>'+
+    '<div class="hint">מופיעים רק פרוייקטים שהבנק הזמני שלהם פעיל. פרוייקט אחר — בחר אותו מהרשימה והבנק יופעל בו מיד.</div></div>'+
     '<div class="toolbar" style="margin-top:8px">'+
       '<button class="btn btn-primary btn-sm" onclick="document.getElementById(\'bm-file\').click()">📁 קובץ (xlsx / csv)</button>'+
       '<input type="file" id="bm-file" accept=".xlsx,.csv,.txt" style="display:none" onchange="readSheetFile(this,onBankGrid,\'bm-file-name\')">'+
@@ -6403,6 +6411,25 @@ function openBankMoveImport(){
       'placeholder="הדבק כאן שורות מהבנק — אפשר עשרות בבת אחת…" oninput="onBankPaste()"></textarea>'+
     '<div id="bm-map"></div>',
     saveLabel:"הוסף שורות",onSave:function(){ return applyBankImport(); }});
+}
+/* נבחר פרוייקט בלי בנק — מפעילים את הבנק הזמני ויוצרים את החשבון במקום */
+function onBankAccPick(){
+  var sel=document.getElementById("bi-acc"); if(!sel) return;
+  var v=sel.value;
+  if(v.indexOf("__new:")!==0){ BIMP.accountId=v; renderBankPreview(); return; }
+  var a=byId(DB.apartments,v.slice(6)); if(!a) return;
+  a.hasBank=true; ensureBankAccount(a);
+  var b=aptBankAccounts(a.id)[0];
+  save(); toast('הבנק הזמני הופעל ב"'+a.name+'"',"ok");
+  BIMP.accountId=b?b.id:"";
+  /* בונים את הרשימה מחדש — הפרוייקט עבר מקבוצת "בלי בנק" לרשימה הרגילה */
+  var banks=allBankAccounts();
+  var withBank={}; banks.forEach(function(x){ if(x.apartmentId) withBank[x.apartmentId]=1; });
+  var noBank=active(DB.apartments).filter(function(x){ return canSeeApartment(x.id)&&!withBank[x.id]; });
+  sel.innerHTML=banks.map(function(x){ return '<option value="'+x.id+'"'+(BIMP.accountId===x.id?" selected":"")+'>🏦 '+esc(bankAccountLabel(x.id))+'</option>'; }).join("")+
+    (noBank.length?'<optgroup label="— פרוייקטים בלי בנק זמני (בחירה תפעיל אותו) —">'+
+      noBank.map(function(x){ return '<option value="__new:'+x.id+'">➕ '+esc(x.name)+'</option>'; }).join("")+'</optgroup>':'');
+  renderBankPreview();
 }
 function onBankPaste(){
   var txt=val("bm-paste");
