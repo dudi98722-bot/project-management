@@ -1489,11 +1489,11 @@
     view().innerHTML = `
       <div class="page-head"><h2>בונה בקשת תשלום</h2><span class="mini">בחר פרויקט, הזן כמה הקבלן מבקש בכל שלב, והוסף לבקשה</span></div>
       <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
-        <div class="card" style="flex:1 1 480px;min-width:320px">
+        <div class="card" style="flex:1 1 380px;min-width:300px">
           <div class="field"><label>פרויקט</label><div class="ta"><input id="pr_proj_in" placeholder="הקלד לחיפוש פרויקט..." autocomplete="off"><div class="ta-list" id="pr_proj_list"></div></div></div>
           <div id="pr_stagesForm" style="margin-top:12px"></div>
         </div>
-        <div class="card" id="pr_report" style="flex:1 1 340px;min-width:300px;position:sticky;top:12px;background:var(--soft)"></div>
+        <div class="card" id="pr_report" style="flex:2 1 520px;min-width:320px;background:var(--soft)"></div>
       </div>`;
 
     // בחירת פרויקט → טוענת ומציגה את שלביו הפתוחים לקבלן
@@ -1553,61 +1553,104 @@
       renderStagesForm(); renderReport();
     }
 
-    // קיבוץ לפי פרויקט: סה"כ לקבלן = סכום כל השלבים; ללקוח = יתרה לפי שלב ייחודי
+    const stageLinesArr = () => lines.filter(l => l.stage_id != null);
+    const manualLinesArr = () => lines.filter(l => l.stage_id == null);
+
+    // קיבוץ שלבים לפי פרויקט + סיכומי טורים (מבוקש / נשאר לקבלן אחרי / יתרה ללקוח)
     function groupByProject() {
       const groups = [], byKey = {};
-      lines.forEach(l => {
+      stageLinesArr().forEach(l => {
         const key = l.project_id == null ? 'p_null_' + l.id : 'p' + l.project_id;
         let g = byKey[key];
-        if (!g) { g = byKey[key] = { name: l.project_name || '—', requested: 0, owes: 0, items: [], seen: {} }; groups.push(g); }
-        g.requested += +l.requested || 0; g.items.push(l);
-        const sk = l.stage_id == null ? 's_null_' + l.id : 's' + l.stage_id;
+        if (!g) { g = byKey[key] = { name: l.project_name || '—', requested: 0, owes: 0, afterSum: 0, items: [], seen: {} }; groups.push(g); }
+        const after = (+l.sub_remaining || 0) - (+l.requested || 0);
+        g.requested += +l.requested || 0; g.afterSum += after; g.items.push(l);
+        const sk = 's' + l.stage_id;
         if (!g.seen[sk]) { g.seen[sk] = 1; g.owes += +l.client_owes || 0; }
       });
       return groups;
     }
 
-    // דוח הבקשה: פרויקט בגדול → פירוט לפי שלב → סה"כ לקבלן וללקוח → סיכום כללי
+    // דוח הבקשה בטבלה: פרויקט (פעם אחת) · שלב · מבוקש · נשאר לקבלן אחרי · יתרה ללקוח + סיכום לכל פרויקט + סיכום כללי + תוספות ידניות
     function renderReport() {
       const box = $('#pr_report');
-      if (!lines.length) { box.innerHTML = '<h3 style="margin-top:0">הבקשה</h3><div class="muted">בחר פרויקט והזן סכומים לשלבים כדי לבנות את הבקשה.</div>'; return; }
       const groups = groupByProject();
-      const grandReq = groups.reduce((s, g) => s + g.requested, 0);
+      const manual = manualLinesArr();
+      const manualSum = manual.reduce((s, m) => s + (+m.requested || 0), 0);
+      const grandReq = groups.reduce((s, g) => s + g.requested, 0) + manualSum;
+      const grandAfter = groups.reduce((s, g) => s + g.afterSum, 0);
       const grandOwes = groups.reduce((s, g) => s + g.owes, 0);
-      box.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><h3 style="margin:0">הבקשה</h3><div class="spacer" style="flex:1"></div><button class="btn xs red" id="pr_clear">🗑️ מחק הכל</button></div>
-        ${groups.map(g => `
-          <div style="padding:10px 0;border-bottom:2px solid var(--line)">
-            <div style="font-weight:800;font-size:17px;color:var(--brand-d)">${esc(g.name)}</div>
-            <table style="width:100%;margin-top:6px"><tbody>${g.items.map(l => `<tr>
-              <td>${esc(l.stage_name || '')}</td>
-              <td class="num" style="font-weight:700">${money(l.requested)}</td>
-              <td style="width:26px;text-align:left"><button class="btn xs red" data-delline="${l.id}">✕</button></td></tr>`).join('')}</tbody></table>
-            <div style="display:flex;justify-content:space-between;margin-top:6px;font-weight:700"><span>סה"כ לקבלן</span><span style="color:var(--green)">${money(g.requested)}</span></div>
-            <div style="display:flex;justify-content:space-between"><span class="mini">סה"כ ללקוח (יתרה)</span><span class="mini" style="color:var(--brand-d);font-weight:700">${money(g.owes)}</span></div>
-          </div>`).join('')}
-        <div style="display:flex;justify-content:space-between;margin-top:12px;font-size:17px"><b>סה"כ מבוקש לקבלן</b><b style="color:var(--green)">${money(grandReq)}</b></div>
-        <div style="display:flex;justify-content:space-between;margin-top:2px"><span>סה"כ ללקוח</span><b style="color:var(--brand-d)">${money(grandOwes)}</b></div>
-        <button class="btn ghost" id="pr_copy" style="width:100%;margin-top:14px">📋 העתק לוואטסאפ</button>`;
+      const empty = !lines.length;
+
+      const projRows = groups.map(g => g.items.map((l, i) => {
+        const after = (+l.sub_remaining || 0) - (+l.requested || 0);
+        return `<tr>
+          <td>${i === 0 ? `<b>${esc(g.name)}</b>` : ''}</td>
+          <td>${esc(l.stage_name || '')}</td>
+          <td class="num" style="font-weight:700">${money0(l.requested)}</td>
+          <td class="num" style="color:${after >= 0 ? 'var(--green)' : 'var(--red)'}">${money0(after)}</td>
+          <td class="num" style="color:var(--brand-d)">${money0(l.client_owes)}</td>
+          <td style="width:24px;text-align:left"><button class="btn xs red" data-delline="${l.id}">✕</button></td></tr>`;
+      }).join('') + `<tr style="background:var(--soft);font-weight:700">
+          <td></td><td class="mini">סה"כ ${esc(g.name)}</td>
+          <td class="num">${money0(g.requested)}</td><td class="num">${money0(g.afterSum)}</td>
+          <td class="num" style="color:var(--brand-d)">${money0(g.owes)}</td><td></td></tr>`).join('');
+
+      const manualRows = manual.map(m => `<tr>
+          <td class="mini muted">תוספת</td><td>${esc(m.stage_name || '')}</td>
+          <td class="num" style="font-weight:700">${money0(m.requested)}</td><td></td><td></td>
+          <td style="width:24px;text-align:left"><button class="btn xs red" data-delline="${m.id}">✕</button></td></tr>`).join('');
+
+      box.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><h3 style="margin:0">הבקשה</h3><div class="spacer" style="flex:1"></div>${!empty ? '<button class="btn xs red" id="pr_clear">🗑️ מחק הכל</button>' : ''}</div>
+        ${empty ? '<div class="muted" style="margin-bottom:12px">בחר פרויקט והזן סכומים לשלבים כדי לבנות את הבקשה.</div>' : `
+        <div style="overflow-x:auto"><table><thead><tr>
+          <th>פרויקט</th><th>שלב</th><th class="num">מבוקש עכשיו</th><th class="num">נשאר לקבלן אחרי</th><th class="num">יתרה ללקוח</th><th></th>
+        </tr></thead><tbody>
+          ${projRows}${manualRows}
+          <tr style="border-top:2px solid var(--ink);font-weight:800">
+            <td></td><td>סה"כ הכל</td>
+            <td class="num" style="color:var(--green)">${money0(grandReq)}</td>
+            <td class="num">${money0(grandAfter)}</td>
+            <td class="num" style="color:var(--brand-d)">${money0(grandOwes)}</td><td></td></tr>
+        </tbody></table></div>`}
+        <div style="margin-top:14px;border-top:1px dashed var(--line);padding-top:10px">
+          <div class="mini muted" style="margin-bottom:6px">➕ תוספת ידנית (סכום ללא שיוך לשלב):</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+            <div class="field" style="flex:2;min-width:140px;margin:0"><input id="pr_mtext" placeholder="תיאור (למשל: חומרים)"></div>
+            <div class="field" style="flex:1;min-width:90px;margin:0"><input id="pr_mamt" type="number" placeholder="סכום"></div>
+            <button class="btn sm" id="pr_maddBtn" style="flex:none">הוסף</button>
+          </div>
+        </div>
+        ${!empty ? '<button class="btn ghost" id="pr_copy" style="width:100%;margin-top:14px">📋 העתק לוואטסאפ</button>' : ''}`;
+
       box.querySelectorAll('[data-delline]').forEach(b => b.onclick = async () => {
         const id = +b.dataset.delline; await guard(window.Store.payreq.remove(id));
         lines = lines.filter(l => l.id !== id); renderReport(); renderStagesForm(); toast('נמחק', 'ok');
       });
-      $('#pr_clear').onclick = async () => {
-        if (!await confirmDialog(`למחוק את כל הבקשה (${lines.length} שלבים)? ניתן לשחזר מסל המחזור.`, 'מחיקת הכל')) return;
+      $('#pr_maddBtn').onclick = async () => {
+        const text = $('#pr_mtext').value.trim(), amt = parseFloat($('#pr_mamt').value) || 0;
+        if (!text) return toast('הזן תיאור', 'err');
+        if (!(amt > 0)) return toast('הזן סכום', 'err');
+        const saved = await guard(window.Store.payreq.create({ project_id: null, project_name: null, stage_id: null, stage_name: text, sub_name: '', requested: amt, sub_remaining: 0, client_owes: 0 }));
+        lines.unshift(saved); renderReport(); toast('נוסף', 'ok');
+      };
+      const clr = $('#pr_clear'); if (clr) clr.onclick = async () => {
+        if (!await confirmDialog('למחוק את כל הבקשה? ניתן לשחזר מסל המחזור.', 'מחיקת הכל')) return;
         await guard(window.Store.payreq.clear()); lines = []; renderReport(); renderStagesForm(); toast('כל הבקשה נמחקה', 'ok');
       };
-      $('#pr_copy').onclick = () => copyRequestText(groups, grandReq, grandOwes);
+      const cp = $('#pr_copy'); if (cp) cp.onclick = () => copyRequestText(groups, manual, grandReq, grandAfter, grandOwes);
     }
 
-    function copyRequestText(groups, grandReq, grandOwes) {
+    function copyRequestText(groups, manual, grandReq, grandAfter, grandOwes) {
       const d = new Date().toLocaleDateString('he-IL');
       let txt = `בקשת תשלום — ${d}\n`;
       groups.forEach(g => {
         txt += `\n📁 ${g.name}\n`;
-        g.items.forEach(l => { txt += `  • ${l.stage_name || ''}: ${money(l.requested)}\n`; });
-        txt += `  סה"כ לקבלן: ${money(g.requested)} | ללקוח: ${money(g.owes)}\n`;
+        g.items.forEach(l => { const after = (+l.sub_remaining || 0) - (+l.requested || 0); txt += `  • ${l.stage_name || ''}: מבוקש ${money(l.requested)} · נשאר לקבלן ${money(after)} · ללקוח ${money(l.client_owes)}\n`; });
+        txt += `  סה"כ: מבוקש ${money(g.requested)} · נשאר ${money(g.afterSum)} · ללקוח ${money(g.owes)}\n`;
       });
-      txt += `\n💰 סה"כ מבוקש לקבלן: ${money(grandReq)}\n🟢 סה"כ ללקוח: ${money(grandOwes)}`;
+      if (manual.length) { txt += `\n➕ תוספות:\n`; manual.forEach(m => { txt += `  • ${m.stage_name || ''}: ${money(m.requested)}\n`; }); }
+      txt += `\n💰 סה"כ מבוקש: ${money(grandReq)}\n🟢 סה"כ ללקוח: ${money(grandOwes)}`;
       navigator.clipboard.writeText(txt).then(() => toast('הבקשה הועתקה', 'ok'), () => toast('ההעתקה נכשלה', 'err'));
     }
 
