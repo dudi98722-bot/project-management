@@ -5674,6 +5674,7 @@ function moduleIncome(aptId){
     (allIncomePays(aptId).length?'<button class="btn btn-sm" onclick="openAllIncomePays(\''+aptId+'\')">💳 כל התשלומים</button> ':'')+
     (can("edit")?'<button class="btn btn-primary btn-sm" onclick="editIncome(null,\''+aptId+'\')">➕ הכנסה</button> '+
       '<button class="btn btn-sm" onclick="openBulkIncome(\''+aptId+'\')">📋 הכנסה מרוכזת</button> '+
+      '<button class="btn btn-sm" onclick="openIncomeImport(\''+aptId+'\')">📥 העלאת אקסל</button> '+
       (all.length?'<button class="btn btn-sm" onclick="openBulkIncomeEdit(\''+aptId+'\')">✏️ עדכון מרוכז <span id="ib-count"></span></button> ':'')+
       '<button class="btn btn-sm" onclick="editRentalUnits(\''+aptId+'\')">🏠 הגדרות השכרה</button> '+
       '<button class="btn btn-sm" onclick="editIncomeSplitDefault(\''+aptId+'\')">⚙️ חלוקת ברירת מחדל</button>':'')+'</div>';
@@ -6559,6 +6560,171 @@ function applyBankImport(){
   });
   save();
   toast("נוספו "+added+" שורות"+(skipped?" · "+skipped+" כבר היו קיימות ודולגו":""),"ok");
+  rerender();
+  return true;
+}
+
+/* ---------- ייבוא הכנסות מאקסל / הדבקה ----------
+   כמו ייבוא ההפקדות: קובץ או הדבקה, מיפוי עמודות עם ניחוש אוטומטי,
+   תצוגה מקדימה ודילוג על שורות שכבר קיימות. עמודות היחידות מזוהות
+   לפי שמות היחידות של הפרוייקט (וילה 1, יחידה 2…) — סימון בתא = הושכרה. */
+var IIMP={grid:null,hasHeader:true,map:{date:-1,desc:-1,amount:-1,note:-1,start:-1,end:-1},units:{},aptId:null};
+function openIncomeImport(aptId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  IIMP={grid:null,hasHeader:true,map:{date:-1,desc:-1,amount:-1,note:-1,start:-1,end:-1},units:{},aptId:aptId};
+  var booking=aptBookingMode(aptId);
+  openModal({title:"📥 ייבוא הכנסות — "+(byId(DB.apartments,aptId)||{}).name,wide:true,bodyHtml:
+    (booking?'':'<div class="field"><label>למי נכנס הכסף (לכל השורות)</label><select id="ii-dest">'+destOptions(aptId,"")+'</select></div>')+
+    '<div class="toolbar"'+(booking?'':' style="margin-top:8px"')+'>'+
+      '<button class="btn btn-primary btn-sm" onclick="document.getElementById(\'ii-file\').click()">📁 קובץ (xlsx / csv)</button>'+
+      '<input type="file" id="ii-file" accept=".xlsx,.csv,.txt" style="display:none" onchange="readSheetFile(this,onIncomeGrid,\'ii-file-name\')">'+
+      '<span id="ii-file-name" class="muted"></span>'+
+    '</div>'+
+    '<div class="hint">או להדביק ישירות מאקסל — אפשר עשרות שורות בבת אחת:</div>'+
+    '<textarea id="ii-paste" rows="5" style="width:100%;font-family:monospace;font-size:12px" '+
+      'placeholder="הדבק כאן שורות מאקסל…" oninput="onIncomePaste()"></textarea>'+
+    '<div id="ii-map"></div>',
+    saveLabel:"הוסף הכנסות",onSave:function(){ return applyIncomeImport(); }});
+}
+function onIncomePaste(){
+  var txt=val("ii-paste");
+  if(!txt.trim()){ IIMP.grid=null; document.getElementById("ii-map").innerHTML=""; return; }
+  onIncomeGrid(parseDelimited(txt, txt.indexOf("\t")>=0?"\t":","),"הדבקה");
+}
+function onIncomeGrid(grid){
+  grid=(grid||[]).filter(function(r){ return r.some(function(c){ return String(c).trim()!==""; }); });
+  if(!grid.length){ toast("לא נמצאו שורות","err"); return; }
+  IIMP.grid=grid;
+  var head=grid[0].map(function(c){ return normKey(c); });
+  function find(){ var pats=Array.prototype.slice.call(arguments);
+    for(var j=0;j<pats.length;j++) for(var i=0;i<head.length;i++) if(head[i].indexOf(normKey(pats[j]))>=0) return i;
+    return -1; }
+  IIMP.map.desc=find("שם","תיאור","אורח","פירוט");
+  IIMP.map.amount=find("סך מחיר","מחיר","סכום");
+  IIMP.map.start=find("כניסה","תחילת","מתאריך");
+  IIMP.map.end=find("יציאה","סיום","עד תאריך");
+  IIMP.map.note=find("הערה");
+  /* "תאריך" אחרון — אחרת הוא בולע את "תאריך כניסה" */
+  IIMP.map.date=find("תאריך הזמנה","תאריך");
+  if(IIMP.map.date===IIMP.map.start||IIMP.map.date===IIMP.map.end) IIMP.map.date=-1;
+  /* עמודות היחידות — לפי שמות היחידות של הפרוייקט */
+  IIMP.units={};
+  aptUnits(IIMP.aptId).forEach(function(u){
+    var ix=head.indexOf(normKey(u));
+    if(ix<0) ix=head.findIndex(function(hh){ return hh && hh.indexOf(normKey(u))>=0; });
+    IIMP.units[u]=ix;
+  });
+  IIMP.hasHeader=(IIMP.map.desc>=0||IIMP.map.amount>=0);
+  renderIncomeMap();
+}
+function renderIncomeMap(){
+  var box=document.getElementById("ii-map"); if(!box||!IIMP.grid) return;
+  var head=IIMP.grid[0].map(function(c,i){ return String(c||"").trim()||("עמודה "+(i+1)); });
+  function sel(key,cur,isUnit){
+    return '<select onchange="'+(isUnit?('IIMP.units['+JSON.stringify(key)+']'):('IIMP.map.'+key))+'=Number(this.value);renderIncomePreview()">'+
+      '<option value="-1">— ללא —</option>'+
+      head.map(function(hh,i){ return '<option value="'+i+'"'+(i===cur?" selected":"")+'>'+esc(hh)+'</option>'; }).join("")+
+      '</select>';
+  }
+  var unitsH=aptUnits(IIMP.aptId).map(function(u){
+    return '<div class="field"><label>יחידה: '+esc(u)+'</label>'+sel(u,IIMP.units[u],true)+'</div>';
+  }).join("");
+  box.innerHTML='<div class="section-title">התאמת עמודות</div>'+
+    '<div class="field"><label><input type="checkbox" style="width:auto" '+(IIMP.hasHeader?"checked":"")+
+      ' onchange="IIMP.hasHeader=this.checked;renderIncomePreview()"> השורה הראשונה היא שורת כותרות</label></div>'+
+    '<div class="form-grid">'+
+      '<div class="field"><label>תיאור / שם האורח <b>*</b></label>'+sel("desc",IIMP.map.desc)+'</div>'+
+      '<div class="field"><label>סכום <b>*</b></label>'+sel("amount",IIMP.map.amount)+'</div>'+
+      '<div class="field"><label>תאריך</label>'+sel("date",IIMP.map.date)+'</div>'+
+      '<div class="field"><label>תחילת השכרה</label>'+sel("start",IIMP.map.start)+'</div>'+
+      '<div class="field"><label>סיום השכרה</label>'+sel("end",IIMP.map.end)+'</div>'+
+      '<div class="field"><label>הערה</label>'+sel("note",IIMP.map.note)+'</div>'+
+      unitsH+
+    '</div>'+
+    (unitsH?'<div class="hint">בעמודת יחידה, כל תא שאינו ריק (✔ / true / כן / 1) מסמן שהיחידה הושכרה.</div>':'')+
+    '<div id="ii-preview"></div>';
+  renderIncomePreview();
+}
+function unitCellChecked(v){
+  var s=normKey(v);
+  return s!=="" && s!=="0" && s!=="false" && s!=="לא" && s!=="-" && s!=="—";
+}
+function incomeImportRows(){
+  if(!IIMP.grid) return [];
+  var m=IIMP.map;
+  var rows=IIMP.hasHeader?IIMP.grid.slice(1):IIMP.grid;
+  var out=[];
+  rows.forEach(function(r){
+    var desc=m.desc>=0?String(r[m.desc]||"").trim():"";
+    var amt=m.amount>=0?impNum(r[m.amount]):0;
+    if(!desc && !(amt>0.001)) return;               // שורה ריקה
+    var start=m.start>=0?impDate(r[m.start]):"";
+    /* impDate מחזיר את היום כברירת מחדל — כאן ריק צריך להישאר ריק */
+    if(m.start>=0 && !String(r[m.start]||"").trim()) start="";
+    var end=m.end>=0?impDate(r[m.end]):"";
+    if(m.end>=0 && !String(r[m.end]||"").trim()) end="";
+    if(start && end && end<start){ var t=start; start=end; end=t; }
+    var date=m.date>=0&&String(r[m.date]||"").trim()?impDate(r[m.date]):(start||todayISO());
+    var units=[];
+    Object.keys(IIMP.units).forEach(function(u){
+      var ix=IIMP.units[u];
+      if(ix>=0 && unitCellChecked(r[ix])) units.push(u);
+    });
+    out.push({desc:desc,amount:round2(amt),date:date,start:start,end:end,
+      note:m.note>=0?String(r[m.note]||"").trim():"",units:units,
+      bad:(!desc||!(amt>0.001))});
+  });
+  return out;
+}
+function incomeRowIsDup(r,aptId){
+  return apIncome(aptId).some(function(i){
+    return normKey(i.description)===normKey(r.desc) &&
+      Math.abs((Number(i.amount)||0)-r.amount)<0.01 && (i.date||"")===r.date;
+  });
+}
+function renderIncomePreview(){
+  var box=document.getElementById("ii-preview"); if(!box) return;
+  if(IIMP.map.desc<0||IIMP.map.amount<0){ box.innerHTML='<div class="empty">בחר את עמודות התיאור והסכום</div>'; return; }
+  var rows=incomeImportRows();
+  if(!rows.length){ box.innerHTML='<div class="empty">לא זוהו שורות — בדוק את התאמת העמודות</div>'; return; }
+  var ok=rows.filter(function(r){ return !r.bad; });
+  var dup=ok.filter(function(r){ return incomeRowIsDup(r,IIMP.aptId); }).length;
+  var sum=round2(ok.reduce(function(s,r){ return s+r.amount; },0));
+  var hasUnits=aptUnits(IIMP.aptId).length>0;
+  box.innerHTML='<div class="section-title">תצוגה מקדימה — '+ok.length+' הכנסות, סה"כ '+money(sum)+
+      (dup?' <span class="hint neg">· '+dup+' כבר קיימות ויידלגו</span>':'')+
+      (rows.length-ok.length?' <span class="hint neg">· '+(rows.length-ok.length)+' שורות חסרות (תיאור/סכום) יידלגו</span>':'')+'</div>'+
+    '<div class="table-wrap" style="max-height:240px"><table class="tbl"><thead><tr>'+
+    '<th>תאריך</th><th>תיאור</th>'+(hasUnits?'<th>יחידות</th>':'')+'<th>תקופה</th><th>סכום</th><th>הערה</th><th></th></tr></thead><tbody>'+
+    rows.slice(0,15).map(function(r){
+      var d=!r.bad&&incomeRowIsDup(r,IIMP.aptId);
+      return '<tr'+(r.bad?' style="background:#fef2f2"':(d?' style="opacity:.5"':''))+'>'+
+        '<td>'+dateHe(r.date)+'</td><td>'+esc(r.desc||"—")+'</td>'+
+        (hasUnits?'<td>'+esc(r.units.join(" · ")||"—")+'</td>':'')+
+        '<td class="muted">'+(r.start?dateHe(r.start)+(r.end?" – "+dateHe(r.end):""):"—")+'</td>'+
+        '<td>'+money(r.amount)+'</td><td class="muted">'+esc(r.note)+'</td>'+
+        '<td>'+(r.bad?'<span class="badge badge-danger badge-unit">חסר</span>':(d?'<span class="badge badge-muted badge-unit">קיימת</span>':''))+'</td></tr>';
+    }).join("")+'</tbody></table></div>'+
+    (rows.length>15?'<div class="hint">מוצגות 15 הראשונות מתוך '+rows.length+'.</div>':'');
+}
+function applyIncomeImport(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return false; }
+  var aptId=IIMP.aptId;
+  if(IIMP.map.desc<0||IIMP.map.amount<0){ toast("בחר את עמודות התיאור והסכום","err"); return false; }
+  var rows=incomeImportRows().filter(function(r){ return !r.bad; });
+  if(!rows.length){ toast("אין שורות תקינות לייבוא","err"); return false; }
+  var dest=document.getElementById("ii-dest")?val("ii-dest"):"";
+  var added=0, skipped=0;
+  rows.forEach(function(r){
+    if(incomeRowIsDup(r,aptId)){ skipped++; return; }
+    DB.income.push({id:uid(),apartmentId:aptId,description:r.desc,amount:r.amount,
+      date:r.date,receivedBy:dest,split:null,
+      units:r.units.length?r.units:null,startDate:r.start,endDate:r.end,
+      note:r.note,deleted:false});
+    added++;
+  });
+  save();
+  toast("נוספו "+added+" הכנסות"+(skipped?" · "+skipped+" כבר היו קיימות ודולגו":""),"ok");
   rerender();
   return true;
 }
