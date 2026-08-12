@@ -137,4 +137,18 @@ async function mirrorMany(table, records) {
   }
 }
 
-module.exports = { enabled, hasTab, backup, mirrorMany };
+// בדיקת חיבור: יוצר את הלשוניות ורושם שורת בדיקה. בניגוד ל-backup — זורק שגיאות,
+// כדי שסקריפט ההתקנה יוכל להציג למשתמש מה בדיוק נכשל.
+async function verify() {
+  if (!SHEET_ID()) throw new Error('BACKUP_SHEET_ID לא מוגדר בקובץ .env');
+  if (!loadServiceAccount()) throw new Error('קובץ חשבון השירות חסר או פגום');
+  await ensureTabs();
+  await appendAction({ username: 'setup' }, 'בדיקת חיבור', '', '', { ok: true });
+  const meta = await S.get({ spreadsheetId: SHEET_ID(), fields: 'properties.title,sheets.properties.title' });
+  return {
+    title: meta.data.properties.title,
+    tabs: (meta.data.sheets || []).map(s => s.properties.title),
+  };
+}
+
+module.exports = { enabled, hasTab, backup, mirrorMany, verify };
