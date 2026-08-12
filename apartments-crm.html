@@ -681,6 +681,8 @@ function normalizeDB(d){
        הכלל: עד תחילת 2026 סומן אוטומטית כנשלח לרו"ח. */
     (x.payments||[]).forEach(function(g){ g.amount=toNum(g.amount); g.date=toISO(g.date);
       if(g.sentToCpa==null) g.sentToCpa=!!(g.date && g.date<CPA_CUTOFF); }); });
+  /* בנק זמני שהופעל לפני מודל חשבונות הבנק — מקבל חשבון משלו */
+  (d.apartments||[]).forEach(function(a){ ensureBankAccount(a,d); });
   d.bankMoves=d.bankMoves||[];
   (d.bankMoves||[]).forEach(function(m){ m.amount=toNum(m.amount); m.date=toISO(m.date);
     m.matches=(m.matches||[]).filter(function(x){ return !x.deleted; });
@@ -1014,6 +1016,21 @@ function partnerDefaultPct(aptId,pId){ var r=apPartners(aptId).find(function(x){
 function aptBankAccounts(aptId){
   return active(DB.accounts).filter(function(ac){
     return ac.isBank && (!ac.apartmentId || ac.apartmentId===aptId); });
+}
+/* פרוייקט שהבנק הזמני שלו הופעל לפני שהיו בכלל חשבונות בנק — הבנק היה
+   דגל בלבד, בלי חשבון שאפשר לשייך אליו תנועות. יוצרים לו חשבון אחד,
+   פעם אחת בלבד (bankAcctInit), כדי שיופיע בבוררים ובהתאמת הבנק.
+   החישובים לא משתנים: תנועות ישנות ממילא נזקפות לבנק הראשון. */
+function ensureBankAccount(a,db){
+  db=db||DB;
+  if(!a || a.deleted || !a.hasBank || a.bankAcctInit) return;
+  var has=(db.accounts||[]).some(function(ac){
+    return !ac.deleted && ac.isBank && (!ac.apartmentId || ac.apartmentId===a.id); });
+  if(!has){
+    db.accounts=db.accounts||[];
+    db.accounts.push({id:uid(),apartmentId:a.id,name:"בנק זמני",isBank:true,partnerId:null,deleted:false});
+  }
+  a.bankAcctInit=true;
 }
 function primaryBankId(aptId){ var b=aptBankAccounts(aptId); return b.length?b[0].id:""; }
 function bankName(accId){ var a=accId?byId(DB.accounts,accId):null; return a?a.name:"בנק זמני"; }
@@ -1773,7 +1790,9 @@ function toggleAptFlag(aptId,flag,val){
         'כיבוי הבנק רק מסתיר את הלשונית — הנתונים נשמרים ויחזרו אם תדליק שוב.\n\nלכבות?')) { rerender(); return; }
     }
   }
-  a[flag]=!!val; save();
+  a[flag]=!!val;
+  if(flag==="hasBank" && val) ensureBankAccount(a);
+  save();
   toast('"'+a.name+'" — '+(flag==="hasBank"?"בנק":"דמי ניהול")+(val?" הופעל":" כובה"),"ok");
   renderAptGrid();
 }
@@ -1810,7 +1829,7 @@ function applyBulkFlag(flag,val){
   if(!changed.length){ toast("כל הפרוייקטים המוצגים כבר במצב הזה","warn"); return; }
   var what=(flag==="hasBank"?"בנק":"דמי ניהול");
   if(!confirm((val?"להפעיל ":"לכבות ")+what+" ב-"+changed.length+" פרוייקטים?\n\nשום נתון לא נמחק — אפשר להחזיר בכל רגע (וגם Ctrl+Z).")) return;
-  changed.forEach(function(a){ a[flag]=!!val; });
+  changed.forEach(function(a){ a[flag]=!!val; if(flag==="hasBank"&&val) ensureBankAccount(a); });
   save(); closeModal();
   toast(what+(val?" הופעל":" כובה")+" ב-"+changed.length+" פרוייקטים","ok");
   rerender();
@@ -1830,8 +1849,9 @@ function editApartment(id){
     '<div class="field"><label><input type="checkbox" id="ap-bank" '+(a.hasBank?"checked":"")+' style="width:auto"> יש בנק זמני (קופה משותפת)</label></div>',
     onSave:function(){
       var name=val("ap-name").trim(); if(!name){ toast("יש להזין שם","err"); return false; }
-      if(id){ a.name=name; a.notes=val("ap-notes"); a.hasManagement=checked("ap-mgmt"); a.hasBank=checked("ap-bank"); }
-      else{ var na={id:uid(),name:name,notes:val("ap-notes"),hasManagement:checked("ap-mgmt"),hasBank:checked("ap-bank"),deleted:false}; DB.apartments.push(na); }
+      if(id){ a.name=name; a.notes=val("ap-notes"); a.hasManagement=checked("ap-mgmt"); a.hasBank=checked("ap-bank"); ensureBankAccount(a); }
+      else{ var na={id:uid(),name:name,notes:val("ap-notes"),hasManagement:checked("ap-mgmt"),hasBank:checked("ap-bank"),deleted:false};
+        DB.apartments.push(na); ensureBankAccount(na); }
       save(); toast("נשמר","ok"); rerender();
     }});
 }
