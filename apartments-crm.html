@@ -1001,35 +1001,99 @@ function reportPartnerIds(aptId){
 function partnerDefaultPct(aptId,pId){ var r=apPartners(aptId).find(function(x){return x.partnerId===pId;}); return r?r.defaultPercent:null; }
 
 // בנק
+/* ---------- כמה בנקים זמניים באותו פרוייקט ----------
+   בנק זמני הוא חשבון שסומן isBank. אפשר יותר מאחד, וכל תנועה (הפקדה,
+   הכנסה, תשלום) משויכת לבנק מסוים. תנועה ישנה בלי שיוך נזקפת לבנק
+   הראשון — כך נתונים שנוצרו כשהיה בנק אחד ממשיכים להתנהג בדיוק כמו קודם. */
+/* לפי סדר היצירה ולא לפי א"ב — הבנק הראשון חייב להיות יציב, אחרת
+   הוספת בנק ששמו מוקדם אלפביתית הייתה מעבירה אליו תנועות ישנות. */
+function aptBankAccounts(aptId){
+  return active(DB.accounts).filter(function(ac){
+    return ac.isBank && (!ac.apartmentId || ac.apartmentId===aptId); });
+}
+function primaryBankId(aptId){ var b=aptBankAccounts(aptId); return b.length?b[0].id:""; }
+function bankName(accId){ var a=accId?byId(DB.accounts,accId):null; return a?a.name:"בנק זמני"; }
+/* יעד "בנק" של הכנסה/תשלום: "bank" (ישן) או "bank:<accountId>" */
+function isBankDest(v){ v=String(v||""); return v==="bank"||v.indexOf("bank:")===0; }
+function bankIdOfDest(v,aptId){
+  v=String(v||"");
+  if(v.indexOf("bank:")===0){ var id=v.slice(5); if(byId(DB.accounts,id)) return id; }
+  return primaryBankId(aptId);
+}
+function depositBankId(d,aptId){
+  return (d.accountId && byId(DB.accounts,d.accountId)) ? d.accountId : primaryBankId(aptId);
+}
+/* אפשרויות "למי נכנס הכסף" — בנק לכל חשבון בנק בפרוייקט, ואז השותפים */
+/* אותה רשימה לעדכון מרוכז — "ללא שינוי" במקום "לא צוין" */
+function destOptionsBulk(aptId){
+  return '<option value="">— ללא שינוי —</option><option value="__none">לא צוין</option>'+
+    destOptions(aptId,"__never").replace('<option value="">— לא צוין —</option>',"");
+}
+function destOptions(aptId,sel){
+  var h='<option value="">— לא צוין —</option>';
+  var banks=aptBankAccounts(aptId);
+  if(aptHasBank(aptId)){
+    if(!banks.length) h+='<option value="bank"'+(sel==="bank"?" selected":"")+'>🏦 הבנק הזמני (קופה משותפת)</option>';
+    else banks.forEach(function(b){
+      var v="bank:"+b.id;
+      /* ערך ישן "bank" נבחר מול הבנק הראשי */
+      var on=(sel===v)||(sel==="bank"&&b.id===primaryBankId(aptId));
+      h+='<option value="'+v+'"'+(on?" selected":"")+'>🏦 '+esc(b.name)+'</option>';
+    });
+  }
+  apPartners(aptId).forEach(function(p){
+    h+='<option value="'+p.partnerId+'"'+(sel===p.partnerId?" selected":"")+'>'+esc(partnerName(p.partnerId))+'</option>';
+  });
+  return h;
+}
 /* כסף מהכנסות שנכנס לבנק הזמני.
    בהזמנה עם מעקב תשלומים הכסף נכנס בפועל רק בתשלומים, ולכן היעד נקבע
    על כל תשלום בנפרד והסכום שנספר הוא מה ששולם — לא מחיר ההזמנה המלא.
    בהכנסה רגילה (בלי תשלומים) היעד יושב על ההכנסה עצמה, כמו תמיד. */
-function bankIncomeEntries(aptId){
+function bankIncomeEntries(aptId,bankId){
   var out=[];
   apIncome(aptId).forEach(function(i){
     if(incomeTracked(i)){
       incomePays(i).forEach(function(g){
-        if(g.receivedBy==="bank") out.push({i:i,date:g.date||i.date,amount:Number(g.amount)||0,pay:g});
+        if(isBankDest(g.receivedBy))
+          out.push({i:i,date:g.date||i.date,amount:Number(g.amount)||0,pay:g,bankId:bankIdOfDest(g.receivedBy,aptId)});
       });
-    }else if(i.receivedBy==="bank") out.push({i:i,date:i.date,amount:Number(i.amount)||0,pay:null});
+    }else if(isBankDest(i.receivedBy))
+      out.push({i:i,date:i.date,amount:Number(i.amount)||0,pay:null,bankId:bankIdOfDest(i.receivedBy,aptId)});
   });
-  return out;
+  return bankId ? out.filter(function(x){ return x.bankId===bankId; }) : out;
 }
-function bankIncomes(aptId){ return apIncome(aptId).filter(function(i){ return i.receivedBy==="bank"; }); }
-function bankBalance(aptId){
-  var deps=apDeposits(aptId).reduce(function(s,d){return s+(Number(d.amount)||0);},0);
+function bankIncomes(aptId){ return apIncome(aptId).filter(function(i){ return isBankDest(i.receivedBy); }); }
+/* הפקדות של בנק מסוים (בלי bankId — כל הבנקים) */
+function bankDeposits(aptId,bankId){
+  var deps=apDeposits(aptId);
+  return bankId ? deps.filter(function(d){ return depositBankId(d,aptId)===bankId; }) : deps;
+}
+/* תשלומים שיצאו מבנק מסוים */
+function bankOutPayments(aptId,bankId){
+  var expIds={}; apLeafExpenses(aptId).forEach(function(e){expIds[e.id]=1;});
+  return active(DB.payments).filter(function(p){
+    if(!expIds[p.expenseId] || !accountIsBank(p.accountId)) return false;
+    return bankId ? p.accountId===bankId : true;
+  });
+}
+/* יתרת בנק. בלי bankId — סך כל הבנקים הזמניים של הפרוייקט. */
+function bankBalance(aptId,bankId){
+  var deps=bankDeposits(aptId,bankId).reduce(function(s,d){return s+(Number(d.amount)||0);},0);
   /* הכנסה שסומנה "נכנסה לבנק הזמני" מגדילה את היתרה, כמו הפקדה —
      רק בלי שיוך לשותף, כי זה כסף של הפרויקט */
-  var inc=bankIncomeEntries(aptId).reduce(function(s,x){return s+x.amount;},0);
-  var expIds={}; apLeafExpenses(aptId).forEach(function(e){expIds[e.id]=1;});
-  var out=active(DB.payments).filter(function(p){return expIds[p.expenseId]&&accountIsBank(p.accountId);})
-    .reduce(function(s,p){return s+(Number(p.amount)||0);},0);
+  var inc=bankIncomeEntries(aptId,bankId).reduce(function(s,x){return s+x.amount;},0);
+  var out=bankOutPayments(aptId,bankId).reduce(function(s,p){return s+(Number(p.amount)||0);},0);
   return round2(deps+inc-out);
 }
 /* לאן נכנסה ההכנסה — לתצוגה ולייצוא.
    בהזמנה עם תשלומים היעד נקבע על כל תשלום, ולכן מוצגים היעדים שלהם. */
-function destName(v){ return !v ? "" : (v==="bank" ? "בנק זמני" : partnerName(v)); }
+function destName(v){
+  if(!v) return "";
+  if(String(v).indexOf("bank:")===0) return bankName(String(v).slice(5));
+  if(v==="bank") return "בנק זמני";
+  return partnerName(v);
+}
 function incomeDestName(i){
   if(!i) return "";
   if(incomeTracked(i)){
@@ -5028,24 +5092,75 @@ function releaseDeferred(fid){
 }
 
 /* ---------- בנק ---------- */
+/* הוספת בנק זמני נוסף לפרוייקט */
+function addBankAccount(aptId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var a=byId(DB.apartments,aptId);
+  openModal({title:"➕ בנק זמני נוסף — "+(a?a.name:""),bodyHtml:
+    '<div class="field"><label>שם הבנק / הקופה</label><input id="nb-name" placeholder="למשל: קופה 2 · מזרחי 481"></div>'+
+    '<div class="hint">כל בנק מנהל יתרה משלו. בכל הפקדה, הכנסה ותשלום אפשר לבחור לאיזה בנק הכסף נכנס או ממנו יצא. '+
+    'תנועות שנרשמו עד היום נשארות בבנק הראשון.</div>',
+    saveLabel:"הוסף",onSave:function(){
+      var nm=val("nb-name").trim();
+      if(!nm){ toast("שם חסר","err"); return false; }
+      if(aptBankAccounts(aptId).some(function(b){ return normKey(b.name)===normKey(nm); })){
+        toast("כבר קיים בנק בשם הזה","err"); return false; }
+      DB.accounts.push({id:uid(),apartmentId:aptId,name:nm,isBank:true,partnerId:null,deleted:false});
+      if(a && !a.hasBank) a.hasBank=true;
+      save(); toast('נוסף הבנק "'+nm+'"',"ok"); rerender();
+    }});
+}
 function moduleBank(aptId){
-  var deps=apDeposits(aptId); var depSum=deps.reduce(function(s,d){return s+(Number(d.amount)||0);},0);
-  var bankInc=bankIncomeEntries(aptId);
+  var banks=aptBankAccounts(aptId);
+  var multi=banks.length>1;
+  /* מסנן בנק — רק כשיש יותר מאחד */
+  var selBank=multi?(Q.bankSel||""):"";
+  if(selBank && !banks.some(function(b){return b.id===selBank;})) selBank="";
+  var deps=bankDeposits(aptId,selBank); var depSum=deps.reduce(function(s,d){return s+(Number(d.amount)||0);},0);
+  var bankInc=bankIncomeEntries(aptId,selBank);
   var incSum=round2(bankInc.reduce(function(s,x){return s+x.amount;},0));
-  var out=bankBalance(aptId); var paidOut=round2(depSum+incSum-out);
-  var h='<div class="stat-grid"><div class="stat" style="border:2px solid var(--brand)"><div class="label">יתרת בנק צפויה</div><div class="value">'+money(out)+'</div></div>'+
+  var out=bankBalance(aptId,selBank); var paidOut=round2(depSum+incSum-out);
+  var h='<div class="stat-grid"><div class="stat" style="border:2px solid var(--brand)"><div class="label">יתרת בנק צפויה'+
+      (selBank?" · "+esc(bankName(selBank)):(multi?" · כל הבנקים":""))+'</div><div class="value">'+money(out)+'</div></div>'+
     stat("סך הפקדות",money(depSum))+
     (incSum?stat("הכנסות שנכנסו לבנק",money(incSum)):"")+
     stat("שולם מהבנק",money(paidOut))+'</div>';
-  var depH='<div class="toolbar"><h3 style="margin:0">הפקדות שותפים</h3><div class="sp"></div>'+
+  /* טבלת הבנקים — יתרה לכל אחד בנפרד */
+  if(multi){
+    h+='<div class="card"><div class="toolbar"><h3 style="margin:0">הבנקים בפרוייקט</h3><div class="sp"></div>'+
+      (can("edit")?'<button class="btn btn-sm" onclick="addBankAccount(\''+aptId+'\')">➕ בנק נוסף</button>':'')+'</div>'+
+      '<div class="table-wrap"><table class="tbl"><thead><tr><th>בנק</th><th>הפקדות</th><th>הכנסות</th><th>שולם</th><th>יתרה</th><th></th></tr></thead><tbody>';
+    banks.forEach(function(b){
+      var bd=bankDeposits(aptId,b.id).reduce(function(s,d){return s+(Number(d.amount)||0);},0);
+      var bi=bankIncomeEntries(aptId,b.id).reduce(function(s,x){return s+x.amount;},0);
+      var bo=bankOutPayments(aptId,b.id).reduce(function(s,p){return s+(Number(p.amount)||0);},0);
+      var bal=round2(bd+bi-bo);
+      h+='<tr'+(selBank===b.id?' style="background:#eef2ff"':'')+'>'+
+        '<td><b>🏦 '+esc(b.name)+'</b>'+(b.id===primaryBankId(aptId)?' <span class="hint">(ראשי)</span>':'')+'</td>'+
+        '<td>'+money(bd)+'</td><td>'+money(bi)+'</td><td>'+money(bo)+'</td>'+
+        '<td class="'+(bal<-0.01?"neg":"pos")+'"><b>'+money(bal)+'</b></td>'+
+        '<td class="right"><button class="btn btn-ghost btn-sm" onclick="Q.bankSel='+
+          (selBank===b.id?"''":"'"+b.id+"'")+';rerender()">'+(selBank===b.id?"✕ בטל סינון":"הצג")+'</button></td></tr>';
+    });
+    h+='</tbody><tfoot><tr><td>סה"כ</td><td>'+money(bankDeposits(aptId).reduce(function(s,d){return s+(Number(d.amount)||0);},0))+'</td>'+
+      '<td>'+money(bankIncomeEntries(aptId).reduce(function(s,x){return s+x.amount;},0))+'</td>'+
+      '<td>'+money(bankOutPayments(aptId).reduce(function(s,p){return s+(Number(p.amount)||0);},0))+'</td>'+
+      '<td>'+money(bankBalance(aptId))+'</td><td></td></tr></tfoot></table></div>'+
+      '<div class="hint">"הצג" מסנן את הטבלאות שלמטה לבנק הזה בלבד.</div></div>';
+  }
+  var depH='<div class="toolbar"><h3 style="margin:0">הפקדות שותפים'+(selBank?' · '+esc(bankName(selBank)):'')+'</h3><div class="sp"></div>'+
     (can("edit")?'<button class="btn btn-primary btn-sm" onclick="openBulkDeposit(\''+aptId+'\')">➕ הפקדה מרוכזת</button> '+
       '<button class="btn btn-sm" onclick="openDepositImport(\''+aptId+'\')">📥 העלאת אקסל</button> '+
-      '<button class="btn btn-sm" onclick="editDeposit(null,\''+aptId+'\')">➕ הפקדה בודדת</button>':'')+'</div>';
+      '<button class="btn btn-sm" onclick="editDeposit(null,\''+aptId+'\')">➕ הפקדה בודדת</button> '+
+      (multi?'':'<button class="btn btn-sm" onclick="addBankAccount(\''+aptId+'\')">🏦 בנק זמני נוסף</button>'):'')+'</div>';
   refreshMethods();
-  depH+='<div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>שותף</th><th>סכום</th><th>אמצעי</th><th>מחשבון</th><th>הערה</th><th></th></tr></thead><tbody>';
-  if(!deps.length) depH+='<tr><td colspan="7" class="empty">אין הפקדות</td></tr>';
-  deps.sort(function(x,y){return x.date<y.date?1:-1;}).forEach(function(d){
+  depH+='<div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>שותף</th><th>סכום</th>'+
+    (multi?'<th>לאיזה בנק</th>':'')+
+    '<th>אמצעי</th><th>מחשבון</th><th>הערה</th><th></th></tr></thead><tbody>';
+  if(!deps.length) depH+='<tr><td colspan="'+(multi?8:7)+'" class="empty">אין הפקדות</td></tr>';
+  deps.slice().sort(function(x,y){return x.date<y.date?1:-1;}).forEach(function(d){
     depH+='<tr><td>'+dateHe(d.date)+'</td><td>'+esc(partnerName(d.partnerId))+'</td><td>'+money(d.amount)+'</td>'+
+      (multi?'<td><span class="pill">🏦 '+esc(bankName(depositBankId(d,aptId)))+'</span></td>':'')+
       '<td>'+esc(METHODS[d.method]||"")+'</td><td>'+esc(d.fromAccount||"")+'</td>'+noteCell(d.note)+
       '<td class="right">'+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editDeposit(\''+d.id+'\',\''+aptId+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="softDelete(\'deposits\',\''+d.id+'\',\'למחוק הפקדה?\')">🗑️</button>':'')+'</td></tr>';
   });
@@ -5053,21 +5168,26 @@ function moduleBank(aptId){
   // הכנסות שנכנסו לבנק — נרשמות בלשונית "הכנסות" ומוצגות כאן לשקיפות
   var incH="";
   if(bankInc.length){
-    incH='<div class="card"><h3>הכנסות שנכנסו לבנק</h3><div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>תיאור</th><th>סכום</th><th>נזקף לשותפים</th></tr></thead><tbody>';
+    incH='<div class="card"><h3>הכנסות שנכנסו לבנק</h3><div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>תיאור</th><th>סכום</th>'+
+      (multi?'<th>לאיזה בנק</th>':'')+'<th>נזקף לשותפים</th></tr></thead><tbody>';
     bankInc.slice().sort(function(x,y){return x.date<y.date?1:-1;}).forEach(function(x){
       incH+='<tr><td>'+dateHe(x.date)+'</td><td>'+esc(x.i.description)+(x.pay?' <span class="hint">(תשלום הזמנה)</span>':'')+'</td>'+
-        '<td>'+money(x.amount)+'</td><td class="muted">'+esc(incomeSplitLabel(x.i))+'</td></tr>';
+        '<td>'+money(x.amount)+'</td>'+
+        (multi?'<td><span class="pill">🏦 '+esc(bankName(x.bankId))+'</span></td>':'')+
+        '<td class="muted">'+esc(incomeSplitLabel(x.i))+'</td></tr>';
     });
     incH+='</tbody></table></div><div class="hint">עריכה — בלשונית "הכנסות" של הפרויקט.</div></div>';
   }
   // תשלומים מהבנק
-  var expIds={}; apExpenses(aptId).forEach(function(e){expIds[e.id]=1;});
-  var bankPays=active(DB.payments).filter(function(p){return expIds[p.expenseId]&&accountIsBank(p.accountId);});
-  var outH='<div class="card"><h3>תשלומים שיצאו מהבנק</h3><div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>עבור</th><th>סכום</th></tr></thead><tbody>';
-  if(!bankPays.length) outH+='<tr><td colspan="3" class="empty">אין</td></tr>';
-  bankPays.sort(function(x,y){return x.date<y.date?1:-1;}).forEach(function(p){
+  var bankPays=bankOutPayments(aptId,selBank);
+  var outH='<div class="card"><h3>תשלומים שיצאו מהבנק</h3><div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>עבור</th><th>סכום</th>'+
+    (multi?'<th>מאיזה בנק</th>':'')+'</tr></thead><tbody>';
+  if(!bankPays.length) outH+='<tr><td colspan="'+(multi?4:3)+'" class="empty">אין</td></tr>';
+  bankPays.slice().sort(function(x,y){return x.date<y.date?1:-1;}).forEach(function(p){
     var e=byId(DB.expenses,p.expenseId);
-    outH+='<tr><td>'+dateHe(p.date)+'</td><td>'+esc(e?e.description:"—")+(p.recipientType==="manager"?" — דמי ניהול":"")+'</td><td>'+money(p.amount)+'</td></tr>';
+    outH+='<tr><td>'+dateHe(p.date)+'</td><td>'+esc(e?e.description:"—")+(p.recipientType==="manager"?" — דמי ניהול":"")+'</td>'+
+      '<td>'+money(p.amount)+'</td>'+
+      (multi?'<td><span class="pill">🏦 '+esc(bankName(p.accountId))+'</span></td>':'')+'</tr>';
   });
   outH+='</tbody></table></div></div>';
   return h+reportPicker("bankView",[
@@ -5091,6 +5211,7 @@ function openDepositImport(aptId){
         return '<option value="'+p.partnerId+'">'+esc(partnerName(p.partnerId))+'</option>'; }).join("")+
       '</select>'+
       '<div class="hint">כל השורות בקובץ יירשמו כהפקדות של השותף הזה.</div></div>'+
+    bankPickerField(aptId,"לאיזה בנק","di-bank","","כל השורות בקובץ ייכנסו לבנק שנבחר")+
     '<div class="toolbar">'+
       '<button class="btn btn-primary btn-sm" onclick="document.getElementById(\'di-file\').click()">📁 בחר קובץ (xlsx / csv)</button>'+
       '<input type="file" id="di-file" accept=".xlsx,.csv,.txt" style="display:none" '+
@@ -5220,10 +5341,10 @@ function applyDepositImport(){
       return d.partnerId===pid && d.date===r.date && Math.abs((Number(d.amount)||0)-r.amount)<0.01; });
   }).length;
   if(dup && !confirm(dup+" מתוך "+rows.length+" ההפקדות כבר קיימות (אותו שותף, תאריך וסכום).\n\nלהוסיף בכל זאת?")) return false;
-  var sum=0;
+  var sum=0, bnk=pickedBank("di-bank",aptId);
   rows.forEach(function(r){
     DB.deposits.push({id:uid(),apartmentId:aptId,partnerId:pid,amount:r.amount,
-      date:r.date,method:r.method,fromAccount:r.from,note:r.note,deleted:false});
+      date:r.date,method:r.method,accountId:bnk,fromAccount:r.from,note:r.note,deleted:false});
     sum+=r.amount;
   });
   save();
@@ -5249,6 +5370,7 @@ function openBulkDeposit(aptId){
   openModal({title:"➕ הפקדה מרוכזת",wide:true,bodyHtml:
     '<div class="form-grid">'+
       '<div class="field"><label>תאריך ההפקדה</label><input id="bd-date" type="date" value="'+todayISO()+'"></div>'+
+      bankPickerField(aptId,"לאיזה בנק","bd-bank","","כל ההפקדות בטופס הזה ייכנסו לבנק שנבחר")+
       '<div class="field"><label>אמצעי תשלום</label><select id="bd-method" onchange="onMethodPick(\'bd-method\')">'+methodOptions("transfer")+'</select></div>'+
       '<div class="field"><label>מחשבון <span class="hint">(רישום חופשי, לכל ההפקדות)</span></label><input id="bd-from" placeholder="למשל: מרכנתיל 342"></div>'+
       '<div class="field"><label>הערה (לכל ההפקדות)</label><input id="bd-note" placeholder="למשל: העברה לקופה 5/24"></div>'+
@@ -5317,9 +5439,10 @@ function saveBulkDeposit(aptId){
       return d.partnerId===x.partnerId && d.date===date && Math.abs((Number(d.amount)||0)-x.amount)<0.01; });
   }).length;
   if(dupN && !confirm(dupN+" מההפקדות כבר קיימות באותו תאריך ובאותו סכום.\n\nלהוסיף בכל זאת?")) return false;
+  var bnk=pickedBank("bd-bank",aptId);
   picked.forEach(function(x){
     DB.deposits.push({id:uid(),apartmentId:aptId,partnerId:x.partnerId,
-      amount:x.amount,date:date,method:mth,fromAccount:fromAcc,note:note,deleted:false});
+      amount:x.amount,date:date,method:mth,accountId:bnk,fromAccount:fromAcc,note:note,deleted:false});
   });
   save();
   toast("נרשמו "+picked.length+" הפקדות בסך "+money(sum),"ok");
@@ -5327,10 +5450,26 @@ function saveBulkDeposit(aptId){
   return true;
 }
 
+/* בורר בנק — מוצג רק כשיש בפרוייקט יותר מבנק זמני אחד */
+function bankPickerField(aptId,label,id,sel,hint){
+  var banks=aptBankAccounts(aptId);
+  if(banks.length<2) return "";
+  var cur=sel||primaryBankId(aptId);
+  return '<div class="field"><label>'+label+'</label><select id="'+id+'">'+
+    banks.map(function(b){
+      return '<option value="'+b.id+'"'+(cur===b.id?" selected":"")+'>🏦 '+esc(b.name)+'</option>'; }).join("")+
+    '</select>'+(hint?'<div class="hint">'+hint+'</div>':'')+'</div>';
+}
+/* הבנק שנבחר בטופס — בלי בורר (בנק יחיד) נופלים לראשי */
+function pickedBank(id,aptId){
+  var el=document.getElementById(id);
+  return el ? el.value : primaryBankId(aptId);
+}
 function editDeposit(id,aptId){
   var d=id?byId(DB.deposits,id):{partnerId:"",amount:"",date:todayISO(),note:""};
   openModal({title:id?"עריכת הפקדה":"הפקדה חדשה",bodyHtml:
     '<div class="field"><label>שותף מפקיד</label><select id="dp-partner"><option value="">—</option>'+apPartners(aptId).map(function(ap){return '<option value="'+ap.partnerId+'"'+(d.partnerId===ap.partnerId?" selected":"")+'>'+esc(partnerName(ap.partnerId))+'</option>';}).join("")+'</select></div>'+
+    bankPickerField(aptId,"לאיזה בנק הופקד","dp-bank",id?depositBankId(d,aptId):"")+
     '<div class="field"><label>סכום (₪)</label><input id="dp-amount" type="number" step="0.01" value="'+esc(String(d.amount))+'"></div>'+
     '<div class="field"><label>תאריך</label><input id="dp-date" type="date" value="'+esc(String(d.date))+'"></div>'+
     '<div class="field"><label>אמצעי תשלום</label><select id="dp-method" onchange="onMethodPick(\'dp-method\')">'+methodOptions(d.method||"transfer")+'</select></div>'+
@@ -5340,8 +5479,9 @@ function editDeposit(id,aptId){
       var pid=val("dp-partner"); var amt=Number(val("dp-amount"))||0;
       if(!pid){ toast("בחר שותף","err"); return false; } if(amt<=0){ toast("סכום לא תקין","err"); return false; }
       var mth=val("dp-method")||"transfer"; if(mth==="__new") mth=d.method||"transfer";
-      if(id){ d.partnerId=pid; d.amount=amt; d.date=val("dp-date"); d.method=mth; d.fromAccount=val("dp-from"); d.note=val("dp-note"); }
-      else DB.deposits.push({id:uid(),apartmentId:aptId,partnerId:pid,amount:amt,date:val("dp-date")||todayISO(),method:mth,fromAccount:val("dp-from"),note:val("dp-note"),deleted:false});
+      var bnk=pickedBank("dp-bank",aptId);
+      if(id){ d.partnerId=pid; d.amount=amt; d.date=val("dp-date"); d.method=mth; d.accountId=bnk; d.fromAccount=val("dp-from"); d.note=val("dp-note"); }
+      else DB.deposits.push({id:uid(),apartmentId:aptId,partnerId:pid,amount:amt,date:val("dp-date")||todayISO(),method:mth,accountId:bnk,fromAccount:val("dp-from"),note:val("dp-note"),deleted:false});
       save(); toast("נשמר","ok"); rerender();
     }});
 }
@@ -5559,13 +5699,7 @@ function openBulkIncPayEdit(aptId){
       '<div class="field"><label>אמצעי תשלום</label><select id="gb-method" onchange="onMethodPick(\'gb-method\')">'+
         '<option value="">— ללא שינוי —</option>'+methodOptions("")+'</select></div>'+
       '<div class="field"><label>תאריך</label><input id="gb-date" type="date"><div class="hint">ריק = ללא שינוי</div></div>'+
-      '<div class="field"><label>למי נכנס הכסף</label><select id="gb-dest">'+
-        '<option value="">— ללא שינוי —</option>'+
-        '<option value="__none">לא צוין</option>'+
-        (aptHasBank(aptId)?'<option value="bank">🏦 הבנק הזמני</option>':'')+
-        apPartners(aptId).map(function(p){
-          return '<option value="'+p.partnerId+'">'+esc(partnerName(p.partnerId))+'</option>'; }).join("")+
-      '</select></div>'+
+      '<div class="field"><label>למי נכנס הכסף</label><select id="gb-dest">'+destOptionsBulk(aptId)+'</select></div>'+
       '<div class="field"><label>נשלח לרו"ח</label><select id="gb-cpa">'+
         '<option value="__keep">— ללא שינוי —</option>'+
         '<option value="1">✔ סמן כנשלח</option>'+
@@ -5639,13 +5773,7 @@ function openBulkIncomeEdit(aptId){
     '<div class="hint" style="margin-bottom:10px">שדה שנשאר על <b>"— ללא שינוי —"</b> לא ישתנה באף שורה.</div>'+
     '<div class="form-grid">'+
       '<div class="field"><label>תאריך</label><input id="ib-date" type="date"><div class="hint">ריק = ללא שינוי</div></div>'+
-      (booking?'':'<div class="field"><label>למי נכנס הכסף</label><select id="ib-dest">'+
-        '<option value="">— ללא שינוי —</option>'+
-        '<option value="__none">לא צוין</option>'+
-        (aptHasBank(aptId)?'<option value="bank">🏦 הבנק הזמני</option>':'')+
-        apPartners(aptId).map(function(p){
-          return '<option value="'+p.partnerId+'">'+esc(partnerName(p.partnerId))+'</option>'; }).join("")+
-      '</select></div>')+
+      (booking?'':'<div class="field"><label>למי נכנס הכסף</label><select id="ib-dest">'+destOptionsBulk(aptId)+'</select></div>')+
       '<div class="field"><label>תחילת השכרה</label><input id="ib-start" type="date"><div class="hint">ריק = ללא שינוי</div></div>'+
       '<div class="field"><label>סיום השכרה</label><input id="ib-end" type="date"><div class="hint">ריק = ללא שינוי</div></div>'+
       (units.length?'<div class="field full"><label>יחידות</label>'+
@@ -5876,10 +6004,7 @@ function editIncomePay(incId,payId,aptId,back){
     '<div class="field"><label>אמצעי תשלום</label><select id="gp-method" data-prev="'+esc(g&&g.method||"transfer")+'" onchange="onMethodPick(\'gp-method\')">'+methodOptions(g?g.method:"transfer")+'</select></div>'+
     /* כאן הכסף באמת נכנס — ולכן כאן נקבע לאן */
     '<div class="field"><label>למי נכנס הכסף</label><select id="gp-dest">'+
-      '<option value="">— לא צוין —</option>'+
-      (aptHasBank(aptId)?'<option value="bank"'+(g&&g.receivedBy==="bank"?" selected":"")+'>🏦 הבנק הזמני (קופה משותפת)</option>':'')+
-      apPartners(aptId).map(function(p){
-        return '<option value="'+p.partnerId+'"'+(g&&g.receivedBy===p.partnerId?" selected":"")+'>'+esc(partnerName(p.partnerId))+'</option>'; }).join("")+
+      destOptions(aptId,g&&g.receivedBy)+
     '</select><div class="hint">תשלום שנכנס לבנק הזמני מגדיל את יתרת הבנק ונזקף לשותפים לפי חלוקת ההזמנה.</div></div>'+
     '<div class="field"><label>מס׳ חשבונית</label><input id="gp-invoices" value="'+esc(g&&g.invoices||"")+'" placeholder="למשל: 1024"></div>'+
     '<div class="field"><label>נשלח לרו"ח</label><select id="gp-cpa">'+
@@ -5915,10 +6040,7 @@ function delIncomePay(incId,payId,aptId,back){
 function openBulkIncome(aptId){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var a=byId(DB.apartments,aptId);
-  var destSel='<option value="">— לא צוין —</option>'+
-    (a&&a.hasBank?'<option value="bank">🏦 הבנק הזמני (קופה משותפת)</option>':'')+
-    apPartners(aptId).map(function(p){
-      return '<option value="'+p.partnerId+'">'+esc(partnerName(p.partnerId))+'</option>'; }).join("");
+  var destSel=destOptions(aptId,"");
   openModal({title:"📋 הכנסה מרוכזת — "+(a?a.name:""),wide:true,bodyHtml:
     '<div class="form-grid" style="margin-bottom:8px">'+
       '<div class="field"><label>למי נכנס הכסף (לכל השורות)</label><select id="bi-dest">'+destSel+'</select></div>'+
@@ -6010,10 +6132,7 @@ function editIncome(id,aptId){
         '<div class="hint">בהזמנה הכסף נכנס דרך <b>התשלומים</b> שנרשמים עליה, ולכן היעד נקבע בכל תשלום בנפרד '+
         '(כפתור 💳 בשורת ההזמנה). כך גם התשלום החלקי נזקף נכון לבנק או לשותף.</div></div>'
       : '<div class="field"><label>למי נכנס הכסף</label><select id="in-dest">'+
-        '<option value="">— לא צוין —</option>'+
-        (a&&a.hasBank?'<option value="bank"'+(it.receivedBy==="bank"?" selected":"")+'>🏦 הבנק הזמני (קופה משותפת)</option>':'')+
-        apPartners(aptId).map(function(p){
-          return '<option value="'+p.partnerId+'"'+(it.receivedBy===p.partnerId?" selected":"")+'>'+esc(partnerName(p.partnerId))+'</option>'; }).join("")+
+        destOptions(aptId,it.receivedBy)+
       '</select>'+
       '<div class="hint">'+(a&&a.hasBank?'הכנסה שנכנסת לבנק הזמני מתווספת ליתרת הבנק ונזקפת לשותפים לפי החלוקה שלמטה.':'בפרויקט הזה הבנק הזמני כבוי, ולכן ניתן לבחור רק שותף.')+'</div></div>')+
     '<div class="field full"><label>הערה</label><input id="in-note" value="'+esc(it.note||"")+'"></div>'+
