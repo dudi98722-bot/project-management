@@ -5254,6 +5254,7 @@ function moduleIncome(aptId){
   });
   var h='<div class="toolbar"><h3 style="margin:0">הכנסות — '+(Q.incUnit?'סה"כ המסונן ':'סה"כ ')+money(sum)+
     (anyTracked?' <span class="hint">· שולם '+money(paidSum)+' · חוב פתוח '+money(debtSum)+'</span>':'')+'</h3><div class="sp"></div>'+
+    (allIncomePays(aptId).length?'<button class="btn btn-sm" onclick="openAllIncomePays(\''+aptId+'\')">💳 כל התשלומים</button> ':'')+
     (can("edit")?'<button class="btn btn-primary btn-sm" onclick="editIncome(null,\''+aptId+'\')">➕ הכנסה</button> '+
       '<button class="btn btn-sm" onclick="openBulkIncome(\''+aptId+'\')">📋 הכנסה מרוכזת</button> '+
       '<button class="btn btn-sm" onclick="editRentalUnits(\''+aptId+'\')">🏠 יחידות השכרה</button> '+
@@ -5311,6 +5312,189 @@ function moduleIncome(aptId){
   }
   return h;
 }
+/* ============================================================
+   כל תשלומי ההזמנות בפרוייקט — מסך מרוכז
+   ------------------------------------------------------------
+   במקום לפתוח כל הזמנה בנפרד: טבלה שטוחה של כל התשלומים, עם סינון,
+   סימון מרובה ועדכון מרוכז. התשלומים יושבים בתוך ההכנסות, ולכן כל
+   שורה מחזיקה את ההזמנה שאליה היא שייכת.
+   ============================================================ */
+var GPQ={q:"",method:"",cpa:"",unit:""};
+function allIncomePays(aptId){
+  var out=[];
+  apIncome(aptId).forEach(function(i){
+    incomePays(i).forEach(function(g){ out.push({i:i,g:g}); });
+  });
+  return out;
+}
+function findIncomePay(aptId,payId){
+  var hit=null;
+  apIncome(aptId).some(function(i){
+    var g=incomePays(i).filter(function(x){ return x.id===payId; })[0];
+    if(g){ hit={i:i,g:g}; return true; }
+    return false;
+  });
+  return hit;
+}
+function filteredIncomePays(aptId){
+  return allIncomePays(aptId).filter(function(r){
+    if(!matches(GPQ.q, r.i.description+" "+(r.g.note||"")+" "+(r.g.invoices||""))) return false;
+    if(GPQ.method && (r.g.method||"")!==GPQ.method) return false;
+    if(GPQ.cpa==="sent" && !r.g.sentToCpa) return false;
+    if(GPQ.cpa==="not" && r.g.sentToCpa) return false;
+    if(GPQ.unit && incomeUnits(r.i).indexOf(GPQ.unit)<0) return false;
+    return true;
+  });
+}
+function openAllIncomePays(aptId){
+  var a=byId(DB.apartments,aptId);
+  var all=allIncomePays(aptId);
+  if(!all.length){ toast("עוד לא נרשמו תשלומי הזמנות בפרוייקט","warn"); return; }
+  var inc=apIncome(aptId);
+  var price=inc.reduce(function(s,i){ return s+(Number(i.amount)||0); },0);
+  var paid=inc.reduce(function(s,i){ return s+incomePaid(i); },0);
+  var units=aptUnits(aptId);
+  refreshMethods();
+  openModal({title:"💳 כל תשלומי ההזמנות — "+(a?a.name:""),wide:true,bodyHtml:
+    '<div class="stat-grid" style="margin-bottom:12px">'+
+      stat("מחיר ההזמנות",money(price))+stat("שולם",money(paid))+
+      stat("יתרת חוב",money(price-paid),(price-paid)>0.01?"neg":"pos")+
+      stat("תשלומים",all.length)+
+    '</div>'+
+    '<div class="toolbar">'+
+      searchBox("gp-q",GPQ.q,"חיפוש לפי שם הזמנה / הערה / חשבונית…","GPQ.q=this.value;renderGpTable('+JSON.stringify(aptId)+')")+
+      '<select style="max-width:150px" onchange="GPQ.method=this.value;renderGpTable('+JSON.stringify(aptId)+')">'+
+        '<option value="">כל האמצעים</option>'+
+        Object.keys(METHODS).map(function(k){
+          return '<option value="'+esc(k)+'"'+(GPQ.method===k?" selected":"")+'>'+esc(METHODS[k])+'</option>'; }).join("")+
+      '</select>'+
+      '<select style="max-width:150px" onchange="GPQ.cpa=this.value;renderGpTable('+JSON.stringify(aptId)+')">'+
+        [["","רו\"ח — הכל"],["sent","✔ נשלח לרו\"ח"],["not","טרם נשלח לרו\"ח"]].map(function(o){
+          return '<option value="'+o[0]+'"'+(GPQ.cpa===o[0]?" selected":"")+'>'+o[1]+'</option>'; }).join("")+
+      '</select>'+
+      (units.length?'<select style="max-width:150px" onchange="GPQ.unit=this.value;renderGpTable('+JSON.stringify(aptId)+')">'+
+        '<option value="">כל היחידות</option>'+
+        units.map(function(n){ return '<option value="'+esc(n)+'"'+(GPQ.unit===n?" selected":"")+'>'+esc(n)+'</option>'; }).join("")+
+      '</select>':'')+
+      ((GPQ.q||GPQ.method||GPQ.cpa||GPQ.unit)?'<button class="btn btn-ghost btn-sm" onclick="GPQ={q:\'\',method:\'\',cpa:\'\',unit:\'\'};openAllIncomePays('+JSON.stringify(aptId)+')">✕ נקה</button>':'')+
+      (can("edit")?'<button class="btn btn-primary btn-sm" onclick="openBulkIncPayEdit('+JSON.stringify(aptId)+')">✏️ עדכון מרוכז <span id="gb-count"></span></button>':'')+
+      '<div class="sp"></div><span id="gp-count"></span>'+
+    '</div>'+
+    '<div id="gp-table">'+gpTableHtml(aptId)+'</div>'});
+  /* הספירה נכתבת לתוך אלמנט שנוצר רק אחרי שהמודל נבנה */
+  setTimeout(function(){ gpCount(aptId); },0);
+}
+function renderGpTable(aptId){
+  var el=document.getElementById("gp-table");
+  if(el) el.innerHTML=gpTableHtml(aptId);
+}
+function gpTableHtml(aptId){
+  var all=allIncomePays(aptId), list=filteredIncomePays(aptId);
+  var units=aptUnits(aptId), sel=can("edit");
+  var cnt=document.getElementById("gp-count");
+  if(cnt) cnt.innerHTML=countLine(list.length,all.length,"תשלומים");
+  if(!list.length) return '<div class="empty">לא נמצא תשלום שמתאים לסינון</div>';
+  var tot=0;
+  var h='<div class="table-wrap"><table class="tbl"><thead><tr>'+
+    (sel?'<th data-xl-skip="1" style="width:30px"><input type="checkbox" title="סמן הכל" style="width:auto" onclick="gbAll(this.checked)"></th>':'')+
+    '<th>תאריך</th><th>הזמנה</th>'+(units.length?'<th>יחידות</th>':'')+
+    '<th>סכום</th><th>אמצעי</th><th>מס׳ חשבונית</th><th>נשלח לרו"ח</th><th>הערה</th><th></th></tr></thead><tbody>';
+  list.sort(function(x,y){ return x.g.date<y.g.date?1:-1; }).forEach(function(r){
+    var g=r.g, i=r.i; tot+=Number(g.amount)||0;
+    h+='<tr>'+
+      (sel?'<td><input type="checkbox" class="gb-x" value="'+g.id+'" style="width:auto" onchange="gbCount()"></td>':'')+
+      '<td>'+dateHe(g.date)+'</td>'+
+      '<td><b>'+esc(i.description)+'</b><div class="hint" data-xl-skip="1">מחיר '+money(i.amount)+' · נותר '+money(incomeDebt(i))+'</div></td>'+
+      (units.length?'<td>'+unitsCellHtml(i)+'</td>':'')+
+      '<td>'+money(g.amount)+'</td>'+
+      '<td>'+esc(METHODS[g.method]||g.method||"—")+'</td>'+
+      '<td>'+esc(g.invoices||"—")+'</td>'+
+      '<td>'+cpaCellHtml(g)+'</td>'+
+      '<td class="muted" style="max-width:180px;overflow:hidden;text-overflow:ellipsis">'+esc(g.note||"")+'</td>'+
+      '<td class="right" style="white-space:nowrap">'+
+        (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editIncomePay(\''+i.id+'\',\''+g.id+'\',\''+aptId+'\',\'all\')">✏️</button>'+
+        '<button class="btn btn-ghost btn-sm" onclick="delIncomePay(\''+i.id+'\',\''+g.id+'\',\''+aptId+'\',\'all\')">🗑️</button>':'')+'</td></tr>';
+  });
+  var lbl=(list.length===all.length)?'סה"כ':'סה"כ המסונן';
+  h+='</tbody><tfoot><tr><td colspan="'+((sel?1:0)+(units.length?3:2))+'">'+lbl+' ('+list.length+' תשלומים)</td>'+
+    '<td>'+money(tot)+'</td><td colspan="5"></td></tr></tfoot></table></div>';
+  return h;
+}
+function gpCount(aptId){ var el=document.getElementById("gp-count");
+  if(el) el.innerHTML=countLine(filteredIncomePays(aptId).length,allIncomePays(aptId).length,"תשלומים"); }
+function gbAll(v){ visibleBoxes(".gb-x").forEach(function(c){ c.checked=v; }); gbCount(); }
+function gbCount(){
+  var n=visibleBoxes(".gb-x:checked").length;
+  var el=document.getElementById("gb-count");
+  if(el) el.textContent=n?("("+n+")"):"";
+}
+/* עדכון מרוכז של תשלומי הזמנות — אמצעי, תאריך, סימון רו"ח והערה */
+function openBulkIncPayEdit(aptId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var ids=visibleBoxes(".gb-x:checked").map(function(c){ return c.value; });
+  if(!ids.length){ toast("סמן קודם את התשלומים לעדכון (העמודה הראשונה בטבלה)","warn"); return; }
+  var sum=round2(ids.reduce(function(s,id){ var r=findIncomePay(aptId,id); return s+(r?(Number(r.g.amount)||0):0); },0));
+  refreshMethods();
+  openModal({title:"✏️ עדכון מרוכז — "+ids.length+" תשלומי הזמנות",wide:true,bodyHtml:
+    '<div class="stat-grid" style="margin-bottom:12px">'+
+      stat("תשלומים שנבחרו",ids.length)+stat("סכום כולל",money(sum))+
+    '</div>'+
+    '<div class="hint" style="margin-bottom:10px">שדה שנשאר על <b>"— ללא שינוי —"</b> לא ישתנה באף תשלום.</div>'+
+    '<div class="form-grid">'+
+      '<div class="field"><label>אמצעי תשלום</label><select id="gb-method" onchange="onMethodPick(\'gb-method\')">'+
+        '<option value="">— ללא שינוי —</option>'+methodOptions("")+'</select></div>'+
+      '<div class="field"><label>תאריך</label><input id="gb-date" type="date"><div class="hint">ריק = ללא שינוי</div></div>'+
+      '<div class="field"><label>נשלח לרו"ח</label><select id="gb-cpa">'+
+        '<option value="__keep">— ללא שינוי —</option>'+
+        '<option value="1">✔ סמן כנשלח</option>'+
+        '<option value="0">סמן כטרם נשלח</option></select></div>'+
+      '<div class="field"><label>מס׳ חשבונית</label><input id="gb-inv" placeholder="ריק = ללא שינוי">'+
+        '<div class="hint">אותו מספר ייכנס לכל התשלומים שנבחרו</div></div>'+
+      '<div class="field full"><label>הערה</label>'+
+        '<select id="gb-note-mode" onchange="onGbNoteMode()" style="margin-bottom:5px">'+
+          '<option value="keep">— ללא שינוי —</option>'+
+          '<option value="set">להחליף בהערה שאכתוב</option>'+
+          '<option value="append">להוסיף בסוף ההערה הקיימת</option>'+
+          '<option value="clear">למחוק את ההערה</option>'+
+        '</select>'+
+        '<input id="gb-note" placeholder="ההערה שתיכנס לכל התשלומים שנבחרו" disabled>'+
+      '</div>'+
+    '</div>',
+    saveLabel:"עדכן "+ids.length+" תשלומים",onSave:function(){ return applyBulkIncPayEdit(aptId,ids); }});
+}
+function onGbNoteMode(){
+  var m=val("gb-note-mode"), inp=document.getElementById("gb-note");
+  if(!inp) return;
+  var on=(m==="set"||m==="append");
+  inp.disabled=!on;
+  if(!on) inp.value="";
+  if(on) inp.focus();
+}
+function applyBulkIncPayEdit(aptId,ids){
+  if(!can("edit")){ toast("אין הרשאה","err"); return false; }
+  var method=val("gb-method"), date=val("gb-date"), cpaSel=val("gb-cpa")||"__keep";
+  var invTxt=val("gb-inv").trim();
+  var noteMode=val("gb-note-mode")||"keep", noteTxt=val("gb-note").trim();
+  if(!method && !date && cpaSel==="__keep" && !invTxt && noteMode==="keep"){ toast("לא נבחר מה לעדכן","warn"); return false; }
+  if((noteMode==="set"||noteMode==="append") && !noteTxt){
+    toast("כתוב את ההערה שתיכנס, או בחר \"ללא שינוי\" בשדה ההערה","err"); return false; }
+  var n=0;
+  ids.forEach(function(id){
+    var r=findIncomePay(aptId,id); if(!r) return;
+    var g=r.g;
+    if(method) g.method=method;
+    if(date) g.date=date;
+    if(cpaSel!=="__keep") g.sentToCpa=(cpaSel==="1");
+    if(invTxt) g.invoices=invTxt;
+    if(noteMode==="set") g.note=noteTxt;
+    else if(noteMode==="append"){ var old=String(g.note||"").trim(); g.note = old ? (old+" | "+noteTxt) : noteTxt; }
+    else if(noteMode==="clear") g.note="";
+    n++;
+  });
+  save(); toast("עודכנו "+n+" תשלומים","ok"); rerender();
+  openAllIncomePays(aptId);
+  return false;
+}
 /* ---------- מודל תשלומי הזמנה (אורחים) ---------- */
 function openIncomePays(incId,aptId){
   var i=byId(DB.income,incId); if(!i) return;
@@ -5334,7 +5518,8 @@ function openIncomePays(incId,aptId){
   }
   openModal({title:"💳 תשלומי הזמנה — "+i.description,wide:true,bodyHtml:body});
 }
-function editIncomePay(incId,payId,aptId){
+/* back="all" — נפתח מהמסך המרוכז, ולכן חוזרים אליו ולא להזמנה הבודדת */
+function editIncomePay(incId,payId,aptId,back){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var i=byId(DB.income,incId); if(!i) return;
   var g=payId?(i.payments||[]).filter(function(x){return x.id===payId;})[0]:null;
@@ -5358,16 +5543,19 @@ function editIncomePay(incId,payId,aptId){
       if(!i.payments) i.payments=[];
       if(payId){ var ix=i.payments.map(function(x){return x.id;}).indexOf(payId); if(ix>=0) Object.assign(i.payments[ix],obj); }
       else i.payments.push(obj);
-      save(); toast("התשלום נשמר","ok"); rerender(); openIncomePays(incId,aptId); return false;
+      save(); toast("התשלום נשמר","ok"); rerender();
+      if(back==="all") openAllIncomePays(aptId); else openIncomePays(incId,aptId);
+      return false;
     }});
 }
-function delIncomePay(incId,payId,aptId){
+function delIncomePay(incId,payId,aptId,back){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var i=byId(DB.income,incId); if(!i) return;
   var g=(i.payments||[]).filter(function(x){return x.id===payId;})[0]; if(!g) return;
   if(!confirm("למחוק תשלום של "+money(g.amount)+"?")) return;
   g.deleted=true;
-  save(); toast("נמחק","ok"); rerender(); openIncomePays(incId,aptId);
+  save(); toast("נמחק","ok"); rerender();
+  if(back==="all") openAllIncomePays(aptId); else openIncomePays(incId,aptId);
 }
 /* ---------- הכנסה מרוכזת — כמה הכנסות בבת אחת ----------
    שורות ריקות מדולגות בשקט, כך שאפשר להשאיר שורות מיותרות ולא להילחם בטופס. */
