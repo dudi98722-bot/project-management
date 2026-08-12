@@ -1579,9 +1579,10 @@
       const grandReq = groups.reduce((s, g) => s + g.requested, 0) + manualSum;
       const grandOwes = groups.reduce((s, g) => s + g.owes, 0);
       const empty = !lines.length;
-      const LIGHT = ['#fef9c3', '#dcfce7', '#dbeafe', '#fce7f3', '#f3e8ff', '#ffedd5', '#ccfbf1'];   // רקעים בהירים לכל פרויקט
+      const LIGHT = ['#fef9c3', '#dcfce7', '#dbeafe', '#fce7f3', '#f3e8ff', '#ffedd5', '#ccfbf1'];   // רקע בהיר לשורות
+      const DARK = ['#fde047', '#86efac', '#93c5fd', '#f9a8d4', '#d8b4fe', '#fdba74', '#5eead4'];    // גוון כהה לשורת הסיכום
 
-      const projRows = groups.map((g, gi) => { const bg = LIGHT[gi % LIGHT.length]; return g.items.map((l, i) => {
+      const projRows = groups.map((g, gi) => { const bg = LIGHT[gi % LIGHT.length], bgSum = DARK[gi % DARK.length]; return g.items.map((l, i) => {
         const after = (+l.sub_remaining || 0) - (+l.requested || 0);
         return `<tr style="background:${bg}">
           <td>${i === 0 ? `<b>${esc(g.name)}</b>` : ''}</td>
@@ -1590,8 +1591,8 @@
           <td class="num" style="color:${after >= 0 ? 'var(--green)' : 'var(--red)'}">${money0(after)}</td>
           <td class="num" style="color:var(--brand-d)">${money0(l.client_owes)}</td>
           <td style="width:24px;text-align:left"><button class="btn xs red" data-delline="${l.id}">✕</button></td></tr>`;
-      }).join('') + `<tr style="background:${bg};font-weight:700;border-top:1px solid rgba(15,23,42,.18)">
-          <td></td><td class="mini">סה"כ ${esc(g.name)}</td>
+      }).join('') + `<tr style="background:${bgSum};font-weight:800;border-top:2px solid rgba(15,23,42,.3)">
+          <td></td><td>סה"כ ${esc(g.name)}</td>
           <td class="num">${money0(g.requested)}</td><td></td>
           <td class="num" style="color:var(--brand-d)">${money0(g.owes)}</td><td></td></tr>`; }).join('');
 
