@@ -33,20 +33,36 @@ router.post('/', authenticate, can('manageUsers'), async (req, res) => {
 });
 
 router.put('/:id', authenticate, can('manageUsers'), async (req, res) => {
-  const { role, full_name, active, password } = req.body || {};
+  const { username, role, full_name, active, password } = req.body || {};
   if (role !== undefined && !ROLES[role]) return res.status(400).json({ error: 'תפקיד לא תקין' });
+
+  // שם משתמש נשלח רק כשבאמת משנים אותו; ריק/undefined = משאירים כמו שהוא
+  let newUsername = null;
+  if (username !== undefined && username !== null && String(username).trim() !== '') {
+    newUsername = String(username).trim();
+    if (newUsername.length < 3) return res.status(400).json({ error: 'שם משתמש חייב להיות באורך 3 תווים לפחות' });
+    if (/\s/.test(newUsername)) return res.status(400).json({ error: 'שם משתמש לא יכול להכיל רווחים' });
+  }
+
   try {
     if (password) {
       const hash = await bcrypt.hash(password, 10);
       await pool.query('UPDATE users SET password_hash=$1 WHERE id=$2', [hash, req.params.id]);
     }
     const r = await pool.query(
-      'UPDATE users SET role=COALESCE($1,role), full_name=COALESCE($2,full_name), active=COALESCE($3,active) WHERE id=$4 RETURNING id, username, role, full_name, active',
-      [role || null, full_name || null, (active === undefined ? null : active), req.params.id]);
+      `UPDATE users SET username=COALESCE($1,username), role=COALESCE($2,role),
+              full_name=COALESCE($3,full_name), active=COALESCE($4,active)
+       WHERE id=$5 RETURNING id, username, role, full_name, active`,
+      [newUsername, role || null, full_name || null, (active === undefined ? null : active), req.params.id]);
     if (!r.rows.length) return res.status(404).json({ error: 'לא נמצא' });
-    await logAction(req.user, 'edit', 'users', req.params.id, {});
-    res.json(r.rows[0]);
-  } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+    await logAction(req.user, 'edit', 'users', req.params.id, newUsername ? { username: newUsername } : {});
+    // שינוי שם המשתמש של עצמך -> הטוקן הנוכחי מחזיק שם ישן, צריך להתחבר מחדש
+    const selfRenamed = newUsername && String(req.user.id) === String(req.params.id);
+    res.json({ ...r.rows[0], self_renamed: !!selfRenamed });
+  } catch (e) {
+    if (e.code === '23505') return res.status(409).json({ error: 'שם המשתמש כבר תפוס' });
+    console.error(e); res.status(500).json({ error: 'שגיאת שרת' });
+  }
 });
 
 module.exports = router;

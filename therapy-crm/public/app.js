@@ -830,7 +830,7 @@ function openUserModal(userId) {
   <h2>${u ? 'עריכת משתמש — ' + esc(u.username) : 'משתמש חדש'} <button class="x" onclick="closeModal()">✕</button></h2>
   <form id="user-form">
     <div class="grid2">
-      ${u ? '' : `<div class="field"><label>שם משתמש *</label><input name="username" required autocomplete="off"></div>`}
+      <div class="field"><label>שם משתמש *</label><input name="username" value="${esc(u ? u.username : '')}" required autocomplete="off" minlength="3"></div>
       <div class="field"><label>שם מלא</label><input name="full_name" value="${esc(u ? u.full_name : '')}"></div>
       <div class="field"><label>תפקיד</label><select name="role">
         ${roles.map(r => `<option value="${r.role}" ${u && u.role === r.role ? 'selected' : ''}>${r.label}</option>`).join('')}
@@ -848,9 +848,13 @@ function openUserModal(userId) {
     const fd = new FormData(e.target);
     try {
       if (u) {
-        await api('/users/' + u.id, { method: 'PUT', body: {
-          full_name: fd.get('full_name'), role: fd.get('role'),
+        const r = await api('/users/' + u.id, { method: 'PUT', body: {
+          username: fd.get('username'), full_name: fd.get('full_name'), role: fd.get('role'),
           active: fd.get('active') === 'on', password: fd.get('password') || undefined } });
+        if (r.self_renamed) {
+          alert('שם המשתמש שלך שונה ל-"' + r.username + '". יש להתחבר מחדש.');
+          logout(); return;
+        }
       } else {
         await api('/users', { method: 'POST', body: {
           username: fd.get('username'), password: fd.get('password'),
