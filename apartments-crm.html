@@ -77,8 +77,22 @@ label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:5px;font-w
 /* טבלאות רחבות: מרווחים וגופן צפופים יותר, וגלישת שורה בעמודת השם */
 .tbl-compact table.tbl{font-size:12.5px}
 .tbl-compact table.tbl th,.tbl-compact table.tbl td{padding:8px 8px}
-.tbl-compact table.tbl td:first-child,.tbl-compact table.tbl th:first-child{white-space:normal;min-width:150px}
+/* עמודת השם גולשת לשורה — אבל לא כשהעמודה הראשונה היא תיבת סימון,
+   ולא בשורת הסינון (שם ה-min-width היה מנפח את העמודה הראשונה) */
+.tbl-compact table.tbl tbody td:first-child:not(.chk),
+.tbl-compact table.tbl thead tr:first-child th:first-child:not(.chk){white-space:normal;min-width:150px}
 .tbl-compact table.tbl td:not(:first-child),.tbl-compact table.tbl th:not(:first-child){white-space:nowrap}
+.tbl-compact table.tbl td.chk,.tbl-compact table.tbl th.chk{min-width:0;width:26px;padding:8px 3px}
+/* תגי יחידות ההשכרה — צפופים, כדי שארבע יחידות לא יבלעו את הטבלה */
+.badge-unit{padding:2px 6px;font-size:10.5px;gap:0}
+.badge-unit::before{display:none}
+/* כפתורי הפעולה בשורה — צרים יותר, הם רק אייקונים */
+.tbl-compact table.tbl .btn-sm{padding:3px 6px}
+/* עמודת הערה — נחתכת בשלוש נקודות כדי שכל שאר העמודות ייכנסו למסך.
+   הטקסט המלא נשאר ב-title (מעבר עכבר) וגם בייצוא לאקסל. */
+table.tbl td.note{max-width:120px;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+.tbl-compact table.tbl td.note{max-width:90px}
+@media(min-width:1700px){ table.tbl td.note{max-width:200px} }
 
 /* ===== לשוניות משנה ===== */
 /* לשוניות הפרוייקט נשארות גלויות בגלילה, מתחת לסרגל ולניווט */
@@ -723,10 +737,14 @@ function aptBookingMode(aptId){ var a=byId(DB.apartments,aptId); return !!(a&&a.
 function aptHasBank(aptId){ var a=byId(DB.apartments,aptId); return !!(a&&a.hasBank); }
 function incomeUnits(i){ return (i&&i.units)||[]; }
 function incomeUnitsLabel(i){ return incomeUnits(i).join(" · "); }
-function unitsCellHtml(i){
+function unitsCellHtml(i,aptId){
   var u=incomeUnits(i);
   if(!u.length) return '<span class="muted">—</span>';
-  return u.map(function(n){ return '<span class="badge badge-mgmt">'+esc(n)+'</span>'; }).join(" ");
+  /* כל היחידות הושכרו — שורה אחת קצרה במקום ארבעה תגים */
+  var all=aptUnits(aptId||i.apartmentId);
+  if(all.length>1 && u.length===all.length)
+    return '<span class="badge badge-mgmt badge-unit" title="'+esc(u.join(" · "))+'">כל היחידות</span>';
+  return u.map(function(n){ return '<span class="badge badge-mgmt badge-unit">'+esc(n)+'</span>'; }).join(" ");
 }
 function unitChecksHtml(cls,aptId,sel){
   var chosen={}; (sel||[]).forEach(function(n){ chosen[n]=1; });
@@ -785,6 +803,13 @@ function stayLabel(i){
   if(!i.startDate && !i.endDate) return "";       // אין תקופה שהוזנה
   var n=stayNights(i);
   return dateHe(s)+(i.endDate&&i.endDate>s?" – "+dateHe(i.endDate):"")+" · "+n+" לילות";
+}
+/* גרסה קצרה לטבלה — בלי השנה כשהיא השנה הנוכחית, כדי לחסוך רוחב */
+function stayLabelShort(i){
+  var s=stayStart(i); if(!s || (!i.startDate && !i.endDate)) return "";
+  var yr=todayISO().slice(0,4);
+  function d(x){ return x.slice(8,10)+"/"+x.slice(5,7)+(x.slice(0,4)===yr?"":"/"+x.slice(2,4)); }
+  return d(s)+(i.endDate&&i.endDate>s?"–"+d(i.endDate):"")+" · "+stayNights(i)+"ל׳";
 }
 /* כל הלילות (YYYY-MM-DD) שההזמנה תופסת */
 function stayNightList(i){
@@ -1242,8 +1267,9 @@ function renderView(){ return withIndex(renderViewInner); }
 function renderViewInner(){
   var c=document.getElementById("content"); if(!c) return;
   /* במסך פרוייקט יש שורת לשוניות דביקה — כותרות הטבלה נדבקות מתחתיה */
+  /* גם מסכי הפרוייקט צפופים — הטבלאות שם רחבות (שלבים, תשלומים, הזמנות) */
   c.className = "content" + (state.view==="apartment" ? " has-tabs" : "")
-              + (state.view==="dashboard" ? " tbl-compact" : "");
+              + ((state.view==="dashboard"||state.view==="apartment") ? " tbl-compact" : "");
   /* משתמש "דמי ניהול" נעול על מסך דמי הניהול — גם אם ינסה לנווט אחרת */
   if(isMgmtUser() && state.view!=="mgmt"){ state.view="mgmt"; state.params={}; }
   switch(state.view){
@@ -2397,6 +2423,12 @@ function sortTableByCol(t,col){
     }
   });
 }
+/* תא הערה: נחתך בשלוש נקודות כדי שהטבלה תיכנס למסך. הטקסט המלא
+   נשמר בתא (title למעבר עכבר, וגם הייצוא לאקסל לוקח אותו במלואו). */
+function noteCell(t){
+  t=String(t==null?"":t);
+  return '<td class="note"'+(t?' title="'+esc(t)+'"':'')+'>'+esc(t)+'</td>';
+}
 function countLine(shown,total,what){
   if(shown===total) return '<span class="muted">'+total+' '+esc(what)+'</span>';
   return '<span class="pill">מציג '+shown+' מתוך '+total+'</span>';
@@ -3231,7 +3263,7 @@ function expTableHtml(aptId){
   if(!exps.length) return '<div class="empty">לא נמצא שלב שמתאים לסינון</div>';
   var selC=can("edit");
   var h='<div class="table-wrap"><table class="tbl"><thead><tr>'+
-    (selC?'<th data-xl-skip="1" style="width:30px"><input type="checkbox" title="סמן הכל" style="width:auto" onclick="ebAll(this.checked)"></th>':'')+
+    (selC?'<th class="chk" data-xl-skip="1" style="width:30px"><input type="checkbox" title="סמן הכל" style="width:auto" onclick="ebAll(this.checked)"></th>':'')+
     '<th>תאריך</th><th>תיאור</th><th>קטגוריה</th><th>סיווג</th><th>סכום</th>'+
     (a.hasManagement?'<th title="✔ יש דמי ניהול · ✖ אין · ריק = טרם סומן">דמי ניהול?</th><th>דמי ניהול</th>':'')+
     '<th>שולם</th><th>נותר</th><th>סטטוס</th><th></th></tr></thead><tbody>';
@@ -3246,7 +3278,7 @@ function expTableHtml(aptId){
     var mg=expenseMgmtCostLive(e.id);
     return '<tr data-eid="'+e.id+'"'+(isChild?' data-parent="'+e.parentId+'"':'')+
       (isChild?' style="background:#fbfcff"':(cont?' style="background:#f5f8ff"':''))+'>'+
-      (selC?'<td>'+(cont?'':'<input type="checkbox" class="eb-x" value="'+e.id+'" style="width:auto" onchange="ebCount()">')+'</td>':'')+
+      (selC?'<td class="chk">'+(cont?'':'<input type="checkbox" class="eb-x" value="'+e.id+'" style="width:auto" onchange="ebCount()">')+'</td>':'')+
       '<td>'+dateHe(e.date)+'</td>'+
       '<td'+(isChild?' style="padding-right:26px"':'')+'>'+
         (isChild?'<span class="muted">↳ </span>':'')+
@@ -4238,7 +4270,7 @@ function payTableHtml(aptId){
   var tot=0;
   var sel=can("edit");
   var h='<div class="table-wrap"><table class="tbl"><thead><tr>'+
-    (sel?'<th data-xl-skip="1" style="width:30px"><input type="checkbox" title="סמן הכל" style="width:auto" onclick="pbAll(this.checked)"></th>':'')+
+    (sel?'<th class="chk" data-xl-skip="1" style="width:30px"><input type="checkbox" title="סמן הכל" style="width:auto" onclick="pbAll(this.checked)"></th>':'')+
     '<th>תאריך</th><th>עבור (שלב)</th><th>סכום</th><th>חשבון</th><th>מי שילם</th>'+
     '<th>מוטב</th><th>אמצעי</th><th>חשבונית</th><th>נשלח לרו"ח</th><th>הערה</th><th></th></tr></thead><tbody>';
   list.sort(function(x,y){ return x.date<y.date?1:-1; }).forEach(function(p){
@@ -4248,7 +4280,7 @@ function payTableHtml(aptId){
     var recip=isMgr
       ? '<span class="badge badge-mgmt">🧾 דמי ניהול</span> '+esc(managerName(p.recipientManagerId)) : 'ספק';
     h+='<tr'+(isMgr?' class="mgmt-row"':'')+'>'+
-      (sel?'<td><input type="checkbox" class="pb-x" value="'+p.id+'" style="width:auto" onchange="pbCount()"></td>':'')+
+      (sel?'<td class="chk"><input type="checkbox" class="pb-x" value="'+p.id+'" style="width:auto" onchange="pbCount()"></td>':'')+
       '<td>'+dateHe(p.date)+'</td>'+
       '<td><b>'+esc(e?e.description:"—")+'</b>'+(p.hidden?' <span class="badge badge-danger" title="תשלום מוסתר">🔒</span>':'')+'</td>'+
       '<td>'+money(p.amount)+'</td>'+
@@ -4256,7 +4288,7 @@ function payTableHtml(aptId){
       '<td>'+(p.payerPartnerId?esc(partnerName(p.payerPartnerId)):(accountIsBank(p.accountId)?'<span class="muted">מהבנק</span>':"—"))+'</td>'+
       '<td>'+recip+'</td><td>'+payMethodCell(p)+'</td>'+
       '<td>'+invoiceCellHtml(p)+'</td><td>'+cpaCellHtml(p,true)+'</td>'+
-      '<td class="muted" style="max-width:180px;overflow:hidden;text-overflow:ellipsis">'+esc(p.note||"")+'</td>'+
+      noteCell(p.note)+
       '<td class="right" style="white-space:nowrap">'+
         '<button class="btn btn-ghost btn-sm" onclick="openPayments(\''+p.expenseId+'\')" title="כל תשלומי השלב">💳</button>'+
         (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="openPaymentEditor(\''+p.expenseId+'\',\''+p.id+'\')">✏️</button>'+
@@ -5014,7 +5046,7 @@ function moduleBank(aptId){
   if(!deps.length) depH+='<tr><td colspan="7" class="empty">אין הפקדות</td></tr>';
   deps.sort(function(x,y){return x.date<y.date?1:-1;}).forEach(function(d){
     depH+='<tr><td>'+dateHe(d.date)+'</td><td>'+esc(partnerName(d.partnerId))+'</td><td>'+money(d.amount)+'</td>'+
-      '<td>'+esc(METHODS[d.method]||"")+'</td><td>'+esc(d.fromAccount||"")+'</td><td>'+esc(d.note||"")+'</td>'+
+      '<td>'+esc(METHODS[d.method]||"")+'</td><td>'+esc(d.fromAccount||"")+'</td>'+noteCell(d.note)+
       '<td class="right">'+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editDeposit(\''+d.id+'\',\''+aptId+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="softDelete(\'deposits\',\''+d.id+'\',\'למחוק הפקדה?\')">🗑️</button>':'')+'</td></tr>';
   });
   depH+='</tbody></table></div>';
@@ -5346,7 +5378,7 @@ function moduleIncome(aptId){
   }
   var selI=can("edit");
   h+='<div class="table-wrap"><table class="tbl"><thead><tr>'+
-    (selI?'<th data-xl-skip="1" style="width:30px"><input type="checkbox" title="סמן הכל" style="width:auto" onclick="ibAll(this.checked)"></th>':'')+
+    (selI?'<th class="chk" data-xl-skip="1" style="width:30px"><input type="checkbox" title="סמן הכל" style="width:auto" onclick="ibAll(this.checked)"></th>':'')+
     '<th>תאריך</th><th>תיאור</th>'+
     (units.length?'<th>יחידות</th>':'')+
     '<th>תקופה</th><th>סכום</th><th>שולם</th><th>יתרת חוב</th><th>נכנס ל…</th><th>הערה</th><th></th></tr></thead><tbody>';
@@ -5354,19 +5386,19 @@ function moduleIncome(aptId){
   inc.slice().sort(function(x,y){return x.date<y.date?1:-1;}).forEach(function(i){
     var tracked=incomeTracked(i), debt=incomeDebt(i);
     h+='<tr>'+
-      (selI?'<td><input type="checkbox" class="ib-x" value="'+i.id+'" style="width:auto" onchange="ibCount()"></td>':'')+
+      (selI?'<td class="chk"><input type="checkbox" class="ib-x" value="'+i.id+'" style="width:auto" onchange="ibCount()"></td>':'')+
       '<td>'+dateHe(i.date)+'</td><td>'+esc(i.description)+'</td>'+
       (units.length?'<td>'+unitsCellHtml(i)+'</td>':'')+
-      '<td class="muted" style="white-space:nowrap">'+esc(stayLabel(i))+'</td>'+
+      '<td class="muted" title="'+esc(stayLabel(i))+'">'+esc(stayLabelShort(i))+'</td>'+
       '<td>'+money(i.amount)+'</td>'+
       '<td>'+(tracked?money(incomePaid(i)):'<span class="muted">—</span>')+'</td>'+
-      '<td>'+(tracked?(Math.abs(debt)<=0.01?'<span class="badge badge-ok">✔ שולם הכל</span>'
-        :debt>0?'<span class="badge badge-danger">'+money(debt)+'</span>'
-        :'<span class="badge badge-warn" title="שולם ביתר">+'+money(-debt)+'</span>'):'<span class="muted">—</span>')+'</td>'+
+      '<td>'+(tracked?(Math.abs(debt)<=0.01?'<span class="badge badge-ok badge-unit" title="שולם במלואו">✔ שולם</span>'
+        :debt>0?'<span class="badge badge-danger badge-unit">'+money(debt)+'</span>'
+        :'<span class="badge badge-warn badge-unit" title="שולם ביתר">+'+money(-debt)+'</span>'):'<span class="muted">—</span>')+'</td>'+
       '<td>'+(i.receivedBy==="bank"
         ?'<span class="pill">🏦 בנק זמני</span><div class="hint" data-xl-skip="1">'+esc(incomeSplitLabel(i))+'</div>'
         :esc(incomeDestName(i)||"—"))+'</td>'+
-      '<td>'+esc(i.note||"")+'</td>'+
+      noteCell(i.note)+
       '<td class="right" style="white-space:nowrap">'+
         '<button class="btn btn-ghost btn-sm" onclick="openIncomePays(\''+i.id+'\',\''+aptId+'\')" title="תשלומי ההזמנה">💳'+(tracked?' '+incomePays(i).length:'')+'</button>'+
         (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editIncome(\''+i.id+'\',\''+aptId+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="softDelete(\'income\',\''+i.id+'\',\'למחוק הכנסה?\')">🗑️</button>':'')+'</td></tr>';
@@ -5478,13 +5510,13 @@ function gpTableHtml(aptId){
   if(!list.length) return '<div class="empty">לא נמצא תשלום שמתאים לסינון</div>';
   var tot=0;
   var h='<div class="table-wrap"><table class="tbl"><thead><tr>'+
-    (sel?'<th data-xl-skip="1" style="width:30px"><input type="checkbox" title="סמן הכל" style="width:auto" onclick="gbAll(this.checked)"></th>':'')+
+    (sel?'<th class="chk" data-xl-skip="1" style="width:30px"><input type="checkbox" title="סמן הכל" style="width:auto" onclick="gbAll(this.checked)"></th>':'')+
     '<th>תאריך</th><th>הזמנה</th>'+(units.length?'<th>יחידות</th>':'')+
     '<th>סכום</th><th>אמצעי</th><th>נכנס ל…</th><th>מס׳ חשבונית</th><th>נשלח לרו"ח</th><th>הערה</th><th></th></tr></thead><tbody>';
   list.sort(function(x,y){ return x.g.date<y.g.date?1:-1; }).forEach(function(r){
     var g=r.g, i=r.i; tot+=Number(g.amount)||0;
     h+='<tr>'+
-      (sel?'<td><input type="checkbox" class="gb-x" value="'+g.id+'" style="width:auto" onchange="gbCount()"></td>':'')+
+      (sel?'<td class="chk"><input type="checkbox" class="gb-x" value="'+g.id+'" style="width:auto" onchange="gbCount()"></td>':'')+
       '<td>'+dateHe(g.date)+'</td>'+
       '<td><b>'+esc(i.description)+'</b><div class="hint" data-xl-skip="1">מחיר '+money(i.amount)+' · נותר '+money(incomeDebt(i))+'</div></td>'+
       (units.length?'<td>'+unitsCellHtml(i)+'</td>':'')+
@@ -5493,7 +5525,7 @@ function gpTableHtml(aptId){
       '<td>'+(g.receivedBy==="bank"?'<span class="pill">🏦 בנק זמני</span>':esc(destName(g.receivedBy)||"—"))+'</td>'+
       '<td>'+esc(g.invoices||"—")+'</td>'+
       '<td>'+cpaCellHtml(g)+'</td>'+
-      '<td class="muted" style="max-width:180px;overflow:hidden;text-overflow:ellipsis">'+esc(g.note||"")+'</td>'+
+      noteCell(g.note)+
       '<td class="right" style="white-space:nowrap">'+
         (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editIncomePay(\''+i.id+'\',\''+g.id+'\',\''+aptId+'\',\'all\')">✏️</button>'+
         '<button class="btn btn-ghost btn-sm" onclick="delIncomePay(\''+i.id+'\',\''+g.id+'\',\''+aptId+'\',\'all\')">🗑️</button>':'')+'</td></tr>';
@@ -5824,7 +5856,7 @@ function openIncomePays(incId,aptId){
         '<td>'+esc(METHODS[g.method]||g.method||"—")+'</td>'+
         '<td>'+esc(g.invoices||"—")+'</td>'+
         '<td>'+cpaCellHtml(g)+'</td>'+
-        '<td class="muted">'+esc(g.note||"")+'</td>'+
+        noteCell(g.note)+
         '<td class="right">'+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editIncomePay(\''+incId+'\',\''+g.id+'\',\''+aptId+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="delIncomePay(\''+incId+'\',\''+g.id+'\',\''+aptId+'\')">🗑️</button>':'')+'</td></tr>';
     });
     body+='</tbody></table></div>';
@@ -6604,7 +6636,7 @@ function moduleMgmtReport(){
       payRows+='<tr><td>'+dateHe(p.date)+'</td><td>'+esc(a.name)+'</td><td>'+esc(e?e.description:"—")+'</td>'+
         '<td>'+esc(managerName(p.recipientManagerId))+'</td><td><b>'+money(p.amount)+'</b></td>'+
         '<td>'+esc(payMethodLabel(p))+'</td><td>'+esc(invoiceStatusText(p))+'</td>'+
-        '<td>'+esc(p.note||"")+'</td></tr>';
+        noteCell(p.note)+'</tr>';
     });
   });
   var paysH='<div class="card"><h3>💳 תשלומים ששולמו עבור דמי ניהול</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+
@@ -6816,7 +6848,7 @@ function partnersTableHtml(){
   if(!list.length) return '<div class="empty">לא נמצא שותף שמתאים לחיפוש</div>';
   var h='<div class="table-wrap"><table class="tbl"><thead><tr><th>שם</th><th>טלפון</th><th>הערות</th><th></th></tr></thead><tbody>';
   list.forEach(function(p){
-    h+='<tr><td>'+esc(p.name)+'</td><td>'+esc(p.phone||"")+'</td><td>'+esc(p.notes||"")+'</td>'+
+    h+='<tr><td>'+esc(p.name)+'</td><td>'+esc(p.phone||"")+'</td>'+noteCell(p.notes)+
       '<td class="right"><button class="btn btn-ghost btn-sm" onclick="editPartner(\''+p.id+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="softDelete(\'partners\',\''+p.id+'\',\'למחוק שותף?\')">🗑️</button></td></tr>';
   });
   return h+'</tbody></table></div>';
