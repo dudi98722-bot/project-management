@@ -5,8 +5,8 @@
 #  שלב 1 (בלי פרמטרים) — מוצא חשבון שירות קיים ומראה למי לשתף את הגיליון:
 #     sudo bash setup-sheets-therapy.sh
 #
-#  שלב 2 (עם מזהה הגיליון) — מחבר, מפעיל מחדש ובודק:
-#     sudo bash setup-sheets-therapy.sh 1AbC...XyZ
+#  שלב 2 — מחבר, מפעיל מחדש ובודק. אפשר להדביק את הקישור המלא לגיליון:
+#     sudo bash setup-sheets-therapy.sh "https://docs.google.com/spreadsheets/d/1AbC.../edit"
 #
 #  אפשר גם להצביע על קובץ חשבון שירות ספציפי:
 #     sudo SA=/root/my-key.json bash setup-sheets-therapy.sh 1AbC...XyZ
@@ -16,7 +16,8 @@ set -e
 APP="/opt/therapy-crm/app"
 SERVICE="therapy-crm"
 TARGET="$APP/service-account.json"
-SHEET_ID="$1"
+# מקבל קישור מלא לגיליון או מזהה בלבד — מחלץ את המזהה בכל מקרה
+SHEET_ID=$(echo "$1" | sed -E 's|.*/spreadsheets/d/([A-Za-z0-9_-]+).*|\1|')
 
 echo "🔗 חיבור פסיכולוגיה מסילות ל-Google Sheets"
 echo "============================================"
@@ -75,10 +76,9 @@ if [ -z "$SHEET_ID" ]; then
   echo ""
   echo "      $EMAIL"
   echo ""
-  echo "2. העתק את המזהה מכתובת הגיליון והרץ שוב איתו:"
-  echo "   https://docs.google.com/spreadsheets/d/<המזהה כאן>/edit"
+  echo "2. העתק את הקישור של הגיליון מהדפדפן והרץ שוב איתו (במרכאות):"
   echo ""
-  echo "      sudo bash setup-sheets-therapy.sh <המזהה>"
+  echo "      sudo bash setup-sheets-therapy.sh \"<הדבק כאן את הקישור>\""
   echo "============================================"
   exit 0
 fi
