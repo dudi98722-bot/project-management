@@ -1562,9 +1562,8 @@
       stageLinesArr().forEach(l => {
         const key = l.project_id == null ? 'p_null_' + l.id : 'p' + l.project_id;
         let g = byKey[key];
-        if (!g) { g = byKey[key] = { name: l.project_name || '—', requested: 0, owes: 0, afterSum: 0, items: [], seen: {} }; groups.push(g); }
-        const after = (+l.sub_remaining || 0) - (+l.requested || 0);
-        g.requested += +l.requested || 0; g.afterSum += after; g.items.push(l);
+        if (!g) { g = byKey[key] = { name: l.project_name || '—', requested: 0, owes: 0, items: [], seen: {} }; groups.push(g); }
+        g.requested += +l.requested || 0; g.items.push(l);
         const sk = 's' + l.stage_id;
         if (!g.seen[sk]) { g.seen[sk] = 1; g.owes += +l.client_owes || 0; }
       });
@@ -1578,23 +1577,23 @@
       const manual = manualLinesArr();
       const manualSum = manual.reduce((s, m) => s + (+m.requested || 0), 0);
       const grandReq = groups.reduce((s, g) => s + g.requested, 0) + manualSum;
-      const grandAfter = groups.reduce((s, g) => s + g.afterSum, 0);
       const grandOwes = groups.reduce((s, g) => s + g.owes, 0);
       const empty = !lines.length;
+      const LIGHT = ['#fef9c3', '#dcfce7', '#dbeafe', '#fce7f3', '#f3e8ff', '#ffedd5', '#ccfbf1'];   // רקעים בהירים לכל פרויקט
 
-      const projRows = groups.map(g => g.items.map((l, i) => {
+      const projRows = groups.map((g, gi) => { const bg = LIGHT[gi % LIGHT.length]; return g.items.map((l, i) => {
         const after = (+l.sub_remaining || 0) - (+l.requested || 0);
-        return `<tr>
+        return `<tr style="background:${bg}">
           <td>${i === 0 ? `<b>${esc(g.name)}</b>` : ''}</td>
           <td>${esc(l.stage_name || '')}</td>
           <td class="num" style="font-weight:700">${money0(l.requested)}</td>
           <td class="num" style="color:${after >= 0 ? 'var(--green)' : 'var(--red)'}">${money0(after)}</td>
           <td class="num" style="color:var(--brand-d)">${money0(l.client_owes)}</td>
           <td style="width:24px;text-align:left"><button class="btn xs red" data-delline="${l.id}">✕</button></td></tr>`;
-      }).join('') + `<tr style="background:var(--soft);font-weight:700">
+      }).join('') + `<tr style="background:${bg};font-weight:700;border-top:1px solid rgba(15,23,42,.18)">
           <td></td><td class="mini">סה"כ ${esc(g.name)}</td>
-          <td class="num">${money0(g.requested)}</td><td class="num">${money0(g.afterSum)}</td>
-          <td class="num" style="color:var(--brand-d)">${money0(g.owes)}</td><td></td></tr>`).join('');
+          <td class="num">${money0(g.requested)}</td><td></td>
+          <td class="num" style="color:var(--brand-d)">${money0(g.owes)}</td><td></td></tr>`; }).join('');
 
       const manualRows = manual.map(m => `<tr>
           <td class="mini muted">תוספת</td><td>${esc(m.stage_name || '')}</td>
@@ -1610,7 +1609,7 @@
           <tr style="border-top:2px solid var(--ink);font-weight:800">
             <td></td><td>סה"כ הכל</td>
             <td class="num" style="color:var(--green)">${money0(grandReq)}</td>
-            <td class="num">${money0(grandAfter)}</td>
+            <td></td>
             <td class="num" style="color:var(--brand-d)">${money0(grandOwes)}</td><td></td></tr>
         </tbody></table></div>`}
         <div style="margin-top:14px;border-top:1px dashed var(--line);padding-top:10px">
@@ -1638,16 +1637,16 @@
         if (!await confirmDialog('למחוק את כל הבקשה? ניתן לשחזר מסל המחזור.', 'מחיקת הכל')) return;
         await guard(window.Store.payreq.clear()); lines = []; renderReport(); renderStagesForm(); toast('כל הבקשה נמחקה', 'ok');
       };
-      const cp = $('#pr_copy'); if (cp) cp.onclick = () => copyRequestText(groups, manual, grandReq, grandAfter, grandOwes);
+      const cp = $('#pr_copy'); if (cp) cp.onclick = () => copyRequestText(groups, manual, grandReq, grandOwes);
     }
 
-    function copyRequestText(groups, manual, grandReq, grandAfter, grandOwes) {
+    function copyRequestText(groups, manual, grandReq, grandOwes) {
       const d = new Date().toLocaleDateString('he-IL');
       let txt = `בקשת תשלום — ${d}\n`;
       groups.forEach(g => {
         txt += `\n📁 ${g.name}\n`;
         g.items.forEach(l => { const after = (+l.sub_remaining || 0) - (+l.requested || 0); txt += `  • ${l.stage_name || ''}: מבוקש ${money(l.requested)} · נשאר לקבלן ${money(after)} · ללקוח ${money(l.client_owes)}\n`; });
-        txt += `  סה"כ: מבוקש ${money(g.requested)} · נשאר ${money(g.afterSum)} · ללקוח ${money(g.owes)}\n`;
+        txt += `  סה"כ: מבוקש ${money(g.requested)} · ללקוח ${money(g.owes)}\n`;
       });
       if (manual.length) { txt += `\n➕ תוספות:\n`; manual.forEach(m => { txt += `  • ${m.stage_name || ''}: ${money(m.requested)}\n`; }); }
       txt += `\n💰 סה"כ מבוקש: ${money(grandReq)}\n🟢 סה"כ ללקוח: ${money(grandOwes)}`;
