@@ -1523,12 +1523,27 @@ async function renderLogin(){
     '<h1>לווי וניהול פרוייקטים</h1><p class="muted">בודק חיבור לשרת…</p></div></div>';
   var st=await api("action=status");
   var online=!!(st&&st.ok);
-  var noUsers=online ? !st.hasUsers : (active(DB.users).length===0);
+  /* בלי חיבור לשרת אין טעם בטופס: הכניסה עוברת דרך השרת ממילא,
+     ו"צור מנהל" במצב כזה (מכשיר עם זיכרון מקומי ריק) היה מתחיל
+     מערכת ריקה שדורסת אחר כך את הנתונים האמיתיים. */
+  if(!online){
+    app.innerHTML='<div class="login-wrap"><div class="login-card">'+
+      '<div class="login-icon">'+LOGO_MARK+'</div>'+
+      '<h1>לווי וניהול פרוייקטים</h1>'+
+      '<p class="brand-tag">תכנון מדויק · ניהול חכם · תוצאה מושלמת</p>'+
+      '<p style="color:#b45309">⚠️ אין חיבור לשרת</p>'+
+      '<p class="muted" style="font-size:13px;line-height:1.5">בדוק את חיבור האינטרנט ונסה שוב. '+
+      'אם האינטרנט תקין והבעיה חוזרת — כנראה שהסינון במכשיר הזה (נטפרי וכד׳) חוסם את שרת הנתונים '+
+      '(script.google.com), וצריך לבקש שם אישור לכתובת.</p>'+
+      '<button class="btn btn-primary" style="width:100%" onclick="renderLogin()">🔄 נסה שוב</button>'+
+      '</div></div>';
+    return;
+  }
+  var noUsers=!st.hasUsers;
   app.innerHTML='<div class="login-wrap"><div class="login-card">'+
     '<div class="login-icon">'+LOGO_MARK+'</div>'+
     '<h1>לווי וניהול פרוייקטים</h1>'+
     '<p class="brand-tag">תכנון מדויק · ניהול חכם · תוצאה מושלמת</p>'+
-    (!online ? '<p style="color:#b45309">⚠️ אין חיבור לשרת — בדוק אינטרנט ונסה שוב</p>' : '')+
     (noUsers
       ? '<p>הגדרת מנהל ראשוני — בחר שם וקוד כניסה</p>'+
         '<div class="field"><label>שם</label><input id="lg-name" value="מנהל"></div>'+
