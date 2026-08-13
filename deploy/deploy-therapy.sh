@@ -98,8 +98,8 @@ NODE_ENV=production
 CORS_ORIGIN=https://$DOMAIN
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=$ADMIN_PASS
-BACKUP_SHEET_ID=
-GOOGLE_SERVICE_ACCOUNT_FILE=./service-account.json
+SHEETS_WEBHOOK_URL=
+SHEETS_SECRET=
 ENV
   chmod 600 "$APP_DIR/app/.env"
   echo "$ADMIN_PASS" > "$APP_DIR/.adminpass"; chmod 600 "$APP_DIR/.adminpass"

@@ -1,154 +1,95 @@
-// שיקוף אוטומטי ל-Google Sheets: כל פעולה נרשמת בלשונית "פעולות",
-// וכל טבלה משוקפת בלשונית משלה (הוספה/עריכה/מחיקה -> עדכון השורה).
-// אם BACKUP_SHEET_ID לא מוגדר או אין חשבון שירות - הכל הופך ל-no-op שקט.
-const { google } = require('googleapis');
-const { loadServiceAccount } = require('./gauth');
+// גיבוי אוטומטי ל-Google Sheets דרך Apps Script Web App.
+// אין חשבון שירות ואין מפתחות — הגיליון בבעלות המשתמש, והשרת רק שולח אליו
+// בקשות POST לכתובת ה-/exec עם סיסמה משותפת.
+// אם SHEETS_WEBHOOK_URL לא מוגדר — הכל הופך ל-no-op שקט.
 
-const SHEET_ID = () => process.env.BACKUP_SHEET_ID || '';
-function enabled() { return !!(SHEET_ID() && loadServiceAccount()); }
+const URL = () => process.env.SHEETS_WEBHOOK_URL || '';
+const SECRET = () => process.env.SHEETS_SECRET || '';
+function enabled() { return !!URL(); }
 
-let _api = null;
-function api() {
-  if (_api) return _api;
-  const auth = new google.auth.GoogleAuth({
-    credentials: loadServiceAccount(),
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-  });
-  _api = google.sheets({ version: 'v4', auth });
-  return _api;
-}
-
-// throttle: פריסת הקריאות ל-Sheets כדי לא לחרוג ממכסת הבקשות לדקה (60/דקה)
-let _last = 0; const _queue = []; let _running = false;
-function throttle(fn) {
-  return new Promise((resolve, reject) => { _queue.push({ fn, resolve, reject }); pump(); });
-}
-async function pump() {
-  if (_running) return; _running = true;
-  while (_queue.length) {
-    const job = _queue.shift();
-    const wait = 1200 - (Date.now() - _last);
-    if (wait > 0) await new Promise(r => setTimeout(r, wait));
-    _last = Date.now();
-    try { job.resolve(await job.fn()); } catch (e) { job.reject(e); }
-  }
-  _running = false;
-}
-function _sp() { return api().spreadsheets; }
-const S = {
-  get: (p) => throttle(() => _sp().get(p)),
-  batchUpdate: (p) => throttle(() => _sp().batchUpdate(p)),
-  vGet: (p) => throttle(() => _sp().values.get(p)),
-  vUpdate: (p) => throttle(() => _sp().values.update(p)),
-  vAppend: (p) => throttle(() => _sp().values.append(p)),
-};
-
-const ACTIONS = { title: 'פעולות', header: ['זמן', 'משתמש', 'פעולה', 'טבלה', 'מזהה', 'פרטים'] };
+// סדר העמודות — חייב להתאים ללשוניות ב-Apps Script
 const TABS = {
-  patients:         { title: 'ממתינים',       cols: ['id', 'last_name', 'first_name', 'national_id', 'intake_date', 'birth_date', 'hmo', 'client_type', 'community', 'diagnosis', 'notes', 'urgency', 'hours', 'preferred_therapist_ids', 'preferred_group_ids', 'status', 'deleted', 'updated_at'] },
-  therapists:       { title: 'מטפלים',        cols: ['id', 'name', 'phone', 'email', 'notes', 'work_schedule', 'active', 'deleted', 'updated_at'] },
-  therapist_groups: { title: 'קבוצות מטפלים', cols: ['id', 'name', 'notes', 'members', 'deleted', 'updated_at'] },
-  assignments:      { title: 'סדרות טיפול',   cols: ['id', 'patient_id', 'therapist_id', 'total_sessions', 'start_date', 'hour', 'weekday', 'status', 'notes', 'deleted', 'updated_at'] },
-  sessions:         { title: 'פגישות',        cols: ['id', 'assignment_id', 'patient_id', 'therapist_id', 'session_num', 'date', 'hour', 'status', 'notes', 'deleted', 'updated_at'] },
+  patients:         ['id', 'last_name', 'first_name', 'national_id', 'intake_date', 'birth_date', 'hmo', 'client_type', 'community', 'diagnosis', 'notes', 'urgency', 'hours', 'preferred_therapist_ids', 'preferred_group_ids', 'status', 'deleted', 'updated_at'],
+  therapists:       ['id', 'name', 'phone', 'email', 'notes', 'work_schedule', 'active', 'deleted', 'updated_at'],
+  therapist_groups: ['id', 'name', 'notes', 'members', 'deleted', 'updated_at'],
+  assignments:      ['id', 'patient_id', 'therapist_id', 'total_sessions', 'start_date', 'hour', 'weekday', 'status', 'notes', 'deleted', 'updated_at'],
+  sessions:         ['id', 'assignment_id', 'patient_id', 'therapist_id', 'session_num', 'date', 'hour', 'status', 'notes', 'deleted', 'updated_at'],
 };
 
 function hasTab(table) { return !!TABS[table]; }
-function q(title) { return `'${String(title).replace(/'/g, "''")}'`; }
+
 function fmt(v) {
   if (v === null || v === undefined) return '';
-  if (v instanceof Date) return v.toISOString();
-  if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';
+  if (v instanceof Date) return v.toISOString().slice(0, 19).replace('T', ' ');
+  if (typeof v === 'boolean') return v ? 'כן' : '';
+  if (Array.isArray(v)) return v.join(', ');
   if (typeof v === 'object') return JSON.stringify(v);
   return v;
 }
 
-// יצירת הלשוניות + כותרות (פעם אחת, בעצלתיים)
-let _init = null;
-function ensureTabs() {
-  if (_init) return _init;
-  _init = (async () => {
-    const ss = SHEET_ID();
-    const meta = await S.get({ spreadsheetId: ss, fields: 'sheets.properties.title' });
-    const have = new Set((meta.data.sheets || []).map(s => s.properties.title));
-    const wanted = [{ title: ACTIONS.title, header: ACTIONS.header }, ...Object.values(TABS).map(t => ({ title: t.title, header: t.cols }))];
-    const toAdd = wanted.filter(w => !have.has(w.title));
-    if (toAdd.length) {
-      await S.batchUpdate({
-        spreadsheetId: ss,
-        requestBody: { requests: toAdd.map(w => ({ addSheet: { properties: { title: w.title } } })) },
-      });
-      for (const w of toAdd) {
-        await S.vUpdate({
-          spreadsheetId: ss, range: `${q(w.title)}!A1`, valueInputOption: 'RAW',
-          requestBody: { values: [w.header] },
-        });
-      }
-    }
-  })().catch(e => { _init = null; throw e; });
-  return _init;
+// תור סדרתי: Apps Script לא אוהב בקשות מקבילות, וגם ננעל בצד שלו
+let _chain = Promise.resolve();
+function queue(fn) {
+  _chain = _chain.then(fn).catch(e => { console.error('Sheets:', e.message); });
+  return _chain;
 }
 
-async function appendAction(user, action, table, id, details) {
-  const row = [new Date().toISOString(), (user && user.username) || '', action || '', table || '', String(id || ''), JSON.stringify(details || {})];
-  await S.vAppend({
-    spreadsheetId: SHEET_ID(), range: `${q(ACTIONS.title)}!A1`,
-    valueInputOption: 'RAW', insertDataOption: 'INSERT_ROWS',
-    requestBody: { values: [row] },
-  });
+async function post(payload, timeoutMs = 20000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(URL(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secret: SECRET(), ...payload }),
+      signal: ctrl.signal,
+      redirect: 'follow',   // Apps Script מפנה ל-script.googleusercontent.com
+    });
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); }
+    catch (e) { throw new Error('תשובה לא צפויה מהגיליון (בדוק שההרשאה היא Anyone ושהפריסה עדכנית)'); }
+    if (!data.ok) throw new Error(data.error || 'שגיאה לא ידועה מהגיליון');
+    return data;
+  } finally { clearTimeout(timer); }
 }
 
-// עדכון-או-הוספה של שורת נתונים לפי מזהה
-async function mirrorRow(table, record) {
-  const def = TABS[table];
-  if (!def || !record || record.id == null) return;
-  const ss = SHEET_ID(), idStr = String(record.id);
-  const got = await S.vGet({ spreadsheetId: ss, range: `${q(def.title)}!A:A` });
-  const colA = got.data.values || [];
-  let rowNum = 0;
-  for (let i = 1; i < colA.length; i++) { if (String((colA[i] || [])[0]) === idStr) { rowNum = i + 1; break; } }
-  const values = [def.cols.map(c => fmt(record[c]))];
-  if (rowNum) {
-    await S.vUpdate({ spreadsheetId: ss, range: `${q(def.title)}!A${rowNum}`, valueInputOption: 'RAW', requestBody: { values } });
-  } else {
-    await S.vAppend({ spreadsheetId: ss, range: `${q(def.title)}!A1`, valueInputOption: 'RAW', insertDataOption: 'INSERT_ROWS', requestBody: { values } });
-  }
+function rowFor(table, record) {
+  return TABS[table].map(c => fmt(record[c]));
 }
 
-// נקודת כניסה ראשית: רושם פעולה + משקף שורה (אם יש)
+// נקודת כניסה ראשית: רושם פעולה ביומן + משקף את השורה
 async function backup(user, action, table, id, record, details) {
   if (!enabled()) return;
-  try {
-    await ensureTabs();
-    await appendAction(user, action, table, id, details);
-    if (record && hasTab(table)) await mirrorRow(table, record);
-  } catch (e) {
-    console.error('Sheets backup failed:', e.message);
+  const actions = [{
+    type: 'log',
+    values: [new Date().toISOString().slice(0, 19).replace('T', ' '),
+             (user && user.username) || '', action || '', table || '',
+             String(id || ''), JSON.stringify(details || {})],
+  }];
+  if (record && hasTab(table)) {
+    actions.push({ type: 'upsert', table, values: rowFor(table, record) });
   }
+  return queue(() => post({ actions }));
 }
 
-// שיקוף מרוכז (לפעולות אצווה: יצירת סדרת פגישות, ביטול מרובה)
+// שיקוף מרוכז (יצירת סדרת פגישות, ביטול מרובה) — בקשה אחת לכל האצווה
 async function mirrorMany(table, records) {
-  if (!enabled() || !hasTab(table) || !Array.isArray(records)) return;
-  try {
-    await ensureTabs();
-    for (const r of records) await mirrorRow(table, r);
-  } catch (e) {
-    console.error('Sheets mirrorMany failed:', e.message);
+  if (!enabled() || !hasTab(table) || !Array.isArray(records) || !records.length) return;
+  const actions = records.map(r => ({ type: 'upsert', table, values: rowFor(table, r) }));
+  // פיצול לאצוות כדי לא לחרוג ממגבלת זמן הריצה של Apps Script
+  const CHUNK = 50;
+  for (let i = 0; i < actions.length; i += CHUNK) {
+    const slice = actions.slice(i, i + CHUNK);
+    await queue(() => post({ actions: slice }, 60000));
   }
 }
 
-// בדיקת חיבור: יוצר את הלשוניות ורושם שורת בדיקה. בניגוד ל-backup — זורק שגיאות,
-// כדי שסקריפט ההתקנה יוכל להציג למשתמש מה בדיוק נכשל.
+// בדיקת חיבור — בניגוד ל-backup, זורק שגיאות כדי שהתקנה תוכל להסביר מה נכשל
 async function verify() {
-  if (!SHEET_ID()) throw new Error('BACKUP_SHEET_ID לא מוגדר בקובץ .env');
-  if (!loadServiceAccount()) throw new Error('קובץ חשבון השירות חסר או פגום');
-  await ensureTabs();
-  await appendAction({ username: 'setup' }, 'בדיקת חיבור', '', '', { ok: true });
-  const meta = await S.get({ spreadsheetId: SHEET_ID(), fields: 'properties.title,sheets.properties.title' });
-  return {
-    title: meta.data.properties.title,
-    tabs: (meta.data.sheets || []).map(s => s.properties.title),
-  };
+  if (!URL()) throw new Error('SHEETS_WEBHOOK_URL לא מוגדר בקובץ .env');
+  const r = await post({ ping: true }, 30000);
+  return { sheet: r.sheet || '' };
 }
 
 module.exports = { enabled, hasTab, backup, mirrorMany, verify };
