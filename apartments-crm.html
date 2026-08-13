@@ -3660,27 +3660,71 @@ function openBulkExpEdit(aptId){
       '<div class="field"><label>תאריך</label><input id="eb-date" type="date"><div class="hint">ריק = ללא שינוי</div></div>'+
       (a&&a.hasManagement?'<div class="field"><label>דמי ניהול</label><select id="eb-mgmt">'+
         '<option value="__keep">— ללא שינוי —</option><option value="on">הפעל</option><option value="off">כבה</option></select></div>':'')+
+      '<div class="field full"><label>חלוקת שותפים</label>'+
+        '<select id="eb-split" onchange="onEbSplitMode()">'+
+          '<option value="__keep">— ללא שינוי —</option>'+
+          '<option value="__default">לפי אחוזי ברירת המחדל של הפרוייקט'+
+            (apPartners(aptId).length?' ('+apPartners(aptId).map(function(p){return esc(partnerName(p.partnerId))+" "+num(p.defaultPercent)+"%";}).join(" · ")+')':'')+'</option>'+
+          apSplitPresets(aptId).map(function(ps){
+            return '<option value="'+ps.id+'">חלוקה שמורה: '+esc(ps.name)+'</option>'; }).join("")+
+          '<option value="__custom">אחוזים שאזין כאן…</option>'+
+        '</select>'+
+        '<div id="eb-split-custom" style="display:none;padding-top:8px"><div class="form-grid">'+
+          apPartners(aptId).map(function(p){
+            return '<div class="field"><label>'+esc(partnerName(p.partnerId))+' %</label>'+
+              '<input class="eb-sp" data-p="'+p.partnerId+'" type="number" step="0.01" placeholder="'+num(p.defaultPercent)+'"></div>';
+          }).join("")+'</div>'+
+        '<div class="hint">האחוזים חייבים להסתכם ל-100. שדה ריק = 0%.</div></div>'+
+        '<div class="hint">החלוקה שתיבחר תחליף את החלוקה הקיימת בכל השלבים שסומנו. שלבי-אב מדולגים — החלוקה יושבת בתתי-השלבים.</div></div>'+
     '</div>'+
     (CU&&CU.role==="admin"?'<div class="field" style="background:#fff7f7;border:1px solid #f0d0d0;border-radius:10px;padding:8px"><label>🔒 הסתרה משאר המשתמשים</label>'+
       '<select id="eb-hidden"><option value="__keep">— ללא שינוי —</option><option value="on">הסתר</option><option value="off">חשוף</option></select></div>':''),
     saveLabel:"עדכן "+exps.length+" שלבים",onSave:function(){ return applyBulkExpEdit(aptId,ids); }});
+}
+/* מציגים את שדות האחוזים רק כשנבחר "אחוזים שאזין כאן" */
+function onEbSplitMode(){
+  var w=document.getElementById("eb-split-custom"); if(!w) return;
+  w.style.display=(val("eb-split")==="__custom")?"block":"none";
 }
 function applyBulkExpEdit(aptId,ids){
   if(!can("edit")){ toast("אין הרשאה","err"); return false; }
   var cat=val("eb-cat"), cls=val("eb-class"), date=val("eb-date");
   var mg=document.getElementById("eb-mgmt")?val("eb-mgmt"):"__keep";
   var hid=document.getElementById("eb-hidden")?val("eb-hidden"):"__keep";
-  if((cat==="__keep"||cat==="__new") && cls==="__keep" && !date && mg==="__keep" && hid==="__keep"){
+  var splitMode=document.getElementById("eb-split")?val("eb-split"):"__keep";
+  if((cat==="__keep"||cat==="__new") && cls==="__keep" && !date && mg==="__keep" && hid==="__keep" && splitMode==="__keep"){
     toast("לא נבחר מה לעדכן","warn"); return false;
   }
   var mgrs=apManagers(aptId);
   if(mg==="on" && !mgrs.length){ toast("אין מנהלים מוגדרים בפרוייקט — הוסף אותם קודם בלשונית \"דמי ניהול\"","err"); return false; }
+  /* בונים את שורות החלוקה פעם אחת — אותה חלוקה לכל השלבים שסומנו */
+  var splitRows=null;
+  if(splitMode!=="__keep"){
+    if(splitMode==="__custom"){
+      splitRows=[]; var sum=0;
+      document.querySelectorAll(".eb-sp").forEach(function(inp){
+        var pc=Number(inp.value)||0; sum+=pc;
+        if(pc>0) splitRows.push({partnerId:inp.getAttribute("data-p"),percent:pc});
+      });
+      if(!splitRows.length){ toast("הזן אחוזים לשותפים, או בחר \"ללא שינוי\" בחלוקה","err"); return false; }
+      if(Math.abs(sum-100)>0.01){ toast("החלוקה חייבת להסתכם ל-100% (כרגע "+num(sum)+"%)","err"); return false; }
+    }else{
+      splitRows=splitPresetRows(aptId,splitMode==="__default"?"__default":splitMode);
+      if(!splitRows.length){ toast("לחלוקה שנבחרה אין שורות — בדוק את השותפים","err"); return false; }
+    }
+  }
   var n=0;
   ids.forEach(function(id){
     var e=byId(DB.expenses,id); if(!e||e.deleted || isContainer(e.id)) return;
     if(cat!=="__keep" && cat!=="__new") e.categoryId=cat;
     if(cls!=="__keep") e.classification=cls;
     if(date) e.date=date;
+    if(splitRows){
+      DB.expenseSplits=DB.expenseSplits.filter(function(s){ return s.expenseId!==id; });
+      splitRows.forEach(function(r){
+        DB.expenseSplits.push({id:uid(),expenseId:id,partnerId:r.partnerId,percent:r.percent,deleted:false});
+      });
+    }
     if(mg==="on"){
       /* לא מספיק לסמן דגל — צריך גם ליצור את רשומות דמי הניהול לכל מנהל
          לפי ברירת המחדל שלו, אחרת החישוב יוצא 0 עד עריכה ידנית של השורה. */
