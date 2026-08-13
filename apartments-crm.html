@@ -644,7 +644,7 @@ document.addEventListener("keydown",function(e){
 function blankDB(){
   return {meta:{version:1,rev:0}, partners:[], apartments:[], apartmentPartners:[], managers:[],
     categories:[], expenses:[], expenseSplits:[], expenseManagerFees:[], accounts:[],
-    payments:[], deposits:[], income:[], bankMoves:[], stmtBanks:[], users:[], settings:{sheetsUrl:"", currency:"₪", paymentMethods:{}}};
+    payments:[], deposits:[], income:[], bankMoves:[], stmtBanks:[], withdrawals:[], users:[], settings:{sheetsUrl:"", currency:"₪", paymentMethods:{}}};
 }
 function toNum(v){ var n=Number(v); return isFinite(n)?n:0; }
 function toISO(v){ v=String(v==null?"":v).slice(0,10); return /^\d{4}-\d{2}-\d{2}$/.test(v)?v:""; }
@@ -673,6 +673,8 @@ function normalizeDB(d){
   (d.expenses||[]).forEach(function(e){ if(e.hidden==null) e.hidden=false; });
   (d.apartments||[]).forEach(function(a){ (a.splitPresets||[]).forEach(function(p){ (p.rows||[]).forEach(function(r){ r.percent=toNum(r.percent); }); }); });
   (d.deposits||[]).forEach(function(x){ x.amount=toNum(x.amount); x.date=toISO(x.date); });
+  d.withdrawals=d.withdrawals||[];
+  (d.withdrawals||[]).forEach(function(x){ x.amount=toNum(x.amount); x.date=toISO(x.date); });
   (d.income||[]).forEach(function(x){ x.amount=toNum(x.amount); x.date=toISO(x.date);
     if(x.units && !Array.isArray(x.units)) x.units=null;
     x.startDate=toISO(x.startDate); x.endDate=toISO(x.endDate);
@@ -1000,7 +1002,23 @@ function partnerPaid(aptId,pId){
   var inc=bankIncomeEntries(aptId).reduce(function(s,x){ return s+x.amount*incomePartnerPct(x.i,pId)/100; },0);
   return round2(direct+deps+inc);
 }
-function partnerBalance(aptId,pId){ return round2(partnerPaid(aptId,pId)-partnerShouldPay(aptId,pId)); }
+/* ---------- משיכת רווח ----------
+   שותף שמושך כסף מהפרוייקט. המשיכה יורדת מהיתרה שלו (הוא קיבל חזרה),
+   ואם שולמה מבנק זמני — גם מיתרת הבנק. */
+function apWithdrawals(aptId){
+  return active(DB.withdrawals).filter(function(w){ return w.apartmentId===aptId; });
+}
+function partnerWithdrawn(aptId,pId){
+  return round2(apWithdrawals(aptId).filter(function(w){ return w.partnerId===pId; })
+    .reduce(function(s,w){ return s+(Number(w.amount)||0); },0));
+}
+function bankWithdrawals(aptId,bankId){
+  return apWithdrawals(aptId).filter(function(w){
+    if(!w.accountId || !accountIsBank(w.accountId)) return false;
+    return bankId ? w.accountId===bankId : true;
+  });
+}
+function partnerBalance(aptId,pId){ return round2(partnerPaid(aptId,pId)-partnerShouldPay(aptId,pId)-partnerWithdrawn(aptId,pId)); }
 // קבוצת השותפים לדוחות = שותפי-הפרוייקט ∪ כל שותף שמופיע בחלוקת הוצאה (שלא ייעלם כסף מהדוח)
 function apReportPartnerIds(aptId){
   var set={}, order=[];
@@ -1117,7 +1135,8 @@ function bankBalance(aptId,bankId){
      רק בלי שיוך לשותף, כי זה כסף של הפרויקט */
   var inc=bankIncomeEntries(aptId,bankId).reduce(function(s,x){return s+x.amount;},0);
   var out=bankOutPayments(aptId,bankId).reduce(function(s,p){return s+(Number(p.amount)||0);},0);
-  return round2(deps+inc-out);
+  var wd=bankWithdrawals(aptId,bankId).reduce(function(s,w){return s+(Number(w.amount)||0);},0);
+  return round2(deps+inc-out-wd);
 }
 /* ============================================================
    התאמת בנק — שורות מדף הבנק מול הזמנות שטרם שולמו
@@ -1364,7 +1383,7 @@ function clientScopeMgmt(){
   DB.apartments    = (DB.apartments||[]).filter(function(a){ return canSeeApartment(a.id); });
   /* לא רלוונטי לדמי ניהול — ולא אמור להיחשף */
   DB.expenseSplits=[]; DB.deposits=[]; DB.income=[]; DB.partners=[]; DB.apartmentPartners=[]; DB.accounts=[];
-  DB.bankMoves=[]; DB.stmtBanks=[];
+  DB.bankMoves=[]; DB.stmtBanks=[]; DB.withdrawals=[];
 }
 /* "פרוייקטים מורשים" חלות על כל תפקיד חוץ ממנהל. קודם הן נאכפו רק על
    תפקיד "שותף", כך שצופה שהוגבל לפרוייקט אחת ראה בפועל את כולן. */
@@ -2029,16 +2048,23 @@ function viewApartmentOverview(aptId){
   }
 
   // כרטיסי שותפים
-  h+='<div class="card"><h3>שותפים — לתשלום / שולם / יתרה</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+
-     '<th>שותף</th><th>% ברירת מחדל</th><th>אמור לשלם</th><th>שילם</th><th>יתרה</th></tr></thead><tbody>';
+  var anyWd=apWithdrawals(aptId).length>0;
+  h+='<div class="card"><div class="toolbar"><h3 style="margin:0">שותפים — לתשלום / שולם / יתרה</h3><div class="sp"></div>'+
+    (can("edit")?'<button class="btn btn-sm" onclick="editWithdrawal(null,\''+aptId+'\')">💸 משיכת רווח</button>':'')+'</div>'+
+    '<div class="table-wrap"><table class="tbl"><thead><tr>'+
+     '<th>שותף</th><th>% ברירת מחדל</th><th>אמור לשלם</th><th>שילם</th>'+(anyWd?'<th>משך רווח</th>':'')+'<th>יתרה</th></tr></thead><tbody>';
   reportPartnerIds(aptId).forEach(function(pid){
-    var should=partnerShouldPay(aptId,pid), paid=partnerPaid(aptId,pid), bal=paid-should;
+    var should=partnerShouldPay(aptId,pid), paid=partnerPaid(aptId,pid);
+    var wd=partnerWithdrawn(aptId,pid), bal=round2(paid-should-wd);
     var dp=partnerDefaultPct(aptId,pid);
     h+='<tr><td>'+esc(partnerName(pid))+'</td><td>'+(dp==null?"—":num(dp)+"%")+'</td>'+
       '<td>'+money(should)+'</td><td>'+money(paid)+'</td>'+
+      (anyWd?'<td>'+(wd?money(wd):'<span class="muted">—</span>')+'</td>':'')+
       '<td class="'+(bal<0?"neg":"pos")+'">'+money(bal)+(bal<0?" (חייב)":bal>0?" (זכאי)":"")+'</td></tr>';
   });
-  h+='</tbody></table></div></div>';
+  h+='</tbody></table></div>'+
+    (anyWd?'<div class="hint">היתרה = שילם − אמור לשלם − משיכות רווח. פירוט המשיכות — בלשונית "בנק זמני" → "💸 משיכות רווח".</div>':'')+
+    '</div>';
   return h;
 }
 function stat(label,value,cls){ return '<div class="stat"><div class="label">'+esc(label)+'</div><div class="value '+(cls||"")+'">'+value+'</div></div>'; }
@@ -3202,17 +3228,18 @@ function sheetMgmt(list){
 function sheetPartnerSummary(list){
   /* הסימן זהה למסך: שלילי = חייב, חיובי = זכאי. אחרת סינון באקסל
      לפי "יתרה שלילית = חייב" היה מחזיר בדיוק את הקבוצה ההפוכה. */
-  var rows=[["פרוייקט","שותף","אמור לשלם","שילם","יתרה (שלילי = חייב)","חובה לפי מה ששולם","הפרש מול ששולם (שלילי = חייב)"]];
-  var t=[0,0,0];
+  var rows=[["פרוייקט","שותף","אמור לשלם","שילם","משך רווח","יתרה (שלילי = חייב)","חובה לפי מה ששולם","הפרש מול ששולם (שלילי = חייב)"]];
+  var t=[0,0,0,0];
   list.forEach(function(a){
     apReportPartnerIds(a.id).forEach(function(pid){
       var should=partnerShouldPay(a.id,pid), paid=partnerPaid(a.id,pid), due=partnerDueByPaid(a.id,pid);
-      rows.push([a.name,partnerName(pid),M(should),M(paid),M(round2(paid-should)),M(due),M(round2(paid-due))]);
-      t[0]+=should; t[1]+=paid; t[2]+=due;
+      var wd=partnerWithdrawn(a.id,pid);
+      rows.push([a.name,partnerName(pid),M(should),M(paid),M(wd),M(round2(paid-should-wd)),M(due),M(round2(paid-due))]);
+      t[0]+=should; t[1]+=paid; t[2]+=due; t[3]+=wd;
     });
   });
   return {name:"סיכום שותפים",rows:rows,
-    foot:[["סה\"כ","",M(t[0]),M(t[1]),M(round2(t[1]-t[0])),M(t[2]),M(round2(t[1]-t[2]))]]};
+    foot:[["סה\"כ","",M(t[0]),M(t[1]),M(t[3]),M(round2(t[1]-t[0]-t[3])),M(t[2]),M(round2(t[1]-t[2]))]]};
 }
 function sheetBank(list){
   var rows=[["פרוייקט","תאריך","שותף","סכום","אמצעי","מחשבון","הערה"]]; var tot=0;
@@ -3259,8 +3286,21 @@ function sheetAccounts(list){
 function dataSheets(list){
   return [sheetApartments(list),sheetExpenses(list),sheetCategories(list),sheetSplits(list),
           sheetPayments(list),sheetPartnerSummary(list),sheetMgmt(list),sheetBank(list),
-          sheetIncome(list),sheetIncomePays(list),sheetAccounts(list)]
+          sheetIncome(list),sheetIncomePays(list),sheetWithdrawals(list),sheetAccounts(list)]
          .filter(function(sh){ return sh.rows.length>1; });
+}
+/* גיליון משיכות רווח */
+function sheetWithdrawals(list){
+  var rows=[["פרוייקט","תאריך","שותף","סכום","מאיפה שולם","אמצעי","הערה"]]; var tot=0;
+  list.forEach(function(a){
+    apWithdrawals(a.id).slice().sort(function(x,y){return (x.date<y.date)?-1:1;}).forEach(function(w){
+      rows.push([a.name,D(w.date),partnerName(w.partnerId),M(w.amount),
+        (w.accountId&&accountIsBank(w.accountId))?bankName(w.accountId):"לא מהבנק הזמני",
+        methodName(w.method),w.note||""]);
+      tot+=Number(w.amount)||0;
+    });
+  });
+  return {name:"משיכות רווח",rows:rows,foot:[["סה\"כ","","",M(tot)]]};
 }
 /* גיליון תשלומי הזמנות (אורחים) — שורת פירוט לכל תשלום שנרשם על הכנסה */
 function sheetIncomePays(list){
@@ -3347,13 +3387,21 @@ function addAccountInline(aptId){
 function modulePartners(aptId){
   var rows=apPartners(aptId); var sum=rows.reduce(function(s,r){return s+(Number(r.defaultPercent)||0);},0);
   var h='<div class="toolbar"><h3 style="margin:0">שותפי הפרוייקט ואחוזי ברירת מחדל</h3><div class="sp"></div>'+
-    (can("edit")?'<button class="btn btn-primary btn-sm" onclick="addApartmentPartner(\''+aptId+'\')">➕ הוסף שותף</button>':'')+'</div>';
-  h+='<div class="card"><div class="table-wrap"><table class="tbl"><thead><tr><th>שותף</th><th>% ברירת מחדל</th><th></th></tr></thead><tbody>';
+    (can("edit")?'<button class="btn btn-sm" onclick="editWithdrawal(null,\''+aptId+'\')">💸 משיכת רווח</button> '+
+      '<button class="btn btn-primary btn-sm" onclick="addApartmentPartner(\''+aptId+'\')">➕ הוסף שותף</button>':'')+'</div>';
+  var anyWd=apWithdrawals(aptId).length>0;
+  h+='<div class="card"><div class="table-wrap"><table class="tbl"><thead><tr><th>שותף</th><th>% ברירת מחדל</th>'+
+    (anyWd?'<th>משך רווח</th>':'')+'<th></th></tr></thead><tbody>';
   rows.forEach(function(r){
-    h+='<tr><td>'+esc(partnerName(r.partnerId))+'</td><td>'+num(r.defaultPercent)+'%</td><td class="right">'+
+    var wd=anyWd?partnerWithdrawn(aptId,r.partnerId):0;
+    h+='<tr><td>'+esc(partnerName(r.partnerId))+'</td><td>'+num(r.defaultPercent)+'%</td>'+
+      (anyWd?'<td>'+(wd?money(wd):'<span class="muted">—</span>')+'</td>':'')+
+      '<td class="right">'+
       (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editApPartner(\''+r.id+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="softDelete(\'apartmentPartners\',\''+r.id+'\',\'להסיר שותף זה מהפרוייקט?\')">🗑️</button>':'')+'</td></tr>';
   });
-  h+='</tbody><tfoot><tr><td>סה"כ</td><td class="'+(Math.abs(sum-100)<0.01?"pos":"neg")+'">'+num(sum)+'%</td><td></td></tr></tfoot></table></div>';
+  h+='</tbody><tfoot><tr><td>סה"כ</td><td class="'+(Math.abs(sum-100)<0.01?"pos":"neg")+'">'+num(sum)+'%</td>'+
+    (anyWd?'<td>'+money(apWithdrawals(aptId).reduce(function(s,w){return s+(Number(w.amount)||0);},0))+'</td>':'')+
+    '<td></td></tr></tfoot></table></div>';
   if(Math.abs(sum-100)>=0.01) h+='<div class="hint neg">שים לב: סכום האחוזים אינו 100%.</div>';
   h+='</div>';
   h+=splitPresetsCardHtml(aptId);
@@ -5334,25 +5382,31 @@ function moduleBank(aptId){
   var deps=bankDeposits(aptId,selBank); var depSum=deps.reduce(function(s,d){return s+(Number(d.amount)||0);},0);
   var bankInc=bankIncomeEntries(aptId,selBank);
   var incSum=round2(bankInc.reduce(function(s,x){return s+x.amount;},0));
-  var out=bankBalance(aptId,selBank); var paidOut=round2(depSum+incSum-out);
+  var out=bankBalance(aptId,selBank);
+  var paidOut=round2(bankOutPayments(aptId,selBank).reduce(function(s,p){return s+(Number(p.amount)||0);},0));
+  var wds=bankWithdrawals(aptId,selBank);
+  var wdSum=round2(wds.reduce(function(s,w){return s+(Number(w.amount)||0);},0));
+  var allWds=apWithdrawals(aptId);
   var h='<div class="stat-grid"><div class="stat" style="border:2px solid var(--brand)"><div class="label">יתרת בנק צפויה'+
       (selBank?" · "+esc(bankName(selBank)):(multi?" · כל הבנקים":""))+'</div><div class="value">'+money(out)+'</div></div>'+
     stat("סך הפקדות",money(depSum))+
     (incSum?stat("הכנסות שנכנסו לבנק",money(incSum)):"")+
-    stat("שולם מהבנק",money(paidOut))+'</div>';
+    stat("שולם מהבנק",money(paidOut))+
+    (wdSum?stat("משיכות רווח",money(wdSum)):"")+'</div>';
   /* טבלת הבנקים — יתרה לכל אחד בנפרד */
   if(multi){
     h+='<div class="card"><div class="toolbar"><h3 style="margin:0">הבנקים בפרוייקט</h3><div class="sp"></div>'+
       (can("edit")?'<button class="btn btn-sm" onclick="addBankAccount(\''+aptId+'\')">➕ בנק נוסף</button>':'')+'</div>'+
-      '<div class="table-wrap"><table class="tbl"><thead><tr><th>בנק</th><th>הפקדות</th><th>הכנסות</th><th>שולם</th><th>יתרה</th><th></th></tr></thead><tbody>';
+      '<div class="table-wrap"><table class="tbl"><thead><tr><th>בנק</th><th>הפקדות</th><th>הכנסות</th><th>שולם</th><th>משיכות</th><th>יתרה</th><th></th></tr></thead><tbody>';
     banks.forEach(function(b){
       var bd=bankDeposits(aptId,b.id).reduce(function(s,d){return s+(Number(d.amount)||0);},0);
       var bi=bankIncomeEntries(aptId,b.id).reduce(function(s,x){return s+x.amount;},0);
       var bo=bankOutPayments(aptId,b.id).reduce(function(s,p){return s+(Number(p.amount)||0);},0);
-      var bal=round2(bd+bi-bo);
+      var bw=bankWithdrawals(aptId,b.id).reduce(function(s,w){return s+(Number(w.amount)||0);},0);
+      var bal=round2(bd+bi-bo-bw);
       h+='<tr'+(selBank===b.id?' style="background:#eef2ff"':'')+'>'+
         '<td><b>🏦 '+esc(b.name)+'</b>'+(b.id===primaryBankId(aptId)?' <span class="hint">(ראשי)</span>':'')+'</td>'+
-        '<td>'+money(bd)+'</td><td>'+money(bi)+'</td><td>'+money(bo)+'</td>'+
+        '<td>'+money(bd)+'</td><td>'+money(bi)+'</td><td>'+money(bo)+'</td><td>'+money(bw)+'</td>'+
         '<td class="'+(bal<-0.01?"neg":"pos")+'"><b>'+money(bal)+'</b></td>'+
         '<td class="right"><button class="btn btn-ghost btn-sm" onclick="Q.bankSel='+
           (selBank===b.id?"''":"'"+b.id+"'")+';rerender()">'+(selBank===b.id?"✕ בטל סינון":"הצג")+'</button></td></tr>';
@@ -5360,6 +5414,7 @@ function moduleBank(aptId){
     h+='</tbody><tfoot><tr><td>סה"כ</td><td>'+money(bankDeposits(aptId).reduce(function(s,d){return s+(Number(d.amount)||0);},0))+'</td>'+
       '<td>'+money(bankIncomeEntries(aptId).reduce(function(s,x){return s+x.amount;},0))+'</td>'+
       '<td>'+money(bankOutPayments(aptId).reduce(function(s,p){return s+(Number(p.amount)||0);},0))+'</td>'+
+      '<td>'+money(bankWithdrawals(aptId).reduce(function(s,w){return s+(Number(w.amount)||0);},0))+'</td>'+
       '<td>'+money(bankBalance(aptId))+'</td><td></td></tr></tfoot></table></div>'+
       '<div class="hint">"הצג" מסנן את הטבלאות שלמטה לבנק הזה בלבד.</div></div>';
   }
@@ -5405,11 +5460,61 @@ function moduleBank(aptId){
       (multi?'<td><span class="pill">🏦 '+esc(bankName(p.accountId))+'</span></td>':'')+'</tr>';
   });
   outH+='</tbody></table></div></div>';
+  // משיכות רווח של שותפים
+  var showWds=selBank?wds:allWds;
+  var wdH='<div class="toolbar"><h3 style="margin:0">משיכות רווח'+(selBank?' · '+esc(bankName(selBank)):'')+'</h3><div class="sp"></div>'+
+    (can("edit")?'<button class="btn btn-primary btn-sm" onclick="editWithdrawal(null,\''+aptId+'\')">💸 משיכת רווח</button>':'')+'</div>';
+  wdH+='<div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>שותף</th><th>סכום</th><th>מאיפה שולם</th><th>אמצעי</th><th>הערה</th><th></th></tr></thead><tbody>';
+  if(!showWds.length) wdH+='<tr><td colspan="7" class="empty">אין משיכות רווח</td></tr>';
+  showWds.slice().sort(function(x,y){return x.date<y.date?1:-1;}).forEach(function(w){
+    wdH+='<tr><td>'+dateHe(w.date)+'</td><td><b>'+esc(partnerName(w.partnerId))+'</b></td><td>'+money(w.amount)+'</td>'+
+      '<td>'+(w.accountId&&accountIsBank(w.accountId)?'<span class="pill">🏦 '+esc(bankName(w.accountId))+'</span>':'<span class="muted">לא מהבנק הזמני</span>')+'</td>'+
+      '<td>'+esc(METHODS[w.method]||"")+'</td>'+noteCell(w.note)+
+      '<td class="right">'+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editWithdrawal(\''+w.id+'\',\''+aptId+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="softDelete(\'withdrawals\',\''+w.id+'\',\'למחוק משיכת רווח?\')">🗑️</button>':'')+'</td></tr>';
+  });
+  wdH+='</tbody></table></div>'+
+    '<div class="hint">משיכה ששולמה מבנק זמני יורדת מיתרת הבנק; בכל מקרה היא יורדת מיתרת השותף בדוחות.</div>';
   return h+reportPicker("bankView",[
     {key:"dep",label:"💰 הפקדות שותפים",render:function(){ return depH; }},
     {key:"inc",label:"📥 הכנסות שנכנסו לבנק",show:bankInc.length>0,render:function(){ return incH; }},
-    {key:"out",label:"📤 תשלומים שיצאו",render:function(){ return outH; }}
+    {key:"out",label:"📤 תשלומים שיצאו",render:function(){ return outH; }},
+    {key:"wd",label:"💸 משיכות רווח",render:function(){ return wdH; }}
   ],{title:"בחר תצוגה"});
+}
+/* ---------- משיכת רווח — טופס ---------- */
+function editWithdrawal(id,aptId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var parts=apPartners(aptId);
+  if(!parts.length){ toast("בפרוייקט זה לא הוגדרו שותפים","err"); return; }
+  var w=id?byId(DB.withdrawals,id):{partnerId:"",amount:"",date:todayISO(),accountId:primaryBankId(aptId),method:"transfer",note:""};
+  var banks=aptBankAccounts(aptId);
+  refreshMethods();
+  openModal({title:id?"עריכת משיכת רווח":"💸 משיכת רווח",bodyHtml:
+    '<div class="field"><label>השותף שמושך</label><select id="wd-partner"><option value="">—</option>'+
+      parts.map(function(p){ return '<option value="'+p.partnerId+'"'+(w.partnerId===p.partnerId?" selected":"")+'>'+esc(partnerName(p.partnerId))+'</option>'; }).join("")+
+    '</select></div>'+
+    '<div class="field"><label>סכום (₪)</label><input id="wd-amount" type="number" step="0.01" value="'+esc(String(w.amount))+'"></div>'+
+    '<div class="field"><label>תאריך</label><input id="wd-date" type="date" value="'+esc(String(w.date))+'"></div>'+
+    '<div class="field"><label>מאיפה שולם</label><select id="wd-account">'+
+      '<option value="">לא מהבנק הזמני</option>'+
+      banks.map(function(b){ return '<option value="'+b.id+'"'+(w.accountId===b.id?" selected":"")+'>🏦 '+esc(b.name)+'</option>'; }).join("")+
+    '</select><div class="hint">משיכה מבנק זמני מקטינה את יתרת הבנק.</div></div>'+
+    '<div class="field"><label>אמצעי תשלום</label><select id="wd-method" onchange="onMethodPick(\'wd-method\')">'+methodOptions(w.method||"transfer")+'</select></div>'+
+    '<div class="field"><label>הערה</label><input id="wd-note" value="'+esc(w.note||"")+'"></div>',
+    saveLabel:"שמירה",onSave:function(){
+      var pid=val("wd-partner"); var amt=Number(val("wd-amount"))||0;
+      if(!pid){ toast("בחר שותף","err"); return false; }
+      if(amt<=0){ toast("סכום לא תקין","err"); return false; }
+      var accId=val("wd-account")||"";
+      /* אזהרה בלבד, לא חסימה — לפעמים מושכים לפני שכל ההכנסות נרשמו */
+      if(accId && !id && bankBalance(aptId,accId)<amt-0.01 &&
+        !confirm("יתרת "+bankName(accId)+" היא "+money(bankBalance(aptId,accId))+" — המשיכה תוריד אותה מתחת לאפס.\n\nלרשום בכל זאת?")) return false;
+      var mth=val("wd-method")||"transfer"; if(mth==="__new") mth=w.method||"transfer";
+      if(id){ w.partnerId=pid; w.amount=amt; w.date=val("wd-date"); w.accountId=accId; w.method=mth; w.note=val("wd-note"); }
+      else DB.withdrawals.push({id:uid(),apartmentId:aptId,partnerId:pid,amount:amt,
+        date:val("wd-date")||todayISO(),accountId:accId,method:mth,note:val("wd-note"),deleted:false});
+      save(); toast("משיכת הרווח נרשמה","ok"); rerender();
+    }});
 }
 /* ---------- העלאת אקסל של הפקדות ----------
    קובץ עם תאריך, סכום ואמצעי תשלום — כל השורות משויכות לשותף אחד
@@ -7171,26 +7276,38 @@ function payerReportBody(aptId,pid){
       amount:amt,method:x.pay?(METHODS[x.pay.method]||""):"",inv:"",
       note:num(pct)+"% מתוך "+money(x.amount)});
   });
+  /* משיכות רווח — כסף שיצא אל השותף, מוצג בשלילי ויורד מהסה"כ */
+  var tWd=0;
+  apWithdrawals(aptId).forEach(function(w){
+    if(w.partnerId!==pid) return;
+    var amt=Number(w.amount)||0; tWd+=amt;
+    rows.push({date:w.date,kind:"wd",
+      what:"משיכת רווח"+(w.accountId&&accountIsBank(w.accountId)?" מ"+bankName(w.accountId):""),
+      amount:-amt,method:METHODS[w.method]||"",inv:"",note:w.note||""});
+  });
   if(!rows.length) return '<div class="empty">אין תנועות למשלם הזה בפרויקט</div>';
   rows.sort(function(x,y){ return x.date<y.date?1:-1; });
-  var tot=round2(tExp+tMgmt+tDep+tInc);
+  var tot=round2(tExp+tMgmt+tDep+tInc-tWd);
   var KIND={exp:'<span class="badge badge-muted">הוצאה</span>',
             mgmt:'<span class="badge badge-mgmt">🧾 דמי ניהול</span>',
             dep:'<span class="badge badge-ok">הפקדה לבנק</span>',
-            inc:'<span class="badge badge-warn">הכנסה לבנק</span>'};
+            inc:'<span class="badge badge-warn">הכנסה לבנק</span>',
+            wd:'<span class="badge badge-danger">💸 משיכת רווח</span>'};
   var h='<div class="stat-grid">'+
       stat("שילם ישירות להוצאות",money(round2(tExp)))+
       stat("שילם לדמי ניהול",money(round2(tMgmt)))+
       stat("הפקיד לבנק הזמני",money(round2(tDep)))+
       (tInc>0.01?stat("חלקו בהכנסות לבנק",money(round2(tInc))):"")+
-      stat("סה\"כ הכניס",money(tot),"pos")+
+      (tWd>0.01?stat("משך רווח",money(round2(tWd)),"neg"):"")+
+      stat("סה\"כ הכניס (נטו)",money(tot),"pos")+
     '</div>'+
     '<div class="table-wrap"><table class="tbl"><thead><tr>'+
     '<th>תאריך</th><th>סוג</th><th>עבור</th><th>סכום</th><th>אמצעי</th><th>חשבונית</th><th>הערה</th>'+
     '</tr></thead><tbody>';
   rows.forEach(function(r){
     h+='<tr'+(r.kind==="mgmt"?' class="mgmt-row"':'')+'><td>'+dateHe(r.date)+'</td>'+
-      '<td>'+KIND[r.kind]+'</td><td>'+esc(r.what)+'</td><td><b>'+money(r.amount)+'</b></td>'+
+      '<td>'+KIND[r.kind]+'</td><td>'+esc(r.what)+'</td>'+
+      '<td class="'+(r.amount<0?"neg":"")+'"><b>'+money(r.amount)+'</b></td>'+
       '<td>'+esc(r.method)+'</td><td>'+esc(r.inv)+'</td><td>'+esc(r.note)+'</td></tr>';
   });
   h+='</tbody><tfoot><tr><td colspan="3">סה"כ ('+rows.length+' תנועות)</td>'+
