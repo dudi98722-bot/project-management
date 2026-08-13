@@ -13,18 +13,24 @@ const TABS = {
   patients:         ['id', 'last_name', 'first_name', 'national_id', 'intake_date', 'birth_date', 'hmo', 'client_type', 'community', 'diagnosis', 'notes', 'urgency', 'hours', 'preferred_therapist_ids', 'preferred_group_ids', 'status', 'deleted', 'updated_at', 'notes2'],
   therapists:       ['id', 'name', 'phone', 'email', 'notes', 'work_schedule', 'active', 'deleted', 'updated_at'],
   therapist_groups: ['id', 'name', 'notes', 'members', 'deleted', 'updated_at'],
-  assignments:      ['id', 'patient_id', 'therapist_id', 'total_sessions', 'start_date', 'hour', 'weekday', 'status', 'notes', 'deleted', 'updated_at'],
+  assignments:      ['id', 'patient_id', 'therapist_id', 'total_sessions', 'start_date', 'hour', 'weekday', 'status', 'notes', 'deleted', 'updated_at', 'kind'],
   sessions:         ['id', 'assignment_id', 'patient_id', 'therapist_id', 'session_num', 'date', 'hour', 'status', 'notes', 'deleted', 'updated_at'],
 };
 
 function hasTab(table) { return !!TABS[table]; }
 
+// מחרוזת שמתחילה ב-= / + / @ מתפרשת בגיליון כנוסחה חיה (formula injection) —
+// גרש מוביל מכריח טקסט; Sheets לא מציג אותו.
+function noFormula(s) {
+  return /^[=+@]/.test(s) ? "'" + s : s;
+}
 function fmt(v) {
   if (v === null || v === undefined) return '';
   if (v instanceof Date) return v.toISOString().slice(0, 19).replace('T', ' ');
   if (typeof v === 'boolean') return v ? 'כן' : '';
-  if (Array.isArray(v)) return v.join(', ');
+  if (Array.isArray(v)) return noFormula(v.join(', '));
   if (typeof v === 'object') return JSON.stringify(v);
+  if (typeof v === 'string') return noFormula(v);
   return v;
 }
 
@@ -70,7 +76,7 @@ async function backup(user, action, table, id, record, details) {
   const actions = [{
     type: 'log',
     values: [new Date().toISOString().slice(0, 19).replace('T', ' '),
-             (user && user.username) || '', action || '', table || '',
+             noFormula((user && user.username) || ''), noFormula(action || ''), table || '',
              String(id || ''), JSON.stringify(details || {})],
   }];
   if (record && hasTab(table)) {

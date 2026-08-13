@@ -107,6 +107,7 @@ async function loadAll() {
 // ===== ניווט =====
 const VIEWS = [
   ['waiting', 'רשימת ממתינים'],
+  ['existing', 'מטופלים קיימים'],
   ['series', 'סדרות טיפול'],
   ['calendar', 'לוח שנה'],
   ['therapists', 'מטפלים'],
@@ -123,6 +124,7 @@ function switchView(v) { S.view = v; renderNav(); render(); }
 function render() {
   const m = document.getElementById('main');
   if (S.view === 'waiting') renderWaiting(m);
+  else if (S.view === 'existing') renderExisting(m);
   else if (S.view === 'therapists') renderTherapists(m);
   else if (S.view === 'series') renderSeries(m);
   else if (S.view === 'calendar') renderCalendar(m);
@@ -209,6 +211,7 @@ function renderWaitingTable() {
       <td><span class="badge ${sCls}">${sLbl}</span></td>
       <td style="white-space:nowrap">
         ${S.me.caps.edit && p.status === 'waiting' ? `<button class="btn sm green" onclick="openAssignModal(${p.id})">שבץ</button>` : ''}
+        ${S.me.caps.edit ? `<button class="btn sm sec" onclick="openSingleModal(${p.id})">+ פגישה</button>` : ''}
         ${S.me.caps.edit ? `<button class="btn sm sec" onclick="openPatientModal(${p.id})">עריכה</button>` : ''}
         ${S.me.caps.del ? `<button class="btn sm sec" onclick="deletePatient(${p.id})">🗑</button>` : ''}
       </td>
@@ -470,6 +473,8 @@ async function openAssignModal(patientId) {
   document.getElementById('assign-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
+    const btn = e.target.querySelector('button.btn');
+    btn.disabled = true; // מניעת לחיצה כפולה
     try {
       const r = await api('/assignments', {
         method: 'POST', body: {
@@ -478,12 +483,9 @@ async function openAssignModal(patientId) {
           hour: Number(fd.get('hour')), notes: fd.get('notes'),
         }
       });
-      let msg = `נוצרה סדרה של ${r.sessions.length} פגישות`;
-      if (r.skipped.length) msg += ` (דילוג על ${r.skipped.length} שבועות תפוסים)`;
-      if (r.warnings.length) msg += '. ' + r.warnings.join('. ');
-      toast(msg);
+      toast(seriesCreatedMsg(r));
       closeModal(); await loadAll(); render();
-    } catch (err) { toast(err.message, true); }
+    } catch (err) { btn.disabled = false; toast(err.message, true); }
   });
 
   // טעינת זמינות מסוננת לפי המטופל
@@ -517,6 +519,173 @@ function assignDateHint() {
 }
 
 // =====================================================================
+// מטופלים קיימים — קליטה מהירה: שם + מטפל + שעה + סדרת פגישות
+// =====================================================================
+function renderExisting(m) {
+  const active = S.assignments.filter(a => a.status === 'active' && a.kind !== 'single');
+  m.innerHTML = `
+  <div class="card">
+    <h2>קליטת מטופל קיים</h2>
+    <div class="hint" style="margin-bottom:12px">
+      למטופלים שכבר בטיפול — רק שם, מטפל, שעה וכמות פגישות. בלי שאר הפרטים (אפשר להשלים אחר-כך בעריכה).
+    </div>
+    <form id="quick-form">
+      <div class="grid3">
+        <div class="field"><label>שם משפחה *</label><input name="last_name" required></div>
+        <div class="field"><label>שם פרטי *</label><input name="first_name" required></div>
+        <div class="field"><label>מטפל *</label><select name="therapist_id" id="qk-therapist" required onchange="quickLoadSlots()">
+          <option value="">בחר...</option>
+          ${S.therapists.filter(t => t.active).map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}
+        </select></div>
+        <div class="field"><label>כמות פגישות *</label><input name="total_sessions" type="number" min="1" max="200" value="12" required></div>
+        <div class="field"><label>שעה *</label><select name="hour" id="qk-hour" required>
+          ${ALL_HOURS.map(h => `<option value="${h}">${hourRange(h)}</option>`).join('')}
+        </select></div>
+        <div class="field"><label>תאריך התחלה *</label><input name="start_date" id="qk-date" type="date" value="${todayStr()}" required onchange="quickDateHint()"></div>
+      </div>
+      <div class="field"><label>הערות</label><input name="notes"></div>
+      <div id="qk-slots" class="hint" style="margin-bottom:10px"></div>
+      <div class="hint" id="qk-hint" style="margin-bottom:10px"></div>
+      <button class="btn green">קלוט ושבץ</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>סדרות פעילות</h2>
+    <div class="table-wrap">
+    ${!active.length ? '<div class="empty">אין סדרות פעילות</div>' : `
+    <table><thead><tr><th>מטופל</th><th>מטפל</th><th>יום ושעה</th><th>התחלה</th><th>התקדמות</th><th></th></tr></thead><tbody>
+    ${active.map(a => `<tr>
+      <td><b>${esc(a.patient_name)}</b></td>
+      <td>${esc(a.therapist_name)}</td>
+      <td>${WEEKDAYS[a.weekday]} ${hourLabel(a.hour)}</td>
+      <td>${fmtDateHe(a.start_date)}</td>
+      <td>${(a.done_count || 0) + (a.past_count || 0)} / ${a.total_sessions}</td>
+      <td style="white-space:nowrap">
+        <button class="btn sm sec" onclick="openSessionsModal(${a.id})">פגישות</button>
+        ${S.me.caps.edit ? `<button class="btn sm sec" onclick="openSingleModal(${a.patient_id})">+ פגישה</button>` : ''}
+      </td>
+    </tr>`).join('')}
+    </tbody></table>`}
+    </div>
+  </div>`;
+  quickDateHint();
+
+  document.getElementById('quick-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const btn = e.target.querySelector('button.btn');
+    btn.disabled = true; // מניעת לחיצה כפולה שיוצרת שיבוץ כפול
+    try {
+      const r = await api('/assignments/quick', { method: 'POST', body: {
+        last_name: fd.get('last_name'), first_name: fd.get('first_name'),
+        therapist_id: Number(fd.get('therapist_id')), total_sessions: Number(fd.get('total_sessions')),
+        start_date: fd.get('start_date'), hour: Number(fd.get('hour')), notes: fd.get('notes'),
+      }});
+      toast(seriesCreatedMsg(r));
+      await loadAll(); render();
+    } catch (err) { btn.disabled = false; toast(err.message, true); }
+  });
+}
+
+// הודעת סיכום ליצירת סדרה, כולל פירוט דילוגים
+function seriesCreatedMsg(r) {
+  let msg = `נוצרה סדרה של ${r.sessions.length} פגישות`;
+  const parts = [];
+  if ((r.skipped_busy || []).length) parts.push(`${r.skipped_busy.length} שבועות תפוסים`);
+  if ((r.skipped_holidays || []).length) parts.push(`${r.skipped_holidays.length} ימי חופש`);
+  if (parts.length) msg += ` (דילוג על ${parts.join(' + ')})`;
+  if ((r.warnings || []).length) msg += '. ' + r.warnings.join('. ');
+  return msg;
+}
+
+// משבצות פנויות של המטפל שנבחר — לחיצה ממלאת שעה ותאריך
+async function quickLoadSlots() {
+  const tid = document.getElementById('qk-therapist').value;
+  const el = document.getElementById('qk-slots');
+  if (!tid) { el.innerHTML = ''; return; }
+  el.innerHTML = 'טוען משבצות פנויות...';
+  try {
+    const av = await api(`/calendar/availability?weeks=4&therapist_id=${tid}`);
+    const t = av.therapists[0];
+    if (!t || !t.free_slots.length) { el.innerHTML = 'אין משבצות שבועיות פנויות אצל מטפל זה בשבועות הקרובים'; return; }
+    el.innerHTML = 'משבצות פנויות (לחץ לבחירה): ' + t.free_slots.map(s =>
+      `<span class="slot-chip" onclick="quickPickSlot(${s.weekday},${s.hour})">${WEEKDAYS[s.weekday]} ${hourLabel(s.hour)}</span>`).join(' ');
+  } catch (e) { el.innerHTML = ''; }
+}
+function quickPickSlot(weekday, hour) {
+  document.getElementById('qk-hour').value = String(hour);
+  document.getElementById('qk-date').value = nextDateForWeekday(weekday);
+  quickDateHint();
+}
+function quickDateHint() {
+  const d = document.getElementById('qk-date');
+  const el = document.getElementById('qk-hint');
+  if (d && d.value && el) el.textContent = 'הפגישות ייקבעו בכל יום ' + WEEKDAYS[weekdayOf(d.value)] + ' באותה שעה (דילוג אוטומטי על ימי חופש)';
+}
+
+// =====================================================================
+// פגישה בודדת למטופל
+// =====================================================================
+function openSingleModal(patientId) {
+  const p = S.patients.find(x => x.id === patientId);
+  if (!p) return;
+  showModal(`
+  <h2>פגישה בודדת — ${esc(p.last_name)} ${esc(p.first_name)} <button class="x" onclick="closeModal()">✕</button></h2>
+  <form id="single-form">
+    <div class="grid3">
+      <div class="field"><label>מטפל *</label><select name="therapist_id" id="sg-therapist" required onchange="singleUpdateHours()">
+        <option value="">בחר...</option>
+        ${S.therapists.filter(t => t.active).map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}
+      </select></div>
+      <div class="field"><label>תאריך *</label><input name="date" id="sg-date" type="date" value="${todayStr()}" required onchange="singleUpdateHours()"></div>
+      <div class="field"><label>שעה *</label><select name="hour" id="sg-hour" required></select></div>
+    </div>
+    <div class="field"><label>הערות</label><input name="notes"></div>
+    <div class="hint" id="sg-hint"></div>
+    <div class="modal-actions">
+      <button class="btn green">קבע פגישה</button>
+      <button type="button" class="btn sec" onclick="closeModal()">ביטול</button>
+    </div>
+  </form>`);
+  singleUpdateHours();
+  document.getElementById('single-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const btn = e.target.querySelector('button.btn');
+    btn.disabled = true; // מניעת לחיצה כפולה
+    try {
+      await api('/assignments/single', { method: 'POST', body: {
+        patient_id: p.id, therapist_id: Number(fd.get('therapist_id')),
+        date: fd.get('date'), hour: Number(fd.get('hour')), notes: fd.get('notes'),
+      }});
+      toast('הפגישה נקבעה');
+      closeModal(); await loadAll(); render();
+    } catch (err) { btn.disabled = false; toast(err.message, true); }
+  });
+}
+
+// שעות אפשריות לפגישה בודדת: לפי לו"ז המטפל ביום שנבחר (תפוס/חופש נבדק בשרת)
+function singleUpdateHours() {
+  const tid = Number(document.getElementById('sg-therapist').value);
+  const date = document.getElementById('sg-date').value;
+  const hourSel = document.getElementById('sg-hour');
+  const hint = document.getElementById('sg-hint');
+  const t = S.therapists.find(x => x.id === tid);
+  if (!t || !date) { hourSel.innerHTML = ALL_HOURS.map(h => `<option value="${h}">${hourRange(h)}</option>`).join(''); hint.textContent = ''; return; }
+  const wd = weekdayOf(date);
+  const ws = t.work_schedule || {};
+  const hours = (ws[String(wd)] || []);
+  if (!hours.length) {
+    hourSel.innerHTML = '<option value="">—</option>';
+    hint.textContent = `${esc(t.name)} לא עובד ביום ${WEEKDAYS[wd]} — בחר תאריך אחר`;
+    return;
+  }
+  hourSel.innerHTML = hours.map(h => `<option value="${h}">${hourRange(h)}</option>`).join('');
+  hint.textContent = `שעות העבודה של ${t.name} ביום ${WEEKDAYS[wd]}`;
+}
+
+// =====================================================================
 // סדרות טיפול
 // =====================================================================
 function renderSeries(m) {
@@ -531,13 +700,14 @@ function renderSeries(m) {
     ${rows.map(a => {
       const doneish = (a.done_count || 0) + (a.past_count || 0);
       const [sLbl, sCls] = ASTATUS[a.status] || ASTATUS.active;
+      const single = a.kind === 'single';
       return `<tr>
-        <td><b>${esc(a.patient_name)}</b></td>
+        <td><b>${esc(a.patient_name)}</b>${single ? ' <span class="badge b-blue">פגישה בודדת</span>' : ''}</td>
         <td>${esc(a.therapist_name)}</td>
-        <td>${WEEKDAYS[a.weekday]} ${hourLabel(a.hour)}</td>
+        <td>${single ? fmtDateHe(a.start_date) + ' ' : WEEKDAYS[a.weekday] + ' '}${hourLabel(a.hour)}</td>
         <td>${fmtDateHe(a.start_date)}</td>
         <td>${fmtDateHe(a.last_date)}</td>
-        <td>${doneish} / ${a.total_sessions} ${a.cancelled_count ? `<span class="hint">(${a.cancelled_count} בוטלו)</span>` : ''}</td>
+        <td>${single ? '—' : `${doneish} / ${a.total_sessions} ${a.cancelled_count ? `<span class="hint">(${a.cancelled_count} בוטלו)</span>` : ''}`}</td>
         <td><span class="badge ${sCls}">${sLbl}</span></td>
         <td style="white-space:nowrap">
           <button class="btn sm sec" onclick="openSessionsModal(${a.id})">פגישות</button>
@@ -586,7 +756,9 @@ async function openSessionsModal(aid) {
 async function setSessionStatus(sid, status, aid) {
   try {
     await api('/assignments/sessions/' + sid, { method: 'PUT', body: { status } });
-    await loadAll(); openSessionsModal(aid);
+    await loadAll();
+    render();               // רענון הטבלאות/הלוח שמאחורי המודאל (התקדמות, סטטוס "הושלמה")
+    openSessionsModal(aid); // והמודאל עצמו נפתח מחדש מעל
   } catch (e) { toast(e.message, true); }
 }
 
@@ -598,11 +770,69 @@ function renderCalendar(m) {
     <div class="toolbar">
       <button class="btn ${S.calMode === 'week' ? '' : 'sec'}" onclick="S.calMode='week';render()">לוח שבועי למטפל</button>
       <button class="btn ${S.calMode === 'avail' ? '' : 'sec'}" onclick="S.calMode='avail';render()">שעות פנויות</button>
+      <button class="btn ${S.calMode === 'holidays' ? '' : 'sec'}" onclick="S.calMode='holidays';render()">ימי חופש וחג</button>
     </div>
     <div id="cal-body"></div>
   </div>`;
   if (S.calMode === 'week') renderWeekView();
+  else if (S.calMode === 'holidays') renderHolidaysView();
   else renderAvailView();
+}
+
+// ===== ניהול ימי חופש וחג =====
+async function renderHolidaysView() {
+  const body = document.getElementById('cal-body');
+  body.innerHTML = `
+  <div class="hint" style="margin-bottom:12px">
+    בתאריכים שמוגדרים כאן לא נקבעות פגישות: יצירת סדרה מדלגת עליהם אוטומטית לשבוע הבא,
+    ופגישה בודדת נחסמת. אפשר להוסיף יום בודד או טווח (למשל כל חול המועד).
+  </div>
+  ${S.me.caps.edit ? `
+  <form id="hol-form" class="toolbar" style="align-items:end">
+    <div class="field"><label>מתאריך *</label><input type="date" name="from" required></div>
+    <div class="field"><label>עד תאריך (ריק = יום בודד)</label><input type="date" name="to"></div>
+    <div class="field"><label>שם (למשל: פסח)</label><input name="name" style="min-width:160px"></div>
+    <button class="btn">הוסף</button>
+  </form>` : ''}
+  <div id="hol-list"><div class="empty">טוען...</div></div>`;
+
+  if (S.me.caps.edit) {
+    document.getElementById('hol-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      try {
+        const r = await api('/holidays', { method: 'POST', body: {
+          from: fd.get('from'), to: fd.get('to') || fd.get('from'), name: fd.get('name') } });
+        toast(`נוספו ${r.added} ימי חופש`);
+        renderHolidaysView();
+      } catch (err) { toast(err.message, true); }
+    });
+  }
+  loadHolidaysList();
+}
+
+async function loadHolidaysList() {
+  const el = document.getElementById('hol-list');
+  try {
+    const from = addDaysStr(todayStr(), -30);
+    const rows = await api(`/holidays?from=${from}`);
+    if (!rows.length) { el.innerHTML = '<div class="empty">אין ימי חופש מוגדרים</div>'; return; }
+    el.innerHTML = `<div class="table-wrap"><table>
+      <thead><tr><th>תאריך</th><th>יום</th><th>שם</th><th></th></tr></thead><tbody>
+      ${rows.map(h => `<tr ${h.date < todayStr() ? 'style="opacity:.5"' : ''}>
+        <td>${fmtDateHe(h.date)}</td>
+        <td>${WEEKDAYS[weekdayOf(h.date)]}</td>
+        <td>${esc(h.name || '')}</td>
+        <td>${S.me.caps.edit ? `<button class="btn sm sec" onclick="deleteHoliday(${h.id})">🗑</button>` : ''}</td>
+      </tr>`).join('')}
+      </tbody></table></div>
+      <div class="hint" style="margin-top:8px">מוצגים ימים מ-30 הימים האחרונים והלאה</div>`;
+  } catch (e) { el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+
+async function deleteHoliday(id) {
+  try { await api('/holidays/' + id, { method: 'DELETE' }); loadHolidaysList(); }
+  catch (e) { toast(e.message, true); }
 }
 
 async function renderWeekView() {
@@ -631,11 +861,13 @@ async function renderWeekView() {
     const ws = r.therapist.work_schedule || {};
     const byKey = new Map();
     for (const s of r.sessions) byKey.set(`${s.date}|${s.hour}`, s);
+    const holByDate = new Map();
+    for (const h of (r.holidays || [])) holByDate.set(h.date, h.name || 'חופש');
     const days = Array.from({ length: 7 }, (_, i) => addDaysStr(r.week_start, i));
     const today = todayStr();
 
     document.getElementById('cal-grid').innerHTML = `<table class="cal-table">
-      <thead><tr><th></th>${days.map((d, i) => `<th>${WEEKDAYS[i]}<br><small>${fmtDateHe(d)}</small></th>`).join('')}</tr></thead>
+      <thead><tr><th></th>${days.map((d, i) => `<th${holByDate.has(d) ? ' class="cal-th-holiday"' : ''}>${WEEKDAYS[i]}<br><small>${fmtDateHe(d)}</small>${holByDate.has(d) ? `<br><small class="cal-holiday-name">🏖 ${esc(holByDate.get(d))}</small>` : ''}</th>`).join('')}</tr></thead>
       <tbody>
       ${ALL_HOURS.map(h => `<tr>
         <td class="hlabel">${hourRange(h)}</td>
@@ -645,8 +877,10 @@ async function renderWeekView() {
           const pastCls = d < today ? ' cal-slot-past' : '';
           if (s) {
             const [lbl] = SSTATUS[s.status] || SSTATUS.scheduled;
-            return `<td class="cal-slot-busy${pastCls}" onclick="openSessionsModal(${s.assignment_id})">${esc(s.patient_name)}<small>פגישה ${s.session_num}/${s.total_sessions}${s.status !== 'scheduled' ? ' · ' + lbl : ''}</small></td>`;
+            const numTxt = s.kind === 'single' ? 'פגישה בודדת' : `פגישה ${s.session_num}/${s.total_sessions}`;
+            return `<td class="cal-slot-busy${pastCls}" onclick="openSessionsModal(${s.assignment_id})">${esc(s.patient_name)}<small>${numTxt}${s.status !== 'scheduled' ? ' · ' + lbl : ''}</small></td>`;
           }
+          if (holByDate.has(d)) return `<td class="cal-slot-holiday" title="${esc(holByDate.get(d))}"></td>`;
           if (working) return `<td class="cal-slot-free${pastCls}">פנוי</td>`;
           return `<td class="cal-slot-off"></td>`;
         }).join('')}

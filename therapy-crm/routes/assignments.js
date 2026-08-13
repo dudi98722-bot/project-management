@@ -1,4 +1,5 @@
-// שיוך בפועל למטפל — יצירת סדרת טיפולים שבועית (אותו יום ושעה, N פגישות)
+// שיוך בפועל למטפל — סדרות טיפול שבועיות, קליטה מהירה של מטופל קיים, ופגישות בודדות.
+// יצירת פגישות מדלגת אוטומטית על שבועות תפוסים ועל ימי חופש/חג (הסדרה מתארכת).
 const express = require('express');
 const { pool, logAction, validId } = require('../db');
 const { authenticate, can } = require('../middleware/auth');
@@ -50,8 +51,69 @@ router.get('/:id/sessions', authenticate, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-// יצירת סדרה: { patient_id, therapist_id, total_sessions, start_date, hour, notes }
-// פגישה שמתנגשת עם פגישה קיימת של המטפל — מדלגים על אותו שבוע וממשיכים הלאה (הסדרה מתארכת).
+// ===== עזרי אימות משותפים =====
+async function loadPatientTherapist(client, patientId, therapistId) {
+  const pr = await client.query('SELECT * FROM patients WHERE id=$1 AND deleted=false', [patientId]);
+  if (!pr.rows.length) return { error: 'מטופל לא נמצא' };
+  const tr = await client.query('SELECT * FROM therapists WHERE id=$1 AND deleted=false', [therapistId]);
+  if (!tr.rows.length) return { error: 'מטפל לא נמצא' };
+  return { patient: pr.rows[0], therapist: tr.rows[0] };
+}
+
+function worksAt(therapist, weekday, hour) {
+  const schedule = therapist.work_schedule || {};
+  const dayHours = schedule[String(weekday)] || schedule[weekday] || [];
+  return dayHours.includes(hour);
+}
+
+// יצירת פגישות שבועיות: מדלג על ימי חופש ועל שעות תפוסות (הסדרה נמשכת שבוע נוסף).
+// "תפוס" = המטפל עסוק באותה שעה, או שלמטופל עצמו כבר יש פגישה אז (אצל כל מטפל).
+// מחזיר את הפגישות שנוצרו ואת הדילוגים, מופרדים לפי סיבה.
+async function insertWeeklySessions(client, a, startDate, count, startNum) {
+  const created = [], skippedBusy = [], skippedHoliday = [];
+  let date = startDate, num = startNum;
+  const maxIter = count * 2 + 60; // מעצור בטיחות
+  for (let iter = 0; num < startNum + count && iter < maxIter; iter++, date = addDays(date, 7)) {
+    const ds = fmtDate(date);
+    const hol = await client.query('SELECT name FROM holidays WHERE date=$1', [ds]);
+    if (hol.rows.length) { skippedHoliday.push(ds); continue; }
+    const busy = await client.query(
+      `SELECT 1 FROM sessions
+        WHERE date=$1 AND hour=$2 AND status='scheduled' AND deleted=false
+          AND (therapist_id=$3 OR patient_id=$4) LIMIT 1`,
+      [ds, a.hour, a.therapist_id, a.patient_id]);
+    if (busy.rows.length) { skippedBusy.push(ds); continue; }
+    const sr = await client.query(
+      `INSERT INTO sessions (assignment_id, patient_id, therapist_id, session_num, date, hour)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [a.id, a.patient_id, a.therapist_id, num, ds, a.hour]);
+    created.push(sr.rows[0]);
+    num++;
+  }
+  return { created, skippedBusy, skippedHoliday };
+}
+
+// הפרת אילוץ הייחודיות uq_sessions_slot — מישהו תפס את המשבצת במקביל
+function isSlotTaken(e) { return e && e.code === '23505'; }
+const SLOT_TAKEN_MSG = 'המשבצת נתפסה הרגע על ידי משתמש אחר — רענן ונסה שוב';
+
+// משבצת שבועית שתפוסה על ידי סדרה פעילה אחרת: בלי זה, לוגיקת הדילוג הייתה
+// דוחפת את הסדרה החדשה שבועות רבים קדימה בשקט במקום להיכשל בקול.
+async function weeklySlotOccupied(client, therapistId, weekday, hour, fromDate) {
+  const r = await client.query(
+    `SELECT 1 FROM assignments a
+      WHERE a.therapist_id=$1 AND a.weekday=$2 AND a.hour=$3
+        AND a.status='active' AND a.deleted=false
+        AND EXISTS (SELECT 1 FROM sessions s
+                     WHERE s.assignment_id=a.id AND s.status='scheduled'
+                       AND s.deleted=false AND s.date >= $4)
+      LIMIT 1`, [therapistId, weekday, hour, fromDate]);
+  return r.rows.length > 0;
+}
+const WEEKLY_TAKEN_MSG = 'המשבצת השבועית הזו תפוסה על ידי סדרה פעילה אחרת אצל המטפל';
+
+// ===== יצירת סדרה למטופל מרשימת ההמתנה =====
+// { patient_id, therapist_id, total_sessions, start_date, hour, notes }
 router.post('/', authenticate, can('edit'), async (req, res) => {
   const b = req.body || {};
   const patientId = validId(b.patient_id), therapistId = validId(b.therapist_id);
@@ -66,18 +128,13 @@ router.post('/', authenticate, can('edit'), async (req, res) => {
   const weekday = start.getUTCDay();
   const client = await pool.connect();
   try {
-    const pr = await client.query('SELECT * FROM patients WHERE id=$1 AND deleted=false', [patientId]);
-    if (!pr.rows.length) return res.status(404).json({ error: 'מטופל לא נמצא' });
-    const tr = await client.query('SELECT * FROM therapists WHERE id=$1 AND deleted=false', [therapistId]);
-    if (!tr.rows.length) return res.status(404).json({ error: 'מטפל לא נמצא' });
-    const therapist = tr.rows[0], patient = pr.rows[0];
+    const ctx = await loadPatientTherapist(client, patientId, therapistId);
+    if (ctx.error) return res.status(404).json({ error: ctx.error });
+    const { patient, therapist } = ctx;
 
-    const schedule = therapist.work_schedule || {};
-    const dayHours = schedule[String(weekday)] || schedule[weekday] || [];
-    if (!dayHours.includes(hour)) {
+    if (!worksAt(therapist, weekday, hour)) {
       return res.status(400).json({ error: 'המטפל לא עובד ביום ובשעה שנבחרו (בדוק את לו"ז העבודה שלו)' });
     }
-
     const warnings = [];
     const patientHours = Array.isArray(patient.hours) ? patient.hours : [];
     if (patientHours.length && !patientHours.includes(hour)) {
@@ -85,46 +142,164 @@ router.post('/', authenticate, can('edit'), async (req, res) => {
     }
 
     await client.query('BEGIN');
+    if (await weeklySlotOccupied(client, therapistId, weekday, hour, fmtDate(start))) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: WEEKLY_TAKEN_MSG });
+    }
     const ar = await client.query(
-      `INSERT INTO assignments (patient_id, therapist_id, total_sessions, start_date, hour, weekday, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      `INSERT INTO assignments (patient_id, therapist_id, total_sessions, start_date, hour, weekday, notes, kind)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'series') RETURNING *`,
       [patientId, therapistId, total, fmtDate(start), hour, weekday, b.notes || null]);
     const assignment = ar.rows[0];
 
-    // יצירת הפגישות: שבוע אחר שבוע, דילוג על תאריך תפוס (הסדרה נמשכת שבוע נוסף)
-    const created = [], skipped = [];
-    let date = start, num = 1;
-    const maxIter = total * 2 + 52; // מעצור בטיחות
-    for (let iter = 0; num <= total && iter < maxIter; iter++, date = addDays(date, 7)) {
-      const ds = fmtDate(date);
-      const conflict = await client.query(
-        `SELECT 1 FROM sessions WHERE therapist_id=$1 AND date=$2 AND hour=$3 AND status='scheduled' AND deleted=false LIMIT 1`,
-        [therapistId, ds, hour]);
-      if (conflict.rows.length) { skipped.push(ds); continue; }
-      const sr = await client.query(
-        `INSERT INTO sessions (assignment_id, patient_id, therapist_id, session_num, date, hour)
-         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-        [assignment.id, patientId, therapistId, num, ds, hour]);
-      created.push(sr.rows[0]);
-      num++;
-    }
+    const { created, skippedBusy, skippedHoliday } = await insertWeeklySessions(client, assignment, start, total, 1);
     if (created.length < total) {
       await client.query('ROLLBACK');
-      return res.status(409).json({ error: 'לא ניתן לשבץ את כל הפגישות — יותר מדי התנגשויות ביומן המטפל בשעה זו' });
+      return res.status(409).json({ error: 'לא ניתן לשבץ את כל הפגישות — יותר מדי התנגשויות או ימי חופש בשעה זו' });
     }
     await client.query(`UPDATE patients SET status='assigned', updated_at=NOW() WHERE id=$1`, [patientId]);
     await client.query('COMMIT');
 
     await logAction(req.user, 'add', 'assignments', assignment.id, {
       patient: `${patient.last_name} ${patient.first_name}`, therapist: therapist.name,
-      total, start_date: fmtDate(start), hour, skipped: skipped.length });
+      total, start_date: fmtDate(start), hour, skipped_busy: skippedBusy.length, skipped_holidays: skippedHoliday.length });
     sheets.backup(req.user, 'add', 'assignments', assignment.id, assignment, {
       patient: `${patient.last_name} ${patient.first_name}`, therapist: therapist.name });
     sheets.mirrorMany('sessions', created);
 
-    res.status(201).json({ assignment, sessions: created, skipped, warnings });
+    res.status(201).json({ assignment, sessions: created, skipped_busy: skippedBusy, skipped_holidays: skippedHoliday, warnings });
   } catch (e) {
     try { await client.query('ROLLBACK'); } catch (_) {}
+    if (isSlotTaken(e)) return res.status(409).json({ error: SLOT_TAKEN_MSG });
+    console.error(e); res.status(500).json({ error: 'שגיאת שרת' });
+  } finally { client.release(); }
+});
+
+// ===== קליטה מהירה של מטופל קיים =====
+// יוצר מטופל עם שם בלבד + סדרת טיפולים, בפעולה אחת.
+// { last_name, first_name, therapist_id, total_sessions, start_date, hour, notes }
+router.post('/quick', authenticate, can('edit'), async (req, res) => {
+  const b = req.body || {};
+  const last = String(b.last_name || '').trim();
+  const first = String(b.first_name || '').trim();
+  const therapistId = validId(b.therapist_id);
+  const total = Number(b.total_sessions);
+  const hour = Number(b.hour);
+  const start = parseDate(b.start_date);
+  if (!last || !first) return res.status(400).json({ error: 'שם משפחה ושם פרטי חובה' });
+  if (!therapistId) return res.status(400).json({ error: 'חובה לבחור מטפל' });
+  if (!Number.isInteger(total) || total < 1 || total > 200) return res.status(400).json({ error: 'כמות טיפולים חייבת להיות בין 1 ל-200' });
+  if (!Number.isInteger(hour) || hour < 8 || hour > 21) return res.status(400).json({ error: 'שעה לא תקינה (8:00–22:00)' });
+  if (!start) return res.status(400).json({ error: 'תאריך התחלה לא תקין' });
+
+  const weekday = start.getUTCDay();
+  const client = await pool.connect();
+  try {
+    const tr = await client.query('SELECT * FROM therapists WHERE id=$1 AND deleted=false', [therapistId]);
+    if (!tr.rows.length) return res.status(404).json({ error: 'מטפל לא נמצא' });
+    const therapist = tr.rows[0];
+    if (!worksAt(therapist, weekday, hour)) {
+      return res.status(400).json({ error: 'המטפל לא עובד ביום ובשעה שנבחרו (בדוק את לו"ז העבודה שלו)' });
+    }
+
+    await client.query('BEGIN');
+    if (await weeklySlotOccupied(client, therapistId, weekday, hour, fmtDate(start))) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: WEEKLY_TAKEN_MSG });
+    }
+    const pr = await client.query(
+      `INSERT INTO patients (last_name, first_name, status, preferred_therapist_ids)
+       VALUES ($1,$2,'assigned',$3) RETURNING *`,
+      [last, first, JSON.stringify([therapistId])]);
+    const patient = pr.rows[0];
+
+    const ar = await client.query(
+      `INSERT INTO assignments (patient_id, therapist_id, total_sessions, start_date, hour, weekday, notes, kind)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'series') RETURNING *`,
+      [patient.id, therapistId, total, fmtDate(start), hour, weekday, b.notes || null]);
+    const assignment = ar.rows[0];
+
+    const { created, skippedBusy, skippedHoliday } = await insertWeeklySessions(client, assignment, start, total, 1);
+    if (created.length < total) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'לא ניתן לשבץ את כל הפגישות — יותר מדי התנגשויות או ימי חופש בשעה זו' });
+    }
+    await client.query('COMMIT');
+
+    await logAction(req.user, 'add', 'assignments', assignment.id, {
+      quick: true, patient: `${last} ${first}`, therapist: therapist.name, total, start_date: fmtDate(start), hour });
+    sheets.backup(req.user, 'add', 'patients', patient.id, patient, { quick: true });
+    sheets.backup(req.user, 'add', 'assignments', assignment.id, assignment, {
+      patient: `${last} ${first}`, therapist: therapist.name });
+    sheets.mirrorMany('sessions', created);
+
+    res.status(201).json({ patient, assignment, sessions: created, skipped_busy: skippedBusy, skipped_holidays: skippedHoliday });
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    if (isSlotTaken(e)) return res.status(409).json({ error: SLOT_TAKEN_MSG });
+    console.error(e); res.status(500).json({ error: 'שגיאת שרת' });
+  } finally { client.release(); }
+});
+
+// ===== פגישה בודדת =====
+// { patient_id, therapist_id, date, hour, notes }
+router.post('/single', authenticate, can('edit'), async (req, res) => {
+  const b = req.body || {};
+  const patientId = validId(b.patient_id), therapistId = validId(b.therapist_id);
+  const hour = Number(b.hour);
+  const date = parseDate(b.date);
+  if (!patientId || !therapistId) return res.status(400).json({ error: 'חובה לבחור מטופל ומטפל' });
+  if (!Number.isInteger(hour) || hour < 8 || hour > 21) return res.status(400).json({ error: 'שעה לא תקינה (8:00–22:00)' });
+  if (!date) return res.status(400).json({ error: 'תאריך לא תקין' });
+
+  const weekday = date.getUTCDay();
+  const ds = fmtDate(date);
+  const client = await pool.connect();
+  try {
+    const ctx = await loadPatientTherapist(client, patientId, therapistId);
+    if (ctx.error) return res.status(404).json({ error: ctx.error });
+    const { patient, therapist } = ctx;
+
+    if (!worksAt(therapist, weekday, hour)) {
+      return res.status(400).json({ error: 'המטפל לא עובד ביום ובשעה שנבחרו' });
+    }
+
+    // הבדיקות בתוך הטרנזקציה, והאילוץ uq_sessions_slot מגבה מפני מרוץ מקבילי
+    await client.query('BEGIN');
+    const hol = await client.query('SELECT name FROM holidays WHERE date=$1', [ds]);
+    if (hol.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `התאריך מוגדר כיום חופש${hol.rows[0].name ? ' (' + hol.rows[0].name + ')' : ''}` });
+    }
+    const tBusy = await client.query(
+      `SELECT 1 FROM sessions WHERE therapist_id=$1 AND date=$2 AND hour=$3 AND status='scheduled' AND deleted=false LIMIT 1`,
+      [therapistId, ds, hour]);
+    if (tBusy.rows.length) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'השעה הזו כבר תפוסה אצל המטפל' }); }
+    const pBusy = await client.query(
+      `SELECT 1 FROM sessions WHERE patient_id=$1 AND date=$2 AND hour=$3 AND status='scheduled' AND deleted=false LIMIT 1`,
+      [patientId, ds, hour]);
+    if (pBusy.rows.length) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'למטופל כבר יש פגישה בשעה זו' }); }
+
+    const ar = await client.query(
+      `INSERT INTO assignments (patient_id, therapist_id, total_sessions, start_date, hour, weekday, notes, kind)
+       VALUES ($1,$2,1,$3,$4,$5,$6,'single') RETURNING *`,
+      [patientId, therapistId, ds, hour, weekday, b.notes || null]);
+    const assignment = ar.rows[0];
+    const sr = await client.query(
+      `INSERT INTO sessions (assignment_id, patient_id, therapist_id, session_num, date, hour)
+       VALUES ($1,$2,$3,1,$4,$5) RETURNING *`,
+      [assignment.id, patientId, therapistId, ds, hour]);
+    await client.query('COMMIT');
+
+    await logAction(req.user, 'add', 'assignments', assignment.id, {
+      single: true, patient: `${patient.last_name} ${patient.first_name}`, therapist: therapist.name, date: ds, hour });
+    sheets.backup(req.user, 'add', 'assignments', assignment.id, assignment, { single: true });
+    sheets.mirrorMany('sessions', sr.rows);
+
+    res.status(201).json({ assignment, session: sr.rows[0] });
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    if (isSlotTaken(e)) return res.status(409).json({ error: SLOT_TAKEN_MSG });
     console.error(e); res.status(500).json({ error: 'שגיאת שרת' });
   } finally { client.release(); }
 });

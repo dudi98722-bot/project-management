@@ -31,13 +31,15 @@ router.get('/week', authenticate, async (req, res) => {
     const sr = await pool.query(
       `SELECT s.id, s.assignment_id, s.session_num, s.date, s.hour, s.status,
               s.patient_id, p.last_name || ' ' || p.first_name AS patient_name,
-              a.total_sessions
+              a.total_sessions, a.kind
        FROM sessions s
        JOIN patients p ON p.id = s.patient_id
        JOIN assignments a ON a.id = s.assignment_id
        WHERE s.therapist_id=$1 AND s.date BETWEEN $2 AND $3 AND s.deleted=false AND s.status <> 'cancelled'
        ORDER BY s.date, s.hour`, [tid, fmtDate(start), fmtDate(end)]);
-    res.json({ therapist: tr.rows[0], week_start: fmtDate(start), week_end: fmtDate(end), sessions: sr.rows });
+    const hr = await pool.query('SELECT date, name FROM holidays WHERE date BETWEEN $1 AND $2 ORDER BY date',
+      [fmtDate(start), fmtDate(end)]);
+    res.json({ therapist: tr.rows[0], week_start: fmtDate(start), week_end: fmtDate(end), sessions: sr.rows, holidays: hr.rows });
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 

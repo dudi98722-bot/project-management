@@ -20,6 +20,7 @@ app.use('/api/groups', require('./routes/groups'));
 app.use('/api/assignments', require('./routes/assignments'));
 app.use('/api/calendar', require('./routes/calendar'));
 app.use('/api/import', require('./routes/import'));
+app.use('/api/holidays', require('./routes/holidays'));
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 

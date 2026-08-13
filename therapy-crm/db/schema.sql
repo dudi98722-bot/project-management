@@ -154,7 +154,33 @@ UPDATE patients p
        preferred_group_id     = NULL
  WHERE p.preferred_therapist_id IS NOT NULL OR p.preferred_group_id IS NOT NULL;
 
+-- ===== סוגי שיבוץ =====
+--  series  = סדרה רגילה עם כמות טיפולים
+--  ongoing = שיבוץ קבוע (מטופלים קיימים) — בלי כמות, מתחדש שבוע אחר שבוע
+--  single  = פגישה בודדת
+ALTER TABLE assignments ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'series';
+ALTER TABLE assignments ALTER COLUMN total_sessions DROP NOT NULL;
+
+-- ===== ימי חופש וחג (כלל-מערכתיים) — יצירת סדרות מדלגת עליהם =====
+CREATE TABLE IF NOT EXISTS holidays (
+  id BIGSERIAL PRIMARY KEY,
+  date DATE UNIQUE NOT NULL,
+  name TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS idx_sessions_therapist_date ON sessions (therapist_id, date, hour);
+
+-- ===== מניעת שיבוץ כפול ברמת המסד =====
+-- שתי בקשות מקבילות לאותה משבצת עוברות שתיהן את בדיקת ה-SELECT (READ COMMITTED),
+-- ולכן חייבים אילוץ ייחודיות. ניקוי חד-פעמי של כפילויות קודם (נשארת הפגישה הוותיקה):
+UPDATE sessions s SET status='cancelled', updated_at=NOW()
+ WHERE s.status='scheduled' AND s.deleted=false
+   AND EXISTS (SELECT 1 FROM sessions s2
+                WHERE s2.therapist_id=s.therapist_id AND s2.date=s.date AND s2.hour=s.hour
+                  AND s2.status='scheduled' AND s2.deleted=false AND s2.id < s.id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sessions_slot
+  ON sessions (therapist_id, date, hour) WHERE status='scheduled' AND deleted=false;
 CREATE INDEX IF NOT EXISTS idx_sessions_assignment ON sessions (assignment_id);
 CREATE INDEX IF NOT EXISTS idx_patients_status ON patients (status) WHERE deleted = false;
 CREATE INDEX IF NOT EXISTS idx_assignments_therapist ON assignments (therapist_id) WHERE deleted = false;
