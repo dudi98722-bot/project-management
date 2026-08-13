@@ -26,6 +26,7 @@ function cleanBody(b) {
   out.community = b.community ? String(b.community).trim() : null;
   out.diagnosis = b.diagnosis ? String(b.diagnosis).trim() : null;
   out.notes = b.notes ? String(b.notes).trim() : null;
+  out.notes2 = b.notes2 ? String(b.notes2).trim() : null;
   const urg = Number(b.urgency);
   out.urgency = [1, 2, 3].includes(urg) ? urg : 2;
   let hours = Array.isArray(b.hours) ? b.hours.map(Number).filter(h => Number.isInteger(h) && h >= 8 && h <= 21) : ALL_HOURS;
@@ -83,10 +84,11 @@ router.post('/', authenticate, can('edit'), async (req, res) => {
   try {
     const r = await pool.query(
       `INSERT INTO patients (last_name, first_name, national_id, intake_date, birth_date, hmo, client_type, community,
-                             diagnosis, notes, urgency, hours, preferred_therapist_ids, preferred_group_ids)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+                             diagnosis, notes, urgency, hours, preferred_therapist_ids, preferred_group_ids, notes2)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
       [out.last_name, out.first_name, out.national_id, out.intake_date, out.birth_date, out.hmo, out.client_type,
-       out.community, out.diagnosis, out.notes, out.urgency, out.hours, out.preferred_therapist_ids, out.preferred_group_ids]);
+       out.community, out.diagnosis, out.notes, out.urgency, out.hours, out.preferred_therapist_ids, out.preferred_group_ids,
+       out.notes2]);
     await logAction(req.user, 'add', 'patients', r.rows[0].id, { name: `${out.last_name} ${out.first_name}` });
     sheets.backup(req.user, 'add', 'patients', r.rows[0].id, r.rows[0], { name: `${out.last_name} ${out.first_name}` });
     res.status(201).json(r.rows[0]);
@@ -100,11 +102,11 @@ router.put('/:id', authenticate, can('edit'), async (req, res) => {
     const r = await pool.query(
       `UPDATE patients SET last_name=$1, first_name=$2, national_id=$3, intake_date=$4, birth_date=$5, hmo=$6,
               client_type=$7, community=$8, diagnosis=$9, notes=$10, urgency=$11, hours=$12,
-              preferred_therapist_ids=$13, preferred_group_ids=$14, updated_at=NOW()
-       WHERE id=$15 AND deleted=false RETURNING *`,
+              preferred_therapist_ids=$13, preferred_group_ids=$14, notes2=$15, updated_at=NOW()
+       WHERE id=$16 AND deleted=false RETURNING *`,
       [out.last_name, out.first_name, out.national_id, out.intake_date, out.birth_date, out.hmo, out.client_type,
        out.community, out.diagnosis, out.notes, out.urgency, out.hours, out.preferred_therapist_ids, out.preferred_group_ids,
-       req.params.id]);
+       out.notes2, req.params.id]);
     if (!r.rows.length) return res.status(404).json({ error: 'לא נמצא' });
     await logAction(req.user, 'edit', 'patients', req.params.id, {});
     sheets.backup(req.user, 'edit', 'patients', req.params.id, r.rows[0], {});

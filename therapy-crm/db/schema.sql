@@ -126,6 +126,9 @@ CREATE TABLE IF NOT EXISTS sessions (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- שדה הערות שני (נוסף בנפרד מ-notes כדי לא לדרוס תוכן קיים)
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS notes2 TEXT;
+
 -- ===== העדפת שיוך: מקבוצה/מטפל בודד -> רשימת מטפלים מרובה =====
 -- הרשימה היא מקור האמת לשיבוץ. הקבוצות נשמרות כדי להראות מאיפה הרשימה נזרעה.
 ALTER TABLE patients ADD COLUMN IF NOT EXISTS preferred_therapist_ids JSONB NOT NULL DEFAULT '[]'::jsonb;

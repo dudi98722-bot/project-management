@@ -9,7 +9,8 @@ function enabled() { return !!URL(); }
 
 // סדר העמודות — חייב להתאים ללשוניות ב-Apps Script
 const TABS = {
-  patients:         ['id', 'last_name', 'first_name', 'national_id', 'intake_date', 'birth_date', 'hmo', 'client_type', 'community', 'diagnosis', 'notes', 'urgency', 'hours', 'preferred_therapist_ids', 'preferred_group_ids', 'status', 'deleted', 'updated_at'],
+  // notes2 בסוף במכוון — הוספה באמצע הייתה מזיזה עמודות קיימות בגיליון
+  patients:         ['id', 'last_name', 'first_name', 'national_id', 'intake_date', 'birth_date', 'hmo', 'client_type', 'community', 'diagnosis', 'notes', 'urgency', 'hours', 'preferred_therapist_ids', 'preferred_group_ids', 'status', 'deleted', 'updated_at', 'notes2'],
   therapists:       ['id', 'name', 'phone', 'email', 'notes', 'work_schedule', 'active', 'deleted', 'updated_at'],
   therapist_groups: ['id', 'name', 'notes', 'members', 'deleted', 'updated_at'],
   assignments:      ['id', 'patient_id', 'therapist_id', 'total_sessions', 'start_date', 'hour', 'weekday', 'status', 'notes', 'deleted', 'updated_at'],

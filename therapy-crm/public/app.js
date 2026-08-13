@@ -165,6 +165,7 @@ function renderWaiting(m) {
         ${S.meta.hmos.map(h => `<option ${f.hmo === h ? 'selected' : ''}>${h}</option>`).join('')}
       </select></div>
       <div class="spacer"></div>
+      ${S.me.caps.edit ? `<button class="btn sec" onclick="openImportModal('patients')">📄 ייבוא מאקסל</button>` : ''}
       ${S.me.caps.edit ? `<button class="btn" onclick="openPatientModal(null)">+ מטופל חדש</button>` : ''}
     </div>
     <div class="table-wrap" id="waiting-table"></div>
@@ -257,7 +258,10 @@ function openPatientModal(id) {
       </select></div>
     </div>
     <div class="field"><label>אבחנה</label><input name="diagnosis" value="${esc(p ? p.diagnosis : '')}"></div>
-    <div class="field"><label>הערות</label><textarea name="notes" rows="2">${esc(p ? p.notes : '')}</textarea></div>
+    <div class="grid2">
+      <div class="field"><label>הערות</label><textarea name="notes" rows="2">${esc(p ? p.notes : '')}</textarea></div>
+      <div class="field"><label>הערות נוספות</label><textarea name="notes2" rows="2">${esc(p ? p.notes2 : '')}</textarea></div>
+    </div>
 
     <div class="field">
       <label>שעות מתאימות לטיפול (לחץ להסרת שעה שלא מתאימה)</label>
@@ -308,7 +312,8 @@ function openPatientModal(id) {
       national_id: fd.get('national_id'), intake_date: fd.get('intake_date') || null,
       birth_date: fd.get('birth_date') || null, hmo: fd.get('hmo') || null,
       client_type: fd.get('client_type') || null, community: fd.get('community') === '__new__' ? null : (fd.get('community') || null),
-      diagnosis: fd.get('diagnosis'), notes: fd.get('notes'), urgency: Number(fd.get('urgency')),
+      diagnosis: fd.get('diagnosis'), notes: fd.get('notes'), notes2: fd.get('notes2'),
+      urgency: Number(fd.get('urgency')),
       hours: [...document.querySelectorAll('#hours-grid .hour-chip.on')].map(c => Number(c.dataset.h)),
       preferred_therapist_ids: [..._pref.therapists],
       preferred_group_ids: [..._pref.groups],
@@ -704,6 +709,7 @@ function renderTherapists(m) {
     <div class="toolbar">
       <h2 style="margin:0">מטפלים</h2>
       <div class="spacer"></div>
+      ${S.me.caps.edit ? `<button class="btn sec" onclick="openImportModal('therapists')">📄 ייבוא מאקסל</button>` : ''}
       ${S.me.caps.edit ? `<button class="btn" onclick="openTherapistModal(null)">+ מטפל חדש</button>` : ''}
     </div>
     <div class="table-wrap">
@@ -926,6 +932,233 @@ function openUserModal(userId) {
       toast('נשמר'); closeModal(); render();
     } catch (err) { toast(err.message, true); }
   });
+}
+
+// =====================================================================
+// ייבוא מאקסל
+// =====================================================================
+// שדות היעד לכל סוג ייבוא. keys = מה שהשרת מצפה לקבל.
+const IMPORT_FIELDS = {
+  patients: [
+    { key: 'last_name', label: 'שם משפחה', hints: ['משפחה', 'שם משפחה'] },
+    { key: 'first_name', label: 'שם פרטי', hints: ['פרטי', 'שם פרטי'] },
+    { key: 'therapist_names', label: 'מטפלים מותאמים', hints: ['מטפל', 'מטפלים', 'שיוך', 'התאמה'] },
+    { key: 'national_id', label: 'מספר זהות', hints: ['זהות', 'ת.ז', 'תז', 'ת"ז'] },
+    { key: 'intake_date', label: 'תאריך אינטייק', hints: ['אינטייק', 'קליטה'] },
+    { key: 'birth_date', label: 'תאריך לידה', hints: ['לידה'] },
+    { key: 'hmo', label: 'קופת חולים', hints: ['קופה', 'קופת'] },
+    { key: 'client_type', label: 'בן / בת', hints: ['בן/בת', 'מין', 'סוג'] },
+    { key: 'community', label: 'השתייכות קהילתית', hints: ['קהיל', 'השתייכות', 'מגזר'] },
+    { key: 'diagnosis', label: 'אבחנה', hints: ['אבחנ'] },
+    { key: 'urgency', label: 'רמת דחיפות', hints: ['דחיפ'] },
+    { key: 'notes', label: 'הערות', hints: ['הערות'] },
+    { key: 'notes2', label: 'הערות נוספות', hints: ['הערות נוספות', 'הערה 2'] },
+  ],
+  therapists: [
+    { key: 'name', label: 'שם המטפל', hints: ['שם', 'מטפל'] },
+    { key: 'phone', label: 'טלפון', hints: ['טלפון', 'נייד', 'פלאפון'] },
+    { key: 'email', label: 'אימייל', hints: ['מייל', 'דוא'] },
+    { key: 'notes', label: 'הערות', hints: ['הערות'] },
+  ],
+};
+
+let _imp = { target: 'patients', headers: [], rows: [], map: {}, fileName: '' };
+
+function openImportModal(target) {
+  _imp = { target, headers: [], rows: [], map: {}, fileName: '' };
+  const title = target === 'patients' ? 'ייבוא מטופלים מאקסל' : 'ייבוא מטפלים מאקסל';
+  showModal(`
+  <h2>${title} <button class="x" onclick="closeModal()">✕</button></h2>
+  <div class="step"><div class="on" id="st1"></div><div id="st2"></div><div id="st3"></div></div>
+  <div id="imp-body">
+    <div class="imp-drop" id="imp-drop">
+      <div style="font-size:34px">📄</div>
+      <div style="margin:8px 0 4px"><b>גרור לכאן קובץ אקסל</b> או לחץ לבחירה</div>
+      <div class="hint">נתמכים: .xlsx · .xls · .csv — הקובץ נקרא בדפדפן ולא נשלח לשום מקום</div>
+      <input type="file" id="imp-file" accept=".xlsx,.xls,.csv" style="display:none">
+    </div>
+    ${target === 'patients' ? `<div class="hint" style="margin-top:10px">
+      אם יש בקובץ עמודה עם שמות המטפלים שהתאמת למטופל — סמן אותה כ״מטפלים מותאמים״ בשלב הבא.
+      אפשר שיהיו כמה שמות באותו תא, מופרדים בפסיק, נקודה-פסיק, קו נטוי או שורה חדשה.</div>` : ''}
+  </div>`);
+
+  const drop = document.getElementById('imp-drop');
+  const input = document.getElementById('imp-file');
+  drop.onclick = () => input.click();
+  input.onchange = () => input.files[0] && readImportFile(input.files[0]);
+  drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('on'); };
+  drop.ondragleave = () => drop.classList.remove('on');
+  drop.ondrop = (e) => {
+    e.preventDefault(); drop.classList.remove('on');
+    if (e.dataTransfer.files[0]) readImportFile(e.dataTransfer.files[0]);
+  };
+}
+
+function readImportFile(file) {
+  _imp.fileName = file.name;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array', cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const raw = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false, defval: '' });
+      if (raw.length < 2) return toast('הקובץ ריק או שיש בו רק שורת כותרות', true);
+      _imp.headers = raw[0].map((h, i) => String(h || '').trim() || `עמודה ${i + 1}`);
+      _imp.rows = raw.slice(1).filter(r => r.some(c => String(c || '').trim() !== ''));
+      autoMapColumns();
+      renderImportMapping();
+    } catch (err) {
+      toast('לא הצלחתי לקרוא את הקובץ: ' + err.message, true);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ניחוש ראשוני של העמודות לפי מילות מפתח בכותרת
+function autoMapColumns() {
+  _imp.map = {};
+  const used = new Set();
+  for (const f of IMPORT_FIELDS[_imp.target]) {
+    let best = -1, bestLen = 0;
+    _imp.headers.forEach((h, i) => {
+      if (used.has(i)) return;
+      const hn = h.replace(/["'׳״]/g, '').toLowerCase();
+      for (const hint of f.hints) {
+        if (hn.includes(hint.toLowerCase()) && hint.length > bestLen) { best = i; bestLen = hint.length; }
+      }
+    });
+    if (best >= 0) { _imp.map[f.key] = best; used.add(best); }
+  }
+}
+
+function renderImportMapping() {
+  document.getElementById('st2').classList.add('on');
+  const fields = IMPORT_FIELDS[_imp.target];
+  const cols = _imp.headers.map((h, i) => `<option value="${i}">${esc(h)}</option>`).join('');
+  document.getElementById('imp-body').innerHTML = `
+    <div class="imp-summary">
+      📄 <b>${esc(_imp.fileName)}</b> — נמצאו <b>${_imp.rows.length}</b> שורות ו-<b>${_imp.headers.length}</b> עמודות
+    </div>
+    <label>התאמת עמודות — ודא שכל שדה מצביע לעמודה הנכונה</label>
+    <div class="imp-map">
+      ${fields.map(f => `
+        <div class="row">
+          <span>${f.label}</span>
+          <select onchange="_imp.map['${f.key}']=this.value===''?undefined:Number(this.value);renderImportPreview()">
+            <option value="">— ללא —</option>${cols}
+          </select>
+        </div>`).join('')}
+    </div>
+    <div style="margin-top:12px"><label>תצוגה מקדימה (5 שורות ראשונות)</label><div id="imp-preview"></div></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="runImport()">ייבא</button>
+      <button type="button" class="btn sec" onclick="closeModal()">ביטול</button>
+    </div>`;
+  // בחירת ערכי ברירת המחדל שנוחשו
+  const sels = document.querySelectorAll('.imp-map select');
+  fields.forEach((f, i) => { if (_imp.map[f.key] !== undefined) sels[i].value = String(_imp.map[f.key]); });
+  renderImportPreview();
+}
+
+function renderImportPreview() {
+  const fields = IMPORT_FIELDS[_imp.target].filter(f => _imp.map[f.key] !== undefined);
+  const el = document.getElementById('imp-preview');
+  if (!fields.length) { el.innerHTML = '<div class="hint">לא נבחרה אף עמודה</div>'; return; }
+  el.innerHTML = `<div class="imp-prev"><table><thead><tr>${fields.map(f => `<th>${f.label}</th>`).join('')}</tr></thead><tbody>
+    ${_imp.rows.slice(0, 5).map(r => `<tr>${fields.map(f => `<td>${esc(r[_imp.map[f.key]] || '')}</td>`).join('')}</tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+// בונה את השורות לשליחה לפי מיפוי העמודות
+function buildImportRows() {
+  const fields = IMPORT_FIELDS[_imp.target];
+  return _imp.rows.map(r => {
+    const o = {};
+    for (const f of fields) {
+      if (_imp.map[f.key] === undefined) continue;
+      let v = r[_imp.map[f.key]];
+      if (v instanceof Date) v = v.toISOString().slice(0, 10);
+      o[f.key] = String(v == null ? '' : v).trim();
+    }
+    return o;
+  });
+}
+
+async function runImport() {
+  const rows = buildImportRows();
+  if (!rows.length) return toast('אין שורות לייבוא', true);
+
+  if (_imp.target === 'therapists') {
+    if (_imp.map.name === undefined) return toast('חובה לבחור עמודת שם', true);
+    return sendImport('/import/therapists', { rows });
+  }
+
+  if (_imp.map.last_name === undefined && _imp.map.first_name === undefined) {
+    return toast('חובה לבחור לפחות עמודת שם משפחה או שם פרטי', true);
+  }
+  // אין עמודת מטפלים — אין מה לבדוק, מייבאים ישר
+  if (_imp.map.therapist_names === undefined) return sendImport('/import/patients', { rows });
+
+  // יש עמודת מטפלים: בודקים אילו שמות מוכרים לפני שכותבים משהו
+  const names = [];
+  rows.forEach(r => String(r.therapist_names || '').split(/[,;\/|\n\r]+/)
+    .map(s => s.trim()).filter(Boolean).forEach(n => names.push(n)));
+  let check;
+  try { check = await api('/import/check-therapists', { method: 'POST', body: { names } }); }
+  catch (e) { return toast(e.message, true); }
+  showTherapistMatchStep(rows, check);
+}
+
+function showTherapistMatchStep(rows, check) {
+  document.getElementById('st3').classList.add('on');
+  document.getElementById('imp-body').innerHTML = `
+    <div class="imp-summary">
+      נמצאו <b>${check.matched.length}</b> שמות מטפלים שכבר במערכת
+      ${check.missing.length ? ` ו-<b style="color:var(--red)">${check.missing.length}</b> שמות שלא מוכרים` : ''}
+    </div>
+    ${check.matched.length ? `<label>יזוהו ויקושרו אוטומטית</label>
+      <div class="name-list">${check.matched.map(m => `<span class="name-ok">${esc(m.input)}${norm2(m.input) !== norm2(m.existing) ? ' → ' + esc(m.existing) : ''}</span>`).join('')}</div>` : ''}
+    ${check.missing.length ? `
+      <label style="margin-top:14px">שמות שלא נמצאו במערכת</label>
+      <div class="name-list">${check.missing.map(n => `<span class="name-miss">${esc(n)}</span>`).join('')}</div>
+      <div class="field" style="margin-top:12px">
+        <label><input type="checkbox" id="imp-create" style="width:auto" checked> ליצור אותם כמטפלים חדשים</label>
+        <div class="hint">אם לא תסמן — השמות האלה פשוט לא ישויכו, והמטופלים ייובאו בלעדיהם.
+        אפשר להשלים ידנית אחר כך בטופס המטופל.</div>
+      </div>` : ''}
+    <div class="modal-actions">
+      <button class="btn" onclick="finishPatientImport()">ייבא ${rows.length} מטופלים</button>
+      <button type="button" class="btn sec" onclick="renderImportMapping()">חזרה</button>
+    </div>`;
+  _imp.pending = rows;
+}
+
+function norm2(s) { return String(s || '').replace(/["'׳״]/g, '').replace(/\s+/g, ' ').trim().toLowerCase(); }
+
+function finishPatientImport() {
+  const cb = document.getElementById('imp-create');
+  sendImport('/import/patients', {
+    rows: _imp.pending,
+    create_missing_therapists: cb ? cb.checked : false,
+  });
+}
+
+async function sendImport(path, body) {
+  const btns = document.querySelectorAll('#modal-root .btn');
+  btns.forEach(b => b.disabled = true);
+  try {
+    const r = await api(path, { method: 'POST', body });
+    closeModal();
+    await loadAll(); render();
+    let msg = `יובאו ${r.added} רשומות`;
+    if (r.created_therapists && r.created_therapists.length) msg += `, נוצרו ${r.created_therapists.length} מטפלים חדשים`;
+    if (r.skipped && r.skipped.length) msg += `, ${r.skipped.length} דולגו`;
+    if (r.unmatched && r.unmatched.length) msg += `, ${r.unmatched.length} שמות לא שויכו`;
+    toast(msg);
+  } catch (e) {
+    btns.forEach(b => b.disabled = false);
+    toast(e.message, true);
+  }
 }
 
 // ===== מודאל גנרי =====
