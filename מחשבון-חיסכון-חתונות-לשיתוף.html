@@ -12,6 +12,7 @@
   --border: rgba(11,11,11,0.10);
   --series-1: #2a78d6;
   --series-2: #eb6834;
+  --series-3: #1baf7a;
   --good: #0ca30c;
   --good-text: #006300;
   --critical: #d03b3b;
@@ -29,6 +30,7 @@
     --border: rgba(255,255,255,0.10);
     --series-1: #3987e5;
     --series-2: #d95926;
+    --series-3: #199e70;
     --good: #0ca30c;
     --good-text: #0ca30c;
     --critical: #d03b3b;
@@ -46,6 +48,7 @@
   --border: rgba(255,255,255,0.10);
   --series-1: #3987e5;
   --series-2: #d95926;
+  --series-3: #199e70;
   --good: #0ca30c;
   --good-text: #0ca30c;
   --critical: #d03b3b;
@@ -125,6 +128,15 @@ button.del:hover { color: var(--critical); }
 .chart-box { position: relative; }
 .chart-wrap { direction: ltr; position: relative; }
 svg text { font-family: inherit; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 12px; font-size: 13px; color: var(--text-secondary); }
+.legend .lg { display: inline-flex; align-items: center; gap: 7px; }
+.legend i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; flex: none; }
+.legend i.line { height: 3px; width: 18px; border-radius: 2px; }
+.chart-empty {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 120px; color: var(--text-muted); font-size: 14px; text-align: center;
+}
 .tooltip {
   position: absolute; pointer-events: none; display: none;
   background: var(--surface-1); border: 1px solid var(--border);
@@ -161,7 +173,7 @@ details summary {
 }
 </style>
 <div class="wrap">
-  <h1>💍 מחשבון חיסכון לחתונות הילדים</h1>
+  <h1>💍 מחשבון משה אריה — חתונות ילדים</h1>
   <div class="subtitle">הפקדה חודשית לשוק ההון · ריבית דריבית · משיכה בכל חתונה — והכל מתעדכן חי תוך כדי הקלדה</div>
 
   <div class="card">
@@ -225,11 +237,39 @@ details summary {
 
   <div class="card chart-box">
     <h2>צבירת החיסכון לאורך השנים</h2>
+    <div class="legend">
+      <span class="lg"><i class="line" style="background:var(--series-1)"></i>יתרת החיסכון</span>
+      <span class="lg"><i class="line" style="background:var(--series-3)"></i>הכסף שהפקדת</span>
+      <span class="lg"><i style="background:var(--series-1);opacity:.3"></i>הרווח מהשוק</span>
+      <span class="lg"><i style="background:var(--critical)"></i>חתונה בחוסר</span>
+    </div>
     <div class="chart-wrap" id="chartWrap">
-      <svg id="chart" width="100%" height="360"></svg>
+      <svg id="chart" width="100%" height="380"></svg>
       <div class="tooltip" id="tooltip"></div>
     </div>
-    <div class="note">הקו — יתרת החיסכון בכל חודש. כל נקודה מסומנת היא חתונה: היתרה יורדת בעלות החתונה. נקודה אדומה = היתרה לא מספיקה לחתונה.</div>
+    <div class="note">הקו הכחול — היתרה בכל חודש. הקו הירוק — כמה כסף משלכם נכנס עד אותו רגע. השטח שביניהם הוא הרווח שהשוק ייצר. כל נקודה מסומנת היא חתונה, והיתרה צונחת בה בעלות החתונה.</div>
+  </div>
+
+  <div class="card chart-box">
+    <h2>כיסוי לכל חתונה</h2>
+    <div class="legend">
+      <span class="lg"><i style="background:var(--series-1)"></i>היתרה שתעמוד לרשותכם</span>
+      <span class="lg"><i style="background:var(--series-2)"></i>עלות החתונה</span>
+    </div>
+    <div class="chart-wrap" id="barWrap">
+      <svg id="barChart" width="100%" height="310"></svg>
+      <div class="tooltip" id="barTooltip"></div>
+    </div>
+    <div class="note">השוואה ישירה לכל חתונה: כמה יהיה בקופה מול כמה תצטרכו. עמודה כחולה נמוכה מהכתומה = חוסר, והחתונה מסומנת ב-⚠.</div>
+  </div>
+
+  <div class="card chart-box">
+    <h2>מאיפה מגיע הכסף</h2>
+    <div class="chart-wrap" id="compWrap">
+      <svg id="compChart" width="100%" height="150"></svg>
+      <div class="tooltip" id="compTooltip"></div>
+    </div>
+    <div class="note">מכלל הכסף שיעבור דרך התוכנית — כמה הגיע מהכיס שלכם וכמה השוק הוסיף בזכות ריבית דריבית.</div>
   </div>
 
   <div class="card">
@@ -445,7 +485,8 @@ function simulate(scale) {
     var mStart = (yy === START_YEAR) ? START_MONTH : 0;
     yearly[yy] = yearly[yy] || { deposited: 0, weddings: [], startBal: balance };
     for (var mm = mStart; mm < 12; mm++) {
-      balance = balance * (1 + monthlyRate) + depositByYear[yy];
+      // תשואה נצברת רק על כסף שקיים בפועל — חוב אינו "מרוויח" בשוק
+      balance = (balance > 0 ? balance * (1 + monthlyRate) : balance) + depositByYear[yy];
       totalDeposited += depositByYear[yy];
       yearly[yy].deposited += depositByYear[yy];
 
@@ -590,94 +631,140 @@ function escapeHtml(s){
   });
 }
 
-// ---------- הגרף ----------
-var chartData = null;
-function renderChart(r) {
-  var svg = el("chart");
-  var wrap = el("chartWrap");
-  var W = wrap.clientWidth || 900;
-  var H = 360;
+// ---------- עזרי גרפים ----------
+function colors() {
+  var css = getComputedStyle(document.documentElement);
+  function c(n){ return css.getPropertyValue(n).trim(); }
+  return {
+    grid: c("--grid"), base: c("--baseline"), muted: c("--text-muted"),
+    s1: c("--series-1"), s2: c("--series-2"), s3: c("--series-3"),
+    surface: c("--surface-1"), crit: c("--critical"), text: c("--text-secondary")
+  };
+}
+
+// עמודה עם פינות עליונות מעוגלות, מעוגנת לקו הבסיס
+function barPath(bx, by, bw, bh, rad) {
+  if (bh <= 0.5) return "";
+  var r = Math.min(rad, bw / 2, bh);
+  return "M" + bx + "," + (by + bh) +
+    " L" + bx + "," + (by + r) +
+    " Q" + bx + "," + by + " " + (bx + r) + "," + by +
+    " L" + (bx + bw - r) + "," + by +
+    " Q" + (bx + bw) + "," + by + " " + (bx + bw) + "," + (by + r) +
+    " L" + (bx + bw) + "," + (by + bh) + " Z";
+}
+
+// מיקום כרטיסיית מידע בתוך מסגרת הגרף
+function placeTip(tt, wrapEl, px, py) {
+  tt.style.display = "block";
+  var wr = wrapEl.getBoundingClientRect();
+  var left = px + 14;
+  if (left + tt.offsetWidth > wr.width - 6) left = px - tt.offsetWidth - 14;
+  tt.style.left = Math.max(4, left) + "px";
+  tt.style.top = Math.max(4, py - 34) + "px";
+}
+
+function svgSetup(svg, wrapEl, H) {
+  var W = wrapEl.clientWidth || 900;
   svg.setAttribute("viewBox", "0 0 " + W + " " + H);
   svg.setAttribute("width", W);
   svg.setAttribute("height", H);
+  return W;
+}
 
-  var pad = { top: 20, right: 20, bottom: 34, left: 62 };
-  var pw = W - pad.left - pad.right;
-  var ph = H - pad.top - pad.bottom;
+// ---------- גרף 1: צבירת החיסכון ----------
+var chartData = null;
+function renderChart(r) {
+  var svg = el("chart"), wrap = el("chartWrap");
+  var H = 380, W = svgSetup(svg, wrap, H);
+  var pad = { top: 30, right: 20, bottom: 38, left: 68 };
+  var pw = W - pad.left - pad.right, ph = H - pad.top - pad.bottom;
 
   var pts = r.points;
   if (pts.length < 2) { svg.innerHTML = ""; return; }
 
   var minV = 0, maxV = 0;
-  pts.forEach(function(p){ if (p.balance > maxV) maxV = p.balance; if (p.balance < minV) minV = p.balance; });
+  pts.forEach(function(p){
+    if (p.balance > maxV) maxV = p.balance;
+    if (p.deposited > maxV) maxV = p.deposited;
+    if (p.balance < minV) minV = p.balance;
+  });
   if (maxV === minV) maxV = minV + 1;
-  maxV *= 1.06;
-  if (minV < 0) minV *= 1.06;
+  maxV *= 1.08;
+  if (minV < 0) minV *= 1.12;
 
   function x(i){ return pad.left + (i / (pts.length - 1)) * pw; }
   function y(v){ return pad.top + (1 - (v - minV) / (maxV - minV)) * ph; }
 
-  var css = getComputedStyle(document.documentElement);
-  var cGrid = css.getPropertyValue("--grid").trim();
-  var cBase = css.getPropertyValue("--baseline").trim();
-  var cMuted = css.getPropertyValue("--text-muted").trim();
-  var cSeries = css.getPropertyValue("--series-1").trim();
-  var cSurface = css.getPropertyValue("--surface-1").trim();
-  var cCrit = css.getPropertyValue("--critical").trim();
-  var cText = css.getPropertyValue("--text-secondary").trim();
-
+  var c = colors();
   var out = [];
 
-  // קווי רשת + ציר Y
-  var ySteps = niceTicks(minV, maxV, 5);
-  ySteps.forEach(function(v){
+  out.push('<defs><linearGradient id="gradBal" x1="0" y1="0" x2="0" y2="1">' +
+    '<stop offset="0%" stop-color="' + c.s1 + '" stop-opacity="0.30"/>' +
+    '<stop offset="100%" stop-color="' + c.s1 + '" stop-opacity="0.03"/>' +
+    '</linearGradient></defs>');
+
+  // רשת אופקית + ציר הסכומים
+  niceTicks(minV, maxV, 5).forEach(function(v){
     var yy = y(v);
     out.push('<line x1="' + pad.left + '" y1="' + yy + '" x2="' + (W - pad.right) + '" y2="' + yy +
-      '" stroke="' + (v === 0 ? cBase : cGrid) + '" stroke-width="1"/>');
-    out.push('<text x="' + (pad.left - 8) + '" y="' + (yy + 4) + '" text-anchor="end" font-size="11" fill="' +
-      cMuted + '">' + fmtCompact.format(v) + '</text>');
+      '" stroke="' + (v === 0 ? c.base : c.grid) + '" stroke-width="1"/>');
+    out.push('<text x="' + (pad.left - 10) + '" y="' + (yy + 4) + '" text-anchor="end" font-size="11" fill="' +
+      c.muted + '">' + fmtCompact.format(v) + '</text>');
   });
 
-  // ציר X — שנים
+  // ציר השנים
   var firstYear = pts[0].year, lastYear = pts[pts.length - 1].year;
   var span = lastYear - firstYear;
   var stepYears = span <= 8 ? 1 : span <= 16 ? 2 : span <= 40 ? 5 : 10;
-  for (var yy2 = Math.ceil(firstYear / stepYears) * stepYears; yy2 <= lastYear; yy2 += stepYears) {
-    var idx = pts.findIndex(function(p){ return p.year === yy2 && p.month === 0; });
+  for (var yr = Math.ceil(firstYear / stepYears) * stepYears; yr <= lastYear; yr += stepYears) {
+    var idx = pts.findIndex(function(p){ return p.year === yr && p.month === 0; });
     if (idx < 0) idx = 0;
-    out.push('<text x="' + x(idx) + '" y="' + (H - 10) + '" text-anchor="middle" font-size="11" fill="' +
-      cMuted + '">' + yy2 + '</text>');
+    out.push('<text x="' + x(idx) + '" y="' + (H - 12) + '" text-anchor="middle" font-size="11" fill="' +
+      c.muted + '">' + yr + '</text>');
   }
 
-  // מילוי עדין מתחת לקו
-  var areaPath = "M " + x(0) + " " + y(Math.max(0, minV));
-  pts.forEach(function(p, i){ areaPath += " L " + x(i) + " " + y(p.balance); });
-  areaPath += " L " + x(pts.length - 1) + " " + y(Math.max(0, minV)) + " Z";
-  out.push('<path d="' + areaPath + '" fill="' + cSeries + '" opacity="0.08"/>');
+  // שטח הרווח — בין הכסף שהופקד ליתרה בפועל
+  var zeroY = y(Math.max(0, minV));
+  var area = "M " + x(0) + " " + zeroY;
+  pts.forEach(function(p, i){ area += " L " + x(i) + " " + y(p.balance); });
+  area += " L " + x(pts.length - 1) + " " + zeroY + " Z";
+  out.push('<path d="' + area + '" fill="url(#gradBal)"/>');
 
-  // הקו עצמו
-  var linePath = "";
-  pts.forEach(function(p, i){ linePath += (i ? " L " : "M ") + x(i) + " " + y(p.balance); });
-  out.push('<path d="' + linePath + '" fill="none" stroke="' + cSeries + '" stroke-width="2" stroke-linejoin="round"/>');
+  // קו ההפקדות המצטברות
+  var depLine = "";
+  pts.forEach(function(p, i){ depLine += (i ? " L " : "M ") + x(i) + " " + y(p.deposited); });
+  out.push('<path d="' + depLine + '" fill="none" stroke="' + c.s3 +
+    '" stroke-width="2" stroke-linejoin="round" stroke-dasharray="5 4"/>');
 
-  // נקודות חתונה
-  r.weddings.forEach(function(w){
+  // קו היתרה
+  var balLine = "";
+  pts.forEach(function(p, i){ balLine += (i ? " L " : "M ") + x(i) + " " + y(p.balance); });
+  out.push('<path d="' + balLine + '" fill="none" stroke="' + c.s1 +
+    '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>');
+
+  // נקודות החתונות — קו הנחיה, סמן ותווית
+  r.weddings.forEach(function(w, wi){
     if (w.pointIndex == null) return;
     var i = Math.min(w.pointIndex, pts.length - 1);
     var cx = x(i), cy = y(pts[i].balance);
-    var color = w.shortfall ? cCrit : cSeries;
+    var color = w.shortfall ? c.crit : c.s1;
+    out.push('<line x1="' + cx + '" y1="' + cy + '" x2="' + cx + '" y2="' + (pad.top + ph) +
+      '" stroke="' + color + '" stroke-width="1" stroke-dasharray="3 3" opacity="0.45"/>');
     out.push('<circle cx="' + cx + '" cy="' + cy + '" r="6" fill="' + color +
-      '" stroke="' + cSurface + '" stroke-width="2"/>');
-    var labelY = cy - 12;
-    if (labelY < pad.top + 10) labelY = cy + 20;
+      '" stroke="' + c.surface + '" stroke-width="2"/>');
+    var labelY = cy - 14 - (wi % 2) * 15;
+    if (labelY < pad.top + 4) labelY = cy + 22 + (wi % 2) * 15;
     out.push('<text x="' + cx + '" y="' + labelY + '" text-anchor="middle" font-size="11" font-weight="600" fill="' +
-      cText + '">' + escapeHtml(w.name) + '</text>');
+      (w.shortfall ? c.crit : c.text) + '">' + (w.shortfall ? "⚠ " : "") + escapeHtml(w.name) + '</text>');
   });
 
-  // שכבת hover
+  // שכבת המעקב אחרי העכבר
   out.push('<line id="crosshair" x1="0" y1="' + pad.top + '" x2="0" y2="' + (pad.top + ph) +
-    '" stroke="' + cBase + '" stroke-width="1" style="display:none"/>');
-  out.push('<circle id="hoverDot" r="4.5" fill="' + cSeries + '" stroke="' + cSurface +
+    '" stroke="' + c.base + '" stroke-width="1" style="display:none"/>');
+  out.push('<circle id="hoverDep" r="4" fill="' + c.s3 + '" stroke="' + c.surface +
+    '" stroke-width="2" style="display:none"/>');
+  out.push('<circle id="hoverDot" r="5" fill="' + c.s1 + '" stroke="' + c.surface +
     '" stroke-width="2" style="display:none"/>');
   out.push('<rect x="' + pad.left + '" y="' + pad.top + '" width="' + pw + '" height="' + ph +
     '" fill="transparent" id="hoverZone"/>');
@@ -693,40 +780,193 @@ function renderChart(r) {
 var monthNames = ["ינו","פבר","מרץ","אפר","מאי","יונ","יול","אוג","ספט","אוק","נוב","דצמ"];
 function onHover(ev) {
   if (!chartData) return;
-  var rect = el("chart").getBoundingClientRect();
-  var mx = ev.clientX - rect.left;
+  var svg = el("chart");
+  var rect = svg.getBoundingClientRect();
   var d = chartData;
-  var frac = (mx - d.pad.left) / (d.W - d.pad.left - 20);
-  var i = Math.round(frac * (d.pts.length - 1));
-  i = Math.max(0, Math.min(d.pts.length - 1, i));
+  var frac = (ev.clientX - rect.left - d.pad.left) / (d.W - d.pad.left - d.pad.right);
+  var i = Math.max(0, Math.min(d.pts.length - 1, Math.round(frac * (d.pts.length - 1))));
   var p = d.pts[i];
   var px = d.x(i), py = d.y(p.balance);
 
-  var ch = el("chart").querySelector("#crosshair");
-  ch.setAttribute("x1", px); ch.setAttribute("x2", px);
-  ch.style.display = "";
-  var dot = el("chart").querySelector("#hoverDot");
-  dot.setAttribute("cx", px); dot.setAttribute("cy", py);
-  dot.style.display = "";
+  var ch = svg.querySelector("#crosshair");
+  ch.setAttribute("x1", px); ch.setAttribute("x2", px); ch.style.display = "";
+  var dot = svg.querySelector("#hoverDot");
+  dot.setAttribute("cx", px); dot.setAttribute("cy", py); dot.style.display = "";
+  var dep = svg.querySelector("#hoverDep");
+  dep.setAttribute("cx", px); dep.setAttribute("cy", d.y(p.deposited)); dep.style.display = "";
 
-  var tt = el("tooltip");
   var profit = p.balance - p.deposited;
+  var tt = el("tooltip");
   tt.innerHTML = '<div class="tt-date">' + monthNames[p.month] + " " + p.year + '</div>' +
     '<div class="tt-row"><span>יתרה:</span><b>' + shk(p.balance) + '</b></div>' +
-    '<div class="tt-row"><span>הופקד עד כה:</span><b>' + shk(p.deposited) + '</b></div>';
-  tt.style.display = "block";
-  var wrapRect = el("chartWrap").getBoundingClientRect();
-  var ttW = tt.offsetWidth;
-  var left = px + 14;
-  if (left + ttW > wrapRect.width - 6) left = px - ttW - 14;
-  tt.style.left = left + "px";
-  tt.style.top = Math.max(6, py - 30) + "px";
+    '<div class="tt-row"><span>הופקד עד כה:</span><b>' + shk(p.deposited) + '</b></div>' +
+    '<div class="tt-row"><span>רווח מהשוק:</span><b>' + shk(profit) + '</b></div>';
+  placeTip(tt, el("chartWrap"), px, py);
 }
 function hideHover() {
   var svg = el("chart");
-  var ch = svg.querySelector("#crosshair"); if (ch) ch.style.display = "none";
-  var dot = svg.querySelector("#hoverDot"); if (dot) dot.style.display = "none";
+  ["#crosshair", "#hoverDot", "#hoverDep"].forEach(function(sel){
+    var n = svg.querySelector(sel); if (n) n.style.display = "none";
+  });
   el("tooltip").style.display = "none";
+}
+
+// ---------- גרף 2: כיסוי לכל חתונה ----------
+function renderBarChart(r) {
+  var svg = el("barChart"), wrap = el("barWrap");
+  var weds = r.weddings;
+  if (!weds.length) {
+    svg.setAttribute("height", 0);
+    wrap.querySelector(".chart-empty") || wrap.insertAdjacentHTML("beforeend",
+      '<div class="chart-empty">הוסיפו ילדים כדי לראות את הכיסוי לכל חתונה</div>');
+    svg.innerHTML = "";
+    return;
+  }
+  var empty = wrap.querySelector(".chart-empty");
+  if (empty) empty.remove();
+  svg.setAttribute("height", 310);
+
+  var H = 310, W = svgSetup(svg, wrap, H);
+  var pad = { top: 26, right: 20, bottom: 62, left: 68 };
+  var pw = W - pad.left - pad.right, ph = H - pad.top - pad.bottom;
+
+  var maxV = 0;
+  weds.forEach(function(w){
+    maxV = Math.max(maxV, w.balanceBefore || 0, w.cost || 0);
+  });
+  if (maxV <= 0) maxV = 1;
+  maxV *= 1.12;
+
+  function y(v){ return pad.top + (1 - v / maxV) * ph; }
+  var c = colors();
+  var out = [];
+
+  niceTicks(0, maxV, 4).forEach(function(v){
+    var yy = y(v);
+    out.push('<line x1="' + pad.left + '" y1="' + yy + '" x2="' + (W - pad.right) + '" y2="' + yy +
+      '" stroke="' + (v === 0 ? c.base : c.grid) + '" stroke-width="1"/>');
+    out.push('<text x="' + (pad.left - 10) + '" y="' + (yy + 4) + '" text-anchor="end" font-size="11" fill="' +
+      c.muted + '">' + fmtCompact.format(v) + '</text>');
+  });
+
+  var groupW = pw / weds.length;
+  var barW = Math.max(10, Math.min(40, groupW / 2 - 5));
+  var baseY = y(0);
+
+  weds.forEach(function(w, i){
+    var gx = pad.left + groupW * i + groupW / 2;
+    // רווח של 2px בין העמודות הצמודות
+    var xBal = gx - barW - 1, xCost = gx + 1;
+    var hBal = baseY - y(Math.max(0, w.balanceBefore || 0));
+    var hCost = baseY - y(w.cost || 0);
+
+    out.push('<path d="' + barPath(xBal, baseY - hBal, barW, hBal, 4) + '" fill="' + c.s1 +
+      '" class="bar" data-i="' + i + '"/>');
+    out.push('<path d="' + barPath(xCost, baseY - hCost, barW, hCost, 4) + '" fill="' + c.s2 +
+      '" class="bar" data-i="' + i + '"/>');
+
+    var label = escapeHtml(w.name);
+    out.push('<text x="' + gx + '" y="' + (baseY + 20) + '" text-anchor="middle" font-size="11" font-weight="600" fill="' +
+      (w.shortfall ? c.crit : c.text) + '">' + (w.shortfall ? "⚠ " : "") + label + '</text>');
+    out.push('<text x="' + gx + '" y="' + (baseY + 36) + '" text-anchor="middle" font-size="11" fill="' +
+      c.muted + '">' + w.year + '</text>');
+    if (w.shortfall) {
+      out.push('<text x="' + gx + '" y="' + (baseY + 52) + '" text-anchor="middle" font-size="11" font-weight="600" fill="' +
+        c.crit + '">חסר ' + shk(Math.abs(w.balanceAfter)) + '</text>');
+    }
+    // אזור מעקב לכל קבוצה
+    out.push('<rect x="' + (pad.left + groupW * i) + '" y="' + pad.top + '" width="' + groupW +
+      '" height="' + ph + '" fill="transparent" class="hitzone" data-i="' + i + '"/>');
+  });
+
+  svg.innerHTML = out.join("");
+
+  var tt = el("barTooltip");
+  Array.prototype.forEach.call(svg.querySelectorAll(".hitzone"), function(zone){
+    zone.addEventListener("mousemove", function(ev){
+      var w = weds[+zone.getAttribute("data-i")];
+      var rect = svg.getBoundingClientRect();
+      tt.innerHTML = '<div class="tt-date">' + escapeHtml(w.name) + " · " + w.year + '</div>' +
+        '<div class="tt-row"><span>יתרה זמינה:</span><b>' + shk(w.balanceBefore || 0) + '</b></div>' +
+        '<div class="tt-row"><span>עלות החתונה:</span><b>' + shk(w.cost) + '</b></div>' +
+        '<div class="tt-row"><span>' + (w.shortfall ? "חסר:" : "נשאר:") + '</span><b>' +
+        shk(Math.abs(w.balanceAfter || 0)) + '</b></div>';
+      placeTip(tt, wrap, ev.clientX - rect.left, ev.clientY - rect.top);
+    });
+    zone.addEventListener("mouseleave", function(){ tt.style.display = "none"; });
+  });
+}
+
+// ---------- גרף 3: הרכב הכסף ----------
+function renderComposition(r) {
+  var svg = el("compChart"), wrap = el("compWrap");
+  var H = 150, W = svgSetup(svg, wrap, H);
+  var pad = { left: 20, right: 20 };
+  var pw = W - pad.left - pad.right;
+
+  var dep = Math.max(0, r.totalDeposited);
+  var profit = Math.max(0, r.totalProfit);
+  var total = dep + profit;
+  var c = colors();
+
+  if (total <= 0) {
+    svg.innerHTML = '<text x="' + (W/2) + '" y="70" text-anchor="middle" font-size="13" fill="' +
+      c.muted + '">הזינו נתונים כדי לראות את הרכב הכסף</text>';
+    return;
+  }
+
+  var barY = 34, barH = 46, rad = 6;
+  var depW = (dep / total) * pw;
+  var profW = pw - depW;
+  var gap = 2; // רווח בין המקטעים
+  var out = [];
+
+  function seg(sx, sw, fill, roundLeft, roundRight) {
+    if (sw <= 0.5) return "";
+    var rl = roundLeft ? Math.min(rad, sw) : 0;
+    var rr = roundRight ? Math.min(rad, sw) : 0;
+    return '<path d="M' + (sx + rl) + ',' + barY +
+      ' L' + (sx + sw - rr) + ',' + barY +
+      (rr ? ' Q' + (sx + sw) + ',' + barY + ' ' + (sx + sw) + ',' + (barY + rr) : ' L' + (sx + sw) + ',' + barY) +
+      ' L' + (sx + sw) + ',' + (barY + barH - rr) +
+      (rr ? ' Q' + (sx + sw) + ',' + (barY + barH) + ' ' + (sx + sw - rr) + ',' + (barY + barH) : '') +
+      ' L' + (sx + rl) + ',' + (barY + barH) +
+      (rl ? ' Q' + sx + ',' + (barY + barH) + ' ' + sx + ',' + (barY + barH - rl) : ' L' + sx + ',' + (barY + barH)) +
+      ' L' + sx + ',' + (barY + rl) +
+      (rl ? ' Q' + sx + ',' + barY + ' ' + (sx + rl) + ',' + barY : '') +
+      ' Z" fill="' + fill + '"/>';
+  }
+
+  out.push(seg(pad.left, Math.max(0, depW - (profW > 0 ? gap : 0)), c.s3, true, profW <= 0));
+  if (profW > 0) out.push(seg(pad.left + depW, profW, c.s1, depW <= 0, true));
+
+  var depPct = (dep / total) * 100, profPct = (profit / total) * 100;
+
+  // תוויות ישירות — בתוך המקטע אם יש מקום, אחרת מעליו
+  function label(sx, sw, txt, pct, inside) {
+    var cx = sx + sw / 2;
+    if (inside && sw > 90) {
+      out.push('<text x="' + cx + '" y="' + (barY + 21) + '" text-anchor="middle" font-size="12" font-weight="700" fill="#ffffff">' +
+        pct.toFixed(0) + '%</text>');
+      out.push('<text x="' + cx + '" y="' + (barY + 37) + '" text-anchor="middle" font-size="11" fill="#ffffff" opacity="0.92">' +
+        txt + '</text>');
+    } else if (sw > 4) {
+      out.push('<text x="' + cx + '" y="' + (barY - 10) + '" text-anchor="middle" font-size="11" font-weight="600" fill="' +
+        c.text + '">' + pct.toFixed(0) + '%</text>');
+    }
+  }
+  label(pad.left, depW, "הכסף שלכם", depPct, true);
+  if (profW > 0) label(pad.left + depW, profW, "רווח מהשוק", profPct, true);
+
+  // מקרא עם הסכומים
+  out.push('<circle cx="' + (pad.left + 6) + '" cy="' + (barY + barH + 26) + '" r="5" fill="' + c.s3 + '"/>');
+  out.push('<text x="' + (pad.left + 18) + '" y="' + (barY + barH + 30) + '" font-size="12" fill="' +
+    c.text + '">הכסף שהפקדתם: ' + shk(dep) + '</text>');
+  out.push('<circle cx="' + (pad.left + 6) + '" cy="' + (barY + barH + 46) + '" r="5" fill="' + c.s1 + '"/>');
+  out.push('<text x="' + (pad.left + 18) + '" y="' + (barY + barH + 50) + '" font-size="12" fill="' +
+    c.text + '">רווח מהשוק: ' + shk(profit) + ' (' + profPct.toFixed(1) + '% מהסכום הכולל)</text>');
+
+  svg.innerHTML = out.join("");
 }
 
 function niceTicks(min, max, count) {
@@ -763,6 +1003,8 @@ function recalc() {
   renderWedTable(r);
   renderYearTable(r);
   renderChart(r);
+  renderBarChart(r);
+  renderComposition(r);
   save();
 }
 
@@ -785,12 +1027,11 @@ el("addStep").addEventListener("click", function(){
 });
 window.addEventListener("resize", function(){ recalc(); });
 window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function(){ recalc(); });
-// צביעת הגרף מחדש כשמחליפים ערכת נושא בכלי התצוגה
+// צביעת הגרפים מחדש כשמחליפים ערכת נושא בכלי התצוגה
 new MutationObserver(function(){ recalc(); })
   .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
 recalc();
 })();
 </script>
-
 </div>
