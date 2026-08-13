@@ -34,7 +34,9 @@ function queue(fn) {
   return _chain;
 }
 
-async function post(payload, timeoutMs = 20000) {
+// Apps Script איטי — במיוחד בכתיבה הראשונה שיוצרת את הלשוניות. הכתיבה לא חוסמת
+// את תגובת ה-API (הקריאות מ-routes אינן ממתינות), אז עדיף להיות סבלניים.
+async function post(payload, timeoutMs = 60000) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
