@@ -271,6 +271,54 @@ input[type=checkbox] {
 .badge-prak { background: #e9d8fd; color: #553c9a; }
 .badge-new  { background: #bee3f8; color: #2c5282; }
 
+/* ── ADD CONTRACTOR ── */
+.add-bar {
+  background: #fff;
+  border-radius: 14px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  flex-wrap: wrap;
+  border-right: 5px solid #3182ce;
+}
+.add-bar label { font-weight: 700; font-size: 0.9rem; color: #0f2942; }
+.add-bar input[type=text], .add-bar select {
+  padding: 9px 14px;
+  font-size: 0.92rem;
+  font-family: 'Heebo', sans-serif;
+  border: 2px solid #bee3f8;
+  border-radius: 10px;
+  background: #ebf8ff;
+  color: #1a365d;
+  font-weight: 600;
+}
+.add-bar input[type=text] { min-width: 190px; }
+.add-bar select { min-width: 190px; cursor: pointer; }
+.add-bar input:focus, .add-bar select:focus { outline: none; border-color: #3182ce; }
+.btn-add {
+  padding: 10px 22px;
+  background: linear-gradient(135deg,#1a4a7a,#3182ce);
+  color: #fff; border: none; border-radius: 10px;
+  font-family: 'Heebo', sans-serif; font-size: 0.92rem; font-weight: 700;
+  cursor: pointer; transition: filter 0.15s;
+}
+.btn-add:hover { filter: brightness(1.12); }
+.add-note { font-size: 0.78rem; color: #718096; width: 100%; }
+
+.cont-card.custom { border-right-color: #ed8936; }
+.badge-custom { background: #feebc8; color: #9c4221; }
+.cont-actions { display: flex; align-items: center; gap: 8px; }
+.btn-del {
+  background: #fee2e2; color: #991b1b; border: none;
+  width: 26px; height: 26px; border-radius: 7px;
+  cursor: pointer; font-size: 0.9rem; line-height: 1;
+  font-family: 'Heebo', sans-serif; font-weight: 700;
+}
+.btn-del:hover { background: #fecaca; }
+
 /* ── SCROLLBAR ── */
 .inner-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
 .inner-scroll::-webkit-scrollbar-track { background: #f0f4f8; }
@@ -340,6 +388,16 @@ input[type=checkbox] {
 <!-- ══ קלידנים ══ -->
 <div id="pg-cont" class="page">
   <div class="page-title">רשימת קלידנים</div>
+
+  <div class="add-bar">
+    <label>➕ הוסף קלידן:</label>
+    <input type="text" id="new-name" placeholder="שם הקלידן" onkeydown="if(event.key==='Enter')addCont()">
+    <label>מחירון:</label>
+    <select id="new-pl"></select>
+    <button class="btn-add" onclick="addCont()">הוסף</button>
+    <div class="add-note">קלידנים שתוסיף נשמרים בדפדפן הזה ומופיעים מיד ברשימת הבחירה במחשבון.</div>
+  </div>
+
   <div class="cont-grid" id="cont-grid"></div>
 </div>
 
@@ -423,7 +481,7 @@ var PRODS = [
 var IDX_SHAA  = 17;
 var IDX_PANAS = 21;
 
-var CONTS = [
+var BASE_CONTS = [
   ["אושי לנדסמן",    0, "own"],
   ["יהודה רשגולד",   1, "own"],
   ["חנניה סונדרס",   2, "own"],
@@ -457,6 +515,27 @@ var CONTS = [
 var BADGE_LABELS = { own:"מחירון אישי", prak:"פרקטי", new:"קלידנים חדשים" };
 var BADGE_CSS    = { own:"badge-own",   prak:"badge-prak", new:"badge-new" };
 
+/* ── קלידנים שנוספו ידנית (נשמרים בדפדפן) ── */
+var STORE_KEY = 'eventCalc_customConts';
+
+function loadCustom() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; }
+  catch (e) { return []; }
+}
+function saveCustom(arr) {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(arr)); } catch (e) {}
+}
+
+var CUSTOM = loadCustom();
+var CONTS  = [];
+
+function rebuildConts() {
+  CONTS = BASE_CONTS.slice();
+  for (var k = 0; k < CUSTOM.length; k++)
+    CONTS.push([CUSTOM[k][0], CUSTOM[k][1], 'custom']);
+}
+rebuildConts();
+
 /* ── בנה טבלת מחירון ── */
 var thRow = document.getElementById('th-price');
 thRow.innerHTML = '<th>שם מוצר</th>';
@@ -471,20 +550,91 @@ for (var i = 0; i < PRODS.length; i++) {
 }
 
 /* ── בנה טבלת קלידנים ── */
-var grid = document.getElementById('cont-grid');
-for (var i = 0; i < CONTS.length; i++) {
-  var t = CONTS[i][2];
-  grid.innerHTML +=
-    '<div class="cont-card ' + t + '">' +
-    '<span class="cont-name">' + CONTS[i][0] + '</span>' +
-    '<span class="cont-badge ' + BADGE_CSS[t] + '">' + BADGE_LABELS[t] + '</span>' +
-    '</div>';
+function renderGrid() {
+  var grid = document.getElementById('cont-grid');
+  var html = '';
+  for (var i = 0; i < CONTS.length; i++) {
+    var t = CONTS[i][2];
+    if (t === 'custom') {
+      var custIdx = i - BASE_CONTS.length;
+      html +=
+        '<div class="cont-card custom">' +
+        '<span class="cont-name">' + CONTS[i][0] + '</span>' +
+        '<span class="cont-actions">' +
+        '<span class="cont-badge badge-custom">' + COLS[CONTS[i][1]] + '</span>' +
+        '<button class="btn-del" title="מחק" onclick="delCont(' + custIdx + ')">✕</button>' +
+        '</span></div>';
+    } else {
+      html +=
+        '<div class="cont-card ' + t + '">' +
+        '<span class="cont-name">' + CONTS[i][0] + '</span>' +
+        '<span class="cont-badge ' + BADGE_CSS[t] + '">' + BADGE_LABELS[t] + '</span>' +
+        '</div>';
+    }
+  }
+  grid.innerHTML = html;
 }
 
 /* ── בנה select קלידנים ── */
-var sel = document.getElementById('sel-cont');
-for (var i = 0; i < CONTS.length; i++)
-  sel.innerHTML += '<option value="' + i + '">' + CONTS[i][0] + '</option>';
+function renderSelect(keepName) {
+  var sel = document.getElementById('sel-cont');
+  var html = '<option value="-1">-- בחר קלידן --</option>';
+  var restore = -1;
+  for (var i = 0; i < CONTS.length; i++) {
+    html += '<option value="' + i + '">' + CONTS[i][0] + '</option>';
+    if (keepName && CONTS[i][0] === keepName) restore = i;
+  }
+  sel.innerHTML = html;
+  sel.value = String(restore);
+}
+
+/* ── בנה select מחירונים בטופס ההוספה ── */
+(function() {
+  var np = document.getElementById('new-pl');
+  var html = '';
+  for (var c = 0; c < COLS.length; c++)
+    html += '<option value="' + c + '"' + (c === 7 ? ' selected' : '') + '>' + COLS[c] + '</option>';
+  np.innerHTML = html;
+})();
+
+renderGrid();
+renderSelect();
+
+/* ── הוספה / מחיקה של קלידן ── */
+function currentContName() {
+  var v = parseInt(document.getElementById('sel-cont').value);
+  return (!isNaN(v) && v >= 0 && CONTS[v]) ? CONTS[v][0] : null;
+}
+
+function addCont() {
+  var nameEl = document.getElementById('new-name');
+  var name = nameEl.value.trim();
+  if (!name) { alert('נא להזין שם קלידן'); nameEl.focus(); return; }
+  for (var i = 0; i < CONTS.length; i++) {
+    if (CONTS[i][0] === name) { alert('הקלידן "' + name + '" כבר קיים ברשימה'); return; }
+  }
+  var keep = currentContName();
+  CUSTOM.push([name, parseInt(document.getElementById('new-pl').value)]);
+  saveCustom(CUSTOM);
+  rebuildConts();
+  renderGrid();
+  renderSelect(keep);
+  nameEl.value = '';
+  nameEl.focus();
+}
+
+function delCont(custIdx) {
+  var name = CUSTOM[custIdx][0];
+  if (!confirm('למחוק את "' + name + '" מהרשימה?')) return;
+  var keep = currentContName();
+  var wasSelected = (keep === name);
+  CUSTOM.splice(custIdx, 1);
+  saveCustom(CUSTOM);
+  rebuildConts();
+  renderGrid();
+  renderSelect(wasSelected ? null : keep);
+  if (wasSelected) loadCalc();
+}
 
 /* ── בנה שורות מחשבון ── */
 var tbCalc = document.getElementById('tb-calc');
