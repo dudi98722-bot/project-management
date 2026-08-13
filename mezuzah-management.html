@@ -379,6 +379,10 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
       <h2>דוח מזוזות לפי סטטוס</h2>
       <div class="table-wrap"><table id="tbl-status"></table></div>
     </div>
+    <div class="card" id="card-product">
+      <h2>מזוזות לפי סוג <span class="hint">— בית יוסף מול ארי, כולל נשלח לכתר</span></h2>
+      <div class="table-wrap"><table id="tbl-product"></table></div>
+    </div>
     <div class="card" id="card-monthly">
       <h2>פילוח חודשי</h2>
       <div class="table-wrap"><table id="tbl-monthly"></table></div>
@@ -393,6 +397,8 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
       <div class="card"><h2>מזוזות לפי חודש</h2><canvas id="ch-month"></canvas></div>
       <div class="card"><h2>יתרת חוב לפי אדם (₪)</h2><canvas id="ch-debt"></canvas></div>
       <div class="card"><h2>חשבון כתר (₪)</h2><canvas id="ch-keter-debt"></canvas></div>
+      <div class="card" id="card-ch-product"><h2>מזוזות לפי סוג</h2><canvas id="ch-product"></canvas></div>
+      <div class="card" id="card-ch-sent"><h2>מזוזות לפי נשלח לכתר</h2><canvas id="ch-sent"></canvas></div>
     </div>
   </div>
 
@@ -484,7 +490,8 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
     <div class="modal-head"><h3>📜 כניסה למערכת</h3></div>
     <div class="modal-body">
       <div class="form-group" style="margin-bottom:12px"><label>שם המשתמש</label>
-        <select id="login-user" style="padding:9px 11px;border:1.5px solid #cbd5e0;border-radius:8px;font-family:inherit"></select>
+        <input id="login-user" type="text" placeholder="שם משתמש" autocomplete="off" style="padding:9px 11px;border:1.5px solid #cbd5e0;border-radius:8px;font-family:inherit"
+          onkeydown="if(event.key==='Enter')doLogin()">
       </div>
       <div class="form-group" style="margin-bottom:14px"><label>סיסמה</label>
         <input id="login-pass" type="password" placeholder="סיסמה" style="padding:9px 11px;border:1.5px solid #cbd5e0;border-radius:8px;font-family:inherit"
@@ -931,12 +938,13 @@ function renderMezuzot() {
   if (!rows.length) { t.innerHTML = '<tr><td class="empty">אין מזוזות</td></tr>'; return; }
   const allChecked = rows.length && rows.every(m=>selectedMez.has(m.id));
   const cv = colVis;
-  let h = `<thead><tr><th><input type="checkbox" ${allChecked?'checked':''} onclick="toggleSelectAll(this.checked)" title="בחר הכל"></th><th>מק"ט</th><th>סופר</th><th>מוצר</th><th>תאריך</th>${cv('price')?`<th>מחיר ליחי'</th>`:''}${cv('comp')?'<th>הגהת מחשב</th>':''}${cv('g1')?'<th>גברא 1</th>':''}${cv('g2')?'<th>גברא 2</th>':''}<th>אישור הרב</th>${cv('scribePay')?'<th>לתשלום לסופר</th>':''}<th>הולוגרמה</th>${cv('keter')?'<th>כתר</th>':''}<th>תמונה</th><th></th></tr></thead><tbody>`;
+  let h = `<thead><tr><th><input type="checkbox" ${allChecked?'checked':''} onclick="toggleSelectAll(this.checked)" title="בחר הכל"></th><th>מק"ט</th>${cv('scribe')?'<th>סופר</th>':''}<th>דרגה</th><th>מוצר</th><th>תאריך</th>${cv('price')?`<th>מחיר ליחי'</th>`:''}${cv('comp')?'<th>הגהת מחשב</th>':''}${cv('g1')?'<th>גברא 1</th>':''}${cv('g2')?'<th>גברא 2</th>':''}<th>אישור הרב</th>${cv('scribePay')?'<th>לתשלום לסופר</th>':''}<th>הולוגרמה</th>${cv('keter')?'<th>כתר</th>':''}<th>תמונה</th><th></th></tr></thead><tbody>`;
   rows.forEach(m=>{
     h += `<tr>
       <td><input type="checkbox" ${selectedMez.has(m.id)?'checked':''} onclick="toggleSelectMez('${m.id}',this.checked)"></td>
       <td><input data-fld="sku" value="${esc(m.sku)}" style="min-width:72px;font-weight:700" onchange="editMez('${m.id}','sku',this.value)"></td>
-      <td><select data-fld="scribe" style="min-width:90px" onchange="editMez('${m.id}','scribe',this.value)">${optHtml(data.scribes,m.scribe,'—')}</select></td>
+      ${cv('scribe')?`<td><select data-fld="scribe" style="min-width:90px" onchange="editMez('${m.id}','scribe',this.value)">${optHtml(data.scribes,m.scribe,'—')}</select></td>`:''}
+      <td style="text-align:center;font-weight:700;color:#805ad5">${esc(scribeGrade(m))||'—'}</td>
       <td><select data-fld="product" style="min-width:110px" onchange="editMez('${m.id}','product',this.value)">${['מזוזה בית יוסף','מזוזה ארי'].map(o=>`<option${m.product===o?' selected':''}>${o}</option>`).join('')}</select></td>
       <td><input data-fld="date" type="date" value="${m.date}" onchange="editMez('${m.id}','date',this.value)"></td>
       ${cv('price')?`<td><input data-fld="price" type="number" value="${m.price}" style="min-width:78px" onchange="editMez('${m.id}','price',this.value)"></td>`:''}
@@ -1477,6 +1485,19 @@ function renderReports() {
     <tr><td>לא אושר — כשר</td><td>${stCount['כשר']}</td></tr>
     <tr style="background:#edf2f7;font-weight:700"><td>נשלחו לכתר</td><td>${keterYes} / ${mez.length}</td></tr>
     </tbody>`;
+  // product breakdown (Beit Yosef vs Ari) incl. sent-to-Keter
+  const pt = document.getElementById('tbl-product');
+  if (pt) {
+    const prods = ['מזוזה בית יוסף','מזוזה ארי'];
+    const stat = p => { const g={total:0,approved:0,pending:0,pasul:0,kosher:0,sent:0};
+      mez.filter(m=>m.product===p).forEach(m=>{ g.total++; if(m.approve==='אושר')g.approved++; else if(m.approve==='ממתין')g.pending++; else if(m.approve==='פסול')g.pasul++; else if(m.approve==='כשר')g.kosher++; if(m.keter==='כן')g.sent++; }); return g; };
+    const rows = prods.map(p=>({p, g:stat(p)}));
+    const tot = rows.reduce((a,r)=>{ Object.keys(r.g).forEach(k=>a[k]=(a[k]||0)+r.g[k]); return a; }, {});
+    let h='<thead><tr><th>סוג מזוזה</th><th>סה"כ</th><th>אושרו</th><th>ממתינים</th><th>נפסלו</th><th>כשר</th><th>נשלחו לכתר</th><th>לא נשלחו</th></tr></thead><tbody>';
+    rows.forEach(({p,g})=>{ h+=`<tr><td><b>${p}</b></td><td>${g.total}</td><td>${g.approved}</td><td>${g.pending}</td><td>${g.pasul}</td><td>${g.kosher}</td><td>${g.sent}</td><td>${g.total-g.sent}</td></tr>`; });
+    h+=`<tr style="background:#edf2f7;font-weight:800"><td>סה"כ</td><td>${tot.total||0}</td><td>${tot.approved||0}</td><td>${tot.pending||0}</td><td>${tot.pasul||0}</td><td>${tot.kosher||0}</td><td>${tot.sent||0}</td><td>${(tot.total||0)-(tot.sent||0)}</td></tr>`;
+    pt.innerHTML = h+'</tbody>';
+  }
   // monthly
   const mon = {};
   mez.forEach(m=>{
@@ -1521,6 +1542,12 @@ function renderCharts() {
   // keter account: charged / paid / balance owed to me
   const kc = keterCharges(), kp = keterPaid();
   mkChart('ch-keter-debt', { type:'bar', data:{ labels:['חיוב כתר','שולם','יתרה שכתר חייב'], datasets:[{ data:[kc, kp, Math.max(0,kc-kp)], backgroundColor:['#2b6cb0','#38a169','#e53e3e'] }] }, options:{ plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} } });
+  // by product type (Beit Yosef vs Ari)
+  const byIcon=$=>mez.filter(m=>m.product===$).length;
+  mkChart('ch-product', { type:'doughnut', data:{ labels:['מזוזה בית יוסף','מזוזה ארי'], datasets:[{ data:[byIcon('מזוזה בית יוסף'), byIcon('מזוזה ארי')], backgroundColor:['#2b6cb0','#805ad5'] }] }, options:{ plugins:{legend:{position:'bottom'}} } });
+  // by sent-to-keter status
+  const sent = mez.filter(m=>m.keter==='כן').length;
+  mkChart('ch-sent', { type:'doughnut', data:{ labels:['נשלח לכתר','לא נשלח'], datasets:[{ data:[sent, mez.length-sent], backgroundColor:['#38a169','#a0aec0'] }] }, options:{ plugins:{legend:{position:'bottom'}} } });
 }
 
 // ============ EXPORT / IMPORT ============
@@ -1598,8 +1625,9 @@ const COLUMN_HIDE = {
   admin:      [],
   worker:     ['price','scribePay','keter'],
   supervisor: ['price','scribePay','keter'],
-  investor:   ['price','scribePay','keter','comp','g1','g2']
+  investor:   ['scribe','price','scribePay','keter','comp','g1','g2']
 };
+function scribeGrade(m){ const s=(data.scribes||[]).find(x=>x.name===m.scribe); return s&&s.grade ? s.grade : ''; }
 let currentUser = null;
 
 function can(cap){
@@ -1628,24 +1656,25 @@ async function hashPass(name, pass){
 
 // ---- login gate ----
 function authActive(){ return alive(data.users).length > 0; }
-function fillLoginUsers(){
-  const sel = document.getElementById('login-user');
-  sel.innerHTML = alive(data.users).map(u=>`<option value="${u.id}">${esc(u.name)} (${ROLE_LABELS[u.role]||u.role})</option>`).join('');
+function showLoginGate(){
+  const u = document.getElementById('login-user'); if (u) u.value='';
+  const p = document.getElementById('login-pass'); if (p) p.value='';
+  document.getElementById('loginOverlay').classList.add('show');
+  if (u) setTimeout(()=>u.focus(), 50);
 }
 function checkAuth(){
   if (!authActive()){ currentUser = null; document.getElementById('loginOverlay').classList.remove('show'); applyPermissions(); return; }
   const sid = sessionStorage.getItem('mz_user');
   const u = sid && alive(data.users).find(x=>x.id===sid);
   if (u){ currentUser = u; document.getElementById('loginOverlay').classList.remove('show'); applyPermissions(); }
-  else { currentUser = null; fillLoginUsers(); document.getElementById('loginOverlay').classList.add('show'); }
+  else { currentUser = null; showLoginGate(); }
 }
 async function doLogin(){
-  const id = document.getElementById('login-user').value;
-  const u = alive(data.users).find(x=>x.id===id);
+  const name = document.getElementById('login-user').value.trim();
   const err = document.getElementById('login-err');
-  if (!u){ err.textContent='בחר משתמש'; err.style.display='block'; return; }
-  const h = await hashPass(u.name, document.getElementById('login-pass').value);
-  if (h === u.hash){
+  const u = alive(data.users).find(x=>x.name===name);
+  const h = u ? await hashPass(u.name, document.getElementById('login-pass').value) : '';
+  if (u && h === u.hash){
     currentUser = u;
     sessionStorage.setItem('mz_user', u.id);
     document.getElementById('login-pass').value='';
@@ -1653,13 +1682,14 @@ async function doLogin(){
     document.getElementById('loginOverlay').classList.remove('show');
     applyPermissions(); renderAll();
   } else {
-    err.textContent='סיסמה שגויה'; err.style.display='block';
+    err.textContent='שם משתמש או סיסמה שגויים';   // don't reveal which
+    err.style.display='block';
   }
 }
 function logout(){
   sessionStorage.removeItem('mz_user');
   currentUser = null;
-  if (authActive()){ fillLoginUsers(); document.getElementById('loginOverlay').classList.add('show'); }
+  if (authActive()) showLoginGate();
 }
 
 // ---- show/hide by permission ----
@@ -1692,11 +1722,11 @@ function applyPermissions(){
   const open = !authActive() || role==='admin';
   const reportVis = (id) => {
     if (open) return true;
-    if (role==='investor')  return ['card-keter','card-status'].includes(id);   // לקוח: חשבון כתר + סטטוס בלבד
-    if (role==='supervisor') return id==='card-status';                          // משגיח: סטטוס בלבד
+    if (role==='investor')  return ['card-keter','card-status','card-product'].includes(id);   // לקוח: כתר + סטטוס + לפי סוג
+    if (role==='supervisor') return ['card-status','card-product'].includes(id);                // משגיח: סטטוס + לפי סוג
     return false;
   };
-  ['card-finance','card-scribe-report','card-keter','card-customers','card-balances','card-status','card-monthly'].forEach(id=>{
+  ['card-finance','card-scribe-report','card-keter','card-customers','card-balances','card-status','card-product','card-monthly'].forEach(id=>{
     const c=document.getElementById(id); if(c) c.style.display = reportVis(id) ? '' : 'none';
   });
   // chart cards
