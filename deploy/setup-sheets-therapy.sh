@@ -73,6 +73,11 @@ set -e
 echo "$OUT"
 [ $RC -eq 0 ] || { echo ""; echo "   תקן ונסה שוב את אותה פקודה."; exit 1; }
 
+# ---------- ייצוא ראשוני של מה שכבר במערכת ----------
+echo ""
+echo "📤 מייצא לגיליון את הנתונים הקיימים..."
+node scripts/sync_all.js || echo "   ⚠️  הייצוא נכשל. אפשר לנסות שוב: cd $APP && node scripts/sync_all.js"
+
 # ---------- הפעלה מחדש ----------
 systemctl restart "$SERVICE"
 sleep 2

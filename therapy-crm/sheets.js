@@ -27,11 +27,14 @@ function fmt(v) {
   return v;
 }
 
-// תור סדרתי: Apps Script לא אוהב בקשות מקבילות, וגם ננעל בצד שלו
+// תור סדרתי: Apps Script לא אוהב בקשות מקבילות, וגם ננעל בצד שלו.
+// התור ממשיך גם אחרי כישלון, אבל הקורא מקבל את התוצאה האמיתית ויכול להחליט
+// אם לבלוע אותה (קריאה מ-routes) או להיכשל בקול (ייצוא יזום).
 let _chain = Promise.resolve();
-function queue(fn) {
-  _chain = _chain.then(fn).catch(e => { console.error('Sheets:', e.message); });
-  return _chain;
+function enqueue(fn) {
+  const result = _chain.then(() => fn());
+  _chain = result.catch(() => {});
+  return result;
 }
 
 // Apps Script איטי — במיוחד בכתיבה הראשונה שיוצרת את הלשוניות. הכתיבה לא חוסמת
@@ -72,18 +75,22 @@ async function backup(user, action, table, id, record, details) {
   if (record && hasTab(table)) {
     actions.push({ type: 'upsert', table, values: rowFor(table, record) });
   }
-  return queue(() => post({ actions }));
+  // נקרא מ-routes בלי await — חייב לא לזרוק
+  return enqueue(() => post({ actions })).catch(e => console.error('Sheets:', e.message));
 }
 
-// שיקוף מרוכז (יצירת סדרת פגישות, ביטול מרובה) — בקשה אחת לכל האצווה
-async function mirrorMany(table, records) {
+// שיקוף מרוכז (יצירת סדרת פגישות, ביטול מרובה, ייצוא ראשוני).
+// strict=true -> שגיאות עוברות לקורא (לשימוש סקריפט הייצוא, שרוצה לדעת)
+async function mirrorMany(table, records, { strict = false } = {}) {
   if (!enabled() || !hasTab(table) || !Array.isArray(records) || !records.length) return;
   const actions = records.map(r => ({ type: 'upsert', table, values: rowFor(table, r) }));
   // פיצול לאצוות כדי לא לחרוג ממגבלת זמן הריצה של Apps Script
   const CHUNK = 50;
   for (let i = 0; i < actions.length; i += CHUNK) {
     const slice = actions.slice(i, i + CHUNK);
-    await queue(() => post({ actions: slice }, 60000));
+    const job = enqueue(() => post({ actions: slice }, 120000));
+    if (strict) await job;
+    else await job.catch(e => console.error('Sheets:', e.message));
   }
 }
 

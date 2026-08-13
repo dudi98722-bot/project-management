@@ -52,7 +52,10 @@ function doPost(e) {
     lock.waitLock(25000);
     try {
       var acts = body.actions || [];
-      for (var i = 0; i < acts.length; i++) apply_(acts[i]);
+      // אינדקס מזהה->שורה נבנה פעם אחת לכל לשונית בבקשה. בלעדיו כל שורה
+      // הייתה סורקת מחדש את כל העמודה, וייצוא של מאות פגישות היה נתקע.
+      var ctx = {};
+      for (var i = 0; i < acts.length; i++) apply_(acts[i], ctx);
       return json_({ ok: true, applied: acts.length });
     } finally {
       lock.releaseLock();
@@ -91,7 +94,8 @@ function ensureAll_() {
   for (var k in TABS) sheetFor_(TABS[k].title, TABS[k].header);
 }
 
-function apply_(a) {
+function apply_(a, ctx) {
+  ctx = ctx || {};
   if (a.type === 'log') {
     sheetFor_(LOG.title, LOG.header).appendRow(a.values);
     return;
@@ -99,17 +103,23 @@ function apply_(a) {
   if (a.type === 'upsert') {
     var def = TABS[a.table];
     if (!def) return;
-    var sh = sheetFor_(def.title, def.header);
-    var id = String(a.values[0]);
-    var last = sh.getLastRow();
-    var row = 0;
-    if (last > 1) {
-      var col = sh.getRange(2, 1, last - 1, 1).getValues();
-      for (var i = 0; i < col.length; i++) {
-        if (String(col[i][0]) === id) { row = i + 2; break; }
+
+    // אינדקס לכל לשונית: נבנה פעם אחת, ומתעדכן תוך כדי כשמוסיפים שורות
+    var st = ctx[a.table];
+    if (!st) {
+      var sh = sheetFor_(def.title, def.header);
+      var last = sh.getLastRow();
+      var idx = {};
+      if (last > 1) {
+        var col = sh.getRange(2, 1, last - 1, 1).getValues();
+        for (var i = 0; i < col.length; i++) idx[String(col[i][0])] = i + 2;
       }
+      st = ctx[a.table] = { sh: sh, idx: idx, next: Math.max(last + 1, 2) };
     }
-    if (row) sh.getRange(row, 1, 1, a.values.length).setValues([a.values]);
-    else sh.appendRow(a.values);
+
+    var id = String(a.values[0]);
+    var row = st.idx[id];
+    if (!row) { row = st.next++; st.idx[id] = row; }
+    st.sh.getRange(row, 1, 1, a.values.length).setValues([a.values]);
   }
 }
