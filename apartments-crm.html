@@ -3165,12 +3165,12 @@ function sheetSplits(list){
   return {name:"חלוקת שלבים",rows:rows};
 }
 function sheetPayments(list){
-  var rows=[["פרוייקט","שלב","שלב-אב","תאריך","סכום","שולם ל","מנהל","משלם","מהחשבון","בנק זמני","אמצעי","אוטומטי","חשבונית","נשלח לרו\"ח","הערה"]];
+  var rows=[["פרוייקט","שלב","קטגוריה","שלב-אב","תאריך","סכום","שולם ל","מנהל","משלם","מהחשבון","בנק זמני","אמצעי","אוטומטי","חשבונית","נשלח לרו\"ח","הערה"]];
   var tot=0;
   list.forEach(function(a){
     apAllPayments(a.id).slice().sort(function(x,y){return (x.date<y.date)?-1:1;}).forEach(function(p){
       var e=byId(DB.expenses,p.expenseId)||{};
-      rows.push([a.name,e.description||"",parentDesc(e),D(p.date),M(p.amount),
+      rows.push([a.name,e.description||"",categoryName(e.categoryId)||"",parentDesc(e),D(p.date),M(p.amount),
         p.recipientType==="manager"?"מנהל":"ספק",
         p.recipientType==="manager"?managerName(p.recipientManagerId):"",
         p.payerPartnerId?partnerName(p.payerPartnerId):"",
@@ -3179,7 +3179,7 @@ function sheetPayments(list){
       tot+=Number(p.amount)||0;
     });
   });
-  return {name:"תשלומים",rows:rows,foot:[["סה\"כ","","","",M(tot)]]};
+  return {name:"תשלומים",rows:rows,foot:[["סה\"כ","","","","",M(tot)]]};
 }
 function sheetMgmt(list){
   var rows=[["פרוייקט","שלב","מנהל","% שוטף","% דחוי","תווית הדחוי","הדחוי שוחרר","בסיס החישוב","מע\"מ","חיוב פעיל","שולם","נותר","דחוי ממתין"]];
@@ -4202,7 +4202,13 @@ function modulePayments(aptId){
       [["","רו\"ח — הכל"],["sent","✔ נשלח לרו\"ח"],["not","טרם נשלח לרו\"ח"]].map(function(o){
         return '<option value="'+o[0]+'"'+(Q.payCpa===o[0]?" selected":"")+'>'+o[1]+'</option>'; }).join("")+
     '</select>'+
-    ((Q.pay||Q.payWho||Q.paySrc||Q.payInv||Q.payCpa)?'<button class="btn btn-ghost btn-sm" onclick="Q.pay=\'\';Q.payWho=\'\';Q.paySrc=\'\';Q.payInv=\'\';Q.payCpa=\'\';rerender()">✕ נקה</button>':'')+
+    '<select style="max-width:160px" onchange="Q.payCat=this.value;renderPayTable()">'+
+      '<option value="">כל הקטגוריות</option>'+
+      '<option value="__none"'+(Q.payCat==="__none"?" selected":"")+'>ללא קטגוריה</option>'+
+      catsSorted().map(function(c){
+        return '<option value="'+c.id+'"'+(Q.payCat===c.id?" selected":"")+'>'+esc(c.name)+'</option>'; }).join("")+
+    '</select>'+
+    ((Q.pay||Q.payWho||Q.paySrc||Q.payInv||Q.payCpa||Q.payCat)?'<button class="btn btn-ghost btn-sm" onclick="Q.pay=\'\';Q.payWho=\'\';Q.paySrc=\'\';Q.payInv=\'\';Q.payCpa=\'\';Q.payCat=\'\';rerender()">✕ נקה</button>':'')+
     (can("edit")?'<button class="btn btn-primary btn-sm" onclick="openBulkPayEdit(\''+aptId+'\')">✏️ עדכון מרוכז <span id="pb-count"></span></button>':'')+
     (can("edit")?'<button class="btn btn-sm" onclick="openNoteImport(\''+aptId+'\')">📝 ייבוא הערות מאקסל</button>':'')+
     '<div class="sp"></div><span id="pay-count"></span></div>';
@@ -4528,6 +4534,12 @@ function payTableHtml(aptId){
     }
     if(Q.payCpa==="sent" && !paySentCpa(p)) return false;
     if(Q.payCpa==="not" && paySentCpa(p)) return false;
+    if(Q.payCat){
+      var pe=byId(DB.expenses,p.expenseId);
+      var cid=pe?pe.categoryId:"";
+      if(Q.payCat==="__none"){ if(cid&&categoryName(cid)) return false; }
+      else if(cid!==Q.payCat) return false;
+    }
     return true;
   });
   var cnt=document.getElementById("pay-count");
@@ -4537,7 +4549,7 @@ function payTableHtml(aptId){
   var sel=can("edit");
   var h='<div class="table-wrap"><table class="tbl"><thead><tr>'+
     (sel?'<th class="chk" data-xl-skip="1" style="width:30px"><input type="checkbox" title="סמן הכל" style="width:auto" onclick="pbAll(this.checked)"></th>':'')+
-    '<th>תאריך</th><th>עבור (שלב)</th><th>סכום</th><th>חשבון</th><th>מי שילם</th>'+
+    '<th>תאריך</th><th>עבור (שלב)</th><th>קטגוריה</th><th>סכום</th><th>חשבון</th><th>מי שילם</th>'+
     '<th>מוטב</th><th>אמצעי</th><th>חשבונית</th><th>נשלח לרו"ח</th><th>הערה</th><th></th></tr></thead><tbody>';
   list.sort(function(x,y){ return x.date<y.date?1:-1; }).forEach(function(p){
     var e=byId(DB.expenses,p.expenseId), acc=byId(DB.accounts,p.accountId);
@@ -4549,6 +4561,7 @@ function payTableHtml(aptId){
       (sel?'<td class="chk"><input type="checkbox" class="pb-x" value="'+p.id+'" style="width:auto" onchange="pbCount()"></td>':'')+
       '<td>'+dateHe(p.date)+'</td>'+
       '<td><b>'+esc(e?e.description:"—")+'</b>'+(p.hidden?' <span class="badge badge-danger" title="תשלום מוסתר">🔒</span>':'')+'</td>'+
+      '<td>'+esc((e&&categoryName(e.categoryId))||"—")+'</td>'+
       '<td>'+money(p.amount)+'</td>'+
       '<td>'+payAccountCell(p)+'</td>'+
       '<td>'+(p.payerPartnerId?esc(partnerName(p.payerPartnerId)):(accountIsBank(p.accountId)?'<span class="muted">מהבנק</span>':"—"))+'</td>'+
@@ -4561,7 +4574,7 @@ function payTableHtml(aptId){
         '<button class="btn btn-ghost btn-sm" onclick="delPayment(\''+p.id+'\',\''+p.expenseId+'\')">🗑️</button>':'')+'</td></tr>';
   });
   var lbl=(list.length===all.length)?'סה"כ':'סה"כ המסונן';
-  h+='</tbody><tfoot><tr><td colspan="'+(sel?3:2)+'">'+lbl+' ('+list.length+' תשלומים)</td><td>'+money(tot)+'</td>'+
+  h+='</tbody><tfoot><tr><td colspan="'+(sel?4:3)+'">'+lbl+' ('+list.length+' תשלומים)</td><td>'+money(tot)+'</td>'+
     '<td colspan="8"></td></tr></tfoot></table></div>';
   return h;
 }
@@ -6974,6 +6987,7 @@ function moduleApartmentReports(aptId){
       return s2+'</tbody><tfoot><tr><td>סה"כ</td><td>'+money(tS)+'</td><td>'+money(tP)+'</td><td>'+money(tP-tS)+'</td></tr></tfoot></table></div></div>'; }},
     {key:"payer",label:"💳 כל התשלומים של משלם",show:true,render:function(){ return payerReportHtml(aptId); }},
     {key:"category",label:"📁 לפי קטגוריה",show:true,render:function(){ return categoryReportHtml(aptId); }},
+    {key:"catYear",label:"📆 קטגוריה לפי שנה",show:true,render:function(){ return categoryYearReportHtml(aptId); }},
     {key:"due",label:"⚖️ חובה והתחשבנות",show:true,render:function(){ return dueByPaidReportHtml(aptId); }},
     {key:"stages",label:"📋 שותפים לפי שלבים",show:true,render:function(){ return '<div id="partner-report">'+partnerReportHtml(aptId)+'</div>'; }}
   ];
@@ -7045,6 +7059,60 @@ function categoryReportHtml(aptId){
   if(none && none.count) h+='<div class="hint" style="margin-top:8px">'+none.count+
     ' שלבים עדיין בלי קטגוריה ('+money(none.cost)+'). שייך אותם כדי שהדוח יהיה מלא.</div>';
   return h+'</div>';
+}
+
+/* ============================================================
+   דוח קטגוריה לפי שנה — שורה לקטגוריה, עמודה לשנה
+   הסכום הוא עלות השלב (כולל דמי ניהול), לפי שנת תאריך השלב.
+   נספרים רק עלים — כמו בדוח הקטגוריות.
+   ============================================================ */
+function categoryYearReportHtml(aptId){
+  var a=byId(DB.apartments,aptId);
+  var years=[], map={}, order=[];
+  function slot(key,name){
+    if(!map[key]){ map[key]={key:key,name:name,byYear:{},total:0}; order.push(key); }
+    return map[key];
+  }
+  apLeafExpenses(aptId).forEach(function(e){
+    var yr=e.date?String(e.date).slice(0,4):"ללא תאריך";
+    if(years.indexOf(yr)<0) years.push(yr);
+    var s=slot(e.categoryId||"__none",
+      e.categoryId?(categoryName(e.categoryId)||"(קטגוריה שנמחקה)"):"ללא קטגוריה");
+    var cost=(Number(e.amount)||0)+expenseMgmtCostLive(e.id);
+    s.byYear[yr]=round2((s.byYear[yr]||0)+cost);
+    s.total=round2(s.total+cost);
+  });
+  var rows=order.map(function(k){ return map[k]; });
+  if(!rows.length) return '<div class="card"><h3>📆 קטגוריה לפי שנה</h3><div class="empty">אין שלבים בפרוייקט</div></div>';
+  /* "ללא תאריך" תמיד אחרונה; השנים בסדר עולה */
+  years.sort(function(x,y){
+    if(x==="ללא תאריך") return 1; if(y==="ללא תאריך") return -1;
+    return x<y?-1:1;
+  });
+  rows.sort(function(x,y){
+    if(x.key==="__none") return 1; if(y.key==="__none") return -1;
+    return y.total-x.total;
+  });
+  var h='<div class="card"><h3>📆 קטגוריה לפי שנה — '+esc(a.name)+'</h3>'+
+    (a.hasManagement?'<div class="hint" style="margin-bottom:8px">הסכומים כוללים דמי ניהול. השנה נקבעת לפי תאריך השלב.</div>'
+                    :'<div class="hint" style="margin-bottom:8px">השנה נקבעת לפי תאריך השלב.</div>')+
+    '<div class="table-wrap"><table class="tbl"><thead><tr><th>קטגוריה</th>'+
+    years.map(function(y){ return '<th>'+esc(y)+'</th>'; }).join("")+
+    '<th>סה"כ</th></tr></thead><tbody>';
+  var colTot={}, grand=0;
+  rows.forEach(function(r){
+    h+='<tr'+(r.key==="__none"?' class="muted"':'')+'><td><b>'+esc(r.name)+'</b></td>';
+    years.forEach(function(y){
+      var v=r.byYear[y]||0; colTot[y]=round2((colTot[y]||0)+v);
+      h+='<td>'+(v?money(v):'<span class="muted">—</span>')+'</td>';
+    });
+    grand=round2(grand+r.total);
+    h+='<td><b>'+money(r.total)+'</b></td></tr>';
+  });
+  h+='</tbody><tfoot><tr><td>סה"כ</td>'+
+    years.map(function(y){ return '<td>'+money(colTot[y]||0)+'</td>'; }).join("")+
+    '<td>'+money(grand)+'</td></tr></tfoot></table></div></div>';
+  return h;
 }
 
 /* ============================================================
