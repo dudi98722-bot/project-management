@@ -54,11 +54,10 @@ router.get('/availability', authenticate, async (req, res) => {
       if (pr.rows.length) {
         const p = pr.rows[0];
         if (Array.isArray(p.hours) && p.hours.length) patientHours = new Set(p.hours.map(Number));
-        if (p.preferred_therapist_id) therapistFilterIds = [p.preferred_therapist_id];
-        else if (p.preferred_group_id) {
-          const gm = await pool.query('SELECT therapist_id FROM group_members WHERE group_id=$1', [p.preferred_group_id]);
-          therapistFilterIds = gm.rows.map(r => r.therapist_id);
-        }
+        // רשימת המטפלים המועדפים היא מקור האמת; הקבוצות רק זרעו אותה בשעתו,
+        // ולכן לא מרחיבים אותן שוב כאן — אחרת מטפל שהוסר ידנית היה חוזר.
+        const prefIds = Array.isArray(p.preferred_therapist_ids) ? p.preferred_therapist_ids.map(Number).filter(Boolean) : [];
+        if (prefIds.length) therapistFilterIds = prefIds;
       }
     }
     if (req.query.therapist_id) therapistFilterIds = [validId(req.query.therapist_id)].filter(Boolean);

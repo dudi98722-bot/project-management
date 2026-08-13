@@ -32,18 +32,30 @@ function cleanBody(b) {
   hours = [...new Set(hours)].sort((a, c) => a - c);
   if (!hours.length) errors.push('חובה לבחור לפחות שעה אחת מתאימה לטיפול');
   out.hours = JSON.stringify(hours);
-  out.preferred_therapist_id = validId(b.preferred_therapist_id);
-  out.preferred_group_id = validId(b.preferred_group_id);
+  out.preferred_therapist_ids = JSON.stringify(idList(b.preferred_therapist_ids));
+  out.preferred_group_ids = JSON.stringify(idList(b.preferred_group_ids));
   return { out, errors };
+}
+
+// רשימת מזהים ייחודיים ותקינים, בלי כפילויות
+function idList(v) {
+  if (!Array.isArray(v)) return [];
+  return [...new Set(v.map(validId).filter(Boolean))];
 }
 
 const SELECT = `
   SELECT p.*,
-         t.name AS preferred_therapist_name,
-         g.name AS preferred_group_name
-  FROM patients p
-  LEFT JOIN therapists t ON t.id = p.preferred_therapist_id
-  LEFT JOIN therapist_groups g ON g.id = p.preferred_group_id`;
+         (SELECT COALESCE(json_agg(json_build_object('id', t.id, 'name', t.name) ORDER BY t.name), '[]'::json)
+            FROM therapists t
+           WHERE t.deleted = false
+             AND t.id IN (SELECT x::bigint FROM jsonb_array_elements_text(p.preferred_therapist_ids) AS x)
+         ) AS preferred_therapists,
+         (SELECT COALESCE(json_agg(json_build_object('id', g.id, 'name', g.name) ORDER BY g.name), '[]'::json)
+            FROM therapist_groups g
+           WHERE g.deleted = false
+             AND g.id IN (SELECT x::bigint FROM jsonb_array_elements_text(p.preferred_group_ids) AS x)
+         ) AS preferred_groups
+  FROM patients p`;
 
 router.get('/', authenticate, async (req, res) => {
   try {
@@ -71,10 +83,10 @@ router.post('/', authenticate, can('edit'), async (req, res) => {
   try {
     const r = await pool.query(
       `INSERT INTO patients (last_name, first_name, national_id, intake_date, birth_date, hmo, client_type, community,
-                             diagnosis, notes, urgency, hours, preferred_therapist_id, preferred_group_id)
+                             diagnosis, notes, urgency, hours, preferred_therapist_ids, preferred_group_ids)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
       [out.last_name, out.first_name, out.national_id, out.intake_date, out.birth_date, out.hmo, out.client_type,
-       out.community, out.diagnosis, out.notes, out.urgency, out.hours, out.preferred_therapist_id, out.preferred_group_id]);
+       out.community, out.diagnosis, out.notes, out.urgency, out.hours, out.preferred_therapist_ids, out.preferred_group_ids]);
     await logAction(req.user, 'add', 'patients', r.rows[0].id, { name: `${out.last_name} ${out.first_name}` });
     sheets.backup(req.user, 'add', 'patients', r.rows[0].id, r.rows[0], { name: `${out.last_name} ${out.first_name}` });
     res.status(201).json(r.rows[0]);
@@ -88,10 +100,10 @@ router.put('/:id', authenticate, can('edit'), async (req, res) => {
     const r = await pool.query(
       `UPDATE patients SET last_name=$1, first_name=$2, national_id=$3, intake_date=$4, birth_date=$5, hmo=$6,
               client_type=$7, community=$8, diagnosis=$9, notes=$10, urgency=$11, hours=$12,
-              preferred_therapist_id=$13, preferred_group_id=$14, updated_at=NOW()
+              preferred_therapist_ids=$13, preferred_group_ids=$14, updated_at=NOW()
        WHERE id=$15 AND deleted=false RETURNING *`,
       [out.last_name, out.first_name, out.national_id, out.intake_date, out.birth_date, out.hmo, out.client_type,
-       out.community, out.diagnosis, out.notes, out.urgency, out.hours, out.preferred_therapist_id, out.preferred_group_id,
+       out.community, out.diagnosis, out.notes, out.urgency, out.hours, out.preferred_therapist_ids, out.preferred_group_ids,
        req.params.id]);
     if (!r.rows.length) return res.status(404).json({ error: 'לא נמצא' });
     await logAction(req.user, 'edit', 'patients', req.params.id, {});

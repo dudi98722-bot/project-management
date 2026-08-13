@@ -45,7 +45,7 @@ const S = {
 
 const ACTIONS = { title: 'פעולות', header: ['זמן', 'משתמש', 'פעולה', 'טבלה', 'מזהה', 'פרטים'] };
 const TABS = {
-  patients:         { title: 'ממתינים',       cols: ['id', 'last_name', 'first_name', 'national_id', 'intake_date', 'birth_date', 'hmo', 'client_type', 'community', 'diagnosis', 'notes', 'urgency', 'hours', 'preferred_therapist_id', 'preferred_group_id', 'status', 'deleted', 'updated_at'] },
+  patients:         { title: 'ממתינים',       cols: ['id', 'last_name', 'first_name', 'national_id', 'intake_date', 'birth_date', 'hmo', 'client_type', 'community', 'diagnosis', 'notes', 'urgency', 'hours', 'preferred_therapist_ids', 'preferred_group_ids', 'status', 'deleted', 'updated_at'] },
   therapists:       { title: 'מטפלים',        cols: ['id', 'name', 'phone', 'email', 'notes', 'work_schedule', 'active', 'deleted', 'updated_at'] },
   therapist_groups: { title: 'קבוצות מטפלים', cols: ['id', 'name', 'notes', 'members', 'deleted', 'updated_at'] },
   assignments:      { title: 'סדרות טיפול',   cols: ['id', 'patient_id', 'therapist_id', 'total_sessions', 'start_date', 'hour', 'weekday', 'status', 'notes', 'deleted', 'updated_at'] },

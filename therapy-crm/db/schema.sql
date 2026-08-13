@@ -126,6 +126,31 @@ CREATE TABLE IF NOT EXISTS sessions (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- ===== העדפת שיוך: מקבוצה/מטפל בודד -> רשימת מטפלים מרובה =====
+-- הרשימה היא מקור האמת לשיבוץ. הקבוצות נשמרות כדי להראות מאיפה הרשימה נזרעה.
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS preferred_therapist_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS preferred_group_ids     JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+-- העברה חד-פעמית מהעמודות הבודדות הישנות. אחרי שהן מתאפסות זה הופך ל-no-op.
+-- מטופל שהייתה לו קבוצה בלבד מקבל את חברי הקבוצה כרשימה — אחרת ההעדפה שלו
+-- הייתה נעלמת, כי השיבוץ מסתמך מעכשיו על רשימת המטפלים ולא על הקבוצה.
+UPDATE patients p
+   SET preferred_therapist_ids =
+         CASE WHEN p.preferred_therapist_id IS NOT NULL
+                   THEN to_jsonb(ARRAY[p.preferred_therapist_id])
+              WHEN p.preferred_group_id IS NOT NULL
+                   THEN COALESCE((SELECT jsonb_agg(gm.therapist_id)
+                                    FROM group_members gm
+                                   WHERE gm.group_id = p.preferred_group_id), '[]'::jsonb)
+              ELSE p.preferred_therapist_ids END,
+       preferred_group_ids =
+         CASE WHEN p.preferred_group_id IS NOT NULL
+                   THEN to_jsonb(ARRAY[p.preferred_group_id])
+              ELSE p.preferred_group_ids END,
+       preferred_therapist_id = NULL,
+       preferred_group_id     = NULL
+ WHERE p.preferred_therapist_id IS NOT NULL OR p.preferred_group_id IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_sessions_therapist_date ON sessions (therapist_id, date, hour);
 CREATE INDEX IF NOT EXISTS idx_sessions_assignment ON sessions (assignment_id);
 CREATE INDEX IF NOT EXISTS idx_patients_status ON patients (status) WHERE deleted = false;

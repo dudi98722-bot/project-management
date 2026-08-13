@@ -194,8 +194,7 @@ function renderWaitingTable() {
     const age = calcAge(p.birth_date);
     const [uLbl, uCls] = URGENCY[p.urgency] || URGENCY[2];
     const [sLbl, sCls] = PSTATUS[p.status] || PSTATUS.waiting;
-    const pref = p.preferred_therapist_name ? '👤 ' + esc(p.preferred_therapist_name)
-      : p.preferred_group_name ? '👥 ' + esc(p.preferred_group_name) : '—';
+    const pref = prefSummary(p);
     return `<tr>
       <td><b>${esc(p.last_name)} ${esc(p.first_name)}</b>${p.diagnosis ? `<div class="hint">${esc(p.diagnosis)}</div>` : ''}</td>
       <td>${esc(p.national_id || '')}</td>
@@ -227,7 +226,6 @@ async function deletePatient(id) {
 function openPatientModal(id) {
   const p = id ? S.patients.find(x => x.id === id) : null;
   const hours = p ? (p.hours || ALL_HOURS) : ALL_HOURS.slice();
-  const prefMode = p && p.preferred_therapist_id ? 'therapist' : p && p.preferred_group_id ? 'group' : 'none';
   showModal(`
   <h2>${p ? 'עריכת מטופל' : 'מטופל חדש'} <button class="x" onclick="closeModal()">✕</button></h2>
   <form id="patient-form">
@@ -273,25 +271,27 @@ function openPatientModal(id) {
     </div>
 
     <div class="field">
-      <label>שיוך למטפל / קבוצת מטפלים</label>
-      <div class="grid3">
-        <div class="field"><select name="pref_mode" onchange="prefModeChanged(this.value)">
-          <option value="none" ${prefMode === 'none' ? 'selected' : ''}>ללא העדפה</option>
-          <option value="therapist" ${prefMode === 'therapist' ? 'selected' : ''}>מטפל ספציפי</option>
-          <option value="group" ${prefMode === 'group' ? 'selected' : ''}>קבוצת מטפלים</option>
-        </select></div>
-        <div class="field" id="pref-therapist" style="display:${prefMode === 'therapist' ? 'block' : 'none'}">
-          <select name="preferred_therapist_id">
-            ${S.therapists.filter(t => t.active).map(t => `<option value="${t.id}" ${p && p.preferred_therapist_id === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
-          </select>
-        </div>
-        <div class="field" id="pref-group" style="display:${prefMode === 'group' ? 'block' : 'none'}">
-          <select name="preferred_group_id" onchange="showGroupMembersHint(this.value)">
-            ${S.groups.map(g => `<option value="${g.id}" ${p && p.preferred_group_id === g.id ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}
-          </select>
-        </div>
+      <label>שיוך למטפלים</label>
+      <div class="hint" style="margin-bottom:8px">
+        סימון קבוצה ממלא אוטומטית את המטפלים שבה. אפשר לסמן כמה קבוצות, להוסיף מטפלים בודדים,
+        ולהוריד מהרשימה כל שם שלא מתאים.
       </div>
-      <div class="hint" id="group-members-hint"></div>
+      <div class="pref-box">
+        <div class="pref-groups" id="pref-groups">
+          ${S.groups.length ? S.groups.map(g => `
+            <label class="group-check"><input type="checkbox" value="${g.id}" onchange="prefToggleGroup(${g.id}, this.checked)"> ${esc(g.name)}
+              <span class="hint">(${(g.members || []).length})</span></label>`).join('')
+            : '<span class="hint">אין קבוצות מטפלים. אפשר להקים בלשונית "מטפלים".</span>'}
+        </div>
+        <div class="pref-add">
+          <select id="pref-add-select">
+            <option value="">+ הוסף מטפל לרשימה...</option>
+            ${S.therapists.filter(t => t.active).map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}
+          </select>
+          <button type="button" class="btn sec sm" onclick="prefAddSelected()">הוסף</button>
+        </div>
+        <div id="pref-list" class="pref-list"></div>
+      </div>
     </div>
 
     <div class="modal-actions">
@@ -299,11 +299,10 @@ function openPatientModal(id) {
       <button type="button" class="btn sec" onclick="closeModal()">ביטול</button>
     </div>
   </form>`);
-  if (prefMode === 'group' && p) showGroupMembersHint(p.preferred_group_id);
+  prefInit(p);
   document.getElementById('patient-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    const prefModeV = fd.get('pref_mode');
     const body = {
       last_name: fd.get('last_name'), first_name: fd.get('first_name'),
       national_id: fd.get('national_id'), intake_date: fd.get('intake_date') || null,
@@ -311,8 +310,8 @@ function openPatientModal(id) {
       client_type: fd.get('client_type') || null, community: fd.get('community') === '__new__' ? null : (fd.get('community') || null),
       diagnosis: fd.get('diagnosis'), notes: fd.get('notes'), urgency: Number(fd.get('urgency')),
       hours: [...document.querySelectorAll('#hours-grid .hour-chip.on')].map(c => Number(c.dataset.h)),
-      preferred_therapist_id: prefModeV === 'therapist' ? Number(fd.get('preferred_therapist_id')) : null,
-      preferred_group_id: prefModeV === 'group' ? Number(fd.get('preferred_group_id')) : null,
+      preferred_therapist_ids: [..._pref.therapists],
+      preferred_group_ids: [..._pref.groups],
     };
     try {
       if (p) await api('/patients/' + p.id, { method: 'PUT', body });
@@ -330,21 +329,85 @@ function updateAgeView(birth) {
 function setAllHours(on) {
   document.querySelectorAll('#hours-grid .hour-chip').forEach(c => c.classList.toggle('on', on));
 }
-function prefModeChanged(v) {
-  document.getElementById('pref-therapist').style.display = v === 'therapist' ? 'block' : 'none';
-  document.getElementById('pref-group').style.display = v === 'group' ? 'block' : 'none';
-  document.getElementById('group-members-hint').textContent = '';
-  if (v === 'group') {
-    const sel = document.querySelector('[name=preferred_group_id]');
-    if (sel && sel.value) showGroupMembersHint(sel.value);
-  }
+// תקציר ההעדפה לתצוגה בטבלה: שם אחד במלואו, יותר מזה — מספר + הקבוצות שמאחוריו
+function prefSummary(p) {
+  const ts = p.preferred_therapists || [], gs = p.preferred_groups || [];
+  if (!ts.length) return '—';
+  const label = ts.length === 1 ? '👤 ' + esc(ts[0].name) : `👥 ${ts.length} מטפלים`;
+  const from = gs.length ? ` <span class="hint">(${gs.map(g => esc(g.name)).join(', ')})</span>` : '';
+  return `<span title="${esc(ts.map(t => t.name).join(', '))}">${label}${from}</span>`;
 }
-function showGroupMembersHint(gid) {
+
+// ===== עורך המטפלים המועדפים =====
+// therapists = הרשימה בפועל (מקור האמת לשיבוץ)
+// groups     = הקבוצות המסומנות, לזריעת הרשימה ולתיעוד
+// manual     = מי שנוסף/נשמר ידנית — לא יוסר כשמבטלים סימון קבוצה
+let _pref = { therapists: new Set(), groups: new Set(), manual: new Set() };
+
+function prefInit(p) {
+  const tIds = (p && p.preferred_therapists ? p.preferred_therapists.map(t => t.id) : []);
+  const gIds = (p && p.preferred_groups ? p.preferred_groups.map(g => g.id) : []);
+  _pref = { therapists: new Set(tIds), groups: new Set(gIds), manual: new Set(tIds) };
+  document.querySelectorAll('#pref-groups input[type=checkbox]').forEach(c => {
+    c.checked = _pref.groups.has(Number(c.value));
+  });
+  prefRender();
+}
+
+function groupMemberIds(gid) {
   const g = S.groups.find(x => x.id === Number(gid));
-  const el = document.getElementById('group-members-hint');
-  if (g && el) el.textContent = g.members && g.members.length
-    ? 'מטפלים תואמים בקבוצה: ' + g.members.map(m => m.name).join(', ')
-    : 'אין עדיין מטפלים בקבוצה זו';
+  return g && Array.isArray(g.members) ? g.members.map(m => m.id) : [];
+}
+
+function prefToggleGroup(gid, checked) {
+  gid = Number(gid);
+  if (checked) {
+    _pref.groups.add(gid);
+    groupMemberIds(gid).forEach(id => _pref.therapists.add(id));
+  } else {
+    _pref.groups.delete(gid);
+    // מסירים רק מי שהגיע מהקבוצה הזו בלבד — לא ידניים ולא חברי קבוצה אחרת שמסומנת
+    const keep = new Set();
+    _pref.groups.forEach(g => groupMemberIds(g).forEach(id => keep.add(id)));
+    groupMemberIds(gid).forEach(id => {
+      if (!keep.has(id) && !_pref.manual.has(id)) _pref.therapists.delete(id);
+    });
+  }
+  prefRender();
+}
+
+function prefAddSelected() {
+  const sel = document.getElementById('pref-add-select');
+  const id = Number(sel.value);
+  if (!id) return;
+  _pref.therapists.add(id);
+  _pref.manual.add(id);
+  sel.value = '';
+  prefRender();
+}
+
+function prefRemove(id) {
+  id = Number(id);
+  _pref.therapists.delete(id);
+  _pref.manual.delete(id);
+  prefRender();
+}
+
+function prefRender() {
+  const el = document.getElementById('pref-list');
+  if (!el) return;
+  if (!_pref.therapists.size) {
+    el.innerHTML = '<span class="hint">לא נבחרו מטפלים — המערכת תציע את כל המטפלים הזמינים</span>';
+    return;
+  }
+  const names = [..._pref.therapists].map(id => {
+    const t = S.therapists.find(x => x.id === id);
+    return { id, name: t ? t.name : 'מטפל #' + id, manual: _pref.manual.has(id) };
+  }).sort((a, b) => a.name.localeCompare(b.name, 'he'));
+  el.innerHTML = `<div class="pref-count">${names.length} מטפלים ברשימה:</div>` + names.map(n => `
+    <span class="pref-chip${n.manual ? ' manual' : ''}">${esc(n.name)}
+      <button type="button" onclick="prefRemove(${n.id})" title="הסר מהרשימה">✕</button>
+    </span>`).join('');
 }
 async function communityChanged(sel) {
   if (sel.value !== '__new__') return;
@@ -371,8 +434,8 @@ async function openAssignModal(patientId) {
   <h2>שיבוץ לטיפול — ${esc(p.last_name)} ${esc(p.first_name)} <button class="x" onclick="closeModal()">✕</button></h2>
   <div class="hint" style="margin-bottom:10px">
     שעות מתאימות למטופל: ${(p.hours || []).map(hourRange).join(' · ') || 'כולן'}
-    ${p.preferred_therapist_name ? ' · העדפה: ' + esc(p.preferred_therapist_name) : ''}
-    ${p.preferred_group_name ? ' · קבוצה מועדפת: ' + esc(p.preferred_group_name) : ''}
+    ${(p.preferred_therapists || []).length ? '<br>מטפלים מועדפים: ' + p.preferred_therapists.map(t => esc(t.name)).join(' · ') : ''}
+    ${(p.preferred_groups || []).length ? ' <span class="hint">(מקבוצות: ' + p.preferred_groups.map(g => esc(g.name)).join(', ') + ')</span>' : ''}
   </div>
   <div class="card" style="box-shadow:none;border:1px solid var(--line);padding:12px" id="assign-avail">
     <b style="font-size:13.5px">משבצות שבועיות פנויות (לפי שעות המטופל והעדפתו) — לחץ לבחירה:</b>
