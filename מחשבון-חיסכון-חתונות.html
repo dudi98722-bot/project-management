@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>מחשבון חיסכון לחתונות הילדים</title>
+<style>
+:root {
+  color-scheme: light;
+  --surface-1: #fcfcfb;
+  --page: #f9f9f7;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --grid: #e1e0d9;
+  --baseline: #c3c2b7;
+  --border: rgba(11,11,11,0.10);
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --good: #0ca30c;
+  --good-text: #006300;
+  --critical: #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --page: #0d0d0d;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255,255,255,0.10);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --good: #0ca30c;
+    --good-text: #0ca30c;
+    --critical: #d03b3b;
+  }
+}
+* { box-sizing: border-box; margin: 0; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--page);
+  color: var(--text-primary);
+  padding: 24px 16px 60px;
+}
+.wrap { max-width: 1050px; margin: 0 auto; }
+h1 { font-size: 26px; margin-bottom: 4px; }
+.subtitle { color: var(--text-secondary); font-size: 14px; margin-bottom: 24px; }
+
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 18px;
+}
+.card h2 { font-size: 16px; margin-bottom: 14px; color: var(--text-primary); }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 5px; }
+input[type=number], input[type=text] {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--page);
+  color: var(--text-primary);
+  font-size: 15px;
+  font-family: inherit;
+}
+input:focus { outline: 2px solid var(--series-1); outline-offset: -1px; }
+
+table.kids { width: 100%; border-collapse: collapse; }
+table.kids th {
+  text-align: right; font-size: 12px; font-weight: 600;
+  color: var(--text-muted); padding: 6px 8px; border-bottom: 1px solid var(--grid);
+}
+table.kids td { padding: 6px 8px 6px 4px; vertical-align: middle; }
+table.kids td input { min-width: 70px; }
+.wed-year { font-size: 14px; color: var(--text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+button {
+  font-family: inherit; font-size: 14px; cursor: pointer;
+  border-radius: 9px; border: 1px solid var(--border);
+  background: var(--page); color: var(--text-primary);
+  padding: 8px 14px;
+}
+button:hover { border-color: var(--series-1); }
+button.add { color: var(--series-1); font-weight: 600; margin-top: 10px; }
+button.del {
+  border: none; background: none; color: var(--text-muted);
+  font-size: 18px; padding: 4px 8px; line-height: 1;
+}
+button.del:hover { color: var(--critical); }
+
+.steps-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.steps-row span { font-size: 14px; color: var(--text-secondary); }
+.steps-row input { width: 110px; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 18px; }
+.tile {
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 14px; padding: 16px 18px;
+}
+.tile .t-label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+.tile .t-value { font-size: 24px; font-weight: 700; }
+.tile .t-sub { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+.t-value.good { color: var(--good-text); }
+.t-value.bad { color: var(--critical); }
+
+.chart-box { position: relative; }
+.chart-wrap { direction: ltr; position: relative; }
+svg text { font-family: inherit; }
+.tooltip {
+  position: absolute; pointer-events: none; display: none;
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 10px; padding: 8px 12px; font-size: 13px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+  direction: rtl; white-space: nowrap; z-index: 5;
+}
+.tooltip .tt-date { color: var(--text-muted); font-size: 12px; margin-bottom: 3px; }
+.tooltip .tt-row { display: flex; justify-content: space-between; gap: 14px; }
+.tooltip .tt-row b { font-variant-numeric: tabular-nums; }
+
+table.results { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.results th {
+  text-align: right; font-size: 12px; font-weight: 600; color: var(--text-muted);
+  padding: 8px; border-bottom: 1px solid var(--grid);
+}
+table.results td {
+  padding: 9px 8px; border-bottom: 1px solid var(--grid);
+  font-variant-numeric: tabular-nums;
+}
+table.results tr:last-child td { border-bottom: none; }
+.shortfall { color: var(--critical); font-weight: 600; }
+.okval { color: var(--good-text); font-weight: 600; }
+
+details summary {
+  cursor: pointer; font-size: 15px; font-weight: 600; padding: 4px 0;
+  color: var(--text-primary);
+}
+.note { font-size: 12px; color: var(--text-muted); margin-top: 10px; line-height: 1.6; }
+.table-scroll { overflow-x: auto; }
+@media (max-width: 600px) {
+  table.kids td input { min-width: 55px; font-size: 13px; }
+  h1 { font-size: 21px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>💍 מחשבון חיסכון לחתונות הילדים</h1>
+  <div class="subtitle">הפקדה חודשית לשוק ההון · ריבית דריבית · משיכה בכל חתונה — והכל מתעדכן חי תוך כדי הקלדה</div>
+
+  <div class="card">
+    <h2>הגדרות כלליות</h2>
+    <div class="grid">
+      <div>
+        <label>הפקדה חודשית התחלתית (₪)</label>
+        <input type="number" id="deposit" value="1000" min="0" step="100">
+      </div>
+      <div>
+        <label>עלייה שנתית בהפקדה (%)</label>
+        <input type="number" id="increase" value="3" min="0" step="0.5">
+      </div>
+      <div>
+        <label>אחוז רווח שנתי (%)</label>
+        <input type="number" id="rate" value="7" step="0.5">
+      </div>
+      <div>
+        <label>גיל חתונה (ברירת מחדל)</label>
+        <input type="number" id="wedAge" value="21" min="16" max="40">
+      </div>
+      <div>
+        <label>עלות חתונה לילד (₪)</label>
+        <input type="number" id="wedCost" value="150000" min="0" step="10000">
+      </div>
+      <div>
+        <label>סכום התחלתי בחיסכון (₪)</label>
+        <input type="number" id="initial" value="0" min="0" step="1000">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>👨‍👩‍👧‍👦 הילדים</h2>
+    <div class="table-scroll">
+      <table class="kids">
+        <thead>
+          <tr>
+            <th>שם</th>
+            <th>שנת לידה</th>
+            <th>גיל חתונה</th>
+            <th>עלות חתונה (₪)</th>
+            <th>צפי חתונה</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="kidsBody"></tbody>
+      </table>
+    </div>
+    <button class="add" id="addKid">+ הוספת ילד/ה</button>
+  </div>
+
+  <div class="card">
+    <h2>📈 שינויים ידניים בהפקדה (לא חובה)</h2>
+    <div id="stepsList"></div>
+    <button class="add" id="addStep">+ הוספת שינוי הפקדה</button>
+    <div class="note">לדוגמה: "משנת 2030 אפקיד 1,500 ₪" — מהשנה שנבחרה ההפקדה החודשית תתעדכן לסכום החדש, ותמשיך לעלות משם לפי אחוז העלייה השנתית.</div>
+  </div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="card chart-box">
+    <h2>צבירת החיסכון לאורך השנים</h2>
+    <div class="chart-wrap" id="chartWrap">
+      <svg id="chart" width="100%" height="360"></svg>
+      <div class="tooltip" id="tooltip"></div>
+    </div>
+    <div class="note">הקו — יתרת החיסכון בכל חודש. כל נקודה מסומנת היא חתונה: היתרה יורדת בעלות החתונה. נקודה אדומה = היתרה לא מספיקה לחתונה.</div>
+  </div>
+
+  <div class="card">
+    <h2>🎯 מצב לכל חתונה</h2>
+    <div class="table-scroll">
+      <table class="results" id="wedTable"></table>
+    </div>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary>📋 פירוט שנתי מלא</summary>
+      <div class="table-scroll" style="margin-top:12px">
+        <table class="results" id="yearTable"></table>
+      </div>
+    </details>
+  </div>
+
+  <div class="note" style="text-align:center">
+    המחשבון מניח תשואה קבועה לצורך הדמיה בלבד — בשוק ההון התשואה משתנה משנה לשנה. הנתונים נשמרים אוטומטית בדפדפן שלך.
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+var STORAGE_KEY = "weddingSavingsCalc.v1";
+var now = new Date();
+var START_YEAR = now.getFullYear();
+var START_MONTH = now.getMonth(); // 0-based
+var WEDDING_MONTH = 5; // יוני — אמצע שנה
+
+var state = {
+  kids: [ { name: "", birthYear: START_YEAR - 5, wedAge: "", cost: "" } ],
+  steps: []
+};
+
+// ---------- שמירה וטעינה ----------
+function save() {
+  try {
+    var s = {
+      deposit: el("deposit").value, increase: el("increase").value,
+      rate: el("rate").value, wedAge: el("wedAge").value,
+      wedCost: el("wedCost").value, initial: el("initial").value,
+      kids: state.kids, steps: state.steps
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+  } catch(e) {}
+}
+function load() {
+  try {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    var s = JSON.parse(raw);
+    ["deposit","increase","rate","wedAge","wedCost","initial"].forEach(function(k){
+      if (s[k] !== undefined) el(k).value = s[k];
+    });
+    if (Array.isArray(s.kids) && s.kids.length) state.kids = s.kids;
+    if (Array.isArray(s.steps)) state.steps = s.steps;
+  } catch(e) {}
+}
+
+function el(id){ return document.getElementById(id); }
+function num(v, fallback){ var n = parseFloat(v); return isFinite(n) ? n : (fallback || 0); }
+var fmtShekel = new Intl.NumberFormat("he-IL", { style:"currency", currency:"ILS", maximumFractionDigits:0 });
+var fmtCompact = new Intl.NumberFormat("he-IL", { notation:"compact", maximumFractionDigits:1 });
+function shk(v){ return fmtShekel.format(Math.round(v)); }
+
+// ---------- UI: ילדים ----------
+function renderKids() {
+  var tbody = el("kidsBody");
+  tbody.innerHTML = "";
+  var defAge = num(el("wedAge").value, 21);
+  state.kids.forEach(function(kid, i){
+    var tr = document.createElement("tr");
+
+    var tdName = document.createElement("td");
+    var inName = document.createElement("input");
+    inName.type = "text"; inName.placeholder = "ילד/ה " + (i+1);
+    inName.value = kid.name || "";
+    inName.addEventListener("input", function(){ kid.name = inName.value; recalc(); });
+    tdName.appendChild(inName);
+
+    var tdYear = document.createElement("td");
+    var inYear = document.createElement("input");
+    inYear.type = "number"; inYear.min = 1990; inYear.max = START_YEAR;
+    inYear.value = kid.birthYear;
+    inYear.addEventListener("input", function(){ kid.birthYear = num(inYear.value, START_YEAR); recalc(); });
+    tdYear.appendChild(inYear);
+
+    var tdAge = document.createElement("td");
+    var inAge = document.createElement("input");
+    inAge.type = "number"; inAge.min = 16; inAge.max = 40;
+    inAge.placeholder = defAge;
+    inAge.value = kid.wedAge || "";
+    inAge.addEventListener("input", function(){ kid.wedAge = inAge.value; recalc(); });
+    tdAge.appendChild(inAge);
+
+    var tdCost = document.createElement("td");
+    var inCost = document.createElement("input");
+    inCost.type = "number"; inCost.min = 0; inCost.step = 10000;
+    inCost.placeholder = num(el("wedCost").value, 0);
+    inCost.value = kid.cost || "";
+    inCost.addEventListener("input", function(){ kid.cost = inCost.value; recalc(); });
+    tdCost.appendChild(inCost);
+
+    var tdWed = document.createElement("td");
+    tdWed.className = "wed-year";
+    tdWed.textContent = String(kid.birthYear + (num(kid.wedAge, 0) || defAge));
+
+    var tdDel = document.createElement("td");
+    var btn = document.createElement("button");
+    btn.className = "del"; btn.textContent = "✕"; btn.title = "הסרה";
+    btn.addEventListener("click", function(){
+      state.kids.splice(i, 1);
+      if (!state.kids.length) state.kids.push({ name:"", birthYear: START_YEAR - 5, wedAge:"", cost:"" });
+      renderKids(); recalc();
+    });
+    tdDel.appendChild(btn);
+
+    tr.appendChild(tdName); tr.appendChild(tdYear); tr.appendChild(tdAge);
+    tr.appendChild(tdCost); tr.appendChild(tdWed); tr.appendChild(tdDel);
+    tbody.appendChild(tr);
+  });
+}
+
+// ---------- UI: שינויי הפקדה ----------
+function renderSteps() {
+  var box = el("stepsList");
+  box.innerHTML = "";
+  state.steps.forEach(function(st, i){
+    var row = document.createElement("div");
+    row.className = "steps-row";
+
+    var s1 = document.createElement("span"); s1.textContent = "משנת";
+    var inY = document.createElement("input");
+    inY.type = "number"; inY.min = START_YEAR; inY.max = START_YEAR + 60;
+    inY.value = st.year;
+    inY.addEventListener("input", function(){ st.year = num(inY.value, START_YEAR); recalc(); });
+
+    var s2 = document.createElement("span"); s2.textContent = "הפקדה חודשית של";
+    var inA = document.createElement("input");
+    inA.type = "number"; inA.min = 0; inA.step = 100;
+    inA.value = st.amount;
+    inA.addEventListener("input", function(){ st.amount = num(inA.value, 0); recalc(); });
+
+    var s3 = document.createElement("span"); s3.textContent = "₪";
+    var btn = document.createElement("button");
+    btn.className = "del"; btn.textContent = "✕";
+    btn.addEventListener("click", function(){ state.steps.splice(i, 1); renderSteps(); recalc(); });
+
+    row.appendChild(s1); row.appendChild(inY); row.appendChild(s2);
+    row.appendChild(inA); row.appendChild(s3); row.appendChild(btn);
+    box.appendChild(row);
+  });
+}
+
+// ---------- הסימולציה ----------
+function simulate(scale) {
+  if (scale == null) scale = 1;
+  var baseDeposit = num(el("deposit").value, 0) * scale;
+  var increasePct = num(el("increase").value, 0) / 100;
+  var annualRate = num(el("rate").value, 0) / 100;
+  var defAge = num(el("wedAge").value, 21) || 21;
+  var defCost = num(el("wedCost").value, 0);
+  var initial = num(el("initial").value, 0);
+
+  var monthlyRate = Math.pow(1 + annualRate, 1/12) - 1;
+
+  // הפקדה חודשית לכל שנה: עלייה שנתית + דריסות ידניות
+  var overrides = {};
+  state.steps.forEach(function(st){ if (st.year && st.amount >= 0) overrides[st.year] = st.amount * scale; });
+
+  // חתונות
+  var allWeddings = state.kids.map(function(kid, i){
+    var age = num(kid.wedAge, 0) || defAge;
+    var cost = kid.cost !== "" && kid.cost != null && num(kid.cost, -1) >= 0 ? num(kid.cost, 0) : defCost;
+    return {
+      name: kid.name || ("ילד/ה " + (i+1)),
+      birthYear: num(kid.birthYear, START_YEAR), age: age,
+      year: num(kid.birthYear, START_YEAR) + age, cost: cost
+    };
+  });
+  allWeddings.sort(function(a,b){ return a.year - b.year; });
+  // חתונות שכבר עברו אינן נכללות בסימולציה — מוצגות בטבלה בלבד
+  var pastWeddings = allWeddings.filter(function(w){ return w.year < START_YEAR; });
+  pastWeddings.forEach(function(w){ w.past = true; });
+  var weddings = allWeddings.filter(function(w){ return w.year >= START_YEAR; });
+
+  var lastYear = START_YEAR + 1;
+  weddings.forEach(function(w){ if (w.year > lastYear) lastYear = w.year; });
+  lastYear += 1; // שנה אחת אחרי החתונה האחרונה
+
+  var depositByYear = {};
+  var dep = baseDeposit;
+  for (var y = START_YEAR; y <= lastYear; y++) {
+    if (y > START_YEAR) dep = dep * (1 + increasePct);
+    if (overrides[y] !== undefined) dep = overrides[y];
+    depositByYear[y] = dep;
+  }
+
+  var balance = initial;
+  var totalDeposited = initial;
+  var totalWithdrawn = 0;
+  var points = [];  // {year, month, balance, deposited}
+  var yearly = {};  // year -> {deposited, startBal, endBal, weddings:[]}
+
+  var wedIdx = 0;
+  points.push({ year: START_YEAR, month: START_MONTH, balance: balance, deposited: totalDeposited });
+
+  for (var yy = START_YEAR; yy <= lastYear; yy++) {
+    var mStart = (yy === START_YEAR) ? START_MONTH : 0;
+    yearly[yy] = yearly[yy] || { deposited: 0, weddings: [], startBal: balance };
+    for (var mm = mStart; mm < 12; mm++) {
+      balance = balance * (1 + monthlyRate) + depositByYear[yy];
+      totalDeposited += depositByYear[yy];
+      yearly[yy].deposited += depositByYear[yy];
+
+      // חתונות בחודש יוני של שנת החתונה
+      if (mm === WEDDING_MONTH || (yy === START_YEAR && mStart > WEDDING_MONTH && mm === mStart)) {
+        while (wedIdx < weddings.length && weddings[wedIdx].year === yy) {
+          var w = weddings[wedIdx];
+          w.balanceBefore = balance;
+          balance -= w.cost;
+          w.balanceAfter = balance;
+          w.shortfall = w.balanceAfter < 0;
+          totalWithdrawn += w.cost;
+          yearly[yy].weddings.push(w);
+          w.pointIndex = points.length; // אחרי הדחיפה הבאה תהיה הנקודה עם המשיכה
+          wedIdx++;
+        }
+      }
+      points.push({ year: yy, month: mm, balance: balance, deposited: totalDeposited });
+    }
+    yearly[yy].endBal = balance;
+  }
+  // חתונות שכבר "עברו" השנה (לפני החודש הנוכחי) — נמשכות מייד בנקודת ההתחלה
+  while (wedIdx < weddings.length && weddings[wedIdx].year <= START_YEAR) {
+    var w0 = weddings[wedIdx];
+    w0.balanceBefore = balance; w0.balanceAfter = balance - w0.cost;
+    w0.shortfall = w0.balanceAfter < 0; w0.pointIndex = 0; w0.immediate = true;
+    wedIdx++;
+  }
+
+  var totalProfit = (balance + totalWithdrawn) - totalDeposited;
+  var profitPct = totalDeposited > 0 ? (totalProfit / totalDeposited) * 100 : 0;
+
+  return {
+    points: points, weddings: weddings, allWeddings: allWeddings, yearly: yearly,
+    lastYear: lastYear, finalBalance: balance,
+    totalDeposited: totalDeposited, totalWithdrawn: totalWithdrawn,
+    totalProfit: totalProfit, profitPct: profitPct
+  };
+}
+
+// ---------- כמה צריך להפקיד כדי לכסות הכול ----------
+function allCovered(r) {
+  return r.weddings.length > 0 && r.weddings.every(function(w){ return !w.shortfall; });
+}
+// חיפוש בינארי על מקדם ההפקדה: מוצא את ההפקדה החודשית המינימלית שמכסה את כל החתונות
+function solveRequiredDeposit() {
+  var base = num(el("deposit").value, 0);
+  if (base <= 0) return null;
+  var lo = 0, hi = 1;
+  for (var g = 0; g < 40 && !allCovered(simulate(hi)); g++) hi *= 2;
+  if (!allCovered(simulate(hi))) return null;
+  for (var i = 0; i < 40; i++) {
+    var mid = (lo + hi) / 2;
+    if (allCovered(simulate(mid))) hi = mid; else lo = mid;
+  }
+  return base * hi;
+}
+
+// ---------- כרטיסי סיכום ----------
+function renderTiles(r) {
+  var tiles = el("tiles");
+  var okCount = r.weddings.filter(function(w){ return !w.shortfall; }).length;
+  var profitClass = r.totalProfit >= 0 ? "good" : "bad";
+  var covered = allCovered(r);
+
+  var current = num(el("deposit").value, 0);
+  var alsoSteps = state.steps.length ? " (וגם השינויים הידניים מתעדכנים באותו יחס)" : "";
+  var needTile;
+  if (!r.weddings.length) {
+    needTile = "";
+  } else {
+    var solved = solveRequiredDeposit();
+    if (solved == null) {
+      needTile = tile("ההפקדה הנדרשת", "—", "הזינו הפקדה חודשית התחלתית גדולה מ-0", "bad");
+    } else if (!covered) {
+      needTile = tile("צריך להפקיד", shk(solved) + " לחודש",
+        "במקום " + shk(current) + " — כדי לכסות את כל החתונות" + alsoSteps, "bad");
+    } else if (solved < current * 0.995) {
+      needTile = tile("מספיק להפקיד", shk(solved) + " לחודש",
+        "אפשר לרדת מ-" + shk(current) + " ועדיין לכסות הכול" + alsoSteps, "good");
+    } else {
+      needTile = tile("ההפקדה הנדרשת", shk(current) + " לחודש", "בדיוק מה שצריך — אין עודף", "good");
+    }
+  }
+
+  tiles.innerHTML =
+    tile("סך ההפקדות", shk(r.totalDeposited), "כולל סכום התחלתי") +
+    tile("סך הרווח מהשוק", shk(r.totalProfit), "תשואה מצטברת: " + r.profitPct.toFixed(1) + "%", profitClass) +
+    tile("נמשך לחתונות", shk(r.totalWithdrawn), r.weddings.length + " חתונות") +
+    tile("יתרה בסוף התקופה", shk(r.finalBalance), "בשנת " + r.lastYear, r.finalBalance >= 0 ? "" : "bad") +
+    tile("חתונות מכוסות", okCount + " מתוך " + r.weddings.length,
+         covered ? "כולן מכוסות ✓" : "יש חוסר — ראו טבלה",
+         covered ? "good" : "bad") +
+    needTile;
+
+  function tile(label, value, sub, cls) {
+    return '<div class="tile"><div class="t-label">' + label + '</div>' +
+      '<div class="t-value ' + (cls||"") + '">' + value + '</div>' +
+      '<div class="t-sub">' + (sub||"") + '</div></div>';
+  }
+}
+
+// ---------- טבלת חתונות ----------
+function renderWedTable(r) {
+  var t = el("wedTable");
+  var html = "<thead><tr><th>שם</th><th>שנת לידה</th><th>גיל בחתונה</th><th>שנת חתונה</th><th>בעוד</th><th>יתרה לפני</th><th>עלות</th><th>יתרה אחרי</th></tr></thead><tbody>";
+  if (!r.allWeddings.length) {
+    html += '<tr><td colspan="8" style="color:var(--text-muted)">הוסיפו ילדים כדי לראות את התחזית</td></tr>';
+  }
+  r.allWeddings.forEach(function(w){
+    var yearsAway = w.year - START_YEAR;
+    var when = w.past ? "עבר" : (yearsAway <= 0 ? "השנה" : yearsAway + " שנים");
+    var cells = w.past
+      ? '<td colspan="3" style="color:var(--text-muted)">חתונה שכבר התקיימה — לא נכללת בחישוב</td>'
+      : "<td>" + shk(w.balanceBefore || 0) + "</td><td>" + shk(w.cost) + "</td>" +
+        '<td class="' + (w.shortfall ? "shortfall" : "okval") + '">' + shk(w.balanceAfter || 0) +
+        (w.shortfall ? " ⚠" : " ✓") + "</td>";
+    html += "<tr><td>" + escapeHtml(w.name) + "</td><td>" + w.birthYear + "</td><td>" + w.age +
+      "</td><td>" + w.year + "</td><td>" + when + "</td>" + cells + "</tr>";
+  });
+  t.innerHTML = html + "</tbody>";
+}
+
+// ---------- טבלה שנתית ----------
+function renderYearTable(r) {
+  var t = el("yearTable");
+  var html = "<thead><tr><th>שנה</th><th>הפקדה חודשית</th><th>הופקד בשנה</th><th>חתונות</th><th>יתרה בסוף שנה</th></tr></thead><tbody>";
+  var years = Object.keys(r.yearly).map(Number).sort(function(a,b){ return a-b; });
+  years.forEach(function(y){
+    var yr = r.yearly[y];
+    var monthly = yr.deposited > 0 ? yr.deposited / ((y === START_YEAR) ? (12 - START_MONTH) : 12) : 0;
+    var weds = yr.weddings.map(function(w){ return escapeHtml(w.name); }).join(", ") || "—";
+    html += "<tr><td>" + y + "</td><td>" + shk(monthly) + "</td><td>" + shk(yr.deposited) +
+      "</td><td>" + weds + '</td><td class="' + (yr.endBal < 0 ? "shortfall" : "") + '">' + shk(yr.endBal) + "</td></tr>";
+  });
+  t.innerHTML = html + "</tbody>";
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+  });
+}
+
+// ---------- הגרף ----------
+var chartData = null;
+function renderChart(r) {
+  var svg = el("chart");
+  var wrap = el("chartWrap");
+  var W = wrap.clientWidth || 900;
+  var H = 360;
+  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+  svg.setAttribute("width", W);
+  svg.setAttribute("height", H);
+
+  var pad = { top: 20, right: 20, bottom: 34, left: 62 };
+  var pw = W - pad.left - pad.right;
+  var ph = H - pad.top - pad.bottom;
+
+  var pts = r.points;
+  if (pts.length < 2) { svg.innerHTML = ""; return; }
+
+  var minV = 0, maxV = 0;
+  pts.forEach(function(p){ if (p.balance > maxV) maxV = p.balance; if (p.balance < minV) minV = p.balance; });
+  if (maxV === minV) maxV = minV + 1;
+  maxV *= 1.06;
+  if (minV < 0) minV *= 1.06;
+
+  function x(i){ return pad.left + (i / (pts.length - 1)) * pw; }
+  function y(v){ return pad.top + (1 - (v - minV) / (maxV - minV)) * ph; }
+
+  var css = getComputedStyle(document.documentElement);
+  var cGrid = css.getPropertyValue("--grid").trim();
+  var cBase = css.getPropertyValue("--baseline").trim();
+  var cMuted = css.getPropertyValue("--text-muted").trim();
+  var cSeries = css.getPropertyValue("--series-1").trim();
+  var cSurface = css.getPropertyValue("--surface-1").trim();
+  var cCrit = css.getPropertyValue("--critical").trim();
+  var cText = css.getPropertyValue("--text-secondary").trim();
+
+  var out = [];
+
+  // קווי רשת + ציר Y
+  var ySteps = niceTicks(minV, maxV, 5);
+  ySteps.forEach(function(v){
+    var yy = y(v);
+    out.push('<line x1="' + pad.left + '" y1="' + yy + '" x2="' + (W - pad.right) + '" y2="' + yy +
+      '" stroke="' + (v === 0 ? cBase : cGrid) + '" stroke-width="1"/>');
+    out.push('<text x="' + (pad.left - 8) + '" y="' + (yy + 4) + '" text-anchor="end" font-size="11" fill="' +
+      cMuted + '">' + fmtCompact.format(v) + '</text>');
+  });
+
+  // ציר X — שנים
+  var firstYear = pts[0].year, lastYear = pts[pts.length - 1].year;
+  var span = lastYear - firstYear;
+  var stepYears = span <= 8 ? 1 : span <= 16 ? 2 : span <= 40 ? 5 : 10;
+  for (var yy2 = Math.ceil(firstYear / stepYears) * stepYears; yy2 <= lastYear; yy2 += stepYears) {
+    var idx = pts.findIndex(function(p){ return p.year === yy2 && p.month === 0; });
+    if (idx < 0) idx = 0;
+    out.push('<text x="' + x(idx) + '" y="' + (H - 10) + '" text-anchor="middle" font-size="11" fill="' +
+      cMuted + '">' + yy2 + '</text>');
+  }
+
+  // מילוי עדין מתחת לקו
+  var areaPath = "M " + x(0) + " " + y(Math.max(0, minV));
+  pts.forEach(function(p, i){ areaPath += " L " + x(i) + " " + y(p.balance); });
+  areaPath += " L " + x(pts.length - 1) + " " + y(Math.max(0, minV)) + " Z";
+  out.push('<path d="' + areaPath + '" fill="' + cSeries + '" opacity="0.08"/>');
+
+  // הקו עצמו
+  var linePath = "";
+  pts.forEach(function(p, i){ linePath += (i ? " L " : "M ") + x(i) + " " + y(p.balance); });
+  out.push('<path d="' + linePath + '" fill="none" stroke="' + cSeries + '" stroke-width="2" stroke-linejoin="round"/>');
+
+  // נקודות חתונה
+  r.weddings.forEach(function(w){
+    if (w.pointIndex == null) return;
+    var i = Math.min(w.pointIndex, pts.length - 1);
+    var cx = x(i), cy = y(pts[i].balance);
+    var color = w.shortfall ? cCrit : cSeries;
+    out.push('<circle cx="' + cx + '" cy="' + cy + '" r="6" fill="' + color +
+      '" stroke="' + cSurface + '" stroke-width="2"/>');
+    var labelY = cy - 12;
+    if (labelY < pad.top + 10) labelY = cy + 20;
+    out.push('<text x="' + cx + '" y="' + labelY + '" text-anchor="middle" font-size="11" font-weight="600" fill="' +
+      cText + '">' + escapeHtml(w.name) + '</text>');
+  });
+
+  // שכבת hover
+  out.push('<line id="crosshair" x1="0" y1="' + pad.top + '" x2="0" y2="' + (pad.top + ph) +
+    '" stroke="' + cBase + '" stroke-width="1" style="display:none"/>');
+  out.push('<circle id="hoverDot" r="4.5" fill="' + cSeries + '" stroke="' + cSurface +
+    '" stroke-width="2" style="display:none"/>');
+  out.push('<rect x="' + pad.left + '" y="' + pad.top + '" width="' + pw + '" height="' + ph +
+    '" fill="transparent" id="hoverZone"/>');
+
+  svg.innerHTML = out.join("");
+  chartData = { pts: pts, x: x, y: y, pad: pad, W: W };
+
+  var zone = svg.querySelector("#hoverZone");
+  zone.addEventListener("mousemove", onHover);
+  zone.addEventListener("mouseleave", hideHover);
+}
+
+var monthNames = ["ינו","פבר","מרץ","אפר","מאי","יונ","יול","אוג","ספט","אוק","נוב","דצמ"];
+function onHover(ev) {
+  if (!chartData) return;
+  var rect = el("chart").getBoundingClientRect();
+  var mx = ev.clientX - rect.left;
+  var d = chartData;
+  var frac = (mx - d.pad.left) / (d.W - d.pad.left - 20);
+  var i = Math.round(frac * (d.pts.length - 1));
+  i = Math.max(0, Math.min(d.pts.length - 1, i));
+  var p = d.pts[i];
+  var px = d.x(i), py = d.y(p.balance);
+
+  var ch = el("chart").querySelector("#crosshair");
+  ch.setAttribute("x1", px); ch.setAttribute("x2", px);
+  ch.style.display = "";
+  var dot = el("chart").querySelector("#hoverDot");
+  dot.setAttribute("cx", px); dot.setAttribute("cy", py);
+  dot.style.display = "";
+
+  var tt = el("tooltip");
+  var profit = p.balance - p.deposited;
+  tt.innerHTML = '<div class="tt-date">' + monthNames[p.month] + " " + p.year + '</div>' +
+    '<div class="tt-row"><span>יתרה:</span><b>' + shk(p.balance) + '</b></div>' +
+    '<div class="tt-row"><span>הופקד עד כה:</span><b>' + shk(p.deposited) + '</b></div>';
+  tt.style.display = "block";
+  var wrapRect = el("chartWrap").getBoundingClientRect();
+  var ttW = tt.offsetWidth;
+  var left = px + 14;
+  if (left + ttW > wrapRect.width - 6) left = px - ttW - 14;
+  tt.style.left = left + "px";
+  tt.style.top = Math.max(6, py - 30) + "px";
+}
+function hideHover() {
+  var svg = el("chart");
+  var ch = svg.querySelector("#crosshair"); if (ch) ch.style.display = "none";
+  var dot = svg.querySelector("#hoverDot"); if (dot) dot.style.display = "none";
+  el("tooltip").style.display = "none";
+}
+
+function niceTicks(min, max, count) {
+  var range = max - min;
+  var rough = range / count;
+  var mag = Math.pow(10, Math.floor(Math.log10(rough)));
+  var norm = rough / mag;
+  var step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10) * mag;
+  var ticks = [];
+  var start = Math.ceil(min / step) * step;
+  for (var v = start; v <= max; v += step) ticks.push(v);
+  if (min <= 0 && max >= 0 && ticks.indexOf(0) < 0) ticks.push(0);
+  return ticks;
+}
+
+// ---------- חישוב מחדש ----------
+var wedYearCells = null;
+function recalc() {
+  // עדכון עמודת "צפי חתונה" בלי לבנות מחדש את השורות (כדי לא לאבד פוקוס)
+  var defAge = num(el("wedAge").value, 21) || 21;
+  var rows = el("kidsBody").children;
+  for (var i = 0; i < rows.length && i < state.kids.length; i++) {
+    var kid = state.kids[i];
+    var cell = rows[i].children[4];
+    if (cell) cell.textContent = String(num(kid.birthYear, START_YEAR) + (num(kid.wedAge, 0) || defAge));
+    var ageInput = rows[i].children[2] && rows[i].children[2].querySelector("input");
+    if (ageInput) ageInput.placeholder = defAge;
+    var costInput = rows[i].children[3] && rows[i].children[3].querySelector("input");
+    if (costInput) costInput.placeholder = num(el("wedCost").value, 0);
+  }
+
+  var r = simulate();
+  renderTiles(r);
+  renderWedTable(r);
+  renderYearTable(r);
+  renderChart(r);
+  save();
+}
+
+// ---------- אתחול ----------
+load();
+renderKids();
+renderSteps();
+
+el("addKid").addEventListener("click", function(){
+  var lastYear = state.kids.length ? num(state.kids[state.kids.length-1].birthYear, START_YEAR - 5) : START_YEAR - 5;
+  state.kids.push({ name: "", birthYear: Math.min(lastYear + 2, START_YEAR), wedAge: "", cost: "" });
+  renderKids(); recalc();
+});
+el("addStep").addEventListener("click", function(){
+  state.steps.push({ year: START_YEAR + 5, amount: num(el("deposit").value, 1000) + 500 });
+  renderSteps(); recalc();
+});
+["deposit","increase","rate","wedAge","wedCost","initial"].forEach(function(id){
+  el(id).addEventListener("input", recalc);
+});
+window.addEventListener("resize", function(){ recalc(); });
+window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function(){ recalc(); });
+
+recalc();
+})();
+</script>
+</body>
+</html>
