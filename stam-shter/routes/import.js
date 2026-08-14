@@ -196,19 +196,43 @@ function toNum(v) {
   const n = parseFloat(s);
   return neg ? -n : n;
 }
-function normDate(v) {
+// fmt: 'dmy' (ישראלי, ברירת מחדל) או 'mdy' (אמריקאי — 11/18/25 = 18 בנובמבר)
+function normDate(v, fmt) {
   if (v === null || v === undefined || String(v).trim() === '') return null;
   const s = String(v).trim();
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-  let m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);   // dd/mm/yyyy
-  if (m) {
-    let d = m[1].padStart(2, '0'), mo = m[2].padStart(2, '0'), y = m[3];
-    if (y.length === 2) y = '20' + y;
-    const dn = +d, mn = +mo;
-    if (mn < 1 || mn > 12 || dn < 1 || dn > 31) return undefined;
-    return `${y}-${mo}-${d}`;
+  const m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);
+  if (!m) return undefined;   // פורמט לא מזוהה
+  let a = +m[1], b = +m[2], y = m[3];
+  if (y.length === 2) y = '20' + y;
+  let d, mo;
+  if (fmt === 'mdy') { mo = a; d = b; } else { d = a; mo = b; }
+  // אם החלק שנבחר כחודש גדול מ-12, הפירוש ההפוך הוא היחיד האפשרי
+  if (mo > 12 && d <= 12) { const t = mo; mo = d; d = t; }
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return undefined;
+  return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+// מזהה את פורמט התאריך של ההדבקה כולה לפי ערכים חד-משמעיים:
+// ערך שבו החלק הראשון > 12 מוכיח dd/mm, וערך שבו השני > 12 מוכיח mm/dd.
+// כך שורה אחת ברורה קובעת את כל העמודה, ואין ניחוש לפי שורה בודדת.
+function detectDateFormat(rows, keys) {
+  let dmy = 0, mdy = 0;
+  for (const raw of rows) {
+    for (const k of keys) {
+      const v = raw[k];
+      if (v === undefined || v === null) continue;
+      const m = String(v).trim().match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);
+      if (!m) continue;
+      const a = +m[1], b = +m[2];
+      if (a > 12 && b <= 12) dmy++;
+      else if (b > 12 && a <= 12) mdy++;
+    }
   }
-  return undefined;   // פורמט לא מזוהה
+  if (mdy && !dmy) return { fmt: 'mdy', proof: mdy };
+  if (dmy && !mdy) return { fmt: 'dmy', proof: dmy };
+  if (dmy && mdy) return { fmt: 'dmy', conflict: true };   // שני הפורמטים באותה הדבקה
+  return { fmt: 'dmy', ambiguous: true };                  // אין הוכחה — ברירת מחדל ישראלית
 }
 // נרמול שמות להשוואה: מסיר תווי כיווניות נסתרים (שמגיעים מהעתקה מגיליונות),
 // ניקוד, ומאחד גרש/גרשיים — אחרת "ישראל" ו"ישראל‏" נחשבים שני אנשים.
@@ -332,7 +356,8 @@ function resolveRow(table, raw, ctx, opts, partial) {
     } else if (col.type === 'bool') {
       data[col.key] = /^(true|1|כן|yes|v|✓)$/i.test(String(val || '').trim());
     } else if (col.type === 'date') {
-      const d = normDate(val); if (d === undefined) return { ok: false, error: `תאריך לא תקין "${val}" (${col.label}) — נסה dd/mm/yyyy` };
+      const d = normDate(val, opts.dateFmt);
+      if (d === undefined) return { ok: false, error: `תאריך לא תקין "${val}" (${col.label}) — נסה dd/mm/yyyy` };
       data[col.key] = d;
     } else if (col.type === 'currency') {
       data[col.key] = /usd|\$|דולר/i.test(val || '') ? 'USD' : 'ILS';
@@ -414,6 +439,16 @@ router.post('/:table', authenticate, can('edit'), async (req, res) => {
   try {
     const ctx = await loadContext();
 
+    // פורמט התאריכים: לפי בחירת המשתמש, או זיהוי אוטומטי מכלל ההדבקה
+    const dateKeys = spec.cols.filter(c => c.type === 'date').map(c => c.key);
+    let dateInfo = { fmt: 'dmy' };
+    if (dateKeys.length) {
+      dateInfo = (opts.dateFormat === 'dmy' || opts.dateFormat === 'mdy')
+        ? { fmt: opts.dateFormat, manual: true }
+        : detectDateFormat(rows, dateKeys);
+    }
+    opts.dateFmt = dateInfo.fmt;
+
     // במצב עדכון — מזהי השורות הקיימות בטבלה, לאימות שכל id באמת קיים
     let existingIds = null;
     if (mode === 'update') {
@@ -473,6 +508,7 @@ router.post('/:table', authenticate, can('edit'), async (req, res) => {
       return res.json({
         table, mode, total: rows.length, valid: valid2.length, invalid: invalid2.length,
         new_contacts: newContactNames.length,
+        date_format: dateKeys.length ? dateInfo : null,
         rows: resolved.map(r => ({
           line: r.line, ok: r.ok, error: r.error || null,
           willCreateContact: !!(r.newContacts && r.newContacts.length),

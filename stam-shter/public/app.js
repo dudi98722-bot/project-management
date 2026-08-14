@@ -1444,7 +1444,7 @@ function importPanel(host, opts) {
   const presetKeys = Object.keys(preset);
   const st = {
     table: opts.lockedTable || IMPORT.table || (IMPORT.spec[0] && IMPORT.spec[0].table),
-    mode: 'create', text: '', createContacts: false,
+    mode: 'create', text: '', createContacts: false, dateFormat: 'auto',
   };
 
   const colChip = (c) => {
@@ -1477,6 +1477,13 @@ function importPanel(host, opts) {
               <option value="update" ${isUpd ? 'selected' : ''}>עדכון שורות קיימות (לפי מזהה)</option>
               ${ME.caps.del ? `<option value="delete" ${isDel ? 'selected' : ''}>מחיקת שורות (לפי מזהה)</option>` : ''}
             </select></div>
+          ${!isDel && cols.some(c => c.type === 'date') ? `
+          <div class="field" style="max-width:300px"><label>פורמט תאריך</label>
+            <select id="${P}dfmt">
+              <option value="auto" ${st.dateFormat === 'auto' ? 'selected' : ''}>זיהוי אוטומטי</option>
+              <option value="dmy" ${st.dateFormat === 'dmy' ? 'selected' : ''}>יום/חודש/שנה (ישראלי)</option>
+              <option value="mdy" ${st.dateFormat === 'mdy' ? 'selected' : ''}>חודש/יום/שנה (אמריקאי)</option>
+            </select></div>` : ''}
         </div>
         <div class="sec-title">עמודות ${isDel ? '— עמודה אחת: <b>מזהה</b>' : (isUpd ? '— עמודה ראשונה <b>מזהה</b>, ואחריה רק מה שרוצים לשנות' : '(בסדר הזה, או עם שורת כותרת תואמת)')}</div>
         <div>${isDel ? '<span class="pill r" style="margin:2px">מזהה *</span>'
@@ -1512,6 +1519,7 @@ function importPanel(host, opts) {
     q('mode').onchange = (e) => { st.mode = e.target.value; st.text = ''; st.map = null; draw(); };
     q('text').oninput = (e) => { st.text = e.target.value; };
     if (q('create')) q('create').onchange = (e) => { st.createContacts = e.target.checked; };
+    if (q('dfmt')) q('dfmt').onchange = (e) => { st.dateFormat = e.target.value; q('run').disabled = true; };
     if (q('head')) q('head').onclick = () => {
       const hdr = (isUpd ? ['מזהה'] : []).concat(cols.map(c => c.label)).join('\t');
       navigator.clipboard.writeText(hdr).then(() => toast('הכותרות הועתקו — הדבק בשורה הראשונה בגיליון', 'ok'))
@@ -1568,7 +1576,7 @@ function importPanel(host, opts) {
 
     // המפרט לפענוח כולל רק את העמודות שמדביקים
     const parseSpec = { cols };
-    const runOpts = () => ({ createMissingContacts: st.createContacts });
+    const runOpts = () => ({ createMissingContacts: st.createContacts, dateFormat: st.dateFormat });
     const withPreset = (rows) => presetKeys.length
       ? rows.map(r => Object.assign({}, preset, r)) : rows;
 
@@ -1638,11 +1646,20 @@ function importPanel(host, opts) {
 
     const renderPreview = (parsed, r) => {
       const bad = r.rows.filter(x => !x.ok).slice(0, 200);
+      const df = r.date_format;
+      const dfName = df && df.fmt === 'mdy' ? 'חודש/יום/שנה (אמריקאי)' : 'יום/חודש/שנה (ישראלי)';
       q('res').innerHTML = `
         ${parsed.dropped && parsed.dropped.length ? `
           <div class="card" style="margin-top:6px;border-color:var(--red)">
             <b style="color:var(--red)">⚠ עמודות שלא זוהו ויושלכו:</b> ${parsed.dropped.map(esc).join(' · ')}
             <div class="mini">אם הן חשובות — תקן את הכותרות (כפתור "העתק שורת כותרות") לפני הייבוא.</div>
+          </div>` : ''}
+        ${df ? `<div class="card mini" style="margin-top:6px${df.conflict ? ';border-color:var(--red)' : ''}">
+            📅 תאריכים נקראים כ<b>${dfName}</b>${
+              df.manual ? ' (נבחר ידנית)' :
+              df.conflict ? ' — <span class="neg">⚠ בהדבקה יש גם תאריכים בפורמט השני. בדוק וקבע ידנית.</span>' :
+              df.proof ? ` (זוהה אוטומטית לפי ${df.proof} תאריכים חד-משמעיים)` :
+              ' — לא נמצאה הוכחה בהדבקה, זו ברירת המחדל. אם התאריכים אמריקאיים, קבע ידנית למעלה.'}
           </div>` : ''}
         <div class="grid stat-grid" style="margin-top:6px">
           <div class="stat"><div class="label">שורות שזוהו</div><div class="value">${r.total}</div>
