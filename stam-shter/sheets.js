@@ -107,10 +107,21 @@ function mirrorMany(table, records) {
   return Promise.resolve();
 }
 
+// המתנה לריקון התור — לשימוש סקריפטים חד-פעמיים (סנכרון מלא),
+// שאחרת היו מסתיימים לפני שהשליחה בפועל הושלמה.
+async function drain(timeoutMs) {
+  const deadline = Date.now() + (timeoutMs || 15 * 60 * 1000);
+  while ((queue.length || sending) && Date.now() < deadline) {
+    if (!sending && !timer) flush();
+    await new Promise(r => setTimeout(r, 500));
+  }
+  if (queue.length) throw new Error(`נותרו ${queue.length} רשומות בתור אחרי פסק הזמן`);
+}
+
 // מסירים שדות פנימיים לפני השליחה
 function strip(it) {
   const { _attempts, ...rest } = it;
   return rest;
 }
 
-module.exports = { enabled, backup, mirrorMany };
+module.exports = { enabled, backup, mirrorMany, drain };

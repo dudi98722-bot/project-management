@@ -161,7 +161,78 @@ function tableHTML(cols, rows, opts) {
     foot = `<tfoot><tr>${cols.map(c =>
       `<td class="${c.cls || ''}">${c.total ? c.total(rows) : (c.totalLabel || '')}</td>`).join('')}</tr></tfoot>`;
   }
-  return `<div class="table-wrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody>${foot}</table></div>`;
+  // כל טבלה מקבלת כפתור ייצוא. החיווט הוא בהאזנה גלובלית (wireExport),
+  // כדי שגם טבלאות שנוצרות בתוך חלונות יעבדו בלי חיווט נוסף.
+  const tools = opts.noExport ? '' :
+    `<div class="tbl-tools"><button class="btn ghost xs" data-xls title="הורדה לאקסל">⤓ אקסל</button></div>`;
+  return `<div class="tbl-box">${tools}<div class="table-wrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody>${foot}</table></div></div>`;
+}
+
+// ===== ייצוא טבלה לאקסל =====
+// קורא את הטבלה כפי שהיא מוצגת, כך שהקובץ תואם בדיוק למה שרואים על המסך
+// (כולל שורת סיכום). מספרים מומרים חזרה למספרים אמיתיים כדי שיהיה אפשר
+// לסכם אותם באקסל — ₪, פסיקים ומינוס טיפוגרפי מנוקים.
+function cellToValue(td) {
+  let t = (td.innerText || td.textContent || '').replace(/\s+/g, ' ').trim();
+  if (t === '') return '';
+  const n = t.replace(/[₪$,\s]/g, '').replace(/[−–—]/g, '-');
+  if (/^-?\d+(\.\d+)?$/.test(n)) return parseFloat(n);
+  return t;
+}
+
+function tableToRows(table) {
+  const out = [];
+  for (const tr of table.querySelectorAll('thead tr, tbody tr, tfoot tr')) {
+    const cells = [...tr.children];
+    // מדלגים על עמודות תפעוליות (סימון / כפתורי פעולה) — אין להן ערך בקובץ
+    const row = cells.filter(td => !td.querySelector('input[type="checkbox"], button'))
+      .map(td => cellToValue(td));
+    if (row.some(v => v !== '')) out.push(row);
+  }
+  return out;
+}
+
+async function exportTable(table, name) {
+  try {
+    await loadXLSX();
+    const rows = tableToRows(table);
+    if (!rows.length) return toast('אין נתונים לייצוא', 'err');
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!views'] = [{ RTL: true }];
+    const wb = XLSX.utils.book_new();
+    wb.Workbook = { Views: [{ RTL: true }] };
+    // שם לשונית: אקסל אוסר : \ / ? * [ ] ומגביל ל-31 תווים
+    const sheetName = String(name || 'נתונים').replace(/[:\\/?*[\]]/g, ' ').slice(0, 31) || 'נתונים';
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    const d = new Date();
+    const stamp = `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+    XLSX.writeFile(wb, `${sheetName} ${stamp}.xlsx`);
+    toast('הקובץ הורד', 'ok');
+  } catch (e) { toast('ייצוא נכשל: ' + e.message, 'err'); }
+}
+
+// שם לקובץ: הכותרת הקרובה ביותר מעל הטבלה
+function tableTitle(box) {
+  const card = box.closest('.card') || box.parentElement;
+  const h = card && card.querySelector('h2, h3');
+  if (h) return h.textContent.trim();
+  const modal = box.closest('.modal');
+  if (modal) { const mh = modal.querySelector('.m-head h3'); if (mh) return mh.textContent.trim(); }
+  const pageH = document.querySelector('#view h2');
+  return pageH ? pageH.textContent.trim() : 'נתונים';
+}
+
+function wireExport() {
+  if (wireExport._done) return;
+  wireExport._done = true;
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest && e.target.closest('[data-xls]');
+    if (!btn) return;
+    e.preventDefault(); e.stopPropagation();
+    const box = btn.closest('.tbl-box');
+    const table = box && box.querySelector('table');
+    if (table) exportTable(table, tableTitle(box));
+  });
 }
 
 const sumBy = (rows, k) => rows.reduce((a, r) => a + N(r[k]), 0);
@@ -1772,6 +1843,7 @@ async function render() {
 // ============ כניסה ============
 async function boot(user) {
   ME = user;
+  wireExport();
   $('userName').textContent = user.full_name || user.username;
   $('userRole').textContent = (user.caps && user.caps.label) || '';
   $('loginScreen').classList.add('hidden');
