@@ -567,11 +567,30 @@ function undoCount(){ return UNDO.length; }
 function markDirty(){ try{ localStorage.setItem(LSKEY+"_dirty","1"); }catch(e){} }
 function clearDirtyMark(){ try{ localStorage.removeItem(LSKEY+"_dirty"); }catch(e){} }
 function hasDirtyMark(){ try{ return localStorage.getItem(LSKEY+"_dirty")==="1"; }catch(e){ return false; } }
+/* ישויות שעוברות לסל המחזור — משמש גם לחותמת המחיקה וגם למסך עצמו */
+var RECYCLE_ENTITIES=["apartments","partners","apartmentPartners","managers","categories",
+  "expenses","payments","expenseSplits","expenseManagerFees","deposits","income",
+  "accounts","withdrawals","bankMoves","stmtBanks","users"];
+/* חותמת "מתי נמחק ומי מחק".
+   נעשית מרכזית בשמירה ולא בכל מקום מחיקה בנפרד — כך גם מחיקות מדורגות
+   (שלב-אב עם תתי-שלבים, פרוייקט עם כל התנועות) מקבלות אותה, ואי אפשר
+   לשכוח אותה בנתיב חדש. פריט שכבר נושא חותמת אינו נדרס. */
+function stampDeletions(){
+  var now=new Date().toISOString();
+  var who=(CU&&CU.name)||"";
+  RECYCLE_ENTITIES.forEach(function(k){
+    (DB[k]||[]).forEach(function(x){
+      if(x.deleted && x.deletedAt===undefined){ x.deletedAt=now; x.deletedByUser=who; }
+      else if(!x.deleted && x.deletedAt!==undefined){ delete x.deletedAt; delete x.deletedByUser; }
+    });
+  });
+}
 function save(){
   /* שער מרכזי: אף כתיבה לא עוברת אצל משתמש ללא הרשאת עריכה.
      מכסה גם נתיבים שנקראים ישירות (קונסולה/קישור) ולא רק כפתורים מוסתרים.
      CU ריק = מסלולי אתחול/כניסה לפני שיש משתמש — מותר. */
   if(CU && !can("edit")){ toast("אין לך הרשאת עריכה","err"); return; }
+  stampDeletions();
   try{
     var prev=localStorage.getItem(LSKEY);
     if(prev){ UNDO.push(prev); if(UNDO.length>UNDO_MAX) UNDO.shift(); }
@@ -674,6 +693,11 @@ function normalizeDB(d){
   (d.apartments||[]).forEach(function(a){ (a.splitPresets||[]).forEach(function(p){ (p.rows||[]).forEach(function(r){ r.percent=toNum(r.percent); }); }); });
   /* אישורי בדיקת מנהל — יושבים על הפרוייקט עצמו */
   (d.apartments||[]).forEach(function(a){ (a.reviews||[]).forEach(function(r){ r.date=toISO(r.date); }); });
+  /* פריטים שנמחקו לפני שהייתה חותמת זמן — מסומנים "לא ידוע" פעם אחת,
+     כדי שלא יקבלו בטעות את זמן הטעינה הנוכחי בשמירה הבאה. */
+  RECYCLE_ENTITIES.forEach(function(k){
+    (d[k]||[]).forEach(function(x){ if(x.deleted && x.deletedAt===undefined) x.deletedAt=""; });
+  });
   (d.deposits||[]).forEach(function(x){ x.amount=toNum(x.amount); x.date=toISO(x.date); });
   d.withdrawals=d.withdrawals||[];
   (d.withdrawals||[]).forEach(function(x){ x.amount=toNum(x.amount); x.date=toISO(x.date); });
@@ -9704,12 +9728,30 @@ function copySkipped(){
 
 /* ---------- סל מחזור ---------- */
 function moduleRecycle(){
-  var groups=[["apartments","פרוייקטים"],["partners","שותפים"],["apartmentPartners","שותפי פרוייקט"],["managers","מנהלים"],
-    ["categories","קטגוריות"],["expenses","הוצאות"],["payments","תשלומים"],["deposits","הפקדות"],["income","הכנסות"],["users","משתמשים"]];
   var h='<h2>🗑️ סל מחזור</h2><p class="muted">פריטים שנמחקו נשמרים כאן וניתן לשחזר אותם. שום דבר לא נמחק פיזית.</p>'+
-    '<div class="toolbar">'+searchBox("rc-q",Q.recycle,"חיפוש בפריטים שנמחקו…","Q.recycle=this.value;renderRecycleList()")+'</div>'+
+    '<div class="toolbar">'+searchBox("rc-q",Q.recycle,"חיפוש בפריטים שנמחקו…","Q.recycle=this.value;renderRecycleList()")+
+    '<select style="max-width:170px" onchange="Q.recycleWhen=this.value;renderRecycleList()">'+
+      [["","כל התקופות"],["1","נמחק היום"],["7","7 הימים האחרונים"],["30","30 הימים האחרונים"]].map(function(o){
+        return '<option value="'+o[0]+'"'+(Q.recycleWhen===o[0]?" selected":"")+'>'+o[1]+'</option>'; }).join("")+
+    '</select>'+
+    ((Q.recycle||Q.recycleWhen)?'<button class="btn btn-ghost btn-sm" onclick="Q.recycle=\'\';Q.recycleWhen=\'\';rerender()">✕ נקה</button>':'')+
+    '</div>'+
     '<div id="rc-list">'+recycleListHtml()+'</div>';
   return h;
+}
+/* תאריך ושעה של המחיקה. פריט ישן (לפני שהייתה חותמת) מוצג כ"לא ידוע". */
+function delStampHtml(it){
+  if(!it.deletedAt) return '<span class="muted" title="נמחק לפני שהמערכת התחילה לתעד זמני מחיקה">לא ידוע</span>';
+  var d=new Date(it.deletedAt);
+  if(isNaN(d.getTime())) return '<span class="muted">לא ידוע</span>';
+  var p=function(n){ return (n<10?"0":"")+n; };
+  return dateHe(it.deletedAt.slice(0,10))+' <span class="muted">'+p(d.getHours())+':'+p(d.getMinutes())+'</span>';
+}
+function delWithinDays(it,days){
+  if(!days) return true;
+  if(!it.deletedAt) return false;                 // בלי חותמת אין איך לסנן לפי זמן
+  var t=Date.parse(it.deletedAt); if(isNaN(t)) return false;
+  return (Date.now()-t) <= Number(days)*86400000;
 }
 function renderRecycleList(){ return withIndex(function(){ return renderRecycleListInner(); }); }
 function renderRecycleListInner(){
@@ -9717,30 +9759,40 @@ function renderRecycleListInner(){
 }
 function recycleListHtml(){
   var groups=[["apartments","פרוייקטים"],["partners","שותפים"],["apartmentPartners","שותפי פרוייקט"],["managers","מנהלים"],
-    ["categories","קטגוריות"],["expenses","הוצאות"],["payments","תשלומים"],["deposits","הפקדות"],["income","הכנסות"],["users","משתמשים"]];
+    ["categories","קטגוריות"],["expenses","הוצאות"],["payments","תשלומים"],["deposits","הפקדות"],["income","הכנסות"],
+    ["withdrawals","משיכות רווח"],["accounts","חשבונות"],["bankMoves","שורות בנק"],["stmtBanks","בנקים"],["users","משתמשים"]];
   var h='';
   var any=false;
   groups.forEach(function(g){
     var items=(DB[g[0]]||[]).filter(function(x){
-      return x.deleted && matches(Q.recycle, recycleLabel(g[0],x)+" "+g[1]); });
+      return x.deleted && delWithinDays(x,Q.recycleWhen) &&
+        matches(Q.recycle, recycleLabel(g[0],x)+" "+g[1]+" "+(x.deletedByUser||"")); });
     if(!items.length) return; any=true;
-    h+='<div class="card"><h3>'+g[1]+' ('+items.length+')</h3><div class="table-wrap"><table class="tbl"><thead><tr><th>פריט</th><th></th></tr></thead><tbody>';
+    /* האחרון שנמחק למעלה — זה מה שמחפשים כשרוצים לשחזר טעות */
+    items.sort(function(a,b){ return String(b.deletedAt||"").localeCompare(String(a.deletedAt||"")); });
+    h+='<div class="card"><h3>'+g[1]+' ('+items.length+')</h3><div class="table-wrap"><table class="tbl"><thead><tr>'+
+      '<th>פריט</th><th>נמחק בתאריך</th><th>מי מחק</th><th></th></tr></thead><tbody>';
     items.forEach(function(it){
-      h+='<tr><td>'+esc(recycleLabel(g[0],it))+'</td><td class="right"><button class="btn btn-sm" onclick="restoreItem(\''+g[0]+'\',\''+it.id+'\')">♻️ שחזר</button></td></tr>';
+      h+='<tr><td>'+esc(recycleLabel(g[0],it))+'</td>'+
+        '<td style="white-space:nowrap">'+delStampHtml(it)+'</td>'+
+        '<td>'+esc(it.deletedByUser||"—")+'</td>'+
+        '<td class="right"><button class="btn btn-sm" onclick="restoreItem(\''+g[0]+'\',\''+it.id+'\')">♻️ שחזר</button></td></tr>';
     });
     h+='</tbody></table></div></div>';
   });
-  if(!any) h+='<div class="empty">'+(Q.recycle?'לא נמצא פריט שמתאים לחיפוש':'סל המחזור ריק')+'</div>';
+  if(!any) h+='<div class="empty">'+((Q.recycle||Q.recycleWhen)?'לא נמצא פריט שמתאים לסינון':'סל המחזור ריק')+'</div>';
   return h;
 }
 function recycleLabel(entity,it){
   if(entity==="expenses"||entity==="income") return it.description+" — "+money(it.amount);
   if(entity==="payments") return money(it.amount)+" ("+dateHe(it.date)+")";
   if(entity==="deposits") return partnerName(it.partnerId)+" — "+money(it.amount);
+  if(entity==="withdrawals") return partnerName(it.partnerId)+" — "+money(it.amount)+" ("+dateHe(it.date)+")";
+  if(entity==="bankMoves") return (it.name||it.description||"שורת בנק")+" — "+money(it.amount)+" ("+dateHe(it.date)+")";
   if(entity==="apartmentPartners") return partnerName(it.partnerId)+" ("+num(it.defaultPercent)+"%)";
   return it.name||it.id;
 }
-function restoreItem(entity,id){ if(!can("edit")){ toast("אין הרשאה","err"); return; } var it=byId(DB[entity],id); if(it){ it.deleted=false; delete it.deletedBy;
+function restoreItem(entity,id){ if(!can("edit")){ toast("אין הרשאה","err"); return; } var it=byId(DB[entity],id); if(it){ it.deleted=false; delete it.deletedBy; delete it.deletedAt; delete it.deletedByUser;
   if(entity==="managers"){ DB.expenseManagerFees.forEach(function(f){ if(f.managerId===id) f.deleted=false; }); }
   if(entity==="expenses"){
     /* שחזור שלב-אב מחזיר איתו את תתי-השלבים שנמחקו יחד איתו */
