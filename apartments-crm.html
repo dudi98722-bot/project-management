@@ -2526,7 +2526,7 @@ function attachTableTools(root){
     if(t.getAttribute("data-tools")) return;
     var head=t.tHead; if(!head||!head.rows.length) return;
     if(!t.tBodies.length||!t.tBodies[0].rows.length) return;
-    if(t.tBodies[0].rows.length<3) return;            // טבלה קטנה — לא מעמיסים
+    if(t.tBodies[0].rows.length<2) return;            // שורה בודדת — אין מה למיין או לסנן
     t.setAttribute("data-tools","1");
     var hr=head.rows[0], n=hr.cells.length;
 
@@ -6321,7 +6321,8 @@ function occupancyHtml(aptId){
     stat("אחוז תפוסה",(slots?Math.round(taken*1000/slots)/10:0)+"%")+
     stat("הזמנות בחודש",monthBookings.length)+'</div>';
 
-  h+='<div class="table-wrap"><table class="tbl" style="font-size:11px"><thead><tr>'+
+  /* data-tools="1" — לוח הימים לא מקבל שורת סינון ומיון; אין להם משמעות כאן */
+  h+='<div class="table-wrap"><table class="tbl" data-tools="1" style="font-size:11px"><thead><tr>'+
     '<th style="position:sticky;inset-inline-start:0;background:#fff;min-width:90px">יחידה</th>';
   for(var d=1;d<=days;d++){
     var iso=ym+"-"+(d<10?"0":"")+d;
