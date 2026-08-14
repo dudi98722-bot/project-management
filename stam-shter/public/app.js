@@ -82,8 +82,100 @@ const optPurchases = (sel) => C.purchases
   .filter(p => N(p.remaining_qty) > 0 || +sel === p.id)
   .map(p => `<option value="${p.id}" ${+sel === p.id ? 'selected' : ''}>${esc(purchaseLabel(p))}</option>`).join('');
 
+// ===== שדה השלמה אוטומטית =====
+// מחליף רשימה נפתחת ארוכה: מקלידים חלק מהשם והרשימה מצטמצמת.
+// הערך הנבחר נשמר בשדה מוסתר בשם f_<key>, כך ש-readFields עובד כרגיל.
+const itemsContacts  = () => C.contacts.map(c => ({ v: c.id, t: contactName(c) }));
+const itemsProducts  = () => C.products.map(p => ({ v: p.id, t: p.name }));
+const itemsSizes     = () => C.sizes.map(s => ({ v: s.id, t: `${s.name} (${money(s.cost_per_unit)}/יח')` }));
+const itemsScrolls   = () => C.scrolls.map(s => ({ v: s.id, t: scrollLabel(s) }));
+const itemsPurchases = (sel) => C.purchases.filter(p => N(p.remaining_qty) > 0 || +sel === p.id)
+  .map(p => ({ v: p.id, t: `#${p.id} · ${purchaseLabel(p)}` }));
+const itemsList = (arr) => arr.map(x => ({ v: x.value, t: x.value + (x.is_correction ? '  ⟵ תיקונים' : '') }));
+
+function comboHTML(f, val) {
+  const items = f.items(val) || [];
+  const cur = items.find(x => String(x.v) === String(val));
+  return `<div class="field"><label>${esc(f.label)}</label>
+    <div class="combo" data-combo="${f.k}">
+      <input type="hidden" id="f_${f.k}" value="${esc(val == null ? '' : val)}">
+      <input class="combo-inp${cur ? ' picked' : ''}" id="t_${f.k}" autocomplete="off"
+        placeholder="${esc(f.placeholder || 'הקלד לחיפוש…')}" value="${esc(cur ? cur.t : '')}">
+      <div class="combo-menu" style="display:none"></div>
+    </div>
+    ${f.hint ? `<div class="hint">${esc(f.hint)}</div>` : ''}</div>`;
+}
+
+function wireCombos(root, fields) {
+  for (const f of fields.filter(x => x.type === 'combo')) {
+    const box = root.querySelector(`[data-combo="${CSS.escape(f.k)}"]`);
+    if (!box) continue;
+    const hid = box.querySelector('input[type=hidden]');
+    const inp = box.querySelector('.combo-inp');
+    const menu = box.querySelector('.combo-menu');
+    let items = f.items(hid.value) || [];
+    let act = -1;
+
+    const draw = (q) => {
+      const s = String(q || '').trim().toLowerCase();
+      // כל מילת חיפוש חייבת להופיע — כך "כהן אבר" מוצא "אברהם כהן"
+      const words = s ? s.split(/\s+/) : [];
+      const hit = items.filter(x => {
+        const t = String(x.t).toLowerCase();
+        return words.every(w => t.includes(w));
+      }).slice(0, 60);
+      menu.innerHTML = hit.length
+        ? hit.map((x, i) => `<div data-v="${esc(x.v)}" class="${i === act ? 'act' : ''}">${esc(x.t)}</div>`).join('')
+        : `<div class="none">אין תוצאות</div>`;
+      menu.style.display = 'block';
+      menu.querySelectorAll('[data-v]').forEach(d => {
+        d.onmousedown = (e) => { e.preventDefault(); pick(d.dataset.v, d.textContent); };
+      });
+    };
+    const pick = (v, t) => {
+      hid.value = v; inp.value = t; inp.classList.add('picked');
+      menu.style.display = 'none'; act = -1;
+    };
+    const close = () => { menu.style.display = 'none'; act = -1; };
+
+    inp.onfocus = () => { items = f.items(hid.value) || []; act = -1; draw(inp.value === (items.find(x => String(x.v) === String(hid.value)) || {}).t ? '' : inp.value); };
+    inp.oninput = () => {
+      hid.value = ''; inp.classList.remove('picked');   // הקלדה מבטלת בחירה קודמת
+      act = -1; draw(inp.value);
+    };
+    inp.onblur = () => {
+      setTimeout(() => {
+        close();
+        // טקסט שלא נבחר מהרשימה — אם הוא תואם בדיוק פריט, נבחר אותו; אחרת מנוקה
+        if (!hid.value) {
+          const exact = items.find(x => String(x.t).toLowerCase() === inp.value.trim().toLowerCase());
+          if (exact) pick(exact.v, exact.t);
+          else if (inp.value.trim() !== '') { inp.value = ''; }
+        }
+      }, 150);
+    };
+    inp.onkeydown = (e) => {
+      const opts = [...menu.querySelectorAll('[data-v]')];
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (menu.style.display === 'none') return draw(inp.value);
+        act = e.key === 'ArrowDown' ? Math.min(act + 1, opts.length - 1) : Math.max(act - 1, 0);
+        opts.forEach((o, i) => o.classList.toggle('act', i === act));
+        if (opts[act]) opts[act].scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Enter') {
+        if (menu.style.display !== 'none' && opts.length) {
+          e.preventDefault();
+          const o = opts[act >= 0 ? act : 0];
+          pick(o.dataset.v, o.textContent);
+        }
+      } else if (e.key === 'Escape') { close(); }
+    };
+  }
+}
+
 // ---- בונה שדות טופס ----
 function fieldHTML(f, val) {
+  if (f.type === 'combo') return comboHTML(f, val);
   const v = (val === null || val === undefined) ? '' : val;
   const req = f.required ? 'required' : '';
   let inner;
@@ -123,6 +215,7 @@ function openForm(cfg, row) {
     footer: `<button class="btn" data-save>שמירה</button><button class="btn ghost" data-cancel>ביטול</button>`,
   });
   m.el.querySelector('[data-cancel]').onclick = m.close;
+  wireCombos(m.el, cfg.fields);
   const btn = m.el.querySelector('[data-save]');
   btn.onclick = async () => {
     const data = readFields(cfg.fields);
@@ -153,7 +246,18 @@ async function removeRow(store, id, label) {
 function tableHTML(cols, rows, opts) {
   opts = opts || {};
   if (!rows.length) return `<div class="empty"><div class="big">📭</div>אין נתונים להצגה</div>`;
-  const head = cols.map(c => `<th class="${c.cls || ''}">${c.labelHtml || esc(c.label)}</th>`).join('');
+  // כותרת עם מסנן: כל עמודה בעלת תווית מקבלת כפתור סינון משלה,
+  // והתפריט נבנה מהערכים המוצגים בפועל באותה עמודה.
+  const fk = opts.fkey;
+  const head = cols.map(c => {
+    if (c.labelHtml) return `<th class="${c.cls || ''}">${c.labelHtml}</th>`;
+    if (!fk || !c.label || !c.render) return `<th class="${c.cls || ''}">${esc(c.label || '')}</th>`;
+    const picked = (filterState(fk).cols[c.label] || []);
+    const uid = `${fk}|${c.label}`;
+    return `<th class="${c.cls || ''}"><span class="th-in">${esc(c.label)}
+      <button class="th-filt${picked.length ? ' on' : ''}" data-filtbtn="${esc(uid)}"
+        title="סינון">${picked.length ? `▼${picked.length}` : '▽'}</button></span></th>`;
+  }).join('');
   const body = rows.map((r, i) => `<tr ${opts.rowAttr ? opts.rowAttr(r) : ''}>${
     cols.map(c => `<td class="${c.cls || ''}">${c.render(r, i)}</td>`).join('')}</tr>`).join('');
   let foot = '';
@@ -236,8 +340,8 @@ function wireExport() {
 }
 
 const sumBy = (rows, k) => rows.reduce((a, r) => a + N(r[k]), 0);
-
 // ===== סינון טבלאות =====
+// לכל עמודה מסנן משלה בכותרת, ובנוסף חיפוש חופשי בכל הטבלה.
 // הסינון עובד על הטקסט המוצג בפועל, ולכן הוא זהה למה שהמשתמש רואה
 // ואינו תלוי בשמות השדות במסד. הסכומים בתחתית מחושבים על המסונן בלבד.
 const FILTERS = {};
@@ -245,20 +349,23 @@ const stripHtml = (s) => String(s == null ? '' : s)
   .replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&[a-z]+;/gi, ' ')
   .replace(/\s+/g, ' ').trim();
 
+function filterState(key) {
+  if (!FILTERS[key]) FILTERS[key] = { q: '', cols: {} };
+  return FILTERS[key];
+}
+
+// עמודה ניתנת לסינון: יש לה תווית ותוכן (לא עמודת סימון/פעולות)
+const filterableCols = (cols) => cols.filter(c => c.label && c.render && !c.labelHtml);
+
 function colText(cols, label, r, i) {
   const c = cols.find(x => x.label === label);
   return c ? stripHtml(c.render(r, i)) : '';
 }
 function rowText(cols, r, i) {
-  return cols.map(c => (c.render && !c.labelHtml) ? stripHtml(c.render(r, i)) : '').join(' ');
+  return filterableCols(cols).map(c => stripHtml(c.render(r, i))).join(' ');
 }
 
-function filterState(key) {
-  if (!FILTERS[key]) FILTERS[key] = { q: '', sel: {} };
-  return FILTERS[key];
-}
-
-function applyFilters(key, cols, rows, filterBy) {
+function applyFilters(key, cols, rows) {
   const st = filterState(key);
   let out = rows;
   const q = st.q.trim().toLowerCase();
@@ -269,8 +376,8 @@ function applyFilters(key, cols, rows, filterBy) {
       return words.every(w => t.includes(w));
     });
   }
-  for (const label of (filterBy || [])) {
-    const picked = st.sel[label];
+  for (const label of Object.keys(st.cols)) {
+    const picked = st.cols[label];
     if (picked && picked.length) {
       out = out.filter((r, i) => picked.includes(colText(cols, label, r, i) || '—'));
     }
@@ -278,79 +385,95 @@ function applyFilters(key, cols, rows, filterBy) {
   return out;
 }
 
-function filterBarHTML(key, cols, allRows, filterBy, shownCount) {
+// סרגל עליון: חיפוש חופשי + מונה + ניקוי
+function filterBarHTML(key, shownCount, totalCount) {
   const st = filterState(key);
-  const chips = (filterBy || []).map(label => {
-    const vals = [...new Set(allRows.map((r, i) => colText(cols, label, r, i) || '—'))]
-      .filter(v => v !== '').sort((a, b) => a.localeCompare(b, 'he'));
-    if (vals.length < 2) return '';
-    const picked = st.sel[label] || [];
-    // המזהה כולל את מפתח הטבלה — אחרת שתי טבלאות באותו דף עם מסנן
-    // בעל אותו שם (למשל "ספר") היו מתנגשות ופותחות זו את התפריט של זו.
-    const uid = `${key}|${label}`;
-    return `<div class="filt">
-      <button class="btn ghost sm" data-filtbtn="${esc(uid)}">
-        ${esc(label)}${picked.length ? ` <span class="pill a">${picked.length}</span>` : ' ▾'}</button>
-      <div class="filt-menu hidden" data-filtmenu="${esc(uid)}">
-        <input class="filt-search" placeholder="חיפוש…" data-filtsearch>
-        <div class="filt-list">${vals.map(v =>
-          `<label><input type="checkbox" value="${esc(v)}" ${picked.includes(v) ? 'checked' : ''}> ${esc(v)}</label>`).join('')}</div>
-        <div class="filt-foot"><button class="btn xs" data-filtok>החל</button>
-          <button class="btn ghost xs" data-filtclear>נקה</button></div>
-      </div></div>`;
-  }).join('');
-  const active = st.q || Object.values(st.sel).some(v => v && v.length);
+  const active = st.q || Object.values(st.cols).some(v => v && v.length);
   return `<div class="toolbar filt-bar">
-    <input id="fq_${key}" placeholder="🔍 חיפוש בטבלה…" value="${esc(st.q)}" style="min-width:220px">
-    ${chips}
+    <input id="fq_${key}" class="filt-q" placeholder="🔍 חיפוש בכל הטבלה…" value="${esc(st.q)}">
     ${active ? `<button class="btn ghost sm" id="fclear_${key}">✕ נקה סינון</button>
-      <span class="mini">מוצגות ${shownCount} מתוך ${allRows.length}</span>` : ''}
+      <span class="mini">מוצגות <b>${shownCount}</b> מתוך ${totalCount}</span>` : ''}
   </div>`;
 }
 
-function wireFilters(key) {
+// תפריט הסינון של עמודה — נבנה בלחיצה, מהערכים שבטבלה המלאה
+function openColFilter(btn, key, cols, allRows) {
+  document.querySelectorAll('.filt-menu').forEach(m => m.remove());
+  const label = btn.dataset.filtbtn.slice(key.length + 1);
   const st = filterState(key);
+  const picked = st.cols[label] || [];
+  const vals = [...new Set(allRows.map((r, i) => colText(cols, label, r, i) || '—'))]
+    .sort((a, b) => a.localeCompare(b, 'he', { numeric: true }));
+
+  const m = document.createElement('div');
+  m.className = 'filt-menu';
+  m.innerHTML = `
+    <input class="filt-search" placeholder="חיפוש בערכים…">
+    <div class="filt-actions"><span class="link" data-all>בחר הכל</span> ·
+      <span class="link" data-none>נקה</span></div>
+    <div class="filt-list">${vals.map((v, i) =>
+      `<label><input type="checkbox" value="${esc(v)}" ${picked.includes(v) ? 'checked' : ''}> ${esc(v)}</label>`).join('')}</div>
+    <div class="filt-foot"><button class="btn xs" data-ok>החל</button>
+      <button class="btn ghost xs" data-clear>בטל סינון</button></div>`;
+  document.body.appendChild(m);
+
+  // מיקום מתחת לכפתור, בתוך גבולות המסך
+  const b = btn.getBoundingClientRect();
+  m.style.top = (b.bottom + window.scrollY + 4) + 'px';
+  const left = Math.max(8, Math.min(b.left + window.scrollX, window.innerWidth - m.offsetWidth - 8));
+  m.style.left = left + 'px';
+
+  m.onclick = (e) => e.stopPropagation();
+  const search = m.querySelector('.filt-search');
+  search.oninput = () => {
+    const v = search.value.toLowerCase();
+    m.querySelectorAll('.filt-list label').forEach(l => {
+      l.style.display = l.textContent.toLowerCase().includes(v) ? '' : 'none';
+    });
+  };
+  const visibleBoxes = () => [...m.querySelectorAll('.filt-list label')]
+    .filter(l => l.style.display !== 'none').map(l => l.querySelector('input'));
+  m.querySelector('[data-all]').onclick = () => visibleBoxes().forEach(c => { c.checked = true; });
+  m.querySelector('[data-none]').onclick = () => visibleBoxes().forEach(c => { c.checked = false; });
+  m.querySelector('[data-ok]').onclick = () => {
+    const sel = [...m.querySelectorAll('.filt-list input:checked')].map(c => c.value);
+    // בחירת הכל שקולה לאין סינון
+    if (!sel.length || sel.length === vals.length) delete st.cols[label];
+    else st.cols[label] = sel;
+    m.remove(); render();
+  };
+  m.querySelector('[data-clear]').onclick = () => { delete st.cols[label]; m.remove(); render(); };
+  setTimeout(() => search.focus(), 30);
+}
+
+// חיווט הסינון לטבלה. allRows = לפני סינון, לבניית רשימות הערכים.
+function wireFilters(key, cols, allRows) {
   const q = $('fq_' + key);
   if (q) {
     q.oninput = (e) => {
-      st.q = e.target.value;
-      clearTimeout(wireFilters._t);
-      wireFilters._t = setTimeout(() => { const pos = e.target.selectionStart; render().then(() => {
-        const el = $('fq_' + key); if (el) { el.focus(); el.setSelectionRange(pos, pos); }
-      }); }, 250);
+      filterState(key).q = e.target.value;
+      const pos = e.target.selectionStart;
+      clearTimeout(wireFilters['_t' + key]);
+      wireFilters['_t' + key] = setTimeout(() => {
+        render().then(() => {
+          const el = $('fq_' + key);
+          if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (err) {} }
+        });
+      }, 200);
     };
   }
   const clr = $('fclear_' + key);
-  if (clr) clr.onclick = () => { FILTERS[key] = { q: '', sel: {} }; render(); };
+  if (clr) clr.onclick = () => { FILTERS[key] = { q: '', cols: {} }; render(); };
 
   document.querySelectorAll(`[data-filtbtn^="${key}|"]`).forEach(b => {
-    b.onclick = (e) => {
-      e.stopPropagation();
-      const menu = document.querySelector(`[data-filtmenu="${CSS.escape(b.dataset.filtbtn)}"]`);
-      document.querySelectorAll('.filt-menu').forEach(m => { if (m !== menu) m.classList.add('hidden'); });
-      menu.classList.toggle('hidden');
-    };
+    b.onclick = (e) => { e.stopPropagation(); openColFilter(b, key, cols, allRows); };
   });
-  document.querySelectorAll(`[data-filtmenu^="${key}|"]`).forEach(menu => {
-    menu.onclick = (e) => e.stopPropagation();
-    const label = menu.dataset.filtmenu.slice(key.length + 1);
-    const search = menu.querySelector('[data-filtsearch]');
-    if (search) search.oninput = () => {
-      const v = search.value.toLowerCase();
-      menu.querySelectorAll('.filt-list label').forEach(l => {
-        l.style.display = l.textContent.toLowerCase().includes(v) ? '' : 'none';
-      });
-    };
-    menu.querySelector('[data-filtok]').onclick = () => {
-      st.sel[label] = [...menu.querySelectorAll('input[type=checkbox]:checked')].map(c => c.value);
-      render();
-    };
-    menu.querySelector('[data-filtclear]').onclick = () => { delete st.sel[label]; render(); };
-  });
+
   if (!wireFilters._doc) {
     wireFilters._doc = true;
-    document.addEventListener('click', () => {
-      document.querySelectorAll('.filt-menu').forEach(m => m.classList.add('hidden'));
+    document.addEventListener('click', () => document.querySelectorAll('.filt-menu').forEach(m => m.remove()));
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') document.querySelectorAll('.filt-menu').forEach(m => m.remove());
     });
   }
 }
@@ -438,12 +561,17 @@ function wireRowActions(cfg, rows) {
 }
 
 // ---- דף ישות גנרי ----
+// מטמון שורות לדף — כדי שרינדור מחדש בעקבות סינון לא ייגש לשרת בכל הקלדה.
+// מתאפס בכל שינוי נתונים (reloadCaches).
+const ROWCACHE = {};
+function invalidateRows() { for (const k in ROWCACHE) delete ROWCACHE[k]; }
+
 async function entityPage(cfg) {
-  const allRows = await cfg.load();
+  const fkey = cfg.bulk || cfg.title.replace(/\W/g, '');
+  const allRows = ROWCACHE[fkey] || (ROWCACHE[fkey] = await cfg.load());
   const cols = cfg.cols.concat([actionsCol(cfg)]);
   if (ME.caps.del && cfg.bulk) cols.unshift(selCol(cfg.bulk));
-  const fkey = cfg.bulk || cfg.title.replace(/\W/g, '');
-  const rows = applyFilters(fkey, cols, allRows, cfg.filterBy);
+  const rows = applyFilters(fkey, cols, allRows);
   $('view').innerHTML += `
     <div class="page-head">
       <h2>${esc(cfg.title)}</h2>
@@ -454,17 +582,18 @@ async function entityPage(cfg) {
     </div>
     ${cfg.note ? `<div class="card mini">${cfg.note}</div>` : ''}
     <div class="card">
-      ${filterBarHTML(fkey, cols, allRows, cfg.filterBy, rows.length)}
-      ${tableHTML(cols, rows, { totals: cfg.totals })}</div>`;
+      ${filterBarHTML(fkey, rows.length, allRows.length)}
+      ${tableHTML(cols, rows, { totals: cfg.totals, fkey })}</div>`;
   if ($('addBtn')) $('addBtn').onclick = () => openForm(cfg, null);
   wireRowActions(cfg, rows);
   wireBulkBtns();
   wireSelection();
-  wireFilters(fkey);
+  wireFilters(fkey, cols, allRows);
 }
 
 // ============ טעינת מטמון ============
 async function reloadCaches() {
+  invalidateRows();
   const [contacts, products, sizes, lists, scrolls, purchases] = await Promise.all([
     Store.contacts.list(), Store.products.list(), Store.sizes.list(),
     Store.lists.all(), Store.scrolls.list(), Store.prodPurchases.list(),
@@ -523,20 +652,19 @@ async function pageScrolls() {
     { label: '', cls: 'center', render: r => `<button class="btn ghost xs" data-card="${r.id}">כרטיס</button>` },
     actionsCol(cfg),
   ];
-  const FB = ['סופר', 'רוכש', 'מוצר', 'סטטוס'];
-  const rows = applyFilters('scrolls', cols, allRows, FB);
+  const rows = applyFilters('scrolls', cols, allRows);
   $('view').innerHTML += `
     <div class="page-head"><h2>ס"ת</h2><div class="spacer"></div>
       ${bulkBtn('scrolls', 'ס"ת')}
       ${ME.caps.edit ? `<button class="btn" id="addBtn">+ ספר חדש</button>` : ''}</div>
     <div class="card">
-      ${filterBarHTML('scrolls', cols, allRows, FB, rows.length)}
-      ${tableHTML(cols, rows, { totals: true })}</div>`;
+      ${filterBarHTML('scrolls', rows.length, allRows.length)}
+      ${tableHTML(cols, rows, { totals: true, fkey: 'scrolls' })}</div>`;
   if ($('addBtn')) $('addBtn').onclick = () => openForm(cfg, null);
   wireRowActions(cfg, rows);
   wireBulkBtns();
   wireSelection();
-  wireFilters('scrolls');
+  wireFilters('scrolls', cols, allRows);
   document.querySelectorAll('[data-card]').forEach(b => b.onclick = () => showScrollCard(+b.dataset.card));
 }
 
@@ -546,12 +674,12 @@ function scrollCfg() {
     labelOf: (r) => scrollLabel(r),
     defaults: () => ({ sale_date: today(), buyer_currency: 'ILS', status: 'active' }),
     fields: [
-      { k: 'scribe_id', label: 'שם סופר', type: 'select', options: optContacts },
-      { k: 'product_id', label: 'מוצר', type: 'select', options: optProducts },
-      { k: 'parchment_size_id', label: 'גודל קלף', type: 'select', options: optSizes },
+      { k: 'scribe_id', label: 'שם סופר', type: 'combo', items: itemsContacts },
+      { k: 'product_id', label: 'מוצר', type: 'combo', items: itemsProducts },
+      { k: 'parchment_size_id', label: 'גודל קלף', type: 'combo', items: itemsSizes },
       { k: 'page_rate', label: 'מחיר לעמוד (לסופר)', type: 'number' },
       { k: 'sale_date', label: 'תאריך מכירה', type: 'date' },
-      { k: 'customer_id', label: 'שם רוכש', type: 'select', options: optContacts },
+      { k: 'customer_id', label: 'שם רוכש', type: 'combo', items: itemsContacts },
       { k: 'buyer_total', label: 'מחיר לרוכש (סכום כולל)', type: 'number', hint: 'המחיר של הספר כולו, לא לעמוד' },
       { k: 'buyer_currency', label: 'מטבע רוכש', type: 'select', blank: false, options: (v) =>
           `<option value="ILS" ${v === 'ILS' ? 'selected' : ''}>₪ שקל</option><option value="USD" ${v === 'USD' ? 'selected' : ''}>$ דולר</option>` },
@@ -648,7 +776,7 @@ async function pageScribePay() {
     labelOf: (r) => `תשלום ${money(r.amount)}`,
     defaults: () => ({ date: today() }),
     fields: [
-      { k: 'scroll_id', label: 'עבור איזה ספר', type: 'select', options: optScrolls, required: true },
+      { k: 'scroll_id', label: 'עבור איזה ספר', type: 'combo', items: itemsScrolls, required: true },
       { k: 'date', label: 'תאריך', type: 'date' },
       { k: 'amount', label: 'סכום ששולם', type: 'number' },
       { k: 'note', label: 'הערה', type: 'textarea' },
@@ -659,7 +787,7 @@ async function pageScribePay() {
     labelOf: (r) => `${r.pages} עמודים`,
     defaults: () => ({ date: today() }),
     fields: [
-      { k: 'scroll_id', label: 'עבור איזה ספר', type: 'select', options: optScrolls, required: true },
+      { k: 'scroll_id', label: 'עבור איזה ספר', type: 'combo', items: itemsScrolls, required: true },
       { k: 'date', label: 'תאריך', type: 'date' },
       { k: 'pages', label: 'כמות עמודים שנכתבה', type: 'number' },
       { k: 'note', label: 'הערה', type: 'textarea' },
@@ -685,23 +813,23 @@ async function pageScribePay() {
     actionsCol(pageCfg),
   ];
 
-  const pays  = applyFilters('scribe_payments', payCols, allPays, ['ספר']);
-  const pages = applyFilters('pages_log', pageCols, allPages, ['ספר']);
+  const pays  = applyFilters('scribe_payments', payCols, allPays);
+  const pages = applyFilters('pages_log', pageCols, allPages);
   $('view').innerHTML += `
     <div class="page-head"><h2>תשלום לסופר</h2></div>
     <div class="card">
       <div class="page-head"><h3>תשלומים לסופר</h3><div class="spacer"></div>
         ${bulkBtn('scribe_payments', 'תשלומים לסופר')}
         ${ME.caps.edit ? `<button class="btn sm" id="addPay">+ תשלום</button>` : ''}</div>
-      ${filterBarHTML('scribe_payments', payCols, allPays, ['ספר'], pays.length)}
-      ${tableHTML(payCols, pays, { totals: true })}
+      ${filterBarHTML('scribe_payments', pays.length, allPays.length)}
+      ${tableHTML(payCols, pays, { totals: true, fkey: 'scribe_payments' })}
     </div>
     <div class="card">
       <div class="page-head"><h3>עמודים שנכתבו</h3><div class="spacer"></div>
         ${bulkBtn('pages_log', 'עמודים שנכתבו')}
         ${ME.caps.edit ? `<button class="btn sm gold" id="addPage">+ רישום עמודים</button>` : ''}</div>
-      ${filterBarHTML('pages_log', pageCols, allPages, ['ספר'], pages.length)}
-      ${tableHTML(pageCols, pages, { totals: true })}
+      ${filterBarHTML('pages_log', pages.length, allPages.length)}
+      ${tableHTML(pageCols, pages, { totals: true, fkey: 'pages_log' })}
     </div>`;
   if ($('addPay')) $('addPay').onclick = () => openForm(payCfg, null);
   if ($('addPage')) $('addPage').onclick = () => openForm(pageCfg, null);
@@ -725,23 +853,23 @@ async function pageScribePay() {
   wire('[data-grp="pay"]', payCfg, pays);
   wire('[data-grp="page"]', pageCfg, pages);
   wireSelection();
-  wireFilters('scribe_payments');
-  wireFilters('pages_log');
+  wireFilters('scribe_payments', payCols, allPays);
+  wireFilters('pages_log', pageCols, allPages);
 }
 
 // ============ תשלומי לקוחות (ס"ת) ============
 function pageCustPay() {
   const scrollById = (id) => C.scrolls.find(s => s.id === id);
   return entityPage({
-    title: 'תשלומי לקוחות', bulk: 'customer_payments', filterBy: ['רוכש','ספר'], store: Store.customerPayments,
+    title: 'תשלומי לקוחות', bulk: 'customer_payments', store: Store.customerPayments,
     load: () => Store.customerPayments.list(),
     labelOf: (r) => `תשלום ${money(r.paid_actual)}`,
     defaults: () => ({ date: today() }),
     totals: true,
     note: 'עלות פריטה = (סכום בדולר × שער יציג) − מזומן שהתקבל ביד. הרוכש מזוכה על הסכום המלא.',
     fields: [
-      { k: 'customer_id', label: 'רוכש', type: 'select', options: optContacts },
-      { k: 'scroll_id', label: 'ספר שרכש', type: 'select', options: optScrolls },
+      { k: 'customer_id', label: 'רוכש', type: 'combo', items: itemsContacts },
+      { k: 'scroll_id', label: 'ספר שרכש', type: 'combo', items: itemsScrolls },
       { k: 'date', label: 'תאריך', type: 'date' },
       { k: 'amount_ils', label: 'סכום ששילם בש"ח', type: 'number' },
       { k: 'amount_usd', label: 'סכום ששילם בדולר', type: 'number' },
@@ -769,15 +897,15 @@ function pageCustPay() {
 function pageBookExp() {
   const scrollById = (id) => C.scrolls.find(s => s.id === id);
   return entityPage({
-    title: 'הוצאות לספר', bulk: 'book_expenses', filterBy: ['ספר','סוג הוצאה'], store: Store.bookExpenses,
+    title: 'הוצאות לספר', bulk: 'book_expenses', store: Store.bookExpenses,
     load: () => Store.bookExpenses.list(),
     labelOf: (r) => `${r.type || 'הוצאה'} ${money(r.amount)}`,
     defaults: () => ({ date: today() }),
     totals: true,
     note: 'סוג המסומן כ<b>תיקונים</b> נזקף לצד הסופר (מקוזז מהיתרה שלו). כל שאר הסוגים נחשבים הוצאות לספר ויורדים מהרווח.',
     fields: [
-      { k: 'scroll_id', label: 'ספר', type: 'select', options: optScrolls, required: true },
-      { k: 'type', label: 'סוג הוצאה', type: 'select', options: (v) => optListVals(C.expBook, v) },
+      { k: 'scroll_id', label: 'ספר', type: 'combo', items: itemsScrolls, required: true },
+      { k: 'type', label: 'סוג הוצאה', type: 'combo', items: () => itemsList(C.expBook) },
       { k: 'date', label: 'תאריך', type: 'date' },
       { k: 'amount', label: 'סכום', type: 'number' },
       { k: 'note', label: 'הערה', type: 'textarea' },
@@ -796,17 +924,17 @@ function pageBookExp() {
 function pageParchExp() {
   const scrollById = (id) => C.scrolls.find(s => s.id === id);
   return entityPage({
-    title: 'הוצאות קלף', bulk: 'parchment_expenses', filterBy: ['ספר','גודל'], store: Store.parchmentExpenses,
+    title: 'הוצאות קלף', bulk: 'parchment_expenses', store: Store.parchmentExpenses,
     load: () => Store.parchmentExpenses.list(),
     labelOf: (r) => `${r.quantity} יחידות קלף`,
     defaults: () => ({ date: today() }),
     totals: true,
     note: 'סך העלות מחושב אוטומטית: כמות × עלות ליחידה של הגודל שנבחר. סכום זה הוא "עלות קלף בפועל" בכרטיס הספר.',
     fields: [
-      { k: 'scroll_id', label: 'ספר', type: 'select', options: optScrolls, required: true },
+      { k: 'scroll_id', label: 'ספר', type: 'combo', items: itemsScrolls, required: true },
       { k: 'date', label: 'תאריך', type: 'date' },
       { k: 'quantity', label: 'כמות קלף', type: 'number' },
-      { k: 'parchment_size_id', label: 'גודל', type: 'select', options: optSizes },
+      { k: 'parchment_size_id', label: 'גודל', type: 'combo', items: itemsSizes },
       { k: 'note', label: 'הערה', type: 'textarea' },
     ],
     cols: [
@@ -824,14 +952,14 @@ function pageParchExp() {
 // ============ הוצאות עסק ============
 function pageBizExp() {
   return entityPage({
-    title: 'הוצאות עסק', bulk: 'business_expenses', filterBy: ['סוג הוצאה'], store: Store.businessExpenses,
+    title: 'הוצאות עסק', bulk: 'business_expenses', store: Store.businessExpenses,
     load: () => Store.businessExpenses.list(),
     labelOf: (r) => `${r.type || 'הוצאה'} ${money(r.amount)}`,
     defaults: () => ({ date: today() }),
     totals: true,
     fields: [
       { k: 'date', label: 'תאריך', type: 'date' },
-      { k: 'type', label: 'סוג הוצאה', type: 'select', options: (v) => optListVals(C.expBiz, v) },
+      { k: 'type', label: 'סוג הוצאה', type: 'combo', items: () => itemsList(C.expBiz) },
       { k: 'amount', label: 'סכום', type: 'number' },
       { k: 'note', label: 'הערה', type: 'textarea' },
     ],
@@ -862,7 +990,7 @@ function pageProd() {
 
 function prodPurchases() {
   return entityPage({
-    title: 'רכישות מוצרים', bulk: 'prod_purchases', filterBy: ['סופר','מוצר','סוג'], store: Store.prodPurchases,
+    title: 'רכישות מוצרים', bulk: 'prod_purchases', store: Store.prodPurchases,
     load: () => Store.prodPurchases.list(),
     labelOf: (r) => `${r.product_name} מ${r.scribe_name}`,
     defaults: () => ({ date: today(), purchase_type: 'רגיל' }),
@@ -870,8 +998,8 @@ function prodPurchases() {
     note: 'כל רכישה היא <b>חבילה</b> שממנה מוכרים. מחיקת רכישה מעבירה גם את המכירות שנגזרו ממנה לסל המחזור.',
     fields: [
       { k: 'date', label: 'תאריך', type: 'date' },
-      { k: 'scribe_id', label: 'סופר (המוכר)', type: 'select', options: optContacts },
-      { k: 'product_id', label: 'מוצר', type: 'select', options: optProducts },
+      { k: 'scribe_id', label: 'סופר (המוכר)', type: 'combo', items: itemsContacts },
+      { k: 'product_id', label: 'מוצר', type: 'combo', items: itemsProducts },
       { k: 'quantity', label: 'כמות', type: 'number' },
       { k: 'cost_per_unit', label: 'עלות ליחידה', type: 'number', hint: 'מכאן נגזר החוב לסופר' },
       { k: 'extra_cost_per_unit', label: 'עלות נוספת ליחידה', type: 'number', hint: 'לחישוב הרווח בלבד' },
@@ -898,7 +1026,7 @@ function prodPurchases() {
 
 function prodSales() {
   return entityPage({
-    title: 'מכירות מוצרים', bulk: 'prod_sales', filterBy: ['רוכש','מוצר','סוג'], store: Store.prodSales,
+    title: 'מכירות מוצרים', bulk: 'prod_sales', store: Store.prodSales,
     load: () => Store.prodSales.list(),
     labelOf: (r) => `${r.quantity} × ${r.product_name}`,
     defaults: () => ({ date: today(), sale_type: 'רגיל' }),
@@ -907,8 +1035,8 @@ function prodSales() {
     validate: (d) => (!d.purchase_id ? 'יש לבחור חבילת רכישה' : (N(d.quantity) <= 0 ? 'כמות חייבת להיות גדולה מאפס' : null)),
     fields: [
       { k: 'date', label: 'תאריך', type: 'date' },
-      { k: 'customer_id', label: 'שם רוכש', type: 'select', options: optContacts },
-      { k: 'purchase_id', label: 'מוצר (חבילה)', type: 'select', options: optPurchases, required: true },
+      { k: 'customer_id', label: 'שם רוכש', type: 'combo', items: itemsContacts },
+      { k: 'purchase_id', label: 'מוצר (חבילה)', type: 'combo', items: itemsPurchases, required: true },
       { k: 'quantity', label: 'כמות', type: 'number' },
       { k: 'price_per_unit', label: 'מחיר מכירה ליחידה', type: 'number' },
       { k: 'sale_type', label: 'סוג מכירה', type: 'select', blank: false, options: (v) =>
@@ -935,14 +1063,14 @@ function prodSales() {
 
 function prodScribePay() {
   return entityPage({
-    title: 'תשלומים לסופר (מוצרים)', bulk: 'prod_scribe_payments', filterBy: ['סופר'], store: Store.prodScribePayments,
+    title: 'תשלומים לסופר (מוצרים)', bulk: 'prod_scribe_payments', store: Store.prodScribePayments,
     load: () => Store.prodScribePayments.list(),
     labelOf: (r) => `תשלום ${money(r.amount)}`,
     defaults: () => ({ date: today() }),
     totals: true,
     fields: [
       { k: 'date', label: 'תאריך', type: 'date' },
-      { k: 'scribe_id', label: 'שם סופר', type: 'select', options: optContacts },
+      { k: 'scribe_id', label: 'שם סופר', type: 'combo', items: itemsContacts },
       { k: 'amount', label: 'סך ששולם', type: 'number' },
       { k: 'note', label: 'הערה', type: 'textarea' },
     ],
@@ -957,14 +1085,14 @@ function prodScribePay() {
 
 function prodCustPay() {
   return entityPage({
-    title: 'תשלומי לקוחות (מוצרים)', bulk: 'prod_customer_payments', filterBy: ['לקוח'], store: Store.prodCustomerPayments,
+    title: 'תשלומי לקוחות (מוצרים)', bulk: 'prod_customer_payments', store: Store.prodCustomerPayments,
     load: () => Store.prodCustomerPayments.list(),
     labelOf: (r) => `תשלום ${money(r.paid_actual)}`,
     defaults: () => ({ date: today() }),
     totals: true,
     fields: [
       { k: 'date', label: 'תאריך', type: 'date' },
-      { k: 'customer_id', label: 'שם לקוח', type: 'select', options: optContacts },
+      { k: 'customer_id', label: 'שם לקוח', type: 'combo', items: itemsContacts },
       { k: 'amount_ils', label: 'סכום ששולם בש"ח', type: 'number' },
       { k: 'amount_usd', label: 'סכום ששולם בדולר', type: 'number' },
       { k: 'rate', label: 'שער יציג', type: 'number' },
@@ -987,9 +1115,12 @@ function prodCustPay() {
 
 // ============ דוחות ============
 function pageReports() {
+  destroyCharts();
   const subs = [
-    { k: 'overview', label: 'רווח כולל' },
+    { k: 'overview', label: '📊 רווח כולל' },
+    { k: 'charts', label: '📈 גרפים' },
     { k: 'byscroll', label: 'רווח לפי ספר' },
+    { k: 'bookcard', label: '📖 דוח לפי ספר' },
     { k: 'scribes', label: 'יתרות סופרים' },
     { k: 'customers', label: 'יתרות רוכשים' },
     { k: 'monthly', label: 'סיכום חודשי' },
@@ -1000,13 +1131,257 @@ function pageReports() {
   renderSubtabs('reports', subs);
   const s = SUB.reports;
   if (s === 'overview') return repProfit();
+  if (s === 'charts') return repCharts();
   if (s === 'byscroll') return repByScroll();
+  if (s === 'bookcard') return repBookCard();
   if (s === 'scribes') return repScribeBalances();
   if (s === 'customers') return repCustomerBalances();
   if (s === 'monthly') return repMonthly();
   if (s === 'inventory') return repInventory();
   if (s === 'scribecard') return repCard('scribe');
   return repCard('customer');
+}
+
+// ---------- דוח לפי ספר ----------
+// בוחרים ספר ומקבלים את כל התמונה שלו: התקדמות, שני הצדדים, פירוט העלויות
+// ומאזן הרווח — כולל גרף שמראה לאן הולך כל שקל מהמחיר לרוכש.
+async function repBookCard() {
+  const scrolls = C.scrolls;
+  if (!repBookCard._id && scrolls.length) repBookCard._id = scrolls[0].id;
+  $('view').innerHTML += `
+    <div class="toolbar"><label class="mini">בחר ספר:</label>
+      <select id="bcSel" style="min-width:320px">${scrolls.map(s =>
+        `<option value="${s.id}" ${s.id === repBookCard._id ? 'selected' : ''}>${esc(scrollLabel(s))}</option>`).join('')}</select></div>
+    <div id="bcBody"></div>`;
+  $('bcSel').onchange = (e) => { repBookCard._id = +e.target.value; render(); };
+  if (!repBookCard._id) { $('bcBody').innerHTML = `<div class="card empty">אין ספרים במערכת</div>`; return; }
+
+  let d;
+  try { d = await Store.scrolls.get(repBookCard._id); }
+  catch (e) { $('bcBody').innerHTML = `<div class="card" style="color:var(--red)">${esc(e.message)}</div>`; return; }
+  const s = d.scroll;
+  const kv = (k, v, b) => `<div class="k">${k}</div><div class="num">${b ? `<b>${v}</b>` : v}</div>`;
+
+  // מאזן הרווח — כל שורה בשקלים, לפי הנוסחה שבאפיון
+  const parts = [
+    { t: 'עלות הסופר', v: s.scribe_book_price },
+    { t: 'צפי קלף', v: s.parchment_expected },
+    { t: 'הוצאה קבועה', v: s.fixed_expense },
+    { t: 'הוצאות לספר', v: s.book_expenses },
+    { t: 'עלות פריטה', v: s.peritah_cost },
+  ].filter(x => N(x.v) > 0);
+  const profit = N(s.expected_profit);
+
+  $('bcBody').innerHTML = `
+    <div class="grid stat-grid">
+      <div class="stat"><div class="label">מחיר לרוכש</div><div class="value b">${money(s.buyer_total, s.buyer_currency)}</div>
+        <div class="sub">${s.sold ? 'נמכר' : 'טרם נמכר'}</div></div>
+      <div class="stat"><div class="label">רווח צפוי</div>
+        <div class="value ${profit > 0 ? 'g' : (profit < 0 ? 'r' : '')}">${money(profit)}</div>
+        <div class="sub">${s.buyer_total ? Math.round(profit / N(s.buyer_total) * 100) + '% מהמחיר' : ''}</div></div>
+      <div class="stat"><div class="label">התקדמות</div><div class="value">${s.progress_pct}%</div>
+        <div class="sub">${s.pages_written} מתוך ${s.product_pages} עמודים</div></div>
+      <div class="stat"><div class="label">יתרת הרוכש</div><div class="value a">${money(s.buyer_balance_now)}</div>
+        <div class="sub">כללית: ${money(s.buyer_balance_total)}</div></div>
+      <div class="stat"><div class="label">יתרה לסופר</div><div class="value r">${money(s.scribe_balance)}</div>
+        <div class="sub">עתידית: ${money(s.scribe_future_balance)}</div></div>
+    </div>
+
+    <div class="row" style="align-items:stretch">
+      <div style="flex:1;min-width:300px">${chartBox('bcPie', 'לאן הולך הכסף', 280)}</div>
+      <div style="flex:1;min-width:300px">${chartBox('bcProg', 'התקדמות ותשלומים', 280)}</div>
+    </div>
+
+    <div class="card"><h3>פירוט</h3>
+      <div class="row">
+        <div style="flex:1;min-width:250px">
+          <div class="sec-title">צד סופר</div>
+          <div class="kv">
+            ${kv('סופר', esc(s.scribe_name || '—'))}
+            ${kv('מחיר לעמוד', money(s.page_rate))}
+            ${kv('שכר לספר מלא', money(s.scribe_book_price))}
+            ${kv('מגיע לפי התקדמות', money(s.scribe_due_progress))}
+            ${kv('שולם', money(s.scribe_paid))}
+            ${kv('תיקונים', money(s.corrections_paid))}
+            ${kv('יתרה', money(s.scribe_balance), 1)}
+          </div>
+        </div>
+        <div style="flex:1;min-width:250px">
+          <div class="sec-title">צד רוכש</div>
+          <div class="kv">
+            ${kv('רוכש', esc(s.customer_name || '—'))}
+            ${kv('מחיר כולל', money(s.buyer_total, s.buyer_currency))}
+            ${kv('מחיר לעמוד', money(s.buyer_page_rate))}
+            ${kv('לתשלום לפי התקדמות', money(s.buyer_due_progress))}
+            ${kv('שילם', money(s.customer_paid))}
+            ${kv('עלות פריטה', money(s.peritah_cost))}
+            ${kv('יתרה מיידית', money(s.buyer_balance_now), 1)}
+          </div>
+        </div>
+        <div style="flex:1;min-width:250px">
+          <div class="sec-title">עלויות ורווח</div>
+          <div class="kv">
+            ${kv('צפי קלף', money(s.parchment_expected))}
+            ${kv('קלף בפועל', money(s.parchment_actual))}
+            ${kv('הוצאה קבועה', money(s.fixed_expense))}
+            ${kv('הוצאות לספר', money(s.book_expenses))}
+            ${kv('סה"כ עלויות', money(parts.reduce((a, x) => a + N(x.v), 0)), 1)}
+            ${kv('רווח צפוי', money(profit), 1)}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card"><h3>עמודים שנכתבו (${d.pages_log.length})</h3>
+      ${tableHTML([{ label: 'תאריך', render: r => dt(r.date) },
+                   { label: 'עמודים', cls: 'num', render: r => numCell(r.pages), total: rs => numCell(sumBy(rs, 'pages')) },
+                   { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') }], d.pages_log, { totals: true })}</div>
+    <div class="card"><h3>תשלומים לסופר (${d.scribe_payments.length})</h3>
+      ${tableHTML([{ label: 'תאריך', render: r => dt(r.date) },
+                   { label: 'סכום', cls: 'num', render: r => mCell(r.amount), total: rs => mCell(sumBy(rs, 'amount')) },
+                   { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') }], d.scribe_payments, { totals: true })}</div>
+    <div class="card"><h3>תשלומי הרוכש (${d.customer_payments.length})</h3>
+      ${tableHTML([{ label: 'תאריך', render: r => dt(r.date) },
+                   { label: '₪', cls: 'num', render: r => mCell(r.amount_ils) },
+                   { label: '$', cls: 'num', render: r => numCell(r.amount_usd) },
+                   { label: 'שער', cls: 'num', render: r => r.rate ? numCell(r.rate) : '' },
+                   { label: 'פריטה', cls: 'num', render: r => mCell(r.peritah), total: rs => mCell(sumBy(rs, 'peritah')) },
+                   { label: 'שולם בפועל', cls: 'num', render: r => mCell(r.paid_actual), total: rs => mCell(sumBy(rs, 'paid_actual')) }],
+                  d.customer_payments, { totals: true })}</div>
+    <div class="card"><h3>הוצאות (${d.book_expenses.length + d.parchment_expenses.length})</h3>
+      ${tableHTML([{ label: 'תאריך', render: r => dt(r.date) },
+                   { label: 'סוג', render: r => esc(r.type || ('קלף · ' + (r.size_name || ''))) + (r.is_correction ? ' <span class="pill a">תיקונים</span>' : '') },
+                   { label: 'סכום', cls: 'num', render: r => mCell(r.amount !== undefined ? r.amount : r.total_cost),
+                     total: rs => mCell(rs.reduce((a, x) => a + N(x.amount !== undefined ? x.amount : x.total_cost), 0)) }],
+                  d.book_expenses.concat(d.parchment_expenses), { totals: true })}</div>`;
+
+  // גרף עוגה — חלוקת המחיר לרוכש בין העלויות לרווח
+  const pie = parts.slice();
+  if (profit > 0) pie.push({ t: 'רווח', v: profit });
+  drawChart('bcPie', {
+    type: 'doughnut',
+    data: { labels: pie.map(x => x.t), datasets: [{ data: pie.map(x => N(x.v)), backgroundColor: CH, borderWidth: 2, borderColor: '#fff' }] },
+    options: { plugins: { legend: { position: 'left' } } },
+  });
+  // התקדמות מול תשלומים — כמה נכתב, כמה שולם משני הצדדים
+  drawChart('bcProg', {
+    type: 'bar',
+    data: {
+      labels: ['הרוכש', 'הסופר'],
+      datasets: [
+        { label: 'שולם', data: [N(s.customer_paid), N(s.scribe_paid)], backgroundColor: CH[3] },
+        { label: 'נותר', data: [Math.max(0, N(s.buyer_balance_total)), Math.max(0, N(s.scribe_balance) + N(s.scribe_future_balance))], backgroundColor: '#e2e8f0' },
+      ],
+    },
+    options: { scales: { x: { stacked: true }, y: { stacked: true, ticks: { callback: v => money(v) } } } },
+  });
+}
+
+// ---------- גרפים ----------
+async function repCharts() {
+  const year = repCharts._y || new Date().getFullYear();
+  const years = []; for (let y = new Date().getFullYear() + 1; y >= 2020; y--) years.push(y);
+  $('view').innerHTML += `
+    <div class="toolbar"><label class="mini">שנה:</label>
+      <select id="chYear">${years.map(y => `<option value="${y}" ${y === year ? 'selected' : ''}>${y}</option>`).join('')}</select></div>
+    <div id="chBody"><div class="card muted">טוען גרפים…</div></div>`;
+  $('chYear').onchange = (e) => { repCharts._y = +e.target.value; render(); };
+
+  let scrolls, prof, mo, scribes, customers, inv;
+  try {
+    [scrolls, prof, mo, scribes, customers, inv] = await Promise.all([
+      Store.reports.byScroll(), Store.reports.profit(), Store.reports.monthly(year),
+      Store.reports.scribeBalances(), Store.reports.customerBalances(), Store.reports.inventory(),
+    ]);
+  } catch (e) { $('chBody').innerHTML = `<div class="card" style="color:var(--red)">${esc(e.message)}</div>`; return; }
+
+  const sold = scrolls.filter(s => s.sold);
+  const topProfit = sold.slice().sort((a, b) => N(b.expected_profit) - N(a.expected_profit)).slice(0, 12);
+  const topScribes = scribes.filter(x => N(x.total_balance) > 0).slice(0, 12);
+  const topCust = customers.filter(x => N(x.total_due_now) > 0).slice(0, 12);
+  const names = ['ינו', 'פבר', 'מרץ', 'אפר', 'מאי', 'יונ', 'יול', 'אוג', 'ספט', 'אוק', 'נוב', 'דצמ'];
+
+  $('chBody').innerHTML = `
+    <div class="row" style="align-items:stretch">
+      <div style="flex:1;min-width:340px">${chartBox('cMonthly', `רווח ומכירות לפי חודש · ${year}`, 320)}</div>
+      <div style="flex:1;min-width:340px">${chartBox('cCash', `תקבולים מול תשלומים · ${year}`, 320)}</div>
+    </div>
+    <div class="row" style="align-items:stretch">
+      <div style="flex:1;min-width:340px">${chartBox('cProfitSrc', 'מקורות הרווח', 300)}</div>
+      <div style="flex:1;min-width:340px">${chartBox('cCosts', 'התפלגות העלויות', 300)}</div>
+    </div>
+    ${chartBox('cTopBooks', 'הספרים הרווחיים ביותר', 330)}
+    <div class="row" style="align-items:stretch">
+      <div style="flex:1;min-width:340px">${chartBox('cScribes', 'חוב לסופרים', 320)}</div>
+      <div style="flex:1;min-width:340px">${chartBox('cCustomers', 'חוב הרוכשים', 320)}</div>
+    </div>
+    ${chartBox('cProgress', 'התקדמות כתיבה (ספרים פעילים)', 330)}`;
+
+  drawChart('cMonthly', {
+    type: 'bar',
+    data: { labels: names, datasets: [
+      { label: 'מכירות ס"ת', data: mo.months.map(m => N(m.scroll_sales)), backgroundColor: CH[2] },
+      { label: 'מכירות מוצרים', data: mo.months.map(m => N(m.product_sales)), backgroundColor: CH[1] },
+      { label: 'רווח', type: 'line', data: mo.months.map(m => N(m.profit)), borderColor: CH[0], backgroundColor: CH[0], tension: .3, borderWidth: 3, pointRadius: 4 },
+    ] },
+    options: { scales: { y: { ticks: { callback: v => money(v) } } } },
+  });
+  drawChart('cCash', {
+    type: 'bar',
+    data: { labels: names, datasets: [
+      { label: 'תקבולים', data: mo.months.map(m => N(m.received)), backgroundColor: CH[3] },
+      { label: 'שולם לסופרים', data: mo.months.map(m => -N(m.paid_scribes)), backgroundColor: CH[4] },
+      { label: 'הוצאות', data: mo.months.map(m => -(N(m.book_expenses) + N(m.business_expenses))), backgroundColor: CH[6] },
+    ] },
+    options: { scales: { x: { stacked: true }, y: { stacked: true, ticks: { callback: v => money(v) } } } },
+  });
+  drawChart('cProfitSrc', {
+    type: 'doughnut',
+    data: { labels: ['רווח ס"ת', 'רווח מוצרים'], datasets: [{
+      data: [Math.max(0, N(prof.scrolls.profit)), Math.max(0, N(prof.products.profit))],
+      backgroundColor: [CH[0], CH[1]], borderWidth: 2, borderColor: '#fff' }] },
+  });
+  const costs = [
+    { t: 'עלות סופרים', v: prof.scrolls.scribe_cost },
+    { t: 'קלף (צפי)', v: prof.scrolls.parchment_expected },
+    { t: 'הוצאות קבועות', v: prof.scrolls.fixed_expenses },
+    { t: 'הוצאות לספר', v: prof.scrolls.book_expenses },
+    { t: 'פריטה', v: N(prof.scrolls.peritah) + N(prof.products.peritah) },
+    { t: 'עלות מוצרים', v: prof.products.cost },
+    { t: 'הוצאות עסק', v: prof.business_expenses },
+  ].filter(x => N(x.v) > 0);
+  drawChart('cCosts', {
+    type: 'doughnut',
+    data: { labels: costs.map(x => x.t), datasets: [{ data: costs.map(x => N(x.v)), backgroundColor: CH, borderWidth: 2, borderColor: '#fff' }] },
+    options: { plugins: { legend: { position: 'left' } } },
+  });
+  drawChart('cTopBooks', {
+    type: 'bar',
+    data: { labels: topProfit.map(s => `#${s.id} ${s.product_name || ''}`),
+      datasets: [{ label: 'רווח צפוי', data: topProfit.map(s => N(s.expected_profit)),
+        backgroundColor: topProfit.map(s => N(s.expected_profit) >= 0 ? CH[0] : CH[4]) }] },
+    options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { ticks: { callback: v => money(v) } } } },
+  });
+  drawChart('cScribes', {
+    type: 'bar',
+    data: { labels: topScribes.map(x => x.name), datasets: [{ label: 'חוב', data: topScribes.map(x => N(x.total_balance)), backgroundColor: CH[4] }] },
+    options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { ticks: { callback: v => money(v) } } } },
+  });
+  drawChart('cCustomers', {
+    type: 'bar',
+    data: { labels: topCust.map(x => x.name), datasets: [{ label: 'חוב מיידי', data: topCust.map(x => N(x.total_due_now)), backgroundColor: CH[1] }] },
+    options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { ticks: { callback: v => money(v) } } } },
+  });
+  const active = scrolls.filter(s => s.status !== 'done').sort((a, b) => b.progress_pct - a.progress_pct).slice(0, 15);
+  drawChart('cProgress', {
+    type: 'bar',
+    data: { labels: active.map(s => `#${s.id} ${s.scribe_name || ''}`), datasets: [
+      { label: 'נכתב', data: active.map(s => N(s.pages_written)), backgroundColor: CH[0] },
+      { label: 'נותר', data: active.map(s => Math.max(0, N(s.product_pages) - N(s.pages_written))), backgroundColor: '#e2e8f0' },
+    ] },
+    options: { indexAxis: 'y', scales: { x: { stacked: true }, y: { stacked: true } },
+      plugins: { tooltip: { callbacks: { label: (c) => ` ${c.dataset.label}: ${c.parsed.x} עמודים` } } } },
+  });
 }
 
 async function repProfit() {
@@ -1112,7 +1487,7 @@ async function repMonthly() {
   const names = ['ינו', 'פבר', 'מרץ', 'אפר', 'מאי', 'יונ', 'יול', 'אוג', 'ספט', 'אוק', 'נוב', 'דצמ'];
   const max = Math.max(1, ...d.months.map(m => Math.abs(m.profit)));
   const bars = d.months.map((m, i) => `<div class="b ${m.profit < 0 ? 'neg' : ''}"
-      style="height:${Math.max(2, Math.abs(m.profit) / max * 100)}%" title="${names[i]}: ${money(m.profit)}"></div>`).join('');
+      style="height:${Math.max(2, Math.abs(N(m.profit)) / max * 100)}%" title="${names[i]}: ${money(m.profit)}"></div>`).join('');
   const cols = [
     { label: 'חודש', render: (r, i) => names[i] },
     { label: 'מכירות ס"ת', cls: 'num', render: r => mCell(r.scroll_sales), total: rows => mCell(sumBy(rows, 'scroll_sales')) },
@@ -1295,7 +1670,7 @@ function pageSettings() {
 
 function setContacts() {
   return entityPage({
-    title: 'אנשי קשר', bulk: 'contacts', filterBy: ['שם'], store: Store.contacts,
+    title: 'אנשי קשר', bulk: 'contacts', store: Store.contacts,
     load: () => Store.contacts.list(),
     labelOf: (r) => contactName(r),
     note: 'רשימה אחת — ממנה נבחרים גם הסופרים וגם הרוכשים. התפקיד נקבע בעסקה עצמה.',
@@ -1312,7 +1687,7 @@ function setContacts() {
 
 function setProducts() {
   return entityPage({
-    title: 'מוצרים', bulk: 'products', filterBy: ['שם המוצר'], store: Store.products,
+    title: 'מוצרים', bulk: 'products', store: Store.products,
     load: () => Store.products.list(),
     labelOf: (r) => r.name,
     note: 'מספר העמודים משמש לחישוב מחיר-לעמוד ולהתקדמות. יחידות הקלף מזינות את "צפי קלף".',
@@ -1333,7 +1708,7 @@ function setProducts() {
 
 function setSizes() {
   return entityPage({
-    title: 'גדלי קלף', bulk: 'parchment_sizes', filterBy: ['שם הגודל'], store: Store.sizes,
+    title: 'גדלי קלף', bulk: 'parchment_sizes', store: Store.sizes,
     load: () => Store.sizes.list(),
     labelOf: (r) => r.name,
     fields: [
@@ -1554,6 +1929,46 @@ function loadXLSX() {
   });
   return loadXLSX._p;
 }
+
+// ספריית הגרפים — נטענת רק כשנכנסים לדוח עם גרף
+function loadChart() {
+  if (window.Chart) return Promise.resolve();
+  if (loadChart._p) return loadChart._p;
+  loadChart._p = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'chart.umd.min.js';
+    s.onload = () => resolve();
+    s.onerror = () => { loadChart._p = null; reject(new Error('טעינת ספריית הגרפים נכשלה')); };
+    document.head.appendChild(s);
+  });
+  return loadChart._p;
+}
+
+// פלטת צבעים אחידה לכל הגרפים
+const CH = ['#0f766e', '#c98a2e', '#0ea5e9', '#16a34a', '#dc2626', '#7c3aed',
+            '#d97706', '#0891b2', '#65a30d', '#be123c', '#4f46e5', '#059669'];
+const CHART_INSTANCES = [];
+function destroyCharts() { while (CHART_INSTANCES.length) { try { CHART_INSTANCES.pop().destroy(); } catch (e) {} } }
+
+// יוצר גרף בקנבס לפי מזהה. RTL, בלי אנימציה מיותרת.
+async function drawChart(id, cfg) {
+  await loadChart();
+  const el = $(id);
+  if (!el) return;
+  cfg.options = Object.assign({
+    responsive: true, maintainAspectRatio: false,
+    animation: { duration: 400 },
+    plugins: {
+      legend: { rtl: true, textDirection: 'rtl', labels: { font: { family: 'Assistant, Arial' }, boxWidth: 14 } },
+      tooltip: { rtl: true, textDirection: 'rtl', bodyFont: { family: 'Assistant, Arial' },
+        callbacks: { label: (c) => ` ${c.dataset.label ? c.dataset.label + ': ' : ''}${money(c.parsed.y !== undefined && c.parsed.y !== null ? c.parsed.y : c.parsed)}` } },
+    },
+  }, cfg.options || {});
+  CHART_INSTANCES.push(new Chart(el.getContext('2d'), cfg));
+}
+
+const chartBox = (id, title, h) =>
+  `<div class="card"><h3>${esc(title)}</h3><div style="height:${h || 300}px"><canvas id="${id}"></canvas></div></div>`;
 
 // טעינת מפרט הייבוא פעם אחת
 function ensureImportSpec() {
@@ -1975,6 +2390,7 @@ function renderSubtabs(group, subs) {
 async function render() {
   renderTabs();
   const tab = TABS.find(t => t.k === TAB) || TABS[0];
+  destroyCharts();          // גרפים ישנים מחזיקים קנבס שנמחק — חובה לשחרר
   $('view').innerHTML = '';
   const sb = $('selBar'); if (sb) sb.remove();   // מעבר דף מבטל בחירה
   try {

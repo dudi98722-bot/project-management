@@ -95,10 +95,14 @@ function computeScroll(row) {
   const fixedExpense      = r2(row.product_fixed_expense);
   const bookExpenses      = r2(row.book_expenses);
 
-  // רווח צפוי — משתמש בצפי הקלף (לא בעלות בפועל), לפי האפיון
-  const expectedProfit = r2(
+  // רווח צפוי — משתמש בצפי הקלף (לא בעלות בפועל), לפי האפיון.
+  // ספר שטרם נמכר (אין רוכש או שלא נקבע מחיר) אינו מציג הפסד על העלויות
+  // שנצברו: זה ייראה כהפסד אמיתי ויעוות גם את הסיכומים. הרווח שלו 0
+  // עד שייקבע רוכש ומחיר.
+  const sold = !!row.customer_id && buyerTotal > 0;
+  const expectedProfit = sold ? r2(
     buyerTotal - scribeBookPrice - peritah - fixedExpense - bookExpenses - parchmentExpected
-  );
+  ) : 0;
 
   return Object.assign({}, row, {
     pages_written: written,
@@ -124,6 +128,7 @@ function computeScroll(row) {
     fixed_expense: fixedExpense,
     book_expenses: bookExpenses,
     expected_profit: expectedProfit,
+    sold,
   });
 }
 
