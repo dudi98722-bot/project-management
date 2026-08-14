@@ -672,6 +672,8 @@ function normalizeDB(d){
     if(p.hidden==null) p.hidden=false; });
   (d.expenses||[]).forEach(function(e){ if(e.hidden==null) e.hidden=false; });
   (d.apartments||[]).forEach(function(a){ (a.splitPresets||[]).forEach(function(p){ (p.rows||[]).forEach(function(r){ r.percent=toNum(r.percent); }); }); });
+  /* אישורי בדיקת מנהל — יושבים על הפרוייקט עצמו */
+  (d.apartments||[]).forEach(function(a){ (a.reviews||[]).forEach(function(r){ r.date=toISO(r.date); }); });
   (d.deposits||[]).forEach(function(x){ x.amount=toNum(x.amount); x.date=toISO(x.date); });
   d.withdrawals=d.withdrawals||[];
   (d.withdrawals||[]).forEach(function(x){ x.amount=toNum(x.amount); x.date=toISO(x.date); });
@@ -1070,10 +1072,27 @@ function partnerDefaultPct(aptId,pId){ var r=apPartners(aptId).find(function(x){
    הכנסה, תשלום) משויכת לבנק מסוים. תנועה ישנה בלי שיוך נזקפת לבנק
    הראשון — כך נתונים שנוצרו כשהיה בנק אחד ממשיכים להתנהג בדיוק כמו קודם. */
 /* לפי סדר היצירה ולא לפי א"ב — הבנק הראשון חייב להיות יציב, אחרת
-   הוספת בנק ששמו מוקדם אלפביתית הייתה מעבירה אליו תנועות ישנות. */
+   הוספת בנק ששמו מוקדם אלפביתית הייתה מעבירה אליו תנועות ישנות.
+   בנק כללי (בלי שיוך לפרוייקט) מוצג רק כשאין לפרוייקט בנקים משלו,
+   או כשיש בו תנועות של הפרוייקט הזה — אחרת הוא רעש בכל פרוייקט. */
+function bankHasAptActivity(aptId,bankId){
+  var dest="bank:"+bankId;
+  if(apDeposits(aptId).some(function(d){ return d.accountId===bankId; })) return true;
+  if(apWithdrawals(aptId).some(function(w){ return w.accountId===bankId; })) return true;
+  var expIds={}; apLeafExpenses(aptId).forEach(function(e){ expIds[e.id]=1; });
+  if(active(DB.payments).some(function(p){ return expIds[p.expenseId] && p.accountId===bankId; })) return true;
+  return apIncome(aptId).some(function(i){
+    if(i.receivedBy===dest) return true;
+    return incomePays(i).some(function(g){ return g.receivedBy===dest; });
+  });
+}
 function aptBankAccounts(aptId){
-  return active(DB.accounts).filter(function(ac){
+  var all=active(DB.accounts).filter(function(ac){
     return ac.isBank && (!ac.apartmentId || ac.apartmentId===aptId); });
+  var own=all.filter(function(ac){ return ac.apartmentId===aptId; });
+  if(!own.length) return all;
+  return all.filter(function(ac){
+    return ac.apartmentId===aptId || bankHasAptActivity(aptId,ac.id); });
 }
 /* פרוייקט שהבנק הזמני שלו הופעל לפני שהיו בכלל חשבונות בנק — הבנק היה
    דגל בלבד, בלי חשבון שאפשר לשייך אליו תנועות. יוצרים לו חשבון אחד,
@@ -1815,6 +1834,8 @@ function aptGridHtml(){
       case "mgmtPaid": r=x.t.mgrPaidTot-y.t.mgrPaidTot; break;
       case "mgmtRem":  r=(x.t.totalMgmt-x.t.mgrPaidTot)-(y.t.totalMgmt-y.t.mgrPaidTot); break;
       case "stages": r=apExpenses(x.a.id).length-apExpenses(y.a.id).length; break;
+      case "review": var rx=lastReview(x.a.id), ry=lastReview(y.a.id);
+        r=String(rx?rx.date:"").localeCompare(String(ry?ry.date:"")); break;
       default:       r=String(x.a.name).localeCompare(String(y.a.name),"he");
     }
     return dir==="asc"? r : -r;
@@ -1842,6 +1863,7 @@ function aptGridHtml(){
       (APT_SORT.by==="mgmtRem"?'<span style="color:var(--brand)"> '+(dir==="asc"?"▲":"▼")+'</span>':'')+'</th>':'')+
     th("income","הכנסות")+
     th("bank","יתרת בנק")+
+    th("review","בדיקה")+
     '<th style="white-space:nowrap">בנק</th><th style="white-space:nowrap">ניהול</th>'+
     '<th></th></tr></thead><tbody>';
   rows.forEach(function(r){
@@ -1865,6 +1887,9 @@ function aptGridHtml(){
         (a.hasManagement&&(t.totalMgmt||t.mgrPaidTot)?money(mRem):'<span class="muted">—</span>')+'</td>':'')+
       '<td>'+(t.income?money(t.income):'<span class="muted">—</span>')+'</td>'+
       '<td>'+(a.hasBank?money(t.bank):'<span class="muted">—</span>')+'</td>'+
+      '<td>'+(function(){ var rv=lastReview(a.id);
+        return rv?'<span class="badge badge-ok badge-unit" title="'+esc((rv.by?rv.by+" · ":"")+(rv.note||""))+'">'+dateHe(rv.date)+'</span>'
+                 :'<span class="muted">—</span>'; })()+'</td>'+
       '<td class="center" onclick="event.stopPropagation()">'+
         (can("edit")?'<input type="checkbox" style="width:auto;cursor:pointer" '+(a.hasBank?"checked":"")+
           ' onchange="toggleAptFlag(\''+a.id+'\',\'hasBank\',this.checked)" title="בנק זמני">'
@@ -1884,7 +1909,7 @@ function aptGridHtml(){
     (anyMgmt?'<td style="background:#eef2ff">'+money(tot.mgmt)+'</td>':'')+
     (anyMgmt?'<td style="background:#eef2ff">'+money(tot.mgmtPaid)+'</td>':'')+
     (anyMgmt?'<td style="background:#eef2ff" class="'+(tot.mgmtRem>0.01?"neg":"pos")+'">'+money(tot.mgmtRem)+'</td>':'')+
-    '<td>'+money(tot.income)+'</td><td>'+money(tot.bank)+'</td><td colspan="3"></td></tr></tfoot></table></div>';
+    '<td>'+money(tot.income)+'</td><td>'+money(tot.bank)+'</td><td colspan="4"></td></tr></tfoot></table></div>';
   return h;
 }
 /* מתג מהיר מתוך הרשימה — בלי להיכנס לעריכת הפרוייקט */
@@ -1997,6 +2022,58 @@ function renderApartment(c){
     case "reports": body.innerHTML=viewApartmentReports(a.id); break;
   }
 }
+/* ---------- אישורי בדיקת מנהל ----------
+   פעם בתקופה המנהל עובר על הנתונים ומאשר. האישורים יושבים על
+   הפרוייקט (a.reviews) — תאריך, מי בדק והערה. */
+function apReviews(aptId){
+  var a=byId(DB.apartments,aptId);
+  return ((a&&a.reviews)||[]).filter(function(r){ return !r.deleted; });
+}
+function lastReview(aptId){
+  var rs=apReviews(aptId).slice().sort(function(x,y){ return x.date<y.date?1:-1; });
+  return rs[0]||null;
+}
+function addReview(aptId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  openModal({title:"✔ אישור בדיקה",bodyHtml:
+    '<p class="hint">אישור שהנתונים בפרוייקט נבדקו ונמצאו תקינים, נכון לתאריך.</p>'+
+    '<div class="field"><label>תאריך הבדיקה</label><input id="rv-date" type="date" value="'+todayISO()+'"></div>'+
+    '<div class="field"><label>הערה</label><input id="rv-note" placeholder="למשל: נבדק מול דף הבנק עד סוף החודש"></div>',
+    saveLabel:"אשר בדיקה",onSave:function(){
+      var a=byId(DB.apartments,aptId); if(!a) return false;
+      a.reviews=a.reviews||[];
+      a.reviews.push({id:uid(),date:val("rv-date")||todayISO(),
+        by:(CU&&CU.name)||"",note:val("rv-note"),deleted:false});
+      save(); toast("הבדיקה אושרה","ok"); rerender();
+    }});
+}
+function delReview(aptId,id){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  if(!confirm("למחוק את אישור הבדיקה?")) return;
+  var a=byId(DB.apartments,aptId);
+  var r=((a&&a.reviews)||[]).filter(function(x){ return x.id===id; })[0];
+  if(r){ r.deleted=true; save(); toast("נמחק","ok"); rerender(); }
+}
+function reviewCardHtml(aptId){
+  var rs=apReviews(aptId).slice().sort(function(x,y){ return x.date<y.date?1:-1; });
+  var last=rs[0];
+  var h='<div class="card"><div class="toolbar" style="margin-bottom:6px"><h3 style="margin:0">🔎 בדיקת מנהל</h3>'+
+    (last?'<span class="badge badge-ok" style="margin-inline-start:8px">נבדק לאחרונה '+dateHe(last.date)+
+      (last.by?' · '+esc(last.by):'')+'</span>':'<span class="badge badge-warn" style="margin-inline-start:8px">טרם נבדק</span>')+
+    '<div class="sp"></div>'+
+    (can("edit")?'<button class="btn btn-primary btn-sm" onclick="addReview(\''+aptId+'\')">✔ אשר בדיקה</button>':'')+'</div>';
+  if(rs.length){
+    h+='<div class="table-wrap" style="max-height:200px"><table class="tbl"><thead><tr>'+
+      '<th>תאריך בדיקה</th><th>מי בדק</th><th>הערה</th><th></th></tr></thead><tbody>'+
+      rs.map(function(r){
+        return '<tr><td>'+dateHe(r.date)+'</td><td>'+esc(r.by||"—")+'</td>'+noteCell(r.note)+
+          '<td class="right">'+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="delReview(\''+aptId+'\',\''+r.id+'\')">🗑️</button>':'')+'</td></tr>';
+      }).join("")+'</tbody></table></div>';
+  }else{
+    h+='<div class="hint">עוד לא אושרה בדיקה בפרוייקט הזה.</div>';
+  }
+  return h+'</div>';
+}
 function viewApartmentOverview(aptId){
   var a=byId(DB.apartments,aptId); var t=apartmentTotals(aptId);
   var h='<div class="stat-grid">'+
@@ -2007,6 +2084,8 @@ function viewApartmentOverview(aptId){
     (a.hasManagement?stat("דמי ניהול (פעיל)",money(t.totalMgmt)):"")+
     (a.hasBank?stat("יתרת בנק צפויה",money(t.bank)):"")+
     '</div>';
+
+  h+=reviewCardHtml(aptId);
 
   /* ===== התקדמות התשלום ===== */
   h+='<div class="card"><h3>📊 התקדמות התשלום</h3>'+
