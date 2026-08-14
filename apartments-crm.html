@@ -675,10 +675,34 @@ function normalizeDB(d){
   (d.deposits||[]).forEach(function(x){ x.amount=toNum(x.amount); x.date=toISO(x.date); });
   d.withdrawals=d.withdrawals||[];
   (d.withdrawals||[]).forEach(function(x){ x.amount=toNum(x.amount); x.date=toISO(x.date); });
-  /* דמי ניהול על הכנסות: אחוז למנהל + תשלומים אליו */
+  /* דמי ניהול על הכנסות: אחוז למנהל; החוב מוחזק כשלב הוצאה אוטומטי.
+     תשלומים שנרשמו במבנה הישן (incMgmtPays) מומרים פעם אחת לתשלומים
+     רגילים על השלב — מזהה קבוע ("imp"+id) מונע כפילות בהרצה חוזרת. */
   d.incMgmtPays=d.incMgmtPays||[];
-  (d.incMgmtPays||[]).forEach(function(x){ x.amount=toNum(x.amount); x.date=toISO(x.date); });
   (d.managers||[]).forEach(function(m){ if(m.incomePct!=null) m.incomePct=toNum(m.incomePct); });
+  (d.incMgmtPays||[]).forEach(function(x){
+    if(x.deleted) return;
+    x.amount=toNum(x.amount); x.date=toISO(x.date);
+    var payId="imp"+x.id;
+    if((d.payments||[]).some(function(p){ return p.id===payId; })){ x.deleted=true; return; }
+    /* מאתרים / יוצרים את שלב דמי הניהול של המנהל */
+    var e=(d.expenses||[]).filter(function(ex){ return !ex.deleted && ex.apartmentId===x.apartmentId && ex.incMgmtManagerId===x.managerId; })[0];
+    if(!e){
+      var mgr=(d.managers||[]).filter(function(m){ return m.id===x.managerId; })[0];
+      var cat=(d.categories||[]).filter(function(c){ return !c.deleted && String(c.name).trim()==="דמי ניהול"; })[0];
+      if(!cat){ cat={id:uid(),name:"דמי ניהול",deleted:false}; d.categories.push(cat); }
+      e={id:uid(),apartmentId:x.apartmentId,categoryId:cat.id,classification:"ongoing",
+        description:"דמי ניהול הכנסות — "+((mgr&&mgr.name)||"מנהל"),amount:x.amount,date:x.date||"",
+        note:"נוצר אוטומטית — הסכום מסונכרן מדמי הניהול על ההכנסות",
+        hasInvoice:false,invoiceLink:"",mgmtEnabled:false,mgmtSet:true,
+        incMgmtManagerId:x.managerId,deleted:false};
+      d.expenses.push(e);
+    }
+    d.payments.push({id:payId,expenseId:e.id,date:x.date||"",amount:x.amount,accountId:"",
+      payerPartnerId:null,method:x.method||"transfer",recipientType:"supplier",recipientManagerId:null,
+      invoiceStatus:"",hasInvoice:false,invoiceLink:"",note:x.note||"",hidden:false,deleted:false});
+    x.deleted=true;
+  });
   (d.income||[]).forEach(function(x){ x.amount=toNum(x.amount); x.date=toISO(x.date);
     if(x.units && !Array.isArray(x.units)) x.units=null;
     x.startDate=toISO(x.startDate); x.endDate=toISO(x.endDate);
@@ -4502,7 +4526,12 @@ function openBulkPayEdit(aptId){
   if(!ids.length){ toast("סמן קודם את התשלומים לעדכון (העמודה הראשונה בטבלה)","warn"); return; }
   var pays=ids.map(function(id){ return byId(DB.payments,id); }).filter(Boolean);
   var autoN=pays.filter(function(p){ return p.auto; }).length;
-  var partners=apPartners(aptId);
+  /* "מי שילם" — גם בפרוייקט בלי שותפים מקושרים: כל השותפים במערכת,
+     כששותפי הפרוייקט (אם יש) ראשונים */
+  var pIds=[]; apPartners(aptId).forEach(function(x){ if(pIds.indexOf(x.partnerId)<0) pIds.push(x.partnerId); });
+  reportPartnerIds(aptId).forEach(function(pid){ if(pIds.indexOf(pid)<0) pIds.push(pid); });
+  active(DB.partners).forEach(function(p){ if(pIds.indexOf(p.id)<0) pIds.push(p.id); });
+  var partners=pIds.map(function(pid){ return {partnerId:pid}; });
   var sum=round2(pays.reduce(function(s,p){ return s+(Number(p.amount)||0); },0));
 
   openModal({title:"✏️ עדכון מרוכז — "+pays.length+" תשלומים",wide:true,bodyHtml:
@@ -5008,7 +5037,11 @@ function openPaymentEditor(eId,payId){
     return;
   }
   var mgrs=apManagers(aptId);
-  var partners=apPartners(aptId);
+  /* גם בפרוייקט בלי שותפים מקושרים — כל השותפים במערכת, שלו ראשונים */
+  var _pids=[]; apPartners(aptId).forEach(function(x){ if(_pids.indexOf(x.partnerId)<0) _pids.push(x.partnerId); });
+  reportPartnerIds(aptId).forEach(function(pid){ if(_pids.indexOf(pid)<0) _pids.push(pid); });
+  active(DB.partners).forEach(function(x){ if(_pids.indexOf(x.id)<0) _pids.push(x.id); });
+  var partners=_pids.map(function(pid){ return {partnerId:pid}; });
   var body='<div class="form-grid">'+
     '<div class="field"><label>תאריך</label><input id="pm-date" type="date" value="'+(p?esc(p.date):todayISO())+'"></div>'+
     '<div class="field"><label>סכום (₪)</label><input id="pm-amount" type="number" step="0.01" value="'+(p?esc(String(p.amount)):"")+'"></div>'+
@@ -6802,15 +6835,58 @@ function incMgmtOwed(aptId,mgrId){
   return round2(apIncome(aptId).filter(function(i){ return !!i.mgmtOn; })
     .reduce(function(s,i){ return s+(Number(i.amount)||0)*pct/100; },0));
 }
+/* החוב למנהל הוא הוצאה אמיתית של הפרוייקט: לכל מנהל מוחזק שלב אוטומטי
+   "דמי ניהול הכנסות — <שם>" שהסכום שלו מסונכרן לחוב, והתשלומים אליו
+   הם תשלומים רגילים על השלב — כך הם מופיעים בהוצאות, בתשלומים,
+   בקטגוריות, בבנק ובחלוקת השותפים, בלי מערכת תשלומים נפרדת. */
+function incMgmtExpense(aptId,mgrId){
+  return active(DB.expenses).filter(function(e){
+    return e.apartmentId===aptId && e.incMgmtManagerId===mgrId; })[0]||null;
+}
+function ensureIncMgmtExpense(aptId,mgrId){
+  var owed=incMgmtOwed(aptId,mgrId);
+  var e=incMgmtExpense(aptId,mgrId);
+  if(!e){
+    if(owed<=0.009) return null;
+    /* קטגוריית "דמי ניהול" — קיימת או נוצרת */
+    var cat=active(DB.categories).filter(function(c){ return normKey(c.name)==="דמי ניהול"; })[0];
+    if(!cat){ cat={id:uid(),name:"דמי ניהול",deleted:false}; DB.categories.push(cat); }
+    e={id:uid(),apartmentId:aptId,categoryId:cat.id,classification:"ongoing",
+      description:"דמי ניהול הכנסות — "+managerName(mgrId),
+      amount:owed,date:todayISO(),
+      note:"נוצר אוטומטית — הסכום מסונכרן מדמי הניהול על ההכנסות",
+      hasInvoice:false,invoiceLink:"",mgmtEnabled:false,mgmtSet:true,
+      incMgmtManagerId:mgrId,deleted:false};
+    DB.expenses.push(e);
+    apPartners(aptId).forEach(function(p){
+      DB.expenseSplits.push({id:uid(),expenseId:e.id,partnerId:p.partnerId,percent:p.defaultPercent,deleted:false});
+    });
+  }else{
+    e.amount=owed;
+    e.description="דמי ניהול הכנסות — "+managerName(mgrId);
+  }
+  return e;
+}
+/* סנכרון כל שלבי דמי-הניהול של הפרוייקט (אחרי שינוי אחוזים / סימונים) */
+function syncIncMgmtExpenses(aptId){
+  apManagers(aptId).forEach(function(m){
+    var e=incMgmtExpense(aptId,m.id);
+    var owed=incMgmtOwed(aptId,m.id);
+    if(e){
+      e.amount=owed;
+      /* חוב אפס בלי אף תשלום — השלב מיותר ונעלם */
+      if(owed<=0.009 && !expPayments(e.id).length) e.deleted=true;
+    }else if(owed>0.009) ensureIncMgmtExpense(aptId,m.id);
+  });
+}
 function incMgmtPaid(aptId,mgrId){
-  return round2(active(DB.incMgmtPays).filter(function(p){ return p.apartmentId===aptId&&p.managerId===mgrId; })
-    .reduce(function(s,p){ return s+(Number(p.amount)||0); },0));
+  var e=incMgmtExpense(aptId,mgrId);
+  return e?round2(expPayments(e.id).reduce(function(s,p){ return s+(Number(p.amount)||0); },0)):0;
 }
 function openIncomeMgmt(aptId){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var mgrs=apManagers(aptId);
   var incs=apIncome(aptId).slice().sort(function(x,y){return x.date<y.date?1:-1;});
-  var pays=active(DB.incMgmtPays).filter(function(p){ return p.apartmentId===aptId; });
   var mgrH;
   if(!mgrs.length){
     mgrH='<div class="empty">אין עדיין מנהלים בפרוייקט — הוסף אחד למטה.</div>';
@@ -6824,9 +6900,13 @@ function openIncomeMgmt(aptId){
             (m.incomePct!=null?esc(String(m.incomePct)):"")+'" placeholder="0"></td>'+
           '<td>'+money(owed)+'</td><td>'+money(paid)+'</td>'+
           '<td class="'+(rem>0.01?"neg":"pos")+'"><b>'+money(rem)+'</b></td>'+
-          '<td class="right"><button class="btn btn-primary btn-sm" onclick="saveIncMgmtForm(\''+aptId+'\');editIncMgmtPay(\''+aptId+'\',\''+m.id+'\')">➕ תשלום</button></td></tr>';
+          '<td class="right" style="white-space:nowrap">'+
+            '<button class="btn btn-primary btn-sm" onclick="incMgmtPayNow(\''+aptId+'\',\''+m.id+'\')">➕ תשלום</button>'+
+            (incMgmtExpense(aptId,m.id)?' <button class="btn btn-ghost btn-sm" title="כל התשלומים" onclick="saveIncMgmtForm(\''+aptId+'\');save();openPayments(\''+incMgmtExpense(aptId,m.id).id+'\')">💳</button>':'')+
+          '</td></tr>';
       }).join("")+'</tbody></table></div>'+
-      '<div class="hint">החוב מחושב כאחוז מסך ההכנסות שסומנו למטה. שינוי אחוז נשמר בכפתור השמירה.</div>';
+      '<div class="hint">החוב מחושב כאחוז מסך ההכנסות שסומנו למטה, ומוחזק כשלב אוטומטי '+
+      '"דמי ניהול הכנסות" בהוצאות הפרוייקט — כך התשלומים מופיעים בהוצאות, בתשלומים, בקטגוריות ובבנק.</div>';
   }
   var incH='<div class="section-title" style="margin-top:14px">על אילו הכנסות יש דמי ניהול '+
     '<span class="hint">('+incs.filter(function(i){return i.mgmtOn;}).length+' מסומנות)</span></div>'+
@@ -6838,27 +6918,16 @@ function openIncomeMgmt(aptId){
       return '<tr><td class="chk"><input type="checkbox" class="img-inc" data-i="'+i.id+'" style="width:auto"'+(i.mgmtOn?" checked":"")+'></td>'+
         '<td>'+dateHe(i.date)+'</td><td>'+esc(i.description)+'</td><td>'+money(i.amount)+'</td></tr>';
     }).join("")+'</tbody></table></div>';
-  var payH="";
-  if(pays.length){
-    payH='<div class="section-title" style="margin-top:14px">תשלומים ששולמו</div>'+
-      '<div class="table-wrap" style="max-height:200px"><table class="tbl"><thead><tr>'+
-      '<th>תאריך</th><th>מנהל</th><th>סכום</th><th>אמצעי</th><th>הערה</th><th></th></tr></thead><tbody>'+
-      pays.slice().sort(function(x,y){return x.date<y.date?1:-1;}).map(function(p){
-        return '<tr><td>'+dateHe(p.date)+'</td><td>'+esc(managerName(p.managerId))+'</td><td>'+money(p.amount)+'</td>'+
-          '<td>'+esc(METHODS[p.method]||"")+'</td>'+noteCell(p.note)+
-          '<td class="right"><button class="btn btn-ghost btn-sm" onclick="delIncMgmtPay(\''+aptId+'\',\''+p.id+'\')">🗑️</button></td></tr>';
-      }).join("")+'</tbody></table></div>';
-  }
   refreshMethods();
   openModal({title:"🧾 דמי ניהול על הכנסות",wide:true,bodyHtml:
     mgrH+
     '<div class="toolbar" style="margin-top:8px"><input id="img-new-name" placeholder="שם מנהל חדש" style="max-width:180px">'+
       '<input id="img-new-pct" type="number" step="0.01" placeholder="%" style="max-width:80px">'+
       '<button class="btn btn-sm" onclick="addIncMgmtManager(\''+aptId+'\')">➕ הוסף מנהל</button><div class="sp"></div></div>'+
-    incH+payH,
+    incH,
     saveLabel:"שמירה",onSave:function(){ saveIncMgmtForm(aptId); save(); toast("נשמר","ok"); rerender(); }});
 }
-/* קורא את הטופס אל הנתונים (בלי save — כדי לשמש גם לפני פתיחת תשלום) */
+/* קורא את הטופס אל הנתונים ומסנכרן את שלבי ההוצאה (בלי save) */
 function saveIncMgmtForm(aptId){
   document.querySelectorAll(".img-pct").forEach(function(inp){
     var m=byId(DB.managers,inp.getAttribute("data-m"));
@@ -6868,6 +6937,15 @@ function saveIncMgmtForm(aptId){
     var i=byId(DB.income,cb.getAttribute("data-i"));
     if(i) i.mgmtOn=cb.checked;
   });
+  syncIncMgmtExpenses(aptId);
+}
+/* תשלום למנהל — נפתח עורך התשלום הרגיל על שלב דמי הניהול שלו */
+function incMgmtPayNow(aptId,mgrId){
+  saveIncMgmtForm(aptId);
+  var e=ensureIncMgmtExpense(aptId,mgrId);
+  if(!e){ toast("אין חוב למנהל הזה — קבע אחוז וסמן הכנסות","warn"); return; }
+  save();
+  openPaymentEditor(e.id,null);
 }
 function addIncMgmtManager(aptId){
   var nm=val("img-new-name").trim();
@@ -6876,32 +6954,6 @@ function addIncMgmtManager(aptId){
   DB.managers.push({id:uid(),apartmentId:aptId,name:nm,defaultFeePercent:0,
     incomePct:Number(val("img-new-pct"))||0,deleted:false});
   save(); toast('נוסף המנהל "'+nm+'"',"ok");
-  openIncomeMgmt(aptId);
-}
-function editIncMgmtPay(aptId,mgrId){
-  var rem=round2(incMgmtOwed(aptId,mgrId)-incMgmtPaid(aptId,mgrId));
-  refreshMethods();
-  openModal({title:"➕ תשלום ל"+managerName(mgrId),bodyHtml:
-    '<div class="stat-grid" style="margin-bottom:10px">'+
-      stat("נותר לשלם",money(Math.max(0,rem)),rem>0.01?"neg":"pos")+'</div>'+
-    '<div class="field"><label>סכום (₪)</label><input id="imp-amount" type="number" step="0.01" value="'+(rem>0?rem:"")+'"></div>'+
-    '<div class="field"><label>תאריך</label><input id="imp-date" type="date" value="'+todayISO()+'"></div>'+
-    '<div class="field"><label>אמצעי תשלום</label><select id="imp-method" onchange="onMethodPick(\'imp-method\')">'+methodOptions("transfer")+'</select></div>'+
-    '<div class="field"><label>הערה</label><input id="imp-note"></div>',
-    saveLabel:"שמור תשלום",onSave:function(){
-      var amt=Number(val("imp-amount"))||0;
-      if(amt<=0){ toast("סכום לא תקין","err"); return false; }
-      var mth=val("imp-method")||"transfer"; if(mth==="__new") mth="transfer";
-      DB.incMgmtPays.push({id:uid(),apartmentId:aptId,managerId:mgrId,amount:amt,
-        date:val("imp-date")||todayISO(),method:mth,note:val("imp-note"),deleted:false});
-      save(); toast("התשלום נרשם","ok"); rerender();
-      openIncomeMgmt(aptId); return false;
-    }});
-}
-function delIncMgmtPay(aptId,id){
-  if(!confirm("למחוק את התשלום?")) return;
-  var p=byId(DB.incMgmtPays,id); if(p) p.deleted=true;
-  save(); toast("נמחק","ok"); rerender();
   openIncomeMgmt(aptId);
 }
 
@@ -7367,24 +7419,45 @@ function categoryPeriodReportHtml(aptId,mode){
     return y.total-x.total;
   });
   function colLabel(k){ return byMonth&&k!=="ללא תאריך" ? k.slice(5,7)+"/"+k.slice(0,4) : k; }
+  /* סינון: תקופה ספציפית ו/או קטגוריה ספציפית. המסנן נשמר לכל מצב
+     (שנה/חודש) בנפרד, כדי שחודש שנבחר לא "יידבק" לדוח השנתי. */
+  var perKey=byMonth?"catRepPerM":"catRepPerY";
+  var selPer=Q[perKey]||""; if(selPer && cols.indexOf(selPer)<0) selPer="";
+  var selCat=Q.catRepCat||""; if(selCat && !rows.some(function(r){return r.key===selCat;})) selCat="";
+  var shownCols=selPer?[selPer]:cols;
+  var shownRows=selCat?rows.filter(function(r){return r.key===selCat;}):rows;
   var h='<div class="card"><h3>'+title+' — '+esc(a.name)+'</h3>'+
     '<div class="hint" style="margin-bottom:8px">'+(a.hasManagement?'הסכומים כוללים דמי ניהול. ':'')+
     'התקופה נקבעת לפי תאריך השלב.</div>'+
+    '<div class="toolbar">'+
+    '<select style="max-width:150px" onchange="Q.'+perKey+'=this.value;rerender()">'+
+      '<option value="">'+(byMonth?"כל החודשים":"כל השנים")+'</option>'+
+      cols.map(function(c){ return '<option value="'+esc(c)+'"'+(selPer===c?" selected":"")+'>'+esc(colLabel(c))+'</option>'; }).join("")+
+    '</select>'+
+    '<select style="max-width:170px" onchange="Q.catRepCat=this.value;rerender()">'+
+      '<option value="">כל הקטגוריות</option>'+
+      rows.map(function(r){ return '<option value="'+esc(r.key)+'"'+(selCat===r.key?" selected":"")+'>'+esc(r.name)+'</option>'; }).join("")+
+    '</select>'+
+    ((selPer||selCat)?'<button class="btn btn-ghost btn-sm" onclick="Q.'+perKey+'=\'\';Q.catRepCat=\'\';rerender()">✕ נקה</button>':'')+
+    '<div class="sp"></div></div>'+
     '<div class="table-wrap"><table class="tbl"><thead><tr><th>קטגוריה</th>'+
-    cols.map(function(c){ return '<th>'+esc(colLabel(c))+'</th>'; }).join("")+
+    shownCols.map(function(c){ return '<th>'+esc(colLabel(c))+'</th>'; }).join("")+
     '<th>סה"כ</th></tr></thead><tbody>';
   var colTot={}, grand=0;
-  rows.forEach(function(r){
+  shownRows.forEach(function(r){
+    /* בסינון תקופה — סה"כ השורה הוא של התקופה שנבחרה בלבד */
+    var rowTot=selPer?round2(r.by[selPer]||0):r.total;
     h+='<tr'+(r.key==="__none"?' class="muted"':'')+'><td><b>'+esc(r.name)+'</b></td>';
-    cols.forEach(function(c){
+    shownCols.forEach(function(c){
       var v=r.by[c]||0; colTot[c]=round2((colTot[c]||0)+v);
       h+='<td>'+(v?money(v):'<span class="muted">—</span>')+'</td>';
     });
-    grand=round2(grand+r.total);
-    h+='<td><b>'+money(r.total)+'</b></td></tr>';
+    grand=round2(grand+rowTot);
+    h+='<td><b>'+money(rowTot)+'</b></td></tr>';
   });
+  if(!shownRows.length) h+='<tr><td colspan="'+(shownCols.length+2)+'" class="empty">אין נתונים לסינון הזה</td></tr>';
   h+='</tbody><tfoot><tr><td>סה"כ</td>'+
-    cols.map(function(c){ return '<td>'+money(colTot[c]||0)+'</td>'; }).join("")+
+    shownCols.map(function(c){ return '<td>'+money(colTot[c]||0)+'</td>'; }).join("")+
     '<td>'+money(grand)+'</td></tr></tfoot></table></div></div>';
   return h;
 }
@@ -7411,20 +7484,19 @@ function monthlySummaryReportHtml(aptId){
     });
     else if(k) M(k).incGot+=Number(i.amount)||0;
   });
-  /* הוצאות — עלות לפי תאריך השלב; שולם לפי תאריך התשלום (בלי אוטומטיים) */
-  var expIds={};
+  /* הוצאות — עלות לפי תאריך השלב; שולם לפי תאריך התשלום (בלי אוטומטיים).
+     שלבי "דמי ניהול הכנסות" מוצגים בעמודה משלהם ולא נספרים פעמיים. */
+  var expIds={}, incMgmtExpIds={};
   apLeafExpenses(aptId).forEach(function(e){
     expIds[e.id]=1;
+    if(e.incMgmtManagerId){ incMgmtExpIds[e.id]=1; return; }
     var k=mk(e.date); if(k) M(k).expCost+=(Number(e.amount)||0)+expenseMgmtCostLive(e.id);
   });
   active(DB.payments).forEach(function(p){
     if(!expIds[p.expenseId]||p.auto) return;
-    var k=mk(p.date); if(k) M(k).expPaid+=Number(p.amount)||0;
-  });
-  /* דמי ניהול על הכנסות — לפי תאריך התשלום למנהל */
-  active(DB.incMgmtPays).forEach(function(p){
-    if(p.apartmentId!==aptId) return;
-    var k=mk(p.date); if(k) M(k).mgmtPaid+=Number(p.amount)||0;
+    var k=mk(p.date); if(!k) return;
+    if(incMgmtExpIds[p.expenseId]) M(k).mgmtPaid+=Number(p.amount)||0;
+    else M(k).expPaid+=Number(p.amount)||0;
   });
   apWithdrawals(aptId).forEach(function(w){
     var k=mk(w.date); if(k) M(k).wd+=Number(w.amount)||0;
