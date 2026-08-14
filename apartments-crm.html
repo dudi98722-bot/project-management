@@ -7035,6 +7035,7 @@ function openIncomeMgmt(aptId){
           '<td class="right" style="white-space:nowrap">'+
             '<button class="btn btn-primary btn-sm" onclick="incMgmtPayNow(\''+aptId+'\',\''+m.id+'\')">➕ תשלום</button>'+
             (incMgmtExpense(aptId,m.id)?' <button class="btn btn-ghost btn-sm" title="כל התשלומים" onclick="saveIncMgmtForm(\''+aptId+'\');save();openPayments(\''+incMgmtExpense(aptId,m.id).id+'\')">💳</button>':'')+
+            (can("edit")?' <button class="btn btn-ghost btn-sm" title="מחק מנהל" onclick="delIncMgmtManager(\''+aptId+'\',\''+m.id+'\')">🗑️</button>':'')+
           '</td></tr>';
       }).join("")+'</tbody></table></div>'+
       '<div class="hint">החוב מחושב כאחוז מסך ההכנסות שסומנו למטה, ומוחזק כשלב אוטומטי '+
@@ -7078,6 +7079,27 @@ function incMgmtPayNow(aptId,mgrId){
   if(!e){ toast("אין חוב למנהל הזה — קבע אחוז וסמן הכנסות","warn"); return; }
   save();
   openPaymentEditor(e.id,null);
+}
+/* מחיקת מנהל ממסך דמי הניהול על ההכנסות — כולל שלב ההוצאה האוטומטי
+   שלו והתשלומים עליו. הכל מחיקה רכה, כך שניתן לשחזר מסל המחזור. */
+function delIncMgmtManager(aptId,mgrId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  saveIncMgmtForm(aptId);                     // לא לאבד שינויים שהוקלדו בטופס
+  var m=byId(DB.managers,mgrId); if(!m) return;
+  var e=incMgmtExpense(aptId,mgrId);
+  var pays=e?expPayments(e.id):[];
+  var paidSum=round2(pays.reduce(function(s,p){ return s+(Number(p.amount)||0); },0));
+  var feesN=active(DB.expenseManagerFees).filter(function(f){ return f.managerId===mgrId; }).length;
+  var msg='למחוק את "'+m.name+'"?';
+  if(pays.length) msg+='\n\nיימחקו גם '+pays.length+' תשלומים אליו ('+money(paidSum)+') והשלב "דמי ניהול הכנסות" שלו.';
+  if(feesN) msg+='\n\nדמי הניהול שלו יוסרו גם מ-'+feesN+' שלבי הוצאה.';
+  msg+='\n\nהכל עובר לסל המחזור וניתן לשחזר.';
+  if(!confirm(msg)) return;
+  m.deleted=true;
+  if(e){ e.deleted=true; pays.forEach(function(p){ p.deleted=true; }); }
+  DB.expenseManagerFees.forEach(function(f){ if(f.managerId===mgrId) f.deleted=true; });
+  save(); toast('"'+m.name+'" הועבר לסל המחזור',"ok"); rerender();
+  openIncomeMgmt(aptId);
 }
 function addIncMgmtManager(aptId){
   var nm=val("img-new-name").trim();
