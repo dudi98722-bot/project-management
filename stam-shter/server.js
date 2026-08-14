@@ -43,11 +43,27 @@ app.use('/api/import', require('./routes/import'));
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
 // ===== Frontend =====
-app.use(express.static(path.join(__dirname, 'public')));
+const PUB = path.join(__dirname, 'public');
+app.use(express.static(PUB));
+
+// חותמת גרסה לפי זמן העדכון של קבצי הקוד. index.html מוגש עם no-cache
+// והפניות ל-app.js/store.js מקבלות ?v=<חותמת>, כך שאחרי כל פריסה הדפדפן
+// מוריד את הקוד החדש מעצמו — בלי שהמשתמש יצטרך לרענן בכוח.
+function assetStamp() {
+  let s = 0;
+  for (const f of ['app.js', 'store.js', 'index.html']) {
+    try { s = Math.max(s, fs.statSync(path.join(PUB, f)).mtimeMs); } catch (e) {}
+  }
+  return String(Math.floor(s));
+}
 app.get('*', (req, res) => {
-  const indexPath = path.join(__dirname, 'public', 'index.html');
-  if (fs.existsSync(indexPath)) res.sendFile(indexPath);
-  else res.status(404).json({ error: 'Not found' });
+  const indexPath = path.join(PUB, 'index.html');
+  if (!fs.existsSync(indexPath)) return res.status(404).json({ error: 'Not found' });
+  try {
+    const html = fs.readFileSync(indexPath, 'utf8').replace(/\?v=[^"']*/g, '?v=' + assetStamp());
+    res.set('Cache-Control', 'no-cache, must-revalidate');
+    res.type('html').send(html);
+  } catch (e) { res.sendFile(indexPath); }
 });
 
 // טיפול אחיד בשגיאות
