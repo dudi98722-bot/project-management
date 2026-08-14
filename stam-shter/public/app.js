@@ -237,6 +237,124 @@ function wireExport() {
 
 const sumBy = (rows, k) => rows.reduce((a, r) => a + N(r[k]), 0);
 
+// ===== סינון טבלאות =====
+// הסינון עובד על הטקסט המוצג בפועל, ולכן הוא זהה למה שהמשתמש רואה
+// ואינו תלוי בשמות השדות במסד. הסכומים בתחתית מחושבים על המסונן בלבד.
+const FILTERS = {};
+const stripHtml = (s) => String(s == null ? '' : s)
+  .replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&[a-z]+;/gi, ' ')
+  .replace(/\s+/g, ' ').trim();
+
+function colText(cols, label, r, i) {
+  const c = cols.find(x => x.label === label);
+  return c ? stripHtml(c.render(r, i)) : '';
+}
+function rowText(cols, r, i) {
+  return cols.map(c => (c.render && !c.labelHtml) ? stripHtml(c.render(r, i)) : '').join(' ');
+}
+
+function filterState(key) {
+  if (!FILTERS[key]) FILTERS[key] = { q: '', sel: {} };
+  return FILTERS[key];
+}
+
+function applyFilters(key, cols, rows, filterBy) {
+  const st = filterState(key);
+  let out = rows;
+  const q = st.q.trim().toLowerCase();
+  if (q) {
+    const words = q.split(/\s+/);
+    out = out.filter((r, i) => {
+      const t = rowText(cols, r, i).toLowerCase();
+      return words.every(w => t.includes(w));
+    });
+  }
+  for (const label of (filterBy || [])) {
+    const picked = st.sel[label];
+    if (picked && picked.length) {
+      out = out.filter((r, i) => picked.includes(colText(cols, label, r, i) || '—'));
+    }
+  }
+  return out;
+}
+
+function filterBarHTML(key, cols, allRows, filterBy, shownCount) {
+  const st = filterState(key);
+  const chips = (filterBy || []).map(label => {
+    const vals = [...new Set(allRows.map((r, i) => colText(cols, label, r, i) || '—'))]
+      .filter(v => v !== '').sort((a, b) => a.localeCompare(b, 'he'));
+    if (vals.length < 2) return '';
+    const picked = st.sel[label] || [];
+    // המזהה כולל את מפתח הטבלה — אחרת שתי טבלאות באותו דף עם מסנן
+    // בעל אותו שם (למשל "ספר") היו מתנגשות ופותחות זו את התפריט של זו.
+    const uid = `${key}|${label}`;
+    return `<div class="filt">
+      <button class="btn ghost sm" data-filtbtn="${esc(uid)}">
+        ${esc(label)}${picked.length ? ` <span class="pill a">${picked.length}</span>` : ' ▾'}</button>
+      <div class="filt-menu hidden" data-filtmenu="${esc(uid)}">
+        <input class="filt-search" placeholder="חיפוש…" data-filtsearch>
+        <div class="filt-list">${vals.map(v =>
+          `<label><input type="checkbox" value="${esc(v)}" ${picked.includes(v) ? 'checked' : ''}> ${esc(v)}</label>`).join('')}</div>
+        <div class="filt-foot"><button class="btn xs" data-filtok>החל</button>
+          <button class="btn ghost xs" data-filtclear>נקה</button></div>
+      </div></div>`;
+  }).join('');
+  const active = st.q || Object.values(st.sel).some(v => v && v.length);
+  return `<div class="toolbar filt-bar">
+    <input id="fq_${key}" placeholder="🔍 חיפוש בטבלה…" value="${esc(st.q)}" style="min-width:220px">
+    ${chips}
+    ${active ? `<button class="btn ghost sm" id="fclear_${key}">✕ נקה סינון</button>
+      <span class="mini">מוצגות ${shownCount} מתוך ${allRows.length}</span>` : ''}
+  </div>`;
+}
+
+function wireFilters(key) {
+  const st = filterState(key);
+  const q = $('fq_' + key);
+  if (q) {
+    q.oninput = (e) => {
+      st.q = e.target.value;
+      clearTimeout(wireFilters._t);
+      wireFilters._t = setTimeout(() => { const pos = e.target.selectionStart; render().then(() => {
+        const el = $('fq_' + key); if (el) { el.focus(); el.setSelectionRange(pos, pos); }
+      }); }, 250);
+    };
+  }
+  const clr = $('fclear_' + key);
+  if (clr) clr.onclick = () => { FILTERS[key] = { q: '', sel: {} }; render(); };
+
+  document.querySelectorAll(`[data-filtbtn^="${key}|"]`).forEach(b => {
+    b.onclick = (e) => {
+      e.stopPropagation();
+      const menu = document.querySelector(`[data-filtmenu="${CSS.escape(b.dataset.filtbtn)}"]`);
+      document.querySelectorAll('.filt-menu').forEach(m => { if (m !== menu) m.classList.add('hidden'); });
+      menu.classList.toggle('hidden');
+    };
+  });
+  document.querySelectorAll(`[data-filtmenu^="${key}|"]`).forEach(menu => {
+    menu.onclick = (e) => e.stopPropagation();
+    const label = menu.dataset.filtmenu.slice(key.length + 1);
+    const search = menu.querySelector('[data-filtsearch]');
+    if (search) search.oninput = () => {
+      const v = search.value.toLowerCase();
+      menu.querySelectorAll('.filt-list label').forEach(l => {
+        l.style.display = l.textContent.toLowerCase().includes(v) ? '' : 'none';
+      });
+    };
+    menu.querySelector('[data-filtok]').onclick = () => {
+      st.sel[label] = [...menu.querySelectorAll('input[type=checkbox]:checked')].map(c => c.value);
+      render();
+    };
+    menu.querySelector('[data-filtclear]').onclick = () => { delete st.sel[label]; render(); };
+  });
+  if (!wireFilters._doc) {
+    wireFilters._doc = true;
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.filt-menu').forEach(m => m.classList.add('hidden'));
+    });
+  }
+}
+
 // ===== מחיקה מרוכזת בבחירה =====
 // עמודת סימון בטבלה. הבחירה מוגבלת לטבלה אחת בכל רגע — כדי שפס הפעולה
 // הצף תמיד ידע מאיזו טבלה מוחקים.
@@ -321,9 +439,11 @@ function wireRowActions(cfg, rows) {
 
 // ---- דף ישות גנרי ----
 async function entityPage(cfg) {
-  const rows = await cfg.load();
+  const allRows = await cfg.load();
   const cols = cfg.cols.concat([actionsCol(cfg)]);
   if (ME.caps.del && cfg.bulk) cols.unshift(selCol(cfg.bulk));
+  const fkey = cfg.bulk || cfg.title.replace(/\W/g, '');
+  const rows = applyFilters(fkey, cols, allRows, cfg.filterBy);
   $('view').innerHTML += `
     <div class="page-head">
       <h2>${esc(cfg.title)}</h2>
@@ -333,11 +453,14 @@ async function entityPage(cfg) {
       ${ME.caps.edit ? `<button class="btn" id="addBtn">+ הוספה</button>` : ''}
     </div>
     ${cfg.note ? `<div class="card mini">${cfg.note}</div>` : ''}
-    <div class="card">${tableHTML(cols, rows, { totals: cfg.totals })}</div>`;
+    <div class="card">
+      ${filterBarHTML(fkey, cols, allRows, cfg.filterBy, rows.length)}
+      ${tableHTML(cols, rows, { totals: cfg.totals })}</div>`;
   if ($('addBtn')) $('addBtn').onclick = () => openForm(cfg, null);
   wireRowActions(cfg, rows);
   wireBulkBtns();
   wireSelection();
+  wireFilters(fkey);
 }
 
 // ============ טעינת מטמון ============
@@ -372,7 +495,7 @@ async function pageDash() {
 
 // ============ ס"ת ============
 async function pageScrolls() {
-  const rows = C.scrolls;
+  const allRows = C.scrolls;
   const cfg = scrollCfg();
   const cols = [
     ...(ME.caps.del ? [selCol('scrolls')] : []),
@@ -400,17 +523,20 @@ async function pageScrolls() {
     { label: '', cls: 'center', render: r => `<button class="btn ghost xs" data-card="${r.id}">כרטיס</button>` },
     actionsCol(cfg),
   ];
+  const FB = ['סופר', 'רוכש', 'מוצר', 'סטטוס'];
+  const rows = applyFilters('scrolls', cols, allRows, FB);
   $('view').innerHTML += `
     <div class="page-head"><h2>ס"ת</h2><div class="spacer"></div>
       ${bulkBtn('scrolls', 'ס"ת')}
       ${ME.caps.edit ? `<button class="btn" id="addBtn">+ ספר חדש</button>` : ''}</div>
-    <div class="card">${tableHTML(cols, rows, {
-      totals: true,
-      })}</div>`;
+    <div class="card">
+      ${filterBarHTML('scrolls', cols, allRows, FB, rows.length)}
+      ${tableHTML(cols, rows, { totals: true })}</div>`;
   if ($('addBtn')) $('addBtn').onclick = () => openForm(cfg, null);
   wireRowActions(cfg, rows);
   wireBulkBtns();
   wireSelection();
+  wireFilters('scrolls');
   document.querySelectorAll('[data-card]').forEach(b => b.onclick = () => showScrollCard(+b.dataset.card));
 }
 
@@ -514,7 +640,7 @@ async function showScrollCard(id) {
 
 // ============ תשלום לסופר (שני חלקים) ============
 async function pageScribePay() {
-  const [pays, pages] = await Promise.all([Store.scribePayments.list(), Store.pagesLog.list()]);
+  const [allPays, allPages] = await Promise.all([Store.scribePayments.list(), Store.pagesLog.list()]);
   const scrollById = (id) => C.scrolls.find(s => s.id === id);
 
   const payCfg = {
@@ -559,18 +685,22 @@ async function pageScribePay() {
     actionsCol(pageCfg),
   ];
 
+  const pays  = applyFilters('scribe_payments', payCols, allPays, ['ספר']);
+  const pages = applyFilters('pages_log', pageCols, allPages, ['ספר']);
   $('view').innerHTML += `
     <div class="page-head"><h2>תשלום לסופר</h2></div>
     <div class="card">
       <div class="page-head"><h3>תשלומים לסופר</h3><div class="spacer"></div>
         ${bulkBtn('scribe_payments', 'תשלומים לסופר')}
         ${ME.caps.edit ? `<button class="btn sm" id="addPay">+ תשלום</button>` : ''}</div>
+      ${filterBarHTML('scribe_payments', payCols, allPays, ['ספר'], pays.length)}
       ${tableHTML(payCols, pays, { totals: true })}
     </div>
     <div class="card">
       <div class="page-head"><h3>עמודים שנכתבו</h3><div class="spacer"></div>
         ${bulkBtn('pages_log', 'עמודים שנכתבו')}
         ${ME.caps.edit ? `<button class="btn sm gold" id="addPage">+ רישום עמודים</button>` : ''}</div>
+      ${filterBarHTML('pages_log', pageCols, allPages, ['ספר'], pages.length)}
       ${tableHTML(pageCols, pages, { totals: true })}
     </div>`;
   if ($('addPay')) $('addPay').onclick = () => openForm(payCfg, null);
@@ -595,13 +725,15 @@ async function pageScribePay() {
   wire('[data-grp="pay"]', payCfg, pays);
   wire('[data-grp="page"]', pageCfg, pages);
   wireSelection();
+  wireFilters('scribe_payments');
+  wireFilters('pages_log');
 }
 
 // ============ תשלומי לקוחות (ס"ת) ============
 function pageCustPay() {
   const scrollById = (id) => C.scrolls.find(s => s.id === id);
   return entityPage({
-    title: 'תשלומי לקוחות', bulk: 'customer_payments', store: Store.customerPayments,
+    title: 'תשלומי לקוחות', bulk: 'customer_payments', filterBy: ['רוכש','ספר'], store: Store.customerPayments,
     load: () => Store.customerPayments.list(),
     labelOf: (r) => `תשלום ${money(r.paid_actual)}`,
     defaults: () => ({ date: today() }),
@@ -637,7 +769,7 @@ function pageCustPay() {
 function pageBookExp() {
   const scrollById = (id) => C.scrolls.find(s => s.id === id);
   return entityPage({
-    title: 'הוצאות לספר', bulk: 'book_expenses', store: Store.bookExpenses,
+    title: 'הוצאות לספר', bulk: 'book_expenses', filterBy: ['ספר','סוג הוצאה'], store: Store.bookExpenses,
     load: () => Store.bookExpenses.list(),
     labelOf: (r) => `${r.type || 'הוצאה'} ${money(r.amount)}`,
     defaults: () => ({ date: today() }),
@@ -664,7 +796,7 @@ function pageBookExp() {
 function pageParchExp() {
   const scrollById = (id) => C.scrolls.find(s => s.id === id);
   return entityPage({
-    title: 'הוצאות קלף', bulk: 'parchment_expenses', store: Store.parchmentExpenses,
+    title: 'הוצאות קלף', bulk: 'parchment_expenses', filterBy: ['ספר','גודל'], store: Store.parchmentExpenses,
     load: () => Store.parchmentExpenses.list(),
     labelOf: (r) => `${r.quantity} יחידות קלף`,
     defaults: () => ({ date: today() }),
@@ -692,7 +824,7 @@ function pageParchExp() {
 // ============ הוצאות עסק ============
 function pageBizExp() {
   return entityPage({
-    title: 'הוצאות עסק', bulk: 'business_expenses', store: Store.businessExpenses,
+    title: 'הוצאות עסק', bulk: 'business_expenses', filterBy: ['סוג הוצאה'], store: Store.businessExpenses,
     load: () => Store.businessExpenses.list(),
     labelOf: (r) => `${r.type || 'הוצאה'} ${money(r.amount)}`,
     defaults: () => ({ date: today() }),
@@ -730,7 +862,7 @@ function pageProd() {
 
 function prodPurchases() {
   return entityPage({
-    title: 'רכישות מוצרים', bulk: 'prod_purchases', store: Store.prodPurchases,
+    title: 'רכישות מוצרים', bulk: 'prod_purchases', filterBy: ['סופר','מוצר','סוג'], store: Store.prodPurchases,
     load: () => Store.prodPurchases.list(),
     labelOf: (r) => `${r.product_name} מ${r.scribe_name}`,
     defaults: () => ({ date: today(), purchase_type: 'רגיל' }),
@@ -766,7 +898,7 @@ function prodPurchases() {
 
 function prodSales() {
   return entityPage({
-    title: 'מכירות מוצרים', bulk: 'prod_sales', store: Store.prodSales,
+    title: 'מכירות מוצרים', bulk: 'prod_sales', filterBy: ['רוכש','מוצר','סוג'], store: Store.prodSales,
     load: () => Store.prodSales.list(),
     labelOf: (r) => `${r.quantity} × ${r.product_name}`,
     defaults: () => ({ date: today(), sale_type: 'רגיל' }),
@@ -803,7 +935,7 @@ function prodSales() {
 
 function prodScribePay() {
   return entityPage({
-    title: 'תשלומים לסופר (מוצרים)', bulk: 'prod_scribe_payments', store: Store.prodScribePayments,
+    title: 'תשלומים לסופר (מוצרים)', bulk: 'prod_scribe_payments', filterBy: ['סופר'], store: Store.prodScribePayments,
     load: () => Store.prodScribePayments.list(),
     labelOf: (r) => `תשלום ${money(r.amount)}`,
     defaults: () => ({ date: today() }),
@@ -825,7 +957,7 @@ function prodScribePay() {
 
 function prodCustPay() {
   return entityPage({
-    title: 'תשלומי לקוחות (מוצרים)', bulk: 'prod_customer_payments', store: Store.prodCustomerPayments,
+    title: 'תשלומי לקוחות (מוצרים)', bulk: 'prod_customer_payments', filterBy: ['לקוח'], store: Store.prodCustomerPayments,
     load: () => Store.prodCustomerPayments.list(),
     labelOf: (r) => `תשלום ${money(r.paid_actual)}`,
     defaults: () => ({ date: today() }),
@@ -1163,7 +1295,7 @@ function pageSettings() {
 
 function setContacts() {
   return entityPage({
-    title: 'אנשי קשר', bulk: 'contacts', store: Store.contacts,
+    title: 'אנשי קשר', bulk: 'contacts', filterBy: ['שם'], store: Store.contacts,
     load: () => Store.contacts.list(),
     labelOf: (r) => contactName(r),
     note: 'רשימה אחת — ממנה נבחרים גם הסופרים וגם הרוכשים. התפקיד נקבע בעסקה עצמה.',
@@ -1180,7 +1312,7 @@ function setContacts() {
 
 function setProducts() {
   return entityPage({
-    title: 'מוצרים', bulk: 'products', store: Store.products,
+    title: 'מוצרים', bulk: 'products', filterBy: ['שם המוצר'], store: Store.products,
     load: () => Store.products.list(),
     labelOf: (r) => r.name,
     note: 'מספר העמודים משמש לחישוב מחיר-לעמוד ולהתקדמות. יחידות הקלף מזינות את "צפי קלף".',
@@ -1201,7 +1333,7 @@ function setProducts() {
 
 function setSizes() {
   return entityPage({
-    title: 'גדלי קלף', bulk: 'parchment_sizes', store: Store.sizes,
+    title: 'גדלי קלף', bulk: 'parchment_sizes', filterBy: ['שם הגודל'], store: Store.sizes,
     load: () => Store.sizes.list(),
     labelOf: (r) => r.name,
     fields: [
