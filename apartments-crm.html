@@ -6660,6 +6660,9 @@ function openMoveMatch(id){
     '</div>'+
     ((m.name||m.description||m.details)?'<div class="hint" style="margin-bottom:10px">מהבנק: <b>'+esc(m.name||m.description||"")+'</b>'+
       (m.details?' · '+esc(m.details):'')+(m.kind?' · '+esc(m.kind):'')+(m.ref?' · אסמכתא '+esc(m.ref):'')+'</div>':'')+
+    (stmtBanks().length>1?'<div class="field"><label>הבנק של השורה</label><select id="mv-bank" onchange="setMoveBank(\''+id+'\',this.value)">'+
+      stmtBanks().map(function(b){ return '<option value="'+b.id+'"'+((m.stmtBankId||m.accountId)===b.id?" selected":"")+'>🏦 '+esc(b.name)+'</option>'; }).join("")+
+    '</select><div class="hint">אם השורה סווגה לבנק הלא נכון — אפשר לתקן כאן.</div></div>':'')+
     '<div class="field"><label>פרוייקט</label><select id="mv-apt" onchange="renderMoveCandidates(\''+id+'\')">'+
       '<option value="">🔍 כל הפרוייקטים</option>'+
       apts.map(function(a){ return '<option value="'+a.id+'"'+(aid===a.id?" selected":"")+'>'+esc(a.name)+'</option>'; }).join("")+
@@ -6667,6 +6670,13 @@ function openMoveMatch(id){
     '<div id="mv-cands"></div>',
     saveLabel:null});
   renderMoveCandidates(id);
+}
+/* תיקון שיוך הבנק של שורה קיימת */
+function setMoveBank(id,bankId){
+  if(!can("edit")) return;
+  var m=byId(DB.bankMoves,id); if(!m||!bankId) return;
+  m.stmtBankId=bankId; m.accountId="";
+  save(); toast("השורה שויכה ל"+stmtBankName(bankId),"ok"); rerender();
 }
 function renderMoveCandidates(id){
   var box=document.getElementById("mv-cands"); if(!box) return;
@@ -6732,11 +6742,11 @@ function undoMatchFromUi(moveId,matchId){
   renderMoveCandidates(moveId);
 }
 /* ---------- ייבוא שורות בנק — הדבקה של הרבה שורות בבת אחת ---------- */
-var BIMP={grid:null,hasHeader:true,map:{date:-1,amount:-1,credit:-1,debit:-1,desc:-1,ref:-1},accountId:""};
+var BIMP={grid:null,hasHeader:true,map:{date:-1,amount:-1,credit:-1,debit:-1,name:-1,bank:-1,kind:-1,style:-1,details:-1,doc:-1,ref:-1},stmtBankId:""};
 function openBankMoveImport(){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var banks=stmtBanks();
-  BIMP={grid:null,hasHeader:true,map:{date:-1,amount:-1,credit:-1,debit:-1,name:-1,kind:-1,style:-1,details:-1,doc:-1,ref:-1},
+  BIMP={grid:null,hasHeader:true,map:{date:-1,amount:-1,credit:-1,debit:-1,name:-1,bank:-1,kind:-1,style:-1,details:-1,doc:-1,ref:-1},
     stmtBankId:BQ.bank||(banks[0]&&banks[0].id)||""};
   openModal({title:"📥 הדבקת שורות מדף הבנק",wide:true,bodyHtml:
     '<div class="field"><label>מאיזה בנק השורות</label><select id="bi-acc" onchange="onBankAccPick()">'+
@@ -6745,7 +6755,8 @@ function openBankMoveImport(){
       '<option value="__add">➕ בנק חדש…</option>'+
     '</select>'+
     '<div class="hint">זו הרשימה שלך — הבנקים האמיתיים שמהם אתה מדביק דפי תנועות. '+
-    'בנק אחד יכול לשמש כמה פרוייקטים; הפרוייקט נקבע רק בהתאמה של כל שורה.</div></div>'+
+    'בנק אחד יכול לשמש כמה פרוייקטים; הפרוייקט נקבע רק בהתאמה של כל שורה.<br>'+
+    '<b>מדביק כמה בנקים יחד?</b> מפה למטה את עמודת "בנק" — הבחירה כאן תשמש רק לשורות שאין בהן בנק.</div></div>'+
     '<div class="toolbar" style="margin-top:8px">'+
       '<button class="btn btn-primary btn-sm" onclick="document.getElementById(\'bm-file\').click()">📁 קובץ (xlsx / csv)</button>'+
       '<input type="file" id="bm-file" accept=".xlsx,.csv,.txt" style="display:none" onchange="readSheetFile(this,onBankGrid,\'bm-file-name\')">'+
@@ -6792,6 +6803,7 @@ function onBankGrid(grid){
   BIMP.map.debit=find("חובה","משיכה","חיוב");
   BIMP.map.amount=find("סכום");
   BIMP.map.name=find("שם");
+  BIMP.map.bank=find("בנק");
   BIMP.map.kind=find("סוג");
   BIMP.map.style=find("סגנון");
   BIMP.map.details=find("פרטים","תיאור","פירוט","פעולה","תנועה");
@@ -6818,6 +6830,9 @@ function renderBankMap(){
       '<div class="field"><label>זכות (כניסת כסף)</label>'+sel("credit",BIMP.map.credit)+
         '<div class="hint">אם בדף שלך יש עמודת "סכום" אחת — השאר ריק והשתמש בשדה הסכום</div></div>'+
       '<div class="field"><label>סכום (עמודה אחת)</label>'+sel("amount",BIMP.map.amount)+'</div>'+
+      '<div class="field"><label>בנק (עמודה בקובץ)</label>'+sel("bank",BIMP.map.bank)+
+        '<div class="hint">מדביקים כמה בנקים יחד? מפים כאן את עמודת הבנק — כל שורה תשויך לבנק שכתוב בה. '+
+        'בנק שאינו ברשימה ייווצר אוטומטית.</div></div>'+
       '<div class="field"><label>סוג</label>'+sel("kind",BIMP.map.kind)+'</div>'+
       '<div class="field"><label>סגנון</label>'+sel("style",BIMP.map.style)+'</div>'+
       '<div class="field"><label>פרטים</label>'+sel("details",BIMP.map.details)+'</div>'+
@@ -6841,6 +6856,7 @@ function bankImportRows(){
       date:m.date>=0?impDate(r[m.date]):todayISO(),
       amount:round2(amt),
       name:m.name>=0?String(r[m.name]||"").trim():"",
+      bankName:m.bank>=0?String(r[m.bank]||"").trim():"",
       kind:m.kind>=0?String(r[m.kind]||"").trim():"",
       style:m.style>=0?String(r[m.style]||"").trim():"",
       details:m.details>=0?String(r[m.details]||"").trim():"",
@@ -6850,6 +6866,17 @@ function bankImportRows(){
     });
   });
   return out;
+}
+/* הבנק של שורה בייבוא: מהעמודה שמופתה, אחרת הבורר.
+   create=true — בנק שאינו ברשימה נוצר; אחרת מוחזר "" (לתצוגה מקדימה). */
+function bankIdForRow(r,create){
+  if(r.bankName){
+    var ex=stmtBanks().filter(function(b){ return normKey(b.name)===normKey(r.bankName); })[0];
+    if(ex) return ex.id;
+    if(create){ var nb=addStmtBank(r.bankName); return nb?nb.id:""; }
+    return "";                       // חדש — ייווצר בייבוא עצמו
+  }
+  return BIMP.stmtBankId||"";
 }
 function bankRowIsDup(r,bankId){
   function sig(x){ return normKey([x.name,x.details,x.description].filter(Boolean).join("|")); }
@@ -6863,17 +6890,33 @@ function renderBankPreview(){
   var box=document.getElementById("bm-preview"); if(!box) return;
   var rows=bankImportRows();
   if(!rows.length){ box.innerHTML='<div class="empty">לא זוהו שורות של כניסת כסף — בדוק את התאמת העמודות</div>'; return; }
-  var accId=BIMP.stmtBankId;
-  var dup=rows.filter(function(r){ return bankRowIsDup(r,accId); }).length;
+  var byCol=BIMP.map.bank>=0;
+  var dup=rows.filter(function(r){ var b=bankIdForRow(r,false); return b&&bankRowIsDup(r,b); }).length;
   var sum=round2(rows.reduce(function(s,r){ return s+r.amount; },0));
+  /* פירוט לפי בנק — כשמדביקים כמה בנקים יחד */
+  var perBank={};
+  rows.forEach(function(r){
+    var nm=r.bankName||stmtBankName(BIMP.stmtBankId)||"(לא צוין)";
+    perBank[nm]=perBank[nm]||{n:0,sum:0}; perBank[nm].n++; perBank[nm].sum=round2(perBank[nm].sum+r.amount);
+  });
+  var bankKeys=Object.keys(perBank);
+  var missing=byCol&&!BIMP.stmtBankId?rows.filter(function(r){ return !r.bankName; }).length:0;
   box.innerHTML='<div class="section-title">תצוגה מקדימה — '+rows.length+' שורות, סה"כ '+money(sum)+
       (dup?' <span class="hint neg">· '+dup+' כבר קיימות ויידלגו</span>':'')+'</div>'+
+    (bankKeys.length>1?'<div class="hint" style="margin-bottom:6px">לפי בנק: '+
+      bankKeys.map(function(k){ return '<b>'+esc(k)+'</b> ('+perBank[k].n+' · '+money(perBank[k].sum)+')'; }).join(" · ")+'</div>':'')+
+    (missing?'<div class="hint neg" style="margin-bottom:6px">'+missing+' שורות בלי ערך בעמודת הבנק — בחר בנק ברירת מחדל בבורר למעלה.</div>':'')+
     '<div class="table-wrap" style="max-height:240px"><table class="tbl"><thead><tr>'+
-    '<th>תאריך</th><th>שם</th><th>סכום</th><th>סוג</th><th>סגנון</th><th>פרטים</th><th>יש מסמך</th><th></th></tr></thead><tbody>'+
+    '<th>תאריך</th><th>שם</th><th>סכום</th>'+(byCol?'<th>בנק</th>':'')+
+    '<th>סוג</th><th>סגנון</th><th>פרטים</th><th>יש מסמך</th><th></th></tr></thead><tbody>'+
     rows.slice(0,15).map(function(r){
-      var d=bankRowIsDup(r,accId);
+      var bid=bankIdForRow(r,false);
+      var d=bid&&bankRowIsDup(r,bid);
+      var isNew=r.bankName&&!bid;
       return '<tr'+(d?' style="opacity:.5"':'')+'><td>'+dateHe(r.date)+'</td>'+
         '<td>'+esc(r.name||"—")+'</td><td>'+money(r.amount)+'</td>'+
+        (byCol?'<td>'+(r.bankName?esc(r.bankName)+(isNew?' <span class="badge badge-warn badge-unit">חדש</span>':'')
+                                 :'<span class="muted">'+esc(stmtBankName(BIMP.stmtBankId)||"—")+'</span>')+'</td>':'')+
         '<td>'+esc(r.kind||"—")+'</td><td>'+esc(r.style||"—")+'</td>'+
         '<td class="muted">'+esc(r.details||"—")+'</td>'+
         '<td>'+(r.hasDoc?"✔":"")+'</td>'+
@@ -6883,14 +6926,22 @@ function renderBankPreview(){
 }
 function applyBankImport(){
   if(!can("edit")){ toast("אין הרשאה","err"); return false; }
-  var accId=BIMP.stmtBankId;
-  if(!accId){ toast("בחר בנק מהרשימה (או ➕ בנק חדש)","err"); return false; }
   var rows=bankImportRows();
   if(!rows.length){ toast("אין שורות לייבוא","err"); return false; }
-  var added=0, skipped=0;
+  var byCol=BIMP.map.bank>=0;
+  if(!byCol && !BIMP.stmtBankId){ toast("בחר בנק מהרשימה (או מפה עמודת בנק)","err"); return false; }
+  /* שורה בלי ערך בעמודת הבנק נופלת לבנק שנבחר בבורר */
+  if(byCol && !BIMP.stmtBankId && rows.some(function(r){ return !r.bankName; })){
+    toast("יש שורות בלי בנק בעמודה — בחר בנק ברירת מחדל בבורר למעלה","err"); return false;
+  }
+  var added=0, skipped=0, newBanks=[];
   rows.forEach(function(r){
-    if(bankRowIsDup(r,accId)){ skipped++; return; }
-    DB.bankMoves.push({id:uid(),stmtBankId:accId,apartmentId:"",
+    var before=stmtBanks().length;
+    var bankId=bankIdForRow(r,true);
+    if(stmtBanks().length>before) newBanks.push(r.bankName);
+    if(!bankId){ skipped++; return; }
+    if(bankRowIsDup(r,bankId)){ skipped++; return; }
+    DB.bankMoves.push({id:uid(),stmtBankId:bankId,apartmentId:"",
       date:r.date,amount:r.amount,
       name:r.name,kind:r.kind,style:r.style,details:r.details,hasDoc:r.hasDoc,
       description:r.description,ref:r.ref,
@@ -6898,7 +6949,8 @@ function applyBankImport(){
     added++;
   });
   save();
-  toast("נוספו "+added+" שורות"+(skipped?" · "+skipped+" כבר היו קיימות ודולגו":""),"ok");
+  toast("נוספו "+added+" שורות"+(skipped?" · "+skipped+" כבר היו קיימות ודולגו":"")+
+    (newBanks.length?" · נוצרו בנקים: "+newBanks.filter(function(x,i,arr){return arr.indexOf(x)===i;}).join(", "):""),"ok");
   rerender();
   return true;
 }
