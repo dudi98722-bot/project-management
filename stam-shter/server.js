@@ -44,7 +44,9 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().t
 
 // ===== Frontend =====
 const PUB = path.join(__dirname, 'public');
-app.use(express.static(PUB));
+// index:false — כדי ש-'/' יגיע למטפל שלנו שמזריק את חותמת הגרסה,
+// ולא ייתפס כאן ויוגש כקובץ סטטי עם ?v=1 קפוא.
+app.use(express.static(PUB, { index: false }));
 
 // חותמת גרסה לפי זמן העדכון של קבצי הקוד. index.html מוגש עם no-cache
 // והפניות ל-app.js/store.js מקבלות ?v=<חותמת>, כך שאחרי כל פריסה הדפדפן
