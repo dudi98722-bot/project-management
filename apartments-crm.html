@@ -6287,10 +6287,24 @@ function openBulkIncomeEdit(aptId){
   var rows=ids.map(function(id){ return byId(DB.income,id); }).filter(Boolean);
   var sum=round2(rows.reduce(function(s,i){ return s+(Number(i.amount)||0); },0));
   var units=aptUnits(aptId), booking=aptBookingMode(aptId);
+  /* שורות שאפשר לסמן כשולמו — כאלה שעוד אין עליהן תשלום */
+  var unpaid=rows.filter(function(i){ return !incomePays(i).length && (Number(i.amount)||0)>0; });
+  var unpaidSum=round2(unpaid.reduce(function(s,i){ return s+(Number(i.amount)||0); },0));
+  refreshMethods();
   openModal({title:"✏️ עדכון מרוכז — "+rows.length+(booking?" הזמנות":" הכנסות"),wide:true,bodyHtml:
     '<div class="stat-grid" style="margin-bottom:12px">'+
       stat("שורות שנבחרו",rows.length)+stat("סכום כולל",money(sum))+
     '</div>'+
+    /* סימון מרוכז "שולם" — רושם תשלום מלא לכל שורה שאין עליה תשלום */
+    (unpaid.length?'<div class="field full" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:9px;margin-bottom:10px">'+
+      '<label style="font-weight:400"><input type="checkbox" id="ib-paid" onchange="onIbPaid()" style="width:auto;margin-inline-end:6px">'+
+      '<b>סמן כשולם</b> — רשום תשלום מלא ל-'+unpaid.length+' שורות ('+money(unpaidSum)+')</label>'+
+      '<div id="ib-paid-wrap" style="display:none;padding-top:8px"><div class="form-grid">'+
+        '<div class="field"><label>אמצעי תשלום</label><select id="ib-paid-method">'+methodOptions("transfer")+'</select></div>'+
+        '<div class="field"><label>למי נכנס הכסף</label><select id="ib-paid-dest">'+
+          '<option value="__same">כמו שמוגדר בהכנסה עצמה</option>'+destOptions(aptId,"")+'</select></div>'+
+      '</div><div class="hint">התשלום נרשם בסכום המלא ובתאריך של כל שורה. '+
+      (rows.length>unpaid.length?(rows.length-unpaid.length)+' שורות שכבר יש עליהן תשלום יידלגו.':'')+'</div></div></div>':'')+
     '<div class="hint" style="margin-bottom:10px">שדה שנשאר על <b>"— ללא שינוי —"</b> לא ישתנה באף שורה.</div>'+
     '<div class="form-grid">'+
       '<div class="field"><label>תאריך</label><input id="ib-date" type="date"><div class="hint">ריק = ללא שינוי</div></div>'+
@@ -6322,6 +6336,10 @@ function onIbUnitMode(){
   var m=val("ib-unit-mode");
   w.style.display=(m==="set"||m==="add")?"block":"none";
 }
+function onIbPaid(){
+  var w=document.getElementById("ib-paid-wrap"); if(!w) return;
+  w.style.display=checked("ib-paid")?"block":"none";
+}
 function onIbNoteMode(){
   var m=val("ib-note-mode"), inp=document.getElementById("ib-note");
   if(!inp) return;
@@ -6336,12 +6354,15 @@ function applyBulkIncomeEdit(aptId,ids){
   var dest=document.getElementById("ib-dest")?val("ib-dest"):"";
   var uMode=document.getElementById("ib-unit-mode")?val("ib-unit-mode"):"keep";
   var noteMode=val("ib-note-mode")||"keep", noteTxt=val("ib-note").trim();
-  if(!date && !start && !end && !dest && uMode==="keep" && noteMode==="keep"){ toast("לא נבחר מה לעדכן","warn"); return false; }
+  var markPaid=checked("ib-paid");
+  if(!date && !start && !end && !dest && uMode==="keep" && noteMode==="keep" && !markPaid){ toast("לא נבחר מה לעדכן","warn"); return false; }
   if((noteMode==="set"||noteMode==="append") && !noteTxt){
     toast("כתוב את ההערה שתיכנס, או בחר \"ללא שינוי\" בשדה ההערה","err"); return false; }
   var picked=(uMode==="set"||uMode==="add")?readUnitChecks("ib-u"):[];
   if((uMode==="set"||uMode==="add") && !picked.length){ toast("סמן אילו יחידות, או בחר \"ללא שינוי\"","err"); return false; }
-  var n=0, badRange=0;
+  var payMth=val("ib-paid-method")||"transfer"; if(payMth==="__new") payMth="transfer";
+  var payDest=document.getElementById("ib-paid-dest")?val("ib-paid-dest"):"__same";
+  var n=0, badRange=0, paidN=0;
   ids.forEach(function(id){
     var i=byId(DB.income,id); if(!i||i.deleted) return;
     if(date) i.date=date;
@@ -6361,10 +6382,19 @@ function applyBulkIncomeEdit(aptId,ids){
     if(noteMode==="set") i.note=noteTxt;
     else if(noteMode==="append"){ var old=String(i.note||"").trim(); i.note = old ? (old+" | "+noteTxt) : noteTxt; }
     else if(noteMode==="clear") i.note="";
+    /* סימון "שולם" — רק לשורות שאין עליהן תשלום, כדי לא לשלם פעמיים.
+       יעד "כמו בהכנסה" שומר על שיוך הכסף לבנק/לשותף בדיוק כמו קודם. */
+    if(markPaid && !incomePays(i).length && (Number(i.amount)||0)>0){
+      markIncomePaid(i,{amount:i.amount,date:i.date,method:payMth,
+        dest:(payDest==="__same")?(i.receivedBy||""):(payDest==="__none"?"":payDest),
+        note:"סומן כשולם"});
+      paidN++;
+    }
     n++;
   });
   save();
-  toast("עודכנו "+n+" שורות"+(badRange?" · ב-"+badRange+" הטווח היה הפוך ולא שונה":""),badRange?"warn":"ok");
+  toast("עודכנו "+n+" שורות"+(paidN?" · "+paidN+" סומנו כשולמו":"")+
+    (badRange?" · ב-"+badRange+" הטווח היה הפוך ולא שונה":""),badRange?"warn":"ok");
   rerender();
   return true;
 }
@@ -6738,9 +6768,13 @@ function renderMoveCandidates(id){
     box.innerHTML=h+'<div class="empty" style="margin-top:10px">✔ השורה מותאמת במלואה</div>';
     return;
   }
+  /* אין הזמנה מתאימה — יוצרים ממנה הכנסה חדשה */
+  var newBtn=can("edit")?'<div class="toolbar" style="margin-top:10px">'+
+    '<button class="btn btn-primary btn-sm" onclick="createIncomeFromMove(\''+id+'\')">➕ צור הכנסה חדשה מהשורה</button>'+
+    '<span class="hint">תיווצר הכנסה בפרוייקט עם התשלום הזה עליה</span></div>':'';
   var cands=moveCandidates(m,aptId);
   if(!cands.length){
-    box.innerHTML=h+'<div class="empty" style="margin-top:10px">'+(aptId?"אין בפרוייקט הזה הזמנות עם חוב פתוח":"אין באף פרוייקט הזמנות עם חוב פתוח")+'</div>';
+    box.innerHTML=h+'<div class="empty" style="margin-top:10px">'+(aptId?"אין בפרוייקט הזה הזמנות עם חוב פתוח":"אין באף פרוייקט הזמנות עם חוב פתוח")+'</div>'+newBtn;
     return;
   }
   h+='<div class="section-title">הזמנות עם חוב פתוח <span class="hint">(ממוינות לפי התאמה · נותר להתאמה '+money(rem)+')</span></div>'+
@@ -6758,7 +6792,47 @@ function renderMoveCandidates(id){
   });
   h+='</tbody></table></div>';
   if(cands.length>20) h+='<div class="hint">מוצגות 20 ההזמנות המתאימות ביותר מתוך '+cands.length+'.</div>';
-  box.innerHTML=h;
+  box.innerHTML=h+newBtn;
+}
+/* יצירת הכנסה חדשה משורת בנק — כשאין לה הזמנה קיימת להתאים אליה.
+   נוצרת ההכנסה, ומיד גם התשלום שמקושר לשורה. */
+function createIncomeFromMove(moveId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var m=byId(DB.bankMoves,moveId); if(!m) return;
+  var rem=moveRemaining(m);
+  if(rem<=0.01){ toast("השורה כבר מותאמת במלואה","warn"); return; }
+  var apts=active(DB.apartments).filter(function(a){ return canSeeApartment(a.id); });
+  if(!apts.length){ toast("אין פרוייקטים במערכת","err"); return; }
+  var preApt=val("mv-apt")||moveAptId(m)||"";
+  var preName=m.name||m.description||m.details||"";
+  openModal({title:"➕ הכנסה חדשה משורת בנק — "+money(rem),wide:true,bodyHtml:
+    '<div class="hint" style="margin-bottom:10px">מהבנק: <b>'+esc(preName||"—")+'</b> · '+dateHe(m.date)+
+      ' · '+esc(moveBankLabel(m))+'</div>'+
+    '<div class="form-grid">'+
+      '<div class="field"><label>פרוייקט</label><select id="ni-apt"><option value="">— בחר —</option>'+
+        apts.map(function(a){ return '<option value="'+a.id+'"'+(preApt===a.id?" selected":"")+'>'+esc(a.name)+'</option>'; }).join("")+
+      '</select></div>'+
+      '<div class="field"><label>תיאור / שם</label><input id="ni-desc" value="'+esc(preName)+'"></div>'+
+      '<div class="field"><label>סכום ההכנסה (₪)</label><input id="ni-amount" type="number" step="0.01" value="'+rem+'">'+
+        '<div class="hint">סכום גדול מ-'+money(rem)+' יישאר עם חוב פתוח</div></div>'+
+      '<div class="field"><label>תאריך</label><input id="ni-date" type="date" value="'+esc(m.date||todayISO())+'"></div>'+
+      '<div class="field full"><label>הערה</label><input id="ni-note" value="'+esc([m.details,m.kind].filter(Boolean).join(" · "))+'"></div>'+
+    '</div>',
+    saveLabel:"צור הכנסה ורשום תשלום",onSave:function(){
+      var aptId=val("ni-apt"), desc=val("ni-desc").trim();
+      var amt=Number(val("ni-amount"))||0;
+      if(!aptId){ toast("בחר פרוייקט","err"); return false; }
+      if(!desc){ toast("תיאור חסר","err"); return false; }
+      if(amt<=0){ toast("סכום לא תקין","err"); return false; }
+      if(amt<rem-0.01 && !confirm("סכום ההכנסה ("+money(amt)+") קטן מהסכום שנותר בשורת הבנק ("+money(rem)+").\n\nיותאם רק "+money(amt)+" והשאר יישאר פתוח. להמשיך?")) return false;
+      var inc={id:uid(),apartmentId:aptId,description:desc,amount:amt,
+        date:val("ni-date")||m.date||todayISO(),receivedBy:"",split:null,units:null,
+        startDate:"",endDate:"",note:val("ni-note"),payments:[],deleted:false};
+      DB.income.push(inc);
+      applyMoveMatch(m,inc,Math.min(rem,amt));
+      save(); toast("נוצרה הכנסה ונרשם התשלום","ok"); rerender();
+      openMoveMatch(moveId); return false;
+    }});
 }
 function doMoveMatch(moveId,incId){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
