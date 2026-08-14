@@ -677,6 +677,8 @@ function prodPurchases() {
       { k: 'note', label: 'הערה', type: 'textarea' },
     ],
     cols: [
+      // מספר החבילה — זה המזהה שמזינים בעמודת "מזהה רכישה" בייבוא מכירות
+      { label: '#', render: r => `<b>${r.id}</b>` },
       { label: 'תאריך', render: r => dt(r.date) },
       { label: 'סופר', render: r => esc(r.scribe_name || '—') },
       { label: 'מוצר', render: r => esc(r.product_name || '—') },
@@ -712,8 +714,10 @@ function prodSales() {
       { k: 'note', label: 'הערה', type: 'textarea' },
     ],
     cols: [
+      { label: '#', render: r => `<b>${r.id}</b>` },
       { label: 'תאריך', render: r => dt(r.date) },
       { label: 'רוכש', render: r => esc(r.customer_name || '—') },
+      { label: 'מחבילה', render: r => r.purchase_id ? `<span class="pill n">#${r.purchase_id}</span>` : '—' },
       { label: 'מוצר', render: r => esc(r.product_name || '—') + (r.scribe_name ? ` <span class="mini">· ${esc(r.scribe_name)}</span>` : '') },
       { label: 'כמות', cls: 'num', render: r => numCell(r.quantity), total: rows => numCell(sumBy(rows, 'quantity')) },
       { label: 'מחיר ליח\'', cls: 'num', render: r => mCell(r.price_per_unit) },
