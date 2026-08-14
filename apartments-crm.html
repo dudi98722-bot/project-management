@@ -869,6 +869,21 @@ function stayNightList(i){
   return out;
 }
 function incomePays(i){ return (i&&i.payments||[]).filter(function(g){return !g.deleted;}); }
+/* ---------- הכנסה שנגבתה במקום ----------
+   בפרוייקט הזמנות ההכנסה והתשלום נפרדים, אבל לא תמיד: יש הכנסות
+   שנגבות במלואן ברגע הרישום. הפונקציה רושמת עליהן את התשלום, כדי
+   שלא יצטרכו לפתוח את ההזמנה ולהזין אותו ידנית. */
+function markIncomePaid(i,opt){
+  opt=opt||{};
+  var amt=round2(opt.amount!=null?opt.amount:(Number(i.amount)||0));
+  if(amt<=0) return null;
+  var g={id:uid(),date:opt.date||i.date||todayISO(),amount:amt,
+    method:opt.method||"transfer",receivedBy:opt.dest||"",
+    invoices:"",sentToCpa:!!(i.date&&i.date<CPA_CUTOFF),
+    note:opt.note||"נגבה עם רישום ההכנסה",deleted:false};
+  i.payments=i.payments||[]; i.payments.push(g);
+  return g;
+}
 function incomeTracked(i){ return incomePays(i).length>0; }
 function incomePaid(i){ return round2(incomePays(i).reduce(function(s,g){return s+(Number(g.amount)||0);},0)); }
 function incomeDebt(i){ return round2((Number(i.amount)||0)-incomePaid(i)); }
@@ -7115,13 +7130,22 @@ function addIncMgmtManager(aptId){
    כמו ייבוא ההפקדות: קובץ או הדבקה, מיפוי עמודות עם ניחוש אוטומטי,
    תצוגה מקדימה ודילוג על שורות שכבר קיימות. עמודות היחידות מזוהות
    לפי שמות היחידות של הפרוייקט (וילה 1, יחידה 2…) — סימון בתא = הושכרה. */
-var IIMP={grid:null,hasHeader:true,map:{date:-1,desc:-1,amount:-1,note:-1,start:-1,end:-1},units:{},aptId:null};
+var IIMP={grid:null,hasHeader:true,map:{date:-1,desc:-1,amount:-1,note:-1,start:-1,end:-1,paid:-1},units:{},aptId:null};
 function openIncomeImport(aptId){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
-  IIMP={grid:null,hasHeader:true,map:{date:-1,desc:-1,amount:-1,note:-1,start:-1,end:-1},units:{},aptId:aptId};
+  IIMP={grid:null,hasHeader:true,map:{date:-1,desc:-1,amount:-1,note:-1,start:-1,end:-1,paid:-1},units:{},aptId:aptId};
   var booking=aptBookingMode(aptId);
   openModal({title:"📥 ייבוא הכנסות — "+(byId(DB.apartments,aptId)||{}).name,wide:true,bodyHtml:
-    (booking?'':'<div class="field"><label>למי נכנס הכסף (לכל השורות)</label><select id="ii-dest">'+destOptions(aptId,"")+'</select></div>')+
+    '<div class="field"><label>למי נכנס הכסף (לכל השורות)</label><select id="ii-dest">'+destOptions(aptId,"")+'</select>'+
+      (booking?'<div class="hint">משמש רק לשורות שנרשם עליהן תשלום (ראה למטה).</div>':'')+'</div>'+
+    /* במצב הזמנות — אפשר לסמן שהשורות כבר נגבו, או למפות עמודת "שולם" */
+    (booking?'<div class="field full"><label style="font-weight:400">'+
+      '<input type="checkbox" id="ii-paidnow" onchange="onIiPaidNow()" style="width:auto;margin-inline-end:6px">'+
+      'ההכנסות בקובץ כבר נגבו — רשום לכל שורה גם תשלום</label>'+
+      '<div id="ii-paid-wrap" style="display:none;padding-top:6px"><div class="form-grid">'+
+        '<div class="field"><label>אמצעי תשלום</label><select id="ii-paid-method">'+methodOptions("transfer")+'</select></div>'+
+      '</div><div class="hint">אם בקובץ יש עמודת "סך ששולם" — מפה אותה למטה, והתשלום יירשם לפי הסכום שבה. '+
+      'אחרת יירשם התשלום בסכום המלא של כל שורה.</div></div></div>':'')+
     '<div class="toolbar"'+(booking?'':' style="margin-top:8px"')+'>'+
       '<button class="btn btn-primary btn-sm" onclick="document.getElementById(\'ii-file\').click()">📁 קובץ (xlsx / csv)</button>'+
       '<input type="file" id="ii-file" accept=".xlsx,.csv,.txt" style="display:none" onchange="readSheetFile(this,onIncomeGrid,\'ii-file-name\')">'+
@@ -7151,6 +7175,7 @@ function onIncomeGrid(grid){
   IIMP.map.start=find("כניסה","תחילת","מתאריך");
   IIMP.map.end=find("יציאה","סיום","עד תאריך");
   IIMP.map.note=find("הערה");
+  IIMP.map.paid=find("סך ששולם","שולם");
   /* "תאריך" אחרון — אחרת הוא בולע את "תאריך כניסה" */
   IIMP.map.date=find("תאריך הזמנה","תאריך");
   if(IIMP.map.date===IIMP.map.start||IIMP.map.date===IIMP.map.end) IIMP.map.date=-1;
@@ -7186,11 +7211,17 @@ function renderIncomeMap(){
       '<div class="field"><label>תחילת השכרה</label>'+sel("start",IIMP.map.start)+'</div>'+
       '<div class="field"><label>סיום השכרה</label>'+sel("end",IIMP.map.end)+'</div>'+
       '<div class="field"><label>הערה</label>'+sel("note",IIMP.map.note)+'</div>'+
+      (aptBookingMode(IIMP.aptId)?'<div class="field"><label>סך ששולם</label>'+sel("paid",IIMP.map.paid)+
+        '<div class="hint">אופציונלי — נרשם כתשלום על ההזמנה</div></div>':'')+
       unitsH+
     '</div>'+
     (unitsH?'<div class="hint">בעמודת יחידה, כל תא שאינו ריק (✔ / true / כן / 1) מסמן שהיחידה הושכרה.</div>':'')+
     '<div id="ii-preview"></div>';
   renderIncomePreview();
+}
+function onIiPaidNow(){
+  var w=document.getElementById("ii-paid-wrap"); if(!w) return;
+  w.style.display=checked("ii-paidnow")?"block":"none";
 }
 function unitCellChecked(v){
   var s=normKey(v);
@@ -7219,6 +7250,7 @@ function incomeImportRows(){
     });
     out.push({desc:desc,amount:round2(amt),date:date,start:start,end:end,
       note:m.note>=0?String(r[m.note]||"").trim():"",units:units,
+      paid:m.paid>=0?round2(impNum(r[m.paid])):null,
       bad:(!desc||!(amt>0.001))});
   });
   return out;
@@ -7242,14 +7274,17 @@ function renderIncomePreview(){
       (dup?' <span class="hint neg">· '+dup+' כבר קיימות ויידלגו</span>':'')+
       (rows.length-ok.length?' <span class="hint neg">· '+(rows.length-ok.length)+' שורות חסרות (תיאור/סכום) יידלגו</span>':'')+'</div>'+
     '<div class="table-wrap" style="max-height:240px"><table class="tbl"><thead><tr>'+
-    '<th>תאריך</th><th>תיאור</th>'+(hasUnits?'<th>יחידות</th>':'')+'<th>תקופה</th><th>סכום</th><th>הערה</th><th></th></tr></thead><tbody>'+
+    '<th>תאריך</th><th>תיאור</th>'+(hasUnits?'<th>יחידות</th>':'')+'<th>תקופה</th><th>סכום</th>'+
+    (IIMP.map.paid>=0?'<th>שולם</th>':'')+'<th>הערה</th><th></th></tr></thead><tbody>'+
     rows.slice(0,15).map(function(r){
       var d=!r.bad&&incomeRowIsDup(r,IIMP.aptId);
       return '<tr'+(r.bad?' style="background:#fef2f2"':(d?' style="opacity:.5"':''))+'>'+
         '<td>'+dateHe(r.date)+'</td><td>'+esc(r.desc||"—")+'</td>'+
         (hasUnits?'<td>'+esc(r.units.join(" · ")||"—")+'</td>':'')+
         '<td class="muted">'+(r.start?dateHe(r.start)+(r.end?" – "+dateHe(r.end):""):"—")+'</td>'+
-        '<td>'+money(r.amount)+'</td><td class="muted">'+esc(r.note)+'</td>'+
+        '<td>'+money(r.amount)+'</td>'+
+        (IIMP.map.paid>=0?'<td>'+(r.paid?money(r.paid):'<span class="muted">—</span>')+'</td>':'')+
+        '<td class="muted">'+esc(r.note)+'</td>'+
         '<td>'+(r.bad?'<span class="badge badge-danger badge-unit">חסר</span>':(d?'<span class="badge badge-muted badge-unit">קיימת</span>':''))+'</td></tr>';
     }).join("")+'</tbody></table></div>'+
     (rows.length>15?'<div class="hint">מוצגות 15 הראשונות מתוך '+rows.length+'.</div>':'');
@@ -7261,17 +7296,27 @@ function applyIncomeImport(){
   var rows=incomeImportRows().filter(function(r){ return !r.bad; });
   if(!rows.length){ toast("אין שורות תקינות לייבוא","err"); return false; }
   var dest=document.getElementById("ii-dest")?val("ii-dest"):"";
-  var added=0, skipped=0;
+  var booking=aptBookingMode(aptId);
+  var paidNow=booking&&checked("ii-paidnow");
+  var mth=val("ii-paid-method")||"transfer"; if(mth==="__new") mth="transfer";
+  var added=0, skipped=0, paidN=0;
   rows.forEach(function(r){
     if(incomeRowIsDup(r,aptId)){ skipped++; return; }
-    DB.income.push({id:uid(),apartmentId:aptId,description:r.desc,amount:r.amount,
-      date:r.date,receivedBy:dest,split:null,
+    var inc={id:uid(),apartmentId:aptId,description:r.desc,amount:r.amount,
+      date:r.date,receivedBy:(booking?"":dest),split:null,
       units:r.units.length?r.units:null,startDate:r.start,endDate:r.end,
-      note:r.note,deleted:false});
+      note:r.note,deleted:false};
+    DB.income.push(inc);
+    /* עמודת "סך ששולם" גוברת על הסימון הכללי; 0 = לא שולם כלום */
+    var pAmt=(r.paid!=null)?r.paid:(paidNow?r.amount:0);
+    if((paidNow||r.paid!=null) && pAmt>0.009){
+      markIncomePaid(inc,{amount:Math.min(pAmt,r.amount),date:r.date,method:mth,dest:dest});
+      paidN++;
+    }
     added++;
   });
   save();
-  toast("נוספו "+added+" הכנסות"+(skipped?" · "+skipped+" כבר היו קיימות ודולגו":""),"ok");
+  toast("נוספו "+added+" הכנסות"+(paidN?" · "+paidN+" עם תשלום":"")+(skipped?" · "+skipped+" כבר היו קיימות ודולגו":""),"ok");
   rerender();
   return true;
 }
@@ -7282,12 +7327,20 @@ function openBulkIncome(aptId){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var a=byId(DB.apartments,aptId);
   var destSel=destOptions(aptId,"");
+  var booking=aptBookingMode(aptId);
   openModal({title:"📋 הכנסה מרוכזת — "+(a?a.name:""),wide:true,bodyHtml:
     '<div class="form-grid" style="margin-bottom:8px">'+
       '<div class="field"><label>למי נכנס הכסף (לכל השורות)</label><select id="bi-dest">'+destSel+'</select></div>'+
       '<div class="field"><label>תאריך ברירת מחדל</label><input id="bi-date" type="date" value="'+todayISO()+'">'+
         '<div class="hint">שורה בלי תאריך משלה תקבל את התאריך הזה</div></div>'+
     '</div>'+
+    /* במצב הזמנות — אפשר לרשום את כל השורות גם כתשלום שנגבה */
+    (booking?'<div class="field full" style="margin-bottom:8px"><label style="font-weight:400">'+
+      '<input type="checkbox" id="bi-paidnow" onchange="onBiPaidNow()" style="width:auto;margin-inline-end:6px">'+
+      'כל השורות כבר נגבו — רשום לכל אחת גם תשלום מלא</label>'+
+      '<div id="bi-paid-wrap" style="display:none;padding-top:6px"><div class="form-grid">'+
+        '<div class="field"><label>אמצעי תשלום</label><select id="bi-paid-method">'+methodOptions("transfer")+'</select></div>'+
+      '</div><div class="hint">התשלום יירשם בתאריך של כל שורה, בסכום המלא שלה, ליעד שנבחר למעלה.</div></div></div>':'')+
     '<div class="table-wrap"><table class="tbl"><thead><tr>'+
       '<th style="width:140px">תאריך</th><th>תיאור</th>'+
       (aptUnits(aptId).length?'<th>יחידות שהושכרו</th>':'')+
@@ -7297,6 +7350,10 @@ function openBulkIncome(aptId){
     '<div class="hint" style="margin-top:6px">נשמרות רק שורות שיש בהן תיאור וסכום. חלוקת השותפים — לפי ברירת המחדל של הפרוייקט.</div>',
     saveLabel:"שמור הכל",onSave:function(){ return saveBulkIncome(aptId); }});
   for(var i=0;i<5;i++) addBulkIncomeRow(aptId);
+}
+function onBiPaidNow(){
+  var w=document.getElementById("bi-paid-wrap"); if(!w) return;
+  w.style.display=checked("bi-paidnow")?"block":"none";
 }
 function addBulkIncomeRow(aptId){
   var tb=document.getElementById("bi-rows"); if(!tb) return;
@@ -7327,11 +7384,15 @@ function saveBulkIncome(aptId){
   });
   if(bad){ toast("יש "+bad+" שורות חסרות (תיאור או סכום) — הן מסומנות באדום. השלם או רוקן אותן","err"); return false; }
   if(!rows.length){ toast("לא הוזנה אף שורה","warn"); return false; }
+  var paidNow=checked("bi-paidnow");
+  var mth=val("bi-paid-method")||"transfer"; if(mth==="__new") mth="transfer";
   rows.forEach(function(r){
-    DB.income.push({id:uid(),apartmentId:aptId,description:r.desc,amount:r.amount,
-      date:r.date,receivedBy:dest,split:null,units:r.units,note:r.note,deleted:false});
+    var inc={id:uid(),apartmentId:aptId,description:r.desc,amount:r.amount,
+      date:r.date,receivedBy:paidNow?"":dest,split:null,units:r.units,note:r.note,deleted:false};
+    DB.income.push(inc);
+    if(paidNow) markIncomePaid(inc,{amount:r.amount,date:r.date,method:mth,dest:dest});
   });
-  save(); toast("נוספו "+rows.length+" הכנסות","ok"); rerender();
+  save(); toast("נוספו "+rows.length+" הכנסות"+(paidNow?" · נרשמו גם התשלומים":""),"ok"); rerender();
 }
 function editIncome(id,aptId){
   var it=id?byId(DB.income,id):{description:"",amount:"",date:todayISO(),note:"",receivedBy:"",split:null};
@@ -7367,11 +7428,21 @@ function editIncome(id,aptId){
         '<div class="hint">בפרוייקט הזה לא הוגדרו יחידות השכרה, ולכן אין מה לסמן. '+
         'אחרי ההגדרה יופיעו כאן סימוני היחידות בכל הכנסה.</div>'+
         '<button class="btn btn-sm" style="margin-top:5px" onclick="closeModal();editRentalUnits(\''+aptId+'\')">🏠 הגדר יחידות השכרה</button></div>':''))+
-    /* במצב הזמנות הכסף נכנס רק בתשלומים, ולכן היעד נקבע שם ולא כאן */
+    /* במצב הזמנות הכסף נכנס רק בתשלומים — אבל הכנסה שנגבתה במקום
+       יכולה להירשם כאן גם כתשלום, בלי לפתוח את ההזמנה בנפרד. */
     (booking
-      ? '<div class="field full"><label>למי נכנס הכסף</label>'+
-        '<div class="hint">בהזמנה הכסף נכנס דרך <b>התשלומים</b> שנרשמים עליה, ולכן היעד נקבע בכל תשלום בנפרד '+
-        '(כפתור 💳 בשורת ההזמנה). כך גם התשלום החלקי נזקף נכון לבנק או לשותף.</div></div>'
+      ? '<div class="field full"><label>תשלום</label>'+
+        (incomePays(it).length
+          ? '<div class="hint">להזמנה כבר רשומים '+incomePays(it).length+' תשלומים — נהל אותם בכפתור 💳 שבשורת ההזמנה.</div>'
+          : '<label style="font-weight:400;display:block;margin:2px 0 4px"><input type="checkbox" id="in-paidnow" onchange="onInPaidNow()" style="width:auto;margin-inline-end:6px">'+
+            'ההכנסה כבר נגבתה — רשום אותה גם כתשלום</label>'+
+            '<div id="in-paid-wrap" style="display:none"><div class="form-grid">'+
+              '<div class="field"><label>סכום ששולם</label><input id="in-paid-amt" type="number" step="0.01" placeholder="ריק = הסכום המלא"></div>'+
+              '<div class="field"><label>תאריך התשלום</label><input id="in-paid-date" type="date"><div class="hint">ריק = תאריך ההכנסה</div></div>'+
+              '<div class="field"><label>אמצעי תשלום</label><select id="in-paid-method">'+methodOptions("transfer")+'</select></div>'+
+              '<div class="field"><label>למי נכנס הכסף</label><select id="in-paid-dest">'+destOptions(aptId,"")+'</select></div>'+
+            '</div></div>')+
+        '<div class="hint">בהזמנה שנגבית בחלקים — משאירים לא מסומן ורושמים כל תשלום בכפתור 💳.</div></div>'
       : '<div class="field"><label>למי נכנס הכסף</label><select id="in-dest">'+
         destOptions(aptId,it.receivedBy)+
       '</select>'+
@@ -7401,12 +7472,32 @@ function editIncome(id,aptId){
       var split=any?sp:null;
       var un=aptUnits(aptId).length?readUnitChecks("in-unit"):(it.units||null);
       if(un && !un.length) un=null;
+      /* בדיקת התשלום לפני יצירת ההכנסה — אחרת שגיאה כאן הייתה
+         משאירה הכנסה שכבר נוספה למרות שהטופס לא נסגר */
+      var paidNow=booking&&checked("in-paidnow"), pAmt=0;
+      if(paidNow){
+        pAmt=Number(val("in-paid-amt"))||amt;
+        if(pAmt<=0){ toast("סכום התשלום לא תקין","err"); return false; }
+        if(pAmt>amt+0.01){ toast("הסכום ששולם גדול מסכום ההכנסה","err"); return false; }
+      }
+      var target;
       if(id){ it.description=desc; it.amount=amt; it.date=val("in-date"); it.receivedBy=dest; it.split=split; it.units=un;
-        it.startDate=sd; it.endDate=ed; it.note=val("in-note"); }
-      else DB.income.push({id:uid(),apartmentId:aptId,description:desc,amount:amt,date:val("in-date")||todayISO(),
-        receivedBy:dest,split:split,units:un,startDate:sd,endDate:ed,note:val("in-note"),deleted:false});
-      save(); toast("נשמר","ok"); rerender();
+        it.startDate=sd; it.endDate=ed; it.note=val("in-note"); target=it; }
+      else{
+        target={id:uid(),apartmentId:aptId,description:desc,amount:amt,date:val("in-date")||todayISO(),
+          receivedBy:dest,split:split,units:un,startDate:sd,endDate:ed,note:val("in-note"),deleted:false};
+        DB.income.push(target);
+      }
+      if(paidNow){
+        var mth=val("in-paid-method")||"transfer"; if(mth==="__new") mth="transfer";
+        markIncomePaid(target,{amount:pAmt,date:val("in-paid-date")||"",method:mth,dest:val("in-paid-dest")||""});
+      }
+      save(); toast(paidNow?"נשמר · נרשם גם התשלום":"נשמר","ok"); rerender();
     }});
+}
+function onInPaidNow(){
+  var w=document.getElementById("in-paid-wrap"); if(!w) return;
+  w.style.display=checked("in-paidnow")?"block":"none";
 }
 /* ברירת המחדל לחלוקת הכנסות בפרוייקט — נקבעת פעם אחת וחלה על כל הכנסה
    שלא נקבעה לה חלוקה משלה */
