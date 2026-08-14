@@ -271,6 +271,12 @@ CREATE TABLE IF NOT EXISTS settings (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
+-- תשלום המשויך לספר — הרוכש הוא בעליו של אותו ספר. שורות שיובאו בלי
+-- עמודת רוכש נשארו בלי שיוך, והוא נגזר כאן מהספר. idempotent.
+UPDATE customer_payments cp SET customer_id = s.customer_id
+  FROM scrolls s WHERE s.id = cp.scroll_id
+    AND cp.customer_id IS NULL AND s.customer_id IS NOT NULL;
+
 -- ניקוי נתונים: המרת NULL ל-0 בעמודות כספיות/כמותיות.
 -- NULL בעמודה אחת מרעיל ביטויים כמו amount_ils + amount_usd*rate (התוצאה NULL,
 -- ו-SUM מדלג עליה) — התשלום היה נעלם מהיתרות. idempotent וזול אחרי הריצה הראשונה.

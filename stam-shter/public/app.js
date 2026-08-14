@@ -750,7 +750,7 @@ function pageCustPay() {
       { k: 'note', label: 'הערה', type: 'textarea' },
     ],
     cols: [
-      { label: 'רוכש', render: r => { const c = C.contacts.find(x => x.id === r.customer_id); return c ? esc(contactName(c)) : '—'; } },
+      { label: 'רוכש', render: r => esc(r.customer_name || '—') },
       { label: 'ספר', render: r => { const s = scrollById(r.scroll_id); return s ? esc(scrollLabel(s)) : '—'; } },
       { label: 'תאריך', render: r => dt(r.date) },
       { label: 'ש"ח', cls: 'num', render: r => mCell(r.amount_ils), total: rows => mCell(sumBy(rows, 'amount_ils')) },
