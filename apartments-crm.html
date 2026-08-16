@@ -1,4 +1,4 @@
-<meta charset="utf-8">
+﻿<meta charset="utf-8">
 <title>לווי וניהול פרוייקטים</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- אייקון בית ללשונית — SVG מוטמע, בלי בקשת רשת חיצונית -->
@@ -369,6 +369,53 @@ var CATEGORIES_SUGGESTED = ["אדריכל","יועצים ומתכננים","עו
   "חשמל","אינסטלציה","מיזוג אוויר","גבס","טיח","ריצוף וחיפוי","צבע","אלומיניום","נגרות",
   "מסגרות","איטום","פיתוח וחצר","מעלית","מטבח","דלתות","מדידות","פיקוח","שיפוצים",
   "חומרי בניין","הובלות ופינוי","ביטוח","מימון וריבית","שיווק ותיווך","הוצאות שוטפות","שונות"];
+/* ============================================================
+   בורר עם הקלדה (combobox)
+   ------------------------------------------------------------
+   רשימה ארוכה (קטגוריות, פרוייקטים, חשבונות) — במקום לגלול,
+   מקלידים ומסננים. בנוי על <input> + <datalist> כדי שיישאר טופס
+   רגיל: הערך נקרא דרך val() כמו כל שדה, ובלי תלות בספרייה.
+   הפונקציה מחזירה HTML; הערך הנבחר מומר חזרה ל-id ע"י pickId().
+   ============================================================ */
+var _PICK={};       // id של השדה → רשימת {id,label} לפענוח חוזר
+function pickerHtml(fieldId,items,selId,opts){
+  opts=opts||{};
+  _PICK[fieldId]=items;
+  var sel=items.filter(function(x){ return x.id===selId; })[0];
+  var lid=fieldId+"-list";
+  return '<input id="'+fieldId+'" list="'+lid+'" value="'+esc(sel?sel.label:"")+'"'+
+    ' placeholder="'+esc(opts.placeholder||"הקלד לחיפוש…")+'"'+
+    (opts.onchange?' onchange="'+opts.onchange+'" oninput="'+opts.onchange+'"':'')+
+    ' autocomplete="off">'+
+    '<datalist id="'+lid+'">'+
+      items.map(function(x){ return '<option value="'+esc(x.label)+'"></option>'; }).join("")+
+    '</datalist>';
+}
+/* הערך שנבחר בבורר → id. התאמה מדויקת, ואם אין — התאמה יחידה חלקית.
+   ריק מחזיר "" ; טקסט שלא זוהה מחזיר null (כדי שאפשר יהיה להתריע). */
+function pickId(fieldId){
+  var raw=String(val(fieldId)||"").trim();
+  if(!raw) return "";
+  var items=_PICK[fieldId]||[];
+  var exact=items.filter(function(x){ return normKey(x.label)===normKey(raw); });
+  if(exact.length) return exact[0].id;
+  var part=items.filter(function(x){ return normKey(x.label).indexOf(normKey(raw))>=0; });
+  if(part.length===1) return part[0].id;
+  return null;
+}
+/* קטגוריה מתוך בורר-הקלדה: שם קיים מוחזר כ-id, ושם חדש נוצר במקום —
+   כך אפשר להקליד קטגוריה שלא הייתה בלי לצאת מהטופס. */
+function pickCategoryId(fieldId){
+  var raw=String(val(fieldId)||"").trim();
+  if(!raw) return "";
+  var id=pickId(fieldId);
+  if(id) return id;
+  var ex=active(DB.categories).filter(function(c){ return normKey(c.name)===normKey(raw); })[0];
+  if(ex) return ex.id;
+  var c={id:uid(),name:raw,deleted:false};
+  DB.categories.push(c);
+  return c.id;
+}
 function catsSorted(){
   return active(DB.categories).slice().sort(function(a,b){
     return String(a.name).localeCompare(String(b.name),"he"); });
@@ -440,7 +487,11 @@ function invoiceStatusOptions(sel,withUnchanged){
     '<option value="pending"'+(sel==="pending"?" selected":"")+'>⏳ ממתין לחשבונית</option>'+
     '<option value="none"'+(sel==="none"?" selected":"")+'>לא צריך חשבונית</option>';
 }
-var BASE_TYPES = {full:"מלא (כל הסכום)", net17:"נטו (מע\"מ 17%)", net18:"נטו (מע\"מ 18%)"};
+var BASE_TYPES = {full:"מלא (כל הסכום)", net17:"נטו (מע\"מ 17%)", net18:"נטו (מע\"מ 18%)",
+  paid:"לפי מה ששולם לספק", paidNet17:"ששולם לספק — נטו (17%)", paidNet18:"ששולם לספק — נטו (18%)"};
+/* בסיסי "לפי מה ששולם" — דמי הניהול גדלים ככל שמשלמים לספק בפועל,
+   במקום להיגזר מסכום העסקה כולה כבר ביום הראשון. */
+function mgmtBaseIsPaid(e){ return /^paid/.test(String(e&&e.mgmtBaseType||"")); }
 /* ההערה והתווית של תשלום "שווה ערך" האוטומטי של דמי ניהול */
 var AUTO_MGMT_NOTE = "חיליק פנימי";
 /* אמצעי התשלום כפי שמוצג בטבלאות. תשלום אוטומטי מוצג בשם שלו
@@ -570,7 +621,7 @@ function hasDirtyMark(){ try{ return localStorage.getItem(LSKEY+"_dirty")==="1";
 /* ישויות שעוברות לסל המחזור — משמש גם לחותמת המחיקה וגם למסך עצמו */
 var RECYCLE_ENTITIES=["apartments","partners","apartmentPartners","managers","categories",
   "expenses","payments","expenseSplits","expenseManagerFees","deposits","income",
-  "accounts","withdrawals","bankMoves","stmtBanks","users"];
+  "accounts","withdrawals","bankMoves","stmtBanks","recurring","users"];
 /* חותמת "מתי נמחק ומי מחק".
    נעשית מרכזית בשמירה ולא בכל מקום מחיקה בנפרד — כך גם מחיקות מדורגות
    (שלב-אב עם תתי-שלבים, פרוייקט עם כל התנועות) מקבלות אותה, ואי אפשר
@@ -667,7 +718,8 @@ document.addEventListener("keydown",function(e){
 function blankDB(){
   return {meta:{version:1,rev:0}, partners:[], apartments:[], apartmentPartners:[], managers:[],
     categories:[], expenses:[], expenseSplits:[], expenseManagerFees:[], accounts:[],
-    payments:[], deposits:[], income:[], bankMoves:[], stmtBanks:[], withdrawals:[], incMgmtPays:[], users:[], settings:{sheetsUrl:"", currency:"₪", paymentMethods:{}}};
+    payments:[], deposits:[], income:[], bankMoves:[], stmtBanks:[], withdrawals:[], incMgmtPays:[],
+    recurring:[], users:[], settings:{sheetsUrl:"", currency:"₪", paymentMethods:{}}};
 }
 function toNum(v){ var n=Number(v); return isFinite(n)?n:0; }
 function toISO(v){ v=String(v==null?"":v).slice(0,10); return /^\d{4}-\d{2}-\d{2}$/.test(v)?v:""; }
@@ -705,6 +757,8 @@ function normalizeDB(d){
   (d.deposits||[]).forEach(function(x){ x.amount=toNum(x.amount); x.date=toISO(x.date); });
   d.withdrawals=d.withdrawals||[];
   (d.withdrawals||[]).forEach(function(x){ x.amount=toNum(x.amount); x.date=toISO(x.date); });
+  d.recurring=d.recurring||[];
+  (d.recurring||[]).forEach(function(r){ r.amount=toNum(r.amount); r.nextDate=toISO(r.nextDate); });
   /* דמי ניהול על הכנסות: אחוז למנהל; החוב מוחזק כשלב הוצאה אוטומטי.
      תשלומים שנרשמו במבנה הישן (incMgmtPays) מומרים פעם אחת לתשלומים
      רגילים על השלב — מזהה קבוע ("imp"+id) מונע כפילות בהרצה חוזרת. */
@@ -950,7 +1004,19 @@ function expenseStatus(eId){ var e=byId(DB.expenses,eId); var paid=expensePaid(e
   if(paid>=amt-0.01) return "paid"; return "partial"; }
 
 // דמי ניהול
-function mgmtBase(e){ var a=Number(e.amount)||0; if(e.mgmtBaseType==="net17")return a/1.17; if(e.mgmtBaseType==="net18")return a/1.18; return a; }
+function mgmtBase(e){
+  var t=String(e.mgmtBaseType||"");
+  /* "לפי מה ששולם" — רק תשלומים לספק; תשלומים למנהלים אינם בסיס לעצמם */
+  var a=mgmtBaseIsPaid(e) ? supplierPaidOnExpense(e.id) : (Number(e.amount)||0);
+  if(t==="net17"||t==="paidNet17") return a/1.17;
+  if(t==="net18"||t==="paidNet18") return a/1.18;
+  return a;
+}
+/* מה ששולם לספק על השלב (בלי תשלומי דמי ניהול למנהלים) */
+function supplierPaidOnExpense(eId){
+  return round2(expPayments(eId).filter(function(p){ return p.recipientType!=="manager"; })
+    .reduce(function(s,p){ return s+(Number(p.amount)||0); },0));
+}
 function mgmtVatFactor(e){ return 1+(Number(e.mgmtVatRate)||0)/100; }
 function mgrFeeLiveOnExpense(eId,mId){ // כולל מע"מ, רק חלק פעיל (נוכחי + דחוי ששוחרר)
   var e=byId(DB.expenses,eId); if(!e||!e.mgmtEnabled) return 0;
@@ -1478,7 +1544,7 @@ function clientScopeMgmt(){
   DB.apartments    = (DB.apartments||[]).filter(function(a){ return canSeeApartment(a.id); });
   /* לא רלוונטי לדמי ניהול — ולא אמור להיחשף */
   DB.expenseSplits=[]; DB.deposits=[]; DB.income=[]; DB.partners=[]; DB.apartmentPartners=[]; DB.accounts=[];
-  DB.bankMoves=[]; DB.stmtBanks=[]; DB.withdrawals=[]; DB.incMgmtPays=[];
+  DB.bankMoves=[]; DB.stmtBanks=[]; DB.withdrawals=[]; DB.incMgmtPays=[]; DB.recurring=[];
 }
 /* "פרוייקטים מורשים" חלות על כל תפקיד חוץ ממנהל. קודם הן נאכפו רק על
    תפקיד "שותף", כך שצופה שהוגבל לפרוייקט אחת ראה בפועל את כולן. */
@@ -1594,6 +1660,10 @@ function navHtml(){
   }
   var items=[["dashboard","🏠 כל הפרוייקטים"],["reports","📊 דוח שותפים כללי"],["mgmt","💼 דוח דמי ניהול"]];
   if(can("edit")) items.push(["bankmatch","🏦 התאמת בנק"]);
+  if(can("edit")){
+    var openRec=openRecurExpenses().length;
+    items.push(["recurring","🔁 הוצאות תקופתיות"+(openRec?" ("+openRec+")":"")]);
+  }
   if(can("settings")) items.push(["settings","⚙️ הגדרות"]);
   if(can("edit")) items.push(["import","📥 ייבוא"]);
   if(can("edit")) items.push(["recycle","🗑️ סל מחזור"]);
@@ -1640,6 +1710,7 @@ function renderViewInner(){
     case "mgmt": c.innerHTML=moduleMgmtReport(); break;
     case "settings": if(!can("settings")){ toast("אין לך גישה להגדרות","err"); go("dashboard",{}); return; } c.innerHTML=viewSettings(); break;
     case "bankmatch": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewBankMatch(); break;
+    case "recurring": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewRecurring(); break;
     case "import": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewImport(); break;
     case "recycle": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewRecycle(); break;
     default: c.innerHTML=viewDashboard();
@@ -1710,7 +1781,13 @@ async function doLogin(){
   if(!code){ toast("יש להזין קוד","err"); return; }
   var h=await hashCode(code);
   var j=await api({action:"login",codeHash:h});
-  if(!j||!j.ok){ toast((j&&j.error==="network")?"אין חיבור לשרת":"שם המשתמש או קוד הכניסה שגויים","err"); return; }
+  if(!j||!j.ok){
+    var er=j&&j.error;
+    toast(er==="network" ? "אין חיבור לשרת"
+      : er==="too-many" ? ("יותר מדי ניסיונות כניסה — נסה שוב בעוד "+Math.ceil((j.retryAfter||120)/60)+" דקות")
+      : "שם המשתמש או קוד הכניסה שגויים","err");
+    return;
+  }
   /* הקוד הוא המפתח בשרת; השם חייב להתאים למשתמש שהקוד שייך לו.
      ההתאמה סלחנית לרווחים (normKey) אבל לא לשם אחר. */
   if(name && j.user && normKey(String(j.user.name))!==normKey(name)){
@@ -2519,7 +2596,7 @@ function loadSyncBase(){
 }
 var MERGE_TABLES=["apartments","partners","apartmentPartners","managers","categories",
   "expenses","expenseSplits","expenseManagerFees","accounts","payments","deposits",
-  "income","bankMoves","stmtBanks","withdrawals","incMgmtPays","users"];
+  "income","bankMoves","stmtBanks","withdrawals","incMgmtPays","recurring","users"];
 function merge3(baseStr,mine,theirs){
   var base=null;
   try{ base=baseStr?JSON.parse(baseStr):null; }catch(e){ base=null; }
@@ -2793,6 +2870,7 @@ async function boot(){
     if(r===null){ CU=null; }           // אין רשת ואין עבודה מקומית — מסך כניסה עם האזהרה
     else if(r===false){ /* אומת כלא-תקף — כבר נוקה */ }
   }
+  try{ runRecurring(true); }catch(e){}   // הוצאות תקופתיות שהגיע מועדן
   renderApp();
   watchTables();     // כלי טבלה + כפתור ייצוא לכל טבלה, גם אחרי רינדור חלקי
   watchSelects();    // זיכרון הבחירה הקודמת בבוררים עם "הוסף חדש…"
@@ -3987,11 +4065,15 @@ function openBulkExpEdit(aptId){
   openModal({title:"✏️ עדכון מרוכז — "+exps.length+" שלבים",wide:true,bodyHtml:
     '<div class="hint" style="margin-bottom:10px">שדה שנשאר על <b>"— ללא שינוי —"</b> לא ישתנה באף שלב.</div>'+
     '<div class="form-grid">'+
-      '<div class="field"><label>קטגוריה</label><select id="eb-cat" onfocus="this.setAttribute(\'data-prev\',this.value)" onchange="onCatPick(\'eb-cat\')">'+
-        '<option value="__keep">— ללא שינוי —</option>'+
-        '<option value="">ללא קטגוריה</option>'+
-        catsSorted().map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>'; }).join("")+
-        '<option value="__new">➕ קטגוריה חדשה…</option></select></div>'+
+      '<div class="field"><label>קטגוריה</label>'+
+        '<select id="eb-cat-mode" onchange="onEbCatMode()" style="margin-bottom:5px">'+
+          '<option value="__keep">— ללא שינוי —</option>'+
+          '<option value="">ללא קטגוריה</option>'+
+          '<option value="set">קטגוריה שאבחר…</option></select>'+
+        '<div id="eb-cat-wrap" style="display:none">'+
+          pickerHtml("eb-cat",catsSorted().map(function(c){return {id:c.id,label:c.name};}),"",
+            {placeholder:"הקלד קטגוריה…"})+
+        '</div></div>'+
       '<div class="field"><label>סיווג</label><select id="eb-class">'+
         '<option value="__keep">— ללא שינוי —</option>'+
         Object.keys(CLASSIFICATIONS).map(function(k){ return '<option value="'+k+'">'+CLASSIFICATIONS[k]+'</option>'; }).join("")+'</select></div>'+
@@ -4019,6 +4101,10 @@ function openBulkExpEdit(aptId){
       '<select id="eb-hidden"><option value="__keep">— ללא שינוי —</option><option value="on">הסתר</option><option value="off">חשוף</option></select></div>':''),
     saveLabel:"עדכן "+exps.length+" שלבים",onSave:function(){ return applyBulkExpEdit(aptId,ids); }});
 }
+function onEbCatMode(){
+  var w=document.getElementById("eb-cat-wrap"); if(!w) return;
+  w.style.display=(val("eb-cat-mode")==="set")?"block":"none";
+}
 /* מציגים את שדות האחוזים רק כשנבחר "אחוזים שאזין כאן" */
 function onEbSplitMode(){
   var w=document.getElementById("eb-split-custom"); if(!w) return;
@@ -4026,11 +4112,14 @@ function onEbSplitMode(){
 }
 function applyBulkExpEdit(aptId,ids){
   if(!can("edit")){ toast("אין הרשאה","err"); return false; }
-  var cat=val("eb-cat"), cls=val("eb-class"), date=val("eb-date");
+  var catMode=val("eb-cat-mode")||"__keep";
+  var cat=catMode==="__keep"?"__keep":(catMode===""?"":pickCategoryId("eb-cat"));
+  if(catMode==="set" && !cat){ toast("הקלד קטגוריה, או בחר \"ללא שינוי\"","err"); return false; }
+  var cls=val("eb-class"), date=val("eb-date");
   var mg=document.getElementById("eb-mgmt")?val("eb-mgmt"):"__keep";
   var hid=document.getElementById("eb-hidden")?val("eb-hidden"):"__keep";
   var splitMode=document.getElementById("eb-split")?val("eb-split"):"__keep";
-  if((cat==="__keep"||cat==="__new") && cls==="__keep" && !date && mg==="__keep" && hid==="__keep" && splitMode==="__keep"){
+  if(cat==="__keep" && cls==="__keep" && !date && mg==="__keep" && hid==="__keep" && splitMode==="__keep"){
     toast("לא נבחר מה לעדכן","warn"); return false;
   }
   var mgrs=apManagers(aptId);
@@ -4054,7 +4143,7 @@ function applyBulkExpEdit(aptId,ids){
   var n=0;
   ids.forEach(function(id){
     var e=byId(DB.expenses,id); if(!e||e.deleted || isContainer(e.id)) return;
-    if(cat!=="__keep" && cat!=="__new") e.categoryId=cat;
+    if(cat!=="__keep") e.categoryId=cat;
     if(cls!=="__keep") e.classification=cls;
     if(date) e.date=date;
     if(splitRows){
@@ -4428,9 +4517,10 @@ function openExpenseEditor(eId,aptId,presetParent){
      '<div class="field"><label>סיווג</label><select id="ex-class">'+classOptions(e?e.classification:"investment")+'</select></div>'+
      /* לשלב-אב אין קטגוריה משלו — הוא לא נספר באף דוח קטגוריות */
      (cont?'':
-     '<div class="field"><label>קטגוריה</label><select id="ex-cat" onchange="onCatPick(\'ex-cat\')">'+
-       catOptions(e?e.categoryId:"")+'</select>'+
-       '<div class="hint">לפי מה שהכסף הלך — חשמל, אדריכל, ריצוף. מכאן נבנה דוח הקטגוריות של הפרויקט.</div></div>')+
+     '<div class="field"><label>קטגוריה</label>'+
+       pickerHtml("ex-cat",catsSorted().map(function(c){return {id:c.id,label:c.name};}),(e?e.categoryId:""),
+         {placeholder:"הקלד קטגוריה…"})+
+       '<div class="hint">לפי מה שהכסף הלך — חשמל, אדריכל, ריצוף. אפשר להקליד; שם חדש ייווצר כקטגוריה.</div></div>')+
      ''+
      '<div class="field full"><label>הערה</label><input id="ex-note" value="'+esc(e?e.note:"")+'" placeholder="הערה חופשית"></div>'+
      '<div class="field full"><label><input type="checkbox" id="ex-inv" style="width:auto" '+(e&&e.hasInvoice?"checked":"")+'> יש חשבונית/קבלה</label><input id="ex-link" placeholder="קישור לקבלה (אופציונלי)" value="'+esc(e?e.invoiceLink:"")+'" style="margin-top:4px"></div>'+
@@ -4545,7 +4635,7 @@ function saveExpense(eId,aptId){
   if(eId){ e=byId(DB.expenses,eId); }
   else{ e={id:uid(),apartmentId:aptId,deleted:false}; DB.expenses.push(e); eId=e.id; }
   e.description=desc; e.amount=amount; e.date=val("ex-date")||todayISO();
-  if(document.getElementById("ex-cat")){ var cv=val("ex-cat"); e.categoryId=(cv==="__new"?(e.categoryId||""):cv); }
+  if(document.getElementById("ex-cat")) e.categoryId=pickCategoryId("ex-cat");
   else e.categoryId=e.categoryId||"";
   e.classification=val("ex-class"); e.note=val("ex-note");
   if(hasParentField) e.parentId = pv || null;
@@ -5050,15 +5140,18 @@ function openQuickExpense(){
   _qeParentApt=null; _qePayBuilt=false; _qePayApt=null; _qePayTouched=false; _qeMgmtApt=null;
   openModal({title:"➕ הוצאה מהירה",wide:true,bodyHtml:
     '<div class="form-grid">'+
-      '<div class="field full"><label>פרוייקט / פרויקט</label><select id="qe-apt" onchange="renderQuickExpenseInfo()">'+
-        apts.map(function(a){return '<option value="'+a.id+'"'+(a.id===cur?" selected":"")+'>'+esc(a.name)+'</option>';}).join("")+
-      '</select></div>'+
+      '<div class="field full"><label>פרוייקט / פרויקט</label>'+
+        pickerHtml("qe-apt",apts.map(function(a){return {id:a.id,label:a.name};}),cur,
+          {placeholder:"הקלד שם פרוייקט…",onchange:"renderQuickExpenseInfo()"})+
+        '<div class="hint">אפשר להקליד חלק מהשם במקום לגלול</div></div>'+
       '<div class="field"><label>תיאור השלב</label><input id="qe-desc" placeholder="למשל: קבלן שלד תשלום ב׳" onkeydown="if(event.key===\'Enter\'){event.preventDefault();document.getElementById(\'qe-amount\').focus();}"></div>'+
       '<div class="field"><label>סכום (₪)</label><input id="qe-amount" type="number" step="0.01" oninput="renderQuickExpenseInfo()"></div>'+
       '<div class="field"><label>תאריך</label><input id="qe-date" type="date" value="'+todayISO()+'"></div>'+
       '<div class="field"><label>סיווג</label><select id="qe-class">'+classOptions("investment")+'</select></div>'+
-      '<div class="field"><label>קטגוריה</label><select id="qe-cat" onchange="onCatPick(\'qe-cat\')">'+catOptions("")+'</select></div>'+
-''+
+      '<div class="field"><label>קטגוריה</label>'+
+        pickerHtml("qe-cat",catsSorted().map(function(c){return {id:c.id,label:c.name};}),"",
+          {placeholder:"הקלד קטגוריה…"})+
+        '<div class="hint">שם שאינו ברשימה — תיווצר קטגוריה חדשה</div></div>'+
       '<div class="field full"><label>הערה</label><input id="qe-note"></div>'+
     '</div>'+
     '<div id="qe-mgmt-box"></div>'+
@@ -5119,7 +5212,7 @@ function updateQuickMgmtPreview(){
   var base = bt==="net17" ? amt/1.17 : bt==="net18" ? amt/1.18 : amt;
   var vat=1+(Number(val("qe-vat"))||0)/100;
   var cur=0, def=0;
-  apManagers(val("qe-apt")).forEach(function(m){
+  apManagers(pickId("qe-apt")).forEach(function(m){
     cur+=base*(Number(val("qe-mf-cur-"+m.id))||0)/100*vat;
     def+=base*(Number(val("qe-mf-def-"+m.id))||0)/100*vat;
   });
@@ -5143,7 +5236,7 @@ function renderQuickParent(aptId){
 function renderQuickExpenseInfo(){ return withIndex(function(){ return renderQuickExpenseInfoInner(); }); }
 function renderQuickExpenseInfoInner(){
   var box=document.getElementById("qe-info"); if(!box) return;
-  var aptId=val("qe-apt"); var a=byId(DB.apartments,aptId);
+  var aptId=pickId("qe-apt"); var a=byId(DB.apartments,aptId);
   renderQuickParent(aptId);
   renderQuickMgmt(aptId);
   updateQuickMgmtPreview();
@@ -5178,7 +5271,7 @@ function toggleQuickPayNow(){
 var _qePayBuilt=false, _qePayApt=null, _qePayTouched=false;
 function renderQuickPayNow(force){
   var w=document.getElementById("qe-pay"); if(!w) return;
-  var aptId=val("qe-apt");
+  var aptId=pickId("qe-apt");
   var amt=Number(val("qe-amount"))||0;
   if(_qePayBuilt && _qePayApt===aptId && force!==true){
     var af=document.getElementById("qe-pay-amount");
@@ -5209,7 +5302,8 @@ function onQuickPayAccount(){
 }
 function saveQuickExpense(){
   if(!can("edit")){ toast("אין הרשאה","err"); return false; }
-  var aptId=val("qe-apt");
+  var aptId=pickId("qe-apt");
+  if(!aptId){ toast(aptId===null?"שם הפרוייקט לא זוהה — בחר מהרשימה":"בחר פרוייקט","err"); return false; }
   var desc=val("qe-desc").trim();
   var amount=Number(val("qe-amount"))||0;
   if(!desc){ toast("יש להזין תיאור","err"); return false; }
@@ -5252,7 +5346,7 @@ function saveQuickExpense(){
   var mgmtOn = !!document.getElementById("qe-mgmt") && val("qe-mgmt")==="on";
   var mgmtVatRaw = Number(val("qe-vat"));
   var eid=uid();
-  DB.expenses.push({id:eid,apartmentId:aptId,categoryId:(val("qe-cat")==="__new"?"":val("qe-cat")||""),
+  DB.expenses.push({id:eid,apartmentId:aptId,categoryId:pickCategoryId("qe-cat"),
     classification:val("qe-class")||"investment",
     description:desc,amount:amount,date:date,note:val("qe-note")||"",
     hasInvoice:false,invoiceLink:"",
@@ -5295,16 +5389,17 @@ function openQuickPay(){
   if(!apts.length){ toast("אין פרוייקטים במערכת","err"); return; }
   var cur=state.params.apartmentId||apts[0].id;
   openModal({title:"💳 תשלום מהיר",wide:true,bodyHtml:
-    '<div class="field"><label>בחר פרוייקט</label><select id="qp-apt" onchange="renderQuickPayList()">'+
-      apts.map(function(a){return '<option value="'+a.id+'"'+(a.id===cur?" selected":"")+'>'+esc(a.name)+'</option>';}).join("")+
-    '</select></div>'+
+    '<div class="field"><label>בחר פרוייקט</label>'+
+      pickerHtml("qp-apt",apts.map(function(a){return {id:a.id,label:a.name};}),cur,
+        {placeholder:"הקלד שם פרוייקט…",onchange:"renderQuickPayList()"})+
+      '<div class="hint">אפשר להקליד חלק מהשם במקום לגלול</div></div>'+
     '<div class="field">'+searchBox("qp-q",Q.quick,"חיפוש שלב…","Q.quick=this.value;renderQuickPayList()")+'</div>'+
     '<div id="qp-list"></div>'});
   renderQuickPayList();
 }
 function renderQuickPayList(){ return withIndex(function(){ return renderQuickPayListInner(); }); }
 function renderQuickPayListInner(){
-  var aptId=val("qp-apt"); var box=document.getElementById("qp-list"); if(!box) return;
+  var aptId=pickId("qp-apt"); var box=document.getElementById("qp-list"); if(!box) return;
   var allOpen=apLeafExpenses(aptId).filter(function(e){ return expenseRemaining(e.id)>0.01; });
   var open=allOpen.filter(function(e){ return matches(Q.quick, e.description+" "+(e.note||"")); })
     .sort(function(x,y){ return x.date<y.date?-1:1; });
@@ -6850,6 +6945,7 @@ function viewBankMatch(){
   h+='<div class="toolbar">'+
     (can("edit")?'<button class="btn btn-primary btn-sm" onclick="openBankMoveImport()">📥 הדבקת שורות מהבנק</button> '+
       '<button class="btn btn-sm" onclick="editBankMove(null)">➕ תנועה ידנית</button> '+
+      (all.length?'<button class="btn btn-sm" onclick="openBulkBankMoveEdit()">✏️ עדכון מרוכז <span id="bm-count"></span></button> ':'')+
       (openMoves.length?'<button class="btn btn-sm" onclick="runAutoMatch()">⚡ התאמה אוטומטית</button> ':'')+
       (all.length?'<button class="btn btn-danger btn-sm" onclick="clearMatchedMoves()">🗑️ נקה מותאמות</button> ':''):'')+
     '<div class="sp"></div></div>';
@@ -6869,17 +6965,21 @@ function viewBankMatch(){
     '</select>'+
     '<div class="sp"></div><span class="hint">'+countLine(list.length,all.length,"שורות")+'</span></div>';
 
+  var selBm=can("edit");
   h+='<div class="table-wrap"><table class="tbl"><thead><tr>'+
+    (selBm?'<th class="chk" data-xl-skip="1" style="width:30px"><input type="checkbox" title="סמן הכל" style="width:auto" onclick="bmAll(this.checked)"></th>':'')+
     '<th>תאריך</th><th>שם</th><th>סכום</th><th>בנק</th><th>סוג</th><th>קטגוריה</th><th>פרטים</th><th>יש מסמך</th>'+
     '<th>סטטוס</th><th>הותאם ל…</th><th></th>'+
     '</tr></thead><tbody>';
-  if(!list.length) h+='<tr><td colspan="11" class="empty">'+(all.length?"אין שורות שמתאימות לסינון":"עוד לא הודבקו שורות מהבנק")+'</td></tr>';
+  if(!list.length) h+='<tr><td colspan="'+(selBm?12:11)+'" class="empty">'+(all.length?"אין שורות שמתאימות לסינון":"עוד לא הודבקו שורות מהבנק")+'</td></tr>';
   list.slice().sort(function(x,y){ return x.date<y.date?1:-1; }).forEach(function(m){
     var mm=moveMatches(m);
     /* שורות ותיקות נקלטו עם "תיאור" אחד — הוא משמש כשם אם אין שם */
     var nm=m.name||m.description||"";
     var det=m.name?(m.details||m.description||""):(m.details||"");
-    h+='<tr><td>'+dateHe(m.date)+'</td>'+
+    h+='<tr>'+
+      (selBm?'<td class="chk"><input type="checkbox" class="bm-x" value="'+m.id+'" style="width:auto" onchange="bmCount()"></td>':'')+
+      '<td>'+dateHe(m.date)+'</td>'+
       '<td><b>'+esc(nm||"—")+'</b></td>'+
       '<td><b>'+money(m.amount)+'</b></td>'+
       '<td>'+esc(moveBankLabel(m))+'</td>'+
@@ -6892,6 +6992,7 @@ function viewBankMatch(){
         (mm.length?esc(mm.map(function(x){ var i=byId(DB.income,x.incomeId); return (i?i.description:"—")+" ("+money(x.amount)+")"; }).join(" · ")):"—")+'</td>'+
       '<td class="right" style="white-space:nowrap">'+
         (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="openMoveMatch(\''+m.id+'\')" title="התאמה">🔗</button>'+
+        '<button class="btn btn-ghost btn-sm" onclick="editBankMove(\''+m.id+'\')" title="עריכת השורה">✏️</button>'+
         '<button class="btn btn-ghost btn-sm" onclick="editBankMove(\''+m.id+'\')" title="עריכה">✏️</button>'+
         (m.ignored?'<button class="btn btn-ghost btn-sm" onclick="toggleMoveIgnore(\''+m.id+'\')" title="החזר לטיפול">↩️</button>'
                   :'<button class="btn btn-ghost btn-sm" onclick="toggleMoveIgnore(\''+m.id+'\')" title="התעלם משורה זו">🚫</button>')+
@@ -7087,6 +7188,87 @@ function undoMatchFromUi(moveId,matchId){
   undoMoveMatch(m,matchId);
   save(); toast("ההתאמה בוטלה והתשלום הוסר","ok");
   renderMoveCandidates(moveId);
+}
+/* ---------- עדכון מרוכז לשורות בנק ---------- */
+function bmAll(v){ visibleBoxes(".bm-x").forEach(function(c){ c.checked=v; }); bmCount(); }
+function bmCount(){
+  var n=visibleBoxes(".bm-x:checked").length;
+  var el=document.getElementById("bm-count");
+  if(el) el.textContent=n?("("+n+")"):"";
+}
+function openBulkBankMoveEdit(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var ids=visibleBoxes(".bm-x:checked").map(function(c){ return c.value; });
+  if(!ids.length){ toast("סמן קודם שורות לעדכון (העמודה הראשונה בטבלה)","warn"); return; }
+  var rows=ids.map(function(id){ return byId(DB.bankMoves,id); }).filter(Boolean);
+  var sum=round2(rows.reduce(function(s,m){ return s+(Number(m.amount)||0); },0));
+  var banks=stmtBanks();
+  openModal({title:"✏️ עדכון מרוכז — "+rows.length+" שורות בנק",wide:true,bodyHtml:
+    '<div class="stat-grid" style="margin-bottom:12px">'+
+      stat("שורות שנבחרו",rows.length)+stat("סכום כולל",money(sum))+
+    '</div>'+
+    '<div class="hint" style="margin-bottom:10px">שדה שנשאר על <b>"— ללא שינוי —"</b> (או ריק) לא ישתנה באף שורה.</div>'+
+    '<div class="form-grid">'+
+      '<div class="field"><label>בנק</label><select id="bb-bank">'+
+        '<option value="">— ללא שינוי —</option>'+
+        banks.map(function(b){ return '<option value="'+b.id+'">🏦 '+esc(b.name)+'</option>'; }).join("")+
+      '</select></div>'+
+      '<div class="field"><label>תאריך</label><input id="bb-date" type="date"><div class="hint">ריק = ללא שינוי</div></div>'+
+      '<div class="field"><label>סוג</label><input id="bb-kind" placeholder="ריק = ללא שינוי"></div>'+
+      '<div class="field"><label>קטגוריה</label><input id="bb-style" placeholder="ריק = ללא שינוי"></div>'+
+      '<div class="field"><label>יש מסמך</label><select id="bb-doc">'+
+        '<option value="__keep">— ללא שינוי —</option>'+
+        '<option value="1">✔ יש</option><option value="0">אין</option></select></div>'+
+      '<div class="field"><label>סטטוס</label><select id="bb-ignore">'+
+        '<option value="__keep">— ללא שינוי —</option>'+
+        '<option value="1">🚫 סמן "התעלם"</option><option value="0">↩️ החזר לטיפול</option></select></div>'+
+      '<div class="field full"><label>פרטים</label>'+
+        '<select id="bb-det-mode" onchange="onBbDetMode()" style="margin-bottom:5px">'+
+          '<option value="keep">— ללא שינוי —</option>'+
+          '<option value="set">להחליף בטקסט שאכתוב</option>'+
+          '<option value="append">להוסיף בסוף</option>'+
+          '<option value="clear">למחוק</option></select>'+
+        '<input id="bb-details" placeholder="הטקסט שייכנס" disabled></div>'+
+    '</div>',
+    saveLabel:"עדכן "+rows.length+" שורות",onSave:function(){ return applyBulkBankMoveEdit(ids); }});
+}
+function onBbDetMode(){
+  var m=val("bb-det-mode"), inp=document.getElementById("bb-details");
+  if(!inp) return;
+  var on=(m==="set"||m==="append");
+  inp.disabled=!on; if(!on) inp.value=""; if(on) inp.focus();
+}
+function applyBulkBankMoveEdit(ids){
+  if(!can("edit")){ toast("אין הרשאה","err"); return false; }
+  var bank=val("bb-bank"), date=val("bb-date");
+  var kind=val("bb-kind").trim(), style=val("bb-style").trim();
+  var doc=val("bb-doc")||"__keep", ign=val("bb-ignore")||"__keep";
+  var dMode=val("bb-det-mode")||"keep", dTxt=val("bb-details").trim();
+  if(!bank && !date && !kind && !style && doc==="__keep" && ign==="__keep" && dMode==="keep"){
+    toast("לא נבחר מה לעדכן","warn"); return false; }
+  if((dMode==="set"||dMode==="append") && !dTxt){ toast("כתוב את הטקסט שייכנס לפרטים","err"); return false; }
+  var n=0, skipped=0;
+  ids.forEach(function(id){
+    var m=byId(DB.bankMoves,id); if(!m||m.deleted) return;
+    if(bank){ m.stmtBankId=bank; m.accountId=""; }
+    if(date) m.date=date;
+    if(kind) m.kind=kind;
+    if(style) m.style=style;
+    if(doc!=="__keep") m.hasDoc=(doc==="1");
+    if(ign!=="__keep"){
+      /* שורה שכבר הותאמה לא הופכת ל"התעלם" — זה היה מסתיר תשלום קיים */
+      if(ign==="1" && moveMatches(m).length){ skipped++; }
+      else m.ignored=(ign==="1");
+    }
+    if(dMode==="set") m.details=dTxt;
+    else if(dMode==="append"){ var o=String(m.details||"").trim(); m.details=o?(o+" | "+dTxt):dTxt; }
+    else if(dMode==="clear") m.details="";
+    n++;
+  });
+  save();
+  toast("עודכנו "+n+" שורות"+(skipped?" · "+skipped+" מותאמות לא סומנו כ\"התעלם\"":""),skipped?"warn":"ok");
+  rerender();
+  return true;
 }
 /* ---------- תנועה ידנית — שורה אחת בלי הדבקה ---------- */
 function editBankMove(id){
@@ -7934,6 +8116,7 @@ function moduleApartmentReports(aptId){
     {key:"payer",label:"💳 כל התשלומים של משלם",show:true,render:function(){ return payerReportHtml(aptId); }},
     {key:"category",label:"📁 לפי קטגוריה",show:true,render:function(){ return categoryReportHtml(aptId); }},
     {key:"monthly",label:"📅 סיכום חודשי",show:true,render:function(){ return monthlySummaryReportHtml(aptId); }},
+    {key:"yearly",label:"📅 סיכום שנתי",show:true,render:function(){ return yearlySummaryReportHtml(aptId); }},
     {key:"incYear",label:"📆 הכנסות לפי שנה",show:apIncome(aptId).length>0,render:function(){ return incomeYearReportHtml(aptId); }},
     {key:"catYear",label:"📆 קטגוריה לפי שנה",show:true,render:function(){ return categoryYearReportHtml(aptId); }},
     {key:"catMonth",label:"📆 קטגוריה לפי חודש",show:true,render:function(){ return categoryMonthReportHtml(aptId); }},
@@ -8140,11 +8323,14 @@ function incomeYearReportHtml(aptId){
    נספרת במלואה בתאריך שלה. תשלומי "שווה ערך" אוטומטיים אינם תזרים
    ולכן לא נספרים ב"שולם".
    ============================================================ */
-function monthlySummaryReportHtml(aptId){
+function yearlySummaryReportHtml(aptId){ return periodSummaryReportHtml(aptId,"year"); }
+function monthlySummaryReportHtml(aptId){ return periodSummaryReportHtml(aptId,"month"); }
+function periodSummaryReportHtml(aptId,mode){
+  var byMonth=(mode!=="year");
   var a=byId(DB.apartments,aptId);
   var months={};
   function M(k){ return months[k]=months[k]||{incFull:0,incGot:0,expCost:0,expPaid:0,mgmtPaid:0,wd:0}; }
-  function mk(d){ return d?String(d).slice(0,7):""; }
+  function mk(d){ return d?String(d).slice(0,byMonth?7:4):""; }
   /* הכנסות — מחיר מלא לפי תאריך ההכנסה; התקבל לפי תאריך התשלום */
   apIncomeCalc(aptId).forEach(function(i){
     var k=mk(i.date); if(k) M(k).incFull+=Number(i.amount)||0;
@@ -8171,23 +8357,24 @@ function monthlySummaryReportHtml(aptId){
     var k=mk(w.date); if(k) M(k).wd+=Number(w.amount)||0;
   });
   var keys=Object.keys(months).sort();
-  if(!keys.length) return '<div class="card"><h3>📅 סיכום חודשי</h3><div class="empty">אין נתונים עם תאריכים בפרוייקט</div></div>';
+  var TITLE=byMonth?"📅 סיכום חודשי":"📅 סיכום שנתי";
+  if(!keys.length) return '<div class="card"><h3>'+TITLE+'</h3><div class="empty">אין נתונים עם תאריכים בפרוייקט</div></div>';
   var anyMgmt=keys.some(function(k){ return months[k].mgmtPaid>0.01; });
   var anyWd=keys.some(function(k){ return months[k].wd>0.01; });
-  var h='<div class="card"><h3>📅 סיכום חודשי — '+esc(a.name)+'</h3>'+
-    '<div class="hint" style="margin-bottom:8px">היתרה החודשית בפועל = התקבל מהכנסות − שולם להוצאות'+
-    (anyMgmt?' − דמי ניהול ששולמו':'')+(anyWd?' − משיכות רווח':'')+'. בסוגריים — היתרה המצטברת.</div>'+
-    '<div class="table-wrap"><table class="tbl"><thead><tr><th>חודש</th>'+
+  var h='<div class="card"><h3>'+TITLE+' — '+esc(a.name)+'</h3>'+
+    '<div class="hint" style="margin-bottom:8px">היתרה בפועל = התקבל מהכנסות − שולם להוצאות'+
+    (anyMgmt?' − דמי ניהול ששולמו':'')+(anyWd?' − משיכות רווח':'')+'. העמודה האחרונה — היתרה המצטברת.</div>'+
+    '<div class="table-wrap"><table class="tbl"><thead><tr><th>'+(byMonth?"חודש":"שנה")+'</th>'+
     '<th>הכנסות (מחיר)</th><th>התקבל</th><th>הוצאות (עלות)</th><th>שולם להוצאות</th>'+
     (anyMgmt?'<th>דמי ניהול</th>':'')+(anyWd?'<th>משיכות רווח</th>':'')+
-    '<th>יתרה חודשית</th><th>מצטבר</th></tr></thead><tbody>';
+    '<th>יתרה '+(byMonth?"חודשית":"שנתית")+'</th><th>מצטבר</th></tr></thead><tbody>';
   var t={incFull:0,incGot:0,expCost:0,expPaid:0,mgmtPaid:0,wd:0}, cum=0;
   keys.forEach(function(k){
     var m=months[k];
     var bal=round2(m.incGot-m.expPaid-m.mgmtPaid-m.wd);
     cum=round2(cum+bal);
     Object.keys(t).forEach(function(f){ t[f]+=m[f]; });
-    h+='<tr><td><b>'+k.slice(5,7)+'/'+k.slice(0,4)+'</b></td>'+
+    h+='<tr><td><b>'+(byMonth?(k.slice(5,7)+'/'+k.slice(0,4)):k)+'</b></td>'+
       '<td>'+(m.incFull?money(round2(m.incFull)):'<span class="muted">—</span>')+'</td>'+
       '<td>'+(m.incGot?money(round2(m.incGot)):'<span class="muted">—</span>')+'</td>'+
       '<td>'+(m.expCost?money(round2(m.expCost)):'<span class="muted">—</span>')+'</td>'+
@@ -8797,16 +8984,30 @@ function moduleSettings(){
       'בלשונית הדוחות של כל פרויקט. מחיקת קטגוריה לא מוחקת שלבים — הם פשוט חוזרים ל"ללא קטגוריה".</div>';
   } else if(tab==="accounts"){
     var accs=active(DB.accounts);
+    /* כפילויות = אותו שם ואותו שיוך. מוצגות בראש עם כפתור מיזוג. */
+    var dupGroups={};
+    accs.forEach(function(ac){
+      var k=normKey(ac.name)+"|"+(ac.apartmentId||"")+"|"+(ac.isBank?1:0);
+      (dupGroups[k]=dupGroups[k]||[]).push(ac);
+    });
+    var dupKeys=Object.keys(dupGroups).filter(function(k){ return dupGroups[k].length>1; });
     h+='<div class="toolbar"><button class="btn btn-primary btn-sm" onclick="editAccount(null)">➕ חשבון</button>'+
       '<button class="btn btn-sm" onclick="seedCommonAccounts()">📥 טען רשימת חשבונות מוכנה</button>'+
+      (dupKeys.length?'<button class="btn btn-danger btn-sm" onclick="mergeAllDupAccounts()">🧹 מזג '+dupKeys.length+' כפילויות</button>':'')+
+      '<button class="btn btn-sm" onclick="cleanUnusedAccounts()">🗑️ נקה חשבונות שלא בשימוש</button>'+
       '<div class="sp"></div><span class="muted">'+accs.length+' חשבונות</span></div>';
+    if(dupKeys.length) h+='<div class="hint neg" style="margin-bottom:8px">נמצאו '+dupKeys.length+
+      ' שמות שמופיעים יותר מפעם אחת. "מזג כפילויות" משאיר אחד מכל שם ומעביר אליו את כל התנועות — שום תשלום לא הולך לאיבוד.</div>';
     h+='<div class="table-wrap"><table class="tbl"><thead><tr><th>שם החשבון</th><th>סוג</th><th>שיוך</th><th>תשלומים</th><th></th></tr></thead><tbody>';
     if(!accs.length) h+='<tr><td colspan="5" class="empty">אין חשבונות. לחץ "טען רשימת חשבונות מוכנה" או הוסף ידנית.</td></tr>';
     accs.sort(function(a,b){ return (b.isBank?1:0)-(a.isBank?1:0) || String(a.name).localeCompare(String(b.name),"he"); })
       .forEach(function(ac){
-      var used=active(DB.payments).filter(function(p){return p.accountId===ac.id;}).length;
+      var used=accountUsage(ac.id);
       var apt=ac.apartmentId?byId(DB.apartments,ac.apartmentId):null;
-      h+='<tr><td><b>'+esc(ac.name)+'</b></td>'+
+      var k=normKey(ac.name)+"|"+(ac.apartmentId||"")+"|"+(ac.isBank?1:0);
+      var isDup=dupGroups[k].length>1;
+      h+='<tr'+(isDup?' style="background:#fff7ed"':'')+'><td><b>'+esc(ac.name)+'</b>'+
+        (isDup?' <span class="badge badge-warn badge-unit">כפול ×'+dupGroups[k].length+'</span>':'')+'</td>'+
         '<td>'+(ac.isBank?'<span class="pill">🏦 בנק זמני</span>':'<span class="muted">רגיל</span>')+'</td>'+
         '<td>'+(apt?esc(apt.name):'<span class="muted">כללי — כל הפרויקטים</span>')+'</td>'+
         '<td>'+(used||'<span class="muted">—</span>')+'</td>'+
@@ -8922,7 +9123,242 @@ function delPaymentMethod(k){
   save(); refreshMethods(); toast("נמחק","ok"); rerender();
 }
 
+/* ============================================================
+   הוצאות תקופתיות אוטומטיות
+   ------------------------------------------------------------
+   כלל שמגדירים פעם אחת ("ריבית שנתית", "ארנונה רבעונית") ובכל מועד
+   נוצרת ממנו הוצאה פתוחה בכל הפרוייקטים שנבחרו — כדי שתדע לבדוק
+   ולהשלים את הסכום. הבדיקה רצה בטעינה: אם עבר מועד, נוצרות ההוצאות
+   שהוחמצו (עד 24 מחזורים לאחור, כדי שלא יווצר מבול מכלל ישן).
+   ============================================================ */
+var RECUR_EVERY={month:"כל חודש",quarter:"כל רבעון",half:"כל חצי שנה",year:"כל שנה"};
+function recurAdvance(iso,every){
+  var d=new Date(iso+"T00:00:00Z");
+  var add={month:1,quarter:3,half:6,year:12}[every]||12;
+  var day=d.getUTCDate();
+  d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth()+add);
+  var last=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).getUTCDate();
+  d.setUTCDate(Math.min(day,last));
+  return d.toISOString().slice(0,10);
+}
+function activeRecurring(){ return active(DB.recurring); }
+/* יוצר את ההוצאות שהגיע מועדן. מחזיר כמה נוצרו. */
+function runRecurring(silent){
+  if(!DB || !Array.isArray(DB.recurring) || !can("edit")) return 0;
+  var today=todayISO(), made=0, guard=0;
+  activeRecurring().forEach(function(r){
+    if(r.paused || !r.nextDate) return;
+    while(r.nextDate<=today && guard<200){
+      guard++;
+      var due=r.nextDate;
+      (r.apartmentIds||[]).forEach(function(aptId){
+        var a=byId(DB.apartments,aptId); if(!a||a.deleted) return;
+        /* הגנה מכפילות: אותו כלל + אותו מועד + אותו פרוייקט */
+        var tag=r.id+"@"+due;
+        if(active(DB.expenses).some(function(e){ return e.recurTag===tag && e.apartmentId===aptId; })) return;
+        var eid=uid();
+        DB.expenses.push({id:eid,apartmentId:aptId,categoryId:r.categoryId||"",
+          classification:r.classification||"ongoing",
+          description:r.description||"הוצאה תקופתית",
+          amount:Number(r.amount)||0,date:due,
+          note:(r.note||"")+(r.note?" · ":"")+"נוצר אוטומטית — לבדיקה והשלמת סכום",
+          hasInvoice:false,invoiceLink:"",
+          mgmtEnabled:false,mgmtSet:false,mgmtBaseType:"full",mgmtVatRate:18,
+          recurTag:tag,recurId:r.id,recurOpen:true,deleted:false});
+        apPartners(aptId).forEach(function(p){
+          DB.expenseSplits.push({id:uid(),expenseId:eid,partnerId:p.partnerId,percent:p.defaultPercent,deleted:false});
+        });
+        made++;
+      });
+      r.lastRun=due;
+      r.nextDate=recurAdvance(due,r.every||"year");
+    }
+  });
+  if(made){
+    save();
+    if(!silent) toast("נוצרו "+made+" הוצאות תקופתיות לבדיקה","warn");
+  }
+  return made;
+}
+/* הוצאות תקופתיות שעדיין לא אושרו — לתזכורת בדשבורד */
+function openRecurExpenses(){
+  return active(DB.expenses).filter(function(e){ return e.recurOpen && canSeeApartment(e.apartmentId); });
+}
+function confirmRecurExpense(eId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var e=byId(DB.expenses,eId); if(!e) return;
+  delete e.recurOpen;
+  save(); toast("סומן כנבדק","ok"); rerender();
+}
+function viewRecurring(){
+  var rs=activeRecurring();
+  var openN=openRecurExpenses().length;
+  var h='<h2>🔁 הוצאות תקופתיות</h2>'+
+    '<p class="muted">כלל שמוגדר פעם אחת ויוצר הוצאה פתוחה בכל מועד — למשל ריבית שנתית או ארנונה רבעונית. '+
+    'ההוצאה נוצרת עם סכום ברירת מחדל ומסומנת "לבדיקה", כדי שתעדכן אותה לפי מה שבאמת יצא.</p>'+
+    '<div class="toolbar">'+
+      (can("edit")?'<button class="btn btn-primary btn-sm" onclick="editRecurring(null)">➕ כלל חדש</button> '+
+        '<button class="btn btn-sm" onclick="var n=runRecurring();if(!n)toast(\'אין כלל שהגיע מועדו\',\'warn\')">▶️ הרץ עכשיו</button>':'')+
+      '<div class="sp"></div>'+(openN?'<span class="badge badge-warn">'+openN+' הוצאות ממתינות לבדיקה</span>':'')+'</div>';
+  h+='<div class="table-wrap"><table class="tbl"><thead><tr>'+
+    '<th>תיאור</th><th>תדירות</th><th>המועד הבא</th><th>סכום ברירת מחדל</th><th>פרוייקטים</th><th>סטטוס</th><th></th>'+
+    '</tr></thead><tbody>';
+  if(!rs.length) h+='<tr><td colspan="7" class="empty">אין כללים. "➕ כלל חדש" כדי להוסיף.</td></tr>';
+  rs.forEach(function(r){
+    var names=(r.apartmentIds||[]).map(function(id){ var a=byId(DB.apartments,id); return a?a.name:""; }).filter(Boolean);
+    h+='<tr'+(r.paused?' style="opacity:.55"':'')+'><td><b>'+esc(r.description)+'</b>'+
+        (r.note?'<div class="hint">'+esc(r.note)+'</div>':'')+'</td>'+
+      '<td>'+esc(RECUR_EVERY[r.every]||r.every||"")+'</td>'+
+      '<td>'+(r.nextDate?dateHe(r.nextDate):'—')+
+        (r.lastRun?'<div class="hint">אחרון: '+dateHe(r.lastRun)+'</div>':'')+'</td>'+
+      '<td>'+(r.amount?money(r.amount):'<span class="muted">0 — להשלמה</span>')+'</td>'+
+      '<td title="'+esc(names.join(" · "))+'" style="max-width:220px;overflow:hidden;text-overflow:ellipsis">'+
+        (names.length?esc(names.length>2?(names.slice(0,2).join(" · ")+" +"+(names.length-2)):names.join(" · ")):'<span class="muted">—</span>')+'</td>'+
+      '<td>'+(r.paused?'<span class="badge badge-muted badge-unit">מושהה</span>':'<span class="badge badge-ok badge-unit">פעיל</span>')+'</td>'+
+      '<td class="right" style="white-space:nowrap">'+(can("edit")?
+        '<button class="btn btn-ghost btn-sm" onclick="editRecurring(\''+r.id+'\')">✏️</button>'+
+        '<button class="btn btn-ghost btn-sm" title="'+(r.paused?"הפעל":"השהה")+'" onclick="toggleRecurring(\''+r.id+'\')">'+(r.paused?"▶️":"⏸️")+'</button>'+
+        '<button class="btn btn-ghost btn-sm" onclick="softDelete(\'recurring\',\''+r.id+'\',\'למחוק את הכלל?\')">🗑️</button>':'')+'</td></tr>';
+  });
+  h+='</tbody></table></div>';
+  /* ההוצאות שנוצרו וממתינות לבדיקה */
+  var open=openRecurExpenses();
+  if(open.length){
+    h+='<div class="card" style="margin-top:14px"><h3>⏳ ממתינות לבדיקה ('+open.length+')</h3>'+
+      '<div class="table-wrap"><table class="tbl"><thead><tr>'+
+      '<th>פרוייקט</th><th>תאריך</th><th>תיאור</th><th>סכום</th><th></th></tr></thead><tbody>';
+    open.slice().sort(function(x,y){ return x.date<y.date?1:-1; }).forEach(function(e){
+      h+='<tr><td>'+esc(apartmentName(e.apartmentId))+'</td><td>'+dateHe(e.date)+'</td>'+
+        '<td>'+esc(e.description)+'</td><td>'+(e.amount?money(e.amount):'<span class="neg">0 — להשלמה</span>')+'</td>'+
+        '<td class="right" style="white-space:nowrap">'+(can("edit")?
+          '<button class="btn btn-ghost btn-sm" title="עריכה" onclick="openExpenseEditor(\''+e.id+'\',\''+e.apartmentId+'\')">✏️</button>'+
+          '<button class="btn btn-sm" onclick="confirmRecurExpense(\''+e.id+'\')">✔ נבדק</button>':'')+'</td></tr>';
+    });
+    h+='</tbody></table></div><div class="hint">"נבדק" רק מסיר את הסימון — ההוצאה עצמה נשארת כרגיל.</div></div>';
+  }
+  return h;
+}
+function toggleRecurring(id){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var r=byId(DB.recurring,id); if(!r) return;
+  r.paused=!r.paused; save(); rerender();
+}
+function editRecurring(id){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var r=id?byId(DB.recurring,id):{description:"",amount:"",every:"year",nextDate:todayISO(),
+    apartmentIds:[],categoryId:"",classification:"ongoing",note:"",paused:false};
+  var apts=active(DB.apartments).filter(function(a){ return canSeeApartment(a.id); });
+  var sel={}; (r.apartmentIds||[]).forEach(function(x){ sel[x]=1; });
+  openModal({title:id?"עריכת כלל תקופתי":"🔁 כלל תקופתי חדש",wide:true,bodyHtml:
+    '<div class="form-grid">'+
+      '<div class="field"><label>תיאור ההוצאה</label><input id="rc-desc" value="'+esc(r.description||"")+'" placeholder="למשל: ריבית שנתית"></div>'+
+      '<div class="field"><label>תדירות</label><select id="rc-every">'+
+        Object.keys(RECUR_EVERY).map(function(k){ return '<option value="'+k+'"'+(r.every===k?" selected":"")+'>'+RECUR_EVERY[k]+'</option>'; }).join("")+
+      '</select></div>'+
+      '<div class="field"><label>המועד הבא</label><input id="rc-next" type="date" value="'+esc(r.nextDate||todayISO())+'">'+
+        '<div class="hint">מועד שכבר עבר — ההוצאות שהוחמצו ייווצרו מיד</div></div>'+
+      '<div class="field"><label>סכום ברירת מחדל (₪)</label><input id="rc-amount" type="number" step="0.01" value="'+esc(String(r.amount||""))+'" placeholder="0 — להשלמה ידנית">'+
+        '<div class="hint">אפשר להשאיר 0 ולמלא בכל פעם</div></div>'+
+      '<div class="field"><label>קטגוריה</label>'+
+        pickerHtml("rc-cat",catsSorted().map(function(c){return {id:c.id,label:c.name};}),r.categoryId||"",
+          {placeholder:"הקלד קטגוריה…"})+'</div>'+
+      '<div class="field"><label>סיווג</label><select id="rc-class">'+classOptions(r.classification||"ongoing")+'</select></div>'+
+      '<div class="field full"><label>הערה</label><input id="rc-note" value="'+esc(r.note||"")+'"></div>'+
+    '</div>'+
+    '<div class="section-title">באילו פרוייקטים <span class="hint">('+apts.length+' זמינים)</span></div>'+
+    '<div class="toolbar"><button class="btn btn-sm" onclick="document.querySelectorAll(\'.rc-apt\').forEach(function(c){c.checked=true})">סמן הכל</button>'+
+    '<button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll(\'.rc-apt\').forEach(function(c){c.checked=false})">נקה</button></div>'+
+    '<div class="table-wrap" style="max-height:230px"><table class="tbl"><thead><tr>'+
+    '<th class="chk" style="width:30px"></th><th>פרוייקט</th></tr></thead><tbody>'+
+    apts.map(function(a){
+      return '<tr><td class="chk"><input type="checkbox" class="rc-apt" data-a="'+a.id+'" style="width:auto"'+(sel[a.id]?" checked":"")+'></td>'+
+        '<td>'+esc(a.name)+'</td></tr>';
+    }).join("")+'</tbody></table></div>',
+    saveLabel:"שמירה",onSave:function(){
+      var desc=val("rc-desc").trim();
+      if(!desc){ toast("תיאור חסר","err"); return false; }
+      var ids=[];
+      document.querySelectorAll(".rc-apt:checked").forEach(function(c){ ids.push(c.getAttribute("data-a")); });
+      if(!ids.length){ toast("בחר לפחות פרוייקט אחד","err"); return false; }
+      var obj={description:desc,every:val("rc-every")||"year",nextDate:val("rc-next")||todayISO(),
+        amount:Number(val("rc-amount"))||0,categoryId:pickCategoryId("rc-cat"),
+        classification:val("rc-class")||"ongoing",note:val("rc-note"),apartmentIds:ids};
+      if(id){ Object.assign(r,obj); }
+      else DB.recurring.push(Object.assign({id:uid(),paused:false,lastRun:"",deleted:false},obj));
+      save();
+      var n=runRecurring(true);
+      toast("הכלל נשמר"+(n?" · נוצרו "+n+" הוצאות":""),"ok");
+      rerender();
+    }});
+}
 /* ---------- ניהול חשבונות ---------- */
+/* בכמה מקומות מצביעים לחשבון — לא רק תשלומים */
+function accountUsage(accId){
+  var n=active(DB.payments).filter(function(p){ return p.accountId===accId; }).length;
+  n+=active(DB.deposits).filter(function(d){ return d.accountId===accId; }).length;
+  n+=active(DB.withdrawals).filter(function(w){ return w.accountId===accId; }).length;
+  var dest="bank:"+accId;
+  active(DB.income).forEach(function(i){
+    if(i.receivedBy===dest) n++;
+    (i.payments||[]).forEach(function(g){ if(!g.deleted && g.receivedBy===dest) n++; });
+  });
+  return n;
+}
+/* מעביר כל הפניה מחשבון אחד לאחר — לפני מיזוג או מחיקה */
+function repointAccount(fromId,toId){
+  active(DB.payments).forEach(function(p){ if(p.accountId===fromId) p.accountId=toId; });
+  active(DB.deposits).forEach(function(d){ if(d.accountId===fromId) d.accountId=toId; });
+  active(DB.withdrawals).forEach(function(w){ if(w.accountId===fromId) w.accountId=toId; });
+  var from="bank:"+fromId, to="bank:"+toId;
+  active(DB.income).forEach(function(i){
+    if(i.receivedBy===from) i.receivedBy=to;
+    (i.payments||[]).forEach(function(g){ if(g.receivedBy===from) g.receivedBy=to; });
+  });
+  active(DB.bankMoves).forEach(function(m){ if(m.accountId===fromId) m.accountId=toId; });
+}
+/* מיזוג כל הכפילויות: לכל שם+שיוך נשאר חשבון אחד (זה שבשימוש הרב
+   ביותר), והשאר עוברים לסל המחזור אחרי שהתנועות שלהם הופנו אליו. */
+function mergeAllDupAccounts(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var groups={};
+  active(DB.accounts).forEach(function(ac){
+    var k=normKey(ac.name)+"|"+(ac.apartmentId||"")+"|"+(ac.isBank?1:0);
+    (groups[k]=groups[k]||[]).push(ac);
+  });
+  var keys=Object.keys(groups).filter(function(k){ return groups[k].length>1; });
+  if(!keys.length){ toast("לא נמצאו כפילויות","warn"); return; }
+  var removed=0, moved=0;
+  var lines=keys.map(function(k){
+    var g=groups[k].slice().sort(function(a,b){ return accountUsage(b.id)-accountUsage(a.id); });
+    return "• "+g[0].name+" ("+g.length+" עותקים)";
+  });
+  if(!confirm("ימוזגו "+keys.length+" שמות כפולים:\n\n"+lines.slice(0,12).join("\n")+
+    (lines.length>12?"\n…ועוד "+(lines.length-12):"")+
+    "\n\nלכל שם יישאר חשבון אחד וכל התנועות יועברו אליו. העותקים המיותרים עוברים לסל המחזור.\n\nלהמשיך?")) return;
+  keys.forEach(function(k){
+    var g=groups[k].slice().sort(function(a,b){ return accountUsage(b.id)-accountUsage(a.id); });
+    var keep=g[0];
+    g.slice(1).forEach(function(ac){
+      moved+=accountUsage(ac.id);
+      repointAccount(ac.id,keep.id);
+      ac.deleted=true; removed++;
+    });
+  });
+  save();
+  toast("מוזגו "+removed+" חשבונות כפולים · הועברו "+moved+" תנועות","ok");
+  rerender();
+}
+/* חשבונות שאין להם אף תנועה — ניקוי הרשימה הארוכה */
+function cleanUnusedAccounts(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var unused=active(DB.accounts).filter(function(ac){ return accountUsage(ac.id)===0; });
+  if(!unused.length){ toast("כל החשבונות בשימוש","warn"); return; }
+  if(!confirm(unused.length+" חשבונות ללא אף תנועה יעברו לסל המחזור:\n\n"+
+    unused.slice(0,15).map(function(a){return "• "+a.name;}).join("\n")+
+    (unused.length>15?"\n…ועוד "+(unused.length-15):"")+"\n\nלהמשיך?")) return;
+  unused.forEach(function(ac){ ac.deleted=true; });
+  save(); toast("הוסרו "+unused.length+" חשבונות שלא היו בשימוש","ok"); rerender();
+}
 function editAccount(id){
   var ac=id?byId(DB.accounts,id):{name:"",isBank:false,apartmentId:null};
   var apts=active(DB.apartments);

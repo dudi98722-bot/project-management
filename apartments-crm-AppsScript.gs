@@ -52,8 +52,18 @@ function doPost(e) {
 
     // ---- כניסה: מאמת קוד מול המשתמשים ששמורים בגיליון ----
     if (action === "login") {
+      /* כתובת ה-Apps Script גלויה בקוד הדף, ולכן הקוד הוא ההגנה היחידה.
+         בלי ויסות אפשר לנסות מיליוני קודים. כאן: השהיה קבועה בכל כישלון
+         + תקרת ניסיונות בחלון זמן. משתמש אמיתי שטועה פעם-פעמיים לא מרגיש. */
+      var gate = loginGate();
+      if (!gate.ok) return jsonOut({ ok: false, error: "too-many", retryAfter: gate.retryAfter });
       var u = findUser(body.codeHash);
-      if (!u) return jsonOut({ ok: false, error: "bad-code" });
+      if (!u) {
+        noteLoginFail();
+        Utilities.sleep(1200);          // מאט ניסיון-בכוח-גס בלי לפגוע במשתמש
+        return jsonOut({ ok: false, error: "bad-code" });
+      }
+      clearLoginFails();
       return jsonOut({ ok: true, user: publicUser(u) });
     }
 
@@ -129,6 +139,39 @@ function jsonOut(obj) {
 
 function ss() { return SpreadsheetApp.getActiveSpreadsheet(); }
 
+/* ==================== ויסות ניסיונות כניסה ====================
+   נשמר בהגדרות הסקריפט (זול ומהיר). המגבלה גלובלית — ב-Apps Script
+   אין כתובת IP של הפונה — ולכן היא רחבה מספיק כדי שמשתמש אמיתי
+   לא ייחסם, וצרה מספיק כדי שסריקה שיטתית תיקח שנים. */
+var LOGIN_PROP     = "crm_login_fails";
+var LOGIN_MAX      = 20;            // כישלונות מותרים בחלון
+var LOGIN_WINDOW_M = 5;             // אורך החלון בדקות
+var LOGIN_COOL_M   = 2;             // צינון אחרי חריגה
+function loginState() {
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(LOGIN_PROP);
+    return raw ? JSON.parse(raw) : { n: 0, first: 0, until: 0 };
+  } catch (err) { return { n: 0, first: 0, until: 0 }; }
+}
+function saveLoginState(s) {
+  try { PropertiesService.getScriptProperties().setProperty(LOGIN_PROP, JSON.stringify(s)); } catch (err) {}
+}
+function loginGate() {
+  var s = loginState(), now = new Date().getTime();
+  if (s.until && now < s.until) {
+    return { ok: false, retryAfter: Math.ceil((s.until - now) / 1000) };
+  }
+  return { ok: true };
+}
+function noteLoginFail() {
+  var s = loginState(), now = new Date().getTime();
+  if (!s.first || now - s.first > LOGIN_WINDOW_M * 60000) { s.n = 0; s.first = now; }
+  s.n++;
+  if (s.n >= LOGIN_MAX) { s.until = now + LOGIN_COOL_M * 60000; s.n = 0; s.first = now; }
+  saveLoginState(s);
+}
+function clearLoginFails() { saveLoginState({ n: 0, first: 0, until: 0 }); }
+
 /* ============================ אימות ============================ */
 function hasAnyUser() {
   var d = loadData();
@@ -159,7 +202,23 @@ function publicUser(u) {
 /* הקוד נשלח למייל שמשויך למשתמש שביקש. מנהל בלי מייל משויך ממשיך
    לקבל ל-OWNER_EMAIL (תאימות לאחור); משתמש אחר בלי מייל מקבל שגיאה. */
 function normName(s) { return String(s || "").replace(/\s+/g, " ").trim(); }
+var RESET_REQ_PROP = "crm_reset_reqs";
+var RESET_REQ_MAX  = 4;             // בקשות שחזור מותרות בשעה
+/* בלי ויסות אפשר להציף את תיבת המייל של הבעלים, וגם לדרוס שוב ושוב
+   בקשת שחזור לגיטימית שנמצאת באמצע. */
+function resetReqGate() {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var s = JSON.parse(props.getProperty(RESET_REQ_PROP) || '{"n":0,"first":0}');
+    var now = new Date().getTime();
+    if (!s.first || now - s.first > 3600000) { s.n = 0; s.first = now; }
+    s.n++;
+    props.setProperty(RESET_REQ_PROP, JSON.stringify(s));
+    return s.n <= RESET_REQ_MAX;
+  } catch (err) { return true; }
+}
 function requestReset(userName) {
+  if (!resetReqGate()) return { ok: false, error: "too-many" };
   try {
     var d = loadData();
     var want = normName(userName);
