@@ -600,17 +600,126 @@ function byId(list,id){
 }
 
 /* ---------- טעינה/שמירה ---------- */
-function loadDB(){
-  try{ var raw=localStorage.getItem(LSKEY); if(raw){ DB=JSON.parse(raw); return true; } }catch(e){}
+/* ============================================================
+   כספת מקומית — הצפנת המטמון שבדפדפן
+   ------------------------------------------------------------
+   המערכת שומרת עותק מלא של הנתונים ב-localStorage (מטמון + עבודה
+   אופליין). localStorage שורד סגירת דפדפן, בעוד שקוד הכניסה יושב
+   ב-sessionStorage ונמחק — כלומר בלי הצפנה כל מי שפותח F12 על אותו
+   מחשב היה קורא את הכל בלי להזדהות.
+
+   כאן כל עותק מקומי מוצפן ב-AES-GCM עם מפתח שנגזר (PBKDF2) מקוד
+   הכניסה. המפתח קיים בזיכרון בלבד וחי כל עוד הלשונית פתוחה; בלי הקוד
+   הנתונים בדיסק הם רצף חסר משמעות.
+
+   כשל בפענוח אינו מסוכן: המטמון הוא עותק בלבד, ומקור האמת הוא
+   הגיליון — פשוט נמשכים משם מחדש.
+   ============================================================ */
+var VAULT={key:null, salt:null};
+var VAULT_KEYS=[LSKEY, LSKEY+"_base", LSKEY+"_stash"];   // מה שמוצפן
+function b64(buf){ var b=new Uint8Array(buf),s=""; for(var i=0;i<b.length;i++) s+=String.fromCharCode(b[i]); return btoa(s); }
+function unb64(str){ var s=atob(str),a=new Uint8Array(s.length); for(var i=0;i<s.length;i++) a[i]=s.charCodeAt(i); return a; }
+function vaultSalt(){
+  if(VAULT.salt) return VAULT.salt;
+  var s=null; try{ s=localStorage.getItem(LSKEY+"_salt"); }catch(e){}
+  if(!s){
+    var r=new Uint8Array(16); crypto.getRandomValues(r); s=b64(r);
+    try{ localStorage.setItem(LSKEY+"_salt",s); }catch(e){}
+  }
+  VAULT.salt=s; return s;
+}
+/* פתיחת הכספת בכניסה. נכשל בשקט בדפדפן ישן — אז פשוט לא נשמר מטמון. */
+async function vaultUnlock(codeHash){
+  VAULT.key=null;
+  if(!codeHash || !window.crypto || !crypto.subtle) return false;
+  try{
+    var base=await crypto.subtle.importKey("raw",new TextEncoder().encode(String(codeHash)),
+      {name:"PBKDF2"},false,["deriveKey"]);
+    VAULT.key=await crypto.subtle.deriveKey(
+      {name:"PBKDF2",salt:unb64(vaultSalt()),iterations:150000,hash:"SHA-256"},
+      base,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
+    return true;
+  }catch(e){ VAULT.key=null; return false; }
+}
+function vaultLock(){ VAULT.key=null; }
+function vaultOpen(){ return !!VAULT.key; }
+async function vaultEncrypt(str){
+  var iv=new Uint8Array(12); crypto.getRandomValues(iv);
+  var ct=await crypto.subtle.encrypt({name:"AES-GCM",iv:iv},VAULT.key,new TextEncoder().encode(str));
+  return JSON.stringify({__enc:1,iv:b64(iv),ct:b64(ct)});
+}
+async function vaultDecrypt(raw){
+  var o=JSON.parse(raw);
+  var pt=await crypto.subtle.decrypt({name:"AES-GCM",iv:unb64(o.iv)},VAULT.key,unb64(o.ct));
+  return new TextDecoder().decode(pt);
+}
+function isEncrypted(raw){
+  return typeof raw==="string" && raw.charAt(0)==="{" && raw.indexOf('"__enc"')>0;
+}
+/* קריאה: מוצפן ואין מפתח => null (כאילו אין מטמון). טקסט גלוי מגרסה
+   קודמת נקרא כרגיל ויוצפן בכתיבה הבאה. */
+async function vaultGet(key){
+  var raw=null; try{ raw=localStorage.getItem(key); }catch(e){}
+  if(!raw) return null;
+  if(!isEncrypted(raw)) return raw;
+  if(!vaultOpen()) return null;
+  try{ return await vaultDecrypt(raw); }
+  catch(e){ try{ localStorage.removeItem(key); }catch(e2){} return null; }
+}
+/* כתיבה מרוכזת: ההצפנה אסינכרונית, ולכן הכתיבות נצברות ונשטפות יחד.
+   בלי מפתח לא נכתב כלום לדיסק — עדיף בלי מטמון מאשר מטמון גלוי. */
+var LSQ={pending:{},timer:null,busy:false};
+function vaultPut(key,str){
+  LSQ.pending[key]=str;
+  if(!LSQ.timer) LSQ.timer=setTimeout(vaultFlush,0);
+}
+async function vaultFlush(){
+  LSQ.timer=null;
+  if(LSQ.busy){ LSQ.timer=setTimeout(vaultFlush,30); return; }
+  LSQ.busy=true;
+  var todo=LSQ.pending; LSQ.pending={};
+  try{
+    for(var k in todo){
+      if(!todo.hasOwnProperty(k)) continue;
+      var v=todo[k];
+      try{
+        if(v===null){ localStorage.removeItem(k); continue; }
+        if(!vaultOpen()) continue;                 // נעול — לא כותבים גלוי
+        localStorage.setItem(k, await vaultEncrypt(v));
+      }catch(e){ /* מכסה מלאה או הצפנה שנכשלה — מוותרים על המטמון */ }
+    }
+  } finally { LSQ.busy=false; }
+}
+/* מחיקת כל עותק מקומי — ביציאה, ובאתחול בלי סשן כשאין עבודה שלא נשמרה */
+function vaultWipe(){
+  try{
+    VAULT_KEYS.forEach(function(k){ localStorage.removeItem(k); });
+    localStorage.removeItem(LSKEY+"_baserev");
+    localStorage.removeItem(LSKEY+"_dirty");
+  }catch(e){}
+  LSQ.pending={};
+}
+/* האם שרד בדיסק עותק גלוי מגרסה שקדמה להצפנה */
+function hasPlainLeftovers(){
+  try{
+    for(var i=0;i<VAULT_KEYS.length;i++){
+      var raw=localStorage.getItem(VAULT_KEYS[i]);
+      if(raw && !isEncrypted(raw)) return true;
+    }
+  }catch(e){}
+  return false;
+}
+async function loadDB(){
+  try{ var raw=await vaultGet(LSKEY); if(raw){ DB=JSON.parse(raw); return true; } }catch(e){}
   DB=null; return false;
 }
 function saveLocal(){
-  try{ localStorage.setItem(LSKEY, JSON.stringify(DB)); }catch(e){}
+  try{ vaultPut(LSKEY, JSON.stringify(DB)); }catch(e){}
 }
 /* ---------- ביטול פעולה (Ctrl+Z) ----------
-   לפני כל שמירה נשמר המצב הקודם. אין צורך לצלם מראש: ב-localStorage
-   עדיין נמצא המצב שלפני השינוי ברגע שקוראים ל-save(). */
-var UNDO=[], UNDO_MAX=30;
+   המצב שלפני השינוי נשמר בזיכרון (LAST_JSON) ולא נקרא מ-localStorage:
+   מאז שהמטמון מוצפן הקריאה משם אסינכרונית, והביטול חייב להיות מיידי. */
+var UNDO=[], UNDO_MAX=30, LAST_JSON=null;
 function undoCount(){ return UNDO.length; }
 /* סימון "יש שינוי מקומי שטרם הגיע לשרת" — נשמר ב-localStorage (שורד רענון
    וסגירה), ומנוקה רק אחרי אישור שמירה מהשרת. בכניסה הבאה, אם הסימון קיים,
@@ -643,8 +752,7 @@ function save(){
   if(CU && !can("edit")){ toast("אין לך הרשאת עריכה","err"); return; }
   stampDeletions();
   try{
-    var prev=localStorage.getItem(LSKEY);
-    if(prev){ UNDO.push(prev); if(UNDO.length>UNDO_MAX) UNDO.shift(); }
+    if(LAST_JSON){ UNDO.push(LAST_JSON); if(UNDO.length>UNDO_MAX) UNDO.shift(); }
     /* מונה גרסאות = גרסת הבסיס שסונכרן + 1, ולא מונה עריכות.
        ספירת עריכות אפשרה לשני שינויים מהירים "לעקוף" שמירה של משתמש
        אחר: המונה המקומי היה גבוה מהשרת, הבדיקה המוקדמת לא זיהתה
@@ -652,7 +760,8 @@ function save(){
        בסיס+1, כך שכל שמירה של אחר מזוהה כהתנגשות וממוזגת. */
     DB.meta=DB.meta||{version:1};
     DB.meta.rev=Math.max((Number(SYNCREV)||0)+1, Number(DB.meta.rev)||0);
-    localStorage.setItem(LSKEY, JSON.stringify(DB));
+    LAST_JSON=JSON.stringify(DB);
+    vaultPut(LSKEY, LAST_JSON);
   }catch(e){ toast("שגיאת שמירה מקומית","err"); }
   markDirty();
   serverSave();   // כל שינוי נשמר גם בגוגל שיטס
@@ -664,7 +773,8 @@ function undo(){
     var newRev=(DB&&DB.meta&&Number(DB.meta.rev)||0)+1;   // הביטול הוא גרסה חדשה, לא חזרה למונה ישן
     DB=JSON.parse(prev);
     DB.meta=DB.meta||{version:1}; DB.meta.rev=newRev;
-    localStorage.setItem(LSKEY,JSON.stringify(DB));
+    LAST_JSON=JSON.stringify(DB);
+    vaultPut(LSKEY, LAST_JSON);
     markDirty();
     serverSave();                       // מסנכרן את המצב המוחזר גם לשיטס
     closeModal();
@@ -675,17 +785,19 @@ function undo(){
 /* ---------- גיבויי חירום מקומיים ----------
    לפני כל החלפה של הנתונים המקומיים (משיכה מהשרת, דחייה בגלל גרסה)
    העותק הנוכחי נשמר כאן — רשת ביטחון אחרונה, בנוסף להיסטוריית השיט. */
+/* הגיבויים נשמרים בזיכרון ומוצפנים לדיסק — הם מכילים מסד נתונים מלא */
+var STASH=[];
 function stashLocalBackup(reason){
   try{
-    var raw=JSON.stringify(DB);
-    var st=[]; try{ st=JSON.parse(localStorage.getItem(LSKEY+"_stash")||"[]"); }catch(e){}
-    st.unshift({ts:new Date().toISOString(),reason:reason||"",data:raw});
-    st=st.slice(0,2);   // שניים אחרונים — לא להעמיס על מכסת הדפדפן
-    try{ localStorage.setItem(LSKEY+"_stash",JSON.stringify(st)); }
-    catch(e){ st=st.slice(0,1); try{ localStorage.setItem(LSKEY+"_stash",JSON.stringify(st)); }catch(e2){} }
+    STASH.unshift({ts:new Date().toISOString(),reason:reason||"",data:JSON.stringify(DB)});
+    STASH=STASH.slice(0,2);   // שניים אחרונים — לא להעמיס על מכסת הדפדפן
+    vaultPut(LSKEY+"_stash",JSON.stringify(STASH));
   }catch(e){}
 }
-function listStash(){ try{ return JSON.parse(localStorage.getItem(LSKEY+"_stash")||"[]"); }catch(e){ return []; } }
+function listStash(){ return STASH; }
+async function loadStash(){
+  try{ var raw=await vaultGet(LSKEY+"_stash"); STASH=raw?(JSON.parse(raw)||[]):[]; }catch(e){ STASH=[]; }
+}
 function restoreStash(i){
   if(CU && !can("edit")){ toast("אין הרשאה","err"); return; }
   var st=listStash(); var s=st[i]; if(!s){ toast("הגיבוי לא נמצא","err"); return; }
@@ -1797,7 +1909,9 @@ async function createAdmin(){
   DB.users=[u];
   var j=await api({action:"bootstrap",data:DB});
   if(!j||!j.ok){ toast("ההקמה נכשלה"+((j&&j.error)?": "+j.error:""),"err"); return; }
-  setAuth(h); CU=u; saveLocal(); setSync("ok");
+  setAuth(h); CU=u;
+  await vaultUnlock(h);            // מכאן המטמון המקומי נכתב מוצפן
+  saveLocal(); setSync("ok"); resetIdle();
   toast("ברוך הבא, "+name,"ok"); go("dashboard",{});
 }
 async function doLogin(){
@@ -1821,6 +1935,13 @@ async function doLogin(){
     toast("שם המשתמש אינו תואם לקוד","err"); return;
   }
   setAuth(h); CU=j.user;
+  /* פתיחת הכספת המקומית ומשיכת מה ששרד ממנה מהסשן הקודם (למשל עבודה
+     שלא הספיקה להישמר) — לפני הסנכרון, כדי שהמיזוג יראה אותה. */
+  await vaultUnlock(h);
+  await loadDB(); await loadSyncBase(); await loadStash();
+  if(!DB) DB=blankDB();
+  try{ LAST_JSON=JSON.stringify(DB); }catch(e){}
+  resetIdle();
   var rec=await reconcileAfterAuth();
   if(rec===null){
     setAuth(""); CU=null;
@@ -1846,12 +1967,30 @@ function logout(){
     }
   }
   SAVEQ.dirty=false; SAVEQ.inflight=false; SAVEQ.fails=0;
-  /* מנקים את המטמון מהדיסק — כך שמי שניגש למחשב אחרי יציאה לא רואה
-     שום נתון (וגם לא שרד hash של קוד כניסה). */
-  try{ localStorage.removeItem(LSKEY); localStorage.removeItem(LSKEY+"_dirty"); localStorage.removeItem(LSKEY+"_stash"); }catch(e){}
-  DB=blankDB(); UNDO.length=0;
+  /* מנקים כל עותק מהדיסק ונועלים את הכספת — כך שמי שניגש למחשב אחרי
+     יציאה לא רואה שום נתון, וגם לא שרד hash של קוד כניסה. */
+  vaultWipe(); vaultLock();
+  DB=blankDB(); UNDO.length=0; LAST_JSON=null; STASH=[];
+  SYNCBASE=null; SYNCREV=0;
   setAuth(""); CU=null; renderApp();
 }
+/* ---------- נעילה אוטומטית אחרי חוסר פעילות ----------
+   דפדפן שנשאר פתוח על מסך עם נתונים פיננסיים הוא החשיפה הפשוטה
+   ביותר. אחרי IDLE_MIN דקות בלי נגיעה — יציאה מלאה (כולל ניקוי
+   המטמון). עבודה שלא נשמרה נדחפת לשרת קודם, כמו ביציאה רגילה. */
+var IDLE_MIN=30, IDLE_TIMER=null;
+function resetIdle(){
+  if(IDLE_TIMER) clearTimeout(IDLE_TIMER);
+  if(!getAuth()) return;
+  IDLE_TIMER=setTimeout(function(){
+    if(!getAuth()) return;
+    toast("יצאת אוטומטית אחרי "+IDLE_MIN+" דקות ללא פעילות","warn");
+    logout();
+  }, IDLE_MIN*60000);
+}
+["mousedown","keydown","touchstart","scroll"].forEach(function(ev){
+  window.addEventListener(ev,resetIdle,{passive:true});
+});
 /* ---------- שחזור קוד כניסה במייל (דרך Apps Script) ---------- */
 async function forgotCode(){
   /* הקוד נשלח למייל של המשתמש הספציפי — לכן חייבים לדעת מי מבקש */
@@ -2611,14 +2750,14 @@ function setSyncBase(d){
     SYNCBASE=(typeof d==="string")?d:JSON.stringify(d);
     var p=(typeof d==="string")?JSON.parse(d):d;
     SYNCREV=(p&&p.meta&&Number(p.meta.rev))||0;
-    try{ localStorage.setItem(LSKEY+"_base",SYNCBASE); localStorage.setItem(LSKEY+"_baserev",String(SYNCREV)); }
+    try{ vaultPut(LSKEY+"_base",SYNCBASE); localStorage.setItem(LSKEY+"_baserev",String(SYNCREV)); }
     catch(qe){ try{ localStorage.removeItem(LSKEY+"_base"); }catch(e2){} }
   }catch(e){ SYNCBASE=null; }
 }
-function loadSyncBase(){
+async function loadSyncBase(){
   try{
-    SYNCBASE=localStorage.getItem(LSKEY+"_base")||null;
-    SYNCREV=Number(localStorage.getItem(LSKEY+"_baserev"))||0;
+    SYNCBASE=await vaultGet(LSKEY+"_base");
+    SYNCREV=SYNCBASE?(Number(localStorage.getItem(LSKEY+"_baserev"))||0):0;
   }catch(e){ SYNCBASE=null; SYNCREV=0; }
 }
 var MERGE_TABLES=["apartments","partners","apartmentPartners","managers","categories",
@@ -2889,13 +3028,22 @@ async function reconcileAfterAuth(){
   return true;
 }
 async function boot(){
-  var hadLocal=loadDB();
-  loadSyncBase();     // בסיס המיזוג שורד סגירת דפדפן — בלעדיו המיזוג בכניסה שגוי
+  var auth=getAuth();
+  /* הכספת נפתחת רק עם קוד כניסה תקף בסשן. בלי סשן — לא נוגעים במטמון
+     המוצפן (הוא ממילא בלתי קריא), אבל עותק גלוי ששרד מגרסה קודמת
+     נמחק כאן, אלא אם יש בו עבודה שטרם סונכרנה. */
+  if(auth) await vaultUnlock(auth);
+  else if(hasPlainLeftovers() && !hasDirtyMark()) vaultWipe();
+  var hadLocal=await loadDB();
+  await loadSyncBase();   // בסיס המיזוג שורד סגירת דפדפן — בלעדיו המיזוג בכניסה שגוי
+  await loadStash();
+  if(hadLocal && DB){ try{ LAST_JSON=JSON.stringify(DB); }catch(e){} }
   if(!hadLocal||!DB){ DB=blankDB(); seedIfEmpty(); }
-  if(getAuth()){                       // session פעיל
+  if(auth){                            // session פעיל
     var r=await reconcileAfterAuth();
     if(r===null){ CU=null; }           // אין רשת ואין עבודה מקומית — מסך כניסה עם האזהרה
     else if(r===false){ /* אומת כלא-תקף — כבר נוקה */ }
+    resetIdle();
   }
   try{ runRecurring(true); }catch(e){}   // הוצאות תקופתיות שהגיע מועדן
   renderApp();
