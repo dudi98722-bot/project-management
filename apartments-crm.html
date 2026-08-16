@@ -594,9 +594,13 @@ function save(){
   try{
     var prev=localStorage.getItem(LSKEY);
     if(prev){ UNDO.push(prev); if(UNDO.length>UNDO_MAX) UNDO.shift(); }
-    /* מונה גרסאות: כל שמירה מעלה אותו, והשרת דוחה שמירה עם מונה נמוך
-       מהשמור אצלו — כך עותק ישן ממכשיב אחר לא יכול לדרוס עבודה חדשה */
-    DB.meta=DB.meta||{version:1}; DB.meta.rev=(Number(DB.meta.rev)||0)+1;
+    /* מונה גרסאות = גרסת הבסיס שסונכרן + 1, ולא מונה עריכות.
+       ספירת עריכות אפשרה לשני שינויים מהירים "לעקוף" שמירה של משתמש
+       אחר: המונה המקומי היה גבוה מהשרת, הבדיקה המוקדמת לא זיהתה
+       התנגשות והשרת קיבל — ודרס. עכשיו כל עוד לא סונכרן, המונה נשאר
+       בסיס+1, כך שכל שמירה של אחר מזוהה כהתנגשות וממוזגת. */
+    DB.meta=DB.meta||{version:1};
+    DB.meta.rev=Math.max((Number(SYNCREV)||0)+1, Number(DB.meta.rev)||0);
     localStorage.setItem(LSKEY, JSON.stringify(DB));
   }catch(e){ toast("שגיאת שמירה מקומית","err"); }
   markDirty();
@@ -799,6 +803,11 @@ function apDeposits(aptId){ if(IX) return IX.depByApt[aptId]||IX_EMPTY;
   return active(DB.deposits).filter(function(x){return x.apartmentId===aptId;}); }
 function apIncome(aptId){ if(IX) return IX.incByApt[aptId]||IX_EMPTY;
   return active(DB.income).filter(function(x){return x.apartmentId===aptId;}); }
+/* הכנסות שנספרות בסיכומים — בלי אלה שסומנו "לא לחישוב".
+   השורה עצמה נשארת בפירוט; היא רק לא נכנסת לאף סכום. */
+function apIncomeCalc(aptId){
+  return apIncome(aptId).filter(function(i){ return !i.excluded; });
+}
 /* ---------- תשלומי אורחים על הזמנה (הכנסה עם מעקב חוב) ----------
    הכנסה רגילה: הסכום הוא מה שנכנס. הזמנה: הסכום הוא המחיר המלא,
    והתשלומים בפועל נרשמים ב-i.payments — כך רואים את החוב שנשאר. */
@@ -1189,7 +1198,7 @@ function destOptions(aptId,sel){
    בהכנסה רגילה (בלי תשלומים) היעד יושב על ההכנסה עצמה, כמו תמיד. */
 function bankIncomeEntries(aptId,bankId){
   var out=[];
-  apIncome(aptId).forEach(function(i){
+  apIncomeCalc(aptId).forEach(function(i){
     if(incomeTracked(i)){
       incomePays(i).forEach(function(g){
         if(isBankDest(g.receivedBy))
@@ -1432,7 +1441,7 @@ function apartmentTotals(aptId){
   var expIdSet={}; exps.forEach(function(e){expIdSet[e.id]=1;});
   var mgrPaidTot=active(DB.payments).filter(function(p){return expIdSet[p.expenseId]&&p.recipientType==="manager";})
     .reduce(function(s,p){return s+(Number(p.amount)||0);},0);
-  var income=apIncome(aptId).reduce(function(s,i){return s+(Number(i.amount)||0);},0);
+  var income=apIncomeCalc(aptId).reduce(function(s,i){return s+(Number(i.amount)||0);},0);
   return {totalExpenses:round2(totalExpenses),totalMgmt:round2(totalMgmt),totalCost:round2(totalExpenses+totalMgmt),
     totalPaid:round2(totalPaid),mgrPaidTot:round2(mgrPaidTot),paidAll:round2(totalPaid+mgrPaidTot),
     remaining:round2(totalExpenses+totalMgmt-totalPaid-mgrPaidTot),
@@ -2394,7 +2403,7 @@ async function pullFromSheets(){
   var res=await serverLoad();
   if(res.error){ toast("שגיאת חיבור לשיט","err"); return; }
   if(res.data && Array.isArray(res.data.apartments)){
-    DB=normalizeDB(res.data); saveLocal(); UNDO.length=0;   // סטאק ישן = בסיס לא תקף אחרי משיכה
+    DB=normalizeDB(res.data); setSyncBase(res.data); saveLocal(); UNDO.length=0;   // סטאק ישן = בסיס לא תקף אחרי משיכה
     toast("נטען מהשיט","ok"); rerender();
   }
   else toast("השיט ריק","warn");
@@ -2419,6 +2428,9 @@ function startPolling(){
 function pollBlockedBy(){
   if(!CU||!getAuth()) return "no-auth";
   if(document.visibilityState!=="visible") return "hidden";
+  /* לצופה אין מה לדחוף — סימון "לא סונכרן" שנשאר מעריכה קודמת באותו
+     דפדפן לא יחסום אותו מלקבל עדכונים לנצח. */
+  if(CU && !can("edit")) return "";
   if(SAVEQ.inflight||SAVEQ.dirty||SAVEQ.timer||hasDirtyMark()||hasUnsaved()) return "local-work";
   return "";
 }
@@ -2452,9 +2464,14 @@ async function applyServerUpdate(){
   if(res.error||!res.data||!Array.isArray(res.data.apartments)) return false;
   var srv=(res.data.meta&&Number(res.data.meta.rev))||0;
   var loc=(DB&&DB.meta&&Number(DB.meta.rev))||0;
-  if(srv<=loc) return false;
-  if(pollBlockedBy()==="local-work") return false;   // נשמר משהו בזמן הטעינה
-  DB=normalizeDB(res.data); saveLocal(); UNDO.length=0;
+  if(srv<=loc){ POLL.pending=false; hideUpdateBanner(); return false; }
+  if(pollBlockedBy()==="local-work"){
+    /* יש עבודה מקומית באמצע שליחה — השמירה עצמה תמזג את שני הצדדים.
+       לא שותקים: מי שלחץ על הבאנר מקבל הסבר במקום כלום. */
+    toast("יש שינויים מקומיים באמצע שמירה — הם ימוזגו עם העדכון אוטומטית","warn");
+    return false;
+  }
+  DB=normalizeDB(res.data); setSyncBase(res.data); saveLocal(); UNDO.length=0;
   POLL.pending=false; hideUpdateBanner();
   rerender();
   toast("עודכן — נכנסו שינויים ממשתמש אחר","ok");
@@ -2470,6 +2487,132 @@ function showUpdateBanner(){
 function hideUpdateBanner(){ var b=document.getElementById("upd-banner"); if(b) b.remove(); }
 
 /* ---- סנכרון מול גוגל שיטס (Apps Script) — מקור האמת ---- */
+/* ============================================================
+   מיזוג תלת-כיווני — הלב של עבודה רב-משתמשית
+   ------------------------------------------------------------
+   כל שמירה שולחת את כל מסד הנתונים, ולכן שני משתמשים שעובדים במקביל
+   היו דורסים זה את זה: המאחר או שנדחה (והקלט שלו נזרק ל"גיבוי") או
+   שהתקבל ודרס בשקט את הראשון. הפתרון: זוכרים את "הבסיס" — המצב האחרון
+   שסונכרן מול השרת — וכשמתגלה התנגשות ממזגים רשומה-רשומה:
+   מה שרק אני שיניתי לעומת הבסיס — שלי; מה שרק הצד השני שינה — שלו;
+   שנינו שינינו את אותה רשומה — השרת גובר, והעותק שלי נשמר ב"גיבוי".
+   ============================================================ */
+/* SYNCBASE = המצב האחרון שסונכרן מול השרת; SYNCREV = מונה הגרסה שלו.
+   שניהם נשמרים ב-localStorage כדי שגם אחרי סגירת הדפדפן המיזוג ישווה
+   מול הבסיס האמיתי — בלי זה, מיזוג בכניסה השווה את המקומי מול השרת
+   עצמו וכל הבדל נראה כ"שינוי שלי" (כולל החזרת מחיקות של אחרים). */
+var SYNCBASE=null, SYNCREV=0;
+function setSyncBase(d){
+  try{
+    SYNCBASE=(typeof d==="string")?d:JSON.stringify(d);
+    var p=(typeof d==="string")?JSON.parse(d):d;
+    SYNCREV=(p&&p.meta&&Number(p.meta.rev))||0;
+    try{ localStorage.setItem(LSKEY+"_base",SYNCBASE); localStorage.setItem(LSKEY+"_baserev",String(SYNCREV)); }
+    catch(qe){ try{ localStorage.removeItem(LSKEY+"_base"); }catch(e2){} }
+  }catch(e){ SYNCBASE=null; }
+}
+function loadSyncBase(){
+  try{
+    SYNCBASE=localStorage.getItem(LSKEY+"_base")||null;
+    SYNCREV=Number(localStorage.getItem(LSKEY+"_baserev"))||0;
+  }catch(e){ SYNCBASE=null; SYNCREV=0; }
+}
+var MERGE_TABLES=["apartments","partners","apartmentPartners","managers","categories",
+  "expenses","expenseSplits","expenseManagerFees","accounts","payments","deposits",
+  "income","bankMoves","stmtBanks","withdrawals","incMgmtPays","users"];
+function merge3(baseStr,mine,theirs){
+  var base=null;
+  try{ base=baseStr?JSON.parse(baseStr):null; }catch(e){ base=null; }
+  /* בלי בסיס אין דרך לדעת מי שינה מה. base=theirs היה הופך כל הבדל
+     ל"רק אני שיניתי" — כלומר המקומי הישן היה מנצח ומחזיר מחיקות של
+     אחרים. לכן: בלי בסיס השרת גובר על כל רשומה משותפת, ורק רשומות
+     שקיימות אצלי בלבד (חדשות) מתווספות. */
+  var noBase=!base;
+  if(noBase) base=null;
+  var out={}, conflicts=0;
+  function idx(arr){ var m={}; (arr||[]).forEach(function(x){ if(x&&x.id!=null) m[x.id]=x; }); return m; }
+  MERGE_TABLES.forEach(function(T){
+    var B=base?idx(base[T]):{}, M=idx(mine[T]), Th=idx(theirs[T]);
+    var res=[], seen={};
+    /* קודם בסדר של השרת — ואז תוספות מקומיות חדשות בסופו */
+    (theirs[T]||[]).forEach(function(t){
+      if(t==null||t.id==null) return;
+      seen[t.id]=1;
+      var m=M[t.id];
+      if(!m){ res.push(t); return; }                       // אצלי איננה — של השרת
+      var mj=JSON.stringify(m), tj=JSON.stringify(t);
+      if(mj===tj){ res.push(t); return; }                  // זהות
+      if(noBase){ conflicts++; res.push(t); return; }      // בלי בסיס — השרת גובר
+      var b=B[t.id], bj=b?JSON.stringify(b):null;
+      if(mj===bj){ res.push(t); return; }                  // רק השרת שינה — שלו
+      if(tj===bj){ res.push(m); return; }                  // רק אני שיניתי — שלי
+      conflicts++; res.push(t);                            // שנינו — השרת גובר
+    });
+    (mine[T]||[]).forEach(function(m){
+      if(m==null||m.id==null||seen[m.id]) return;
+      /* קיימת אצלי ולא בשרת: חדשה שלי — נכנסת. הייתה גם בבסיס —
+         ירדה מהשרת (למשל שינוי הרשאות) ולא מחזירים אותה בכוח. */
+      if(noBase){ res.push(m); return; }                   // בלי בסיס: רק חדשות שלי
+      var b=B[m.id];
+      if(!b) res.push(m);
+      else if(JSON.stringify(m)!==JSON.stringify(b)){ conflicts++; }
+    });
+    out[T]=res;
+  });
+  /* הגדרות: אמצעי תשלום מתאחדים; שאר השדות — מי ששינה מול הבסיס */
+  var bs=((base&&base.settings)||{}), ms=(mine.settings||{}), ts=(theirs.settings||{});
+  var st={};
+  [ts,ms].forEach(function(src){ Object.keys(src).forEach(function(k){ if(k!=="paymentMethods") st[k]=src[k]; }); });
+  Object.keys(ms).forEach(function(k){
+    if(k==="paymentMethods") return;
+    if(noBase){ if(ts[k]!==undefined) st[k]=ts[k]; return; }   // בלי בסיס — השרת גובר
+    if(JSON.stringify(ms[k])!==JSON.stringify(bs[k])) st[k]=ms[k];
+    else if(ts[k]!==undefined) st[k]=ts[k];
+  });
+  st.paymentMethods={};
+  [ts.paymentMethods||{},ms.paymentMethods||{}].forEach(function(pm){
+    Object.keys(pm).forEach(function(k){ st.paymentMethods[k]=pm[k]; });
+  });
+  out.settings=st;
+  out.meta=theirs.meta||mine.meta||{version:1,rev:0};
+  return {db:out,conflicts:conflicts};
+}
+/* התנגשות שהתגלתה (בבדיקה מוקדמת או בדחיית השרת): מושכים את גרסת
+   השרת, ממזגים, ושומרים מחדש עם מונה גבוה יותר. */
+var MERGE_ROUNDS=0;     // הגנה מפני לולאת מיזוג אינסופית מול שרת תקול
+function resolveConflictAndResave(){
+  stashLocalBackup("לפני מיזוג — משתמש אחר עדכן במקביל");
+  /* התור חייב להישאר "מלוכלך" לאורך כל המסלול: אם משהו ייכשל באמצע,
+     הניסיון החוזר עדיין מזוין ולא נשארים עם שינוי שלא נשלח לעולם. */
+  SAVEQ.dirty=true;
+  return serverLoad().then(function(res){
+    if(!(res.data && Array.isArray(res.data.apartments))){
+      SAVEQ.fails++; scheduleRetry(); return;
+    }
+    var srvRev=(res.data.meta&&Number(res.data.meta.rev))||0;
+    var merged=merge3(SYNCBASE, DB, res.data);
+    var next=normalizeDB(merged.db);
+    /* הבסיס מתעדכן רק אחרי מיזוג מוצלח — לפני כן הוא עדיין האב הקדמון */
+    setSyncBase(res.data);
+    DB=next;
+    DB.meta=DB.meta||{version:1};
+    DB.meta.rev=srvRev+1;
+    saveLocal(); UNDO.length=0;
+    /* מיזוג חוזר ונשנה = השרת ממשיך להתקדם או תקול. משהים בהדרגה
+       במקום להסתחרר בלולאה צמודה שמציפה את הרשת ואת המסך. */
+    MERGE_ROUNDS++;
+    var delay=MERGE_ROUNDS>2?Math.min(1500*(MERGE_ROUNDS-2),15000):0;
+    setTimeout(function(){ flushSave(); },delay);
+    setTimeout(function(){ MERGE_ROUNDS=0; },60000);
+    rerender();
+    toast(merged.conflicts
+      ? "מוזגו שינויים משני משתמשים · "+merged.conflicts+" התנגשויות הוכרעו לפי השרת (העותק שלך בגיבוי)"
+      : "מוזגו שינויים משני משתמשים — שום דבר לא אבד","warn");
+  }).catch(function(){
+    /* חריגה במיזוג עצמו — לא משאירים את התור תקוע */
+    SAVEQ.dirty=true; SAVEQ.fails++; scheduleRetry();
+  });
+}
 /* ---------- תור שמירה ----------
    כל שמירה שולחת את כל מסד הנתונים. כששולחים כמה בקשות במקביל הן אינן
    חוזרות בהכרח בסדר שנשלחו, ובקשה ישנה שמגיעה אחרונה דורסת שינויים
@@ -2491,17 +2634,38 @@ function scheduleRetry(){
   setSync(SAVEQ.fails>=3 ? "err" : "saving");
   setTimeout(flushSave, delay);
 }
-function flushSave(){
+async function flushSave(){
   if(SAVEQ.inflight || !SAVEQ.dirty) return;
   var h=getAuth(); if(!h){ setSync("local"); return; }
+  /* תפקיד ללא הרשאת עריכה לא ינסה לדחוף — השרת יחזיר forbidden,
+     והדחיפה הייתה נכשלת שוב ושוב בכל כניסה. */
+  if(CU && !can("edit")){ SAVEQ.dirty=false; setSync("local"); return; }
   SAVEQ.dirty=false; SAVEQ.inflight=true; setSync("saving");
-  var payload=JSON.stringify({action:"save",codeHash:h,data:DB});   // תמונת מצב עדכנית
+  try{
+  /* בדיקה מוקדמת וזולה: אם השרת כבר התקדם אל (או מעבר ל) המונה שלנו —
+     משתמש אחר שמר בינתיים. בלעדיה, שמירה עם מונה שווה הייתה מתקבלת
+     ודורסת בשקט את מה שהוא הכניס. נכשלה הבדיקה (רשת)? ממשיכים —
+     שומר-הגרסה בשרת עדיין עוצר את המקרים הקשים. */
+  try{
+    var rc=await api({action:"rev",codeHash:h});
+    if(rc && rc.ok){
+      var srv=Number(rc.rev)||0, loc=(DB&&DB.meta&&Number(DB.meta.rev))||0;
+      if(srv>=loc){
+        SAVEQ.inflight=false;
+        resolveConflictAndResave();
+        return;
+      }
+    }
+  }catch(e){}
+  var snap=JSON.stringify(DB);                                      // תמונת מצב עדכנית
+  var payload='{"action":"save","codeHash":'+JSON.stringify(h)+',"data":'+snap+'}';
   fetch(SHEETS_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:payload})
     .then(function(r){ return r.json(); })
     .then(function(j){
       SAVEQ.inflight=false;
       if(j&&j.ok){
-        SAVEQ.fails=0;
+        SAVEQ.fails=0; MERGE_ROUNDS=0;
+        setSyncBase(snap);                   // מה שנשלח הוא עכשיו מצב השרת
         if(SAVEQ.dirty){ setSync("saving"); setTimeout(flushSave,0); }   // שינויים שנעשו בזמן השליחה
         else { clearDirtyMark(); setSync("ok"); }
         return;
@@ -2509,20 +2673,19 @@ function flushSave(){
       SAVEQ.dirty=true;
       var err=j&&j.error;
       if(err==="stale-rev"){
-        /* השרת מחזיק גרסה חדשה יותר (מכשיר אחר עבד בינתיים).
-           לא דורסים אותה: שומרים את העותק שלנו בגיבוי חירום ומושכים את העדכני. */
-        SAVEQ.dirty=false; setSync("err");
-        stashLocalBackup("שינוי שנדחה — השרת התעדכן ממכשיר אחר");
-        serverLoad().then(function(res){
-          if(res.data && Array.isArray(res.data.apartments)){
-            DB=normalizeDB(res.data); saveLocal(); UNDO.length=0; clearDirtyMark();
-            setSync("ok"); rerender();
-            toast("מכשיר אחר עדכן נתונים במקביל — נטענה הגרסה העדכנית. העותק שלך נשמר ב'גיבוי'","warn");
-          }
-        });
+        /* משתמש אחר שמר בינתיים — ממזגים במקום לזרוק את העבודה שלנו */
+        SAVEQ.dirty=false; setSync("saving");
+        resolveConflictAndResave();
         return;
       }
-      if(err==="unauthorized"||err==="forbidden"){
+      if(err==="forbidden"){
+        /* הקוד תקף אבל לתפקיד אין הרשאת עריכה — לא מנתקים ולא יורים
+           שוב ושוב. השינוי נשאר מקומי ומסומן. */
+        SAVEQ.dirty=false; setSync("local");
+        toast("למשתמש הזה אין הרשאת עריכה — השינויים נשמרו מקומית בלבד","warn");
+        return;
+      }
+      if(err==="unauthorized"){
         /* קוד הכניסה כבר לא תקף (למשל אחרי איפוס ממכשיר אחר).
            אסור להמשיך לירות — עוצרים, והשינוי שמור מקומית ומסומן,
            כך שאחרי כניסה מחודשת הוא נדחף לשרת ולא נמחק. */
@@ -2536,6 +2699,12 @@ function flushSave(){
       SAVEQ.inflight=false; SAVEQ.fails++; SAVEQ.dirty=true;
       scheduleRetry();
     });
+  }catch(e){
+    /* חריגה סינכרונית (למשל JSON.stringify על נתון פגום) הייתה משאירה
+       inflight=true לנצח — כל שמירה עתידית הייתה נחסמת בשקט. */
+    SAVEQ.inflight=false; SAVEQ.dirty=true; SAVEQ.fails++;
+    scheduleRetry();
+  }
 }
 function hasUnsaved(){ return !!(SAVEQ.dirty||SAVEQ.inflight); }
 window.addEventListener("online",function(){    // הרשת חזרה — מנסים מיד
@@ -2580,22 +2749,44 @@ async function reconcileAfterAuth(){
   var srvRev=(res.data&&res.data.meta&&Number(res.data.meta.rev))||0;
   var locRev=(DB&&DB.meta&&Number(DB.meta.rev))||0;
   var localDirty=hasDirtyMark() && DB && Array.isArray(DB.apartments);
-  if(localDirty && (res.data===null || locRev>=srvRev)){
+  /* אין עבודה מקומית — פשוט מיישרים לשרת (וזה גם הבסיס החדש).
+     יש עבודה מקומית — הבסיס נשאר האב הקדמון עד אחרי המיזוג. */
+  if(!localDirty){
+    if(res.data && Array.isArray(res.data.apartments)){
+      DB=normalizeDB(res.data); setSyncBase(res.data); saveLocal(); UNDO.length=0; clearDirtyMark();
+    }
+    return true;
+  }
+  if(res.data===null){
     SAVEQ.dirty=true; flushSave();
     toast("נמצאו שינויים שטרם סונכרנו — נשלחים לשרת","warn");
     return true;
   }
   if(res.data && Array.isArray(res.data.apartments)){
-    if(localDirty){
-      stashLocalBackup("שינויים מקומיים ישנים — השרת היה מעודכן יותר בכניסה");
-      toast("השרת הכיל גרסה חדשה יותר — נטענה. העותק המקומי נשמר ב'גיבוי'","warn");
+    if(srvRev<=SYNCREV && locRev>=srvRev){
+      /* השרת לא התקדם מאז הבסיס שלנו — אין מה למזג, רק לדחוף */
+      SAVEQ.dirty=true; flushSave();
+      toast("נמצאו שינויים שטרם סונכרנו — נשלחים לשרת","warn");
+      return true;
     }
-    DB=normalizeDB(res.data); saveLocal(); UNDO.length=0; clearDirtyMark();
+    /* עבודה מקומית מול שרת שהתקדם — ממזגים במקום לזרוק צד כלשהו */
+    stashLocalBackup("לפני מיזוג בכניסה — השרת התעדכן בינתיים");
+    var merged=merge3(SYNCBASE, DB, res.data);
+    var next=normalizeDB(merged.db);
+    setSyncBase(res.data);              // רק אחרי המיזוג
+    DB=next;
+    DB.meta=DB.meta||{version:1}; DB.meta.rev=srvRev+1;
+    saveLocal(); UNDO.length=0;
+    SAVEQ.dirty=true; setTimeout(flushSave,0);
+    toast(merged.conflicts
+      ? "מוזגו שינויים מקומיים עם עדכוני השרת · "+merged.conflicts+" התנגשויות הוכרעו לפי השרת"
+      : "שינויים מקומיים מוזגו עם עדכוני השרת","warn");
   }
   return true;
 }
 async function boot(){
   var hadLocal=loadDB();
+  loadSyncBase();     // בסיס המיזוג שורד סגירת דפדפן — בלעדיו המיזוג בכניסה שגוי
   if(!hadLocal||!DB){ DB=blankDB(); seedIfEmpty(); }
   if(getAuth()){                       // session פעיל
     var r=await reconcileAfterAuth();
@@ -3403,7 +3594,7 @@ function sheetIncome(list){
   var unitCols=[];
   list.forEach(function(a){ aptUnits(a.id).forEach(function(n){ if(unitCols.indexOf(n)<0) unitCols.push(n); }); });
   var rows=[["פרוייקט","תאריך","תיאור"].concat(unitCols,
-    ["כניסה","יציאה","לילות","סכום","שולם","יתרת חוב","נכנס ל","חלוקה","הערה"])]; var tot=0;
+    ["כניסה","יציאה","לילות","סכום","שולם","יתרת חוב","נכנס ל","חלוקה","לחישוב","הערה"])]; var tot=0;
   list.forEach(function(a){
     apIncome(a.id).slice().sort(function(x,y){return (x.date<y.date)?-1:1;}).forEach(function(x){
       var tr=incomeTracked(x), u=incomeUnits(x), hasStay=!!(x.startDate||x.endDate);
@@ -3411,7 +3602,8 @@ function sheetIncome(list){
         .concat(unitCols.map(function(n){ return u.indexOf(n)>=0?"✔":""; }),
           [hasStay?D(stayStart(x)):"",x.endDate?D(x.endDate):"",hasStay?{t:"n",v:stayNights(x)}:"",
            M(x.amount),tr?M(incomePaid(x)):"",tr?M(incomeDebt(x)):"",
-           incomeDestName(x),incomeSplitLabel(x),x.note||""])); tot+=Number(x.amount)||0;
+           incomeDestName(x),incomeSplitLabel(x),x.excluded?"לא":"כן",x.note||""]));
+      if(!x.excluded) tot+=Number(x.amount)||0;   /* "לא לחישוב" בפירוט אך לא בסה"כ */
     });
   });
   return {name:"הכנסות",rows:rows,
@@ -6011,14 +6203,16 @@ function moduleIncome(aptId){
   var units=aptUnits(aptId);
   /* מסנן יחידה — הזמנה נכנסת אם היחידה שנבחרה סומנה בה */
   var inc=Q.incUnit ? all.filter(function(i){ return incomeUnits(i).indexOf(Q.incUnit)>=0; }) : all;
-  var sum=0, paidSum=0, debtSum=0, anyTracked=false;
+  var sum=0, paidSum=0, debtSum=0, anyTracked=false, exclN=0;
   inc.forEach(function(i){
+    if(i.excluded){ exclN++; return; }              /* "לא לחישוב" — בפירוט, לא בסיכום */
     var amt=Number(i.amount)||0; sum+=amt;
     if(incomeTracked(i)){ anyTracked=true; paidSum+=incomePaid(i); debtSum+=Math.max(0,incomeDebt(i)); }
     else paidSum+=amt;   /* הכנסה רגילה = כבר נכנסה */
   });
   var h='<div class="toolbar"><h3 style="margin:0">הכנסות — '+(Q.incUnit?'סה"כ המסונן ':'סה"כ ')+money(sum)+
-    (anyTracked?' <span class="hint">· שולם '+money(paidSum)+' · חוב פתוח '+money(debtSum)+'</span>':'')+'</h3><div class="sp"></div>'+
+    (anyTracked?' <span class="hint">· שולם '+money(paidSum)+' · חוב פתוח '+money(debtSum)+'</span>':'')+
+    (exclN?' <span class="hint">· '+exclN+' לא לחישוב</span>':'')+'</h3><div class="sp"></div>'+
     (all.length?'<button class="btn btn-sm" onclick="openOccupancy(\''+aptId+'\')">📅 לוח תפוסה</button> ':'')+
     (allIncomePays(aptId).length?'<button class="btn btn-sm" onclick="openAllIncomePays(\''+aptId+'\')">💳 כל התשלומים</button> ':'')+
     (can("edit")?'<button class="btn btn-primary btn-sm" onclick="editIncome(null,\''+aptId+'\')">➕ הכנסה</button> '+
@@ -6046,9 +6240,10 @@ function moduleIncome(aptId){
   if(!inc.length) h+='<tr><td colspan="'+((selI?1:0)+(units.length?10:9))+'" class="empty">'+(Q.incUnit?"אין הזמנות ביחידה הזו":"אין הכנסות")+'</td></tr>';
   inc.slice().sort(function(x,y){return x.date<y.date?1:-1;}).forEach(function(i){
     var tracked=incomeTracked(i), debt=incomeDebt(i);
-    h+='<tr>'+
+    h+='<tr'+(i.excluded?' style="opacity:.55"':'')+'>'+
       (selI?'<td class="chk"><input type="checkbox" class="ib-x" value="'+i.id+'" style="width:auto" onchange="ibCount()"></td>':'')+
-      '<td>'+dateHe(i.date)+'</td><td>'+esc(i.description)+'</td>'+
+      '<td>'+dateHe(i.date)+'</td><td>'+esc(i.description)+
+        (i.excluded?' <span class="badge badge-muted badge-unit" title="לא נספרת בסיכומי ההכנסות">לא לחישוב</span>':'')+'</td>'+
       (units.length?'<td>'+unitsCellHtml(i)+'</td>':'')+
       '<td class="muted" title="'+esc(stayLabel(i))+'">'+esc(stayLabelShort(i))+'</td>'+
       '<td>'+money(i.amount)+'</td>'+
@@ -6065,18 +6260,19 @@ function moduleIncome(aptId){
         (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editIncome(\''+i.id+'\',\''+aptId+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="softDelete(\'income\',\''+i.id+'\',\'למחוק הכנסה?\')">🗑️</button>':'')+'</td></tr>';
   });
   h+='</tbody></table></div>';
-  /* סיכום לפי יחידה — כמה הושכר וכמה נכנס בכל אחת */
+  /* סיכום לפי יחידה — כמה הושכר וכמה נכנס בכל אחת (בלי "לא לחישוב") */
+  var allCalc=all.filter(function(i){ return !i.excluded; });
   if(units.length && all.length){
     h+='<div class="section-title" style="margin-top:16px">לפי יחידה</div>'+
       '<div class="table-wrap"><table class="tbl"><thead><tr><th>יחידה</th><th>הזמנות</th><th>סה"כ מחיר</th><th>שולם</th><th>יתרת חוב</th></tr></thead><tbody>';
     units.forEach(function(n){
-      var rows=all.filter(function(i){ return incomeUnits(i).indexOf(n)>=0; });
+      var rows=allCalc.filter(function(i){ return incomeUnits(i).indexOf(n)>=0; });
       var amt=rows.reduce(function(s,i){return s+(Number(i.amount)||0);},0);
       var pd=rows.reduce(function(s,i){return s+(incomeTracked(i)?incomePaid(i):(Number(i.amount)||0));},0);
       h+='<tr><td><b>'+esc(n)+'</b></td><td>'+rows.length+'</td><td>'+money(amt)+'</td>'+
         '<td>'+money(pd)+'</td><td class="'+(amt-pd>0.01?"neg":"pos")+'">'+money(amt-pd)+'</td></tr>';
     });
-    var noUnit=all.filter(function(i){ return !incomeUnits(i).length; });
+    var noUnit=allCalc.filter(function(i){ return !incomeUnits(i).length; });
     if(noUnit.length){
       var amt0=noUnit.reduce(function(s,i){return s+(Number(i.amount)||0);},0);
       var pd0=noUnit.reduce(function(s,i){return s+(incomeTracked(i)?incomePaid(i):(Number(i.amount)||0));},0);
@@ -6319,6 +6515,10 @@ function openBulkIncomeEdit(aptId){
           '<option value="clear">לנקות את הסימון</option>'+
         '</select>'+
         '<div id="ib-unit-wrap" style="display:none;padding:4px 0">'+unitChecksHtml("ib-u",aptId,null)+'</div></div>':'')+
+      '<div class="field"><label>לחישוב</label><select id="ib-excl">'+
+        '<option value="__keep">— ללא שינוי —</option>'+
+        '<option value="excl">לא לחישוב (מוסתר מהסיכומים)</option>'+
+        '<option value="incl">כן לחישוב</option></select></div>'+
       '<div class="field full"><label>הערה</label>'+
         '<select id="ib-note-mode" onchange="onIbNoteMode()" style="margin-bottom:5px">'+
           '<option value="keep">— ללא שינוי —</option>'+
@@ -6355,7 +6555,8 @@ function applyBulkIncomeEdit(aptId,ids){
   var uMode=document.getElementById("ib-unit-mode")?val("ib-unit-mode"):"keep";
   var noteMode=val("ib-note-mode")||"keep", noteTxt=val("ib-note").trim();
   var markPaid=checked("ib-paid");
-  if(!date && !start && !end && !dest && uMode==="keep" && noteMode==="keep" && !markPaid){ toast("לא נבחר מה לעדכן","warn"); return false; }
+  var exclSel=document.getElementById("ib-excl")?val("ib-excl"):"__keep";
+  if(!date && !start && !end && !dest && uMode==="keep" && noteMode==="keep" && !markPaid && exclSel==="__keep"){ toast("לא נבחר מה לעדכן","warn"); return false; }
   if((noteMode==="set"||noteMode==="append") && !noteTxt){
     toast("כתוב את ההערה שתיכנס, או בחר \"ללא שינוי\" בשדה ההערה","err"); return false; }
   var picked=(uMode==="set"||uMode==="add")?readUnitChecks("ib-u"):[];
@@ -6379,6 +6580,8 @@ function applyBulkIncomeEdit(aptId,ids){
       picked.forEach(function(u){ if(cur.indexOf(u)<0) cur.push(u); });
       i.units=cur;
     }else if(uMode==="clear") i.units=null;
+    if(exclSel==="excl") i.excluded=true;
+    else if(exclSel==="incl") i.excluded=false;
     if(noteMode==="set") i.note=noteTxt;
     else if(noteMode==="append"){ var old=String(i.note||"").trim(); i.note = old ? (old+" | "+noteTxt) : noteTxt; }
     else if(noteMode==="clear") i.note="";
@@ -6615,8 +6818,38 @@ function viewBankMatch(){
     stat("שורות שלא הותאמו",openMoves.length)+
     stat("סכום שלא מוסבר",money(openSum))+
     stat("סה\"כ שורות",all.length)+'</div>';
+  /* סיכום לפי בנק — כמה נכנס בכל אחד, כמה הותאם וכמה עוד פתוח */
+  var perBank={};
+  all.forEach(function(m){
+    var k=m.stmtBankId||m.accountId||"";
+    var s=perBank[k]=perBank[k]||{n:0,sum:0,matched:0,open:0};
+    s.n++; s.sum=round2(s.sum+(Number(m.amount)||0));
+    s.matched=round2(s.matched+moveAllocated(m));
+    if(moveIsOpen(m)) s.open=round2(s.open+moveRemaining(m));
+  });
+  var bankKeys=Object.keys(perBank);
+  if(bankKeys.length>1 || (bankKeys.length===1 && banks.length>1)){
+    h+='<div class="card"><h3>סיכום לפי בנק</h3>'+
+      '<div class="table-wrap"><table class="tbl"><thead><tr>'+
+      '<th>בנק</th><th>שורות</th><th>נכנס</th><th>הותאם</th><th>לא מוסבר</th><th></th></tr></thead><tbody>';
+    bankKeys.sort(function(a,b){ return perBank[b].sum-perBank[a].sum; }).forEach(function(k){
+      var s=perBank[k];
+      var nm=stmtBankName(k)||bankName(k)||"—";
+      h+='<tr'+(BQ.bank===k?' style="background:#eef2ff"':'')+'>'+
+        '<td><b>🏦 '+esc(nm)+'</b></td><td>'+s.n+'</td>'+
+        '<td><b>'+money(s.sum)+'</b></td><td>'+money(s.matched)+'</td>'+
+        '<td class="'+(s.open>0.01?"neg":"pos")+'">'+money(s.open)+'</td>'+
+        '<td class="right"><button class="btn btn-ghost btn-sm" onclick="BQ.bank='+
+          (BQ.bank===k?"''":"'"+k+"'")+';rerender()">'+(BQ.bank===k?"✕ בטל סינון":"הצג")+'</button></td></tr>';
+    });
+    var tAll={n:all.length,sum:round2(all.reduce(function(s,m){return s+(Number(m.amount)||0);},0)),
+      matched:round2(all.reduce(function(s,m){return s+moveAllocated(m);},0))};
+    h+='</tbody><tfoot><tr><td>סה"כ</td><td>'+tAll.n+'</td><td>'+money(tAll.sum)+'</td>'+
+      '<td>'+money(tAll.matched)+'</td><td>'+money(openSum)+'</td><td></td></tr></tfoot></table></div></div>';
+  }
   h+='<div class="toolbar">'+
     (can("edit")?'<button class="btn btn-primary btn-sm" onclick="openBankMoveImport()">📥 הדבקת שורות מהבנק</button> '+
+      '<button class="btn btn-sm" onclick="editBankMove(null)">➕ תנועה ידנית</button> '+
       (openMoves.length?'<button class="btn btn-sm" onclick="runAutoMatch()">⚡ התאמה אוטומטית</button> ':'')+
       (all.length?'<button class="btn btn-danger btn-sm" onclick="clearMatchedMoves()">🗑️ נקה מותאמות</button> ':''):'')+
     '<div class="sp"></div></div>';
@@ -6637,7 +6870,7 @@ function viewBankMatch(){
     '<div class="sp"></div><span class="hint">'+countLine(list.length,all.length,"שורות")+'</span></div>';
 
   h+='<div class="table-wrap"><table class="tbl"><thead><tr>'+
-    '<th>תאריך</th><th>שם</th><th>סכום</th><th>בנק</th><th>סוג</th><th>סגנון</th><th>פרטים</th><th>יש מסמך</th>'+
+    '<th>תאריך</th><th>שם</th><th>סכום</th><th>בנק</th><th>סוג</th><th>קטגוריה</th><th>פרטים</th><th>יש מסמך</th>'+
     '<th>סטטוס</th><th>הותאם ל…</th><th></th>'+
     '</tr></thead><tbody>';
   if(!list.length) h+='<tr><td colspan="11" class="empty">'+(all.length?"אין שורות שמתאימות לסינון":"עוד לא הודבקו שורות מהבנק")+'</td></tr>';
@@ -6659,6 +6892,7 @@ function viewBankMatch(){
         (mm.length?esc(mm.map(function(x){ var i=byId(DB.income,x.incomeId); return (i?i.description:"—")+" ("+money(x.amount)+")"; }).join(" · ")):"—")+'</td>'+
       '<td class="right" style="white-space:nowrap">'+
         (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="openMoveMatch(\''+m.id+'\')" title="התאמה">🔗</button>'+
+        '<button class="btn btn-ghost btn-sm" onclick="editBankMove(\''+m.id+'\')" title="עריכה">✏️</button>'+
         (m.ignored?'<button class="btn btn-ghost btn-sm" onclick="toggleMoveIgnore(\''+m.id+'\')" title="החזר לטיפול">↩️</button>'
                   :'<button class="btn btn-ghost btn-sm" onclick="toggleMoveIgnore(\''+m.id+'\')" title="התעלם משורה זו">🚫</button>')+
         '<button class="btn btn-ghost btn-sm" onclick="delBankMove(\''+m.id+'\')">🗑️</button>':'')+'</td></tr>';
@@ -6854,6 +7088,51 @@ function undoMatchFromUi(moveId,matchId){
   save(); toast("ההתאמה בוטלה והתשלום הוסר","ok");
   renderMoveCandidates(moveId);
 }
+/* ---------- תנועה ידנית — שורה אחת בלי הדבקה ---------- */
+function editBankMove(id){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var m=id?byId(DB.bankMoves,id):null;
+  var banks=stmtBanks();
+  var curBank=m?(m.stmtBankId||""):(BQ.bank||(banks[0]&&banks[0].id)||"");
+  openModal({title:m?"עריכת תנועת בנק":"➕ תנועת בנק ידנית",bodyHtml:
+    '<div class="form-grid">'+
+    '<div class="field"><label>בנק</label><select id="bm-bank">'+
+      (banks.length?'':'<option value="">— אין בנקים ברשימה —</option>')+
+      banks.map(function(b){ return '<option value="'+b.id+'"'+(curBank===b.id?" selected":"")+'>🏦 '+esc(b.name)+'</option>'; }).join("")+
+      '<option value="__add">➕ בנק חדש…</option></select></div>'+
+    '<div class="field"><label>תאריך</label><input id="bm-date" type="date" value="'+esc(m?m.date:todayISO())+'"></div>'+
+    '<div class="field"><label>שם</label><input id="bm-name" value="'+esc(m&&m.name||"")+'" placeholder="ממי הגיע הכסף"></div>'+
+    '<div class="field"><label>סכום (₪)</label><input id="bm-amount" type="number" step="0.01" value="'+(m?esc(String(m.amount)):"")+'"></div>'+
+    '<div class="field"><label>סוג</label><input id="bm-kind" value="'+esc(m&&m.kind||"")+'" placeholder="העברה / מזומן…"></div>'+
+    '<div class="field"><label>קטגוריה</label><input id="bm-style" value="'+esc(m&&m.style||"")+'"></div>'+
+    '<div class="field"><label>אסמכתא</label><input id="bm-ref" value="'+esc(m&&m.ref||"")+'"></div>'+
+    '<div class="field full"><label>פרטים</label><input id="bm-details" value="'+esc(m&&m.details||"")+'"></div>'+
+    '<div class="field"><label style="font-weight:400"><input type="checkbox" id="bm-doc" style="width:auto;margin-inline-end:6px"'+(m&&m.hasDoc?" checked":"")+'> יש מסמך</label></div>'+
+    '</div>',
+    saveLabel:"שמירה",onSave:function(){
+      var bankId=val("bm-bank");
+      if(bankId==="__add"){
+        var nm=prompt("שם הבנק החדש:",""); nm=(nm||"").trim();
+        if(!nm){ toast("בחר בנק","err"); return false; }
+        bankId=addStmtBank(nm).id;
+      }
+      if(!bankId){ toast("בחר בנק (או ➕ בנק חדש)","err"); return false; }
+      var amt=Number(val("bm-amount"))||0;
+      if(amt<=0){ toast("סכום לא תקין","err"); return false; }
+      if(m){
+        m.stmtBankId=bankId; m.accountId=""; m.date=val("bm-date")||todayISO(); m.name=val("bm-name").trim();
+        m.amount=round2(amt); m.kind=val("bm-kind").trim(); m.style=val("bm-style").trim();
+        m.ref=val("bm-ref").trim(); m.details=val("bm-details").trim(); m.hasDoc=checked("bm-doc");
+      }else{
+        DB.bankMoves.push({id:uid(),stmtBankId:bankId,apartmentId:"",
+          date:val("bm-date")||todayISO(),amount:round2(amt),
+          name:val("bm-name").trim(),kind:val("bm-kind").trim(),style:val("bm-style").trim(),
+          details:val("bm-details").trim(),hasDoc:checked("bm-doc"),description:"",ref:val("bm-ref").trim(),
+          matches:[],ignored:false,note:"",deleted:false});
+      }
+      save(); toast(m?"נשמר":"התנועה נוספה","ok"); rerender();
+    }});
+}
 /* ---------- ייבוא שורות בנק — הדבקה של הרבה שורות בבת אחת ---------- */
 var BIMP={grid:null,hasHeader:true,map:{date:-1,amount:-1,credit:-1,debit:-1,name:-1,bank:-1,kind:-1,style:-1,details:-1,doc:-1,ref:-1},stmtBankId:""};
 function openBankMoveImport(){
@@ -6918,7 +7197,7 @@ function onBankGrid(grid){
   BIMP.map.name=find("שם");
   BIMP.map.bank=find("בנק");
   BIMP.map.kind=find("סוג");
-  BIMP.map.style=find("סגנון");
+  BIMP.map.style=find("קטגוריה","סגנון");
   BIMP.map.details=find("פרטים","תיאור","פירוט","פעולה","תנועה");
   BIMP.map.doc=find("מסמך");
   BIMP.map.ref=find("אסמכתא","אסמכת","reference");
@@ -6947,7 +7226,7 @@ function renderBankMap(){
         '<div class="hint">מדביקים כמה בנקים יחד? מפים כאן את עמודת הבנק — כל שורה תשויך לבנק שכתוב בה. '+
         'בנק שאינו ברשימה ייווצר אוטומטית.</div></div>'+
       '<div class="field"><label>סוג</label>'+sel("kind",BIMP.map.kind)+'</div>'+
-      '<div class="field"><label>סגנון</label>'+sel("style",BIMP.map.style)+'</div>'+
+      '<div class="field"><label>קטגוריה</label>'+sel("style",BIMP.map.style)+'</div>'+
       '<div class="field"><label>פרטים</label>'+sel("details",BIMP.map.details)+'</div>'+
       '<div class="field"><label>יש מסמך</label>'+sel("doc",BIMP.map.doc)+'</div>'+
       '<div class="field"><label>אסמכתא</label>'+sel("ref",BIMP.map.ref)+'</div>'+
@@ -7021,7 +7300,7 @@ function renderBankPreview(){
     (missing?'<div class="hint neg" style="margin-bottom:6px">'+missing+' שורות בלי ערך בעמודת הבנק — בחר בנק ברירת מחדל בבורר למעלה.</div>':'')+
     '<div class="table-wrap" style="max-height:240px"><table class="tbl"><thead><tr>'+
     '<th>תאריך</th><th>שם</th><th>סכום</th>'+(byCol?'<th>בנק</th>':'')+
-    '<th>סוג</th><th>סגנון</th><th>פרטים</th><th>יש מסמך</th><th></th></tr></thead><tbody>'+
+    '<th>סוג</th><th>קטגוריה</th><th>פרטים</th><th>יש מסמך</th><th></th></tr></thead><tbody>'+
     rows.slice(0,15).map(function(r){
       var bid=bankIdForRow(r,false);
       var d=bid&&bankRowIsDup(r,bid);
@@ -7077,7 +7356,7 @@ function applyBankImport(){
    ============================================================ */
 function incMgmtOwed(aptId,mgrId){
   var m=byId(DB.managers,mgrId); var pct=Number(m&&m.incomePct)||0; if(!pct) return 0;
-  return round2(apIncome(aptId).filter(function(i){ return !!i.mgmtOn; })
+  return round2(apIncomeCalc(aptId).filter(function(i){ return !!i.mgmtOn; })
     .reduce(function(s,i){ return s+(Number(i.amount)||0)*pct/100; },0));
 }
 /* החוב למנהל הוא הוצאה אמיתית של הפרוייקט: לכל מנהל מוחזק שלב אוטומטי
@@ -7546,6 +7825,8 @@ function editIncome(id,aptId){
       '</select>'+
       '<div class="hint">'+(a&&a.hasBank?'הכנסה שנכנסת לבנק הזמני מתווספת ליתרת הבנק ונזקפת לשותפים לפי החלוקה שלמטה.':'בפרויקט הזה הבנק הזמני כבוי, ולכן ניתן לבחור רק שותף.')+'</div></div>')+
     '<div class="field full"><label>הערה</label><input id="in-note" value="'+esc(it.note||"")+'"></div>'+
+    '<div class="field full"><label style="font-weight:400"><input type="checkbox" id="in-excl" style="width:auto;margin-inline-end:6px"'+(it.excluded?" checked":"")+'>'+
+      'לא לחישוב — השורה תישאר בפירוט אבל לא תיספר בשום סיכום הכנסות (כולל בנק ודמי ניהול)</label></div>'+
     '</div>'+
     (pids.length?
       '<div class="section-title">שיוך ההכנסה באחוזים <span class="hint">(ריק = לפי ברירת המחדל)</span></div>'+
@@ -7580,10 +7861,11 @@ function editIncome(id,aptId){
       }
       var target;
       if(id){ it.description=desc; it.amount=amt; it.date=val("in-date"); it.receivedBy=dest; it.split=split; it.units=un;
-        it.startDate=sd; it.endDate=ed; it.note=val("in-note"); target=it; }
+        it.startDate=sd; it.endDate=ed; it.note=val("in-note"); it.excluded=checked("in-excl"); target=it; }
       else{
         target={id:uid(),apartmentId:aptId,description:desc,amount:amt,date:val("in-date")||todayISO(),
-          receivedBy:dest,split:split,units:un,startDate:sd,endDate:ed,note:val("in-note"),deleted:false};
+          receivedBy:dest,split:split,units:un,startDate:sd,endDate:ed,note:val("in-note"),
+          excluded:checked("in-excl"),deleted:false};
         DB.income.push(target);
       }
       if(paidNow){
@@ -7652,6 +7934,7 @@ function moduleApartmentReports(aptId){
     {key:"payer",label:"💳 כל התשלומים של משלם",show:true,render:function(){ return payerReportHtml(aptId); }},
     {key:"category",label:"📁 לפי קטגוריה",show:true,render:function(){ return categoryReportHtml(aptId); }},
     {key:"monthly",label:"📅 סיכום חודשי",show:true,render:function(){ return monthlySummaryReportHtml(aptId); }},
+    {key:"incYear",label:"📆 הכנסות לפי שנה",show:apIncome(aptId).length>0,render:function(){ return incomeYearReportHtml(aptId); }},
     {key:"catYear",label:"📆 קטגוריה לפי שנה",show:true,render:function(){ return categoryYearReportHtml(aptId); }},
     {key:"catMonth",label:"📆 קטגוריה לפי חודש",show:true,render:function(){ return categoryMonthReportHtml(aptId); }},
     {key:"due",label:"⚖️ חובה והתחשבנות",show:true,render:function(){ return dueByPaidReportHtml(aptId); }},
@@ -7808,6 +8091,49 @@ function categoryYearReportHtml(aptId){ return categoryPeriodReportHtml(aptId,"y
 function categoryMonthReportHtml(aptId){ return categoryPeriodReportHtml(aptId,"month"); }
 
 /* ============================================================
+   דוח הכנסות לפי שנה — שורה לשנה: כמה הזמנות, המחיר המלא,
+   כמה התקבל בפועל (לפי תאריך התשלום) וכמה חוב נשאר.
+   ============================================================ */
+function incomeYearReportHtml(aptId){
+  var a=byId(DB.apartments,aptId);
+  var years={};
+  function Y(k){ return years[k]=years[k]||{n:0,full:0,got:0}; }
+  apIncomeCalc(aptId).forEach(function(i){
+    var k=i.date?String(i.date).slice(0,4):"ללא תאריך";
+    var y=Y(k); y.n++; y.full=round2(y.full+(Number(i.amount)||0));
+    if(incomeTracked(i)){
+      incomePays(i).forEach(function(g){
+        var kg=(g.date||i.date)?String(g.date||i.date).slice(0,4):k;
+        Y(kg).got=round2(Y(kg).got+(Number(g.amount)||0));
+      });
+    }else if(i.date) y.got=round2(y.got+(Number(i.amount)||0));
+  });
+  var keys=Object.keys(years).sort(function(x,y){
+    if(x==="ללא תאריך") return 1; if(y==="ללא תאריך") return -1;
+    return x<y?-1:1;
+  });
+  if(!keys.length) return '<div class="card"><h3>📆 הכנסות לפי שנה</h3><div class="empty">אין הכנסות בפרוייקט</div></div>';
+  var h='<div class="card"><h3>📆 הכנסות לפי שנה — '+esc(a.name)+'</h3>'+
+    '<div class="hint" style="margin-bottom:8px">"הכנסות" לפי תאריך ההכנסה (מחיר מלא); "התקבל" לפי תאריך התשלום בפועל. '+
+    'הכנסה בלי מעקב תשלומים נספרת כאילו התקבלה בתאריך שלה.</div>'+
+    '<div class="table-wrap"><table class="tbl"><thead><tr>'+
+    '<th>שנה</th><th>הזמנות</th><th>הכנסות (מחיר)</th><th>התקבל</th><th>הפרש</th></tr></thead><tbody>';
+  var t={n:0,full:0,got:0};
+  keys.forEach(function(k){
+    var y=years[k]; var diff=round2(y.full-y.got);
+    t.n+=y.n; t.full=round2(t.full+y.full); t.got=round2(t.got+y.got);
+    h+='<tr><td><b>'+esc(k)+'</b></td><td>'+y.n+'</td>'+
+      '<td>'+money(y.full)+'</td><td>'+money(y.got)+'</td>'+
+      '<td class="'+(diff>0.01?"neg":"pos")+'">'+money(diff)+'</td></tr>';
+  });
+  var td=round2(t.full-t.got);
+  h+='</tbody><tfoot><tr><td>סה"כ</td><td>'+t.n+'</td><td>'+money(t.full)+'</td>'+
+    '<td>'+money(t.got)+'</td><td class="'+(td>0.01?"neg":"pos")+'">'+money(td)+'</td></tr></tfoot></table></div>'+
+    '<div class="hint">ההפרש בשורת שנה יכול להיות שלילי כשתשלומים על הזמנות משנה קודמת התקבלו בשנה הזו.</div></div>';
+  return h;
+}
+
+/* ============================================================
    סיכום חודשי לפרוייקט — שורה לחודש: הכנסות מול מה שהתקבל,
    הוצאות מול מה ששולם, דמי ניהול, משיכות ויתרה.
    "התקבל" = תשלומי הזמנות לפי תאריך התשלום; הכנסה בלי מעקב תשלומים
@@ -7820,7 +8146,7 @@ function monthlySummaryReportHtml(aptId){
   function M(k){ return months[k]=months[k]||{incFull:0,incGot:0,expCost:0,expPaid:0,mgmtPaid:0,wd:0}; }
   function mk(d){ return d?String(d).slice(0,7):""; }
   /* הכנסות — מחיר מלא לפי תאריך ההכנסה; התקבל לפי תאריך התשלום */
-  apIncome(aptId).forEach(function(i){
+  apIncomeCalc(aptId).forEach(function(i){
     var k=mk(i.date); if(k) M(k).incFull+=Number(i.amount)||0;
     if(incomeTracked(i)) incomePays(i).forEach(function(g){
       var kg=mk(g.date||i.date); if(kg) M(kg).incGot+=Number(g.amount)||0;

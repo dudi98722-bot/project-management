@@ -250,7 +250,10 @@ function saveWithRevGuard(data, user) {
     var stored = loadData();
     var storedRev = (stored && stored.meta && Number(stored.meta.rev)) || 0;
     var incomingRev = (data && data.meta && Number(data.meta.rev)) || 0;
-    if (storedRev > 0 && incomingRev < storedRev) {
+    /* דחייה גם על מונה שווה: שני משתמשים שיצאו מאותה גרסה מגיעים לאותו
+       מונה, והמאחר היה דורס בשקט את הראשון. הלקוח מטפל ב-stale-rev
+       במיזוג תלת-כיווני, כך ששני הצדדים נשמרים. */
+    if (storedRev > 0 && incomingRev <= storedRev) {
       return { ok: false, error: "stale-rev", serverRev: storedRev };
     }
     // מיזוג לפי המשתמש: מה שלא שויך לו לא נדרס, וקודי כניסה נשמרים
@@ -298,13 +301,17 @@ function rememberMeta(data) {
 }
 
 function saveData(data) {
-  rememberMeta(data);
+  /* המונה נכתב רק אחרי שהגיליון נשמר בהצלחה. כתיבה מוקדמת שלו גרמה
+     לכך שכשל בכתיבת הגיליון השאיר מונה גבוה מהנתונים — והלקוחות נכנסו
+     ללולאת מיזוג אינסופית מול "גרסה" שלא קיימת. */
   var str = JSON.stringify(data);
   var sh = ss().getSheetByName(DATA_SHEET) || ss().insertSheet(DATA_SHEET);
   sh.clear();
   var chunks = [];
   for (var i = 0; i < str.length; i += CHUNK) chunks.push([str.substr(i, CHUNK)]);
   if (chunks.length) sh.getRange(1, 1, chunks.length, 1).setValues(chunks);
+  SpreadsheetApp.flush();          // מוודא שהכתיבה הושלמה לפני עדכון המונה
+  rememberMeta(data);
   try { renderReadable(data); } catch (err) { /* אל תיכשל את השמירה בגלל תצוגה */ }
   try { sh.hideSheet(); } catch (err) {}
 }
