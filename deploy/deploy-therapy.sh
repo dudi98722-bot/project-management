@@ -30,6 +30,21 @@ echo "============================================"
 if [ "$MODE" = "update" ]; then
   echo "🔄 מושך גרסה חדשה..."
   cd "$APP_DIR/repo" && git pull --ff-only
+
+  # הסקריפט מריץ את עצמו מהעותק שהורדת פעם; מרעננים אותו כדי שתיקוני
+  # בטיחות (כמו --exclude uploads) יחולו גם בהרצה הבאה
+  SELF="$(readlink -f "$0")"
+  FRESH="$APP_DIR/repo/deploy/deploy-therapy.sh"
+  if [ -f "$FRESH" ] && ! cmp -s "$FRESH" "$SELF"; then
+    cp "$FRESH" "$SELF"
+    echo "   ↻ סקריפט ההתקנה עודכן — מריץ מחדש את הגרסה החדשה"
+    exec bash "$SELF" update
+  fi
+
+  # הקבצים חייבים לשבת מחוץ ל-app/ כדי ש-rsync --delete לא ימחק אותם
+  mkdir -p "$APP_DIR/uploads"
+  grep -q '^UPLOAD_DIR=' "$APP_DIR/app/.env" 2>/dev/null || echo "UPLOAD_DIR=$APP_DIR/uploads" >> "$APP_DIR/app/.env"
+
   rsync -a --delete --exclude node_modules --exclude .env --exclude service-account.json --exclude uploads "$APP_DIR/repo/$SUBDIR/" "$APP_DIR/app/"
   cd "$APP_DIR/app" && npm install --omit=dev
   systemctl restart "$SERVICE"
@@ -78,7 +93,7 @@ else
   rm -rf "$APP_DIR/repo"
   git clone --depth 1 "$REPO" "$APP_DIR/repo"
 fi
-mkdir -p "$APP_DIR/app"
+mkdir -p "$APP_DIR/app" "$APP_DIR/uploads"
 rsync -a --delete --exclude node_modules --exclude .env --exclude service-account.json --exclude uploads "$APP_DIR/repo/$SUBDIR/" "$APP_DIR/app/"
 cd "$APP_DIR/app"
 npm install --omit=dev
@@ -100,6 +115,7 @@ ADMIN_USERNAME=admin
 ADMIN_PASSWORD=$ADMIN_PASS
 SHEETS_WEBHOOK_URL=
 SHEETS_SECRET=
+UPLOAD_DIR=$APP_DIR/uploads
 ENV
   chmod 600 "$APP_DIR/app/.env"
   echo "$ADMIN_PASS" > "$APP_DIR/.adminpass"; chmod 600 "$APP_DIR/.adminpass"

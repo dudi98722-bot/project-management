@@ -42,6 +42,28 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'שגיאת שרת' });
 });
 
+// הקבצים חייבים לשבת מחוץ לתיקיית האפליקציה: סקריפט העדכון מריץ
+// rsync --delete עליה, וגרסאות ישנות שלו לא מחריגות uploads — כך נמחקו קבצים.
+// כאן מעבירים פעם אחת מ-app/uploads ל-UPLOAD_DIR, בלי תלות בגרסת הסקריפט.
+function migrateUploads() {
+  const target = process.env.UPLOAD_DIR;
+  if (!target) return;
+  const legacy = path.join(__dirname, 'uploads');
+  try {
+    fs.mkdirSync(target, { recursive: true });
+    if (!fs.existsSync(legacy) || path.resolve(legacy) === path.resolve(target)) return;
+    const names = fs.readdirSync(legacy);
+    let moved = 0;
+    for (const n of names) {
+      const from = path.join(legacy, n), to = path.join(target, n);
+      if (fs.existsSync(to)) continue;
+      try { fs.renameSync(from, to); moved++; }
+      catch (e) { try { fs.copyFileSync(from, to); fs.unlinkSync(from); moved++; } catch (_) {} }
+    }
+    if (moved) console.log(`✔ הועברו ${moved} קבצים ל-${target}`);
+  } catch (e) { console.error('⚠️ העברת קבצים נכשלה:', e.message); }
+}
+
 // החלת סכימה על העלייה (idempotent) — טבלאות/עמודות חדשות נוצרות אחרי git pull + restart
 async function ensureSchema() {
   try {
@@ -52,6 +74,7 @@ async function ensureSchema() {
 }
 
 const PORT = process.env.PORT || 3720;
+migrateUploads();
 ensureSchema().finally(() => {
   app.listen(PORT, () => console.log(`✅ therapy-crm running on port ${PORT} (${process.env.NODE_ENV || 'development'})`));
 });
