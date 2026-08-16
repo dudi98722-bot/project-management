@@ -5076,7 +5076,14 @@ function payTableHtml(aptId){
     (sel?'<th class="chk" data-xl-skip="1" style="width:30px"><input type="checkbox" title="סמן הכל" style="width:auto" onclick="pbAll(this.checked)"></th>':'')+
     '<th>תאריך</th><th>עבור (שלב)</th><th>קטגוריה</th><th>סכום</th><th>חשבון</th><th>מי שילם</th>'+
     '<th>מוטב</th><th>אמצעי</th><th>חשבונית</th><th>נשלח לרו"ח</th><th>הערה</th><th></th></tr></thead><tbody>';
-  list.sort(function(x,y){ return x.date<y.date?1:-1; }).forEach(function(p){
+  /* תשלומי דמי ניהול בסוף הרשימה — הם נגזרת של השלבים ולא תשלום
+     לספק, ועירוב שלהם בין השורות הקשה על קריאת התשלומים עצמם.
+     בתוך כל קבוצה: החדש למעלה. מיון בלחיצה על כותרת עדיין גובר. */
+  list.sort(function(x,y){
+    var mx=x.recipientType==="manager"?1:0, my=y.recipientType==="manager"?1:0;
+    if(mx!==my) return mx-my;
+    return x.date<y.date?1:-1;
+  }).forEach(function(p){
     var e=byId(DB.expenses,p.expenseId), acc=byId(DB.accounts,p.accountId);
     tot+=Number(p.amount)||0;
     var isMgr=p.recipientType==="manager";
