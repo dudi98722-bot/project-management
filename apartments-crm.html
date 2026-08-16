@@ -8990,34 +8990,32 @@ function moduleSettings(){
       'בלשונית הדוחות של כל פרויקט. מחיקת קטגוריה לא מוחקת שלבים — הם פשוט חוזרים ל"ללא קטגוריה".</div>';
   } else if(tab==="accounts"){
     var accs=active(DB.accounts);
-    /* כפילויות = אותו שם ואותו שיוך. מוצגות בראש עם כפתור מיזוג. */
-    var dupGroups={};
-    accs.forEach(function(ac){
-      var k=normKey(ac.name)+"|"+(ac.apartmentId||"")+"|"+(ac.isBank?1:0);
-      (dupGroups[k]=dupGroups[k]||[]).push(ac);
-    });
-    var dupKeys=Object.keys(dupGroups).filter(function(k){ return dupGroups[k].length>1; });
+    /* כפילות = אותו שם, גם אם השיוך שונה. אותו אדם/חשבון שנוצר פעמיים
+       בשני פרויקטים הוא בדיוק המקרה שצריך למזג. */
+    var dupGroups=accountDupGroups();
+    var dupKeys=Object.keys(dupGroups);
     h+='<div class="toolbar"><button class="btn btn-primary btn-sm" onclick="editAccount(null)">➕ חשבון</button>'+
       '<button class="btn btn-sm" onclick="seedCommonAccounts()">📥 טען רשימת חשבונות מוכנה</button>'+
-      (dupKeys.length?'<button class="btn btn-danger btn-sm" onclick="mergeAllDupAccounts()">🧹 מזג '+dupKeys.length+' כפילויות</button>':'')+
+      '<button class="btn '+(dupKeys.length?'btn-danger':'')+' btn-sm" onclick="openMergeAccounts()">🧹 מיזוג חשבונות'+
+        (dupKeys.length?' ('+dupKeys.length+')':'')+'</button>'+
       '<button class="btn btn-sm" onclick="cleanUnusedAccounts()">🗑️ נקה חשבונות שלא בשימוש</button>'+
       '<div class="sp"></div><span class="muted">'+accs.length+' חשבונות</span></div>';
-    if(dupKeys.length) h+='<div class="hint neg" style="margin-bottom:8px">נמצאו '+dupKeys.length+
-      ' שמות שמופיעים יותר מפעם אחת. "מזג כפילויות" משאיר אחד מכל שם ומעביר אליו את כל התנועות — שום תשלום לא הולך לאיבוד.</div>';
+    if(dupKeys.length) h+='<div class="hint neg" style="margin-bottom:8px">נמצאו <b>'+dupKeys.length+
+      '</b> שמות שמופיעים יותר מפעם אחת. "מיזוג חשבונות" משאיר אחד מכל שם ומעביר אליו את כל התנועות — שום תשלום לא הולך לאיבוד.</div>';
     h+='<div class="table-wrap"><table class="tbl"><thead><tr><th>שם החשבון</th><th>סוג</th><th>שיוך</th><th>תשלומים</th><th></th></tr></thead><tbody>';
     if(!accs.length) h+='<tr><td colspan="5" class="empty">אין חשבונות. לחץ "טען רשימת חשבונות מוכנה" או הוסף ידנית.</td></tr>';
     accs.sort(function(a,b){ return (b.isBank?1:0)-(a.isBank?1:0) || String(a.name).localeCompare(String(b.name),"he"); })
       .forEach(function(ac){
       var used=accountUsage(ac.id);
       var apt=ac.apartmentId?byId(DB.apartments,ac.apartmentId):null;
-      var k=normKey(ac.name)+"|"+(ac.apartmentId||"")+"|"+(ac.isBank?1:0);
-      var isDup=dupGroups[k].length>1;
-      h+='<tr'+(isDup?' style="background:#fff7ed"':'')+'><td><b>'+esc(ac.name)+'</b>'+
-        (isDup?' <span class="badge badge-warn badge-unit">כפול ×'+dupGroups[k].length+'</span>':'')+'</td>'+
+      var g=dupGroups[normKey(ac.name)];
+      h+='<tr'+(g?' style="background:#fff7ed"':'')+'><td><b>'+esc(ac.name)+'</b>'+
+        (g?' <span class="badge badge-warn badge-unit">כפול ×'+g.length+'</span>':'')+'</td>'+
         '<td>'+(ac.isBank?'<span class="pill">🏦 בנק זמני</span>':'<span class="muted">רגיל</span>')+'</td>'+
         '<td>'+(apt?esc(apt.name):'<span class="muted">כללי — כל הפרויקטים</span>')+'</td>'+
         '<td>'+(used||'<span class="muted">—</span>')+'</td>'+
-        '<td class="right"><button class="btn btn-ghost btn-sm" onclick="editAccount(\''+ac.id+'\')">✏️</button> '+
+        '<td class="right" style="white-space:nowrap"><button class="btn btn-ghost btn-sm" onclick="editAccount(\''+ac.id+'\')">✏️</button>'+
+        '<button class="btn btn-ghost btn-sm" title="מזג לתוך חשבון אחר" onclick="mergeAccountInto(\''+ac.id+'\')">⇄</button>'+
         '<button class="btn btn-ghost btn-sm" onclick="delAccount(\''+ac.id+'\')">🗑️</button></td></tr>';
     });
     h+='</tbody></table></div>'+
@@ -9322,37 +9320,123 @@ function repointAccount(fromId,toId){
   });
   active(DB.bankMoves).forEach(function(m){ if(m.accountId===fromId) m.accountId=toId; });
 }
-/* מיזוג כל הכפילויות: לכל שם+שיוך נשאר חשבון אחד (זה שבשימוש הרב
-   ביותר), והשאר עוברים לסל המחזור אחרי שהתנועות שלהם הופנו אליו. */
-function mergeAllDupAccounts(){
-  if(!can("edit")){ toast("אין הרשאה","err"); return; }
-  var groups={};
+/* קבוצות חשבונות עם אותו שם — מפתח: השם המנורמל. השיוך אינו חלק
+   מהמפתח: "אמרי מנחם" שנוצר פעמיים בשני פרויקטים הוא אותו חשבון. */
+function accountDupGroups(){
+  var by={};
   active(DB.accounts).forEach(function(ac){
-    var k=normKey(ac.name)+"|"+(ac.apartmentId||"")+"|"+(ac.isBank?1:0);
-    (groups[k]=groups[k]||[]).push(ac);
+    var k=normKey(ac.name);
+    (by[k]=by[k]||[]).push(ac);
   });
-  var keys=Object.keys(groups).filter(function(k){ return groups[k].length>1; });
-  if(!keys.length){ toast("לא נמצאו כפילויות","warn"); return; }
-  var removed=0, moved=0;
-  var lines=keys.map(function(k){
-    var g=groups[k].slice().sort(function(a,b){ return accountUsage(b.id)-accountUsage(a.id); });
-    return "• "+g[0].name+" ("+g.length+" עותקים)";
-  });
-  if(!confirm("ימוזגו "+keys.length+" שמות כפולים:\n\n"+lines.slice(0,12).join("\n")+
-    (lines.length>12?"\n…ועוד "+(lines.length-12):"")+
-    "\n\nלכל שם יישאר חשבון אחד וכל התנועות יועברו אליו. העותקים המיותרים עוברים לסל המחזור.\n\nלהמשיך?")) return;
+  var out={};
+  Object.keys(by).forEach(function(k){ if(by[k].length>1) out[k]=by[k]; });
+  return out;
+}
+/* מי נשאר בקבוצה: הכי הרבה תנועות, ובתיקו — הכללי לפני המשויך */
+function dupKeeper(g){
+  return g.slice().sort(function(a,b){
+    return accountUsage(b.id)-accountUsage(a.id) || ((a.apartmentId?1:0)-(b.apartmentId?1:0));
+  })[0];
+}
+function acctScopeLabel(ac){
+  if(!ac.apartmentId) return "כללי";
+  var a=byId(DB.apartments,ac.apartmentId);
+  return a?a.name:"פרוייקט שנמחק";
+}
+/* מסך המיזוג — מראה בדיוק מה ימוזג לפני שנוגעים בנתונים */
+function openMergeAccounts(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var groups=accountDupGroups();
+  var keys=Object.keys(groups).sort();
+  if(!keys.length){
+    openModal({title:"🧹 מיזוג חשבונות",bodyHtml:
+      '<div class="empty">לא נמצאו שני חשבונות עם אותו שם.</div>'+
+      '<div class="hint">למיזוג של שני חשבונות בשמות שונים — לחץ <b>⇄</b> בשורת החשבון שברצונך לבטל, ובחר לאיזה חשבון להעביר את התנועות שלו.</div>',
+      saveLabel:""});
+    return;
+  }
+  var h='<div class="hint" style="margin-bottom:10px">לכל שם יישאר <b>חשבון אחד</b> וכל התנועות של השאר יועברו אליו. '+
+    'שום תשלום, הפקדה, משיכה או הכנסה לא הולך לאיבוד. העותקים המיותרים עוברים לסל המחזור וניתן לשחזר אותם.</div>'+
+    '<div class="toolbar"><button class="btn btn-sm" onclick="document.querySelectorAll(\'.mg-x\').forEach(function(c){c.checked=true})">סמן הכל</button>'+
+    '<button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll(\'.mg-x\').forEach(function(c){c.checked=false})">נקה</button></div>'+
+    '<div class="table-wrap" style="max-height:420px"><table class="tbl"><thead><tr>'+
+    '<th class="chk" style="width:30px"></th><th>שם</th><th>עותקים</th><th>יישאר</th><th>שיוך אחרי המיזוג</th><th>תנועות שיעברו</th>'+
+    '</tr></thead><tbody>';
   keys.forEach(function(k){
-    var g=groups[k].slice().sort(function(a,b){ return accountUsage(b.id)-accountUsage(a.id); });
-    var keep=g[0];
-    g.slice(1).forEach(function(ac){
+    var g=groups[k], keep=dupKeeper(g);
+    var scopes={}; g.forEach(function(a){ scopes[a.apartmentId||""]=1; });
+    var mixedScope=Object.keys(scopes).length>1;
+    var banks={}; g.forEach(function(a){ banks[a.isBank?1:0]=1; });
+    var mixedBank=Object.keys(banks).length>1;
+    var moving=g.filter(function(a){ return a.id!==keep.id; })
+                .reduce(function(s,a){ return s+accountUsage(a.id); },0);
+    h+='<tr'+(mixedBank?' style="background:#fef2f2"':'')+'>'+
+      '<td class="chk"><input type="checkbox" class="mg-x" data-k="'+esc(k)+'"'+(mixedBank?'':' checked')+'></td>'+
+      '<td><b>'+esc(keep.name)+'</b>'+
+        '<div class="hint">'+g.map(function(a){ return esc(acctScopeLabel(a))+" ("+accountUsage(a.id)+")"; }).join(" · ")+'</div></td>'+
+      '<td>'+g.length+'</td>'+
+      '<td>'+esc(acctScopeLabel(keep))+(keep.isBank?' 🏦':'')+'</td>'+
+      '<td>'+(mixedScope
+        ? '<span class="badge badge-warn badge-unit">כללי</span><div class="hint">השיוכים שונים — הופך לכללי כדי שכל התנועות יישארו תקפות</div>'
+        : esc(acctScopeLabel(keep)))+'</td>'+
+      '<td>'+(moving||'<span class="muted">—</span>')+
+        (mixedBank?'<div class="hint neg">חלק מסומנים "בנק זמני" וחלק לא — מיזוג משנה את חישוב יתרת הבנק. סמן ידנית רק אם זה נכון.</div>':'')+'</td></tr>';
+  });
+  h+='</tbody></table></div>';
+  openModal({title:"🧹 מיזוג חשבונות — "+keys.length+" שמות כפולים",wide:true,bodyHtml:h,
+    saveLabel:"מזג את המסומנים",onSave:function(){ return applyMergeAccounts(); }});
+}
+function applyMergeAccounts(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return false; }
+  var picked=[];
+  document.querySelectorAll(".mg-x:checked").forEach(function(c){ picked.push(c.getAttribute("data-k")); });
+  if(!picked.length){ toast("לא נבחר אף שם למיזוג","warn"); return false; }
+  var groups=accountDupGroups();
+  var removed=0, moved=0;
+  picked.forEach(function(k){
+    var g=groups[k]; if(!g||g.length<2) return;
+    var keep=dupKeeper(g);
+    var scopes={}; g.forEach(function(a){ scopes[a.apartmentId||""]=1; });
+    /* שיוכים שונים — הנותר הופך לכללי, אחרת תשלומים מפרוייקט אחר
+       היו מצביעים לחשבון שאינו זמין שם */
+    if(Object.keys(scopes).length>1) keep.apartmentId=null;
+    g.forEach(function(ac){
+      if(ac.id===keep.id) return;
       moved+=accountUsage(ac.id);
       repointAccount(ac.id,keep.id);
       ac.deleted=true; removed++;
     });
   });
   save();
-  toast("מוזגו "+removed+" חשבונות כפולים · הועברו "+moved+" תנועות","ok");
+  toast("מוזגו "+removed+" חשבונות · הועברו "+moved+" תנועות","ok");
   rerender();
+  return true;
+}
+/* מיזוג ידני: חשבון בודד לתוך חשבון אחר, גם בשם שונה */
+function mergeAccountInto(fromId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var from=byId(DB.accounts,fromId); if(!from) return;
+  var others=active(DB.accounts).filter(function(a){ return a.id!==fromId; });
+  if(!others.length){ toast("אין חשבון אחר למזג אליו","warn"); return; }
+  var n=accountUsage(fromId);
+  openModal({title:"⇄ מיזוג החשבון \""+from.name+"\"",bodyHtml:
+    '<div class="hint" style="margin-bottom:10px">כל '+(n||0)+' התנועות של <b>'+esc(from.name)+'</b> ('+esc(acctScopeLabel(from))+') '+
+    'יועברו לחשבון שתבחר, והחשבון הזה יעבור לסל המחזור.</div>'+
+    '<div class="field"><label>למזג לתוך</label>'+
+      pickerHtml("mg-target",others.map(function(a){
+        return {id:a.id,label:a.name+" — "+acctScopeLabel(a)+(a.isBank?" 🏦":"")}; }),"",
+        {placeholder:"הקלד שם חשבון…"})+'</div>'+
+    (from.isBank?'<div class="hint neg">החשבון הנוכחי מסומן <b>🏦 בנק זמני</b>. אם היעד אינו בנק זמני — התנועות יפסיקו להיספר ביתרת הבנק.</div>':''),
+    saveLabel:"מזג",onSave:function(){
+      var toId=pickId("mg-target");
+      if(!toId){ toast(toId===null?"שם החשבון לא זוהה — בחר מהרשימה":"בחר חשבון יעד","err"); return false; }
+      var to=byId(DB.accounts,toId); if(!to){ toast("חשבון היעד לא נמצא","err"); return false; }
+      /* שיוכים שונים — היעד הופך לכללי כדי שהתנועות שעברו יישארו תקפות */
+      if((from.apartmentId||"")!==(to.apartmentId||"") && to.apartmentId) to.apartmentId=null;
+      repointAccount(fromId,toId);
+      from.deleted=true;
+      save(); toast("מוזג · הועברו "+n+" תנועות ל\""+to.name+"\"","ok"); rerender();
+    }});
 }
 /* חשבונות שאין להם אף תנועה — ניקוי הרשימה הארוכה */
 function cleanUnusedAccounts(){
