@@ -403,18 +403,72 @@ function pickId(fieldId){
   if(part.length===1) return part[0].id;
   return null;
 }
-/* קטגוריה מתוך בורר-הקלדה: שם קיים מוחזר כ-id, ושם חדש נוצר במקום —
-   כך אפשר להקליד קטגוריה שלא הייתה בלי לצאת מהטופס. */
+/* ---------- קטגוריה מתוך הטופס, בלי לצאת למסך ההגדרות ----------
+   שם קיים מוחזר כ-id; שם שאינו ברשימה נוצר כקטגוריה חדשה במקום.
+   ההתאמה החלקית מכוונת רק לזיהוי — לעולם לא ל"ניחוש" קטגוריה אחרת:
+   טקסט שמתאים חלקית לכמה קטגוריות נוצר כקטגוריה בשם שהוקלד, ולא
+   נזקף בשקט לאחת מהן. */
+function categoryByName(name){
+  return active(DB.categories).filter(function(c){ return normKey(c.name)===normKey(name); })[0]||null;
+}
 function pickCategoryId(fieldId){
   var raw=String(val(fieldId)||"").trim();
   if(!raw) return "";
+  var ex=categoryByName(raw);
+  if(ex) return ex.id;
   var id=pickId(fieldId);
   if(id) return id;
-  var ex=active(DB.categories).filter(function(c){ return normKey(c.name)===normKey(raw); })[0];
-  if(ex) return ex.id;
   var c={id:uid(),name:raw,deleted:false};
   DB.categories.push(c);
   return c.id;
+}
+/* בורר קטגוריה שלם: שדה הקלדה + כפתור "➕ חדשה" + חיווי חי מתחתיו */
+function categoryPickerHtml(fieldId,selId,hint){
+  return '<div style="display:flex;gap:6px;align-items:flex-start">'+
+      '<div style="flex:1">'+
+        pickerHtml(fieldId,catsSorted().map(function(c){return {id:c.id,label:c.name};}),selId||"",
+          {placeholder:"הקלד או בחר קטגוריה…",onchange:"catPickHint('"+fieldId+"')"})+
+      '</div>'+
+      '<button type="button" class="btn btn-sm" style="white-space:nowrap" '+
+        'onclick="addCategoryInline(\''+fieldId+'\')" title="הוספת קטגוריה חדשה">➕ חדשה</button>'+
+    '</div>'+
+    '<div class="hint" id="'+fieldId+'-fb">'+(hint||"")+'</div>';
+}
+/* חיווי בזמן ההקלדה: קיימת / תיווצר חדשה / ריק */
+function catPickHint(fieldId){
+  var box=document.getElementById(fieldId+"-fb"); if(!box) return;
+  var raw=String(val(fieldId)||"").trim();
+  if(!raw){ box.innerHTML='<span class="muted">ללא קטגוריה</span>'; return; }
+  var ex=categoryByName(raw);
+  if(ex){ box.innerHTML='<span class="pos">✔ קטגוריה קיימת</span>'; return; }
+  var id=pickId(fieldId);
+  if(id){ box.innerHTML='<span class="pos">✔ '+esc(categoryName(id))+'</span>'; return; }
+  box.innerHTML='<span class="badge badge-warn badge-unit">➕ תיווצר קטגוריה חדשה: '+esc(raw)+'</span>';
+}
+/* הוספה מפורשת מתוך הטופס — הקטגוריה נוצרת ונבחרת מיד, בלי לסגור
+   את הטופס ובלי לאבד את מה שכבר הוזן בו. */
+function addCategoryInline(fieldId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var el=document.getElementById(fieldId); if(!el) return;
+  var typed=String(el.value||"").trim();
+  var name=prompt("שם הקטגוריה החדשה (למשל: חשמל, אדריכל, ריצוף):", typed);
+  name=(name||"").trim();
+  if(!name) return;
+  var ex=categoryByName(name);
+  if(ex){
+    el.value=ex.name; catPickHint(fieldId);
+    toast('"'+name+'" כבר קיימת — נבחרה',"warn"); return;
+  }
+  var c={id:uid(),name:name,deleted:false};
+  DB.categories.push(c);
+  save();
+  /* מרעננים את רשימת ההשלמה של השדה כדי שהחדשה תופיע בה מיד */
+  var items=catsSorted().map(function(x){ return {id:x.id,label:x.name}; });
+  _PICK[fieldId]=items;
+  var dl=document.getElementById(fieldId+"-list");
+  if(dl) dl.innerHTML=items.map(function(x){ return '<option value="'+esc(x.label)+'"></option>'; }).join("");
+  el.value=name; catPickHint(fieldId);
+  toast('נוספה הקטגוריה "'+name+'"',"ok");
 }
 function catsSorted(){
   return active(DB.categories).slice().sort(function(a,b){
@@ -423,28 +477,9 @@ function catsSorted(){
 /* קטגוריה שנמחקה מחזירה "" — כך היא לא נראית חיה בדוחות, והשלבים
    שלה מקובצים לשורת "(קטגוריה שנמחקה)" במקום להיראות כאילו לא נמחקה. */
 function categoryName(id){ var c=id?byId(DB.categories,id):null; return (c&&!c.deleted)?c.name:""; }
-function catOptions(sel){
-  return '<option value="">— ללא קטגוריה —</option>'+
-    catsSorted().map(function(c){
-      return '<option value="'+esc(c.id)+'"'+(c.id===sel?" selected":"")+'>'+esc(c.name)+'</option>'; }).join("")+
-    '<option value="__new">➕ קטגוריה חדשה…</option>';
-}
-/* נבחר "קטגוריה חדשה" — שואלים שם, שומרים, ובוחרים אותה */
-function onCatPick(selId){
-  var sel=document.getElementById(selId); if(!sel) return;
-  if(sel.value!=="__new") return;
-  /* חוזרים לבחירה הקודמת ולא ל"ללא קטגוריה" — אחרת ביטול ה-prompt
-     היה מוחק בשקט את הקטגוריה שכבר הייתה על השלב. */
-  var prev=sel.getAttribute("data-prev")||"";
-  var name=prompt("שם הקטגוריה החדשה (למשל: חשמל, אדריכל, ריצוף):","");
-  name=(name||"").trim();
-  if(!name){ sel.value=prev; return; }
-  if(!can("edit")){ toast("אין הרשאה","err"); sel.value=prev; return; }
-  var id=findOrCreateCategory(name);
-  save();
-  sel.innerHTML=catOptions(id); sel.value=id; sel.setAttribute("data-prev",id);
-  toast('נוספה הקטגוריה "'+name+'"',"ok");
-}
+/* בחירת הקטגוריה עברה כולה לבורר-ההקלדה (categoryPickerHtml), שגם
+   מוסיף קטגוריה חדשה מתוך הטופס — כך שרשימת <option> ו-onCatPick
+   כבר אינן בשימוש. */
 var ROLES = {admin:"מנהל", editor:"עורך", viewer:"צפייה בלבד", mgmt:"דמי ניהול"};
 /* סטטוס חשבונית לתשלום: יש / ממתין / לא צריך. "" = לא צוין (נתונים
    ישנים). hasInvoice הבוליאני נשמר מסונכרן לתאימות עם ייבוא/ייצוא ישנים. */
@@ -4248,8 +4283,7 @@ function openBulkExpEdit(aptId){
           '<option value="">ללא קטגוריה</option>'+
           '<option value="set">קטגוריה שאבחר…</option></select>'+
         '<div id="eb-cat-wrap" style="display:none">'+
-          pickerHtml("eb-cat",catsSorted().map(function(c){return {id:c.id,label:c.name};}),"",
-            {placeholder:"הקלד קטגוריה…"})+
+          categoryPickerHtml("eb-cat","","אפשר להקליד שם חדש או ללחוץ ➕")+
         '</div></div>'+
       '<div class="field"><label>סיווג</label><select id="eb-class">'+
         '<option value="__keep">— ללא שינוי —</option>'+
@@ -4700,9 +4734,9 @@ function openExpenseEditor(eId,aptId,presetParent){
      /* לשלב-אב אין קטגוריה משלו — הוא לא נספר באף דוח קטגוריות */
      (cont?'':
      '<div class="field"><label>קטגוריה</label>'+
-       pickerHtml("ex-cat",catsSorted().map(function(c){return {id:c.id,label:c.name};}),(e?e.categoryId:""),
-         {placeholder:"הקלד קטגוריה…"})+
-       '<div class="hint">לפי מה שהכסף הלך — חשמל, אדריכל, ריצוף. אפשר להקליד; שם חדש ייווצר כקטגוריה.</div></div>')+
+       categoryPickerHtml("ex-cat",(e?e.categoryId:""),
+         "לפי מה שהכסף הלך — חשמל, אדריכל, ריצוף. אפשר להקליד שם חדש או ללחוץ ➕.")+
+       '</div>')+
      ''+
      '<div class="field full"><label>הערה</label><input id="ex-note" value="'+esc(e?e.note:"")+'" placeholder="הערה חופשית"></div>'+
      '<div class="field full"><label><input type="checkbox" id="ex-inv" style="width:auto" '+(e&&e.hasInvoice?"checked":"")+'> יש חשבונית/קבלה</label><input id="ex-link" placeholder="קישור לקבלה (אופציונלי)" value="'+esc(e?e.invoiceLink:"")+'" style="margin-top:4px"></div>'+
@@ -5341,9 +5375,7 @@ function openQuickExpense(){
       '<div class="field"><label>תאריך</label><input id="qe-date" type="date" value="'+todayISO()+'"></div>'+
       '<div class="field"><label>סיווג</label><select id="qe-class">'+classOptions("investment")+'</select></div>'+
       '<div class="field"><label>קטגוריה</label>'+
-        pickerHtml("qe-cat",catsSorted().map(function(c){return {id:c.id,label:c.name};}),"",
-          {placeholder:"הקלד קטגוריה…"})+
-        '<div class="hint">שם שאינו ברשימה — תיווצר קטגוריה חדשה</div></div>'+
+        categoryPickerHtml("qe-cat","","אפשר להקליד שם חדש או ללחוץ ➕")+'</div>'+
       '<div class="field full"><label>הערה</label><input id="qe-note"></div>'+
     '</div>'+
     '<div id="qe-mgmt-box"></div>'+
@@ -9480,8 +9512,7 @@ function editRecurring(id){
       '<div class="field"><label>סכום ברירת מחדל (₪)</label><input id="rc-amount" type="number" step="0.01" value="'+esc(String(r.amount||""))+'" placeholder="0 — להשלמה ידנית">'+
         '<div class="hint">אפשר להשאיר 0 ולמלא בכל פעם</div></div>'+
       '<div class="field"><label>קטגוריה</label>'+
-        pickerHtml("rc-cat",catsSorted().map(function(c){return {id:c.id,label:c.name};}),r.categoryId||"",
-          {placeholder:"הקלד קטגוריה…"})+'</div>'+
+        categoryPickerHtml("rc-cat",r.categoryId||"","אפשר להקליד שם חדש או ללחוץ ➕")+'</div>'+
       '<div class="field"><label>סיווג</label><select id="rc-class">'+classOptions(r.classification||"ongoing")+'</select></div>'+
       '<div class="field full"><label>הערה</label><input id="rc-note" value="'+esc(r.note||"")+'"></div>'+
     '</div>'+
