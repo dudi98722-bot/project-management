@@ -103,11 +103,14 @@ function ensureAll_() {
 var DRIVE_ROOT = 'פסיכולוגיה מסילות — קבצים';
 
 // הרץ אותי פעם אחת מהעורך כדי לאשר את הרשאת ה-Drive.
-// (הרצת פונקציה שלא נוגעת ב-Drive לא תבקש את ההרשאה, ואז הגיבוי נכשל)
+// הפונקציה *יוצרת* תיקייה ומוחקת אותה בכוונה: גוגל מעניקה את ההרשאה
+// המינימלית שהקוד שרץ צריך, ופעולת קריאה בלבד הייתה נותנת drive.readonly —
+// ואז יצירת התיקיות בגיבוי נכשלת.
 function authorizeDrive() {
-  var name = DriveApp.getRootFolder().getName();
-  Logger.log('Drive מחובר: ' + name);
-  return name;
+  var f = DriveApp.getRootFolder().createFolder('בדיקת הרשאה — אפשר למחוק');
+  f.setTrashed(true);
+  Logger.log('Drive מחובר — הרשאת כתיבה ניתנה');
+  return 'ok';
 }
 
 function folder_(parent, name) {
