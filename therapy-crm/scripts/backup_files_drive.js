@@ -1,6 +1,9 @@
 // גיבוי ל-Google Drive של קבצים שטרם גובו (או שהגיבוי שלהם נכשל).
 // רץ אוטומטית על כל העלאה חדשה; זה להשלמת מה שנשאר מאחור.
 //   cd /opt/therapy-crm/app && node scripts/backup_files_drive.js
+//
+// ניקוי רשומות של קבצים שהקובץ שלהם כבר לא על הדיסק (ולכן אין מה לגבות):
+//   node scripts/backup_files_drive.js --prune-missing
 require('dotenv').config();
 const path = require('path');
 const fs = require('fs');
@@ -9,7 +12,28 @@ const sheets = require('../sheets');
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '..', 'uploads');
 
+const PRUNE = process.argv.includes('--prune-missing');
+
 (async () => {
+  // ניקוי בלבד — לא נוגע בגיליון, ולכן לא דורש חיבור
+  if (PRUNE) {
+    const r = await pool.query(
+      `SELECT f.id, f.filename, f.stored_name, p.last_name || ' ' || p.first_name AS patient_name
+         FROM patient_files f JOIN patients p ON p.id=f.patient_id
+        WHERE f.deleted=false AND f.drive_url IS NULL ORDER BY f.id`);
+    const gone = r.rows.filter(f => !fs.existsSync(path.join(UPLOAD_DIR, path.basename(f.stored_name))));
+    if (!gone.length) { console.log('✔ אין רשומות של קבצים חסרים'); await pool.end(); process.exit(0); }
+    console.log(`נמצאו ${gone.length} רשומות שהקובץ שלהן חסר מהדיסק:`);
+    gone.forEach(f => console.log(`   • ${f.filename}  (${f.patient_name})`));
+    for (const f of gone) {
+      await pool.query(
+        `UPDATE patient_files SET deleted=true, deleted_at=NOW(), drive_error='הקובץ אבד מהדיסק' WHERE id=$1`, [f.id]);
+    }
+    console.log(`\n✅ ${gone.length} רשומות סומנו כמחוקות. צריך להעלות את הקבצים מחדש.`);
+    await pool.end();
+    process.exit(0);
+  }
+
   if (!sheets.enabled()) {
     console.error('❌ הגיליון לא מחובר (SHEETS_WEBHOOK_URL ריק) — הרץ קודם את setup-sheets-therapy.sh');
     process.exit(1);
