@@ -845,6 +845,32 @@ function seedIfEmpty(){
 /* ============================================================
    חישובים (הלב של המערכת)
    ============================================================ */
+/* ============================================================
+   "להציג בדוח רגיל"
+   ------------------------------------------------------------
+   כל הוצאה והכנסה מסומנות כברירת מחדל להצגה. סימון noReport מוציא
+   את השורה מהדוחות בלבד — היא נשארת במלואה בלשוניות ובסכומים שם.
+   הדגל שלילי בכוונה: שורות קיימות (בלי השדה) ממשיכות להופיע, בלי
+   מיגרציה. REPORT_SCOPE דולק רק בזמן בניית דוח, כך שאותן פונקציות
+   מחזירות בלשוניות את הנתונים המלאים. */
+var REPORT_SCOPE=false;              // דולק רק בתוך בניית דוח
+function reportShowAll(){ return state.params.repAll==="1"; }
+function repFilter(list){
+  if(!REPORT_SCOPE || reportShowAll()) return list;
+  var out=list.filter(function(x){ return !x.noReport; });
+  return out.length===list.length ? list : out;   // בלי העתקה מיותרת
+}
+function withReportScope(fn){
+  var prev=REPORT_SCOPE; REPORT_SCOPE=true;
+  try{ return fn(); } finally{ REPORT_SCOPE=prev; }
+}
+/* כמה שורות מוסתרות מהדוחות בפרוייקט — לחיווי בלשונית הדוחות */
+function hiddenFromReportCount(aptId){
+  var n=0;
+  apLeafExpensesRaw(aptId).forEach(function(e){ if(e.noReport) n++; });
+  apIncomeRaw(aptId).forEach(function(i){ if(i.noReport) n++; });
+  return n;
+}
 function apExpenses(aptId){ if(IX) return IX.expByApt[aptId]||IX_EMPTY;
   return active(DB.expenses).filter(function(e){return e.apartmentId===aptId;}); }
 function apPartners(aptId){ if(IX) return IX.apByApt[aptId]||IX_EMPTY;
@@ -855,8 +881,9 @@ function apAccounts(aptId){ if(IX) return IX.accByApt[aptId]||IX_EMPTY;
   return active(DB.accounts).filter(function(x){return x.apartmentId===aptId;}); }
 function apDeposits(aptId){ if(IX) return IX.depByApt[aptId]||IX_EMPTY;
   return active(DB.deposits).filter(function(x){return x.apartmentId===aptId;}); }
-function apIncome(aptId){ if(IX) return IX.incByApt[aptId]||IX_EMPTY;
+function apIncomeRaw(aptId){ if(IX) return IX.incByApt[aptId]||IX_EMPTY;
   return active(DB.income).filter(function(x){return x.apartmentId===aptId;}); }
+function apIncome(aptId){ return repFilter(apIncomeRaw(aptId)); }
 /* הכנסות שנספרות בסיכומים — בלי אלה שסומנו "לא לחישוב".
    השורה עצמה נשארת בפירוט; היא רק לא נכנסת לאף סכום. */
 function apIncomeCalc(aptId){
@@ -3896,12 +3923,13 @@ function expenseChildren(eId){
 }
 function isContainer(eId){ return expenseChildren(eId).length>0; }
 /* ההוצאות שנספרות בכסף: הכל חוץ ממכלים */
-function apLeafExpenses(aptId){
+function apLeafExpensesRaw(aptId){
   if(IX){ var c=IX.leaf[aptId];
     if(!c){ c=IX.leaf[aptId]=apExpenses(aptId).filter(function(e){ return !isContainer(e.id); }); }
     return c; }
   return apExpenses(aptId).filter(function(e){ return !isContainer(e.id); });
 }
+function apLeafExpenses(aptId){ return repFilter(apLeafExpensesRaw(aptId)); }
 /* סכום המכל = סך תתי-השלבים. נקרא אחרי כל שינוי בתת-שלב.
    גם כשנמחק תת-השלב האחרון הסכום מתאפס: אחרת השלב היה חוזר להיספר
    כשלב רגיל, עם סכום של בנים שכבר לא קיימים — וללא חלוקת שותפים,
@@ -4012,7 +4040,8 @@ function expTableHtml(aptId){
       '<td>'+dateHe(e.date)+'</td>'+
       '<td'+(isChild?' style="padding-right:26px"':'')+'>'+
         (isChild?'<span class="muted">↳ </span>':'')+
-        '<b>'+esc(e.description)+'</b>'+(e.hidden?' <span class="badge badge-danger" title="מוסתר משאר המשתמשים">🔒 מוסתר</span>':'')+(e.hasInvoice?' 📎':'')+
+        '<b>'+esc(e.description)+'</b>'+(e.hidden?' <span class="badge badge-danger" title="מוסתר משאר המשתמשים">🔒 מוסתר</span>':'')+
+        (e.noReport?' <span class="badge badge-muted badge-unit" title="לא נספר בדוחות">🚫 לא בדוח</span>':'')+(e.hasInvoice?' 📎':'')+
         (cont?' <span class="pill" data-xl-skip="1">'+kids.length+' תתי-שלבים</span>':'')+'</td>'+
       /* לשלב-אב אין קטגוריה משלו — הקטגוריות יושבות בתתי-השלבים */
       '<td>'+(cont?'<span class="muted">—</span>':esc(categoryName(e.categoryId)||""))+'</td>'+
@@ -4097,6 +4126,9 @@ function openBulkExpEdit(aptId){
         '<div class="hint">האחוזים חייבים להסתכם ל-100. שדה ריק = 0%.</div></div>'+
         '<div class="hint">החלוקה שתיבחר תחליף את החלוקה הקיימת בכל השלבים שסומנו. שלבי-אב מדולגים — החלוקה יושבת בתתי-השלבים.</div></div>'+
     '</div>'+
+    '<div class="form-grid"><div class="field"><label>הצגה בדוחות</label>'+
+      '<select id="eb-inrep"><option value="__keep">— ללא שינוי —</option>'+
+      '<option value="on">✔ להציג בדוחות</option><option value="off">🚫 לא להציג בדוחות</option></select></div></div>'+
     (CU&&CU.role==="admin"?'<div class="field" style="background:#fff7f7;border:1px solid #f0d0d0;border-radius:10px;padding:8px"><label>🔒 הסתרה משאר המשתמשים</label>'+
       '<select id="eb-hidden"><option value="__keep">— ללא שינוי —</option><option value="on">הסתר</option><option value="off">חשוף</option></select></div>':''),
     saveLabel:"עדכן "+exps.length+" שלבים",onSave:function(){ return applyBulkExpEdit(aptId,ids); }});
@@ -4118,8 +4150,9 @@ function applyBulkExpEdit(aptId,ids){
   var cls=val("eb-class"), date=val("eb-date");
   var mg=document.getElementById("eb-mgmt")?val("eb-mgmt"):"__keep";
   var hid=document.getElementById("eb-hidden")?val("eb-hidden"):"__keep";
+  var rep=document.getElementById("eb-inrep")?val("eb-inrep"):"__keep";
   var splitMode=document.getElementById("eb-split")?val("eb-split"):"__keep";
-  if(cat==="__keep" && cls==="__keep" && !date && mg==="__keep" && hid==="__keep" && splitMode==="__keep"){
+  if(cat==="__keep" && cls==="__keep" && !date && mg==="__keep" && hid==="__keep" && rep==="__keep" && splitMode==="__keep"){
     toast("לא נבחר מה לעדכן","warn"); return false;
   }
   var mgrs=apManagers(aptId);
@@ -4166,6 +4199,7 @@ function applyBulkExpEdit(aptId,ids){
       syncAutoMgmtPayments(e.id);   // תשלום "שווה ערך" אוטומטי אם מוגדר בפרויקט
     } else if(mg==="off"){ e.mgmtEnabled=false; e.mgmtSet=true; }
     if(CU&&CU.role==="admin"){ if(hid==="on") e.hidden=true; else if(hid==="off") e.hidden=false; }
+    if(rep==="on") e.noReport=false; else if(rep==="off") e.noReport=true;
     n++;
   });
   save(); toast("עודכנו "+n+" שלבים","ok"); rerender();
@@ -4524,6 +4558,8 @@ function openExpenseEditor(eId,aptId,presetParent){
      ''+
      '<div class="field full"><label>הערה</label><input id="ex-note" value="'+esc(e?e.note:"")+'" placeholder="הערה חופשית"></div>'+
      '<div class="field full"><label><input type="checkbox" id="ex-inv" style="width:auto" '+(e&&e.hasInvoice?"checked":"")+'> יש חשבונית/קבלה</label><input id="ex-link" placeholder="קישור לקבלה (אופציונלי)" value="'+esc(e?e.invoiceLink:"")+'" style="margin-top:4px"></div>'+
+     '<div class="field full"><label style="font-weight:400"><input type="checkbox" id="ex-inrep" style="width:auto" '+(e&&e.noReport?"":"checked")+'> להציג בדוחות</label>'+
+       '<div class="hint">ברירת מחדל: מוצג. הסרת הסימון מוציאה את השלב מהדוחות בלבד — הוא נשאר בטבלת השלבים ובכל הסכומים שם.</div></div>'+
      (CU&&CU.role==="admin"?'<div class="field full" style="background:#fff7f7;border:1px solid #f0d0d0;border-radius:10px;padding:8px"><label><input type="checkbox" id="ex-hidden" style="width:auto" '+(e&&e.hidden?"checked":"")+'> 🔒 מוסתר משאר המשתמשים</label><div class="hint">שלב זה (וכל התשלומים והחלוקה שלו) יופיע רק אצל מנהל. משתמשים אחרים לא יראו אותו כלל — גם לא בסכומים ובדוחות.</div></div>':'')+
     '</div>'+
     /* למכל אין חלוקה ודמי ניהול משלו — הם מוגדרים בכל תת-שלב בנפרד */
@@ -4640,6 +4676,7 @@ function saveExpense(eId,aptId){
   e.classification=val("ex-class"); e.note=val("ex-note");
   if(hasParentField) e.parentId = pv || null;
   e.hasInvoice=checked("ex-inv"); e.invoiceLink=val("ex-link");
+  if(document.getElementById("ex-inrep")) e.noReport=!checked("ex-inrep");
   if(CU&&CU.role==="admin"&&document.getElementById("ex-hidden")) e.hidden=checked("ex-hidden");
   else if(e.hidden==null) e.hidden=false;
   /* דמי ניהול — נוגעים בהם אך ורק כשהמקטע באמת הוצג על המסך.
@@ -6345,7 +6382,8 @@ function moduleIncome(aptId){
     h+='<tr'+(i.excluded?' style="opacity:.55"':'')+'>'+
       (selI?'<td class="chk"><input type="checkbox" class="ib-x" value="'+i.id+'" style="width:auto" onchange="ibCount()"></td>':'')+
       '<td>'+dateHe(i.date)+'</td><td>'+esc(i.description)+
-        (i.excluded?' <span class="badge badge-muted badge-unit" title="לא נספרת בסיכומי ההכנסות">לא לחישוב</span>':'')+'</td>'+
+        (i.excluded?' <span class="badge badge-muted badge-unit" title="לא נספרת בסיכומי ההכנסות">לא לחישוב</span>':'')+
+        (i.noReport?' <span class="badge badge-muted badge-unit" title="לא נספרת בדוחות">🚫 לא בדוח</span>':'')+'</td>'+
       (units.length?'<td>'+unitsCellHtml(i)+'</td>':'')+
       '<td class="muted" title="'+esc(stayLabel(i))+'">'+esc(stayLabelShort(i))+'</td>'+
       '<td>'+money(i.amount)+'</td>'+
@@ -6621,6 +6659,10 @@ function openBulkIncomeEdit(aptId){
         '<option value="__keep">— ללא שינוי —</option>'+
         '<option value="excl">לא לחישוב (מוסתר מהסיכומים)</option>'+
         '<option value="incl">כן לחישוב</option></select></div>'+
+      '<div class="field"><label>הצגה בדוחות</label><select id="ib-inrep">'+
+        '<option value="__keep">— ללא שינוי —</option>'+
+        '<option value="on">✔ להציג בדוחות</option>'+
+        '<option value="off">🚫 לא להציג בדוחות</option></select></div>'+
       '<div class="field full"><label>הערה</label>'+
         '<select id="ib-note-mode" onchange="onIbNoteMode()" style="margin-bottom:5px">'+
           '<option value="keep">— ללא שינוי —</option>'+
@@ -6658,7 +6700,8 @@ function applyBulkIncomeEdit(aptId,ids){
   var noteMode=val("ib-note-mode")||"keep", noteTxt=val("ib-note").trim();
   var markPaid=checked("ib-paid");
   var exclSel=document.getElementById("ib-excl")?val("ib-excl"):"__keep";
-  if(!date && !start && !end && !dest && uMode==="keep" && noteMode==="keep" && !markPaid && exclSel==="__keep"){ toast("לא נבחר מה לעדכן","warn"); return false; }
+  var repSel=document.getElementById("ib-inrep")?val("ib-inrep"):"__keep";
+  if(!date && !start && !end && !dest && uMode==="keep" && noteMode==="keep" && !markPaid && exclSel==="__keep" && repSel==="__keep"){ toast("לא נבחר מה לעדכן","warn"); return false; }
   if((noteMode==="set"||noteMode==="append") && !noteTxt){
     toast("כתוב את ההערה שתיכנס, או בחר \"ללא שינוי\" בשדה ההערה","err"); return false; }
   var picked=(uMode==="set"||uMode==="add")?readUnitChecks("ib-u"):[];
@@ -6676,6 +6719,7 @@ function applyBulkIncomeEdit(aptId,ids){
       if(start) i.startDate=""; if(end) i.endDate=""; badRange++;
     }
     if(dest) i.receivedBy=(dest==="__none")?"":dest;
+    if(repSel==="on") i.noReport=false; else if(repSel==="off") i.noReport=true;
     if(uMode==="set") i.units=picked.slice();
     else if(uMode==="add"){
       var cur=incomeUnits(i).slice();
@@ -8015,6 +8059,8 @@ function editIncome(id,aptId){
     '<div class="field full"><label>הערה</label><input id="in-note" value="'+esc(it.note||"")+'"></div>'+
     '<div class="field full"><label style="font-weight:400"><input type="checkbox" id="in-excl" style="width:auto;margin-inline-end:6px"'+(it.excluded?" checked":"")+'>'+
       'לא לחישוב — השורה תישאר בפירוט אבל לא תיספר בשום סיכום הכנסות (כולל בנק ודמי ניהול)</label></div>'+
+    '<div class="field full"><label style="font-weight:400"><input type="checkbox" id="in-inrep" style="width:auto;margin-inline-end:6px"'+(it.noReport?"":" checked")+'>'+
+      'להציג בדוחות — ברירת מחדל מוצג. הסרת הסימון מוציאה את השורה מהדוחות בלבד</label></div>'+
     '</div>'+
     (pids.length?
       '<div class="section-title">שיוך ההכנסה באחוזים <span class="hint">(ריק = לפי ברירת המחדל)</span></div>'+
@@ -8049,11 +8095,12 @@ function editIncome(id,aptId){
       }
       var target;
       if(id){ it.description=desc; it.amount=amt; it.date=val("in-date"); it.receivedBy=dest; it.split=split; it.units=un;
-        it.startDate=sd; it.endDate=ed; it.note=val("in-note"); it.excluded=checked("in-excl"); target=it; }
+        it.startDate=sd; it.endDate=ed; it.note=val("in-note"); it.excluded=checked("in-excl");
+        it.noReport=!checked("in-inrep"); target=it; }
       else{
         target={id:uid(),apartmentId:aptId,description:desc,amount:amt,date:val("in-date")||todayISO(),
           receivedBy:dest,split:split,units:un,startDate:sd,endDate:ed,note:val("in-note"),
-          excluded:checked("in-excl"),deleted:false};
+          excluded:checked("in-excl"),noReport:!checked("in-inrep"),deleted:false};
         DB.income.push(target);
       }
       if(paidNow){
@@ -8097,7 +8144,8 @@ function editIncomeSplitDefault(aptId){
 }
 
 /* ---------- דוחות פרוייקט ---------- */
-function moduleApartmentReports(aptId){
+function moduleApartmentReports(aptId){ return withReportScope(function(){ return moduleApartmentReportsInner(aptId); }); }
+function moduleApartmentReportsInner(aptId){
   var a=byId(DB.apartments,aptId);
   /* גרף פתיחה: יתרות השותפים */
   var balRows=reportPartnerIds(aptId).map(function(pid){
@@ -8129,8 +8177,28 @@ function moduleApartmentReports(aptId){
     {key:"due",label:"⚖️ חובה והתחשבנות",show:true,render:function(){ return dueByPaidReportHtml(aptId); }},
     {key:"stages",label:"📋 שותפים לפי שלבים",show:true,render:function(){ return '<div id="partner-report">'+partnerReportHtml(aptId)+'</div>'; }}
   ];
-  return reportPicker("rep",defs,{title:"בחר דוח",
-    extra:'<div class="sp"></div><button class="btn btn-sm" onclick="window.print()">🖨️ הדפסה</button>'});
+  return reportShowAllBar(aptId)+
+    reportPicker("rep",defs,{title:"בחר דוח",
+      extra:'<div class="sp"></div><button class="btn btn-sm" onclick="window.print()">🖨️ הדפסה</button>'});
+}
+/* מתג "הצג הכל" — מוצג רק כשבאמת יש שורות שהוסתרו, אחרת הוא רעש */
+function reportShowAllBar(aptId){
+  var n=hiddenFromReportCount(aptId);
+  var all=reportShowAll();
+  if(!n && !all) return "";
+  return '<div class="toolbar no-print" style="background:'+(all?"#fff7ed":"#f8fafc")+
+    ';border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:10px">'+
+    '<label style="font-weight:400;margin:0;display:flex;align-items:center;gap:7px;cursor:pointer">'+
+      '<input type="checkbox" style="width:auto" '+(all?"checked":"")+' onchange="toggleReportAll()">'+
+      '<span>הצג גם שורות שסומנו <b>"לא להציג בדוח"</b></span></label>'+
+    '<div class="sp"></div>'+
+    '<span class="'+(all?"badge badge-warn":"muted")+'">'+
+      (all ? "מוצגות כל השורות — כולל "+n+" שמסומנות לא להציג"
+           : n+" שורות מוסתרות מהדוחות")+'</span></div>';
+}
+function toggleReportAll(){
+  state.params.repAll = reportShowAll() ? "" : "1";
+  rerender();
 }
 
 /* ============================================================
