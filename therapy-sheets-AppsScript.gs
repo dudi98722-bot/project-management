@@ -14,11 +14,14 @@
    4. בשורה למטה החלף את הסיסמה בטקסט אקראי משלך:
           var SECRET = '...'
       (זה מה שמונע מאחרים לכתוב לגיליון שלך — שמור אותו, תצטרך אותו בשרת)
-   5. שמור 💾  ואז  Deploy ▸ New deployment ▸ סוג "Web app"
+   5. שמור 💾. בחר בתפריט הפונקציות את authorizeDrive ולחץ ▶ Run,
+      ואשר את ההרשאות (Advanced ← Go to... ← Allow).
+      חשוב: הרצת פונקציה שלא נוגעת ב-Drive לא תבקש את ההרשאה,
+      והגיבוי ייכשל בשקט.
+   6. Deploy ▸ New deployment ▸ סוג "Web app"
         • Execute as:      Me
         • Who has access:  Anyone
-      Deploy ▸ אשר הרשאות (Authorize / Allow)
-   6. העתק את כתובת ה-Web app (מסתיימת ב-/exec)
+      והעתק את כתובת ה-Web app (מסתיימת ב-/exec)
    7. בשרת הרץ:
         sudo bash setup-sheets-therapy.sh "<הכתובת>" "<הסיסמה>"
 
@@ -98,6 +101,14 @@ function ensureAll_() {
 // ===== גיבוי קבצים ל-Drive =====
 // נשמרים תחת תיקייה ראשית -> תיקייה לכל מטופל, ליד הגיליון.
 var DRIVE_ROOT = 'פסיכולוגיה מסילות — קבצים';
+
+// הרץ אותי פעם אחת מהעורך כדי לאשר את הרשאת ה-Drive.
+// (הרצת פונקציה שלא נוגעת ב-Drive לא תבקש את ההרשאה, ואז הגיבוי נכשל)
+function authorizeDrive() {
+  var name = DriveApp.getRootFolder().getName();
+  Logger.log('Drive מחובר: ' + name);
+  return name;
+}
 
 function folder_(parent, name) {
   var it = parent.getFoldersByName(name);
