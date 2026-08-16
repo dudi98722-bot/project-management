@@ -30,7 +30,7 @@ echo "============================================"
 if [ "$MODE" = "update" ]; then
   echo "🔄 מושך גרסה חדשה..."
   cd "$APP_DIR/repo" && git pull --ff-only
-  rsync -a --delete --exclude node_modules --exclude .env --exclude service-account.json "$APP_DIR/repo/$SUBDIR/" "$APP_DIR/app/"
+  rsync -a --delete --exclude node_modules --exclude .env --exclude service-account.json --exclude uploads "$APP_DIR/repo/$SUBDIR/" "$APP_DIR/app/"
   cd "$APP_DIR/app" && npm install --omit=dev
   systemctl restart "$SERVICE"
   sleep 2
@@ -79,7 +79,7 @@ else
   git clone --depth 1 "$REPO" "$APP_DIR/repo"
 fi
 mkdir -p "$APP_DIR/app"
-rsync -a --delete --exclude node_modules --exclude .env --exclude service-account.json "$APP_DIR/repo/$SUBDIR/" "$APP_DIR/app/"
+rsync -a --delete --exclude node_modules --exclude .env --exclude service-account.json --exclude uploads "$APP_DIR/repo/$SUBDIR/" "$APP_DIR/app/"
 cd "$APP_DIR/app"
 npm install --omit=dev
 echo "   ✅ הקוד מותקן ב-$APP_DIR/app"

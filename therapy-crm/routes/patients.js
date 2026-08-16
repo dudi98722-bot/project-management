@@ -55,7 +55,9 @@ const SELECT = `
             FROM therapist_groups g
            WHERE g.deleted = false
              AND g.id IN (SELECT x::bigint FROM jsonb_array_elements_text(p.preferred_group_ids) AS x)
-         ) AS preferred_groups
+         ) AS preferred_groups,
+         (SELECT COUNT(*)::int FROM patient_files pf
+           WHERE pf.patient_id = p.id AND pf.deleted = false) AS files_count
   FROM patients p`;
 
 router.get('/', authenticate, async (req, res) => {

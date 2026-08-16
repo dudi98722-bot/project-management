@@ -191,7 +191,7 @@ function renderWaitingTable() {
   if (!el) return;
   if (!rows.length) { el.innerHTML = `<div class="empty">אין מטופלים להצגה</div>`; return; }
   el.innerHTML = `<table><thead><tr>
-    <th>שם</th><th>ת.ז</th><th>גיל</th><th>קופה</th><th>סוג</th><th>קהילה</th><th>אינטייק</th><th>דחיפות</th><th>העדפת שיוך</th><th>סטטוס</th><th></th>
+    <th>שם</th><th>ת.ז</th><th>גיל</th><th>קופה</th><th>סוג</th><th>קהילה</th><th>אינטייק</th><th>דחיפות</th><th>העדפת שיוך</th><th>קבצים</th><th>סטטוס</th><th></th>
   </tr></thead><tbody>
   ${rows.map(p => {
     const age = calcAge(p.birth_date);
@@ -208,10 +208,12 @@ function renderWaitingTable() {
       <td>${fmtDateHe(p.intake_date)}</td>
       <td><span class="badge ${uCls}">${uLbl}</span></td>
       <td style="font-size:13px">${pref}</td>
+      <td>${p.files_count ? `<span class="clip" onclick="openFilesModal(${p.id})" title="${p.files_count} קבצים מצורפים">📎 ${p.files_count}</span>` : ''}</td>
       <td><span class="badge ${sCls}">${sLbl}</span></td>
       <td style="white-space:nowrap">
         ${S.me.caps.edit && p.status === 'waiting' ? `<button class="btn sm green" onclick="openAssignModal(${p.id})">שבץ</button>` : ''}
         ${S.me.caps.edit ? `<button class="btn sm sec" onclick="openSingleModal(${p.id})">+ פגישה</button>` : ''}
+        <button class="btn sm sec" onclick="openFilesModal(${p.id})" title="קבצים מצורפים">📎</button>
         ${S.me.caps.edit ? `<button class="btn sm sec" onclick="openPatientModal(${p.id})">עריכה</button>` : ''}
         ${S.me.caps.del ? `<button class="btn sm sec" onclick="deletePatient(${p.id})">🗑</button>` : ''}
       </td>
@@ -1166,6 +1168,127 @@ function openUserModal(userId) {
       toast('נשמר'); closeModal(); render();
     } catch (err) { toast(err.message, true); }
   });
+}
+
+// =====================================================================
+// קבצים מצורפים למטופל
+// =====================================================================
+function fileSize(n) {
+  if (!n) return '';
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return Math.round(n / 1024) + ' KB';
+  return (n / 1024 / 1024).toFixed(1) + ' MB';
+}
+function fileIcon(name, mime) {
+  const e = String(name || '').split('.').pop().toLowerCase();
+  if (/^image\//.test(mime || '') || ['jpg','jpeg','png','gif','webp','bmp','heic'].includes(e)) return '🖼';
+  if (e === 'pdf') return '📕';
+  if (['doc','docx','rtf','odt'].includes(e)) return '📘';
+  if (['xls','xlsx','csv'].includes(e)) return '📗';
+  if (['zip','rar','7z'].includes(e)) return '🗜';
+  return '📄';
+}
+
+async function openFilesModal(patientId) {
+  const p = S.patients.find(x => x.id === patientId);
+  if (!p) return;
+  showModal(`
+  <h2>קבצים — ${esc(p.last_name)} ${esc(p.first_name)} <button class="x" onclick="closeModal()">✕</button></h2>
+  ${S.me.caps.edit ? `
+    <div class="imp-drop" id="fl-drop">
+      <div style="font-size:30px">📎</div>
+      <div style="margin:6px 0 2px"><b>גרור לכאן קבצים</b> או לחץ לבחירה</div>
+      <div class="hint">אפשר לבחור כמה קבצים יחד · עד <span id="fl-max">15</span>MB לקובץ</div>
+      <input type="file" id="fl-input" multiple style="display:none">
+    </div>
+    <div id="fl-progress" class="hint" style="margin-top:8px"></div>` : ''}
+  <div style="margin-top:14px"><div id="fl-list"><div class="hint">טוען...</div></div></div>
+  <div class="modal-actions"><button type="button" class="btn sec" onclick="closeModal()">סגירה</button></div>`);
+
+  if (S.me.caps.edit) {
+    // המגבלה נקראת מהשרת כדי שהטקסט לא ייפרד מההגדרה בפועל
+    api('/files/limits').then(l => {
+      const el = document.getElementById('fl-max');
+      if (el && l && l.max_mb) el.textContent = l.max_mb;
+    }).catch(() => {});
+    const drop = document.getElementById('fl-drop');
+    const input = document.getElementById('fl-input');
+    drop.onclick = () => input.click();
+    input.onchange = () => input.files.length && uploadFiles(patientId, input.files);
+    drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('on'); };
+    drop.ondragleave = () => drop.classList.remove('on');
+    drop.ondrop = (e) => {
+      e.preventDefault(); drop.classList.remove('on');
+      if (e.dataTransfer.files.length) uploadFiles(patientId, e.dataTransfer.files);
+    };
+  }
+  loadFilesList(patientId);
+}
+
+async function loadFilesList(patientId) {
+  const el = document.getElementById('fl-list');
+  if (!el) return;
+  try {
+    const files = await api('/files/patient/' + patientId);
+    if (!files.length) { el.innerHTML = '<div class="hint">אין קבצים מצורפים</div>'; return; }
+    el.innerHTML = `<div class="pref-count">${files.length} קבצים:</div>` + files.map(f => `
+      <div class="file-row">
+        <span class="file-ico">${fileIcon(f.filename, f.mime)}</span>
+        <div class="file-main">
+          <a href="#" onclick="downloadFile(${f.id});return false">${esc(f.filename)}</a>
+          <div class="hint">${fileSize(f.size_bytes)} · ${esc(f.uploaded_by_name || '')} · ${fmtDateHe(String(f.created_at).slice(0,10))}</div>
+        </div>
+        ${S.me.caps.del ? `<button class="btn sm sec" onclick="deleteFile(${f.id},${patientId})">🗑</button>` : ''}
+      </div>`).join('');
+  } catch (e) { el.innerHTML = `<div class="hint">${esc(e.message)}</div>`; }
+}
+
+// הורדה מאומתת: הטוקן נשלח בכותרת, לא ב-URL
+async function downloadFile(id) {
+  try {
+    const res = await fetch('/api/files/' + id + '/download', { headers: { Authorization: 'Bearer ' + S.token } });
+    if (!res.ok) {
+      const d = await res.json().catch(() => null);
+      throw new Error((d && d.error) || 'ההורדה נכשלה');
+    }
+    const cd = res.headers.get('Content-Disposition') || '';
+    const m = /filename\*=UTF-8''([^;]+)/.exec(cd) || /filename="([^"]+)"/.exec(cd);
+    const name = m ? decodeURIComponent(m[1]) : 'file';
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name; document.body.appendChild(a); a.click();
+    a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000);
+  } catch (e) { toast(e.message, true); }
+}
+
+async function uploadFiles(patientId, fileList) {
+  const prog = document.getElementById('fl-progress');
+  const fd = new FormData();
+  [...fileList].forEach(f => fd.append('files', f));
+  prog.textContent = `מעלה ${fileList.length} קבצים...`;
+  try {
+    const res = await fetch('/api/files/patient/' + patientId, {
+      method: 'POST', headers: { Authorization: 'Bearer ' + S.token }, body: fd,
+    });
+    const d = await res.json().catch(() => null);
+    if (!res.ok) throw new Error((d && d.error) || 'ההעלאה נכשלה');
+    prog.textContent = '';
+    toast(`הועלו ${d.length} קבצים`);
+    loadFilesList(patientId);
+    await loadAll();
+    renderWaitingTable();   // רענון מונה האטבים בטבלה שמאחורי המודאל
+  } catch (e) { prog.textContent = ''; toast(e.message, true); }
+}
+
+async function deleteFile(id, patientId) {
+  if (!confirm('למחוק את הקובץ?')) return;
+  try {
+    await api('/files/' + id, { method: 'DELETE' });
+    loadFilesList(patientId);
+    await loadAll();
+    renderWaitingTable();
+  } catch (e) { toast(e.message, true); }
 }
 
 // =====================================================================

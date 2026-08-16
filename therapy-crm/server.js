@@ -21,6 +21,7 @@ app.use('/api/assignments', require('./routes/assignments'));
 app.use('/api/calendar', require('./routes/calendar'));
 app.use('/api/import', require('./routes/import'));
 app.use('/api/holidays', require('./routes/holidays'));
+app.use('/api/files', require('./routes/files'));
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 

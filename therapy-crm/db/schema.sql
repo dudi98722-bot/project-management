@@ -171,6 +171,25 @@ CREATE TABLE IF NOT EXISTS holidays (
 
 CREATE INDEX IF NOT EXISTS idx_sessions_therapist_date ON sessions (therapist_id, date, hour);
 
+-- ===== קבצים מצורפים למטופל =====
+-- הקובץ עצמו יושב בדיסק (UPLOAD_DIR); כאן רק המטא-דאטה.
+CREATE TABLE IF NOT EXISTS patient_files (
+  id BIGSERIAL PRIMARY KEY,
+  patient_id BIGINT NOT NULL REFERENCES patients(id),
+  filename TEXT NOT NULL,        -- השם המקורי, לתצוגה ולהורדה
+  stored_name TEXT NOT NULL,     -- השם על הדיסק (נוצר אקראית)
+  mime TEXT,
+  size_bytes BIGINT,
+  notes TEXT,
+  uploaded_by BIGINT,
+  uploaded_by_name TEXT,
+  deleted BOOLEAN NOT NULL DEFAULT false,
+  deleted_at TIMESTAMPTZ,
+  deleted_by BIGINT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_patient_files_patient ON patient_files (patient_id) WHERE deleted = false;
+
 -- ===== מניעת שיבוץ כפול ברמת המסד =====
 -- שתי בקשות מקבילות לאותה משבצת עוברות שתיהן את בדיקת ה-SELECT (READ COMMITTED),
 -- ולכן חייבים אילוץ ייחודיות. ניקוי חד-פעמי של כפילויות קודם (נשארת הפגישה הוותיקה):
