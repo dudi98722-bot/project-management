@@ -1263,8 +1263,16 @@ async function downloadFile(id) {
   try {
     const res = await fetch('/api/files/' + id + '/download', { headers: { Authorization: 'Bearer ' + S.token } });
     if (!res.ok) {
-      const d = await res.json().catch(() => null);
-      throw new Error((d && d.error) || 'ההורדה נכשלה');
+      // התשובה לא בהכרח JSON: חוסם רשת או שגיאת nginx מחזירים HTML,
+      // ובלי הפירוט הזה כל תקלה נראית אותו דבר
+      const raw = await res.text().catch(() => '');
+      let err = null;
+      try { err = JSON.parse(raw).error; } catch (e) { /* לא JSON */ }
+      if (err) throw new Error(err);
+      const kind = /netfree/i.test(raw) ? 'החסימה של נטפרי חסמה את ההורדה'
+        : /<html/i.test(raw) ? 'התקבל דף HTML במקום הקובץ (חוסם רשת או שרת proxy)'
+        : `שגיאה ${res.status}`;
+      throw new Error(`ההורדה נכשלה — ${kind}`);
     }
     const cd = res.headers.get('Content-Disposition') || '';
     const m = /filename\*=UTF-8''([^;]+)/.exec(cd) || /filename="([^"]+)"/.exec(cd);
