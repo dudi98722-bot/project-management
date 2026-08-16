@@ -4,6 +4,9 @@ const express = require('express');
 const { pool, logAction } = require('../db');
 const { authenticate, can } = require('../middleware/auth');
 const sheets = require('../sheets');
+const {
+  parseDate: parseIsoDate, fmtDate, worksAt, weeklySlotOccupied, insertWeeklySessions,
+} = require('../lib/scheduling');
 const router = express.Router();
 
 const HMOS = ['מכבי', 'כללית', 'לאומית', 'מאוחדת'];
@@ -148,6 +151,111 @@ router.post('/patients', authenticate, can('edit'), async (req, res) => {
     console.error(e); res.status(500).json({ error: 'שגיאת שרת בייבוא' });
   } finally { client.release(); }
 });
+
+// ===== ייבוא מטופלים קיימים (שם + מטפל + שעה + סדרה) =====
+// כל שורה נוצרת בטרנזקציה משלה: שורה שנכשלת לא מפילה את כל הייבוא,
+// ומוחזר דיווח מפורט מה נכנס ומה לא ולמה.
+router.post('/existing', authenticate, can('edit'), async (req, res) => {
+  const rows = Array.isArray((req.body || {}).rows) ? req.body.rows : [];
+  if (!rows.length) return res.status(400).json({ error: 'לא התקבלו שורות' });
+  const defaultTotal = Number((req.body || {}).default_total) || 12;
+
+  const tr = await pool.query('SELECT id, name, work_schedule FROM therapists WHERE deleted=false');
+  const byName = new Map(tr.rows.map(t => [norm(t.name), t]));
+
+  const added = [], failed = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i], line = i + 2;   // +2 = שורת הכותרת באקסל
+    const last = String(r.last_name || '').trim();
+    const first = String(r.first_name || '').trim();
+    const label = `${last} ${first}`.trim() || '(ללא שם)';
+
+    if (!last && !first) { failed.push({ line, label, reason: 'אין שם' }); continue; }
+
+    const tName = String(r.therapist_name || '').trim();
+    const therapist = byName.get(norm(tName));
+    if (!therapist) { failed.push({ line, label, reason: tName ? `מטפל לא נמצא: ${tName}` : 'אין מטפל' }); continue; }
+
+    const hour = parseHour(r.hour);
+    if (hour === null) { failed.push({ line, label, reason: `שעה לא תקינה: ${r.hour || '(ריק)'}` }); continue; }
+
+    const ds = parseDate(r.start_date);
+    const start = ds ? parseIsoDate(ds) : null;
+    if (!start) { failed.push({ line, label, reason: `תאריך התחלה לא תקין: ${r.start_date || '(ריק)'}` }); continue; }
+
+    let total = Number(String(r.total_sessions || '').replace(/[^\d]/g, ''));
+    if (!Number.isInteger(total) || total < 1 || total > 200) total = defaultTotal;
+
+    const weekday = start.getUTCDay();
+    if (!worksAt(therapist, weekday, hour)) {
+      failed.push({ line, label, reason: `${therapist.name} לא עובד ביום ${WEEKDAYS[weekday]} בשעה ${hour}:00` });
+      continue;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      if (await weeklySlotOccupied(client, therapist.id, weekday, hour, fmtDate(start))) {
+        await client.query('ROLLBACK');
+        failed.push({ line, label, reason: `המשבצת ${WEEKDAYS[weekday]} ${hour}:00 תפוסה אצל ${therapist.name}` });
+        continue;
+      }
+      const pr = await client.query(
+        `INSERT INTO patients (last_name, first_name, national_id, notes, notes2, status, preferred_therapist_ids)
+         VALUES ($1,$2,$3,$4,$5,'assigned',$6) RETURNING *`,
+        [last || '—', first || '—', r.national_id ? String(r.national_id).trim() : null,
+         r.notes ? String(r.notes).trim() : null, r.notes2 ? String(r.notes2).trim() : null,
+         JSON.stringify([therapist.id])]);
+      const patient = pr.rows[0];
+
+      const ar = await client.query(
+        `INSERT INTO assignments (patient_id, therapist_id, total_sessions, start_date, hour, weekday, kind)
+         VALUES ($1,$2,$3,$4,$5,$6,'series') RETURNING *`,
+        [patient.id, therapist.id, total, fmtDate(start), hour, weekday]);
+      const assignment = ar.rows[0];
+
+      const { created } = await insertWeeklySessions(client, assignment, start, total, 1);
+      if (created.length < total) {
+        await client.query('ROLLBACK');
+        failed.push({ line, label, reason: 'לא ניתן לשבץ את כל הפגישות (התנגשויות או ימי חופש)' });
+        continue;
+      }
+      await client.query('COMMIT');
+      added.push({ patient, assignment, sessions: created.length, therapist: therapist.name });
+      sheets.backup(req.user, 'add', 'patients', patient.id, patient, { import: true });
+      sheets.backup(req.user, 'add', 'assignments', assignment.id, assignment, { import: true });
+      sheets.mirrorMany('sessions', created);
+    } catch (e) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+      failed.push({ line, label, reason: e.code === '23505' ? 'המשבצת נתפסה' : 'שגיאת שרת' });
+      if (e.code !== '23505') console.error('import/existing line', line, e.message);
+    } finally { client.release(); }
+  }
+
+  await logAction(req.user, 'import', 'assignments', '', { added: added.length, failed: failed.length });
+  res.json({
+    added: added.length,
+    total_sessions: added.reduce((n, a) => n + a.sessions, 0),
+    failed,
+  });
+});
+
+const WEEKDAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+
+// שעה מהאקסל: 9 / "9" / "9:00" / "09:00" / תא-זמן של אקסל (שבר מהיממה)
+function parseHour(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const s = String(v).trim();
+  let h = null;
+  const m = s.match(/^(\d{1,2})(?::(\d{2}))?$/);
+  if (m) h = Number(m[1]);
+  else if (/^0?\.\d+$/.test(s)) h = Math.round(Number(s) * 24);   // אקסל שומר שעה כשבר
+  else {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) h = d.getHours();
+  }
+  return Number.isInteger(h) && h >= 8 && h <= 21 ? h : null;
+}
 
 // בדיקה מקדימה: אילו שמות מטפלים מהעמודה קיימים ואילו לא — בלי לכתוב כלום
 router.post('/check-therapists', authenticate, async (req, res) => {

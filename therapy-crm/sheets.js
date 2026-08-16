@@ -101,6 +101,17 @@ async function mirrorMany(table, records, { strict = false } = {}) {
   }
 }
 
+// העלאת קובץ לגיבוי ב-Drive. זורק שגיאות — הקורא מחליט אם להתעלם.
+// timeout ארוך: קובץ של מגה-בייטים עובר ב-base64 ו-Apps Script איטי.
+async function uploadFile({ name, mime, base64, patient, ref }) {
+  if (!enabled()) return null;
+  const r = await post({ file: { name, mime, data: base64, patient, ref } }, 180000);
+  // גרסה ישנה של ה-Apps Script מתעלמת מ-file ומחזירה ok:true בלי קישור —
+  // בלי הבדיקה הזו זה נראה כהצלחה והקובץ לא באמת מגובה.
+  if (!r.url) throw new Error('קוד ה-Apps Script בגיליון ישן ולא תומך בקבצים — עדכן אותו ופרוס גרסה חדשה');
+  return { id: r.id, url: r.url, folder: r.folder };
+}
+
 // בדיקת חיבור — בניגוד ל-backup, זורק שגיאות כדי שהתקנה תוכל להסביר מה נכשל
 async function verify() {
   if (!URL()) throw new Error('SHEETS_WEBHOOK_URL לא מוגדר בקובץ .env');
@@ -108,4 +119,4 @@ async function verify() {
   return { sheet: r.sheet || '' };
 }
 
-module.exports = { enabled, hasTab, backup, mirrorMany, verify };
+module.exports = { enabled, hasTab, backup, mirrorMany, verify, uploadFile };

@@ -212,7 +212,6 @@ function renderWaitingTable() {
       <td><span class="badge ${sCls}">${sLbl}</span></td>
       <td style="white-space:nowrap">
         ${S.me.caps.edit && p.status === 'waiting' ? `<button class="btn sm green" onclick="openAssignModal(${p.id})">שבץ</button>` : ''}
-        ${S.me.caps.edit ? `<button class="btn sm sec" onclick="openSingleModal(${p.id})">+ פגישה</button>` : ''}
         <button class="btn sm sec" onclick="openFilesModal(${p.id})" title="קבצים מצורפים">📎</button>
         ${S.me.caps.edit ? `<button class="btn sm sec" onclick="openPatientModal(${p.id})">עריכה</button>` : ''}
         ${S.me.caps.del ? `<button class="btn sm sec" onclick="deletePatient(${p.id})">🗑</button>` : ''}
@@ -527,7 +526,11 @@ function renderExisting(m) {
   const active = S.assignments.filter(a => a.status === 'active' && a.kind !== 'single');
   m.innerHTML = `
   <div class="card">
-    <h2>קליטת מטופל קיים</h2>
+    <div class="toolbar">
+      <h2 style="margin:0">קליטת מטופל קיים</h2>
+      <div class="spacer"></div>
+      ${S.me.caps.edit ? `<button class="btn sec" onclick="openImportModal('existing')">📄 ייבוא רשימה מאקסל</button>` : ''}
+    </div>
     <div class="hint" style="margin-bottom:12px">
       למטופלים שכבר בטיפול — רק שם, מטפל, שעה וכמות פגישות. בלי שאר הפרטים (אפשר להשלים אחר-כך בעריכה).
     </div>
@@ -1225,21 +1228,33 @@ async function openFilesModal(patientId) {
   loadFilesList(patientId);
 }
 
+let _filesPoll = null;
 async function loadFilesList(patientId) {
   const el = document.getElementById('fl-list');
-  if (!el) return;
+  if (!el) { clearTimeout(_filesPoll); return; }
   try {
     const files = await api('/files/patient/' + patientId);
     if (!files.length) { el.innerHTML = '<div class="hint">אין קבצים מצורפים</div>'; return; }
-    el.innerHTML = `<div class="pref-count">${files.length} קבצים:</div>` + files.map(f => `
-      <div class="file-row">
+    el.innerHTML = `<div class="pref-count">${files.length} קבצים:</div>` + files.map(f => {
+      const drive = f.drive_url
+        ? `<a class="drive-ok" href="${esc(f.drive_url)}" target="_blank" rel="noopener" title="מגובה ב-Drive — פתח">☁ Drive</a>`
+        : f.drive_error ? `<span class="drive-err" title="${esc(f.drive_error)}">⚠ גיבוי נכשל</span>`
+        : `<span class="hint">⏳ מגבה...</span>`;
+      return `<div class="file-row">
         <span class="file-ico">${fileIcon(f.filename, f.mime)}</span>
         <div class="file-main">
           <a href="#" onclick="downloadFile(${f.id});return false">${esc(f.filename)}</a>
           <div class="hint">${fileSize(f.size_bytes)} · ${esc(f.uploaded_by_name || '')} · ${fmtDateHe(String(f.created_at).slice(0,10))}</div>
         </div>
+        ${drive}
         ${S.me.caps.del ? `<button class="btn sm sec" onclick="deleteFile(${f.id},${patientId})">🗑</button>` : ''}
-      </div>`).join('');
+      </div>`;
+    }).join('');
+    // הגיבוי רץ ברקע — רענון קצר כדי שהסטטוס יתעדכן מעצמו
+    if (files.some(f => !f.drive_url && !f.drive_error) && document.getElementById('fl-list')) {
+      clearTimeout(_filesPoll);
+      _filesPoll = setTimeout(() => loadFilesList(patientId), 5000);
+    }
   } catch (e) { el.innerHTML = `<div class="hint">${esc(e.message)}</div>`; }
 }
 
@@ -1317,13 +1332,24 @@ const IMPORT_FIELDS = {
     { key: 'email', label: 'אימייל', hints: ['מייל', 'דוא'] },
     { key: 'notes', label: 'הערות', hints: ['הערות'] },
   ],
+  existing: [
+    { key: 'last_name', label: 'שם משפחה', hints: ['משפחה', 'שם משפחה'] },
+    { key: 'first_name', label: 'שם פרטי', hints: ['פרטי', 'שם פרטי'] },
+    { key: 'therapist_name', label: 'שם המטפל', hints: ['מטפל', 'שם מטפל'] },
+    { key: 'start_date', label: 'תאריך התחלה', hints: ['התחלה', 'תאריך'] },
+    { key: 'hour', label: 'שעה', hints: ['שעה'] },
+    { key: 'total_sessions', label: 'כמות פגישות', hints: ['כמות', 'פגישות', 'טיפולים'] },
+    { key: 'national_id', label: 'מספר זהות', hints: ['זהות', 'ת.ז', 'תז', 'ת"ז'] },
+    { key: 'notes', label: 'הערות', hints: ['הערות'] },
+  ],
 };
 
 let _imp = { target: 'patients', headers: [], rows: [], map: {}, fileName: '' };
 
 function openImportModal(target) {
   _imp = { target, headers: [], rows: [], map: {}, fileName: '' };
-  const title = target === 'patients' ? 'ייבוא מטופלים מאקסל' : 'ייבוא מטפלים מאקסל';
+  const title = target === 'patients' ? 'ייבוא מטופלים מאקסל'
+    : target === 'existing' ? 'ייבוא מטופלים קיימים מאקסל' : 'ייבוא מטפלים מאקסל';
   showModal(`
   <h2>${title} <button class="x" onclick="closeModal()">✕</button></h2>
   <div class="step"><div class="on" id="st1"></div><div id="st2"></div><div id="st3"></div></div>
@@ -1337,6 +1363,9 @@ function openImportModal(target) {
     ${target === 'patients' ? `<div class="hint" style="margin-top:10px">
       אם יש בקובץ עמודה עם שמות המטפלים שהתאמת למטופל — סמן אותה כ״מטפלים מותאמים״ בשלב הבא.
       אפשר שיהיו כמה שמות באותו תא, מופרדים בפסיק, נקודה-פסיק, קו נטוי או שורה חדשה.</div>` : ''}
+    ${target === 'existing' ? `<div class="hint" style="margin-top:10px">
+      הקובץ צריך להכיל לכל מטופל: <b>שם, שם המטפל, תאריך התחלה ושעה</b>. לכל אחד תיווצר סדרת
+      פגישות שבועית (דילוג אוטומטי על ימי חופש). שם המטפל חייב להתאים למטפל שקיים במערכת.</div>` : ''}
   </div>`);
 
   const drop = document.getElementById('imp-drop');
@@ -1450,6 +1479,22 @@ async function runImport() {
     return sendImport('/import/therapists', { rows });
   }
 
+  if (_imp.target === 'existing') {
+    for (const [k, label] of [['therapist_name', 'שם המטפל'], ['start_date', 'תאריך התחלה'], ['hour', 'שעה']]) {
+      if (_imp.map[k] === undefined) return toast(`חובה לבחור עמודת ${label}`, true);
+    }
+    if (_imp.map.last_name === undefined && _imp.map.first_name === undefined) {
+      return toast('חובה לבחור לפחות עמודת שם משפחה או שם פרטי', true);
+    }
+    // בדיקת שמות המטפלים לפני שנוצרת ולו סדרה אחת
+    const names = rows.map(r => r.therapist_name).filter(Boolean);
+    let check;
+    try { check = await api('/import/check-therapists', { method: 'POST', body: { names } }); }
+    catch (e) { return toast(e.message, true); }
+    if (check.missing.length) return showExistingMissingStep(rows, check);
+    return sendImport('/import/existing', { rows });
+  }
+
   if (_imp.map.last_name === undefined && _imp.map.first_name === undefined) {
     return toast('חובה לבחור לפחות עמודת שם משפחה או שם פרטי', true);
   }
@@ -1492,6 +1537,29 @@ function showTherapistMatchStep(rows, check) {
 
 function norm2(s) { return String(s || '').replace(/["'׳״]/g, '').replace(/\s+/g, ' ').trim().toLowerCase(); }
 
+// ייבוא מטופלים קיימים: שם מטפל שלא קיים במערכת = שורה שתיכשל.
+// עוצרים ומראים לפני, כדי שלא יתגלה רק בדוח בסוף.
+function showExistingMissingStep(rows, check) {
+  document.getElementById('st3').classList.add('on');
+  const affected = rows.filter(r => check.missing.some(m => norm2(m) === norm2(r.therapist_name))).length;
+  document.getElementById('imp-body').innerHTML = `
+    <div class="imp-summary">
+      <b style="color:var(--red)">${check.missing.length}</b> שמות מטפלים בקובץ לא קיימים במערכת,
+      ולכן <b>${affected}</b> שורות לא ייובאו.
+    </div>
+    <label>שמות שלא נמצאו</label>
+    <div class="name-list">${check.missing.map(n => `<span class="name-miss">${esc(n)}</span>`).join('')}</div>
+    <div class="hint" style="margin-top:10px">
+      בדוק אם מדובר בשגיאת כתיב בקובץ, או הוסף את המטפלים בלשונית ״מטפלים״ (כולל לו״ז עבודה) והרץ שוב.
+      אפשר גם להמשיך — שאר ${rows.length - affected} השורות ייובאו והשאר יופיעו בדוח.
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="sendImport('/import/existing', { rows: _imp.pending })">ייבא בכל זאת ${rows.length - affected} שורות</button>
+      <button type="button" class="btn sec" onclick="renderImportMapping()">חזרה</button>
+    </div>`;
+  _imp.pending = rows;
+}
+
 function finishPatientImport() {
   const cb = document.getElementById('imp-create');
   sendImport('/import/patients', {
@@ -1503,20 +1571,45 @@ function finishPatientImport() {
 async function sendImport(path, body) {
   const btns = document.querySelectorAll('#modal-root .btn');
   btns.forEach(b => b.disabled = true);
+  const body2 = document.getElementById('imp-body');
+  if (body2) body2.insertAdjacentHTML('afterbegin', '<div class="hint" id="imp-wait">מייבא, זה עשוי לקחת כמה שניות...</div>');
   try {
     const r = await api(path, { method: 'POST', body });
+    // ייבוא מטופלים קיימים מחזיר דוח מפורט — מציגים אותו במקום להיעלם
+    if (r.failed && r.failed.length) return showImportReport(r);
     closeModal();
     await loadAll(); render();
     let msg = `יובאו ${r.added} רשומות`;
+    if (r.total_sessions) msg += ` (${r.total_sessions} פגישות)`;
     if (r.created_therapists && r.created_therapists.length) msg += `, נוצרו ${r.created_therapists.length} מטפלים חדשים`;
     if (r.skipped && r.skipped.length) msg += `, ${r.skipped.length} דולגו`;
     if (r.unmatched && r.unmatched.length) msg += `, ${r.unmatched.length} שמות לא שויכו`;
     toast(msg);
   } catch (e) {
     btns.forEach(b => b.disabled = false);
+    const w = document.getElementById('imp-wait'); if (w) w.remove();
     toast(e.message, true);
   }
 }
+
+// דוח סיום לייבוא מטופלים קיימים: מה נכנס, ומה נכשל ולמה — שורה-שורה
+function showImportReport(r) {
+  showModal(`
+  <h2>דוח ייבוא <button class="x" onclick="closeModalAndRefresh()">✕</button></h2>
+  <div class="imp-summary">
+    ✅ יובאו <b>${r.added}</b> מטופלים${r.total_sessions ? ` עם <b>${r.total_sessions}</b> פגישות` : ''}
+    ${r.failed.length ? ` · ❌ <b style="color:var(--red)">${r.failed.length}</b> שורות נכשלו` : ''}
+  </div>
+  <label>שורות שלא נכנסו</label>
+  <div class="table-wrap" style="max-height:320px;overflow:auto">
+    <table><thead><tr><th>שורה באקסל</th><th>שם</th><th>סיבה</th></tr></thead><tbody>
+    ${r.failed.map(f => `<tr><td>${f.line}</td><td>${esc(f.label)}</td><td style="color:var(--red)">${esc(f.reason)}</td></tr>`).join('')}
+    </tbody></table>
+  </div>
+  <div class="hint" style="margin-top:8px">תקן את השורות האלה בקובץ והרץ ייבוא נוסף — מה שכבר נכנס לא ייווצר שוב בכפילות אם תשמיט אותן.</div>
+  <div class="modal-actions"><button class="btn" onclick="closeModalAndRefresh()">סגירה</button></div>`);
+}
+async function closeModalAndRefresh() { closeModal(); await loadAll(); render(); }
 
 // ===== מודאל גנרי =====
 function showModal(html) {

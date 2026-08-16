@@ -189,6 +189,10 @@ CREATE TABLE IF NOT EXISTS patient_files (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_patient_files_patient ON patient_files (patient_id) WHERE deleted = false;
+-- גיבוי ל-Google Drive (ריק = טרם גובה)
+ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS drive_url TEXT;
+ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS drive_id TEXT;
+ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS drive_error TEXT;
 
 -- ===== מניעת שיבוץ כפול ברמת המסד =====
 -- שתי בקשות מקבילות לאותה משבצת עוברות שתיהן את בדיקת ה-SELECT (READ COMMITTED),

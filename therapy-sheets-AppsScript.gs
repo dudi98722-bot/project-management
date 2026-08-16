@@ -48,6 +48,7 @@ function doPost(e) {
       ensureAll_();
       return json_({ ok: true, sheet: SpreadsheetApp.getActiveSpreadsheet().getName() });
     }
+    if (body.file) return json_(saveFile_(body.file));
     var lock = LockService.getScriptLock();
     lock.waitLock(25000);
     try {
@@ -92,6 +93,35 @@ function sheetFor_(title, header) {
 function ensureAll_() {
   sheetFor_(LOG.title, LOG.header);
   for (var k in TABS) sheetFor_(TABS[k].title, TABS[k].header);
+}
+
+// ===== גיבוי קבצים ל-Drive =====
+// נשמרים תחת תיקייה ראשית -> תיקייה לכל מטופל, ליד הגיליון.
+var DRIVE_ROOT = 'פסיכולוגיה מסילות — קבצים';
+
+function folder_(parent, name) {
+  var it = parent.getFoldersByName(name);
+  return it.hasNext() ? it.next() : parent.createFolder(name);
+}
+
+function saveFile_(f) {
+  if (!f.name || !f.data) return { ok: false, error: 'חסר שם או תוכן' };
+  // התיקייה הראשית נוצרת ליד הגיליון, כדי שתמצא אותה באותו מקום
+  var ssFile = DriveApp.getFileById(SpreadsheetApp.getActiveSpreadsheet().getId());
+  var parents = ssFile.getParents();
+  var base = parents.hasNext() ? parents.next() : DriveApp.getRootFolder();
+  var root = folder_(base, DRIVE_ROOT);
+  var dir = f.patient ? folder_(root, String(f.patient).slice(0, 100)) : root;
+
+  var blob = Utilities.newBlob(Utilities.base64Decode(f.data), f.mime || 'application/octet-stream', f.name);
+  // אותו מזהה שעולה שוב — מחליף את הקובץ הקודם במקום לשכפל
+  if (f.ref) {
+    var old = dir.getFilesByName(f.name);
+    while (old.hasNext()) { var o = old.next(); if (o.getDescription() === String(f.ref)) o.setTrashed(true); }
+  }
+  var saved = dir.createFile(blob);
+  if (f.ref) saved.setDescription(String(f.ref));
+  return { ok: true, id: saved.getId(), url: saved.getUrl(), folder: dir.getName() };
 }
 
 function apply_(a, ctx) {
