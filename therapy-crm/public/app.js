@@ -153,8 +153,12 @@ function renderWaiting(m) {
   </div>
   <div class="card">
     <div class="toolbar">
-      <div class="field"><label>חיפוש בכל השדות</label><input id="f-q" value="${esc(f.q)}" placeholder="שם / ת.ז / אבחנה / הערות" oninput="S.filters.q=this.value;S.page=1;applyWaitingFilters()"></div>
-      <div class="field"><label>שורות בעמוד</label><select onchange="S.pageSize=this.value==='all'?'all':Number(this.value);S.page=1;applyWaitingFilters()">
+      <div class="field"><label>חיפוש</label><input id="f-q" value="${esc(f.q)}" placeholder="שם / ת.ז / אבחנה / הערות" oninput="S.filters.q=this.value;S.page=1;applyWaitingFilters()"></div>
+      ${TOOLBAR_FILTERS.map(key => {
+        const c = WAIT_COLS.find(x => x.key === key);
+        return `<div class="field"><label>${c.label}</label>${colFilterCell(c)}</div>`;
+      }).join('')}
+      <div class="field"><label>שורות</label><select onchange="S.pageSize=this.value==='all'?'all':Number(this.value);S.page=1;applyWaitingFilters()">
         ${[25, 50, 100, 200].map(n => `<option value="${n}" ${S.pageSize === n ? 'selected' : ''}>${n}</option>`).join('')}
         <option value="all" ${S.pageSize === 'all' ? 'selected' : ''}>הכל</option>
       </select></div>
@@ -171,6 +175,8 @@ function renderWaiting(m) {
 
 // ===== סינון, מיון ועימוד של רשימת הממתינים =====
 // העמודות מוגדרות פעם אחת: כותרת, איך מסננים, ואיך שולפים ערך למיון.
+// אלה שמופיעות כמסננים בסרגל העליון (השאר ניתנות למיון בלבד):
+const TOOLBAR_FILTERS = ['status', 'urgency', 'hmo', 'community', 'client_type', 'age'];
 const WAIT_COLS = [
   { key: 'name',      label: 'שם',          type: 'text',   sort: p => `${p.last_name} ${p.first_name}`,
     match: (p, v) => `${p.last_name} ${p.first_name} ${p.diagnosis || ''}`.includes(v) },
@@ -221,7 +227,7 @@ function colFilterCell(c) {
       <div class="ms-pop">
         ${opts.map(([val, lbl]) => `<label><input type="checkbox" value="${esc(val)}" ${v.includes(val) ? 'checked' : ''}
           onchange="toggleMultiValue('${c.key}', this.value, this.checked)"> ${esc(lbl)}</label>`).join('')}
-        ${chosen.length ? `<button type="button" class="ms-clear" onclick="setColFilter('${c.key}',[]);renderWaitingTable()">נקה</button>` : ''}
+        ${chosen.length ? `<button type="button" class="ms-clear" onclick="setColFilter('${c.key}',[]);renderWaiting(document.getElementById('main'))">נקה</button>` : ''}
       </div>
     </div>`;
   }
@@ -334,10 +340,6 @@ function renderWaitingTable() {
   el.innerHTML = `<table><thead>
     <tr>
       ${WAIT_COLS.map(c => `<th data-col="${c.key}" class="sortable" onclick="sortWaiting('${c.key}')">${c.label}<span class="sort-arrow">${S.sort.key === c.key ? (S.sort.dir === 1 ? ' ▲' : ' ▼') : ''}</span></th>`).join('')}
-      <th></th>
-    </tr>
-    <tr class="filter-row">
-      ${WAIT_COLS.map(c => `<th>${colFilterCell(c)}</th>`).join('')}
       <th></th>
     </tr>
   </thead><tbody id="waiting-body"></tbody></table>`;
