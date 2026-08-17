@@ -14,7 +14,10 @@ const S = {
   view: 'waiting',
   patients: [], therapists: [], groups: [], communities: [], assignments: [],
   meta: { hmos: [], client_types: [], all_hours: ALL_HOURS },
-  filters: { q: '', urgency: '', status: 'waiting', hmo: '' },
+  filters: { q: '' },
+  colFilters: null,          // מאותחל מ-freshColFilters אחרי הגדרת העמודות
+  sort: { key: '', dir: 1 },
+  page: 1, pageSize: 50,
   calTherapist: null, calStart: null,
   calMode: 'week', availWeeks: 4, availPatient: '',
 };
@@ -136,6 +139,7 @@ function render() {
 // =====================================================================
 function renderWaiting(m) {
   const f = S.filters;
+  if (!S.colFilters) S.colFilters = freshColFilters();
   const nWait = S.patients.filter(p => p.status === 'waiting').length;
   const nAssigned = S.patients.filter(p => p.status === 'assigned').length;
   const nUrgent = S.patients.filter(p => p.status === 'waiting' && p.urgency === 1).length;
@@ -149,51 +153,189 @@ function renderWaiting(m) {
   </div>
   <div class="card">
     <div class="toolbar">
-      <div class="field"><label>חיפוש</label><input id="f-q" value="${esc(f.q)}" placeholder="שם / ת.ז / אבחנה" oninput="S.filters.q=this.value;renderWaitingTable()"></div>
-      <div class="field"><label>סטטוס</label><select onchange="S.filters.status=this.value;renderWaitingTable()">
-        <option value="" ${f.status === '' ? 'selected' : ''}>הכל</option>
-        <option value="waiting" ${f.status === 'waiting' ? 'selected' : ''}>ממתין</option>
-        <option value="assigned" ${f.status === 'assigned' ? 'selected' : ''}>משובץ</option>
-        <option value="done" ${f.status === 'done' ? 'selected' : ''}>הסתיים</option>
+      <div class="field"><label>חיפוש בכל השדות</label><input id="f-q" value="${esc(f.q)}" placeholder="שם / ת.ז / אבחנה / הערות" oninput="S.filters.q=this.value;S.page=1;applyWaitingFilters()"></div>
+      <div class="field"><label>שורות בעמוד</label><select onchange="S.pageSize=this.value==='all'?'all':Number(this.value);S.page=1;applyWaitingFilters()">
+        ${[25, 50, 100, 200].map(n => `<option value="${n}" ${S.pageSize === n ? 'selected' : ''}>${n}</option>`).join('')}
+        <option value="all" ${S.pageSize === 'all' ? 'selected' : ''}>הכל</option>
       </select></div>
-      <div class="field"><label>דחיפות</label><select onchange="S.filters.urgency=this.value;renderWaitingTable()">
-        <option value="">הכל</option>
-        <option value="1" ${f.urgency === '1' ? 'selected' : ''}>1 — דחוף</option>
-        <option value="2" ${f.urgency === '2' ? 'selected' : ''}>2 — רגיל</option>
-        <option value="3" ${f.urgency === '3' ? 'selected' : ''}>3 — נמוך</option>
-      </select></div>
-      <div class="field"><label>קופה</label><select onchange="S.filters.hmo=this.value;renderWaitingTable()">
-        <option value="">הכל</option>
-        ${S.meta.hmos.map(h => `<option ${f.hmo === h ? 'selected' : ''}>${h}</option>`).join('')}
-      </select></div>
+      <button class="btn sec" onclick="clearWaitingFilters()">נקה סינון</button>
       <div class="spacer"></div>
       ${S.me.caps.edit ? `<button class="btn sec" onclick="openImportModal('patients')">📄 ייבוא מאקסל</button>` : ''}
       ${S.me.caps.edit ? `<button class="btn" onclick="openPatientModal(null)">+ מטופל חדש</button>` : ''}
     </div>
     <div class="table-wrap" id="waiting-table"></div>
+    <div id="waiting-pager" class="pager"></div>
   </div>`;
   renderWaitingTable();
 }
 
-function renderWaitingTable() {
+// ===== סינון, מיון ועימוד של רשימת הממתינים =====
+// העמודות מוגדרות פעם אחת: כותרת, איך מסננים, ואיך שולפים ערך למיון.
+const WAIT_COLS = [
+  { key: 'name',      label: 'שם',          type: 'text',   sort: p => `${p.last_name} ${p.first_name}`,
+    match: (p, v) => `${p.last_name} ${p.first_name} ${p.diagnosis || ''}`.includes(v) },
+  { key: 'national_id', label: 'ת.ז',       type: 'text',   sort: p => p.national_id || '',
+    match: (p, v) => String(p.national_id || '').includes(v) },
+  { key: 'age',       label: 'גיל',         type: 'range',  sort: p => calcAge(p.birth_date) ?? -1,
+    match: (p, v) => { const a = calcAge(p.birth_date);
+      if (v.from !== '' && (a == null || a < Number(v.from))) return false;
+      if (v.to   !== '' && (a == null || a > Number(v.to))) return false; return true; } },
+  { key: 'hmo',       label: 'קופה',        type: 'select', sort: p => p.hmo || '',
+    options: () => S.meta.hmos, match: (p, v) => (p.hmo || '') === v },
+  { key: 'client_type', label: 'סוג',       type: 'select', sort: p => p.client_type || '',
+    options: () => S.meta.client_types, match: (p, v) => (p.client_type || '') === v },
+  { key: 'community', label: 'קהילה',       type: 'select', sort: p => p.community || '',
+    options: () => [...new Set(S.patients.map(x => x.community).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'he')),
+    match: (p, v) => (p.community || '') === v },
+  { key: 'intake',    label: 'אינטייק',     type: 'daterange', sort: p => p.intake_date || '',
+    match: (p, v) => { const d = p.intake_date || '';
+      if (v.from && (!d || d < v.from)) return false;
+      if (v.to   && (!d || d > v.to)) return false; return true; } },
+  { key: 'urgency',   label: 'דחיפות',      type: 'select', sort: p => p.urgency,
+    options: () => [['1', '1 — דחוף'], ['2', '2 — רגיל'], ['3', '3 — נמוך']],
+    match: (p, v) => String(p.urgency) === v },
+  { key: 'pref',      label: 'העדפת שיוך',  type: 'text',   sort: p => (p.preferred_therapists || []).length,
+    match: (p, v) => (p.preferred_therapists || []).map(t => t.name).join(' ').includes(v)
+                  || (p.preferred_groups || []).map(g => g.name).join(' ').includes(v) },
+  { key: 'files',     label: 'קבצים',       type: 'select', sort: p => p.files_count || 0,
+    options: () => [['yes', 'יש קבצים'], ['no', 'אין']],
+    match: (p, v) => v === 'yes' ? (p.files_count > 0) : !(p.files_count > 0) },
+  { key: 'status',    label: 'סטטוס',       type: 'select', sort: p => p.status,
+    options: () => [['waiting', 'ממתין'], ['assigned', 'משובץ'], ['done', 'הסתיים']],
+    match: (p, v) => p.status === v },
+];
+
+function colFilterCell(c) {
+  const v = S.colFilters[c.key];
+  if (c.type === 'select') {
+    const opts = c.options().map(o => Array.isArray(o) ? o : [o, o]);
+    return `<select onchange="setColFilter('${c.key}', this.value)">
+      <option value="">הכל</option>
+      ${opts.map(([val, lbl]) => `<option value="${esc(val)}" ${v === val ? 'selected' : ''}>${esc(lbl)}</option>`).join('')}
+    </select>`;
+  }
+  if (c.type === 'range') {
+    return `<div class="f-range">
+      <input type="number" min="0" placeholder="מ-" value="${esc(v.from)}" oninput="setColFilter('${c.key}',{from:this.value,to:S.colFilters.${c.key}.to})">
+      <input type="number" min="0" placeholder="עד" value="${esc(v.to)}" oninput="setColFilter('${c.key}',{from:S.colFilters.${c.key}.from,to:this.value})">
+    </div>`;
+  }
+  if (c.type === 'daterange') {
+    return `<div class="f-range">
+      <input type="date" value="${esc(v.from)}" oninput="setColFilter('${c.key}',{from:this.value,to:S.colFilters.${c.key}.to})">
+      <input type="date" value="${esc(v.to)}" oninput="setColFilter('${c.key}',{from:S.colFilters.${c.key}.from,to:this.value})">
+    </div>`;
+  }
+  return `<input placeholder="סנן..." value="${esc(v)}" oninput="setColFilter('${c.key}', this.value)">`;
+}
+
+function setColFilter(key, value) {
+  S.colFilters[key] = value;
+  S.page = 1;
+  applyWaitingFilters();   // מרענן רק את גוף הטבלה, כדי שהמיקוד בשדה לא יאבד
+}
+
+function clearWaitingFilters() {
+  S.colFilters = freshColFilters();
+  S.filters.q = '';
+  S.page = 1;
+  renderWaiting(document.getElementById('main'));
+}
+
+function freshColFilters() {
+  const o = {};
+  for (const c of WAIT_COLS) {
+    o[c.key] = (c.type === 'range' || c.type === 'daterange') ? { from: '', to: '' } : '';
+  }
+  return o;
+}
+
+function sortWaiting(key) {
+  if (S.sort.key === key) S.sort.dir = -S.sort.dir;
+  else { S.sort.key = key; S.sort.dir = 1; }
+  applyWaitingFilters();
+  // חצי המיון בכותרות מתעדכנים בלי לבנות מחדש את שורת הסינון
+  document.querySelectorAll('#waiting-table th[data-col]').forEach(th => {
+    const arrow = th.querySelector('.sort-arrow');
+    if (arrow) arrow.textContent = th.dataset.col === S.sort.key ? (S.sort.dir === 1 ? ' ▲' : ' ▼') : '';
+  });
+}
+
+function filteredWaiting() {
   const f = S.filters;
-  const rows = S.patients.filter(p => {
-    if (f.status && p.status !== f.status) return false;
-    if (f.urgency && String(p.urgency) !== f.urgency) return false;
-    if (f.hmo && p.hmo !== f.hmo) return false;
+  let rows = S.patients.filter(p => {
+    for (const c of WAIT_COLS) {
+      const v = S.colFilters[c.key];
+      const empty = (c.type === 'range' || c.type === 'daterange') ? (!v.from && !v.to) : !v;
+      if (!empty && !c.match(p, v)) return false;
+    }
     if (f.q) {
-      const t = `${p.last_name} ${p.first_name} ${p.national_id || ''} ${p.community || ''} ${p.diagnosis || ''}`;
+      const t = `${p.last_name} ${p.first_name} ${p.national_id || ''} ${p.community || ''} ${p.diagnosis || ''} ${p.notes || ''} ${p.notes2 || ''}`;
       if (!t.includes(f.q)) return false;
     }
     return true;
   });
+  if (S.sort.key) {
+    const c = WAIT_COLS.find(x => x.key === S.sort.key);
+    if (c) rows = rows.slice().sort((a, b) => {
+      const x = c.sort(a), y = c.sort(b);
+      const r = (typeof x === 'number' && typeof y === 'number') ? x - y : String(x).localeCompare(String(y), 'he');
+      return r * S.sort.dir;
+    });
+  }
+  return rows;
+}
+
+function renderWaitingTable() {
   const el = document.getElementById('waiting-table');
   if (!el) return;
-  if (!rows.length) { el.innerHTML = `<div class="empty">אין מטופלים להצגה</div>`; return; }
-  el.innerHTML = `<table><thead><tr>
-    <th>שם</th><th>ת.ז</th><th>גיל</th><th>קופה</th><th>סוג</th><th>קהילה</th><th>אינטייק</th><th>דחיפות</th><th>העדפת שיוך</th><th>קבצים</th><th>סטטוס</th><th></th>
-  </tr></thead><tbody>
-  ${rows.map(p => {
+  el.innerHTML = `<table><thead>
+    <tr>
+      ${WAIT_COLS.map(c => `<th data-col="${c.key}" class="sortable" onclick="sortWaiting('${c.key}')">${c.label}<span class="sort-arrow">${S.sort.key === c.key ? (S.sort.dir === 1 ? ' ▲' : ' ▼') : ''}</span></th>`).join('')}
+      <th></th>
+    </tr>
+    <tr class="filter-row">
+      ${WAIT_COLS.map(c => `<th>${colFilterCell(c)}</th>`).join('')}
+      <th></th>
+    </tr>
+  </thead><tbody id="waiting-body"></tbody></table>`;
+  applyWaitingFilters();
+}
+
+// מרענן רק את השורות ואת העימוד — שורת הסינון לא נבנית מחדש,
+// אחרת המיקוד היה קופץ מהשדה אחרי כל תו שמקלידים
+function applyWaitingFilters() {
+  const body = document.getElementById('waiting-body');
+  const pager = document.getElementById('waiting-pager');
+  if (!body) return;
+  const all = filteredWaiting();
+  const size = S.pageSize === 'all' ? all.length : S.pageSize;
+  const pages = Math.max(1, Math.ceil(all.length / (size || 1)));
+  if (S.page > pages) S.page = pages;
+  const from = (S.page - 1) * size;
+  const rows = S.pageSize === 'all' ? all : all.slice(from, from + size);
+
+  if (!all.length) {
+    body.innerHTML = `<tr><td colspan="${WAIT_COLS.length + 1}"><div class="empty">אין מטופלים שתואמים לסינון</div></td></tr>`;
+    if (pager) pager.innerHTML = '';
+    return;
+  }
+  body.innerHTML = waitingRowsHtml(rows);
+  if (pager) {
+    pager.innerHTML = `
+      <span class="hint">מציג ${from + 1}–${Math.min(from + rows.length, all.length)} מתוך ${all.length}${all.length !== S.patients.length ? ` (סוננו מ-${S.patients.length})` : ''}</span>
+      ${pages > 1 ? `<span class="pager-btns">
+        <button class="btn sm sec" ${S.page === 1 ? 'disabled' : ''} onclick="S.page=1;applyWaitingFilters()">⏮</button>
+        <button class="btn sm sec" ${S.page === 1 ? 'disabled' : ''} onclick="S.page--;applyWaitingFilters()">◀</button>
+        <span class="pager-num">עמוד ${S.page} מתוך ${pages}</span>
+        <button class="btn sm sec" ${S.page === pages ? 'disabled' : ''} onclick="S.page++;applyWaitingFilters()">▶</button>
+        <button class="btn sm sec" ${S.page === pages ? 'disabled' : ''} onclick="S.page=${pages};applyWaitingFilters()">⏭</button>
+      </span>` : ''}`;
+  }
+}
+
+function waitingRowsHtml(rows) {
+  return rows.map(p => {
     const age = calcAge(p.birth_date);
     const [uLbl, uCls] = URGENCY[p.urgency] || URGENCY[2];
     const [sLbl, sCls] = PSTATUS[p.status] || PSTATUS.waiting;
@@ -217,8 +359,7 @@ function renderWaitingTable() {
         ${S.me.caps.del ? `<button class="btn sm sec" onclick="deletePatient(${p.id})">🗑</button>` : ''}
       </td>
     </tr>`;
-  }).join('')}
-  </tbody></table>`;
+  }).join('');
 }
 
 async function deletePatient(id) {
