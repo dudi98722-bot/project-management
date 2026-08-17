@@ -99,8 +99,44 @@ function ensureAll_() {
 }
 
 // ===== גיבוי קבצים ל-Drive =====
-// נשמרים תחת תיקייה ראשית -> תיקייה לכל מטופל, ליד הגיליון.
+// נשמרים תחת תיקייה ראשית -> תיקייה לכל מטופל.
 var DRIVE_ROOT = 'פסיכולוגיה מסילות — קבצים';
+
+// רוצה שהקבצים יישמרו בתיקייה מסוימת? פתח אותה בדרייב והעתק מהכתובת
+// את המזהה שאחרי folders/ — למשל:
+//   https://drive.google.com/drive/folders/1AbC...XyZ   ->   '1AbC...XyZ'
+// אם משאירים ריק, התיקייה נוצרת פעם אחת ליד הגיליון והמערכת זוכרת אותה
+// לפי מזהה — כך שאפשר להזיז אותה בדרייב בלי שתיווצר תיקייה חדשה.
+var DRIVE_FOLDER_ID = '';
+
+function rootFolder_() {
+  var props = PropertiesService.getScriptProperties();
+  var id = DRIVE_FOLDER_ID || props.getProperty('driveFolderId');
+  if (id) {
+    try {
+      var existing = DriveApp.getFolderById(id);
+      if (!existing.isTrashed()) return existing;
+    } catch (e) { /* נמחקה או אין גישה — ניצור חדשה למטה */ }
+  }
+  var ssFile = DriveApp.getFileById(SpreadsheetApp.getActiveSpreadsheet().getId());
+  var parents = ssFile.getParents();
+  var base = parents.hasNext() ? parents.next() : DriveApp.getRootFolder();
+  var created = folder_(base, DRIVE_ROOT);
+  props.setProperty('driveFolderId', created.getId());
+  return created;
+}
+
+// הרץ אותי אחרי שהזזת את התיקייה בדרייב — נועל את הגיבוי למיקום הנוכחי שלה.
+function pinDriveFolder() {
+  var it = DriveApp.getFoldersByName(DRIVE_ROOT), found = [];
+  while (it.hasNext()) { var f = it.next(); if (!f.isTrashed()) found.push(f); }
+  if (!found.length) { Logger.log('לא נמצאה תיקייה בשם "' + DRIVE_ROOT + '"'); return; }
+  found.forEach(function (f) { Logger.log('נמצאה: ' + f.getUrl()); });
+  PropertiesService.getScriptProperties().setProperty('driveFolderId', found[0].getId());
+  Logger.log('ננעל על: ' + found[0].getUrl());
+  if (found.length > 1) Logger.log('⚠️ נמצאה יותר מתיקייה אחת — אם זו לא הנכונה, שים את המזהה ב-DRIVE_FOLDER_ID');
+  return found[0].getUrl();
+}
 
 // הרץ אותי פעם אחת מהעורך כדי לאשר את הרשאת ה-Drive.
 // הפונקציה *יוצרת* תיקייה ומוחקת אותה בכוונה: גוגל מעניקה את ההרשאה
@@ -120,11 +156,7 @@ function folder_(parent, name) {
 
 function saveFile_(f) {
   if (!f.name || !f.data) return { ok: false, error: 'חסר שם או תוכן' };
-  // התיקייה הראשית נוצרת ליד הגיליון, כדי שתמצא אותה באותו מקום
-  var ssFile = DriveApp.getFileById(SpreadsheetApp.getActiveSpreadsheet().getId());
-  var parents = ssFile.getParents();
-  var base = parents.hasNext() ? parents.next() : DriveApp.getRootFolder();
-  var root = folder_(base, DRIVE_ROOT);
+  var root = rootFolder_();
   var dir = f.patient ? folder_(root, String(f.patient).slice(0, 100)) : root;
 
   var blob = Utilities.newBlob(Utilities.base64Decode(f.data), f.mime || 'application/octet-stream', f.name);
@@ -135,7 +167,7 @@ function saveFile_(f) {
   }
   var saved = dir.createFile(blob);
   if (f.ref) saved.setDescription(String(f.ref));
-  return { ok: true, id: saved.getId(), url: saved.getUrl(), folder: dir.getName() };
+  return { ok: true, id: saved.getId(), url: saved.getUrl(), folder: dir.getName(), folder_url: dir.getUrl() };
 }
 
 function apply_(a, ctx) {
