@@ -947,6 +947,7 @@ function normalizeDB(d){
   d.rentals=d.rentals||[];
   (d.rentals||[]).forEach(function(r){
     r.rent=toNum(r.rent); r.startDate=toISO(r.startDate); r.endDate=toISO(r.endDate);
+    r.dueDay=Math.min(Math.max(Number(r.dueDay)||1,1),28);
     r.history=r.history||[];
     r.history.forEach(function(h){ h.rent=toNum(h.rent); h.startDate=toISO(h.startDate); h.endDate=toISO(h.endDate); });
   });
@@ -1210,7 +1211,14 @@ function markIncomePaid(i,opt){
   i.payments=i.payments||[]; i.payments.push(g);
   return g;
 }
-function incomeTracked(i){ return incomePays(i).length>0; }
+/* ---------- הכנסה שממתינה לתשלום ----------
+   עד כאן "הכנסה במעקב" הוגדרה כהכנסה שכבר נרשם עליה תשלום, וכל הכנסה
+   בלי תשלומים נחשבה ככסף שכבר נכנס. שורה חודשית שנוצרת מחוזה שכירות
+   ועדיין לא שולמה הייתה נספרת ב"התקבל" ואף נכנסת ליתרת הבנק — ניפוח
+   של אלפי שקלים שלא התקבלו. הדגל awaitsPayment הופך אותה למעקב-חוב
+   כבר מהרגע הראשון, בלי תלות בקיום תשלום. */
+function incomeAwaits(i){ return !!(i&&i.awaitsPayment); }
+function incomeTracked(i){ return incomeAwaits(i) || incomePays(i).length>0; }
 function incomePaid(i){ return round2(incomePays(i).reduce(function(s,g){return s+(Number(g.amount)||0);},0)); }
 function incomeDebt(i){ return round2((Number(i.amount)||0)-incomePaid(i)); }
 function expSplits(eId){ if(IX) return IX.splitByExp[eId]||IX_EMPTY;
@@ -1702,7 +1710,9 @@ function incomeDestName(i){
       var n=destName(g.receivedBy);
       if(n && seen.indexOf(n)<0) seen.push(n);
     });
-    return seen.join(" · ");
+    /* עוד לא נרשם תשלום — נופלים ליעד שעל ההכנסה עצמה, אחרת שורה
+       שממתינה לתשלום הייתה מציגה עמודת יעד ריקה */
+    if(seen.length) return seen.join(" · ");
   }
   return destName(i.receivedBy);
 }
@@ -3152,7 +3162,8 @@ async function boot(){
     else if(r===false){ /* אומת כלא-תקף — כבר נוקה */ }
     resetIdle();
   }
-  try{ runRecurring(true); }catch(e){}   // הוצאות תקופתיות שהגיע מועדן
+  try{ runRecurring(true); }catch(e){}      // הוצאות תקופתיות שהגיע מועדן
+  try{ runRentalIncome(true); }catch(e){}   // שורות הכנסה חודשיות מחוזי שכירות
   renderApp();
   watchTables();     // כלי טבלה + כפתור ייצוא לכל טבלה, גם אחרי רינדור חלקי
   watchSelects();    // זיכרון הבחירה הקודמת בבוררים עם "הוסף חדש…"
@@ -6645,7 +6656,9 @@ function moduleIncome(aptId){
       '<td>'+dateHe(i.date)+'</td><td>'+esc(i.description)+
         (i.excluded?' <span class="badge badge-muted badge-unit" title="לא נספרת בסיכומי ההכנסות">לא לחישוב</span>':'')+
         (i.noReport?' <span class="badge badge-muted badge-unit" title="לא נספרת בדוחות">🚫 לא בדוח</span>':'')+
-        (!i.noReport&&i.noFreilich?' <span class="badge badge-muted badge-unit" title="לא נספרת בדוח לפרייליך">🚫 פרייליך</span>':'')+'</td>'+
+        (!i.noReport&&i.noFreilich?' <span class="badge badge-muted badge-unit" title="לא נספרת בדוח לפרייליך">🚫 פרייליך</span>':'')+
+        (i.rentalId?' <span class="badge badge-mgmt badge-unit" title="נוצרה אוטומטית מחוזה שכירות">🔁</span>':'')+
+        (incomeAwaits(i)&&incomePaid(i)<=0.01?' <span class="badge badge-warn badge-unit" title="הכסף טרם התקבל">ממתינה לתשלום</span>':'')+'</td>'+
       (units.length?'<td>'+unitsCellHtml(i)+'</td>':'')+
       '<td class="muted" title="'+esc(stayLabel(i))+'">'+esc(stayLabelShort(i))+'</td>'+
       '<td>'+money(i.amount)+'</td>'+
@@ -8325,6 +8338,8 @@ function editIncome(id,aptId){
       '</select>'+
       '<div class="hint">'+(a&&a.hasBank?'הכנסה שנכנסת לבנק הזמני מתווספת ליתרת הבנק ונזקפת לשותפים לפי החלוקה שלמטה.':'בפרויקט הזה הבנק הזמני כבוי, ולכן ניתן לבחור רק שותף.')+'</div></div>')+
     '<div class="field full"><label>הערה</label><input id="in-note" value="'+esc(it.note||"")+'"></div>'+
+    '<div class="field full"><label style="font-weight:400"><input type="checkbox" id="in-await" style="width:auto;margin-inline-end:6px"'+(it.awaitsPayment?" checked":"")+'>'+
+      'ממתינה לתשלום — הסכום ייחשב כחוב ולא ככסף שנכנס, עד שיירשם עליה תשלום</label></div>'+
     '<div class="field full"><label style="font-weight:400"><input type="checkbox" id="in-excl" style="width:auto;margin-inline-end:6px"'+(it.excluded?" checked":"")+'>'+
       'לא לחישוב — השורה תישאר בפירוט אבל לא תיספר בשום סיכום הכנסות (כולל בנק ודמי ניהול)</label></div>'+
     '<div class="field full"><label style="font-weight:400"><input type="checkbox" id="in-inrep" style="width:auto;margin-inline-end:6px"'+(it.noReport?"":" checked")+'>'+
@@ -8366,11 +8381,11 @@ function editIncome(id,aptId){
       var target;
       if(id){ it.description=desc; it.amount=amt; it.date=val("in-date"); it.receivedBy=dest; it.split=split; it.units=un;
         it.startDate=sd; it.endDate=ed; it.note=val("in-note"); it.excluded=checked("in-excl");
-        it.noReport=!checked("in-inrep"); it.noFreilich=checked("in-frl"); target=it; }
+        it.noReport=!checked("in-inrep"); it.noFreilich=checked("in-frl"); it.awaitsPayment=checked("in-await"); target=it; }
       else{
         target={id:uid(),apartmentId:aptId,description:desc,amount:amt,date:val("in-date")||todayISO(),
           receivedBy:dest,split:split,units:un,startDate:sd,endDate:ed,note:val("in-note"),
-          excluded:checked("in-excl"),noReport:!checked("in-inrep"),noFreilich:checked("in-frl"),deleted:false};
+          excluded:checked("in-excl"),noReport:!checked("in-inrep"),noFreilich:checked("in-frl"),awaitsPayment:checked("in-await"),deleted:false};
         DB.income.push(target);
       }
       if(paidNow){
@@ -9982,6 +9997,95 @@ function exportSheetXls(id){
   });
   saveXlsx([{name:s.name.slice(0,28),rows:rows}], s.name);
 }
+/* ============================================================
+   הכנסה חודשית אוטומטית מחוזה שכירות
+   ------------------------------------------------------------
+   חוזה שסומן autoIncome מייצר שורת הכנסה אחת לכל חודש שהוא מכסה,
+   בסכום המלא (גם בחודש חלקי — כך נקבע), מסומנת "ממתינה לתשלום"
+   וממתינה לסגירה בתשלום.
+
+   מפתח הייחודיות הוא rentalId + חודש: אותו חודש לא ייווצר פעמיים
+   גם אם המערכת נטענת עשר פעמים ביום, וגם אם החוזה נערך.
+
+   כלל ברזל: שורה שכבר נרשם עליה תשלום לעולם אינה נמחקת ואינה
+   משתנה אוטומטית. קיצור חוזה או שינוי סכום נוגעים רק בשורות פתוחות,
+   ורק אחרי אישור מפורש.
+   ============================================================ */
+function ymOf(iso){ return iso?String(iso).slice(0,7):""; }
+function ymAdd(ym,n){
+  var y=Number(ym.slice(0,4)), m=Number(ym.slice(5,7))-1+n;
+  y+=Math.floor(m/12); m=((m%12)+12)%12;
+  return y+"-"+String(m+1).padStart(2,"0");
+}
+function ymLabel(ym){ return ym.slice(5,7)+"/"+ym.slice(0,4); }
+function daysInMonth(ym){ return new Date(Date.UTC(Number(ym.slice(0,4)),Number(ym.slice(5,7)),0)).getUTCDate(); }
+function dueDateIn(ym,day){
+  var d=Math.min(Math.max(Number(day)||1,1),daysInMonth(ym));
+  return ym+"-"+String(d).padStart(2,"0");
+}
+/* החודשים שחוזה אמור לייצר — מהמאוחר שבין תחילת החוזה לבין "לייצר
+   החל מ", ועד המוקדם שבין סוף החוזה לחודש הנוכחי. חודשים עתידיים לא
+   נוצרים מראש: הם היו מציגים חוב שטרם נולד. */
+function rentalDueMonths(r){
+  if(!r || !r.autoIncome || !r.startDate) return [];
+  var from=r.genFrom && r.genFrom>ymOf(r.startDate) ? r.genFrom : ymOf(r.startDate);
+  var today=ymOf(todayISO());
+  var to=r.endDate && ymOf(r.endDate)<today ? ymOf(r.endDate) : today;
+  if(from>to) return [];
+  var out=[], cur=from, guard=0;
+  while(cur<=to && guard<600){ out.push(cur); cur=ymAdd(cur,1); guard++; }
+  return out;
+}
+/* שורות ההכנסה שנוצרו מחוזה מסוים */
+function rentalIncome(rentalId){
+  return active(DB.income).filter(function(i){ return i.rentalId===rentalId; });
+}
+function rentalIncomeFor(rentalId,ym){
+  return rentalIncome(rentalId).filter(function(i){ return i.periodYM===ym; })[0]||null;
+}
+/* מה עוד חסר — לתצוגה מקדימה ולכפתור "צור עכשיו" */
+function rentalMissingMonths(r){
+  return rentalDueMonths(r).filter(function(ym){ return !rentalIncomeFor(r.id,ym); });
+}
+function makeRentalIncome(r,ym){
+  var a=byId(DB.apartments,r.apartmentId);
+  var row={id:uid(),apartmentId:r.apartmentId,
+    description:"שכר דירה — "+r.name+" — "+ymLabel(ym)+(r.tenant?" · "+r.tenant:""),
+    amount:round2(Number(r.rent)||0), date:dueDateIn(ym,r.dueDay),
+    receivedBy:"", split:null, units:null, startDate:"", endDate:"",
+    note:"", excluded:false, awaitsPayment:true,
+    rentalId:r.id, periodYM:ym, payments:[], deleted:false};
+  DB.income.push(row);
+  return row;
+}
+/* יצירה אוטומטית בטעינה. מחזיר כמה שורות נוצרו. */
+function runRentalIncome(silent){
+  if(!DB || !Array.isArray(DB.rentals) || !can("edit")) return 0;
+  var made=0;
+  activeRentals().forEach(function(r){
+    rentalMissingMonths(r).forEach(function(ym){ makeRentalIncome(r,ym); made++; });
+  });
+  if(made){
+    save();
+    if(!silent) toast("נוצרו "+made+" שורות הכנסה חודשיות","ok");
+  }
+  return made;
+}
+/* סיכום מצב הגבייה של חוזה — לעמודות במסך השכירויות */
+function rentalIncomeStats(r){
+  var rows=rentalIncome(r.id);
+  var billed=0, paid=0, open=0;
+  rows.forEach(function(i){
+    if(i.excluded) return;
+    var amt=Number(i.amount)||0;
+    billed+=amt;
+    var p=incomePaid(i);
+    paid+=p;
+    if(amt-p>0.01) open++;
+  });
+  return {n:rows.length, billed:round2(billed), paid:round2(paid),
+    debt:round2(billed-paid), openRows:open, missing:rentalMissingMonths(r).length};
+}
 /* ---------- מסך השכירויות ---------- */
 function viewRentals(){
   var apts=rentalApartments();
@@ -10084,9 +10188,9 @@ function viewRentals(){
   h+='<div class="card"><h3>📋 כל הדירות'+(list.length!==all.length?' <span class="muted">('+list.length+' מתוך '+all.length+')</span>':'')+'</h3>'+
     '<div class="table-wrap"><table class="tbl"><thead><tr>'+
     '<th>פרוייקט</th><th>דירה</th><th>שוכר</th><th>טלפון</th><th>תחילת חוזה</th><th>סיום חוזה</th>'+
-    '<th>נותרו</th><th>שכ"ד</th><th>סטטוס</th><th>הערה</th><th></th>'+
+    '<th>נותרו</th><th>שכ"ד</th><th>גבייה</th><th>סטטוס</th><th>הערה</th><th></th>'+
     '</tr></thead><tbody>';
-  if(!list.length) h+='<tr><td colspan="11" class="empty">אין דירה שמתאימה לסינון</td></tr>';
+  if(!list.length) h+='<tr><td colspan="12" class="empty">אין דירה שמתאימה לסינון</td></tr>';
   list.slice().sort(function(x,y){
     return String(apartmentName(x.apartmentId)).localeCompare(String(apartmentName(y.apartmentId)),"he")
       || String(x.name).localeCompare(String(y.name),"he");
@@ -10100,7 +10204,16 @@ function viewRentals(){
       '<td>'+(r.startDate?dateHe(r.startDate):'<span class="muted">—</span>')+'</td>'+
       '<td>'+(r.endDate?dateHe(r.endDate):'<span class="muted">—</span>')+'</td>'+
       '<td>'+(d===null?'<span class="muted">—</span>':(d<0?'<span class="neg">עברו '+Math.abs(d)+'</span>':d))+'</td>'+
-      '<td>'+(r.rent?money(r.rent):'<span class="muted">—</span>')+'</td>'+
+      '<td>'+(r.rent?money(r.rent):'<span class="muted">—</span>')+
+        (r.autoIncome?' <span class="badge badge-mgmt badge-unit" title="נוצרת שורת הכנסה בכל חודש">🔁</span>':'')+'</td>'+
+      '<td>'+(function(){
+        if(!r.autoIncome) return '<span class="muted">—</span>';
+        var st=rentalIncomeStats(r);
+        if(!st.n) return '<span class="muted">טרם נוצרו</span>';
+        return st.debt>0.01
+          ? '<span class="neg">חוב '+money(st.debt)+'</span><div class="hint">'+st.openRows+' מתוך '+st.n+' פתוחות</div>'
+          : '<span class="pos">✔ נגבה הכל</span><div class="hint">'+st.n+' חודשים · '+money(st.paid)+'</div>';
+      })()+'</td>'+
       '<td>'+rentalStatusBadge(r)+'</td>'+
       noteCell(r.note)+
       '<td class="right" style="white-space:nowrap">'+(can("edit")?
@@ -10201,11 +10314,26 @@ function editRental(id){
       '<div class="field"><label>שם הדירה</label><input id="rn-name" value="'+esc(r.name||"")+'" placeholder="למשל: דירה 3 / קומה 2 שמאל"></div>'+
       '<div class="field"><label>שם השוכר</label><input id="rn-tenant" value="'+esc(r.tenant||"")+'" placeholder="ריק = הדירה פנויה"></div>'+
       '<div class="field"><label>טלפון</label><input id="rn-phone" value="'+esc(r.phone||"")+'"></div>'+
-      '<div class="field"><label>תחילת החוזה</label><input id="rn-start" type="date" value="'+esc(r.startDate||"")+'"></div>'+
-      '<div class="field"><label>סיום החוזה</label><input id="rn-end" type="date" value="'+esc(r.endDate||"")+'">'+
+      '<div class="field"><label>תחילת החוזה</label><input id="rn-start" type="date" value="'+esc(r.startDate||"")+'" oninput="rnPreview()"></div>'+
+      '<div class="field"><label>סיום החוזה</label><input id="rn-end" type="date" value="'+esc(r.endDate||"")+'" oninput="rnPreview()">'+
         '<div class="hint">ריק = חוזה פתוח (בלי התראה)</div></div>'+
-      '<div class="field"><label>שכר דירה חודשי (₪)</label><input id="rn-rent" type="number" step="0.01" value="'+esc(String(r.rent||""))+'"></div>'+
+      '<div class="field"><label>שכר דירה חודשי (₪)</label><input id="rn-rent" type="number" step="0.01" value="'+esc(String(r.rent||""))+'" oninput="rnPreview()"></div>'+
       '<div class="field full"><label>הערה</label><input id="rn-note" value="'+esc(r.note||"")+'"></div>'+
+    '</div>'+
+    /* ---- הכנסה חודשית אוטומטית ---- */
+    '<div class="section-title">הכנסה חודשית</div>'+
+    '<div class="field"><label style="font-weight:400"><input type="checkbox" id="rn-auto" style="width:auto;margin-inline-end:6px"'+
+      (r.autoIncome?" checked":"")+' onchange="rnAutoToggle()"> ליצור שורת הכנסה בכל חודש</label>'+
+      '<div class="hint">כל חודש תיווצר שורת הכנסה בסכום שכר הדירה, מסומנת <b>"ממתינה לתשלום"</b> — היא לא נספרת ככסף שנכנס עד שתרשום עליה תשלום.</div></div>'+
+    '<div id="rn-auto-box" style="display:'+(r.autoIncome?"block":"none")+'">'+
+      '<div class="form-grid">'+
+        '<div class="field"><label>יום החיוב בחודש</label><input id="rn-due" type="number" min="1" max="28" value="'+esc(String(r.dueDay||1))+'" oninput="rnPreview()"></div>'+
+        /* ריק כברירת מחדל = מתחילת החוזה. מילוי מראש בחודש הנוכחי היה
+           גורם לחוזה שהתחיל בעבר לאבד את כל החודשים שקדמו לו, בשקט. */
+        '<div class="field"><label>לייצר החל מחודש</label><input id="rn-from" type="month" value="'+esc(r.genFrom||"")+'" oninput="rnPreview()">'+
+          '<div class="hint">ריק = מתחילת החוזה. מלא רק אם אינך רוצה את החודשים הראשונים.</div></div>'+
+      '</div>'+
+      '<div id="rn-preview" class="hint"></div>'+
     '</div>'+
     (hist.length?'<div class="section-title">חוזים קודמים ('+hist.length+')</div>'+
       '<div class="table-wrap" style="max-height:170px"><table class="tbl"><thead><tr>'+
@@ -10221,12 +10349,79 @@ function editRental(id){
       if(!nm){ toast("יש להזין שם לדירה","err"); return false; }
       var sd=val("rn-start"), ed=val("rn-end");
       if(sd && ed && ed<sd){ toast("תאריך הסיום מוקדם מתאריך ההתחלה","err"); return false; }
+      var auto=checked("rn-auto");
+      var newRent=Number(val("rn-rent"))||0;
+      if(auto && !sd){ toast("להכנסה חודשית אוטומטית נדרש תאריך תחילת חוזה","err"); return false; }
+      if(auto && newRent<=0){ toast("להכנסה חודשית אוטומטית נדרש סכום שכר דירה","err"); return false; }
       var obj={apartmentId:aptId,name:nm,tenant:val("rn-tenant").trim(),phone:val("rn-phone").trim(),
-        startDate:sd,endDate:ed,rent:Number(val("rn-rent"))||0,note:val("rn-note")};
-      if(id) Object.assign(r,obj);
-      else DB.rentals.push(Object.assign({id:uid(),history:[],deleted:false},obj));
-      save(); toast("נשמר","ok"); rerender();
+        startDate:sd,endDate:ed,rent:newRent,note:val("rn-note"),
+        autoIncome:auto,
+        dueDay:auto?Math.min(Math.max(Number(val("rn-due"))||1,1),28):(r.dueDay||1),
+        genFrom:auto?(val("rn-from")||""):(r.genFrom||"")};
+      if(id){
+        var oldRent=Number(r.rent)||0;
+        Object.assign(r,obj);
+        /* שינוי סכום — שואלים על השורות הפתוחות. ששולמו לא נגענו בהן. */
+        if(oldRent && newRent && Math.abs(oldRent-newRent)>0.01) applyRentChange(r,oldRent,newRent);
+        /* קיצור החוזה — מסירים שורות פתוחות שכבר לא בתוקף */
+        pruneRentalIncome(r);
+      }
+      else{ r=Object.assign({id:uid(),history:[],deleted:false},obj); DB.rentals.push(r); }
+      save();
+      var made=auto?runRentalIncome(true):0;
+      toast("נשמר"+(made?" · נוצרו "+made+" שורות הכנסה":""),"ok");
+      rerender();
     }});
+  rnPreview();
+}
+function rnAutoToggle(){
+  var b=document.getElementById("rn-auto-box"); if(!b) return;
+  b.style.display=checked("rn-auto")?"block":"none";
+  rnPreview();
+}
+/* תצוגה מקדימה חיה: כמה שורות ייווצרו וכמה כסף הן מייצגות */
+function rnPreview(){
+  var box=document.getElementById("rn-preview"); if(!box) return;
+  if(!checked("rn-auto")){ box.innerHTML=""; return; }
+  var sd=val("rn-start"), ed=val("rn-end"), rent=Number(val("rn-rent"))||0;
+  if(!sd){ box.innerHTML='<span class="neg">חסר תאריך תחילת חוזה</span>'; return; }
+  if(rent<=0){ box.innerHTML='<span class="neg">חסר סכום שכר דירה</span>'; return; }
+  var fake={autoIncome:true,startDate:sd,endDate:ed,rent:rent,
+    genFrom:val("rn-from")||"",dueDay:Number(val("rn-due"))||1};
+  var months=rentalDueMonths(fake);
+  if(!months.length){ box.innerHTML='<span class="muted">אין חודשים לייצר בטווח הזה</span>'; return; }
+  box.innerHTML='ייווצרו <b>'+months.length+'</b> שורות · '+
+    ymLabel(months[0])+' עד '+ymLabel(months[months.length-1])+
+    ' · סה"כ <b>'+money(round2(months.length*rent))+'</b>'+
+    (months.length>18?' <span class="neg">— בדוק שזה מה שהתכוונת</span>':'');
+}
+/* שינוי שכר דירה — הכרעה מפורשת על השורות שטרם שולמו */
+function applyRentChange(r,oldRent,newRent){
+  var openRows=rentalIncome(r.id).filter(function(i){ return incomePaid(i)<=0.01; });
+  if(!openRows.length) return;
+  var ok=confirm("שכר הדירה שונה מ-"+money(oldRent)+" ל-"+money(newRent)+".\n\n"+
+    "יש "+openRows.length+" שורות הכנסה שטרם שולמו.\n\n"+
+    "אישור = לעדכן גם אותן לסכום החדש.\nביטול = להשאיר אותן כפי שהן; הסכום החדש יחול רק על חודשים חדשים.");
+  if(!ok) return;
+  openRows.forEach(function(i){ i.amount=round2(newRent); });
+  toast("עודכנו "+openRows.length+" שורות פתוחות","ok");
+}
+/* קיצור או ביטול חוזה — מסירים רק שורות שמחוץ לתוקף ושטרם שולמו */
+function pruneRentalIncome(r){
+  var valid={};
+  rentalDueMonths(r).forEach(function(ym){ valid[ym]=1; });
+  var stale=rentalIncome(r.id).filter(function(i){
+    return i.periodYM && !valid[i.periodYM] && incomePaid(i)<=0.01;
+  });
+  if(!stale.length) return;
+  var paidStale=rentalIncome(r.id).filter(function(i){
+    return i.periodYM && !valid[i.periodYM] && incomePaid(i)>0.01;
+  }).length;
+  if(!confirm(stale.length+" שורות הכנסה כבר אינן בתוקף לפי החוזה המעודכן, וטרם שולמו.\n\n"+
+    "אישור = להעביר אותן לסל המחזור.\nביטול = להשאיר אותן.\n\n"+
+    (paidStale?("שים לב: "+paidStale+" שורות נוספות מחוץ לטווח כבר שולמו — הן יישארו בכל מקרה."):""))) return;
+  stale.forEach(function(i){ i.deleted=true; });
+  toast("הוסרו "+stale.length+" שורות שאינן בתוקף","warn");
 }
 /* חידוש חוזה — התקופה הנוכחית עוברת להיסטוריה והדירה מקבלת תקופה חדשה */
 function renewRental(id){
