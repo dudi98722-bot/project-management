@@ -181,38 +181,49 @@ const WAIT_COLS = [
       if (v.from !== '' && (a == null || a < Number(v.from))) return false;
       if (v.to   !== '' && (a == null || a > Number(v.to))) return false; return true; } },
   { key: 'hmo',       label: 'קופה',        type: 'select', sort: p => p.hmo || '',
-    options: () => S.meta.hmos, match: (p, v) => (p.hmo || '') === v },
+    options: () => S.meta.hmos, match: (p, v) => v.includes(p.hmo || '') },
   { key: 'client_type', label: 'סוג',       type: 'select', sort: p => p.client_type || '',
-    options: () => S.meta.client_types, match: (p, v) => (p.client_type || '') === v },
+    options: () => S.meta.client_types, match: (p, v) => v.includes(p.client_type || '') },
   { key: 'community', label: 'קהילה',       type: 'select', sort: p => p.community || '',
     options: () => [...new Set(S.patients.map(x => x.community).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'he')),
-    match: (p, v) => (p.community || '') === v },
+    match: (p, v) => v.includes(p.community || '') },
   { key: 'intake',    label: 'אינטייק',     type: 'daterange', sort: p => p.intake_date || '',
     match: (p, v) => { const d = p.intake_date || '';
       if (v.from && (!d || d < v.from)) return false;
       if (v.to   && (!d || d > v.to)) return false; return true; } },
   { key: 'urgency',   label: 'דחיפות',      type: 'select', sort: p => p.urgency,
-    options: () => [['1', '1 — דחוף'], ['2', '2 — רגיל'], ['3', '3 — נמוך']],
-    match: (p, v) => String(p.urgency) === v },
+    options: () => [['1', 'דחוף'], ['2', 'רגיל'], ['3', 'נמוך']],
+    match: (p, v) => v.includes(String(p.urgency)) },
   { key: 'pref',      label: 'העדפת שיוך',  type: 'text',   sort: p => (p.preferred_therapists || []).length,
     match: (p, v) => (p.preferred_therapists || []).map(t => t.name).join(' ').includes(v)
                   || (p.preferred_groups || []).map(g => g.name).join(' ').includes(v) },
   { key: 'files',     label: 'קבצים',       type: 'select', sort: p => p.files_count || 0,
     options: () => [['yes', 'יש קבצים'], ['no', 'אין']],
-    match: (p, v) => v === 'yes' ? (p.files_count > 0) : !(p.files_count > 0) },
+    match: (p, v) => v.includes(p.files_count > 0 ? 'yes' : 'no') },
   { key: 'status',    label: 'סטטוס',       type: 'select', sort: p => p.status,
     options: () => [['waiting', 'ממתין'], ['assigned', 'משובץ'], ['done', 'הסתיים']],
-    match: (p, v) => p.status === v },
+    match: (p, v) => v.includes(p.status) },
 ];
 
 function colFilterCell(c) {
   const v = S.colFilters[c.key];
   if (c.type === 'select') {
+    // בחירה מרובה: כפתור שמסכם מה נבחר, ומתחתיו רשימת תיבות סימון
     const opts = c.options().map(o => Array.isArray(o) ? o : [o, o]);
-    return `<select onchange="setColFilter('${c.key}', this.value)">
-      <option value="">הכל</option>
-      ${opts.map(([val, lbl]) => `<option value="${esc(val)}" ${v === val ? 'selected' : ''}>${esc(lbl)}</option>`).join('')}
-    </select>`;
+    const chosen = opts.filter(([val]) => v.includes(val));
+    const label = !chosen.length ? 'הכל'
+      : chosen.length === 1 ? chosen[0][1]
+      : `${chosen.length} נבחרו`;
+    return `<div class="ms" data-col="${c.key}">
+      <button type="button" class="ms-btn${chosen.length ? ' on' : ''}" onclick="toggleMulti(event,'${c.key}')">
+        <span>${esc(label)}</span><span class="ms-caret">▾</span>
+      </button>
+      <div class="ms-pop">
+        ${opts.map(([val, lbl]) => `<label><input type="checkbox" value="${esc(val)}" ${v.includes(val) ? 'checked' : ''}
+          onchange="toggleMultiValue('${c.key}', this.value, this.checked)"> ${esc(lbl)}</label>`).join('')}
+        ${chosen.length ? `<button type="button" class="ms-clear" onclick="setColFilter('${c.key}',[]);renderWaitingTable()">נקה</button>` : ''}
+      </div>
+    </div>`;
   }
   if (c.type === 'range') {
     return `<div class="f-range">
@@ -235,6 +246,35 @@ function setColFilter(key, value) {
   applyWaitingFilters();   // מרענן רק את גוף הטבלה, כדי שהמיקוד בשדה לא יאבד
 }
 
+// פתיחת/סגירת רשימת הבחירה המרובה. רק אחת פתוחה בכל רגע.
+function toggleMulti(ev, key) {
+  ev.stopPropagation();
+  const box = ev.currentTarget.closest('.ms');
+  const wasOpen = box.classList.contains('open');
+  document.querySelectorAll('.ms.open').forEach(x => x.classList.remove('open'));
+  if (!wasOpen) box.classList.add('open');
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.ms')) document.querySelectorAll('.ms.open').forEach(x => x.classList.remove('open'));
+});
+
+function toggleMultiValue(key, value, checked) {
+  const cur = S.colFilters[key];
+  S.colFilters[key] = checked ? [...cur, value] : cur.filter(x => x !== value);
+  S.page = 1;
+  applyWaitingFilters();
+  // מעדכנים רק את תווית הכפתור — בנייה מחדש הייתה סוגרת את הרשימה הפתוחה
+  const box = document.querySelector(`.ms[data-col="${key}"]`);
+  if (box) {
+    const c = WAIT_COLS.find(x => x.key === key);
+    const opts = c.options().map(o => Array.isArray(o) ? o : [o, o]);
+    const chosen = opts.filter(([val]) => S.colFilters[key].includes(val));
+    box.querySelector('.ms-btn span').textContent =
+      !chosen.length ? 'הכל' : chosen.length === 1 ? chosen[0][1] : `${chosen.length} נבחרו`;
+    box.querySelector('.ms-btn').classList.toggle('on', chosen.length > 0);
+  }
+}
+
 function clearWaitingFilters() {
   S.colFilters = freshColFilters();
   S.filters.q = '';
@@ -245,7 +285,8 @@ function clearWaitingFilters() {
 function freshColFilters() {
   const o = {};
   for (const c of WAIT_COLS) {
-    o[c.key] = (c.type === 'range' || c.type === 'daterange') ? { from: '', to: '' } : '';
+    o[c.key] = (c.type === 'range' || c.type === 'daterange') ? { from: '', to: '' }
+             : c.type === 'select' ? [] : '';
   }
   return o;
 }
@@ -266,7 +307,8 @@ function filteredWaiting() {
   let rows = S.patients.filter(p => {
     for (const c of WAIT_COLS) {
       const v = S.colFilters[c.key];
-      const empty = (c.type === 'range' || c.type === 'daterange') ? (!v.from && !v.to) : !v;
+      const empty = (c.type === 'range' || c.type === 'daterange') ? (!v.from && !v.to)
+                  : c.type === 'select' ? !v.length : !v;
       if (!empty && !c.match(p, v)) return false;
     }
     if (f.q) {
