@@ -120,6 +120,16 @@ tr:hover td{background:#fafbff}
 #colFilterPopup .cf-row2{display:flex;gap:6px}
 #colFilterPopup .cf-row2>input{width:50%}
 #colFilterPopup label.cf-fieldlbl{display:block;font-size:11px;color:var(--muted);margin-bottom:3px}
+.cat-row{cursor:pointer}
+.cat-row:hover td{background:#eef2ff}
+.cat-row .chev{display:inline-block;width:14px;color:var(--muted);font-size:11px}
+.cat-detail{display:none}
+.cat-detail.open{display:table-row}
+.cat-detail-box{background:#f8fafc;border-radius:8px;padding:4px 10px;max-height:230px;overflow-y:auto;margin:2px 0}
+.cat-tx{display:flex;gap:10px;align-items:center;font-size:12.5px;padding:4px 0;border-bottom:1px solid #eef2ff}
+.cat-tx:last-child{border-bottom:none}
+.cat-tx .cat-tx-date{color:var(--muted);white-space:nowrap;font-size:11.5px}
+.cat-tx .cat-tx-desc{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chip{display:inline-flex;align-items:center;gap:6px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:16px;padding:4px 12px;font-size:12.5px;margin:3px}
 .chip button{border:none;background:none;color:#dc2626;cursor:pointer;font-size:14px;font-weight:700}
 .bulkbar{position:sticky;top:52px;z-index:40;background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:10px 14px;display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
@@ -1159,6 +1169,13 @@ function printPnL(){
 }
 
 /* ================= דשבורד ================= */
+function toggleCatDetail(row){
+  const det = row.nextElementSibling;
+  if(!det) return;
+  const open = det.classList.toggle('open');
+  const chev = row.querySelector('.chev');
+  if(chev) chev.textContent = open ? '▾' : '▸';
+}
 let charts = {};
 function makeChart(id, cfg){
   if(charts[id]) charts[id].destroy();
@@ -1232,21 +1249,33 @@ function renderDashboard(){
       ]}, options:{responsive:true, indexAxis:'y', plugins:{legend:{position:'bottom'}}}});
   }
 
-  // טבלאות פירוט
-  const mkTable = entries => {
+  // טבלאות פירוט — לחיצה על קטגוריה פותחת את פירוט התנועות שמרכיבות אותה
+  const detailBox = txs => {
+    if(!txs.length) return '<div class="muted" style="padding:6px;font-size:12px">אין תנועות</div>';
+    return '<div class="cat-detail-box">' + txs.sort((a,b)=>b.date.localeCompare(a.date)).map(t=>
+      '<div class="cat-tx"><span class="cat-tx-date">'+t.date.split('-').reverse().join('/')+'</span>'
+      +'<span class="cat-tx-desc">'+esc(t.desc)+(t.project?' · '+esc(t.project):'')+(t.account?' · '+esc(t.account):'')+'</span>'
+      +'<span class="amt">'+fmt2(t.amount)+' ₪</span></div>').join('') + '</div>';
+  };
+  const mkTable = (entries, kind) => {
     if(!entries.length) return '<div class="empty">אין נתונים</div>';
     const tot = entries.reduce((s,x)=>s+x[1],0);
     return '<table><thead><tr><th>קטגוריה</th><th>סכום</th><th>%</th></tr></thead><tbody>'
-      + entries.map(x=>'<tr><td>'+esc(x[0])+'</td><td class="amt">'+fmt(x[1])+'</td><td>'+Math.round(x[1]/tot*100)+'%</td></tr>').join('')
+      + entries.map(x=>{
+          const cat = x[0];
+          const txs = base.filter(t=>t.kind===kind && (t.category||'ללא קטגוריה')===cat);
+          return '<tr class="cat-row" onclick="toggleCatDetail(this)"><td><span class="chev">▸</span> '+esc(cat)+' <span class="muted" style="font-size:11px">('+txs.length+')</span></td><td class="amt">'+fmt(x[1])+'</td><td>'+Math.round(x[1]/tot*100)+'%</td></tr>'
+            + '<tr class="cat-detail"><td colspan="3">'+detailBox(txs)+'</td></tr>';
+        }).join('')
       + '</tbody><tfoot><tr><td>סה"כ</td><td class="amt">'+fmt(tot)+'</td><td></td></tr></tfoot></table>';
   };
-  document.getElementById('dashExpTable').innerHTML = mkTable(catE);
+  document.getElementById('dashExpTable').innerHTML = mkTable(catE, 'expense');
   const incSum = {};
   base.filter(t=>t.kind==='income').forEach(t=>{
     const c = t.category || 'ללא קטגוריה';
     incSum[c] = (incSum[c]||0) + t.amount;
   });
-  document.getElementById('dashIncTable').innerHTML = mkTable(Object.entries(incSum).sort((a,b)=>b[1]-a[1]));
+  document.getElementById('dashIncTable').innerHTML = mkTable(Object.entries(incSum).sort((a,b)=>b[1]-a[1]), 'income');
 }
 
 /* ================= סיווג ================= */
