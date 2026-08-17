@@ -168,6 +168,7 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
   <button data-tab="tx">📋 כל התנועות</button>
   <button data-tab="projects">🏗️ פרויקטים</button>
   <button data-tab="manual">➕ דיווח ידני</button>
+  <button data-tab="cats">🗂️ קטגוריות</button>
   <button data-tab="import">📥 ייבוא נתונים</button>
   <button data-tab="settings">⚙️ הגדרות</button>
 </nav>
@@ -213,6 +214,17 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
   <div class="card table-wrap" id="pnlTableWrap"></div>
   <div class="muted" style="font-size:12px;margin-top:8px">
     הסכומים לפי סכום התנועה בפועל. עובדים = משכורות + קבלני משנה · חומר = חומרים וספקים · מנופים = קטגוריית מנופים · שאר הוצאות = כל היתר (כולל תיווך, דלק, שכירות וכו').
+  </div>
+</section>
+
+<!-- ============ קטגוריות ============ -->
+<section id="tab-cats">
+  <div class="hint">💡 ניהול רשימת הקטגוריות: הוספה, שינוי שם (מעדכן אוטומטית גם את התנועות הקיימות שמשתמשות בקטגוריה), או מחיקה. המספר בסוגריים = כמה תנועות משתמשות בקטגוריה.</div>
+  <div class="charts-grid">
+    <div class="card" id="catcard_biz_expense"><b style="font-size:14px">🏢 הוצאות עסק</b><div id="cats_biz_expense" style="margin-top:10px"></div></div>
+    <div class="card" id="catcard_biz_income"><b style="font-size:14px">🏢 הכנסות עסק</b><div id="cats_biz_income" style="margin-top:10px"></div></div>
+    <div class="card" id="catcard_home_expense"><b style="font-size:14px">🏠 הוצאות בית</b><div id="cats_home_expense" style="margin-top:10px"></div></div>
+    <div class="card" id="catcard_home_income"><b style="font-size:14px">🏠 הכנסות בית</b><div id="cats_home_income" style="margin-top:10px"></div></div>
   </div>
 </section>
 
@@ -836,9 +848,9 @@ function dedupKey(t){ return [t.date, t.kind, (+t.amount).toFixed(2), normDesc(t
 
 /* ================= משתמשים והרשאות ================= */
 const ROLES = {
-  admin:  {tabs:['dash','pnl','classify','tx','projects','manual','import','settings'], homeOnly:false, bizOnly:false, assignScope:true, canDelete:true, readOnly:false, label:'גישה מלאה'},
-  beni:   {tabs:['dash','pnl','classify','projects','manual'], homeOnly:false, bizOnly:false, assignScope:true, canDelete:false, readOnly:false, label:'כל הדוחות · סיווג הכל · דיווח בית ועסק'},
-  lea:    {tabs:['dash','classify','manual'], homeOnly:true, bizOnly:false, assignScope:false, canDelete:false, readOnly:false, label:'דוחות בית · סיווג בית · דיווח בית'},
+  admin:  {tabs:['dash','pnl','classify','tx','projects','manual','cats','import','settings'], homeOnly:false, bizOnly:false, assignScope:true, canDelete:true, readOnly:false, label:'גישה מלאה'},
+  beni:   {tabs:['dash','pnl','classify','projects','manual','cats'], homeOnly:false, bizOnly:false, assignScope:true, canDelete:false, readOnly:false, label:'כל הדוחות · סיווג הכל · דיווח בית ועסק · קטגוריות'},
+  lea:    {tabs:['dash','classify','manual','cats'], homeOnly:true, bizOnly:false, assignScope:false, canDelete:false, readOnly:false, label:'דוחות בית · סיווג בית · דיווח בית · קטגוריות בית'},
   itamar: {tabs:['dash','pnl','projects'], homeOnly:false, bizOnly:true, assignScope:false, canDelete:false, readOnly:true, label:'צפייה בלבד — דשבורד עסק ופרויקטים'}
 };
 let currentUser = null;
@@ -1018,6 +1030,7 @@ function renderAll(){
   renderProjects();
   renderManualSelects();
   renderSourceTiles();
+  renderCats();
   renderSettings();
   applyRole();
 }
@@ -2819,6 +2832,57 @@ function addCat(k){
 function removeCat(k,i){
   db.categories[k].splice(i,1);
   queueSetting('categories'); save(); renderAll();
+}
+/* ================= לשונית ניהול קטגוריות (בני / לאה / מנהל) ================= */
+const CAT_GROUPS = [
+  {k:'biz_expense',  label:'🏢 הוצאות עסק', biz:true},
+  {k:'biz_income',   label:'🏢 הכנסות עסק', biz:true},
+  {k:'home_expense', label:'🏠 הוצאות בית', biz:false},
+  {k:'home_income',  label:'🏠 הכנסות בית', biz:false}
+];
+function catUsageCount(k, c){
+  const scope = k.split('_')[0], kind = k.split('_')[1];
+  return db.tx.filter(t=>!t.deleted && t.scope===scope && t.kind===kind && t.category===c).length;
+}
+function renderCats(){
+  const homeOnly = perms().homeOnly;
+  CAT_GROUPS.forEach(g=>{
+    const card = document.getElementById('catcard_'+g.k);
+    if(card) card.style.display = (homeOnly && g.biz) ? 'none' : '';
+    const box = document.getElementById('cats_'+g.k);
+    if(!box) return;
+    const cats = db.categories[g.k] || [];
+    box.innerHTML = cats.map((c,i)=>{
+      const n = catUsageCount(g.k, c);
+      return '<span class="chip">'+esc(c)+(n?' <small style="color:var(--muted)">('+n+')</small>':'')
+        +'<button title="שנה שם" style="color:#4f46e5;font-size:12px" onclick="renameCat(\''+g.k+'\','+i+')">✏️</button>'
+        +'<button title="מחק" onclick="removeCatSafe(\''+g.k+'\','+i+')">×</button></span>';
+    }).join('') + ' <button class="btn sm ghost" onclick="addCat(\''+g.k+'\')">+ הוסף קטגוריה</button>';
+  });
+}
+function renameCat(k, i){
+  const old = db.categories[k][i];
+  const v = prompt('שם חדש לקטגוריה "'+old+'":', old);
+  if(v===null) return;
+  const nw = (v||'').trim();
+  if(!nw || nw===old) return;
+  if(db.categories[k].includes(nw)){ toast('⚠️ כבר קיימת קטגוריה בשם הזה'); return; }
+  const scope = k.split('_')[0], kind = k.split('_')[1];
+  db.categories[k][i] = nw;
+  // עדכון כל התנועות שמשתמשות בקטגוריה (אותו שיוך + סוג)
+  const moved = [];
+  db.tx.forEach(t=>{ if(t.category===old && t.scope===scope && t.kind===kind){ t.category=nw; moved.push(t); } });
+  if(moved.length) queueTx(moved);
+  queueSetting('categories'); save(); renderAll();
+  toast('שונתה ל-"'+nw+'"'+(moved.length?' · עודכנו '+moved.length+' תנועות':''));
+}
+function removeCatSafe(k, i){
+  const c = db.categories[k][i];
+  const n = catUsageCount(k, c);
+  if(!confirm('למחוק את הקטגוריה "'+c+'"?'+(n?'\n('+n+' תנועות משתמשות בה — הן יישמרו עם השם, אבל הקטגוריה תוסר מהרשימה)':''))) return;
+  db.categories[k].splice(i,1);
+  queueSetting('categories'); save(); renderAll();
+  toast('הקטגוריה הוסרה');
 }
 function removeTpl(sig){
   delete db.templates[sig];
