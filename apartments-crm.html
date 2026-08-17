@@ -765,7 +765,7 @@ function hasDirtyMark(){ try{ return localStorage.getItem(LSKEY+"_dirty")==="1";
 /* ישויות שעוברות לסל המחזור — משמש גם לחותמת המחיקה וגם למסך עצמו */
 var RECYCLE_ENTITIES=["apartments","partners","apartmentPartners","managers","categories",
   "expenses","payments","expenseSplits","expenseManagerFees","deposits","income",
-  "accounts","withdrawals","bankMoves","stmtBanks","recurring","users"];
+  "accounts","withdrawals","bankMoves","stmtBanks","recurring","rentals","users"];
 /* חותמת "מתי נמחק ומי מחק".
    נעשית מרכזית בשמירה ולא בכל מקום מחיקה בנפרד — כך גם מחיקות מדורגות
    (שלב-אב עם תתי-שלבים, פרוייקט עם כל התנועות) מקבלות אותה, ואי אפשר
@@ -866,7 +866,7 @@ function blankDB(){
   return {meta:{version:1,rev:0}, partners:[], apartments:[], apartmentPartners:[], managers:[],
     categories:[], expenses:[], expenseSplits:[], expenseManagerFees:[], accounts:[],
     payments:[], deposits:[], income:[], bankMoves:[], stmtBanks:[], withdrawals:[], incMgmtPays:[],
-    recurring:[], users:[], settings:{sheetsUrl:"", currency:"₪", paymentMethods:{}}};
+    recurring:[], rentals:[], users:[], settings:{sheetsUrl:"", currency:"₪", paymentMethods:{}}};
 }
 function toNum(v){ var n=Number(v); return isFinite(n)?n:0; }
 function toISO(v){ v=String(v==null?"":v).slice(0,10); return /^\d{4}-\d{2}-\d{2}$/.test(v)?v:""; }
@@ -906,6 +906,12 @@ function normalizeDB(d){
   (d.withdrawals||[]).forEach(function(x){ x.amount=toNum(x.amount); x.date=toISO(x.date); });
   d.recurring=d.recurring||[];
   (d.recurring||[]).forEach(function(r){ r.amount=toNum(r.amount); r.nextDate=toISO(r.nextDate); });
+  d.rentals=d.rentals||[];
+  (d.rentals||[]).forEach(function(r){
+    r.rent=toNum(r.rent); r.startDate=toISO(r.startDate); r.endDate=toISO(r.endDate);
+    r.history=r.history||[];
+    r.history.forEach(function(h){ h.rent=toNum(h.rent); h.startDate=toISO(h.startDate); h.endDate=toISO(h.endDate); });
+  });
   /* דמי ניהול על הכנסות: אחוז למנהל; החוב מוחזק כשלב הוצאה אוטומטי.
      תשלומים שנרשמו במבנה הישן (incMgmtPays) מומרים פעם אחת לתשלומים
      רגילים על השלב — מזהה קבוע ("imp"+id) מונע כפילות בהרצה חוזרת. */
@@ -1001,21 +1007,42 @@ function seedIfEmpty(){
    מיגרציה. REPORT_SCOPE דולק רק בזמן בניית דוח, כך שאותן פונקציות
    מחזירות בלשוניות את הנתונים המלאים. */
 var REPORT_SCOPE=false;              // דולק רק בתוך בניית דוח
-function reportShowAll(){ return state.params.repAll==="1"; }
+/* שלושה מצבי דוח:
+   regular  — הדוח הרגיל: מסתיר שורות שסומנו "לא להציג בדוח"
+   freilich — דוח לפרייליך: מסתיר בנוסף שורות שסומנו "לא בדוח לפרייליך"
+   all      — הצג הכל, בלי שום סינון */
+var REPORT_MODES={regular:"דוח רגיל", freilich:"דוח לפרייליך", all:"הצג הכל"};
+function reportMode(){
+  var m=state.params.repMode;
+  return REPORT_MODES[m] ? m : "regular";
+}
+function reportShowAll(){ return reportMode()==="all"; }
 function repFilter(list){
-  if(!REPORT_SCOPE || reportShowAll()) return list;
-  var out=list.filter(function(x){ return !x.noReport; });
+  if(!REPORT_SCOPE) return list;
+  var mode=reportMode();
+  if(mode==="all") return list;
+  var out=list.filter(function(x){
+    if(x.noReport) return false;
+    if(mode==="freilich" && x.noFreilich) return false;
+    return true;
+  });
   return out.length===list.length ? list : out;   // בלי העתקה מיותרת
 }
 function withReportScope(fn){
   var prev=REPORT_SCOPE; REPORT_SCOPE=true;
   try{ return fn(); } finally{ REPORT_SCOPE=prev; }
 }
-/* כמה שורות מוסתרות מהדוחות בפרוייקט — לחיווי בלשונית הדוחות */
+/* כמה שורות מוסתרות בכל מצב — לחיווי בלשונית הדוחות */
 function hiddenFromReportCount(aptId){
   var n=0;
   apLeafExpensesRaw(aptId).forEach(function(e){ if(e.noReport) n++; });
   apIncomeRaw(aptId).forEach(function(i){ if(i.noReport) n++; });
+  return n;
+}
+function hiddenFromFreilichCount(aptId){
+  var n=0;
+  apLeafExpensesRaw(aptId).forEach(function(e){ if(!e.noReport && e.noFreilich) n++; });
+  apIncomeRaw(aptId).forEach(function(i){ if(!i.noReport && i.noFreilich) n++; });
   return n;
 }
 function apExpenses(aptId){ if(IX) return IX.expByApt[aptId]||IX_EMPTY;
@@ -1718,7 +1745,7 @@ function clientScopeMgmt(){
   DB.apartments    = (DB.apartments||[]).filter(function(a){ return canSeeApartment(a.id); });
   /* לא רלוונטי לדמי ניהול — ולא אמור להיחשף */
   DB.expenseSplits=[]; DB.deposits=[]; DB.income=[]; DB.partners=[]; DB.apartmentPartners=[]; DB.accounts=[];
-  DB.bankMoves=[]; DB.stmtBanks=[]; DB.withdrawals=[]; DB.incMgmtPays=[]; DB.recurring=[];
+  DB.bankMoves=[]; DB.stmtBanks=[]; DB.withdrawals=[]; DB.incMgmtPays=[]; DB.recurring=[]; DB.rentals=[];
 }
 /* "פרוייקטים מורשים" חלות על כל תפקיד חוץ ממנהל. קודם הן נאכפו רק על
    תפקיד "שותף", כך שצופה שהוגבל לפרוייקט אחת ראה בפועל את כולן. */
@@ -1833,6 +1860,8 @@ function navHtml(){
     return '<div class="nav"><div class="nav-item active" onclick="go(\'mgmt\',{})">💼 דמי ניהול</div></div>';
   }
   var items=[["dashboard","🏠 כל הפרוייקטים"],["reports","📊 דוח שותפים כללי"],["mgmt","💼 דוח דמי ניהול"]];
+  var rentN=rentalAlertCount();
+  items.push(["rentals","🔑 שכירויות"+(rentN?" ("+rentN+")":"")]);
   if(can("edit")) items.push(["bankmatch","🏦 התאמת בנק"]);
   if(can("edit")){
     var openRec=openRecurExpenses().length;
@@ -1885,6 +1914,7 @@ function renderViewInner(){
     case "settings": if(!can("settings")){ toast("אין לך גישה להגדרות","err"); go("dashboard",{}); return; } c.innerHTML=viewSettings(); break;
     case "bankmatch": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewBankMatch(); break;
     case "recurring": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewRecurring(); break;
+    case "rentals": c.innerHTML=viewRentals(); break;
     case "import": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewImport(); break;
     case "recycle": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewRecycle(); break;
     default: c.innerHTML=viewDashboard();
@@ -2092,6 +2122,8 @@ function viewDashboard(){
     (can("edit")?'<button class="btn btn-sm" onclick="bulkAptFlags()">⚙️ בנק / ניהול מרוכז</button> ':'')+
     (can("edit")?'<button class="btn btn-primary" onclick="editApartment(null)">➕ פרוייקט חדש</button>':'')+'</div>';
   if(!all.length) return h+'<div class="empty">אין פרוייקטים עדיין. הוסף פרוייקט ראשון.</div>';
+
+  h+=rentalAlertBanner();
 
   /* רשימת הפרוייקטים ראשונה — זה מה שמחפשים כשנכנסים */
   h+='<div id="apt-grid">'+aptGridHtml()+'</div>';
@@ -2797,7 +2829,7 @@ async function loadSyncBase(){
 }
 var MERGE_TABLES=["apartments","partners","apartmentPartners","managers","categories",
   "expenses","expenseSplits","expenseManagerFees","accounts","payments","deposits",
-  "income","bankMoves","stmtBanks","withdrawals","incMgmtPays","recurring","users"];
+  "income","bankMoves","stmtBanks","withdrawals","incMgmtPays","recurring","rentals","users"];
 function merge3(baseStr,mine,theirs){
   var base=null;
   try{ base=baseStr?JSON.parse(baseStr):null; }catch(e){ base=null; }
@@ -3093,7 +3125,7 @@ async function boot(){
    מודולים
    ============================================================ */
 /* ---------- חיפוש וסינון ---------- */
-var Q={apts:"",exp:"",expStatus:"",expClass:"",quick:"",partners:"",cross:"",recycle:"",pay:"",payWho:"",paySrc:"",payInv:"",ppWho:"",apPayWho:""};
+var Q={apts:"",exp:"",expStatus:"",expClass:"",quick:"",partners:"",cross:"",recycle:"",pay:"",payWho:"",paySrc:"",payInv:"",ppWho:"",apPayWho:"",rent:"",rentApt:"",rentStatus:""};
 /* כל מילה בשאילתה חייבת להופיע — מאפשר "עורך דין קופר" ו"קופר דין" כאחד */
 function matches(q,text){
   q=String(q||"").trim().toLowerCase(); if(!q) return true;
@@ -4224,7 +4256,8 @@ function expTableHtml(aptId){
       '<td'+(isChild?' style="padding-right:26px"':'')+'>'+
         (isChild?'<span class="muted">↳ </span>':'')+
         '<b>'+esc(e.description)+'</b>'+(e.hidden?' <span class="badge badge-danger" title="מוסתר משאר המשתמשים">🔒 מוסתר</span>':'')+
-        (e.noReport?' <span class="badge badge-muted badge-unit" title="לא נספר בדוחות">🚫 לא בדוח</span>':'')+(e.hasInvoice?' 📎':'')+
+        (e.noReport?' <span class="badge badge-muted badge-unit" title="לא נספר בדוחות">🚫 לא בדוח</span>':'')+
+        (!e.noReport&&e.noFreilich?' <span class="badge badge-muted badge-unit" title="לא נספר בדוח לפרייליך">🚫 פרייליך</span>':'')+(e.hasInvoice?' 📎':'')+
         (cont?' <span class="pill" data-xl-skip="1">'+kids.length+' תתי-שלבים</span>':'')+'</td>'+
       /* לשלב-אב אין קטגוריה משלו — הקטגוריות יושבות בתתי-השלבים */
       '<td>'+(cont?'<span class="muted">—</span>':esc(categoryName(e.categoryId)||""))+'</td>'+
@@ -4310,7 +4343,10 @@ function openBulkExpEdit(aptId){
     '</div>'+
     '<div class="form-grid"><div class="field"><label>הצגה בדוחות</label>'+
       '<select id="eb-inrep"><option value="__keep">— ללא שינוי —</option>'+
-      '<option value="on">✔ להציג בדוחות</option><option value="off">🚫 לא להציג בדוחות</option></select></div></div>'+
+      '<option value="on">✔ להציג בדוחות</option><option value="off">🚫 לא להציג בדוחות</option></select></div>'+
+      '<div class="field"><label>דוח לפרייליך</label>'+
+      '<select id="eb-frl"><option value="__keep">— ללא שינוי —</option>'+
+      '<option value="on">✔ להציג בדוח לפרייליך</option><option value="off">🚫 לא בדוח לפרייליך</option></select></div></div>'+
     (CU&&CU.role==="admin"?'<div class="field" style="background:#fff7f7;border:1px solid #f0d0d0;border-radius:10px;padding:8px"><label>🔒 הסתרה משאר המשתמשים</label>'+
       '<select id="eb-hidden"><option value="__keep">— ללא שינוי —</option><option value="on">הסתר</option><option value="off">חשוף</option></select></div>':''),
     saveLabel:"עדכן "+exps.length+" שלבים",onSave:function(){ return applyBulkExpEdit(aptId,ids); }});
@@ -4333,8 +4369,9 @@ function applyBulkExpEdit(aptId,ids){
   var mg=document.getElementById("eb-mgmt")?val("eb-mgmt"):"__keep";
   var hid=document.getElementById("eb-hidden")?val("eb-hidden"):"__keep";
   var rep=document.getElementById("eb-inrep")?val("eb-inrep"):"__keep";
+  var frl=document.getElementById("eb-frl")?val("eb-frl"):"__keep";
   var splitMode=document.getElementById("eb-split")?val("eb-split"):"__keep";
-  if(cat==="__keep" && cls==="__keep" && !date && mg==="__keep" && hid==="__keep" && rep==="__keep" && splitMode==="__keep"){
+  if(cat==="__keep" && cls==="__keep" && !date && mg==="__keep" && hid==="__keep" && rep==="__keep" && frl==="__keep" && splitMode==="__keep"){
     toast("לא נבחר מה לעדכן","warn"); return false;
   }
   var mgrs=apManagers(aptId);
@@ -4382,6 +4419,7 @@ function applyBulkExpEdit(aptId,ids){
     } else if(mg==="off"){ e.mgmtEnabled=false; e.mgmtSet=true; }
     if(CU&&CU.role==="admin"){ if(hid==="on") e.hidden=true; else if(hid==="off") e.hidden=false; }
     if(rep==="on") e.noReport=false; else if(rep==="off") e.noReport=true;
+    if(frl==="on") e.noFreilich=false; else if(frl==="off") e.noFreilich=true;
     n++;
   });
   save(); toast("עודכנו "+n+" שלבים","ok"); rerender();
@@ -4742,6 +4780,8 @@ function openExpenseEditor(eId,aptId,presetParent){
      '<div class="field full"><label><input type="checkbox" id="ex-inv" style="width:auto" '+(e&&e.hasInvoice?"checked":"")+'> יש חשבונית/קבלה</label><input id="ex-link" placeholder="קישור לקבלה (אופציונלי)" value="'+esc(e?e.invoiceLink:"")+'" style="margin-top:4px"></div>'+
      '<div class="field full"><label style="font-weight:400"><input type="checkbox" id="ex-inrep" style="width:auto" '+(e&&e.noReport?"":"checked")+'> להציג בדוחות</label>'+
        '<div class="hint">ברירת מחדל: מוצג. הסרת הסימון מוציאה את השלב מהדוחות בלבד — הוא נשאר בטבלת השלבים ובכל הסכומים שם.</div></div>'+
+     '<div class="field full"><label style="font-weight:400"><input type="checkbox" id="ex-frl" style="width:auto" '+(e&&e.noFreilich?"checked":"")+'> 🚫 לא בדוח לפרייליך</label>'+
+       '<div class="hint">השלב יופיע בדוחות הרגילים אבל לא בדוח לפרייליך.</div></div>'+
      (CU&&CU.role==="admin"?'<div class="field full" style="background:#fff7f7;border:1px solid #f0d0d0;border-radius:10px;padding:8px"><label><input type="checkbox" id="ex-hidden" style="width:auto" '+(e&&e.hidden?"checked":"")+'> 🔒 מוסתר משאר המשתמשים</label><div class="hint">שלב זה (וכל התשלומים והחלוקה שלו) יופיע רק אצל מנהל. משתמשים אחרים לא יראו אותו כלל — גם לא בסכומים ובדוחות.</div></div>':'')+
     '</div>'+
     /* למכל אין חלוקה ודמי ניהול משלו — הם מוגדרים בכל תת-שלב בנפרד */
@@ -4859,6 +4899,7 @@ function saveExpense(eId,aptId){
   if(hasParentField) e.parentId = pv || null;
   e.hasInvoice=checked("ex-inv"); e.invoiceLink=val("ex-link");
   if(document.getElementById("ex-inrep")) e.noReport=!checked("ex-inrep");
+  if(document.getElementById("ex-frl")) e.noFreilich=checked("ex-frl");
   if(CU&&CU.role==="admin"&&document.getElementById("ex-hidden")) e.hidden=checked("ex-hidden");
   else if(e.hidden==null) e.hidden=false;
   /* דמי ניהול — נוגעים בהם אך ורק כשהמקטע באמת הוצג על המסך.
@@ -6563,7 +6604,8 @@ function moduleIncome(aptId){
       (selI?'<td class="chk"><input type="checkbox" class="ib-x" value="'+i.id+'" style="width:auto" onchange="ibCount()"></td>':'')+
       '<td>'+dateHe(i.date)+'</td><td>'+esc(i.description)+
         (i.excluded?' <span class="badge badge-muted badge-unit" title="לא נספרת בסיכומי ההכנסות">לא לחישוב</span>':'')+
-        (i.noReport?' <span class="badge badge-muted badge-unit" title="לא נספרת בדוחות">🚫 לא בדוח</span>':'')+'</td>'+
+        (i.noReport?' <span class="badge badge-muted badge-unit" title="לא נספרת בדוחות">🚫 לא בדוח</span>':'')+
+        (!i.noReport&&i.noFreilich?' <span class="badge badge-muted badge-unit" title="לא נספרת בדוח לפרייליך">🚫 פרייליך</span>':'')+'</td>'+
       (units.length?'<td>'+unitsCellHtml(i)+'</td>':'')+
       '<td class="muted" title="'+esc(stayLabel(i))+'">'+esc(stayLabelShort(i))+'</td>'+
       '<td>'+money(i.amount)+'</td>'+
@@ -6843,6 +6885,10 @@ function openBulkIncomeEdit(aptId){
         '<option value="__keep">— ללא שינוי —</option>'+
         '<option value="on">✔ להציג בדוחות</option>'+
         '<option value="off">🚫 לא להציג בדוחות</option></select></div>'+
+      '<div class="field"><label>דוח לפרייליך</label><select id="ib-frl">'+
+        '<option value="__keep">— ללא שינוי —</option>'+
+        '<option value="on">✔ להציג בדוח לפרייליך</option>'+
+        '<option value="off">🚫 לא בדוח לפרייליך</option></select></div>'+
       '<div class="field full"><label>הערה</label>'+
         '<select id="ib-note-mode" onchange="onIbNoteMode()" style="margin-bottom:5px">'+
           '<option value="keep">— ללא שינוי —</option>'+
@@ -6881,7 +6927,8 @@ function applyBulkIncomeEdit(aptId,ids){
   var markPaid=checked("ib-paid");
   var exclSel=document.getElementById("ib-excl")?val("ib-excl"):"__keep";
   var repSel=document.getElementById("ib-inrep")?val("ib-inrep"):"__keep";
-  if(!date && !start && !end && !dest && uMode==="keep" && noteMode==="keep" && !markPaid && exclSel==="__keep" && repSel==="__keep"){ toast("לא נבחר מה לעדכן","warn"); return false; }
+  var frlSel=document.getElementById("ib-frl")?val("ib-frl"):"__keep";
+  if(!date && !start && !end && !dest && uMode==="keep" && noteMode==="keep" && !markPaid && exclSel==="__keep" && repSel==="__keep" && frlSel==="__keep"){ toast("לא נבחר מה לעדכן","warn"); return false; }
   if((noteMode==="set"||noteMode==="append") && !noteTxt){
     toast("כתוב את ההערה שתיכנס, או בחר \"ללא שינוי\" בשדה ההערה","err"); return false; }
   var picked=(uMode==="set"||uMode==="add")?readUnitChecks("ib-u"):[];
@@ -6900,6 +6947,7 @@ function applyBulkIncomeEdit(aptId,ids){
     }
     if(dest) i.receivedBy=(dest==="__none")?"":dest;
     if(repSel==="on") i.noReport=false; else if(repSel==="off") i.noReport=true;
+    if(frlSel==="on") i.noFreilich=false; else if(frlSel==="off") i.noFreilich=true;
     if(uMode==="set") i.units=picked.slice();
     else if(uMode==="add"){
       var cur=incomeUnits(i).slice();
@@ -8241,6 +8289,8 @@ function editIncome(id,aptId){
       'לא לחישוב — השורה תישאר בפירוט אבל לא תיספר בשום סיכום הכנסות (כולל בנק ודמי ניהול)</label></div>'+
     '<div class="field full"><label style="font-weight:400"><input type="checkbox" id="in-inrep" style="width:auto;margin-inline-end:6px"'+(it.noReport?"":" checked")+'>'+
       'להציג בדוחות — ברירת מחדל מוצג. הסרת הסימון מוציאה את השורה מהדוחות בלבד</label></div>'+
+    '<div class="field full"><label style="font-weight:400"><input type="checkbox" id="in-frl" style="width:auto;margin-inline-end:6px"'+(it.noFreilich?" checked":"")+'>'+
+      '🚫 לא בדוח לפרייליך — השורה תופיע בדוחות הרגילים אבל לא בדוח לפרייליך</label></div>'+
     '</div>'+
     (pids.length?
       '<div class="section-title">שיוך ההכנסה באחוזים <span class="hint">(ריק = לפי ברירת המחדל)</span></div>'+
@@ -8276,11 +8326,11 @@ function editIncome(id,aptId){
       var target;
       if(id){ it.description=desc; it.amount=amt; it.date=val("in-date"); it.receivedBy=dest; it.split=split; it.units=un;
         it.startDate=sd; it.endDate=ed; it.note=val("in-note"); it.excluded=checked("in-excl");
-        it.noReport=!checked("in-inrep"); target=it; }
+        it.noReport=!checked("in-inrep"); it.noFreilich=checked("in-frl"); target=it; }
       else{
         target={id:uid(),apartmentId:aptId,description:desc,amount:amt,date:val("in-date")||todayISO(),
           receivedBy:dest,split:split,units:un,startDate:sd,endDate:ed,note:val("in-note"),
-          excluded:checked("in-excl"),noReport:!checked("in-inrep"),deleted:false};
+          excluded:checked("in-excl"),noReport:!checked("in-inrep"),noFreilich:checked("in-frl"),deleted:false};
         DB.income.push(target);
       }
       if(paidNow){
@@ -8361,25 +8411,26 @@ function moduleApartmentReportsInner(aptId){
     reportPicker("rep",defs,{title:"בחר דוח",
       extra:'<div class="sp"></div><button class="btn btn-sm" onclick="window.print()">🖨️ הדפסה</button>'});
 }
-/* מתג "הצג הכל" — מוצג רק כשבאמת יש שורות שהוסתרו, אחרת הוא רעש */
+/* בורר סוג הדוח. מוצג תמיד כשיש שורות מסומנות באחד הסוגים, וגם
+   כשכבר נבחר מצב שאינו הרגיל — אחרת אי אפשר לחזור ממנו. */
 function reportShowAllBar(aptId){
-  var n=hiddenFromReportCount(aptId);
-  var all=reportShowAll();
-  if(!n && !all) return "";
-  return '<div class="toolbar no-print" style="background:'+(all?"#fff7ed":"#f8fafc")+
+  var nRep=hiddenFromReportCount(aptId), nFre=hiddenFromFreilichCount(aptId);
+  var mode=reportMode();
+  if(!nRep && !nFre && mode==="regular") return "";
+  var note = mode==="all" ? ("מוצגות כל השורות — כולל "+(nRep+nFre)+" שמסומנות להסתרה")
+    : mode==="freilich" ? ("מוסתרות "+(nRep+nFre)+" שורות: "+nRep+" מכל הדוחות + "+nFre+" מדוח פרייליך")
+    : (nRep ? (nRep+" שורות מוסתרות מהדוחות") : "כל השורות מוצגות");
+  return '<div class="toolbar no-print" style="background:'+(mode==="regular"?"#f8fafc":"#fff7ed")+
     ';border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:10px">'+
-    '<label style="font-weight:400;margin:0;display:flex;align-items:center;gap:7px;cursor:pointer">'+
-      '<input type="checkbox" style="width:auto" '+(all?"checked":"")+' onchange="toggleReportAll()">'+
-      '<span>הצג גם שורות שסומנו <b>"לא להציג בדוח"</b></span></label>'+
+    '<span class="muted" style="align-self:center">סוג הדוח:</span>'+
+    Object.keys(REPORT_MODES).map(function(k){
+      return '<button class="btn btn-sm'+(mode===k?" btn-primary":"")+'" onclick="setReportMode(\''+k+'\')">'+
+        REPORT_MODES[k]+'</button>';
+    }).join("")+
     '<div class="sp"></div>'+
-    '<span class="'+(all?"badge badge-warn":"muted")+'">'+
-      (all ? "מוצגות כל השורות — כולל "+n+" שמסומנות לא להציג"
-           : n+" שורות מוסתרות מהדוחות")+'</span></div>';
+    '<span class="'+(mode==="regular"?"muted":"badge badge-warn")+'">'+esc(note)+'</span></div>';
 }
-function toggleReportAll(){
-  state.params.repAll = reportShowAll() ? "" : "1";
-  rerender();
-}
+function setReportMode(m){ state.params.repMode=m; rerender(); }
 
 /* ============================================================
    דוח קטגוריות — לאן הלך הכסף בפרויקט
@@ -9540,6 +9591,396 @@ function editRecurring(id){
       var n=runRecurring(true);
       toast("הכלל נשמר"+(n?" · נוצרו "+n+" הוצאות":""),"ok");
       rerender();
+    }});
+}
+/* ============================================================
+   שכירויות ארוכות-טווח — חוזים, תפוסה והתראות
+   ------------------------------------------------------------
+   ישות נפרדת לגמרי מ-rentalUnits של פרוייקטי הנופש: שם היחידות הן
+   תוויות על הזמנה קצרה, וכאן כל דירה היא נכס עם חוזה, שוכר ותאריכי
+   התחלה וסיום. פרוייקט שאין לו דירות כאן פשוט לא מופיע — כך פרוייקטי
+   נופש ופרוייקטי בנייה נשארים מחוץ לתמונה בלי דגל נוסף.
+   ============================================================ */
+var RENT_ALERT_DAYS=60;          // "חודשיים לפני" — סף ההתראה
+function activeRentals(){ return active(DB.rentals).filter(function(r){ return canSeeApartment(r.apartmentId); }); }
+function aptRentals(aptId){ return activeRentals().filter(function(r){ return r.apartmentId===aptId; }); }
+/* פרוייקטים שיש בהם דירות להשכרה — רק הם נכנסים לדשבורד */
+function rentalApartments(){
+  var seen={}, out=[];
+  activeRentals().forEach(function(r){
+    if(seen[r.apartmentId]) return;
+    var a=byId(DB.apartments,r.apartmentId);
+    if(a && !a.deleted){ seen[r.apartmentId]=1; out.push(a); }
+  });
+  return out.sort(function(x,y){ return String(x.name).localeCompare(String(y.name),"he"); });
+}
+function daysUntil(iso){
+  if(!iso) return null;
+  var d=new Date(iso+"T00:00:00"), t=new Date(todayISO()+"T00:00:00");
+  return Math.round((d-t)/86400000);
+}
+function addMonthsISO(iso,n){
+  var d=new Date(iso+"T00:00:00Z"), day=d.getUTCDate();
+  d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth()+n);
+  var last=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).getUTCDate();
+  d.setUTCDate(Math.min(day,last));
+  return d.toISOString().slice(0,10);
+}
+/* האם תקופה כלשהי (נוכחית או קודמת) מכסה תאריך נתון */
+function periodCovers(s,e,t){
+  if(!s && !e) return false;
+  if(s && s>t) return false;
+  if(e && e<t) return false;
+  return true;
+}
+function historyCoversToday(r){
+  var t=todayISO();
+  return (r.history||[]).some(function(h){ return periodCovers(h.startDate,h.endDate,t); });
+}
+/* מצב הדירה היום. "פנויה" = אין שוכר או שאין תאריכים כלל. */
+function rentalStatus(r){
+  if(!r.tenant && !r.startDate && !r.endDate) return historyCoversToday(r) ? "renewed" : "free";
+  var t=todayISO();
+  /* חוזה חדש שטרם התחיל, בזמן שהחוזה הקודם עדיין רץ — הדירה מושכרת
+     היום והחידוש כבר סגור. בלי זה היא נספרה כלא-תפוסה מיד אחרי חידוש. */
+  if(r.startDate && r.startDate>t) return historyCoversToday(r) ? "renewed" : "future";
+  if(!r.endDate) return "active";                 // חוזה פתוח / חודשי
+  if(r.endDate<t) return "ended";
+  var d=daysUntil(r.endDate);
+  return d<=RENT_ALERT_DAYS ? "ending" : "active";
+}
+var RENT_STATUS={free:{t:"פנויה",c:"badge-muted"},future:{t:"מתחיל בהמשך",c:"badge-mgmt"},
+  renewed:{t:"מושכרת · חודש",c:"badge-ok"},
+  active:{t:"מושכרת",c:"badge-ok"},ending:{t:"מסתיים בקרוב",c:"badge-warn"},ended:{t:"החוזה הסתיים",c:"badge-danger"}};
+function rentalStatusBadge(r){
+  var st=rentalStatus(r), s=RENT_STATUS[st];
+  var ttl = st==="renewed" ? ' title="החוזה הקודם עדיין בתוקף · החוזה החדש מתחיל '+esc(dateHe(r.startDate))+'"' : '';
+  return '<span class="badge '+s.c+' badge-unit"'+ttl+'>'+s.t+'</span>';
+}
+/* דירה נחשבת תפוסה היום — לחישוב אחוז התפוסה */
+function rentalOccupied(r){ var s=rentalStatus(r); return s==="active"||s==="ending"||s==="renewed"; }
+/* ההתראות: חוזים שמסתיימים בתוך הסף, וכאלה שכבר הסתיימו ולא טופלו */
+function rentalAlerts(){
+  return activeRentals().filter(function(r){
+    var s=rentalStatus(r); return s==="ending"||s==="ended";
+  }).sort(function(x,y){ return String(x.endDate||"").localeCompare(String(y.endDate||"")); });
+}
+function rentalAlertCount(){ return rentalAlerts().length; }
+/* האם חוזה כלשהו כיסה את החודש הזה — כולל תקופות קודמות בהיסטוריה */
+function rentalCoversMonth(r,ym){
+  function covers(s,e){
+    if(!s && !e) return false;
+    if(s && s.slice(0,7)>ym) return false;
+    if(e && e.slice(0,7)<ym) return false;
+    return true;
+  }
+  if(covers(r.startDate,r.endDate)) return true;
+  return (r.history||[]).some(function(h){ return covers(h.startDate,h.endDate); });
+}
+/* ההתראה קופצת גם במסך הראשי — לא רק בלשונית שצריך להיכנס אליה */
+function rentalAlertBanner(){
+  var a=rentalAlerts();
+  if(!a.length) return "";
+  var ended=a.filter(function(r){ return rentalStatus(r)==="ended"; }).length;
+  var soon=a.length-ended;
+  return '<div class="card no-print" style="border:2px solid var(--warn);background:#fffbeb;margin-bottom:14px">'+
+    '<div class="toolbar" style="margin:0">'+
+      '<h3 style="margin:0">🔔 חוזי שכירות שדורשים טיפול</h3>'+
+      '<div class="sp"></div>'+
+      '<button class="btn btn-sm btn-primary" onclick="go(\'rentals\',{})">פתח את לשונית השכירויות</button>'+
+    '</div>'+
+    '<div style="margin-top:8px">'+
+      (soon?'<span class="badge badge-warn">'+soon+' מסתיימים תוך '+RENT_ALERT_DAYS+' ימים</span> ':'')+
+      (ended?'<span class="badge badge-danger">'+ended+' כבר הסתיימו</span>':'')+
+    '</div>'+
+    '<div class="hint" style="margin-top:8px">'+
+      a.slice(0,4).map(function(r){
+        var d=daysUntil(r.endDate);
+        return esc(apartmentName(r.apartmentId)+" · "+r.name+(r.tenant?" · "+r.tenant:""))+
+          " — "+(d===null?"":(d<0?("הסתיים לפני "+Math.abs(d)+" ימים"):("עוד "+d+" ימים")));
+      }).join("<br>")+
+      (a.length>4?'<br><b>…ועוד '+(a.length-4)+'</b>':'')+
+    '</div></div>';
+}
+/* ---------- מסך השכירויות ---------- */
+function viewRentals(){
+  var apts=rentalApartments();
+  var all=activeRentals();
+  var alerts=rentalAlerts();
+  var occ=all.filter(rentalOccupied).length;
+  var freeN=all.filter(function(r){ return rentalStatus(r)==="free"; }).length;
+  var rentSum=round2(all.filter(rentalOccupied).reduce(function(s,r){ return s+(Number(r.rent)||0); },0));
+
+  var h='<h2>🔑 שכירויות</h2>'+
+    '<p class="muted">כל דירה להשכרה לטווח ארוך — שוכר, תקופת חוזה ושכר דירה. '+
+    'פרוייקט שלא הוספת לו דירות כאן (למשל דירות נופש) לא מופיע במסך הזה כלל.</p>';
+
+  if(!all.length){
+    return h+'<div class="card"><div class="empty">עוד לא הוגדרו דירות להשכרה.</div>'+
+      '<div class="hint" style="text-align:center;margin-top:10px">בחר פרוייקט, קבע כמה דירות יש בו, ומלא לכל אחת שוכר ותאריכי חוזה.</div>'+
+      (can("edit")?'<div class="toolbar" style="justify-content:center;margin-top:12px">'+
+        '<button class="btn btn-primary" onclick="addRentalUnits()">➕ הגדר דירות לפרוייקט</button></div>':'')+'</div>';
+  }
+
+  /* ---- התראות ---- */
+  if(alerts.length){
+    h+='<div class="card" style="border:2px solid var(--warn);background:#fffbeb">'+
+      '<h3>🔔 דורש טיפול ('+alerts.length+')</h3>'+
+      '<div class="table-wrap"><table class="tbl"><thead><tr>'+
+      '<th>פרוייקט</th><th>דירה</th><th>שוכר</th><th>סיום החוזה</th><th>נותרו</th><th>סטטוס</th><th></th>'+
+      '</tr></thead><tbody>';
+    alerts.forEach(function(r){
+      var d=daysUntil(r.endDate);
+      h+='<tr><td>'+esc(apartmentName(r.apartmentId))+'</td>'+
+        '<td><b>'+esc(r.name)+'</b></td>'+
+        '<td>'+esc(r.tenant||"—")+(r.phone?' <span class="muted">'+esc(r.phone)+'</span>':'')+'</td>'+
+        '<td>'+(r.endDate?dateHe(r.endDate):'—')+'</td>'+
+        '<td class="'+(d!==null&&d<0?"neg":"")+'">'+(d===null?'—':(d<0?('עברו '+Math.abs(d)+' ימים'):(d+' ימים')))+'</td>'+
+        '<td>'+rentalStatusBadge(r)+'</td>'+
+        '<td class="right" style="white-space:nowrap">'+(can("edit")?
+          '<button class="btn btn-sm" onclick="renewRental(\''+r.id+'\')" title="חידוש החוזה">🔄 חידוש</button>'+
+          '<button class="btn btn-ghost btn-sm" onclick="editRental(\''+r.id+'\')">✏️</button>':'')+'</td></tr>';
+    });
+    h+='</tbody></table></div>'+
+      '<div class="hint">מוצג כאן כל חוזה שנותרו לו פחות מ-'+RENT_ALERT_DAYS+' ימים, וכל חוזה שכבר הסתיים ולא חודש.</div></div>';
+  } else {
+    h+='<div class="card" style="border:1px solid var(--ok)"><h3>✅ אין חוזה שדורש טיפול</h3>'+
+      '<div class="hint">כל החוזים בתוקף לחודשיים הקרובים לפחות.</div></div>';
+  }
+
+  /* ---- סיכום תפוסה ---- */
+  h+='<div class="stat-grid" style="margin:14px 0">'+
+    stat("דירות",all.length)+
+    stat("מושכרות",occ)+
+    stat("פנויות",freeN)+
+    stat("תפוסה",(all.length?Math.round(occ/all.length*100):0)+"%")+
+    (rentSum?stat("שכ\"ד חודשי",money(rentSum)):"")+
+  '</div>';
+
+  h+='<div class="toolbar">'+
+    (can("edit")?'<button class="btn btn-primary btn-sm" onclick="addRentalUnits()">➕ הגדר דירות לפרוייקט</button> '+
+      '<button class="btn btn-sm" onclick="editRental(null)">➕ דירה בודדת</button> ':'')+
+    searchBox("rt-q",Q.rent,"חיפוש דירה / שוכר / פרוייקט…","Q.rent=this.value;rerender()")+
+    '<select style="max-width:180px" onchange="Q.rentApt=this.value;rerender()">'+
+      '<option value="">כל הפרוייקטים</option>'+
+      apts.map(function(a){ return '<option value="'+a.id+'"'+(Q.rentApt===a.id?" selected":"")+'>'+esc(a.name)+'</option>'; }).join("")+
+    '</select>'+
+    '<select style="max-width:170px" onchange="Q.rentStatus=this.value;rerender()">'+
+      '<option value="">כל הסטטוסים</option>'+
+      Object.keys(RENT_STATUS).map(function(k){
+        return '<option value="'+k+'"'+(Q.rentStatus===k?" selected":"")+'>'+RENT_STATUS[k].t+'</option>'; }).join("")+
+    '</select>'+
+  '</div>';
+
+  /* ---- תפוסה לפי פרוייקט ---- */
+  h+='<div class="card"><h3>🏢 תפוסה לפי פרוייקט</h3>'+
+    '<div class="table-wrap"><table class="tbl"><thead><tr>'+
+    '<th>פרוייקט</th><th>דירות</th><th>מושכרות</th><th>פנויות</th><th>מסתיימות בקרוב</th><th>תפוסה</th><th>שכ"ד חודשי</th>'+
+    '</tr></thead><tbody>';
+  apts.forEach(function(a){
+    var rs=aptRentals(a.id);
+    var o=rs.filter(rentalOccupied).length;
+    var f=rs.filter(function(r){ return rentalStatus(r)==="free"; }).length;
+    var en=rs.filter(function(r){ return rentalStatus(r)==="ending"||rentalStatus(r)==="ended"; }).length;
+    var sum=round2(rs.filter(rentalOccupied).reduce(function(s,r){ return s+(Number(r.rent)||0); },0));
+    var pct=rs.length?Math.round(o/rs.length*100):0;
+    h+='<tr><td><b>'+esc(a.name)+'</b></td><td>'+rs.length+'</td>'+
+      '<td class="pos">'+o+'</td><td>'+(f||'<span class="muted">—</span>')+'</td>'+
+      '<td>'+(en?'<span class="neg">'+en+'</span>':'<span class="muted">—</span>')+'</td>'+
+      '<td style="min-width:120px">'+progressBar(o,rs.length||1,pct+"%")+'</td>'+
+      '<td>'+(sum?money(sum):'<span class="muted">—</span>')+'</td></tr>';
+  });
+  h+='</tbody></table></div></div>';
+
+  /* ---- ציר זמן 12 חודשים ---- */
+  h+=rentalTimelineHtml();
+
+  /* ---- כל הדירות ---- */
+  var list=all.filter(function(r){
+    if(Q.rentApt && r.apartmentId!==Q.rentApt) return false;
+    if(Q.rentStatus && rentalStatus(r)!==Q.rentStatus) return false;
+    return matches(Q.rent, r.name+" "+(r.tenant||"")+" "+(r.phone||"")+" "+apartmentName(r.apartmentId)+" "+(r.note||""));
+  });
+  h+='<div class="card"><h3>📋 כל הדירות'+(list.length!==all.length?' <span class="muted">('+list.length+' מתוך '+all.length+')</span>':'')+'</h3>'+
+    '<div class="table-wrap"><table class="tbl"><thead><tr>'+
+    '<th>פרוייקט</th><th>דירה</th><th>שוכר</th><th>טלפון</th><th>תחילת חוזה</th><th>סיום חוזה</th>'+
+    '<th>נותרו</th><th>שכ"ד</th><th>סטטוס</th><th>הערה</th><th></th>'+
+    '</tr></thead><tbody>';
+  if(!list.length) h+='<tr><td colspan="11" class="empty">אין דירה שמתאימה לסינון</td></tr>';
+  list.slice().sort(function(x,y){
+    return String(apartmentName(x.apartmentId)).localeCompare(String(apartmentName(y.apartmentId)),"he")
+      || String(x.name).localeCompare(String(y.name),"he");
+  }).forEach(function(r){
+    var d=daysUntil(r.endDate), st=rentalStatus(r);
+    h+='<tr'+(st==="ended"?' style="background:#fef2f2"':st==="ending"?' style="background:#fffbeb"':'')+'>'+
+      '<td>'+esc(apartmentName(r.apartmentId))+'</td>'+
+      '<td><b>'+esc(r.name)+'</b>'+((r.history||[]).length?' <span class="pill" title="'+(r.history||[]).length+' חוזים קודמים">'+r.history.length+'↩</span>':'')+'</td>'+
+      '<td>'+esc(r.tenant||'—')+'</td>'+
+      '<td>'+(r.phone?'<a href="tel:'+esc(r.phone)+'">'+esc(r.phone)+'</a>':'<span class="muted">—</span>')+'</td>'+
+      '<td>'+(r.startDate?dateHe(r.startDate):'<span class="muted">—</span>')+'</td>'+
+      '<td>'+(r.endDate?dateHe(r.endDate):'<span class="muted">—</span>')+'</td>'+
+      '<td>'+(d===null?'<span class="muted">—</span>':(d<0?'<span class="neg">עברו '+Math.abs(d)+'</span>':d))+'</td>'+
+      '<td>'+(r.rent?money(r.rent):'<span class="muted">—</span>')+'</td>'+
+      '<td>'+rentalStatusBadge(r)+'</td>'+
+      noteCell(r.note)+
+      '<td class="right" style="white-space:nowrap">'+(can("edit")?
+        '<button class="btn btn-ghost btn-sm" onclick="renewRental(\''+r.id+'\')" title="חידוש חוזה">🔄</button>'+
+        '<button class="btn btn-ghost btn-sm" onclick="editRental(\''+r.id+'\')">✏️</button>'+
+        '<button class="btn btn-ghost btn-sm" onclick="softDelete(\'rentals\',\''+r.id+'\',\'למחוק את הדירה?\')">🗑️</button>':'')+'</td></tr>';
+  });
+  h+='</tbody></table></div></div>';
+  return h;
+}
+/* ציר זמן: שורה לכל דירה, עמודה לכל חודש — רואים חורים בתפוסה */
+function rentalTimelineHtml(){
+  var all=activeRentals().filter(function(r){
+    return (!Q.rentApt || r.apartmentId===Q.rentApt);
+  });
+  if(!all.length) return "";
+  var start=todayISO().slice(0,7)+"-01";
+  var months=[];
+  for(var i=0;i<12;i++) months.push(addMonthsISO(start,i).slice(0,7));
+  var h='<div class="card"><h3>📅 ציר תפוסה — 12 חודשים קדימה</h3>'+
+    '<div class="table-wrap"><table class="tbl" style="font-size:12px"><thead><tr>'+
+    '<th style="min-width:150px">דירה</th>'+
+    months.map(function(m){ return '<th style="text-align:center;min-width:38px">'+m.slice(5)+'<div style="font-size:9px;opacity:.6">'+m.slice(2,4)+'</div></th>'; }).join("")+
+    '</tr></thead><tbody>';
+  var byApt={};
+  all.forEach(function(r){ (byApt[r.apartmentId]=byApt[r.apartmentId]||[]).push(r); });
+  Object.keys(byApt).forEach(function(aid){
+    h+='<tr><td colspan="13" style="background:var(--bg2);font-weight:700">'+esc(apartmentName(aid))+'</td></tr>';
+    byApt[aid].slice().sort(function(x,y){ return String(x.name).localeCompare(String(y.name),"he"); })
+      .forEach(function(r){
+      h+='<tr><td>'+esc(r.name)+(r.tenant?' <span class="muted">· '+esc(r.tenant)+'</span>':'')+'</td>';
+      months.forEach(function(m){
+        var on=rentalCoversMonth(r,m);
+        /* החודש שבו החוזה נגמר — מסומן אחרת, זו נקודת ההחלטה */
+        var last=on && r.endDate && r.endDate.slice(0,7)===m;
+        h+='<td style="text-align:center;padding:3px;'+
+          (last?'background:#f59e0b;color:#fff;font-weight:700'
+              :on?'background:#10b981;color:#fff':'background:#f1f5f9;color:#94a3b8')+
+          '" title="'+esc(r.name+" · "+m+(last?" · סיום החוזה":on?" · מושכרת":" · פנויה"))+'">'+
+          (last?'⚑':on?'●':'·')+'</td>';
+      });
+      h+='</tr>';
+    });
+  });
+  h+='</tbody></table></div>'+
+    '<div class="hint"><span style="color:#10b981">●</span> מושכרת · '+
+    '<span style="color:#f59e0b">⚑</span> החודש שבו נגמר החוזה · '+
+    '<span style="color:#94a3b8">·</span> פנויה</div></div>';
+  return h;
+}
+/* הגדרת כמה דירות בבת אחת לפרוייקט — במקום להוסיף אחת-אחת */
+function addRentalUnits(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var apts=active(DB.apartments).filter(function(a){ return canSeeApartment(a.id); });
+  if(!apts.length){ toast("אין פרוייקטים במערכת","err"); return; }
+  openModal({title:"➕ הגדרת דירות לפרוייקט",bodyHtml:
+    '<div class="hint" style="margin-bottom:10px">נוצרות דירות ריקות בשמות רצים. את השוכר ותאריכי החוזה ממלאים אחר כך לכל דירה.</div>'+
+    '<div class="form-grid">'+
+      '<div class="field full"><label>פרוייקט</label>'+
+        pickerHtml("ru-apt",apts.map(function(a){return {id:a.id,label:a.name};}),Q.rentApt||"",
+          {placeholder:"הקלד שם פרוייקט…"})+'</div>'+
+      '<div class="field"><label>כמה דירות</label><input id="ru-count" type="number" min="1" max="60" value="4"></div>'+
+      '<div class="field"><label>שם רץ</label><input id="ru-prefix" value="דירה"><div class="hint">ייווצרו: דירה 1, דירה 2…</div></div>'+
+    '</div>',
+    saveLabel:"צור",onSave:function(){
+      var aptId=pickId("ru-apt");
+      if(!aptId){ toast(aptId===null?"שם הפרוייקט לא זוהה — בחר מהרשימה":"בחר פרוייקט","err"); return false; }
+      var n=Number(val("ru-count"))||0;
+      if(n<1||n>60){ toast("מספר הדירות חייב להיות בין 1 ל-60","err"); return false; }
+      var pre=val("ru-prefix").trim()||"דירה";
+      /* לא דורסים דירות קיימות: ממשיכים את המספור מהמקום שנעצר */
+      var existing=aptRentals(aptId).map(function(r){ return normKey(r.name); });
+      var made=0, idx=0;
+      for(var i=0;i<n;i++){
+        var nm;
+        do{ idx++; nm=pre+" "+idx; }while(existing.indexOf(normKey(nm))>=0);
+        existing.push(normKey(nm));
+        DB.rentals.push({id:uid(),apartmentId:aptId,name:nm,tenant:"",phone:"",
+          startDate:"",endDate:"",rent:0,note:"",history:[],deleted:false});
+        made++;
+      }
+      save(); Q.rentApt=aptId;
+      toast("נוצרו "+made+" דירות","ok"); rerender();
+    }});
+}
+function editRental(id){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var r=id?byId(DB.rentals,id):{apartmentId:Q.rentApt||"",name:"",tenant:"",phone:"",
+    startDate:"",endDate:"",rent:"",note:"",history:[]};
+  if(id && !r){ toast("הדירה לא נמצאה","err"); return; }
+  var apts=active(DB.apartments).filter(function(a){ return canSeeApartment(a.id); });
+  var hist=(r.history||[]);
+  openModal({title:id?("דירה — "+r.name):"➕ דירה להשכרה",wide:true,bodyHtml:
+    '<div class="form-grid">'+
+      '<div class="field"><label>פרוייקט</label>'+
+        pickerHtml("rn-apt",apts.map(function(a){return {id:a.id,label:a.name};}),r.apartmentId,
+          {placeholder:"הקלד שם פרוייקט…"})+'</div>'+
+      '<div class="field"><label>שם הדירה</label><input id="rn-name" value="'+esc(r.name||"")+'" placeholder="למשל: דירה 3 / קומה 2 שמאל"></div>'+
+      '<div class="field"><label>שם השוכר</label><input id="rn-tenant" value="'+esc(r.tenant||"")+'" placeholder="ריק = הדירה פנויה"></div>'+
+      '<div class="field"><label>טלפון</label><input id="rn-phone" value="'+esc(r.phone||"")+'"></div>'+
+      '<div class="field"><label>תחילת החוזה</label><input id="rn-start" type="date" value="'+esc(r.startDate||"")+'"></div>'+
+      '<div class="field"><label>סיום החוזה</label><input id="rn-end" type="date" value="'+esc(r.endDate||"")+'">'+
+        '<div class="hint">ריק = חוזה פתוח (בלי התראה)</div></div>'+
+      '<div class="field"><label>שכר דירה חודשי (₪)</label><input id="rn-rent" type="number" step="0.01" value="'+esc(String(r.rent||""))+'"></div>'+
+      '<div class="field full"><label>הערה</label><input id="rn-note" value="'+esc(r.note||"")+'"></div>'+
+    '</div>'+
+    (hist.length?'<div class="section-title">חוזים קודמים ('+hist.length+')</div>'+
+      '<div class="table-wrap" style="max-height:170px"><table class="tbl"><thead><tr>'+
+      '<th>שוכר</th><th>מתאריך</th><th>עד תאריך</th><th>שכ"ד</th></tr></thead><tbody>'+
+      hist.slice().reverse().map(function(x){
+        return '<tr><td>'+esc(x.tenant||"—")+'</td><td>'+(x.startDate?dateHe(x.startDate):'—')+'</td>'+
+          '<td>'+(x.endDate?dateHe(x.endDate):'—')+'</td><td>'+(x.rent?money(x.rent):'—')+'</td></tr>'; }).join("")+
+      '</tbody></table></div>':''),
+    saveLabel:"שמירה",onSave:function(){
+      var aptId=pickId("rn-apt");
+      if(!aptId){ toast(aptId===null?"שם הפרוייקט לא זוהה — בחר מהרשימה":"בחר פרוייקט","err"); return false; }
+      var nm=val("rn-name").trim();
+      if(!nm){ toast("יש להזין שם לדירה","err"); return false; }
+      var sd=val("rn-start"), ed=val("rn-end");
+      if(sd && ed && ed<sd){ toast("תאריך הסיום מוקדם מתאריך ההתחלה","err"); return false; }
+      var obj={apartmentId:aptId,name:nm,tenant:val("rn-tenant").trim(),phone:val("rn-phone").trim(),
+        startDate:sd,endDate:ed,rent:Number(val("rn-rent"))||0,note:val("rn-note")};
+      if(id) Object.assign(r,obj);
+      else DB.rentals.push(Object.assign({id:uid(),history:[],deleted:false},obj));
+      save(); toast("נשמר","ok"); rerender();
+    }});
+}
+/* חידוש חוזה — התקופה הנוכחית עוברת להיסטוריה והדירה מקבלת תקופה חדשה */
+function renewRental(id){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var r=byId(DB.rentals,id); if(!r){ toast("הדירה לא נמצאה","err"); return; }
+  /* ברירת מחדל: שנה קדימה מסיום החוזה הנוכחי (או מהיום, אם כבר עבר) */
+  var base=(r.endDate && r.endDate>=todayISO()) ? r.endDate : todayISO();
+  var newStart=addMonthsISO(base,0);
+  openModal({title:"🔄 חידוש חוזה — "+r.name,bodyHtml:
+    '<div class="hint" style="margin-bottom:10px">החוזה הנוכחי'+
+      (r.tenant?' של <b>'+esc(r.tenant)+'</b>':'')+
+      (r.endDate?' (מסתיים '+dateHe(r.endDate)+')':'')+
+      ' יישמר בהיסטוריה של הדירה, והדירה תקבל תקופה חדשה.</div>'+
+    '<div class="form-grid">'+
+      '<div class="field"><label>שוכר</label><input id="rw-tenant" value="'+esc(r.tenant||"")+'">'+
+        '<div class="hint">ריק = הדירה מתפנה</div></div>'+
+      '<div class="field"><label>טלפון</label><input id="rw-phone" value="'+esc(r.phone||"")+'"></div>'+
+      '<div class="field"><label>תחילת החוזה החדש</label><input id="rw-start" type="date" value="'+esc(newStart)+'"></div>'+
+      '<div class="field"><label>סיום</label><input id="rw-end" type="date" value="'+esc(addMonthsISO(newStart,12))+'"></div>'+
+      '<div class="field"><label>שכר דירה חודשי (₪)</label><input id="rw-rent" type="number" step="0.01" value="'+esc(String(r.rent||""))+'"></div>'+
+    '</div>',
+    saveLabel:"חדש את החוזה",onSave:function(){
+      var sd=val("rw-start"), ed=val("rw-end");
+      if(!sd){ toast("יש להזין תאריך התחלה","err"); return false; }
+      if(sd && ed && ed<sd){ toast("תאריך הסיום מוקדם מתאריך ההתחלה","err"); return false; }
+      r.history=r.history||[];
+      /* שומרים רק תקופה שבאמת הייתה — דירה שהוגדרה ומעולם לא הושכרה
+         לא מייצרת שורת היסטוריה ריקה */
+      if(r.tenant||r.startDate||r.endDate){
+        r.history.push({tenant:r.tenant||"",startDate:r.startDate||"",endDate:r.endDate||"",rent:Number(r.rent)||0});
+      }
+      r.tenant=val("rw-tenant").trim(); r.phone=val("rw-phone").trim();
+      r.startDate=sd; r.endDate=ed; r.rent=Number(val("rw-rent"))||0;
+      save(); toast(r.tenant?"החוזה חודש":"הדירה סומנה כפנויה","ok"); rerender();
     }});
 }
 /* ---------- ניהול חשבונות ---------- */
