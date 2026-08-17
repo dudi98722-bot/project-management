@@ -438,7 +438,7 @@ tfoot td{font-weight:700;background:#f8fafc;border-top:2px solid var(--border)}
     <div style="margin-top:16px;display:flex;gap:8px">
       <button class="btn" onclick="saveEdit()">💾 שמור</button>
       <button class="btn sec" onclick="closeEdit()">ביטול</button>
-      <button class="btn danger" style="margin-right:auto" onclick="deleteFromEdit()">🗑️ מחק</button>
+      <button class="btn danger" id="eDelBtn" style="margin-right:auto" onclick="deleteFromEdit()">🗑️ מחק</button>
     </div>
   </div>
 </div>
@@ -848,10 +848,10 @@ function dedupKey(t){ return [t.date, t.kind, (+t.amount).toFixed(2), normDesc(t
 
 /* ================= משתמשים והרשאות ================= */
 const ROLES = {
-  admin:  {tabs:['dash','pnl','classify','tx','projects','manual','cats','import','settings'], homeOnly:false, bizOnly:false, assignScope:true, canDelete:true, readOnly:false, label:'גישה מלאה'},
-  beni:   {tabs:['dash','pnl','classify','projects','manual','cats'], homeOnly:false, bizOnly:false, assignScope:true, canDelete:false, readOnly:false, label:'כל הדוחות · סיווג הכל · דיווח בית ועסק · קטגוריות'},
-  lea:    {tabs:['dash','classify','manual','cats'], homeOnly:true, bizOnly:false, assignScope:false, canDelete:false, readOnly:false, label:'דוחות בית · סיווג בית · דיווח בית · קטגוריות בית'},
-  itamar: {tabs:['dash','pnl','projects'], homeOnly:false, bizOnly:true, assignScope:false, canDelete:false, readOnly:true, label:'צפייה בלבד — דשבורד עסק ופרויקטים'}
+  admin:  {tabs:['dash','pnl','classify','tx','projects','manual','cats','import','settings'], homeOnly:false, bizOnly:false, assignScope:true, canEdit:true, canDelete:true, readOnly:false, label:'גישה מלאה'},
+  beni:   {tabs:['dash','pnl','classify','tx','projects','manual','cats'], homeOnly:false, bizOnly:false, assignScope:true, canEdit:true, canDelete:false, readOnly:false, label:'כל הדוחות · עריכת סיווגים · דיווח · קטגוריות'},
+  lea:    {tabs:['dash','classify','tx','manual','cats'], homeOnly:true, bizOnly:false, assignScope:false, canEdit:true, canDelete:false, readOnly:false, label:'בית: דוחות · עריכת סיווגים · דיווח · קטגוריות'},
+  itamar: {tabs:['dash','pnl','projects'], homeOnly:false, bizOnly:true, assignScope:false, canEdit:false, canDelete:false, readOnly:true, label:'צפייה בלבד — דשבורד עסק ופרויקטים'}
 };
 let currentUser = null;
 function perms(){ return (currentUser && ROLES[currentUser.role]) || ROLES.lea; }
@@ -1738,7 +1738,7 @@ function renderTxTable(){
       +'<td class="amt red">'+(t.kind==='expense'?fmt2(t.amount):'')+'</td>'
       +'<td>'+(t.deleted
         ? (perms().canDelete ? '<button class="btn sm sec" title="שחזר מסל המחזור" onclick="restoreTx(\''+t.id+'\')">♻️</button>' : '')
-        : (perms().canDelete ? '<button class="btn sm sec" onclick="openEdit(\''+t.id+'\')">✏️</button>' : ''))+'</td>'
+        : (perms().canEdit ? '<button class="btn sm sec" onclick="openEdit(\''+t.id+'\')">✏️</button>' : ''))+'</td>'
       +'</tr>').join('')
     + '</tbody><tfoot><tr><td colspan="7">סה"כ ('+list.length+' תנועות'+(list.length>500?', מוצגות 500':'')+')</td>'
     + '<td class="amt green">'+fmt2(inc)+'</td><td class="amt red">'+fmt2(exp)+'</td><td></td></tr></tfoot></table>';
@@ -1764,6 +1764,9 @@ function updateTxBulkBar(){
   bar.classList.toggle('on', txSel.size>0);
   document.getElementById('txBulkCount').textContent = txSel.size + ' נבחרו →';
   const scopeSel0 = document.getElementById('txBulkScope');
+  // אפשרות "שחזור מסל המחזור" רק למי שיש הרשאת מחיקה
+  const restoreOpt = [...scopeSel0.options].find(o=>o.value==='restore');
+  if(restoreOpt){ restoreOpt.hidden = !perms().canDelete; if(!perms().canDelete && scopeSel0.value==='restore') scopeSel0.value='biz'; }
   if(!perms().assignScope){ scopeSel0.value='home'; scopeSel0.style.display='none'; }
   else scopeSel0.style.display='';
   const scope = scopeSel0.value;
@@ -1859,6 +1862,12 @@ let editId = null;
 function openEdit(id){
   const t = db.tx.find(x=>x.id===id); if(!t) return;
   editId = id;
+  // בונים את בורר השיוך לפי ההרשאה: משתמש בית-בלבד לא יכול להעביר לעסק
+  const scopeOpts = perms().homeOnly
+    ? '<option value="">⏳ ממתין</option><option value="home">🏠 בית</option><option value="exclude">🚫 לא לכלול</option>'
+    : '<option value="">⏳ ממתין</option><option value="biz">🏢 עסק</option><option value="home">🏠 בית</option><option value="exclude">🚫 לא לכלול</option>';
+  document.getElementById('eScope').innerHTML = scopeOpts;
+  document.getElementById('eDelBtn').style.display = perms().canDelete ? '' : 'none';
   document.getElementById('eDate').value = t.date;
   document.getElementById('eKind').value = t.kind;
   document.getElementById('eAmount').value = t.amount;
