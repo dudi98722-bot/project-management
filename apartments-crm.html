@@ -124,6 +124,19 @@ table.tbl.sheet-grid tfoot td{
 table.tbl.sheet-grid tfoot td.rownum{direction:rtl}
 table.tbl.sheet-grid .btn-sm{padding:1px 5px;font-size:11px}
 table.tbl.sheet-grid .colletter{font-size:9.5px;opacity:.5;text-align:center;line-height:1.1}
+/* תאים שנבחרו לעיצוב — מסגרת פנימית שלא מזיזה את הפריסה */
+table.tbl.sheet-grid td.sel{outline:2px solid var(--brand);outline-offset:-2px;background:#eef2ff}
+table.tbl.sheet-grid td.sel input{background:transparent}
+/* מסגרת שהמשתמש צייר — עבה יותר מקווי הרשת ובצבע כהה */
+table.tbl.sheet-grid td.bt{border-top:2px solid #334155}
+table.tbl.sheet-grid td.bb{border-bottom:2px solid #334155}
+table.tbl.sheet-grid td.bl{border-left:2px solid #334155}
+table.tbl.sheet-grid td.br{border-right:2px solid #334155}
+table.tbl.sheet-grid td.bold input,table.tbl.sheet-grid td.bold{font-weight:700}
+.sheet-tools{display:flex;gap:5px;flex-wrap:wrap;align-items:center;
+  background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:7px 9px;margin-bottom:8px}
+.sheet-swatch{width:24px;height:24px;border-radius:5px;border:1px solid #cbd5e1;cursor:pointer;padding:0}
+.sheet-swatch:hover{transform:scale(1.12)}
 
 /* ===== לשוניות משנה ===== */
 /* לשוניות הפרוייקט נשארות גלויות בגלילה, מתחת לסרגל ולניווט */
@@ -942,6 +955,7 @@ function normalizeDB(d){
   d.sheets=d.sheets||[];
   (d.sheets||[]).forEach(function(s){
     s.rows=s.rows||[]; s.cols=s.cols||[];
+    s.fmt=(s.fmt&&typeof s.fmt==="object")?s.fmt:{};   // עיצוב תאים: "שורה,עמודה" → {bg,bold,bt,bb,bl,br}
     s.rows.forEach(function(r,i){ if(!Array.isArray(r)) s.rows[i]=[]; });
   });
   d.rentals=d.rentals||[];
@@ -9796,6 +9810,119 @@ function colLetter(i){
   do{ s=String.fromCharCode(65+(i%26))+s; i=Math.floor(i/26)-1; }while(i>=0);
   return s;
 }
+/* ---------- בחירת תאים ועיצובם ----------
+   הבחירה חיה בזיכרון בלבד ולא נשמרת: היא סימון עבודה, לא נתון.
+   העיצוב עצמו נשמר במפה "שורה,עמודה" על הגיליון, כדי שלא ינופח
+   מערך תלת-ממדי עבור גיליון שרובו ריק. */
+var SHEETSEL=null;   // {id,r1,c1,r2,c2}
+var SHEETDRAG=false;
+var SHEET_COLORS=[
+  {v:"",n:"ללא",c:"#ffffff"},
+  {v:"#fef08a",n:"צהוב",c:"#fef08a"},
+  {v:"#bbf7d0",n:"ירוק",c:"#bbf7d0"},
+  {v:"#fecaca",n:"אדום",c:"#fecaca"},
+  {v:"#bfdbfe",n:"כחול",c:"#bfdbfe"},
+  {v:"#e9d5ff",n:"סגול",c:"#e9d5ff"},
+  {v:"#fed7aa",n:"כתום",c:"#fed7aa"},
+  {v:"#e2e8f0",n:"אפור",c:"#e2e8f0"}
+];
+function fmtKey(r,c){ return r+","+c; }
+function sheetFmt(s,r,c){ return (s.fmt&&s.fmt[fmtKey(r,c)])||null; }
+function sheetSelNorm(){
+  if(!SHEETSEL) return null;
+  return {id:SHEETSEL.id,
+    r1:Math.min(SHEETSEL.r1,SHEETSEL.r2), r2:Math.max(SHEETSEL.r1,SHEETSEL.r2),
+    c1:Math.min(SHEETSEL.c1,SHEETSEL.c2), c2:Math.max(SHEETSEL.c1,SHEETSEL.c2)};
+}
+function sheetSelCount(){
+  var s=sheetSelNorm(); if(!s) return 0;
+  return (s.r2-s.r1+1)*(s.c2-s.c1+1);
+}
+/* צביעת הסימון נעשית ישירות ב-DOM ולא ברינדור מחדש — אחרת כל לחיצה
+   הייתה בונה את הטבלה מחדש ומאבדת את מיקוד ההקלדה. */
+function paintSheetSel(){
+  var sel=sheetSelNorm();
+  document.querySelectorAll(".sheet-grid td[data-cr]").forEach(function(td){
+    var r=Number(td.getAttribute("data-cr")), c=Number(td.getAttribute("data-cc"));
+    var on=sel && r>=sel.r1 && r<=sel.r2 && c>=sel.c1 && c<=sel.c2;
+    td.classList.toggle("sel",!!on);
+  });
+  var lbl=document.getElementById("sheet-sel-lbl");
+  if(lbl){
+    var n=sheetSelCount();
+    lbl.textContent = n>1 ? ("נבחרו "+n+" תאים") : n===1 ? "תא אחד נבחר" : "לא נבחר תא";
+  }
+}
+function sheetCellDown(ev,id,r,c){
+  if(ev.shiftKey && SHEETSEL && SHEETSEL.id===id){ SHEETSEL.r2=r; SHEETSEL.c2=c; }
+  else { SHEETSEL={id:id,r1:r,c1:c,r2:r,c2:c}; SHEETDRAG=true; }
+  paintSheetSel();
+}
+function sheetCellOver(id,r,c){
+  if(!SHEETDRAG || !SHEETSEL || SHEETSEL.id!==id) return;
+  SHEETSEL.r2=r; SHEETSEL.c2=c;
+  paintSheetSel();
+}
+document.addEventListener("mouseup",function(){ SHEETDRAG=false; });
+/* בחירת עמודה או שורה שלמה בלחיצה על הכותרת */
+function sheetSelCol(id,c){
+  var s=byId(DB.sheets,id); if(!s) return;
+  var n=Math.max((s.rows||[]).length,SHEET_MIN_ROWS);
+  SHEETSEL={id:id,r1:0,c1:c,r2:n-1,c2:c}; paintSheetSel();
+}
+function sheetSelRow(id,r){
+  var s=byId(DB.sheets,id); if(!s) return;
+  SHEETSEL={id:id,r1:r,c1:0,r2:r,c2:sheetColCount(s)-1}; paintSheetSel();
+}
+/* החלת עיצוב על הבחירה. kind: bg / bold / boxOut / boxAll / clear */
+function sheetApplyFmt(id,kind,value){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var sel=sheetSelNorm();
+  if(!sel || sel.id!==id){ toast("סמן קודם תא או קבוצת תאים","warn"); return; }
+  var s=byId(DB.sheets,id); if(!s) return;
+  s.fmt=s.fmt||{};
+  function patch(r,c,o){
+    var k=fmtKey(r,c), cur=s.fmt[k]||{};
+    Object.keys(o).forEach(function(f){ if(o[f]) cur[f]=o[f]; else delete cur[f]; });
+    if(Object.keys(cur).length) s.fmt[k]=cur; else delete s.fmt[k];
+  }
+  for(var r=sel.r1;r<=sel.r2;r++){
+    for(var c=sel.c1;c<=sel.c2;c++){
+      if(kind==="bg") patch(r,c,{bg:value});
+      else if(kind==="bold"){
+        var cur=sheetFmt(s,r,c);
+        patch(r,c,{bold:(cur&&cur.bold)?0:1});
+      }
+      else if(kind==="boxAll") patch(r,c,{bt:1,bb:1,bl:1,br:1});
+      else if(kind==="boxOut") patch(r,c,{
+        bt:(r===sel.r1)?1:0, bb:(r===sel.r2)?1:0,
+        bl:(c===sel.c1)?1:0, br:(c===sel.c2)?1:0});
+      else if(kind==="noBox") patch(r,c,{bt:0,bb:0,bl:0,br:0});
+      else if(kind==="clear") delete s.fmt[fmtKey(r,c)];
+    }
+  }
+  /* "מודגש" על טווח — הופכים את כולם למצב אחיד לפי התא הראשון,
+     אחרת כל תא היה מתהפך בנפרד והתוצאה מנומרת */
+  if(kind==="bold"){
+    var first=sheetFmt(s,sel.r1,sel.c1);
+    var on=!!(first&&first.bold);
+    for(var r2=sel.r1;r2<=sel.r2;r2++)
+      for(var c2=sel.c1;c2<=sel.c2;c2++) patch(r2,c2,{bold:on?1:0});
+  }
+  save(); rerender();
+}
+/* מחיקת שורה מזיזה את העיצוב של השורות שמתחתיה — אחרת ההדגשות
+   נשארות על מספרי שורה ישנים ומופיעות על תאים לא נכונים */
+function shiftFmtAfterRowDelete(s,r){
+  if(!s.fmt) return;
+  var next={};
+  Object.keys(s.fmt).forEach(function(k){
+    var p=k.split(","), rr=Number(p[0]), cc=Number(p[1]);
+    if(rr===r) return;                 // השורה שנמחקה
+    next[fmtKey(rr>r?rr-1:rr,cc)]=s.fmt[k];
+  });
+  s.fmt=next;
+}
 function viewSheets(){
   var list=activeSheets();
   var s=curSheet();
@@ -9833,6 +9960,26 @@ function viewSheets(){
     }
   });
 
+  /* סרגל העיצוב */
+  if(can("edit")){
+    h+='<div class="sheet-tools">'+
+      '<span class="muted">הדגשה:</span>'+
+      SHEET_COLORS.map(function(x){
+        return '<button class="sheet-swatch" title="'+esc(x.n)+'" style="background:'+x.c+
+          (x.v?'':';background-image:linear-gradient(45deg,transparent 45%,#ef4444 45%,#ef4444 55%,transparent 55%)')+
+          '" onclick="sheetApplyFmt(\''+s.id+'\',\'bg\',\''+x.v+'\')"></button>';
+      }).join("")+
+      '<span style="width:10px"></span>'+
+      '<button class="btn btn-sm" onclick="sheetApplyFmt(\''+s.id+'\',\'bold\')"><b>מודגש</b></button>'+
+      '<button class="btn btn-sm" onclick="sheetApplyFmt(\''+s.id+'\',\'boxOut\')">⬛ מסגרת מסביב</button>'+
+      '<button class="btn btn-sm" onclick="sheetApplyFmt(\''+s.id+'\',\'boxAll\')">▦ מסגרת לכל תא</button>'+
+      '<button class="btn btn-sm" onclick="sheetApplyFmt(\''+s.id+'\',\'noBox\')">הסר מסגרת</button>'+
+      '<button class="btn btn-ghost btn-sm" onclick="sheetApplyFmt(\''+s.id+'\',\'clear\')">נקה עיצוב</button>'+
+      '<div class="sp"></div><span id="sheet-sel-lbl" class="muted">לא נבחר תא</span>'+
+    '</div>'+
+    '<div class="hint" style="margin-bottom:8px">לחיצה על תא בוחרת אותו · גרירה או Shift+לחיצה בוחרת טווח · '+
+    'לחיצה על אות העמודה או על מספר השורה בוחרת אותה במלואה.</div>';
+  }
   h+='<div class="card" style="padding:0;overflow:hidden">'+
     '<div class="table-wrap" style="max-height:65vh"><table class="tbl sheet-grid"><thead><tr>'+
     '<th class="rownum chk">#</th>'+
@@ -9841,7 +9988,7 @@ function viewSheets(){
       for(var c=0;c<nCols;c++){
         var name=(s.cols&&s.cols[c])||"";
         th+='<th style="min-width:120px">'+
-          '<div class="colletter">'+colLetter(c)+'</div>'+
+          '<div class="colletter" style="cursor:pointer" title="בחר את כל העמודה" onclick="sheetSelCol(\''+s.id+'\','+c+')">'+colLetter(c)+'</div>'+
           (can("edit")
             ? '<input value="'+esc(name)+'" placeholder="כותרת"'+
               ' onchange="setSheetCol(\''+s.id+'\','+c+',this.value)">'
@@ -9853,15 +10000,21 @@ function viewSheets(){
     (can("edit")?'<th style="width:30px"></th>':'')+
     '</tr></thead><tbody>';
   rows.forEach(function(r,ri){
-    h+='<tr><td class="rownum">'+(ri+1)+'</td>';
+    h+='<tr><td class="rownum" style="cursor:pointer" title="בחר את כל השורה" onclick="sheetSelRow(\''+s.id+'\','+ri+')">'+(ri+1)+'</td>';
     for(var c=0;c<nCols;c++){
       var v=(r[c]==null?"":r[c]);
       var isNum=cellNum(v)!==null;
+      var f=sheetFmt(s,ri,c);
+      var cls=[]; if(f){ if(f.bold) cls.push("bold"); ["bt","bb","bl","br"].forEach(function(k){ if(f[k]) cls.push(k); }); }
+      var sty=(f&&f.bg)?' style="background:'+esc(f.bg)+'"':'';
       h+=can("edit")
-        ? '<td><input class="'+(isNum?"num":"")+'" value="'+esc(v)+'"'+
+        ? '<td class="'+cls.join(" ")+'"'+sty+' data-cr="'+ri+'" data-cc="'+c+'"'+
+          ' onmousedown="sheetCellDown(event,\''+s.id+'\','+ri+','+c+')"'+
+          ' onmouseover="sheetCellOver(\''+s.id+'\','+ri+','+c+')">'+
+          '<input class="'+(isNum?"num":"")+'" value="'+esc(v)+'"'+
           ' data-r="'+ri+'" data-c="'+c+'" onchange="setSheetCell(\''+s.id+'\','+ri+','+c+',this.value)"'+
           ' onkeydown="sheetKey(event,'+ri+','+c+')" onpaste="sheetPaste(event,\''+s.id+'\','+ri+','+c+')"></td>'
-        : '<td class="cellval'+(isNum?" num":"")+'">'+esc(v)+'</td>';
+        : '<td class="cellval'+(isNum?" num":"")+" "+cls.join(" ")+'"'+sty+'>'+esc(v)+'</td>';
     }
     h+=(can("edit")?'<td class="right"><button class="btn btn-ghost btn-sm" title="מחק שורה" onclick="delSheetRow(\''+s.id+'\','+ri+')">✕</button></td>':'')+'</tr>';
   });
@@ -9879,7 +10032,7 @@ function newSheet(){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var name=prompt("שם הגיליון:","גיליון "+(activeSheets().length+1));
   name=(name||"").trim(); if(!name) return;
-  var s={id:uid(),name:name,cols:[],rows:[],deleted:false};
+  var s={id:uid(),name:name,cols:[],rows:[],fmt:{},deleted:false};
   DB.sheets.push(s); save();
   go("sheets",{sheetId:s.id});
 }
@@ -9930,6 +10083,8 @@ function delSheetRow(id,r){
   var hasData=row.some(function(v){ return String(v==null?"":v).trim()!==""; });
   if(hasData && !confirm("למחוק את השורה על התוכן שבה?")) return;
   s.rows.splice(r,1);
+  shiftFmtAfterRowDelete(s,r);
+  SHEETSEL=null;
   save(); rerender();
 }
 /* ניווט במקלדת כמו בגיליון */
