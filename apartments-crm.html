@@ -2410,6 +2410,9 @@ function renderApartment(c){
   tabs.push(["managers","דמי ניהול"]);   // תמיד נגיש — בפנים אפשר להפעיל
   if(a.hasBank) tabs.push(["bank","בנק זמני"]);
   tabs.push(["income","הכנסות"]);
+  /* השכרות לטווח ארוך מנוהלות כאן, בתוך הפרוייקט — שם ממילא עובדים
+     על הדירות. הלשונית הראשית נשארה לצפייה מרוכזת בכל הפרויקטים. */
+  if(can("edit") || aptRentals(a.id).length) tabs.push(["rentals","שכירויות"]);
   tabs.push(["reports","דוחות"]);
   var h='<div class="toolbar"><h2 style="margin:0">🏢 '+esc(a.name)+'</h2>'+
     (can("edit")?'<button class="btn btn-sm" onclick="editApartment(\''+a.id+'\')">✏️ עריכת פרוייקט</button>':'')+
@@ -2427,6 +2430,7 @@ function renderApartment(c){
     case "managers": body.innerHTML=viewManagers(a.id); break;
     case "bank": body.innerHTML=viewBank(a.id); break;
     case "income": body.innerHTML=viewIncome(a.id); break;
+    case "rentals": body.innerHTML=viewAptRentals(a.id); break;
     case "reports": body.innerHTML=viewApartmentReports(a.id); break;
   }
 }
@@ -10086,6 +10090,71 @@ function rentalIncomeStats(r){
   return {n:rows.length, billed:round2(billed), paid:round2(paid),
     debt:round2(billed-paid), openRows:open, missing:rentalMissingMonths(r).length};
 }
+/* ---------- שכירויות בתוך הפרוייקט — כאן מזינים ----------
+   כל העריכה יושבת כאן, ליד שאר העבודה על הפרוייקט. הלשונית הראשית
+   נשארה לצפייה מרוכזת בכל הפרויקטים יחד. */
+function viewAptRentals(aptId){
+  var a=byId(DB.apartments,aptId);
+  var rs=aptRentals(aptId);
+  var h='<div class="toolbar"><h3 style="margin:0">🔑 שכירויות — '+esc(a.name)+'</h3>'+
+    '<div class="sp"></div>'+
+    (can("edit")?'<button class="btn btn-primary btn-sm" onclick="addRentalUnitsFor(\''+aptId+'\')">➕ הגדר דירות</button> '+
+      '<button class="btn btn-sm" onclick="editRentalFor(\''+aptId+'\')">➕ דירה בודדת</button>':'')+'</div>';
+  if(!rs.length) return h+'<div class="empty">עוד לא הוגדרו דירות להשכרה בפרוייקט הזה.</div>'+
+    '<div class="hint" style="text-align:center">מגדירים כמה דירות יש, וממלאים לכל אחת שוכר, תקופת חוזה ושכר דירה. '+
+    'אפשר לסמן שכל חודש תיווצר שורת הכנסה אוטומטית.<br>'+
+    'פרוייקט השכרת נופש לא צריך את זה — שם ההכנסות נרשמות כהזמנות.</div>';
+
+  var occ=rs.filter(rentalOccupied).length;
+  var rentSum=round2(rs.filter(rentalOccupied).reduce(function(s,r){ return s+(Number(r.rent)||0); },0));
+  var debt=round2(rs.reduce(function(s,r){ return s+(r.autoIncome?rentalIncomeStats(r).debt:0); },0));
+  h+='<div class="stat-grid" style="margin-bottom:12px">'+
+    stat("דירות",rs.length)+stat("מושכרות",occ)+
+    stat("תפוסה",(rs.length?Math.round(occ/rs.length*100):0)+"%")+
+    (rentSum?stat("שכ\"ד חודשי",money(rentSum)):"")+
+    (debt>0.01?stat("חוב שכ\"ד פתוח",money(debt)):"")+
+  '</div>';
+
+  h+='<div class="table-wrap"><table class="tbl"><thead><tr>'+
+    '<th>דירה</th><th>שוכר</th><th>טלפון</th><th>תחילת חוזה</th><th>סיום חוזה</th>'+
+    '<th>נותרו</th><th>שכ"ד</th><th>גבייה</th><th>סטטוס</th><th>הערה</th><th></th>'+
+    '</tr></thead><tbody>';
+  rs.slice().sort(function(x,y){ return String(x.name).localeCompare(String(y.name),"he"); })
+    .forEach(function(r){
+    var d=daysUntil(r.endDate), st=rentalStatus(r);
+    h+='<tr'+(st==="ended"?' style="background:#fef2f2"':st==="ending"?' style="background:#fffbeb"':'')+'>'+
+      '<td><b>'+esc(r.name)+'</b>'+((r.history||[]).length?' <span class="pill" title="'+(r.history||[]).length+' חוזים קודמים">'+r.history.length+'↩</span>':'')+'</td>'+
+      '<td>'+esc(r.tenant||'—')+'</td>'+
+      '<td>'+(r.phone?'<a href="tel:'+esc(r.phone)+'">'+esc(r.phone)+'</a>':'<span class="muted">—</span>')+'</td>'+
+      '<td>'+(r.startDate?dateHe(r.startDate):'<span class="muted">—</span>')+'</td>'+
+      '<td>'+(r.endDate?dateHe(r.endDate):'<span class="muted">—</span>')+'</td>'+
+      '<td>'+(d===null?'<span class="muted">—</span>':(d<0?'<span class="neg">עברו '+Math.abs(d)+'</span>':d))+'</td>'+
+      '<td>'+(r.rent?money(r.rent):'<span class="muted">—</span>')+
+        (r.autoIncome?' <span class="badge badge-mgmt badge-unit" title="נוצרת שורת הכנסה בכל חודש">🔁</span>':'')+'</td>'+
+      '<td>'+rentalCollectionCell(r)+'</td>'+
+      '<td>'+rentalStatusBadge(r)+'</td>'+
+      noteCell(r.note)+
+      '<td class="right" style="white-space:nowrap">'+(can("edit")?
+        '<button class="btn btn-ghost btn-sm" onclick="renewRental(\''+r.id+'\')" title="חידוש חוזה">🔄</button>'+
+        '<button class="btn btn-ghost btn-sm" onclick="editRental(\''+r.id+'\')">✏️</button>'+
+        '<button class="btn btn-ghost btn-sm" onclick="softDelete(\'rentals\',\''+r.id+'\',\'למחוק את הדירה?\')">🗑️</button>':'')+'</td></tr>';
+  });
+  h+='</tbody></table></div>'+
+    '<div class="hint">שורות ההכנסה החודשיות נוצרות אוטומטית ומופיעות בלשונית <b>הכנסות</b> של הפרוייקט. '+
+    'תצוגה מרוכזת של כל הפרויקטים יחד — בלשונית <b>🔑 שכירויות</b> שבתפריט הראשי.</div>';
+  return h;
+}
+function rentalCollectionCell(r){
+  if(!r.autoIncome) return '<span class="muted">—</span>';
+  var st=rentalIncomeStats(r);
+  if(!st.n) return '<span class="muted">טרם נוצרו</span>';
+  return st.debt>0.01
+    ? '<span class="neg">חוב '+money(st.debt)+'</span><div class="hint">'+st.openRows+' מתוך '+st.n+' פתוחות</div>'
+    : '<span class="pos">✔ נגבה הכל</span><div class="hint">'+st.n+' חודשים · '+money(st.paid)+'</div>';
+}
+/* קיצורי דרך שנועלים את הפרוייקט מראש, כדי שלא צריך לבחור אותו שוב */
+function addRentalUnitsFor(aptId){ Q.rentApt=aptId; addRentalUnits(); }
+function editRentalFor(aptId){ Q.rentApt=aptId; editRental(null); }
 /* ---------- מסך השכירויות ---------- */
 function viewRentals(){
   var apts=rentalApartments();
@@ -10095,15 +10164,14 @@ function viewRentals(){
   var freeN=all.filter(function(r){ return rentalStatus(r)==="free"; }).length;
   var rentSum=round2(all.filter(rentalOccupied).reduce(function(s,r){ return s+(Number(r.rent)||0); },0));
 
-  var h='<h2>🔑 שכירויות</h2>'+
-    '<p class="muted">כל דירה להשכרה לטווח ארוך — שוכר, תקופת חוזה ושכר דירה. '+
-    'פרוייקט שלא הוספת לו דירות כאן (למשל דירות נופש) לא מופיע במסך הזה כלל.</p>';
+  var h='<h2>🔑 שכירויות — תצוגה מרוכזת</h2>'+
+    '<p class="muted">מתי מסתיים החוזה בכל דירה, בכל הפרויקטים יחד. '+
+    '<b>ההזנה נעשית בתוך הפרוייקט</b> — לשונית "שכירויות" בכל פרוייקט.</p>';
 
   if(!all.length){
     return h+'<div class="card"><div class="empty">עוד לא הוגדרו דירות להשכרה.</div>'+
-      '<div class="hint" style="text-align:center;margin-top:10px">בחר פרוייקט, קבע כמה דירות יש בו, ומלא לכל אחת שוכר ותאריכי חוזה.</div>'+
-      (can("edit")?'<div class="toolbar" style="justify-content:center;margin-top:12px">'+
-        '<button class="btn btn-primary" onclick="addRentalUnits()">➕ הגדר דירות לפרוייקט</button></div>':'')+'</div>';
+      '<div class="hint" style="text-align:center;margin-top:10px">נכנסים לפרוייקט ← לשונית <b>שכירויות</b> ← "➕ הגדר דירות".<br>'+
+      'פרוייקט השכרת נופש לא צריך את זה — שם ההכנסות נרשמות כהזמנות.</div></div>';
   }
 
   /* ---- התראות ---- */
@@ -10142,8 +10210,6 @@ function viewRentals(){
   '</div>';
 
   h+='<div class="toolbar">'+
-    (can("edit")?'<button class="btn btn-primary btn-sm" onclick="addRentalUnits()">➕ הגדר דירות לפרוייקט</button> '+
-      '<button class="btn btn-sm" onclick="editRental(null)">➕ דירה בודדת</button> ':'')+
     searchBox("rt-q",Q.rent,"חיפוש דירה / שוכר / פרוייקט…","Q.rent=this.value;rerender()")+
     '<select style="max-width:180px" onchange="Q.rentApt=this.value;rerender()">'+
       '<option value="">כל הפרוייקטים</option>'+
@@ -10185,35 +10251,34 @@ function viewRentals(){
     if(Q.rentStatus && rentalStatus(r)!==Q.rentStatus) return false;
     return matches(Q.rent, r.name+" "+(r.tenant||"")+" "+(r.phone||"")+" "+apartmentName(r.apartmentId)+" "+(r.note||""));
   });
-  h+='<div class="card"><h3>📋 כל הדירות'+(list.length!==all.length?' <span class="muted">('+list.length+' מתוך '+all.length+')</span>':'')+'</h3>'+
+  h+='<div class="card"><h3>📋 מתי מסתיים החוזה'+(list.length!==all.length?' <span class="muted">('+list.length+' מתוך '+all.length+')</span>':'')+'</h3>'+
+    '<div class="hint" style="margin-bottom:8px">ממוין לפי תאריך הסיום — הקרוב ביותר למעלה. דירות בלי תאריך סיום בסוף.</div>'+
     '<div class="table-wrap"><table class="tbl"><thead><tr>'+
-    '<th>פרוייקט</th><th>דירה</th><th>שוכר</th><th>טלפון</th><th>תחילת חוזה</th><th>סיום חוזה</th>'+
-    '<th>נותרו</th><th>שכ"ד</th><th>גבייה</th><th>סטטוס</th><th>הערה</th><th></th>'+
+    '<th>סיום חוזה</th><th>נותרו</th><th>פרוייקט</th><th>דירה</th><th>שוכר</th><th>טלפון</th>'+
+    '<th>תחילת חוזה</th><th>שכ"ד</th><th>גבייה</th><th>סטטוס</th><th>הערה</th><th></th>'+
     '</tr></thead><tbody>';
   if(!list.length) h+='<tr><td colspan="12" class="empty">אין דירה שמתאימה לסינון</td></tr>';
+  /* המיון הוא לב המסך: מה נגמר הכי קרוב. חוזה בלי תאריך סיום יורד
+     לסוף במקום להיערם בראש כמחרוזת ריקה. */
   list.slice().sort(function(x,y){
+    var xe=x.endDate||"9999-12-31", ye=y.endDate||"9999-12-31";
+    if(xe!==ye) return xe<ye?-1:1;
     return String(apartmentName(x.apartmentId)).localeCompare(String(apartmentName(y.apartmentId)),"he")
       || String(x.name).localeCompare(String(y.name),"he");
   }).forEach(function(r){
     var d=daysUntil(r.endDate), st=rentalStatus(r);
     h+='<tr'+(st==="ended"?' style="background:#fef2f2"':st==="ending"?' style="background:#fffbeb"':'')+'>'+
-      '<td>'+esc(apartmentName(r.apartmentId))+'</td>'+
+      '<td><b>'+(r.endDate?dateHe(r.endDate):'<span class="muted">ללא תאריך</span>')+'</b></td>'+
+      '<td>'+(d===null?'<span class="muted">—</span>':(d<0?'<span class="neg">עברו '+Math.abs(d)+'</span>':d))+'</td>'+
+      '<td><a href="#" onclick="go(\'apartment\',{apartmentId:\''+r.apartmentId+'\',tab:\'rentals\'});return false" '+
+        'title="פתח את הפרוייקט לעריכה">'+esc(apartmentName(r.apartmentId))+'</a></td>'+
       '<td><b>'+esc(r.name)+'</b>'+((r.history||[]).length?' <span class="pill" title="'+(r.history||[]).length+' חוזים קודמים">'+r.history.length+'↩</span>':'')+'</td>'+
       '<td>'+esc(r.tenant||'—')+'</td>'+
       '<td>'+(r.phone?'<a href="tel:'+esc(r.phone)+'">'+esc(r.phone)+'</a>':'<span class="muted">—</span>')+'</td>'+
       '<td>'+(r.startDate?dateHe(r.startDate):'<span class="muted">—</span>')+'</td>'+
-      '<td>'+(r.endDate?dateHe(r.endDate):'<span class="muted">—</span>')+'</td>'+
-      '<td>'+(d===null?'<span class="muted">—</span>':(d<0?'<span class="neg">עברו '+Math.abs(d)+'</span>':d))+'</td>'+
       '<td>'+(r.rent?money(r.rent):'<span class="muted">—</span>')+
         (r.autoIncome?' <span class="badge badge-mgmt badge-unit" title="נוצרת שורת הכנסה בכל חודש">🔁</span>':'')+'</td>'+
-      '<td>'+(function(){
-        if(!r.autoIncome) return '<span class="muted">—</span>';
-        var st=rentalIncomeStats(r);
-        if(!st.n) return '<span class="muted">טרם נוצרו</span>';
-        return st.debt>0.01
-          ? '<span class="neg">חוב '+money(st.debt)+'</span><div class="hint">'+st.openRows+' מתוך '+st.n+' פתוחות</div>'
-          : '<span class="pos">✔ נגבה הכל</span><div class="hint">'+st.n+' חודשים · '+money(st.paid)+'</div>';
-      })()+'</td>'+
+      '<td>'+rentalCollectionCell(r)+'</td>'+
       '<td>'+rentalStatusBadge(r)+'</td>'+
       noteCell(r.note)+
       '<td class="right" style="white-space:nowrap">'+(can("edit")?
