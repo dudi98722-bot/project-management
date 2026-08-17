@@ -94,6 +94,37 @@ table.tbl td.note{max-width:120px;overflow:hidden;text-overflow:ellipsis;color:v
 .tbl-compact table.tbl td.note{max-width:90px}
 @media(min-width:1700px){ table.tbl td.note{max-width:200px} }
 
+/* ===== הגיליון החופשי — מראה של אקסל קלאסי =====
+   שורות נמוכות, הכל מיושר ימינה (כולל הכותרות), וקווי רשת דקים.
+   מספרים מקבלים direction:ltr כדי שסימן מינוס ופסיקי אלפים יישארו
+   במקומם, אבל נשארים צמודים לימין כמו כל השאר. */
+table.tbl.sheet-grid{font-size:12.5px;border-collapse:collapse}
+table.tbl.sheet-grid th,table.tbl.sheet-grid td{
+  padding:0;text-align:right;border:1px solid #dde3f0;white-space:nowrap}
+table.tbl.sheet-grid thead th{padding:1px 0;font-size:11px}
+table.tbl.sheet-grid input{
+  width:100%;border:0;background:transparent;outline:none;
+  font-size:12.5px;line-height:1.2;height:22px;padding:0 5px;text-align:right;
+  border-radius:0}
+table.tbl.sheet-grid input:focus{background:#eef2ff;box-shadow:inset 0 0 0 2px var(--brand)}
+table.tbl.sheet-grid thead input{font-weight:700;height:20px}
+table.tbl.sheet-grid input.num{direction:ltr;font-variant-numeric:tabular-nums}
+/* עמודת המספור צרה. הסלקטור מפורט כי כללי הטבלה הצפופה מרחיבים
+   את העמודה הראשונה ל-min-width:150px וגוברים על סלקטור קצר יותר. */
+.tbl-compact table.tbl.sheet-grid tbody td.rownum,
+.tbl-compact table.tbl.sheet-grid thead th.rownum,
+table.tbl.sheet-grid td.rownum,table.tbl.sheet-grid th.rownum{
+  text-align:center;background:#eef1fa;color:var(--muted);font-size:10.5px;
+  width:34px;min-width:34px;max-width:34px;padding:0 2px;white-space:nowrap}
+table.tbl.sheet-grid td.cellval{padding:0 5px;height:22px;line-height:22px;overflow:hidden}
+table.tbl.sheet-grid td.cellval.num{direction:ltr;font-variant-numeric:tabular-nums}
+table.tbl.sheet-grid tfoot td{
+  background:#eef1fa;font-weight:700;padding:2px 5px;border-top:2px solid #c7cee3;
+  text-align:right;direction:ltr;font-variant-numeric:tabular-nums}
+table.tbl.sheet-grid tfoot td.rownum{direction:rtl}
+table.tbl.sheet-grid .btn-sm{padding:1px 5px;font-size:11px}
+table.tbl.sheet-grid .colletter{font-size:9.5px;opacity:.5;text-align:center;line-height:1.1}
+
 /* ===== לשוניות משנה ===== */
 /* לשוניות הפרוייקט נשארות גלויות בגלילה, מתחת לסרגל ולניווט */
 .tabs{display:flex;gap:2px;flex-wrap:wrap;border-bottom:2px solid var(--line);margin-bottom:20px;
@@ -9784,49 +9815,45 @@ function viewSheets(){
   });
 
   h+='<div class="card" style="padding:0;overflow:hidden">'+
-    '<div class="table-wrap" style="max-height:65vh"><table class="tbl sheet-grid" style="font-size:13px"><thead><tr>'+
-    '<th style="width:40px;text-align:center;background:var(--bg2)">#</th>'+
+    '<div class="table-wrap" style="max-height:65vh"><table class="tbl sheet-grid"><thead><tr>'+
+    '<th class="rownum chk">#</th>'+
     (function(){
       var th="";
       for(var c=0;c<nCols;c++){
         var name=(s.cols&&s.cols[c])||"";
-        th+='<th style="min-width:130px;padding:0">'+
-          '<div style="font-size:10px;opacity:.5;text-align:center">'+colLetter(c)+'</div>'+
+        th+='<th style="min-width:120px">'+
+          '<div class="colletter">'+colLetter(c)+'</div>'+
           (can("edit")
-            ? '<input value="'+esc(name)+'" placeholder="כותרת" style="border:0;background:transparent;font-weight:700;text-align:center;padding:2px 4px"'+
+            ? '<input value="'+esc(name)+'" placeholder="כותרת"'+
               ' onchange="setSheetCol(\''+s.id+'\','+c+',this.value)">'
-            : '<div style="text-align:center;font-weight:700">'+esc(name)+'</div>')+
+            : '<div style="padding:0 5px">'+esc(name)+'</div>')+
           '</th>';
       }
       return th;
     })()+
-    (can("edit")?'<th style="width:34px"></th>':'')+
+    (can("edit")?'<th style="width:30px"></th>':'')+
     '</tr></thead><tbody>';
   rows.forEach(function(r,ri){
-    h+='<tr><td style="text-align:center;color:var(--muted);background:var(--bg2);font-size:11px">'+(ri+1)+'</td>';
+    h+='<tr><td class="rownum">'+(ri+1)+'</td>';
     for(var c=0;c<nCols;c++){
       var v=(r[c]==null?"":r[c]);
       var isNum=cellNum(v)!==null;
-      h+='<td style="padding:0">'+
-        (can("edit")
-          ? '<input value="'+esc(v)+'" style="border:0;background:transparent;padding:5px 6px;'+
-            (isNum?'text-align:left;direction:ltr;font-variant-numeric:tabular-nums':'')+'"'+
-            ' data-r="'+ri+'" data-c="'+c+'" onchange="setSheetCell(\''+s.id+'\','+ri+','+c+',this.value)"'+
-            ' onkeydown="sheetKey(event,'+ri+','+c+')" onpaste="sheetPaste(event,\''+s.id+'\','+ri+','+c+')">'
-          : '<div style="padding:5px 6px'+(isNum?';text-align:left;direction:ltr':'')+'">'+esc(v)+'</div>')+
-        '</td>';
+      h+=can("edit")
+        ? '<td><input class="'+(isNum?"num":"")+'" value="'+esc(v)+'"'+
+          ' data-r="'+ri+'" data-c="'+c+'" onchange="setSheetCell(\''+s.id+'\','+ri+','+c+',this.value)"'+
+          ' onkeydown="sheetKey(event,'+ri+','+c+')" onpaste="sheetPaste(event,\''+s.id+'\','+ri+','+c+')"></td>'
+        : '<td class="cellval'+(isNum?" num":"")+'">'+esc(v)+'</td>';
     }
     h+=(can("edit")?'<td class="right"><button class="btn btn-ghost btn-sm" title="מחק שורה" onclick="delSheetRow(\''+s.id+'\','+ri+')">✕</button></td>':'')+'</tr>';
   });
-  h+='</tbody><tfoot><tr><td style="background:var(--bg2);font-size:11px;text-align:center">Σ</td>';
+  h+='</tbody><tfoot><tr><td class="rownum">Σ</td>';
   for(var c2=0;c2<nCols;c2++){
-    h+='<td style="text-align:left;direction:ltr;font-weight:700">'+
-      (counts[c2] ? esc(num(round2(sums[c2])))+'<div style="font-size:10px;opacity:.55;font-weight:400">'+counts[c2]+' תאים</div>'
-                  : '<span class="muted">—</span>')+'</td>';
+    h+='<td'+(counts[c2]?' title="'+counts[c2]+' תאים מספריים"':'')+'>'+
+      (counts[c2] ? esc(num(round2(sums[c2]))) : '<span class="muted">—</span>')+'</td>';
   }
   h+=(can("edit")?'<td></td>':'')+'</tr></tfoot></table></div></div>'+
-    '<div class="hint">Enter או ↓ יורד תא · Tab עובר ימינה · אפשר להדביק טבלה שלמה מאקסל לתוך תא והיא תיפרס משם. '+
-    'שורת ה-Σ מסכמת רק תאים שהם מספר.</div>';
+    '<div class="hint">Enter או ↓ יורד תא · Tab עובר לתא הבא · אפשר להדביק טבלה שלמה מאקסל לתוך תא והיא תיפרס משם. '+
+    'שורת ה-Σ מסכמת רק תאים שהם מספר (מעבר עכבר מראה כמה נספרו).</div>';
   return h;
 }
 function newSheet(){
