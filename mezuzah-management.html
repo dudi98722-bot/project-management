@@ -85,6 +85,8 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
 .toast.show { opacity: 1; }
 .filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
 @media print { header, .tabs, .actions, .no-print { display: none !important; } .card { box-shadow: none; } }
+/* לא מחובר: התוכן מוסתר לגמרי — אי אפשר להעתיק/להדפיס/לראות מאחורי מסך הכניסה */
+body.locked-out .content, body.locked-out .tabs, body.locked-out header .actions, body.locked-out #syncStatus { display: none !important; }
 
 /* overlays: details modal + scanner */
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
@@ -113,12 +115,9 @@ td input, td select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e0; 
   <h1>📜 ניהול מזוזות — רכישה ומכירה</h1>
   <span id="syncStatus" class="badge b-gray" style="font-size:.72rem">— לא מחובר</span>
   <div class="actions">
-    <button class="btn btn-light" onclick="setServerUrl()">⚙ הגדר שרת</button>
-    <button class="btn btn-light" onclick="exportExcel()">⬇ ייצוא לאקסל</button>
-    <button class="btn btn-light" onclick="document.getElementById('importFile').click()">⬆ ייבוא גיבוי</button>
+    <!-- כפתורי הגדר-שרת / ייצוא / ייבוא / גיבוי הוסרו מהממשק לכולם (הפונקציות קיימות בקוד, נעולות למנהל, לשעת חירום בלבד) -->
     <input type="file" id="importFile" accept=".json" style="display:none" onchange="importBackup(event)">
     <button class="btn btn-light" id="btn-bin" onclick="openBin()">🗑 סל מיחזור</button>
-    <button class="btn btn-light" onclick="exportBackup()">💾 גיבוי JSON</button>
     <span id="userChip" style="display:none;align-items:center;gap:6px;color:#fff;font-size:.82rem;font-weight:600">
       <span id="userChipName"></span>
       <button class="btn btn-light" style="padding:5px 12px" onclick="logout()">יציאה</button>
@@ -555,6 +554,7 @@ function setSync(state, txt) {
 
 // paste / change the Apps Script web-app URL (stored locally per device)
 function setServerUrl() {
+  if (!can('users')) return toast('אין הרשאה');
   const cur = GS_URL || '';
   const v = prompt('הדבק כאן את כתובת ה-Apps Script (מסתיימת ב-/exec):', cur);
   if (v === null) return;                    // cancelled
@@ -718,6 +718,7 @@ function showPriceSec(id, btn) {
 
 // ============ PRICELIST: SCRIBES ============
 function addScribe() {
+  if (!can('pricelist')) return toast('אין הרשאה');
   const name = document.getElementById('sc-name').value.trim();
   if (!name) return toast('הזן שם סופר');
   data.scribes.push({ id: uid(), name,
@@ -745,11 +746,12 @@ function renderScribes() {
   });
   t.innerHTML = h + '</tbody>';
 }
-function editScribe(id,f,v){ const s=data.scribes.find(x=>x.id===id); if(s){ s[f]= (f==='name'||f==='grade')?v:(+v||0); save(); } }
-function delScribe(id){ if(!confirm('למחוק סופר? (יעבור לסל המיחזור)'))return; softDelete(data.scribes,id); save(); }
+function editScribe(id,f,v){ if (!can('pricelist')) return toast('אין הרשאה'); const s=data.scribes.find(x=>x.id===id); if(s){ s[f]= (f==='name'||f==='grade')?v:(+v||0); save(); } }
+function delScribe(id){ if (!can('pricelist')) return toast('אין הרשאה'); if(!confirm('למחוק סופר? (יעבור לסל המיחזור)'))return; softDelete(data.scribes,id); save(); }
 
 // ============ PRICELIST: PROOFREADERS ============
 function addProof(type) {
+  if (!can('pricelist')) return toast('אין הרשאה');
   const p = type==='computer' ? 'cp' : 'gp';
   const name = document.getElementById(p+'-name').value.trim();
   if (!name) return toast('הזן שם מגיה');
@@ -770,8 +772,8 @@ function renderProof(type) {
   });
   t.innerHTML = h + '</tbody>';
 }
-function editProof(type,id,f,v){ const s=data[type].find(x=>x.id===id); if(s){ s[f]= f==='name'?v:(+v||0); save(); } }
-function delProof(type,id){ if(!confirm('למחוק מגיה? (יעבור לסל המיחזור)'))return; softDelete(data[type],id); save(); }
+function editProof(type,id,f,v){ if (!can('pricelist')) return toast('אין הרשאה'); const s=data[type].find(x=>x.id===id); if(s){ s[f]= f==='name'?v:(+v||0); save(); } }
+function delProof(type,id){ if (!can('pricelist')) return toast('אין הרשאה'); if(!confirm('למחוק מגיה? (יעבור לסל המיחזור)'))return; softDelete(data[type],id); save(); }
 
 // ============ DROPDOWNS ============
 function fillSelects() {
@@ -796,6 +798,7 @@ function approveChange() {
 
 // ============ MEZUZOT ============
 function addMezuza() {
+  if (!can('mezuzot_add')) return toast('אין הרשאה');
   const scribe = document.getElementById('mz-scribe').value;
   if (!scribe) return toast('בחר סופר');
   const qty = Math.max(1, parseInt(document.getElementById('mz-qty').value)||1);
@@ -846,6 +849,7 @@ function statusBadge(a) {
 let _printList = null;
 // entry point: opens the type chooser for the given mezuza list
 function printMezuzot(list, heading) {
+  if (!can('print')) return toast('אין הרשאה להדפסה');
   list = (list||[]).filter(m=>m && !m.deleted);
   if (!list.length) { toast('אין מק"טים להדפסה'); return; }
   _printList = list;
@@ -854,7 +858,7 @@ function printMezuzot(list, heading) {
   if (lay) lay.value = localStorage.getItem('mezuzah_print_layout') || 'a4';
   document.getElementById('printChoiceOverlay').classList.add('show');
 }
-function closePrintChoice(){ document.getElementById('printChoiceOverlay').classList.remove('show'); }
+function closePrintChoice(){ document.getElementById('printChoiceOverlay').classList.remove('show'); _printList = null; }
 // 1D retail-style barcode (Code 128) as an image
 function barcodeDataURL(text){
   if (typeof JsBarcode==='undefined') return '';
@@ -864,10 +868,11 @@ function barcodeDataURL(text){
   return c.toDataURL();
 }
 function doPrintLabels(type){
+  if (!can('print')) { closePrintChoice(); return toast('אין הרשאה להדפסה'); }
   const layout = (document.getElementById('print-layout')||{}).value || 'a4';
   localStorage.setItem('mezuzah_print_layout', layout);
+  const list = _printList || [];   // לקרוא לפני הסגירה (הסגירה מאפסת את הרשימה)
   closePrintChoice();
-  const list = _printList || [];
   if (!list.length) return;
   const labels = list.map(m=>{
     const bc = barcodeDataURL(m.sku);
@@ -931,7 +936,9 @@ function renderMezuzot() {
     if (fm==='g1' && m.g1) return false;
     if (fm==='g2' && m.g2) return false;
     if (fm==='any' && m.comp && m.g1 && m.g2) return false; // יש את כל ההגהות → מסתיר
-    if (q && !(`${m.sku} ${m.scribe} ${m.holo}`.toLowerCase().includes(q))) return false;
+    // חיפוש לפי שדות שהתפקיד רשאי לראות בלבד (שם סופר לא נחשף למי שהעמודה מוסתרת אצלו)
+    const hay = `${m.sku} ${colVis('scribe') ? m.scribe : ''} ${m.holo}`.toLowerCase();
+    if (q && !hay.includes(q)) return false;
     return true;
   });
   window._mzFiltered = rows;   // remember for "print SKUs of shown rows"
@@ -972,9 +979,16 @@ function renderMezuzot() {
   });
   t.innerHTML = h + '</tbody>';
   updateSelCount();
+  lockMezuzotEditing();   // קריטי: כל בנייה מחדש (סינון/חיפוש/בחר-הכל) חייבת להינעל מחדש
 }
-function editMez(id,f,v){ const m=data.mezuzot.find(x=>x.id===id); if(m){ m[f]= (f==='adj'||f==='price'||f==='salePrice')?(+v||0):v; save(); } }
-function delMez(id){ if(!confirm('למחוק מזוזה? (תעבור לסל המיחזור)'))return; softDelete(data.mezuzot,id); selectedMez.delete(id); save(); }
+function editMez(id,f,v){
+  if (!canEditField(f)) { renderMezuzot(); return toast('אין הרשאה לערוך שדה זה'); }
+  const m=data.mezuzot.find(x=>x.id===id); if(m){ m[f]= (f==='adj'||f==='price'||f==='salePrice')?(+v||0):v; save(); }
+}
+function delMez(id){
+  if (!can('mezuzot_delete')) return toast('אין הרשאה למחוק');
+  if(!confirm('למחוק מזוזה? (תעבור לסל המיחזור)'))return; softDelete(data.mezuzot,id); selectedMez.delete(id); save();
+}
 
 // ---- bulk selection & delete ----
 const selectedMez = new Set();
@@ -1027,6 +1041,7 @@ function applyBulkUpdate(){
   toast(n+' שורות עודכנו');
 }
 function deleteSelectedMez(){
+  if (!can('mezuzot_delete')) return toast('אין הרשאה למחוק');
   const n = selectedMez.size;
   if (!n) return;
   if (!confirm('למחוק '+n+' מזוזות מסומנות? (יעברו לסל המיחזור)')) return;
@@ -1038,6 +1053,7 @@ function deleteSelectedMez(){
 
 // ---- image per mezuza (compressed, stored on the record) ----
 function pickImage(id){
+  if (!canEditField('img')) return toast('אין הרשאה');
   const inp = document.createElement('input');
   inp.type='file'; inp.accept='image/*'; inp.capture='environment';
   inp.onchange = ()=>{
@@ -1089,7 +1105,7 @@ function showMezuzaDetails(id){
   const rc=(c,k,v)=>colVis(c)?row(k,v):'';
   document.getElementById('det-body').innerHTML =
     (m.img?`<img class="det-img" src="${m.img}">`:'') +
-    row('מק"ט', m.sku) + row('סופר', m.scribe) + row('מוצר', m.product) + row('תאריך', m.date) +
+    row('מק"ט', m.sku) + rc('scribe','סופר', m.scribe) + row('דרגת סופר', scribeGrade(m)) + row('מוצר', m.product) + row('תאריך', m.date) +
     rc('price','מחיר ליחי\'', ILS(m.price)) + rc('comp','הגהת מחשב', m.comp) + rc('g1','גברא 1', m.g1) + rc('g2','גברא 2', m.g2) +
     row('אישור הרב', m.approve) + rc('scribePay','לתשלום לסופר', ILS(scribePay(m))) + row('הולוגרמה בד"ץ', m.holo) + rc('keter','נשלח לכתר', m.keter);
   document.getElementById('detailOverlay').classList.add('show');
@@ -1155,6 +1171,7 @@ function qrDataURL(text, size){
 }
 // open a mezuza's details if the page was opened with ?sku=... (phone-camera QR scan)
 function openSkuFromUrl(){
+  if (authActive() && !currentUser) return;   // לפני התחברות לא פותחים כלום — ייפתח אחרי הכניסה
   const sku = new URLSearchParams(location.search).get('sku');
   if (!sku) return;
   const m = findBySku(sku);
@@ -1163,6 +1180,7 @@ function openSkuFromUrl(){
 
 // ============ PAYMENTS ============
 function addPayment() {
+  if (!can('payments')) return toast('אין הרשאה');
   const name = document.getElementById('pay-name').value;
   if (!name) return toast('בחר אדם');
   data.payments.push({
@@ -1185,7 +1203,7 @@ function renderPayments() {
   });
   t.innerHTML = h + '</tbody>';
 }
-function delPay(id){ if(!confirm('למחוק תשלום? (יעבור לסל המיחזור)'))return; softDelete(data.payments,id); save(); }
+function delPay(id){ if (!can('payments')) return toast('אין הרשאה'); if(!confirm('למחוק תשלום? (יעבור לסל המיחזור)'))return; softDelete(data.payments,id); save(); }
 
 // ============ EXPENSES (הוצאות שוטפות) ============
 function addExpense(){
@@ -1217,7 +1235,7 @@ function renderExpenses(){
   h+=`<tr style="background:#fed7d7;font-weight:800"><td colspan="2">סה"כ הוצאות</td><td class="money">${ILS(total)}</td><td colspan="2"></td></tr>`;
   t.innerHTML=h+'</tbody>';
 }
-function delExpense(id){ if(!confirm('למחוק הוצאה? (תעבור לסל המיחזור)'))return; softDelete(data.expenses,id); save(); }
+function delExpense(id){ if (!can('finance')) return toast('אין הרשאה'); if(!confirm('למחוק הוצאה? (תעבור לסל המיחזור)'))return; softDelete(data.expenses,id); save(); }
 
 // ============ INCOME (הכנסות צדדיות) ============
 function addIncome(){
@@ -1249,7 +1267,7 @@ function renderIncome(){
   h+=`<tr style="background:#c6f6d5;font-weight:800"><td colspan="2">סה"כ הכנסות</td><td class="money">${ILS(total)}</td><td colspan="2"></td></tr>`;
   t.innerHTML=h+'</tbody>';
 }
-function delIncome(id){ if(!confirm('למחוק הכנסה? (תעבור לסל המיחזור)'))return; softDelete(data.income,id); save(); }
+function delIncome(id){ if (!can('finance')) return toast('אין הרשאה'); if(!confirm('למחוק הכנסה? (תעבור לסל המיחזור)'))return; softDelete(data.income,id); save(); }
 function sumExpenses(){ return alive(data.expenses).reduce((a,b)=>a+(b.amount||0),0); }
 function sumIncome(){ return alive(data.income).reduce((a,b)=>a+(b.amount||0),0); }
 
@@ -1283,7 +1301,7 @@ function renderKeterReceipts(){
     <tr style="background:${charges-paid>0?'#fed7d7':'#c6f6d5'};font-weight:800"><td>יתרה שכתר חייב</td><td class="money ${charges-paid>0?'pos':'zero'}">${ILS(charges-paid)}</td><td colspan="2"></td></tr>`;
   t.innerHTML = h + '</tbody>';
 }
-function delKeterReceipt(id){ if(!confirm('למחוק תקבול? (יעבור לסל המיחזור)'))return; softDelete(data.keterReceipts,id); save(); }
+function delKeterReceipt(id){ if (!can('payments')) return toast('אין הרשאה'); if(!confirm('למחוק תקבול? (יעבור לסל המיחזור)'))return; softDelete(data.keterReceipts,id); save(); }
 
 // ============ תקבולים מלקוחות (מכירות כשר) ============
 function addCustomerReceipt(){
@@ -1323,7 +1341,7 @@ function renderCustomerReceipts(){
   });
   bt.innerHTML = bh + '</tbody>';
 }
-function delCustomerReceipt(id){ if(!confirm('למחוק תקבול? (יעבור לסל המיחזור)'))return; softDelete(data.customerReceipts,id); save(); }
+function delCustomerReceipt(id){ if (!can('payments')) return toast('אין הרשאה'); if(!confirm('למחוק תקבול? (יעבור לסל המיחזור)'))return; softDelete(data.customerReceipts,id); save(); }
 
 // ============ REPORTS / BALANCES ============
 // build owed amounts per person key "סופר: שם" / "מגיה מחשב: שם" / "מגיה גברא: שם"
@@ -1552,11 +1570,13 @@ function renderCharts() {
 
 // ============ EXPORT / IMPORT ============
 function exportBackup() {
+  if (!can('users')) return toast('אין הרשאה');
   const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
   dl(blob, 'mezuzot-backup-'+new Date().toISOString().slice(0,10)+'.json');
   toast('גיבוי נוצר');
 }
 function importBackup(e) {
+  if (!can('users')) { e.target.value=''; return toast('אין הרשאה'); }
   const f = e.target.files[0]; if(!f) return;
   const r = new FileReader();
   r.onload = () => {
@@ -1566,6 +1586,7 @@ function importBackup(e) {
   r.readAsText(f); e.target.value='';
 }
 function exportExcel() {
+  if (!can('users')) return toast('אין הרשאה');
   const wb = XLSX.utils.book_new();
   const ws1 = XLSX.utils.json_to_sheet(alive(data.scribes).map(s=>({'שם סופר':s.name,'דרגה':s.grade||'','בית יוסף (לסופר)':s.by,'ארי (לסופר)':s.ari,'לכתר - בית יוסף':s.kby||0,'לכתר - ארי':s.kari||0})));
   XLSX.utils.book_append_sheet(wb, ws1, 'מחירון סופרים');
@@ -1611,21 +1632,24 @@ const PERMISSIONS = {
   admin:      { mezuzot_view:1, mezuzot_add:1, mezuzot_delete:1, print:1, pricelist:1, payments:1, finance:1, reports_status:1, reports_money:1, users:1 },
   worker:     { mezuzot_view:1, mezuzot_add:0, mezuzot_delete:0, print:0, pricelist:0, payments:0, finance:0, reports_status:0, reports_money:0, users:0 },
   supervisor: { mezuzot_view:1, mezuzot_add:0, mezuzot_delete:0, print:0, pricelist:0, payments:0, finance:0, reports_status:1, reports_money:0, users:0 },
-  investor:   { mezuzot_view:1, mezuzot_add:0, mezuzot_delete:0, print:0, pricelist:0, payments:0, finance:0, reports_status:1, reports_money:1, users:0 }
+  investor:   { mezuzot_view:1, mezuzot_add:0, mezuzot_delete:0, print:0, pricelist:0, payments:0, finance:0, reports_status:1, reports_money:1, users:0 },
+  locked:     {}   // לא מחובר: אפס הרשאות
 };
 // אילו שדות בטבלת המזוזות ניתנים לעריכה לכל תפקיד ('all' = הכל)
 const EDIT_FIELDS = {
   admin:      'all',
   worker:     ['comp','g1','g2'],       // מגיה: רק ההגהות
-  supervisor: ['approve','adj','buyer','salePrice'],  // משגיח: רק אישור הרב (והשדות התלויים בו)
-  investor:   []                        // לקוח: קריאה בלבד
+  supervisor: ['approve'],              // משגיח: רק אישור הרב
+  investor:   [],                       // לקוח: קריאה בלבד
+  locked:     []
 };
 // עמודות שמוסתרות בטבלת המזוזות לכל תפקיד
 const COLUMN_HIDE = {
   admin:      [],
   worker:     ['price','scribePay','keter'],
   supervisor: ['price','scribePay','keter'],
-  investor:   ['scribe','price','scribePay','keter','comp','g1','g2']
+  investor:   ['scribe','price','scribePay','keter','comp','g1','g2'],
+  locked:     ['scribe','price','scribePay','keter','comp','g1','g2']
 };
 function scribeGrade(m){ const s=(data.scribes||[]).find(x=>x.name===m.scribe); return s&&s.grade ? s.grade : ''; }
 let currentUser = null;
@@ -1636,7 +1660,8 @@ function can(cap){
   const p = PERMISSIONS[currentUser.role] || {};
   return !!p[cap];
 }
-function roleOf(){ return currentUser ? currentUser.role : 'admin'; }
+// לפני התחברות (כשיש משתמשים מוגדרים) — תפקיד "נעול" עם אפס הרשאות, לא מנהל!
+function roleOf(){ if (currentUser) return currentUser.role; return authActive() ? 'locked' : 'admin'; }
 function colVis(c){ if (!authActive()) return true; return !((COLUMN_HIDE[roleOf()]||[]).includes(c)); }
 function canEditField(f){
   if (!authActive()) return true;
@@ -1656,18 +1681,37 @@ async function hashPass(name, pass){
 
 // ---- login gate ----
 function authActive(){ return alive(data.users).length > 0; }
+// סגירת כל החלונות הצפים — חובה בכל מעבר משתמש, אחרת תוכן שנפתח בהרשאה גבוהה נשאר גלוי
+function closeAllOverlays(){
+  ['detailOverlay','printChoiceOverlay','binOverlay','wedgeOverlay','scanOverlay'].forEach(id=>{
+    const el = document.getElementById(id); if (el) el.classList.remove('show');
+  });
+  _printList = null;
+  if (typeof _scanner !== 'undefined' && _scanner){ try{_scanner.stop().then(()=>_scanner.clear());}catch(e){} _scanner=null; }
+}
 function showLoginGate(){
+  closeAllOverlays();
+  document.body.classList.add('locked-out');          // מסתיר את התוכן פיזית
   const u = document.getElementById('login-user'); if (u) u.value='';
   const p = document.getElementById('login-pass'); if (p) p.value='';
   document.getElementById('loginOverlay').classList.add('show');
   if (u) setTimeout(()=>u.focus(), 50);
 }
+function unlockGate(){
+  document.body.classList.remove('locked-out');
+  document.getElementById('loginOverlay').classList.remove('show');
+}
 function checkAuth(){
-  if (!authActive()){ currentUser = null; document.getElementById('loginOverlay').classList.remove('show'); applyPermissions(); return; }
+  if (!authActive()){
+    // אין משתמשים מוגדרים: אם מוגדר שרת וטרם נטען ממנו — נשארים נעולים עד הטעינה
+    // (מכשיר טרי לא יראה ממשק מנהל פתוח לפני שהשרת ענה)
+    if (GS_URL && !pulledOnce){ currentUser = null; showLoginGate(); return; }
+    currentUser = null; unlockGate(); applyPermissions(); return;
+  }
   const sid = sessionStorage.getItem('mz_user');
   const u = sid && alive(data.users).find(x=>x.id===sid);
-  if (u){ currentUser = u; document.getElementById('loginOverlay').classList.remove('show'); applyPermissions(); }
-  else { currentUser = null; showLoginGate(); }
+  if (u){ currentUser = u; unlockGate(); applyPermissions(); }
+  else { currentUser = null; showLoginGate(); applyPermissions(); }
 }
 async function doLogin(){
   const name = document.getElementById('login-user').value.trim();
@@ -1679,8 +1723,10 @@ async function doLogin(){
     sessionStorage.setItem('mz_user', u.id);
     document.getElementById('login-pass').value='';
     err.style.display='none';
-    document.getElementById('loginOverlay').classList.remove('show');
+    closeAllOverlays();                     // שום חלון מהמשתמש הקודם לא שורד
+    unlockGate();
     applyPermissions(); renderAll();
+    openSkuFromUrl();                       // קישור ?sku= נפתח רק עכשיו, בהרשאות הנכונות
   } else {
     err.textContent='שם משתמש או סיסמה שגויים';   // don't reveal which
     err.style.display='block';
@@ -1689,7 +1735,8 @@ async function doLogin(){
 function logout(){
   sessionStorage.removeItem('mz_user');
   currentUser = null;
-  if (authActive()) showLoginGate();
+  closeAllOverlays();
+  if (authActive()) { showLoginGate(); applyPermissions(); renderAll(); }
 }
 
 // ---- show/hide by permission ----
@@ -1733,9 +1780,11 @@ function applyPermissions(){
   const hideCard = (canvasId, show)=>{ const cv=document.getElementById(canvasId); if(cv){ const card=cv.closest('.card'); if(card) card.style.display = show ? '' : 'none'; } };
   hideCard('ch-debt', open);                       // יתרת חוב לפי אדם: מנהל בלבד
   hideCard('ch-keter-debt', can('reports_money')); // חשבון כתר: מנהל + לקוח
+  hideCard('ch-scribe', colVis('scribe'));         // מזוזות לפי סופר: מוסתר ממי שלא רואה שמות סופרים
   // mezuzot toolbar
   const fgk=document.getElementById('fg-keter'); if(fgk) fgk.style.display = colVis('keter') ? '' : 'none';
   const pf=document.getElementById('btn-print-filtered'); if(pf) pf.style.display = can('print') ? '' : 'none';
+  const fs=document.getElementById('f-search'); if(fs) fs.placeholder = colVis('scribe') ? 'מק״ט / סופר / הולוגרמה' : 'מק״ט / הולוגרמה';
   toggleAddForms();
   // recycle bin: managers only
   const bin = document.getElementById('btn-bin');
@@ -1785,6 +1834,7 @@ const BIN_GROUPS = [
   { key:'users', label:'משתמשים', desc:u=>u.name }
 ];
 function openBin(){
+  if (!can('users')) return toast('אין הרשאה');
   const body = document.getElementById('bin-body');
   let h = '', total = 0;
   BIN_GROUPS.forEach(g=>{
@@ -1802,6 +1852,7 @@ function openBin(){
 }
 function closeBin(){ document.getElementById('binOverlay').classList.remove('show'); }
 function restoreItem(key, id){
+  if (!can('users')) return toast('אין הרשאה');
   const x = (data[key]||[]).find(i=>i.id===id);
   if (x){ delete x.deleted; delete x.deletedAt; save(); toast('שוחזר בהצלחה'); openBin(); }
 }
@@ -1852,13 +1903,15 @@ function renderUsers(){
   });
   t.innerHTML = h + '</tbody>';
 }
-function editUserRole(id, role){ const u=data.users.find(x=>x.id===id); if(u){ u.role=role; save(); } }
+function editUserRole(id, role){ if (!can('users')) return toast('אין הרשאה'); const u=data.users.find(x=>x.id===id); if(u){ u.role=role; save(); } }
 async function resetUserPass(id){
+  if (!can('users')) return toast('אין הרשאה');
   const u = data.users.find(x=>x.id===id); if(!u) return;
   const p = prompt('סיסמה חדשה עבור '+u.name+':'); if(p===null||p==='') return;
   u.hash = await hashPass(u.name, p); save(); toast('הסיסמה עודכנה');
 }
 function delUser(id){
+  if (!can('users')) return toast('אין הרשאה');
   if (!confirm('למחוק משתמש? (יעבור לסל המיחזור)')) return;
   softDelete(data.users,id);
   if (currentUser && currentUser.id===id) logout();
