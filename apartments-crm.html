@@ -765,7 +765,7 @@ function hasDirtyMark(){ try{ return localStorage.getItem(LSKEY+"_dirty")==="1";
 /* ישויות שעוברות לסל המחזור — משמש גם לחותמת המחיקה וגם למסך עצמו */
 var RECYCLE_ENTITIES=["apartments","partners","apartmentPartners","managers","categories",
   "expenses","payments","expenseSplits","expenseManagerFees","deposits","income",
-  "accounts","withdrawals","bankMoves","stmtBanks","recurring","rentals","users"];
+  "accounts","withdrawals","bankMoves","stmtBanks","recurring","rentals","sheets","users"];
 /* חותמת "מתי נמחק ומי מחק".
    נעשית מרכזית בשמירה ולא בכל מקום מחיקה בנפרד — כך גם מחיקות מדורגות
    (שלב-אב עם תתי-שלבים, פרוייקט עם כל התנועות) מקבלות אותה, ואי אפשר
@@ -866,7 +866,7 @@ function blankDB(){
   return {meta:{version:1,rev:0}, partners:[], apartments:[], apartmentPartners:[], managers:[],
     categories:[], expenses:[], expenseSplits:[], expenseManagerFees:[], accounts:[],
     payments:[], deposits:[], income:[], bankMoves:[], stmtBanks:[], withdrawals:[], incMgmtPays:[],
-    recurring:[], rentals:[], users:[], settings:{sheetsUrl:"", currency:"₪", paymentMethods:{}}};
+    recurring:[], rentals:[], sheets:[], users:[], settings:{sheetsUrl:"", currency:"₪", paymentMethods:{}}};
 }
 function toNum(v){ var n=Number(v); return isFinite(n)?n:0; }
 function toISO(v){ v=String(v==null?"":v).slice(0,10); return /^\d{4}-\d{2}-\d{2}$/.test(v)?v:""; }
@@ -906,6 +906,13 @@ function normalizeDB(d){
   (d.withdrawals||[]).forEach(function(x){ x.amount=toNum(x.amount); x.date=toISO(x.date); });
   d.recurring=d.recurring||[];
   (d.recurring||[]).forEach(function(r){ r.amount=toNum(r.amount); r.nextDate=toISO(r.nextDate); });
+  /* גיליונות חופשיים — טקסט גולמי בלבד; שום נרמול על התאים עצמם,
+     כדי שמה שהמשתמש הקליד יישאר בדיוק כפי שהוקלד. */
+  d.sheets=d.sheets||[];
+  (d.sheets||[]).forEach(function(s){
+    s.rows=s.rows||[]; s.cols=s.cols||[];
+    s.rows.forEach(function(r,i){ if(!Array.isArray(r)) s.rows[i]=[]; });
+  });
   d.rentals=d.rentals||[];
   (d.rentals||[]).forEach(function(r){
     r.rent=toNum(r.rent); r.startDate=toISO(r.startDate); r.endDate=toISO(r.endDate);
@@ -1745,7 +1752,7 @@ function clientScopeMgmt(){
   DB.apartments    = (DB.apartments||[]).filter(function(a){ return canSeeApartment(a.id); });
   /* לא רלוונטי לדמי ניהול — ולא אמור להיחשף */
   DB.expenseSplits=[]; DB.deposits=[]; DB.income=[]; DB.partners=[]; DB.apartmentPartners=[]; DB.accounts=[];
-  DB.bankMoves=[]; DB.stmtBanks=[]; DB.withdrawals=[]; DB.incMgmtPays=[]; DB.recurring=[]; DB.rentals=[];
+  DB.bankMoves=[]; DB.stmtBanks=[]; DB.withdrawals=[]; DB.incMgmtPays=[]; DB.recurring=[]; DB.rentals=[]; DB.sheets=[];
 }
 /* "פרוייקטים מורשים" חלות על כל תפקיד חוץ ממנהל. קודם הן נאכפו רק על
    תפקיד "שותף", כך שצופה שהוגבל לפרוייקט אחת ראה בפועל את כולן. */
@@ -1862,6 +1869,7 @@ function navHtml(){
   var items=[["dashboard","🏠 כל הפרוייקטים"],["reports","📊 דוח שותפים כללי"],["mgmt","💼 דוח דמי ניהול"]];
   var rentN=rentalAlertCount();
   items.push(["rentals","🔑 שכירויות"+(rentN?" ("+rentN+")":"")]);
+  items.push(["sheets","📗 גיליון חופשי"]);
   if(can("edit")) items.push(["bankmatch","🏦 התאמת בנק"]);
   if(can("edit")){
     var openRec=openRecurExpenses().length;
@@ -1915,6 +1923,7 @@ function renderViewInner(){
     case "bankmatch": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewBankMatch(); break;
     case "recurring": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewRecurring(); break;
     case "rentals": c.innerHTML=viewRentals(); break;
+    case "sheets": c.innerHTML=viewSheets(); break;
     case "import": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewImport(); break;
     case "recycle": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewRecycle(); break;
     default: c.innerHTML=viewDashboard();
@@ -2829,7 +2838,7 @@ async function loadSyncBase(){
 }
 var MERGE_TABLES=["apartments","partners","apartmentPartners","managers","categories",
   "expenses","expenseSplits","expenseManagerFees","accounts","payments","deposits",
-  "income","bankMoves","stmtBanks","withdrawals","incMgmtPays","recurring","rentals","users"];
+  "income","bankMoves","stmtBanks","withdrawals","incMgmtPays","recurring","rentals","sheets","users"];
 function merge3(baseStr,mine,theirs){
   var base=null;
   try{ base=baseStr?JSON.parse(baseStr):null; }catch(e){ base=null; }
@@ -9701,6 +9710,250 @@ function rentalAlertBanner(){
       }).join("<br>")+
       (a.length>4?'<br><b>…ועוד '+(a.length-4)+'</b>':'')+
     '</div></div>';
+}
+/* ============================================================
+   גיליונות חופשיים — "אקסל בתוך התוכנה"
+   ------------------------------------------------------------
+   רישום חופשי בלי מבנה קבוע: מקלידים בתאים, מדביקים טבלה שלמה
+   מאקסל, ומקבלים סיכום אוטומטי לכל עמודה מספרית. הנתונים כאן אינם
+   נכנסים לשום חישוב של המערכת — זהו פנקס צד, לא מקור נתונים.
+   ============================================================ */
+var SHEET_MIN_COLS=6, SHEET_MIN_ROWS=12;
+function activeSheets(){ return active(DB.sheets); }
+function curSheet(){
+  var list=activeSheets();
+  if(!list.length) return null;
+  var id=state.params.sheetId;
+  return (id && byId(DB.sheets,id) && !byId(DB.sheets,id).deleted) ? byId(DB.sheets,id) : list[0];
+}
+/* התא כמספר — אם הוא בכלל מספר. תומך בפסיקי אלפים, ₪, אחוזים ומינוס. */
+function cellNum(v){
+  var s=String(v==null?"":v).trim();
+  if(!s) return null;
+  s=s.replace(/[₪$€,\s]/g,"").replace(/%$/,"");
+  if(!/^-?\d*\.?\d+$/.test(s)) return null;
+  var n=Number(s);
+  return isFinite(n)?n:null;
+}
+function sheetColCount(s){
+  var n=SHEET_MIN_COLS;
+  (s.rows||[]).forEach(function(r){ if(r.length>n) n=r.length; });
+  if((s.cols||[]).length>n) n=s.cols.length;
+  return n;
+}
+function colLetter(i){
+  var s="";
+  do{ s=String.fromCharCode(65+(i%26))+s; i=Math.floor(i/26)-1; }while(i>=0);
+  return s;
+}
+function viewSheets(){
+  var list=activeSheets();
+  var s=curSheet();
+  var h='<h2>📗 גיליון חופשי</h2>'+
+    '<p class="muted">מחברת לרישום חופשי — מקלידים בתאים, מדביקים טבלה מאקסל, ומקבלים סיכום לכל עמודה. '+
+    'הנתונים כאן אינם משפיעים על אף חישוב במערכת.</p>';
+  h+='<div class="toolbar">'+
+    (can("edit")?'<button class="btn btn-primary btn-sm" onclick="newSheet()">➕ גיליון חדש</button> ':'')+
+    (list.length?'<select style="max-width:240px" onchange="go(\'sheets\',{sheetId:this.value})">'+
+      list.map(function(x){ return '<option value="'+x.id+'"'+(s&&x.id===s.id?" selected":"")+'>'+esc(x.name)+'</option>'; }).join("")+
+    '</select>':'')+
+    (s&&can("edit")?' <button class="btn btn-sm" onclick="renameSheet(\''+s.id+'\')">✏️ שם</button>'+
+      '<button class="btn btn-sm" onclick="openSheetPaste(\''+s.id+'\')">📋 הדבק מאקסל</button>'+
+      '<button class="btn btn-sm" onclick="addSheetRows(\''+s.id+'\',10)">➕ 10 שורות</button>'+
+      '<button class="btn btn-sm" onclick="addSheetCol(\''+s.id+'\')">➕ עמודה</button>':'')+
+    (s?' <button class="btn btn-sm" onclick="exportSheetXls(\''+s.id+'\')">⬇️ אקסל</button>':'')+
+    (s&&can("edit")?'<div class="sp"></div><button class="btn btn-ghost btn-sm" onclick="softDelete(\'sheets\',\''+s.id+'\',\'למחוק את הגיליון?\')">🗑️ מחק גיליון</button>':'')+
+  '</div>';
+  if(!s) return h+'<div class="card"><div class="empty">אין גיליונות עדיין.</div>'+
+    (can("edit")?'<div class="toolbar" style="justify-content:center;margin-top:10px"><button class="btn btn-primary" onclick="newSheet()">➕ צור גיליון ראשון</button></div>':'')+'</div>';
+
+  var nCols=sheetColCount(s);
+  /* עותק לתצוגה בלבד: ריפוד השורות הריקות על המערך עצמו היה מוסיף
+     שורות ריקות למסד הנתונים כתופעת לוואי של רינדור, והן היו נשמרות
+     ומסונכרנות. */
+  var rows=(s.rows||[]).slice();
+  while(rows.length<SHEET_MIN_ROWS) rows.push([]);
+  /* סכום לכל עמודה — נספרים רק תאים שהם מספר */
+  var sums=[], counts=[];
+  for(var c=0;c<nCols;c++){ sums[c]=0; counts[c]=0; }
+  rows.forEach(function(r){
+    for(var c=0;c<nCols;c++){
+      var n=cellNum(r[c]);
+      if(n!==null){ sums[c]+=n; counts[c]++; }
+    }
+  });
+
+  h+='<div class="card" style="padding:0;overflow:hidden">'+
+    '<div class="table-wrap" style="max-height:65vh"><table class="tbl sheet-grid" style="font-size:13px"><thead><tr>'+
+    '<th style="width:40px;text-align:center;background:var(--bg2)">#</th>'+
+    (function(){
+      var th="";
+      for(var c=0;c<nCols;c++){
+        var name=(s.cols&&s.cols[c])||"";
+        th+='<th style="min-width:130px;padding:0">'+
+          '<div style="font-size:10px;opacity:.5;text-align:center">'+colLetter(c)+'</div>'+
+          (can("edit")
+            ? '<input value="'+esc(name)+'" placeholder="כותרת" style="border:0;background:transparent;font-weight:700;text-align:center;padding:2px 4px"'+
+              ' onchange="setSheetCol(\''+s.id+'\','+c+',this.value)">'
+            : '<div style="text-align:center;font-weight:700">'+esc(name)+'</div>')+
+          '</th>';
+      }
+      return th;
+    })()+
+    (can("edit")?'<th style="width:34px"></th>':'')+
+    '</tr></thead><tbody>';
+  rows.forEach(function(r,ri){
+    h+='<tr><td style="text-align:center;color:var(--muted);background:var(--bg2);font-size:11px">'+(ri+1)+'</td>';
+    for(var c=0;c<nCols;c++){
+      var v=(r[c]==null?"":r[c]);
+      var isNum=cellNum(v)!==null;
+      h+='<td style="padding:0">'+
+        (can("edit")
+          ? '<input value="'+esc(v)+'" style="border:0;background:transparent;padding:5px 6px;'+
+            (isNum?'text-align:left;direction:ltr;font-variant-numeric:tabular-nums':'')+'"'+
+            ' data-r="'+ri+'" data-c="'+c+'" onchange="setSheetCell(\''+s.id+'\','+ri+','+c+',this.value)"'+
+            ' onkeydown="sheetKey(event,'+ri+','+c+')" onpaste="sheetPaste(event,\''+s.id+'\','+ri+','+c+')">'
+          : '<div style="padding:5px 6px'+(isNum?';text-align:left;direction:ltr':'')+'">'+esc(v)+'</div>')+
+        '</td>';
+    }
+    h+=(can("edit")?'<td class="right"><button class="btn btn-ghost btn-sm" title="מחק שורה" onclick="delSheetRow(\''+s.id+'\','+ri+')">✕</button></td>':'')+'</tr>';
+  });
+  h+='</tbody><tfoot><tr><td style="background:var(--bg2);font-size:11px;text-align:center">Σ</td>';
+  for(var c2=0;c2<nCols;c2++){
+    h+='<td style="text-align:left;direction:ltr;font-weight:700">'+
+      (counts[c2] ? esc(num(round2(sums[c2])))+'<div style="font-size:10px;opacity:.55;font-weight:400">'+counts[c2]+' תאים</div>'
+                  : '<span class="muted">—</span>')+'</td>';
+  }
+  h+=(can("edit")?'<td></td>':'')+'</tr></tfoot></table></div></div>'+
+    '<div class="hint">Enter או ↓ יורד תא · Tab עובר ימינה · אפשר להדביק טבלה שלמה מאקסל לתוך תא והיא תיפרס משם. '+
+    'שורת ה-Σ מסכמת רק תאים שהם מספר.</div>';
+  return h;
+}
+function newSheet(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var name=prompt("שם הגיליון:","גיליון "+(activeSheets().length+1));
+  name=(name||"").trim(); if(!name) return;
+  var s={id:uid(),name:name,cols:[],rows:[],deleted:false};
+  DB.sheets.push(s); save();
+  go("sheets",{sheetId:s.id});
+}
+function renameSheet(id){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var s=byId(DB.sheets,id); if(!s) return;
+  var name=prompt("שם הגיליון:",s.name); name=(name||"").trim();
+  if(!name) return;
+  s.name=name; save(); rerender();
+}
+function setSheetCell(id,r,c,v){
+  if(!can("edit")) return;
+  var s=byId(DB.sheets,id); if(!s) return;
+  s.rows=s.rows||[];
+  while(s.rows.length<=r) s.rows.push([]);
+  var row=s.rows[r];
+  while(row.length<=c) row.push("");
+  row[c]=v;
+  save(); rerender();
+}
+function setSheetCol(id,c,v){
+  if(!can("edit")) return;
+  var s=byId(DB.sheets,id); if(!s) return;
+  s.cols=s.cols||[];
+  while(s.cols.length<=c) s.cols.push("");
+  s.cols[c]=v;
+  save(); rerender();
+}
+function addSheetRows(id,n){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var s=byId(DB.sheets,id); if(!s) return;
+  s.rows=s.rows||[];
+  for(var i=0;i<n;i++) s.rows.push([]);
+  save(); rerender();
+}
+function addSheetCol(id){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var s=byId(DB.sheets,id); if(!s) return;
+  s.cols=s.cols||[];
+  var n=sheetColCount(s);
+  while(s.cols.length<n+1) s.cols.push("");
+  save(); rerender();
+}
+function delSheetRow(id,r){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var s=byId(DB.sheets,id); if(!s||!s.rows) return;
+  var row=s.rows[r]||[];
+  var hasData=row.some(function(v){ return String(v==null?"":v).trim()!==""; });
+  if(hasData && !confirm("למחוק את השורה על התוכן שבה?")) return;
+  s.rows.splice(r,1);
+  save(); rerender();
+}
+/* ניווט במקלדת כמו בגיליון */
+function sheetKey(ev,r,c){
+  var dr=0, dc=0;
+  if(ev.key==="Enter"||ev.key==="ArrowDown") dr=1;
+  else if(ev.key==="ArrowUp") dr=-1;
+  else return;
+  ev.preventDefault();
+  var next=document.querySelector('.sheet-grid input[data-r="'+(r+dr)+'"][data-c="'+(c+dc)+'"]');
+  if(next){ next.focus(); next.select(); }
+}
+/* הדבקה של טבלה שלמה מאקסל — נפרסת מהתא שבו עומדים */
+function sheetPaste(ev,id,r,c){
+  if(!can("edit")) return;
+  var txt=(ev.clipboardData||window.clipboardData).getData("text");
+  if(!txt || txt.indexOf("\t")<0 && txt.indexOf("\n")<0) return;   // תא בודד — התנהגות רגילה
+  ev.preventDefault();
+  applySheetPaste(id,txt,r,c);
+}
+function applySheetPaste(id,txt,r0,c0){
+  var s=byId(DB.sheets,id); if(!s) return 0;
+  var lines=String(txt).replace(/\r/g,"").split("\n");
+  while(lines.length && lines[lines.length-1].trim()==="") lines.pop();
+  if(!lines.length) return 0;
+  s.rows=s.rows||[];
+  lines.forEach(function(line,i){
+    var cells=line.split("\t");
+    var r=r0+i;
+    while(s.rows.length<=r) s.rows.push([]);
+    var row=s.rows[r];
+    cells.forEach(function(v,j){
+      var c=c0+j;
+      while(row.length<=c) row.push("");
+      row[c]=v.trim();
+    });
+  });
+  save(); rerender();
+  toast("הודבקו "+lines.length+" שורות","ok");
+  return lines.length;
+}
+function openSheetPaste(id){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  openModal({title:"📋 הדבקת נתונים מאקסל",wide:true,bodyHtml:
+    '<div class="hint" style="margin-bottom:8px">העתק תאים מאקסל / גוגל שיטס והדבק כאן. '+
+    'העמודות מופרדות ב-Tab, בדיוק כמו שהאקסל מעתיק.</div>'+
+    '<div class="form-grid">'+
+      '<div class="field"><label>להתחיל בשורה</label><input id="sp-row" type="number" min="1" value="1"></div>'+
+      '<div class="field"><label>להתחיל בעמודה</label><input id="sp-col" type="number" min="1" value="1"></div>'+
+    '</div>'+
+    '<textarea id="sp-data" rows="12" style="width:100%;font-family:monospace;direction:ltr" placeholder="הדבק כאן (Ctrl+V)"></textarea>',
+    saveLabel:"הדבק",onSave:function(){
+      var txt=val("sp-data");
+      if(!String(txt).trim()){ toast("לא הודבק כלום","err"); return false; }
+      var r=(Number(val("sp-row"))||1)-1, c=(Number(val("sp-col"))||1)-1;
+      if(r<0||c<0){ toast("שורה ועמודה מתחילות מ-1","err"); return false; }
+      applySheetPaste(id,txt,r,c);
+    }});
+}
+function exportSheetXls(id){
+  if(!canDownload()){ toast("להורדת קבצים נדרשת הרשאת עריכה — פנה למנהל","err"); return; }
+  var s=byId(DB.sheets,id); if(!s) return;
+  var nCols=sheetColCount(s);
+  var head=[]; for(var c=0;c<nCols;c++) head.push((s.cols&&s.cols[c])||colLetter(c));
+  var rows=[head];
+  (s.rows||[]).forEach(function(r){
+    var out=[]; for(var c2=0;c2<nCols;c2++) out.push(r[c2]==null?"":r[c2]);
+    if(out.some(function(v){ return String(v).trim()!==""; })) rows.push(out);
+  });
+  saveXlsx([{name:s.name.slice(0,28),rows:rows}], s.name);
 }
 /* ---------- מסך השכירויות ---------- */
 function viewRentals(){
