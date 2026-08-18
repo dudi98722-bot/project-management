@@ -302,6 +302,23 @@ function clearReset() { var sh = ss().getSheetByName(RESET_SHEET); if (sh) sh.cl
 /* ========================= שמירה וטעינה ========================= */
 /* שומר רק אם מונה הגרסה של הנשלח אינו נמוך מהשמור — עותק ישן ממכשיר
    אחר לא יכול לדרוס עבודה חדשה. נעילה מונעת מרוץ בין שמירות מקבילות. */
+/* סופר את השורות בטבלאות המרכזיות — כולל שורות שנמחקו רכות, כי גם הן
+   חלק מהמסד. ירידה חדה במספרן פירושה דריסה, לא עריכה. */
+function dbRowCount(d) {
+  var tables = ["apartments","partners","expenses","payments","income","deposits",
+    "accounts","users","bankMoves","rentals","recurring","sheets","withdrawals"];
+  var n = 0;
+  tables.forEach(function (t) { n += ((d && d[t]) || []).length; });
+  return n;
+}
+function shrinkGuard(stored, incoming) {
+  if (!stored) return null;
+  var before = dbRowCount(stored), after = dbRowCount(incoming);
+  if (before < 30) return null;                 // מסד קטן/חדש — אין מה להגן
+  if (after >= before * 0.5) return null;       // ירידה מתונה — עריכה לגיטימית
+  return "rows " + before + " -> " + after;     // נחסם ומדווח
+}
+
 function saveWithRevGuard(data, user) {
   var lock = LockService.getScriptLock();
   try { lock.waitLock(20000); } catch (e) { return { ok: false, error: "busy" }; }
@@ -317,6 +334,12 @@ function saveWithRevGuard(data, user) {
     }
     // מיזוג לפי המשתמש: מה שלא שויך לו לא נדרס, וקודי כניסה נשמרים
     var toSave = stored ? mergeSaveForUser(stored, data, user || {}) : data;
+    /* חוט-מכשול נגד מחיקה המונית: שמירה שמרוקנת מסד גדול נחסמת.
+       מסד ריק/כמעט-ריק שנשלח מדפדפן עם מטמון ריק היה דורס עשרות שעות
+       עבודה בלחיצה אחת. מחיקות במערכת הן ממילא רכות (deleted:true),
+       ולכן שמירה לגיטימית לעולם לא מקטינה את מספר השורות בעשרות אחוזים. */
+    var guard = shrinkGuard(stored, toSave);
+    if (guard) return { ok: false, error: "shrink-guard", detail: guard };
     saveData(toSave);
     return { ok: true, savedAt: new Date().toISOString(), rev: incomingRev };
   } finally {
