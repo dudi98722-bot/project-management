@@ -13,6 +13,10 @@ var DATA_SHEET  = "_data";
 var REV_PROP    = "crm_rev";
 var AUTH_PROP   = "crm_auth";
 var RESET_SHEET = "_reset";
+var STAGING_SHEET = "_data_new";   // הנתונים נכתבים לכאן קודם, ורק אחרי אימות מוחלפים
+var BAK_PREFIX  = "_bak_";         // גיבוי יומי מתגלגל בתוך הגיליון
+var BAK_KEEP    = 3;
+var INIT_PROP   = "crm_initialized";   // ננעל ברגע שיש משתמשים — ולעולם אינו מתאפס
 var CHUNK       = 40000;
 
 /* ⚠️ לכאן יישלח קוד השחזור. קבוע בשרת בכוונה — כך שאיש לא יכול להפנות שחזור לעצמו. */
@@ -44,7 +48,10 @@ function doPost(e) {
 
     // ---- הקמה ראשונית: מותרת רק כשאין עדיין אף משתמש ----
     if (action === "bootstrap") {
-      if (hasAnyUser()) return jsonOut({ ok: false, error: "already-initialized" });
+      /* הנעילה על "אי-פעם אותחל", לא על "יש משתמשים עכשיו": אחרת מחיקת
+         המשתמשים הייתה פותחת מחדש את הדלת לכל האינטרנט להשתלט על
+         המסד. שחזור אחרי מחיקה — רק דרך המייל של הבעלים. */
+      if (everInit() || hasAnyUser()) return jsonOut({ ok: false, error: "already-initialized" });
       if (!body.data) return jsonOut({ ok: false, error: "no-data" });
       saveData(body.data);
       return jsonOut({ ok: true });
@@ -230,7 +237,15 @@ function requestReset(userName) {
         if (want ? normName(u.name) === want : u.role === "admin") { user = u; break; }
       }
     }
-    if (!user) return { ok: false, error: "user-not-found" };
+    if (!user) {
+      /* אין אף משתמש פעיל במסד (אחרי מחיקה/שחזור)? דלת מילוט אחת:
+         קוד שחזור למייל הבעלים הקבוע בקוד. setCode ייצור מנהל חדש. */
+      var anyActive = false;
+      if (d && d.users) for (var q = 0; q < d.users.length; q++)
+        if (!d.users[q].deleted && d.users[q].active) { anyActive = true; break; }
+      if (!anyActive) user = { id: "", name: "בעל המערכת", role: "admin", email: OWNER_EMAIL };
+      else return { ok: false, error: "user-not-found" };
+    }
     var email = String(user.email || "").trim();
     if (!email && user.role === "admin") email = OWNER_EMAIL;
     if (!email) return { ok: false, error: "no-email" };
@@ -306,9 +321,16 @@ function clearReset() { var sh = ss().getSheetByName(RESET_SHEET); if (sh) sh.cl
    חלק מהמסד. ירידה חדה במספרן פירושה דריסה, לא עריכה. */
 function dbRowCount(d) {
   var tables = ["apartments","partners","expenses","payments","income","deposits",
-    "accounts","users","bankMoves","rentals","recurring","sheets","withdrawals"];
+    "accounts","users","bankMoves","rentals","recurring","sheets","withdrawals",
+    "expenseSplits","expenseManagerFees","categories","managers","apartmentPartners",
+    "incMgmtPays","stmtBanks"];
   var n = 0;
   tables.forEach(function (t) { n += ((d && d[t]) || []).length; });
+  return n;
+}
+function activeUserCount(d) {
+  var n = 0, us = (d && d.users) || [];
+  for (var i = 0; i < us.length; i++) if (!us[i].deleted && us[i].active) n++;
   return n;
 }
 function shrinkGuard(stored, incoming) {
@@ -324,6 +346,10 @@ function saveWithRevGuard(data, user) {
   try { lock.waitLock(20000); } catch (e) { return { ok: false, error: "busy" }; }
   try {
     var stored = loadData();
+    /* המערכת אותחלה בעבר אבל המסד לא נקרא? תקלה או מחיקה — שום שמירה
+       לא עוברת עד שהבעלים משחזר. שמירה "ראשונה" על מסד כזה הייתה
+       דורסת את מה שעוד ניתן לשחזר. */
+    if (!stored && everInit()) return { ok: false, error: "storage-error" };
     var storedRev = (stored && stored.meta && Number(stored.meta.rev)) || 0;
     var incomingRev = (data && data.meta && Number(data.meta.rev)) || 0;
     /* דחייה גם על מונה שווה: שני משתמשים שיצאו מאותה גרסה מגיעים לאותו
@@ -340,6 +366,10 @@ function saveWithRevGuard(data, user) {
        ולכן שמירה לגיטימית לעולם לא מקטינה את מספר השורות בעשרות אחוזים. */
     var guard = shrinkGuard(stored, toSave);
     if (guard) return { ok: false, error: "shrink-guard", detail: guard };
+    /* מחיקת כל המשתמשים בשמירה אחת = נעילת כולם בחוץ. לא קורה בעריכה
+       לגיטימית — מנהל תמיד שולח את רשימת המשתמשים המלאה. */
+    if (activeUserCount(stored) > 0 && activeUserCount(toSave) === 0)
+      return { ok: false, error: "users-wipe" };
     saveData(toSave);
     return { ok: true, savedAt: new Date().toISOString(), rev: incomingRev };
   } finally {
@@ -383,28 +413,96 @@ function rememberMeta(data) {
 }
 
 function saveData(data) {
-  /* המונה נכתב רק אחרי שהגיליון נשמר בהצלחה. כתיבה מוקדמת שלו גרמה
-     לכך שכשל בכתיבת הגיליון השאיר מונה גבוה מהנתונים — והלקוחות נכנסו
-     ללולאת מיזוג אינסופית מול "גרסה" שלא קיימת. */
+  /* כתיבה אטומית: הגרסה הקודמת מחקה את הגיליון לפני שכתבה את החדש —
+     כשל באמצע (מכסה, תקלה) השאיר מסד ריק. עכשיו הנתונים נכתבים
+     לגיליון הכנה, מאומתים בקריאה חוזרת, ורק אז מוחלפים בשינוי שם.
+     בכל שלב שנכשל — הנתונים הקיימים לא נפגעו.
+     בנוסף: פעם ביום הגרסה הקודמת נשמרת כגיבוי מתגלגל בתוך הקובץ. */
   var str = JSON.stringify(data);
-  var sh = ss().getSheetByName(DATA_SHEET) || ss().insertSheet(DATA_SHEET);
-  sh.clear();
+  var book = ss();
+  var stage = book.getSheetByName(STAGING_SHEET) || book.insertSheet(STAGING_SHEET);
+  stage.clear();
   var chunks = [];
   for (var i = 0; i < str.length; i += CHUNK) chunks.push([str.substr(i, CHUNK)]);
-  if (chunks.length) sh.getRange(1, 1, chunks.length, 1).setValues(chunks);
-  SpreadsheetApp.flush();          // מוודא שהכתיבה הושלמה לפני עדכון המונה
+  if (chunks.length) stage.getRange(1, 1, chunks.length, 1).setValues(chunks);
+  SpreadsheetApp.flush();
+  /* אימות: מה שנקרא חזרה חייב להיות זהה למה שנשלח */
+  var back = stage.getRange(1, 1, Math.max(stage.getLastRow(), 1), 1).getValues()
+    .map(function (r) { return r[0]; }).join("");
+  if (back !== str) throw new Error("storage-verify-failed");
+
+  var old = book.getSheetByName(DATA_SHEET);
+  var today = Utilities.formatDate(new Date(), "Etc/UTC", "yyyyMMdd");
+  var bakName = BAK_PREFIX + today;
+  if (old) {
+    if (!book.getSheetByName(bakName)) {
+      /* אין עדיין גיבוי להיום — הישן הופך לגיבוי (שינוי שם, בלי העתקה) */
+      old.setName(bakName);
+      try { old.hideSheet(); } catch (err) {}
+    } else {
+      book.deleteSheet(old);
+    }
+  }
+  stage.setName(DATA_SHEET);
+  /* מוחקים גיבויים ישנים — נשארים BAK_KEEP הימים האחרונים */
+  var sheets = book.getSheets(), baks = [];
+  for (var k = 0; k < sheets.length; k++) {
+    var nm = sheets[k].getName();
+    if (nm.indexOf(BAK_PREFIX) === 0) baks.push(nm);
+  }
+  baks.sort();                          // ישן -> חדש
+  while (baks.length > BAK_KEEP) {
+    try { book.deleteSheet(book.getSheetByName(baks.shift())); } catch (err) { break; }
+  }
+  SpreadsheetApp.flush();
   rememberMeta(data);
+  /* יש משתמשים? המערכת מאותחלת — לצמיתות. גם אם המסד יימחק, אתחול
+     מחדש יישאר נעול והשחזור יעבור דרך המייל של הבעלים. */
+  try {
+    var us = (data && data.users) || [];
+    for (var m = 0; m < us.length; m++) {
+      if (!us[m].deleted && us[m].active) {
+        PropertiesService.getScriptProperties().setProperty(INIT_PROP, "1");
+        break;
+      }
+    }
+  } catch (err) {}
   try { renderReadable(data); } catch (err) { /* אל תיכשל את השמירה בגלל תצוגה */ }
-  try { sh.hideSheet(); } catch (err) {}
+  try { book.getSheetByName(DATA_SHEET).hideSheet(); } catch (err) {}
 }
 
-function loadData() {
-  var sh = ss().getSheetByName(DATA_SHEET);
+function readSheetJson(name) {
+  var sh = ss().getSheetByName(name);
   if (!sh || sh.getLastRow() === 0) return null;
   var vals = sh.getRange(1, 1, sh.getLastRow(), 1).getValues();
   var str = vals.map(function (r) { return r[0]; }).join("");
   if (!str) return null;
-  return JSON.parse(str);
+  try { return JSON.parse(str); } catch (err) { return null; }
+}
+function loadData() {
+  /* _data חסר או פגום? לפני שמוותרים בודקים את אזור ההכנה ואת הגיבויים
+     היומיים — קריסה באמצע החלפה אסור שתיראה כמו מסד ריק, כי מסד "ריק"
+     פותח את הדלת לאתחול מחדש. */
+  var d = readSheetJson(DATA_SHEET);
+  if (d) return d;
+  d = readSheetJson(STAGING_SHEET);
+  if (d) return d;
+  var sheets = ss().getSheets();
+  var baks = [];
+  for (var i = 0; i < sheets.length; i++) {
+    var n = sheets[i].getName();
+    if (n.indexOf(BAK_PREFIX) === 0) baks.push(n);
+  }
+  baks.sort().reverse();               // החדש ביותר קודם
+  for (var j = 0; j < baks.length; j++) {
+    d = readSheetJson(baks[j]);
+    if (d) return d;
+  }
+  return null;
+}
+function everInit() {
+  try { return PropertiesService.getScriptProperties().getProperty(INIT_PROP) === "1"; }
+  catch (err) { return false; }
 }
 
 /* ======================= לשוניות קריאות ======================= */

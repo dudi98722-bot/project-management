@@ -2847,8 +2847,9 @@ async function pollForUpdates(){
     var srv=Number(res.rev)||0, loc=(DB&&DB.meta&&Number(DB.meta.rev))||0;
     if(srv<=loc) return;
     if(pollBlockedBy()) return;             // משהו השתנה בזמן ההמתנה
+    POLL.srv=srv;                           // נשמר גם ללחיצה על הבאנר
     if(uiIsBusy()){ POLL.pending=true; showUpdateBanner(); return; }
-    await applyServerUpdate();
+    await applyServerUpdate(srv);
   } finally { POLL.busy=false; }
 }
 /* מודאל פתוח, או פוקוס בתוך שדה — רינדור מחדש היה מוחק את מה שמקלידים */
@@ -2859,10 +2860,16 @@ function uiIsBusy(){
   if(ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)) return true;
   return false;
 }
-async function applyServerUpdate(){
+async function applyServerUpdate(polledRev){
   var res=await serverLoad();
   if(res.error||!res.data||!Array.isArray(res.data.apartments)) return false;
   var srv=(res.data.meta&&Number(res.data.meta.rev))||0;
+  /* אחרי שחזור גיליון מהיסטוריית גרסאות, מונה הבדיקה המהירה (בהגדרות
+     הסקריפט) גבוה מהמונה שבנתונים. בלי אימוץ המונה הגבוה, הבאנר "יש
+     עדכון" היה קופץ לנצח: כל טעינה מחזירה מונה נמוך, וכל בדיקה רואה
+     שוב את הגבוה. */
+  var known=Number(polledRev)||Number(POLL.srv)||0;
+  if(known>srv){ res.data.meta=res.data.meta||{version:1}; res.data.meta.rev=known; srv=known; }
   var loc=(DB&&DB.meta&&Number(DB.meta.rev))||0;
   if(srv<=loc){ POLL.pending=false; hideUpdateBanner(); return false; }
   if(pollBlockedBy()==="local-work"){
@@ -3083,6 +3090,21 @@ async function flushSave(){
            שוב ושוב. השינוי נשאר מקומי ומסומן. */
         SAVEQ.dirty=false; setSync("local");
         toast("למשתמש הזה אין הרשאת עריכה — השינויים נשמרו מקומית בלבד","warn");
+        return;
+      }
+      if(err==="shrink-guard"||err==="users-wipe"||err==="storage-error"){
+        /* השרת סירב כדי להגן על הנתונים (שמירה שמרוקנת מסד / מוחקת את
+           כל המשתמשים / מסד לא קריא). אין טעם לירות שוב אוטומטית —
+           העבודה שמורה מקומית ומסומנת, והמשתמש מקבל הסבר אמיתי. */
+        SAVEQ.dirty=true; setSync("err");
+        if(!SAVEQ.guardToasted){
+          SAVEQ.guardToasted=true;
+          toast(err==="users-wipe"
+            ? "השרת חסם שמירה שהייתה מוחקת את כל המשתמשים — השינויים נשמרו מקומית. רענן את הדף וודא שהנתונים מלאים לפני שמירה נוספת"
+            : err==="storage-error"
+            ? "מסד הנתונים בשרת אינו קריא — שמירות נעצרו כדי להגן עליו. פנה למנהל לשחזור"
+            : "השרת חסם שמירה שהייתה מוחקת חלק גדול מהנתונים — השינויים נשמרו מקומית. רענן את הדף וודא שהנתונים מלאים לפני שמירה נוספת","err");
+        }
         return;
       }
       if(err==="unauthorized"){
