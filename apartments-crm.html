@@ -4264,7 +4264,13 @@ function addApartmentPartner(aptId){
       var pid=val("apn-existing"); var newName=val("apn-new").trim();
       if(!pid&&newName){ pid=uid(); DB.partners.push({id:pid,name:newName,phone:"",notes:"",deleted:false}); }
       if(!pid){ toast("בחר או הזן שותף","err"); return false; }
-      DB.apartmentPartners.push({id:uid(),apartmentId:aptId,partnerId:pid,defaultPercent:Number(val("apn-pct"))||0,deleted:false});
+      var addPct=Number(val("apn-pct"))||0;
+      var other=apPartners(aptId).reduce(function(a,x){ return a+(Number(x.defaultPercent)||0); },0);
+      if(Math.abs(other+addPct-100)>0.01){
+        toast("סכום אחוזי ברירת המחדל חייב להיות 100% — עם השותף הזה יוצא "+num(other+addPct)+"%","err");
+        return false;
+      }
+      DB.apartmentPartners.push({id:uid(),apartmentId:aptId,partnerId:pid,defaultPercent:addPct,deleted:false});
       save(); toast("נוסף","ok"); rerender();
     }});
 }
@@ -4272,9 +4278,66 @@ function editApPartner(id){
   var r=byId(DB.apartmentPartners,id);
   openModal({title:"עריכת אחוז ברירת מחדל — "+partnerName(r.partnerId),bodyHtml:
     '<div class="field"><label>% ברירת מחדל</label><input id="app-pct" type="number" step="0.01" value="'+esc(String(r.defaultPercent))+'"></div>',
-    onSave:function(){ r.defaultPercent=Number(val("app-pct"))||0; save(); toast("נשמר","ok"); rerender(); }});
+    onSave:function(){
+      var np=Number(val("app-pct"))||0;
+      var other=apPartners(r.apartmentId).reduce(function(a,x){
+        return a+(x.id===r.id?0:(Number(x.defaultPercent)||0)); },0);
+      if(Math.abs(other+np-100)>0.01){
+        toast("סכום אחוזי ברירת המחדל חייב להיות 100% — עם השינוי יוצא "+num(other+np)+"%","err");
+        return false;
+      }
+      r.defaultPercent=np; save(); toast("נשמר","ok"); rerender();
+    }});
 }
 
+/* ---------- הצצה לחלוקת השותפים משורת השלב ----------
+   נפתחת ליד הכפתור בלי לצאת מהטבלה ובלי רינדור מחדש, כדי שלא לאבד
+   מיון וסינון שהמשתמש הגדיר. */
+function closeSplitPeek(){ var o=document.getElementById("split-peek"); if(o) o.remove(); }
+document.addEventListener("click",function(ev){
+  var o=document.getElementById("split-peek");
+  if(o && !o.contains(ev.target) && !(ev.target.closest&&ev.target.closest(".splitpk"))) closeSplitPeek();
+});
+function toggleSplitPeek(ev,eId){
+  ev.stopPropagation();
+  var open=document.getElementById("split-peek");
+  if(open && open.getAttribute("data-e")===eId){ closeSplitPeek(); return; }
+  closeSplitPeek();
+  var e=byId(DB.expenses,eId); if(!e) return;
+  var rows=expSplits(eId).slice();
+  /* אין חלוקה על השלב — מוצגת ברירת המחדל של הפרוייקט, ומצוין שזו היא */
+  var isDefault=false;
+  if(!rows.length){
+    isDefault=true;
+    rows=apPartners(e.apartmentId).map(function(x){
+      return {partnerId:x.partnerId,percent:Number(x.defaultPercent)||0}; });
+  }
+  var sum=rows.reduce(function(a,x){ return a+(Number(x.percent)||0); },0);
+  var cost=(Number(e.amount)||0)+expenseMgmtCostLive(eId);
+  var h='<div style="font-weight:700;margin-bottom:6px">'+esc(e.description)+'</div>'+
+    (isDefault?'<div class="hint" style="margin-bottom:5px">לפי ברירת המחדל של הפרוייקט</div>':'')+
+    '<table class="tbl" style="font-size:12px"><thead><tr><th>שותף</th><th>%</th><th>סכום</th></tr></thead><tbody>'+
+    (rows.length?rows.map(function(r){
+      var pct=Number(r.percent)||0;
+      return '<tr><td>'+esc(partnerName(r.partnerId))+'</td><td>'+num(pct)+'%</td>'+
+        '<td>'+money(round2(cost*pct/100))+'</td></tr>';
+    }).join(""):'<tr><td colspan="3" class="empty">לא הוגדרה חלוקה</td></tr>')+
+    '</tbody><tfoot><tr><td>סה"כ</td>'+
+    '<td class="'+(Math.abs(sum-100)<0.01?"pos":"neg")+'">'+num(sum)+'%</td>'+
+    '<td>'+money(round2(cost))+'</td></tr></tfoot></table>'+
+    (Math.abs(sum-100)>=0.01?'<div class="hint neg">החלוקה אינה מסתכמת ל-100%</div>':'')+
+    (can("edit")?'<button class="btn btn-sm" style="margin-top:6px;width:100%" onclick="closeSplitPeek();openExpenseEditor(\''+eId+'\',\''+e.apartmentId+'\')">✏️ ערוך חלוקה</button>':'');
+  var box=document.createElement("div");
+  box.id="split-peek"; box.setAttribute("data-e",eId);
+  box.style.cssText="position:absolute;z-index:80;background:#fff;border:1px solid var(--line);"+
+    "border-radius:10px;box-shadow:0 10px 30px -8px rgba(30,41,59,.35);padding:10px;min-width:250px;max-width:330px";
+  box.innerHTML=h;
+  document.body.appendChild(box);
+  var r=ev.target.getBoundingClientRect();
+  var top=r.bottom+window.scrollY+4;
+  var left=Math.max(8, Math.min(r.left+window.scrollX-90, window.innerWidth-box.offsetWidth-12));
+  box.style.top=top+"px"; box.style.left=left+"px";
+}
 /* ---------- הוצאות ---------- */
 function moduleExpenses(aptId){
   var exps=apExpenses(aptId);
@@ -4445,6 +4508,7 @@ function expTableHtml(aptId){
         '<b>'+esc(e.description)+'</b>'+(e.hidden?' <span class="badge badge-danger" title="מוסתר משאר המשתמשים">🔒 מוסתר</span>':'')+
         (e.noReport?' <span class="badge badge-muted badge-unit" title="לא נספר בדוחות">🚫 לא בדוח</span>':'')+
         (!e.noReport&&e.noFreilich?' <span class="badge badge-muted badge-unit" title="לא נספר בדוח לפרייליך">🚫 פרייליך</span>':'')+(e.hasInvoice?' 📎':'')+
+        (cont?'':' <button class="btn btn-ghost btn-sm splitpk" title="חלוקת השותפים" onclick="toggleSplitPeek(event,\''+e.id+'\')">➕</button>')+
         (cont?' <span class="pill" data-xl-skip="1">'+kids.length+' תתי-שלבים</span>':'')+'</td>'+
       /* לשלב-אב אין קטגוריה משלו — הקטגוריות יושבות בתתי-השלבים */
       '<td>'+(cont?'<span class="muted">—</span>':esc(categoryName(e.categoryId)||""))+'</td>'+
@@ -10036,10 +10100,13 @@ function shiftFmtAfterRowDelete(s,r){
 function viewSheets(){
   var list=activeSheets();
   var s=curSheet();
-  var h='<h2>📗 גיליון חופשי</h2>'+
-    '<p class="muted">מחברת לרישום חופשי — מקלידים בתאים, מדביקים טבלה מאקסל, ומקבלים סיכום לכל עמודה. '+
-    'הנתונים כאן אינם משפיעים על אף חישוב במערכת.</p>';
-  h+='<div class="toolbar">'+
+  /* הכותרת וההסבר מכווצים לשורה אחת: הסרגל היה נדחף מטה והצריך גלילה
+     בכל כניסה לגיליון. ההסבר המלא עבר ל-title על סימן השאלה. */
+  var h='<div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0;font-size:19px">📗 גיליון חופשי</h2>'+
+    '<span class="muted" title="מחברת לרישום חופשי — מקלידים בתאים, מדביקים טבלה מאקסל, '+
+    'ומקבלים סיכום לכל עמודה. הנתונים כאן אינם משפיעים על אף חישוב במערכת." '+
+    'style="cursor:help">ⓘ</span>';
+  h+=
     (can("edit")?'<button class="btn btn-primary btn-sm" onclick="newSheet()">➕ גיליון חדש</button> ':'')+
     (list.length?'<select style="max-width:240px" onchange="go(\'sheets\',{sheetId:this.value})">'+
       list.map(function(x){ return '<option value="'+x.id+'"'+(s&&x.id===s.id?" selected":"")+'>'+esc(x.name)+'</option>'; }).join("")+
@@ -10072,7 +10139,7 @@ function viewSheets(){
 
   /* סרגל העיצוב */
   if(can("edit")){
-    h+='<div class="sheet-tools">'+
+    h+='<div class="sheet-tools" style="margin-top:6px">'+
       '<span class="muted">הדגשה:</span>'+
       SHEET_COLORS.map(function(x){
         return '<button class="sheet-swatch" title="'+esc(x.n)+'" style="background:'+x.c+
@@ -10086,9 +10153,7 @@ function viewSheets(){
       '<button class="btn btn-sm" onclick="sheetApplyFmt(\''+s.id+'\',\'noBox\')">הסר מסגרת</button>'+
       '<button class="btn btn-ghost btn-sm" onclick="sheetApplyFmt(\''+s.id+'\',\'clear\')">נקה עיצוב</button>'+
       '<div class="sp"></div><span id="sheet-sel-lbl" class="muted">לא נבחר תא</span>'+
-    '</div>'+
-    '<div class="hint" style="margin-bottom:8px">לחיצה על תא בוחרת אותו · גרירה או Shift+לחיצה בוחרת טווח · '+
-    'לחיצה על אות העמודה או על מספר השורה בוחרת אותה במלואה.</div>';
+    '</div>';
   }
   h+='<div class="card" style="padding:0;overflow:hidden">'+
     '<div class="table-wrap" style="max-height:65vh"><table class="tbl sheet-grid"><thead><tr>'+
@@ -10134,8 +10199,8 @@ function viewSheets(){
       (counts[c2] ? esc(num(round2(sums[c2]))) : '<span class="muted">—</span>')+'</td>';
   }
   h+=(can("edit")?'<td></td>':'')+'</tr></tfoot></table></div></div>'+
-    '<div class="hint">Enter או ↓ יורד תא · Tab עובר לתא הבא · אפשר להדביק טבלה שלמה מאקסל לתוך תא והיא תיפרס משם. '+
-    'שורת ה-Σ מסכמת רק תאים שהם מספר (מעבר עכבר מראה כמה נספרו).</div>';
+    '<div class="hint">לחיצה בוחרת תא · גרירה או Shift בוחרת טווח · לחיצה על אות העמודה או מספר השורה בוחרת אותה כולה · '+
+    'Enter יורד תא · אפשר להדביק טבלה שלמה מאקסל · שורת ה-Σ מסכמת רק מספרים.</div>';
   return h;
 }
 function newSheet(){
