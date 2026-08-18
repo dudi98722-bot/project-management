@@ -1672,6 +1672,22 @@ function stmtBankUse(id){
 function bankKeyNorm(n){
   return String(n||"").replace(/[\-–—_.]/g," ").replace(/\s+/g," ").trim().toLowerCase();
 }
+/* בנקים שלא נותרה בהם אף תנועה — בדרך כלל שאריות של איחוד או של
+   הדבקה שגויה. מחיקה רכה, כך שניתן לשחזר מסל המחזור. */
+function cleanEmptyStmtBanks(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var empty=stmtBanks().filter(function(b){ return stmtBankUse(b.id)===0; });
+  if(!empty.length){ toast("בכל הבנקים יש תנועות","warn"); return; }
+  var names=empty.slice(0,15).map(function(b){ return "• "+b.name; }).join("\n");
+  if(!confirm(empty.length+" בנקים בלי אף תנועה יימחקו:\n\n"+names+
+    (empty.length>15?("\n…ועוד "+(empty.length-15)):"")+
+    "\n\nניתן לשחזר מסל המחזור. להמשיך?")) return;
+  empty.forEach(function(b){ b.deleted=true; });
+  if(BQ && empty.some(function(b){ return b.id===BQ.bank; })) BQ.bank="";
+  save();
+  toast("נמחקו "+empty.length+" בנקים ריקים","ok");
+  rerender();
+}
 function openMergeStmtBanks(){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var banks=stmtBanks().slice().sort(function(a,b){
@@ -7573,6 +7589,8 @@ function viewBankMatch(){
     (can("edit")?'<button class="btn btn-primary btn-sm" onclick="openBankMoveImport()">📥 הדבקת שורות מהבנק</button> '+
       '<button class="btn btn-sm" onclick="editBankMove(null)">➕ תנועה ידנית</button> '+
       (stmtBanks().length>1?'<button class="btn btn-sm" onclick="openMergeStmtBanks()">🔀 איחוד בנקים</button> ':'')+
+      (stmtBanks().filter(function(b){ return stmtBankUse(b.id)===0; }).length
+        ?'<button class="btn btn-sm" onclick="cleanEmptyStmtBanks()">🧹 נקה בנקים ריקים</button> ':'')+
       (all.length?'<button class="btn btn-sm" onclick="openBulkBankMoveEdit()">✏️ עדכון מרוכז <span id="bm-count"></span></button> ':'')+
       (openMoves.length?'<button class="btn btn-sm" onclick="runAutoMatch()">⚡ התאמה אוטומטית</button> ':'')+
       (all.length?'<button class="btn btn-danger btn-sm" onclick="clearMatchedMoves()">🗑️ נקה מותאמות</button> ':''):'')+
