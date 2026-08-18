@@ -952,6 +952,26 @@ function normalizeDB(d){
   (d.deposits||[]).forEach(function(x){ x.amount=toNum(x.amount); x.date=toISO(x.date); });
   d.withdrawals=d.withdrawals||[];
   (d.withdrawals||[]).forEach(function(x){ x.amount=toNum(x.amount); x.date=toISO(x.date); });
+  /* ריפוי נתונים שנפגעו מהבאג הישן: אותה הוצאה+שותף מופיעה יותר מפעם
+     אחת (תוצאה של מיזוג שהחזיר שורות ישנות לצד החדשות) — נשארת
+     האחרונה, שהיא העריכה העדכנית, והקודמות עוברות למחיקה רכה. */
+  (function(){
+    function dedupe(arr,keyField){
+      var last={};
+      (arr||[]).forEach(function(x,i){
+        if(!x || x.deleted || !x.expenseId || !x[keyField]) return;
+        last[x.expenseId+"|"+x[keyField]]=i;
+      });
+      var n=0;
+      (arr||[]).forEach(function(x,i){
+        if(!x || x.deleted || !x.expenseId || !x[keyField]) return;
+        if(last[x.expenseId+"|"+x[keyField]]!==i){ x.deleted=true; n++; }
+      });
+      return n;
+    }
+    var a=dedupe(d.expenseSplits,"partnerId"), b=dedupe(d.expenseManagerFees,"managerId");
+    if(a+b) try{ console.warn("תוקנו כפילויות חלוקה:",a,"| דמי ניהול:",b); }catch(e){}
+  })();
   d.recurring=d.recurring||[];
   (d.recurring||[]).forEach(function(r){ r.amount=toNum(r.amount); r.nextDate=toISO(r.nextDate); });
   /* גיליונות חופשיים — טקסט גולמי בלבד; שום נרמול על התאים עצמם,
@@ -1239,6 +1259,56 @@ function incomeAwaits(i){ return !!(i&&i.awaitsPayment); }
 function incomeTracked(i){ return incomeAwaits(i) || incomePays(i).length>0; }
 function incomePaid(i){ return round2(incomePays(i).reduce(function(s,g){return s+(Number(g.amount)||0);},0)); }
 function incomeDebt(i){ return round2((Number(i.amount)||0)-incomePaid(i)); }
+/* ============================================================
+   חלוקת שותפים ודמי ניהול — מזהים יציבים
+   ------------------------------------------------------------
+   עד כאן כל עריכת חלוקה מחקה את השורות (מחיקה קשה) ויצרה חדשות עם
+   מזהה אקראי. במיזוג בין שני משתמשים זה היה אסון: המיזוג משווה לפי
+   מזהה, ולכן השורות שהצד השני עוד החזיק "חזרו לחיים" בזמן שהחדשות
+   שלי נוספו — ואותה הוצאה קיבלה 50%+50%+60%+40% = 200%.
+   זו הסיבה ל"האחוזים משתבשים" ול"חלק מהנתונים לא נרשמים".
+
+   הפתרון: המזהה נגזר מההוצאה ומהשותף, כך ששני משתמשים שעורכים את
+   אותה חלוקה מייצרים את אותה שורה בדיוק והמיזוג מכריע ביניהן כרגיל.
+   הסרת שותף היא מחיקה רכה (deleted:true) ולא הסרה מהמערך, כדי
+   שהמיזוג יראה מחיקה מפורשת במקום "לא היה לי".
+   ============================================================ */
+function splitId(eId,pId){ return "sp_"+eId+"_"+pId; }
+function feeId(eId,mId){ return "mf_"+eId+"_"+mId; }
+/* כותב את חלוקת ההוצאה. rows = [{partnerId,percent}] */
+function setExpenseSplits(eId,rows){
+  var want={}; (rows||[]).forEach(function(r){ if(r&&r.partnerId) want[r.partnerId]=Number(r.percent)||0; });
+  var byPartner={};
+  (DB.expenseSplits||[]).forEach(function(x){
+    if(x.expenseId===eId && x.partnerId) byPartner[x.partnerId]=x;   /* כולל מחוקות — כדי לשחזר במקום לשכפל */
+  });
+  Object.keys(want).forEach(function(pid){
+    var ex=byPartner[pid];
+    if(ex){ ex.percent=want[pid]; ex.deleted=false; }
+    else DB.expenseSplits.push({id:splitId(eId,pid),expenseId:eId,partnerId:pid,percent:want[pid],deleted:false});
+  });
+  Object.keys(byPartner).forEach(function(pid){
+    if(want[pid]===undefined) byPartner[pid].deleted=true;            /* הוסר מהחלוקה — מחיקה רכה */
+  });
+}
+/* כותב את דמי הניהול של ההוצאה. rows = [{managerId,pctCurrent,...}] */
+function setExpenseMgrFees(eId,rows){
+  var want={}; (rows||[]).forEach(function(r){ if(r&&r.managerId) want[r.managerId]=r; });
+  var byMgr={};
+  (DB.expenseManagerFees||[]).forEach(function(x){
+    if(x.expenseId===eId && x.managerId) byMgr[x.managerId]=x;
+  });
+  Object.keys(want).forEach(function(mid){
+    var r=want[mid], ex=byMgr[mid];
+    if(!ex){ ex={id:feeId(eId,mid),expenseId:eId,managerId:mid,deleted:false}; DB.expenseManagerFees.push(ex); }
+    ex.pctCurrent=Number(r.pctCurrent)||0;
+    ex.pctDeferred=Number(r.pctDeferred)||0;
+    ex.deferredLabel=r.deferredLabel||"";
+    ex.deferredReleased=!!r.deferredReleased;
+    ex.deleted=false;
+  });
+  Object.keys(byMgr).forEach(function(mid){ if(!want[mid]) byMgr[mid].deleted=true; });
+}
 function expSplits(eId){ if(IX) return IX.splitByExp[eId]||IX_EMPTY;
   return active(DB.expenseSplits).filter(function(s){return s.expenseId===eId;}); }
 function expPayments(eId){ if(IX) return IX.payByExp[eId]||IX_EMPTY;
@@ -4515,12 +4585,7 @@ function applyBulkExpEdit(aptId,ids){
     if(cat!=="__keep") e.categoryId=cat;
     if(cls!=="__keep") e.classification=cls;
     if(date) e.date=date;
-    if(splitRows){
-      DB.expenseSplits=DB.expenseSplits.filter(function(s){ return s.expenseId!==id; });
-      splitRows.forEach(function(r){
-        DB.expenseSplits.push({id:uid(),expenseId:id,partnerId:r.partnerId,percent:r.percent,deleted:false});
-      });
-    }
+    if(splitRows) setExpenseSplits(id,splitRows);
     if(mg==="on"){
       /* לא מספיק לסמן דגל — צריך גם ליצור את רשומות דמי הניהול לכל מנהל
          לפי ברירת המחדל שלו, אחרת החישוב יוצא 0 עד עריכה ידנית של השורה. */
@@ -4802,11 +4867,9 @@ function applyBulkMgmt(aptId){
   ids.forEach(function(eid){
     var e=byId(DB.expenses,eid); if(!e) return;
     e.mgmtEnabled=true; e.mgmtSet=true; e.mgmtBaseType=base; e.mgmtVatRate=vat;
-    DB.expenseManagerFees=DB.expenseManagerFees.filter(function(f){return f.expenseId!==eid;});
-    cfg.forEach(function(c){
-      DB.expenseManagerFees.push({id:uid(),expenseId:eid,managerId:c.id,
-        pctCurrent:c.cur,pctDeferred:c.def,deferredLabel:c.lbl,deferredReleased:false,deleted:false});
-    });
+    setExpenseMgrFees(eid, cfg.map(function(c){
+      return {managerId:c.id,pctCurrent:c.cur,pctDeferred:c.def,deferredLabel:c.lbl,deferredReleased:false};
+    }));
     syncAutoMgmtPayments(eid);
   });
   save();
@@ -5048,20 +5111,18 @@ function saveExpense(eId,aptId){
   }
   // rebuild splits — למכל אין חלוקה משלו, לא נוגעים בה
   if(!isCont){
-    DB.expenseSplits=DB.expenseSplits.filter(function(s){return s.expenseId!==eId;});
-    rows.forEach(function(r){ DB.expenseSplits.push({id:uid(),expenseId:eId,partnerId:r.partnerId,percent:r.percent,deleted:false}); });
+    setExpenseSplits(eId,rows);
   }
   // rebuild manager fees
   /* בונים מחדש רק כשיש ערכים חדשים על המסך. אם המקטע לא הוצג, או שדמי
      הניהול כבויים — משאירים את הרשומות הקיימות במקום למחוק אותן.
      הן ממילא אינן נספרות כל עוד mgmtEnabled כבוי, ואם יידלק שוב — הנתונים חוזרים. */
   if(mgmtShown && e.mgmtEnabled){
-    DB.expenseManagerFees=DB.expenseManagerFees.filter(function(f){return f.expenseId!==eId;});
-    apManagers(aptId).forEach(function(m){
-      DB.expenseManagerFees.push({id:uid(),expenseId:eId,managerId:m.id,
+    setExpenseMgrFees(eId, apManagers(aptId).map(function(m){
+      return {managerId:m.id,
         pctCurrent:Number(val("mf-cur-"+m.id))||0,pctDeferred:Number(val("mf-def-"+m.id))||0,
-        deferredLabel:val("mf-lbl-"+m.id)||"",deferredReleased:checked("mf-rel-"+m.id),deleted:false});
-    });
+        deferredLabel:val("mf-lbl-"+m.id)||"",deferredReleased:checked("mf-rel-"+m.id)};
+    }));
   }
   syncAutoMgmtPayments(eId);   // תשלום "שווה ערך" אוטומטי לפי הגדרת הפרויקט
   /* סכום המכל נגזר מתתי-השלבים — מסנכרנים את האב הישן ואת החדש */
@@ -5737,7 +5798,7 @@ function saveQuickExpense(){
     mgmtVatRate:mgmtOn?(isNaN(mgmtVatRaw)?18:mgmtVatRaw):18,
     parentId:qParent||null,deleted:false});
   apPartners(aptId).forEach(function(p){
-    DB.expenseSplits.push({id:uid(),expenseId:eid,partnerId:p.partnerId,percent:p.defaultPercent,deleted:false});
+    DB.expenseSplits.push({id:splitId(eid,p.partnerId),expenseId:eid,partnerId:p.partnerId,percent:p.defaultPercent,deleted:false});
   });
   if(mgmtOn){
     apManagers(aptId).forEach(function(m){
@@ -7962,7 +8023,7 @@ function ensureIncMgmtExpense(aptId,mgrId){
       incMgmtManagerId:mgrId,deleted:false};
     DB.expenses.push(e);
     apPartners(aptId).forEach(function(p){
-      DB.expenseSplits.push({id:uid(),expenseId:e.id,partnerId:p.partnerId,percent:p.defaultPercent,deleted:false});
+      DB.expenseSplits.push({id:splitId(e.id,p.partnerId),expenseId:e.id,partnerId:p.partnerId,percent:p.defaultPercent,deleted:false});
     });
   }else{
     e.amount=owed;
@@ -9590,7 +9651,7 @@ function runRecurring(silent){
           mgmtEnabled:false,mgmtSet:false,mgmtBaseType:"full",mgmtVatRate:18,
           recurTag:tag,recurId:r.id,recurOpen:true,deleted:false});
         apPartners(aptId).forEach(function(p){
-          DB.expenseSplits.push({id:uid(),expenseId:eid,partnerId:p.partnerId,percent:p.defaultPercent,deleted:false});
+          DB.expenseSplits.push({id:splitId(eid,p.partnerId),expenseId:eid,partnerId:p.partnerId,percent:p.defaultPercent,deleted:false});
         });
         made++;
       });
