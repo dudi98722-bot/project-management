@@ -3318,7 +3318,7 @@ async function boot(){
    מודולים
    ============================================================ */
 /* ---------- חיפוש וסינון ---------- */
-var Q={apts:"",exp:"",expStatus:"",expClass:"",quick:"",partners:"",cross:"",recycle:"",pay:"",payWho:"",paySrc:"",payInv:"",ppWho:"",apPayWho:"",rent:"",rentApt:"",rentStatus:""};
+var Q={apts:"",exp:"",expStatus:"",expClass:"",quick:"",partners:"",cross:"",recycle:"",pay:"",payWho:"",paySrc:"",payInv:"",ppWho:"",apPayWho:"",rent:"",rentApt:"",rentStatus:"",expSplit:""};
 /* כל מילה בשאילתה חייבת להופיע — מאפשר "עורך דין קופר" ו"קופר דין" כאחד */
 function matches(q,text){
   q=String(q||"").trim().toLowerCase(); if(!q) return true;
@@ -4310,53 +4310,23 @@ function editApPartner(id){
     }});
 }
 
-/* ---------- הצצה לחלוקת השותפים משורת השלב ----------
-   נפתחת ליד הכפתור בלי לצאת מהטבלה ובלי רינדור מחדש, כדי שלא לאבד
-   מיון וסינון שהמשתמש הגדיר. */
-function closeSplitPeek(){ var o=document.getElementById("split-peek"); if(o) o.remove(); }
-document.addEventListener("click",function(ev){
-  var o=document.getElementById("split-peek");
-  if(o && !o.contains(ev.target) && !(ev.target.closest&&ev.target.closest(".splitpk"))) closeSplitPeek();
-});
-function toggleSplitPeek(ev,eId){
-  ev.stopPropagation();
-  var open=document.getElementById("split-peek");
-  if(open && open.getAttribute("data-e")===eId){ closeSplitPeek(); return; }
-  closeSplitPeek();
-  var e=byId(DB.expenses,eId); if(!e) return;
-  var rows=expSplits(eId).slice();
-  /* אין חלוקה על השלב — מוצגת ברירת המחדל של הפרוייקט, ומצוין שזו היא */
-  var isDefault=false;
-  if(!rows.length){
-    isDefault=true;
-    rows=apPartners(e.apartmentId).map(function(x){
-      return {partnerId:x.partnerId,percent:Number(x.defaultPercent)||0}; });
-  }
-  var sum=rows.reduce(function(a,x){ return a+(Number(x.percent)||0); },0);
-  var cost=(Number(e.amount)||0)+expenseMgmtCostLive(eId);
-  var h='<div style="font-weight:700;margin-bottom:6px">'+esc(e.description)+'</div>'+
-    (isDefault?'<div class="hint" style="margin-bottom:5px">לפי ברירת המחדל של הפרוייקט</div>':'')+
-    '<table class="tbl" style="font-size:12px"><thead><tr><th>שותף</th><th>%</th><th>סכום</th></tr></thead><tbody>'+
-    (rows.length?rows.map(function(r){
-      var pct=Number(r.percent)||0;
-      return '<tr><td>'+esc(partnerName(r.partnerId))+'</td><td>'+num(pct)+'%</td>'+
-        '<td>'+money(round2(cost*pct/100))+'</td></tr>';
-    }).join(""):'<tr><td colspan="3" class="empty">לא הוגדרה חלוקה</td></tr>')+
-    '</tbody><tfoot><tr><td>סה"כ</td>'+
-    '<td class="'+(Math.abs(sum-100)<0.01?"pos":"neg")+'">'+num(sum)+'%</td>'+
-    '<td>'+money(round2(cost))+'</td></tr></tfoot></table>'+
-    (Math.abs(sum-100)>=0.01?'<div class="hint neg">החלוקה אינה מסתכמת ל-100%</div>':'')+
-    (can("edit")?'<button class="btn btn-sm" style="margin-top:6px;width:100%" onclick="closeSplitPeek();openExpenseEditor(\''+eId+'\',\''+e.apartmentId+'\')">✏️ ערוך חלוקה</button>':'');
-  var box=document.createElement("div");
-  box.id="split-peek"; box.setAttribute("data-e",eId);
-  box.style.cssText="position:absolute;z-index:80;background:#fff;border:1px solid var(--line);"+
-    "border-radius:10px;box-shadow:0 10px 30px -8px rgba(30,41,59,.35);padding:10px;min-width:250px;max-width:330px";
-  box.innerHTML=h;
-  document.body.appendChild(box);
-  var r=ev.target.getBoundingClientRect();
-  var top=r.bottom+window.scrollY+4;
-  var left=Math.max(8, Math.min(r.left+window.scrollX-90, window.innerWidth-box.offsetWidth-12));
-  box.style.top=top+"px"; box.style.left=left+"px";
+/* תאי החלוקה בשורת השלב. שלב בלי חלוקה משלו מציג את ברירת המחדל של
+   הפרוייקט, בסוגריים, כדי שיהיה ברור שזו לא חלוקה שנקבעה עליו.
+   למכל אין חלוקה — היא יושבת בתתי-השלבים. */
+function splitCellsFor(e,cont,spCols){
+  if(!spCols.length) return "";
+  if(cont) return spCols.map(function(){ return '<td class="muted">—</td>'; }).join("")+'<td class="muted">—</td>';
+  var own={}, hasOwn=false;
+  expSplits(e.id).forEach(function(x){ own[x.partnerId]=Number(x.percent)||0; hasOwn=true; });
+  var sum=0;
+  var cells=spCols.map(function(ap){
+    var pct = hasOwn ? (own[ap.partnerId]||0) : (Number(ap.defaultPercent)||0);
+    sum+=pct;
+    if(!pct) return '<td class="muted">—</td>';
+    return '<td'+(hasOwn?'':' class="muted" title="ברירת המחדל של הפרוייקט"')+'>'+
+      num(pct)+'%'+(hasOwn?'':' *')+'</td>';
+  }).join("");
+  return cells+'<td class="'+(Math.abs(sum-100)<0.01?"pos":"neg")+'"><b>'+num(sum)+'%</b></td>';
 }
 /* ---------- הוצאות ---------- */
 function moduleExpenses(aptId){
@@ -4385,6 +4355,10 @@ function moduleExpenses(aptId){
       catsSorted().map(function(c){
         return '<option value="'+c.id+'"'+(Q.expCat===c.id?" selected":"")+'>'+esc(c.name)+'</option>'; }).join("")+
     '</select>'+
+    (apPartners(aptId).length?'<button class="btn btn-sm'+(Q.expSplit==="1"?" btn-primary":"")+'" '+
+      'onclick="Q.expSplit=(Q.expSplit===\'1\'?\'\':\'1\');rerender()" '+
+      'title="הצגת אחוזי החלוקה של כל השותפים בכל השורות">'+
+      (Q.expSplit==="1"?"➖ הסתר חלוקה":"➕ הצג חלוקה")+'</button> ':'')+
     ((Q.exp||Q.expStatus||Q.expClass||Q.expCat)?'<button class="btn btn-ghost btn-sm" onclick="Q.exp=\'\';Q.expStatus=\'\';Q.expClass=\'\';Q.expCat=\'\';rerender()">✕ נקה</button>':'')+
     '<div class="sp"></div><span id="exp-count"></span></div>';
   h+='<div id="exp-table">'+expTableHtml(aptId)+'</div>';
@@ -4505,11 +4479,19 @@ function expTableHtml(aptId){
   if(cnt) cnt.innerHTML=countLine(exps.length,all.length,"שלבים");
   if(!exps.length) return '<div class="empty">לא נמצא שלב שמתאים לסינון</div>';
   var selC=can("edit");
+  /* עמודות חלוקת השותפים — מתג אחד שפותח אותן לכל השורות בבת אחת,
+     במקום הצצה נפרדת לכל שורה. השותפים נכנסים בסוף השורה (בעברית —
+     בצד שמאל), אחרי כפתורי הפעולה. */
+  var spCols=(Q.expSplit==="1") ? apPartners(aptId) : [];
   var h='<div class="table-wrap"><table class="tbl"><thead><tr>'+
     (selC?'<th class="chk" data-xl-skip="1" style="width:30px"><input type="checkbox" title="סמן הכל" style="width:auto" onclick="ebAll(this.checked)"></th>':'')+
     '<th>תאריך</th><th>תיאור</th><th>קטגוריה</th><th>סיווג</th><th>סכום</th>'+
     (a.hasManagement?'<th title="✔ יש דמי ניהול · ✖ אין · ריק = טרם סומן">דמי ניהול?</th><th>דמי ניהול</th>':'')+
-    '<th>שולם</th><th>נותר</th><th>סטטוס</th><th></th></tr></thead><tbody>';
+    '<th>שולם</th><th>נותר</th><th>סטטוס</th><th></th>'+
+    spCols.map(function(ap){
+      return '<th title="אחוז מהעלות">'+esc(partnerName(ap.partnerId))+'</th>'; }).join("")+
+    (spCols.length?'<th>סה"כ %</th>':'')+
+    '</tr></thead><tbody>';
 
   /* שורת שלב — נעשה שימוש גם לאב וגם לתת-שלב */
   function rowFor(e,isChild){
@@ -4528,7 +4510,6 @@ function expTableHtml(aptId){
         '<b>'+esc(e.description)+'</b>'+(e.hidden?' <span class="badge badge-danger" title="מוסתר משאר המשתמשים">🔒 מוסתר</span>':'')+
         (e.noReport?' <span class="badge badge-muted badge-unit" title="לא נספר בדוחות">🚫 לא בדוח</span>':'')+
         (!e.noReport&&e.noFreilich?' <span class="badge badge-muted badge-unit" title="לא נספר בדוח לפרייליך">🚫 פרייליך</span>':'')+(e.hasInvoice?' 📎':'')+
-        (cont?'':' <button class="btn btn-ghost btn-sm splitpk" title="חלוקת השותפים" onclick="toggleSplitPeek(event,\''+e.id+'\')">➕</button>')+
         (cont?' <span class="pill" data-xl-skip="1">'+kids.length+' תתי-שלבים</span>':'')+'</td>'+
       /* לשלב-אב אין קטגוריה משלו — הקטגוריות יושבות בתתי-השלבים */
       '<td>'+(cont?'<span class="muted">—</span>':esc(categoryName(e.categoryId)||""))+'</td>'+
@@ -4540,7 +4521,8 @@ function expTableHtml(aptId){
         /* למכל אין תשלומים משלו — הכסף יושב בתתי-השלבים */
         (cont?'':'<button class="btn btn-ghost btn-sm" onclick="openPayments(\''+e.id+'\')" title="תשלומים">💳</button>')+
         (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="openExpenseEditor(\''+e.id+'\',\''+aptId+'\')" title="עריכה">✏️</button>'+
-        '<button class="btn btn-ghost btn-sm" onclick="softDelete(\'expenses\',\''+e.id+'\',\'למחוק הוצאה זו?\')">🗑️</button>':'')+'</td></tr>';
+        '<button class="btn btn-ghost btn-sm" onclick="softDelete(\'expenses\',\''+e.id+'\',\'למחוק הוצאה זו?\')">🗑️</button>':'')+'</td>'+
+      splitCellsFor(e,cont,spCols)+'</tr>';
   }
 
   /* קיבוץ: אב ואחריו תתי-השלבים שלו. תת-שלב שהאב שלו לא במסונן — מוצג לבד.
