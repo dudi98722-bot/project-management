@@ -2025,7 +2025,7 @@ async function renderLogin(){
         '<button class="btn btn-primary" style="width:100%" onclick="createAdmin()">צור מנהל והיכנס</button>'
       : '<p>הזן שם משתמש וקוד כניסה</p>'+
         '<div class="field"><label>שם משתמש</label><input id="lg-user" onkeydown="if(event.key===\'Enter\'){event.preventDefault();var c=document.getElementById(\'lg-code\');if(c)c.focus();}" placeholder="השם כפי שהוגדר במערכת"></div>'+
-        '<div class="field"><label>קוד כניסה</label><input id="lg-code" type="password" onkeydown="if(event.key===\'Enter\')doLogin()" placeholder="קוד"></div>'+
+        '<div class="field"><label>קוד כניסה</label><div style="position:relative"><input id="lg-code" type="password" style="padding-inline-end:38px" oninput="lgCodeHint()" onkeydown="if(event.key===\'Enter\')doLogin()" placeholder="קוד"><button type="button" id="lg-eye" onclick="lgToggleCode()" title="הצג/הסתר את הקוד" style="position:absolute;inset-inline-end:6px;top:50%;transform:translateY(-50%);background:none;border:0;cursor:pointer;font-size:15px;padding:2px 4px">👁️</button></div><div id="lg-code-hint" class="hint"></div></div>'+
         '<button class="btn btn-primary" style="width:100%" onclick="doLogin()">כניסה</button>'+
         '<div style="margin-top:20px;padding-top:14px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)">'+
           '<a href="#" onclick="forgotCode();return false;">🔑 שכחתי את הקוד — שלח קוד שחזור למייל</a></div>'
@@ -2046,6 +2046,24 @@ async function createAdmin(){
   await vaultUnlock(h);            // מכאן המטמון המקומי נכתב מוצפן
   saveLocal(); setSync("ok"); resetIdle();
   toast("ברוך הבא, "+name,"ok"); go("dashboard",{});
+}
+/* הקוד מוקלד בנקודות, ולכן טעות מקלדת אינה נראית. כאן אפשר להציג אותו,
+   ומתקבלת אזהרה כשהמקלדת בעברית — התסמין הוא "קוד שגוי" למרות
+   שהמשתמש בטוח שהקליד נכון. */
+function lgToggleCode(){
+  var el=document.getElementById("lg-code"), b=document.getElementById("lg-eye");
+  if(!el) return;
+  var show=el.type==="password";
+  el.type=show?"text":"password";
+  if(b) b.textContent=show?"🙈":"👁️";
+  el.focus();
+}
+function lgCodeHint(){
+  var box=document.getElementById("lg-code-hint"); if(!box) return;
+  var v=String(val("lg-code")||""), msgs=[];
+  if(/[֐-׿]/.test(v)) msgs.push('<span class="neg">⚠️ הקוד מכיל אותיות בעברית — בדוק אם המקלדת במצב עברית</span>');
+  if(v!==v.trim()) msgs.push('<span class="neg">⚠️ יש רווח בתחילת או בסוף הקוד</span>');
+  box.innerHTML=msgs.join("<br>");
 }
 async function doLogin(){
   var hasUserField=!!document.getElementById("lg-user");
