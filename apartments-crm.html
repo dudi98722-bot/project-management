@@ -1926,9 +1926,13 @@ function navHtml(){
     return '<div class="nav"><div class="nav-item active" onclick="go(\'mgmt\',{})">💼 דמי ניהול</div></div>';
   }
   var items=[["dashboard","🏠 כל הפרוייקטים"],["reports","📊 דוח שותפים כללי"],["mgmt","💼 דוח דמי ניהול"]];
-  var rentN=rentalAlertCount();
-  items.push(["rentals","🔑 שכירויות"+(rentN?" ("+rentN+")":"")]);
-  items.push(["sheets","📗 גיליון חופשי"]);
+  /* כלל קבוע: פיצ'ר חדש מוצג למנהלים בלבד עד שדודי פותח אותו לשאר.
+     השרת ממילא לא שולח למי שאינו מנהל את הטבלאות האלה. */
+  if(CU && CU.role==="admin"){
+    var rentN=rentalAlertCount();
+    items.push(["rentals","🔑 שכירויות"+(rentN?" ("+rentN+")":"")]);
+    items.push(["sheets","📗 גיליון חופשי"]);
+  }
   if(can("edit")) items.push(["bankmatch","🏦 התאמת בנק"]);
   if(can("edit")){
     var openRec=openRecurExpenses().length;
@@ -1981,8 +1985,8 @@ function renderViewInner(){
     case "settings": if(!can("settings")){ toast("אין לך גישה להגדרות","err"); go("dashboard",{}); return; } c.innerHTML=viewSettings(); break;
     case "bankmatch": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewBankMatch(); break;
     case "recurring": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewRecurring(); break;
-    case "rentals": c.innerHTML=viewRentals(); break;
-    case "sheets": c.innerHTML=viewSheets(); break;
+    case "rentals": if(!CU||CU.role!=="admin"){ go("dashboard",{}); return; } c.innerHTML=viewRentals(); break;
+    case "sheets": if(!CU||CU.role!=="admin"){ go("dashboard",{}); return; } c.innerHTML=viewSheets(); break;
     case "import": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewImport(); break;
     case "recycle": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewRecycle(); break;
     default: c.innerHTML=viewDashboard();
@@ -2448,7 +2452,7 @@ function renderApartment(c){
   tabs.push(["income","הכנסות"]);
   /* השכרות לטווח ארוך מנוהלות כאן, בתוך הפרוייקט — שם ממילא עובדים
      על הדירות. הלשונית הראשית נשארה לצפייה מרוכזת בכל הפרויקטים. */
-  if(can("edit") || aptRentals(a.id).length) tabs.push(["rentals","שכירויות"]);
+  if(CU && CU.role==="admin") tabs.push(["rentals","שכירויות"]);
   tabs.push(["reports","דוחות"]);
   var h='<div class="toolbar"><h2 style="margin:0">🏢 '+esc(a.name)+'</h2>'+
     (can("edit")?'<button class="btn btn-sm" onclick="editApartment(\''+a.id+'\')">✏️ עריכת פרוייקט</button>':'')+
@@ -2466,7 +2470,7 @@ function renderApartment(c){
     case "managers": body.innerHTML=viewManagers(a.id); break;
     case "bank": body.innerHTML=viewBank(a.id); break;
     case "income": body.innerHTML=viewIncome(a.id); break;
-    case "rentals": body.innerHTML=viewAptRentals(a.id); break;
+    case "rentals": body.innerHTML=(CU&&CU.role==="admin")?viewAptRentals(a.id):'<div class="empty">אין הרשאה</div>'; break;
     case "reports": body.innerHTML=viewApartmentReports(a.id); break;
   }
 }
@@ -9796,6 +9800,7 @@ function rentalCoversMonth(r,ym){
 }
 /* ההתראה קופצת גם במסך הראשי — לא רק בלשונית שצריך להיכנס אליה */
 function rentalAlertBanner(){
+  if(!CU || CU.role!=="admin") return "";
   var a=rentalAlerts();
   if(!a.length) return "";
   var ended=a.filter(function(r){ return rentalStatus(r)==="ended"; }).length;
@@ -10263,7 +10268,8 @@ function makeRentalIncome(r,ym){
 }
 /* יצירה אוטומטית בטעינה. מחזיר כמה שורות נוצרו. */
 function runRentalIncome(silent){
-  if(!DB || !Array.isArray(DB.rentals) || !can("edit")) return 0;
+  if(!CU || CU.role!=="admin") return 0;
+  if(!DB || !Array.isArray(DB.rentals)) return 0;
   var made=0;
   activeRentals().forEach(function(r){
     rentalMissingMonths(r).forEach(function(ym){ makeRentalIncome(r,ym); made++; });

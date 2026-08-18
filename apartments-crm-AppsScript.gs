@@ -638,6 +638,8 @@ function scopeDataForUser(data, user) {
     return d;
   }
   d.users = [];
+  /* פיצ'רים של מנהלים בלבד — הנתונים לא נשלחים לדפדפן של אחרים */
+  d.rentals = []; d.sheets = [];
   var aptSet = aptSetFor(d, ctx), expSet = expSetFor(d, ctx, aptSet);
   SCOPED_TABLES.forEach(function (T) {
     d[T] = (d[T] || []).filter(function (r) { return rowVisible(T, r, ctx, aptSet, expSet); });
@@ -697,6 +699,9 @@ function mergeSaveForUser(stored, incoming, user) {
   var result = JSON.parse(JSON.stringify(incoming));
   result.users = stored.users || [];
   result.settings = stored.settings || result.settings;
+  /* טבלאות שמוסתרות ממי שאינו מנהל — נשמרות מהמאגר, לא ממה שנשלח */
+  result.rentals = stored.rentals || [];
+  result.sheets  = stored.sheets  || [];
   /* השרת שולח למשתמש מוגבל רק חלק מהשותפים — כדי לא לאבד את השאר
      בשמירה, ממזגים לפי id: מתחילים מהמאגר המלא השמור, ומעדכנים/מוסיפים
      את מה שהמשתמש שלח (עריכות ושותפים חדשים גוברים). */
