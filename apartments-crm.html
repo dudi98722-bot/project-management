@@ -3088,7 +3088,8 @@ function resolveConflictAndResave(){
     rerender();
     toast(merged.conflicts
       ? "מוזגו שינויים משני משתמשים · "+merged.conflicts+" התנגשויות הוכרעו לפי השרת (העותק שלך בגיבוי)"
-      : "מוזגו שינויים משני משתמשים — שום דבר לא אבד","warn");
+      : "נשמר · שולבו גם שינויים ממשתמש אחר",
+      merged.conflicts?"warn":"ok");
   }).catch(function(){
     /* חריגה במיזוג עצמו — לא משאירים את התור תקוע */
     SAVEQ.dirty=true; SAVEQ.fails++; scheduleRetry();
@@ -3106,7 +3107,12 @@ function serverSave(){
   SAVEQ.fails=0;                       // עריכה חדשה מאפסת את מונה הכישלונות — ניסיון מיידי
   setSync("saving");
   if(SAVEQ.timer) return;
-  SAVEQ.timer=setTimeout(function(){ SAVEQ.timer=null; flushSave(); },350);
+  /* 350ms שלחו כל הקלדה בנפרד לשרת. כששני אנשים עובדים במקביל כמעט
+     כל שמירה נחתה על גרסה חדשה יותר וייצרה מיזוג — ומכאן ההודעה
+     "מוזגו שינויים" שקפצה שוב ושוב. איגוד לשתיים וחצי שניות מצמצם
+     את זה בסדר גודל. השמירה המקומית ממילא מיידית, ויציאה מהדף
+     דוחפת מיד (pagehide), כך שאין סיכון לאיבוד. */
+  SAVEQ.timer=setTimeout(function(){ SAVEQ.timer=null; flushSave(); },2500);
 }
 function scheduleRetry(){
   /* לעולם לא מפסיקים לנסות — רק מאטים (עד 30 שניות בין ניסיונות).
@@ -4242,7 +4248,7 @@ function modulePartners(aptId){
     h+='<tr><td>'+esc(partnerName(r.partnerId))+'</td><td>'+num(r.defaultPercent)+'%</td>'+
       (anyWd?'<td>'+(wd?money(wd):'<span class="muted">—</span>')+'</td>':'')+
       '<td class="right">'+
-      (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editApPartner(\''+r.id+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="softDelete(\'apartmentPartners\',\''+r.id+'\',\'להסיר שותף זה מהפרוייקט?\')">🗑️</button>':'')+'</td></tr>';
+      (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editApPartner(\''+r.id+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="removeApPartner(\''+r.id+'\')">🗑️</button>':'')+'</td></tr>';
   });
   h+='</tbody><tfoot><tr><td>סה"כ</td><td class="'+(Math.abs(sum-100)<0.01?"pos":"neg")+'">'+num(sum)+'%</td>'+
     (anyWd?'<td>'+money(apWithdrawals(aptId).reduce(function(s,w){return s+(Number(w.amount)||0);},0))+'</td>':'')+
@@ -4273,6 +4279,20 @@ function addApartmentPartner(aptId){
       DB.apartmentPartners.push({id:uid(),apartmentId:aptId,partnerId:pid,defaultPercent:addPct,deleted:false});
       save(); toast("נוסף","ok"); rerender();
     }});
+}
+/* הסרת שותף מפרוייקט משאירה את היתר בסכום שאינו 100% — ומשם החלוקה
+   השגויה זולגת לכל שלב חדש. לכן נדרשת קודם התאמה של הנותרים. */
+function removeApPartner(id){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var r=byId(DB.apartmentPartners,id); if(!r) return;
+  var rest=apPartners(r.apartmentId).filter(function(x){ return x.id!==id; });
+  var restSum=rest.reduce(function(a,x){ return a+(Number(x.defaultPercent)||0); },0);
+  if(rest.length && Math.abs(restSum-100)>0.01){
+    toast("אחרי ההסרה יישארו "+num(restSum)+"% — עדכן קודם את אחוזי השותפים הנותרים כך שיסתכמו ל-100%","err");
+    return;
+  }
+  if(!confirm("להסיר את "+partnerName(r.partnerId)+" מהפרוייקט?")) return;
+  r.deleted=true; save(); toast("הוסר","ok"); rerender();
 }
 function editApPartner(id){
   var r=byId(DB.apartmentPartners,id);
