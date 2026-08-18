@@ -254,6 +254,22 @@ td.empty{text-align:center;color:var(--muted);padding:22px}
 .modal{background:#fff;border-radius:18px;width:100%;max-width:560px;
   box-shadow:0 24px 70px rgba(2,6,23,.45);animation:pop .18s cubic-bezier(.2,.9,.3,1.2)}
 .modal.wide{max-width:920px}
+@media(min-width:1000px){ .modal.wide{max-width:min(1180px,94vw)} }
+/* ===== מודאל צפוף — טבלה שנכנסת למסך בלי גלילה הצידה =====
+   טבלאות המועמדים נדחסו לרוחב של 920px וכל עמודה קיבלה מינימום רחב,
+   מה שחייב גלילה אופקית. כאן: גופן קטן, ריפוד מצומצם, שבירת שורות
+   מותרת, ותקרת רוחב לעמודות הטקסט הארוכות. */
+.modal .tbl-tight table.tbl{font-size:11.5px;table-layout:fixed;width:100%}
+.modal .tbl-tight table.tbl th,
+.modal .tbl-tight table.tbl td{padding:3px 5px;white-space:normal;word-break:break-word;line-height:1.25}
+.modal .tbl-tight table.tbl thead th{font-size:10.5px;letter-spacing:0}
+.modal .tbl-tight table.tbl td.num,
+.modal .tbl-tight table.tbl th.num{white-space:nowrap;width:78px}
+.modal .tbl-tight table.tbl td.dt,
+.modal .tbl-tight table.tbl th.dt{white-space:nowrap;width:72px}
+.modal .tbl-tight table.tbl .btn-sm{padding:2px 5px;font-size:10.5px}
+.modal .tbl-tight .table-wrap{overflow-x:hidden}
+.modal .tbl-tight table.tbl tbody td:first-child{min-width:0}
 @keyframes pop{from{transform:translateY(14px) scale(.97);opacity:0}to{transform:none;opacity:1}}
 .modal-header{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;
   justify-content:space-between;background:linear-gradient(180deg,#fafbff,#fff);border-radius:18px 18px 0 0}
@@ -846,6 +862,7 @@ function save(){
     LAST_JSON=JSON.stringify(DB);
     vaultPut(LSKEY, LAST_JSON);
   }catch(e){ toast("שגיאת שמירה מקומית","err"); }
+  incMapClear();  // מפת ההכנסות נבנית מחדש ברינדור הבא
   markDirty();
   serverSave();   // כל שינוי נשמר גם בגוגל שיטס
 }
@@ -986,6 +1003,7 @@ function normalizeDB(d){
   (d.rentals||[]).forEach(function(r){
     r.rent=toNum(r.rent); r.startDate=toISO(r.startDate); r.endDate=toISO(r.endDate);
     r.dueDay=Math.min(Math.max(Number(r.dueDay)||1,1),28);
+    if(!RENT_EVERY_M[r.every]) r.every="month";
     r.history=r.history||[];
     r.history.forEach(function(h){ h.rent=toNum(h.rent); h.startDate=toISO(h.startDate); h.endDate=toISO(h.endDate); });
   });
@@ -1645,6 +1663,65 @@ function bankBalance(aptId,bankId){
 /* רשימת הבנקים להתאמה — מוגדרת על ידי המשתמש, גלובלית: בנק אחד יכול
    לשרת כמה פרוייקטים, ואין לו קשר ל"בנק זמני" של אף פרוייקט. */
 function stmtBanks(){ return active(DB.stmtBanks||[]); }
+/* כמה תנועות משויכות לכל בנק — כדי לדעת מה מאבדים באיחוד */
+function stmtBankUse(id){
+  return active(DB.bankMoves).filter(function(m){ return m.stmtBankId===id; }).length;
+}
+/* שם מנורמל לזיהוי וריאציות: "יהב -012" ו-"יהב 012" הם אותו בנק.
+   מסירים מקפים, נקודות ורווחים כפולים. */
+function bankKeyNorm(n){
+  return String(n||"").replace(/[\-–—_.]/g," ").replace(/\s+/g," ").trim().toLowerCase();
+}
+function openMergeStmtBanks(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var banks=stmtBanks().slice().sort(function(a,b){
+    return stmtBankUse(b.id)-stmtBankUse(a.id) || String(a.name).localeCompare(String(b.name),"he"); });
+  if(banks.length<2){ toast("יש רק בנק אחד","warn"); return; }
+  /* הצעה אוטומטית: בנקים ששמם המנורמל זהה מסומנים מראש יחד */
+  var groups={};
+  banks.forEach(function(b){ (groups[bankKeyNorm(b.name)]=groups[bankKeyNorm(b.name)]||[]).push(b); });
+  var dupN=Object.keys(groups).filter(function(k){ return groups[k].length>1; }).length;
+  openModal({title:"🔀 איחוד בנקים",wide:true,bodyHtml:
+    '<div class="hint" style="margin-bottom:10px">סמן את הבנקים שהם בעצם אותו בנק, ובחר לאיזה שם לאחד. '+
+    'כל התנועות עוברות לבנק שנבחר, והשאר עוברים לסל המחזור. שום תנועה לא נמחקת.'+
+    (dupN?' <b>נמצאו '+dupN+' שמות שנראים כאותו בנק</b> — הם מסומנים מראש.':'')+'</div>'+
+    '<div class="field"><label>לאחד לתוך</label><select id="mb-target">'+
+      banks.map(function(b){ return '<option value="'+b.id+'">'+esc(b.name)+' ('+stmtBankUse(b.id)+' תנועות)</option>'; }).join("")+
+    '</select></div>'+
+    '<div class="section-title">מה לאחד</div>'+
+    '<div class="table-wrap" style="max-height:300px"><table class="tbl"><thead><tr>'+
+    '<th class="chk" style="width:30px"></th><th>בנק</th><th>תנועות</th></tr></thead><tbody>'+
+    banks.map(function(b){
+      var dup=groups[bankKeyNorm(b.name)].length>1;
+      return '<tr'+(dup?' style="background:#fff7ed"':'')+'>'+
+        '<td class="chk"><input type="checkbox" class="mb-x" value="'+b.id+'" style="width:auto"'+(dup?" checked":"")+'></td>'+
+        '<td>'+esc(b.name)+(dup?' <span class="badge badge-warn badge-unit">נראה כפול</span>':'')+'</td>'+
+        '<td>'+stmtBankUse(b.id)+'</td></tr>';
+    }).join("")+
+    '</tbody></table></div>',
+    saveLabel:"אחד",onSave:function(){ return applyMergeStmtBanks(); }});
+}
+function applyMergeStmtBanks(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return false; }
+  var toId=val("mb-target");
+  var target=byId(DB.stmtBanks,toId);
+  if(!target){ toast("בחר בנק יעד","err"); return false; }
+  var ids=[];
+  document.querySelectorAll(".mb-x:checked").forEach(function(c){
+    if(c.value!==toId) ids.push(c.value);
+  });
+  if(!ids.length){ toast("סמן לפחות בנק אחד לאיחוד (מלבד בנק היעד)","warn"); return false; }
+  var moved=0;
+  ids.forEach(function(id){
+    active(DB.bankMoves).forEach(function(m){ if(m.stmtBankId===id){ m.stmtBankId=toId; moved++; } });
+    var b=byId(DB.stmtBanks,id); if(b) b.deleted=true;
+  });
+  if(BQ && ids.indexOf(BQ.bank)>=0) BQ.bank=toId;   /* הסינון הצביע לבנק שאוחד */
+  save();
+  toast("אוחדו "+ids.length+" בנקים ל\""+target.name+"\" · הועברו "+moved+" תנועות","ok");
+  rerender();
+  return true;
+}
 function stmtBankName(id){ var b=id?byId(DB.stmtBanks,id):null; return b?b.name:""; }
 function addStmtBank(name){
   name=String(name||"").trim(); if(!name) return null;
@@ -1674,6 +1751,31 @@ function moveDocCell(m){
   return b;
 }
 function allBankMoves(){ return active(DB.bankMoves); }
+/* ============================================================
+   ביצועים במסך התאמת בנק
+   ------------------------------------------------------------
+   עם 1500+ שורות המסך נתקע משלוש סיבות:
+   1. כל תו בחיפוש הריץ רינדור מלא של האפליקציה.
+   2. כל שורה חיפשה את ההכנסה שהותאמה לה בסריקה לינארית על כל
+      ההכנסות — אלפי סריקות בכל רינדור.
+   3. כל 1500 השורות נבנו ל-DOM בבת אחת.
+   ============================================================ */
+var BM_SEARCH_T=null;
+function bmSearchLater(v){
+  BQ.q=v;
+  if(BM_SEARCH_T) clearTimeout(BM_SEARCH_T);
+  BM_SEARCH_T=setTimeout(function(){ BM_SEARCH_T=null; BQ.page=1; rerender(); },300);
+}
+var BM_PAGE_SIZE=150;
+var _INCMAP=null;
+function incMapGet(id){
+  if(!_INCMAP){
+    _INCMAP={};
+    (DB.income||[]).forEach(function(i){ if(i&&i.id!=null) _INCMAP[i.id]=i; });
+  }
+  return _INCMAP[id]||null;
+}
+function incMapClear(){ _INCMAP=null; }
 function moveMatches(m){ return (m&&m.matches||[]).filter(function(x){ return !x.deleted; }); }
 function moveAllocated(m){ return round2(moveMatches(m).reduce(function(s,x){ return s+(Number(x.amount)||0); },0)); }
 function moveRemaining(m){ return round2((Number(m.amount)||0)-moveAllocated(m)); }
@@ -7413,7 +7515,7 @@ function delIncomePay(incId,payId,aptId,back){
 /* ============================================================
    מסך התאמת בנק
    ============================================================ */
-var BQ={bank:"",apt:"",status:"open",q:""};
+var BQ={bank:"",apt:"",status:"open",q:"",page:1};
 function viewBankMatch(){
   var banks=stmtBanks();
   var all=allBankMoves().filter(function(m){ return canSeeApartment(moveAptId(m))||!moveAptId(m); });
@@ -7470,21 +7572,22 @@ function viewBankMatch(){
   h+='<div class="toolbar">'+
     (can("edit")?'<button class="btn btn-primary btn-sm" onclick="openBankMoveImport()">📥 הדבקת שורות מהבנק</button> '+
       '<button class="btn btn-sm" onclick="editBankMove(null)">➕ תנועה ידנית</button> '+
+      (stmtBanks().length>1?'<button class="btn btn-sm" onclick="openMergeStmtBanks()">🔀 איחוד בנקים</button> ':'')+
       (all.length?'<button class="btn btn-sm" onclick="openBulkBankMoveEdit()">✏️ עדכון מרוכז <span id="bm-count"></span></button> ':'')+
       (openMoves.length?'<button class="btn btn-sm" onclick="runAutoMatch()">⚡ התאמה אוטומטית</button> ':'')+
       (all.length?'<button class="btn btn-danger btn-sm" onclick="clearMatchedMoves()">🗑️ נקה מותאמות</button> ':''):'')+
     '<div class="sp"></div></div>';
   h+='<div class="toolbar">'+
-    searchBox("bm-q",BQ.q,"חיפוש בתיאור / אסמכתא…","BQ.q=this.value;rerender()")+
-    '<select style="max-width:200px" onchange="BQ.bank=this.value;rerender()">'+
+    searchBox("bm-q",BQ.q,"חיפוש בתיאור / אסמכתא…","bmSearchLater(this.value)")+
+    '<select style="max-width:200px" onchange="BQ.bank=this.value;BQ.page=1;rerender()">'+
       '<option value="">כל הבנקים</option>'+
       banks.map(function(b){ return '<option value="'+b.id+'"'+(BQ.bank===b.id?" selected":"")+'>🏦 '+esc(b.name)+'</option>'; }).join("")+
     '</select>'+
-    '<select style="max-width:180px" onchange="BQ.apt=this.value;rerender()">'+
+    '<select style="max-width:180px" onchange="BQ.apt=this.value;BQ.page=1;rerender()">'+
       '<option value="">כל הפרוייקטים</option>'+
       apts.map(function(a){ return '<option value="'+a.id+'"'+(BQ.apt===a.id?" selected":"")+'>'+esc(a.name)+'</option>'; }).join("")+
     '</select>'+
-    '<select style="max-width:160px" onchange="BQ.status=this.value;rerender()">'+
+    '<select style="max-width:160px" onchange="BQ.status=this.value;BQ.page=1;rerender()">'+
       [["open","לא מותאמות"],["matched","מותאמות"],["ignored","שהתעלמתי מהן"],["all","הכל"]].map(function(o){
         return '<option value="'+o[0]+'"'+(BQ.status===o[0]?" selected":"")+'>'+o[1]+'</option>'; }).join("")+
     '</select>'+
@@ -7497,7 +7600,12 @@ function viewBankMatch(){
     '<th>סטטוס</th><th>הותאם ל…</th><th></th>'+
     '</tr></thead><tbody>';
   if(!list.length) h+='<tr><td colspan="'+(selBm?12:11)+'" class="empty">'+(all.length?"אין שורות שמתאימות לסינון":"עוד לא הודבקו שורות מהבנק")+'</td></tr>';
-  list.slice().sort(function(x,y){ return x.date<y.date?1:-1; }).forEach(function(m){
+  /* מציגים מנה אחת בכל פעם. הסיכומים והסינון עדיין על כל השורות —
+     רק הבנייה ל-DOM מוגבלת, וזה מה שתקע את המסך. */
+  var sorted=list.slice().sort(function(x,y){ return x.date<y.date?1:-1; });
+  var page=Math.max(1,Number(BQ.page)||1);
+  var shownN=Math.min(sorted.length, page*BM_PAGE_SIZE);
+  sorted.slice(0,shownN).forEach(function(m){
     var mm=moveMatches(m);
     /* שורות ותיקות נקלטו עם "תיאור" אחד — הוא משמש כשם אם אין שם */
     var nm=m.name||m.description||"";
@@ -7514,7 +7622,7 @@ function viewBankMatch(){
       '<td>'+moveDocCell(m)+'</td>'+
       '<td>'+moveStatusHtml(m)+'</td>'+
       '<td class="muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis">'+
-        (mm.length?esc(mm.map(function(x){ var i=byId(DB.income,x.incomeId); return (i?i.description:"—")+" ("+money(x.amount)+")"; }).join(" · ")):"—")+'</td>'+
+        (mm.length?esc(mm.map(function(x){ var i=incMapGet(x.incomeId); return (i?i.description:"—")+" ("+money(x.amount)+")"; }).join(" · ")):"—")+'</td>'+
       '<td class="right" style="white-space:nowrap">'+
         (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="openMoveMatch(\''+m.id+'\')" title="התאמה">🔗</button>'+
         '<button class="btn btn-ghost btn-sm" onclick="editBankMove(\''+m.id+'\')" title="עריכת השורה">✏️</button>'+
@@ -7523,6 +7631,13 @@ function viewBankMatch(){
         '<button class="btn btn-ghost btn-sm" onclick="delBankMove(\''+m.id+'\')">🗑️</button>':'')+'</td></tr>';
   });
   h+='</tbody></table></div>';
+  if(sorted.length>shownN){
+    h+='<div class="toolbar" style="justify-content:center;margin-top:10px">'+
+      '<span class="muted">מוצגות '+shownN+' מתוך '+sorted.length+' שורות</span>'+
+      '<button class="btn btn-sm" onclick="BQ.page=(Number(BQ.page)||1)+1;rerender()">הצג עוד '+BM_PAGE_SIZE+'</button>'+
+      '<button class="btn btn-ghost btn-sm" onclick="BQ.page=999;rerender()">הצג הכל</button></div>';
+  }
+
   return h;
 }
 function apartmentName(id){ var a=byId(DB.apartments,id); return a?a.name:"—"; }
@@ -7606,6 +7721,8 @@ function setMoveBank(id,bankId){
   m.stmtBankId=bankId; m.accountId="";
   save(); toast("השורה שויכה ל"+stmtBankName(bankId),"ok"); rerender();
 }
+/* עוטף את טבלת המועמדים במצב הצפוף */
+function tightWrap(html){ return '<div class="tbl-tight">'+html+'</div>'; }
 function renderMoveCandidates(id){
   var box=document.getElementById("mv-cands"); if(!box) return;
   var m=byId(DB.bankMoves,id); if(!m) return;
@@ -7637,7 +7754,7 @@ function renderMoveCandidates(id){
     return;
   }
   h+='<div class="section-title">הזמנות עם חוב פתוח <span class="hint">(ממוינות לפי התאמה · נותר להתאמה '+money(rem)+')</span></div>'+
-    '<div class="table-wrap"><table class="tbl"><thead><tr><th>הזמנה</th>'+(aptId?'':'<th>פרוייקט</th>')+'<th>תאריך</th><th>מחיר</th><th>חוב</th><th>למה מוצע</th><th>סכום להתאמה</th><th></th></tr></thead><tbody>';
+    '<div class="tbl-tight"><div class="table-wrap"><table class="tbl"><thead><tr><th>הזמנה</th>'+(aptId?'':'<th>פרוייקט</th>')+'<th class="dt">תאריך</th><th class="num">מחיר</th><th class="num">חוב</th><th>למה מוצע</th><th class="num">להתאמה</th><th></th></tr></thead><tbody>';
   cands.slice(0,20).forEach(function(c){
     var suggest=round2(Math.min(rem,c.debt));
     h+='<tr'+(c.score>=100?' style="background:#f0fdf4"':'')+'>'+
@@ -7649,7 +7766,7 @@ function renderMoveCandidates(id){
       '<td><input type="number" step="0.01" class="mv-amt" data-i="'+c.inc.id+'" value="'+suggest+'" style="max-width:110px"></td>'+
       '<td class="right">'+(can("edit")?'<button class="btn btn-primary btn-sm" onclick="doMoveMatch(\''+id+'\',\''+c.inc.id+'\')">התאם</button>':'')+'</td></tr>';
   });
-  h+='</tbody></table></div>';
+  h+='</tbody></table></div></div>';
   if(cands.length>20) h+='<div class="hint">מוצגות 20 ההזמנות המתאימות ביותר מתוך '+cands.length+'.</div>';
   box.innerHTML=h+newBtn;
 }
@@ -10362,14 +10479,31 @@ function dueDateIn(ym,day){
 /* החודשים שחוזה אמור לייצר — מהמאוחר שבין תחילת החוזה לבין "לייצר
    החל מ", ועד המוקדם שבין סוף החוזה לחודש הנוכחי. חודשים עתידיים לא
    נוצרים מראש: הם היו מציגים חוב שטרם נולד. */
+/* תדירות החיוב. r.rent הוא הסכום לכל חיוב — לא בהכרח חודשי — ולכן
+   הדשבורד מנרמל אותו לערך חודשי כדי שהסיכומים יישארו בני-השוואה. */
+var RENT_EVERY={month:"חודשי",quarter:"רבעוני",half:"חצי-שנתי",year:"שנתי"};
+var RENT_EVERY_M={month:1,quarter:3,half:6,year:12};
+function rentEvery(r){ return RENT_EVERY_M[r&&r.every] ? r.every : "month"; }
+function rentStepM(r){ return RENT_EVERY_M[rentEvery(r)]; }
+function rentMonthly(r){ return (Number(r&&r.rent)||0)/rentStepM(r); }
+function rentPeriodLabel(r,ym){
+  var st=rentStepM(r);
+  if(st===1) return ymLabel(ym);
+  var last=ymAdd(ym,st-1);
+  return ymLabel(ym)+"–"+ymLabel(last);
+}
 function rentalDueMonths(r){
   if(!r || !r.autoIncome || !r.startDate) return [];
   var from=r.genFrom && r.genFrom>ymOf(r.startDate) ? r.genFrom : ymOf(r.startDate);
   var today=ymOf(todayISO());
   var to=r.endDate && ymOf(r.endDate)<today ? ymOf(r.endDate) : today;
   if(from>to) return [];
+  /* הצעד הוא לפי התדירות: חיוב שנתי מייצר שורה אחת לכל 12 חודשים,
+     והמפתח נשאר חודש ההתחלה של התקופה — כך שגם אחרי שינוי תדירות
+     לא נוצרות כפילויות על תקופה שכבר חויבה. */
+  var step=rentStepM(r);
   var out=[], cur=from, guard=0;
-  while(cur<=to && guard<600){ out.push(cur); cur=ymAdd(cur,1); guard++; }
+  while(cur<=to && guard<600){ out.push(cur); cur=ymAdd(cur,step); guard++; }
   return out;
 }
 /* שורות ההכנסה שנוצרו מחוזה מסוים */
@@ -10386,7 +10520,7 @@ function rentalMissingMonths(r){
 function makeRentalIncome(r,ym){
   var a=byId(DB.apartments,r.apartmentId);
   var row={id:uid(),apartmentId:r.apartmentId,
-    description:"שכר דירה — "+r.name+" — "+ymLabel(ym)+(r.tenant?" · "+r.tenant:""),
+    description:"שכר דירה — "+r.name+" — "+rentPeriodLabel(r,ym)+(r.tenant?" · "+r.tenant:""),
     amount:round2(Number(r.rent)||0), date:dueDateIn(ym,r.dueDay),
     receivedBy:"", split:null, units:null, startDate:"", endDate:"",
     note:"", excluded:false, awaitsPayment:true,
@@ -10439,7 +10573,7 @@ function viewAptRentals(aptId){
     'פרוייקט השכרת נופש לא צריך את זה — שם ההכנסות נרשמות כהזמנות.</div>';
 
   var occ=rs.filter(rentalOccupied).length;
-  var rentSum=round2(rs.filter(rentalOccupied).reduce(function(s,r){ return s+(Number(r.rent)||0); },0));
+  var rentSum=round2(rs.filter(rentalOccupied).reduce(function(s,r){ return s+rentMonthly(r); },0));
   var debt=round2(rs.reduce(function(s,r){ return s+(r.autoIncome?rentalIncomeStats(r).debt:0); },0));
   h+='<div class="stat-grid" style="margin-bottom:12px">'+
     stat("דירות",rs.length)+stat("מושכרות",occ)+
@@ -10463,7 +10597,7 @@ function viewAptRentals(aptId){
       '<td>'+(r.endDate?dateHe(r.endDate):'<span class="muted">—</span>')+'</td>'+
       '<td>'+(d===null?'<span class="muted">—</span>':(d<0?'<span class="neg">עברו '+Math.abs(d)+'</span>':d))+'</td>'+
       '<td>'+(r.rent?money(r.rent):'<span class="muted">—</span>')+
-        (r.autoIncome?' <span class="badge badge-mgmt badge-unit" title="נוצרת שורת הכנסה בכל חודש">🔁</span>':'')+'</td>'+
+        (r.autoIncome?' <span class="badge badge-mgmt badge-unit" title="חיוב '+esc(RENT_EVERY[rentEvery(r)])+' אוטומטי">🔁 '+esc(RENT_EVERY[rentEvery(r)])+'</span>':'')+'</td>'+
       '<td>'+rentalCollectionCell(r)+'</td>'+
       '<td>'+rentalStatusBadge(r)+'</td>'+
       noteCell(r.note)+
@@ -10495,7 +10629,7 @@ function viewRentals(){
   var alerts=rentalAlerts();
   var occ=all.filter(rentalOccupied).length;
   var freeN=all.filter(function(r){ return rentalStatus(r)==="free"; }).length;
-  var rentSum=round2(all.filter(rentalOccupied).reduce(function(s,r){ return s+(Number(r.rent)||0); },0));
+  var rentSum=round2(all.filter(rentalOccupied).reduce(function(s,r){ return s+rentMonthly(r); },0));
 
   var h='<h2>🔑 שכירויות — תצוגה מרוכזת</h2>'+
     '<p class="muted">מתי מסתיים החוזה בכל דירה, בכל הפרויקטים יחד. '+
@@ -10565,7 +10699,7 @@ function viewRentals(){
     var o=rs.filter(rentalOccupied).length;
     var f=rs.filter(function(r){ return rentalStatus(r)==="free"; }).length;
     var en=rs.filter(function(r){ return rentalStatus(r)==="ending"||rentalStatus(r)==="ended"; }).length;
-    var sum=round2(rs.filter(rentalOccupied).reduce(function(s,r){ return s+(Number(r.rent)||0); },0));
+    var sum=round2(rs.filter(rentalOccupied).reduce(function(s,r){ return s+rentMonthly(r); },0));
     var pct=rs.length?Math.round(o/rs.length*100):0;
     h+='<tr><td><b>'+esc(a.name)+'</b></td><td>'+rs.length+'</td>'+
       '<td class="pos">'+o+'</td><td>'+(f||'<span class="muted">—</span>')+'</td>'+
@@ -10610,7 +10744,7 @@ function viewRentals(){
       '<td>'+(r.phone?'<a href="tel:'+esc(r.phone)+'">'+esc(r.phone)+'</a>':'<span class="muted">—</span>')+'</td>'+
       '<td>'+(r.startDate?dateHe(r.startDate):'<span class="muted">—</span>')+'</td>'+
       '<td>'+(r.rent?money(r.rent):'<span class="muted">—</span>')+
-        (r.autoIncome?' <span class="badge badge-mgmt badge-unit" title="נוצרת שורת הכנסה בכל חודש">🔁</span>':'')+'</td>'+
+        (r.autoIncome?' <span class="badge badge-mgmt badge-unit" title="חיוב '+esc(RENT_EVERY[rentEvery(r)])+' אוטומטי">🔁 '+esc(RENT_EVERY[rentEvery(r)])+'</span>':'')+'</td>'+
       '<td>'+rentalCollectionCell(r)+'</td>'+
       '<td>'+rentalStatusBadge(r)+'</td>'+
       noteCell(r.note)+
@@ -10715,7 +10849,8 @@ function editRental(id){
       '<div class="field"><label>תחילת החוזה</label><input id="rn-start" type="date" value="'+esc(r.startDate||"")+'" oninput="rnPreview()"></div>'+
       '<div class="field"><label>סיום החוזה</label><input id="rn-end" type="date" value="'+esc(r.endDate||"")+'" oninput="rnPreview()">'+
         '<div class="hint">ריק = חוזה פתוח (בלי התראה)</div></div>'+
-      '<div class="field"><label>שכר דירה חודשי (₪)</label><input id="rn-rent" type="number" step="0.01" value="'+esc(String(r.rent||""))+'" oninput="rnPreview()"></div>'+
+      '<div class="field"><label>סכום לכל חיוב (₪)</label><input id="rn-rent" type="number" step="0.01" value="'+esc(String(r.rent||""))+'" oninput="rnPreview()">'+
+        '<div class="hint">בחיוב חודשי — שכר הדירה החודשי; בחיוב שנתי — הסכום השנתי</div></div>'+
       '<div class="field full"><label>הערה</label><input id="rn-note" value="'+esc(r.note||"")+'"></div>'+
     '</div>'+
     /* ---- הכנסה חודשית אוטומטית ---- */
@@ -10725,6 +10860,10 @@ function editRental(id){
       '<div class="hint">כל חודש תיווצר שורת הכנסה בסכום שכר הדירה, מסומנת <b>"ממתינה לתשלום"</b> — היא לא נספרת ככסף שנכנס עד שתרשום עליה תשלום.</div></div>'+
     '<div id="rn-auto-box" style="display:'+(r.autoIncome?"block":"none")+'">'+
       '<div class="form-grid">'+
+        '<div class="field"><label>תדירות החיוב</label><select id="rn-every" onchange="rnPreview()">'+
+          Object.keys(RENT_EVERY).map(function(k){
+            return '<option value="'+k+'"'+(rentEvery(r)===k?" selected":"")+'>'+RENT_EVERY[k]+'</option>'; }).join("")+
+        '</select><div class="hint">הסכום למעלה הוא הסכום לכל חיוב</div></div>'+
         '<div class="field"><label>יום החיוב בחודש</label><input id="rn-due" type="number" min="1" max="28" value="'+esc(String(r.dueDay||1))+'" oninput="rnPreview()"></div>'+
         /* ריק כברירת מחדל = מתחילת החוזה. מילוי מראש בחודש הנוכחי היה
            גורם לחוזה שהתחיל בעבר לאבד את כל החודשים שקדמו לו, בשקט. */
@@ -10754,6 +10893,7 @@ function editRental(id){
       var obj={apartmentId:aptId,name:nm,tenant:val("rn-tenant").trim(),phone:val("rn-phone").trim(),
         startDate:sd,endDate:ed,rent:newRent,note:val("rn-note"),
         autoIncome:auto,
+        every:auto?(RENT_EVERY[val("rn-every")]?val("rn-every"):"month"):(r.every||"month"),
         dueDay:auto?Math.min(Math.max(Number(val("rn-due"))||1,1),28):(r.dueDay||1),
         genFrom:auto?(val("rn-from")||""):(r.genFrom||"")};
       if(id){
@@ -10785,11 +10925,12 @@ function rnPreview(){
   if(!sd){ box.innerHTML='<span class="neg">חסר תאריך תחילת חוזה</span>'; return; }
   if(rent<=0){ box.innerHTML='<span class="neg">חסר סכום שכר דירה</span>'; return; }
   var fake={autoIncome:true,startDate:sd,endDate:ed,rent:rent,
+    every:val("rn-every")||"month",
     genFrom:val("rn-from")||"",dueDay:Number(val("rn-due"))||1};
   var months=rentalDueMonths(fake);
-  if(!months.length){ box.innerHTML='<span class="muted">אין חודשים לייצר בטווח הזה</span>'; return; }
-  box.innerHTML='ייווצרו <b>'+months.length+'</b> שורות · '+
-    ymLabel(months[0])+' עד '+ymLabel(months[months.length-1])+
+  if(!months.length){ box.innerHTML='<span class="muted">אין תקופות לייצר בטווח הזה</span>'; return; }
+  box.innerHTML='חיוב <b>'+RENT_EVERY[rentEvery(fake)]+'</b> · ייווצרו <b>'+months.length+'</b> שורות · '+
+    rentPeriodLabel(fake,months[0])+' עד '+rentPeriodLabel(fake,months[months.length-1])+
     ' · סה"כ <b>'+money(round2(months.length*rent))+'</b>'+
     (months.length>18?' <span class="neg">— בדוק שזה מה שהתכוונת</span>':'');
 }
