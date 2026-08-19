@@ -2086,7 +2086,37 @@ function softDelete(entity,id,msg){
    ============================================================ */
 function go(view,params){ COLFILT={}; state.view=view; state.params=params||{}; window.scrollTo(0,0); rerender(); }
 function currentApartment(){ return byId(DB.apartments, state.params.apartmentId); }
-function rerender(){ renderApp(); }
+/* ============================================================
+   רינדור מחדש בלי לאבד את מצב המסך
+   ------------------------------------------------------------
+   סימוני הבחירה בטבלאות (העמודה הראשונה) הם מצב זמני של ה-DOM.
+   כל רינדור מחדש — למשל "עודכן — נכנסו שינויים ממשתמש אחר" מהפולינג,
+   או מיזוג אחרי שמירה — בנה את הטבלה מאפס ומחק אותם, והמשתמש נאלץ
+   לסמן הכל שוב. כאן: לוכדים את המסומנים לפני, מחזירים אחרי, ומעדכנים
+   את המונה שליד כפתור העדכון המרוכז. גם מיקום הגלילה נשמר —
+   הקפיצה לראש הדף באמצע עבודה הייתה חלק מאותה תלונה.
+   (ניווט אמיתי בין מסכים עובר דרך go(), שמגלגל לראש הדף לפני
+   הרינדור — ולכן השחזור כאן משמר גם את זה נכון.) */
+var SEL_KEEP=[["bm-x","bmCount"],["eb-x","ebCount"],["ib-x","ibCount"],["pb-x","pbCount"],["gb-x","gbCount"]];
+function rerender(){
+  var kept={};
+  SEL_KEEP.forEach(function(pair){
+    var v={}, n=0;
+    document.querySelectorAll("input."+pair[0]+":checked").forEach(function(x){ v[x.value]=1; n++; });
+    if(n) kept[pair[0]]=v;
+  });
+  var sx=window.scrollX, sy=window.scrollY;
+  renderApp();
+  SEL_KEEP.forEach(function(pair){
+    var v=kept[pair[0]]; if(!v) return;
+    var n=0;
+    document.querySelectorAll("input."+pair[0]).forEach(function(x){
+      if(v[x.value]){ x.checked=true; n++; }
+    });
+    if(n && typeof window[pair[1]]==="function"){ try{ window[pair[1]](); }catch(e){} }
+  });
+  window.scrollTo(sx,sy);
+}
 
 function renderApp(){
   if(!CU){ renderLogin(); return; }
