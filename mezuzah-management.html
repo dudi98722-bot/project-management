@@ -497,6 +497,7 @@ body.locked-out .content, body.locked-out .tabs, body.locked-out header .actions
           onkeydown="if(event.key==='Enter')doLogin()">
       </div>
       <div id="login-err" style="display:none;color:#c53030;font-size:.85rem;margin-bottom:10px"></div>
+      <div id="login-loading" style="display:none;color:#2b6cb0;font-size:.85rem;margin-bottom:10px">⏳ טוען נתונים מהשרת — עוד רגע אפשר להיכנס…</div>
       <button class="btn btn-primary" style="width:100%" onclick="doLogin()">כניסה</button>
     </div>
   </div>
@@ -1692,10 +1693,17 @@ function closeAllOverlays(){
 function showLoginGate(){
   closeAllOverlays();
   document.body.classList.add('locked-out');          // מסתיר את התוכן פיזית
-  const u = document.getElementById('login-user'); if (u) u.value='';
-  const p = document.getElementById('login-pass'); if (p) p.value='';
-  document.getElementById('loginOverlay').classList.add('show');
-  if (u) setTimeout(()=>u.focus(), 50);
+  const overlay = document.getElementById('loginOverlay');
+  if (!overlay.classList.contains('show')){
+    // פתיחה ראשונה של המסך — מנקים שדות; אם כבר פתוח (למשל טעינה שהסתיימה
+    // באמצע הקלדה) לא נוגעים במה שהמשתמש הקליד
+    const u = document.getElementById('login-user'); if (u) u.value='';
+    const p = document.getElementById('login-pass'); if (p) p.value='';
+    overlay.classList.add('show');
+    if (u) setTimeout(()=>u.focus(), 50);
+  }
+  const ld = document.getElementById('login-loading');
+  if (ld) ld.style.display = (GS_URL && !pulledOnce) ? 'block' : 'none';
 }
 function unlockGate(){
   document.body.classList.remove('locked-out');
@@ -1716,6 +1724,13 @@ function checkAuth(){
 async function doLogin(){
   const name = document.getElementById('login-user').value.trim();
   const err = document.getElementById('login-err');
+  // בגלישה בסתר / מכשיר טרי: רשימת המשתמשים עוד לא נטענה מהשרת — אל תגיד "שגוי"
+  if (GS_URL && !pulledOnce){
+    err.textContent = 'הנתונים עדיין נטענים מהשרת — המתן כמה שניות ונסה שוב';
+    err.style.display = 'block';
+    document.getElementById('login-loading').style.display = 'block';
+    return;
+  }
   const u = alive(data.users).find(x=>x.name===name);
   const h = u ? await hashPass(u.name, document.getElementById('login-pass').value) : '';
   if (u && h === u.hash){
