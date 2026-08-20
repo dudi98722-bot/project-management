@@ -58,7 +58,7 @@ async function loadPatientTherapist(client, patientId, therapistId) {
 
 // ===== יצירת סדרה למטופל מרשימת ההמתנה =====
 // { patient_id, therapist_id, total_sessions, start_date, hour, notes }
-router.post('/', authenticate, can('edit'), async (req, res) => {
+router.post('/', authenticate, can('assign'), async (req, res) => {
   const b = req.body || {};
   const patientId = validId(b.patient_id), therapistId = validId(b.therapist_id);
   const total = Number(b.total_sessions);
@@ -122,7 +122,7 @@ router.post('/', authenticate, can('edit'), async (req, res) => {
 // ===== קליטה מהירה של מטופל קיים =====
 // יוצר מטופל עם שם בלבד + סדרת טיפולים, בפעולה אחת.
 // { last_name, first_name, therapist_id, total_sessions, start_date, hour, notes }
-router.post('/quick', authenticate, can('edit'), async (req, res) => {
+router.post('/quick', authenticate, can('assign'), async (req, res) => {
   const b = req.body || {};
   const last = String(b.last_name || '').trim();
   const first = String(b.first_name || '').trim();
@@ -187,7 +187,7 @@ router.post('/quick', authenticate, can('edit'), async (req, res) => {
 
 // ===== פגישה בודדת =====
 // { patient_id, therapist_id, date, hour, notes }
-router.post('/single', authenticate, can('edit'), async (req, res) => {
+router.post('/single', authenticate, can('assign'), async (req, res) => {
   const b = req.body || {};
   const patientId = validId(b.patient_id), therapistId = validId(b.therapist_id);
   const hour = Number(b.hour);
@@ -249,7 +249,7 @@ router.post('/single', authenticate, can('edit'), async (req, res) => {
 });
 
 // ביטול סדרה: פגישות עתידיות מבוטלות; אם למטופל אין סדרה פעילה אחרת — חוזר לרשימת ההמתנה
-router.put('/:id/cancel', authenticate, can('del'), async (req, res) => {
+router.put('/:id/cancel', authenticate, can('assign'), async (req, res) => {
   const id = validId(req.params.id);
   if (!id) return res.status(400).json({ error: 'מזהה לא תקין' });
   const client = await pool.connect();
@@ -279,7 +279,7 @@ router.put('/:id/cancel', authenticate, can('del'), async (req, res) => {
 });
 
 // עדכון סטטוס פגישה בודדת: scheduled / done / cancelled / no_show
-router.put('/sessions/:id', authenticate, can('edit'), async (req, res) => {
+router.put('/sessions/:id', authenticate, can('assign'), async (req, res) => {
   const status = String((req.body || {}).status || '');
   if (!['scheduled', 'done', 'cancelled', 'no_show'].includes(status)) return res.status(400).json({ error: 'סטטוס לא תקין' });
   try {

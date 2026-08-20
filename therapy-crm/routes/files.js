@@ -67,7 +67,7 @@ router.get('/patient/:id', authenticate, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-router.post('/patient/:id', authenticate, can('edit'), (req, res) => {
+router.post('/patient/:id', authenticate, can('files'), (req, res) => {
   upload.array('files', 10)(req, res, async (err) => {
     if (err) {
       if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: `הקובץ גדול מדי (מקסימום ${MAX_MB}MB)` });

@@ -8,6 +8,20 @@ const PSTATUS = { waiting: ['ממתין', 'b-amber'], assigned: ['משובץ', '
 const ASTATUS = { active: ['פעילה', 'b-green'], completed: ['הושלמה', 'b-blue'], cancelled: ['בוטלה', 'b-gray'] };
 const SSTATUS = { scheduled: ['מתוזמנת', 'b-blue'], done: ['בוצעה', 'b-green'], cancelled: ['בוטלה', 'b-gray'], no_show: ['לא הגיע', 'b-red'] };
 
+// האם המשתמש רשאי לפתוח טופס עריכת מטופל בכלל (ולו לשדה אחד)
+function canEditPatient() {
+  const c = S.me.caps;
+  return !!(c.editPatient || c.editPatientLimited || c.editClinical);
+}
+// אילו שדות פתוחים לעריכה עבורו
+function mayEdit(field) {
+  const c = S.me.caps;
+  if (c.editPatient) return true;
+  if (c.editClinical && (field === 'diagnosis' || field === 'notes2')) return true;
+  if (c.editPatientLimited && ['last_name','first_name','hours'].includes(field)) return true;
+  return false;
+}
+
 const S = {
   token: localStorage.getItem('therapy_token') || '',
   me: null,
@@ -18,6 +32,7 @@ const S = {
   colFilters: null,          // מאותחל מ-freshColFilters אחרי הגדרת העמודות
   sort: { key: '', dir: 1 },
   page: 1, pageSize: 50,
+  holdTherapist: null,
   calTherapist: null, calStart: null,
   calMode: 'week', availWeeks: 4, availPatient: '',
 };
@@ -111,6 +126,7 @@ async function loadAll() {
 const VIEWS = [
   ['waiting', 'רשימת ממתינים'],
   ['existing', 'מטופלים קיימים'],
+  ['holds', 'רשימת השהיה'],
   ['series', 'סדרות טיפול'],
   ['calendar', 'לוח שנה'],
   ['therapists', 'מטפלים'],
@@ -119,7 +135,8 @@ const VIEWS = [
 function renderNav() {
   const nav = document.getElementById('nav');
   nav.innerHTML = VIEWS
-    .filter(([k]) => k !== 'users' || S.me.caps.manageUsers)
+    .filter(([k]) => (k !== 'users' || S.me.caps.manageUsers)
+                  && (k !== 'existing' || S.me.caps.assign))
     .map(([k, label]) => `<button class="${S.view === k ? 'active' : ''}" onclick="switchView('${k}')">${label}</button>`).join('');
 }
 function switchView(v) { S.view = v; renderNav(); render(); }
@@ -128,6 +145,7 @@ function render() {
   const m = document.getElementById('main');
   if (S.view === 'waiting') renderWaiting(m);
   else if (S.view === 'existing') renderExisting(m);
+  else if (S.view === 'holds') renderHolds(m);
   else if (S.view === 'therapists') renderTherapists(m);
   else if (S.view === 'series') renderSeries(m);
   else if (S.view === 'calendar') renderCalendar(m);
@@ -146,10 +164,10 @@ function renderWaiting(m) {
 
   m.innerHTML = `
   <div class="stat-cards">
-    <div class="stat-card"><div class="num">${nWait}</div><div class="lbl">ממתינים לשיבוץ</div></div>
-    <div class="stat-card"><div class="num">${nUrgent}</div><div class="lbl">דחופים ברשימה</div></div>
-    <div class="stat-card"><div class="num">${nAssigned}</div><div class="lbl">משובצים לטיפול</div></div>
-    <div class="stat-card"><div class="num">${S.therapists.filter(t => t.active).length}</div><div class="lbl">מטפלים פעילים</div></div>
+    <div class="stat-card clickable" onclick="statFilter('waiting')"><div class="num">${nWait}</div><div class="lbl">ממתינים לשיבוץ</div></div>
+    <div class="stat-card clickable" onclick="statFilter('urgent')"><div class="num">${nUrgent}</div><div class="lbl">דחופים ברשימה</div></div>
+    <div class="stat-card clickable" onclick="statFilter('assigned')"><div class="num">${nAssigned}</div><div class="lbl">משובצים לטיפול</div></div>
+    <div class="stat-card clickable" onclick="switchView('therapists')"><div class="num">${S.therapists.filter(t => t.active).length}</div><div class="lbl">מטפלים פעילים</div></div>
   </div>
   <div class="card">
     <div class="toolbar">
@@ -164,8 +182,8 @@ function renderWaiting(m) {
       </select></div>
       <button class="btn sec" onclick="clearWaitingFilters()">נקה סינון</button>
       <div class="spacer"></div>
-      ${S.me.caps.edit ? `<button class="btn sec" onclick="openImportModal('patients')">📄 ייבוא מאקסל</button>` : ''}
-      ${S.me.caps.edit ? `<button class="btn" onclick="openPatientModal(null)">+ מטופל חדש</button>` : ''}
+      ${S.me.caps.addPatient ? `<button class="btn sec" onclick="openImportModal('patients')">📄 ייבוא מאקסל</button>` : ''}
+      ${S.me.caps.addPatient ? `<button class="btn" onclick="openPatientModal(null)">+ מטופל חדש</button>` : ''}
     </div>
     <div class="table-wrap" id="waiting-table"></div>
     <div id="waiting-pager" class="pager"></div>
@@ -206,6 +224,11 @@ const WAIT_COLS = [
   { key: 'files',     label: 'קבצים',       type: 'select', sort: p => p.files_count || 0,
     options: () => [['yes', 'יש קבצים'], ['no', 'אין']],
     match: (p, v) => v.includes(p.files_count > 0 ? 'yes' : 'no') },
+  { key: 'hold',      label: 'השהיה',       type: 'select', sort: p => (p.holds || []).length,
+    options: () => [['yes', 'בהשהיה'], ['no', 'לא']],
+    match: (p, v) => v.includes((p.holds || []).length ? 'yes' : 'no') },
+  { key: 'created_by', label: 'הוזן ע"י',     type: 'text',   sort: p => p.created_by_name || '',
+    match: (p, v) => String(p.created_by_name || '').includes(v) },
   { key: 'status',    label: 'סטטוס',       type: 'select', sort: p => p.status,
     options: () => [['waiting', 'ממתין'], ['assigned', 'משובץ'], ['done', 'הסתיים']],
     match: (p, v) => v.includes(p.status) },
@@ -279,6 +302,17 @@ function toggleMultiValue(key, value, checked) {
       !chosen.length ? 'הכל' : chosen.length === 1 ? chosen[0][1] : `${chosen.length} נבחרו`;
     box.querySelector('.ms-btn').classList.toggle('on', chosen.length > 0);
   }
+}
+
+// לחיצה על קובייה בראש המסך = קיצור לסינון
+function statFilter(kind) {
+  S.colFilters = freshColFilters();
+  S.filters.q = '';
+  if (kind === 'waiting') S.colFilters.status = ['waiting'];
+  else if (kind === 'assigned') S.colFilters.status = ['assigned'];
+  else if (kind === 'urgent') { S.colFilters.status = ['waiting']; S.colFilters.urgency = ['1']; }
+  S.page = 1;
+  renderWaiting(document.getElementById('main'));
 }
 
 function clearWaitingFilters() {
@@ -395,11 +429,13 @@ function waitingRowsHtml(rows) {
       <td><span class="badge ${uCls}">${uLbl}</span></td>
       <td style="font-size:13px">${pref}</td>
       <td>${p.files_count ? `<span class="clip" onclick="openFilesModal(${p.id})" title="${p.files_count} קבצים מצורפים">📎 ${p.files_count}</span>` : ''}</td>
+      <td>${(p.holds || []).length ? '<span class="hold-chip" title="' + esc(p.holds.map(h => h.therapist_name).join(', ')) + '">⏸ ' + p.holds.length + '</span>' : ''}</td>
+      <td class="hint">${esc(p.created_by_name || '')}</td>
       <td><span class="badge ${sCls}">${sLbl}</span></td>
       <td style="white-space:nowrap">
-        ${S.me.caps.edit && p.status === 'waiting' ? `<button class="btn sm green" onclick="openAssignModal(${p.id})">שבץ</button>` : ''}
+        ${S.me.caps.assign && p.status === 'waiting' ? `<button class="btn sm green" onclick="openAssignModal(${p.id})">שבץ</button>` : ''}
         <button class="btn sm sec" onclick="openFilesModal(${p.id})" title="קבצים מצורפים">📎</button>
-        ${S.me.caps.edit ? `<button class="btn sm sec" onclick="openPatientModal(${p.id})">עריכה</button>` : ''}
+        ${canEditPatient() ? `<button class="btn sm sec" onclick="openPatientModal(${p.id})">עריכה</button>` : ''}
         ${S.me.caps.del ? `<button class="btn sm sec" onclick="deletePatient(${p.id})">🗑</button>` : ''}
       </td>
     </tr>`;
@@ -418,53 +454,57 @@ function openPatientModal(id) {
   const hours = p ? (p.hours || ALL_HOURS) : ALL_HOURS.slice();
   showModal(`
   <h2>${p ? 'עריכת מטופל' : 'מטופל חדש'} <button class="x" onclick="closeModal()">✕</button></h2>
+  ${p && !S.me.caps.editPatient ? '<div class="hint" style="margin-bottom:10px">בהרשאה שלך ניתן לערוך: ' +
+     [mayEdit('last_name') ? 'שם' : '', mayEdit('hours') ? 'שעות מתאימות' : '',
+      mayEdit('diagnosis') ? 'אבחנה והערה מקצועית' : ''].filter(Boolean).join(' · ') + '</div>' : ''}
   <form id="patient-form">
     <div class="grid2">
-      <div class="field"><label>שם משפחה *</label><input name="last_name" value="${esc(p ? p.last_name : '')}" required></div>
-      <div class="field"><label>שם פרטי *</label><input name="first_name" value="${esc(p ? p.first_name : '')}" required></div>
-      <div class="field"><label>מספר זהות</label><input name="national_id" value="${esc(p ? p.national_id : '')}" maxlength="10"></div>
-      <div class="field"><label>תאריך אינטייק</label><input name="intake_date" type="date" value="${p && p.intake_date ? p.intake_date : todayStr()}"></div>
-      <div class="field"><label>תאריך לידה</label><input name="birth_date" type="date" value="${p && p.birth_date ? p.birth_date : ''}" oninput="updateAgeView(this.value)"></div>
+      <div class="field"><label>שם משפחה *</label><input name="last_name" value="${esc(p ? p.last_name : '')}" required ${p && !mayEdit('last_name') ? 'disabled' : ''}></div>
+      <div class="field"><label>שם פרטי *</label><input name="first_name" value="${esc(p ? p.first_name : '')}" required ${p && !mayEdit('first_name') ? 'disabled' : ''}></div>
+      <div class="field"><label>מספר זהות</label><input name="national_id" value="${esc(p ? p.national_id : '')}" maxlength="10" ${p && !mayEdit('national_id') ? 'disabled' : ''}></div>
+      <div class="field"><label>תאריך אינטייק</label><input name="intake_date" type="date" value="${p && p.intake_date ? p.intake_date : todayStr()}" ${p && !mayEdit('intake_date') ? 'disabled' : ''}></div>
+      <div class="field"><label>תאריך לידה</label><input name="birth_date" type="date" value="${p && p.birth_date ? p.birth_date : ''}" oninput="updateAgeView(this.value)" ${p && !mayEdit('birth_date') ? 'disabled' : ''}></div>
       <div class="field"><label>גיל (אוטומטי)</label><div id="age-view" class="age-view" style="padding:8px 2px">${(() => { const a = p ? calcAge(p.birth_date) : null; return a != null ? a + ' שנים' : '—'; })()}</div></div>
-      <div class="field"><label>קופת חולים</label><select name="hmo">
+      <div class="field"><label>קופת חולים</label><select name="hmo" ${p && !mayEdit('hmo') ? 'disabled' : ''}>
         <option value="">—</option>
         ${S.meta.hmos.map(h => `<option ${p && p.hmo === h ? 'selected' : ''}>${h}</option>`).join('')}
       </select></div>
-      <div class="field"><label>בן / בת</label><select name="client_type">
+      <div class="field"><label>בן / בת</label><select name="client_type" ${p && !mayEdit('client_type') ? 'disabled' : ''}>
         <option value="">—</option>
         ${S.meta.client_types.map(t => `<option ${p && p.client_type === t ? 'selected' : ''}>${t}</option>`).join('')}
       </select></div>
-      <div class="field"><label>השתייכות קהילתית</label><select name="community" onchange="communityChanged(this)">
+      <div class="field"><label>השתייכות קהילתית</label><select name="community" onchange="communityChanged(this)" ${p && !mayEdit('community') ? 'disabled' : ''}>
         <option value="">—</option>
         ${S.communities.map(c => `<option value="${esc(c.value)}" ${p && p.community === c.value ? 'selected' : ''}>${esc(c.value)}</option>`).join('')}
         ${p && p.community && !S.communities.some(c => c.value === p.community) ? `<option selected value="${esc(p.community)}">${esc(p.community)}</option>` : ''}
         <option value="__new__">+ הוספה חדשה...</option>
       </select></div>
-      <div class="field"><label>רמת דחיפות</label><select name="urgency">
+      <div class="field"><label>רמת דחיפות</label><select name="urgency" ${p && !mayEdit('urgency') ? 'disabled' : ''}>
         <option value="1" ${p && p.urgency === 1 ? 'selected' : ''}>1 — דחוף</option>
         <option value="2" ${!p || p.urgency === 2 ? 'selected' : ''}>2 — רגיל</option>
         <option value="3" ${p && p.urgency === 3 ? 'selected' : ''}>3 — נמוך</option>
       </select></div>
     </div>
-    <div class="field"><label>אבחנה</label><input name="diagnosis" value="${esc(p ? p.diagnosis : '')}"></div>
+    ${S.me.caps.viewClinical ? `<div class="field"><label>אבחנה</label><input name="diagnosis" value="${esc(p ? p.diagnosis : '')}" ${p && !mayEdit('diagnosis') ? 'disabled' : ''}></div>` : ''}
     <div class="grid2">
-      <div class="field"><label>הערות</label><textarea name="notes" rows="2">${esc(p ? p.notes : '')}</textarea></div>
-      <div class="field"><label>הערות נוספות</label><textarea name="notes2" rows="2">${esc(p ? p.notes2 : '')}</textarea></div>
+      <div class="field"><label>הערות</label><textarea name="notes" rows="2" ${p && !mayEdit('notes') ? 'disabled' : ''}>${esc(p ? p.notes : '')}</textarea></div>
+      ${S.me.caps.viewClinical ? `<div class="field"><label>הערה מקצועית</label><textarea name="notes2" rows="2" ${p && !mayEdit('notes2') ? 'disabled' : ''}>${esc(p ? p.notes2 : '')}</textarea></div>` : ''}
     </div>
 
     <div class="field">
       <label>שעות מתאימות לטיפול (לחץ להסרת שעה שלא מתאימה)</label>
       <div class="hours-tools">
-        <button type="button" class="btn sec sm" onclick="setAllHours(true)">בחר הכל</button>
-        <button type="button" class="btn sec sm" onclick="setAllHours(false)">נקה הכל</button>
+        <button type="button" class="btn sec sm" onclick="setAllHours(true)" ${p && !mayEdit('hours') ? 'disabled' : ''}>בחר הכל</button>
+        <button type="button" class="btn sec sm" onclick="setAllHours(false)" ${p && !mayEdit('hours') ? 'disabled' : ''}>נקה הכל</button>
       </div>
       <div class="hours-grid" id="hours-grid">
-        ${ALL_HOURS.map(h => `<div class="hour-chip ${hours.includes(h) ? 'on' : ''}" data-h="${h}" onclick="this.classList.toggle('on')">${hourRange(h)}</div>`).join('')}
+        ${ALL_HOURS.map(h => `<div class="hour-chip ${hours.includes(h) ? 'on' : ''}" data-h="${h}" onclick="${p && !mayEdit('hours') ? '' : "this.classList.toggle('on')"}">${hourRange(h)}</div>`).join('')}
       </div>
     </div>
 
     <div class="field">
       <label>שיוך למטפלים</label>
+      ${p && !mayEdit('preferred_therapist_ids') ? '<div class="hint">אין לך הרשאה לשנות את השיוך</div>' : ''}
       <div class="hint" style="margin-bottom:8px">
         סימון קבוצה ממלא אוטומטית את המטפלים שבה. אפשר לסמן כמה קבוצות, להוסיף מטפלים בודדים,
         ולהוריד מהרשימה כל שם שלא מתאים.
@@ -487,6 +527,9 @@ function openPatientModal(id) {
       </div>
     </div>
 
+    ${p && (p.created_by_name || p.updated_by_name) ? '<div class="hint" style="margin-top:6px">' +
+      (p.created_by_name ? 'הוזן ע"י ' + esc(p.created_by_name) + (p.created_at ? ' · ' + fmtDateHe(String(p.created_at).slice(0,10)) : '') : '') +
+      (p.updated_by_name ? ' | עודכן לאחרונה ע"י ' + esc(p.updated_by_name) : '') + '</div>' : ''}
     <div class="modal-actions">
       <button class="btn">${p ? 'שמירה' : 'הוספה'}</button>
       <button type="button" class="btn sec" onclick="closeModal()">ביטול</button>
@@ -873,6 +916,109 @@ function singleUpdateHours() {
   }
   hourSel.innerHTML = hours.map(h => `<option value="${h}">${hourRange(h)}</option>`).join('');
   hint.textContent = `שעות העבודה של ${t.name} ביום ${WEEKDAYS[wd]}`;
+}
+
+// =====================================================================
+// רשימת השהיה — מטופלים שממתינים למטפל מסוים
+// =====================================================================
+function renderHolds(m) {
+  const active = S.therapists.filter(t => !t.deleted);
+  if (!S.holdTherapist && active.length) S.holdTherapist = active[0].id;
+  m.innerHTML = `
+  <div class="card">
+    <div class="toolbar">
+      <div class="field"><label>מטפל</label><select onchange="S.holdTherapist=Number(this.value);renderHolds(document.getElementById('main'))" style="min-width:190px">
+        ${active.map(t => `<option value="${t.id}" ${t.id === S.holdTherapist ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
+      </select></div>
+      <div class="spacer"></div>
+      ${S.me.caps.assign ? `<button class="btn" onclick="openHoldModal()">+ הוסף מטופלים להשהיה</button>` : ''}
+    </div>
+    <div class="hint" style="margin-bottom:10px">
+      מטופלים שממתינים למטפל הזה עד שתתפנה לו משבצת. מטופל בהשהיה מסומן ב-⏸ ברשימת הממתינים.
+    </div>
+    <div id="holds-list"><div class="empty">טוען...</div></div>
+  </div>`;
+  loadHoldsList();
+}
+
+async function loadHoldsList() {
+  const el = document.getElementById('holds-list');
+  if (!el || !S.holdTherapist) return;
+  try {
+    const rows = await api(`/holds?therapist_id=${S.holdTherapist}`);
+    if (!rows.length) { el.innerHTML = '<div class="empty">אין מטופלים בהשהיה אצל מטפל זה</div>'; return; }
+    el.innerHTML = `<div class="table-wrap"><table>
+      <thead><tr><th>#</th><th>מטופל</th><th>דחיפות</th><th>סטטוס</th><th>הערה</th><th>הוזן ע"י</th><th>מתאריך</th><th></th></tr></thead><tbody>
+      ${rows.map((h, i) => {
+        const [uLbl, uCls] = URGENCY[h.urgency] || URGENCY[2];
+        const [sLbl, sCls] = PSTATUS[h.patient_status] || PSTATUS.waiting;
+        return `<tr>
+          <td class="hint">${i + 1}</td>
+          <td><b>${esc(h.patient_name)}</b></td>
+          <td><span class="badge ${uCls}">${uLbl}</span></td>
+          <td><span class="badge ${sCls}">${sLbl}</span></td>
+          <td class="hint">${esc(h.note || '')}</td>
+          <td class="hint">${esc(h.created_by_name || '')}</td>
+          <td>${fmtDateHe(String(h.created_at).slice(0, 10))}</td>
+          <td>${S.me.caps.assign ? `<button class="btn sm sec" onclick="releaseHold(${h.id})">הסר</button>` : ''}</td>
+        </tr>`;
+      }).join('')}
+      </tbody></table></div>
+      <div class="hint" style="margin-top:8px">${rows.length} מטופלים בהשהיה</div>`;
+  } catch (e) { el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+
+// בחירת כמה מטופלים בבת אחת להשהיה אצל המטפל הנבחר
+function openHoldModal() {
+  const t = S.therapists.find(x => x.id === S.holdTherapist);
+  if (!t) return;
+  const held = new Set();
+  S.patients.forEach(p => (p.holds || []).forEach(h => { if (h.therapist_id === t.id) held.add(p.id); }));
+  const avail = S.patients.filter(p => !held.has(p.id));
+  showModal(`
+  <h2>הוספה להשהיה — ${esc(t.name)} <button class="x" onclick="closeModal()">✕</button></h2>
+  <div class="field"><label>חיפוש מטופל</label><input id="hold-q" placeholder="הקלד שם..." oninput="filterHoldList(this.value)"></div>
+  <div class="field"><label>סמן מטופלים (אפשר כמה)</label>
+    <div class="checkbox-list" id="hold-list" style="max-height:280px">
+      ${avail.map(p => `<label data-name="${esc(p.last_name + ' ' + p.first_name)}">
+        <input type="checkbox" value="${p.id}"> ${esc(p.last_name)} ${esc(p.first_name)}
+        ${p.status === 'assigned' ? '<span class="badge b-green">משובץ</span>' : ''}</label>`).join('') ||
+        '<span class="hint">כל המטופלים כבר בהשהיה אצל מטפל זה</span>'}
+    </div>
+  </div>
+  <div class="field"><label>הערה (אופציונלי)</label><input id="hold-note" placeholder="למשל: ממתין לשעות אחר הצהריים"></div>
+  <div class="modal-actions">
+    <button class="btn" onclick="saveHolds()">הוסף להשהיה</button>
+    <button type="button" class="btn sec" onclick="closeModal()">ביטול</button>
+  </div>`);
+}
+
+function filterHoldList(q) {
+  document.querySelectorAll('#hold-list label').forEach(l => {
+    l.style.display = !q || (l.dataset.name || '').includes(q) ? 'flex' : 'none';
+  });
+}
+
+async function saveHolds() {
+  const ids = [...document.querySelectorAll('#hold-list input:checked')].map(c => Number(c.value));
+  if (!ids.length) return toast('לא נבחר אף מטופל', true);
+  const btns = document.querySelectorAll('#modal-root .btn');
+  btns.forEach(b => b.disabled = true);
+  try {
+    const r = await api('/holds', { method: 'POST', body: {
+      therapist_id: S.holdTherapist, patient_ids: ids,
+      note: document.getElementById('hold-note').value } });
+    let msg = `${r.added} מטופלים נוספו להשהיה`;
+    if (r.skipped.length) msg += `, ${r.skipped.length} כבר היו שם`;
+    toast(msg);
+    closeModal(); await loadAll(); render();
+  } catch (e) { btns.forEach(b => b.disabled = false); toast(e.message, true); }
+}
+
+async function releaseHold(id) {
+  if (!confirm('להסיר את המטופל מרשימת ההשהיה?')) return;
+  try { await api(`/holds/${id}/release`, { method: 'PUT' }); await loadAll(); loadHoldsList(); }
+  catch (e) { toast(e.message, true); }
 }
 
 // =====================================================================
@@ -1310,7 +1456,11 @@ async function renderUsers(m) {
       </tr>`).join('')}
       </tbody></table></div>
       <div class="hint" style="margin-top:10px">
-        מנהל ראשי — הכל כולל ניהול משתמשים · מנהל — עריכה ומחיקה · רכז/ת — עריכה בלבד (ללא מחיקה) · צופה — צפייה בלבד
+        <b>מנהל ראשי</b> — הכל, כולל ניהול משתמשים<br>
+        <b>מזכירה אחראית</b> — הכל חוץ מניהול משתמשים<br>
+        <b>מזכירה כללית</b> — מוסיפה מטופלים ומצרפת קבצים; עורכת רק שם ושעות מתאימות; לא משבצת, לא מוחקת, ולא רואה אבחנה והערה מקצועית<br>
+        <b>מדריך</b> — מעדכן אבחנה והערה מקצועית ומצרף קבצים; לא עורך פרטים אחרים, לא משבץ ולא מוחק<br>
+        <b>צופה</b> — צפייה בלבד
       </div>
     </div>`;
   } catch (e) { m.innerHTML = `<div class="card"><div class="empty">${esc(e.message)}</div></div>`; }
@@ -1382,7 +1532,7 @@ async function openFilesModal(patientId) {
   if (!p) return;
   showModal(`
   <h2>קבצים — ${esc(p.last_name)} ${esc(p.first_name)} <button class="x" onclick="closeModal()">✕</button></h2>
-  ${S.me.caps.edit ? `
+  ${S.me.caps.files ? `
     <div class="imp-drop" id="fl-drop">
       <div style="font-size:30px">📎</div>
       <div style="margin:6px 0 2px"><b>גרור לכאן קבצים</b> או לחץ לבחירה</div>
@@ -1393,7 +1543,7 @@ async function openFilesModal(patientId) {
   <div style="margin-top:14px"><div id="fl-list"><div class="hint">טוען...</div></div></div>
   <div class="modal-actions"><button type="button" class="btn sec" onclick="closeModal()">סגירה</button></div>`);
 
-  if (S.me.caps.edit) {
+  if (S.me.caps.files) {
     // המגבלה נקראת מהשרת כדי שהטקסט לא ייפרד מההגדרה בפועל
     api('/files/limits').then(l => {
       const el = document.getElementById('fl-max');
@@ -1517,7 +1667,7 @@ const IMPORT_FIELDS = {
     { key: 'diagnosis', label: 'אבחנה', hints: ['אבחנ'] },
     { key: 'urgency', label: 'רמת דחיפות', hints: ['דחיפ'] },
     { key: 'notes', label: 'הערות', hints: ['הערות'] },
-    { key: 'notes2', label: 'הערות נוספות', hints: ['הערות נוספות', 'הערה 2'] },
+    { key: 'notes2', label: 'הערה מקצועית', hints: ['הערה מקצועית', 'הערות נוספות', 'הערה 2'] },
   ],
   therapists: [
     { key: 'name', label: 'שם המטפל', hints: ['שם', 'מטפל'] },

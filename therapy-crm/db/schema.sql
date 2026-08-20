@@ -207,3 +207,30 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_sessions_slot
 CREATE INDEX IF NOT EXISTS idx_sessions_assignment ON sessions (assignment_id);
 CREATE INDEX IF NOT EXISTS idx_patients_status ON patients (status) WHERE deleted = false;
 CREATE INDEX IF NOT EXISTS idx_assignments_therapist ON assignments (therapist_id) WHERE deleted = false;
+
+-- ===== מי הזין כל רשומה =====
+ALTER TABLE patients   ADD COLUMN IF NOT EXISTS created_by BIGINT;
+ALTER TABLE patients   ADD COLUMN IF NOT EXISTS created_by_name TEXT;
+ALTER TABLE patients   ADD COLUMN IF NOT EXISTS updated_by BIGINT;
+ALTER TABLE patients   ADD COLUMN IF NOT EXISTS updated_by_name TEXT;
+ALTER TABLE therapists ADD COLUMN IF NOT EXISTS created_by_name TEXT;
+ALTER TABLE assignments ADD COLUMN IF NOT EXISTS created_by BIGINT;
+ALTER TABLE assignments ADD COLUMN IF NOT EXISTS created_by_name TEXT;
+
+-- ===== רשימת השהיה: מטופלים שממתינים למטפל מסוים =====
+-- מטופל יכול להיות בהשהיה אצל כמה מטפלים במקביל (עד שאחד מהם מתפנה).
+CREATE TABLE IF NOT EXISTS holds (
+  id BIGSERIAL PRIMARY KEY,
+  therapist_id BIGINT NOT NULL REFERENCES therapists(id),
+  patient_id BIGINT NOT NULL REFERENCES patients(id),
+  note TEXT,
+  created_by BIGINT,
+  created_by_name TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  released BOOLEAN NOT NULL DEFAULT false,
+  released_at TIMESTAMPTZ,
+  released_by_name TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_holds_active
+  ON holds (therapist_id, patient_id) WHERE released = false;
+CREATE INDEX IF NOT EXISTS idx_holds_patient ON holds (patient_id) WHERE released = false;

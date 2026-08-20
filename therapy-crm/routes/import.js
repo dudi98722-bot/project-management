@@ -80,7 +80,7 @@ router.post('/therapists', authenticate, can('edit'), async (req, res) => {
 
 // ===== ייבוא מטופלים (כולל עמודת שמות מטפלים) =====
 // create_missing_therapists=true -> שם שלא נמצא במערכת ייווצר כמטפל חדש
-router.post('/patients', authenticate, can('edit'), async (req, res) => {
+router.post('/patients', authenticate, can('addPatient'), async (req, res) => {
   const body = req.body || {};
   const rows = Array.isArray(body.rows) ? body.rows : [];
   if (!rows.length) return res.status(400).json({ error: 'לא התקבלו שורות' });
@@ -155,7 +155,7 @@ router.post('/patients', authenticate, can('edit'), async (req, res) => {
 // ===== ייבוא מטופלים קיימים (שם + מטפל + שעה + סדרה) =====
 // כל שורה נוצרת בטרנזקציה משלה: שורה שנכשלת לא מפילה את כל הייבוא,
 // ומוחזר דיווח מפורט מה נכנס ומה לא ולמה.
-router.post('/existing', authenticate, can('edit'), async (req, res) => {
+router.post('/existing', authenticate, can('assign'), async (req, res) => {
   const rows = Array.isArray((req.body || {}).rows) ? req.body.rows : [];
   if (!rows.length) return res.status(400).json({ error: 'לא התקבלו שורות' });
   const defaultTotal = Number((req.body || {}).default_total) || 12;
