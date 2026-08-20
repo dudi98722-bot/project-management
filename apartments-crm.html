@@ -355,7 +355,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "18.08 ג'";
+var APP_BUILD = "18.08 ד'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -5655,6 +5655,14 @@ function openBulkPayEdit(aptId){
         '<option value="__keep">— ללא שינוי —</option>'+
         '<option value="1">✔ סמן כנשלח</option>'+
         '<option value="0">סמן כטרם נשלח</option></select></div>'+
+      ((CU&&CU.role==="admin")
+        ? '<div class="field full"><label>העבר לשלב אחר</label>'+
+          pickerHtml("pb-moveto",
+            apLeafExpenses(aptId).filter(function(x){ return !x.incMgmtManagerId; })
+              .map(function(x){ return {id:x.id,label:x.description+" · "+dateHe(x.date)+" · "+money(x.amount)}; }),
+            "",{placeholder:"ריק = ללא שינוי · הקלד שם שלב…"})+
+          '<div class="hint">כל התשלומים שנבחרו יעברו לשלב הזה. תשלום למנהל יעבור רק אם בשלב היעד יש דמי ניהול.</div></div>'
+        : '')+
       '<div class="field full"><label>הערה</label>'+
         '<select id="pb-note-mode" onchange="onPbNoteMode()" style="margin-bottom:5px">'+
           '<option value="keep">— ללא שינוי —</option>'+
@@ -5695,19 +5703,33 @@ function applyBulkPayEdit(aptId,ids){
   var invSt=val("pb-inv")||"__keep";
   var noteMode=val("pb-note-mode")||"keep", noteTxt=val("pb-note").trim();
   var cpaSel=val("pb-cpa")||"__keep";
-  if(!acc && !payer && !method && !date && invSt==="__keep" && noteMode==="keep" && cpaSel==="__keep"){ toast("לא נבחר מה לעדכן","warn"); return false; }
+  /* העברה לשלב אחר — שם שהוקלד חייב להתפענח לשלב אמיתי */
+  var moveTo="";
+  if(document.getElementById("pb-moveto") && String(val("pb-moveto")||"").trim()){
+    var mvId=pickId("pb-moveto");
+    if(!mvId){ toast("שלב היעד לא זוהה — בחר מהרשימה","err"); return false; }
+    var mvE=byId(DB.expenses,mvId);
+    if(!mvE||mvE.deleted||isContainer(mvId)){ toast("שלב היעד אינו תקין","err"); return false; }
+    moveTo=mvId;
+  }
+  if(!acc && !payer && !method && !date && invSt==="__keep" && noteMode==="keep" && cpaSel==="__keep" && !moveTo){ toast("לא נבחר מה לעדכן","warn"); return false; }
   if((noteMode==="set"||noteMode==="append") && !noteTxt){
     toast("כתוב את ההערה שתיכנס, או בחר \"ללא שינוי\" בשדה ההערה","err"); return false; }
 
   var accId = acc==="__none" ? null : (acc||undefined);
   var isBankTarget = accId ? accountIsBank(accId) : false;
 
-  var n=0, skippedAuto=0, overpaid=[];
+  var n=0, skippedAuto=0, overpaid=[], movedN=0, skippedMgr=0, touched={};
   ids.forEach(function(id){
     var p=byId(DB.payments,id); if(!p||p.deleted) return;
     /* תשלום "שווה ערך" אוטומטי נגזר מהגדרת הפרויקט — שינוי ידני שלו
        היה נמחק בסנכרון הבא ומבלבל יותר משעוזר. */
     if(p.auto){ skippedAuto++; return; }
+    if(moveTo && p.expenseId!==moveTo){
+      /* תשלום למנהל תלוי בהגדרת דמי ניהול על השלב — לא עובר לשלב בלעדיה */
+      if(p.recipientType==="manager" && !(byId(DB.expenses,moveTo)||{}).mgmtEnabled){ skippedMgr++; }
+      else { touched[p.expenseId]=1; touched[moveTo]=1; p.expenseId=moveTo; movedN++; }
+    }
     if(accId!==undefined){ p.accountId=accId; }
     if(payer){ p.payerPartnerId = (payer==="__none")?null:payer; }
     if(accId!==undefined && isBankTarget) p.payerPartnerId=null;   // מהבנק — לא משויך לשותף
@@ -5721,8 +5743,12 @@ function applyBulkPayEdit(aptId,ids){
     n++;
   });
   if(!n){ toast(skippedAuto?"כל התשלומים שנבחרו הם אוטומטיים — לא שונה דבר":"לא עודכן דבר","warn"); return false; }
+  Object.keys(touched).forEach(function(k){ syncAutoMgmtPayments(k); });
   save();
-  toast("עודכנו "+n+" תשלומים"+(skippedAuto?" ("+skippedAuto+" אוטומטיים דולגו)":""),"ok");
+  toast("עודכנו "+n+" תשלומים"+
+    (movedN?" · "+movedN+" הועברו לשלב אחר":"")+
+    (skippedMgr?" · "+skippedMgr+" תשלומי מנהל לא הועברו (אין דמי ניהול בשלב היעד)":"")+
+    (skippedAuto?" ("+skippedAuto+" אוטומטיים דולגו)":""),"ok");
   rerender();
   return true;
 }
@@ -6146,6 +6172,16 @@ function openPaymentEditor(eId,payId){
   var body='<div class="form-grid">'+
     '<div class="field"><label>תאריך</label><input id="pm-date" type="date" value="'+(p?esc(p.date):todayISO())+'"></div>'+
     '<div class="field"><label>סכום (₪)</label><input id="pm-amount" type="number" step="0.01" value="'+(p?esc(String(p.amount)):"")+'"></div>'+
+    /* תיקון שיוך שגוי: התשלום עובר לשלב אחר בלי למחוק ולהקליד מחדש.
+       רק בעריכה (לא בתשלום חדש), ורק למנהלים — לפי כלל ההרשאות. */
+    ((payId && CU && CU.role==="admin")
+      ? '<div class="field full"><label>שיוך לשלב</label>'+
+        pickerHtml("pm-moveto",
+          apLeafExpenses(aptId).filter(function(x){ return !x.incMgmtManagerId; })
+            .map(function(x){ return {id:x.id,label:x.description+" · "+dateHe(x.date)+" · "+money(x.amount)}; }),
+          eId,{placeholder:"הקלד שם שלב…"})+
+        '<div class="hint">שויך בטעות לשלב אחר? בחר כאן את השלב הנכון והתשלום יעבור אליו.</div></div>'
+      : '')+
     '<div class="field"><label>מהחשבון</label><select id="pm-account" onchange="onPmAccountPick()">'+accountOptions(aptId,p?p.accountId:"")+'</select></div>'+
     '<div class="field full" id="pm-newacc" style="display:none;background:#f7f9ff;border:1px solid var(--line);border-radius:10px;padding:10px">'+
       '<label>שם החשבון החדש</label>'+
@@ -6200,6 +6236,18 @@ function onPmRecipient(){
 function savePayment(eId,payId){
   var e=byId(DB.expenses,eId);
   if(isContainer(eId)){ toast("שלב-אב אינו מקבל תשלומים — רשום בתת-השלב","err"); return false; }
+  /* יעד השיוך: כברירת מחדל השלב הנוכחי; בעריכה אפשר להעביר לשלב אחר */
+  var tgtId=eId, te=e;
+  if(payId && document.getElementById("pm-moveto")){
+    var mv=pickId("pm-moveto");
+    if(mv===null){ toast("השלב לא זוהה — בחר מהרשימה","err"); return false; }
+    if(mv && mv!==eId){
+      var cand=byId(DB.expenses,mv);
+      if(!cand||cand.deleted){ toast("השלב לא נמצא","err"); return false; }
+      if(isContainer(mv)){ toast("שלב-אב אינו מקבל תשלומים — בחר תת-שלב","err"); return false; }
+      tgtId=mv; te=cand;
+    }
+  }
   var amount=Number(val("pm-amount"))||0; if(amount<=0){ toast("סכום לא תקין","err"); return false; }
   var accountId=val("pm-account")||null;
   if(accountId==="__new"){ toast("סיים להוסיף את החשבון או בחר אחר","err"); return false; }
@@ -6213,19 +6261,22 @@ function savePayment(eId,payId){
   if(!isBank&&!payer&&apPartners(e.apartmentId).length){ toast("בחר מי שילם, או חשבון בנק","err"); return false; }
   // תקרות
   if(recipientType==="supplier"){
-    var others=expPayments(eId).filter(function(x){return x.recipientType!=="manager"&&x.id!==payId;}).reduce(function(s,x){return s+(Number(x.amount)||0);},0);
-    if(others+amount>Number(e.amount)+0.01){
+    var others=expPayments(tgtId).filter(function(x){return x.recipientType!=="manager"&&x.id!==payId;}).reduce(function(s,x){return s+(Number(x.amount)||0);},0);
+    if(others+amount>Number(te.amount)+0.01){
       /* חריגה מהשלב מותרת — אבל רק באישור מפורש, שלא תקרה בטעות הקלדה */
-      var over=round2(others+amount-Number(e.amount));
-      if(!confirm("שים לב: סך התשלומים ("+money(others+amount)+") יחרוג מסכום השלב ("+money(e.amount)+") ב-"+money(over)+".\n\nהשלב יסומן \"שולם ביתר\". לאשר את התשלום?")) return false;
+      var over=round2(others+amount-Number(te.amount));
+      if(!confirm("שים לב: סך התשלומים ("+money(others+amount)+") יחרוג מסכום השלב ("+money(te.amount)+") ב-"+money(over)+".\n\nהשלב יסומן \"שולם ביתר\". לאשר את התשלום?")) return false;
     }
   }else{
-    var cap=mgrFeeLiveOnExpense(eId,recipientManagerId);
+    if(tgtId!==eId && !te.mgmtEnabled){
+      toast("בשלב היעד אין דמי ניהול — אי אפשר להעביר אליו תשלום למנהל","err"); return false;
+    }
+    var cap=mgrFeeLiveOnExpense(tgtId,recipientManagerId);
     /* האוטומטי ("שווה ערך") לא נספר כאן — הוא יצטמצם בסנכרון ויפנה מקום לידני */
-    var othersM=expPayments(eId).filter(function(x){return x.recipientType==="manager"&&x.recipientManagerId===recipientManagerId&&x.id!==payId&&!x.auto;}).reduce(function(s,x){return s+(Number(x.amount)||0);},0);
+    var othersM=expPayments(tgtId).filter(function(x){return x.recipientType==="manager"&&x.recipientManagerId===recipientManagerId&&x.id!==payId&&!x.auto;}).reduce(function(s,x){return s+(Number(x.amount)||0);},0);
     if(othersM+amount>cap+0.01){ toast("חורג ממה שמגיע למנהל ("+money(cap)+")","err"); return false; }
   }
-  var obj={id:payId||uid(),expenseId:eId,date:val("pm-date")||todayISO(),amount:amount,accountId:accountId,
+  var obj={id:payId||uid(),expenseId:tgtId,date:val("pm-date")||todayISO(),amount:amount,accountId:accountId,
     payerPartnerId:payer,method:val("pm-method"),recipientType:recipientType,recipientManagerId:recipientManagerId,
     invoiceStatus:val("pm-invoice-st")||"",hasInvoice:(val("pm-invoice-st")==="has"),
     sentToCpa:(val("pm-cpa")==="1"),
@@ -6233,7 +6284,10 @@ function savePayment(eId,payId){
     invoiceLink:val("pm-link"),note:val("pm-note"),deleted:false};
   if(payId){ Object.assign(byId(DB.payments,payId),obj); } else DB.payments.push(obj);
   syncAutoMgmtPayments(eId);   // ידני חדש מצמצם את האוטומטי בהתאם לתקרה
-  save(); toast("התשלום נשמר","ok"); rerender(); openPayments(eId); return false;
+  if(tgtId!==eId) syncAutoMgmtPayments(tgtId);   // גם שלב היעד מסתנכרן
+  save();
+  toast(tgtId!==eId?('התשלום הועבר לשלב "'+te.description+'"'):"התשלום נשמר","ok");
+  rerender(); openPayments(tgtId); return false;
 }
 
 /* ---------- דמי ניהול (ניהול + לי׳דג׳ר) ---------- */
