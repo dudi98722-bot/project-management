@@ -194,7 +194,7 @@ function renderWaiting(m) {
 // ===== סינון, מיון ועימוד של רשימת הממתינים =====
 // העמודות מוגדרות פעם אחת: כותרת, איך מסננים, ואיך שולפים ערך למיון.
 // אלה שמופיעות כמסננים בסרגל העליון (השאר ניתנות למיון בלבד):
-const TOOLBAR_FILTERS = ['status', 'urgency', 'hmo', 'community', 'client_type', 'age'];
+const TOOLBAR_FILTERS = ['status', 'urgency', 'hold', 'hmo', 'community', 'client_type', 'age'];
 const WAIT_COLS = [
   { key: 'name',      label: 'שם',          type: 'text',   sort: p => `${p.last_name} ${p.first_name}`,
     match: (p, v) => `${p.last_name} ${p.first_name} ${p.diagnosis || ''}`.includes(v) },
@@ -225,8 +225,20 @@ const WAIT_COLS = [
     options: () => [['yes', 'יש קבצים'], ['no', 'אין']],
     match: (p, v) => v.includes(p.files_count > 0 ? 'yes' : 'no') },
   { key: 'hold',      label: 'השהיה',       type: 'select', sort: p => (p.holds || []).length,
-    options: () => [['yes', 'בהשהיה'], ['no', 'לא']],
-    match: (p, v) => v.includes((p.holds || []).length ? 'yes' : 'no') },
+    // מלבד "בהשהיה / לא", אפשר לסנן לפי המטפל שאצלו ההשהיה (t:<id>)
+    options: () => {
+      const t = new Map();
+      S.patients.forEach(p => (p.holds || []).forEach(h => t.set(h.therapist_id, h.therapist_name)));
+      return [['yes', 'בהשהיה (הכל)'], ['no', 'לא בהשהיה'],
+        ...[...t.entries()].sort((a, b) => String(a[1]).localeCompare(String(b[1]), 'he'))
+          .map(([id, name]) => ['t:' + id, 'אצל ' + name])];
+    },
+    match: (p, v) => {
+      const holds = p.holds || [];
+      return v.some(x => x === 'yes' ? holds.length
+                       : x === 'no' ? !holds.length
+                       : holds.some(h => String(h.therapist_id) === x.slice(2)));
+    } },
   { key: 'created_by', label: 'הוזן ע"י',     type: 'text',   sort: p => p.created_by_name || '',
     match: (p, v) => String(p.created_by_name || '').includes(v) },
   { key: 'status',    label: 'סטטוס',       type: 'select', sort: p => p.status,
