@@ -355,7 +355,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "18.08 ה'";
+var APP_BUILD = "18.08 ו'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -7377,8 +7377,11 @@ function openBulkIncomeEdit(aptId){
     '<div class="hint" style="margin-bottom:10px">שדה שנשאר על <b>"— ללא שינוי —"</b> לא ישתנה באף שורה.</div>'+
     '<div class="form-grid">'+
       '<div class="field"><label>תאריך</label><input id="ib-date" type="date"><div class="hint">ריק = ללא שינוי</div></div>'+
-      (booking?'':'<div class="field"><label>למי נכנס הכסף</label><select id="ib-dest" onchange="ibDestPreview(\''+aptId+'\')">'+destOptionsBulk(aptId)+'</select>'+
-        '<div class="hint" id="ib-dest-hint"></div></div>')+
+      /* גם בפרוייקט הזמנות: שם הכסף נכנס דרך תשלומי האורחים, ולכן
+         הבחירה חלה על התשלומים של כל הזמנה (ועל ההזמנה עצמה כגיבוי,
+         למקרה שעדיין אין עליה תשלום). */
+      '<div class="field"><label>למי נכנס הכסף</label><select id="ib-dest" onchange="ibDestPreview(\''+aptId+'\')">'+destOptionsBulk(aptId)+'</select>'+
+        '<div class="hint" id="ib-dest-hint">'+(booking?'בהזמנות היעד יוחל על תשלומי האורחים של כל שורה.':'')+'</div></div>'+
       '<div class="field"><label>תחילת השכרה</label><input id="ib-start" type="date"><div class="hint">ריק = ללא שינוי</div></div>'+
       '<div class="field"><label>סיום השכרה</label><input id="ib-end" type="date"><div class="hint">ריק = ללא שינוי</div></div>'+
       (units.length?'<div class="field full"><label>יחידות</label>'+
@@ -7477,15 +7480,22 @@ function applyBulkIncomeEdit(aptId,ids){
     if(i.startDate && i.endDate && i.endDate<i.startDate){
       if(start) i.startDate=""; if(end) i.endDate=""; badRange++;
     }
+    /* קובע את היעד על ההכנסה וגם על תשלומי ההזמנה שלה — בפרוייקט
+       הזמנות הכסף נספר לפי התשלומים, ולכן שינוי ההזמנה בלבד לא היה
+       משנה דבר בבנק ובדוחות. */
+    function setDest(row,v){
+      row.receivedBy=v;
+      (row.payments||[]).forEach(function(g){ if(!g.deleted) g.receivedBy=v; });
+    }
     if(dest==="__fromnote"){
       var t=String(i.note||"").trim();
       if(t){
         var d=destFromText(i.apartmentId,t);
-        if(d){ i.receivedBy=d; fromNoteOk++; }
+        if(d){ setDest(i,d); fromNoteOk++; }
         else fromNoteBad++;
       } else fromNoteBad++;
     }
-    else if(dest) i.receivedBy=(dest==="__none")?"":dest;
+    else if(dest) setDest(i,(dest==="__none")?"":dest);
     if(repSel==="on") i.noReport=false; else if(repSel==="off") i.noReport=true;
     if(frlSel==="on") i.noFreilich=false; else if(frlSel==="off") i.noFreilich=true;
     if(uMode==="set") i.units=picked.slice();
