@@ -355,7 +355,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "18.08 ז'";
+var APP_BUILD = "18.08 ח'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -1039,7 +1039,6 @@ function normalizeDB(d){
       invoiceStatus:"",hasInvoice:false,invoiceLink:"",note:x.note||"",hidden:false,deleted:false});
     x.deleted=true;
   });
-  (d.income||[]).forEach(function(x){ if(x.categoryId==null) x.categoryId=""; });
   (d.income||[]).forEach(function(x){ x.amount=toNum(x.amount); x.date=toISO(x.date);
     if(x.units && !Array.isArray(x.units)) x.units=null;
     x.startDate=toISO(x.startDate); x.endDate=toISO(x.endDate);
@@ -3529,7 +3528,7 @@ async function boot(){
    מודולים
    ============================================================ */
 /* ---------- חיפוש וסינון ---------- */
-var Q={apts:"",exp:"",expStatus:"",expClass:"",quick:"",partners:"",cross:"",recycle:"",pay:"",payWho:"",paySrc:"",payInv:"",ppWho:"",apPayWho:"",rent:"",rentApt:"",rentStatus:"",expSplit:"",incCat:""};
+var Q={apts:"",exp:"",expStatus:"",expClass:"",quick:"",partners:"",cross:"",recycle:"",pay:"",payWho:"",paySrc:"",payInv:"",ppWho:"",apPayWho:"",rent:"",rentApt:"",rentStatus:"",expSplit:""};
 /* כל מילה בשאילתה חייבת להופיע — מאפשר "עורך דין קופר" ו"קופר דין" כאחד */
 function matches(q,text){
   q=String(q||"").trim().toLowerCase(); if(!q) return true;
@@ -4317,12 +4316,12 @@ function sheetIncome(list){
      הפרוייקטים שבייצוא, כך שגיליון אחד מכסה גם כמה פרוייקטי השכרה. */
   var unitCols=[];
   list.forEach(function(a){ aptUnits(a.id).forEach(function(n){ if(unitCols.indexOf(n)<0) unitCols.push(n); }); });
-  var rows=[["פרוייקט","תאריך","תיאור","קטגוריה"].concat(unitCols,
+  var rows=[["פרוייקט","תאריך","תיאור"].concat(unitCols,
     ["כניסה","יציאה","לילות","סכום","שולם","יתרת חוב","נכנס ל","חלוקה","לחישוב","הערה"])]; var tot=0;
   list.forEach(function(a){
     apIncome(a.id).slice().sort(function(x,y){return (x.date<y.date)?-1:1;}).forEach(function(x){
       var tr=incomeTracked(x), u=incomeUnits(x), hasStay=!!(x.startDate||x.endDate);
-      rows.push([a.name,D(x.date),x.description||"",categoryName(x.categoryId)||""]
+      rows.push([a.name,D(x.date),x.description||""]
         .concat(unitCols.map(function(n){ return u.indexOf(n)>=0?"✔":""; }),
           [hasStay?D(stayStart(x)):"",x.endDate?D(x.endDate):"",hasStay?{t:"n",v:stayNights(x)}:"",
            M(x.amount),tr?M(incomePaid(x)):"",tr?M(incomeDebt(x)):"",
@@ -4826,6 +4825,9 @@ function onEbSplitMode(){
 }
 function applyBulkExpEdit(aptId,ids){
   if(!can("edit")){ toast("אין הרשאה","err"); return false; }
+  /* קריאה ישירה מהאלמנט: val()||"__keep" בלע את האפשרות "ללא קטגוריה"
+     (ערך ריק) והפך אותה ל"ללא שינוי" — כלומר ניקוי קטגוריה בעדכון
+     המרוכז מעולם לא עבד. */
   var _ebc=document.getElementById("eb-cat-mode");
   var catMode=_ebc?_ebc.value:"__keep";
   var cat=catMode==="__keep"?"__keep":(catMode===""?"":pickCategoryId("eb-cat"));
@@ -7072,11 +7074,7 @@ function moduleIncome(aptId){
   var all=apIncome(aptId);
   var units=aptUnits(aptId);
   /* מסנן יחידה — הזמנה נכנסת אם היחידה שנבחרה סומנה בה */
-  /* הקטגוריה היא פיצ'ר חדש — מוצגת למנהלים בלבד */
-  var showCat=!!(CU&&CU.role==="admin");
   var inc=Q.incUnit ? all.filter(function(i){ return incomeUnits(i).indexOf(Q.incUnit)>=0; }) : all;
-  if(showCat && Q.incCat) inc=inc.filter(function(i){
-    return Q.incCat==="__none" ? !i.categoryId : i.categoryId===Q.incCat; });
   var sum=0, paidSum=0, debtSum=0, anyTracked=false, exclN=0;
   inc.forEach(function(i){
     if(i.excluded){ exclN++; return; }              /* "לא לחישוב" — בפירוט, לא בסיכום */
@@ -7096,23 +7094,6 @@ function moduleIncome(aptId){
       (all.length?'<button class="btn btn-sm" onclick="openBulkIncomeEdit(\''+aptId+'\')">✏️ עדכון מרוכז <span id="ib-count"></span></button> ':'')+
       '<button class="btn btn-sm" onclick="editRentalUnits(\''+aptId+'\')">🏠 הגדרות השכרה</button> '+
       '<button class="btn btn-sm" onclick="editIncomeSplitDefault(\''+aptId+'\')">⚙️ חלוקת ברירת מחדל</button>':'')+'</div>';
-  if(showCat){
-    /* רק קטגוריות שבאמת בשימוש בהכנסות של הפרוייקט — רשימה קצרה ושימושית */
-    var usedCats=[], seenC={};
-    all.forEach(function(i){ if(i.categoryId && !seenC[i.categoryId]){ seenC[i.categoryId]=1; usedCats.push(i.categoryId); } });
-    var noneN=all.filter(function(i){ return !i.categoryId; }).length;
-    if(usedCats.length || noneN){
-      h+='<div class="toolbar">'+
-        '<select style="max-width:200px" onchange="Q.incCat=this.value;rerender()">'+
-          '<option value="">כל הקטגוריות</option>'+
-          usedCats.sort(function(a,b){ return String(categoryName(a)).localeCompare(String(categoryName(b)),"he"); })
-            .map(function(c){ return '<option value="'+esc(c)+'"'+(Q.incCat===c?" selected":"")+'>'+esc(categoryName(c)||"(נמחקה)")+'</option>'; }).join("")+
-          (noneN?'<option value="__none"'+(Q.incCat==="__none"?" selected":"")+'>ללא קטגוריה ('+noneN+')</option>':'')+
-        '</select>'+
-        (Q.incCat?'<button class="btn btn-ghost btn-sm" onclick="Q.incCat=\'\';rerender()">✕ נקה</button>':'')+
-        '<div class="sp"></div><span class="hint">'+countLine(inc.length,all.length,"שורות")+'</span></div>';
-    }
-  }
   if(units.length){
     h+='<div class="toolbar">'+
       '<select style="max-width:180px" onchange="Q.incUnit=this.value;rerender()">'+
@@ -7125,7 +7106,7 @@ function moduleIncome(aptId){
   var selI=can("edit");
   h+='<div class="table-wrap"><table class="tbl"><thead><tr>'+
     (selI?'<th class="chk" data-xl-skip="1" style="width:30px"><input type="checkbox" title="סמן הכל" style="width:auto" onclick="ibAll(this.checked)"></th>':'')+
-    '<th>תאריך</th><th>תיאור</th>'+(showCat?'<th>קטגוריה</th>':'')+
+    '<th>תאריך</th><th>תיאור</th>'+
     (units.length?'<th>יחידות</th>':'')+
     '<th>תקופה</th><th>סכום</th><th>שולם</th><th>יתרת חוב</th><th>נכנס ל…</th><th>הערה</th><th></th></tr></thead><tbody>';
   if(!inc.length) h+='<tr><td colspan="'+((selI?1:0)+(units.length?10:9))+'" class="empty">'+(Q.incUnit?"אין הזמנות ביחידה הזו":"אין הכנסות")+'</td></tr>';
@@ -7133,9 +7114,7 @@ function moduleIncome(aptId){
     var tracked=incomeTracked(i), debt=incomeDebt(i);
     h+='<tr'+(i.excluded?' style="opacity:.55"':'')+'>'+
       (selI?'<td class="chk"><input type="checkbox" class="ib-x" value="'+i.id+'" style="width:auto" onchange="ibCount()"></td>':'')+
-      '<td>'+dateHe(i.date)+'</td>'+
-      (showCat?'<td>'+(i.categoryId?esc(categoryName(i.categoryId)||"(נמחקה)"):'<span class="muted">—</span>')+'</td>':'')+
-      '<td>'+esc(i.description)+
+      '<td>'+dateHe(i.date)+'</td><td>'+esc(i.description)+
         (i.excluded?' <span class="badge badge-muted badge-unit" title="לא נספרת בסיכומי ההכנסות">לא לחישוב</span>':'')+
         (i.noReport?' <span class="badge badge-muted badge-unit" title="לא נספרת בדוחות">🚫 לא בדוח</span>':'')+
         (!i.noReport&&i.noFreilich?' <span class="badge badge-muted badge-unit" title="לא נספרת בדוח לפרייליך">🚫 פרייליך</span>':'')+
@@ -7417,16 +7396,6 @@ function openBulkIncomeEdit(aptId){
           '<option value="clear">לנקות את הסימון</option>'+
         '</select>'+
         '<div id="ib-unit-wrap" style="display:none;padding:4px 0">'+unitChecksHtml("ib-u",aptId,null)+'</div></div>':'')+
-      ((CU&&CU.role==="admin")
-        ? '<div class="field full"><label>קטגוריה</label>'+
-          '<select id="ib-cat-mode" onchange="onIbCatMode()" style="margin-bottom:5px">'+
-            '<option value="__keep">— ללא שינוי —</option>'+
-            '<option value="">ללא קטגוריה</option>'+
-            '<option value="set">קטגוריה שאבחר…</option></select>'+
-          '<div id="ib-cat-wrap" style="display:none">'+
-            categoryPickerHtml("ib-cat","","אפשר להקליד שם חדש או ללחוץ ➕")+
-          '</div></div>'
-        : '')+
       '<div class="field"><label>לחישוב</label><select id="ib-excl">'+
         '<option value="__keep">— ללא שינוי —</option>'+
         '<option value="excl">לא לחישוב (מוסתר מהסיכומים)</option>'+
@@ -7480,10 +7449,6 @@ function ibDestPreview(aptId){
       (bad.length>6?" ועוד "+(bad.length-6):"")+'</span>':'')+
     '<br><span class="muted">ההערה עצמה נשארת. להסרתה — בחר בשדה ההערה "למחוק את ההערה".</span>';
 }
-function onIbCatMode(){
-  var w=document.getElementById("ib-cat-wrap"); if(!w) return;
-  w.style.display=(val("ib-cat-mode")==="set")?"block":"none";
-}
 function onIbNoteMode(){
   var m=val("ib-note-mode"), inp=document.getElementById("ib-note");
   if(!inp) return;
@@ -7500,15 +7465,9 @@ function applyBulkIncomeEdit(aptId,ids){
   var noteMode=val("ib-note-mode")||"keep", noteTxt=val("ib-note").trim();
   var markPaid=checked("ib-paid");
   var exclSel=document.getElementById("ib-excl")?val("ib-excl"):"__keep";
-  /* קריאה ישירה מהאלמנט: val()||"__keep" הפך את האפשרות "ללא קטגוריה"
-     (ערך ריק) ל"ללא שינוי", ולכן ניקוי הקטגוריה לא עבד. */
-  var _ibc=document.getElementById("ib-cat-mode");
-  var catMode=_ibc?_ibc.value:"__keep";
-  var catVal=catMode==="__keep"?"__keep":(catMode===""?"":pickCategoryId("ib-cat"));
-  if(catMode==="set" && !catVal){ toast("הקלד קטגוריה, או בחר \"ללא שינוי\"","err"); return false; }
   var repSel=document.getElementById("ib-inrep")?val("ib-inrep"):"__keep";
   var frlSel=document.getElementById("ib-frl")?val("ib-frl"):"__keep";
-  if(!date && !start && !end && !dest && uMode==="keep" && noteMode==="keep" && !markPaid && exclSel==="__keep" && repSel==="__keep" && frlSel==="__keep" && catVal==="__keep"){ toast("לא נבחר מה לעדכן","warn"); return false; }
+  if(!date && !start && !end && !dest && uMode==="keep" && noteMode==="keep" && !markPaid && exclSel==="__keep" && repSel==="__keep" && frlSel==="__keep"){ toast("לא נבחר מה לעדכן","warn"); return false; }
   if((noteMode==="set"||noteMode==="append") && !noteTxt){
     toast("כתוב את ההערה שתיכנס, או בחר \"ללא שינוי\" בשדה ההערה","err"); return false; }
   var picked=(uMode==="set"||uMode==="add")?readUnitChecks("ib-u"):[];
@@ -7541,7 +7500,6 @@ function applyBulkIncomeEdit(aptId,ids){
       } else fromNoteBad++;
     }
     else if(dest) setDest(i,(dest==="__none")?"":dest);
-    if(catVal!=="__keep") i.categoryId=catVal;
     if(repSel==="on") i.noReport=false; else if(repSel==="off") i.noReport=true;
     if(frlSel==="on") i.noFreilich=false; else if(frlSel==="off") i.noFreilich=true;
     if(uMode==="set") i.units=picked.slice();
@@ -8900,12 +8858,6 @@ function editIncome(id,aptId){
         destOptions(aptId,it.receivedBy)+
       '</select>'+
       '<div class="hint">'+(a&&a.hasBank?'הכנסה שנכנסת לבנק הזמני מתווספת ליתרת הבנק ונזקפת לשותפים לפי החלוקה שלמטה.':'בפרויקט הזה הבנק הזמני כבוי, ולכן ניתן לבחור רק שותף.')+'</div></div>')+
-    /* קטגוריה — פיצ'ר חדש, ולכן למנהלים בלבד עד שדודי יפתח לשאר */
-    ((CU&&CU.role==="admin")
-      ? '<div class="field full"><label>קטגוריה</label>'+
-        categoryPickerHtml("in-cat",it.categoryId||"","לפי סוג ההכנסה — שכירות, מכירה, החזר. אפשר להקליד שם חדש או ללחוץ ➕.")+
-        '</div>'
-      : '')+
     '<div class="field full"><label>הערה</label><input id="in-note" value="'+esc(it.note||"")+'"></div>'+
     '<div class="field full"><label style="font-weight:400"><input type="checkbox" id="in-await" style="width:auto;margin-inline-end:6px"'+(it.awaitsPayment?" checked":"")+'>'+
       'ממתינה לתשלום — הסכום ייחשב כחוב ולא ככסף שנכנס, עד שיירשם עליה תשלום</label></div>'+
@@ -8950,14 +8902,11 @@ function editIncome(id,aptId){
       var target;
       if(id){ it.description=desc; it.amount=amt; it.date=val("in-date"); it.receivedBy=dest; it.split=split; it.units=un;
         it.startDate=sd; it.endDate=ed; it.note=val("in-note"); it.excluded=checked("in-excl");
-        it.noReport=!checked("in-inrep"); it.noFreilich=checked("in-frl"); it.awaitsPayment=checked("in-await");
-        if(document.getElementById("in-cat")) it.categoryId=pickCategoryId("in-cat");
-        target=it; }
+        it.noReport=!checked("in-inrep"); it.noFreilich=checked("in-frl"); it.awaitsPayment=checked("in-await"); target=it; }
       else{
         target={id:uid(),apartmentId:aptId,description:desc,amount:amt,date:val("in-date")||todayISO(),
           receivedBy:dest,split:split,units:un,startDate:sd,endDate:ed,note:val("in-note"),
-          excluded:checked("in-excl"),noReport:!checked("in-inrep"),noFreilich:checked("in-frl"),awaitsPayment:checked("in-await"),
-          categoryId:(document.getElementById("in-cat")?pickCategoryId("in-cat"):""),deleted:false};
+          excluded:checked("in-excl"),noReport:!checked("in-inrep"),noFreilich:checked("in-frl"),awaitsPayment:checked("in-await"),deleted:false};
         DB.income.push(target);
       }
       if(paidNow){
