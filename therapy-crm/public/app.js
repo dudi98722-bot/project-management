@@ -504,27 +504,7 @@ function openPatientModal(id) {
 
     <div class="field">
       <label>שיוך למטפלים</label>
-      ${p && !mayEdit('preferred_therapist_ids') ? '<div class="hint">אין לך הרשאה לשנות את השיוך</div>' : ''}
-      <div class="hint" style="margin-bottom:8px">
-        סימון קבוצה ממלא אוטומטית את המטפלים שבה. אפשר לסמן כמה קבוצות, להוסיף מטפלים בודדים,
-        ולהוריד מהרשימה כל שם שלא מתאים.
-      </div>
-      <div class="pref-box">
-        <div class="pref-groups" id="pref-groups">
-          ${S.groups.length ? S.groups.map(g => `
-            <label class="group-check"><input type="checkbox" value="${g.id}" onchange="prefToggleGroup(${g.id}, this.checked)"> ${esc(g.name)}
-              <span class="hint">(${(g.members || []).length})</span></label>`).join('')
-            : '<span class="hint">אין קבוצות מטפלים. אפשר להקים בלשונית "מטפלים".</span>'}
-        </div>
-        <div class="pref-add">
-          <select id="pref-add-select">
-            <option value="">+ הוסף מטפל לרשימה...</option>
-            ${S.therapists.filter(t => t.active).map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}
-          </select>
-          <button type="button" class="btn sec sm" onclick="prefAddSelected()">הוסף</button>
-        </div>
-        <div id="pref-list" class="pref-list"></div>
-      </div>
+      ${prefSectionHtml(p)}
     </div>
 
     ${p && (p.created_by_name || p.updated_by_name) ? '<div class="hint" style="margin-top:6px">' +
@@ -547,8 +527,8 @@ function openPatientModal(id) {
       diagnosis: fd.get('diagnosis'), notes: fd.get('notes'), notes2: fd.get('notes2'),
       urgency: Number(fd.get('urgency')),
       hours: [...document.querySelectorAll('#hours-grid .hour-chip.on')].map(c => Number(c.dataset.h)),
-      preferred_therapist_ids: [..._pref.therapists],
-      preferred_group_ids: [..._pref.groups],
+      preferred_therapist_ids: mayEdit('preferred_therapist_ids') ? [..._pref.therapists] : undefined,
+      preferred_group_ids: mayEdit('preferred_therapist_ids') ? [..._pref.groups] : undefined,
     };
     try {
       if (p) await api('/patients/' + p.id, { method: 'PUT', body });
@@ -581,7 +561,50 @@ function prefSummary(p) {
 // manual     = מי שנוסף/נשמר ידנית — לא יוסר כשמבטלים סימון קבוצה
 let _pref = { therapists: new Set(), groups: new Set(), manual: new Set() };
 
+// אזור השיוך למטפלים. מי שאינו רשאי לשנות אותו (מזכירה כללית, מדריך)
+// רואה רשימה לקריאה בלבד — בלי תיבות סימון, בלי הוספה ובלי הסרה.
+function prefSectionHtml(p) {
+  if (!mayEdit('preferred_therapist_ids')) {
+    const names = (p && p.preferred_therapists) || [];
+    const groups = (p && p.preferred_groups) || [];
+    return `
+      <div class="pref-box">
+        ${names.length
+          ? `<div class="pref-count">${names.length} מטפלים:</div>` +
+            names.map(t => `<span class="pref-chip ro">${esc(t.name)}</span>`).join('')
+          : '<span class="hint">לא נבחרו מטפלים</span>'}
+        ${groups.length
+          ? `<div class="hint" style="margin-top:6px">מקבוצות: ${groups.map(g => esc(g.name)).join(', ')}</div>`
+          : ''}
+      </div>
+      <div class="hint" style="margin-top:6px">אין לך הרשאה לשנות את השיוך</div>`;
+  }
+  return `
+      <div class="hint" style="margin-bottom:8px">
+        סימון קבוצה ממלא אוטומטית את המטפלים שבה. אפשר לסמן כמה קבוצות, להוסיף מטפלים בודדים,
+        ולהוריד מהרשימה כל שם שלא מתאים.
+      </div>
+      <div class="pref-box">
+        <div class="pref-groups" id="pref-groups">
+          ${S.groups.length ? S.groups.map(g => `
+            <label class="group-check"><input type="checkbox" value="${g.id}" onchange="prefToggleGroup(${g.id}, this.checked)"> ${esc(g.name)}
+              <span class="hint">(${(g.members || []).length})</span></label>`).join('')
+            : '<span class="hint">אין קבוצות מטפלים. אפשר להקים בלשונית "מטפלים".</span>'}
+        </div>
+        <div class="pref-add">
+          <select id="pref-add-select">
+            <option value="">+ הוסף מטפל לרשימה...</option>
+            ${S.therapists.filter(t => t.active).map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}
+          </select>
+          <button type="button" class="btn sec sm" onclick="prefAddSelected()">הוסף</button>
+        </div>
+        <div id="pref-list" class="pref-list"></div>
+      </div>`;
+}
+
 function prefInit(p) {
+  // במצב קריאה בלבד אין פקדים לאתחל
+  if (!document.getElementById('pref-list')) return;
   const tIds = (p && p.preferred_therapists ? p.preferred_therapists.map(t => t.id) : []);
   const gIds = (p && p.preferred_groups ? p.preferred_groups.map(g => g.id) : []);
   _pref = { therapists: new Set(tIds), groups: new Set(gIds), manual: new Set(tIds) };
