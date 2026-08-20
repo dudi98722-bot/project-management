@@ -352,6 +352,10 @@ td.empty{text-align:center;color:var(--muted);padding:22px}
 
 /* ---------- קבועים ---------- */
 var LSKEY = "apartmentsCRM_v1";
+/* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
+   הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
+   מגיש לפעמים את הקובץ הישן מהמטמון. */
+var APP_BUILD = "18.08 ב'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -2098,15 +2102,16 @@ function currentApartment(){ return byId(DB.apartments, state.params.apartmentId
    (ניווט אמיתי בין מסכים עובר דרך go(), שמגלגל לראש הדף לפני
    הרינדור — ולכן השחזור כאן משמר גם את זה נכון.) */
 var SEL_KEEP=[["bm-x","bmCount"],["eb-x","ebCount"],["ib-x","ibCount"],["pb-x","pbCount"],["gb-x","gbCount"]];
-function rerender(){
+function captureSelections(){
   var kept={};
   SEL_KEEP.forEach(function(pair){
     var v={}, n=0;
     document.querySelectorAll("input."+pair[0]+":checked").forEach(function(x){ v[x.value]=1; n++; });
     if(n) kept[pair[0]]=v;
   });
-  var sx=window.scrollX, sy=window.scrollY;
-  renderApp();
+  return kept;
+}
+function restoreSelections(kept){
   SEL_KEEP.forEach(function(pair){
     var v=kept[pair[0]]; if(!v) return;
     var n=0;
@@ -2115,15 +2120,25 @@ function rerender(){
     });
     if(n && typeof window[pair[1]]==="function"){ try{ window[pair[1]](); }catch(e){} }
   });
+}
+function anySelectionMarked(){
+  return !!document.querySelector(SEL_KEEP.map(function(p){ return "input."+p[0]+":checked"; }).join(","));
+}
+function rerender(){
+  var sx=window.scrollX, sy=window.scrollY;
+  renderApp();
   window.scrollTo(sx,sy);
 }
-
 function renderApp(){
   if(!CU){ renderLogin(); return; }
+  /* שימור סימוני הבחירה יושב כאן ולא ב-rerender — כך שכל מסלול
+     שבונה את המסך, כולל קריאות ישירות ועתידיות, עובר דרכו. */
+  var kept=captureSelections();
   clientScopeMgmt();   // משתמש "דמי ניהול" — רק נתוני דמי הניהול
   var app=document.getElementById("app");
   app.innerHTML = topbarHtml() + navHtml() + '<div class="content" id="content"></div>';
   renderView();
+  restoreSelections(kept);
 }
 function topbarHtml(){
   var apts=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);});
@@ -2166,6 +2181,7 @@ function navHtml(){
   (can("edit")?'<div class="nav-item" style="background:var(--brand);color:#fff" onclick="openQuickExpense()">➕ הוצאה מהירה</div>':'')+
   (can("edit")?'<div class="nav-item" style="background:var(--ok);color:#fff" onclick="openQuickPay()">💳 תשלום מהיר</div>':'')+
   (canDownload()?'<div class="nav-item" onclick="openExportMenu()" title="ייצוא הנתונים לאקסל">⬇️ ייצוא לאקסל</div>':'')+
+  '<div class="nav-item" style="opacity:.45;font-size:10.5px;cursor:default;pointer-events:none">גרסה '+esc(APP_BUILD)+'</div>'+
   '</div>';
 }
 /* תפריט ייצוא מרכזי — חוברת מלאה, פרוייקט בודד, או הטבלה שעל המסך */
@@ -3080,6 +3096,10 @@ function uiIsBusy(){
   if(mr && mr.innerHTML.trim()) return true;
   var ae=document.activeElement;
   if(ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)) return true;
+  /* שורות מסומנות = המשתמש באמצע פעולה מרוכזת. עדכון ממשתמש אחר לא
+     נטען מעליו אוטומטית — מוצג באנר, והוא טוען כשנוח לו. הסימונים
+     ממילא שורדים את הטעינה (renderApp משמר), זו הגנה כפולה. */
+  if(anySelectionMarked()) return true;
   return false;
 }
 async function applyServerUpdate(polledRev){
