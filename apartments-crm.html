@@ -355,7 +355,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "18.08 ב'";
+var APP_BUILD = "18.08 ג'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -2134,6 +2134,10 @@ function renderApp(){
   /* שימור סימוני הבחירה יושב כאן ולא ב-rerender — כך שכל מסלול
      שבונה את המסך, כולל קריאות ישירות ועתידיות, עובר דרכו. */
   var kept=captureSelections();
+  /* חלונית סינון שנשארת פתוחה מעל טבלה שהוחלפה היא חלונית מתה —
+     הסימונים בה לא עושים כלום. סוגרים; הסינון שכבר הוחל שמור
+     ב-COLFILT ומוחל מחדש על הטבלה החדשה. */
+  try{ if(typeof closeColPicker==="function") closeColPicker(); }catch(e){}
   clientScopeMgmt();   // משתמש "דמי ניהול" — רק נתוני דמי הניהול
   var app=document.getElementById("app");
   app.innerHTML = topbarHtml() + navHtml() + '<div class="content" id="content"></div>';
@@ -3075,6 +3079,9 @@ function pollBlockedBy(){
 async function pollForUpdates(){
   if(POLL.busy) return;
   if(pollBlockedBy()) return;
+  /* רינדור שנדחה בגלל עבודה באמצע — מושלם ברגע שהמשתמש פנוי,
+     בלי לחכות לגרסה חדשה מהשרת */
+  if(POLL.pending && !uiIsBusy()){ POLL.busy=true; try{ await applyServerUpdate(); } finally{ POLL.busy=false; } return; }
   var now=Date.now();
   if(now-POLL.lastCheck<4000) return;      // הגנה מפני מבול פוקוס
   POLL.lastCheck=now;
@@ -3100,6 +3107,9 @@ function uiIsBusy(){
      נטען מעליו אוטומטית — מוצג באנר, והוא טוען כשנוח לו. הסימונים
      ממילא שורדים את הטעינה (renderApp משמר), זו הגנה כפולה. */
   if(anySelectionMarked()) return true;
+  /* חלונית סינון עמודה פתוחה — רינדור באמצע היה משאיר אותה "מתה":
+     מחוברת לטבלה שכבר הוחלפה, והסימונים בה לא משפיעים על כלום. */
+  if(typeof _openPicker!=="undefined" && _openPicker) return true;
   return false;
 }
 async function applyServerUpdate(polledRev){
@@ -3113,7 +3123,11 @@ async function applyServerUpdate(polledRev){
   var known=Number(polledRev)||Number(POLL.srv)||0;
   if(known>srv){ res.data.meta=res.data.meta||{version:1}; res.data.meta.rev=known; srv=known; }
   var loc=(DB&&DB.meta&&Number(DB.meta.rev))||0;
-  if(srv<=loc){ POLL.pending=false; hideUpdateBanner(); return false; }
+  if(srv<=loc){
+    /* אין נתונים חדשים מהשרת — אבל ייתכן שהרינדור נדחה (מיזוג בזמן
+       שהמשתמש היה עסוק) והמסך מציג מצב ישן. מרעננים מהמקומי. */
+    POLL.pending=false; hideUpdateBanner(); rerender(); return false;
+  }
   if(pollBlockedBy()==="local-work"){
     /* יש עבודה מקומית באמצע שליחה — השמירה עצמה תמזג את שני הצדדים.
        לא שותקים: מי שלחץ על הבאנר מקבל הסבר במקום כלום. */
@@ -3253,7 +3267,12 @@ function resolveConflictAndResave(){
     var delay=MERGE_ROUNDS>2?Math.min(1500*(MERGE_ROUNDS-2),15000):0;
     setTimeout(function(){ flushSave(); },delay);
     setTimeout(function(){ MERGE_ROUNDS=0; },60000);
-    rerender();
+    /* המסך נבנה מחדש רק כשהמשתמש פנוי. באמצע סימון או עם חלונית
+       סינון פתוחה — הנתונים כבר ממוזגים ושמורים, והתצוגה תתעדכן
+       מהבאנר או מהפולינג ברגע שיתפנה. זה היה המסלול שמחק סימונים
+       למרות השימור: הוא רץ מהשמירה של המשתמש עצמו, לא מהפולינג. */
+    if(uiIsBusy()){ POLL.pending=true; showUpdateBanner(); }
+    else rerender();
     toast(merged.conflicts
       ? "מוזגו שינויים משני משתמשים · "+merged.conflicts+" התנגשויות הוכרעו לפי השרת (העותק שלך בגיבוי)"
       : "נשמר · שולבו גם שינויים ממשתמש אחר",
