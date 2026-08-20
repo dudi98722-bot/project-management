@@ -355,7 +355,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "18.08 ד'";
+var APP_BUILD = "18.08 ה'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -1594,8 +1594,31 @@ function depositBankId(d,aptId){
 }
 /* אפשרויות "למי נכנס הכסף" — בנק לכל חשבון בנק בפרוייקט, ואז השותפים */
 /* אותה רשימה לעדכון מרוכז — "ללא שינוי" במקום "לא צוין" */
+/* ---------- פענוח טקסט חופשי ליעד "נכנס ל…" ----------
+   נתונים שיובאו מאקסל נחתו לא פעם בהערה ("פאגי", "בנק זמני", שם שותף)
+   במקום בשדה היעד. כאן מתרגמים את הטקסט ליעד אמיתי: בנק זמני של
+   הפרוייקט או שותף, לפי השם. ההתאמה סלחנית לרווחים, למקפים ולקידומת
+   "בנק", אבל לא מנחשת: טקסט שמתאים ליותר מיעד אחד נחשב לא-מזוהה. */
+function destKeyNorm(t){
+  return String(t||"").replace(/[\-–—_.]/g," ").replace(/\s+/g," ").trim().toLowerCase();
+}
+function destFromText(aptId,txt){
+  var q=destKeyNorm(txt);
+  if(!q) return null;
+  var cands=[];
+  aptBankAccounts(aptId).forEach(function(b){ cands.push({v:"bank:"+b.id,n:destKeyNorm(b.name)}); });
+  if(aptHasBank(aptId) && !aptBankAccounts(aptId).length) cands.push({v:"bank",n:destKeyNorm("בנק זמני")});
+  apPartners(aptId).forEach(function(p){ cands.push({v:p.partnerId,n:destKeyNorm(partnerName(p.partnerId))}); });
+  var exact=cands.filter(function(c){ return c.n===q; });
+  if(exact.length===1) return exact[0].v;
+  if(exact.length>1) return null;
+  /* התאמה חלקית — רק אם היא יחידה */
+  var part=cands.filter(function(c){ return c.n && (c.n.indexOf(q)>=0 || q.indexOf(c.n)>=0); });
+  return part.length===1 ? part[0].v : null;
+}
 function destOptionsBulk(aptId){
   return '<option value="">— ללא שינוי —</option><option value="__none">לא צוין</option>'+
+    '<option value="__fromnote">📋 לפי מה שרשום בהערה</option>'+
     destOptions(aptId,"__never").replace('<option value="">— לא צוין —</option>',"");
 }
 function destOptions(aptId,sel){
@@ -7330,6 +7353,7 @@ function openBulkIncomeEdit(aptId){
   var ids=visibleBoxes(".ib-x:checked").map(function(c){ return c.value; });
   if(!ids.length){ toast("סמן קודם את השורות לעדכון (העמודה הראשונה בטבלה)","warn"); return; }
   var rows=ids.map(function(id){ return byId(DB.income,id); }).filter(Boolean);
+  window._IB_IDS=ids.slice();
   var sum=round2(rows.reduce(function(s,i){ return s+(Number(i.amount)||0); },0));
   var units=aptUnits(aptId), booking=aptBookingMode(aptId);
   /* שורות שאפשר לסמן כשולמו — כאלה שעוד אין עליהן תשלום */
@@ -7353,7 +7377,8 @@ function openBulkIncomeEdit(aptId){
     '<div class="hint" style="margin-bottom:10px">שדה שנשאר על <b>"— ללא שינוי —"</b> לא ישתנה באף שורה.</div>'+
     '<div class="form-grid">'+
       '<div class="field"><label>תאריך</label><input id="ib-date" type="date"><div class="hint">ריק = ללא שינוי</div></div>'+
-      (booking?'':'<div class="field"><label>למי נכנס הכסף</label><select id="ib-dest">'+destOptionsBulk(aptId)+'</select></div>')+
+      (booking?'':'<div class="field"><label>למי נכנס הכסף</label><select id="ib-dest" onchange="ibDestPreview(\''+aptId+'\')">'+destOptionsBulk(aptId)+'</select>'+
+        '<div class="hint" id="ib-dest-hint"></div></div>')+
       '<div class="field"><label>תחילת השכרה</label><input id="ib-start" type="date"><div class="hint">ריק = ללא שינוי</div></div>'+
       '<div class="field"><label>סיום השכרה</label><input id="ib-end" type="date"><div class="hint">ריק = ללא שינוי</div></div>'+
       (units.length?'<div class="field full"><label>יחידות</label>'+
@@ -7397,6 +7422,26 @@ function onIbPaid(){
   var w=document.getElementById("ib-paid-wrap"); if(!w) return;
   w.style.display=checked("ib-paid")?"block":"none";
 }
+/* "לפי ההערה" — מראה מראש כמה שורות יזוהו וכמה יישארו, כדי שלא
+   תתבצע המרה עיוורת על עשרות שורות. */
+function ibDestPreview(aptId){
+  var box=document.getElementById("ib-dest-hint"); if(!box) return;
+  if(val("ib-dest")!=="__fromnote"){ box.innerHTML=""; return; }
+  var ids=[]; document.querySelectorAll(".ib-x:checked").forEach(function(c){ ids.push(c.value); });
+  if(!ids.length){ ids=(window._IB_IDS||[]); }
+  var ok=0, bad=[], empty=0;
+  ids.forEach(function(id){
+    var i=byId(DB.income,id); if(!i) return;
+    var t=String(i.note||"").trim();
+    if(!t){ empty++; return; }
+    if(destFromText(aptId,t)) ok++; else if(bad.indexOf(t)<0) bad.push(t);
+  });
+  box.innerHTML='<span class="pos">'+ok+' שורות יזוהו</span>'+
+    (empty?' · <span class="muted">'+empty+' בלי הערה — לא ישתנו</span>':'')+
+    (bad.length?'<br><span class="neg">לא זוהו ולא ישתנו: '+esc(bad.slice(0,6).join(" · "))+
+      (bad.length>6?" ועוד "+(bad.length-6):"")+'</span>':'')+
+    '<br><span class="muted">ההערה עצמה נשארת. להסרתה — בחר בשדה ההערה "למחוק את ההערה".</span>';
+}
 function onIbNoteMode(){
   var m=val("ib-note-mode"), inp=document.getElementById("ib-note");
   if(!inp) return;
@@ -7422,7 +7467,7 @@ function applyBulkIncomeEdit(aptId,ids){
   if((uMode==="set"||uMode==="add") && !picked.length){ toast("סמן אילו יחידות, או בחר \"ללא שינוי\"","err"); return false; }
   var payMth=val("ib-paid-method")||"transfer"; if(payMth==="__new") payMth="transfer";
   var payDest=document.getElementById("ib-paid-dest")?val("ib-paid-dest"):"__same";
-  var n=0, badRange=0, paidN=0;
+  var n=0, badRange=0, paidN=0, fromNoteOk=0, fromNoteBad=0;
   ids.forEach(function(id){
     var i=byId(DB.income,id); if(!i||i.deleted) return;
     if(date) i.date=date;
@@ -7432,7 +7477,15 @@ function applyBulkIncomeEdit(aptId,ids){
     if(i.startDate && i.endDate && i.endDate<i.startDate){
       if(start) i.startDate=""; if(end) i.endDate=""; badRange++;
     }
-    if(dest) i.receivedBy=(dest==="__none")?"":dest;
+    if(dest==="__fromnote"){
+      var t=String(i.note||"").trim();
+      if(t){
+        var d=destFromText(i.apartmentId,t);
+        if(d){ i.receivedBy=d; fromNoteOk++; }
+        else fromNoteBad++;
+      } else fromNoteBad++;
+    }
+    else if(dest) i.receivedBy=(dest==="__none")?"":dest;
     if(repSel==="on") i.noReport=false; else if(repSel==="off") i.noReport=true;
     if(frlSel==="on") i.noFreilich=false; else if(frlSel==="off") i.noFreilich=true;
     if(uMode==="set") i.units=picked.slice();
@@ -7458,7 +7511,10 @@ function applyBulkIncomeEdit(aptId,ids){
   });
   save();
   toast("עודכנו "+n+" שורות"+(paidN?" · "+paidN+" סומנו כשולמו":"")+
-    (badRange?" · ב-"+badRange+" הטווח היה הפוך ולא שונה":""),badRange?"warn":"ok");
+    (fromNoteOk?" · "+fromNoteOk+" יעדים זוהו מההערה":"")+
+    (fromNoteBad?" · "+fromNoteBad+" לא זוהו ולא שונו":"")+
+    (badRange?" · ב-"+badRange+" הטווח היה הפוך ולא שונה":""),
+    (badRange||fromNoteBad)?"warn":"ok");
   rerender();
   return true;
 }
