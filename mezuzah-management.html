@@ -503,6 +503,11 @@ body.locked-out .content, body.locked-out .tabs, body.locked-out header .actions
   </div>
 </div>
 
+<!-- תצוגת תמונה מוגדלת — לחיצה בכל מקום סוגרת -->
+<div class="overlay" id="imgOverlay" style="cursor:zoom-out" onclick="this.classList.remove('show')">
+  <img id="imgOverlayImg" alt="" style="border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5);background:#fff">
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1103,7 +1108,20 @@ function compressImage(file, maxSize, quality, cb){
   };
   r.readAsDataURL(file);
 }
-function viewImage(id){ const m=data.mezuzot.find(x=>x.id===id); if(m&&m.img){ const w=window.open('','_blank'); w.document.write('<img src="'+m.img+'" style="max-width:100%">'); } }
+// תצוגת תמונה מוגדלת בתוך המערכת: ממלאת את המסך תוך שמירת פרופורציות
+function showImageLightbox(src){
+  const img = document.getElementById('imgOverlayImg');
+  const probe = new Image();
+  probe.onload = ()=>{
+    const scale = Math.min((window.innerWidth*0.92)/probe.naturalWidth, (window.innerHeight*0.9)/probe.naturalHeight);
+    img.src = src;
+    img.style.width = Math.round(probe.naturalWidth*scale) + 'px';
+    img.style.height = 'auto';
+    document.getElementById('imgOverlay').classList.add('show');
+  };
+  probe.src = src;
+}
+function viewImage(id){ const m=data.mezuzot.find(x=>x.id===id); if(m&&m.img) showImageLightbox(m.img); }
 
 // ---- details modal (also the scan target) ----
 function showMezuzaDetails(id){
@@ -1113,7 +1131,7 @@ function showMezuzaDetails(id){
   const row=(k,v)=>`<div class="det-row"><span class="k">${k}</span><span class="v">${esc(v)||'—'}</span></div>`;
   const rc=(c,k,v)=>colVis(c)?row(k,v):'';
   document.getElementById('det-body').innerHTML =
-    (m.img?`<img class="det-img" src="${m.img}">`:'') +
+    (m.img?`<img class="det-img" src="${m.img}" style="cursor:zoom-in" onclick="viewImage('${m.id}')" title="לחץ להגדלה">`:'') +
     row('מק"ט', m.sku) + rc('scribe','סופר', m.scribe) + row('דרגת סופר', scribeGrade(m)) + row('מוצר', m.product) + row('תאריך', m.date) +
     rc('price','מחיר ליחי\'', ILS(m.price)) + rc('comp','הגהת מחשב', m.comp) + rc('g1','גברא 1', m.g1) + rc('g2','גברא 2', m.g2) +
     row('אישור הרב', m.approve) + rc('scribePay','לתשלום לסופר', ILS(scribePay(m))) + row('הולוגרמה בד"ץ', m.holo) + rc('keter','נשלח לכתר', m.keter);
@@ -1692,7 +1710,7 @@ async function hashPass(name, pass){
 function authActive(){ return alive(data.users).length > 0; }
 // סגירת כל החלונות הצפים — חובה בכל מעבר משתמש, אחרת תוכן שנפתח בהרשאה גבוהה נשאר גלוי
 function closeAllOverlays(){
-  ['detailOverlay','printChoiceOverlay','binOverlay','wedgeOverlay','scanOverlay'].forEach(id=>{
+  ['detailOverlay','printChoiceOverlay','binOverlay','wedgeOverlay','scanOverlay','imgOverlay'].forEach(id=>{
     const el = document.getElementById(id); if (el) el.classList.remove('show');
   });
   _printList = null;
