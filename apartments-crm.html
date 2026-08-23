@@ -355,7 +355,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "18.08 ט'";
+var APP_BUILD = "18.08 י'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -7807,6 +7807,7 @@ function viewBankMatch(){
       (stmtBanks().filter(function(b){ return stmtBankUse(b.id)===0; }).length
         ?'<button class="btn btn-sm" onclick="cleanEmptyStmtBanks()">🧹 נקה בנקים ריקים</button> ':'')+
       (all.length?'<button class="btn btn-sm" onclick="openBulkBankMoveEdit()">✏️ עדכון מרוכז <span id="bm-count"></span></button> ':'')+
+      (all.length?'<button class="btn btn-sm" onclick="openBulkMatch()">🔗 התאמה מרוכזת</button> ':'')+
       (openMoves.length?'<button class="btn btn-sm" onclick="runAutoMatch()">⚡ התאמה אוטומטית</button> ':'')+
       (all.length?'<button class="btn btn-danger btn-sm" onclick="clearMatchedMoves()">🗑️ נקה מותאמות</button> ':''):'')+
     '<div class="sp"></div></div>';
@@ -7928,6 +7929,104 @@ function runAutoMatch(){
       plan.forEach(function(p){ applyMoveMatch(p.m,p.inc,p.amount); });
       save(); toast("הותאמו "+plan.length+" שורות","ok"); rerender();
     }});
+}
+/* ============================================================
+   התאמה מרוכזת
+   ------------------------------------------------------------
+   ההתאמה האוטומטית מטפלת רק בשורות עם מועמד יחיד ובסכום זהה, וכל
+   השאר נשארו להתאמה אחת-אחת. כאן: מסמנים שורות, ולכל אחת מוצג
+   המועמד המוביל בשורה אחת עם אפשרות להחליף אותו או לדלג. שורה בלי
+   מועמד כלל אינה מוצגת — אין מה לבחור בה.
+   ============================================================ */
+var BULKMATCH=[];
+var BULKMATCH_MIN=60;   /* מתחת לזה — לא מסומן מראש */
+function openBulkMatch(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var ids=visibleBoxes(".bm-x:checked").map(function(c){ return c.value; });
+  var rows=ids.length
+    ? ids.map(function(id){ return byId(DB.bankMoves,id); }).filter(Boolean)
+    : allBankMoves().filter(moveIsOpen);
+  rows=rows.filter(moveIsOpen);
+  if(!rows.length){ toast(ids.length?"כל השורות שסימנת כבר מותאמות":"אין שורות פתוחות להתאמה","warn"); return; }
+  /* המועמדים מחושבים פעם אחת — זו הפעולה היקרה במסך הזה */
+  BULKMATCH=[];
+  rows.forEach(function(m){
+    var c=moveCandidates(m,moveAptId(m));
+    if(!c.length) return;
+    /* כל הזמנה עם חוב היא "מועמדת", ולכן שורה חסרת קשר (עמלה של 77)
+       הייתה מקבלת מועמד מוביל שרירותי ונבחרת מראש. רק ציון משמעותי
+       (סכום זהה או שם שמופיע בתיאור) מסומן אוטומטית; השאר מוצג
+       כבחירה אפשרית אבל דורש סימון מפורש. */
+    BULKMATCH.push({m:m,cands:c.slice(0,8),pick:0,skip:(c[0].score<BULKMATCH_MIN)});
+  });
+  if(!BULKMATCH.length){ toast("לא נמצאו מועמדים לאף שורה שנבחרה","warn"); return; }
+  var noCand=rows.length-BULKMATCH.length;
+  var weakN=BULKMATCH.filter(function(r){ return r.skip; }).length;
+  openModal({title:"🔗 התאמה מרוכזת — "+BULKMATCH.length+" שורות",wide:true,bodyHtml:
+    '<div class="hint" style="margin-bottom:8px">לכל שורה מוצג המועמד המתאים ביותר. אפשר להחליף מועמד או להסיר את הסימון כדי לדלג. '+
+    'ההתאמה יוצרת תשלום על ההזמנה, בדיוק כמו התאמה ידנית.'+
+    (weakN?' <b>'+weakN+' שורות מסומנות "חלשה" — לא נמצא בהן סימן חזק, והן אינן מסומנות מראש.</b>':'')+
+    (noCand?' <b>'+noCand+' שורות שנבחרו לא הוצגו — לא נמצא להן אף מועמד.</b>':'')+'</div>'+
+    '<div id="bulkmatch-body">'+bulkMatchTableHtml()+'</div>',
+    saveLabel:"בצע התאמה",onSave:function(){ return applyBulkMatch(); }});
+}
+function bulkMatchTableHtml(){
+  var h='<div class="tbl-tight"><div class="table-wrap" style="max-height:52vh"><table class="tbl"><thead><tr>'+
+    '<th style="width:30px"></th><th class="dt">תאריך</th><th class="num">סכום</th><th>שורת הבנק</th>'+
+    '<th>יותאם להזמנה</th><th class="num">להתאמה</th></tr></thead><tbody>';
+  BULKMATCH.forEach(function(r,idx){
+    var c=r.cands[r.pick];
+    var amt=Math.min(moveRemaining(r.m), c.debt);
+    h+='<tr'+(r.skip?' style="opacity:.45"':'')+'>'+
+      '<td><input type="checkbox" '+(r.skip?'':'checked')+' style="width:auto" '+
+        'title="בטל סימון כדי לדלג על השורה" onchange="BULKMATCH['+idx+'].skip=!this.checked;bulkMatchRefresh()"></td>'+
+      '<td>'+dateHe(r.m.date)+'</td>'+
+      '<td><b>'+money(r.m.amount)+'</b></td>'+
+      '<td class="muted">'+esc((r.m.name||r.m.description||"—")+(r.m.details?" · "+r.m.details:"")).slice(0,70)+'</td>'+
+      '<td>'+(r.cands[r.pick].score<BULKMATCH_MIN
+        ? '<span class="badge badge-warn badge-unit" title="לא נמצא סימן חזק — בדוק לפני סימון">חלשה</span> '
+        : '')+
+      (r.cands.length>1
+        ? '<select onchange="BULKMATCH['+idx+'].pick=Number(this.value);bulkMatchRefresh()" style="max-width:100%">'+
+          r.cands.map(function(x,j){
+            return '<option value="'+j+'"'+(j===r.pick?" selected":"")+'>'+
+              esc(x.inc.description)+' · '+money(x.debt)+' · '+esc(apartmentName(x.inc.apartmentId))+
+              (x.why.length?' — '+esc(x.why[0]):'')+'</option>'; }).join("")+
+          '</select>'
+        : '<b>'+esc(c.inc.description)+'</b> <span class="muted">· '+esc(apartmentName(c.inc.apartmentId))+
+          (c.why.length?' — '+esc(c.why[0]):'')+'</span>')+'</td>'+
+      '<td><b>'+money(amt)+'</b></td></tr>';
+  });
+  var on=BULKMATCH.filter(function(r){ return !r.skip; });
+  var tot=round2(on.reduce(function(a,r){ return a+Math.min(moveRemaining(r.m), r.cands[r.pick].debt); },0));
+  h+='</tbody><tfoot><tr><td colspan="5">יבוצעו '+on.length+' התאמות</td><td><b>'+money(tot)+'</b></td></tr></tfoot>'+
+    '</table></div></div>';
+  return h;
+}
+function bulkMatchRefresh(){
+  var box=document.getElementById("bulkmatch-body");
+  if(box) box.innerHTML=bulkMatchTableHtml();
+}
+function applyBulkMatch(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return false; }
+  var todo=BULKMATCH.filter(function(r){ return !r.skip; });
+  if(!todo.length){ toast("לא נבחרה אף שורה","warn"); return false; }
+  /* הזמנה אחת יכולה להופיע כמועמדת בכמה שורות. החוב מתעדכן תוך כדי,
+     ולכן מחשבים מחדש לפני כל התאמה — אחרת היינו רושמים תשלום כפול
+     על אותה הזמנה. */
+  var done=0, skipped=0;
+  todo.forEach(function(r){
+    var inc=r.cands[r.pick].inc;
+    var debtNow=incomeDebt(inc), remNow=moveRemaining(r.m);
+    var amt=round2(Math.min(remNow, debtNow));
+    if(amt<=0.01){ skipped++; return; }
+    applyMoveMatch(r.m, inc, amt);
+    done++;
+  });
+  save();
+  toast("בוצעו "+done+" התאמות"+(skipped?" · "+skipped+" דולגו (החוב כבר נסגר)":""),skipped?"warn":"ok");
+  rerender();
+  return true;
 }
 /* ---------- מודל התאמה לשורה בודדת ---------- */
 function openMoveMatch(id){
