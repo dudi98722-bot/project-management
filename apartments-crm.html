@@ -355,7 +355,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "18.08 יג'";
+var APP_BUILD = "18.08 יד'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -1898,10 +1898,58 @@ function bankAccountLabel(accId){
    הזמנה עם חוב פתוח מקבלת ניקוד לפי: סכום זהה, שם האורח שמופיע
    בתיאור מהבנק, וקרבת תאריכים. הניקוד רק מסדר את הרשימה — הבחירה
    תמיד שלך. */
+/* ---------- מאגר מועמדים מחושב מראש ----------
+   ההתאמה המרוכזת קראה ל-moveCandidates לכל שורה, וכל קריאה חישבה
+   מחדש את החוב של כל הכנסה (סריקת התשלומים שלה) ואת פירוק המילים.
+   על 1500 שורות מול 500 הכנסות זה יצא מאות אלפי סריקות — והמסך
+   נתקע לשניות. המאגר בונה את הנתונים היקרים פעם אחת. */
+var _BMPOOL=null;
+function bmPoolBuild(){
+  _BMPOOL={all:[],byApt:{}};
+  active(DB.apartments).filter(function(a){ return canSeeApartment(a.id); }).forEach(function(a){
+    var arr=[];
+    apIncome(a.id).forEach(function(i){
+      var debt=incomeDebt(i);
+      if(debt<=0.01) return;
+      var e={i:i,debt:debt,
+        words:String(i.description||"").split(/\s+/).map(normKey).filter(function(w){ return w.length>=3; }),
+        dates:[i.date,stayStart(i),i.endDate].filter(Boolean).map(function(d){ return Date.parse(d); })};
+      arr.push(e); _BMPOOL.all.push(e);
+    });
+    _BMPOOL.byApt[a.id]=arr;
+  });
+}
+function bmPoolClear(){ _BMPOOL=null; }
 function moveCandidates(m,aptId){
   var rem=moveRemaining(m);
   var desc=normKey(moveText(m));
   var out=[];
+  var mDate=Date.parse(m.date);
+  /* עם מאגר — משתמשים בו; בלעדיו (התאמה בודדת) — הדרך הישנה */
+  if(_BMPOOL){
+    var entries=aptId?(_BMPOOL.byApt[aptId]||[]):_BMPOOL.all;
+    entries.forEach(function(e){
+      var i=e.i, debt=e.debt;
+      var score=0, why=[];
+      if(Math.abs(debt-rem)<=0.01){ score+=100; why.push("סכום זהה לחוב"); }
+      if(Math.abs((Number(i.amount)||0)-rem)<=0.01){ score+=70; why.push("סכום זהה למחיר"); }
+      var hit=0;
+      for(var w=0;w<e.words.length && hit<2;w++) if(desc.indexOf(e.words[w])>=0) hit++;
+      if(hit){ score+=60*hit; why.push("השם מופיע בתיאור"); }
+      var best=null;
+      for(var d=0;d<e.dates.length;d++){
+        var days=Math.abs(mDate-e.dates[d])/86400000;
+        if(best===null||days<best) best=days;
+      }
+      if(best!==null){
+        if(best<=3){ score+=30; why.push("תאריך קרוב"); }
+        else if(best<=14) score+=15;
+        else if(best<=45) score+=5;
+      }
+      out.push({inc:i,debt:debt,score:score,why:why,days:best});
+    });
+    return out.sort(function(x,y){ return y.score-x.score || Math.abs(x.debt-rem)-Math.abs(y.debt-rem); });
+  }
   /* בלי פרוייקט — מחפשים בכל הפרוייקטים שהמשתמש רואה */
   var pool=aptId?apIncome(aptId)
     :active(DB.apartments).filter(function(a){ return canSeeApartment(a.id); })
@@ -8014,33 +8062,37 @@ function runAutoMatch(){
    ============================================================ */
 var BULKMATCH=[];
 var BULKMATCH_MIN=60;   /* מתחת לזה — לא מסומן מראש */
+var BULKMATCH_APT="";   /* "" = אוטומטי (לפי הפרוייקט של כל שורה / כולם) */
 function openBulkMatch(){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var ids=visibleBoxes(".bm-x:checked").map(function(c){ return c.value; });
-  var rows=ids.length
+  var explicit=ids.length>0;
+  var rows=explicit
     ? ids.map(function(id){ return byId(DB.bankMoves,id); }).filter(Boolean)
     : allBankMoves().filter(moveIsOpen);
   rows=rows.filter(moveIsOpen);
-  if(!rows.length){ toast(ids.length?"כל השורות שסימנת כבר מותאמות":"אין שורות פתוחות להתאמה","warn"); return; }
-  /* המועמדים מחושבים פעם אחת — זו הפעולה היקרה במסך הזה */
-  BULKMATCH=[];
-  rows.forEach(function(m){
-    var c=moveCandidates(m,moveAptId(m));
-    if(!c.length) return;
-    /* כל הזמנה עם חוב היא "מועמדת", ולכן שורה חסרת קשר (עמלה של 77)
-       הייתה מקבלת מועמד מוביל שרירותי ונבחרת מראש. רק ציון משמעותי
-       (סכום זהה או שם שמופיע בתיאור) מסומן אוטומטית; השאר מוצג
-       כבחירה אפשרית אבל דורש סימון מפורש. */
-    BULKMATCH.push({m:m,cands:c.slice(0,8),pick:0,skip:(c[0].score<BULKMATCH_MIN)});
-  });
+  if(!rows.length){ toast(explicit?"כל השורות שסימנת כבר מותאמות":"אין שורות פתוחות להתאמה","warn"); return; }
+  /* בלי סימון — תקרה. פתיחה על 1500 שורות פתוחות היא שתקעה את המסך;
+     מי שרוצה קבוצה גדולה מסמן אותה, או עובד במנות. */
+  var capped=0;
+  if(!explicit && rows.length>300){
+    rows=rows.slice().sort(function(x,y){ return x.date<y.date?1:-1; }).slice(0,300);
+    capped=1;
+  }
+  BULKMATCH_APT="";
+  bmPoolBuild();
+  bulkMatchBuild(rows,explicit);
+  bmPoolClear();
+  if(capped) toast("מוצגות 300 השורות האחרונות — סמן שורות ספציפיות לקבוצה אחרת","warn");
   if(!BULKMATCH.length){ toast("לא נמצאו מועמדים לאף שורה שנבחרה","warn"); return; }
   var noCand=rows.length-BULKMATCH.length;
-  var weakN=BULKMATCH.filter(function(r){ return r.skip; }).length;
+  var weakN=BULKMATCH.filter(function(r){ return r.weak; }).length;
   openModal({title:"🔗 התאמה מרוכזת — "+BULKMATCH.length+" שורות",wide:true,bodyHtml:
     '<div class="hint" style="margin-bottom:8px">לכל שורה מוצג המועמד המתאים ביותר. אפשר להחליף מועמד, לשנות סכום, '+
     'ליצור הכנסה חדשה, או להסיר את הסימון כדי לדלג. ההתאמה יוצרת תשלום על ההזמנה, בדיוק כמו התאמה ידנית.'+
-    (weakN?' <b>'+weakN+' שורות מסומנות "חלשה" — לא נמצא בהן סימן חזק, והן אינן מסומנות מראש.</b>':'')+
+    (weakN?' <b>'+weakN+' שורות מסומנות "חלשה" — בדוק את המועמד שלהן לפני הביצוע.</b>':'')+
     (noCand?' <b>'+noCand+' שורות שנבחרו לא הוצגו — לא נמצא להן אף מועמד.</b>':'')+'</div>'+
+    bulkMatchAptBar()+
     '<div class="toolbar" style="margin-bottom:8px">'+'<button type="button" class="btn btn-sm" onclick="bulkMatchOneIncome()">\u2795 \u05d4\u05db\u05e0\u05e1\u05d4 \u05d0\u05d7\u05ea \u05dc\u05db\u05de\u05d4 \u05e9\u05d5\u05e8\u05d5\u05ea</button>'+'<span class="hint">\u05e1\u05de\u05df \u05e8\u05e7 \u05d0\u05ea \u05d4\u05e9\u05d5\u05e8\u05d5\u05ea \u05e9\u05e9\u05d9\u05d9\u05db\u05d5\u05ea \u05dc\u05d0\u05d5\u05ea\u05d4 \u05d4\u05db\u05e0\u05e1\u05d4, \u05d5\u05dc\u05d7\u05e5 \u05db\u05d0\u05df</span>'+'</div>'+
     '<div id="bulkmatch-body">'+bulkMatchTableHtml()+'</div>',
     saveLabel:"בצע התאמה",onSave:function(){ return applyBulkMatch(); }});
@@ -8119,6 +8171,37 @@ function bulkMatchOneIncome(){
       return true;
     }});
 }
+/* בונה את רשימת ההתאמות. explicit = המשתמש סימן שורות בעצמו:
+   כולן מסומנות לביצוע — גם "חלשה" (עם תג אזהרה). בלי סימון מפורש,
+   שורה חלשה אינה מסומנת מראש, כדי שסריקה גורפת לא תנחש. */
+function bulkMatchBuild(rows,explicit){
+  BULKMATCH=[];
+  rows.forEach(function(m){
+    var c=moveCandidates(m, BULKMATCH_APT||moveAptId(m));
+    if(!c.length) return;
+    var weak=c[0].score<BULKMATCH_MIN;
+    BULKMATCH.push({m:m,cands:c.slice(0,8),pick:0,weak:weak,skip:(explicit?false:weak)});
+  });
+}
+/* החלפת פרוייקט המועמדים — מחשב מחדש את כל הרשימה מול הפרוייקט שנבחר */
+function bulkMatchSetApt(v){
+  BULKMATCH_APT=v||"";
+  var rows=BULKMATCH.map(function(r){ return r.m; });
+  bmPoolBuild();
+  bulkMatchBuild(rows,true);
+  bmPoolClear();
+  if(!BULKMATCH.length){ toast("אין מועמדים בפרוייקט הזה לשורות שנבחרו","warn"); }
+  bulkMatchRefresh();
+}
+function bulkMatchAptBar(){
+  var apts=active(DB.apartments).filter(function(a){ return canSeeApartment(a.id); });
+  return '<div class="toolbar" style="margin-bottom:6px">'+
+    '<span class="muted" style="align-self:center">מועמדים מפרוייקט:</span>'+
+    '<select style="max-width:220px" onchange="bulkMatchSetApt(this.value)">'+
+      '<option value=""'+(BULKMATCH_APT?"":" selected")+'>אוטומטי — לפי כל שורה</option>'+
+      apts.map(function(a){ return '<option value="'+a.id+'"'+(BULKMATCH_APT===a.id?" selected":"")+'>'+esc(a.name)+'</option>'; }).join("")+
+    '</select></div>';
+}
 function bulkMatchTableHtml(){
   var h='<div class="tbl-tight"><div class="table-wrap" style="max-height:52vh"><table class="tbl"><thead><tr>'+
     '<th style="width:30px"></th><th class="dt">תאריך</th><th class="num">סכום</th><th>שורת הבנק</th>'+
@@ -8134,8 +8217,8 @@ function bulkMatchTableHtml(){
       '<td class="muted">'+esc((r.m.name||r.m.description||"—")+(r.m.details?" · "+r.m.details:"")).slice(0,70)+'</td>'+
       '<td class="num"><input type="number" step="0.01" value="'+amt+'" style="width:88px;padding:2px 4px" '+
         'onchange="bulkMatchAmount('+idx+',this.value)" title="הסכום שיותאם"></td>'+
-      '<td>'+(r.cands[r.pick].score<BULKMATCH_MIN
-        ? '<span class="badge badge-warn badge-unit" title="לא נמצא סימן חזק — בדוק לפני סימון">חלשה</span> '
+      '<td>'+(r.weak
+        ? '<span class="badge badge-warn badge-unit" title="לא נמצא סימן חזק — בדוק את המועמד לפני הביצוע">חלשה</span> '
         : '')+
       (r.cands.length>1
         ? '<select onchange="BULKMATCH['+idx+'].pick=Number(this.value);bulkMatchRefresh()" style="max-width:100%">'+
@@ -8214,11 +8297,12 @@ function bulkMatchNewIncome(idx){
 }
 /* פותח מחדש את מסך ההתאמה המרוכזת עם המצב הקיים בזיכרון */
 function openBulkMatchReopen(){
-  var weakN=BULKMATCH.filter(function(r){ return r.skip; }).length;
+  var weakN=BULKMATCH.filter(function(r){ return r.weak; }).length;
   openModal({title:"🔗 התאמה מרוכזת — "+BULKMATCH.length+" שורות",wide:true,bodyHtml:
     '<div class="hint" style="margin-bottom:8px">לכל שורה מוצג המועמד המתאים ביותר. אפשר להחליף מועמד, לשנות סכום, '+
     'ליצור הכנסה חדשה, או להסיר את הסימון כדי לדלג.'+
-    (weakN?' <b>'+weakN+' שורות מסומנות "חלשה" ואינן מסומנות מראש.</b>':'')+'</div>'+
+    (weakN?' <b>'+weakN+' שורות מסומנות "חלשה" — בדוק את המועמד שלהן.</b>':'')+'</div>'+
+    bulkMatchAptBar()+
     '<div class="toolbar" style="margin-bottom:8px">'+'<button type="button" class="btn btn-sm" onclick="bulkMatchOneIncome()">\u2795 \u05d4\u05db\u05e0\u05e1\u05d4 \u05d0\u05d7\u05ea \u05dc\u05db\u05de\u05d4 \u05e9\u05d5\u05e8\u05d5\u05ea</button>'+'<span class="hint">\u05e1\u05de\u05df \u05e8\u05e7 \u05d0\u05ea \u05d4\u05e9\u05d5\u05e8\u05d5\u05ea \u05e9\u05e9\u05d9\u05d9\u05db\u05d5\u05ea \u05dc\u05d0\u05d5\u05ea\u05d4 \u05d4\u05db\u05e0\u05e1\u05d4, \u05d5\u05dc\u05d7\u05e5 \u05db\u05d0\u05df</span>'+'</div>'+
     '<div id="bulkmatch-body">'+bulkMatchTableHtml()+'</div>',
     saveLabel:"בצע התאמה",onSave:function(){ return applyBulkMatch(); }});
