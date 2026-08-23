@@ -355,7 +355,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "18.08 י'";
+var APP_BUILD = "18.08 יא'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -3699,13 +3699,38 @@ function openColPicker(t,col,btn){
   if(reopen) return;   /* לחיצה שנייה על אותו כפתור — סוגרת */
   var st=colFilterState(t); st.p=st.p||{};
   var cur=st.p[col]||{};
-  /* ערכים ייחודיים בעמודה — מכל השורות, גם המוסתרות */
-  var seen={}, list=[];
+  /* ---------- סינון מדורג (כמו באקסל) ----------
+     הרשימה נבנתה מכל השורות, ולכן אחרי סינון לפי תאריך עדיין הוצעו
+     קטגוריות שלא קיימות באותו תאריך — ובחירה בהן החזירה טבלה ריקה.
+     כאן נכללות רק שורות שעוברות את שאר הסינונים.
+     הסינון של העמודה הנוכחית עצמה לא נספר, אחרת לאחר בחירת ערך אחד
+     לא היה אפשר להוסיף לו עוד ערך. */
+  var otherTexts=[], otherPicks=[];
+  (function(){
+    var fr=t.querySelector("thead tr.filter-row");
+    if(fr) fr.querySelectorAll(".col-f").forEach(function(inp){
+      var c=Number(inp.getAttribute("data-col")), v=String(inp.value||"").trim();
+      if(v && c!==col) otherTexts.push({col:c,q:v});
+    });
+    Object.keys(st.p||{}).forEach(function(c){
+      if(Number(c)===col) return;
+      if(Object.keys(st.p[c]||{}).length) otherPicks.push({col:Number(c),set:st.p[c]});
+    });
+  })();
+  function passesOthers(tr){
+    return otherTexts.every(function(x){ var cell=tr.cells[x.col]; return cell?matches(x.q,cell.innerText||cell.textContent||""):false; })
+        && otherPicks.every(function(x){ var cell=tr.cells[x.col]; return cell?!!x.set[cellVal(cell)]:false; });
+  }
+  var seen={}, list=[], hiddenN=0;
   Array.prototype.forEach.call(t.tBodies[0].rows,function(tr){
     var cell=tr.cells[col]; if(!cell) return;
     var v=cellVal(cell);
+    if(!passesOthers(tr)){ if(!(v in seen)) hiddenN++; return; }
     if(!(v in seen)){ seen[v]=1; list.push(v); }
   });
+  /* ערך שכבר נבחר אך יצא מהטווח בעקבות סינון אחר — נשאר ברשימה,
+     אחרת אי אפשר היה להסיר את הסימון שלו */
+  Object.keys(cur).forEach(function(v){ if(!(v in seen)){ seen[v]=1; list.push(v); } });
   function isNum(x){ return /\d/.test(x) && /^[₪\s\-]*[\d.,]+\s*%?$/.test(x); }
   list.sort(function(a,b){
     if(isNum(a)&&isNum(b)) return parseFloat(a.replace(/[^\d.\-]/g,""))-parseFloat(b.replace(/[^\d.\-]/g,""));
@@ -3722,6 +3747,10 @@ function openColPicker(t,col,btn){
   panel.innerHTML='<div style="display:flex;gap:10px;margin-bottom:6px">'+
       '<a href="#" class="cp-all" style="text-decoration:none;font-weight:700;color:var(--accent,#3b5bdb)">✔ הכל</a>'+
       '<a href="#" class="cp-none" style="text-decoration:none;font-weight:700;color:var(--danger,#ef4444)">✖ נקה</a></div>'+
+    ((otherTexts.length||otherPicks.length)
+      ? '<div style="font-size:10.5px;opacity:.6;margin-bottom:5px;line-height:1.3">מוצגים רק ערכים שקיימים בשורות המסוננות'+
+        (hiddenN?' · '+hiddenN+' הוסתרו':'')+'</div>'
+      : '')+
     '<input class="cp-search" placeholder="חיפוש בערכים…" style="width:100%;box-sizing:border-box;padding:4px 7px;margin-bottom:6px;border:1px solid var(--line,#d8dee9);border-radius:7px">'+
     '<div class="cp-list">'+rows+'</div>';
   document.body.appendChild(panel);
