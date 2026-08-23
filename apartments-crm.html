@@ -355,7 +355,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "18.08 יא'";
+var APP_BUILD = "18.08 יב'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -1801,12 +1801,37 @@ function setMoveDocState(m,st){
   m.docState=st;
   m.hasDoc=(st==="has");                   /* תאימות לאחור */
 }
+/* ---------- עדכון נקודתי במקום רינדור מלא ----------
+   כל לחיצה על תא הריצה renderApp, שבונה מחדש את כל האפליקציה. עם
+   1600 שורות מוצגות זה לקח 922ms — המסך נראה תקוע. כאן מתעדכן רק
+   התא (או השורה) שהשתנה, והשאר נשאר במקומו: גם המיון, גם הסינון,
+   גם הסימונים וגם מיקום הגלילה. */
+function bmRowEl(id){
+  var cb=document.querySelector('.bm-x[value="'+id+'"]');
+  return cb?cb.closest("tr"):null;
+}
+function refreshMoveDocCell(id){
+  var tr=bmRowEl(id); if(!tr) return false;
+  var m=byId(DB.bankMoves,id); if(!m) return false;
+  /* עמודת המסמך מזוהה לפי התוכן שהיא מייצרת, בלי להסתמך על אינדקס
+     קבוע — סדר העמודות משתנה לפי הרשאות ומצב הפרוייקט. */
+  for(var i=0;i<tr.cells.length;i++){
+    if(tr.cells[i].querySelector('[onclick*="toggleMoveDoc"]')){
+      tr.cells[i].innerHTML=moveDocCell(m);
+      return true;
+    }
+  }
+  return false;
+}
 function toggleMoveDoc(id){
   if(!can("edit")) return;
   var m=byId(DB.bankMoves,id); if(!m) return;
   var i=DOC_ORDER.indexOf(moveDocState(m));
   setMoveDocState(m, DOC_ORDER[(i+1)%DOC_ORDER.length]);
-  save(); rerender();
+  save();
+  /* שורה שאינה מוצגת (מחוץ לעמוד או מסוננת) — אי אפשר היה ללחוץ עליה,
+     ואין מה לרענן. רינדור מלא כאן היה 900ms על לא כלום. */
+  refreshMoveDocCell(id);
 }
 function moveDocCell(m){
   var st=DOC_STATES[moveDocState(m)];
@@ -7873,31 +7898,7 @@ function viewBankMatch(){
   var sorted=list.slice().sort(function(x,y){ return x.date<y.date?1:-1; });
   var page=Math.max(1,Number(BQ.page)||1);
   var shownN=Math.min(sorted.length, page*BM_PAGE_SIZE);
-  sorted.slice(0,shownN).forEach(function(m){
-    var mm=moveMatches(m);
-    /* שורות ותיקות נקלטו עם "תיאור" אחד — הוא משמש כשם אם אין שם */
-    var nm=m.name||m.description||"";
-    var det=m.name?(m.details||m.description||""):(m.details||"");
-    h+='<tr>'+
-      (selBm?'<td class="chk"><input type="checkbox" class="bm-x" value="'+m.id+'" style="width:auto" onchange="bmCount()"></td>':'')+
-      '<td>'+dateHe(m.date)+'</td>'+
-      '<td><b>'+esc(nm||"—")+'</b></td>'+
-      '<td><b>'+money(m.amount)+'</b></td>'+
-      '<td>'+esc(moveBankLabel(m))+'</td>'+
-      '<td>'+esc(m.kind||"—")+'</td>'+
-      '<td>'+esc(m.style||"—")+'</td>'+
-      '<td title="'+esc(det)+'" style="max-width:180px;overflow:hidden;text-overflow:ellipsis" class="muted">'+esc(det||"—")+'</td>'+
-      '<td>'+moveDocCell(m)+'</td>'+
-      '<td>'+moveStatusHtml(m)+'</td>'+
-      '<td class="muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis">'+
-        (mm.length?esc(mm.map(function(x){ var i=incMapGet(x.incomeId); return (i?i.description:"—")+" ("+money(x.amount)+")"; }).join(" · ")):"—")+'</td>'+
-      '<td class="right" style="white-space:nowrap">'+
-        (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="openMoveMatch(\''+m.id+'\')" title="התאמה">🔗</button>'+
-        '<button class="btn btn-ghost btn-sm" onclick="editBankMove(\''+m.id+'\')" title="עריכת השורה">✏️</button>'+
-        (m.ignored?'<button class="btn btn-ghost btn-sm" onclick="toggleMoveIgnore(\''+m.id+'\')" title="החזר לטיפול">↩️</button>'
-                  :'<button class="btn btn-ghost btn-sm" onclick="toggleMoveIgnore(\''+m.id+'\')" title="התעלם משורה זו">🚫</button>')+
-        '<button class="btn btn-ghost btn-sm" onclick="delBankMove(\''+m.id+'\')">🗑️</button>':'')+'</td></tr>';
-  });
+  sorted.slice(0,shownN).forEach(function(m){ h+=bankMoveRowHtml(m,selBm); });
   h+='</tbody></table></div>';
   if(sorted.length>shownN){
     h+='<div class="toolbar" style="justify-content:center;margin-top:10px">'+
@@ -7908,12 +7909,56 @@ function viewBankMatch(){
 
   return h;
 }
+/* שורת בנק אחת. חולצה מהלולאה כדי שאפשר יהיה לרענן שורה בודדת
+   אחרי שינוי, במקום לבנות מחדש את כל הטבלה. */
+function bankMoveRowHtml(m,selBm){
+  if(selBm===undefined) selBm=can("edit");
+  var mm=moveMatches(m);
+  /* שורות ותיקות נקלטו עם "תיאור" אחד — הוא משמש כשם אם אין שם */
+  var nm=m.name||m.description||"";
+  var det=m.name?(m.details||m.description||""):(m.details||"");
+  return '<tr>'+
+    (selBm?'<td class="chk"><input type="checkbox" class="bm-x" value="'+m.id+'" style="width:auto" onchange="bmCount()"></td>':'')+
+    '<td>'+dateHe(m.date)+'</td>'+
+    '<td><b>'+esc(nm||"—")+'</b></td>'+
+    '<td><b>'+money(m.amount)+'</b></td>'+
+    '<td>'+esc(moveBankLabel(m))+'</td>'+
+    '<td>'+esc(m.kind||"—")+'</td>'+
+    '<td>'+esc(m.style||"—")+'</td>'+
+    '<td title="'+esc(det)+'" style="max-width:180px;overflow:hidden;text-overflow:ellipsis" class="muted">'+esc(det||"—")+'</td>'+
+    '<td>'+moveDocCell(m)+'</td>'+
+    '<td>'+moveStatusHtml(m)+'</td>'+
+    '<td class="muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis">'+
+      (mm.length?esc(mm.map(function(x){ var i=incMapGet(x.incomeId); return (i?i.description:"—")+" ("+money(x.amount)+")"; }).join(" · ")):"—")+'</td>'+
+    '<td class="right" style="white-space:nowrap">'+
+      (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="openMoveMatch(\''+m.id+'\')" title="התאמה">🔗</button>'+
+      '<button class="btn btn-ghost btn-sm" onclick="editBankMove(\''+m.id+'\')" title="עריכת השורה">✏️</button>'+
+      (m.ignored?'<button class="btn btn-ghost btn-sm" onclick="toggleMoveIgnore(\''+m.id+'\')" title="החזר לטיפול">↩️</button>'
+                :'<button class="btn btn-ghost btn-sm" onclick="toggleMoveIgnore(\''+m.id+'\')" title="התעלם משורה זו">🚫</button>')+
+      '<button class="btn btn-ghost btn-sm" onclick="delBankMove(\''+m.id+'\')">🗑️</button>':'')+'</td></tr>';
+}
 function apartmentName(id){ var a=byId(DB.apartments,id); return a?a.name:"—"; }
 function toggleMoveIgnore(id){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var m=byId(DB.bankMoves,id); if(!m) return;
   if(!m.ignored && moveMatches(m).length){ toast("לשורה יש התאמות — בטל אותן קודם","err"); return; }
-  m.ignored=!m.ignored; save(); rerender();
+  m.ignored=!m.ignored; save();
+  /* מרעננים רק את השורה: הסטטוס משתנה וגם ההדגשה שלה */
+  var tr=bmRowEl(id);
+  if(tr) refreshMoveRow(id); else rerender();
+}
+/* בונה מחדש שורת בנק אחת במקום את כל הטבלה */
+function refreshMoveRow(id){
+  var tr=bmRowEl(id); if(!tr) return false;
+  var m=byId(DB.bankMoves,id); if(!m) return false;
+  var wrap=document.createElement("tbody");
+  wrap.innerHTML=bankMoveRowHtml(m);
+  var fresh=wrap.rows[0]; if(!fresh) return false;
+  var wasChecked=!!tr.querySelector(".bm-x:checked");
+  tr.parentNode.replaceChild(fresh,tr);
+  if(wasChecked){ var cb=fresh.querySelector(".bm-x"); if(cb) cb.checked=true; }
+  bmCount();
+  return true;
 }
 function delBankMove(id){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
@@ -7992,8 +8037,8 @@ function openBulkMatch(){
   var noCand=rows.length-BULKMATCH.length;
   var weakN=BULKMATCH.filter(function(r){ return r.skip; }).length;
   openModal({title:"🔗 התאמה מרוכזת — "+BULKMATCH.length+" שורות",wide:true,bodyHtml:
-    '<div class="hint" style="margin-bottom:8px">לכל שורה מוצג המועמד המתאים ביותר. אפשר להחליף מועמד או להסיר את הסימון כדי לדלג. '+
-    'ההתאמה יוצרת תשלום על ההזמנה, בדיוק כמו התאמה ידנית.'+
+    '<div class="hint" style="margin-bottom:8px">לכל שורה מוצג המועמד המתאים ביותר. אפשר להחליף מועמד, לשנות סכום, '+
+    'ליצור הכנסה חדשה, או להסיר את הסימון כדי לדלג. ההתאמה יוצרת תשלום על ההזמנה, בדיוק כמו התאמה ידנית.'+
     (weakN?' <b>'+weakN+' שורות מסומנות "חלשה" — לא נמצא בהן סימן חזק, והן אינן מסומנות מראש.</b>':'')+
     (noCand?' <b>'+noCand+' שורות שנבחרו לא הוצגו — לא נמצא להן אף מועמד.</b>':'')+'</div>'+
     '<div id="bulkmatch-body">'+bulkMatchTableHtml()+'</div>',
@@ -8002,16 +8047,18 @@ function openBulkMatch(){
 function bulkMatchTableHtml(){
   var h='<div class="tbl-tight"><div class="table-wrap" style="max-height:52vh"><table class="tbl"><thead><tr>'+
     '<th style="width:30px"></th><th class="dt">תאריך</th><th class="num">סכום</th><th>שורת הבנק</th>'+
-    '<th>יותאם להזמנה</th><th class="num">להתאמה</th></tr></thead><tbody>';
+    '<th class="num">להתאמה</th><th>יותאם להזמנה</th><th style="width:78px"></th></tr></thead><tbody>';
   BULKMATCH.forEach(function(r,idx){
     var c=r.cands[r.pick];
-    var amt=Math.min(moveRemaining(r.m), c.debt);
+    var amt=bulkMatchAmt(r);
     h+='<tr'+(r.skip?' style="opacity:.45"':'')+'>'+
       '<td><input type="checkbox" '+(r.skip?'':'checked')+' style="width:auto" '+
         'title="בטל סימון כדי לדלג על השורה" onchange="BULKMATCH['+idx+'].skip=!this.checked;bulkMatchRefresh()"></td>'+
       '<td>'+dateHe(r.m.date)+'</td>'+
       '<td><b>'+money(r.m.amount)+'</b></td>'+
       '<td class="muted">'+esc((r.m.name||r.m.description||"—")+(r.m.details?" · "+r.m.details:"")).slice(0,70)+'</td>'+
+      '<td class="num"><input type="number" step="0.01" value="'+amt+'" style="width:88px;padding:2px 4px" '+
+        'onchange="bulkMatchAmount('+idx+',this.value)" title="הסכום שיותאם"></td>'+
       '<td>'+(r.cands[r.pick].score<BULKMATCH_MIN
         ? '<span class="badge badge-warn badge-unit" title="לא נמצא סימן חזק — בדוק לפני סימון">חלשה</span> '
         : '')+
@@ -8024,13 +8071,81 @@ function bulkMatchTableHtml(){
           '</select>'
         : '<b>'+esc(c.inc.description)+'</b> <span class="muted">· '+esc(apartmentName(c.inc.apartmentId))+
           (c.why.length?' — '+esc(c.why[0]):'')+'</span>')+'</td>'+
-      '<td><b>'+money(amt)+'</b></td></tr>';
+      '<td><button type="button" class="btn btn-ghost btn-sm" title="צור הכנסה חדשה מהשורה הזו" '+
+        'onclick="bulkMatchNewIncome('+idx+')">➕ חדשה</button></td></tr>';
   });
   var on=BULKMATCH.filter(function(r){ return !r.skip; });
-  var tot=round2(on.reduce(function(a,r){ return a+Math.min(moveRemaining(r.m), r.cands[r.pick].debt); },0));
-  h+='</tbody><tfoot><tr><td colspan="5">יבוצעו '+on.length+' התאמות</td><td><b>'+money(tot)+'</b></td></tr></tfoot>'+
+  var tot=round2(on.reduce(function(a,r){ return a+bulkMatchAmt(r); },0));
+  h+='</tbody><tfoot><tr><td colspan="4">יבוצעו '+on.length+' התאמות</td>'+
+    '<td><b>'+money(tot)+'</b></td><td colspan="2"></td></tr></tfoot>'+
     '</table></div></div>';
   return h;
+}
+/* הסכום להתאמה: מה שהמשתמש הקליד, או ברירת המחדל (המינימום בין
+   יתרת השורה לחוב ההזמנה). נשמר על השורה כדי לשרוד רענון של הטבלה. */
+function bulkMatchAmt(r){
+  var def=round2(Math.min(moveRemaining(r.m), r.cands[r.pick].debt));
+  return (r.amt!=null && r.amt>0) ? round2(r.amt) : def;
+}
+function bulkMatchAmount(idx,v){
+  var r=BULKMATCH[idx]; if(!r) return;
+  var n=Number(v)||0;
+  var max=round2(Math.min(moveRemaining(r.m), r.cands[r.pick].debt));
+  if(n<=0){ r.amt=null; }
+  else if(n>max+0.01){ toast("הסכום גבוה מהאפשרי ("+money(max)+") — הותאם למקסימום","warn"); r.amt=max; }
+  else r.amt=n;
+  bulkMatchRefresh();
+}
+/* יצירת הכנסה חדשה לשורה שאין לה התאמה מתאימה — בלי לצאת מהמסך
+   המרוכז. אחרי היצירה השורה מוחלפת בהזמנה החדשה ומסומנת. */
+function bulkMatchNewIncome(idx){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var r=BULKMATCH[idx]; if(!r) return;
+  var m=r.m, rem=moveRemaining(m);
+  var apts=active(DB.apartments).filter(function(a){ return canSeeApartment(a.id); });
+  if(!apts.length){ toast("אין פרוייקטים במערכת","err"); return; }
+  var preApt=moveAptId(m)||r.cands[r.pick].inc.apartmentId||"";
+  var preName=m.name||m.description||m.details||"";
+  openModal({title:"➕ הכנסה חדשה משורת בנק — "+money(rem),bodyHtml:
+    '<div class="hint" style="margin-bottom:10px">מהבנק: <b>'+esc(preName||"—")+'</b> · '+dateHe(m.date)+
+      ' · '+esc(moveBankLabel(m))+'</div>'+
+    '<div class="form-grid">'+
+      '<div class="field"><label>פרוייקט</label><select id="bn-apt">'+
+        apts.map(function(a){ return '<option value="'+a.id+'"'+(preApt===a.id?" selected":"")+'>'+esc(a.name)+'</option>'; }).join("")+
+      '</select></div>'+
+      '<div class="field"><label>תיאור / שם</label><input id="bn-desc" value="'+esc(preName)+'"></div>'+
+      '<div class="field"><label>סכום ההכנסה (₪)</label><input id="bn-amount" type="number" step="0.01" value="'+rem+'"></div>'+
+      '<div class="field"><label>תאריך</label><input id="bn-date" type="date" value="'+esc(m.date||todayISO())+'"></div>'+
+      '<div class="field full"><label>הערה</label><input id="bn-note" value="'+esc([m.details,m.kind].filter(Boolean).join(" · "))+'"></div>'+
+    '</div>',
+    saveLabel:"צור והמשך",onSave:function(){
+      var aptId=val("bn-apt"), desc=val("bn-desc").trim(), amt=Number(val("bn-amount"))||0;
+      if(!aptId){ toast("בחר פרוייקט","err"); return false; }
+      if(!desc){ toast("תיאור חסר","err"); return false; }
+      if(amt<=0){ toast("סכום לא תקין","err"); return false; }
+      var inc={id:uid(),apartmentId:aptId,description:desc,amount:amt,
+        date:val("bn-date")||m.date||todayISO(),receivedBy:"",split:null,units:null,
+        startDate:"",endDate:"",note:val("bn-note"),payments:[],deleted:false};
+      DB.income.push(inc);
+      save();
+      /* ההזמנה החדשה נכנסת לראש רשימת המועמדים של השורה ונבחרת */
+      r.cands.unshift({inc:inc,debt:amt,score:999,why:["נוצרה עכשיו"],days:0});
+      r.pick=0; r.skip=false; r.amt=round2(Math.min(rem,amt));
+      toast('נוצרה ההכנסה "'+desc+'" — לחץ "בצע התאמה" לסיום',"ok");
+      /* חוזרים למסך המרוכז */
+      openBulkMatchReopen();
+      return true;
+    }});
+}
+/* פותח מחדש את מסך ההתאמה המרוכזת עם המצב הקיים בזיכרון */
+function openBulkMatchReopen(){
+  var weakN=BULKMATCH.filter(function(r){ return r.skip; }).length;
+  openModal({title:"🔗 התאמה מרוכזת — "+BULKMATCH.length+" שורות",wide:true,bodyHtml:
+    '<div class="hint" style="margin-bottom:8px">לכל שורה מוצג המועמד המתאים ביותר. אפשר להחליף מועמד, לשנות סכום, '+
+    'ליצור הכנסה חדשה, או להסיר את הסימון כדי לדלג.'+
+    (weakN?' <b>'+weakN+' שורות מסומנות "חלשה" ואינן מסומנות מראש.</b>':'')+'</div>'+
+    '<div id="bulkmatch-body">'+bulkMatchTableHtml()+'</div>',
+    saveLabel:"בצע התאמה",onSave:function(){ return applyBulkMatch(); }});
 }
 function bulkMatchRefresh(){
   var box=document.getElementById("bulkmatch-body");
@@ -8047,7 +8162,8 @@ function applyBulkMatch(){
   todo.forEach(function(r){
     var inc=r.cands[r.pick].inc;
     var debtNow=incomeDebt(inc), remNow=moveRemaining(r.m);
-    var amt=round2(Math.min(remNow, debtNow));
+    var wanted=bulkMatchAmt(r);
+    var amt=round2(Math.min(remNow, debtNow, wanted));
     if(amt<=0.01){ skipped++; return; }
     applyMoveMatch(r.m, inc, amt);
     done++;
