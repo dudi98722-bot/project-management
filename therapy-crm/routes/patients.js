@@ -22,7 +22,10 @@ function editableFields(caps) {
   if (caps.editPatient) return 'all';
   const f = [];
   if (caps.editPatientLimited) f.push('last_name', 'first_name', 'hours');
+  if (caps.editNotes) f.push('notes');
   if (caps.editClinical) f.push(...CLINICAL);
+  if (caps.editPref) f.push('preferred_therapist_ids', 'preferred_group_ids');
+  if (caps.editUrgency) f.push('urgency');
   return f;
 }
 
@@ -121,7 +124,7 @@ router.post('/', authenticate, can('addPatient'), async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-router.put('/:id', authenticate, canAny('editPatient', 'editPatientLimited', 'editClinical'), async (req, res) => {
+router.put('/:id', authenticate, canAny('editPatient', 'editPatientLimited', 'editClinical', 'editNotes', 'editPref', 'editUrgency'), async (req, res) => {
   const allowed = editableFields(req.caps);
   const { out, errors } = cleanBody(req.body || {});
   // אימות שם חובה רלוונטי רק למי שרשאי לגעת בשם

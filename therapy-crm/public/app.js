@@ -17,8 +17,11 @@ function canEditPatient() {
 function mayEdit(field) {
   const c = S.me.caps;
   if (c.editPatient) return true;
-  if (c.editClinical && (field === 'diagnosis' || field === 'notes2')) return true;
-  if (c.editPatientLimited && ['last_name','first_name','hours'].includes(field)) return true;
+  if (c.editClinical && ['diagnosis', 'notes2'].includes(field)) return true;
+  if (c.editNotes && field === 'notes') return true;
+  if (c.editPref && ['preferred_therapist_ids', 'preferred_group_ids'].includes(field)) return true;
+  if (c.editUrgency && field === 'urgency') return true;
+  if (c.editPatientLimited && ['last_name', 'first_name', 'hours'].includes(field)) return true;
   return false;
 }
 
@@ -446,6 +449,7 @@ function waitingRowsHtml(rows) {
       <td><span class="badge ${sCls}">${sLbl}</span></td>
       <td style="white-space:nowrap">
         ${S.me.caps.assign && p.status === 'waiting' ? `<button class="btn sm green" onclick="openAssignModal(${p.id})">שבץ</button>` : ''}
+        ${S.me.caps.assign ? `<button class="btn sm sec" onclick="openHoldForPatient(${p.id})" title="העברה לרשימת השהיה">⏸ השהיה</button>` : ''}
         <button class="btn sm sec" onclick="openFilesModal(${p.id})" title="קבצים מצורפים">📎</button>
         ${canEditPatient() ? `<button class="btn sm sec" onclick="openPatientModal(${p.id})">עריכה</button>` : ''}
         ${S.me.caps.del ? `<button class="btn sm sec" onclick="deletePatient(${p.id})">🗑</button>` : ''}
@@ -468,6 +472,8 @@ function openPatientModal(id) {
   <h2>${p ? 'עריכת מטופל' : 'מטופל חדש'} <button class="x" onclick="closeModal()">✕</button></h2>
   ${p && !S.me.caps.editPatient ? '<div class="hint" style="margin-bottom:10px">בהרשאה שלך ניתן לערוך: ' +
      [mayEdit('last_name') ? 'שם' : '', mayEdit('hours') ? 'שעות מתאימות' : '',
+      mayEdit('notes') ? 'הערות' : '', mayEdit('urgency') ? 'דחיפות' : '',
+      mayEdit('preferred_therapist_ids') ? 'שיוך למטפלים' : '',
       mayEdit('diagnosis') ? 'אבחנה והערה מקצועית' : ''].filter(Boolean).join(' · ') + '</div>' : ''}
   <form id="patient-form">
     <div class="grid2">
@@ -953,6 +959,54 @@ function singleUpdateHours() {
   hint.textContent = `שעות העבודה של ${t.name} ביום ${WEEKDAYS[wd]}`;
 }
 
+// העברת מטופל בודד להשהיה — מהכפתור שליד "שבץ" ברשימת הממתינים
+function openHoldForPatient(patientId) {
+  const p = S.patients.find(x => x.id === patientId);
+  if (!p) return;
+  const already = new Set((p.holds || []).map(h => h.therapist_id));
+  const pref = (p.preferred_therapists || []).map(t => t.id);
+  const avail = S.therapists.filter(t => t.active && !already.has(t.id));
+  // המטפלים המועדפים של המטופל קודם — הם הבחירה הסבירה
+  avail.sort((a, b) => (pref.includes(b.id) ? 1 : 0) - (pref.includes(a.id) ? 1 : 0)
+    || String(a.name).localeCompare(String(b.name), 'he'));
+
+  showModal(`
+  <h2>העברה להשהיה — ${esc(p.last_name)} ${esc(p.first_name)} <button class="x" onclick="closeModal()">✕</button></h2>
+  ${already.size ? `<div class="hint" style="margin-bottom:10px">כבר בהשהיה אצל:
+    ${(p.holds || []).map(h => `<span class="hold-chip">⏸ ${esc(h.therapist_name)}</span>`).join(' ')}</div>` : ''}
+  <div class="field"><label>בחר מטפל אחד או יותר</label>
+    <div class="checkbox-list" id="hp-list" style="max-height:260px">
+      ${avail.map(t => `<label><input type="checkbox" value="${t.id}"> ${esc(t.name)}
+        ${pref.includes(t.id) ? '<span class="badge b-blue">מועדף</span>' : ''}</label>`).join('')
+        || '<span class="hint">המטופל כבר בהשהיה אצל כל המטפלים הפעילים</span>'}
+    </div>
+  </div>
+  <div class="field"><label>הערה (אופציונלי)</label><input id="hp-note" placeholder="למשל: ממתין לשעות אחר הצהריים"></div>
+  <div class="modal-actions">
+    <button class="btn" onclick="saveHoldForPatient(${p.id})">העבר להשהיה</button>
+    <button type="button" class="btn sec" onclick="closeModal()">ביטול</button>
+  </div>`);
+}
+
+async function saveHoldForPatient(patientId) {
+  const ids = [...document.querySelectorAll('#hp-list input:checked')].map(c => Number(c.value));
+  if (!ids.length) return toast('לא נבחר מטפל', true);
+  const btns = document.querySelectorAll('#modal-root .btn');
+  btns.forEach(b => b.disabled = true);
+  try {
+    // הנתיב מקבל מטפל אחד עם כמה מטופלים, אז שולחים בקשה לכל מטפל
+    let added = 0;
+    for (const tid of ids) {
+      const r = await api('/holds', { method: 'POST', body: {
+        therapist_id: tid, patient_ids: [patientId],
+        note: document.getElementById('hp-note').value } });
+      added += r.added;
+    }
+    toast(added ? `הועבר להשהיה אצל ${added} מטפלים` : 'כבר היה בהשהיה');
+    closeModal(); await loadAll(); render();
+  } catch (e) { btns.forEach(b => b.disabled = false); toast(e.message, true); }
+}
+
 // =====================================================================
 // רשימת השהיה — מטופלים שממתינים למטפל מסוים
 // =====================================================================
@@ -962,7 +1016,8 @@ function renderHolds(m) {
   m.innerHTML = `
   <div class="card">
     <div class="toolbar">
-      <div class="field"><label>מטפל</label><select onchange="S.holdTherapist=Number(this.value);renderHolds(document.getElementById('main'))" style="min-width:190px">
+      <div class="field"><label>מטפל</label><select onchange="S.holdTherapist=this.value === 'all' ? 'all' : Number(this.value);renderHolds(document.getElementById('main'))" style="min-width:190px">
+        <option value="all" ${S.holdTherapist === 'all' ? 'selected' : ''}>— כל המטפלים —</option>
         ${active.map(t => `<option value="${t.id}" ${t.id === S.holdTherapist ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
       </select></div>
       <div class="spacer"></div>
@@ -979,17 +1034,19 @@ function renderHolds(m) {
 async function loadHoldsList() {
   const el = document.getElementById('holds-list');
   if (!el || !S.holdTherapist) return;
+  const allT = S.holdTherapist === 'all';
   try {
-    const rows = await api(`/holds?therapist_id=${S.holdTherapist}`);
-    if (!rows.length) { el.innerHTML = '<div class="empty">אין מטופלים בהשהיה אצל מטפל זה</div>'; return; }
+    const rows = await api(allT ? '/holds' : `/holds?therapist_id=${S.holdTherapist}`);
+    if (!rows.length) { el.innerHTML = `<div class="empty">${allT ? 'אין מטופלים בהשהיה' : 'אין מטופלים בהשהיה אצל מטפל זה'}</div>`; return; }
     el.innerHTML = `<div class="table-wrap"><table>
-      <thead><tr><th>#</th><th>מטופל</th><th>דחיפות</th><th>סטטוס</th><th>הערה</th><th>הוזן ע"י</th><th>מתאריך</th><th></th></tr></thead><tbody>
+      <thead><tr><th>#</th><th>מטופל</th>${allT ? '<th>מטפל</th>' : ''}<th>דחיפות</th><th>סטטוס</th><th>הערה</th><th>הוזן ע"י</th><th>מתאריך</th><th></th></tr></thead><tbody>
       ${rows.map((h, i) => {
         const [uLbl, uCls] = URGENCY[h.urgency] || URGENCY[2];
         const [sLbl, sCls] = PSTATUS[h.patient_status] || PSTATUS.waiting;
         return `<tr>
           <td class="hint">${i + 1}</td>
           <td><b>${esc(h.patient_name)}</b></td>
+          ${allT ? `<td>${esc(h.therapist_name)}</td>` : ''}
           <td><span class="badge ${uCls}">${uLbl}</span></td>
           <td><span class="badge ${sCls}">${sLbl}</span></td>
           <td class="hint">${esc(h.note || '')}</td>
