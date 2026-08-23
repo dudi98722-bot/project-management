@@ -355,7 +355,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "18.08 יב'";
+var APP_BUILD = "18.08 יג'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -8041,8 +8041,83 @@ function openBulkMatch(){
     'ליצור הכנסה חדשה, או להסיר את הסימון כדי לדלג. ההתאמה יוצרת תשלום על ההזמנה, בדיוק כמו התאמה ידנית.'+
     (weakN?' <b>'+weakN+' שורות מסומנות "חלשה" — לא נמצא בהן סימן חזק, והן אינן מסומנות מראש.</b>':'')+
     (noCand?' <b>'+noCand+' שורות שנבחרו לא הוצגו — לא נמצא להן אף מועמד.</b>':'')+'</div>'+
+    '<div class="toolbar" style="margin-bottom:8px">'+'<button type="button" class="btn btn-sm" onclick="bulkMatchOneIncome()">\u2795 \u05d4\u05db\u05e0\u05e1\u05d4 \u05d0\u05d7\u05ea \u05dc\u05db\u05de\u05d4 \u05e9\u05d5\u05e8\u05d5\u05ea</button>'+'<span class="hint">\u05e1\u05de\u05df \u05e8\u05e7 \u05d0\u05ea \u05d4\u05e9\u05d5\u05e8\u05d5\u05ea \u05e9\u05e9\u05d9\u05d9\u05db\u05d5\u05ea \u05dc\u05d0\u05d5\u05ea\u05d4 \u05d4\u05db\u05e0\u05e1\u05d4, \u05d5\u05dc\u05d7\u05e5 \u05db\u05d0\u05df</span>'+'</div>'+
     '<div id="bulkmatch-body">'+bulkMatchTableHtml()+'</div>',
     saveLabel:"בצע התאמה",onSave:function(){ return applyBulkMatch(); }});
+}
+/* ---------- הכנסה אחת לכמה שורות בנק ----------
+   שלושה תשלומים מאותו שוכר, או תשלום שפוצל — כולם צריכים להיסגר מול
+   התחייבות אחת. עד כה אפשר היה ליצור הכנסה רק לשורה בודדת. כאן:
+   מסמנים את השורות הרלוונטיות, ונוצרת הכנסה אחת בסכום שלהן שכל
+   השורות מותאמות אליה. */
+function bulkMatchOneIncome(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var sel=BULKMATCH.filter(function(r){ return !r.skip; });
+  if(sel.length<2){
+    toast(sel.length?'לשורה בודדת השתמש ב"➕ חדשה" שבשורה עצמה':"סמן לפחות שתי שורות","warn");
+    return;
+  }
+  var totRem=round2(sel.reduce(function(a,r){ return a+moveRemaining(r.m); },0));
+  var apts=active(DB.apartments).filter(function(a){ return canSeeApartment(a.id); });
+  if(!apts.length){ toast("אין פרוייקטים במערכת","err"); return; }
+  /* ברירות מחדל מהשורות: הפרוייקט הנפוץ, השם הראשון, התאריך המוקדם */
+  var aptCount={}, preApt="";
+  sel.forEach(function(r){
+    var a=moveAptId(r.m)||(r.cands[r.pick]&&r.cands[r.pick].inc.apartmentId)||"";
+    if(a){ aptCount[a]=(aptCount[a]||0)+1; if(!preApt||aptCount[a]>aptCount[preApt]) preApt=a; }
+  });
+  var dates=sel.map(function(r){ return r.m.date; }).filter(Boolean).sort();
+  var preName=sel[0].m.name||sel[0].m.description||"";
+  openModal({title:"➕ הכנסה אחת ל-"+sel.length+" שורות בנק",wide:true,bodyHtml:
+    '<div class="stat-grid" style="margin-bottom:10px">'+
+      stat("שורות",sel.length)+stat("סכום כולל",money(totRem))+
+    '</div>'+
+    '<div class="table-wrap" style="max-height:180px;margin-bottom:10px"><table class="tbl" style="font-size:12px">'+
+      '<thead><tr><th>תאריך</th><th>שורת הבנק</th><th>סכום</th></tr></thead><tbody>'+
+      sel.map(function(r){
+        return '<tr><td>'+dateHe(r.m.date)+'</td>'+
+          '<td>'+esc((r.m.name||r.m.description||"—")).slice(0,45)+'</td>'+
+          '<td><b>'+money(moveRemaining(r.m))+'</b></td></tr>'; }).join("")+
+      '</tbody></table></div>'+
+    '<div class="form-grid">'+
+      '<div class="field"><label>פרוייקט</label><select id="mi-apt">'+
+        apts.map(function(a){ return '<option value="'+a.id+'"'+(preApt===a.id?" selected":"")+'>'+esc(a.name)+'</option>'; }).join("")+
+      '</select></div>'+
+      '<div class="field"><label>תיאור / שם</label><input id="mi-desc" value="'+esc(preName)+'"></div>'+
+      '<div class="field"><label>סכום ההכנסה (₪)</label><input id="mi-amount" type="number" step="0.01" value="'+totRem+'">'+
+        '<div class="hint">סכום גדול מ-'+money(totRem)+' יישאר עם חוב פתוח</div></div>'+
+      '<div class="field"><label>תאריך</label><input id="mi-date" type="date" value="'+esc(dates[0]||todayISO())+'"></div>'+
+      '<div class="field full"><label>הערה</label><input id="mi-note" value="'+esc("נסגר מ-"+sel.length+" שורות בנק")+'"></div>'+
+    '</div>',
+    saveLabel:"צור והתאם "+sel.length+" שורות",onSave:function(){
+      var aptId=val("mi-apt"), desc=val("mi-desc").trim(), amt=Number(val("mi-amount"))||0;
+      if(!aptId){ toast("בחר פרוייקט","err"); return false; }
+      if(!desc){ toast("תיאור חסר","err"); return false; }
+      if(amt<=0){ toast("סכום לא תקין","err"); return false; }
+      if(amt<totRem-0.01 && !confirm("סכום ההכנסה ("+money(amt)+") קטן מסך השורות ("+money(totRem)+").\n\n"+
+        "יותאם רק עד "+money(amt)+", והשורות שיעברו את הסכום יישארו פתוחות. להמשיך?")) return false;
+      var inc={id:uid(),apartmentId:aptId,description:desc,amount:amt,
+        date:val("mi-date")||todayISO(),receivedBy:"",split:null,units:null,
+        startDate:"",endDate:"",note:val("mi-note"),payments:[],deleted:false};
+      DB.income.push(inc);
+      /* מתאימים שורה-שורה, ומחשבים את החוב מחדש בכל פעם — אחרת
+         היינו רושמים יותר ממה שההכנסה חייבת */
+      var done=0, left=0;
+      sel.forEach(function(r){
+        var debt=incomeDebt(inc), rem=moveRemaining(r.m);
+        var a=round2(Math.min(debt,rem));
+        if(a<=0.01){ left++; return; }
+        applyMoveMatch(r.m,inc,a);
+        done++;
+      });
+      /* השורות שנסגרו יורדות מהרשימה */
+      BULKMATCH=BULKMATCH.filter(function(r){ return moveIsOpen(r.m); });
+      save();
+      toast("נוצרה הכנסה והותאמו "+done+" שורות"+(left?" · "+left+" נשארו פתוחות (הסכום נגמר)":""),left?"warn":"ok");
+      if(BULKMATCH.length) openBulkMatchReopen();
+      else rerender();
+      return true;
+    }});
 }
 function bulkMatchTableHtml(){
   var h='<div class="tbl-tight"><div class="table-wrap" style="max-height:52vh"><table class="tbl"><thead><tr>'+
@@ -8144,6 +8219,7 @@ function openBulkMatchReopen(){
     '<div class="hint" style="margin-bottom:8px">לכל שורה מוצג המועמד המתאים ביותר. אפשר להחליף מועמד, לשנות סכום, '+
     'ליצור הכנסה חדשה, או להסיר את הסימון כדי לדלג.'+
     (weakN?' <b>'+weakN+' שורות מסומנות "חלשה" ואינן מסומנות מראש.</b>':'')+'</div>'+
+    '<div class="toolbar" style="margin-bottom:8px">'+'<button type="button" class="btn btn-sm" onclick="bulkMatchOneIncome()">\u2795 \u05d4\u05db\u05e0\u05e1\u05d4 \u05d0\u05d7\u05ea \u05dc\u05db\u05de\u05d4 \u05e9\u05d5\u05e8\u05d5\u05ea</button>'+'<span class="hint">\u05e1\u05de\u05df \u05e8\u05e7 \u05d0\u05ea \u05d4\u05e9\u05d5\u05e8\u05d5\u05ea \u05e9\u05e9\u05d9\u05d9\u05db\u05d5\u05ea \u05dc\u05d0\u05d5\u05ea\u05d4 \u05d4\u05db\u05e0\u05e1\u05d4, \u05d5\u05dc\u05d7\u05e5 \u05db\u05d0\u05df</span>'+'</div>'+
     '<div id="bulkmatch-body">'+bulkMatchTableHtml()+'</div>',
     saveLabel:"בצע התאמה",onSave:function(){ return applyBulkMatch(); }});
 }
