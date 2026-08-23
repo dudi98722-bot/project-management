@@ -663,6 +663,11 @@ function serverPull(initial) {
       if (!remote || remote.status === 'error') { setSync('err','⚠ שגיאת טעינה'); return; }
       const remoteRev = (typeof remote.rev === 'number') ? remote.rev : 0;
       pulledOnce = true;
+      // הטעינה הראשונה הושלמה — לעדכן את מסך הכניסה גם אם הנתונים לא השתנו
+      // (אחרת חיווי "טוען נתונים" נשאר לנצח כשהמטמון המקומי כבר זהה לשרת)
+      const lld = document.getElementById('login-loading'); if (lld) lld.style.display = 'none';
+      const lerr = document.getElementById('login-err');
+      if (lerr && lerr.style.display !== 'none' && lerr.textContent.indexOf('נטענים') >= 0) lerr.style.display = 'none';
       const remoteData = dataFromRemote(remote);
       const remoteCount = itemCount(remoteData);
       // seed an empty server from local ONLY on the very first load (never on later polls)
@@ -670,15 +675,18 @@ function serverPull(initial) {
         serverRev = remoteRev; baseline = clone(emptyData()); serverPush(); return;
       }
       if (saving) return;                                  // a push is settling — don't disturb it
-      if (Date.now() < suppressPullUntil || editingNow()) { setSync('ok','☁ מסונכרן'); return; }
-      if (JSON.stringify(remoteData) !== JSON.stringify(data)) {
-        data = remoteData;
-        try { localStorage.setItem(KEY, JSON.stringify(data)); } catch(e){}
-        checkAuth();
-        renderAll();
-        if (document.getElementById('tab-charts').classList.contains('active')) renderCharts();
-        if (initial && !document.getElementById('detailOverlay').classList.contains('show')) openSkuFromUrl();
+      const same = JSON.stringify(remoteData) === JSON.stringify(data);
+      if (same) {
+        // הנתונים זהים — בטוח לעדכן את מספר הגרסה גם בזמן הקלדה (אין מה לאמץ)
+        serverRev = remoteRev; baseline = clone(data); setSync('ok','☁ מסונכרן'); return;
       }
+      if (Date.now() < suppressPullUntil || editingNow()) { setSync('ok','☁ מסונכרן'); return; }
+      data = remoteData;
+      try { localStorage.setItem(KEY, JSON.stringify(data)); } catch(e){}
+      checkAuth();
+      renderAll();
+      if (document.getElementById('tab-charts').classList.contains('active')) renderCharts();
+      if (initial && !document.getElementById('detailOverlay').classList.contains('show')) openSkuFromUrl();
       serverRev = remoteRev;
       baseline = clone(data);
       setSync('ok','☁ מסונכרן');
