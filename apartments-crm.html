@@ -355,7 +355,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "18.08 ח'";
+var APP_BUILD = "18.08 ט'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -1062,6 +1062,11 @@ function normalizeDB(d){
     m.stmtBankId=sb.id;
   });
   d.bankMoves=d.bankMoves||[];
+  (d.bankMoves||[]).forEach(function(m){
+    /* השלמת מצב המסמך לשורות שנוצרו לפני שהיו שלושה מצבים */
+    if(!m.docState) m.docState=m.hasDoc?"has":"none";
+    m.hasDoc=(m.docState==="has");
+  });
   (d.bankMoves||[]).forEach(function(m){ m.amount=toNum(m.amount); m.date=toISO(m.date);
     m.matches=(m.matches||[]).filter(function(x){ return !x.deleted; });
     m.matches.forEach(function(x){ x.amount=toNum(x.amount); }); });
@@ -1781,16 +1786,32 @@ function moveBankLabel(m){
 function moveText(m){
   return [m.name,m.details,m.description,m.kind,m.style,m.ref].filter(Boolean).join(" ");
 }
-/* סימון "יש מסמך" בלחיצה — כמו נשלח לרו"ח בתשלומים */
+/* ---------- מצב המסמך של שורת בנק ----------
+   שלושה מצבים במקום שניים: יש / אין / לא נדרש. "אין" הוא חוב פתוח
+   שצריך לטפל בו, ואילו "לא נדרש" הוא הכרעה — עמלה, העברה פנימית וכו'.
+   השדה הישן hasDoc (בוליאני) נשמר מסונכרן לתאימות עם ייבוא וייצוא. */
+var DOC_STATES={has:{t:"✔ יש",c:"badge-ok"},none:{t:"אין",c:"badge-warn"},na:{t:"לא נדרש",c:"badge-muted"}};
+var DOC_ORDER=["has","none","na"];
+function moveDocState(m){
+  if(m && DOC_STATES[m.docState]) return m.docState;
+  return (m&&m.hasDoc)?"has":"none";      /* שורות שקדמו לשדה */
+}
+function setMoveDocState(m,st){
+  if(!DOC_STATES[st]) st="none";
+  m.docState=st;
+  m.hasDoc=(st==="has");                   /* תאימות לאחור */
+}
 function toggleMoveDoc(id){
   if(!can("edit")) return;
   var m=byId(DB.bankMoves,id); if(!m) return;
-  m.hasDoc=!m.hasDoc; save(); rerender();
+  var i=DOC_ORDER.indexOf(moveDocState(m));
+  setMoveDocState(m, DOC_ORDER[(i+1)%DOC_ORDER.length]);
+  save(); rerender();
 }
 function moveDocCell(m){
-  var b=m.hasDoc?'<span class="badge badge-ok badge-unit">✔ יש</span>'
-               :'<span class="badge badge-warn badge-unit">אין</span>';
-  if(can("edit")) return '<span style="cursor:pointer" title="לחץ להחלפת הסימון" onclick="toggleMoveDoc(\''+m.id+'\')">'+b+'</span>';
+  var st=DOC_STATES[moveDocState(m)];
+  var b='<span class="badge '+st.c+' badge-unit">'+st.t+'</span>';
+  if(can("edit")) return '<span style="cursor:pointer" title="לחץ להחלפה: יש ← אין ← לא נדרש" onclick="toggleMoveDoc(\''+m.id+'\')">'+b+'</span>';
   return b;
 }
 function allBankMoves(){ return active(DB.bankMoves); }
@@ -7724,11 +7745,12 @@ function delIncomePay(incId,payId,aptId,back){
 /* ============================================================
    מסך התאמת בנק
    ============================================================ */
-var BQ={bank:"",apt:"",status:"open",q:"",page:1};
+var BQ={bank:"",apt:"",status:"open",q:"",page:1,doc:""};
 function viewBankMatch(){
   var banks=stmtBanks();
   var all=allBankMoves().filter(function(m){ return canSeeApartment(moveAptId(m))||!moveAptId(m); });
   var list=all.filter(function(m){
+    if(BQ.doc && moveDocState(m)!==BQ.doc) return false;
     if(BQ.bank && (m.stmtBankId||m.accountId)!==BQ.bank) return false;
     if(BQ.apt && moveAptId(m)!==BQ.apt) return false;
     var st=moveStatus(m);
@@ -7797,6 +7819,11 @@ function viewBankMatch(){
     '<select style="max-width:180px" onchange="BQ.apt=this.value;BQ.page=1;rerender()">'+
       '<option value="">כל הפרוייקטים</option>'+
       apts.map(function(a){ return '<option value="'+a.id+'"'+(BQ.apt===a.id?" selected":"")+'>'+esc(a.name)+'</option>'; }).join("")+
+    '</select>'+
+    '<select style="max-width:150px" onchange="BQ.doc=this.value;BQ.page=1;rerender()">'+
+      '<option value="">כל המסמכים</option>'+
+      DOC_ORDER.map(function(k){
+        return '<option value="'+k+'"'+(BQ.doc===k?" selected":"")+'>'+DOC_STATES[k].t+'</option>'; }).join("")+
     '</select>'+
     '<select style="max-width:160px" onchange="BQ.status=this.value;BQ.page=1;rerender()">'+
       [["open","לא מותאמות"],["matched","מותאמות"],["ignored","שהתעלמתי מהן"],["all","הכל"]].map(function(o){
@@ -8068,9 +8095,10 @@ function openBulkBankMoveEdit(){
       '<div class="field"><label>תאריך</label><input id="bb-date" type="date"><div class="hint">ריק = ללא שינוי</div></div>'+
       '<div class="field"><label>סוג</label><input id="bb-kind" placeholder="ריק = ללא שינוי"></div>'+
       '<div class="field"><label>קטגוריה</label><input id="bb-style" placeholder="ריק = ללא שינוי"></div>'+
-      '<div class="field"><label>יש מסמך</label><select id="bb-doc">'+
+      '<div class="field"><label>מסמך</label><select id="bb-doc">'+
         '<option value="__keep">— ללא שינוי —</option>'+
-        '<option value="1">✔ יש</option><option value="0">אין</option></select></div>'+
+        DOC_ORDER.map(function(k){ return '<option value="'+k+'">'+DOC_STATES[k].t+'</option>'; }).join("")+
+      '</select></div>'+
       '<div class="field"><label>סטטוס</label><select id="bb-ignore">'+
         '<option value="__keep">— ללא שינוי —</option>'+
         '<option value="1">🚫 סמן "התעלם"</option><option value="0">↩️ החזר לטיפול</option></select></div>'+
@@ -8106,7 +8134,7 @@ function applyBulkBankMoveEdit(ids){
     if(date) m.date=date;
     if(kind) m.kind=kind;
     if(style) m.style=style;
-    if(doc!=="__keep") m.hasDoc=(doc==="1");
+    if(doc!=="__keep") setMoveDocState(m,doc);
     if(ign!=="__keep"){
       /* שורה שכבר הותאמה לא הופכת ל"התעלם" — זה היה מסתיר תשלום קיים */
       if(ign==="1" && moveMatches(m).length){ skipped++; }
@@ -8141,7 +8169,10 @@ function editBankMove(id){
     '<div class="field"><label>קטגוריה</label><input id="bm-style" value="'+esc(m&&m.style||"")+'"></div>'+
     '<div class="field"><label>אסמכתא</label><input id="bm-ref" value="'+esc(m&&m.ref||"")+'"></div>'+
     '<div class="field full"><label>פרטים</label><input id="bm-details" value="'+esc(m&&m.details||"")+'"></div>'+
-    '<div class="field"><label style="font-weight:400"><input type="checkbox" id="bm-doc" style="width:auto;margin-inline-end:6px"'+(m&&m.hasDoc?" checked":"")+'> יש מסמך</label></div>'+
+    '<div class="field"><label>מסמך</label><select id="bm-doc">'+
+      DOC_ORDER.map(function(k){
+        return '<option value="'+k+'"'+(moveDocState(m||{})===k?" selected":"")+'>'+DOC_STATES[k].t+'</option>'; }).join("")+
+      '</select><div class="hint">"לא נדרש" — עמלה, העברה פנימית וכל שורה שלא אמור להיות לה מסמך</div></div>'+
     '</div>',
     saveLabel:"שמירה",onSave:function(){
       var bankId=val("bm-bank");
@@ -8156,12 +8187,12 @@ function editBankMove(id){
       if(m){
         m.stmtBankId=bankId; m.accountId=""; m.date=val("bm-date")||todayISO(); m.name=val("bm-name").trim();
         m.amount=round2(amt); m.kind=val("bm-kind").trim(); m.style=val("bm-style").trim();
-        m.ref=val("bm-ref").trim(); m.details=val("bm-details").trim(); m.hasDoc=checked("bm-doc");
+        m.ref=val("bm-ref").trim(); m.details=val("bm-details").trim(); setMoveDocState(m,val("bm-doc"));
       }else{
         DB.bankMoves.push({id:uid(),stmtBankId:bankId,apartmentId:"",
           date:val("bm-date")||todayISO(),amount:round2(amt),
           name:val("bm-name").trim(),kind:val("bm-kind").trim(),style:val("bm-style").trim(),
-          details:val("bm-details").trim(),hasDoc:checked("bm-doc"),description:"",ref:val("bm-ref").trim(),
+          details:val("bm-details").trim(),docState:(val("bm-doc")||"none"),hasDoc:(val("bm-doc")==="has"),description:"",ref:val("bm-ref").trim(),
           matches:[],ignored:false,note:"",deleted:false});
       }
       save(); toast(m?"נשמר":"התנועה נוספה","ok"); rerender();
