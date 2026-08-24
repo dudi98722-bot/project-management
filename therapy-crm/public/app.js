@@ -36,6 +36,7 @@ const S = {
   sort: { key: '', dir: 1 },
   page: 1, pageSize: 50,
   holdTherapist: null,
+  hourParts: { parts: [], map: {} },
   calTherapist: null, calStart: null,
   calMode: 'week', availWeeks: 4, availPatient: '',
 };
@@ -117,12 +118,14 @@ async function enterApp() {
 }
 
 async function loadAll() {
-  const [patients, therapists, groups, communities, assignments, meta] = await Promise.all([
+  const [patients, therapists, groups, communities, assignments, meta, hourParts] = await Promise.all([
     api('/patients'), api('/therapists'), api('/groups'),
     api('/lists?name=community'), api('/assignments'), api('/patients/meta'),
+    api('/hour-parts'),
   ]);
   S.patients = patients; S.therapists = therapists; S.groups = groups;
   S.communities = communities; S.assignments = assignments; S.meta = meta;
+  S.hourParts = hourParts;
 }
 
 // ===== ניווט =====
@@ -130,6 +133,7 @@ const VIEWS = [
   ['waiting', 'רשימת ממתינים'],
   ['existing', 'מטופלים קיימים'],
   ['holds', 'רשימת השהיה'],
+  ['matches', 'התאמות'],
   ['series', 'סדרות טיפול'],
   ['calendar', 'לוח שנה'],
   ['therapists', 'מטפלים'],
@@ -149,6 +153,7 @@ function render() {
   if (S.view === 'waiting') renderWaiting(m);
   else if (S.view === 'existing') renderExisting(m);
   else if (S.view === 'holds') renderHolds(m);
+  else if (S.view === 'matches') renderMatches(m);
   else if (S.view === 'therapists') renderTherapists(m);
   else if (S.view === 'series') renderSeries(m);
   else if (S.view === 'calendar') renderCalendar(m);
@@ -197,7 +202,7 @@ function renderWaiting(m) {
 // ===== סינון, מיון ועימוד של רשימת הממתינים =====
 // העמודות מוגדרות פעם אחת: כותרת, איך מסננים, ואיך שולפים ערך למיון.
 // אלה שמופיעות כמסננים בסרגל העליון (השאר ניתנות למיון בלבד):
-const TOOLBAR_FILTERS = ['status', 'urgency', 'hold', 'hmo', 'community', 'client_type', 'age'];
+const TOOLBAR_FILTERS = ['status', 'urgency', 'suggested', 'daypart', 'hold', 'hmo', 'community', 'client_type', 'age'];
 const WAIT_COLS = [
   { key: 'name',      label: 'שם',          type: 'text',   sort: p => `${p.last_name} ${p.first_name}`,
     match: (p, v) => `${p.last_name} ${p.first_name} ${p.diagnosis || ''}`.includes(v) },
@@ -227,6 +232,23 @@ const WAIT_COLS = [
   { key: 'files',     label: 'קבצים',       type: 'select', sort: p => p.files_count || 0,
     options: () => [['yes', 'יש קבצים'], ['no', 'אין']],
     match: (p, v) => v.includes(p.files_count > 0 ? 'yes' : 'no') },
+  { key: 'suggested', label: 'מטפל מוצע',   type: 'select', sort: p => (p.preferred_therapists || []).length,
+    // t:<id> = משויך למטפל הזה · none = בלי שיוך כלל
+    options: () => {
+      const t = new Map();
+      S.patients.forEach(p => (p.preferred_therapists || []).forEach(x => t.set(x.id, x.name)));
+      return [['none', 'ללא שיוך'],
+        ...[...t.entries()].sort((a, b) => String(a[1]).localeCompare(String(b[1]), 'he'))
+          .map(([id, name]) => ['t:' + id, name])];
+    },
+    match: (p, v) => {
+      const pref = p.preferred_therapists || [];
+      return v.some(x => x === 'none' ? !pref.length
+                       : pref.some(t => String(t.id) === x.slice(2)));
+    } },
+  { key: 'daypart',   label: 'חלק יום',     type: 'select', sort: p => (p.hours || []).length,
+    options: () => (S.hourParts.parts || []).map(p => [p.key, p.label]),
+    match: (p, v) => v.some(k => patientInPart(p, k)) },
   { key: 'hold',      label: 'השהיה',       type: 'select', sort: p => (p.holds || []).length,
     // מלבד "בהשהיה / לא", אפשר לסנן לפי המטפל שאצלו ההשהיה (t:<id>)
     options: () => {
@@ -1005,6 +1027,152 @@ async function saveHoldForPatient(patientId) {
     toast(added ? `הועבר להשהיה אצל ${added} מטפלים` : 'כבר היה בהשהיה');
     closeModal(); await loadAll(); render();
   } catch (e) { btns.forEach(b => b.disabled = false); toast(e.message, true); }
+}
+
+// =====================================================================
+// התאמות — כמה ממתינים משויכים לכל מטפל, ולפי חלקי יום
+// =====================================================================
+function partLabel(key) {
+  const p = (S.hourParts.parts || []).find(x => x.key === key);
+  return p ? p.label : key;
+}
+// כל השעות ששייכות לחלק יום מסוים
+function hoursOfPart(key) {
+  return ALL_HOURS.filter(h => S.hourParts.map[h] === key);
+}
+// האם המטופל זמין באיזושהי שעה מתוך חלק היום
+function patientInPart(p, key) {
+  const hs = hoursOfPart(key);
+  return (p.hours || []).some(h => hs.includes(h));
+}
+
+// טווח שעות קריא: רצף מוצג כטווח, שעות מפוזרות מוצגות ברשימה
+function hoursSummary(hs) {
+  if (!hs.length) return 'אין שעות';
+  const contiguous = hs.every((h, i) => i === 0 || h === hs[i - 1] + 1);
+  if (contiguous) return hs[0] + ':00–' + (hs[hs.length - 1] + 1) + ':00';
+  return hs.map(h => h + ':00').join(', ');
+}
+
+function renderMatches(m) {
+  const waiting = S.patients.filter(p => p.status === 'waiting');
+
+  // ספירה לכל מטפל: כמה ממתינים משויכים אליו
+  const counts = new Map();
+  waiting.forEach(p => (p.preferred_therapists || []).forEach(t => {
+    const c = counts.get(t.id) || { name: t.name, n: 0, urgent: 0 };
+    c.n++; if (p.urgency === 1) c.urgent++;
+    counts.set(t.id, c);
+  }));
+  const cards = [...counts.entries()].sort((a, b) => b[1].n - a[1].n || a[1].name.localeCompare(b[1].name, 'he'));
+  const noPref = waiting.filter(p => !(p.preferred_therapists || []).length).length;
+
+  // ספירה לפי חלקי יום
+  const parts = (S.hourParts.parts || []).map(part => ({
+    ...part,
+    hours: hoursOfPart(part.key),
+    n: waiting.filter(p => patientInPart(p, part.key)).length,
+    urgent: waiting.filter(p => p.urgency === 1 && patientInPart(p, part.key)).length,
+  }));
+
+  m.innerHTML = `
+  <div class="card">
+    <h2>ממתינים לפי חלק יום</h2>
+    <div class="hint" style="margin-bottom:12px">
+      מטופל נספר בכל חלק יום שיש לו בו לפחות שעה מתאימה אחת, ולכן אותו מטופל יכול להופיע בכמה חלקים.
+      לחיצה על קובייה מציגה את הרשימה.
+    </div>
+    <div class="stat-cards">
+      ${parts.map(p => `
+        <div class="stat-card clickable" onclick="matchByPart('${p.key}')">
+          <div class="num">${p.n}</div>
+          <div class="lbl">${esc(p.label)}</div>
+          <div class="hint" style="margin-top:4px">${hoursSummary(p.hours)}${p.urgent ? ' · ' + p.urgent + ' דחופים' : ''}</div>
+        </div>`).join('')}
+    </div>
+    ${S.me.caps.edit ? `<button class="btn sec" onclick="openHourPartsModal()">⚙ הגדרת שעות לחלקי היום</button>` : ''}
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <h2 style="margin:0">ממתינים לפי מטפל מוצע</h2>
+      <div class="spacer"></div>
+      <span class="hint">${waiting.length} ממתינים${noPref ? ` · ${noPref} בלי שיוך` : ''}</span>
+    </div>
+    <div class="hint" style="margin-bottom:12px">
+      לחיצה על מטפל מציגה את רשימת הממתינים ששויכו אליו.
+    </div>
+    ${cards.length ? `<div class="match-grid">
+      ${cards.map(([id, c]) => `
+        <div class="match-card" onclick="matchByTherapist(${id})">
+          <div class="num">${c.n}</div>
+          <div class="nm">${esc(c.name)}</div>
+          ${c.urgent ? `<div class="badge b-red">${c.urgent} דחופים</div>` : ''}
+        </div>`).join('')}
+    </div>` : '<div class="empty">אף ממתין לא שויך למטפל</div>'}
+    ${noPref ? `<div style="margin-top:12px">
+      <button class="btn sec" onclick="matchNoPref()">הצג ${noPref} ממתינים בלי שיוך</button>
+    </div>` : ''}
+  </div>`;
+}
+
+// קיצורי סינון מהקוביות
+function matchByTherapist(id) {
+  S.colFilters = freshColFilters();
+  S.filters.q = '';
+  S.colFilters.status = ['waiting'];
+  S.colFilters.suggested = ['t:' + id];
+  S.page = 1;
+  switchView('waiting');
+}
+function matchByPart(key) {
+  S.colFilters = freshColFilters();
+  S.filters.q = '';
+  S.colFilters.status = ['waiting'];
+  S.colFilters.daypart = [key];
+  S.page = 1;
+  switchView('waiting');
+}
+function matchNoPref() {
+  S.colFilters = freshColFilters();
+  S.filters.q = '';
+  S.colFilters.status = ['waiting'];
+  S.colFilters.suggested = ['none'];
+  S.page = 1;
+  switchView('waiting');
+}
+
+// ===== הגדרת השעות לחלקי היום =====
+function openHourPartsModal() {
+  const map = { ...S.hourParts.map };
+  showModal(`
+  <h2>הגדרת חלקי היום <button class="x" onclick="closeModal()">✕</button></h2>
+  <div class="hint" style="margin-bottom:12px">קבע לכל שעה לאיזה חלק יום היא שייכת. ההגדרה משפיעה על הדוח ועל הסינון.</div>
+  <div class="hp-grid">
+    ${ALL_HOURS.map(h => `
+      <div class="hp-row">
+        <span class="hp-hour">${hourRange(h)}</span>
+        <select data-h="${h}">
+          ${(S.hourParts.parts || []).map(p => `<option value="${p.key}" ${map[h] === p.key ? 'selected' : ''}>${esc(p.label)}</option>`).join('')}
+        </select>
+      </div>`).join('')}
+  </div>
+  <div class="modal-actions">
+    <button class="btn" onclick="saveHourParts()">שמירה</button>
+    <button type="button" class="btn sec" onclick="closeModal()">ביטול</button>
+  </div>`);
+}
+
+async function saveHourParts() {
+  const map = {};
+  document.querySelectorAll('.hp-grid select').forEach(s => { map[s.dataset.h] = s.value; });
+  try {
+    await api('/hour-parts', { method: 'PUT', body: { map } });
+    S.hourParts = await api('/hour-parts');
+    toast('חלקי היום נשמרו');
+    closeModal();
+    render();
+  } catch (e) { toast(e.message, true); }
 }
 
 // =====================================================================

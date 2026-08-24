@@ -23,6 +23,7 @@ app.use('/api/import', require('./routes/import'));
 app.use('/api/holidays', require('./routes/holidays'));
 app.use('/api/files', require('./routes/files'));
 app.use('/api/holds', require('./routes/holds'));
+app.use('/api/hour-parts', require('./routes/hourparts'));
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 

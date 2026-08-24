@@ -234,3 +234,17 @@ CREATE TABLE IF NOT EXISTS holds (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_holds_active
   ON holds (therapist_id, patient_id) WHERE released = false;
 CREATE INDEX IF NOT EXISTS idx_holds_patient ON holds (patient_id) WHERE released = false;
+
+-- ===== חלקי יום: כל שעה משויכת לבוקר / צהריים / אחה"צ / ערב =====
+CREATE TABLE IF NOT EXISTS hour_parts (
+  hour INT PRIMARY KEY,
+  part TEXT NOT NULL
+);
+-- ברירת מחדל בפעם הראשונה בלבד; שינויים של המשתמש נשמרים
+INSERT INTO hour_parts (hour, part)
+SELECT h, CASE WHEN h <= 11 THEN 'morning'
+               WHEN h <= 15 THEN 'noon'
+               WHEN h <= 18 THEN 'afternoon'
+               ELSE 'evening' END
+  FROM generate_series(8, 21) AS h
+ON CONFLICT (hour) DO NOTHING;
