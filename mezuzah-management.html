@@ -893,12 +893,12 @@ function doPrintLabels(type){
     const bcImg = bc ? `<img class="bc" src="${bc}">` : '';
     if (type==='barcode') {
       // סוג א: ברקוד + מק"ט + שם סופר
-      return `<div class="lbl"><div class="top"><div class="sku">${esc(m.sku)}</div>${bcImg}</div><div class="meta">${esc(m.scribe||'')}</div></div>`;
+      return `<div class="lbl"><div class="sku">${esc(m.sku)}</div><div class="main">${bcImg}<div class="meta">${esc(m.scribe||'')}</div></div></div>`;
     }
     // סוג ב: ברקוד + מק"ט + סוג מזוזה + דרגת סופר
     const s = (data.scribes||[]).find(x=>x.name===m.scribe);
     const grade = s && s.grade ? 'דרגה ' + s.grade : '';
-    return `<div class="lbl"><div class="top"><div class="sku">${esc(m.sku)}</div>${bcImg}</div><div class="meta">${esc(m.product||'')}${grade?' · '+esc(grade):''}</div></div>`;
+    return `<div class="lbl"><div class="sku">${esc(m.sku)}</div><div class="main">${bcImg}<div class="meta">${esc(m.product||'')}${grade?' · '+esc(grade):''}</div></div></div>`;
   }).join('');
   // single = each 50x25 label is its own page (dedicated label printer);
   // a4     = grid of 4x11 labels on a regular A4 sheet, dashed cut guides
@@ -913,11 +913,12 @@ function doPrintLabels(type){
     <style>
       *{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif}
       body{margin:0}
-      .lbl{width:50mm;height:25mm;display:flex;flex-direction:column;align-items:center;justify-content:center;
-           overflow:hidden;text-align:center;padding:1mm}
-      .top{display:flex;align-items:center;justify-content:center;gap:2mm;width:100%;direction:ltr}
-      .bc{width:29mm;height:13mm;object-fit:fill}
-      .sku{font-size:14pt;font-weight:900;letter-spacing:.5px;line-height:1;white-space:nowrap}
+      .lbl{width:50mm;height:25mm;display:flex;flex-direction:row;align-items:center;
+           overflow:hidden;text-align:center;padding:1mm;gap:1.5mm}
+      .sku{writing-mode:vertical-rl;font-size:13pt;font-weight:900;letter-spacing:1px;line-height:1;
+           white-space:nowrap;max-height:23mm}
+      .main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center}
+      .bc{width:38mm;height:13mm;object-fit:fill}
       .meta{font-size:8.5pt;margin-top:1mm}
       ${pageCss}
     </style></head><body>
