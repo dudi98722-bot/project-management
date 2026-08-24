@@ -355,7 +355,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 ב'";
+var APP_BUILD = "19.08 ג'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -3746,10 +3746,17 @@ function applyColFilters(t){
     if(vis) shown++;
   });
   var f=anyFilter?[1]:[];   /* תאימות: הקוד למטה בודק f.length לסיכום */
-  /* שורת סיכום חיה של המסונן: מסכמת עמודות מספריות */
+  /* שורת סיכום חיה של המסונן: מסכמת עמודות מספריות.
+     טבלה בלי שורת סה"כ (למשל התאמת בנק) מקבלת אחת זמנית בזמן
+     הסינון — כך הסיכום עובד בכל טבלה, והוא נעלם כשהסינון מנוקה. */
   var tf=t.tFoot;
-  if(tf&&tf.rows.length){
-    if(!tf.getAttribute("data-orig")) tf.setAttribute("data-orig",tf.innerHTML);
+  if(!tf && f.length){
+    tf=t.createTFoot();
+    tf.setAttribute("data-auto","1");
+  }
+  if(tf && tf.getAttribute("data-auto") && !f.length){ tf.remove(); tf=null; }
+  if(tf&&(tf.rows.length||tf.getAttribute("data-auto"))){
+    if(!tf.getAttribute("data-auto") && !tf.getAttribute("data-orig")) tf.setAttribute("data-orig",tf.innerHTML);
     if(!f.length){ tf.innerHTML=tf.getAttribute("data-orig"); }
     else{
       var n=t.tHead.rows[0].cells.length, sums=new Array(n).fill(null);
