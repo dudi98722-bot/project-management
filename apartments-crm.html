@@ -98,7 +98,9 @@ table.tbl td.note{max-width:120px;overflow:hidden;text-overflow:ellipsis;color:v
    שורות נמוכות, הכל מיושר ימינה (כולל הכותרות), וקווי רשת דקים.
    מספרים מקבלים direction:ltr כדי שסימן מינוס ופסיקי אלפים יישארו
    במקומם, אבל נשארים צמודים לימין כמו כל השאר. */
-table.tbl.sheet-grid{font-size:12.5px;border-collapse:collapse}
+table.tbl.sheet-grid{font-size:12.5px;border-collapse:collapse;table-layout:fixed;width:max-content}
+.col-grip{position:absolute;top:0;bottom:0;inset-inline-end:-3px;width:7px;cursor:col-resize;z-index:5}
+.col-grip:hover{background:var(--brand);opacity:.5}
 table.tbl.sheet-grid th,table.tbl.sheet-grid td{
   padding:0;text-align:right;border:1px solid #dde3f0;white-space:nowrap}
 table.tbl.sheet-grid thead th{padding:1px 0;font-size:11px}
@@ -355,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 ד'";
+var APP_BUILD = "19.08 ה'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -1001,6 +1003,7 @@ function normalizeDB(d){
   (d.sheets||[]).forEach(function(s){
     s.rows=s.rows||[]; s.cols=s.cols||[];
     s.fmt=(s.fmt&&typeof s.fmt==="object")?s.fmt:{};   // עיצוב תאים: "שורה,עמודה" → {bg,bold,bt,bb,bl,br}
+    s.colW=(s.colW&&typeof s.colW==="object")?s.colW:{};   // רוחב עמודות שנקבע בגרירה
     s.rows.forEach(function(r,i){ if(!Array.isArray(r)) s.rows[i]=[]; });
   });
   d.rentals=d.rentals||[];
@@ -2263,6 +2266,7 @@ function renderApp(){
   app.innerHTML = topbarHtml() + navHtml() + '<div class="content" id="content"></div>';
   renderView();
   restoreSelections(kept);
+  updateSelSumBar();
 }
 function topbarHtml(){
   var apts=active(DB.apartments).filter(function(a){return canSeeApartment(a.id);});
@@ -4921,6 +4925,7 @@ function ebCount(){
   var hidden=document.querySelectorAll(".eb-x:checked").length-n;
   var el=document.getElementById("eb-count");
   if(el) el.textContent=n?("("+n+(hidden?" · "+hidden+" מוסתרים בסינון לא ישתנו":"")+")"):"";
+  updateSelSumBar();
 }
 function openBulkExpEdit(aptId){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
@@ -5795,6 +5800,7 @@ function pbCount(){
   var hidden=document.querySelectorAll(".pb-x:checked").length-n;
   var el=document.getElementById("pb-count");
   if(el) el.textContent=n?("("+n+(hidden?" · "+hidden+" מוסתרים לא ישתנו":"")+")"):"";
+  updateSelSumBar();
 }
 function openBulkPayEdit(aptId){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
@@ -7509,6 +7515,7 @@ function ibCount(){
   var n=visibleBoxes(".ib-x:checked").length;
   var el=document.getElementById("ib-count");
   if(el) el.textContent=n?("("+n+")"):"";
+  updateSelSumBar();
 }
 function openBulkIncomeEdit(aptId){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
@@ -8553,10 +8560,39 @@ function undoMatchFromUi(moveId,matchId){
 }
 /* ---------- עדכון מרוכז לשורות בנק ---------- */
 function bmAll(v){ visibleBoxes(".bm-x").forEach(function(c){ c.checked=v; }); bmCount(); }
+/* ---------- פס סיכום צף לשורות מסומנות ----------
+   מסמנים שורות בכל טבלה — ובפינה מופיע כמה סומנו ומה הסכום שלהן,
+   כמו שורת הסטטוס באקסל. נעלם כשאין סימונים. */
+var SEL_SUM_SRC={
+  "bm-x":function(v){ var m=byId(DB.bankMoves,v); return m?Number(m.amount)||0:0; },
+  "ib-x":function(v){ var i=byId(DB.income,v); return i?Number(i.amount)||0:0; },
+  "eb-x":function(v){ var e=byId(DB.expenses,v); return e?Number(e.amount)||0:0; },
+  "pb-x":function(v){ var x=byId(DB.payments,v); return x?Number(x.amount)||0:0; }
+};
+function updateSelSumBar(){
+  var total=0, n=0;
+  Object.keys(SEL_SUM_SRC).forEach(function(cls){
+    var boxes=(cls==="eb-x"&&typeof ebVisibleBoxes==="function")
+      ? ebVisibleBoxes("."+cls+":checked") : visibleBoxes("."+cls+":checked");
+    boxes.forEach(function(c){ n++; total+=SEL_SUM_SRC[cls](c.value); });
+  });
+  var bar=document.getElementById("sel-sumbar");
+  if(!n){ if(bar) bar.remove(); return; }
+  if(!bar){
+    bar=document.createElement("div");
+    bar.id="sel-sumbar";
+    bar.style.cssText="position:fixed;bottom:14px;inset-inline-start:14px;z-index:60;"+
+      "background:#1e293b;color:#fff;padding:8px 14px;border-radius:10px;"+
+      "box-shadow:0 8px 24px rgba(0,0,0,.3);font-size:13px;direction:rtl;pointer-events:none";
+    document.body.appendChild(bar);
+  }
+  bar.innerHTML='סומנו <b>'+n+'</b> · סה"כ <b>'+money(round2(total))+'</b>';
+}
 function bmCount(){
   var n=visibleBoxes(".bm-x:checked").length;
   var el=document.getElementById("bm-count");
   if(el) el.textContent=n?("("+n+")"):"";
+  updateSelSumBar();
 }
 function openBulkBankMoveEdit(){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
@@ -10914,6 +10950,39 @@ function sheetCellOver(id,r,c){
 }
 document.addEventListener("mouseup",function(){ SHEETDRAG=false; });
 /* בחירת עמודה או שורה שלמה בלחיצה על הכותרת */
+/* גרירת רוחב עמודה. ב-RTL הקצה הפנימי הוא שמאל — גרירה שמאלה מרחיבה. */
+var SHEETGRIP=null;
+function sheetGripDown(ev,id,c){
+  ev.preventDefault(); ev.stopPropagation();
+  var th=ev.target.closest("th"); if(!th) return;
+  SHEETGRIP={id:id,c:c,th:th,startX:ev.clientX,startW:th.getBoundingClientRect().width};
+  document.addEventListener("mousemove",sheetGripMove);
+  document.addEventListener("mouseup",sheetGripUp);
+  document.body.style.cursor="col-resize";
+  document.body.style.userSelect="none";
+}
+function sheetGripMove(ev){
+  if(!SHEETGRIP) return;
+  var w=Math.max(44, Math.round(SHEETGRIP.startW+(SHEETGRIP.startX-ev.clientX)));
+  SHEETGRIP.th.style.width=w+"px";
+  SHEETGRIP.w=w;
+}
+function sheetGripUp(){
+  document.removeEventListener("mousemove",sheetGripMove);
+  document.removeEventListener("mouseup",sheetGripUp);
+  document.body.style.cursor=""; document.body.style.userSelect="";
+  if(!SHEETGRIP) return;
+  var g=SHEETGRIP; SHEETGRIP=null;
+  if(!g.w || Math.abs(g.w-g.startW)<2) return;      /* לא באמת גרר */
+  var sh=byId(DB.sheets,g.id); if(!sh) return;
+  sh.colW=sh.colW||{}; sh.colW[g.c]=g.w;
+  save();                                            /* בלי rerender — הרוחב כבר על המסך */
+}
+function sheetGripReset(id,c){
+  var sh=byId(DB.sheets,id); if(!sh||!sh.colW) return;
+  delete sh.colW[c];
+  save(); rerender();
+}
 function sheetSelCol(id,c){
   var s=byId(DB.sheets,id); if(!s) return;
   var n=Math.max((s.rows||[]).length,SHEET_MIN_ROWS);
@@ -11037,7 +11106,10 @@ function viewSheets(){
       var th="";
       for(var c=0;c<nCols;c++){
         var name=(s.cols&&s.cols[c])||"";
-        th+='<th style="min-width:120px">'+
+        th+='<th style="position:relative;width:'+(Number(s.colW&&s.colW[c])||120)+'px;min-width:44px">'+
+          /* ידית הגרירה בקצה הפנימי (שמאל, ב-RTL) של הכותרת */
+          '<div class="col-grip" data-c="'+c+'" title="גרור לשינוי רוחב · לחיצה כפולה לאיפוס" '+
+            'onmousedown="sheetGripDown(event,\''+s.id+'\','+c+')" ondblclick="sheetGripReset(\''+s.id+'\','+c+')"></div>'+
           '<div class="colletter" style="cursor:pointer" title="בחר את כל העמודה" onclick="sheetSelCol(\''+s.id+'\','+c+')">'+colLetter(c)+'</div>'+
           (can("edit")
             ? '<input value="'+esc(name)+'" placeholder="כותרת"'+
@@ -11082,7 +11154,7 @@ function newSheet(){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var name=prompt("שם הגיליון:","גיליון "+(activeSheets().length+1));
   name=(name||"").trim(); if(!name) return;
-  var s={id:uid(),name:name,cols:[],rows:[],fmt:{},deleted:false};
+  var s={id:uid(),name:name,cols:[],rows:[],fmt:{},colW:{},deleted:false};
   DB.sheets.push(s); save();
   go("sheets",{sheetId:s.id});
 }
