@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 ה'";
+var APP_BUILD = "19.08 ו'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -10935,7 +10935,21 @@ function paintSheetSel(){
   var lbl=document.getElementById("sheet-sel-lbl");
   if(lbl){
     var n=sheetSelCount();
-    lbl.textContent = n>1 ? ("נבחרו "+n+" תאים") : n===1 ? "תא אחד נבחר" : "לא נבחר תא";
+    if(!n) lbl.textContent="לא נבחר תא";
+    else{
+      /* כמו שורת הסטטוס באקסל: סכום התאים המספריים שנבחרו, לצד הספירה */
+      var sel2=sheetSelNorm(), sh=sel2?byId(DB.sheets,sel2.id):null;
+      var sum=0, nums=0;
+      if(sh) for(var r=sel2.r1;r<=sel2.r2;r++){
+        var row=(sh.rows||[])[r]||[];
+        for(var c=sel2.c1;c<=sel2.c2;c++){
+          var v=cellNum(row[c]);
+          if(v!==null){ sum+=v; nums++; }
+        }
+      }
+      lbl.textContent=(n>1?("נבחרו "+n+" תאים"):"תא אחד נבחר")+
+        (nums?(' · סה"כ '+num(round2(sum))+(nums>1?' ('+nums+' מספרים)':'')):'');
+    }
   }
 }
 function sheetCellDown(ev,id,r,c){
