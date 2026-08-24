@@ -355,7 +355,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 ג'";
+var APP_BUILD = "19.08 ד'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -2226,6 +2226,9 @@ function captureSelections(){
     document.querySelectorAll("input."+pair[0]+":checked").forEach(function(x){ v[x.value]=1; n++; });
     if(n) kept[pair[0]]=v;
   });
+  /* המילוי המדורג של התאמת בנק מוסיף שורות אחרי שהשחזור הרגיל כבר רץ —
+     ולכן צריך עותק שהוא יכול לקרוא בעצמו */
+  window._BM_KEPT=kept["bm-x"]||null;
   return kept;
 }
 function restoreSelections(kept){
@@ -3697,7 +3700,13 @@ function attachTableTools(root){
         '</div>';
     }
     fr.querySelectorAll(".col-f").forEach(function(inp){
-      inp.addEventListener("input",function(){ applyColFilters(t); });
+      /* כל תו הריץ סינון מלא על כל השורות — בטבלה גדולה זה מורגש
+         כהקלדה תקועה. השהיה קצרה מאגדת את התווים לסינון אחד. */
+      var ft=null;
+      inp.addEventListener("input",function(){
+        if(ft) clearTimeout(ft);
+        ft=setTimeout(function(){ ft=null; applyColFilters(t); },250);
+      });
       inp.addEventListener("click",function(e){ e.stopPropagation(); });
     });
     fr.querySelectorAll(".col-pick-btn").forEach(function(btn){
@@ -7972,7 +7981,17 @@ function viewBankMatch(){
   var sorted=list.slice().sort(function(x,y){ return x.date<y.date?1:-1; });
   var page=Math.max(1,Number(BQ.page)||1);
   var shownN=Math.min(sorted.length, page*BM_PAGE_SIZE);
-  sorted.slice(0,shownN).forEach(function(m){ h+=bankMoveRowHtml(m,selBm); });
+  /* ---------- רינדור מדורג ----------
+     בניית אלפי שורות בבת אחת חוסמת את הדפדפן לשנייה שלמה — וזה קורה
+     לא רק בפתיחה אלא בכל עדכון מסך: עדכון ממשתמש אחר, חיפוש, טעינה
+     מהבאנר. לכן רק המנה הראשונה נבנית מיד, והשאר מתווספות ברקע
+     במנות קטנות — המסך מגיב כל הזמן, והגלילה פשוט מגלה עוד שורות. */
+  var CHUNK0=150;
+  sorted.slice(0,Math.min(shownN,CHUNK0)).forEach(function(m){ h+=bankMoveRowHtml(m,selBm); });
+  if(shownN>CHUNK0){
+    BM_FILL={rows:sorted.slice(CHUNK0,shownN),selBm:selBm,token:++BM_FILL_TOKEN};
+    setTimeout(bmFillChunks,0);
+  } else BM_FILL=null;
   h+='</tbody></table></div>';
   if(sorted.length>shownN){
     h+='<div class="toolbar" style="justify-content:center;margin-top:10px">'+
@@ -7982,6 +8001,40 @@ function viewBankMatch(){
   }
 
   return h;
+}
+/* מילוי מדורג: מוסיף את יתרת השורות במנות של 200, בין פריימים.
+   רינדור חדש מבטל מילוי ישן דרך ה-token — אחרת שני מילויים היו
+   רצים במקביל ומכפילים שורות. */
+var BM_FILL=null, BM_FILL_TOKEN=0;
+function bmFillChunks(){
+  var job=BM_FILL;
+  if(!job || job.token!==BM_FILL_TOKEN) return;
+  var tbl=document.querySelector(".content table.tbl tbody");
+  if(!tbl){ BM_FILL=null; return; }
+  var batch=job.rows.splice(0,200);
+  if(!batch.length){ BM_FILL=null; return; }
+  var h="";
+  batch.forEach(function(m){ h+=bankMoveRowHtml(m,job.selBm); });
+  tbl.insertAdjacentHTML("beforeend",h);
+  /* סימונים שנלכדו לפני הרינדור — מוחלים גם על השורות שהגיעו במנה */
+  if(window._BM_KEPT){
+    batch.forEach(function(m){
+      if(window._BM_KEPT[m.id]){
+        var cb=tbl.querySelector('.bm-x[value="'+m.id+'"]');
+        if(cb) cb.checked=true;
+      }
+    });
+    bmCount();
+  }
+  /* setTimeout ולא requestAnimationFrame: כשהלשונית ברקע rAF מושהה,
+     והמילוי היה נעצר באמצע עד שחוזרים אליה */
+  if(job.rows.length) setTimeout(bmFillChunks,16);
+  else{
+    BM_FILL=null;
+    /* סינון עמודות פעיל — מוחל גם על השורות החדשות */
+    var t=tbl.closest("table");
+    if(t && COLFILT[tableSig(t)]) try{ applyColFilters(t); }catch(e){}
+  }
 }
 /* שורת בנק אחת. חולצה מהלולאה כדי שאפשר יהיה לרענן שורה בודדת
    אחרי שינוי, במקום לבנות מחדש את כל הטבלה. */
