@@ -355,7 +355,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "18.08 יד'";
+var APP_BUILD = "19.08 א'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -3339,6 +3339,15 @@ function merge3(baseStr,mine,theirs){
     });
     out[T]=res;
   });
+  /* טבלאות שאינן ברשימת המיזוג — נשמרות ולא נופלות. כשקוד ישן פוגש
+     נתונים מגרסה חדשה ממנו, הפלת טבלה לא-מוכרת פירושה מחיקתה בשמירה
+     הבאה. השרת גובר; טבלה שקיימת רק אצלי — נשמרת. */
+  [theirs,mine].forEach(function(src){
+    Object.keys(src||{}).forEach(function(k){
+      if(out[k]!==undefined || k==="settings" || k==="meta") return;
+      if(Array.isArray(src[k])) out[k]=src[k];
+    });
+  });
   /* הגדרות: אמצעי תשלום מתאחדים; שאר השדות — מי ששינה מול הבסיס */
   var bs=((base&&base.settings)||{}), ms=(mine.settings||{}), ts=(theirs.settings||{});
   var st={};
@@ -3457,6 +3466,16 @@ async function flushSave(){
       if(j&&j.ok){
         SAVEQ.fails=0; MERGE_ROUNDS=0;
         setSyncBase(snap);                   // מה שנשלח הוא עכשיו מצב השרת
+        if(j.restoredTables&&j.restoredTables.length){
+          /* השרת השלים טבלאות שחסרו בשמירה — העותק המקומי חסר.
+             מושכים את המלא, שהמסך לא ימשיך להציג חוסר שיישמר שוב. */
+          toast("השרת שחזר טבלאות שחסרו בשמירה: "+j.restoredTables.join(", ")+" — הנתונים נטענים מחדש","warn");
+          serverLoad().then(function(r2){
+            if(r2&&r2.data&&Array.isArray(r2.data.apartments)){
+              DB=normalizeDB(r2.data); setSyncBase(r2.data); saveLocal(); rerender();
+            }
+          });
+        }
         if(SAVEQ.dirty){ setSync("saving"); setTimeout(flushSave,0); }   // שינויים שנעשו בזמן השליחה
         else { clearDirtyMark(); setSync("ok"); }
         return;
@@ -10264,6 +10283,23 @@ function crossListHtml(){
 }
 
 /* ---------- הגדרות ---------- */
+async function runSalvage(){
+  if(!CU||CU.role!=="admin"){ toast("אין הרשאה","err"); return; }
+  toast("בודק מול הגיבוי בשרת…","ok");
+  var j=await api({action:"salvage",codeHash:getAuth()});
+  if(!j||!j.ok){
+    toast(j&&j.error==="no-backups"
+      ? "אין עדיין גיבוי יומי בשרת — נסה שחזור מהיסטוריית הגרסאות של הגיליון"
+      : "השחזור נכשל"+((j&&j.error)?": "+j.error:""),"err");
+    return;
+  }
+  if(!j.restored||!j.restored.length){ toast("לא נמצאו טבלאות חסרות — הכל במקום","ok"); return; }
+  toast("שוחזרו: "+j.restored.join(", ")+" — הנתונים נטענים מחדש","ok");
+  var r=await serverLoad();
+  if(r&&r.data&&Array.isArray(r.data.apartments)){
+    DB=normalizeDB(r.data); setSyncBase(r.data); saveLocal(); rerender();
+  }
+}
 function moduleSettings(){
   var tab=state.params.stab||"partners";
   var tabs=[["partners","ספר שותפים"],["cats","קטגוריות"],["accounts","חשבונות"],["methods","אמצעי תשלום"],["users","משתמשים"],["sheets","גוגל שיטס"],["backup","גיבוי"]];
@@ -10371,6 +10407,12 @@ function moduleSettings(){
       '<div class="hint">כל מכשיר מתחבר אוטומטית — אין מה להגדיר. כל שינוי נשמר בגיליון מיד.<br>'+
       'השרת דורש קוד כניסה תקף בכל בקשה, כך שגם מי שמגיע לכתובת ה-Apps Script לא מקבל שום נתון בלי קוד.</div></div>';
   } else if(tab==="backup"){
+    if(CU&&CU.role==="admin"){
+      h+='<div class="card" style="border:1px solid var(--warn);margin-bottom:12px"><h3>🩹 שחזור טבלאות שנמחקו</h3>'+
+        '<div class="hint" style="margin-bottom:8px">בודק מול הגיבוי היומי שבשרת: כל טבלה שריקה היום אך מאוכלסת בגיבוי — משוחזרת. '+
+        'לא נוגע בנתונים קיימים.</div>'+
+        '<button class="btn btn-primary btn-sm" onclick="runSalvage()">בדוק ושחזר עכשיו</button></div>';
+    }
     h+='<div class="card"><h3>גיבוי מקומי</h3><div class="toolbar">'+
       '<button class="btn btn-primary btn-sm" onclick="exportJSON()">⬇️ ייצוא גיבוי (JSON)</button>'+
       '<button class="btn btn-sm" onclick="document.getElementById(\'imp-file\').click()">⬆️ שחזור מגיבוי</button>'+

@@ -30,7 +30,8 @@ function doGet(e) {
 
   if (action === "status") {
     // מידע ציבורי מינימלי בלבד — האם כבר קיים משתמש. בלי נתונים.
-    return jsonOut({ ok: true, hasUsers: hasAnyUser() });
+    // guard = גרסת ההגנות, לאימות חיצוני שההדבקה נקלטה.
+    return jsonOut({ ok: true, hasUsers: hasAnyUser(), guard: 2 });
   }
   if (action === "requestReset") {
     return jsonOut(requestReset(p.user || ""));
@@ -122,6 +123,12 @@ function doPost(e) {
 
     if (action === "rev") {
       return jsonOut({ ok: true, rev: storedRev() });
+    }
+    /* שחזור טבלאות שנמחקו — מהגיבוי היומי שבתוך הקובץ. מנהל בלבד.
+       משחזר רק טבלאות שריקות היום ומאוכלסות בגיבוי; לא נוגע בשאר. */
+    if (action === "salvage") {
+      if (user.role !== "admin") return jsonOut({ ok: false, error: "forbidden" });
+      return jsonOut(salvageFromBackups());
     }
     if (action === "load") {
       // כל משתמש מקבל רק את מה ששויך לו, ולעולם לא את ה-hash של הקודים
@@ -328,6 +335,21 @@ function dbRowCount(d) {
   tables.forEach(function (t) { n += ((d && d[t]) || []).length; });
   return n;
 }
+function restoreMissingTables(stored, incoming) {
+  var restored = [];
+  if (!stored || !incoming) return restored;
+  for (var k in stored) {
+    if (!stored.hasOwnProperty(k)) continue;
+    if (k === "users" || k === "settings" || k === "meta") continue;
+    if (!Array.isArray(stored[k]) || !stored[k].length) continue;
+    var inc = incoming[k];
+    if (!Array.isArray(inc) || inc.length === 0) {
+      incoming[k] = stored[k];
+      restored.push(k + " (" + stored[k].length + ")");
+    }
+  }
+  return restored;
+}
 function activeUserCount(d) {
   var n = 0, us = (d && d.users) || [];
   for (var i = 0; i < us.length; i++) if (!us[i].deleted && us[i].active) n++;
@@ -341,6 +363,43 @@ function shrinkGuard(stored, incoming) {
   return "rows " + before + " -> " + after;     // נחסם ומדווח
 }
 
+function salvageFromBackups() {
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(20000); } catch (e) { return { ok: false, error: "busy" }; }
+  try {
+    var cur = loadData();
+    if (!cur) return { ok: false, error: "no-data" };
+    var sheets = ss().getSheets(), names = [];
+    for (var i = 0; i < sheets.length; i++) {
+      var n = sheets[i].getName();
+      if (n.indexOf(BAK_PREFIX) === 0) names.push(n);
+    }
+    names.sort().reverse();                     /* החדש ביותר קודם */
+    if (!names.length) return { ok: false, error: "no-backups" };
+    var restored = [];
+    for (var j = 0; j < names.length; j++) {
+      var bak = readSheetJson(names[j]);
+      if (!bak) continue;
+      for (var k in bak) {
+        if (!bak.hasOwnProperty(k)) continue;
+        if (k === "users" || k === "settings" || k === "meta") continue;
+        if (!Array.isArray(bak[k]) || !bak[k].length) continue;
+        var curArr = cur[k];
+        if (!Array.isArray(curArr) || curArr.length === 0) {
+          cur[k] = bak[k];
+          restored.push(k + " (" + bak[k].length + " מ-" + names[j].slice(BAK_PREFIX.length) + ")");
+        }
+      }
+    }
+    if (!restored.length) return { ok: true, restored: [] };
+    cur.meta = cur.meta || { version: 1 };
+    cur.meta.rev = (Number(cur.meta.rev) || 0) + 1;
+    saveData(cur);
+    return { ok: true, restored: restored, rev: cur.meta.rev };
+  } finally {
+    lock.releaseLock();
+  }
+}
 function saveWithRevGuard(data, user) {
   var lock = LockService.getScriptLock();
   try { lock.waitLock(20000); } catch (e) { return { ok: false, error: "busy" }; }
@@ -364,6 +423,12 @@ function saveWithRevGuard(data, user) {
        מסד ריק/כמעט-ריק שנשלח מדפדפן עם מטמון ריק היה דורס עשרות שעות
        עבודה בלחיצה אחת. מחיקות במערכת הן ממילא רכות (deleted:true),
        ולכן שמירה לגיטימית לעולם לא מקטינה את מספר השורות בעשרות אחוזים. */
+    /* לקוח שקובץ ה-HTML שלו ישן אינו מכיר טבלאות חדשות (שכירויות,
+       גיליונות): המיזוג שלו משמיט אותן, ושמירה — גם של מנהל — הייתה
+       מוחקת אותן כליל. כך נמחקו הנתונים בפעם השלישית. מחיקות אמיתיות
+       במערכת הן רכות (deleted:true), ולכן היעדר מוחלט או ריקון מוחלט
+       של טבלה מאוכלסת לעולם אינו לגיטימי — משחזרים מהשמור. */
+    var restoredTables = restoreMissingTables(stored, toSave);
     var guard = shrinkGuard(stored, toSave);
     if (guard) return { ok: false, error: "shrink-guard", detail: guard };
     /* מחיקת כל המשתמשים בשמירה אחת = נעילת כולם בחוץ. לא קורה בעריכה
@@ -371,7 +436,8 @@ function saveWithRevGuard(data, user) {
     if (activeUserCount(stored) > 0 && activeUserCount(toSave) === 0)
       return { ok: false, error: "users-wipe" };
     saveData(toSave);
-    return { ok: true, savedAt: new Date().toISOString(), rev: incomingRev };
+    return { ok: true, savedAt: new Date().toISOString(), rev: incomingRev,
+      restoredTables: restoredTables };
   } finally {
     lock.releaseLock();
   }
