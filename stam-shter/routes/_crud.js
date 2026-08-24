@@ -32,9 +32,11 @@ function crudRouter(table, fields, opts = {}) {
   const filterCols = opts.filterCols || [];   // עמודות שמותר לסנן לפיהן דרך query
   const del = opts.softDeleteFn || ((id, user) => softDelete(table, id, user));
   const base = opts.viewSql || `SELECT t.* FROM ${table} t`;
+  // הרשאה נוספת שנדרשת לכל הפעולות בטבלה (למשל finance לתשלומי לקוחות)
+  const gate = opts.cap ? [can(opts.cap)] : [];
 
   // רשימה (עם סינון אופציונלי)
-  router.get('/', authenticate, can('view'), async (req, res) => {
+  router.get('/', authenticate, ...gate, can('view'), async (req, res) => {
     try {
       const where = ['t.deleted=false']; const vals = [];
       for (const c of filterCols) {
@@ -46,7 +48,7 @@ function crudRouter(table, fields, opts = {}) {
   });
 
   // רשומה בודדת
-  router.get('/:id', authenticate, can('view'), async (req, res) => {
+  router.get('/:id', authenticate, ...gate, can('view'), async (req, res) => {
     try {
       const r = await pool.query(`${base} WHERE t.id=$1 AND t.deleted=false`, [req.params.id]);
       if (!r.rows.length) return res.status(404).json({ error: 'לא נמצא' });
@@ -55,7 +57,7 @@ function crudRouter(table, fields, opts = {}) {
   });
 
   // יצירה
-  router.post('/', authenticate, can('edit'), async (req, res) => {
+  router.post('/', authenticate, ...gate, can('edit'), async (req, res) => {
     try {
       const vals = fields.map(f => coerce(f, req.body[f.key]));
       const placeholders = cols.map((_, i) => `$${i + 1}`).join(',');
@@ -70,7 +72,7 @@ function crudRouter(table, fields, opts = {}) {
   });
 
   // עדכון
-  router.put('/:id', authenticate, can('edit'), async (req, res) => {
+  router.put('/:id', authenticate, ...gate, can('edit'), async (req, res) => {
     try {
       const vals = fields.map(f => coerce(f, req.body[f.key]));
       const set = cols.map((c, i) => `${c}=$${i + 1}`).join(', ');
@@ -86,7 +88,7 @@ function crudRouter(table, fields, opts = {}) {
   });
 
   // מחיקה רכה
-  router.delete('/:id', authenticate, can('del'), async (req, res) => {
+  router.delete('/:id', authenticate, ...gate, can('del'), async (req, res) => {
     try {
       const ok = await del(req.params.id, req.user);
       if (!ok) return res.status(404).json({ error: 'לא נמצא' });

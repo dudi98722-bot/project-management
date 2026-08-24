@@ -11,6 +11,7 @@ module.exports = crudRouter('customer_payments', [
   { key: 'cash_in_hand', type: 'num' },
   { key: 'note', type: 'text' },
 ], {
+  cap: 'finance',
   orderBy: 't.date DESC NULLS LAST, t.id DESC',
   filterCols: ['scroll_id', 'customer_id'],
   // אם לא נרשם רוכש — נגזר מהספר, כי תשלום על ספר הוא מבעליו

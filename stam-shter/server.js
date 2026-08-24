@@ -19,6 +19,7 @@ app.use('/api/contacts', require('./routes/contacts'));
 app.use('/api/lists', require('./routes/lists'));
 app.use('/api/products', require('./routes/products'));
 app.use('/api/parchment-sizes', require('./routes/parchment-sizes'));
+app.use('/api/stations', require('./routes/stations'));
 
 // מערכת א' — ס"ת
 app.use('/api/scrolls', require('./routes/scrolls'));
@@ -39,6 +40,7 @@ app.use('/api/prod/customer-payments', require('./routes/prod-customer-payments'
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/recycle', require('./routes/recycle'));
 app.use('/api/import', require('./routes/import'));
+app.use('/api/track', require('./routes/track'));
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 

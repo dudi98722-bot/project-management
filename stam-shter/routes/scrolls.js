@@ -1,7 +1,7 @@
 // לשונית ס"ת — לב המערכת. הקריאות מחזירות את כל השדות המחושבים (calc.js).
 const express = require('express');
 const { pool, logAction, softDeleteScroll } = require('../db');
-const { authenticate, can } = require('../middleware/auth');
+const { authenticate, can, scrubBuyer, scrubBuyerAll } = require('../middleware/auth');
 const { coerce } = require('./_crud');
 const { getScrolls, getScroll } = require('../calc');
 const router = express.Router();
@@ -17,17 +17,19 @@ const FIELDS = [
   { key: 'buyer_currency', type: 'text' },
   { key: 'note', type: 'text' },
   { key: 'status', type: 'text' },
+  { key: 'sheets_count', type: 'int' },
 ];
 const COLS = FIELDS.map(f => f.key);
 
 // רשימת הספרים — מחושבת במלואה
 router.get('/', authenticate, can('view'), async (req, res) => {
   try {
-    res.json(await getScrolls({
+    const rows = await getScrolls({
       scribe_id: req.query.scribe_id,
       customer_id: req.query.customer_id,
       status: req.query.status,
-    }));
+    });
+    res.json(req.caps.finance ? rows : scrubBuyerAll(rows));
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
@@ -54,10 +56,10 @@ router.get('/:id', authenticate, can('view'), async (req, res) => {
                   WHERE e.scroll_id=$1 AND e.deleted=false ORDER BY e.date NULLS LAST, e.id`, [id]),
     ]);
     res.json({
-      scroll,
+      scroll: req.caps.finance ? scroll : scrubBuyer(scroll),
       pages_log: pages.rows,
       scribe_payments: scribePays.rows,
-      customer_payments: custPays.rows,
+      customer_payments: req.caps.finance ? custPays.rows : [],
       book_expenses: bookExp.rows,
       parchment_expenses: parchExp.rows,
     });
@@ -73,7 +75,8 @@ router.post('/', authenticate, can('edit'), async (req, res) => {
        VALUES (${ph}, $${COLS.length + 1}, $${COLS.length + 1}) RETURNING *`,
       [...vals, req.user.id]);
     await logAction(req.user, 'add', 'scrolls', r.rows[0].id, {}, r.rows[0]);
-    res.status(201).json(await getScroll(r.rows[0].id));
+    const created = await getScroll(r.rows[0].id);
+    res.status(201).json(req.caps.finance ? created : scrubBuyer(created));
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
@@ -87,7 +90,8 @@ router.put('/:id', authenticate, can('edit'), async (req, res) => {
       [...vals, req.user.id, req.params.id]);
     if (!r.rows.length) return res.status(404).json({ error: 'לא נמצא' });
     await logAction(req.user, 'edit', 'scrolls', req.params.id, {}, r.rows[0]);
-    res.json(await getScroll(req.params.id));
+    const upd = await getScroll(req.params.id);
+    res.json(req.caps.finance ? upd : scrubBuyer(upd));
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 

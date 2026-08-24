@@ -4,8 +4,8 @@
 
 // ============ מצב ============
 let ME = null, TAB = 'dash';
-const SUB = { prod: 'purchases', reports: 'overview', settings: 'contacts', system: 'recycle' };
-const C = { contacts: [], products: [], sizes: [], expBook: [], expBiz: [], scrolls: [], purchases: [] };
+const SUB = { prod: 'purchases', reports: 'overview', settings: 'contacts', system: 'recycle', track: 'summary' };
+const C = { contacts: [], products: [], sizes: [], expBook: [], expBiz: [], scrolls: [], purchases: [], stations: [] };
 const IMPORT = { spec: null, table: '', text: '', mode: 'create', opts: { createMissingContacts: false } };
 
 // ============ עזרים ============
@@ -496,10 +496,14 @@ function updateSelBar() {
   const table = checked[0].dataset.sel;
   const ids = checked.map(c => +c.value);
   if (!bar) { bar = document.createElement('div'); bar.id = 'selBar'; document.body.appendChild(bar); }
+  // ביריעות מציעים קודם כל העברה — זו הפעולה השכיחה, לא מחיקה
+  const isTrack = table === 'track_items';
   bar.innerHTML = `<span>נבחרו <b>${ids.length}</b></span>
-    <button class="btn red sm" id="delSelBtn">🗑 מחק נבחרים</button>
+    ${isTrack && ME.caps.edit ? `<button class="btn sm" id="moveSelBtn">➜ העבר לתחנה</button>` : ''}
+    ${ME.caps.del ? `<button class="btn red sm" id="delSelBtn">🗑 מחק נבחרים</button>` : ''}
     <button class="btn ghost sm" id="clearSelBtn">ביטול</button>`;
-  $('delSelBtn').onclick = async () => {
+  if ($('moveSelBtn')) $('moveSelBtn').onclick = () => openMove(ids);
+  if ($('delSelBtn')) $('delSelBtn').onclick = async () => {
     if (!(await confirmBox(`להעביר ${ids.length} שורות לסל המחזור? (ניתן לשחזר מלשונית מערכת)`))) return;
     try {
       const r = await Store.import.bulkDelete(table, ids);
@@ -570,7 +574,7 @@ async function entityPage(cfg) {
   const fkey = cfg.bulk || cfg.title.replace(/\W/g, '');
   const allRows = ROWCACHE[fkey] || (ROWCACHE[fkey] = await cfg.load());
   const cols = cfg.cols.concat([actionsCol(cfg)]);
-  if (ME.caps.del && cfg.bulk) cols.unshift(selCol(cfg.bulk));
+  if ((ME.caps.del || ME.caps.edit) && cfg.bulk) cols.unshift(selCol(cfg.bulk));
   const rows = applyFilters(fkey, cols, allRows);
   $('view').innerHTML += `
     <div class="page-head">
@@ -594,13 +598,13 @@ async function entityPage(cfg) {
 // ============ טעינת מטמון ============
 async function reloadCaches() {
   invalidateRows();
-  const [contacts, products, sizes, lists, scrolls, purchases] = await Promise.all([
+  const [contacts, products, sizes, lists, scrolls, purchases, stations] = await Promise.all([
     Store.contacts.list(), Store.products.list(), Store.sizes.list(),
-    Store.lists.all(), Store.scrolls.list(), Store.prodPurchases.list(),
+    Store.lists.all(), Store.scrolls.list(), Store.prodPurchases.list(), Store.stations.list(),
   ]);
   C.contacts = contacts; C.products = products; C.sizes = sizes;
   C.expBook = lists.expense_book || []; C.expBiz = lists.expense_business || [];
-  C.scrolls = scrolls; C.purchases = purchases;
+  C.scrolls = scrolls; C.purchases = purchases; C.stations = stations;
 }
 
 // ============ דשבורד ============
@@ -685,6 +689,8 @@ function scrollCfg() {
           `<option value="ILS" ${v === 'ILS' ? 'selected' : ''}>₪ שקל</option><option value="USD" ${v === 'USD' ? 'selected' : ''}>$ דולר</option>` },
       { k: 'status', label: 'סטטוס', type: 'select', blank: false, options: (v) =>
           `<option value="active" ${v === 'active' ? 'selected' : ''}>פעיל</option><option value="done" ${v === 'done' ? 'selected' : ''}>הושלם</option>` },
+      { k: 'sheets_count', label: 'מספר יריעות', type: 'number',
+        hint: 'למעקב יריעות. ריק = לפי יחידות הקלף של המוצר' },
       { k: 'note', label: 'הערה', type: 'textarea' },
     ],
   };
@@ -978,8 +984,9 @@ function pageProd() {
     { k: 'purchases', label: 'רכישות' },
     { k: 'sales', label: 'מכירות' },
     { k: 'scribepay', label: 'תשלומים לסופר' },
-    { k: 'custpay', label: 'תשלומי לקוחות' },
+    ...(ME.caps.finance ? [{ k: 'custpay', label: 'תשלומי לקוחות' }] : []),
   ];
+  if (!ME.caps.finance && SUB.prod === 'custpay') SUB.prod = 'purchases';
   renderSubtabs('prod', subs);
   const s = SUB.prod;
   if (s === 'purchases') return prodPurchases();
@@ -1116,6 +1123,12 @@ function prodCustPay() {
 // ============ דוחות ============
 function pageReports() {
   destroyCharts();
+  if (!ME.caps.viewReports) {
+    // ניהול סופרים — רק דוח סופר
+    renderSubtabs('reports', [{ k: 'scribecard', label: 'דוח סופר' }]);
+    SUB.reports = 'scribecard';
+    return repCard('scribe');
+  }
   const subs = [
     { k: 'overview', label: '📊 רווח כולל' },
     { k: 'charts', label: '📈 גרפים' },
@@ -2354,17 +2367,263 @@ function pageImport() {
   importPanel($('impHost'), {});
 }
 
+
+// ============ מעקב יריעות ============
+// פריט מעקב = יריעה של ספר או יחידה של מוצר. אותו מסך לשניהם.
+const itemsStations = () => C.stations.map(s => ({ v: s.id, t: s.name }));
+
+function itemLabel(r) {
+  if (r.scroll_id) return `ספר #${r.scroll_id} · ${r.product_name || ''}`;
+  if (r.purchase_id) return `חבילה #${r.purchase_id} · ${r.purchase_product_name || ''}`;
+  return '—';
+}
+const stationPill = (r) => r.station_name
+  ? `<span class="pill" style="background:${esc(r.station_color || '#e0f2fe')};color:#075985">${esc(r.station_name)}</span>`
+  : '<span class="pill n">לא שויך</span>';
+
+function pageTrack() {
+  const subs = [
+    { k: 'summary', label: '📍 סקירה' },
+    { k: 'items', label: 'כל היריעות' },
+    { k: 'stations', label: 'תחנות' },
+  ];
+  renderSubtabs('track', subs);
+  const s = SUB.track;
+  if (s === 'stations') return trackStations();
+  if (s === 'items') return trackItems();
+  return trackSummary();
+}
+
+// ---------- סקירה: כמה יריעות בכל תחנה ואצל כל אדם ----------
+async function trackSummary() {
+  const d = await Store.track.summary();
+  const st = (label, val, cls, sub) => `<div class="stat"><div class="label">${label}</div>
+    <div class="value ${cls || ''}">${val}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>`;
+
+  $('view').innerHTML += `
+    <div class="grid stat-grid">
+      ${st('סה"כ יריעות במעקב', d.total)}
+      ${st('לא שויכו לתחנה', d.unassigned, d.unassigned ? 'a' : '')}
+      ${st('תחנות פעילות', d.by_station.filter(x => x.id).length)}
+      ${st('אנשים שמחזיקים', d.by_holder.filter(x => x.id).length)}
+    </div>
+
+    <div class="row" style="align-items:stretch">
+      <div style="flex:1;min-width:320px"><div class="card"><h3>לפי תחנה</h3>
+        ${tableHTML([
+          { label: 'תחנה', render: r => r.id
+              ? `<span class="link" data-goto-station="${r.id}">${esc(r.name)}</span>`
+              : `<span class="muted">${esc(r.name)}</span>` },
+          { label: 'יריעות', cls: 'num', render: r => `<b>${r.items}</b>`, total: rs => `<b>${rs.reduce((a, x) => a + x.items, 0)}</b>` },
+        ], d.by_station, { totals: true })}</div></div>
+
+      <div style="flex:1;min-width:320px"><div class="card"><h3>אצל מי היריעות</h3>
+        ${tableHTML([
+          { label: 'שם', render: r => r.id
+              ? `<span class="link" data-goto-holder="${r.id}">${esc(r.name)}</span>`
+              : `<span class="muted">${esc(r.name)}</span>` },
+          { label: 'יריעות', cls: 'num', render: r => `<b>${r.items}</b>`, total: rs => `<b>${rs.reduce((a, x) => a + x.items, 0)}</b>` },
+          { label: 'ספרים', cls: 'num', render: r => r.scrolls || '' },
+          { label: 'הישן ביותר', render: r => r.oldest ? dt(r.oldest) : '' },
+        ], d.by_holder, { totals: true })}</div></div>
+    </div>
+
+    ${chartBox('trkChart', 'התפלגות היריעות לפי תחנה', 300)}
+
+    <div class="card"><h3>לפי ספר</h3>
+      ${tableHTML([
+        { label: 'ספר', render: r => `<span class="link" data-goto-scroll="${r.id}">#${r.id} · ${esc(r.product_name || '')}</span>` },
+        { label: 'סופר', render: r => esc(r.scribe_name || '—') },
+        { label: 'יריעות', cls: 'num', render: r => r.items },
+        { label: 'שויכו לתחנה', cls: 'num', render: r => `${r.placed} / ${r.items}` },
+        { label: 'התקדמות', render: r => `<div class="bar ${r.placed < r.items ? 'warn' : ''}">
+            <span style="width:${r.items ? Math.round(r.placed / r.items * 100) : 0}%"></span></div>` },
+      ], d.by_scroll)}</div>`;
+
+  const withItems = d.by_station.filter(x => x.items > 0);
+  drawChart('trkChart', {
+    type: 'doughnut',
+    data: { labels: withItems.map(x => x.name),
+      datasets: [{ data: withItems.map(x => x.items), backgroundColor: CH, borderWidth: 2, borderColor: '#fff' }] },
+    options: { plugins: { legend: { position: 'left' },
+      tooltip: { callbacks: { label: (c) => ` ${c.label}: ${c.parsed} יריעות` } } } },
+  });
+
+  document.querySelectorAll('[data-goto-station]').forEach(b => b.onclick = () => {
+    TRACK.station = +b.dataset.gotoStation; TRACK.holder = ''; TRACK.scroll = '';
+    SUB.track = 'items'; render();
+  });
+  document.querySelectorAll('[data-goto-holder]').forEach(b => b.onclick = () => {
+    TRACK.holder = +b.dataset.gotoHolder; TRACK.station = ''; TRACK.scroll = '';
+    SUB.track = 'items'; render();
+  });
+  document.querySelectorAll('[data-goto-scroll]').forEach(b => b.onclick = () => {
+    TRACK.scroll = +b.dataset.gotoScroll; TRACK.station = ''; TRACK.holder = '';
+    SUB.track = 'items'; render();
+  });
+}
+
+// ---------- כל היריעות: סינון, בחירה מרובה והעברה ----------
+const TRACK = { scroll: '', station: '', holder: '' };
+
+async function trackItems() {
+  const filt = {};
+  if (TRACK.scroll) filt.scroll_id = TRACK.scroll;
+  if (TRACK.station) filt.station_id = TRACK.station;
+  if (TRACK.holder) filt.holder_id = TRACK.holder;
+  const allRows = await Store.track.list(filt);
+
+  const cols = [
+    ...(ME.caps.edit ? [selCol('track_items')] : []),
+    { label: 'שייך ל', render: r => esc(itemLabel(r)) },
+    { label: 'יריעה', cls: 'num', render: r => `<b>${r.seq}</b>${r.label ? ` · ${esc(r.label)}` : ''}` },
+    { label: 'סופר', render: r => esc(r.scribe_name || r.purchase_scribe_name || '—') },
+    { label: 'תחנה', render: r => stationPill(r) },
+    { label: 'אצל מי', render: r => esc(r.holder_name || '—') },
+    { label: 'מתאריך', render: r => r.since ? dt(r.since) : '' },
+    { label: 'ימים', cls: 'num', render: r => r.days_at_station != null
+        ? `<span class="${r.days_at_station > 60 ? 'neg' : ''}">${r.days_at_station}</span>` : '' },
+    { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
+    { label: '', cls: 'center', render: r => `<button class="btn ghost xs" data-hist="${r.id}">היסטוריה</button>` },
+  ];
+  const rows = applyFilters('track_items', cols, allRows);
+
+  const scrollOpts = C.scrolls.map(s => `<option value="${s.id}" ${+TRACK.scroll === s.id ? 'selected' : ''}>${esc(scrollLabel(s))}</option>`).join('');
+  const stationOpts = C.stations.map(s => `<option value="${s.id}" ${+TRACK.station === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+  const holderOpts = C.contacts.map(c => `<option value="${c.id}" ${+TRACK.holder === c.id ? 'selected' : ''}>${esc(contactName(c))}</option>`).join('');
+
+  $('view').innerHTML += `
+    <div class="card">
+      <div class="row">
+        <div class="field" style="max-width:300px"><label>ספר</label>
+          <select id="tkScroll">${optBlank('— כל הספרים —')}${scrollOpts}</select></div>
+        <div class="field" style="max-width:230px"><label>תחנה</label>
+          <select id="tkStation">${optBlank('— כל התחנות —')}${stationOpts}</select></div>
+        <div class="field" style="max-width:250px"><label>אצל מי</label>
+          <select id="tkHolder">${optBlank('— כולם —')}${holderOpts}</select></div>
+      </div>
+      ${ME.caps.edit ? `<div class="toolbar">
+        <button class="btn" id="tkGen">+ צור יריעות לספר</button>
+        <span class="mini">סמן יריעות בטבלה כדי להעביר אותן לתחנה אחרת</span></div>` : ''}
+    </div>
+    <div class="card">
+      ${filterBarHTML('track_items', rows.length, allRows.length)}
+      ${tableHTML(cols, rows, { fkey: 'track_items' })}
+    </div>`;
+
+  $('tkScroll').onchange = (e) => { TRACK.scroll = e.target.value; render(); };
+  $('tkStation').onchange = (e) => { TRACK.station = e.target.value; render(); };
+  $('tkHolder').onchange = (e) => { TRACK.holder = e.target.value; render(); };
+  if ($('tkGen')) $('tkGen').onclick = openGenerate;
+  wireSelection();
+  wireFilters('track_items', cols, allRows);
+  document.querySelectorAll('[data-hist]').forEach(b => b.onclick = () => showHistory(+b.dataset.hist));
+}
+
+// יצירת יריעות לספר
+function openGenerate() {
+  const body = `
+    <div class="field"><label>ספר</label>
+      <select id="gnScroll">${optBlank('— בחר ספר —')}${C.scrolls.map(s =>
+        `<option value="${s.id}" data-sheets="${N(s.sheets_count) || N(s.product_parchment_units) || ''}">${esc(scrollLabel(s))}</option>`).join('')}</select></div>
+    <div class="field"><label>מספר יריעות</label><input id="gnCount" type="number" min="1" max="2000">
+      <div class="hint">ברירת המחדל מגיעה מהמוצר. בנביאים וכתובים הכמות משתנה — אפשר לשנות כאן.</div></div>
+    <div class="mini">היריעות ייווצרו ממוספרות 1 עד N, ללא תחנה. יריעות שכבר קיימות לא ישוכפלו.</div>`;
+  const m = modal({ title: 'יצירת יריעות למעקב', body,
+    footer: `<button class="btn" data-ok>צור</button><button class="btn ghost" data-no>ביטול</button>` });
+  m.el.querySelector('[data-no]').onclick = m.close;
+  $('gnScroll').onchange = (e) => {
+    const opt = e.target.selectedOptions[0];
+    if (opt && opt.dataset.sheets) $('gnCount').value = opt.dataset.sheets;
+  };
+  m.el.querySelector('[data-ok]').onclick = async () => {
+    const scroll_id = $('gnScroll').value;
+    if (!scroll_id) return toast('יש לבחור ספר', 'err');
+    try {
+      const r = await Store.track.generate({ scroll_id, count: $('gnCount').value || undefined });
+      toast(r.created ? `נוצרו ${r.created} יריעות` : (r.message || 'לא נוצרו יריעות חדשות'), 'ok');
+      m.close(); await reloadCaches(); render();
+    } catch (e) { toast(e.message, 'err'); }
+  };
+}
+
+// חלון העברה — נפתח מפס הבחירה
+function openMove(ids) {
+  const body = `
+    <p class="mini">מעבירים <b>${ids.length}</b> יריעות. שדה שיישאר ריק לא ישתנה.</p>
+    <div class="field"><label>לתחנה</label>
+      <select id="mvStation">${optBlank('— לא לשנות —')}${C.stations.map(s =>
+        `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></div>
+    <div class="field"><label>אצל מי</label>
+      <div class="combo" data-combo="mvHolder">
+        <input type="hidden" id="f_mvHolder" value="">
+        <input class="combo-inp" id="t_mvHolder" autocomplete="off" placeholder="הקלד שם…">
+        <div class="combo-menu" style="display:none"></div>
+      </div></div>
+    <div class="field"><label>תאריך</label><input id="mvDate" type="date" value="${today()}"></div>
+    <div class="field"><label>הערה</label><input id="mvNote"></div>`;
+  const m = modal({ title: 'העברת יריעות', body,
+    footer: `<button class="btn" data-ok>העבר</button><button class="btn ghost" data-no>ביטול</button>` });
+  m.el.querySelector('[data-no]').onclick = m.close;
+  wireCombos(m.el, [{ k: 'mvHolder', type: 'combo', items: itemsContacts }]);
+  m.el.querySelector('[data-ok]').onclick = async () => {
+    const station_id = $('mvStation').value;
+    const holder_id = $('f_mvHolder').value;
+    if (!station_id && !holder_id) return toast('יש לבחור תחנה או מחזיק', 'err');
+    try {
+      const r = await Store.track.move({ ids, station_id, holder_id, date: $('mvDate').value, note: $('mvNote').value });
+      toast(`הועברו ${r.moved} יריעות${r.skipped ? ` · ${r.skipped} כבר היו שם` : ''}`, 'ok');
+      m.close(); await reloadCaches(); render();
+    } catch (e) { toast(e.message, 'err'); }
+  };
+}
+
+async function showHistory(id) {
+  try {
+    const h = await Store.track.history(id);
+    const body = h.length ? tableHTML([
+      { label: 'תאריך', render: r => dt(r.date) },
+      { label: 'מ', render: r => esc([r.from_station, r.from_holder].filter(Boolean).join(' · ') || '—') },
+      { label: 'אל', render: r => esc([r.to_station, r.to_holder].filter(Boolean).join(' · ') || '—') },
+      { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
+      { label: 'ע"י', render: r => esc(r.by_user || '') },
+    ], h) : '<div class="empty">אין תנועות עדיין</div>';
+    modal({ title: 'היסטוריית היריעה', body, wide: true });
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+// ---------- תחנות ----------
+function trackStations() {
+  return entityPage({
+    title: 'תחנות', bulk: 'stations', store: Store.stations,
+    load: () => Store.stations.list(),
+    labelOf: (r) => r.name,
+    note: 'התחנות הן השלבים שיריעה עוברת ביניהם. אפשר להוסיף, לשנות שם, ולקבוע סדר תצוגה.',
+    defaults: () => ({ sort: (C.stations.length || 0) * 10 }),
+    fields: [
+      { k: 'name', label: 'שם התחנה', type: 'text', required: true },
+      { k: 'sort', label: 'סדר תצוגה', type: 'number' },
+      { k: 'color', label: 'צבע (אופציונלי)', type: 'text', hint: 'למשל #e0f2fe' },
+    ],
+    cols: [
+      { label: 'שם התחנה', render: r => stationPill({ station_name: r.name, station_color: r.color }) },
+      { label: 'סדר', cls: 'num', render: r => numCell(r.sort) },
+    ],
+  });
+}
+
 // ============ ניווט ============
 const TABS = [
-  { k: 'dash', label: 'דשבורד', fn: pageDash },
-  { k: 'scrolls', label: 'ס"ת', fn: pageScrolls },
+  { k: 'dash', label: 'דשבורד', fn: pageDash, cap: 'viewReports' },
+  { k: 'scrolls', label: 'ס"ת', fn: pageScrolls, cap: 'finance' },
   { k: 'scribepay', label: 'תשלום לסופר', fn: pageScribePay },
-  { k: 'custpay', label: 'תשלומי לקוחות', fn: pageCustPay },
+  { k: 'custpay', label: 'תשלומי לקוחות', fn: pageCustPay, cap: 'finance' },
   { k: 'bookexp', label: 'הוצאות לספר', fn: pageBookExp },
   { k: 'parchexp', label: 'הוצאות קלף', fn: pageParchExp },
-  { k: 'bizexp', label: 'הוצאות עסק', fn: pageBizExp },
+  { k: 'bizexp', label: 'הוצאות עסק', fn: pageBizExp, cap: 'finance' },
   { k: 'prod', label: 'מוצרים', fn: pageProd },
-  { k: 'reports', label: 'דוחות', fn: pageReports },
+  { k: 'track', label: '📍 מעקב יריעות', fn: pageTrack },
+  { k: 'reports', label: 'דוחות', fn: pageReports, cap: 'scribeReport' },
   { k: 'import', label: 'ייבוא', fn: pageImport, cap: 'edit' },
   { k: 'settings', label: 'הגדרות', fn: pageSettings },
   { k: 'system', label: 'מערכת', fn: pageSystem },
@@ -2389,7 +2648,9 @@ function renderSubtabs(group, subs) {
 
 async function render() {
   renderTabs();
-  const tab = TABS.find(t => t.k === TAB) || TABS[0];
+  const allowed = visibleTabs();
+  let tab = allowed.find(t => t.k === TAB);
+  if (!tab) { tab = allowed[0]; TAB = tab.k; renderTabs(); }
   destroyCharts();          // גרפים ישנים מחזיקים קנבס שנמחק — חובה לשחרר
   $('view').innerHTML = '';
   const sb = $('selBar'); if (sb) sb.remove();   // מעבר דף מבטל בחירה
@@ -2409,6 +2670,8 @@ async function render() {
 async function boot(user) {
   ME = user;
   wireExport();
+  // מי שאין לו דשבורד ייפתח על הלשונית הראשונה שמותרת לו
+  if (!(user.caps && user.caps.viewReports)) TAB = 'scribepay';
   $('userName').textContent = user.full_name || user.username;
   $('userRole').textContent = (user.caps && user.caps.label) || '';
   $('loginScreen').classList.add('hidden');

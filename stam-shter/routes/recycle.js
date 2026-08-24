@@ -10,6 +10,8 @@ const TABLES = {
   products:               { label: 'מוצרים',                desc: 'name' },
   parchment_sizes:        { label: 'גדלי קלף',              desc: 'name' },
   list_items:             { label: 'ערכי רשימות',           desc: 'value' },
+  stations:               { label: 'תחנות',                 desc: 'name' },
+  track_items:            { label: 'יריעות / פריטי מעקב',   desc: `'יריעה '||seq` },
   scrolls:                { label: 'ספרים (ס"ת)',           desc: `'ספר #'||id` },
   pages_log:              { label: 'עמודים שנכתבו',         desc: `pages||' עמודים'` },
   scribe_payments:        { label: 'תשלומים לסופר',         desc: `'₪'||amount` },

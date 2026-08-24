@@ -8,13 +8,18 @@ CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   username VARCHAR(100) UNIQUE NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
-  role VARCHAR(20) NOT NULL DEFAULT 'viewer'
-    CHECK (role IN ('admin','manager','clerk','viewer')),
+  role VARCHAR(20) NOT NULL DEFAULT 'viewer',
   full_name VARCHAR(200),
   active BOOLEAN DEFAULT true,
   created_at TIMESTAMP DEFAULT NOW(),
   last_login TIMESTAMP
 );
+
+-- אילוץ התפקידים מוגדר בנפרד כדי שאפשר יהיה להוסיף תפקידים בעדכון
+-- בלי לשבור מסדים קיימים (CREATE TABLE IF NOT EXISTS לא מעדכן אילוצים).
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check
+  CHECK (role IN ('admin','manager','clerk','scribeops','viewer'));
 
 -- ==================================================================
 --  נתוני יסוד (הגדרות)
@@ -307,3 +312,56 @@ CREATE TABLE IF NOT EXISTS audit_log (
   details JSONB, created_at TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
+
+-- ==================================================================
+--  מעקב יריעות ופריטים — איפה כל יריעה נמצאת ואצל מי
+-- ==================================================================
+
+-- תחנות במסלול הייצור (משרד / מוחק / מגיה / תופר ...)
+CREATE TABLE IF NOT EXISTS stations (
+  id BIGSERIAL PRIMARY KEY,
+  name VARCHAR(200) NOT NULL,
+  sort INTEGER DEFAULT 0,
+  color VARCHAR(20),
+  deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMP, deleted_by INTEGER,
+  created_by INTEGER, created_at TIMESTAMP DEFAULT NOW(),
+  updated_by INTEGER, updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- פריט מעקב: יריעה בודדת של ספר, או יחידה בודדת של מוצר.
+-- אותו מודל לשניהם, כדי שההעברות והדוחות יהיו זהים —
+-- ספר תורה מתפצל ל-62 יריעות, ומזוזה היא פריט אחד.
+CREATE TABLE IF NOT EXISTS track_items (
+  id BIGSERIAL PRIMARY KEY,
+  scroll_id   BIGINT REFERENCES scrolls(id) ON DELETE SET NULL,
+  purchase_id BIGINT REFERENCES prod_purchases(id) ON DELETE SET NULL,
+  seq INTEGER DEFAULT 1,                 -- מספר היריעה / היחידה
+  label VARCHAR(200),                    -- כינוי חופשי (למשל "בראשית" בנביאים)
+  station_id BIGINT REFERENCES stations(id) ON DELETE SET NULL,
+  holder_id  BIGINT REFERENCES contacts(id) ON DELETE SET NULL,  -- אצל מי הפריט
+  since DATE,                            -- מאיזה תאריך הוא בתחנה הנוכחית
+  note TEXT,
+  deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMP, deleted_by INTEGER,
+  created_by INTEGER, created_at TIMESTAMP DEFAULT NOW(),
+  updated_by INTEGER, updated_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_track_scroll   ON track_items(scroll_id)   WHERE deleted=false;
+CREATE INDEX IF NOT EXISTS idx_track_purchase ON track_items(purchase_id) WHERE deleted=false;
+CREATE INDEX IF NOT EXISTS idx_track_station  ON track_items(station_id)  WHERE deleted=false;
+CREATE INDEX IF NOT EXISTS idx_track_holder   ON track_items(holder_id)   WHERE deleted=false;
+
+-- יומן תנועות — כל העברה נשמרת, כך שאפשר לראות היסטוריה מלאה לכל יריעה
+CREATE TABLE IF NOT EXISTS track_moves (
+  id BIGSERIAL PRIMARY KEY,
+  item_id BIGINT REFERENCES track_items(id) ON DELETE CASCADE,
+  date DATE,
+  from_station_id BIGINT, from_holder_id BIGINT,
+  to_station_id   BIGINT, to_holder_id   BIGINT,
+  note TEXT,
+  created_by INTEGER, created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_moves_item ON track_moves(item_id);
+
+-- מספר יריעות לספר: ברירת המחדל מגיעה מהמוצר, אך בנביאים וכתובים
+-- הכמות משתנה מספר לספר ולכן אפשר לקבוע אותה ידנית לכל ספר.
+ALTER TABLE scrolls ADD COLUMN IF NOT EXISTS sheets_count INTEGER;

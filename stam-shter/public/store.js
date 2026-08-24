@@ -49,6 +49,13 @@
     contacts: res('/contacts'),
     products: res('/products'),
     sizes: res('/parchment-sizes'),
+    stations: res('/stations'),
+    track: Object.assign(res('/track'), {
+      summary: () => apiFetch('/track/summary'),
+      generate: (d) => apiFetch('/track/generate', { method: 'POST', body: d }),
+      move: (d) => apiFetch('/track/move', { method: 'POST', body: d }),
+      history: (id) => apiFetch('/track/' + id + '/history'),
+    }),
     lists: {
       all: () => apiFetch('/lists'),
       one: (name) => apiFetch('/lists?name=' + encodeURIComponent(name)),

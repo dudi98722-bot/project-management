@@ -7,7 +7,15 @@ const { authenticate, can } = require('../middleware/auth');
 const { getScrolls, n, r2 } = require('../calc');
 const router = express.Router();
 
-router.use(authenticate, can('viewReports'));
+// דוח הסופר פתוח גם למי שיש לו scribeReport בלבד (תפקיד ניהול סופרים);
+// כל שאר הדוחות דורשים viewReports.
+router.use(authenticate);
+router.use((req, res, next) => {
+  const scribeOnly = /^\/scribe(-balances)?(\/|$)/.test(req.path);
+  if (req.caps.viewReports) return next();
+  if (scribeOnly && req.caps.scribeReport) return next();
+  return res.status(403).json({ error: 'אין לך הרשאה לצפות בדוחות' });
+});
 
 // ביטויי הרווח של מכירת מוצר, לשימוש חוזר בשאילתות.
 // COALESCE על כל רכיב — NULL אחד היה מעלים את השורה כולה מהסכומים.

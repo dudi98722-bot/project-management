@@ -5,4 +5,4 @@ module.exports = crudRouter('business_expenses', [
   { key: 'type', type: 'text' },
   { key: 'amount', type: 'num' },
   { key: 'note', type: 'text' },
-], { orderBy: 't.date DESC NULLS LAST, t.id DESC' });
+], { cap: 'finance', orderBy: 't.date DESC NULLS LAST, t.id DESC' });

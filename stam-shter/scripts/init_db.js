@@ -52,6 +52,16 @@ const EXPENSE_BUSINESS = ['שכר', 'שכ"ד', 'מימון', 'רכב', 'דלק',
       console.log('✔ נזרעו רשימות ברירת מחדל');
     }
 
+    // תחנות ברירת מחדל למסלול הייצור
+    const sc = await pool.query('SELECT COUNT(*)::int AS n FROM stations');
+    if (sc.rows[0].n === 0) {
+      const STATIONS = ['משרד', 'אצל הסופר', 'מגיה', 'מוחק', 'תופר', 'תגים', 'אצל הלקוח'];
+      for (let i = 0; i < STATIONS.length; i++) {
+        await pool.query('INSERT INTO stations (name, sort) VALUES ($1,$2)', [STATIONS[i], i]);
+      }
+      console.log('✔ נזרעו תחנות ברירת מחדל');
+    }
+
     console.log('✅ אתחול הושלם');
     process.exit(0);
   } catch (e) { console.error('❌ שגיאת אתחול:', e); process.exit(1); }

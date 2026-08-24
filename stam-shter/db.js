@@ -34,7 +34,7 @@ async function logAction(user, action, tableName, recordId, details, record) {
 
 // ===== מחיקה רכה בלבד — לעולם לא מוחקים פיזית =====
 const SOFT_TABLES = new Set([
-  'contacts', 'products', 'parchment_sizes', 'list_items',
+  'contacts', 'products', 'parchment_sizes', 'list_items', 'stations', 'track_items',
   'scrolls', 'pages_log', 'scribe_payments', 'customer_payments',
   'book_expenses', 'parchment_expenses', 'business_expenses',
   'prod_purchases', 'prod_scribe_payments', 'prod_sales', 'prod_customer_payments'
