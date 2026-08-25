@@ -105,8 +105,26 @@
     const avail = TABS.filter(t => t.show(c));
     $('#tabs').innerHTML = avail.map(t => `<button data-tab="${t.id}">${t.label}</button>`).join('');
     $('#tabs').querySelectorAll('[data-tab]').forEach(b => b.onclick = () => go(b.dataset.tab));
+    buildQuickBar(c);
     if (avail.length) go(avail[0].id);
     else view().innerHTML = '<div class="empty">אין לך הרשאות מוגדרות. פנה למנהל.</div>';
+  }
+  // סרגל דיווח מהיר — זמין מכל מסך
+  function buildQuickBar(c) {
+    const bar = $('#quickBar'); if (!bar) return;
+    const items = [];
+    if (c.writeTx) {
+      items.push({ t: 'client_payment', cls: 'green', label: '➕ הכנסה' });
+      items.push({ t: 'sub_payment', cls: '', label: '➖ תשלום לקבלן משנה' });
+      items.push({ t: 'business_expense', cls: 'ghost', label: '🧾 הוצאת עסק' });
+    } else if (c.projectExpenseOnly) {
+      items.push({ t: 'project_expense', cls: 'ghost', label: '🧱 הוצאה לפרויקט' });
+    }
+    if (!items.length) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
+    bar.classList.remove('hidden');
+    bar.innerHTML = `<span class="qb-label">דיווח מהיר:</span>` +
+      items.map(i => `<button class="btn ${i.cls} sm" data-quicktx="${i.t}">${i.label}</button>`).join('');
+    bar.querySelectorAll('[data-quicktx]').forEach(b => b.onclick = () => txForm(b.dataset.quicktx, {}));
   }
   function go(id) {
     const t = TABS.find(x => x.id === id); if (!t) return;
