@@ -2626,7 +2626,11 @@ async function trackSheets() {
   const expected = N(scroll.sheets_count) || N(scroll.product_sheets_count) || N(scroll.product_parchment_units) || 0;
 
   $('sgInfo').innerHTML = rows.length
-    ? `${rows.length} יריעות${expected && expected !== rows.length ? ` · מוגדרות ${expected} במוצר` : ''}`
+    ? `<span>${rows.length} יריעות${expected && expected !== rows.length
+        ? ` · <b class="neg">מוגדרות ${expected} במוצר</b>` : ''}</span>
+       ${ME.caps.edit ? `<button class="btn ghost sm" id="sgManage" style="margin-right:10px">⚙ מספר יריעות</button>` : ''}
+       ${ME.caps.edit && expected > rows.length
+         ? `<button class="btn sm" id="sgTopUp" style="margin-right:6px">➕ השלם ל-${expected}</button>` : ''}`
     : '';
 
   if (!rows.length) {
@@ -2696,7 +2700,9 @@ async function trackSheets() {
           <td><input class="g-cell g-note" data-col="note" data-id="${r.id}" value="${esc(r.note || '')}" placeholder="—"></td>
           <td class="center" style="white-space:nowrap">
             <button class="btn ghost xs" data-fill="${r.id}" title="העתק לכל השורות מתחת">⇓</button>
+            <button class="btn ghost xs" data-reset="${r.id}" title="אפס שורה (מנקה תחנה ומחזיק)">↺</button>
             <button class="btn ghost xs" data-hist="${r.id}" title="היסטוריית תחנות">🕘</button>
+            ${ME.caps.del ? `<button class="btn ghost xs" data-del="${r.id}" title="מחק יריעה">🗑</button>` : ''}
             <span class="g-status" data-st="${r.id}"></span>
           </td>
         </tr>`).join('')}
@@ -2792,6 +2798,84 @@ async function trackSheets() {
   });
 
   document.querySelectorAll('[data-hist]').forEach(b => b.onclick = () => showHistory(+b.dataset.hist));
+
+  // איפוס שורה — מנקה תחנה ומחזיק, ונרשם ביומן כמו כל שינוי אחר
+  document.querySelectorAll('[data-reset]').forEach(b => b.onclick = async () => {
+    const id = +b.dataset.reset;
+    const cur = byId.get(id) || {};
+    if (!cur.station_id && !cur.holder_id) return toast('השורה כבר ריקה', 'err');
+    if (!(await confirmBox(`לאפס את יריעה ${cur.seq}? התחנה והמחזיק ינוקו (ההיסטוריה נשמרת)`))) return;
+    status(id, '⏳');
+    try {
+      await Store.track.move({ ids: [id], station_id: null, holder_id: null });
+      toast('השורה אופסה', 'ok');
+      render();
+    } catch (e) { status(id, '✗', 'err'); toast(e.message, 'err'); }
+  });
+
+  // מחיקת יריעה — לסל המחזור
+  document.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+    const id = +b.dataset.del;
+    const cur = byId.get(id) || {};
+    if (!(await confirmBox(`למחוק את יריעה ${cur.seq}? (ניתן לשחזר מסל המחזור)`))) return;
+    try {
+      await Store.track.remove(id);
+      toast('היריעה הועברה לסל המחזור', 'ok');
+      render();
+    } catch (e) { toast(e.message, 'err'); }
+  });
+
+  // השלמה מהירה למספר שמוגדר במוצר
+  if ($('sgTopUp')) $('sgTopUp').onclick = () => setSheetCount(expected);
+  if ($('sgManage')) $('sgManage').onclick = () => openSheetCount(rows.length, expected);
+}
+
+// שינוי מספר היריעות של ספר — הוספה או צמצום
+function openSheetCount(current, expected) {
+  const m = modal({
+    title: 'מספר היריעות של הספר',
+    body: `<div class="kv" style="margin-bottom:14px">
+        <div class="k">כרגע במעקב</div><div><b>${current}</b> יריעות</div>
+        ${expected ? `<div class="k">מוגדר במוצר</div><div>${expected} יריעות</div>` : ''}
+      </div>
+      <div class="field"><label>מספר יריעות רצוי</label>
+        <input id="scCount" type="number" min="0" max="2000" value="${expected || current}">
+        <div class="hint">הגדלה תוסיף את היריעות החסרות ותשמור את הקיימות.
+          הקטנה תמחק את היריעות שמעל המספר (ניתן לשחזר מסל המחזור).</div></div>`,
+    footer: `<button class="btn" data-ok>עדכן</button><button class="btn ghost" data-no>ביטול</button>`,
+  });
+  m.el.querySelector('[data-no]').onclick = m.close;
+  m.el.querySelector('[data-ok]').onclick = async () => {
+    const target = parseInt($('scCount').value, 10);
+    if (!Number.isInteger(target) || target < 0) return toast('מספר לא תקין', 'err');
+    m.close();
+    setSheetCount(target);
+  };
+}
+
+async function setSheetCount(target) {
+  const scrollId = SHEETGRID.scrollId;
+  const rows = await Store.track.list({ scroll_id: scrollId });
+  if (target > rows.length) {
+    try {
+      const r = await Store.track.generate({ scroll_id: scrollId, count: target });
+      toast(`נוספו ${r.created} יריעות · סה"כ ${r.total}`, 'ok');
+      render();
+    } catch (e) { toast(e.message, 'err'); }
+    return;
+  }
+  const extra = rows.filter(r => N(r.seq) > target);
+  if (!extra.length) return toast('אין מה לשנות', 'ok');
+  if (!(await confirmBox(`למחוק ${extra.length} יריעות (מספר ${target + 1} ומעלה)? ניתן לשחזר מסל המחזור`))) return;
+  let done = 0;
+  try {
+    // מוחקים בקבוצות קטנות כדי לא להציף את השרת
+    for (let i = 0; i < extra.length; i += 5) {
+      await Promise.all(extra.slice(i, i + 5).map(x => Store.track.remove(x.id).then(() => done++)));
+    }
+    toast(`נמחקו ${done} יריעות`, 'ok');
+  } catch (e) { toast(`נמחקו ${done}, ואז שגיאה: ${e.message}`, 'err'); }
+  render();
 }
 
 // ---------- תחנות ----------
