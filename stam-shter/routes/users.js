@@ -33,7 +33,7 @@ router.post('/', authenticate, can('manageUsers'), async (req, res) => {
 });
 
 router.put('/:id', authenticate, can('manageUsers'), async (req, res) => {
-  const { role, full_name, active, password } = req.body || {};
+  const { role, full_name, active, password, username } = req.body || {};
   if (role !== undefined && role !== null && !ROLES[role]) {
     return res.status(400).json({ error: 'תפקיד לא תקין' });
   }
@@ -50,13 +50,19 @@ router.put('/:id', authenticate, can('manageUsers'), async (req, res) => {
       const hash = await bcrypt.hash(password, 10);
       await pool.query('UPDATE users SET password_hash=$1 WHERE id=$2', [hash, req.params.id]);
     }
+    if (username && String(username).trim()) {
+      await pool.query('UPDATE users SET username=$1 WHERE id=$2', [String(username).trim(), req.params.id]);
+    }
     const r = await pool.query(
       'UPDATE users SET role=COALESCE($1,role), full_name=COALESCE($2,full_name), active=COALESCE($3,active) WHERE id=$4 RETURNING id, username, role, full_name, active',
       [role || null, full_name || null, (active === undefined ? null : active), req.params.id]);
     if (!r.rows.length) return res.status(404).json({ error: 'לא נמצא' });
     await logAction(req.user, 'edit', 'users', req.params.id, {});
     res.json(r.rows[0]);
-  } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+  } catch (e) {
+    if (e.code === '23505') return res.status(409).json({ error: 'שם המשתמש כבר קיים' });
+    console.error(e); res.status(500).json({ error: 'שגיאת שרת' });
+  }
 });
 
 module.exports = router;

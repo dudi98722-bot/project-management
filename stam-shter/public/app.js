@@ -1845,7 +1845,8 @@ async function pageUsers() {
   const openU = (row) => {
     const body = `
       <div class="field"><label>שם משתמש</label>
-        <input id="u_name" value="${esc(row ? row.username : '')}" ${row ? 'disabled' : ''}></div>
+        <input id="u_name" value="${esc(row ? row.username : '')}">
+        ${row ? '<div class="hint">שינוי שם המשתמש משנה גם את שם ההתחברות</div>' : ''}</div>
       <div class="field"><label>שם מלא</label><input id="u_full" value="${esc(row ? row.full_name || '' : '')}"></div>
       <div class="field"><label>סיסמא ${row ? '(השאר ריק כדי לא לשנות)' : ''}</label><input id="u_pass" type="password"></div>
       <div class="field"><label>תפקיד</label><select id="u_role">
@@ -1855,9 +1856,9 @@ async function pageUsers() {
       footer: `<button class="btn" data-ok>שמירה</button><button class="btn ghost" data-no>ביטול</button>` });
     m.el.querySelector('[data-no]').onclick = m.close;
     m.el.querySelector('[data-ok]').onclick = async () => {
-      const d = { full_name: $('u_full').value, role: $('u_role').value };
+      const d = { full_name: $('u_full').value, role: $('u_role').value, username: $('u_name').value };
       if ($('u_pass').value) d.password = $('u_pass').value;
-      if (row) d.active = $('u_act').checked; else d.username = $('u_name').value;
+      if (row) d.active = $('u_act').checked;
       try {
         if (row) await Store.users.update(row.id, d);
         else {
