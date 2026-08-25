@@ -49,6 +49,12 @@ const ROLES = {
     viewClinical: true, editClinical: true, editPref: true, editUrgency: true,
     holds: true, files: true }),
 
+  // פנינה — גישה מלאה לכל המערכת, כולל ניהול משתמשים
+  pnina: R('פנינה — גישה מלאה', {
+    manageUsers: true, addPatient: true, editPatient: true, editPatientLimited: true,
+    viewClinical: true, editClinical: true, editNotes: true, editPref: true, editUrgency: true,
+    assign: true, holds: true, files: true, del: true, edit: true }),
+
   viewer: R('צופה', { viewClinical: true }),
 
   // ===== תפקידים ותיקים — נשמרים כדי שמשתמשים קיימים לא יאבדו גישה =====
