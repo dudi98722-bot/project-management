@@ -126,9 +126,9 @@ router.post('/patients', authenticate, can('addPatient'), async (req, res) => {
         [last || '—', first || '—', r.national_id ? String(r.national_id).trim() : null,
          parseDate(r.intake_date), parseDate(r.birth_date), hmo, ct,
          r.community ? String(r.community).trim() : null,
-         r.diagnosis ? String(r.diagnosis).trim() : null,
+         req.caps.editDiagnosis && r.diagnosis ? String(r.diagnosis).trim() : null,
          r.notes ? String(r.notes).trim() : null,
-         r.notes2 ? String(r.notes2).trim() : null,
+         req.caps.editNote2 && r.notes2 ? String(r.notes2).trim() : null,
          [1, 2, 3].includes(urg) ? urg : 2,
          JSON.stringify(ALL_HOURS), JSON.stringify(ids)]);
       added.push(ins.rows[0]);
@@ -204,7 +204,8 @@ router.post('/existing', authenticate, can('assign'), async (req, res) => {
         `INSERT INTO patients (last_name, first_name, national_id, notes, notes2, status, preferred_therapist_ids)
          VALUES ($1,$2,$3,$4,$5,'assigned',$6) RETURNING *`,
         [last || '—', first || '—', r.national_id ? String(r.national_id).trim() : null,
-         r.notes ? String(r.notes).trim() : null, r.notes2 ? String(r.notes2).trim() : null,
+         r.notes ? String(r.notes).trim() : null,
+         req.caps.editNote2 && r.notes2 ? String(r.notes2).trim() : null,
          JSON.stringify([therapist.id])]);
       const patient = pr.rows[0];
 

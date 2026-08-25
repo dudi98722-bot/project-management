@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { pool } = require('../db');
 const mailer = require('../lib/mailer');
-const { authenticate, ROLES } = require('../middleware/auth');
+const { authenticate, ROLES, forgetPassword } = require('../middleware/auth');
 const router = express.Router();
 
 // הגנת brute-force: חסימה אחרי 8 ניסיונות כושלים ב-15 דקות לפי שם המשתמש
@@ -53,15 +53,27 @@ router.post('/logout', authenticate, (req, res) => res.json({ message: 'התנת
 // ===== שחזור סיסמה במייל =====
 // התשובה תמיד זהה, גם כשהמייל לא קיים — אחרת אפשר לגלות מי רשום במערכת.
 const RESET_TTL_MIN = 60;
+// שם משתמש/שם מלא נכנסים ל-HTML של המייל
+const esc = (v) => String(v == null ? '' : v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 const resetAttempts = new Map();
 
-function resetBlocked(key) {
+// הגבלה גם לפי כתובת המייל וגם לפי כתובת ה-IP, עם תקרה לגודל המפה
+// כדי שלא תתנפח מבקשות עם כתובות מומצאות.
+const MAX_KEYS = 5000;
+function resetBlocked(key, limit) {
   const a = resetAttempts.get(key);
   if (!a) return false;
   if (Date.now() - a.first > WINDOW_MS) { resetAttempts.delete(key); return false; }
-  return a.count >= 5;
+  return a.count >= limit;
 }
 function resetHit(key) {
+  if (resetAttempts.size > MAX_KEYS) {
+    const cutoff = Date.now() - WINDOW_MS;
+    for (const [k, v] of resetAttempts) if (v.first < cutoff) resetAttempts.delete(k);
+    if (resetAttempts.size > MAX_KEYS) resetAttempts.clear();
+  }
   const a = resetAttempts.get(key) || { count: 0, first: Date.now() };
   if (Date.now() - a.first > WINDOW_MS) { a.count = 0; a.first = Date.now(); }
   a.count++; resetAttempts.set(key, a);
@@ -73,16 +85,22 @@ router.post('/forgot', async (req, res) => {
   if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
     return res.status(400).json({ error: 'כתובת מייל לא תקינה' });
   }
-  if (resetBlocked(email)) return res.status(429).json({ error: 'יותר מדי בקשות. נסה שוב בעוד 15 דקות' });
-  resetHit(email);
+  const ip = 'ip:' + (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+  if (resetBlocked(email, 5) || resetBlocked(ip, 20)) {
+    return res.status(429).json({ error: 'יותר מדי בקשות. נסה שוב בעוד 15 דקות' });
+  }
+  resetHit(email); resetHit(ip);
 
+  // התשובה נשלחת מיד, והעבודה נמשכת ברקע — אחרת זמן התגובה היה מסגיר
+  // אילו כתובות רשומות במערכת (מייל קיים = שליחת מייל = תשובה איטית).
+  res.json(generic);
   try {
     const r = await pool.query('SELECT id, username, full_name, active FROM users WHERE lower(email)=$1', [email]);
     const user = r.rows[0];
-    if (!user || user.active === false) return res.json(generic);
+    if (!user || user.active === false) return;
     if (!mailer.enabled()) {
       console.error('בקשת שחזור סיסמה אך SMTP לא מוגדר — המשתמש לא יקבל מייל:', user.username);
-      return res.json(generic);
+      return;
     }
 
     // הטוקן נשלח במייל, ובמסד נשמר רק ה-hash שלו
@@ -101,18 +119,16 @@ router.post('/forgot', async (req, res) => {
       text: `שם המשתמש שלך: ${user.username}\nלאיפוס הסיסמה: ${link}\nהקישור תקף ${RESET_TTL_MIN} דקות.`,
       html: `<div style="font-family:Arial;direction:rtl;text-align:right">
         <h2 style="color:#2856a8">פסיכולוגיה מסילות</h2>
-        <p>שלום${user.full_name ? ' ' + user.full_name : ''},</p>
-        <p>שם המשתמש שלך במערכת הוא: <b>${user.username}</b></p>
+        <p>שלום${user.full_name ? ' ' + esc(user.full_name) : ''},</p>
+        <p>שם המשתמש שלך במערכת הוא: <b>${esc(user.username)}</b></p>
         <p>לבחירת סיסמה חדשה:</p>
         <p><a href="${link}" style="background:#2856a8;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none">איפוס סיסמה</a></p>
         <p style="color:#66738a;font-size:13px">הקישור תקף ${RESET_TTL_MIN} דקות ולשימוש חד-פעמי.
         אם לא ביקשת זאת, אפשר להתעלם מהמייל — הסיסמה לא תשתנה.</p>
       </div>`,
     });
-    res.json(generic);
   } catch (e) {
-    console.error('שחזור סיסמה נכשל:', e.message);
-    res.json(generic);   // לא חושפים למבקש מה קרה
+    console.error('שחזור סיסמה נכשל:', e.message);   // התשובה כבר נשלחה
   }
 });
 
@@ -128,8 +144,10 @@ router.post('/reset', async (req, res) => {
     if (!r.rows.length) return res.status(400).json({ error: 'הקישור פג תוקף או כבר נוצל. בקש קישור חדש' });
 
     const pw = await bcrypt.hash(String(password), 10);
-    await pool.query('UPDATE users SET password_hash=$1 WHERE id=$2', [pw, r.rows[0].user_id]);
+    // password_changed_at מבטל טוקנים שהונפקו לפני האיפוס
+    await pool.query('UPDATE users SET password_hash=$1, password_changed_at=NOW() WHERE id=$2', [pw, r.rows[0].user_id]);
     await pool.query('UPDATE password_resets SET used_at=NOW() WHERE token=$1', [hash]);
+    forgetPassword(r.rows[0].user_id);
     res.json({ ok: true, username: r.rows[0].username });
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });

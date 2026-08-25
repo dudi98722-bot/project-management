@@ -19,16 +19,31 @@ function scope(rows, caps) {
   return Array.isArray(rows) ? rows.map(strip) : strip(rows);
 }
 
-// אילו שדות המשתמש רשאי לשנות בעריכת מטופל
+// כל השדות הרגילים של מטופל (בלי האבחנה וההערה המקצועית, שנשלטות בנפרד)
+const GENERAL_FIELDS = ['last_name', 'first_name', 'national_id', 'intake_date', 'birth_date',
+  'hmo', 'client_type', 'community', 'notes', 'urgency', 'hours',
+  'preferred_therapist_ids', 'preferred_group_ids'];
+
+// אילו שדות המשתמש רשאי לשנות. מוחזרת תמיד רשימה מפורשת ולא 'all',
+// אחרת מי שיש לו editPatient היה דורס גם שדות שאין לו הרשאה עליהם —
+// ומכיוון שהטופס מסתיר אותם, הם היו נמחקים בכל שמירה.
 function editableFields(caps) {
-  if (caps.editPatient) return 'all';
   const f = [];
-  if (caps.editPatientLimited) f.push('last_name', 'first_name', 'hours');
-  if (caps.editNotes) f.push('notes');
+  if (caps.editPatient) f.push(...GENERAL_FIELDS);
+  else {
+    if (caps.editPatientLimited) f.push('last_name', 'first_name', 'hours');
+    if (caps.editNotes) f.push('notes');
+    if (caps.editPref) f.push('preferred_therapist_ids', 'preferred_group_ids');
+    if (caps.editUrgency) f.push('urgency');
+  }
   Object.keys(FIELD_EDIT).forEach(k => { if (caps[FIELD_EDIT[k]]) f.push(k); });
-  if (caps.editPref) f.push('preferred_therapist_ids', 'preferred_group_ids');
-  if (caps.editUrgency) f.push('urgency');
   return f;
+}
+
+// ביצירת מטופל — מאפסים שדות רגישים שאין למשתמש הרשאת כתיבה עליהם
+function stripUnwritable(out, caps) {
+  Object.keys(FIELD_EDIT).forEach(k => { if (!caps[FIELD_EDIT[k]]) out[k] = null; });
+  return out;
 }
 
 const ALL_HOURS = Array.from({ length: 14 }, (_, i) => i + 8); // 8..21 = 8:00 עד 22:00
@@ -111,6 +126,7 @@ router.get('/:id', authenticate, async (req, res) => {
 router.post('/', authenticate, can('addPatient'), async (req, res) => {
   const { out, errors } = cleanBody(req.body || {});
   if (errors.length) return res.status(400).json({ error: errors.join(', ') });
+  stripUnwritable(out, req.caps);
   try {
     const r = await pool.query(
       `INSERT INTO patients (last_name, first_name, national_id, intake_date, birth_date, hmo, client_type, community,
@@ -130,8 +146,8 @@ router.put('/:id', authenticate, canAny('editPatient', 'editPatientLimited', 'ed
   const allowed = editableFields(req.caps);
   const { out, errors } = cleanBody(req.body || {});
   // אימות שם חובה רלוונטי רק למי שרשאי לגעת בשם
-  const relevant = errors.filter(e => allowed === 'all'
-    || (e.includes('שם') && allowed.includes('last_name'))
+  const relevant = errors.filter(e =>
+       (e.includes('שם') && allowed.includes('last_name'))
     || (e.includes('שעה') && allowed.includes('hours')));
   if (relevant.length) return res.status(400).json({ error: relevant.join(', ') });
 
@@ -145,7 +161,7 @@ router.put('/:id', authenticate, canAny('editPatient', 'editPatientLimited', 'ed
                   'preferred_group_ids','notes2'];
     const JSONB = new Set(['hours','preferred_therapist_ids','preferred_group_ids']);
     const vals = COLS.map(c => {
-      const mayEdit = allowed === 'all' || allowed.includes(c);
+      const mayEdit = allowed.includes(c);
       if (mayEdit) return out[c];
       const v = cur.rows[0][c];
       return JSONB.has(c) ? JSON.stringify(v) : v;
@@ -157,7 +173,7 @@ router.put('/:id', authenticate, canAny('editPatient', 'editPatientLimited', 'ed
         WHERE id=$${COLS.length + 3} AND deleted=false RETURNING *`,
       [...vals, req.user.id, req.user.full_name || req.user.username, req.params.id]);
 
-    await logAction(req.user, 'edit', 'patients', req.params.id, { fields: allowed === 'all' ? 'all' : allowed });
+    await logAction(req.user, 'edit', 'patients', req.params.id, { fields: allowed });
     sheets.backup(req.user, 'edit', 'patients', req.params.id, r.rows[0], {});
     res.json(scope(r.rows[0], req.caps));
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
@@ -172,7 +188,7 @@ router.put('/:id/status', authenticate, canAny('editPatient', 'assign'), async (
     if (!r.rows.length) return res.status(404).json({ error: 'לא נמצא' });
     await logAction(req.user, 'edit', 'patients', req.params.id, { status });
     sheets.backup(req.user, 'edit', 'patients', req.params.id, r.rows[0], { status });
-    res.json(r.rows[0]);
+    res.json(scope(r.rows[0], req.caps));
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 

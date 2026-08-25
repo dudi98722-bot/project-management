@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { pool } = require('../db');
 
 // ===== מטריצת הרשאות =====
 // ההרשאות מפורקות דק כדי לתמוך בתפקידים חלקיים (מזכירה שעורכת רק שם ושעות,
@@ -76,20 +77,43 @@ const ROLES = {
     assign: true, holds: true, files: true, edit: true }),
 };
 
-function authenticate(req, res, next) {
+// מתי שונתה הסיסמה לאחרונה — נשמר במטמון קצר כדי לא לפגוע בכל בקשה
+const pwChanged = new Map();   // userId -> { at, until }
+const PW_TTL = 60 * 1000;
+
+async function passwordChangedAt(userId) {
+  const c = pwChanged.get(userId);
+  if (c && c.until > Date.now()) return c.at;
+  let at = null;
+  try {
+    const r = await pool.query('SELECT password_changed_at FROM users WHERE id=$1', [userId]);
+    if (r.rows[0] && r.rows[0].password_changed_at) at = new Date(r.rows[0].password_changed_at).getTime();
+  } catch (e) { /* תקלת מסד לא תנתק משתמשים */ }
+  pwChanged.set(userId, { at, until: Date.now() + PW_TTL });
+  return at;
+}
+// נקרא מיד אחרי איפוס סיסמה, כדי שהביטול ייכנס לתוקף בלי להמתין למטמון
+function forgetPassword(userId) { pwChanged.delete(userId); }
+
+async function authenticate(req, res, next) {
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'לא מחובר למערכת' });
   }
+  let decoded;
   try {
-    const token = auth.split(' ')[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
-    req.caps = ROLES[decoded.role] || ROLES.viewer;
-    next();
+    decoded = jwt.verify(auth.split(' ')[1], process.env.JWT_SECRET);
   } catch (e) {
     return res.status(401).json({ error: 'פג תוקף החיבור, יש להתחבר מחדש' });
   }
+  // טוקן שהונפק לפני איפוס הסיסמה כבר לא תקף
+  const changedAt = await passwordChangedAt(decoded.id);
+  if (changedAt && decoded.iat && decoded.iat * 1000 < changedAt) {
+    return res.status(401).json({ error: 'הסיסמה שונתה, יש להתחבר מחדש' });
+  }
+  req.user = decoded;
+  req.caps = ROLES[decoded.role] || ROLES.viewer;
+  next();
 }
 
 function can(capability) {
@@ -107,4 +131,4 @@ function canAny(...caps) {
   };
 }
 
-module.exports = { authenticate, can, canAny, ROLES };
+module.exports = { authenticate, can, canAny, ROLES, forgetPassword };

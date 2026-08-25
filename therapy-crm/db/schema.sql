@@ -261,3 +261,6 @@ CREATE TABLE IF NOT EXISTS password_resets (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_resets_user ON password_resets (user_id) WHERE used_at IS NULL;
+
+-- איפוס סיסמה מבטל טוקנים שהונפקו לפניו
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ;

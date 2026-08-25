@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { pool, logAction } = require('../db');
-const { authenticate, can, ROLES } = require('../middleware/auth');
+const { authenticate, can, ROLES, forgetPassword } = require('../middleware/auth');
 const router = express.Router();
 
 // מייל ריק נשמר כ-NULL, כדי שהאילוץ הייחודי לא ייתפס על מחרוזת ריקה
@@ -53,7 +53,8 @@ router.put('/:id', authenticate, can('manageUsers'), async (req, res) => {
   try {
     if (password) {
       const hash = await bcrypt.hash(password, 10);
-      await pool.query('UPDATE users SET password_hash=$1 WHERE id=$2', [hash, req.params.id]);
+      await pool.query('UPDATE users SET password_hash=$1, password_changed_at=NOW() WHERE id=$2', [hash, req.params.id]);
+      forgetPassword(Number(req.params.id));
     }
     const r = await pool.query(
       `UPDATE users SET username=COALESCE($1,username), role=COALESCE($2,role),

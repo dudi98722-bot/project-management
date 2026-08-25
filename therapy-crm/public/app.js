@@ -603,7 +603,7 @@ function openPatientModal(id) {
         <option value="">—</option>
         ${S.communities.map(c => `<option value="${esc(c.value)}" ${p && p.community === c.value ? 'selected' : ''}>${esc(c.value)}</option>`).join('')}
         ${p && p.community && !S.communities.some(c => c.value === p.community) ? `<option selected value="${esc(p.community)}">${esc(p.community)}</option>` : ''}
-        <option value="__new__">+ הוספה חדשה...</option>
+        ${S.me.caps.edit ? '<option value="__new__">+ הוספה חדשה...</option>' : ''}
       </select></div>
       <div class="field"><label>רמת דחיפות</label><select name="urgency" ${p && !mayEdit('urgency') ? 'disabled' : ''}>
         <option value="1" ${p && p.urgency === 1 ? 'selected' : ''}>1 — דחוף</option>
@@ -1275,7 +1275,8 @@ function renderHolds(m) {
         ${active.map(t => `<option value="${t.id}" ${t.id === S.holdTherapist ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
       </select></div>
       <div class="spacer"></div>
-      ${S.me.caps.holds ? `<button class="btn" onclick="openHoldModal()">+ הוסף מטופלים להשהיה</button>` : ''}
+      ${S.me.caps.holds && S.holdTherapist !== 'all' ? `<button class="btn" onclick="openHoldModal()">+ הוסף מטופלים להשהיה</button>` : ''}
+      ${S.me.caps.holds && S.holdTherapist === 'all' ? '<span class="hint">בחר מטפל כדי להוסיף מטופלים להשהיה</span>' : ''}
     </div>
     <div class="hint" style="margin-bottom:10px">
       מטופלים שממתינים למטפל הזה עד שתתפנה לו משבצת. מטופל בהשהיה מסומן ב-⏸ ברשימת הממתינים.
@@ -1600,7 +1601,7 @@ async function renderAvailView() {
         </div>
         <div class="slot-chips">
           ${t.free_slots.map(s => {
-            const click = S.availPatient ? `onclick="pickSlotFromAvail(${S.availPatient},${t.therapist_id},${s.weekday},${s.hour})"` : '';
+            const click = S.availPatient && S.me.caps.assign ? `onclick="pickSlotFromAvail(${S.availPatient},${t.therapist_id},${s.weekday},${s.hour})"` : '';
             return `<span class="slot-chip" ${click}>${WEEKDAYS[s.weekday]} ${hourLabel(s.hour)}</span>`;
           }).join('') || '<span class="hint">—</span>'}
         </div>
@@ -1791,10 +1792,11 @@ async function renderUsers(m) {
         <div class="spacer"></div>
         <button class="btn" onclick="openUserModal(null)">+ משתמש חדש</button>
       </div>
-      <div class="table-wrap"><table><thead><tr><th>שם משתמש</th><th>שם מלא</th><th>תפקיד</th><th>פעיל</th><th>כניסה אחרונה</th><th></th></tr></thead><tbody>
+      <div class="table-wrap"><table><thead><tr><th>שם משתמש</th><th>שם מלא</th><th>מייל</th><th>תפקיד</th><th>פעיל</th><th>כניסה אחרונה</th><th></th></tr></thead><tbody>
       ${users.map(u => `<tr>
         <td><b>${esc(u.username)}</b></td>
         <td>${esc(u.full_name || '')}</td>
+        <td class="hint">${esc(u.email || '')}</td>
         <td>${esc(u.role_label)}</td>
         <td>${u.active ? '<span class="badge b-green">פעיל</span>' : '<span class="badge b-gray">מושבת</span>'}</td>
         <td>${u.last_login ? fmtDateHe(u.last_login.slice(0, 10)) : '—'}</td>
@@ -1823,6 +1825,7 @@ function openUserModal(userId) {
     <div class="grid2">
       <div class="field"><label>שם משתמש *</label><input name="username" value="${esc(u ? u.username : '')}" required autocomplete="off" minlength="3"></div>
       <div class="field"><label>שם מלא</label><input name="full_name" value="${esc(u ? u.full_name : '')}"></div>
+      <div class="field"><label>מייל (לשחזור סיסמה)</label><input name="email" type="email" value="${esc(u ? u.email : '')}" placeholder="name@example.com" autocomplete="off"></div>
       <div class="field"><label>תפקיד</label><select name="role">
         ${roles.map(r => `<option value="${r.role}" ${u && u.role === r.role ? 'selected' : ''}>${r.label}</option>`).join('')}
       </select></div>
