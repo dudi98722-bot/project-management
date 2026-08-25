@@ -44,6 +44,18 @@ if [ "$MODE" = "update" ]; then
   # הקבצים חייבים לשבת מחוץ ל-app/ כדי ש-rsync --delete לא ימחק אותם
   mkdir -p "$APP_DIR/uploads"
   grep -q '^UPLOAD_DIR=' "$APP_DIR/app/.env" 2>/dev/null || echo "UPLOAD_DIR=$APP_DIR/uploads" >> "$APP_DIR/app/.env"
+  # משתנים שנוספו אחרי ההתקנה הראשונה — מתווספים בלי לדרוס ערכים קיימים
+  while IFS= read -r kv; do
+    k=$(printf %s "$kv" | cut -d= -f1)
+    grep -q "^$k=" "$APP_DIR/app/.env" 2>/dev/null || printf "%s\n" "$kv" >> "$APP_DIR/app/.env"
+  done <<EOKV
+APP_URL=https://$DOMAIN
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM=
+EOKV
 
   rsync -a --delete --exclude node_modules --exclude .env --exclude service-account.json --exclude uploads "$APP_DIR/repo/$SUBDIR/" "$APP_DIR/app/"
   cd "$APP_DIR/app" && npm install --omit=dev
@@ -116,6 +128,12 @@ ADMIN_PASSWORD=$ADMIN_PASS
 SHEETS_WEBHOOK_URL=
 SHEETS_SECRET=
 UPLOAD_DIR=$APP_DIR/uploads
+APP_URL=https://$DOMAIN
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM=
 ENV
   chmod 600 "$APP_DIR/app/.env"
   echo "$ADMIN_PASS" > "$APP_DIR/.adminpass"; chmod 600 "$APP_DIR/.adminpass"

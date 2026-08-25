@@ -248,3 +248,16 @@ SELECT h, CASE WHEN h <= 11 THEN 'morning'
                ELSE 'evening' END
   FROM generate_series(8, 21) AS h
 ON CONFLICT (hour) DO NOTHING;
+
+-- ===== מייל למשתמש + שחזור סיסמה =====
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_users_email ON users (lower(email)) WHERE email IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS password_resets (
+  token TEXT PRIMARY KEY,          -- נשמר כ-hash, לא כטוקן עצמו
+  user_id BIGINT NOT NULL REFERENCES users(id),
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_resets_user ON password_resets (user_id) WHERE used_at IS NULL;

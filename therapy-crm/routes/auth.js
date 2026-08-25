@@ -1,7 +1,9 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { pool } = require('../db');
+const mailer = require('../lib/mailer');
 const { authenticate, ROLES } = require('../middleware/auth');
 const router = express.Router();
 
@@ -47,5 +49,89 @@ router.get('/me', authenticate, (req, res) => {
 });
 
 router.post('/logout', authenticate, (req, res) => res.json({ message: 'התנתקת בהצלחה' }));
+
+// ===== שחזור סיסמה במייל =====
+// התשובה תמיד זהה, גם כשהמייל לא קיים — אחרת אפשר לגלות מי רשום במערכת.
+const RESET_TTL_MIN = 60;
+const resetAttempts = new Map();
+
+function resetBlocked(key) {
+  const a = resetAttempts.get(key);
+  if (!a) return false;
+  if (Date.now() - a.first > WINDOW_MS) { resetAttempts.delete(key); return false; }
+  return a.count >= 5;
+}
+function resetHit(key) {
+  const a = resetAttempts.get(key) || { count: 0, first: Date.now() };
+  if (Date.now() - a.first > WINDOW_MS) { a.count = 0; a.first = Date.now(); }
+  a.count++; resetAttempts.set(key, a);
+}
+
+router.post('/forgot', async (req, res) => {
+  const email = String((req.body || {}).email || '').trim().toLowerCase();
+  const generic = { ok: true, message: 'אם הכתובת רשומה במערכת, נשלח אליה מייל עם שם המשתמש וקישור לאיפוס' };
+  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    return res.status(400).json({ error: 'כתובת מייל לא תקינה' });
+  }
+  if (resetBlocked(email)) return res.status(429).json({ error: 'יותר מדי בקשות. נסה שוב בעוד 15 דקות' });
+  resetHit(email);
+
+  try {
+    const r = await pool.query('SELECT id, username, full_name, active FROM users WHERE lower(email)=$1', [email]);
+    const user = r.rows[0];
+    if (!user || user.active === false) return res.json(generic);
+    if (!mailer.enabled()) {
+      console.error('בקשת שחזור סיסמה אך SMTP לא מוגדר — המשתמש לא יקבל מייל:', user.username);
+      return res.json(generic);
+    }
+
+    // הטוקן נשלח במייל, ובמסד נשמר רק ה-hash שלו
+    const token = crypto.randomBytes(32).toString('hex');
+    const hash = crypto.createHash('sha256').update(token).digest('hex');
+    await pool.query('UPDATE password_resets SET used_at=NOW() WHERE user_id=$1 AND used_at IS NULL', [user.id]);
+    await pool.query(
+      "INSERT INTO password_resets (token, user_id, expires_at) VALUES ($1,$2, NOW() + ($3 || ' minutes')::interval)",
+      [hash, user.id, String(RESET_TTL_MIN)]);
+
+    const base = (process.env.APP_URL || '').replace(/\/+$/, '');
+    const link = base + '/?reset=' + token;
+    await mailer.send({
+      to: email,
+      subject: 'פסיכולוגיה מסילות — שחזור גישה למערכת',
+      text: `שם המשתמש שלך: ${user.username}\nלאיפוס הסיסמה: ${link}\nהקישור תקף ${RESET_TTL_MIN} דקות.`,
+      html: `<div style="font-family:Arial;direction:rtl;text-align:right">
+        <h2 style="color:#2856a8">פסיכולוגיה מסילות</h2>
+        <p>שלום${user.full_name ? ' ' + user.full_name : ''},</p>
+        <p>שם המשתמש שלך במערכת הוא: <b>${user.username}</b></p>
+        <p>לבחירת סיסמה חדשה:</p>
+        <p><a href="${link}" style="background:#2856a8;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none">איפוס סיסמה</a></p>
+        <p style="color:#66738a;font-size:13px">הקישור תקף ${RESET_TTL_MIN} דקות ולשימוש חד-פעמי.
+        אם לא ביקשת זאת, אפשר להתעלם מהמייל — הסיסמה לא תשתנה.</p>
+      </div>`,
+    });
+    res.json(generic);
+  } catch (e) {
+    console.error('שחזור סיסמה נכשל:', e.message);
+    res.json(generic);   // לא חושפים למבקש מה קרה
+  }
+});
+
+router.post('/reset', async (req, res) => {
+  const { token, password } = req.body || {};
+  if (!token || !password) return res.status(400).json({ error: 'חסר טוקן או סיסמה' });
+  if (String(password).length < 8) return res.status(400).json({ error: 'הסיסמה חייבת להיות באורך 8 תווים לפחות' });
+  try {
+    const hash = crypto.createHash('sha256').update(String(token)).digest('hex');
+    const r = await pool.query(
+      `SELECT pr.user_id, u.username FROM password_resets pr JOIN users u ON u.id = pr.user_id
+        WHERE pr.token=$1 AND pr.used_at IS NULL AND pr.expires_at > NOW()`, [hash]);
+    if (!r.rows.length) return res.status(400).json({ error: 'הקישור פג תוקף או כבר נוצל. בקש קישור חדש' });
+
+    const pw = await bcrypt.hash(String(password), 10);
+    await pool.query('UPDATE users SET password_hash=$1 WHERE id=$2', [pw, r.rows[0].user_id]);
+    await pool.query('UPDATE password_resets SET used_at=NOW() WHERE token=$1', [hash]);
+    res.json({ ok: true, username: r.rows[0].username });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+});
 
 module.exports = router;

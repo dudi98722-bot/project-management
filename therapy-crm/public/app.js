@@ -11,13 +11,15 @@ const SSTATUS = { scheduled: ['מתוזמנת', 'b-blue'], done: ['בוצעה', 
 // האם המשתמש רשאי לפתוח טופס עריכת מטופל בכלל (ולו לשדה אחד)
 function canEditPatient() {
   const c = S.me.caps;
-  return !!(c.editPatient || c.editPatientLimited || c.editClinical);
+  return !!(c.editPatient || c.editPatientLimited || c.editDiagnosis || c.editNote2
+         || c.editNotes || c.editPref || c.editUrgency);
 }
 // אילו שדות פתוחים לעריכה עבורו
 function mayEdit(field) {
   const c = S.me.caps;
   if (c.editPatient) return true;
-  if (c.editClinical && ['diagnosis', 'notes2'].includes(field)) return true;
+  if (c.editDiagnosis && field === 'diagnosis') return true;
+  if (c.editNote2 && field === 'notes2') return true;
   if (c.editNotes && field === 'notes') return true;
   if (c.editPref && ['preferred_therapist_ids', 'preferred_group_ids'].includes(field)) return true;
   if (c.editUrgency && field === 'urgency') return true;
@@ -99,7 +101,91 @@ function logout() {
   document.getElementById('login-screen').style.display = 'flex';
 }
 
+// ===== שחזור סיסמה =====
+// המסך מתחלף בתוך קופסת ההתחברות, בלי לצאת מהדף.
+function loginBox() { return document.querySelector('#login-screen .box'); }
+
+function showForgot() {
+  const box = loginBox();
+  box.querySelector('form').style.display = 'none';
+  const old = document.getElementById('forgot-pane');
+  if (old) old.remove();
+  box.insertAdjacentHTML('beforeend', `
+  <div id="forgot-pane">
+    <div class="hint" style="margin-bottom:12px">
+      הזן את כתובת המייל שרשומה אצלך במערכת. יישלח אליה מייל עם שם המשתמש וקישור לבחירת סיסמה חדשה.
+    </div>
+    <form id="forgot-form">
+      <div class="field"><label>כתובת מייל</label><input id="forgot-email" type="email" required autocomplete="email"></div>
+      <div id="forgot-msg" style="font-size:13px;margin-bottom:10px;display:none"></div>
+      <button class="btn" style="width:100%;justify-content:center">שלח לי קישור</button>
+      <button type="button" class="btn sec" style="width:100%;justify-content:center;margin-top:8px" onclick="hideForgot()">חזרה להתחברות</button>
+    </form>
+  </div>`);
+  document.getElementById('forgot-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('forgot-msg');
+    const btn = e.target.querySelector('button.btn');
+    btn.disabled = true;
+    try {
+      const r = await api('/auth/forgot', { method: 'POST', body: { email: document.getElementById('forgot-email').value.trim() } });
+      msg.style.display = 'block';
+      msg.style.color = 'var(--green)';
+      msg.textContent = r.message;
+    } catch (err) {
+      btn.disabled = false;
+      msg.style.display = 'block';
+      msg.style.color = 'var(--red)';
+      msg.textContent = err.message;
+    }
+  });
+}
+
+function hideForgot() {
+  const p = document.getElementById('forgot-pane');
+  if (p) p.remove();
+  loginBox().querySelector('form').style.display = '';
+}
+
+// כניסה עם ?reset=<token> פותחת ישירות מסך בחירת סיסמה חדשה
+function showReset(token) {
+  const box = loginBox();
+  box.querySelector('form').style.display = 'none';
+  box.insertAdjacentHTML('beforeend', `
+  <div id="reset-pane">
+    <div class="hint" style="margin-bottom:12px">בחר סיסמה חדשה למערכת.</div>
+    <form id="reset-form">
+      <div class="field"><label>סיסמה חדשה (8 תווים לפחות)</label><input id="reset-pw" type="password" minlength="8" required autocomplete="new-password"></div>
+      <div class="field"><label>אימות סיסמה</label><input id="reset-pw2" type="password" minlength="8" required autocomplete="new-password"></div>
+      <div id="reset-msg" style="font-size:13px;margin-bottom:10px;display:none"></div>
+      <button class="btn" style="width:100%;justify-content:center">שמור סיסמה</button>
+    </form>
+  </div>`);
+  document.getElementById('reset-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('reset-msg');
+    const pw = document.getElementById('reset-pw').value;
+    const pw2 = document.getElementById('reset-pw2').value;
+    msg.style.display = 'block';
+    if (pw !== pw2) { msg.style.color = 'var(--red)'; msg.textContent = 'הסיסמאות אינן זהות'; return; }
+    const btn = e.target.querySelector('button.btn');
+    btn.disabled = true;
+    try {
+      const r = await api('/auth/reset', { method: 'POST', body: { token, password: pw } });
+      msg.style.color = 'var(--green)';
+      msg.textContent = 'הסיסמה עודכנה. שם המשתמש שלך: ' + r.username;
+      setTimeout(() => { window.location.href = window.location.pathname; }, 2500);
+    } catch (err) {
+      btn.disabled = false;
+      msg.style.color = 'var(--red)';
+      msg.textContent = err.message;
+    }
+  });
+}
+
 async function boot() {
+  const reset = new URLSearchParams(location.search).get('reset');
+  if (reset) { showReset(reset); return; }
   if (!S.token) return;
   try {
     const r = await api('/auth/me');
@@ -496,7 +582,7 @@ function openPatientModal(id) {
      [mayEdit('last_name') ? 'שם' : '', mayEdit('hours') ? 'שעות מתאימות' : '',
       mayEdit('notes') ? 'הערות' : '', mayEdit('urgency') ? 'דחיפות' : '',
       mayEdit('preferred_therapist_ids') ? 'שיוך למטפלים' : '',
-      mayEdit('diagnosis') ? 'אבחנה והערה מקצועית' : ''].filter(Boolean).join(' · ') + '</div>' : ''}
+      mayEdit('diagnosis') ? 'אבחנה' : '', mayEdit('notes2') ? 'הערה מקצועית' : ''].filter(Boolean).join(' · ') + '</div>' : ''}
   <form id="patient-form">
     <div class="grid2">
       <div class="field"><label>שם משפחה *</label><input name="last_name" value="${esc(p ? p.last_name : '')}" required ${p && !mayEdit('last_name') ? 'disabled' : ''}></div>
@@ -525,10 +611,10 @@ function openPatientModal(id) {
         <option value="3" ${p && p.urgency === 3 ? 'selected' : ''}>3 — נמוך</option>
       </select></div>
     </div>
-    ${S.me.caps.viewClinical ? `<div class="field"><label>אבחנה</label><input name="diagnosis" value="${esc(p ? p.diagnosis : '')}" ${p && !mayEdit('diagnosis') ? 'disabled' : ''}></div>` : ''}
+    ${S.me.caps.viewDiagnosis ? `<div class="field"><label>אבחנה</label><input name="diagnosis" value="${esc(p ? p.diagnosis : '')}" ${p && !mayEdit('diagnosis') ? 'disabled' : ''}></div>` : ''}
     <div class="grid2">
       <div class="field"><label>הערות</label><textarea name="notes" rows="2" ${p && !mayEdit('notes') ? 'disabled' : ''}>${esc(p ? p.notes : '')}</textarea></div>
-      ${S.me.caps.viewClinical ? `<div class="field"><label>הערה מקצועית</label><textarea name="notes2" rows="2" ${p && !mayEdit('notes2') ? 'disabled' : ''}>${esc(p ? p.notes2 : '')}</textarea></div>` : ''}
+      ${S.me.caps.viewNote2 ? `<div class="field"><label>הערה מקצועית</label><textarea name="notes2" rows="2" ${p && !mayEdit('notes2') ? 'disabled' : ''}>${esc(p ? p.notes2 : '')}</textarea></div>` : ''}
     </div>
 
     <div class="field">
@@ -1718,10 +1804,11 @@ async function renderUsers(m) {
       <div class="hint" style="margin-top:10px">
         <b>מנהל ראשי</b> — הכל, כולל ניהול משתמשים<br>
         <b>מזכירה אחראית</b> — הכל חוץ מניהול משתמשים<br>
-        <b>פנינה — גישה מלאה</b> — הכל, כולל ניהול משתמשים<br>
+        <b>פנינה</b> — הכל מלבד ההערה המקצועית (לא רואה ולא עורכת) וניהול משתמשים<br>
         <b>מזכירה כללית</b> — מוסיפה מטופלים ומצרפת קבצים; עורכת רק שם ושעות מתאימות; לא משבצת, לא מוחקת, ולא רואה אבחנה והערה מקצועית<br>
         <b>מדריך</b> — מעדכן אבחנה, הערה מקצועית, שיוך למטפלים ודחיפות; מנהל רשימת השהיה ומצרף קבצים; לא עורך פרטים אישיים, לא משבץ ולא מוחק<br>
-        <b>צופה</b> — צפייה בלבד
+        <b>צופה</b> — צפייה בלבד<br>
+        <span class="hint">רק מנהל ראשי יכול להוסיף ולערוך משתמשים.</span>
       </div>
     </div>`;
   } catch (e) { m.innerHTML = `<div class="card"><div class="empty">${esc(e.message)}</div></div>`; }
@@ -1754,6 +1841,7 @@ function openUserModal(userId) {
       if (u) {
         const r = await api('/users/' + u.id, { method: 'PUT', body: {
           username: fd.get('username'), full_name: fd.get('full_name'), role: fd.get('role'),
+          email: fd.get('email'),
           active: fd.get('active') === 'on', password: fd.get('password') || undefined } });
         if (r.self_renamed) {
           alert('שם המשתמש שלך שונה ל-"' + r.username + '". יש להתחבר מחדש.');
@@ -1762,7 +1850,7 @@ function openUserModal(userId) {
       } else {
         await api('/users', { method: 'POST', body: {
           username: fd.get('username'), password: fd.get('password'),
-          role: fd.get('role'), full_name: fd.get('full_name') } });
+          role: fd.get('role'), full_name: fd.get('full_name'), email: fd.get('email') } });
       }
       toast('נשמר'); closeModal(); render();
     } catch (err) { toast(err.message, true); }

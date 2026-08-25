@@ -7,13 +7,15 @@ const router = express.Router();
 
 const HMOS = ['מכבי', 'כללית', 'לאומית', 'מאוחדת'];
 const CLIENT_TYPES = ['בן', 'בת', 'הורים', 'מבוגר', 'מבוגרת'];
-// שדות שרק בעלי viewClinical רואים, ורק בעלי editClinical משנים
-const CLINICAL = ['diagnosis', 'notes2'];
+// אבחנה והערה מקצועית נשלטות בנפרד — יש תפקידים שרואים אחת ולא את השנייה
+const FIELD_VIEW = { diagnosis: 'viewDiagnosis', notes2: 'viewNote2' };
+const FIELD_EDIT = { diagnosis: 'editDiagnosis', notes2: 'editNote2' };
 
-// מסיר אבחנה והערה מקצועית מהתשובה למי שאינו מורשה לראותן
+// מסיר מהתשובה כל שדה רגיש שאין למשתמש הרשאת צפייה בו
 function scope(rows, caps) {
-  if (caps && caps.viewClinical) return rows;
-  const strip = (p) => { const o = { ...p }; CLINICAL.forEach(k => delete o[k]); return o; };
+  const hidden = Object.keys(FIELD_VIEW).filter(k => !(caps && caps[FIELD_VIEW[k]]));
+  if (!hidden.length) return rows;
+  const strip = (p) => { const o = { ...p }; hidden.forEach(k => delete o[k]); return o; };
   return Array.isArray(rows) ? rows.map(strip) : strip(rows);
 }
 
@@ -23,7 +25,7 @@ function editableFields(caps) {
   const f = [];
   if (caps.editPatientLimited) f.push('last_name', 'first_name', 'hours');
   if (caps.editNotes) f.push('notes');
-  if (caps.editClinical) f.push(...CLINICAL);
+  Object.keys(FIELD_EDIT).forEach(k => { if (caps[FIELD_EDIT[k]]) f.push(k); });
   if (caps.editPref) f.push('preferred_therapist_ids', 'preferred_group_ids');
   if (caps.editUrgency) f.push('urgency');
   return f;
@@ -124,7 +126,7 @@ router.post('/', authenticate, can('addPatient'), async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-router.put('/:id', authenticate, canAny('editPatient', 'editPatientLimited', 'editClinical', 'editNotes', 'editPref', 'editUrgency'), async (req, res) => {
+router.put('/:id', authenticate, canAny('editPatient', 'editPatientLimited', 'editDiagnosis', 'editNote2', 'editNotes', 'editPref', 'editUrgency'), async (req, res) => {
   const allowed = editableFields(req.caps);
   const { out, errors } = cleanBody(req.body || {});
   // אימות שם חובה רלוונטי רק למי שרשאי לגעת בשם
