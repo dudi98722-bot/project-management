@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 ו'";
+var APP_BUILD = "19.08 ז'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -7977,7 +7977,7 @@ function viewBankMatch(){
     '<div class="sp"></div><span class="hint">'+countLine(list.length,all.length,"שורות")+'</span></div>';
 
   var selBm=can("edit");
-  h+='<div class="table-wrap"><table class="tbl"><thead><tr>'+
+  h+='<div class="table-wrap"><table class="tbl" id="bm-moves-table"><thead><tr>'+
     (selBm?'<th class="chk" data-xl-skip="1" style="width:30px"><input type="checkbox" title="סמן הכל" style="width:auto" onclick="bmAll(this.checked)"></th>':'')+
     '<th>תאריך</th><th>שם</th><th>סכום</th><th>בנק</th><th>סוג</th><th>קטגוריה</th><th>פרטים</th><th>יש מסמך</th>'+
     '<th>סטטוס</th><th>הותאם ל…</th><th></th>'+
@@ -8016,7 +8016,10 @@ var BM_FILL=null, BM_FILL_TOKEN=0;
 function bmFillChunks(){
   var job=BM_FILL;
   if(!job || job.token!==BM_FILL_TOKEN) return;
-  var tbl=document.querySelector(".content table.tbl tbody");
+  /* חייב לפגוע בטבלת התנועות בלבד: הבורר הכללי תפס את הטבלה הראשונה
+     במסך — טבלת "סיכום לפי בנק" — והזריק לתוכה 1,400 שורות של תנועות
+     עם 12 עמודות. התוצאה: שטח לבן ענק והסיכום נהרס. */
+  var tbl=document.querySelector("#bm-moves-table tbody");
   if(!tbl){ BM_FILL=null; return; }
   var batch=job.rows.splice(0,200);
   if(!batch.length){ BM_FILL=null; return; }
