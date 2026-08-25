@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 ח'";
+var APP_BUILD = "19.08 ט'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -997,14 +997,18 @@ function normalizeDB(d){
   })();
   d.recurring=d.recurring||[];
   (d.recurring||[]).forEach(function(r){ r.amount=toNum(r.amount); r.nextDate=toISO(r.nextDate); });
-  /* גיליונות חופשיים — טקסט גולמי בלבד; שום נרמול על התאים עצמם,
-     כדי שמה שהמשתמש הקליד יישאר בדיוק כפי שהוקלד. */
+  /* גיליונות חופשיים — טקסט גולמי; חריג יחיד לבקשת דודי: מספר שנושא
+     סימן ₪ (בדרך כלל מהדבקה מאקסל) מנוקה מהסימן. שאר התוכן נשאר
+     בדיוק כפי שהוקלד. */
   d.sheets=d.sheets||[];
   (d.sheets||[]).forEach(function(s){
     s.rows=s.rows||[]; s.cols=s.cols||[];
     s.fmt=(s.fmt&&typeof s.fmt==="object")?s.fmt:{};   // עיצוב תאים: "שורה,עמודה" → {bg,bold,bt,bb,bl,br}
     s.colW=(s.colW&&typeof s.colW==="object")?s.colW:{};   // רוחב עמודות שנקבע בגרירה
-    s.rows.forEach(function(r,i){ if(!Array.isArray(r)) s.rows[i]=[]; });
+    s.rows.forEach(function(r,i){
+      if(!Array.isArray(r)){ s.rows[i]=[]; return; }
+      for(var ci=0;ci<r.length;ci++) r[ci]=sheetStripShekel(r[ci]);
+    });
   });
   d.rentals=d.rentals||[];
   (d.rentals||[]).forEach(function(r){
@@ -10931,6 +10935,13 @@ function curSheet(){
   return (id && byId(DB.sheets,id) && !byId(DB.sheets,id).deleted) ? byId(DB.sheets,id) : list[0];
 }
 /* התא כמספר — אם הוא בכלל מספר. תומך בפסיקי אלפים, ₪, אחוזים ומינוס. */
+/* לבקשת דודי: בלי סימני ₪ בגיליון החופשי. ערך שהוא מספר עם ₪ —
+   הסימן מוסר; משפט חופשי שבמקרה מכיל ₪ נשאר כמו שהוא. */
+function sheetStripShekel(v){
+  if(typeof v!=="string" || v.indexOf("₪")<0) return v;
+  if(cellNum(v)===null) return v;
+  return v.replace(/₪/g,"").trim();
+}
 function cellNum(v){
   var s=String(v==null?"":v).trim();
   if(!s) return null;
@@ -11241,7 +11252,7 @@ function setSheetCell(id,r,c,v){
   while(s.rows.length<=r) s.rows.push([]);
   var row=s.rows[r];
   while(row.length<=c) row.push("");
-  row[c]=v;
+  row[c]=sheetStripShekel(v);
   save(); rerender();
 }
 function setSheetCol(id,c,v){
@@ -11310,7 +11321,7 @@ function applySheetPaste(id,txt,r0,c0){
     cells.forEach(function(v,j){
       var c=c0+j;
       while(row.length<=c) row.push("");
-      row[c]=v.trim();
+      row[c]=sheetStripShekel(v.trim());
     });
   });
   save(); rerender();
