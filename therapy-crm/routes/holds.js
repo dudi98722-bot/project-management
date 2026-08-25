@@ -27,7 +27,7 @@ router.get('/', authenticate, async (req, res) => {
 
 // הוספת מטופלים להשהיה אצל מטפל — אפשר כמה בבת אחת
 // { therapist_id, patient_ids: [...], note }
-router.post('/', authenticate, can('assign'), async (req, res) => {
+router.post('/', authenticate, can('holds'), async (req, res) => {
   const b = req.body || {};
   const tid = validId(b.therapist_id);
   const ids = Array.isArray(b.patient_ids) ? [...new Set(b.patient_ids.map(validId).filter(Boolean))] : [];
@@ -59,7 +59,7 @@ router.post('/', authenticate, can('assign'), async (req, res) => {
 });
 
 // שחרור מהשהיה
-router.put('/:id/release', authenticate, can('assign'), async (req, res) => {
+router.put('/:id/release', authenticate, can('holds'), async (req, res) => {
   try {
     const r = await pool.query(
       `UPDATE holds SET released=true, released_at=NOW(), released_by_name=$2

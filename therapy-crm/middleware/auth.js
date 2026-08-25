@@ -13,7 +13,8 @@ const jwt = require('jsonwebtoken');
 //  editNotes          עריכת הערות כלליות (לא ההערה המקצועית)
 //  editPref           עריכת השיוך למטפלים ולקבוצות
 //  editUrgency        עריכת רמת הדחיפות
-//  assign             שיבוץ לטיפול, פגישות, סדרות והשהיות
+//  assign             שיבוץ לטיפול, פגישות וסדרות
+//  holds              ניהול רשימת ההשהיה (הוספה, הערה, הסרה)
 //  files              צירוף קבצים למטופל
 //  del                מחיקה רכה וביטול סדרות
 //  view               צפייה בנתונים ובלוח השנה
@@ -22,20 +23,20 @@ const jwt = require('jsonwebtoken');
 const R = (label, c) => Object.assign({ label,
   manageUsers: false, addPatient: false, editPatient: false, editPatientLimited: false,
   viewClinical: false, editClinical: false, editNotes: false, editPref: false, editUrgency: false,
-  assign: false, files: false,
+  assign: false, holds: false, files: false,
   del: false, edit: false, view: true }, c);
 
 const ROLES = {
   admin: R('מנהל ראשי', {
     manageUsers: true, addPatient: true, editPatient: true, editPatientLimited: true,
     viewClinical: true, editClinical: true, editNotes: true, editPref: true, editUrgency: true,
-    assign: true, files: true, del: true, edit: true }),
+    assign: true, holds: true, files: true, del: true, edit: true }),
 
   // מזכירה אחראית — הכל פתוח מלבד ניהול משתמשים
   head_secretary: R('מזכירה אחראית', {
     addPatient: true, editPatient: true, editPatientLimited: true,
     viewClinical: true, editClinical: true, editNotes: true, editPref: true, editUrgency: true,
-    assign: true, files: true, del: true, edit: true }),
+    assign: true, holds: true, files: true, del: true, edit: true }),
 
   // מזכירה כללית — מוסיפה מטופלים ומצרפת קבצים; עורכת שם, שעות והערות
   // כלליות; לא מוחקת, לא משבצת, ולא רואה אבחנה או הערה מקצועית
@@ -45,7 +46,8 @@ const ROLES = {
   // מדריך — תוכן קליני, שיוך למטפלים ורמת דחיפות. לא עורך פרטים
   // אישיים, לא מוחק ולא קובע פגישות.
   guide: R('מדריך', {
-    viewClinical: true, editClinical: true, editPref: true, editUrgency: true, files: true }),
+    viewClinical: true, editClinical: true, editPref: true, editUrgency: true,
+    holds: true, files: true }),
 
   viewer: R('צופה', { viewClinical: true }),
 
@@ -53,11 +55,11 @@ const ROLES = {
   manager: R('מנהל', {
     addPatient: true, editPatient: true, editPatientLimited: true,
     viewClinical: true, editClinical: true, editNotes: true, editPref: true, editUrgency: true,
-    assign: true, files: true, del: true, edit: true }),
+    assign: true, holds: true, files: true, del: true, edit: true }),
   clerk: R('רכז/ת', {
     addPatient: true, editPatient: true, editPatientLimited: true,
     viewClinical: true, editClinical: true, editNotes: true, editPref: true, editUrgency: true,
-    assign: true, files: true, edit: true }),
+    assign: true, holds: true, files: true, edit: true }),
 };
 
 function authenticate(req, res, next) {

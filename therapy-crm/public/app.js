@@ -471,7 +471,7 @@ function waitingRowsHtml(rows) {
       <td><span class="badge ${sCls}">${sLbl}</span></td>
       <td style="white-space:nowrap">
         ${S.me.caps.assign && p.status === 'waiting' ? `<button class="btn sm green" onclick="openAssignModal(${p.id})">שבץ</button>` : ''}
-        ${S.me.caps.assign ? `<button class="btn sm sec" onclick="openHoldForPatient(${p.id})" title="העברה לרשימת השהיה">⏸ השהיה</button>` : ''}
+        ${S.me.caps.holds ? `<button class="btn sm sec" onclick="openHoldForPatient(${p.id})" title="העברה לרשימת השהיה">⏸ השהיה</button>` : ''}
         <button class="btn sm sec" onclick="openFilesModal(${p.id})" title="קבצים מצורפים">📎</button>
         ${canEditPatient() ? `<button class="btn sm sec" onclick="openPatientModal(${p.id})">עריכה</button>` : ''}
         ${S.me.caps.del ? `<button class="btn sm sec" onclick="deletePatient(${p.id})">🗑</button>` : ''}
@@ -1189,7 +1189,7 @@ function renderHolds(m) {
         ${active.map(t => `<option value="${t.id}" ${t.id === S.holdTherapist ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
       </select></div>
       <div class="spacer"></div>
-      ${S.me.caps.assign ? `<button class="btn" onclick="openHoldModal()">+ הוסף מטופלים להשהיה</button>` : ''}
+      ${S.me.caps.holds ? `<button class="btn" onclick="openHoldModal()">+ הוסף מטופלים להשהיה</button>` : ''}
     </div>
     <div class="hint" style="margin-bottom:10px">
       מטופלים שממתינים למטפל הזה עד שתתפנה לו משבצת. מטופל בהשהיה מסומן ב-⏸ ברשימת הממתינים.
@@ -1220,7 +1220,7 @@ async function loadHoldsList() {
           <td class="hint">${esc(h.note || '')}</td>
           <td class="hint">${esc(h.created_by_name || '')}</td>
           <td>${fmtDateHe(String(h.created_at).slice(0, 10))}</td>
-          <td>${S.me.caps.assign ? `<button class="btn sm sec" onclick="releaseHold(${h.id})">הסר</button>` : ''}</td>
+          <td>${S.me.caps.holds ? `<button class="btn sm sec" onclick="releaseHold(${h.id})">הסר</button>` : ''}</td>
         </tr>`;
       }).join('')}
       </tbody></table></div>
@@ -1719,7 +1719,7 @@ async function renderUsers(m) {
         <b>מנהל ראשי</b> — הכל, כולל ניהול משתמשים<br>
         <b>מזכירה אחראית</b> — הכל חוץ מניהול משתמשים<br>
         <b>מזכירה כללית</b> — מוסיפה מטופלים ומצרפת קבצים; עורכת רק שם ושעות מתאימות; לא משבצת, לא מוחקת, ולא רואה אבחנה והערה מקצועית<br>
-        <b>מדריך</b> — מעדכן אבחנה והערה מקצועית ומצרף קבצים; לא עורך פרטים אחרים, לא משבץ ולא מוחק<br>
+        <b>מדריך</b> — מעדכן אבחנה, הערה מקצועית, שיוך למטפלים ודחיפות; מנהל רשימת השהיה ומצרף קבצים; לא עורך פרטים אישיים, לא משבץ ולא מוחק<br>
         <b>צופה</b> — צפייה בלבד
       </div>
     </div>`;
