@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 ז'";
+var APP_BUILD = "19.08 ח'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -3202,6 +3202,8 @@ function pollBlockedBy(){
 }
 async function pollForUpdates(){
   if(POLL.busy) return;
+  /* עדכון שקט מחלון אחר שחיכה שהמשתמש יתפנה */
+  if(TABSYNC_PENDING){ POLL.busy=true; try{ await tabSyncTry(); } finally{ POLL.busy=false; } return; }
   if(pollBlockedBy()) return;
   /* רינדור שנדחה בגלל עבודה באמצע — מושלם ברגע שהמשתמש פנוי,
      בלי לחכות לגרסה חדשה מהשרת */
@@ -3261,6 +3263,7 @@ async function applyServerUpdate(polledRev){
   DB=normalizeDB(res.data); setSyncBase(res.data); saveLocal(); UNDO.length=0;
   POLL.pending=false; hideUpdateBanner();
   rerender();
+  tabSyncBroadcast();
   toast("עודכן — נכנסו שינויים ממשתמש אחר","ok");
   return true;
 }
@@ -3272,6 +3275,54 @@ function showUpdateBanner(){
   document.body.appendChild(b);
 }
 function hideUpdateBanner(){ var b=document.getElementById("upd-banner"); if(b) b.remove(); }
+
+/* ---------- סנכרון שקט בין חלונות של אותו דפדפן ----------
+   מי שפותח את המערכת בשני מסכים קיבל על כל שמירה בחלון אחד את ההודעה
+   "נכנסו שינויים ממשתמש אחר" בחלון השני — למרות שזה הוא עצמו. שני
+   החלונות חולקים את אותו עותק מקומי מוצפן, ולכן אחרי שמירה מוצלחת
+   החלון השומר משדר לשאר, והם מאמצים את העותק המשותף בשקט: בלי הודעה,
+   בלי באנר, ובלי פנייה נוספת לשרת. ההודעות נשארות רק על עדכונים
+   שבאמת הגיעו ממחשב או דפדפן אחר. */
+var TABSYNC=null, TABSYNC_PENDING=false;
+try{
+  if(window.BroadcastChannel){
+    TABSYNC=new BroadcastChannel(LSKEY+"_tabs");
+    TABSYNC.onmessage=function(ev){
+      var d=ev&&ev.data;
+      /* חלון שמחובר כמשתמש אחר באותו דפדפן — העותק המקומי בכלל לא שלו */
+      if(!CU || !d || d.who!==CU.id) return;
+      /* הכתיבה המוצפנת של החלון השולח נשטפת ברקע — רגע לפני שקוראים */
+      setTimeout(tabSyncTry,300);
+    };
+  }
+}catch(e){ TABSYNC=null; }
+function tabSyncBroadcast(){
+  if(!TABSYNC || !CU) return;
+  try{ TABSYNC.postMessage({who:CU.id}); }catch(e){}
+}
+async function tabSyncTry(){
+  if(!CU) return false;
+  /* עבודה מקומית באמצע — השמירה שלה תמזג ממילא; לא דורסים אותה.
+     עסוק במסך (שדה/מודאל/סימונים) — מחכים שיתפנה, בלי באנר. */
+  if(SAVEQ.inflight||SAVEQ.dirty||SAVEQ.timer||hasUnsaved()){ TABSYNC_PENDING=true; return false; }
+  if(uiIsBusy()){ TABSYNC_PENDING=true; return false; }
+  TABSYNC_PENDING=false;
+  try{
+    var raw=await vaultGet(LSKEY);
+    if(!raw) return false;
+    var d=JSON.parse(raw);
+    if(!d || !Array.isArray(d.apartments)) return false;
+    var vrev=(d.meta&&Number(d.meta.rev))||0, loc=(DB&&DB.meta&&Number(DB.meta.rev))||0;
+    if(vrev<=loc) return false;               // אין שם כלום חדש ממה שמוצג
+    DB=normalizeDB(d);
+    LAST_JSON=JSON.stringify(DB); UNDO.length=0;
+    await loadSyncBase();                     // הבסיס המשותף שהחלון השומר כבר עדכן
+    incMapClear();
+    POLL.pending=false; hideUpdateBanner();
+    rerender();
+    return true;
+  }catch(e){ return false; }
+}
 
 /* ---- סנכרון מול גוגל שיטס (Apps Script) — מקור האמת ---- */
 /* ============================================================
@@ -3473,6 +3524,7 @@ async function flushSave(){
       if(j&&j.ok){
         SAVEQ.fails=0; MERGE_ROUNDS=0;
         setSyncBase(snap);                   // מה שנשלח הוא עכשיו מצב השרת
+        tabSyncBroadcast();                  // חלונות אחרים של אותו דפדפן מתעדכנים בשקט
         if(j.restoredTables&&j.restoredTables.length){
           /* השרת השלים טבלאות שחסרו בשמירה — העותק המקומי חסר.
              מושכים את המלא, שהמסך לא ימשיך להציג חוסר שיישמר שוב. */
