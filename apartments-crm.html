@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 י'";
+var APP_BUILD = "19.08 יא'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -8311,6 +8311,7 @@ function bulkMatchOneIncome(){
         '<div class="hint">סכום גדול מ-'+money(totRem)+' יישאר עם חוב פתוח</div></div>'+
       '<div class="field"><label>תאריך</label><input id="mi-date" type="date" value="'+esc(dates[0]||todayISO())+'"></div>'+
       '<div class="field full"><label>הערה</label><input id="mi-note" value="'+esc("נסגר מ-"+sel.length+" שורות בנק")+'"></div>'+
+      incFlagsHtml("mi")+
     '</div>',
     saveLabel:"צור והתאם "+sel.length+" שורות",onSave:function(){
       var aptId=val("mi-apt"), desc=val("mi-desc").trim(), amt=Number(val("mi-amount"))||0;
@@ -8322,6 +8323,7 @@ function bulkMatchOneIncome(){
       var inc={id:uid(),apartmentId:aptId,description:desc,amount:amt,
         date:val("mi-date")||todayISO(),receivedBy:"",split:null,units:null,
         startDate:"",endDate:"",note:val("mi-note"),payments:[],deleted:false};
+      incFlagsRead("mi",inc);
       DB.income.push(inc);
       /* מתאימים שורה-שורה, ומחשבים את החוב מחדש בכל פעם — אחרת
          היינו רושמים יותר ממה שההכנסה חייבת */
@@ -8446,6 +8448,7 @@ function bulkMatchNewIncome(idx){
       '<div class="field"><label>סכום ההכנסה (₪)</label><input id="bn-amount" type="number" step="0.01" value="'+rem+'"></div>'+
       '<div class="field"><label>תאריך</label><input id="bn-date" type="date" value="'+esc(m.date||todayISO())+'"></div>'+
       '<div class="field full"><label>הערה</label><input id="bn-note" value="'+esc([m.details,m.kind].filter(Boolean).join(" · "))+'"></div>'+
+      incFlagsHtml("bn")+
     '</div>',
     saveLabel:"צור והמשך",onSave:function(){
       var aptId=val("bn-apt"), desc=val("bn-desc").trim(), amt=Number(val("bn-amount"))||0;
@@ -8455,6 +8458,7 @@ function bulkMatchNewIncome(idx){
       var inc={id:uid(),apartmentId:aptId,description:desc,amount:amt,
         date:val("bn-date")||m.date||todayISO(),receivedBy:"",split:null,units:null,
         startDate:"",endDate:"",note:val("bn-note"),payments:[],deleted:false};
+      incFlagsRead("bn",inc);
       DB.income.push(inc);
       save();
       /* ההזמנה החדשה נכנסת לראש רשימת המועמדים של השורה ונבחרת */
@@ -8583,6 +8587,21 @@ function renderMoveCandidates(id){
   if(cands.length>20) h+='<div class="hint">מוצגות 20 ההזמנות המתאימות ביותר מתוך '+cands.length+'.</div>';
   box.innerHTML=h+newBtn;
 }
+/* שלוש אפשרויות הדוחות של הכנסה — אותן אפשרויות שבטופס ההכנסה הרגיל,
+   משותפות לכל טפסי "הכנסה חדשה" שמתוך התאמת הבנק. */
+function incFlagsHtml(px){
+  return '<div class="field full"><label style="font-weight:400"><input type="checkbox" id="'+px+'-excl" style="width:auto;margin-inline-end:6px">'+
+    'לא לחישוב — השורה תישאר בפירוט אבל לא תיספר בשום סיכום הכנסות (כולל בנק ודמי ניהול)</label></div>'+
+    '<div class="field full"><label style="font-weight:400"><input type="checkbox" id="'+px+'-inrep" style="width:auto;margin-inline-end:6px" checked>'+
+    'להציג בדוחות — ברירת מחדל מוצג. הסרת הסימון מוציאה את השורה מהדוחות בלבד</label></div>'+
+    '<div class="field full"><label style="font-weight:400"><input type="checkbox" id="'+px+'-frl" style="width:auto;margin-inline-end:6px">'+
+    '🚫 לא בדוח לפרייליך — השורה תופיע בדוחות הרגילים אבל לא בדוח לפרייליך</label></div>';
+}
+function incFlagsRead(px,inc){
+  inc.excluded=checked(px+"-excl");
+  inc.noReport=!checked(px+"-inrep");
+  inc.noFreilich=checked(px+"-frl");
+}
 /* יצירת הכנסה חדשה משורת בנק — כשאין לה הזמנה קיימת להתאים אליה.
    נוצרת ההכנסה, ומיד גם התשלום שמקושר לשורה. */
 function createIncomeFromMove(moveId){
@@ -8606,6 +8625,7 @@ function createIncomeFromMove(moveId){
         '<div class="hint">סכום גדול מ-'+money(rem)+' יישאר עם חוב פתוח</div></div>'+
       '<div class="field"><label>תאריך</label><input id="ni-date" type="date" value="'+esc(m.date||todayISO())+'"></div>'+
       '<div class="field full"><label>הערה</label><input id="ni-note" value="'+esc([m.details,m.kind].filter(Boolean).join(" · "))+'"></div>'+
+      incFlagsHtml("ni")+
     '</div>',
     saveLabel:"צור הכנסה ורשום תשלום",onSave:function(){
       var aptId=val("ni-apt"), desc=val("ni-desc").trim();
@@ -8617,6 +8637,7 @@ function createIncomeFromMove(moveId){
       var inc={id:uid(),apartmentId:aptId,description:desc,amount:amt,
         date:val("ni-date")||m.date||todayISO(),receivedBy:"",split:null,units:null,
         startDate:"",endDate:"",note:val("ni-note"),payments:[],deleted:false};
+      incFlagsRead("ni",inc);
       DB.income.push(inc);
       applyMoveMatch(m,inc,Math.min(rem,amt));
       save(); toast("נוצרה הכנסה ונרשם התשלום","ok"); rerender();
@@ -10993,6 +11014,7 @@ function colLetter(i){
    מערך תלת-ממדי עבור גיליון שרובו ריק. */
 var SHEETSEL=null;   // {id,r1,c1,r2,c2}
 var SHEETDRAG=false;
+var SHEET_PREVFOCUS=null;   // מי היה בפוקוס לפני הלחיצה — להבחין לחיצה ראשונה מלחיצה בתוך תא פתוח
 var SHEET_COLORS=[
   {v:"",n:"ללא",c:"#ffffff"},
   {v:"#fef08a",n:"צהוב",c:"#fef08a"},
@@ -11045,6 +11067,7 @@ function paintSheetSel(){
   }
 }
 function sheetCellDown(ev,id,r,c){
+  SHEET_PREVFOCUS=document.activeElement;   // נלכד לפני שהלחיצה מעבירה פוקוס
   if(ev.shiftKey && SHEETSEL && SHEETSEL.id===id){ SHEETSEL.r2=r; SHEETSEL.c2=c; }
   else { SHEETSEL={id:id,r1:r,c1:c,r2:r,c2:c}; SHEETDRAG=true; }
   paintSheetSel();
@@ -11055,6 +11078,23 @@ function sheetCellOver(id,r,c){
   paintSheetSel();
 }
 document.addEventListener("mouseup",function(){ SHEETDRAG=false; });
+/* ---------- התנהגות הקלדה כמו באקסל ----------
+   לחיצה בודדת על תא בוחרת את כל התוכן — הקלדה מחליפה אותו.
+   לחיצה כפולה נכנסת לתוך הטקסט ומאפשרת לתקן ולהוסיף.
+   לחיצה נוספת בתוך תא שכבר בעריכה רק מזיזה את הסמן. */
+function sheetCellUp(ev,inp){
+  if(sheetSelCount()>1) return;                       // בחירת טווח — לא מצב עריכה
+  if(inp!==document.activeElement) return;            // סוף גרירה מעל תא אחר
+  if(ev.detail===1 && SHEET_PREVFOCUS===inp) return;  // התא כבר בעריכה — רק הזזת סמן
+  var d=ev.detail;
+  setTimeout(function(){
+    if(inp!==document.activeElement) return;
+    try{
+      if(d>=2){ var e2=inp.selectionEnd; inp.setSelectionRange(e2,e2); }  // לתוך הטקסט
+      else inp.select();                                                   // הקלדה מחליפה הכל
+    }catch(e){}
+  },0);
+}
 /* בחירת עמודה או שורה שלמה בלחיצה על הכותרת */
 /* גרירת רוחב עמודה. ב-RTL הקצה הפנימי הוא שמאל — גרירה שמאלה מרחיבה. */
 var SHEETGRIP=null;
@@ -11241,6 +11281,7 @@ function viewSheets(){
           ' onmouseover="sheetCellOver(\''+s.id+'\','+ri+','+c+')">'+
           '<input class="'+(isNum?"num":"")+'" value="'+esc(v)+'"'+
           ' data-r="'+ri+'" data-c="'+c+'" onchange="setSheetCell(\''+s.id+'\','+ri+','+c+',this.value)"'+
+          ' onmouseup="sheetCellUp(event,this)"'+
           ' onkeydown="sheetKey(event,'+ri+','+c+')" onpaste="sheetPaste(event,\''+s.id+'\','+ri+','+c+')"></td>'
         : '<td class="cellval'+(isNum?" num":"")+" "+cls.join(" ")+'"'+sty+'>'+esc(v)+'</td>';
     }
