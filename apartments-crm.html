@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 ט'";
+var APP_BUILD = "19.08 י'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -3808,11 +3808,33 @@ function applyColFilters(t){
     btn.style.borderColor=on?"var(--accent,#3b5bdb)":"var(--line,#d8dee9)";
   });
   var body=t.tBodies[0], shown=0;
-  Array.prototype.forEach.call(body.rows,function(tr){
-    var vis = texts.every(function(x){ var cell=tr.cells[x.col]; return cell ? matches(x.q, cell.innerText||cell.textContent||"") : false; })
-           && picks.every(function(x){ var cell=tr.cells[x.col]; return cell ? !!x.set[cellVal(cell)] : false; });
-    tr.style.display=vis?"":"none";
-    if(vis) shown++;
+  /* ---------- שלב קריאה ואז שלב כתיבה ----------
+     קריאת innerText מחייבת את הדפדפן לחשב את פריסת העמוד. כשקוראים
+     ומיד משנים display שורה-שורה, כל שורה גוררת חישוב פריסה מלא של
+     כל הטבלה — על אלפי שורות אלו דקות של מסך תקוע. לכן קודם קוראים
+     את כל הטקסטים ברצף (חישוב פריסה אחד), ורק אחר כך כותבים. */
+  var rowsArr=Array.prototype.slice.call(body.rows);
+  /* נקראות רק העמודות שמסוננות בפועל — לא כל הטבלה */
+  var needCols={};
+  texts.forEach(function(x){ needCols[x.col]=1; });
+  picks.forEach(function(x){ needCols[x.col]=1; });
+  var colList=Object.keys(needCols).map(Number);
+  var rowTexts=rowsArr.map(function(tr){
+    var arr={};
+    for(var k2=0;k2<colList.length;k2++){
+      var cell=tr.cells[colList[k2]];
+      if(cell) arr[colList[k2]]=String(cell.innerText||cell.textContent||"");
+    }
+    return arr;
+  });
+  var visArr=rowTexts.map(function(ct){
+    return texts.every(function(x){ return ct[x.col]!==undefined ? matches(x.q, ct[x.col]) : false; })
+        && picks.every(function(x){ return ct[x.col]!==undefined ? !!x.set[ct[x.col].replace(/\s+/g," ").trim()] : false; });
+  });
+  rowsArr.forEach(function(tr,ri){
+    var want=visArr[ri]?"":"none";
+    if(tr.style.display!==want) tr.style.display=want;
+    if(visArr[ri]) shown++;
   });
   var f=anyFilter?[1]:[];   /* תאימות: הקוד למטה בודק f.length לסיכום */
   /* שורת סיכום חיה של המסונן: מסכמת עמודות מספריות.
@@ -3830,19 +3852,23 @@ function applyColFilters(t){
     else{
       var n=t.tHead.rows[0].cells.length, sums=new Array(n).fill(null);
       /* שורת שלב-אב היא כבר הסיכום של תתי-השלבים שמתחתיה. אם שניהם
-         גלויים, ספירת שניהם הייתה מכפילה את הסכום, את "שולם" ואת "נותר". */
+         גלויים, ספירת שניהם הייתה מכפילה את הסכום, את "שולם" ואת "נותר".
+         הטקסטים נקראו כבר בשלב הקריאה — אין קריאת innerText נוספת. */
       var visIds={};
-      Array.prototype.forEach.call(body.rows,function(tr){
-        if(tr.style.display!=="none" && tr.getAttribute("data-eid")) visIds[tr.getAttribute("data-eid")]=1;
+      rowsArr.forEach(function(tr,ri){
+        if(visArr[ri] && tr.getAttribute("data-eid")) visIds[tr.getAttribute("data-eid")]=1;
       });
-      Array.prototype.forEach.call(body.rows,function(tr){
-        if(tr.style.display==="none") return;
+      rowsArr.forEach(function(tr,ri){
+        if(!visArr[ri]) return;
         var par=tr.getAttribute("data-parent");
         if(par && visIds[par]) return;          // נספר כבר בשורת האב
+        /* textContent — קריאה זולה שאינה מחייבת חישוב פריסה */
+        var cells=tr.cells;
         for(var i=0;i<n;i++){
-          var cell=tr.cells[i]; if(!cell) continue;
-          var txt=String(cell.innerText||"").replace(/[^\d.\-]/g,"");
-          if(txt && /[\d]/.test(txt) && /[₪%]|^\s*-?[\d,.]+\s*$/.test(String(cell.innerText||""))){
+          var cell=cells[i]; if(!cell) continue;
+          var raw=String(cell.textContent||"");
+          var txt=raw.replace(/[^\d.\-]/g,"");
+          if(txt && /[\d]/.test(txt) && /[₪%]|^\s*-?[\d,.]+\s*$/.test(raw)){
             var v=parseFloat(txt);
             if(isFinite(v)) sums[i]=(sums[i]||0)+v;
           }
@@ -8622,18 +8648,18 @@ function bmAll(v){ visibleBoxes(".bm-x").forEach(function(c){ c.checked=v; }); b
 /* ---------- פס סיכום צף לשורות מסומנות ----------
    מסמנים שורות בכל טבלה — ובפינה מופיע כמה סומנו ומה הסכום שלהן,
    כמו שורת הסטטוס באקסל. נעלם כשאין סימונים. */
-var SEL_SUM_SRC={
-  "bm-x":function(v){ var m=byId(DB.bankMoves,v); return m?Number(m.amount)||0:0; },
-  "ib-x":function(v){ var i=byId(DB.income,v); return i?Number(i.amount)||0:0; },
-  "eb-x":function(v){ var e=byId(DB.expenses,v); return e?Number(e.amount)||0:0; },
-  "pb-x":function(v){ var x=byId(DB.payments,v); return x?Number(x.amount)||0:0; }
-};
+var SEL_SUM_SRC={ "bm-x":"bankMoves", "ib-x":"income", "eb-x":"expenses", "pb-x":"payments" };
 function updateSelSumBar(){
   var total=0, n=0;
   Object.keys(SEL_SUM_SRC).forEach(function(cls){
     var boxes=(cls==="eb-x"&&typeof ebVisibleBoxes==="function")
       ? ebVisibleBoxes("."+cls+":checked") : visibleBoxes("."+cls+":checked");
-    boxes.forEach(function(c){ n++; total+=SEL_SUM_SRC[cls](c.value); });
+    if(!boxes.length) return;
+    /* חיפוש כל סימון בנפרד ברשימה היה ריבועי — "סמן הכל" על אלפי
+       שורות נתקע. מפה אחת של מזהה→סכום, וכל סימון נמצא מיד. */
+    var amts={};
+    (DB[SEL_SUM_SRC[cls]]||[]).forEach(function(x){ amts[x.id]=Number(x.amount)||0; });
+    boxes.forEach(function(c){ n++; total+=amts[c.value]||0; });
   });
   var bar=document.getElementById("sel-sumbar");
   if(!n){ if(bar) bar.remove(); return; }
