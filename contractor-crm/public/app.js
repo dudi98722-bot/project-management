@@ -875,24 +875,35 @@
   // ============================================================
   async function scrReports() {
     loading();
+    const curY = new Date().getFullYear();
+    const years = []; for (let y = curY; y >= curY - 5; y--) years.push(y);
     view().innerHTML = `
       <div class="page-head"><h2>דוחות</h2></div>
       <div class="card">
         <div class="toolbar">
           <div class="field"><label class="mini">סוג דוח</label><select id="rKind">
             <option value="monthly">דוח עסק חודשי</option>
+            <option value="yearly">דוח שנתי לפי חודשים</option>
             <option value="project">דוח פרויקט</option>
           </select></div>
           <div class="field" id="rProjWrap" style="display:none"><label class="mini">פרויקט</label><select id="rProj"></select></div>
-          <div class="field"><label class="mini">מתאריך</label><input id="rFrom" type="date"></div>
-          <div class="field"><label class="mini">עד תאריך</label><input id="rTo" type="date"></div>
+          <div class="field" id="rYearWrap" style="display:none"><label class="mini">שנה</label><select id="rYear">${years.map(y => `<option value="${y}">${y}</option>`).join('')}</select></div>
+          <div class="field" id="rFromWrap"><label class="mini">מתאריך</label><input id="rFrom" type="date"></div>
+          <div class="field" id="rToWrap"><label class="mini">עד תאריך</label><input id="rTo" type="date"></div>
           <button class="btn sm" id="rRun" style="align-self:flex-end">הצג דוח</button>
         </div>
       </div>
       <div id="rOut"></div>`;
     const projects = await guard(window.Store.projects.list());
     $('#rProj').innerHTML = projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
-    $('#rKind').onchange = () => { $('#rProjWrap').style.display = $('#rKind').value === 'project' ? '' : 'none'; };
+    $('#rKind').onchange = () => {
+      const k = $('#rKind').value, isY = k === 'yearly';
+      $('#rProjWrap').style.display = k === 'project' ? '' : 'none';
+      $('#rYearWrap').style.display = isY ? '' : 'none';
+      $('#rFromWrap').style.display = isY ? 'none' : '';
+      $('#rToWrap').style.display = isY ? 'none' : '';
+      runReport();
+    };
     $('#rRun').onclick = runReport;
     runReport();
   }
@@ -914,6 +925,48 @@
         <div class="card"><h3>לפי חודש</h3><div id="rmChart"></div></div>
         <div class="card"><h3>לפי פרויקט</h3>${r.by_project.length ? `<table><thead><tr><th>פרויקט</th><th>הכנסות</th><th>עלויות</th><th>רווח</th></tr></thead><tbody>${r.by_project.map(p => `<tr><td>${esc(p.project_name)}</td><td class="num">${money(p.income)}</td><td class="num">${money(p.cost)}</td><td class="num" style="color:${p.income - p.cost >= 0 ? 'var(--green)' : 'var(--red)'}">${money(p.income - p.cost)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">אין נתונים</div>'}</div>`;
       drawMonthlyChart($('#rmChart'), r.by_month);
+    } else if (kind === 'yearly') {
+      const year = fv('rYear') || String(new Date().getFullYear());
+      const rows = await guard(window.Store.tx.list({ from: year + '-01-01', to: year + '-12-31' }));
+      // קיבוץ לפי חודש — 12 חודשי השנה, גם ריקים
+      const byMonth = {};
+      for (let m = 1; m <= 12; m++) { const k = year + '-' + String(m).padStart(2, '0'); byMonth[k] = { month: k, income: 0, subPaid: 0, bizExp: 0, txs: [] }; }
+      rows.forEach(t => {
+        const k = t.date ? String(t.date).slice(0, 7) : null; const g = k && byMonth[k]; if (!g) return;
+        const amt = +t.amount || 0;
+        if (t.type === 'client_payment') { g.income += amt; g.txs.push(t); }
+        else if (t.type === 'sub_payment') { g.subPaid += amt; g.txs.push(t); }
+        else if (t.type === 'business_expense') { g.bizExp += amt; g.txs.push(t); }
+      });
+      const months = Object.values(byMonth);
+      const tot = months.reduce((a, g) => ({ income: a.income + g.income, subPaid: a.subPaid + g.subPaid, bizExp: a.bizExp + g.bizExp }), { income: 0, subPaid: 0, bizExp: 0 });
+      const totBal = tot.income - tot.subPaid - tot.bizExp;
+      const cell = (v, col) => `<td class="num" style="color:${col}">${v ? money0(v) : '—'}</td>`;
+      out.innerHTML = `
+        <div class="grid stat-grid">
+          ${stat('תשלומי לקוחות', money(tot.income), 'g')}
+          ${stat('תשלום לקבלני משנה', money(tot.subPaid), 'r')}
+          ${stat('הוצאות עסק', money(tot.bizExp), 'r')}
+          ${stat('יתרה שנתית', money(totBal), totBal >= 0 ? 'g' : 'r')}
+        </div>
+        <div class="card" style="padding:6px;overflow-x:auto"><table style="min-width:640px"><thead><tr>
+          <th>חודש</th><th class="num">תשלומי לקוחות</th><th class="num">תשלום לקבלן משנה</th><th class="num">הוצאות עסק</th><th class="num">יתרה חודשית</th>
+        </tr></thead><tbody>
+        ${months.map(g => {
+          const bal = g.income - g.subPaid - g.bizExp, empty = !g.txs.length;
+          return `<tr data-ym="${g.month}" style="cursor:pointer${empty ? ';opacity:.55' : ''}">
+            <td><b>${monLabel(g.month)}</b></td>
+            ${cell(g.income, 'var(--green)')}${cell(g.subPaid, 'var(--red)')}${cell(g.bizExp, 'var(--red)')}
+            <td class="num" style="font-weight:800;color:${bal >= 0 ? 'var(--green)' : 'var(--red)'}">${empty ? '—' : money0(bal)}</td></tr>`;
+        }).join('')}
+        <tr style="border-top:2px solid var(--ink);font-weight:800"><td>סה"כ ${esc(year)}</td>
+          <td class="num" style="color:var(--green)">${money0(tot.income)}</td>
+          <td class="num" style="color:var(--red)">${money0(tot.subPaid)}</td>
+          <td class="num" style="color:var(--red)">${money0(tot.bizExp)}</td>
+          <td class="num" style="color:${totBal >= 0 ? 'var(--green)' : 'var(--red)'}">${money0(totBal)}</td></tr>
+        </tbody></table></div>
+        <div class="mini muted" style="margin-top:6px">לחץ על חודש כדי לראות את הפירוט</div>`;
+      out.querySelectorAll('[data-ym]').forEach(tr => tr.onclick = () => monthDetail(tr.dataset.ym, byMonth[tr.dataset.ym]));
     } else {
       const id = $('#rProj').value; if (!id) { out.innerHTML = '<div class="empty">בחר פרויקט</div>'; return; }
       const r = await guard(window.Store.reports.project(id));
@@ -930,6 +983,30 @@
         <div class="card"><h3>שלבים</h3>${r.stages.length ? `<table><thead><tr><th>#</th><th>שלב</th><th>קבלן משנה</th><th>לקוח</th><th>נכנס</th><th>קבלן</th><th>שולם</th></tr></thead><tbody>${r.stages.map(s => `<tr><td>${s.seq}</td><td>${esc(s.name)}</td><td>${esc(s.subcontractor_name || '—')}</td><td class="num">${money(s.client_amount)}</td><td class="num">${money(s.paid_in)}</td><td class="num">${money(s.sub_amount)}</td><td class="num">${money(s.paid_sub)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">אין שלבים</div>'}</div>
         <div class="card"><h3>הוצאות כלליות בפרויקט</h3>${r.project_expenses.length ? `<table><thead><tr><th>תאריך</th><th>ספק</th><th>מהות</th><th>סכום</th><th>חשבונית</th></tr></thead><tbody>${r.project_expenses.map(e => `<tr><td>${dfmt(e.date)}</td><td>${esc(e.supplier || '')}</td><td>${esc(e.purpose || '')}</td><td class="num">${money(e.amount)}</td><td>${invoiceLink(e.invoice_url)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">אין הוצאות כלליות</div>'}</div>`;
     }
+  }
+
+  // פירוט חודש בדוח השנתי — כל התנועות שמרכיבות את השורה
+  function monthDetail(ym, g) {
+    const txs = ((g && g.txs) || []).slice().sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+    const sum = (ty) => txs.filter(t => t.type === ty).reduce((s, t) => s + (+t.amount || 0), 0);
+    const inc = sum('client_payment'), sp = sum('sub_payment'), be = sum('business_expense');
+    const body = txs.length ? `
+      <div class="grid stat-grid" style="margin-bottom:10px">
+        ${stat('תשלומי לקוחות', money(inc), 'g')}
+        ${stat('לקבלני משנה', money(sp), 'r')}
+        ${stat('הוצאות עסק', money(be), 'r')}
+        ${stat('יתרה', money(inc - sp - be), (inc - sp - be) >= 0 ? 'g' : 'r')}
+      </div>
+      <div style="overflow-x:auto"><table><thead><tr><th>תאריך</th><th>סוג</th><th>פרטים</th><th>חשבונית</th><th class="num">סכום</th></tr></thead><tbody>
+      ${txs.map(t => {
+        const isIn = t.type === 'client_payment';
+        const detail = t.type === 'business_expense' ? [t.supplier, t.purpose].filter(Boolean).join(' · ')
+          : [t.project_name, t.stage_name, t.subcontractor_name].filter(Boolean).join(' · ');
+        return `<tr><td>${dfmt(t.date)}</td><td>${esc(TYPE_HE[t.type] || t.type)}</td><td class="mini">${esc(detail) || '—'}</td>
+          <td>${invoiceLink(t.invoice_url)}</td>
+          <td class="num" style="font-weight:700;color:${isIn ? 'var(--green)' : 'var(--red)'}">${isIn ? '+' : '−'}${money0(t.amount)}</td></tr>`;
+      }).join('')}</tbody></table></div>` : '<div class="empty">אין תנועות בחודש זה</div>';
+    openModal('פירוט ' + monLabel(ym), body, [{ label: 'סגירה', cls: 'ghost', onClick: (c) => c() }]);
   }
 
   // ============================================================
