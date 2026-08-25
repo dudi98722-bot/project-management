@@ -94,7 +94,7 @@ router.post('/generate', authenticate, can('edit'), async (req, res) => {
     if (!count) {
       if (scrollId) {
         const r = await pool.query(
-          `SELECT COALESCE(s.sheets_count, ROUND(COALESCE(p.parchment_units,0))) AS n
+          `SELECT COALESCE(s.sheets_count, p.sheets_count, ROUND(COALESCE(p.parchment_units,0))) AS n
            FROM scrolls s LEFT JOIN products p ON p.id=s.product_id
            WHERE s.id=$1 AND s.deleted=false`, [scrollId]);
         if (!r.rows.length) return res.status(404).json({ error: 'הספר לא נמצא' });
@@ -143,8 +143,9 @@ router.post('/move', authenticate, can('edit'), async (req, res) => {
   const hasStation = req.body.station_id !== undefined && req.body.station_id !== '';
   const hasHolder  = req.body.holder_id  !== undefined && req.body.holder_id  !== '';
   if (!hasStation && !hasHolder) return res.status(400).json({ error: 'יש לבחור תחנה או מחזיק' });
-  const stationId = hasStation ? num(req.body.station_id) : undefined;
-  const holderId  = hasHolder  ? num(req.body.holder_id)  : undefined;
+  // null מפורש מנקה את השדה; מחרוזת ריקה/חסר = לא נוגעים בו
+  const stationId = hasStation ? (req.body.station_id === null ? null : num(req.body.station_id)) : undefined;
+  const holderId  = hasHolder  ? (req.body.holder_id  === null ? null : num(req.body.holder_id))  : undefined;
   const date = req.body.date || null;
   const note = req.body.note || null;
 

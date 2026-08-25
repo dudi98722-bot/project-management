@@ -5,4 +5,5 @@ module.exports = crudRouter('products', [
   { key: 'parchment_units', type: 'num' },
   { key: 'pages', type: 'int' },
   { key: 'fixed_expense', type: 'num' },
+  { key: 'sheets_count', type: 'int' },
 ], { orderBy: 't.name' });

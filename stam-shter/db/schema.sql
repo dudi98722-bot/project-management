@@ -365,3 +365,6 @@ CREATE INDEX IF NOT EXISTS idx_moves_item ON track_moves(item_id);
 -- מספר יריעות לספר: ברירת המחדל מגיעה מהמוצר, אך בנביאים וכתובים
 -- הכמות משתנה מספר לספר ולכן אפשר לקבוע אותה ידנית לכל ספר.
 ALTER TABLE scrolls ADD COLUMN IF NOT EXISTS sheets_count INTEGER;
+-- מכמה יריעות מורכב המוצר. ברירת המחדל לכל ספר מסוג זה; ספר בודד
+-- (למשל נביא מסוים) יכול לעקוף בעזרת scrolls.sheets_count.
+ALTER TABLE products ADD COLUMN IF NOT EXISTS sheets_count INTEGER;

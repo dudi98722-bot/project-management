@@ -1709,9 +1709,12 @@ function setProducts() {
       { k: 'parchment_units', label: 'יחידות קלף', type: 'number' },
       { k: 'pages', label: 'מספר עמודים', type: 'number' },
       { k: 'fixed_expense', label: 'הוצאה קבועה', type: 'number' },
+      { k: 'sheets_count', label: 'מכמה יריעות מורכב', type: 'number',
+        hint: 'למעקב יריעות. ריק = לפי יחידות הקלף' },
     ],
     cols: [
       { label: 'שם המוצר', render: r => esc(r.name) },
+      { label: 'יריעות', cls: 'num', render: r => r.sheets_count ? `<b>${r.sheets_count}</b>` : numCell(r.parchment_units) },
       { label: 'יחידות קלף', cls: 'num', render: r => numCell(r.parchment_units) },
       { label: 'עמודים', cls: 'num', render: r => numCell(r.pages) },
       { label: 'הוצאה קבועה', cls: 'num', render: r => mCell(r.fixed_expense) },
@@ -2385,6 +2388,7 @@ const stationPill = (r) => r.station_name
 function pageTrack() {
   const subs = [
     { k: 'summary', label: '📍 סקירה' },
+    { k: 'sheets', label: '📄 יריעות לפי ספר' },
     { k: 'items', label: 'כל היריעות' },
     { k: 'stations', label: 'תחנות' },
   ];
@@ -2392,6 +2396,7 @@ function pageTrack() {
   const s = SUB.track;
   if (s === 'stations') return trackStations();
   if (s === 'items') return trackItems();
+  if (s === 'sheets') return trackSheets();
   return trackSummary();
 }
 
@@ -2459,8 +2464,8 @@ async function trackSummary() {
     SUB.track = 'items'; render();
   });
   document.querySelectorAll('[data-goto-scroll]').forEach(b => b.onclick = () => {
-    TRACK.scroll = +b.dataset.gotoScroll; TRACK.station = ''; TRACK.holder = '';
-    SUB.track = 'items'; render();
+    SHEETGRID.scrollId = +b.dataset.gotoScroll;
+    SUB.track = 'sheets'; render();
   });
 }
 
@@ -2591,6 +2596,202 @@ async function showHistory(id) {
     ], h) : '<div class="empty">אין תנועות עדיין</div>';
     modal({ title: 'היסטוריית היריעה', body, wide: true });
   } catch (e) { toast(e.message, 'err'); }
+}
+
+
+// ---------- גריד יריעות לספר, בסגנון אקסל ----------
+// כל שינוי נשמר מיד ונרשם ביומן התנועות. הניווט במקלדת:
+// Enter — שומר ויורד שורה · ↑/↓ — מעבר שורה באותה עמודה · ⇓ — העתקה למטה.
+const SHEETGRID = { scrollId: '' };
+
+async function trackSheets() {
+  const scrolls = C.scrolls;
+  if (!SHEETGRID.scrollId && scrolls.length) SHEETGRID.scrollId = scrolls[0].id;
+
+  $('view').innerHTML += `
+    <div class="card">
+      <div class="row" style="align-items:flex-end">
+        <div class="field" style="max-width:420px;margin-bottom:0"><label>בחר ספר</label>
+          <select id="sgScroll">${scrolls.map(s =>
+            `<option value="${s.id}" ${+SHEETGRID.scrollId === s.id ? 'selected' : ''}>${esc(scrollLabel(s))}</option>`).join('')}</select></div>
+        <div id="sgInfo" class="mini" style="padding-bottom:10px"></div>
+      </div>
+    </div>
+    <div id="sgBody"><div class="card muted">טוען…</div></div>`;
+  $('sgScroll').onchange = (e) => { SHEETGRID.scrollId = +e.target.value; render(); };
+  if (!SHEETGRID.scrollId) { $('sgBody').innerHTML = '<div class="card empty">אין ספרים במערכת</div>'; return; }
+
+  const scroll = scrolls.find(s => s.id === +SHEETGRID.scrollId) || {};
+  const rows = await Store.track.list({ scroll_id: SHEETGRID.scrollId });
+  const expected = N(scroll.sheets_count) || N(scroll.product_sheets_count) || N(scroll.product_parchment_units) || 0;
+
+  $('sgInfo').innerHTML = rows.length
+    ? `${rows.length} יריעות${expected && expected !== rows.length ? ` · מוגדרות ${expected} במוצר` : ''}`
+    : '';
+
+  if (!rows.length) {
+    $('sgBody').innerHTML = `
+      <div class="card"><div class="empty">
+        <div class="big">📄</div>
+        עדיין לא נוצרו יריעות לספר הזה.
+        <div style="margin-top:14px">
+          <input id="sgCount" type="number" min="1" max="2000" value="${expected || ''}"
+                 placeholder="מספר יריעות" style="width:130px;padding:9px;border:1px solid var(--line);border-radius:9px">
+          <button class="btn" id="sgCreate">צור יריעות</button>
+        </div>
+        ${expected ? `<div class="mini" style="margin-top:8px">לפי המוצר: ${expected} יריעות</div>` : ''}
+      </div></div>`;
+    $('sgCreate').onclick = async () => {
+      try {
+        const r = await Store.track.generate({ scroll_id: SHEETGRID.scrollId, count: $('sgCount').value || undefined });
+        toast(`נוצרו ${r.created} יריעות`, 'ok');
+        await reloadCaches(); render();
+      } catch (e) { toast(e.message, 'err'); }
+    };
+    return;
+  }
+
+  // רשימת מחזיקים לרשימת ההשלמה — תוויות ייחודיות, אחרת שני שמות זהים
+  // היו ממופים לאותו אדם
+  const seen = {};
+  const holderOpts = C.contacts.map(c => {
+    let label = contactName(c);
+    if (seen[label]) label = `${label} (${c.id})`;
+    seen[label] = true;
+    return { id: c.id, label };
+  });
+  const labelById = new Map(holderOpts.map(h => [h.id, h.label]));
+  const idByLabel = new Map(holderOpts.map(h => [h.label, h.id]));
+
+  const stationSel = (r) => `<select class="g-cell" data-col="station" data-id="${r.id}">
+      <option value="">—</option>
+      ${C.stations.map(s => `<option value="${s.id}" ${+r.station_id === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}
+    </select>`;
+  const holderInp = (r) => `<input class="g-cell g-holder" data-col="holder" data-id="${r.id}"
+      list="sgHolders" autocomplete="off" placeholder="—"
+      value="${esc(r.holder_id ? (labelById.get(r.holder_id) || r.holder_name || '') : '')}">`;
+
+  $('sgBody').innerHTML = `
+    <datalist id="sgHolders">${holderOpts.map(h => `<option value="${esc(h.label)}"></option>`).join('')}</datalist>
+    <div class="card">
+      <div class="mini" style="margin-bottom:8px">
+        💡 <b>Enter</b> שומר ויורד שורה · <b>↑ ↓</b> מעבר בין שורות · <b>⇓</b> מעתיק את השורה לכל השורות שמתחת
+      </div>
+      <div class="table-wrap"><table class="grid-tbl"><thead><tr>
+        <th style="width:60px">יריעה</th>
+        <th style="width:180px">תחנה</th>
+        <th style="width:220px">אצל מי</th>
+        <th style="width:110px">מתאריך</th>
+        <th style="width:60px">ימים</th>
+        <th>הערה</th>
+        <th style="width:90px"></th>
+      </tr></thead><tbody>
+        ${rows.map(r => `<tr data-row="${r.id}">
+          <td><b>${r.seq}</b></td>
+          <td>${stationSel(r)}</td>
+          <td>${holderInp(r)}</td>
+          <td class="mini" data-since="${r.id}">${r.since ? dt(r.since) : ''}</td>
+          <td class="num mini" data-days="${r.id}">${r.days_at_station != null
+              ? `<span class="${r.days_at_station > 60 ? 'neg' : ''}">${r.days_at_station}</span>` : ''}</td>
+          <td><input class="g-cell g-note" data-col="note" data-id="${r.id}" value="${esc(r.note || '')}" placeholder="—"></td>
+          <td class="center" style="white-space:nowrap">
+            <button class="btn ghost xs" data-fill="${r.id}" title="העתק לכל השורות מתחת">⇓</button>
+            <button class="btn ghost xs" data-hist="${r.id}" title="היסטוריית תחנות">🕘</button>
+            <span class="g-status" data-st="${r.id}"></span>
+          </td>
+        </tr>`).join('')}
+      </tbody></table></div>
+    </div>`;
+
+  const byId = new Map(rows.map(r => [r.id, r]));
+  const status = (id, txt, cls) => {
+    const el = document.querySelector(`[data-st="${id}"]`);
+    if (!el) return;
+    el.textContent = txt; el.className = 'g-status ' + (cls || '');
+    if (txt === '✓') setTimeout(() => { if (el.textContent === '✓') el.textContent = ''; }, 1500);
+  };
+
+  // שמירת שורה — משדר רק את מה שהשתנה, כדי שיומן התנועות ישקף שינוי אמיתי
+  async function saveRow(id) {
+    const tr = document.querySelector(`[data-row="${id}"]`);
+    if (!tr) return;
+    const cur = byId.get(id) || {};
+    const stationVal = tr.querySelector('[data-col="station"]').value;
+    const holderText = tr.querySelector('[data-col="holder"]').value.trim();
+    const noteVal = tr.querySelector('[data-col="note"]').value;
+
+    const newStation = stationVal === '' ? null : +stationVal;
+    let newHolder = null;
+    if (holderText !== '') {
+      if (idByLabel.has(holderText)) newHolder = idByLabel.get(holderText);
+      else { status(id, '✗ שם לא מוכר', 'err'); return; }
+    }
+    const stationChanged = (cur.station_id || null) !== newStation;
+    const holderChanged  = (cur.holder_id  || null) !== newHolder;
+    const noteChanged    = (cur.note || '') !== noteVal;
+    if (!stationChanged && !holderChanged && !noteChanged) return;
+
+    status(id, '⏳');
+    try {
+      if (stationChanged || holderChanged) {
+        await Store.track.move({ ids: [id], station_id: newStation, holder_id: newHolder });
+        cur.station_id = newStation; cur.holder_id = newHolder;
+        const t = today();
+        cur.since = t; cur.days_at_station = 0;
+        const sc = document.querySelector(`[data-since="${id}"]`); if (sc) sc.textContent = dt(t);
+        const dc = document.querySelector(`[data-days="${id}"]`); if (dc) dc.textContent = '0';
+      }
+      if (noteChanged) { await Store.track.update(id, { note: noteVal }); cur.note = noteVal; }
+      status(id, '✓', 'ok');
+    } catch (e) { status(id, '✗', 'err'); toast(e.message, 'err'); }
+  }
+
+  // ניווט מקלדת בין שורות באותה עמודה
+  const cells = () => [...document.querySelectorAll('.g-cell')];
+  function moveFocus(from, dir) {
+    const all = cells().filter(c => c.dataset.col === from.dataset.col);
+    const i = all.indexOf(from);
+    const next = all[i + dir];
+    if (next) { next.focus(); if (next.select) next.select(); }
+  }
+
+  document.querySelectorAll('.g-cell').forEach(el => {
+    el.addEventListener('change', () => saveRow(+el.dataset.id));
+    el.addEventListener('blur', () => saveRow(+el.dataset.id));
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); saveRow(+el.dataset.id); moveFocus(el, 1); }
+      // בתיבת בחירה החצים משנים ערך — שם מנווטים עם Alt
+      else if (e.key === 'ArrowDown' && (el.tagName !== 'SELECT' || e.altKey)) { e.preventDefault(); moveFocus(el, 1); }
+      else if (e.key === 'ArrowUp' && (el.tagName !== 'SELECT' || e.altKey)) { e.preventDefault(); moveFocus(el, -1); }
+      else if (e.key === 'Escape') el.blur();
+    });
+  });
+
+  // מילוי מהיר כלפי מטה
+  document.querySelectorAll('[data-fill]').forEach(b => b.onclick = async () => {
+    const id = +b.dataset.fill;
+    const tr = document.querySelector(`[data-row="${id}"]`);
+    const st = tr.querySelector('[data-col="station"]').value;
+    const ho = tr.querySelector('[data-col="holder"]').value.trim();
+    const idx = rows.findIndex(r => r.id === id);
+    const below = rows.slice(idx + 1);
+    if (!below.length) return toast('אין שורות מתחת', 'err');
+    if (!(await confirmBox(`להעתיק את התחנה והמחזיק ל-${below.length} השורות שמתחת?`))) return;
+    const stationVal = st === '' ? null : +st;
+    let holderVal = null;
+    if (ho !== '') {
+      if (!idByLabel.has(ho)) return toast('שם המחזיק לא מוכר', 'err');
+      holderVal = idByLabel.get(ho);
+    }
+    try {
+      const ids = below.map(r => r.id);
+      const r = await Store.track.move({ ids, station_id: stationVal, holder_id: holderVal });
+      toast(`עודכנו ${r.moved} יריעות`, 'ok');
+      render();
+    } catch (e) { toast(e.message, 'err'); }
+  });
+
+  document.querySelectorAll('[data-hist]').forEach(b => b.onclick = () => showHistory(+b.dataset.hist));
 }
 
 // ---------- תחנות ----------
