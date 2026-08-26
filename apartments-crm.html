@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 יג'";
+var APP_BUILD = "19.08 יד'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -7971,7 +7971,7 @@ function delIncomePay(incId,payId,aptId,back){
 /* ============================================================
    מסך התאמת בנק
    ============================================================ */
-var BQ={bank:"",apt:"",status:"open",q:"",page:1,doc:""};
+var BQ={bank:"",apt:"",status:"open",q:"",page:1,doc:"",report:""};
 function viewBankMatch(){
   var banks=stmtBanks();
   var all=allBankMoves().filter(function(m){ return canSeeApartment(moveAptId(m))||!moveAptId(m); });
@@ -8036,6 +8036,10 @@ function viewBankMatch(){
       (all.length?'<button class="btn btn-sm" onclick="openBulkMatch()">🔗 התאמה מרוכזת</button> ':'')+
       (openMoves.length?'<button class="btn btn-sm" onclick="runAutoMatch()">⚡ התאמה אוטומטית</button> ':'')+
       (all.length?'<button class="btn btn-danger btn-sm" onclick="clearMatchedMoves()">🗑️ נקה מותאמות</button> ':''):'')+
+    /* דוחות — למנהלים בלבד, ככלל ההרשאות הקבוע */
+    (CU&&CU.role==="admin"&&all.length
+      ? '<button class="btn '+(BQ.report?"btn-primary":"")+' btn-sm" onclick="bmToggleReport()">📊 דוחות</button> '
+      : '')+
     '<div class="sp"></div></div>';
   h+='<div class="toolbar">'+
     searchBox("bm-q",BQ.q,"חיפוש בתיאור / אסמכתא…","bmSearchLater(this.value)")+
@@ -8057,6 +8061,9 @@ function viewBankMatch(){
         return '<option value="'+o[0]+'"'+(BQ.status===o[0]?" selected":"")+'>'+o[1]+'</option>'; }).join("")+
     '</select>'+
     '<div class="sp"></div><span class="hint">'+countLine(list.length,all.length,"שורות")+'</span></div>';
+
+  /* מצב דוח: אותם סינונים, תצוגה מקובצת במקום רשימת השורות */
+  if(BQ.report && CU && CU.role==="admin"){ BM_FILL=null; return h+bankReportHtml(list); }
 
   var selBm=can("edit");
   h+='<div class="table-wrap"><table class="tbl" id="bm-moves-table"><thead><tr>'+
@@ -8089,6 +8096,87 @@ function viewBankMatch(){
       '<button class="btn btn-ghost btn-sm" onclick="BQ.page=999;rerender()">הצג הכל</button></div>';
   }
 
+  return h;
+}
+/* ============================================================
+   דוחות התאמת בנק
+   ------------------------------------------------------------
+   אותן שורות שעל המסך (הסינון הפעיל תקף גם כאן), מקובצות לפי מה
+   שבוחרים. כל קבוצה: כמה שורות, כמה כסף נכנס, כמה כבר הותאם וכמה
+   עוד לא מוסבר. כפתור האקסל הרגיל של הטבלאות עובד גם על הדוח.
+   ============================================================ */
+var BM_REPORTS={style:"קטגוריה", subStyle:"תת קטגוריה", both:"קטגוריה + תת קטגוריה",
+  bank:"בנק", month:"חודש", kind:"סוג", apt:"פרוייקט"};
+function bmToggleReport(){
+  BQ.report = BQ.report ? "" : "style";
+  rerender();
+}
+function bmSetReport(v){ BQ.report=v||"style"; rerender(); }
+function bmMonthKey(d){
+  d=String(d||"");
+  return /^\d{4}-\d{2}/.test(d) ? d.slice(0,7) : "";
+}
+/* המפתח שלפיו מקבצים. label = מה שמוצג, sort = לפי מה ממיינים */
+function bmGroupOf(m,mode){
+  var st=String(m.style||"").trim(), sub=String(m.subStyle||"").trim();
+  if(mode==="style")    return {label:st||"ללא קטגוריה", sort:st};
+  if(mode==="subStyle") return {label:sub||"ללא תת קטגוריה", sort:sub};
+  if(mode==="both")     return {label:(st||"ללא קטגוריה")+" › "+(sub||"ללא תת קטגוריה"), sort:st+" "+sub};
+  if(mode==="bank")     return {label:stmtBankName(m.stmtBankId||m.accountId)||bankName(m.stmtBankId||m.accountId)||"ללא בנק", sort:""};
+  if(mode==="kind")     return {label:String(m.kind||"").trim()||"ללא סוג", sort:""};
+  if(mode==="apt")      return {label:moveAptId(m)?apartmentName(moveAptId(m)):"לא שויך לפרוייקט", sort:""};
+  var mk=bmMonthKey(m.date);
+  return {label:mk?(mk.slice(5,7)+"/"+mk.slice(0,4)):"ללא תאריך", sort:mk};
+}
+function bankReportHtml(list){
+  var mode=BM_REPORTS[BQ.report]?BQ.report:"style";
+  var map={}, order=[];
+  list.forEach(function(m){
+    var g=bmGroupOf(m,mode);
+    var row=map[g.label];
+    if(!row){ row=map[g.label]={label:g.label,sort:g.sort,n:0,sum:0,matched:0,open:0}; order.push(g.label); }
+    row.n++;
+    row.sum=round2(row.sum+(Number(m.amount)||0));
+    row.matched=round2(row.matched+moveAllocated(m));
+    if(moveIsOpen(m)) row.open=round2(row.open+moveRemaining(m));
+  });
+  var tot={n:0,sum:0,matched:0,open:0};
+  order.forEach(function(k){ var r=map[k];
+    tot.n+=r.n; tot.sum=round2(tot.sum+r.sum); tot.matched=round2(tot.matched+r.matched); tot.open=round2(tot.open+r.open); });
+  /* חודש מסתדר לפי הזמן; שאר הדוחות — הגדול ביותר למעלה */
+  order.sort(mode==="month"
+    ? function(a,b){ return map[a].sort<map[b].sort?1:-1; }
+    : function(a,b){ return map[b].sum-map[a].sum; });
+
+  var h='<div class="card"><div class="toolbar" style="margin-bottom:10px">'+
+    '<h3 style="margin:0">📊 דוח לפי</h3>'+
+    '<select style="max-width:210px" onchange="bmSetReport(this.value)">'+
+      Object.keys(BM_REPORTS).map(function(k){
+        return '<option value="'+k+'"'+(mode===k?" selected":"")+'>'+BM_REPORTS[k]+'</option>'; }).join("")+
+    '</select>'+
+    '<div class="sp"></div>'+
+    '<button class="btn btn-sm" onclick="bmToggleReport()">⬅ חזרה לשורות</button></div>'+
+    '<div class="hint" style="margin-bottom:10px">הדוח מחושב על השורות שעוברות את הסינון שלמעלה '+
+      '(בנק, פרוייקט, מסמך, סטטוס וחיפוש) — '+countLine(list.length,list.length,"שורות")+
+      '. שינוי בסינון מעדכן גם את הדוח.</div>';
+  if(!order.length) return h+'<div class="empty">אין שורות שמתאימות לסינון</div></div>';
+  h+='<div class="table-wrap"><table class="tbl" id="bm-report-table"><thead><tr>'+
+    '<th>'+esc(BM_REPORTS[mode])+'</th><th>שורות</th><th>סכום</th><th>הותאם</th><th>לא מוסבר</th><th>% מהסכום</th>'+
+    '</tr></thead><tbody>';
+  order.forEach(function(k){
+    var r=map[k];
+    var pct=tot.sum>0.01?round2(r.sum/tot.sum*100):0;
+    h+='<tr><td><b>'+esc(r.label)+'</b></td>'+
+      '<td>'+r.n+'</td>'+
+      '<td><b>'+money(r.sum)+'</b></td>'+
+      '<td>'+money(r.matched)+'</td>'+
+      '<td class="'+(r.open>0.01?"neg":"pos")+'">'+money(r.open)+'</td>'+
+      '<td>'+num(pct)+'%</td></tr>';
+  });
+  h+='</tbody><tfoot><tr><td>סה"כ '+order.length+' קבוצות</td><td>'+tot.n+'</td>'+
+    '<td>'+money(tot.sum)+'</td><td>'+money(tot.matched)+'</td>'+
+    '<td class="'+(tot.open>0.01?"neg":"pos")+'">'+money(tot.open)+'</td><td>100%</td></tr></tfoot>'+
+    '</table></div></div>';
   return h;
 }
 /* מילוי מדורג: מוסיף את יתרת השורות במנות של 200, בין פריימים.
