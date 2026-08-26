@@ -94,6 +94,11 @@ h1,h2,h3,h4{font-family:"Frank Ruhl Libre","Segoe UI",Arial,serif; margin:0; fon
 .btn.ghost{background:transparent}
 .btn.danger:hover{background:var(--neg-soft); border-color:var(--neg); color:var(--neg)}
 .btn:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent-2); outline-offset:2px}
+.btn.save{background:var(--pos-soft); border-color:var(--pos-line); color:var(--pos); font-weight:700}
+.btn.save:hover{background:var(--pos); border-color:var(--pos); color:var(--surface)}
+.btn.save.dirty{background:var(--warn-soft); border-color:var(--warn); color:var(--warn-ink)}
+.btn.save.dirty:hover{background:var(--warn); color:var(--surface)}
+.btn.save:disabled{opacity:.6; cursor:default}
 #navSel{font-size:12.5px; padding:6px 10px}
 #toast{
   position:fixed; inset-block-start:64px; inset-inline-start:50%; transform:translateX(50%) translateY(-8px);
@@ -251,9 +256,10 @@ ul.risk b{color:var(--accent-text)}
   <div class="toolbar-in">
     <div class="tb-title">תוכנית עסקית — דוח אפס פנימי<small id="tbSub">—</small></div>
     <select id="navSel" class="btn" style="width:auto;max-width:210px"></select>
+    <button class="btn save" id="saveBtn" onclick="saveForever()">💾 שמור לצמיתות</button>
     <button class="btn primary" onclick="doPrint()">🖨 הדפסה / PDF</button>
     <button class="btn" onclick="exportSheet()">⤓ ייצוא לגיליון</button>
-    <button class="btn" onclick="saveJSON()">💾 שמירת נתונים</button>
+    <button class="btn" onclick="saveJSON()">⤓ קובץ גיבוי</button>
     <button class="btn" onclick="document.getElementById('fileIn').click()">📂 טעינת נתונים</button>
     <button class="btn ghost danger" onclick="resetAll()">↺ איפוס</button>
     <input type="file" id="fileIn" accept=".json" style="display:none" onchange="loadJSON(this)">
@@ -503,10 +509,16 @@ ul.risk b{color:var(--accent-text)}
 
 </div>
 
+<script id="seedState" type="application/json">null</script>
+
 <script>
 /* ==================================================================
    מודל התוכנית העסקית — כל החישובים מרוכזים ב-calc()
    ================================================================== */
+
+/* תבנית המסמך, נלכדת לפני שהרינדור ממלא טבלאות — משמשת לבניית
+   הגרסה שמתפרסמת בשמירה קבועה. חייב להישאר השורה הראשונה שרצה. */
+const PRISTINE = '<!doctype html>\n' + document.documentElement.outerHTML;
 
 const DEF = {
   meta:{name:"פרויקט פרומנצקו", addr:"", gush:"", helka:"", dev:"", bank:"", date:new Date().toLocaleDateString('he-IL')},
@@ -1151,10 +1163,100 @@ function resetCurves(){ S.curves.build=null; S.curves.sales=null; render(); }
 
 /* ---------------- PERSIST ---------------- */
 const LS = 'bizplan-promenczko-v1';
-function save(){ try{ localStorage.setItem(LS, JSON.stringify(S)); }catch(e){} }
+
+/* --- שתי שכבות שמירה ---
+   1. טיוטה: localStorage, נשמרת בכל הקלדה, פרטית לדפדפן הזה בלבד.
+   2. שמירה קבועה: הדף מפרסם גרסה חדשה של עצמו עם הנתונים מוטמעים בתוכו,
+      כך שהם נשמרים לצמיתות וזמינים מכל מכשיר שנכנס לקישור.                    */
+
+function readSeed(){
+  try{
+    const el = document.getElementById('seedState');
+    if(!el) return null;
+    const v = JSON.parse(el.textContent);
+    return (v && typeof v === 'object') ? v : null;
+  }catch(e){ return null; }
+}
+function save(){
+  try{ S._t = Date.now(); localStorage.setItem(LS, JSON.stringify(S)); }catch(e){}
+  markDirty();
+}
 function load(){
-  try{ const r = localStorage.getItem(LS); if(r){ const o=JSON.parse(r); return merge(clone(DEF), o); } }catch(e){}
-  return clone(DEF);
+  const seed = readSeed();
+  let draft = null;
+  try{ const r = localStorage.getItem(LS); if(r) draft = JSON.parse(r); }catch(e){}
+  /* טיוטה מקומית גוברת רק אם היא חדשה מהגרסה השמורה בדף */
+  const pick = (draft && (!seed || (draft._t||0) > (seed._savedAt||0))) ? draft : (seed || draft);
+  return pick ? merge(clone(DEF), pick) : clone(DEF);
+}
+/* השוואה מול הגרסה השמורה כדי לדעת אם יש שינויים שטרם נשמרו */
+function stateKey(o){
+  const c = clone(o); delete c._t; delete c._savedAt;
+  return JSON.stringify(c);
+}
+function isDirty(){
+  const seed = readSeed();
+  if(!seed) return true;                 /* קובץ מקומי / דף שמעולם לא נשמר */
+  return stateKey(S) !== stateKey(seed);
+}
+function markDirty(){
+  const b = $('saveBtn'); if(!b) return;
+  const seed = readSeed();
+  if(!seed){ b.textContent = '💾 שמור לצמיתות'; b.classList.remove('dirty'); return; }
+  if(isDirty()){ b.textContent = '● שמור שינויים'; b.classList.add('dirty'); }
+  else{ b.textContent = '✓ הכל שמור'; b.classList.remove('dirty'); }
+}
+
+/* יכולת artifact: הדף מפרסם גרסה חדשה של עצמו */
+let _artP = null;
+function artifactNS(){
+  if(!_artP){
+    _artP = (window.claude && typeof window.claude.use === 'function')
+      ? Promise.resolve(window.claude.use('artifact')).catch(()=>null)
+      : Promise.resolve(null);
+  }
+  return _artP;
+}
+/* PRISTINE נלכד בראש הסקריפט, לפני שהרינדור מילא טבלאות —
+   כך שהמסמך נבנה מחדש מתבנית + נתונים, ולא מצילום של ה-DOM החי */
+function buildDoc(state){
+  const json = JSON.stringify(state).replace(/</g, '\\u003c');
+  return PRISTINE.replace(
+    /(<script id="seedState" type="application\/json">)[\s\S]*?(<\/script>)/,
+    (m, a, b) => a + json + b
+  );
+}
+let _saving = false;
+async function saveForever(){
+  if(_saving) return;
+  const ns = await artifactNS();
+  if(!ns){
+    toast('שמירה קבועה זמינה רק בגרסת האתר. כאן הנתונים נשמרים בדפדפן — השתמש ב״שמירת נתונים״ לקובץ גיבוי.');
+    return;
+  }
+  _saving = true;
+  const b = $('saveBtn'); const prev = b ? b.textContent : '';
+  if(b){ b.textContent = '… שומר'; b.disabled = true; }
+  try{
+    const snap = clone(S); delete snap._t; snap._savedAt = Date.now();
+    await ns.publish(buildDoc(snap));
+    /* בהצלחה — כל התצוגות הפתוחות נטענות מחדש לגרסה החדשה */
+    try{ localStorage.removeItem(LS); }catch(e){}
+    toast('הנתונים נשמרו לצמיתות ✓');
+  }catch(err){
+    const code = err && err.code;
+    if(code === 'conflict'){
+      toast('גרסה חדשה יותר נשמרה במקביל — הדף נטען מחדש אליה');
+    }else if(code === 'not_granted' || code === 'not_writer'){
+      if(b) b.style.display = 'none';
+      toast('אין לך הרשאת עריכה לדף זה — הנתונים נשמרים בדפדפן שלך בלבד');
+    }else{
+      toast('השמירה נכשלה. הנתונים נשמרו בדפדפן; אפשר לייצא קובץ גיבוי.');
+    }
+  }finally{
+    _saving = false;
+    if(b){ b.disabled = false; b.textContent = prev; markDirty(); }
+  }
 }
 function merge(base, over){
   for(const k in over){
@@ -1163,7 +1265,13 @@ function merge(base, over){
   }
   return base;
 }
-function resetAll(){ if(confirm('לאפס את כל הנתונים לערכי ברירת המחדל?')){ localStorage.removeItem(LS); S = clone(DEF); boot(); } }
+function resetAll(){
+  const seed = readSeed();
+  const msg = seed
+    ? 'לאפס את כל הנתונים לערכי ברירת המחדל?\n\nהגרסה השמורה בדף תישאר עד שתלחץ "שמור לצמיתות".'
+    : 'לאפס את כל הנתונים לערכי ברירת המחדל?';
+  if(confirm(msg)){ try{ localStorage.removeItem(LS); }catch(e){} S = clone(DEF); boot(); }
+}
 
 /* --- שכבת שמירת קבצים: עובדת גם כקובץ מקומי וגם בתוך צופה ה-Artifact --- */
 /* מזכרון ההבטחה עצמה ולא דגל בוליאני — שתי לחיצות בזמן ההמתנה חולקות אותה בקשה */
@@ -1384,6 +1492,9 @@ function boot(){
   render();
   injectEditors();
   buildNav();
+  markDirty();
+  /* בקובץ מקומי אין יכולת פרסום — הכפתור מוסתר כדי לא להבטיח מה שאין */
+  artifactNS().then(ns=>{ const b=$('saveBtn'); if(b && !ns) b.style.display='none'; });
 }
 /* הטבלאות נבנות מחדש ב-innerHTML בכל רינדור, מה שהורס את השדה שבפוקוס.
    כל פקד מרונדר נושא data-k יציב, וכאן מצלמים ומשחזרים פוקוס + מיקום סמן. */
