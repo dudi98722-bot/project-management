@@ -403,7 +403,14 @@
     const inp = (cls, ph, num) => `<input class="${cls}" ${num ? 'type="number"' : ''} placeholder="${ph}" style="width:${num ? '100px' : '100%'};min-width:${num ? '90px' : '120px'};padding:7px;border:1px solid var(--line);border-radius:8px">`;
     const rowHtml = () => `<tr class="dbr"><td>${inp('dbr-lender', 'שם')}</td><td>${inp('dbr-taken', '0', 1)}</td><td>${inp('dbr-repaid', '0', 1)}</td><td>${inp('dbr-urgent', '0', 1)}</td><td>${inp('dbr-note', 'הערה')}</td></tr>`;
     openModal('קליטה מרוכזת של חובות', `
-      <p class="mini muted" style="margin-top:0">מלא שורה לכל חוב (שם + סכום חובה). שורות ריקות יידלגו.</p>
+      <div class="field" style="margin-bottom:6px"><label>📋 הדבקה (שורה לכל חוב — מאקסל / וואטסאפ)</label>
+        <textarea id="dbPaste" rows="4" placeholder="דוד&#9;25000&#9;5000&#9;8000&#9;הלוואה
+שרה&#9;9000
+בנק  80000  30000  15000  משכנתא"></textarea></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <button class="btn ghost sm" id="dbParse">נתח ↓</button>
+        <span class="mini muted">סדר העמודות: שם · לקחתי · החזרתי · דחוף · הערה (מה שחסר — 0)</span>
+      </div>
       <div style="overflow-x:auto"><table><thead><tr><th>ממי לקחתי *</th><th>לקחתי</th><th>החזרתי</th><th>דחוף</th><th>הערה</th></tr></thead>
         <tbody id="dbBulkBody">${Array.from({ length: 8 }, rowHtml).join('')}</tbody></table></div>
       <button class="btn ghost sm" id="dbAddRows" style="margin-top:8px">➕ עוד 5 שורות</button>`,
@@ -421,6 +428,43 @@
         close(); toast(((res && res.count) || list.length) + ' חובות נקלטו', 'ok'); scrDebts();
       } }, { label: 'ביטול', cls: 'ghost', onClick: (c) => c() }]);
     $('#dbAddRows').onclick = () => $('#dbBulkBody').insertAdjacentHTML('beforeend', Array.from({ length: 5 }, rowHtml).join(''));
+    $('#dbParse').onclick = () => {
+      const parsed = parseDebtsPaste($('#dbPaste').value);
+      if (!parsed.length) { toast('לא זוהו שורות עם שם וסכום', 'err'); return; }
+      const body = $('#dbBulkBody');
+      const need = parsed.length - body.querySelectorAll('.dbr').length;
+      if (need > 0) body.insertAdjacentHTML('beforeend', Array.from({ length: need }, rowHtml).join(''));
+      const trs = body.querySelectorAll('.dbr');
+      parsed.forEach((d, i) => {
+        const tr = trs[i]; if (!tr) return;
+        tr.querySelector('.dbr-lender').value = d.lender;
+        tr.querySelector('.dbr-taken').value = d.taken || '';
+        tr.querySelector('.dbr-repaid').value = d.repaid || '';
+        tr.querySelector('.dbr-urgent').value = d.urgent || '';
+        tr.querySelector('.dbr-note').value = d.note || '';
+      });
+      toast(parsed.length + ' שורות זוהו — בדוק ותקן במידת הצורך', 'ok');
+    };
+  }
+  // פענוח הדבקה של חובות: שם + מספרים (לקחתי/החזרתי/דחוף) + הערה. מדלג על כותרות ושורות ריקות.
+  function parseDebtsPaste(text) {
+    const out = [];
+    String(text || '').split(/\r?\n/).forEach(line => {
+      const l = line.trim(); if (!l) return;
+      let toks = (l.indexOf('\t') >= 0 ? l.split('\t') : l.split(/\s{2,}|[,;|]/)).map(x => x.trim()).filter(Boolean);
+      if (toks.length < 2) toks = l.split(/\s+/).map(x => x.trim()).filter(Boolean);
+      const nums = [], texts = [];
+      toks.forEach(t => {
+        // טלפון/תאריך לא נחשבים סכום
+        if (/^0\d[\d-]{6,}$/.test(t) || /\d{1,2}[./-]\d{1,2}[./-]\d{2,4}/.test(t)) { texts.push(t); return; }
+        const n = impNum(t);
+        if (n !== null && /\d/.test(t)) nums.push(n); else texts.push(t);
+      });
+      const lender = (texts.shift() || '').trim();
+      if (!lender || !nums.length || !(nums[0] > 0)) return;   // ללא שם או סכום — מדלגים (גם שורת כותרת)
+      out.push({ lender, taken: nums[0] || 0, repaid: nums[1] || 0, urgent: nums[2] || 0, note: texts.join(' ').trim() });
+    });
+    return out;
   }
 
   // ============================================================
