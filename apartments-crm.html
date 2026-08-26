@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 יד'";
+var APP_BUILD = "19.08 טז'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -7971,7 +7971,7 @@ function delIncomePay(incId,payId,aptId,back){
 /* ============================================================
    מסך התאמת בנק
    ============================================================ */
-var BQ={bank:"",apt:"",status:"open",q:"",page:1,doc:"",report:""};
+var BQ={bank:"",apt:"",status:"open",q:"",page:1,doc:"",report:"",repCol:"",repVal:"sum"};
 function viewBankMatch(){
   var banks=stmtBanks();
   var all=allBankMoves().filter(function(m){ return canSeeApartment(moveAptId(m))||!moveAptId(m); });
@@ -8008,23 +8008,41 @@ function viewBankMatch(){
   });
   var bankKeys=Object.keys(perBank);
   if(bankKeys.length>1 || (bankKeys.length===1 && banks.length>1)){
-    h+='<div class="card"><h3>סיכום לפי בנק</h3>'+
-      '<div class="table-wrap"><table class="tbl"><thead><tr>'+
-      '<th>בנק</th><th>שורות</th><th>נכנס</th><th>הותאם</th><th>לא מוסבר</th><th></th></tr></thead><tbody>';
-    bankKeys.sort(function(a,b){ return perBank[b].sum-perBank[a].sum; }).forEach(function(k){
-      var s=perBank[k];
-      var nm=stmtBankName(k)||bankName(k)||"—";
-      h+='<tr'+(BQ.bank===k?' style="background:#eef2ff"':'')+'>'+
-        '<td><b>🏦 '+esc(nm)+'</b></td><td>'+s.n+'</td>'+
-        '<td><b>'+money(s.sum)+'</b></td><td>'+money(s.matched)+'</td>'+
-        '<td class="'+(s.open>0.01?"neg":"pos")+'">'+money(s.open)+'</td>'+
-        '<td class="right"><button class="btn btn-ghost btn-sm" onclick="BQ.bank='+
-          (BQ.bank===k?"''":"'"+k+"'")+';rerender()">'+(BQ.bank===k?"✕ בטל סינון":"הצג")+'</button></td></tr>';
-    });
+    /* ---------- סיכום לפי בנק — מכווץ ----------
+       הטבלה תפסה את כל ראש המסך ודחפה את השורות עצמן — מה שבאמת
+       עובדים איתו — אל מתחת לקו הגלילה. עכשיו היא שורה אחת עם
+       המספרים החשובים, ונפתחת בלחיצה כשצריך. הבחירה נזכרת. */
+    var sumOpen=bmSumOpen();
     var tAll={n:all.length,sum:round2(all.reduce(function(s,m){return s+(Number(m.amount)||0);},0)),
       matched:round2(all.reduce(function(s,m){return s+moveAllocated(m);},0))};
-    h+='</tbody><tfoot><tr><td>סה"כ</td><td>'+tAll.n+'</td><td>'+money(tAll.sum)+'</td>'+
-      '<td>'+money(tAll.matched)+'</td><td>'+money(openSum)+'</td><td></td></tr></tfoot></table></div></div>';
+    h+='<div class="card" style="margin-bottom:12px'+(sumOpen?'':';padding:8px 14px')+'">'+
+      '<div class="toolbar" style="margin:0">'+
+        '<b style="font-size:14px">סיכום לפי בנק</b>'+
+        '<span class="muted" style="font-size:12.5px">'+bankKeys.length+' בנקים · '+money(tAll.sum)+
+          ' · לא מוסבר <span class="'+(openSum>0.01?"neg":"pos")+'">'+money(openSum)+'</span></span>'+
+        (BQ.bank?'<span class="badge badge-warn badge-unit">מסונן: '+
+          esc(stmtBankName(BQ.bank)||bankName(BQ.bank)||"—")+'</span>':'')+
+        '<div class="sp"></div>'+
+        '<button class="btn btn-ghost btn-sm" onclick="bmToggleBankSum()">'+
+          (sumOpen?'▲ הסתר':'▼ פירוט לפי בנק')+'</button>'+
+      '</div>';
+    if(sumOpen){
+      h+='<div class="table-wrap" style="margin-top:10px"><table class="tbl"><thead><tr>'+
+        '<th>בנק</th><th>שורות</th><th>נכנס</th><th>הותאם</th><th>לא מוסבר</th><th></th></tr></thead><tbody>';
+      bankKeys.sort(function(a,b){ return perBank[b].sum-perBank[a].sum; }).forEach(function(k){
+        var s=perBank[k];
+        var nm=stmtBankName(k)||bankName(k)||"—";
+        h+='<tr'+(BQ.bank===k?' style="background:#eef2ff"':'')+'>'+
+          '<td><b>🏦 '+esc(nm)+'</b></td><td>'+s.n+'</td>'+
+          '<td><b>'+money(s.sum)+'</b></td><td>'+money(s.matched)+'</td>'+
+          '<td class="'+(s.open>0.01?"neg":"pos")+'">'+money(s.open)+'</td>'+
+          '<td class="right"><button class="btn btn-ghost btn-sm" onclick="BQ.bank='+
+            (BQ.bank===k?"''":"'"+k+"'")+';rerender()">'+(BQ.bank===k?"✕ בטל סינון":"הצג")+'</button></td></tr>';
+      });
+      h+='</tbody><tfoot><tr><td>סה"כ</td><td>'+tAll.n+'</td><td>'+money(tAll.sum)+'</td>'+
+        '<td>'+money(tAll.matched)+'</td><td>'+money(openSum)+'</td><td></td></tr></tfoot></table></div>';
+    }
+    h+='</div>';
   }
   h+='<div class="toolbar">'+
     (can("edit")?'<button class="btn btn-primary btn-sm" onclick="openBankMoveImport()">📥 הדבקת שורות מהבנק</button> '+
@@ -8105,13 +8123,33 @@ function viewBankMatch(){
    שבוחרים. כל קבוצה: כמה שורות, כמה כסף נכנס, כמה כבר הותאם וכמה
    עוד לא מוסבר. כפתור האקסל הרגיל של הטבלאות עובד גם על הדוח.
    ============================================================ */
-var BM_REPORTS={style:"קטגוריה", subStyle:"תת קטגוריה", both:"קטגוריה + תת קטגוריה",
-  bank:"בנק", month:"חודש", kind:"סוג", apt:"פרוייקט"};
+/* המימדים שאפשר לקבץ לפיהם — גם בשורות וגם בעמודות. כל צירוף חוקי,
+   ולכן "לפי שנה לפי קטגוריה" הוא פשוט שורות=קטגוריה, עמודות=שנה. */
+var BM_DIMS={style:"קטגוריה", subStyle:"תת קטגוריה", both:"קטגוריה + תת קטגוריה",
+  bank:"בנק", apt:"פרוייקט", kind:"סוג",
+  year:"שנה", month:"חודש", doc:"מסמך", status:"סטטוס"};
+var BM_REPORTS=BM_DIMS;
+/* המדד שמוצג בתוך תאי הפיצול */
+var BM_MEASURES={sum:"סכום", n:"מספר שורות", matched:"הותאם", open:"לא מוסבר"};
+var BM_MEASURE_MONEY={sum:1,matched:1,open:1};
+/* מצב הפתיחה של "סיכום לפי בנק" — העדפת תצוגה, לא נתון: נשמר מקומית
+   בדפדפן ולא נכנס למסד ולא מסונכרן. */
+function bmSumOpen(){ try{ return localStorage.getItem(LSKEY+"_banksum")==="1"; }catch(e){ return false; } }
+function bmToggleBankSum(){
+  try{ localStorage.setItem(LSKEY+"_banksum", bmSumOpen()?"0":"1"); }catch(e){}
+  rerender();
+}
 function bmToggleReport(){
   BQ.report = BQ.report ? "" : "style";
   rerender();
 }
-function bmSetReport(v){ BQ.report=v||"style"; rerender(); }
+function bmSetReport(v){
+  BQ.report=v||"style";
+  /* אותו מימד בשורות ובעמודות אינו דוח — מאפסים את הפיצול, שלא יחזור
+     מעצמו כשמחליפים שוב את מימד השורות. */
+  if(BQ.repCol===BQ.report) BQ.repCol="";
+  rerender();
+}
 function bmMonthKey(d){
   d=String(d||"");
   return /^\d{4}-\d{2}/.test(d) ? d.slice(0,7) : "";
@@ -8125,8 +8163,67 @@ function bmGroupOf(m,mode){
   if(mode==="bank")     return {label:stmtBankName(m.stmtBankId||m.accountId)||bankName(m.stmtBankId||m.accountId)||"ללא בנק", sort:""};
   if(mode==="kind")     return {label:String(m.kind||"").trim()||"ללא סוג", sort:""};
   if(mode==="apt")      return {label:moveAptId(m)?apartmentName(moveAptId(m)):"לא שויך לפרוייקט", sort:""};
+  if(mode==="doc")      return {label:(DOC_STATES[moveDocState(m)]||{}).t||"—", sort:""};
+  if(mode==="status"){
+    var st=moveStatus(m);
+    return {label:st==="matched"?"מותאם":st==="partial"?"מותאם חלקית":st==="ignored"?"התעלמתי":"לא מותאם", sort:st};
+  }
+  if(mode==="year"){
+    var yk=bmMonthKey(m.date).slice(0,4);
+    return {label:yk||"ללא תאריך", sort:yk};
+  }
   var mk=bmMonthKey(m.date);
   return {label:mk?(mk.slice(5,7)+"/"+mk.slice(0,4)):"ללא תאריך", sort:mk};
+}
+function bmSetReportCol(v){ BQ.repCol=(v===BQ.report)?"":v; rerender(); }
+function bmSetReportVal(v){ BQ.repVal=BM_MEASURES[v]?v:"sum"; rerender(); }
+/* ערך המדד לשורה בודדת — כדי שהצבירה תהיה במקום אחד */
+function bmMeasure(m,val){
+  if(val==="n") return 1;
+  if(val==="matched") return moveAllocated(m);
+  if(val==="open") return moveIsOpen(m)?moveRemaining(m):0;
+  return Number(m.amount)||0;
+}
+function bmFmtMeasure(v,val){ return BM_MEASURE_MONEY[val] ? money(round2(v)) : num(v); }
+/* מימד של זמן מסתדר לפי הזמן; שאר המימדים לפי הגודל */
+function bmSortLabels(order,map,mode,asc){
+  var timeDim=(mode==="month"||mode==="year"||mode==="status");
+  return order.slice().sort(timeDim
+    ? function(a,b){ var x=map[a].sort, y=map[b].sort; return asc?(x<y?-1:x>y?1:0):(x<y?1:x>y?-1:0); }
+    : function(a,b){ return map[b].sum-map[a].sum; });
+}
+/* דוח מוצלב: שורות מול עמודות, מדד אחד בתוך התאים */
+var SEP=String.fromCharCode(31);
+function bankPivotHtml(list,mode,colMode){
+  var val=BM_MEASURES[BQ.repVal]?BQ.repVal:"sum";
+  var rowMap={}, rowOrder=[], colMap={}, colOrder=[], cell={}, grand=0;
+  list.forEach(function(m){
+    var r=bmGroupOf(m,mode), c=bmGroupOf(m,colMode);
+    if(!rowMap[r.label]){ rowMap[r.label]={sort:r.sort,sum:0}; rowOrder.push(r.label); }
+    if(!colMap[c.label]){ colMap[c.label]={sort:c.sort,sum:0}; colOrder.push(c.label); }
+    var v=bmMeasure(m,val);
+    rowMap[r.label].sum+=v; colMap[c.label].sum+=v; grand+=v;
+    var k=r.label+SEP+c.label;
+    cell[k]=(cell[k]||0)+v;
+  });
+  rowOrder=bmSortLabels(rowOrder,rowMap,mode,false);
+  colOrder=bmSortLabels(colOrder,colMap,colMode,true);
+  var h='<div class="table-wrap"><table class="tbl" id="bm-report-table"><thead><tr>'+
+    '<th>'+esc(BM_DIMS[mode])+'</th>'+
+    colOrder.map(function(c){ return '<th>'+esc(c)+'</th>'; }).join("")+
+    '<th>סה"כ</th></tr></thead><tbody>';
+  rowOrder.forEach(function(r){
+    h+='<tr><td><b>'+esc(r)+'</b></td>'+
+      colOrder.map(function(c){
+        var v=cell[r+SEP+c]||0;
+        return '<td>'+(v?bmFmtMeasure(v,val):'<span class="muted">—</span>')+'</td>';
+      }).join("")+
+      '<td><b>'+bmFmtMeasure(rowMap[r].sum,val)+'</b></td></tr>';
+  });
+  h+='</tbody><tfoot><tr><td>סה"כ '+rowOrder.length+' שורות</td>'+
+    colOrder.map(function(c){ return '<td>'+bmFmtMeasure(colMap[c].sum,val)+'</td>'; }).join("")+
+    '<td>'+bmFmtMeasure(grand,val)+'</td></tr></tfoot></table></div>';
+  return h;
 }
 function bankReportHtml(list){
   var mode=BM_REPORTS[BQ.report]?BQ.report:"style";
@@ -8148,17 +8245,38 @@ function bankReportHtml(list){
     ? function(a,b){ return map[a].sort<map[b].sort?1:-1; }
     : function(a,b){ return map[b].sum-map[a].sum; });
 
+  var colMode=(BM_DIMS[BQ.repCol] && BQ.repCol!==mode) ? BQ.repCol : "";
+  var val=BM_MEASURES[BQ.repVal]?BQ.repVal:"sum";
+  function dimOpts(cur,skip){
+    return Object.keys(BM_DIMS).map(function(k){
+      if(k===skip) return "";
+      return '<option value="'+k+'"'+(cur===k?" selected":"")+'>'+BM_DIMS[k]+'</option>'; }).join("");
+  }
   var h='<div class="card"><div class="toolbar" style="margin-bottom:10px">'+
-    '<h3 style="margin:0">📊 דוח לפי</h3>'+
-    '<select style="max-width:210px" onchange="bmSetReport(this.value)">'+
-      Object.keys(BM_REPORTS).map(function(k){
-        return '<option value="'+k+'"'+(mode===k?" selected":"")+'>'+BM_REPORTS[k]+'</option>'; }).join("")+
-    '</select>'+
+    '<h3 style="margin:0">📊 בונה דוחות</h3>'+
     '<div class="sp"></div>'+
     '<button class="btn btn-sm" onclick="bmToggleReport()">⬅ חזרה לשורות</button></div>'+
+    '<div class="form-grid" style="margin-bottom:10px">'+
+      '<div class="field"><label>שורות — לקבץ לפי</label>'+
+        '<select onchange="bmSetReport(this.value)">'+dimOpts(mode,"")+'</select></div>'+
+      '<div class="field"><label>עמודות — לפצל לפי</label>'+
+        '<select onchange="bmSetReportCol(this.value)">'+
+          '<option value=""'+(colMode?"":" selected")+'>— ללא פיצול —</option>'+
+          dimOpts(colMode,mode)+'</select>'+
+        '<div class="hint">לדוגמה: שורות=קטגוריה, עמודות=שנה</div></div>'+
+      (colMode?'<div class="field"><label>מה להציג בתאים</label>'+
+        '<select onchange="bmSetReportVal(this.value)">'+
+          Object.keys(BM_MEASURES).map(function(k){
+            return '<option value="'+k+'"'+(val===k?" selected":"")+'>'+BM_MEASURES[k]+'</option>'; }).join("")+
+        '</select></div>':'')+
+    '</div>'+
     '<div class="hint" style="margin-bottom:10px">הדוח מחושב על השורות שעוברות את הסינון שלמעלה '+
       '(בנק, פרוייקט, מסמך, סטטוס וחיפוש) — '+countLine(list.length,list.length,"שורות")+
       '. שינוי בסינון מעדכן גם את הדוח.</div>';
+  if(colMode){
+    if(!list.length) return h+'<div class="empty">אין שורות שמתאימות לסינון</div></div>';
+    return h+bankPivotHtml(list,mode,colMode)+'</div>';
+  }
   if(!order.length) return h+'<div class="empty">אין שורות שמתאימות לסינון</div></div>';
   h+='<div class="table-wrap"><table class="tbl" id="bm-report-table"><thead><tr>'+
     '<th>'+esc(BM_REPORTS[mode])+'</th><th>שורות</th><th>סכום</th><th>הותאם</th><th>לא מוסבר</th><th>% מהסכום</th>'+
