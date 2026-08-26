@@ -368,3 +368,12 @@ ALTER TABLE scrolls ADD COLUMN IF NOT EXISTS sheets_count INTEGER;
 -- מכמה יריעות מורכב המוצר. ברירת המחדל לכל ספר מסוג זה; ספר בודד
 -- (למשל נביא מסוים) יכול לעקוף בעזרת scrolls.sheets_count.
 ALTER TABLE products ADD COLUMN IF NOT EXISTS sheets_count INTEGER;
+
+-- מק"ט ידני לספר — המזהה שהמשתמש מכיר, בנוסף למספר הפנימי (#).
+ALTER TABLE scrolls ADD COLUMN IF NOT EXISTS sku VARCHAR(100);
+-- אסור ששני ספרים יחלקו את *כל* השלושה יחד: סופר + מוצר + מק"ט.
+-- חפיפה חלקית מותרת. האילוץ חל רק כשיש מק"ט — בלעדיו אין מה להבחין,
+-- ומספר הספר הפנימי משמש כמזהה.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_scroll_scribe_product_sku
+  ON scrolls (scribe_id, product_id, sku)
+  WHERE deleted = false AND sku IS NOT NULL;

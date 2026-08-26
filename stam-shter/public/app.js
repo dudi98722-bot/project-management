@@ -74,7 +74,26 @@ const optSizes = (sel) => C.sizes.map(s =>
   `<option value="${s.id}" ${+sel === s.id ? 'selected' : ''}>${esc(s.name)} (${money(s.cost_per_unit)}/יח')</option>`).join('');
 const optListVals = (arr, sel) => arr.map(v =>
   `<option value="${esc(v.value)}" ${sel === v.value ? 'selected' : ''}>${esc(v.value)}${v.is_correction ? ' ⟵ תיקונים' : ''}</option>`).join('');
-const scrollLabel = (s) => `#${s.id} · ${s.product_name || 'ללא מוצר'} · ${s.scribe_name || 'ללא סופר'}`;
+// תווית הספר בכל מקום במערכת. המק"ט הידני מוצג ראשון — זה המזהה
+// שהמשתמש מכיר; המספר הפנימי (#) נשאר בסוף לצורך התייחסות.
+const scrollLabel = (s) => {
+  const head = s.sku ? String(s.sku) : `#${s.id}`;
+  const tail = s.sku ? ` (#${s.id})` : '';
+  return `${head} · ${s.product_name || 'ללא מוצר'} · ${s.scribe_name || 'ללא סופר'}${tail}`;
+};
+
+// ---- רשימות ספרים שמצטמצמות לפי מי שנבחר בטופס ----
+// הרשימה נבנית ברגע פתיחת השדה, ולכן היא משקפת את הבחירה הנוכחית.
+// כשלא נבחר אף אחד — כל הספרים, כדי שאפשר יהיה לעבוד גם בלי לבחור קודם.
+function scrollItemsBy(fieldKey, scrollField) {
+  return () => {
+    const el = $('f_' + fieldKey);
+    const who = el ? +el.value : 0;
+    const list = who ? C.scrolls.filter(s => +s[scrollField] === who) : C.scrolls;
+    return list.map(s => ({ v: s.id, t: scrollLabel(s) }));
+  };
+}
+const itemsScrollsOfCustomer = scrollItemsBy('customer_id', 'customer_id');
 const optScrolls = (sel) => C.scrolls.map(s =>
   `<option value="${s.id}" ${+sel === s.id ? 'selected' : ''}>${esc(scrollLabel(s))}</option>`).join('');
 const purchaseLabel = (p) => `${p.product_name || 'מוצר'} · ${p.scribe_name || 'סופר'} (נשאר ${N(p.remaining_qty)})`;
@@ -140,6 +159,9 @@ function wireCombos(root, fields) {
 
     inp.onfocus = () => { items = f.items(hid.value) || []; act = -1; draw(inp.value === (items.find(x => String(x.v) === String(hid.value)) || {}).t ? '' : inp.value); };
     inp.oninput = () => {
+      // ריענון הרשימה לפני הניקוי — שדה תלוי (למשל ספרים לפי הסופר שנבחר)
+      // עשוי להשתנות בין פתיחה לפתיחה, ואסור להסתמך רק על אירוע ה-focus.
+      items = f.items(hid.value) || [];
       hid.value = ''; inp.classList.remove('picked');   // הקלדה מבטלת בחירה קודמת
       act = -1; draw(inp.value);
     };
@@ -633,6 +655,7 @@ async function pageScrolls() {
   const cols = [
     ...(ME.caps.del ? [selCol('scrolls')] : []),
     { label: '#', render: r => r.id },
+    { label: 'מק"ט', render: r => r.sku ? `<b>${esc(r.sku)}</b>` : '<span class="muted">—</span>' },
     { label: 'מוצר', render: r => esc(r.product_name || '—') },
     { label: 'סופר', render: r => esc(r.scribe_name || '—') },
     { label: 'רוכש', render: r => esc(r.customer_name || '—') },
@@ -678,6 +701,8 @@ function scrollCfg() {
     labelOf: (r) => scrollLabel(r),
     defaults: () => ({ sale_date: today(), buyer_currency: 'ILS', status: 'active' }),
     fields: [
+      { k: 'sku', label: 'מק"ט (המזהה שלך)', type: 'text',
+        hint: 'יופיע לצד הספר בכל המסכים. אסור שיחזור עם אותו סופר ואותו מוצר' },
       { k: 'scribe_id', label: 'שם סופר', type: 'combo', items: itemsContacts },
       { k: 'product_id', label: 'מוצר', type: 'combo', items: itemsProducts },
       { k: 'parchment_size_id', label: 'גודל קלף', type: 'combo', items: itemsSizes },
@@ -705,6 +730,7 @@ async function showScrollCard(id) {
 
   const body = `
     <div class="kv" style="margin-bottom:6px">
+      ${s.sku ? kv('מק"ט', `<b>${esc(s.sku)}</b>`) : ''}
       ${kv('מוצר', esc(s.product_name || '—'))}
       ${kv('סופר', esc(s.scribe_name || '—'))}
       ${kv('רוכש', esc(s.customer_name || '—'))}
@@ -782,7 +808,10 @@ async function pageScribePay() {
     labelOf: (r) => `תשלום ${money(r.amount)}`,
     defaults: () => ({ date: today() }),
     fields: [
-      { k: 'scroll_id', label: 'עבור איזה ספר', type: 'combo', items: itemsScrolls, required: true },
+      { k: '_scribe', label: 'סופר (לצמצום הרשימה)', type: 'combo', items: itemsContacts,
+        placeholder: 'כל הסופרים…' },
+      { k: 'scroll_id', label: 'עבור איזה ספר', type: 'combo', items: scrollItemsBy('_scribe', 'scribe_id'), required: true,
+        placeholder: 'הספרים של הסופר שנבחר…' },
       { k: 'date', label: 'תאריך', type: 'date' },
       { k: 'amount', label: 'סכום ששולם', type: 'number' },
       { k: 'note', label: 'הערה', type: 'textarea' },
@@ -793,7 +822,10 @@ async function pageScribePay() {
     labelOf: (r) => `${r.pages} עמודים`,
     defaults: () => ({ date: today() }),
     fields: [
-      { k: 'scroll_id', label: 'עבור איזה ספר', type: 'combo', items: itemsScrolls, required: true },
+      { k: '_scribe', label: 'סופר (לצמצום הרשימה)', type: 'combo', items: itemsContacts,
+        placeholder: 'כל הסופרים…' },
+      { k: 'scroll_id', label: 'עבור איזה ספר', type: 'combo', items: scrollItemsBy('_scribe', 'scribe_id'), required: true,
+        placeholder: 'הספרים של הסופר שנבחר…' },
       { k: 'date', label: 'תאריך', type: 'date' },
       { k: 'pages', label: 'כמות עמודים שנכתבה', type: 'number' },
       { k: 'note', label: 'הערה', type: 'textarea' },
@@ -875,7 +907,8 @@ function pageCustPay() {
     note: 'עלות פריטה = (סכום בדולר × שער יציג) − מזומן שהתקבל ביד. הרוכש מזוכה על הסכום המלא.',
     fields: [
       { k: 'customer_id', label: 'רוכש', type: 'combo', items: itemsContacts },
-      { k: 'scroll_id', label: 'ספר שרכש', type: 'combo', items: itemsScrolls },
+      { k: 'scroll_id', label: 'ספר שרכש', type: 'combo', items: itemsScrollsOfCustomer,
+        placeholder: 'הספרים של הרוכש שנבחר…' },
       { k: 'date', label: 'תאריך', type: 'date' },
       { k: 'amount_ils', label: 'סכום ששילם בש"ח', type: 'number' },
       { k: 'amount_usd', label: 'סכום ששילם בדולר', type: 'number' },
@@ -910,7 +943,10 @@ function pageBookExp() {
     totals: true,
     note: 'סוג המסומן כ<b>תיקונים</b> נזקף לצד הסופר (מקוזז מהיתרה שלו). כל שאר הסוגים נחשבים הוצאות לספר ויורדים מהרווח.',
     fields: [
-      { k: 'scroll_id', label: 'ספר', type: 'combo', items: itemsScrolls, required: true },
+      { k: '_scribe', label: 'סופר (לצמצום הרשימה)', type: 'combo', items: itemsContacts,
+        placeholder: 'כל הסופרים…' },
+      { k: 'scroll_id', label: 'ספר', type: 'combo', items: scrollItemsBy('_scribe', 'scribe_id'), required: true,
+        placeholder: 'הספרים של הסופר שנבחר…' },
       { k: 'type', label: 'סוג הוצאה', type: 'combo', items: () => itemsList(C.expBook) },
       { k: 'date', label: 'תאריך', type: 'date' },
       { k: 'amount', label: 'סכום', type: 'number' },
@@ -937,7 +973,10 @@ function pageParchExp() {
     totals: true,
     note: 'סך העלות מחושב אוטומטית: כמות × עלות ליחידה של הגודל שנבחר. סכום זה הוא "עלות קלף בפועל" בכרטיס הספר.',
     fields: [
-      { k: 'scroll_id', label: 'ספר', type: 'combo', items: itemsScrolls, required: true },
+      { k: '_scribe', label: 'סופר (לצמצום הרשימה)', type: 'combo', items: itemsContacts,
+        placeholder: 'כל הסופרים…' },
+      { k: 'scroll_id', label: 'ספר', type: 'combo', items: scrollItemsBy('_scribe', 'scribe_id'), required: true,
+        placeholder: 'הספרים של הסופר שנבחר…' },
       { k: 'date', label: 'תאריך', type: 'date' },
       { k: 'quantity', label: 'כמות קלף', type: 'number' },
       { k: 'parchment_size_id', label: 'גודל', type: 'combo', items: itemsSizes },

@@ -6,6 +6,11 @@ const { coerce } = require('./_crud');
 const { getScrolls, getScroll } = require('../calc');
 const router = express.Router();
 
+function dupError(e) {
+  return e && e.code === '23505' && String(e.constraint || '').includes('scribe_product_sku');
+}
+const DUP_MSG = 'כבר קיים ספר עם אותו סופר, אותו מוצר ואותו מק"ט. שנה את המק"ט כדי להבחין ביניהם.';
+
 const FIELDS = [
   { key: 'scribe_id', type: 'int' },
   { key: 'parchment_size_id', type: 'int' },
@@ -18,6 +23,7 @@ const FIELDS = [
   { key: 'note', type: 'text' },
   { key: 'status', type: 'text' },
   { key: 'sheets_count', type: 'int' },
+  { key: 'sku', type: 'text' },
 ];
 const COLS = FIELDS.map(f => f.key);
 
@@ -77,7 +83,10 @@ router.post('/', authenticate, can('edit'), async (req, res) => {
     await logAction(req.user, 'add', 'scrolls', r.rows[0].id, {}, r.rows[0]);
     const created = await getScroll(r.rows[0].id);
     res.status(201).json(req.caps.finance ? created : scrubBuyer(created));
-  } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+  } catch (e) {
+    if (dupError(e)) return res.status(409).json({ error: DUP_MSG });
+    console.error(e); res.status(500).json({ error: 'שגיאת שרת' });
+  }
 });
 
 router.put('/:id', authenticate, can('edit'), async (req, res) => {
@@ -92,7 +101,10 @@ router.put('/:id', authenticate, can('edit'), async (req, res) => {
     await logAction(req.user, 'edit', 'scrolls', req.params.id, {}, r.rows[0]);
     const upd = await getScroll(req.params.id);
     res.json(req.caps.finance ? upd : scrubBuyer(upd));
-  } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+  } catch (e) {
+    if (dupError(e)) return res.status(409).json({ error: DUP_MSG });
+    console.error(e); res.status(500).json({ error: 'שגיאת שרת' });
+  }
 });
 
 // מחיקה רכה — מדביקה לכל היומנים של הספר

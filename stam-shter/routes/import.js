@@ -50,6 +50,7 @@ const SPEC = {
   scrolls: {
     label: 'ס"ת',
     cols: [
+      { key: 'sku', label: 'מק"ט' },
       { key: 'scribe_id', label: 'סופר', ref: 'contacts' },
       { key: 'product_id', label: 'מוצר', ref: 'products' },
       { key: 'parchment_size_id', label: 'גודל קלף', ref: 'parchment_sizes' },
