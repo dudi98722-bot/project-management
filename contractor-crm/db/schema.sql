@@ -125,6 +125,23 @@ CREATE TABLE IF NOT EXISTS payment_requests (
 );
 CREATE INDEX IF NOT EXISTS idx_payreq_created ON payment_requests(created_at) WHERE deleted=false;
 
+-- חובות — ממי לקחתי, כמה החזרתי, וכמה מהיתרה דחוף
+CREATE TABLE IF NOT EXISTS debts (
+  id BIGSERIAL PRIMARY KEY,
+  lender VARCHAR(200) NOT NULL,        -- ממי לקחתי
+  phone VARCHAR(50),
+  taken DECIMAL(14,2) NOT NULL DEFAULT 0,    -- כמה לקחתי
+  repaid DECIMAL(14,2) NOT NULL DEFAULT 0,   -- כמה החזרתי
+  urgent DECIMAL(14,2) NOT NULL DEFAULT 0,   -- כמה מהיתרה דחוף
+  taken_date DATE,
+  due_date DATE,
+  note TEXT,
+  deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMP, deleted_by INTEGER,
+  created_by INTEGER, created_at TIMESTAMP DEFAULT NOW(),
+  updated_by INTEGER, updated_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_debts_open ON debts(lender) WHERE deleted=false;
+
 -- כללי סיווג נלמדים לבית (טקסט -> קטגוריה)
 CREATE TABLE IF NOT EXISTS home_rules (
   id SERIAL PRIMARY KEY,

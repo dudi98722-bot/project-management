@@ -70,6 +70,14 @@
       rules: () => apiFetch('/home/rules'),
       categories: () => apiFetch('/home/categories'),
     },
+    debts: {
+      list: () => apiFetch('/debts'),
+      create: (d) => apiFetch('/debts', { method: 'POST', body: d }),
+      update: (id, d) => apiFetch('/debts/' + id, { method: 'PUT', body: d }),
+      repay: (id, amount) => apiFetch('/debts/' + id + '/repay', { method: 'POST', body: { amount } }),
+      bulk: (debts) => apiFetch('/debts/bulk', { method: 'POST', body: { debts } }),
+      remove: (id) => apiFetch('/debts/' + id, { method: 'DELETE' }),
+    },
     payreq: {
       list: () => apiFetch('/payment-requests'),
       create: (d) => apiFetch('/payment-requests', { method: 'POST', body: d }),
@@ -111,7 +119,7 @@
   let _id = 1000;
   const nid = () => ++_id;
   const DEFAULT_EXPENSE_CATS = ['חומרים', 'כלים', 'שכר עבודה', 'השכרת ציוד', 'הובלה', 'דלק', 'אגרות ורשויות', 'ביטוח', 'משרד', 'אחר'];
-  const D = { subs: [], projects: [], stages: [], tx: [], home: [], homeRules: [], users: [], expenseCats: [], payreq: [] };
+  const D = { subs: [], projects: [], stages: [], tx: [], home: [], homeRules: [], users: [], expenseCats: [], payreq: [], debts: [] };
 
   function seedDemo() {
     _id = 1000;
@@ -175,6 +183,11 @@
     D.homeRules = [];
     D.expenseCats = [];
     D.payreq = [];
+    D.debts = [
+      { id: nid(), lender: 'אבא', phone: '', taken: 50000, repaid: 20000, urgent: 0, taken_date: '2026-03-01', due_date: '', note: 'הלוואה משפחתית', deleted: false },
+      { id: nid(), lender: 'בנק — הלוואה', phone: '', taken: 80000, repaid: 30000, urgent: 15000, taken_date: '2026-01-15', due_date: '2026-09-01', note: '', deleted: false },
+      { id: nid(), lender: 'משה (ספק)', phone: '050-7777777', taken: 12000, repaid: 12000, urgent: 0, taken_date: '2026-05-10', due_date: '', note: 'נסגר', deleted: false },
+    ];
   }
 
   // -- computation helpers (mirror server) --
@@ -321,6 +334,14 @@
       rules: () => delay(D.homeRules.slice().sort((a, b) => b.match_text.length - a.match_text.length)),
       categories: () => delay([...new Set(A(D.home).map(r => r.category).filter(Boolean))].sort()),
     },
+    debts: {
+      list: () => delay(A(D.debts).slice().sort((a, b) => ((b.taken - b.repaid) - (a.taken - a.repaid)) || b.id - a.id)),
+      create: (d) => { const r = Object.assign({ id: nid(), deleted: false }, d, { taken: +d.taken || 0, repaid: +d.repaid || 0, urgent: +d.urgent || 0 }); D.debts.push(r); return delay(r); },
+      update: (id, d) => { id = +id; const r = D.debts.find(x => x.id === id); Object.assign(r, d, { taken: +d.taken || 0, repaid: +d.repaid || 0, urgent: +d.urgent || 0 }); return delay(r); },
+      repay: (id, amount) => { id = +id; const r = D.debts.find(x => x.id === id); if (r) { r.repaid = (+r.repaid || 0) + (+amount || 0); r.urgent = Math.max(0, Math.min(+r.urgent || 0, (+r.taken || 0) - r.repaid)); } return delay(r); },
+      bulk: (list) => { let n = 0; (list || []).forEach(d => { const lender = String(d.lender || '').trim(); const taken = +d.taken || 0; if (!lender || !(taken > 0)) return; D.debts.push(Object.assign({ id: nid(), deleted: false }, d, { lender, taken, repaid: +d.repaid || 0, urgent: +d.urgent || 0 })); n++; }); return delay({ count: n }); },
+      remove: (id) => { id = +id; const r = D.debts.find(x => x.id === +id); if (r) r.deleted = true; return delay({ ok: true }); },
+    },
     payreq: {
       list: () => delay(A(D.payreq).slice().sort((a, b) => b.id - a.id)),
       create: (d) => {
@@ -396,10 +417,11 @@
         push('transactions', 'תנועות כספיות', D.tx.filter(t => !projDel(t.project_id) && !stageDel(t.stage_id)), x => x.purpose || x.type, x => x.type);
         push('home_transactions', 'הוצאות בית', D.home, x => x.payee || 'הוצאה', x => x.category || '');
         push('payment_requests', 'בקשות תשלום', D.payreq, x => x.stage_name || 'בקשה', x => x.project_name || '');
+        push('debts', 'חובות', D.debts, x => x.lender, x => x.note || '');
         return delay(out);
       },
       restore: (table, id) => {
-        const map = { subcontractors: D.subs, projects: D.projects, stages: D.stages, transactions: D.tx, home_transactions: D.home, payment_requests: D.payreq };
+        const map = { subcontractors: D.subs, projects: D.projects, stages: D.stages, transactions: D.tx, home_transactions: D.home, payment_requests: D.payreq, debts: D.debts };
         const pid = +id; const r = (map[table] || []).find(x => x.id === pid);
         if (r) {
           r.deleted = false;
@@ -431,7 +453,7 @@
   // =====================================================================
   //  AUTH
   // =====================================================================
-  const ADMIN_CAPS = { manageUsers: true, viewBusiness: true, editProjects: true, addStages: true, writeTx: true, projectExpenseOnly: true, del: true, multiDelete: true, viewReports: true, home: true };
+  const ADMIN_CAPS = { manageUsers: true, viewBusiness: true, editProjects: true, addStages: true, debts: true, writeTx: true, projectExpenseOnly: true, del: true, multiDelete: true, viewReports: true, home: true };
   window.Auth = {
     user: null,
     async login(username, password) {

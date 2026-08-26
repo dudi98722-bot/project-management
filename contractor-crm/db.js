@@ -58,7 +58,7 @@ function mirrorProjectChildren(nid) {
 // ===== מחיקה רכה בלבד - לעולם לא מוחקים פיזית =====
 // כל הטבלאות של נתונים מכילות deleted / deleted_at / deleted_by
 const SOFT_TABLES = new Set([
-  'subcontractors', 'projects', 'stages', 'transactions', 'home_transactions', 'payment_requests'
+  'subcontractors', 'projects', 'stages', 'transactions', 'home_transactions', 'payment_requests', 'debts'
 ]);
 
 // מזהה חוקי (מספר שלם חיובי). מזהה לא תקין -> false (מתורגם ל-404 ולא ל-500)

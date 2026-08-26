@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 //  viewBusiness  - צפייה בצד העסקי (פרויקטים/תנועות)
 //  editProjects  - יצירה/עריכה של פרויקטים, שלבים, קבלני משנה
 //  addStages     - הוספת שלבים בלבד (למדווח — בלי עריכה/מחיקה של שלבים ובלי עריכת פרויקטים)
+//  debts         - לשונית חובות (ממי לקחתי / כמה החזרתי) — רגיש, למנהלים בלבד
 //  writeTx       - הזנת תנועות (הכנסות/הוצאות)
 //  projectExpenseOnly - רק הזנת הוצאה לפרויקט + העלאת חשבונית (עובד שטח)
 //  del           - מחיקה רכה בודדת
@@ -14,11 +15,11 @@ const jwt = require('jsonwebtoken');
 //  home          - מודול הבית
 const ROLES = {
   // מנהל ראשי - הכל (כולל ניהול משתמשים)
-  admin:     { label:'מנהל ראשי', manageUsers:true,  viewBusiness:true,  editProjects:true,  addStages:true,  writeTx:true,  projectExpenseOnly:true,  del:true,  multiDelete:true,  viewReports:true,  home:true  },
+  admin:     { label:'מנהל ראשי', manageUsers:true,  viewBusiness:true,  editProjects:true,  addStages:true,  debts:true,  writeTx:true,  projectExpenseOnly:true,  del:true,  multiDelete:true,  viewReports:true,  home:true  },
   // מזכירה - הכל חוץ ממחיקה מרובה וניהול משתמשים
   secretary: { label:'מזכירה',    manageUsers:false, viewBusiness:true,  editProjects:true,  addStages:true,  writeTx:true,  projectExpenseOnly:true,  del:true,  multiDelete:false, viewReports:true,  home:false },
   // מנהל - כל ההזנות (פרויקט/עסק/לקוחות/קבלן) + בית + כל הדוחות, בלי ניהול משתמשים
-  owner:     { label:'מנהל',      manageUsers:false, viewBusiness:true,  editProjects:true,  addStages:true,  writeTx:true,  projectExpenseOnly:true,  del:false, multiDelete:false, viewReports:true,  home:true  },
+  owner:     { label:'מנהל',      manageUsers:false, viewBusiness:true,  editProjects:true,  addStages:true,  debts:true,  writeTx:true,  projectExpenseOnly:true,  del:false, multiDelete:false, viewReports:true,  home:true  },
   // מדווח (אמיתי) - כל ההזנות + הוספת שלבים בלבד (לקוח+קבלן), בלי עריכת שלב/פרויקט ובלי מחיקה
   reporter:  { label:'מדווח',     manageUsers:false, viewBusiness:true,  editProjects:false, addStages:true,  writeTx:true,  projectExpenseOnly:true,  del:false, multiDelete:false, viewReports:true,  home:false },
   // עובד שטח - רק הזנת הוצאה לפרויקט + חשבוניות

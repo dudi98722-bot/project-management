@@ -20,6 +20,7 @@ app.use('/api/stages',         require('./routes/stages'));
 app.use('/api/transactions',   require('./routes/transactions'));
 app.use('/api/home',           require('./routes/home'));
 app.use('/api/payment-requests', require('./routes/payreq'));
+app.use('/api/debts',          require('./routes/debts'));
 app.use('/api/reports',        require('./routes/reports'));
 app.use('/api/uploads',        require('./routes/uploads'));
 app.use('/api/recycle',        require('./routes/recycle'));

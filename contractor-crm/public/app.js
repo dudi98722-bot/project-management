@@ -90,6 +90,7 @@
     { id: 'subs', label: '👷 קבלני משנה', show: c => c.viewBusiness, fn: scrSubs },
     { id: 'tx', label: '💰 תנועות', show: c => c.viewBusiness, fn: scrTx },
     { id: 'daily', label: '📅 דוח יומי', show: c => c.viewBusiness, fn: scrDaily },
+    { id: 'debts', label: '🤝 חובות', show: c => c.debts, fn: scrDebts },
     { id: 'projexp', label: '🧱 הוצאה לפרויקט', show: c => c.viewBusiness, fn: scrProjExp },
     { id: 'biz', label: '🧾 הוצאות עסק', show: c => c.viewBusiness, fn: scrBiz },
     { id: 'payreq', label: '🧮 בקשת תשלום', show: c => c.viewBusiness, fn: scrPayRequest },
@@ -288,6 +289,138 @@
         <td class="num" style="font-weight:700;color:${isIn ? 'var(--green)' : 'var(--red)'}">${isIn ? '+' : '−'}${money0(t.amount)}</td></tr>`;
     }).join('')}</tbody></table></div>` : '<div class="empty">אין תנועות ביום זה</div>';
     openModal('פירוט יום ' + dfmt(date), body, [{ label: 'סגירה', cls: 'ghost', onClick: (c) => c() }]);
+  }
+
+  // ============================================================
+  //  חובות — ממי לקחתי, כמה החזרתי, יתרה וכמה דחוף
+  // ============================================================
+  async function scrDebts() {
+    loading();
+    const rows = await guard(window.Store.debts.list());
+    const bal = (d) => Math.max(0, (+d.taken || 0) - (+d.repaid || 0));
+    const open = rows.filter(d => bal(d) > 0.5), closed = rows.filter(d => bal(d) <= 0.5);
+    const tot = rows.reduce((a, d) => ({
+      taken: a.taken + (+d.taken || 0), repaid: a.repaid + (+d.repaid || 0),
+      bal: a.bal + bal(d), urgent: a.urgent + Math.min(+d.urgent || 0, bal(d))
+    }), { taken: 0, repaid: 0, bal: 0, urgent: 0 });
+    const pct = tot.taken > 0 ? Math.round(tot.repaid / tot.taken * 100) : 0;
+    const biggest = open.slice().sort((a, b) => bal(b) - bal(a))[0];
+
+    view().innerHTML = `
+      <div class="page-head"><h2>חובות</h2><span class="mini">ממי לקחתי · כמה החזרתי · מה נשאר</span><div class="spacer"></div>
+        <button class="btn ghost sm" id="dbBulk">📋 קליטה מרוכזת</button>
+        <button class="btn" id="dbNew">➕ חוב חדש</button></div>
+      <div class="grid stat-grid">
+        ${stat('סה"כ לקחתי', money(tot.taken))}
+        ${stat('סה"כ החזרתי', money(tot.repaid), 'g', pct + '% מהחוב הכולל')}
+        ${stat('יתרה לתשלום', money(tot.bal), 'r', open.length + ' חובות פתוחים')}
+        ${stat('מתוכה דחוף', money(tot.urgent), 'a', tot.bal > 0 ? Math.round(tot.urgent / tot.bal * 100) + '% מהיתרה' : null)}
+        ${stat('החוב הגדול ביותר', biggest ? money(bal(biggest)) : '—', '', biggest ? biggest.lender : 'אין חובות פתוחים')}
+      </div>
+      <div class="card"><div style="margin-bottom:6px"><b>התקדמות החזר</b> <span class="mini muted">${money0(tot.repaid)} מתוך ${money0(tot.taken)}</span></div>
+        <div class="bar"><span style="width:${Math.min(100, pct)}%"></span></div></div>
+      <div class="card" style="padding:6px;overflow-x:auto" id="dbBox"></div>
+      ${closed.length ? `<div class="mini muted" style="margin-top:8px">✅ ${closed.length} חובות נסגרו במלואם</div>` : ''}`;
+
+    $('#dbNew').onclick = () => debtForm();
+    $('#dbBulk').onclick = () => debtsBulkForm();
+    const box = $('#dbBox');
+    if (!rows.length) { box.innerHTML = '<div class="empty" style="padding:24px"><div class="big">🤝</div>אין חובות רשומים</div>'; return; }
+    box.innerHTML = `<table style="min-width:820px"><thead><tr>
+        <th>ממי לקחתי</th><th class="num">לקחתי</th><th class="num">החזרתי</th><th class="num">יתרה</th><th class="num">דחוף</th><th>תאריך יעד</th><th>הערה</th><th></th>
+      </tr></thead><tbody>
+      ${rows.map(d => {
+        const b = bal(d), u = Math.min(+d.urgent || 0, b), done = b <= 0.5;
+        const late = d.due_date && !done && String(d.due_date).slice(0, 10) < today();
+        return `<tr style="${done ? 'opacity:.55' : (u > 0 ? 'background:#fef2f2' : '')}">
+          <td><b>${esc(d.lender)}</b>${d.phone ? `<div class="mini muted">${esc(d.phone)}</div>` : ''}</td>
+          <td class="num">${money0(d.taken)}</td>
+          <td class="num" style="color:var(--green)">${money0(d.repaid)}</td>
+          <td class="num" style="font-weight:800;color:${done ? 'var(--muted)' : 'var(--red)'}">${done ? 'שולם ✓' : money0(b)}</td>
+          <td class="num" style="color:var(--red);font-weight:${u > 0 ? '800' : '400'}">${u > 0 ? '🔥 ' + money0(u) : '—'}</td>
+          <td class="mini" style="color:${late ? 'var(--red)' : 'inherit'}">${d.due_date ? dfmt(d.due_date) + (late ? ' ⚠️' : '') : '—'}</td>
+          <td class="mini">${esc(d.note || '')}</td>
+          <td style="white-space:nowrap">${!done ? `<button class="btn xs green" data-repay="${d.id}">💰 החזר</button>` : ''}<button class="btn xs ghost" data-editdebt="${d.id}">✏️</button><button class="btn xs red" data-deldebt="${d.id}">🗑️</button></td></tr>`;
+      }).join('')}
+      <tr style="border-top:2px solid var(--ink);font-weight:800">
+        <td>סה"כ</td><td class="num">${money0(tot.taken)}</td>
+        <td class="num" style="color:var(--green)">${money0(tot.repaid)}</td>
+        <td class="num" style="color:var(--red)">${money0(tot.bal)}</td>
+        <td class="num" style="color:var(--red)">${money0(tot.urgent)}</td><td></td><td></td><td></td></tr>
+      </tbody></table>`;
+
+    box.querySelectorAll('[data-editdebt]').forEach(b => b.onclick = () => debtForm(rows.find(x => x.id === +b.dataset.editdebt)));
+    box.querySelectorAll('[data-repay]').forEach(b => b.onclick = () => repayForm(rows.find(x => x.id === +b.dataset.repay)));
+    box.querySelectorAll('[data-deldebt]').forEach(b => b.onclick = async () => {
+      if (!await confirmDialog('להעביר את החוב לסל המחזור?', 'מחיקה')) return;
+      await guard(window.Store.debts.remove(+b.dataset.deldebt)); toast('נמחק', 'ok'); scrDebts();
+    });
+  }
+  function debtForm(d) {
+    d = d || {};
+    openModal(d.id ? 'עריכת חוב' : 'חוב חדש', `
+      <div class="row">
+        <div class="field" style="flex:2"><label>ממי לקחתי *</label><input id="db_lender" value="${esc(d.lender || '')}" placeholder="שם"></div>
+        <div class="field"><label>טלפון</label><input id="db_phone" value="${esc(d.phone || '')}"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>כמה לקחתי (₪) *</label><input id="db_taken" type="number" value="${d.taken != null ? d.taken : ''}"></div>
+        <div class="field"><label>כמה החזרתי (₪)</label><input id="db_repaid" type="number" value="${d.repaid != null ? d.repaid : ''}"></div>
+        <div class="field"><label>כמה דחוף (₪)</label><input id="db_urgent" type="number" value="${d.urgent != null ? d.urgent : ''}"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>תאריך לקיחה</label><input id="db_tdate" type="date" value="${d.taken_date ? String(d.taken_date).slice(0, 10) : ''}"></div>
+        <div class="field"><label>תאריך יעד להחזר</label><input id="db_ddate" type="date" value="${d.due_date ? String(d.due_date).slice(0, 10) : ''}"></div>
+      </div>
+      <div class="field"><label>הערה</label><input id="db_note" value="${esc(d.note || '')}"></div>`,
+      [{ label: 'שמירה', onClick: async (close) => {
+        const lender = fv('db_lender'); if (!lender) return toast('הזן שם', 'err');
+        const taken = parseFloat(fv('db_taken')) || 0; if (!(taken > 0)) return toast('הזן סכום שלקחת', 'err');
+        const repaid = parseFloat(fv('db_repaid')) || 0;
+        if (repaid > taken + 0.001) return toast('סכום ההחזר גדול מהסכום שנלקח', 'err');
+        const payload = { lender, phone: fv('db_phone'), taken, repaid, urgent: parseFloat(fv('db_urgent')) || 0,
+          taken_date: fv('db_tdate') || null, due_date: fv('db_ddate') || null, note: fv('db_note') };
+        await guard(d.id ? window.Store.debts.update(d.id, payload) : window.Store.debts.create(payload));
+        close(); toast('נשמר', 'ok'); scrDebts();
+      } }, { label: 'ביטול', cls: 'ghost', onClick: (c) => c() }]);
+  }
+  function repayForm(d) {
+    if (!d) return;
+    const left = Math.max(0, (+d.taken || 0) - (+d.repaid || 0));
+    openModal('רישום החזר — ' + (d.lender || ''), `
+      <div class="mini muted" style="margin-bottom:8px">יתרה נוכחית: <b style="color:var(--red)">${money(left)}</b></div>
+      <div class="field"><label>סכום שהוחזר עכשיו (₪) *</label><input id="db_amt" type="number" autofocus></div>`,
+      [{ label: 'רישום החזר', cls: 'green', onClick: async (close) => {
+        const amt = parseFloat(fv('db_amt')) || 0;
+        if (!(amt > 0)) return toast('הזן סכום', 'err');
+        if (amt > left + 0.001) return toast(`הסכום גדול מהיתרה (${money(left)})`, 'err');
+        await guard(window.Store.debts.repay(d.id, amt));
+        close(); toast('ההחזר נרשם', 'ok'); scrDebts();
+      } }, { label: 'ביטול', cls: 'ghost', onClick: (c) => c() }]);
+  }
+  // קליטה מרוכזת של חובות — טבלת שורות ריקות למילוי מהיר
+  function debtsBulkForm() {
+    const inp = (cls, ph, num) => `<input class="${cls}" ${num ? 'type="number"' : ''} placeholder="${ph}" style="width:${num ? '100px' : '100%'};min-width:${num ? '90px' : '120px'};padding:7px;border:1px solid var(--line);border-radius:8px">`;
+    const rowHtml = () => `<tr class="dbr"><td>${inp('dbr-lender', 'שם')}</td><td>${inp('dbr-taken', '0', 1)}</td><td>${inp('dbr-repaid', '0', 1)}</td><td>${inp('dbr-urgent', '0', 1)}</td><td>${inp('dbr-note', 'הערה')}</td></tr>`;
+    openModal('קליטה מרוכזת של חובות', `
+      <p class="mini muted" style="margin-top:0">מלא שורה לכל חוב (שם + סכום חובה). שורות ריקות יידלגו.</p>
+      <div style="overflow-x:auto"><table><thead><tr><th>ממי לקחתי *</th><th>לקחתי</th><th>החזרתי</th><th>דחוף</th><th>הערה</th></tr></thead>
+        <tbody id="dbBulkBody">${Array.from({ length: 8 }, rowHtml).join('')}</tbody></table></div>
+      <button class="btn ghost sm" id="dbAddRows" style="margin-top:8px">➕ עוד 5 שורות</button>`,
+      [{ label: 'שמירת הכל', cls: 'green', onClick: async (close) => {
+        const list = [];
+        document.querySelectorAll('#dbBulkBody .dbr').forEach(tr => {
+          const lender = (tr.querySelector('.dbr-lender').value || '').trim();
+          const taken = parseFloat(tr.querySelector('.dbr-taken').value) || 0;
+          if (!lender || !(taken > 0)) return;
+          const repaid = Math.min(parseFloat(tr.querySelector('.dbr-repaid').value) || 0, taken);
+          list.push({ lender, taken, repaid, urgent: parseFloat(tr.querySelector('.dbr-urgent').value) || 0, note: (tr.querySelector('.dbr-note').value || '').trim() });
+        });
+        if (!list.length) return toast('לא מולאה אף שורה (שם + סכום)', 'err');
+        const res = await guard(window.Store.debts.bulk(list));
+        close(); toast(((res && res.count) || list.length) + ' חובות נקלטו', 'ok'); scrDebts();
+      } }, { label: 'ביטול', cls: 'ghost', onClick: (c) => c() }]);
+    $('#dbAddRows').onclick = () => $('#dbBulkBody').insertAdjacentHTML('beforeend', Array.from({ length: 5 }, rowHtml).join(''));
   }
 
   // ============================================================

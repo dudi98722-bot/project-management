@@ -11,7 +11,8 @@ const RECYCLE = {
   stages:            { he: 'שלבים',         sql: `SELECT id, deleted_at, name AS title, '' AS subtitle, client_amount::float AS amount` },
   transactions:      { he: 'תנועות כספיות', sql: `SELECT id, deleted_at, COALESCE(purpose, type) AS title, type AS subtitle, amount::float AS amount` },
   home_transactions: { he: 'הוצאות בית',    sql: `SELECT id, deleted_at, COALESCE(payee,'הוצאה') AS title, COALESCE(category,'') AS subtitle, amount::float AS amount` },
-  payment_requests:  { he: 'בקשות תשלום',   sql: `SELECT id, deleted_at, COALESCE(stage_name,'בקשה') AS title, COALESCE(project_name,'') AS subtitle, requested::float AS amount` }
+  payment_requests:  { he: 'בקשות תשלום',   sql: `SELECT id, deleted_at, COALESCE(stage_name,'בקשה') AS title, COALESCE(project_name,'') AS subtitle, requested::float AS amount` },
+  debts:             { he: 'חובות',          sql: `SELECT id, deleted_at, lender AS title, COALESCE(note,'') AS subtitle, taken::float AS amount` }
 };
 
 // הרשאה לטבלה בסל המחזור: הבית לפי caps.home; בקשות תשלום גם למי שרשאי למחוק
@@ -19,6 +20,7 @@ const RECYCLE = {
 function tableAllowed(caps, table) {
   if (table === 'home_transactions') return !!caps.home;
   if (table === 'payment_requests') return !!caps.viewBusiness && (!!caps.del || !!caps.writeTx);
+  if (table === 'debts') return !!caps.debts;
   return !!caps.viewBusiness && !!caps.del;
 }
 
