@@ -156,7 +156,8 @@ input[type=text],input[type=number],select{
   transition:.12s;
 }
 input[type=number]{direction:ltr; text-align:right; font-variant-numeric:tabular-nums}
-input:focus,select:focus{outline:none; border-color:var(--accent-2); box-shadow:0 0 0 3px var(--accent-ring); background:var(--input-bg-focus)}
+input:focus,select:focus{border-color:var(--accent-2); box-shadow:0 0 0 3px var(--accent-ring); background:var(--input-bg-focus)}
+input:focus:not(:focus-visible),select:focus:not(:focus-visible){outline:none}
 .inp-sm{width:88px !important}
 /* תא רכיב מחיר: ריק = אוטומטי (הערך מוצג כרמז), מלא = דריסה ידנית מסומנת בזהב */
 .pxin{min-width:78px; text-align:right; direction:ltr}
@@ -178,13 +179,14 @@ input:focus,select:focus{outline:none; border-color:var(--accent-2); box-shadow:
 /* ---------- Sensitivity ---------- */
 .sens td,.sens th{text-align:center; padding:6px 4px; font-size:12.5px; border:1px solid var(--line)}
 .sens .hd{background:var(--surface-3); font-weight:700; font-size:11.5px}
-.sens .base{outline:2px solid var(--accent); outline-offset:-2px; font-weight:800}
+/* סמן תרחיש הבסיס: --accent-2 ולא --accent, כדי לעמוד בניגודיות מול רקע התא במצב כהה */
+.sens .base{outline:2.5px solid var(--accent-2); outline-offset:-2px; font-weight:800}
 
 /* ---------- Bars ---------- */
 .barrow{display:grid; grid-template-columns:170px 1fr 110px; gap:10px; align-items:center; margin:5px 0; font-size:13px}
 .bar{height:16px; background:var(--surface-3); border-radius:4px; overflow:hidden}
 .bar span{display:block; height:100%; background:var(--accent-2); border-radius:4px}
-.bar span.c1{background:var(--accent)} .bar span.c2{background:var(--accent-2)} .bar span.c3{background:color-mix(in srgb, var(--accent-2) 55%, var(--surface))} .bar span.c4{background:var(--gold)} .bar span.c5{background:var(--ink-3)}
+.bar span.c1{background:var(--accent-text)} .bar span.c2{background:var(--accent-2)} .bar span.c3{background:color-mix(in srgb, var(--accent-2) 55%, var(--surface))} .bar span.c4{background:var(--gold)} .bar span.c5{background:var(--ink-3)}
 
 .flags{display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:10px}
 .flag{border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:var(--surface-2)}
@@ -221,8 +223,16 @@ ul.risk b{color:var(--accent-text)}
     --info-ink:#0D3C63; --input-bg:transparent; --input-bg-focus:transparent;
     --s4:#E1F1EA; --s3:#F3F8EE; --s2:#FBF0D8; --s1:#F7E7E4;
     --s4t:#0B6B4F; --s3t:#0B6B4F; --s2t:#9A6A00; --s1t:#A3352A;
+    --shadow:none;
   }
   body{background:#fff; font-size:10.5px}
+  /* מכולת גלילה אופקית נחתכת בהדפסה — משחררים אותה כדי שכל העמודות ייכנסו לדף */
+  .tbl-scroll{overflow:visible !important; margin:0 !important; padding:0 !important}
+  .tbl-scroll table{width:100% !important; table-layout:fixed}
+  .tbl-scroll th,.tbl-scroll td{white-space:normal !important; overflow-wrap:anywhere}
+  #cfTbl,#unitTbl,#sensTbl{font-size:8.2px !important}
+  #cfTbl th,#cfTbl td,#unitTbl th,#unitTbl td{padding:2px 2px !important}
+  .cover{box-shadow:none !important}
   .toolbar,.no-print{display:none !important}
   .wrap{max-width:none; padding:0}
   section{box-shadow:none; border:1px solid #ccd; break-inside:avoid; page-break-inside:avoid; margin:8px 0; padding:12px 14px}
@@ -357,16 +367,16 @@ ul.risk b{color:var(--accent-text)}
 <section>
   <div class="sec-h"><div class="sec-n">4</div><h2>מאזן שטחים לצורכי בנייה</h2></div>
   <div class="sec-d">שטחי הדירות נגזרים ישירות מטבלת הדירות (מקור אמת יחיד). שטחי השירות, החניה והשטחים הנוספים מוזנים ידנית מתוך תיק התכנון.</div>
-  <table>
+  <div class="tbl-scroll"><table>
     <thead><tr><th>מהות השטח</th><th style="width:120px">שטח (מ״ר)</th><th style="width:150px">מקור</th><th>הערה</th></tr></thead>
     <tbody id="areaTbl"></tbody>
     <tfoot id="areaFoot"></tfoot>
-  </table>
+  </table></div>
   <div class="grid-in" style="margin-top:14px">
     <div class="fld"><label>שטחי שירות (מבואות, חדרי מדרגות, טכני)</label><input type="number" id="a_serv" step="0.01"></div>
     <div class="fld"><label>שטחי חניה</label><input type="number" id="a_park" step="0.01"></div>
     <div class="fld"><label>שטחים נוספים (ממ״ד/מרתף/אחר)</label><input type="number" id="a_other" step="0.01"></div>
-    <div class="fld"><label>מקדם ברוטו/נטו לבנייה</label><div class="fld-row"><input type="number" id="a_gross" step="0.01" class="inp-sm"><span class="suf">×</span></div><div class="hint">מוחל על שטחי פלדלת ושירות. 1.00 = ללא התאמה.</div></div>
+    <div class="fld"><label>מקדם ברוטו/נטו לבנייה</label><div class="fld-row"><input type="number" id="a_gross" step="0.01" class="inp-sm"><span class="suf">×</span></div><div class="hint">מוחל על שטחי פלדלת, שירות ושטחים נוספים. 1.00 = ללא התאמה.</div></div>
   </div>
 </section>
 
@@ -374,42 +384,42 @@ ul.risk b{color:var(--accent-text)}
 <section>
   <div class="sec-h"><div class="sec-n">5</div><h2>אומדן עלויות בנייה ישירות</h2></div>
   <div class="sec-d">כל הסכומים ללא מע״מ. עלויות למ״ר ניתנות לעריכה ומשקפות אומדן קבלן מבצע.</div>
-  <table>
+  <div class="tbl-scroll"><table>
     <thead><tr><th>תיאור</th><th style="width:110px">שטח (מ״ר)</th><th style="width:120px">עלות למ״ר</th><th style="width:150px">סה״כ עלות</th><th style="width:80px">% מהישיר</th></tr></thead>
     <tbody id="directTbl"></tbody>
     <tfoot id="directFoot"></tfoot>
-  </table>
+  </table></div>
 </section>
 
 <!-- ============ 6 INDIRECT ============ -->
 <section>
   <div class="sec-h"><div class="sec-n">6</div><h2>אומדן עלויות עקיפות ופיתוח</h2></div>
   <div class="sec-d">כל הסכומים ללא מע״מ, למעט ערבויות חוק מכר המחושבות משווי הפרויקט כולל מע״מ.</div>
-  <table>
+  <div class="tbl-scroll"><table>
     <thead><tr><th>תיאור</th><th style="width:170px">בסיס החישוב</th><th style="width:110px">שיעור / תעריף</th><th style="width:150px">סה״כ עלות</th></tr></thead>
     <tbody id="indTbl"></tbody>
     <tfoot id="indFoot"></tfoot>
-  </table>
+  </table></div>
 </section>
 
 <!-- ============ 7 LAND ============ -->
 <section>
   <div class="sec-h"><div class="sec-n">7</div><h2>עלויות רכישת הקרקע והמסים</h2></div>
   <div class="sec-d">עלויות המשולמות במועד הרכישה ומהוות בסיס להון העצמי הנדרש בליווי הבנקאי.</div>
-  <table>
+  <div class="tbl-scroll"><table>
     <thead><tr><th>תיאור</th><th style="width:170px">בסיס</th><th style="width:120px">שיעור</th><th style="width:160px">סה״כ</th></tr></thead>
     <tbody id="landTbl"></tbody>
     <tfoot id="landFoot"></tfoot>
-  </table>
+  </table></div>
 </section>
 
 <!-- ============ 8 SUMMARY ============ -->
 <section class="brk">
   <div class="sec-h"><div class="sec-n">8</div><h2>סיכום עלויות, הכנסות ורווחיות</h2></div>
   <div class="sec-d">הריכוז הכלכלי של הפרויקט — הבסיס להחלטת האשראי.</div>
-  <table>
+  <div class="tbl-scroll"><table>
     <tbody id="sumTbl"></tbody>
-  </table>
+  </table></div>
   <h4 style="font-size:14px;margin:18px 0 8px">מדדי רווחיות</h4>
   <div class="flags" id="ratioFlags"></div>
 </section>
@@ -427,11 +437,11 @@ ul.risk b{color:var(--accent-text)}
   <div class="two-col">
     <div>
       <h4 style="font-size:14px;margin-bottom:8px">מקורות</h4>
-      <table><tbody id="srcTbl"></tbody></table>
+      <div class="tbl-scroll"><table><tbody id="srcTbl"></tbody></table></div>
     </div>
     <div>
       <h4 style="font-size:14px;margin-bottom:8px">שימושים</h4>
-      <table><tbody id="useTbl"></tbody></table>
+      <div class="tbl-scroll"><table><tbody id="useTbl"></tbody></table></div>
     </div>
   </div>
   <h4 style="font-size:14px;margin:18px 0 8px">מבחני הבנק</h4>
@@ -469,7 +479,7 @@ ul.risk b{color:var(--accent-text)}
   <div class="grid-in" style="margin-bottom:14px">
     <div class="fld"><label>רווח יזמי נדרש (מהמחזור)</label><div class="fld-row"><input type="number" id="rs_prof" step="0.5" class="inp-sm"><span class="suf">%</span></div></div>
   </div>
-  <table><tbody id="residTbl"></tbody></table>
+  <div class="tbl-scroll"><table><tbody id="residTbl"></tbody></table></div>
 </section>
 
 <!-- ============ 13 SCHEDULE ============ -->
@@ -653,8 +663,11 @@ function calc(){
   const beCostK = direct ? 1 + profit/ (direct*(1 + S.i.plan/100 + S.i.over/100 + S.i.fin/100*S.i.finYears + S.i.bank/100 + S.i.cont/100)) : NaN;
 
   // --- residual land value ---
+  // היטל השבחה ועלויות נלוות הם סכומים קבועים שאינם נגזרים ממחיר הקרקע ואינם חייבים במס רכישה,
+  // ולכן מנוכים לפני גילום המס — אחרת השארית מיוחסת כולה למחיר הקרקע והבדיקה מטה כלפי מעלה.
   const availAfterProfit = revEx * (1 - S.rs.prof/100);
-  const residGross = availAfterProfit - direct - indirect;
+  const residAvail = availAfterProfit - direct - indirect;
+  const residGross = residAvail - n(S.l.better) - n(S.l.other);
   const residNet   = residGross / (1 + S.l.tax/100);
 
   // --- cash flow ---
@@ -688,7 +701,7 @@ function calc(){
 
   return {vat,rate,U,revIn,revEx,ar,D,direct,I,indirect,indBuild,indSales,L,land,cost,profit,roc,ror,
           equity,credit,roe,eqRatio,surplus,covRev,preSaleReq,units,
-          kBE,beSalesPct,beCostK,availAfterProfit,residGross,residNet,
+          kBE,beSalesPct,beCostK,availAfterProfit,residAvail,residGross,residNet,
           CF,nq,bw,sw,peakNeed,creditNeed,months,balcRate,yardRate,devBase,
           finModeled,finActual,roeAnn,years};
 }
@@ -746,7 +759,7 @@ function render(){
     ['בניכוי עלות קרקע ומסים', '('+M2(R.land)+')'],
     ['בניכוי עלויות בנייה ישירות', '('+M2(R.direct)+')'],
     ['בניכוי עלויות עקיפות', '('+M2(R.indirect)+')'],
-    ['GRAND','רווח גולמי צפוי לפני מס|'+M(R.profit)],
+    ['GRAND','רווח יזמי צפוי לפני מס|'+M(R.profit)],
     ['SEP'],
     ['הון עצמי נדרש', M(R.equity)],
     ['מסגרת ליווי בנקאית', M(R.credit)],
@@ -783,20 +796,20 @@ function render(){
 
   /* Units table — פירוק רכיבי מחיר במבנה קובץ המקור, כל שלב ניתן לעריכה */
   const pxCell = (i, key, ovOn, val, auto) => `
-    <td><input type="number" step="1000" class="pxin${ovOn?' ov':''}"
+    <td><input type="number" data-k="u${i}-${key}" step="1000" class="pxin${ovOn?' ov':''}"
       value="${ovOn? Math.round(val) : ''}" placeholder="${M2(auto)}"
       title="${ovOn? 'ידני. אוטומטי: '+M2(auto)+' — מחק כדי לחזור' : 'אוטומטי: '+M2(auto)+' — הקלד סכום לדריסה'}"
       onchange="setOv(${i},'${key}',this.value)"></td>`;
   $('unitBody').innerHTML = R.U.map((u,i)=>`<tr>
     <td style="color:var(--ink-3);font-weight:600">${i+1}</td>
-    <td><input type="text" value="${esc(u.f)}" onchange="setU(${i},'f',this.value)"></td>
-    <td><input type="text" value="${esc(u.s)}" onchange="setU(${i},'s',this.value)"></td>
-    <td><select onchange="setU(${i},'t',this.value)">${Object.keys(TYPES).map(k=>`<option value="${k}" ${u.t===k?'selected':''}>${TYPES[k]}</option>`).join('')}</select></td>
-    <td class="bl"><input type="number" step="0.01" value="${u.a||''}" onchange="setU(${i},'a',this.value)"></td>
-    <td><input type="number" step="0.01" value="${u.sa||''}" onchange="setU(${i},'sa',this.value)"></td>
-    <td><input type="number" step="0.01" value="${u.su||''}" onchange="setU(${i},'su',this.value)"></td>
-    <td><input type="number" step="0.01" value="${u.b||''}" onchange="setU(${i},'b',this.value)"></td>
-    <td><input type="number" step="0.01" value="${u.y||''}" onchange="setU(${i},'y',this.value)"></td>
+    <td><input type="text" data-k="u${i}-f" value="${esc(u.f)}" onchange="setU(${i},'f',this.value)"></td>
+    <td><input type="text" data-k="u${i}-s" value="${esc(u.s)}" onchange="setU(${i},'s',this.value)"></td>
+    <td><select data-k="u${i}-t" onchange="setU(${i},'t',this.value)">${Object.keys(TYPES).map(k=>`<option value="${k}" ${u.t===k?'selected':''}>${TYPES[k]}</option>`).join('')}</select></td>
+    <td class="bl"><input type="number" data-k="u${i}-a" step="0.01" value="${u.a||''}" onchange="setU(${i},'a',this.value)"></td>
+    <td><input type="number" data-k="u${i}-sa" step="0.01" value="${u.sa||''}" onchange="setU(${i},'sa',this.value)"></td>
+    <td><input type="number" data-k="u${i}-su" step="0.01" value="${u.su||''}" onchange="setU(${i},'su',this.value)"></td>
+    <td><input type="number" data-k="u${i}-b" step="0.01" value="${u.b||''}" onchange="setU(${i},'b',this.value)"></td>
+    <td><input type="number" data-k="u${i}-y" step="0.01" value="${u.y||''}" onchange="setU(${i},'y',this.value)"></td>
     <td class="num bl" style="font-weight:600">${N(u.L,2)}</td>
     ${pxCell(i,'oM',u.ov.m,u.comp.m,u.auto.m)}${pxCell(i,'oN',u.ov.n,u.comp.n,u.auto.n)}${pxCell(i,'oB',u.ov.b,u.comp.b,u.auto.b)}${pxCell(i,'oY',u.ov.y,u.comp.y,u.auto.y)}
     <td class="num bl" style="font-weight:700">${M(u.priceIn)}</td>
@@ -816,17 +829,20 @@ function render(){
       מחיר ללא מע״מ: <b>${M(R.revEx)}</b> · ממוצע למ״ר דירתי: <b>${M(R.revIn/Math.max(1,R.ar.main))}</b> · ממוצע ליח״ד: <b>${M(R.revIn/Math.max(1,R.units))}</b></td><td class="no-print" style="border:none"></td></tr>`;
 
   /* Areas */
+  /* העמודה מציגה את השטח שנכנס בפועל לתחשיב העלויות — כלומר לאחר מקדם הברוטו/נטו,
+     כך שהטור מסתכם לסה״כ גם כשהמקדם שונה מ-1.00 */
+  const gf = n(S.a.gross);
   const arows = [
-    ['שטח פלדלת למגורים (עיקרי + ממ״ד)', R.ar.main, 'טבלת הדירות', 'סכום שטחי הדירות'],
+    ['שטח פלדלת למגורים (עיקרי + ממ״ד)', R.ar.main*gf, 'טבלת הדירות', gf!==1? `${N(R.ar.main,2)} × ${N(gf,2)}` : 'סכום שטחי הדירות'],
     ['שטחי אחסנה ומחסנים', R.ar.store, 'טבלת הדירות', 'מחסנים צמודים ונוספים'],
     ['שטחי מרפסות זיז', R.ar.balc, 'טבלת הדירות', ''],
     ['שטחי מרפסות גג, גינות וחצרות', R.ar.yard, 'טבלת הדירות', ''],
-    ['שטחי שירות (מבואות, מדרגות, טכני)', R.ar.serv, 'הזנה ידנית', 'מתוך תיק התכנון'],
+    ['שטחי שירות (מבואות, מדרגות, טכני)', R.ar.serv*gf, 'הזנה ידנית', gf!==1? `${N(R.ar.serv,2)} × ${N(gf,2)}` : 'מתוך תיק התכנון'],
     ['שטחי חניה ומרתפים', R.ar.park, 'הזנה ידנית', ''],
-    ['שטחים נוספים', R.ar.other, 'הזנה ידנית', '']
+    ['שטחים נוספים', R.ar.other*gf, 'הזנה ידנית', gf!==1? `${N(R.ar.other,2)} × ${N(gf,2)}` : '']
   ];
   $('areaTbl').innerHTML = arows.map(r=>`<tr><td>${r[0]}</td><td class="num">${N(r[1],2)}</td><td><span class="chip">${r[2]}</span></td><td style="color:var(--ink-3);font-size:12px">${r[3]}</td></tr>`).join('');
-  $('areaFoot').innerHTML = `<tr class="total"><td>סה״כ שטחי בנייה</td><td class="num">${N(R.ar.total,2)}</td><td colspan="2" style="font-weight:400;color:var(--ink-3);font-size:12px">מקדם ברוטו/נטו מוחל: ×${N(S.a.gross,2)} על פלדלת ושירות</td></tr>`;
+  $('areaFoot').innerHTML = `<tr class="total"><td>סה״כ שטחי בנייה</td><td class="num">${N(R.ar.total,2)}</td><td colspan="2" style="font-weight:400;color:var(--ink-3);font-size:12px">מקדם ברוטו/נטו מוחל: ×${N(gf,2)} על פלדלת, שירות ושטחים נוספים</td></tr>`;
 
   /* Direct */
   $('directTbl').innerHTML = R.D.map(x=>`<tr>
@@ -867,7 +883,7 @@ function render(){
     ['תשואה על ההון העצמי (ROE) — כל התקופה', P(R.roe), R.roe>=0.5],
     ['ROE שנתי ממוצע (על פני '+R.years.toFixed(1)+' שנים)', isFinite(R.roeAnn)?P(R.roeAnn):'—', R.roeAnn>=0.20],
     ['עודף הכנסות (Surplus)', M(R.surplus), R.surplus>0],
-    ['עלות כוללת ליח״ד', M(R.cost/Math.max(1,R.units)), true],
+    ['עלות כוללת ליח״ד', M(R.cost/Math.max(1,R.units)), R.cost<R.revEx],
     ['רווח ליח״ד', M(R.profit/Math.max(1,R.units)), R.profit>0]
   ].map(f=>`<div class="flag ${f[2]===true?'ok':(f[2]===false?'no':'')}"><div class="t">${f[0]}</div><div class="v">${f[1]}</div></div>`).join('');
 
@@ -894,7 +910,7 @@ function render(){
     ['יחס הון עצמי לעלות', P(R.eqRatio), R.eqRatio>=0.20, 'סף מקובל ≥ 20%'],
     ['עודף הכנסות צפוי', M(R.surplus), R.surplus>0, 'חייב להיות חיובי'],
     ['יחס כיסוי הכנסות/מסגרת', isFinite(R.covRev)?R.covRev.toFixed(2)+'×':'—', R.covRev>=1.3, 'סף מקובל ≥ 1.3×'],
-    ['מכירות מוקדמות נדרשות', M(R.preSaleReq), true, S.f.pre+'% מהיקף הפרויקט'],
+    ['מכירות מוקדמות נדרשות', M(R.preSaleReq), R.preSaleReq<=R.revIn, S.f.pre+'% מהיקף הפרויקט'],
     ['שיא ניצול אשראי בפועל', M(R.creditNeed), R.creditNeed<=R.credit, 'מול מסגרת של '+M(R.credit)],
     ['רווח יזמי מהעלות', P(R.roc), R.roc>=0.20, 'סף מקובל ≥ 20%']
   ].map(f=>`<div class="flag ${f[2]?'ok':'no'}"><div class="t">${f[0]}</div><div class="v">${f[1]}</div><div class="t" style="margin-top:2px">${f[3]}</div></div>`).join('');
@@ -905,10 +921,10 @@ function render(){
   /* Sensitivity */
   renderSens(R);
   $('beFlags').innerHTML = [
-    ['מקדם מחיר לאיזון', isFinite(R.kBE)?P(R.kBE,1):'—', true, 'ירידה מותרת של '+(isFinite(R.kBE)?P(1-R.kBE,1):'—')+' במחירים'],
-    ['מחיר מ״ר לאיזון (דירה רגילה)', M(S.pr.reg*S.pr.glob/100*R.kBE), true, 'מול '+M(S.pr.reg*S.pr.glob/100)+' בתחשיב'],
+    ['מקדם מחיר לאיזון', isFinite(R.kBE)?P(R.kBE,1):'—', isFinite(R.kBE)&&R.kBE<=0.90, 'ירידה מותרת של '+(isFinite(R.kBE)?P(1-R.kBE,1):'—')+' במחירים · סף בריא ≥ 10%'],
+    ['מחיר מ״ר לאיזון (דירה רגילה)', M(S.pr.reg*S.pr.glob/100*R.kBE), isFinite(R.kBE)&&R.kBE<1, 'מול '+M(S.pr.reg*S.pr.glob/100)+' בתחשיב'],
     ['שיעור מכירות לכיסוי האשראי', isFinite(R.beSalesPct)?P(R.beSalesPct,1):'—', R.beSalesPct<0.85, 'מסך שווי הפרויקט'],
-    ['עליית עלויות בנייה לאיזון', isFinite(R.beCostK)?P(R.beCostK-1,1):'—', true, 'שולי ביטחון בעלויות']
+    ['עליית עלויות בנייה לאיזון', isFinite(R.beCostK)?P(R.beCostK-1,1):'—', isFinite(R.beCostK)&&R.beCostK>=1.10, 'שולי ביטחון בעלויות · סף בריא ≥ 10%']
   ].map(f=>`<div class="flag ${f[2]?'ok':'no'}"><div class="t">${f[0]}</div><div class="v">${f[1]}</div><div class="t" style="margin-top:2px">${f[3]}</div></div>`).join('');
 
   /* Residual */
@@ -918,8 +934,11 @@ function render(){
     <tr class="sub"><td>יתרה זמינה לעלויות ולקרקע</td><td class="num">${M(R.availAfterProfit)}</td></tr>
     <tr><td>בניכוי עלויות בנייה ישירות</td><td class="num">(${M2(R.direct)})</td></tr>
     <tr><td>בניכוי עלויות עקיפות ופיתוח</td><td class="num">(${M2(R.indirect)})</td></tr>
-    <tr class="total"><td>שווי קרקע מחולץ (כולל מסי רכישה)</td><td class="num">${M(R.residGross)}</td></tr>
-    <tr><td>שווי קרקע נטו (לאחר גילום מס רכישה ${S.l.tax}%)</td><td class="num">${M(R.residNet)}</td></tr>
+    <tr class="sub"><td>יתרה לרכישת הקרקע (כולל מסים והיטלים)</td><td class="num">${M(R.residAvail)}</td></tr>
+    <tr><td>בניכוי היטל השבחה ומסי ועדה</td><td class="num">(${M2(n(S.l.better))})</td></tr>
+    <tr><td>בניכוי עלויות נלוות לרכישה</td><td class="num">(${M2(n(S.l.other))})</td></tr>
+    <tr class="total"><td>יתרה לקרקע כולל מס רכישה</td><td class="num">${M(R.residGross)}</td></tr>
+    <tr><td>שווי קרקע מחולץ נטו (לאחר גילום מס רכישה ${S.l.tax}%)</td><td class="num">${M(R.residNet)}</td></tr>
     <tr><td>עלות הקרקע בפועל בתחשיב</td><td class="num">${M(n(S.l.price))}</td></tr>
     <tr class="grand"><td>פער מול המחיר בפועל ${R.residNet>=n(S.l.price)?'(עודף כדאיות)':'(חוסר כדאיות)'}</td><td class="num">${M(R.residNet-n(S.l.price))}</td></tr>`;
 
@@ -977,7 +996,7 @@ function renderCF(R){
   const C = R.CF;
   const inpRow = (label,arr,key) =>
     `<tr class="sub"><td>${label}</td>`+
-    arr.map((v,q)=>`<td style="text-align:center"><input type="number" step="0.1" class="no-print-border" style="width:60px;text-align:center;direction:ltr" value="${v}" onchange="setCurve('${key}',${q},this.value)"></td>`).join('')+
+    arr.map((v,q)=>`<td style="text-align:center"><input type="number" data-k="cv-${key}-${q}" step="0.1" style="width:60px;text-align:center;direction:ltr" value="${v}" onchange="setCurve('${key}',${q},this.value)"></td>`).join('')+
     `<td class="num" style="text-align:center;font-weight:700">${arr.reduce((a,b)=>a+n(b),0).toFixed(1)}%</td></tr>`;
 
   let html = '';
@@ -997,11 +1016,11 @@ function renderCF(R){
 
   const finGap = R.finModeled - R.finActual;
   $('cfFlags').innerHTML = [
-    ['שיא צריכת מקורות', M(R.peakNeed), R.peakNeed<=R.equity+R.credit, 'הון עצמי + אשראי'],
-    ['הון עצמי זמין', M(R.equity), true, P(R.eqRatio)+' מסך העלות'],
-    ['מסגרת אשראי נדרשת מהבנק', M(R.creditNeed), R.creditNeed<=R.credit*1.05, 'מול מסגרת מתוכננת '+M(R.credit)],
+    ['שיא צריכת מקורות', M(R.peakNeed), R.peakNeed<=R.equity+R.credit, 'מתוך הון עצמי + מסגרת של '+M(R.equity+R.credit)],
+    ['הון עצמי זמין', M(R.equity), R.eqRatio>=0.20, P(R.eqRatio)+' מסך העלות · סף מקובל ≥ 20%'],
+    ['שיא ניצול אשראי בפועל', M(R.creditNeed), R.creditNeed<=R.credit, 'מתוך מסגרת ליווי של '+M(R.credit)],
     ['תזרים מצטבר בסיום', M(C[C.length-1].cum), C[C.length-1].cum>0, 'לפני מס'],
-    ['עלות מימון בתחשיב (סעיף 6)', M(R.finModeled), true, S.i.fin+'% × '+S.i.finYears+' שנים'],
+    ['עלות מימון בתחשיב (סעיף 6)', M(R.finModeled), R.finModeled>=R.finActual, S.i.fin+'% × '+S.i.finYears+' שנים'],
     ['ריבית מחושבת מהתזרים בפועל', M(R.finActual), finGap>=0, (finGap>=0?'כרית ביטחון של ':'חוסר של ')+M(Math.abs(finGap))+' · ריבית '+S.f.rate+'%']
   ].map(f=>`<div class="flag ${f[2]?'ok':'no'}"><div class="t">${f[0]}</div><div class="v">${f[1]}</div><div class="t" style="margin-top:2px">${f[3]}</div></div>`).join('');
 
@@ -1017,15 +1036,16 @@ function renderSens(R){
   const pd = [-10,-7.5,-5,-2.5,0,2.5,5,7.5,10];
   const cd = [-10,-5,0,5,10,15];
   let h = `<tr><th class="hd" rowspan="2" style="width:130px">שינוי בעלויות<br>הבנייה ↓</th><th class="hd" colspan="${pd.length}">שינוי במחירי המכירה →</th></tr><tr>`;
-  h += pd.map(p=>`<th class="hd">${p>0?'+':''}${p}%</th>`).join('')+'</tr>';
+  /* dir="ltr" על תאי המספרים — אחרת האלגוריתם הדו-כיווני מעביר את הסימן לסוף ("10%-") */
+  h += pd.map(p=>`<th class="hd" dir="ltr">${p>0?'+':''}${p}%</th>`).join('')+'</tr>';
   cd.forEach(c=>{
-    h += `<tr><td class="hd">${c>0?'+':''}${c}%</td>`;
+    h += `<tr><td class="hd" dir="ltr">${c>0?'+':''}${c}%</td>`;
     pd.forEach(p=>{
       const r = scenario(1+p/100, 1+c/100);
       const isBase = (p===0&&c===0);
       const band = r.roc>=0.25? 4 : r.roc>=0.15? 3 : r.roc>=0.08? 2 : 1;
       const col = `var(--s${band})`, tc = `var(--s${band}t)`;
-      h += `<td class="${isBase?'base':''}" style="background:${col};color:${tc};font-weight:${isBase?800:600}">${(r.roc*100).toFixed(1)}%</td>`;
+      h += `<td dir="ltr" class="${isBase?'base':''}" style="background:${col};color:${tc};font-weight:${isBase?800:600}">${(r.roc*100).toFixed(1)}%</td>`;
     });
     h += '</tr>';
   });
@@ -1072,13 +1092,17 @@ const BIND = [
 function getPath(o,p){ return p.split('.').reduce((a,k)=>a[k],o); }
 function setPath(o,p,v){ const k=p.split('.'); const last=k.pop(); k.reduce((a,x)=>a[x],o)[last]=v; }
 
+let _bound = false;
 function bindAll(){
+  if(_bound) return;   /* boot() רץ שוב בטעינת קובץ ובאיפוס — אין לצבור מאזינים כפולים */
+  _bound = true;
   BIND.forEach(([id,path,type])=>{
     const el = $(id); if(!el) return;
     el.value = getPath(S,path);
     el.addEventListener('input', ()=>{
       setPath(S,path, type==='n'? n(el.value) : el.value);
-      if(id==='p_pre'||id==='p_build'||id==='p_close'){ S.curves.build=null; S.curves.sales=null; }
+      /* עקומות התזרים נבנות מחדש רק כשמספר הרבעונים משתנה בפועל (ensureCurves),
+         כדי שהקלדה בשדות משך הפרויקט לא תמחק פריסה שכוונה ידנית */
       render();
     });
   });
@@ -1092,25 +1116,25 @@ function injectEditors(){
   const keys = ['main','balc','roof','store','park'];
   document.querySelectorAll('#directTbl tr').forEach((tr,i)=>{
     const td = tr.children[2]; if(!td) return;
-    td.innerHTML = `<input type="number" step="50" value="${S.d[keys[i]]}" onchange="setD('${keys[i]}',this.value)">`;
+    td.innerHTML = `<input type="number" data-k="d-${keys[i]}" step="50" value="${S.d[keys[i]]}" onchange="setD('${keys[i]}',this.value)">`;
   });
   // indirect rates
   const ik = [['devFee',50],['plan',.1],['mkt',.1],['legal',.1],['over',.1],['fin',.1],['elec',100],['bank',.1],['guar',.1],['cont',.1],['rent',10000],['move',10000]];
   document.querySelectorAll('#indTbl tr').forEach((tr,i)=>{
     const td = tr.children[2]; if(!td || !ik[i]) return;
     const suffix = (i===0||i===6) ? '' : (i===10||i===11 ? '' : '%');
-    if(i===10||i===11){ td.innerHTML=`<input type="number" step="10000" value="${S.i[ik[i][0]]}" onchange="setI('${ik[i][0]}',this.value)">`; }
-    else td.innerHTML = `<div class="fld-row"><input type="number" step="${ik[i][1]}" value="${S.i[ik[i][0]]}" onchange="setI('${ik[i][0]}',this.value)">${suffix?'<span class="suf">%</span>':''}</div>`;
+    if(i===10||i===11){ td.innerHTML=`<input type="number" data-k="i-${ik[i][0]}" step="10000" value="${S.i[ik[i][0]]}" onchange="setI('${ik[i][0]}',this.value)">`; }
+    else td.innerHTML = `<div class="fld-row"><input type="number" data-k="i-${ik[i][0]}" step="${ik[i][1]}" value="${S.i[ik[i][0]]}" onchange="setI('${ik[i][0]}',this.value)">${suffix?'<span class="suf">%</span>':''}</div>`;
   });
   // finance years on the מימון row
   const finTr = document.querySelectorAll('#indTbl tr')[5];
-  if(finTr) finTr.children[1].innerHTML = `<div class="fld-row" style="font-size:12px"><span class="suf">בנייה ישירה ×</span><input type="number" step="0.25" class="inp-sm" value="${S.i.finYears}" onchange="setI('finYears',this.value)"><span class="suf">שנים</span></div>`;
+  if(finTr) finTr.children[1].innerHTML = `<div class="fld-row" style="font-size:12px"><span class="suf">בנייה ישירה ×</span><input type="number" data-k="i-finYears" step="0.25" class="inp-sm" value="${S.i.finYears}" onchange="setI('finYears',this.value)"><span class="suf">שנים</span></div>`;
   // land
   const lk = [['price',50000],['tax',.5],['better',10000],['other',10000]];
   document.querySelectorAll('#landTbl tr').forEach((tr,i)=>{
     if(!lk[i]) return;
     const target = (i===1) ? tr.children[2] : tr.children[3];
-    target.innerHTML = `<input type="number" step="${lk[i][1]}" value="${S.l[lk[i][0]]}" onchange="setL('${lk[i][0]}',this.value)">`;
+    target.innerHTML = `<input type="number" data-k="l-${lk[i][0]}" step="${lk[i][1]}" value="${S.l[lk[i][0]]}" onchange="setL('${lk[i][0]}',this.value)">`;
   });
 }
 function setD(k,v){ S.d[k]=n(v); render(); }
@@ -1142,14 +1166,19 @@ function merge(base, over){
 function resetAll(){ if(confirm('לאפס את כל הנתונים לערכי ברירת המחדל?')){ localStorage.removeItem(LS); S = clone(DEF); boot(); } }
 
 /* --- שכבת שמירת קבצים: עובדת גם כקובץ מקומי וגם בתוך צופה ה-Artifact --- */
-let _dlNS, _dlChecked = false;
-async function downloadsNS(){
-  if(_dlChecked) return _dlNS || null;
-  _dlChecked = true;
-  try{
-    if(window.claude && typeof window.claude.use === 'function') _dlNS = await window.claude.use('downloads');
-  }catch(e){ _dlNS = null; }
-  return _dlNS || null;
+/* מזכרון ההבטחה עצמה ולא דגל בוליאני — שתי לחיצות בזמן ההמתנה חולקות אותה בקשה */
+let _dlP = null;
+function downloadsNS(){
+  if(!_dlP){
+    _dlP = (window.claude && typeof window.claude.use === 'function')
+      ? Promise.resolve(window.claude.use('downloads')).catch(()=>null)
+      : Promise.resolve(null);
+  }
+  return _dlP;
+}
+/* בתוך צופה (iframe או window.claude קיים) הורדה שהדף יוזם חסומה — אין טעם לנסות עוגן */
+function inViewer(){
+  try{ return !!window.claude || window.self !== window.top; }catch(e){ return true; }
 }
 let _toastT;
 function toast(msg){
@@ -1162,7 +1191,10 @@ function toast(msg){
 async function offerFile(baseName, variants){
   const name = (baseName||'תוכנית-עסקית').replace(/[\\/:*?"<>|]/g,'-');
   const ns = await downloadsNS();
-  if(!ns){ const v = variants[0]; dl(new Blob([v.data],{type:v.mime}), name+'.'+v.ext); return; }
+  if(!ns){
+    if(inViewer()){ toast('שמירת קבצים אינה זמינה בתצוגה זו — פתח את קובץ ה‑HTML המקומי'); return; }
+    const v = variants[0]; dl(new Blob([v.data],{type:v.mime}), name+'.'+v.ext); return;
+  }
   for(const v of variants){
     try{ await ns.save({filename: name+'.'+v.ext, data: v.data}); return; }
     catch(err){
@@ -1240,7 +1272,8 @@ function buildSheets(){
     ['תשואה על ההון (כל התקופה)',+(R.roe*100).toFixed(2)+'%'],
     ['תשואה על ההון (שנתי ממוצע)',isFinite(R.roeAnn)?+(R.roeAnn*100).toFixed(2)+'%':'—'],
     ['שיא צריכת מקורות',Math.round(R.peakNeed)],
-    ['מסגרת אשראי נדרשת',Math.round(R.creditNeed)],
+    ['שיא ניצול אשראי בפועל',Math.round(R.creditNeed)],
+    ['מסגרת ליווי בנקאית',Math.round(R.credit)],
     ['עלות מימון בתחשיב',Math.round(R.finModeled)],
     ['ריבית מחושבת מהתזרים',Math.round(R.finActual)],
     ['מחיר מ"ר לאיזון (דירה רגילה)',Math.round(S.pr.reg*S.pr.glob/100*R.kBE)],
@@ -1263,6 +1296,7 @@ function buildSheets(){
   rows4.push(['תזרים מצטבר',...R.CF.map(c=>Math.round(c.cum)),'']);
   rows4.push(['צריכת מקורות מצטברת',...R.CF.map(c=>Math.round(Math.max(0,-c.cum))),Math.round(R.peakNeed)]);
   rows4.push(['יתרת אשראי בנקאי',...R.CF.map(c=>Math.round(c.bal)),Math.round(R.creditNeed)]);
+  rows4.push(['שיא ניצול אשראי','','','','','','','','','','','',Math.round(R.creditNeed)]);
   sheets.push(['תזרים מזומנים', rows4]);
 
   return {R, sheets};
@@ -1351,9 +1385,29 @@ function boot(){
   injectEditors();
   buildNav();
 }
-// re-inject editors after every render (tables are rebuilt)
+/* הטבלאות נבנות מחדש ב-innerHTML בכל רינדור, מה שהורס את השדה שבפוקוס.
+   כל פקד מרונדר נושא data-k יציב, וכאן מצלמים ומשחזרים פוקוס + מיקום סמן. */
+function snapFocus(){
+  const el = document.activeElement;
+  if(!el || !el.dataset || !el.dataset.k) return null;
+  const s = {k: el.dataset.k};
+  try{ s.ss = el.selectionStart; s.se = el.selectionEnd; }catch(e){}
+  return s;
+}
+function restoreFocus(s){
+  if(!s) return;
+  let el = null;
+  try{ el = document.querySelector('[data-k="'+(window.CSS&&CSS.escape? CSS.escape(s.k): s.k)+'"]'); }catch(e){}
+  if(!el) return;
+  try{ el.focus({preventScroll:true}); }catch(e){ el.focus(); }
+  if(s.ss!=null && el.setSelectionRange){ try{ el.setSelectionRange(s.ss, s.se); }catch(e){} }
+}
 const _render = render;
-render = function(){ _render(); injectEditors(); refreshBind(); };
+render = function(){
+  const f = snapFocus();
+  _render(); injectEditors(); refreshBind();
+  restoreFocus(f);
+};
 
 S = load();
 boot();
