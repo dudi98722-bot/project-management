@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 יב'";
+var APP_BUILD = "19.08 יג'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -8720,8 +8720,8 @@ function openBulkBankMoveEdit(){
       '</select></div>'+
       '<div class="field"><label>תאריך</label><input id="bb-date" type="date"><div class="hint">ריק = ללא שינוי</div></div>'+
       '<div class="field"><label>סוג</label><input id="bb-kind" placeholder="ריק = ללא שינוי"></div>'+
-      '<div class="field"><label>קטגוריה</label><input id="bb-style" placeholder="ריק = ללא שינוי"></div>'+
-      '<div class="field"><label>תת קטגוריה</label><input id="bb-substyle" placeholder="ריק = ללא שינוי"></div>'+
+      '<div class="field"><label>קטגוריה</label>'+bmStyleSelect("bb-style","style","","— ללא שינוי —")+'</div>'+
+      '<div class="field"><label>תת קטגוריה</label>'+bmStyleSelect("bb-substyle","subStyle","","— ללא שינוי —")+'</div>'+
       '<div class="field"><label>מסמך</label><select id="bb-doc">'+
         '<option value="__keep">— ללא שינוי —</option>'+
         DOC_ORDER.map(function(k){ return '<option value="'+k+'">'+DOC_STATES[k].t+'</option>'; }).join("")+
@@ -8748,7 +8748,7 @@ function onBbDetMode(){
 function applyBulkBankMoveEdit(ids){
   if(!can("edit")){ toast("אין הרשאה","err"); return false; }
   var bank=val("bb-bank"), date=val("bb-date");
-  var kind=val("bb-kind").trim(), style=val("bb-style").trim(), subStyle=val("bb-substyle").trim();
+  var kind=val("bb-kind").trim(), style=bmStyleVal("bb-style"), subStyle=bmStyleVal("bb-substyle");
   var doc=val("bb-doc")||"__keep", ign=val("bb-ignore")||"__keep";
   var dMode=val("bb-det-mode")||"keep", dTxt=val("bb-details").trim();
   if(!bank && !date && !kind && !style && !subStyle && doc==="__keep" && ign==="__keep" && dMode==="keep"){
@@ -8778,6 +8778,40 @@ function applyBulkBankMoveEdit(ids){
   rerender();
   return true;
 }
+/* ---------- רשימות קטגוריה / תת קטגוריה ----------
+   במקום הקלדה חופשית (שיוצרת "שכירות", "שכירות " ו"שכירויות" שונות),
+   בוחרים מרשימת הערכים שכבר בשימוש בשורות הבנק. "➕ ערך חדש…" מוסיף
+   לרשימה במקום. הרשימה נגזרת מהנתונים — ערך חי כל עוד שורה נושאת אותו. */
+function bmStyleValues(field){
+  var seen={}, out=[];
+  (DB.bankMoves||[]).forEach(function(m){
+    if(m.deleted) return;
+    var v=String(m[field]||"").trim();
+    if(v && !seen[v]){ seen[v]=1; out.push(v); }
+  });
+  return out.sort(function(a,b){ return a.localeCompare(b,"he"); });
+}
+function bmStyleSelect(id,field,cur,emptyLabel){
+  cur=String(cur||"").trim();
+  var vals=bmStyleValues(field);
+  if(cur && vals.indexOf(cur)<0) vals.unshift(cur);
+  return '<select id="'+id+'" onchange="bmStylePick(this)">'+
+    '<option value="">'+esc(emptyLabel||"—")+'</option>'+
+    vals.map(function(v){ return '<option value="'+esc(v)+'"'+(v===cur?" selected":"")+'>'+esc(v)+'</option>'; }).join("")+
+    '<option value="__add">➕ ערך חדש…</option></select>';
+}
+function bmStylePick(sel){
+  if(sel.value!=="__add") return;
+  var v=prompt("ערך חדש:",""); v=(v||"").trim();
+  if(!v){ sel.value=""; return; }
+  var has=Array.prototype.some.call(sel.options,function(o){ return o.value===v; });
+  if(!has){
+    var o=document.createElement("option"); o.value=v; o.textContent=v;
+    sel.insertBefore(o, sel.querySelector('option[value="__add"]'));
+  }
+  sel.value=v;
+}
+function bmStyleVal(id){ var v=val(id); return v==="__add"?"":String(v||"").trim(); }
 /* ---------- תנועה ידנית — שורה אחת בלי הדבקה ---------- */
 function editBankMove(id){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
@@ -8794,8 +8828,8 @@ function editBankMove(id){
     '<div class="field"><label>שם</label><input id="bm-name" value="'+esc(m&&m.name||"")+'" placeholder="ממי הגיע הכסף"></div>'+
     '<div class="field"><label>סכום (₪)</label><input id="bm-amount" type="number" step="0.01" value="'+(m?esc(String(m.amount)):"")+'"></div>'+
     '<div class="field"><label>סוג</label><input id="bm-kind" value="'+esc(m&&m.kind||"")+'" placeholder="העברה / מזומן…"></div>'+
-    '<div class="field"><label>קטגוריה</label><input id="bm-style" value="'+esc(m&&m.style||"")+'"></div>'+
-    '<div class="field"><label>תת קטגוריה</label><input id="bm-substyle" value="'+esc(m&&m.subStyle||"")+'"></div>'+
+    '<div class="field"><label>קטגוריה</label>'+bmStyleSelect("bm-style","style",m&&m.style||"")+'</div>'+
+    '<div class="field"><label>תת קטגוריה</label>'+bmStyleSelect("bm-substyle","subStyle",m&&m.subStyle||"")+'</div>'+
     '<div class="field"><label>אסמכתא</label><input id="bm-ref" value="'+esc(m&&m.ref||"")+'"></div>'+
     '<div class="field full"><label>פרטים</label><input id="bm-details" value="'+esc(m&&m.details||"")+'"></div>'+
     '<div class="field"><label>מסמך</label><select id="bm-doc">'+
@@ -8815,12 +8849,12 @@ function editBankMove(id){
       if(amt<=0){ toast("סכום לא תקין","err"); return false; }
       if(m){
         m.stmtBankId=bankId; m.accountId=""; m.date=val("bm-date")||todayISO(); m.name=val("bm-name").trim();
-        m.amount=round2(amt); m.kind=val("bm-kind").trim(); m.style=val("bm-style").trim(); m.subStyle=val("bm-substyle").trim();
+        m.amount=round2(amt); m.kind=val("bm-kind").trim(); m.style=bmStyleVal("bm-style"); m.subStyle=bmStyleVal("bm-substyle");
         m.ref=val("bm-ref").trim(); m.details=val("bm-details").trim(); setMoveDocState(m,val("bm-doc"));
       }else{
         DB.bankMoves.push({id:uid(),stmtBankId:bankId,apartmentId:"",
           date:val("bm-date")||todayISO(),amount:round2(amt),
-          name:val("bm-name").trim(),kind:val("bm-kind").trim(),style:val("bm-style").trim(),subStyle:val("bm-substyle").trim(),
+          name:val("bm-name").trim(),kind:val("bm-kind").trim(),style:bmStyleVal("bm-style"),subStyle:bmStyleVal("bm-substyle"),
           details:val("bm-details").trim(),docState:(val("bm-doc")||"none"),hasDoc:(val("bm-doc")==="has"),description:"",ref:val("bm-ref").trim(),
           matches:[],ignored:false,note:"",deleted:false});
       }
