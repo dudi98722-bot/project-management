@@ -904,7 +904,9 @@ function doPrintLabels(type){
   // a4     = grid of 4x11 labels on a regular A4 sheet, dashed cut guides
   const pageCss = layout==='single'
     ? `@page { size: 50mm 25mm; margin: 0; }
-       .lbl{page-break-after:always}`
+       html,body{width:50mm;margin:0;padding:0}
+       .lbl{page-break-after:always;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+       .lbl:last-child{page-break-after:auto}`
     : `@page { size: A4; margin: 5mm; }
        .wrap{display:flex;flex-wrap:wrap;width:200mm}
        .lbl{outline:.5px dashed #bbb;page-break-inside:avoid}`;
