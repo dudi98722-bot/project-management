@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 טז'";
+var APP_BUILD = "19.08 יז'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -8354,8 +8354,14 @@ function bankMoveRowHtml(m,selBm){
     '<td title="'+esc(det)+'" style="max-width:180px;overflow:hidden;text-overflow:ellipsis" class="muted">'+esc(det||"—")+'</td>'+
     '<td>'+moveDocCell(m)+'</td>'+
     '<td>'+moveStatusHtml(m)+'</td>'+
-    '<td class="muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis">'+
-      (mm.length?esc(mm.map(function(x){ var i=incMapGet(x.incomeId); return (i?i.description:"—")+" ("+money(x.amount)+")"; }).join(" · ")):"—")+'</td>'+
+    /* לאיזו הזמנה הותאם — ומתחת, לאיזה פרוייקט. בלי הפרוייקט אי אפשר
+       היה לדעת לאן נזקף הכסף בלי להיכנס לשורה. */
+    '<td class="muted" style="max-width:230px">'+
+      (mm.length?mm.map(function(x){
+        var i=incMapGet(x.incomeId);
+        return '<div>'+esc(i?i.description:"—")+' ('+money(x.amount)+')'+
+          (i&&i.apartmentId?'<div class="hint">'+esc(apartmentName(i.apartmentId))+'</div>':'')+'</div>';
+      }).join(""):"—")+'</td>'+
     '<td class="right" style="white-space:nowrap">'+
       (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="openMoveMatch(\''+m.id+'\')" title="התאמה">🔗</button>'+
       '<button class="btn btn-ghost btn-sm" onclick="editBankMove(\''+m.id+'\')" title="עריכת השורה">✏️</button>'+
@@ -8788,7 +8794,11 @@ function renderMoveCandidates(id){
       '<td class="neg"><b>'+money(c.debt)+'</b></td>'+
       '<td class="muted">'+(c.why.length?esc(c.why.join(" · ")):'<span class="muted">—</span>')+'</td>'+
       '<td><input type="number" step="0.01" class="mv-amt" data-i="'+c.inc.id+'" value="'+suggest+'" style="max-width:110px"></td>'+
-      '<td class="right">'+(can("edit")?'<button class="btn btn-primary btn-sm" onclick="doMoveMatch(\''+id+'\',\''+c.inc.id+'\')">התאם</button>':'')+'</td></tr>';
+      '<td class="right" style="white-space:nowrap">'+(can("edit")
+        ? '<button class="btn btn-primary btn-sm" onclick="doMoveMatch(\''+id+'\',\''+c.inc.id+'\')">התאם</button>'+
+          '<button class="btn btn-ghost btn-sm" title="עדכון סכום ההזמנה" '+
+            'onclick="editIncomeAmountFromMatch(\''+id+'\',\''+c.inc.id+'\')">✏️ סכום</button>'
+        : '')+'</td></tr>';
   });
   h+='</tbody></table></div></div>';
   if(cands.length>20) h+='<div class="hint">מוצגות 20 ההזמנות המתאימות ביותר מתוך '+cands.length+'.</div>';
@@ -8859,9 +8869,37 @@ function doMoveMatch(moveId,incId){
   var amt=round2(Number(inp?inp.value:0)||0);
   if(amt<=0){ toast("סכום לא תקין","err"); return; }
   if(amt>moveRemaining(m)+0.01){ toast("הסכום גדול ממה שנותר בשורת הבנק ("+money(moveRemaining(m))+")","err"); return; }
-  if(amt>incomeDebt(inc)+0.01 && !confirm("הסכום גדול מהחוב של ההזמנה ("+money(incomeDebt(inc))+").\n\nלרשום בכל זאת?")) return;
+  /* נכנס יותר ממה שנרשם בהזמנה — המצב השכיח: ההזמנה הייתה 15,000
+     ובפועל התקבלו 17,000. במקום לחסום, מציעים להגדיל את ההזמנה כדי
+     שהיא תיסגר במלואה; מי שרוצה תשלום ביתר עדיין יכול. */
+  var debt=incomeDebt(inc);
+  if(amt>debt+0.01){
+    var grow=round2((Number(inc.amount)||0)+(amt-debt));
+    var ans=confirm("הסכום ("+money(amt)+") גדול מהחוב של ההזמנה ("+money(debt)+").\n\n"+
+      "אישור = להגדיל את סכום ההזמנה מ-"+money(inc.amount)+" ל-"+money(grow)+" ולסגור אותה במלואה.\n"+
+      "ביטול = להשאיר את ההזמנה כפי שהיא (ייווצר תשלום ביתר).");
+    if(ans){
+      inc.amount=grow;
+      toast("סכום ההזמנה עודכן ל-"+money(grow),"ok");
+    }
+  }
   applyMoveMatch(m,inc,amt);
   save(); toast("הותאם · נרשם תשלום של "+money(amt),"ok");
+  renderMoveCandidates(moveId);
+}
+/* עדכון סכום ההזמנה בלי לצאת ממסך ההתאמה */
+function editIncomeAmountFromMatch(moveId,incId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var inc=byId(DB.income,incId); if(!inc) return;
+  var paid=incomePaid(inc);
+  var v=prompt('סכום ההזמנה "'+inc.description+'":', String(Number(inc.amount)||0));
+  if(v===null) return;
+  var n=round2(Number(String(v).replace(/[₪,\s]/g,""))||0);
+  if(n<=0){ toast("סכום לא תקין","err"); return; }
+  if(n<paid-0.01 && !confirm("כבר נרשמו על ההזמנה תשלומים בסך "+money(paid)+".\n\n"+
+    "הקטנה ל-"+money(n)+" תיצור תשלום ביתר. להמשיך?")) return;
+  inc.amount=n;
+  save(); toast("סכום ההזמנה עודכן ל-"+money(n),"ok");
   renderMoveCandidates(moveId);
 }
 function undoMatchFromUi(moveId,matchId){
