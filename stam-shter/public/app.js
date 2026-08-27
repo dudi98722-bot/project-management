@@ -246,10 +246,11 @@ function readFields(fields) {
 }
 
 // ---- טופס הוספה/עריכה גנרי ----
-function openForm(cfg, row) {
+function openForm(cfg, row, prefill) {
   const isEdit = !!row;
+  const base = Object.assign({}, cfg.defaults ? cfg.defaults() : {}, prefill || {});
   const body = `<div class="row">${cfg.fields.map(f =>
-    fieldHTML(f, row ? row[f.k] : (cfg.defaults ? cfg.defaults()[f.k] : ''))).join('')}</div>`;
+    fieldHTML(f, row ? row[f.k] : base[f.k])).join('')}</div>`;
   const m = modal({
     title: (isEdit ? 'עריכה — ' : 'הוספה — ') + cfg.title,
     body, wide: cfg.wide,
@@ -662,7 +663,7 @@ async function pageDash() {
       ${st('הוצאות עסק', money(d.business_expenses), 'a')}
       ${st('חוב לסופרים', money(d.owed_to_scribes), 'r', 'שתי המערכות')}
       ${st('חוב הרוכשים (מיידי)', money(d.owed_by_customers), 'a', `כללי: ${money(d.owed_by_customers_total)}`)}
-      ${st('מלאי מוצרים', N(d.stock_units).toLocaleString('he-IL') + ' יח\'', '')}
+      ${st('מלאי מוצרים', N(d.stock_units).toLocaleString('he-IL') + " יח'", '')}
       ${st('עלות פריטה', money(d.peritah_total), 'r', 'שתי המערכות')}
     </div>`;
 }
@@ -811,7 +812,7 @@ async function showScrollCard(id) {
     <div class="sec-title">הוצאות קלף (${d.parchment_expenses.length})</div>
     ${mini([{ label: 'תאריך', render: r => dt(r.date) }, { label: 'גודל', render: r => esc(r.size_name || '') },
             { label: 'כמות', cls: 'num', render: r => numCell(r.quantity) },
-            { label: 'עלות ליח\'', cls: 'num', render: r => mCell(r.cost_per_unit) },
+            { label: "עלות ליח'", cls: 'num', render: r => mCell(r.cost_per_unit) },
             { label: 'סך עלות', cls: 'num', render: r => mCell(r.total_cost) }], d.parchment_expenses)}
   `;
   modal({ title: 'כרטיס ספר ' + scrollLabel(s), body, wide: true });
@@ -1097,8 +1098,8 @@ function prodPurchases(cfgOnly) {
       { label: 'כמות', cls: 'num', render: r => numCell(r.quantity), total: rows => numCell(sumBy(rows, 'quantity')) },
       { label: 'נמכר', cls: 'num', render: r => numCell(r.sold_qty) },
       { label: 'נשאר', cls: 'num', render: r => `<span class="pill ${N(r.remaining_qty) > 0 ? 'g' : 'n'}">${N(r.remaining_qty)}</span>` },
-      { label: 'עלות ליח\'', cls: 'num', render: r => mCell(r.cost_per_unit) },
-      { label: 'נוספת ליח\'', cls: 'num', render: r => mCell(r.extra_cost_per_unit) },
+      { label: "עלות ליח'", cls: 'num', render: r => mCell(r.cost_per_unit) },
+      { label: "נוספת ליח'", cls: 'num', render: r => mCell(r.extra_cost_per_unit) },
       { label: 'סוג', render: r => `<span class="pill n">${esc(r.purchase_type || '')}</span>` },
       { label: 'חוב לסופר', cls: 'num', render: r => mCell(r.owed_scribe), total: rows => mCell(sumBy(rows, 'owed_scribe')) },
     ],
@@ -1133,8 +1134,8 @@ function prodSales(cfgOnly) {
       { label: 'מחבילה', render: r => r.purchase_id ? `<span class="pill n">#${r.purchase_id}</span>` : '—' },
       { label: 'מוצר', render: r => esc(r.product_name || '—') + (r.scribe_name ? ` <span class="mini">· ${esc(r.scribe_name)}</span>` : '') },
       { label: 'כמות', cls: 'num', render: r => numCell(r.quantity), total: rows => numCell(sumBy(rows, 'quantity')) },
-      { label: 'מחיר ליח\'', cls: 'num', render: r => mCell(r.price_per_unit) },
-      { label: 'עלות ליח\'', cls: 'num', render: r => mCell(r.unit_cost) },
+      { label: "מחיר ליח'", cls: 'num', render: r => mCell(r.price_per_unit) },
+      { label: "עלות ליח'", cls: 'num', render: r => mCell(r.unit_cost) },
       { label: 'סוג', render: r => `<span class="pill n">${esc(r.sale_type || '')}</span>` },
       { label: '3%', cls: 'center', render: r => r.deduct_3pct ? '<span class="pill a">כן</span>' : '' },
       { label: 'סך מכירה', cls: 'num', render: r => mCell(r.total_sale), total: rows => mCell(sumBy(rows, 'total_sale')) },
@@ -1609,7 +1610,7 @@ async function repInventory() {
     { label: 'נקנה', cls: 'num', render: r => numCell(r.quantity) },
     { label: 'נמכר', cls: 'num', render: r => numCell(r.sold_qty) },
     { label: 'נשאר', cls: 'num', render: r => `<span class="pill ${N(r.remaining_qty) > 0 ? 'g' : 'n'}">${N(r.remaining_qty)}</span>` },
-    { label: 'עלות ליח\'', cls: 'num', render: r => mCell(r.unit_cost) },
+    { label: "עלות ליח'", cls: 'num', render: r => mCell(r.unit_cost) },
     { label: 'שווי מלאי', cls: 'num', render: r => mCell(r.stock_value), total: rows => mCell(sumBy(rows, 'stock_value')) },
   ];
   $('view').innerHTML += `
@@ -1672,7 +1673,7 @@ function scribeCardHTML(d) {
         { label: 'מוצר', render: r => esc(r.product_name || '—') },
         { label: 'כמות', cls: 'num', render: r => numCell(r.quantity) },
         { label: 'נשאר', cls: 'num', render: r => numCell(r.remaining_qty) },
-        { label: 'עלות ליח\'', cls: 'num', render: r => mCell(r.cost_per_unit) },
+        { label: "עלות ליח'", cls: 'num', render: r => mCell(r.cost_per_unit) },
         { label: 'חוב', cls: 'num', render: r => mCell(r.owed) },
       ], d.purchases)}
       <div class="kv" style="margin-top:10px">
@@ -1721,7 +1722,7 @@ function customerCardHTML(d) {
       ${tableHTML([{ label: 'תאריך', render: r => dt(r.date) },
                    { label: 'מוצר', render: r => esc(r.product_name || '—') },
                    { label: 'כמות', cls: 'num', render: r => numCell(r.quantity) },
-                   { label: 'מחיר ליח\'', cls: 'num', render: r => mCell(r.price_per_unit) },
+                   { label: "מחיר ליח'", cls: 'num', render: r => mCell(r.price_per_unit) },
                    { label: 'סך מכירה', cls: 'num', render: r => mCell(r.total_sale) }], d.sales)}
       <div class="kv" style="margin-top:10px">
         <div class="k">סה"כ מכירות</div><div class="num">${money(p.revenue)}</div>
@@ -2967,6 +2968,245 @@ function trackStations(cfgOnly) {
 }
 
 
+
+// ============ מרחב עבודה לאיש קשר ============
+// כל מה שקשור לאדם אחד במסך אחד — כסופר וכרוכש — עם פעולות שנפתחות
+// כשהוא כבר משובץ בטופס. המטרה: לשבת על לקוח אחד ולעדכן הכל בלי
+// לקפוץ בין לשוניות.
+const WS = { id: '', open: {} };
+
+function pageWorkspace() {
+  $('view').innerHTML += `
+    <div class="page-head"><h2>🧑 מרחב עבודה</h2>
+      <span class="mini">בוחרים אדם — ורואים ומעדכנים את כל מה שקשור אליו במקום אחד</span></div>
+    <div class="card">
+      <div style="max-width:460px">${pickerHTML('wsPerson', 'בחר סופר או לקוח', itemsContacts(), WS.id, 'הקלד שם…')}</div>
+    </div>
+    <div id="wsBody"></div>`;
+  wirePicker('wsPerson', itemsContacts(), (v) => { WS.id = v; render(); });
+  if (!WS.id) {
+    $('wsBody').innerHTML = `<div class="card"><div class="empty">
+      <div class="big">🧑</div>בחר איש קשר כדי לראות את כל הנתונים שלו</div></div>`;
+    return;
+  }
+  return loadWorkspace(+WS.id);
+}
+
+async function loadWorkspace(id) {
+  $('wsBody').innerHTML = '<div class="card muted">טוען…</div>';
+  let scribe, customer, sheets, pays, pages, bookExp, parchExp;
+  try {
+    [scribe, customer, sheets] = await Promise.all([
+      Store.reports.scribe(id).catch(() => null),
+      ME.caps.finance ? Store.reports.customer(id).catch(() => null) : Promise.resolve(null),
+      Store.track.list({ holder_id: id }).catch(() => []),
+    ]);
+    // היומנים של הספרים שהוא כותב — מסוננים לפי הספרים שלו
+    const myScrollIds = new Set((scribe && scribe.scrolls || []).map(s => s.id));
+    const [p1, p2, p3, p4] = await Promise.all([
+      Store.scribePayments.list(), Store.pagesLog.list(),
+      Store.bookExpenses.list(), Store.parchmentExpenses.list(),
+    ]);
+    const mine = (arr) => arr.filter(r => myScrollIds.has(+r.scroll_id));
+    pays = mine(p1); pages = mine(p2); bookExp = mine(p3); parchExp = mine(p4);
+  } catch (e) {
+    $('wsBody').innerHTML = `<div class="card" style="color:var(--red)">${esc(e.message)}</div>`;
+    return;
+  }
+
+  const person = (scribe && scribe.contact) || (customer && customer.contact) || {};
+  const asScribe = !!(scribe && (scribe.scrolls.length || scribe.purchases.length));
+  const asCustomer = !!(customer && (customer.scrolls.length || customer.sales.length));
+  const st = scribe ? scribe.scroll_totals : null;
+  const pt = scribe ? scribe.product_totals : null;
+  const ct = customer ? customer.scroll_totals : null;
+  const cpt = customer ? customer.product_totals : null;
+
+  const card = (label, val, cls, sub) => `<div class="stat"><div class="label">${label}</div>
+    <div class="value ${cls || ''}">${val}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>`;
+
+  // פעולה מהירה — נפתחת כשהאדם כבר משובץ בטופס
+  const act = (label, icon, cfgFn, prefill) =>
+    `<button class="btn ghost sm" data-wsact='${esc(JSON.stringify({ label, prefill }))}' data-cfg="${cfgFn}">${icon} ${esc(label)}</button>`;
+
+  const scribeActions = [
+    act('תשלום לסופר', '💰', 'scribePayCfg', { _scribe: id }),
+    act('רישום עמודים', '✍️', 'pagesLogCfg', { _scribe: id }),
+    act('הוצאה לספר', '🧾', 'bookExpCfg', { _scribe: id }),
+    act('הוצאת קלף', '📜', 'parchExpCfg', { _scribe: id }),
+    ME.caps.finance ? act('ספר חדש', '📖', 'scrollCfg', { scribe_id: id }) : '',
+    act('רכישה ממנו', '📦', 'prodPurchaseCfg', { scribe_id: id }),
+    act('תשלום (מוצרים)', '💰', 'prodScribePayCfg', { scribe_id: id }),
+  ].join('');
+
+  const custActions = [
+    ME.caps.finance ? act('תשלום לקוח', '💵', 'custPayCfg', { customer_id: id }) : '',
+    act('מכירה לו', '🛒', 'prodSaleCfg', { customer_id: id }),
+    ME.caps.finance ? act('תשלום לקוח (מוצרים)', '💵', 'prodCustPayCfg', { customer_id: id }) : '',
+    ME.caps.finance ? act('ספר חדש עבורו', '📖', 'scrollCfg', { customer_id: id }) : '',
+  ].join('');
+
+  const sec = (key, title, count, html) => `
+    <div class="card ws-sec">
+      <div class="page-head" style="margin-bottom:0;cursor:pointer" data-sec="${key}">
+        <h3 style="margin:0">${title} ${count ? `<span class="pill n">${count}</span>` : '<span class="mini">ריק</span>'}</h3>
+        <div class="spacer"></div><span class="mini">${WS.open[key] === false ? '▸ הצג' : '▾ הסתר'}</span>
+      </div>
+      <div ${WS.open[key] === false ? 'class="hidden"' : ''} style="margin-top:12px">${html}</div>
+    </div>`;
+
+  const scrollCol = { label: 'ספר', render: r => { const s = C.scrolls.find(x => x.id === +r.scroll_id); return s ? esc(scrollLabel(s)) : '—'; } };
+
+  $('wsBody').innerHTML = `
+    <div class="card" style="background:linear-gradient(135deg,#0f766e,#115e59);color:#fff;border:none">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="font-size:24px;font-weight:800">${esc(person.name || '')}</div>
+        ${person.phone ? `<a href="tel:${esc(person.phone)}" style="color:#a7f3d0">${esc(person.phone)}</a>` : ''}
+        <div class="spacer" style="flex:1"></div>
+        <div style="display:flex;gap:8px">
+          ${asScribe ? '<span class="pill" style="background:#fff;color:#0f766e">סופר</span>' : ''}
+          ${asCustomer ? '<span class="pill" style="background:#fff;color:#c98a2e">רוכש</span>' : ''}
+        </div>
+      </div>
+    </div>
+
+    <div class="grid stat-grid">
+      ${scribe ? card('חוב לסופר', money(scribe.total_balance), scribe.total_balance > 0 ? 'r' : '',
+          `ס"ת ${money(st.balance)} · מוצרים ${money(pt.balance)}`) : ''}
+      ${scribe ? card('יתרה עתידית', money(st.future_balance), 'a', `${st.count} ספרים`) : ''}
+      ${customer ? card('חוב הלקוח', money(customer.total_due_now), customer.total_due_now > 0 ? 'r' : '',
+          `כללי: ${money(customer.total_due_overall)}`) : ''}
+      ${customer ? card('שילם', money(N(ct.paid) + N(cpt.paid)), 'g') : ''}
+      ${card('יריעות אצלו', sheets.length, sheets.length ? 'b' : '')}
+    </div>
+
+    ${asScribe || !asCustomer ? `<div class="card">
+      <h3>פעולות — כסופר</h3><div class="toolbar">${scribeActions}</div></div>` : ''}
+    ${asCustomer || !asScribe ? `<div class="card">
+      <h3>פעולות — כרוכש</h3><div class="toolbar">${custActions}</div></div>` : ''}
+
+    ${scribe && scribe.scrolls.length ? sec('books', 'הספרים שהוא כותב', scribe.scrolls.length,
+      tableHTML([
+        { label: 'מק"ט', render: r => r.sku ? `<b>${esc(r.sku)}</b>` : `#${r.id}` },
+        { label: 'מוצר', render: r => esc(r.product_name || '—') },
+        { label: 'התקדמות', render: r => `<div class="bar ${r.progress_pct < 100 ? 'warn' : ''}"><span style="width:${Math.min(100, r.progress_pct)}%"></span></div>
+            <span class="mini">${r.pages_written}/${r.product_pages}</span>` },
+        { label: 'מגיע לפי התקדמות', cls: 'num', render: r => mCell(r.scribe_due_progress) },
+        { label: 'שולם', cls: 'num', render: r => mCell(r.scribe_paid) },
+        { label: 'תיקונים', cls: 'num', render: r => mCell(r.corrections_paid) },
+        { label: 'יתרה', cls: 'num', render: r => `<b>${mCell(r.scribe_balance)}</b>`, total: rs => `<b>${mCell(sumBy(rs, 'scribe_balance'))}</b>` },
+        { label: 'עתידי', cls: 'num', render: r => mCell(r.scribe_future_balance) },
+        { label: '', cls: 'center', render: r => `<button class="btn ghost xs" data-book="${r.id}">כרטיס</button>` },
+      ], scribe.scrolls, { totals: true })) : ''}
+
+    ${sec('pays', 'תשלומים לסופר', pays.length, tableHTML([
+      scrollCol,
+      { label: 'תאריך', render: r => dt(r.date) },
+      { label: 'סכום', cls: 'num', render: r => mCell(r.amount), total: rs => mCell(sumBy(rs, 'amount')) },
+      { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
+    ], pays, { totals: true }))}
+
+    ${sec('pages', 'עמודים שנכתבו', pages.length, tableHTML([
+      scrollCol,
+      { label: 'תאריך', render: r => dt(r.date) },
+      { label: 'עמודים', cls: 'num', render: r => numCell(r.pages), total: rs => numCell(sumBy(rs, 'pages')) },
+      { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
+    ], pages, { totals: true }))}
+
+    ${sec('exp', 'הוצאות לספר וקלף', bookExp.length + parchExp.length, tableHTML([
+      scrollCol,
+      { label: 'תאריך', render: r => dt(r.date) },
+      { label: 'סוג', render: r => esc(r.type || ('קלף · ' + (r.size_name || ''))) + (r.is_correction ? ' <span class="pill a">תיקונים</span>' : '') },
+      { label: 'סכום', cls: 'num', render: r => mCell(r.amount !== undefined ? r.amount : r.total_cost),
+        total: rs => mCell(rs.reduce((a, x) => a + N(x.amount !== undefined ? x.amount : x.total_cost), 0)) },
+    ], bookExp.concat(parchExp), { totals: true }))}
+
+    ${sheets.length ? sec('sheets', 'יריעות שנמצאות אצלו', sheets.length, tableHTML([
+      { label: 'שייך ל', render: r => esc(itemLabel(r)) },
+      { label: 'יריעה', cls: 'num', render: r => `<b>${r.seq}</b>` },
+      { label: 'תחנה', render: r => stationPill(r) },
+      { label: 'מתאריך', render: r => r.since ? dt(r.since) : '' },
+      { label: 'ימים', cls: 'num', render: r => r.days_at_station != null
+          ? `<span class="${r.days_at_station > 60 ? 'neg' : ''}">${r.days_at_station}</span>` : '' },
+      { label: '', cls: 'center', render: r => `<button class="btn ghost xs" data-hist="${r.id}">🕘</button>` },
+    ], sheets)) : ''}
+
+    ${scribe && scribe.purchases.length ? sec('purch', 'רכישות ממנו (מוצרים)', scribe.purchases.length, tableHTML([
+      { label: 'תאריך', render: r => dt(r.date) },
+      { label: 'מוצר', render: r => esc(r.product_name || '—') },
+      { label: 'כמות', cls: 'num', render: r => numCell(r.quantity) },
+      { label: 'נשאר', cls: 'num', render: r => numCell(r.remaining_qty) },
+      { label: "עלות ליח\'", cls: 'num', render: r => mCell(r.cost_per_unit) },
+      { label: 'חוב', cls: 'num', render: r => mCell(r.owed), total: rs => mCell(sumBy(rs, 'owed')) },
+    ], scribe.purchases, { totals: true })) : ''}
+
+    ${scribe && scribe.product_payments.length ? sec('ppay', 'תשלומים לסופר (מוצרים)', scribe.product_payments.length, tableHTML([
+      { label: 'תאריך', render: r => dt(r.date) },
+      { label: 'סכום', cls: 'num', render: r => mCell(r.amount), total: rs => mCell(sumBy(rs, 'amount')) },
+      { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
+    ], scribe.product_payments, { totals: true })) : ''}
+
+    ${customer && customer.scrolls.length ? sec('cbooks', 'ספרים שרכש', customer.scrolls.length, tableHTML([
+      { label: 'מק"ט', render: r => r.sku ? `<b>${esc(r.sku)}</b>` : `#${r.id}` },
+      { label: 'מוצר', render: r => esc(r.product_name || '—') },
+      { label: 'מחיר', cls: 'num', render: r => mCell(r.buyer_total, r.buyer_currency), total: rs => mCell(sumBy(rs, 'buyer_total')) },
+      { label: 'לפי התקדמות', cls: 'num', render: r => mCell(r.buyer_due_progress) },
+      { label: 'שילם', cls: 'num', render: r => mCell(r.customer_paid), total: rs => mCell(sumBy(rs, 'customer_paid')) },
+      { label: 'יתרה מיידית', cls: 'num', render: r => `<b>${mCell(r.buyer_balance_now)}</b>`, total: rs => `<b>${mCell(sumBy(rs, 'buyer_balance_now'))}</b>` },
+      { label: 'יתרה כללית', cls: 'num', render: r => mCell(r.buyer_balance_total) },
+      { label: '', cls: 'center', render: r => `<button class="btn ghost xs" data-book="${r.id}">כרטיס</button>` },
+    ], customer.scrolls, { totals: true })) : ''}
+
+    ${customer && customer.scroll_payments.length ? sec('cpays', 'תשלומיו (ס"ת)', customer.scroll_payments.length, tableHTML([
+      scrollCol,
+      { label: 'תאריך', render: r => dt(r.date) },
+      { label: '₪', cls: 'num', render: r => mCell(r.amount_ils) },
+      { label: '$', cls: 'num', render: r => numCell(r.amount_usd) },
+      { label: 'פריטה', cls: 'num', render: r => mCell(r.peritah) },
+      { label: 'שולם בפועל', cls: 'num', render: r => mCell(r.paid_actual), total: rs => mCell(sumBy(rs, 'paid_actual')) },
+    ], customer.scroll_payments, { totals: true })) : ''}
+
+    ${customer && customer.sales.length ? sec('sales', 'מכירות מוצרים לו', customer.sales.length, tableHTML([
+      { label: 'תאריך', render: r => dt(r.date) },
+      { label: 'מוצר', render: r => esc(r.product_name || '—') },
+      { label: 'כמות', cls: 'num', render: r => numCell(r.quantity) },
+      { label: "מחיר ליח\'", cls: 'num', render: r => mCell(r.price_per_unit) },
+      { label: 'סך מכירה', cls: 'num', render: r => mCell(r.total_sale), total: rs => mCell(sumBy(rs, 'total_sale')) },
+    ], customer.sales, { totals: true })) : ''}
+
+    ${customer && customer.product_payments.length ? sec('cppays', 'תשלומיו (מוצרים)', customer.product_payments.length, tableHTML([
+      { label: 'תאריך', render: r => dt(r.date) },
+      { label: '₪', cls: 'num', render: r => mCell(r.amount_ils) },
+      { label: '$', cls: 'num', render: r => numCell(r.amount_usd) },
+      { label: 'ס"ה שולם', cls: 'num', render: r => mCell(r.paid_actual), total: rs => mCell(sumBy(rs, 'paid_actual')) },
+    ], customer.product_payments, { totals: true })) : ''}`;
+
+  // ---- חיווט ----
+  const CFGS = {
+    scribePayCfg, pagesLogCfg, scrollCfg,
+    bookExpCfg: () => pageBookExp(true),
+    parchExpCfg: () => pageParchExp(true),
+    custPayCfg: () => pageCustPay(true),
+    prodPurchaseCfg: () => prodPurchases(true),
+    prodSaleCfg: () => prodSales(true),
+    prodScribePayCfg: () => prodScribePay(true),
+    prodCustPayCfg: () => prodCustPay(true),
+  };
+  document.querySelectorAll('[data-wsact]').forEach(b => b.onclick = () => {
+    const { prefill } = JSON.parse(b.dataset.wsact);
+    const fn = CFGS[b.dataset.cfg];
+    if (!fn) return toast('טופס לא נמצא', 'err');
+    openForm(fn(), null, prefill);
+  });
+  document.querySelectorAll('[data-sec]').forEach(h => h.onclick = () => {
+    const k = h.dataset.sec;
+    WS.open[k] = WS.open[k] === false;
+    render();
+  });
+  document.querySelectorAll('[data-book]').forEach(b => b.onclick = () => showScrollCard(+b.dataset.book));
+  document.querySelectorAll('[data-hist]').forEach(b => b.onclick = () => showHistory(+b.dataset.hist));
+}
+
 // ============ הוספה מהירה ============
 // כפתור צף שפותח כל טופס הזנה מכל מסך במערכת, בלי לנווט ללשונית.
 // ההגדרות נלקחות מאותן פונקציות שמזינות את המסכים עצמם, כדי שלא
@@ -3029,6 +3269,7 @@ function renderQuickAdd() {
 // ============ ניווט ============
 const TABS = [
   { k: 'dash', label: 'דשבורד', fn: pageDash, cap: 'viewReports' },
+  { k: 'workspace', label: '🧑 מרחב עבודה', fn: pageWorkspace },
   { k: 'scrolls', label: 'ס"ת', fn: pageScrolls, cap: 'finance' },
   { k: 'scribepay', label: 'תשלום לסופר', fn: pageScribePay },
   { k: 'custpay', label: 'תשלומי לקוחות', fn: pageCustPay, cap: 'finance' },
