@@ -4,7 +4,7 @@
 
 // ============ מצב ============
 let ME = null, TAB = 'dash';
-const SUB = { prod: 'purchases', reports: 'overview', settings: 'contacts', system: 'recycle', track: 'summary' };
+const SUB = { prod: 'purchases', reports: 'overview', settings: 'contacts', system: 'recycle', track: 'summary', workspace: 'scribe' };
 const C = { contacts: [], products: [], sizes: [], expBook: [], expBiz: [], scrolls: [], purchases: [], stations: [] };
 const IMPORT = { spec: null, table: '', text: '', mode: 'create', opts: { createMissingContacts: false } };
 
@@ -2987,152 +2987,178 @@ function trackStations(cfgOnly) {
 const WS = { id: '', open: {} };
 
 function pageWorkspace() {
+  const subs = [{ k: 'scribe', label: '🖊️ מרחב סופר' }];
+  if (ME.caps.finance) subs.push({ k: 'customer', label: '🛒 מרחב לקוח' });
+  if (!subs.find(s => s.k === SUB.workspace)) SUB.workspace = 'scribe';
+  renderSubtabs('workspace', subs);
+  const mode = SUB.workspace;
+  const isScribe = mode === 'scribe';
+
   $('view').innerHTML += `
-    <div class="page-head"><h2>🧑 מרחב עבודה</h2>
-      <span class="mini">בוחרים אדם — ורואים ומעדכנים את כל מה שקשור אליו במקום אחד</span></div>
     <div class="card">
-      <div style="max-width:460px">${pickerHTML('wsPerson', 'בחר סופר או לקוח', itemsContacts(), WS.id, 'הקלד שם…')}</div>
+      <div style="max-width:460px">${pickerHTML('wsPerson',
+        isScribe ? 'בחר סופר' : 'בחר לקוח', itemsContacts(), WS.id, 'הקלד שם…')}</div>
+      <div class="mini" style="margin-top:8px">${isScribe
+        ? 'כל מה שקשור לסופר: הספרים שהוא כותב, התשלומים אליו, ההתקדמות, ההוצאות והיריעות שאצלו.'
+        : 'כל מה שקשור ללקוח: הספרים שרכש, תשלומיו, והמכירות אליו.'}</div>
     </div>
     <div id="wsBody"></div>`;
   wirePicker('wsPerson', itemsContacts(), (v) => { WS.id = v; render(); });
   if (!WS.id) {
     $('wsBody').innerHTML = `<div class="card"><div class="empty">
-      <div class="big">🧑</div>בחר איש קשר כדי לראות את כל הנתונים שלו</div></div>`;
+      <div class="big">${isScribe ? '🖊️' : '🛒'}</div>
+      בחר ${isScribe ? 'סופר' : 'לקוח'} כדי לראות ולעדכן את כל מה שקשור אליו</div></div>`;
     return;
   }
-  return loadWorkspace(+WS.id);
+  return isScribe ? loadScribeSpace(+WS.id) : loadCustomerSpace(+WS.id);
 }
 
-async function loadWorkspace(id) {
+// כותרת אישית משותפת לשני המרחבים, עם מעבר מהיר לצד השני כשיש בו פעילות
+function wsHeader(person, color, badge, otherMode, otherHasData) {
+  return `
+    <div class="card" style="background:linear-gradient(135deg,${color});color:#fff;border:none">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="font-size:24px;font-weight:800">${esc(person.name || '')}</div>
+        ${person.phone ? `<a href="tel:${esc(person.phone)}" style="color:#e6fffa">${esc(person.phone)}</a>` : ''}
+        <span class="pill" style="background:#fff;color:#0f172a">${badge}</span>
+        <div style="flex:1"></div>
+        ${otherHasData ? `<button class="btn ghost sm" id="wsSwitch">
+          ${otherMode === 'customer' ? '🛒 יש לו גם פעילות כלקוח' : '🖊️ הוא גם סופר'} ←</button>` : ''}
+      </div>
+    </div>`;
+}
+
+const wsCard = (label, val, cls, sub) => `<div class="stat"><div class="label">${label}</div>
+  <div class="value ${cls || ''}">${val}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>`;
+
+// כפתור פעולה שפותח טופס כשהאדם כבר משובץ בו
+const wsAct = (label, icon, cfgKey, prefill) =>
+  `<button class="btn ghost sm" data-wsact='${esc(JSON.stringify(prefill))}' data-cfg="${cfgKey}">${icon} ${esc(label)}</button>`;
+
+const WS_CFGS = () => ({
+  scribePayCfg, pagesLogCfg, scrollCfg,
+  bookExpCfg: () => pageBookExp(true),
+  parchExpCfg: () => pageParchExp(true),
+  custPayCfg: () => pageCustPay(true),
+  prodPurchaseCfg: () => prodPurchases(true),
+  prodSaleCfg: () => prodSales(true),
+  prodScribePayCfg: () => prodScribePay(true),
+  prodCustPayCfg: () => prodCustPay(true),
+});
+
+// סעיף מתקפל
+function wsSec(key, title, count, html) {
+  return `<div class="card">
+    <div class="page-head" style="margin-bottom:0;cursor:pointer" data-sec="${key}">
+      <h3 style="margin:0">${title} ${count ? `<span class="pill n">${count}</span>` : '<span class="mini">ריק</span>'}</h3>
+      <div class="spacer"></div><span class="mini">${WS.open[key] === false ? '▸ הצג' : '▾ הסתר'}</span>
+    </div>
+    <div ${WS.open[key] === false ? 'class="hidden"' : ''} style="margin-top:12px">${html}</div>
+  </div>`;
+}
+
+function wsWire(otherMode) {
+  const CFGS = WS_CFGS();
+  document.querySelectorAll('[data-wsact]').forEach(b => b.onclick = () => {
+    const fn = CFGS[b.dataset.cfg];
+    if (!fn) return toast('טופס לא נמצא', 'err');
+    openForm(fn(), null, JSON.parse(b.dataset.wsact));
+  });
+  document.querySelectorAll('[data-sec]').forEach(h => h.onclick = () => {
+    const k = h.dataset.sec; WS.open[k] = WS.open[k] === false; render();
+  });
+  document.querySelectorAll('[data-book]').forEach(b => b.onclick = () => showScrollCard(+b.dataset.book));
+  document.querySelectorAll('[data-hist]').forEach(b => b.onclick = () => showHistory(+b.dataset.hist));
+  if ($('wsSwitch')) $('wsSwitch').onclick = () => { SUB.workspace = otherMode; render(); };
+}
+
+const wsScrollCol = { label: 'ספר', render: r => { const s = C.scrolls.find(x => x.id === +r.scroll_id); return s ? esc(scrollLabel(s)) : '—'; } };
+
+// ---------- מרחב סופר ----------
+async function loadScribeSpace(id) {
   $('wsBody').innerHTML = '<div class="card muted">טוען…</div>';
-  let scribe, customer, sheets, pays, pages, bookExp, parchExp;
+  let d, sheets, pays, pages, bookExp, parchExp, alsoCustomer = false;
   try {
-    [scribe, customer, sheets] = await Promise.all([
-      Store.reports.scribe(id).catch(() => null),
-      ME.caps.finance ? Store.reports.customer(id).catch(() => null) : Promise.resolve(null),
+    const [rep, sh, p1, p2, p3, p4] = await Promise.all([
+      Store.reports.scribe(id),
       Store.track.list({ holder_id: id }).catch(() => []),
-    ]);
-    // היומנים של הספרים שהוא כותב — מסוננים לפי הספרים שלו
-    const myScrollIds = new Set((scribe && scribe.scrolls || []).map(s => s.id));
-    const [p1, p2, p3, p4] = await Promise.all([
       Store.scribePayments.list(), Store.pagesLog.list(),
       Store.bookExpenses.list(), Store.parchmentExpenses.list(),
     ]);
-    const mine = (arr) => arr.filter(r => myScrollIds.has(+r.scroll_id));
-    pays = mine(p1); pages = mine(p2); bookExp = mine(p3); parchExp = mine(p4);
+    d = rep; sheets = sh;
+    const mine = new Set(d.scrolls.map(s => s.id));
+    const only = (arr) => arr.filter(r => mine.has(+r.scroll_id));
+    pays = only(p1); pages = only(p2); bookExp = only(p3); parchExp = only(p4);
+    if (ME.caps.finance) {
+      const c = await Store.reports.customer(id).catch(() => null);
+      alsoCustomer = !!(c && (c.scrolls.length || c.sales.length));
+    }
   } catch (e) {
     $('wsBody').innerHTML = `<div class="card" style="color:var(--red)">${esc(e.message)}</div>`;
     return;
   }
-
-  const person = (scribe && scribe.contact) || (customer && customer.contact) || {};
-  const asScribe = !!(scribe && (scribe.scrolls.length || scribe.purchases.length));
-  const asCustomer = !!(customer && (customer.scrolls.length || customer.sales.length));
-  const st = scribe ? scribe.scroll_totals : null;
-  const pt = scribe ? scribe.product_totals : null;
-  const ct = customer ? customer.scroll_totals : null;
-  const cpt = customer ? customer.product_totals : null;
-
-  const card = (label, val, cls, sub) => `<div class="stat"><div class="label">${label}</div>
-    <div class="value ${cls || ''}">${val}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>`;
-
-  // פעולה מהירה — נפתחת כשהאדם כבר משובץ בטופס
-  const act = (label, icon, cfgFn, prefill) =>
-    `<button class="btn ghost sm" data-wsact='${esc(JSON.stringify({ label, prefill }))}' data-cfg="${cfgFn}">${icon} ${esc(label)}</button>`;
-
-  const scribeActions = [
-    act('תשלום לסופר', '💰', 'scribePayCfg', { _scribe: id }),
-    act('רישום עמודים', '✍️', 'pagesLogCfg', { _scribe: id }),
-    act('הוצאה לספר', '🧾', 'bookExpCfg', { _scribe: id }),
-    act('הוצאת קלף', '📜', 'parchExpCfg', { _scribe: id }),
-    ME.caps.finance ? act('ספר חדש', '📖', 'scrollCfg', { scribe_id: id }) : '',
-    act('רכישה ממנו', '📦', 'prodPurchaseCfg', { scribe_id: id }),
-    act('תשלום (מוצרים)', '💰', 'prodScribePayCfg', { scribe_id: id }),
-  ].join('');
-
-  const custActions = [
-    ME.caps.finance ? act('תשלום לקוח', '💵', 'custPayCfg', { customer_id: id }) : '',
-    act('מכירה לו', '🛒', 'prodSaleCfg', { customer_id: id }),
-    ME.caps.finance ? act('תשלום לקוח (מוצרים)', '💵', 'prodCustPayCfg', { customer_id: id }) : '',
-    ME.caps.finance ? act('ספר חדש עבורו', '📖', 'scrollCfg', { customer_id: id }) : '',
-  ].join('');
-
-  const sec = (key, title, count, html) => `
-    <div class="card ws-sec">
-      <div class="page-head" style="margin-bottom:0;cursor:pointer" data-sec="${key}">
-        <h3 style="margin:0">${title} ${count ? `<span class="pill n">${count}</span>` : '<span class="mini">ריק</span>'}</h3>
-        <div class="spacer"></div><span class="mini">${WS.open[key] === false ? '▸ הצג' : '▾ הסתר'}</span>
-      </div>
-      <div ${WS.open[key] === false ? 'class="hidden"' : ''} style="margin-top:12px">${html}</div>
-    </div>`;
-
-  const scrollCol = { label: 'ספר', render: r => { const s = C.scrolls.find(x => x.id === +r.scroll_id); return s ? esc(scrollLabel(s)) : '—'; } };
+  const st = d.scroll_totals, pt = d.product_totals;
+  const openBooks = d.scrolls.filter(s => s.status !== 'done').length;
 
   $('wsBody').innerHTML = `
-    <div class="card" style="background:linear-gradient(135deg,#0f766e,#115e59);color:#fff;border:none">
-      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-        <div style="font-size:24px;font-weight:800">${esc(person.name || '')}</div>
-        ${person.phone ? `<a href="tel:${esc(person.phone)}" style="color:#a7f3d0">${esc(person.phone)}</a>` : ''}
-        <div class="spacer" style="flex:1"></div>
-        <div style="display:flex;gap:8px">
-          ${asScribe ? '<span class="pill" style="background:#fff;color:#0f766e">סופר</span>' : ''}
-          ${asCustomer ? '<span class="pill" style="background:#fff;color:#c98a2e">רוכש</span>' : ''}
-        </div>
-      </div>
-    </div>
+    ${wsHeader(d.contact, '#0f766e,#115e59', 'סופר', 'customer', alsoCustomer)}
 
     <div class="grid stat-grid">
-      ${scribe ? card('חוב לסופר', money(scribe.total_balance), scribe.total_balance > 0 ? 'r' : '',
-          `ס"ת ${money(st.balance)} · מוצרים ${money(pt.balance)}`) : ''}
-      ${scribe ? card('יתרה עתידית', money(st.future_balance), 'a', `${st.count} ספרים`) : ''}
-      ${customer ? card('חוב הלקוח', money(customer.total_due_now), customer.total_due_now > 0 ? 'r' : '',
-          `כללי: ${money(customer.total_due_overall)}`) : ''}
-      ${customer ? card('שילם', money(N(ct.paid) + N(cpt.paid)), 'g') : ''}
-      ${card('יריעות אצלו', sheets.length, sheets.length ? 'b' : '')}
+      ${wsCard('סה"כ חוב לסופר', money(d.total_balance), d.total_balance > 0 ? 'r' : '',
+        `ס"ת ${money(st.balance)} · מוצרים ${money(pt.balance)}`)}
+      ${wsCard('יתרה עתידית (ס"ת)', money(st.future_balance), 'a', 'על מה שטרם נכתב')}
+      ${wsCard('ספרים', st.count, 'b', `${openBooks} פעילים`)}
+      ${wsCard('שולם לו', money(N(st.paid) + N(pt.paid)), 'g', `תיקונים ${money(st.corrections)}`)}
+      ${wsCard('יריעות אצלו', sheets.length, sheets.length ? 'b' : '')}
     </div>
 
-    ${asScribe || !asCustomer ? `<div class="card">
-      <h3>פעולות — כסופר</h3><div class="toolbar">${scribeActions}</div></div>` : ''}
-    ${asCustomer || !asScribe ? `<div class="card">
-      <h3>פעולות — כרוכש</h3><div class="toolbar">${custActions}</div></div>` : ''}
+    <div class="card"><h3>פעולות</h3><div class="toolbar">
+      ${wsAct('תשלום לסופר', '💰', 'scribePayCfg', { _scribe: id })}
+      ${wsAct('רישום עמודים', '✍️', 'pagesLogCfg', { _scribe: id })}
+      ${wsAct('הוצאה לספר', '🧾', 'bookExpCfg', { _scribe: id })}
+      ${wsAct('הוצאת קלף', '📜', 'parchExpCfg', { _scribe: id })}
+      ${ME.caps.finance ? wsAct('ספר חדש', '📖', 'scrollCfg', { scribe_id: id }) : ''}
+      ${wsAct('רכישה ממנו', '📦', 'prodPurchaseCfg', { scribe_id: id })}
+      ${wsAct('תשלום (מוצרים)', '💰', 'prodScribePayCfg', { scribe_id: id })}
+    </div></div>
 
-    ${scribe && scribe.scrolls.length ? sec('books', 'הספרים שהוא כותב', scribe.scrolls.length,
-      tableHTML([
-        { label: 'מק"ט', render: r => r.sku ? `<b>${esc(r.sku)}</b>` : `#${r.id}` },
-        { label: 'מוצר', render: r => esc(r.product_name || '—') },
-        { label: 'התקדמות', render: r => `<div class="bar ${r.progress_pct < 100 ? 'warn' : ''}"><span style="width:${Math.min(100, r.progress_pct)}%"></span></div>
-            <span class="mini">${r.pages_written}/${r.product_pages}</span>` },
-        { label: 'מגיע לפי התקדמות', cls: 'num', render: r => mCell(r.scribe_due_progress) },
-        { label: 'שולם', cls: 'num', render: r => mCell(r.scribe_paid) },
-        { label: 'תיקונים', cls: 'num', render: r => mCell(r.corrections_paid) },
-        { label: 'יתרה', cls: 'num', render: r => `<b>${mCell(r.scribe_balance)}</b>`, total: rs => `<b>${mCell(sumBy(rs, 'scribe_balance'))}</b>` },
-        { label: 'עתידי', cls: 'num', render: r => mCell(r.scribe_future_balance) },
-        { label: '', cls: 'center', render: r => `<button class="btn ghost xs" data-book="${r.id}">כרטיס</button>` },
-      ], scribe.scrolls, { totals: true })) : ''}
+    ${d.scrolls.length ? wsSec('books', 'הספרים שהוא כותב', d.scrolls.length, tableHTML([
+      skuCol,
+      { label: 'מוצר', render: r => esc(r.product_name || '—') },
+      { label: 'התקדמות', render: r => `<div class="bar ${r.progress_pct < 100 ? 'warn' : ''}"><span style="width:${Math.min(100, r.progress_pct)}%"></span></div>
+          <span class="mini">${r.pages_written}/${r.product_pages}</span>` },
+      { label: 'מחיר לעמוד', cls: 'num', render: r => mCell(r.page_rate) },
+      { label: 'מגיע לפי התקדמות', cls: 'num', render: r => mCell(r.scribe_due_progress), total: rs => mCell(sumBy(rs, 'scribe_due_progress')) },
+      { label: 'שולם', cls: 'num', render: r => mCell(r.scribe_paid), total: rs => mCell(sumBy(rs, 'scribe_paid')) },
+      { label: 'תיקונים', cls: 'num', render: r => mCell(r.corrections_paid), total: rs => mCell(sumBy(rs, 'corrections_paid')) },
+      { label: 'יתרה', cls: 'num', render: r => `<b>${mCell(r.scribe_balance)}</b>`, total: rs => `<b>${mCell(sumBy(rs, 'scribe_balance'))}</b>` },
+      { label: 'עתידי', cls: 'num', render: r => mCell(r.scribe_future_balance), total: rs => mCell(sumBy(rs, 'scribe_future_balance')) },
+      { label: '', cls: 'center', render: r => `<button class="btn ghost xs" data-book="${r.id}">כרטיס</button>` },
+    ], d.scrolls, { totals: true })) : ''}
 
-    ${sec('pays', 'תשלומים לסופר', pays.length, tableHTML([
-      scrollCol,
+    ${wsSec('pays', 'תשלומים ששולמו לו (ס"ת)', pays.length, tableHTML([
+      wsScrollCol,
       { label: 'תאריך', render: r => dt(r.date) },
       { label: 'סכום', cls: 'num', render: r => mCell(r.amount), total: rs => mCell(sumBy(rs, 'amount')) },
       { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
     ], pays, { totals: true }))}
 
-    ${sec('pages', 'עמודים שנכתבו', pages.length, tableHTML([
-      scrollCol,
+    ${wsSec('pages', 'עמודים שכתב', pages.length, tableHTML([
+      wsScrollCol,
       { label: 'תאריך', render: r => dt(r.date) },
       { label: 'עמודים', cls: 'num', render: r => numCell(r.pages), total: rs => numCell(sumBy(rs, 'pages')) },
       { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
     ], pages, { totals: true }))}
 
-    ${sec('exp', 'הוצאות לספר וקלף', bookExp.length + parchExp.length, tableHTML([
-      scrollCol,
+    ${wsSec('exp', 'הוצאות על הספרים שלו', bookExp.length + parchExp.length, tableHTML([
+      wsScrollCol,
       { label: 'תאריך', render: r => dt(r.date) },
       { label: 'סוג', render: r => esc(r.type || ('קלף · ' + (r.size_name || ''))) + (r.is_correction ? ' <span class="pill a">תיקונים</span>' : '') },
       { label: 'סכום', cls: 'num', render: r => mCell(r.amount !== undefined ? r.amount : r.total_cost),
         total: rs => mCell(rs.reduce((a, x) => a + N(x.amount !== undefined ? x.amount : x.total_cost), 0)) },
     ], bookExp.concat(parchExp), { totals: true }))}
 
-    ${sheets.length ? sec('sheets', 'יריעות שנמצאות אצלו', sheets.length, tableHTML([
+    ${sheets.length ? wsSec('sheets', 'יריעות שנמצאות אצלו', sheets.length, tableHTML([
       { label: 'שייך ל', render: r => esc(itemLabel(r)) },
       { label: 'יריעה', cls: 'num', render: r => `<b>${r.seq}</b>` },
       { label: 'תחנה', render: r => stationPill(r) },
@@ -3142,81 +3168,102 @@ async function loadWorkspace(id) {
       { label: '', cls: 'center', render: r => `<button class="btn ghost xs" data-hist="${r.id}">🕘</button>` },
     ], sheets)) : ''}
 
-    ${scribe && scribe.purchases.length ? sec('purch', 'רכישות ממנו (מוצרים)', scribe.purchases.length, tableHTML([
+    ${d.purchases.length ? wsSec('purch', 'רכישות מוצרים ממנו', d.purchases.length, tableHTML([
       { label: 'תאריך', render: r => dt(r.date) },
       { label: 'מוצר', render: r => esc(r.product_name || '—') },
       { label: 'כמות', cls: 'num', render: r => numCell(r.quantity) },
       { label: 'נשאר', cls: 'num', render: r => numCell(r.remaining_qty) },
-      { label: "עלות ליח\'", cls: 'num', render: r => mCell(r.cost_per_unit) },
+      { label: "עלות ליח'", cls: 'num', render: r => mCell(r.cost_per_unit) },
       { label: 'חוב', cls: 'num', render: r => mCell(r.owed), total: rs => mCell(sumBy(rs, 'owed')) },
-    ], scribe.purchases, { totals: true })) : ''}
+    ], d.purchases, { totals: true })) : ''}
 
-    ${scribe && scribe.product_payments.length ? sec('ppay', 'תשלומים לסופר (מוצרים)', scribe.product_payments.length, tableHTML([
+    ${d.product_payments.length ? wsSec('ppay', 'תשלומים לו (מוצרים)', d.product_payments.length, tableHTML([
       { label: 'תאריך', render: r => dt(r.date) },
       { label: 'סכום', cls: 'num', render: r => mCell(r.amount), total: rs => mCell(sumBy(rs, 'amount')) },
       { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
-    ], scribe.product_payments, { totals: true })) : ''}
+    ], d.product_payments, { totals: true })) : ''}`;
 
-    ${customer && customer.scrolls.length ? sec('cbooks', 'ספרים שרכש', customer.scrolls.length, tableHTML([
-      { label: 'מק"ט', render: r => r.sku ? `<b>${esc(r.sku)}</b>` : `#${r.id}` },
+  wsWire('customer');
+}
+
+// ---------- מרחב לקוח ----------
+async function loadCustomerSpace(id) {
+  $('wsBody').innerHTML = '<div class="card muted">טוען…</div>';
+  let d, alsoScribe = false;
+  try {
+    const [rep, sc] = await Promise.all([
+      Store.reports.customer(id),
+      Store.reports.scribe(id).catch(() => null),
+    ]);
+    d = rep;
+    alsoScribe = !!(sc && (sc.scrolls.length || sc.purchases.length));
+  } catch (e) {
+    $('wsBody').innerHTML = `<div class="card" style="color:var(--red)">${esc(e.message)}</div>`;
+    return;
+  }
+  const ct = d.scroll_totals, pt = d.product_totals;
+
+  $('wsBody').innerHTML = `
+    ${wsHeader(d.contact, '#c98a2e,#a1701f', 'לקוח', 'scribe', alsoScribe)}
+
+    <div class="grid stat-grid">
+      ${wsCard('חוב מיידי', money(d.total_due_now), d.total_due_now > 0 ? 'r' : 'g', 'לפי התקדמות הכתיבה')}
+      ${wsCard('חוב כללי', money(d.total_due_overall), 'a', 'כולל מה שטרם נכתב')}
+      ${wsCard('שילם', money(N(ct.paid) + N(pt.paid)), 'g')}
+      ${wsCard('ספרים שרכש', ct.count, 'b', `שווי ${money(ct.total_price)}`)}
+      ${wsCard('עלות פריטה', money(N(ct.peritah) + N(pt.peritah)))}
+    </div>
+
+    <div class="card"><h3>פעולות</h3><div class="toolbar">
+      ${wsAct('תשלום לקוח', '💵', 'custPayCfg', { customer_id: id })}
+      ${wsAct('מכירה לו', '🛒', 'prodSaleCfg', { customer_id: id })}
+      ${wsAct('תשלום לקוח (מוצרים)', '💵', 'prodCustPayCfg', { customer_id: id })}
+      ${wsAct('ספר חדש עבורו', '📖', 'scrollCfg', { customer_id: id })}
+    </div></div>
+
+    ${d.scrolls.length ? wsSec('cbooks', 'ספרים שרכש', d.scrolls.length, tableHTML([
+      skuCol,
       { label: 'מוצר', render: r => esc(r.product_name || '—') },
+      { label: 'סופר', render: r => esc(r.scribe_name || '—') },
+      { label: 'התקדמות', render: r => `<div class="bar ${r.progress_pct < 100 ? 'warn' : ''}"><span style="width:${Math.min(100, r.progress_pct)}%"></span></div>
+          <span class="mini">${r.pages_written}/${r.product_pages}</span>` },
       { label: 'מחיר', cls: 'num', render: r => mCell(r.buyer_total, r.buyer_currency), total: rs => mCell(sumBy(rs, 'buyer_total')) },
-      { label: 'לפי התקדמות', cls: 'num', render: r => mCell(r.buyer_due_progress) },
+      { label: 'לפי התקדמות', cls: 'num', render: r => mCell(r.buyer_due_progress), total: rs => mCell(sumBy(rs, 'buyer_due_progress')) },
       { label: 'שילם', cls: 'num', render: r => mCell(r.customer_paid), total: rs => mCell(sumBy(rs, 'customer_paid')) },
       { label: 'יתרה מיידית', cls: 'num', render: r => `<b>${mCell(r.buyer_balance_now)}</b>`, total: rs => `<b>${mCell(sumBy(rs, 'buyer_balance_now'))}</b>` },
-      { label: 'יתרה כללית', cls: 'num', render: r => mCell(r.buyer_balance_total) },
+      { label: 'יתרה כללית', cls: 'num', render: r => mCell(r.buyer_balance_total), total: rs => mCell(sumBy(rs, 'buyer_balance_total')) },
       { label: '', cls: 'center', render: r => `<button class="btn ghost xs" data-book="${r.id}">כרטיס</button>` },
-    ], customer.scrolls, { totals: true })) : ''}
+    ], d.scrolls, { totals: true })) : ''}
 
-    ${customer && customer.scroll_payments.length ? sec('cpays', 'תשלומיו (ס"ת)', customer.scroll_payments.length, tableHTML([
-      scrollCol,
+    ${wsSec('cpays', 'תשלומיו (ס"ת)', d.scroll_payments.length, tableHTML([
+      wsScrollCol,
       { label: 'תאריך', render: r => dt(r.date) },
-      { label: '₪', cls: 'num', render: r => mCell(r.amount_ils) },
+      { label: '₪', cls: 'num', render: r => mCell(r.amount_ils), total: rs => mCell(sumBy(rs, 'amount_ils')) },
       { label: '$', cls: 'num', render: r => numCell(r.amount_usd) },
-      { label: 'פריטה', cls: 'num', render: r => mCell(r.peritah) },
+      { label: 'שער', cls: 'num', render: r => r.rate ? numCell(r.rate) : '' },
+      { label: 'פריטה', cls: 'num', render: r => mCell(r.peritah), total: rs => mCell(sumBy(rs, 'peritah')) },
       { label: 'שולם בפועל', cls: 'num', render: r => mCell(r.paid_actual), total: rs => mCell(sumBy(rs, 'paid_actual')) },
-    ], customer.scroll_payments, { totals: true })) : ''}
+    ], d.scroll_payments, { totals: true }))}
 
-    ${customer && customer.sales.length ? sec('sales', 'מכירות מוצרים לו', customer.sales.length, tableHTML([
+    ${wsSec('sales', 'מכירות מוצרים לו', d.sales.length, tableHTML([
       { label: 'תאריך', render: r => dt(r.date) },
       { label: 'מוצר', render: r => esc(r.product_name || '—') },
-      { label: 'כמות', cls: 'num', render: r => numCell(r.quantity) },
-      { label: "מחיר ליח\'", cls: 'num', render: r => mCell(r.price_per_unit) },
+      { label: 'כמות', cls: 'num', render: r => numCell(r.quantity), total: rs => numCell(sumBy(rs, 'quantity')) },
+      { label: "מחיר ליח'", cls: 'num', render: r => mCell(r.price_per_unit) },
       { label: 'סך מכירה', cls: 'num', render: r => mCell(r.total_sale), total: rs => mCell(sumBy(rs, 'total_sale')) },
-    ], customer.sales, { totals: true })) : ''}
+    ], d.sales, { totals: true }))}
 
-    ${customer && customer.product_payments.length ? sec('cppays', 'תשלומיו (מוצרים)', customer.product_payments.length, tableHTML([
+    ${wsSec('cppays', 'תשלומיו (מוצרים)', d.product_payments.length, tableHTML([
       { label: 'תאריך', render: r => dt(r.date) },
-      { label: '₪', cls: 'num', render: r => mCell(r.amount_ils) },
+      { label: '₪', cls: 'num', render: r => mCell(r.amount_ils), total: rs => mCell(sumBy(rs, 'amount_ils')) },
       { label: '$', cls: 'num', render: r => numCell(r.amount_usd) },
+      { label: 'פריטה', cls: 'num', render: r => mCell(r.peritah), total: rs => mCell(sumBy(rs, 'peritah')) },
       { label: 'ס"ה שולם', cls: 'num', render: r => mCell(r.paid_actual), total: rs => mCell(sumBy(rs, 'paid_actual')) },
-    ], customer.product_payments, { totals: true })) : ''}`;
+    ], d.product_payments, { totals: true }))}`;
 
-  // ---- חיווט ----
-  const CFGS = {
-    scribePayCfg, pagesLogCfg, scrollCfg,
-    bookExpCfg: () => pageBookExp(true),
-    parchExpCfg: () => pageParchExp(true),
-    custPayCfg: () => pageCustPay(true),
-    prodPurchaseCfg: () => prodPurchases(true),
-    prodSaleCfg: () => prodSales(true),
-    prodScribePayCfg: () => prodScribePay(true),
-    prodCustPayCfg: () => prodCustPay(true),
-  };
-  document.querySelectorAll('[data-wsact]').forEach(b => b.onclick = () => {
-    const { prefill } = JSON.parse(b.dataset.wsact);
-    const fn = CFGS[b.dataset.cfg];
-    if (!fn) return toast('טופס לא נמצא', 'err');
-    openForm(fn(), null, prefill);
-  });
-  document.querySelectorAll('[data-sec]').forEach(h => h.onclick = () => {
-    const k = h.dataset.sec;
-    WS.open[k] = WS.open[k] === false;
-    render();
-  });
-  document.querySelectorAll('[data-book]').forEach(b => b.onclick = () => showScrollCard(+b.dataset.book));
-  document.querySelectorAll('[data-hist]').forEach(b => b.onclick = () => showHistory(+b.dataset.hist));
+  wsWire('scribe');
 }
+
 
 // ============ הוספה מהירה ============
 // כפתור צף שפותח כל טופס הזנה מכל מסך במערכת, בלי לנווט ללשונית.
