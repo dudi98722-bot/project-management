@@ -23,7 +23,7 @@ const { pool } = require('../db');
 //  view               צפייה בנתונים ובלוח השנה
 //
 // edit נשאר כשער כללי לעריכת ישויות שאינן מטופל (מטפלים, קבוצות, חגים, רשימות).
-const R = (label, c) => Object.assign({ label,
+const R = (label, desc, c) => Object.assign({ label, desc,
   manageUsers: false, addPatient: false, editPatient: false, editPatientLimited: false,
   viewDiagnosis: false, editDiagnosis: false, viewNote2: false, editNote2: false,
   editNotes: false, editPref: false, editUrgency: false,
@@ -31,14 +31,16 @@ const R = (label, c) => Object.assign({ label,
   del: false, edit: false, view: true }, c);
 
 const ROLES = {
-  admin: R('מנהל ראשי', {
+  admin: R('מנהל ראשי',
+    'הכל: מטופלים, שיבוץ, מחיקה, וניהול משתמשים.', {
     manageUsers: true, addPatient: true, editPatient: true, editPatientLimited: true,
     viewDiagnosis: true, editDiagnosis: true, viewNote2: true, editNote2: true,
     editNotes: true, editPref: true, editUrgency: true,
     assign: true, holds: true, files: true, del: true, edit: true }),
 
   // מזכירה אחראית — הכל פתוח מלבד ניהול משתמשים
-  head_secretary: R('מזכירה אחראית', {
+  head_secretary: R('מזכירה אחראית',
+    'הכל מלבד ניהול משתמשים.', {
     addPatient: true, editPatient: true, editPatientLimited: true,
     viewDiagnosis: true, editDiagnosis: true, viewNote2: true, editNote2: true,
     editNotes: true, editPref: true, editUrgency: true,
@@ -46,31 +48,37 @@ const ROLES = {
 
   // מזכירה כללית — מוסיפה מטופלים ומצרפת קבצים; עורכת שם, שעות והערות
   // כלליות; לא מוחקת, לא משבצת, ולא רואה אבחנה או הערה מקצועית
-  secretary: R('מזכירה כללית', {
+  secretary: R('מזכירה כללית',
+    'מוסיפה מטופלים, עורכת שם, שעות מתאימות והערות, ומצרפת קבצים. לא משבצת, לא מוחקת, ולא רואה אבחנה או הערה מקצועית.', {
     addPatient: true, editPatientLimited: true, editNotes: true, files: true }),
 
   // מדריך — תוכן קליני, שיוך למטפלים ורמת דחיפות. לא עורך פרטים
   // אישיים, לא מוחק ולא קובע פגישות.
-  guide: R('מדריך', {
+  guide: R('מדריך',
+    'מעדכן אבחנה, הערה מקצועית, שיוך למטפלים ורמת דחיפות; מנהל רשימת השהיה ומצרף קבצים. לא עורך פרטים אישיים, לא משבץ ולא מוחק.', {
     viewDiagnosis: true, editDiagnosis: true, viewNote2: true, editNote2: true,
     editPref: true, editUrgency: true, holds: true, files: true }),
 
   // פנינה — הכל פתוח מלבד ההערה המקצועית וניהול המשתמשים
-  pnina: R('פנינה', {
+  pnina: R('פנינה',
+    'הכל מלבד ההערה המקצועית (לא רואה ולא עורכת) וניהול משתמשים.', {
     addPatient: true, editPatient: true, editPatientLimited: true,
     viewDiagnosis: true, editDiagnosis: true,
     editNotes: true, editPref: true, editUrgency: true,
     assign: true, holds: true, files: true, del: true, edit: true }),
 
-  viewer: R('צופה', { viewDiagnosis: true, viewNote2: true }),
+  viewer: R('צופה',
+    'צפייה בלבד בכל הנתונים, בלי לערוך דבר.', { viewDiagnosis: true, viewNote2: true }),
 
   // ===== תפקידים ותיקים — נשמרים כדי שמשתמשים קיימים לא יאבדו גישה =====
-  manager: R('מנהל', {
+  manager: R('מנהל',
+    'תפקיד ותיק — כמו מזכירה אחראית.', {
     addPatient: true, editPatient: true, editPatientLimited: true,
     viewDiagnosis: true, editDiagnosis: true, viewNote2: true, editNote2: true,
     editNotes: true, editPref: true, editUrgency: true,
     assign: true, holds: true, files: true, del: true, edit: true }),
-  clerk: R('רכז/ת', {
+  clerk: R('רכז/ת',
+    'תפקיד ותיק — כמו מנהל, אבל בלי מחיקה.', {
     addPatient: true, editPatient: true, editPatientLimited: true,
     viewDiagnosis: true, editDiagnosis: true, viewNote2: true, editNote2: true,
     editNotes: true, editPref: true, editUrgency: true,

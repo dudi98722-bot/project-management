@@ -13,12 +13,12 @@ function cleanEmail(v) {
 router.get('/', authenticate, can('manageUsers'), async (req, res) => {
   try {
     const r = await pool.query('SELECT id, username, role, full_name, email, active, last_login, created_at FROM users ORDER BY id');
-    res.json(r.rows.map(u => ({ ...u, role_label: (ROLES[u.role] || {}).label || u.role })));
+    res.json(r.rows.map(u => ({ ...u, role_label: (ROLES[u.role] || {}).label || u.role, role_desc: (ROLES[u.role] || {}).desc || '' })));
   } catch (e) { res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
 router.get('/roles', authenticate, can('manageUsers'), (req, res) => {
-  res.json(Object.entries(ROLES).map(([k, v]) => ({ role: k, label: v.label })));
+  res.json(Object.entries(ROLES).map(([k, v]) => ({ role: k, label: v.label, desc: v.desc || '' })));
 });
 
 router.post('/', authenticate, can('manageUsers'), async (req, res) => {

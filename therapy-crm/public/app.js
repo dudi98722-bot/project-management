@@ -1797,23 +1797,25 @@ async function renderUsers(m) {
         <td><b>${esc(u.username)}</b></td>
         <td>${esc(u.full_name || '')}</td>
         <td class="hint">${esc(u.email || '')}</td>
-        <td>${esc(u.role_label)}</td>
+        <td>${esc(u.role_label)}<div class="hint role-desc">${esc(u.role_desc || '')}</div></td>
         <td>${u.active ? '<span class="badge b-green">פעיל</span>' : '<span class="badge b-gray">מושבת</span>'}</td>
         <td>${u.last_login ? fmtDateHe(u.last_login.slice(0, 10)) : '—'}</td>
         <td><button class="btn sm sec" onclick="openUserModal(${u.id})">עריכה</button></td>
       </tr>`).join('')}
       </tbody></table></div>
       <div class="hint" style="margin-top:10px">
-        <b>מנהל ראשי</b> — הכל, כולל ניהול משתמשים<br>
-        <b>מזכירה אחראית</b> — הכל חוץ מניהול משתמשים<br>
-        <b>פנינה</b> — הכל מלבד ההערה המקצועית (לא רואה ולא עורכת) וניהול משתמשים<br>
-        <b>מזכירה כללית</b> — מוסיפה מטופלים ומצרפת קבצים; עורכת רק שם ושעות מתאימות; לא משבצת, לא מוחקת, ולא רואה אבחנה והערה מקצועית<br>
-        <b>מדריך</b> — מעדכן אבחנה, הערה מקצועית, שיוך למטפלים ודחיפות; מנהל רשימת השהיה ומצרף קבצים; לא עורך פרטים אישיים, לא משבץ ולא מוחק<br>
-        <b>צופה</b> — צפייה בלבד<br>
-        <span class="hint">רק מנהל ראשי יכול להוסיף ולערוך משתמשים.</span>
+        ${roles.map(r => `<div style="margin-bottom:4px"><b>${esc(r.label)}</b> — ${esc(r.desc)}</div>`).join('')}
+        <div style="margin-top:6px">רק מנהל ראשי יכול להוסיף ולערוך משתמשים.</div>
       </div>
     </div>`;
   } catch (e) { m.innerHTML = `<div class="card"><div class="empty">${esc(e.message)}</div></div>`; }
+}
+
+// ההסבר מגיע מהשרת יחד עם התפקידים, כך שהוא תמיד תואם להרשאות בפועל
+function showRoleDesc(role) {
+  const el = document.getElementById('role-desc');
+  const r = _roles.find(x => x.role === role);
+  if (el) el.textContent = r ? r.desc : '';
 }
 
 function openUserModal(userId) {
@@ -1826,9 +1828,10 @@ function openUserModal(userId) {
       <div class="field"><label>שם משתמש *</label><input name="username" value="${esc(u ? u.username : '')}" required autocomplete="off" minlength="3"></div>
       <div class="field"><label>שם מלא</label><input name="full_name" value="${esc(u ? u.full_name : '')}"></div>
       <div class="field"><label>מייל (לשחזור סיסמה)</label><input name="email" type="email" value="${esc(u ? u.email : '')}" placeholder="name@example.com" autocomplete="off"></div>
-      <div class="field"><label>תפקיד</label><select name="role">
+      <div class="field"><label>תפקיד</label><select name="role" onchange="showRoleDesc(this.value)">
         ${roles.map(r => `<option value="${r.role}" ${u && u.role === r.role ? 'selected' : ''}>${r.label}</option>`).join('')}
-      </select></div>
+      </select>
+      <div class="hint role-desc" id="role-desc"></div></div>
       <div class="field"><label>${u ? 'סיסמא חדשה (ריק = ללא שינוי)' : 'סיסמא *'}</label><input name="password" type="password" autocomplete="new-password" ${u ? '' : 'required'}></div>
       ${u ? `<div class="field"><label><input type="checkbox" name="active" style="width:auto" ${u.active ? 'checked' : ''}> משתמש פעיל</label></div>` : ''}
     </div>
@@ -1837,6 +1840,7 @@ function openUserModal(userId) {
       <button type="button" class="btn sec" onclick="closeModal()">ביטול</button>
     </div>
   </form>`);
+  showRoleDesc(document.querySelector('#user-form [name=role]').value);
   document.getElementById('user-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
