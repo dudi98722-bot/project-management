@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 יח'";
+var APP_BUILD = "19.08 כ'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -870,6 +870,10 @@ function save(){
   }catch(e){ toast("שגיאת שמירה מקומית","err"); }
   incMapClear();  // מפת ההכנסות נבנית מחדש ברינדור הבא
   markDirty();
+  /* חלון שני של אותו דפדפן מתעדכן כאן — מהעותק המקומי המשותף, מיד.
+     קודם השידור יצא רק אחרי אישור השרת, כלומר 2.5 שניות איגוד ועוד
+     2-5 שניות של גוגל: 5-8 שניות עד שהמסך השני הראה את השינוי. */
+  tabSyncBroadcast();
   serverSave();   // כל שינוי נשמר גם בגוגל שיטס
 }
 function undo(){
@@ -882,6 +886,7 @@ function undo(){
     LAST_JSON=JSON.stringify(DB);
     vaultPut(LSKEY, LAST_JSON);
     markDirty();
+    tabSyncBroadcast();                 // גם ביטול פעולה מגיע מיד לחלון השני
     serverSave();                       // מסנכרן את המצב המוחזר גם לשיטס
     closeModal();
     toast("הפעולה בוטלה"+(UNDO.length?" · עוד "+UNDO.length+" לביטול":""),"ok");
@@ -1010,6 +1015,19 @@ function normalizeDB(d){
       for(var ci=0;ci<r.length;ci++) r[ci]=sheetStripShekel(r[ci]);
     });
   });
+  /* שורות שכירות שנוצרו לפני שהתקופה נשמרה בשדות — משלימים אותה
+     מהחוזה. רק שדות ריקים, בלי לגעת במה שהוזן ידנית. */
+  (function(){
+    var byRental={};
+    (d.rentals||[]).forEach(function(r){ if(r&&r.id) byRental[r.id]=r; });
+    (d.income||[]).forEach(function(i){
+      if(!i || !i.rentalId || !i.periodYM) return;
+      if(i.startDate || i.endDate) return;
+      var r=byRental[i.rentalId]; if(!r || !r.startDate) return;
+      var per=rentalIncomePeriod(r,i.periodYM);
+      i.startDate=per.start; i.endDate=per.end;
+    });
+  })();
   d.rentals=d.rentals||[];
   (d.rentals||[]).forEach(function(r){
     r.rent=toNum(r.rent); r.startDate=toISO(r.startDate); r.endDate=toISO(r.endDate);
@@ -3295,37 +3313,59 @@ try{
       var d=ev&&ev.data;
       /* חלון שמחובר כמשתמש אחר באותו דפדפן — העותק המקומי בכלל לא שלו */
       if(!CU || !d || d.who!==CU.id) return;
-      /* הכתיבה המוצפנת של החלון השולח נשטפת ברקע — רגע לפני שקוראים */
-      setTimeout(tabSyncTry,300);
+      tabSyncSoon(Number(d.rev)||0, 0);
     };
   }
 }catch(e){ TABSYNC=null; }
+/* השידור מאוגד לרבע שנייה: הקלדה מהירה מייצרת שמירות רבות, ובלי
+   האיגוד החלון השני היה מפענח את המטמון עשרות פעמים ברצף. */
+var TABSYNC_T=null;
 function tabSyncBroadcast(){
   if(!TABSYNC || !CU) return;
-  try{ TABSYNC.postMessage({who:CU.id}); }catch(e){}
+  if(TABSYNC_T) clearTimeout(TABSYNC_T);
+  TABSYNC_T=setTimeout(function(){
+    TABSYNC_T=null;
+    try{ TABSYNC.postMessage({who:CU.id, rev:(DB&&DB.meta&&Number(DB.meta.rev))||0}); }catch(e){}
+  },250);
 }
-async function tabSyncTry(){
-  if(!CU) return false;
+/* הכתיבה המוצפנת של החלון השולח נשטפת ברקע, ולכן ברגע השידור היא
+   עדיין לא בהכרח על הדיסק. במקום להמתין זמן קבוע (שלפעמים קצר מדי
+   ותמיד מרגיש איטי) — מנסים עד שהעותק המשותף באמת מכיל את הגרסה
+   ששודרה. בפועל זה נגמר בניסיון הראשון או השני. */
+function tabSyncSoon(wantRev,attempt){
+  setTimeout(function(){
+    tabSyncTry(wantRev).then(function(res){
+      if(res==="wait" && attempt<6) tabSyncSoon(wantRev,attempt+1);
+    });
+  }, attempt?120:40);
+}
+async function tabSyncTry(wantRev){
+  if(!CU) return "none";
   /* עבודה מקומית באמצע — השמירה שלה תמזג ממילא; לא דורסים אותה.
      עסוק במסך (שדה/מודאל/סימונים) — מחכים שיתפנה, בלי באנר. */
-  if(SAVEQ.inflight||SAVEQ.dirty||SAVEQ.timer||hasUnsaved()){ TABSYNC_PENDING=true; return false; }
-  if(uiIsBusy()){ TABSYNC_PENDING=true; return false; }
-  TABSYNC_PENDING=false;
+  if(SAVEQ.inflight||SAVEQ.dirty||SAVEQ.timer||hasUnsaved()){ TABSYNC_PENDING=true; return "busy"; }
+  if(uiIsBusy()){ TABSYNC_PENDING=true; return "busy"; }
   try{
     var raw=await vaultGet(LSKEY);
-    if(!raw) return false;
+    if(!raw) return "none";
     var d=JSON.parse(raw);
-    if(!d || !Array.isArray(d.apartments)) return false;
+    if(!d || !Array.isArray(d.apartments)) return "none";
     var vrev=(d.meta&&Number(d.meta.rev))||0, loc=(DB&&DB.meta&&Number(DB.meta.rev))||0;
-    if(vrev<=loc) return false;               // אין שם כלום חדש ממה שמוצג
+    /* הגרסה ששודרה עוד לא נכתבה — לא מוותרים, מנסים שוב */
+    if(wantRev && vrev<wantRev) return "wait";
+    TABSYNC_PENDING=false;
+    /* הבסיס המשותף מרוענן בכל שידור — גם כשאין מה להציג מחדש. אחרת
+       השידור השני (אחרי אישור השרת) היה יוצא מכאן מוקדם, והחלון הזה
+       היה נשאר עם בסיס מיזוג ישן. */
+    await loadSyncBase();
+    if(vrev<=loc) return "same";               // אין שם כלום חדש ממה שמוצג
     DB=normalizeDB(d);
     LAST_JSON=JSON.stringify(DB); UNDO.length=0;
-    await loadSyncBase();                     // הבסיס המשותף שהחלון השומר כבר עדכן
     incMapClear();
     POLL.pending=false; hideUpdateBanner();
     rerender();
-    return true;
-  }catch(e){ return false; }
+    return "ok";
+  }catch(e){ return "none"; }
 }
 
 /* ---- סנכרון מול גוגל שיטס (Apps Script) — מקור האמת ---- */
@@ -11777,6 +11817,19 @@ function rentalDueMonths(r){
   while(cur<=to && guard<600){ out.push(cur); cur=ymAdd(cur,step); guard++; }
   return out;
 }
+/* התקופה שהשורה מייצגת: מהחודש שלה ולפי התדירות (חיוב שנתי = 12
+   חודשים), חתוכה לגבולות החוזה — כדי שחודש ראשון או אחרון חלקיים
+   לא ייראו ארוכים ממה שהחוזה באמת מכסה. */
+function rentalIncomePeriod(r,ym){
+  var step=rentStepM(r);
+  var st=ym+"-01";
+  var lastYm=ymAdd(ym,step-1);
+  var en=lastYm+"-"+String(daysInMonth(lastYm)).padStart(2,"0");
+  if(r.startDate && r.startDate>st) st=r.startDate;
+  if(r.endDate && r.endDate<en) en=r.endDate;
+  if(en<st) en=st;
+  return {start:st,end:en};
+}
 /* שורות ההכנסה שנוצרו מחוזה מסוים */
 function rentalIncome(rentalId){
   return active(DB.income).filter(function(i){ return i.rentalId===rentalId; });
@@ -11790,10 +11843,11 @@ function rentalMissingMonths(r){
 }
 function makeRentalIncome(r,ym){
   var a=byId(DB.apartments,r.apartmentId);
+  var per=rentalIncomePeriod(r,ym);
   var row={id:uid(),apartmentId:r.apartmentId,
     description:"שכר דירה — "+r.name+" — "+rentPeriodLabel(r,ym)+(r.tenant?" · "+r.tenant:""),
     amount:round2(Number(r.rent)||0), date:dueDateIn(ym,r.dueDay),
-    receivedBy:"", split:null, units:null, startDate:"", endDate:"",
+    receivedBy:"", split:null, units:null, startDate:per.start, endDate:per.end,
     note:"", excluded:false, awaitsPayment:true,
     rentalId:r.id, periodYM:ym, payments:[], deleted:false};
   DB.income.push(row);
