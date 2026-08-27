@@ -24,6 +24,7 @@ const FIELDS = [
   { key: 'status', type: 'text' },
   { key: 'sheets_count', type: 'int' },
   { key: 'sku', type: 'text' },
+  { key: 'fixed_expense_override', type: 'num' },
 ];
 const COLS = FIELDS.map(f => f.key);
 

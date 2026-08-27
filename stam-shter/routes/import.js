@@ -59,6 +59,7 @@ const SPEC = {
       { key: 'customer_id', label: 'רוכש', ref: 'contacts' },
       { key: 'buyer_total', label: 'מחיר לרוכש', type: 'num' },
       { key: 'buyer_currency', label: 'מטבע (ILS/USD)', type: 'currency' },
+      { key: 'fixed_expense_override', label: 'הוצאה קבועה (עקיפה)', type: 'num', nullable: true },
       { key: 'status', label: 'סטטוס (active/done)', type: 'status' },
       { key: 'note', label: 'הערה' },
     ],
@@ -348,6 +349,9 @@ function resolveRow(table, raw, ctx, opts, partial) {
 
     // --- שדות רגילים ---
     if (col.required && !val) return { ok: false, error: `חסר ערך בעמודה "${col.label}"` };
+    // שדה שריק בו משמעו "ברירת מחדל" ולא אפס (למשל עקיפת ההוצאה הקבועה,
+    // שבה 0 הוא ביטול מפורש)
+    if (col.nullable && (val === undefined || val === '')) { data[col.key] = null; continue; }
     if (col.type === 'num') {
       const n = toNum(val); if (n === undefined) return { ok: false, error: `"${val}" אינו מספר תקין (${col.label})` };
       data[col.key] = n;

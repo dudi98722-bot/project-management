@@ -93,7 +93,9 @@ function computeScroll(row) {
   const parchmentExpected = r2(n(row.product_parchment_units) * n(row.size_cost_per_unit));
   const parchmentActual   = r2(row.parchment_actual);
   const peritah           = r2(row.peritah_cost);
-  const fixedExpense      = r2(row.product_fixed_expense);
+  // הוצאה קבועה: לפי המוצר, אלא אם נקבעה עקיפה לספר הזה (כולל 0 = ביטול)
+  const hasOverride       = row.fixed_expense_override !== null && row.fixed_expense_override !== undefined;
+  const fixedExpense      = hasOverride ? r2(row.fixed_expense_override) : r2(row.product_fixed_expense);
   const bookExpenses      = r2(row.book_expenses);
 
   // רווח צפוי — משתמש בצפי הקלף (לא בעלות בפועל), לפי האפיון.
@@ -127,6 +129,7 @@ function computeScroll(row) {
     parchment_actual: parchmentActual,
     peritah_cost: peritah,
     fixed_expense: fixedExpense,
+    fixed_expense_overridden: hasOverride,
     book_expenses: bookExpenses,
     expected_profit: expectedProfit,
     sold,

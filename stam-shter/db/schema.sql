@@ -371,6 +371,9 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS sheets_count INTEGER;
 
 -- מק"ט ידני לספר — המזהה שהמשתמש מכיר, בנוסף למספר הפנימי (#).
 ALTER TABLE scrolls ADD COLUMN IF NOT EXISTS sku VARCHAR(100);
+-- עקיפת ההוצאה הקבועה לספר בודד. NULL = לפי המוצר (ברירת המחדל),
+-- 0 = ללא הוצאה קבועה לספר הזה, מספר = הסכום שנקבע לו.
+ALTER TABLE scrolls ADD COLUMN IF NOT EXISTS fixed_expense_override DECIMAL(14,2);
 -- אסור ששני ספרים יחלקו את *כל* השלושה יחד: סופר + מוצר + מק"ט.
 -- חפיפה חלקית מותרת. האילוץ חל רק כשיש מק"ט — בלעדיו אין מה להבחין,
 -- ומספר הספר הפנימי משמש כמזהה.

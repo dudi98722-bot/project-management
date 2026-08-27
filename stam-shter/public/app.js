@@ -691,7 +691,9 @@ async function pageScrolls() {
     // מחיר הספר לסופר = מחיר לעמוד × עמודי המוצר (מה שמגיע לו על ספר שלם)
     { label: 'מחיר לסופר', cls: 'num', render: r => mCell(r.scribe_book_price),
       total: rows => mCell(sumBy(rows, 'scribe_book_price')) },
-    { label: 'הוצאה קבועה', cls: 'num', render: r => mCell(r.fixed_expense),
+    { label: 'הוצאה קבועה', cls: 'num',
+      render: r => mCell(r.fixed_expense) + (r.fixed_expense_overridden
+        ? ' <span class="pill a" title="נקבע ידנית לספר זה">ידני</span>' : ''),
       total: rows => mCell(sumBy(rows, 'fixed_expense')) },
     { label: 'יתרת רוכש', cls: 'num', render: r => mCell(r.buyer_balance_now),
       total: rows => mCell(sumBy(rows, 'buyer_balance_now')) },
@@ -740,6 +742,8 @@ function scrollCfg() {
           `<option value="active" ${v === 'active' ? 'selected' : ''}>פעיל</option><option value="done" ${v === 'done' ? 'selected' : ''}>הושלם</option>` },
       { k: 'sheets_count', label: 'מספר יריעות', type: 'number',
         hint: 'למעקב יריעות. ריק = לפי יחידות הקלף של המוצר' },
+      { k: 'fixed_expense_override', label: 'הוצאה קבועה — עקיפה', type: 'number',
+        hint: 'ריק = לפי המוצר · 0 = ללא הוצאה קבועה לספר זה' },
       { k: 'note', label: 'הערה', type: 'textarea' },
     ],
   };
@@ -789,7 +793,7 @@ async function showScrollCard(id) {
       ${kv('צפי קלף', money(s.parchment_expected))}
       ${kv('עלות קלף בפועל', money(s.parchment_actual))}
       ${kv('עלות פריטה', money(s.peritah_cost))}
-      ${kv('הוצאה קבועה לספר', money(s.fixed_expense))}
+      ${kv('הוצאה קבועה לספר', money(s.fixed_expense) + (s.fixed_expense_overridden ? ' <span class="pill a">ידני</span>' : ''))}
       ${kv('הוצאות לספר', money(s.book_expenses))}
       ${kv('<b>רווח צפוי</b>', `<b class="${s.expected_profit >= 0 ? 'pos' : 'neg'}">${money(s.expected_profit)}</b>`)}
     </div>
@@ -1317,7 +1321,7 @@ async function repBookCard() {
           <div class="kv">
             ${kv('צפי קלף', money(s.parchment_expected))}
             ${kv('קלף בפועל', money(s.parchment_actual))}
-            ${kv('הוצאה קבועה', money(s.fixed_expense))}
+            ${kv('הוצאה קבועה', money(s.fixed_expense) + (s.fixed_expense_overridden ? ' <span class="pill a">ידני</span>' : ''))}
             ${kv('הוצאות לספר', money(s.book_expenses))}
             ${kv('סה"כ עלויות', money(parts.reduce((a, x) => a + N(x.v), 0)), 1)}
             ${kv('רווח צפוי', money(profit), 1)}
