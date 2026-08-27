@@ -324,7 +324,7 @@
 
     $('#dbNew').onclick = () => debtForm();
     $('#dbBulk').onclick = () => debtsBulkForm();
-    const box = $('#dbBox');
+    const box = $('#dbBox'), cDel = caps().del;
     if (!rows.length) { box.innerHTML = '<div class="empty" style="padding:24px"><div class="big">🤝</div>אין חובות רשומים</div>'; return; }
     box.innerHTML = `<table style="min-width:820px"><thead><tr>
         <th>ממי לקחתי</th><th class="num">לקחתי</th><th class="num">החזרתי</th><th class="num">יתרה</th><th class="num">דחוף</th><th>תאריך יעד</th><th>הערה</th><th></th>
@@ -340,7 +340,7 @@
           <td class="num" style="color:var(--red);font-weight:${u > 0 ? '800' : '400'}">${u > 0 ? '🔥 ' + money0(u) : '—'}</td>
           <td class="mini" style="color:${late ? 'var(--red)' : 'inherit'}">${d.due_date ? dfmt(d.due_date) + (late ? ' ⚠️' : '') : '—'}</td>
           <td class="mini">${esc(d.note || '')}</td>
-          <td style="white-space:nowrap">${!done ? `<button class="btn xs green" data-repay="${d.id}">💰 החזר</button>` : ''}<button class="btn xs ghost" data-editdebt="${d.id}">✏️</button><button class="btn xs red" data-deldebt="${d.id}">🗑️</button></td></tr>`;
+          <td style="white-space:nowrap">${!done ? `<button class="btn xs green" data-repay="${d.id}">💰 החזר</button>` : ''}<button class="btn xs ghost" data-editdebt="${d.id}">✏️</button>${cDel ? `<button class="btn xs red" data-deldebt="${d.id}">🗑️</button>` : ''}</td></tr>`;
       }).join('')}
       <tr style="border-top:2px solid var(--ink);font-weight:800">
         <td>סה"כ</td><td class="num">${money0(tot.taken)}</td>

@@ -20,7 +20,7 @@ const RECYCLE = {
 function tableAllowed(caps, table) {
   if (table === 'home_transactions') return !!caps.home;
   if (table === 'payment_requests') return !!caps.viewBusiness && (!!caps.del || !!caps.writeTx);
-  if (table === 'debts') return !!caps.debts;
+  if (table === 'debts') return !!caps.debts && !!caps.del;
   return !!caps.viewBusiness && !!caps.del;
 }
 

@@ -6,7 +6,7 @@ const jwt = require('jsonwebtoken');
 //  viewBusiness  - צפייה בצד העסקי (פרויקטים/תנועות)
 //  editProjects  - יצירה/עריכה של פרויקטים, שלבים, קבלני משנה
 //  addStages     - הוספת שלבים בלבד (למדווח — בלי עריכה/מחיקה של שלבים ובלי עריכת פרויקטים)
-//  debts         - לשונית חובות (ממי לקחתי / כמה החזרתי) — רגיש, למנהלים בלבד
+//  debts         - לשונית חובות (ממי לקחתי / כמה החזרתי). מחיקת חוב דורשת גם del
 //  writeTx       - הזנת תנועות (הכנסות/הוצאות)
 //  projectExpenseOnly - רק הזנת הוצאה לפרויקט + העלאת חשבונית (עובד שטח)
 //  del           - מחיקה רכה בודדת
@@ -21,7 +21,7 @@ const ROLES = {
   // מנהל - כל ההזנות (פרויקט/עסק/לקוחות/קבלן) + בית + כל הדוחות, בלי ניהול משתמשים
   owner:     { label:'מנהל',      manageUsers:false, viewBusiness:true,  editProjects:true,  addStages:true,  debts:true,  writeTx:true,  projectExpenseOnly:true,  del:false, multiDelete:false, viewReports:true,  home:true  },
   // מדווח (אמיתי) - כל ההזנות + הוספת שלבים בלבד (לקוח+קבלן), בלי עריכת שלב/פרויקט ובלי מחיקה
-  reporter:  { label:'מדווח',     manageUsers:false, viewBusiness:true,  editProjects:false, addStages:true,  writeTx:true,  projectExpenseOnly:true,  del:false, multiDelete:false, viewReports:true,  home:false },
+  reporter:  { label:'מדווח',     manageUsers:false, viewBusiness:true,  editProjects:false, addStages:true,  debts:true,  writeTx:true,  projectExpenseOnly:true,  del:false, multiDelete:false, viewReports:true,  home:false },
   // עובד שטח - רק הזנת הוצאה לפרויקט + חשבוניות
   field:     { label:'עובד שטח',  manageUsers:false, viewBusiness:false, editProjects:false, addStages:false, writeTx:false, projectExpenseOnly:true,  del:false, multiDelete:false, viewReports:false, home:false },
   // אשה - רק מודול הבית

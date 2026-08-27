@@ -3,7 +3,7 @@ const { pool, logAction, softDelete } = require('../db');
 const { authenticate, can } = require('../middleware/auth');
 const router = express.Router();
 
-// כל המודול רגיש — מנהלים בלבד
+// המודול פתוח למי שיש לו הרשאת debts (מנהל ראשי / מנהל / מדווח)
 router.use(authenticate, can('debts'));
 
 const COLS = `id, lender, phone, taken::float AS taken, repaid::float AS repaid,
@@ -97,8 +97,8 @@ router.post('/:id/repay', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-// DELETE /api/debts/:id — מחיקה רכה
-router.delete('/:id', async (req, res) => {
+// DELETE /api/debts/:id — מחיקה רכה (דורש הרשאת מחיקה — מנהל/מדווח לא מוחקים)
+router.delete('/:id', can('del'), async (req, res) => {
   try {
     const ok = await softDelete('debts', req.params.id, req.user);
     if (!ok) return res.status(404).json({ error: 'חוב לא נמצא' });
