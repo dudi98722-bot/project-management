@@ -90,7 +90,7 @@ function scrollItemsBy(fieldKey, scrollField) {
     const el = $('f_' + fieldKey);
     const who = el ? +el.value : 0;
     const list = who ? C.scrolls.filter(s => +s[scrollField] === who) : C.scrolls;
-    return list.map(s => ({ v: s.id, t: scrollLabel(s) }));
+    return sortHe(list.map(s => ({ v: s.id, t: scrollLabel(s) })));
   };
 }
 const itemsScrollsOfCustomer = scrollItemsBy('customer_id', 'customer_id');
@@ -104,13 +104,17 @@ const optPurchases = (sel) => C.purchases
 // ===== שדה השלמה אוטומטית =====
 // מחליף רשימה נפתחת ארוכה: מקלידים חלק מהשם והרשימה מצטמצמת.
 // הערך הנבחר נשמר בשדה מוסתר בשם f_<key>, כך ש-readFields עובד כרגיל.
-const itemsContacts  = () => C.contacts.map(c => ({ v: c.id, t: contactName(c) }));
-const itemsProducts  = () => C.products.map(p => ({ v: p.id, t: p.name }));
-const itemsSizes     = () => C.sizes.map(s => ({ v: s.id, t: `${s.name} (${money(s.cost_per_unit)}/יח')` }));
-const itemsScrolls   = () => C.scrolls.map(s => ({ v: s.id, t: scrollLabel(s) }));
-const itemsPurchases = (sel) => C.purchases.filter(p => N(p.remaining_qty) > 0 || +sel === p.id)
-  .map(p => ({ v: p.id, t: `#${p.id} · ${purchaseLabel(p)}` }));
-const itemsList = (arr) => arr.map(x => ({ v: x.value, t: x.value + (x.is_correction ? '  ⟵ תיקונים' : '') }));
+// כל רשימות הבחירה ממוינות א-ב לפי סדר האלפבית העברי
+const byHe = (a, b) => String(a.t).localeCompare(String(b.t), 'he', { numeric: true });
+const sortHe = (arr) => arr.sort(byHe);
+
+const itemsContacts  = () => sortHe(C.contacts.map(c => ({ v: c.id, t: contactName(c) })));
+const itemsProducts  = () => sortHe(C.products.map(p => ({ v: p.id, t: p.name })));
+const itemsSizes     = () => sortHe(C.sizes.map(s => ({ v: s.id, t: `${s.name} (${money(s.cost_per_unit)}/יח')` })));
+const itemsScrolls   = () => sortHe(C.scrolls.map(s => ({ v: s.id, t: scrollLabel(s) })));
+const itemsPurchases = (sel) => sortHe(C.purchases.filter(p => N(p.remaining_qty) > 0 || +sel === p.id)
+  .map(p => ({ v: p.id, t: `#${p.id} · ${purchaseLabel(p)}` })));
+const itemsList = (arr) => sortHe(arr.map(x => ({ v: x.value, t: x.value + (x.is_correction ? '  ⟵ תיקונים' : '') })));
 
 function comboHTML(f, val) {
   const items = f.items(val) || [];
@@ -154,6 +158,7 @@ function wireCombos(root, fields) {
     const pick = (v, t) => {
       hid.value = v; inp.value = t; inp.classList.add('picked');
       menu.style.display = 'none'; act = -1;
+      hid.dispatchEvent(new Event('change', { bubbles: true }));
     };
     const close = () => { menu.style.display = 'none'; act = -1; };
 
@@ -172,7 +177,7 @@ function wireCombos(root, fields) {
         if (!hid.value) {
           const exact = items.find(x => String(x.t).toLowerCase() === inp.value.trim().toLowerCase());
           if (exact) pick(exact.v, exact.t);
-          else if (inp.value.trim() !== '') { inp.value = ''; }
+          else if (inp.value.trim() !== '') { inp.value = ''; hid.dispatchEvent(new Event('change', { bubbles: true })); }
         }
       }, 150);
     };
@@ -193,6 +198,20 @@ function wireCombos(root, fields) {
       } else if (e.key === 'Escape') { close(); }
     };
   }
+}
+
+
+// ---- בורר עצמאי עם חיפוש ----
+// אותו רכיב השלמה של הטפסים, לשימוש מחוץ לטופס (מסננים, בוררי דוחות).
+// pickerHTML מרנדר, wirePicker מחבר ומחזיר את הערך הנבחר ב-onChange.
+function pickerHTML(key, label, items, value, placeholder) {
+  const f = { k: key, label: label || '', items: () => items, placeholder: placeholder || 'הקלד לחיפוש…' };
+  return comboHTML(f, value == null ? '' : value);
+}
+function wirePicker(key, items, onChange) {
+  wireCombos(document, [{ k: key, type: 'combo', items: () => items }]);
+  const hid = $('f_' + key);
+  if (hid) hid.addEventListener('change', () => onChange(hid.value));
 }
 
 // ---- בונה שדות טופס ----
@@ -799,11 +818,10 @@ async function showScrollCard(id) {
 }
 
 // ============ תשלום לסופר (שני חלקים) ============
-async function pageScribePay() {
-  const [allPays, allPages] = await Promise.all([Store.scribePayments.list(), Store.pagesLog.list()]);
-  const scrollById = (id) => C.scrolls.find(s => s.id === id);
-
-  const payCfg = {
+// שתי ההגדרות של מסך תשלום לסופר — עצמאיות, כדי שגם ההוספה
+// המהירה תשתמש בהן ולא ייווצרו שתי גרסאות של אותו טופס.
+function scribePayCfg() {
+  return {
     title: 'תשלום לסופר', store: Store.scribePayments,
     labelOf: (r) => `תשלום ${money(r.amount)}`,
     defaults: () => ({ date: today() }),
@@ -817,7 +835,10 @@ async function pageScribePay() {
       { k: 'note', label: 'הערה', type: 'textarea' },
     ],
   };
-  const pageCfg = {
+}
+
+function pagesLogCfg() {
+  return {
     title: 'עמודים שנכתבו', store: Store.pagesLog,
     labelOf: (r) => `${r.pages} עמודים`,
     defaults: () => ({ date: today() }),
@@ -831,6 +852,16 @@ async function pageScribePay() {
       { k: 'note', label: 'הערה', type: 'textarea' },
     ],
   };
+}
+
+async function pageScribePay(cfgOnly) {
+  // cfgOnly מחזיר את שתי ההגדרות בלי לרנדר — לשימוש ההוספה המהירה
+  if (cfgOnly) return { pay: scribePayCfg(), page: pagesLogCfg() };
+  const [allPays, allPages] = await Promise.all([Store.scribePayments.list(), Store.pagesLog.list()]);
+  const scrollById = (id) => C.scrolls.find(s => s.id === id);
+
+  const payCfg = scribePayCfg();
+  const pageCfg = pagesLogCfg();
 
   const payCols = [
     ...(ME.caps.del ? [selCol('scribe_payments')] : []),
@@ -896,9 +927,9 @@ async function pageScribePay() {
 }
 
 // ============ תשלומי לקוחות (ס"ת) ============
-function pageCustPay() {
+function pageCustPay(cfgOnly) {
   const scrollById = (id) => C.scrolls.find(s => s.id === id);
-  return entityPage({
+  const cfg = {
     title: 'תשלומי לקוחות', bulk: 'customer_payments', store: Store.customerPayments,
     load: () => Store.customerPayments.list(),
     labelOf: (r) => `תשלום ${money(r.paid_actual)}`,
@@ -929,13 +960,14 @@ function pageCustPay() {
       { label: 'יתרת הרוכש', cls: 'num', render: r => { const s = scrollById(r.scroll_id); return s ? mCell(s.buyer_balance_now) : ''; } },
       { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
     ],
-  });
+  };
+  return cfgOnly ? cfg : entityPage(cfg);
 }
 
 // ============ הוצאות לספר ============
-function pageBookExp() {
+function pageBookExp(cfgOnly) {
   const scrollById = (id) => C.scrolls.find(s => s.id === id);
-  return entityPage({
+  const cfg = {
     title: 'הוצאות לספר', bulk: 'book_expenses', store: Store.bookExpenses,
     load: () => Store.bookExpenses.list(),
     labelOf: (r) => `${r.type || 'הוצאה'} ${money(r.amount)}`,
@@ -959,13 +991,14 @@ function pageBookExp() {
       { label: 'סכום', cls: 'num', render: r => mCell(r.amount), total: rows => mCell(sumBy(rows, 'amount')) },
       { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
     ],
-  });
+  };
+  return cfgOnly ? cfg : entityPage(cfg);
 }
 
 // ============ הוצאות קלף ============
-function pageParchExp() {
+function pageParchExp(cfgOnly) {
   const scrollById = (id) => C.scrolls.find(s => s.id === id);
-  return entityPage({
+  const cfg = {
     title: 'הוצאות קלף', bulk: 'parchment_expenses', store: Store.parchmentExpenses,
     load: () => Store.parchmentExpenses.list(),
     labelOf: (r) => `${r.quantity} יחידות קלף`,
@@ -991,12 +1024,13 @@ function pageParchExp() {
       { label: 'סך עלות', cls: 'num', render: r => mCell(r.total_cost), total: rows => mCell(sumBy(rows, 'total_cost')) },
       { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
     ],
-  });
+  };
+  return cfgOnly ? cfg : entityPage(cfg);
 }
 
 // ============ הוצאות עסק ============
-function pageBizExp() {
-  return entityPage({
+function pageBizExp(cfgOnly) {
+  const cfg = {
     title: 'הוצאות עסק', bulk: 'business_expenses', store: Store.businessExpenses,
     load: () => Store.businessExpenses.list(),
     labelOf: (r) => `${r.type || 'הוצאה'} ${money(r.amount)}`,
@@ -1014,7 +1048,8 @@ function pageBizExp() {
       { label: 'סכום', cls: 'num', render: r => mCell(r.amount), total: rows => mCell(sumBy(rows, 'amount')) },
       { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
     ],
-  });
+  };
+  return cfgOnly ? cfg : entityPage(cfg);
 }
 
 // ============ מוצרים ============
@@ -1034,8 +1069,8 @@ function pageProd() {
   return prodCustPay();
 }
 
-function prodPurchases() {
-  return entityPage({
+function prodPurchases(cfgOnly) {
+  const cfg = {
     title: 'רכישות מוצרים', bulk: 'prod_purchases', store: Store.prodPurchases,
     load: () => Store.prodPurchases.list(),
     labelOf: (r) => `${r.product_name} מ${r.scribe_name}`,
@@ -1067,11 +1102,12 @@ function prodPurchases() {
       { label: 'סוג', render: r => `<span class="pill n">${esc(r.purchase_type || '')}</span>` },
       { label: 'חוב לסופר', cls: 'num', render: r => mCell(r.owed_scribe), total: rows => mCell(sumBy(rows, 'owed_scribe')) },
     ],
-  });
+  };
+  return cfgOnly ? cfg : entityPage(cfg);
 }
 
-function prodSales() {
-  return entityPage({
+function prodSales(cfgOnly) {
+  const cfg = {
     title: 'מכירות מוצרים', bulk: 'prod_sales', store: Store.prodSales,
     load: () => Store.prodSales.list(),
     labelOf: (r) => `${r.quantity} × ${r.product_name}`,
@@ -1104,11 +1140,12 @@ function prodSales() {
       { label: 'סך מכירה', cls: 'num', render: r => mCell(r.total_sale), total: rows => mCell(sumBy(rows, 'total_sale')) },
       { label: 'סך רווח', cls: 'num', render: r => mCell(r.total_profit), total: rows => mCell(sumBy(rows, 'total_profit')) },
     ],
-  });
+  };
+  return cfgOnly ? cfg : entityPage(cfg);
 }
 
-function prodScribePay() {
-  return entityPage({
+function prodScribePay(cfgOnly) {
+  const cfg = {
     title: 'תשלומים לסופר (מוצרים)', bulk: 'prod_scribe_payments', store: Store.prodScribePayments,
     load: () => Store.prodScribePayments.list(),
     labelOf: (r) => `תשלום ${money(r.amount)}`,
@@ -1126,11 +1163,12 @@ function prodScribePay() {
       { label: 'סך ששולם', cls: 'num', render: r => mCell(r.amount), total: rows => mCell(sumBy(rows, 'amount')) },
       { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
     ],
-  });
+  };
+  return cfgOnly ? cfg : entityPage(cfg);
 }
 
-function prodCustPay() {
-  return entityPage({
+function prodCustPay(cfgOnly) {
+  const cfg = {
     title: 'תשלומי לקוחות (מוצרים)', bulk: 'prod_customer_payments', store: Store.prodCustomerPayments,
     load: () => Store.prodCustomerPayments.list(),
     labelOf: (r) => `תשלום ${money(r.paid_actual)}`,
@@ -1156,7 +1194,8 @@ function prodCustPay() {
       { label: 'ס"ה שולם', cls: 'num', render: r => mCell(r.paid_actual), total: rows => mCell(sumBy(rows, 'paid_actual')) },
       { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
     ],
-  });
+  };
+  return cfgOnly ? cfg : entityPage(cfg);
 }
 
 // ============ דוחות ============
@@ -1201,11 +1240,9 @@ async function repBookCard() {
   const scrolls = C.scrolls;
   if (!repBookCard._id && scrolls.length) repBookCard._id = scrolls[0].id;
   $('view').innerHTML += `
-    <div class="toolbar"><label class="mini">בחר ספר:</label>
-      <select id="bcSel" style="min-width:320px">${scrolls.map(s =>
-        `<option value="${s.id}" ${s.id === repBookCard._id ? 'selected' : ''}>${esc(scrollLabel(s))}</option>`).join('')}</select></div>
+    <div class="toolbar"><div style="min-width:380px">${pickerHTML('bcSel', 'בחר ספר', itemsScrolls(), repBookCard._id, 'הקלד מק"ט או שם…')}</div></div>
     <div id="bcBody"></div>`;
-  $('bcSel').onchange = (e) => { repBookCard._id = +e.target.value; render(); };
+  wirePicker('bcSel', itemsScrolls(), (v) => { if (v) { repBookCard._id = +v; render(); } });
   if (!repBookCard._id) { $('bcBody').innerHTML = `<div class="card empty">אין ספרים במערכת</div>`; return; }
 
   let d;
@@ -1586,17 +1623,16 @@ async function repInventory() {
 function repCard(kind) {
   const label = kind === 'scribe' ? 'סופר' : 'רוכש';
   $('view').innerHTML += `
-    <div class="toolbar"><label class="mini">בחר ${label}:</label>
-      <select id="cardSel">${optBlank('— בחר —')}${optContacts('')}</select></div>
+    <div class="toolbar"><div style="min-width:340px">${pickerHTML('cardSel', 'בחר ' + label, itemsContacts(), '', 'הקלד שם…')}</div></div>
     <div id="cardBody"></div>`;
-  $('cardSel').onchange = async (e) => {
-    if (!e.target.value) return ($('cardBody').innerHTML = '');
+  wirePicker('cardSel', itemsContacts(), async (v) => {
+    if (!v) return ($('cardBody').innerHTML = '');
     $('cardBody').innerHTML = '<div class="card muted">טוען…</div>';
     try {
-      const d = await Store.reports[kind](e.target.value);
+      const d = await Store.reports[kind](v);
       $('cardBody').innerHTML = kind === 'scribe' ? scribeCardHTML(d) : customerCardHTML(d);
     } catch (err) { $('cardBody').innerHTML = `<div class="card" style="color:var(--red)">${esc(err.message)}</div>`; }
-  };
+  });
 }
 
 async function openCard(kind, id) {
@@ -1720,8 +1756,8 @@ function pageSettings() {
   return setList('expense_business', 'סוגי הוצאות עסק', false);
 }
 
-function setContacts() {
-  return entityPage({
+function setContacts(cfgOnly) {
+  const cfg = {
     title: 'אנשי קשר', bulk: 'contacts', store: Store.contacts,
     load: () => Store.contacts.list(),
     labelOf: (r) => contactName(r),
@@ -1734,11 +1770,12 @@ function setContacts() {
       { label: 'שם', render: r => esc(r.name || '') },
       { label: 'טלפון', render: r => esc(r.phone || '') },
     ],
-  });
+  };
+  return cfgOnly ? cfg : entityPage(cfg);
 }
 
-function setProducts() {
-  return entityPage({
+function setProducts(cfgOnly) {
+  const cfg = {
     title: 'מוצרים', bulk: 'products', store: Store.products,
     load: () => Store.products.list(),
     labelOf: (r) => r.name,
@@ -1758,11 +1795,12 @@ function setProducts() {
       { label: 'עמודים', cls: 'num', render: r => numCell(r.pages) },
       { label: 'הוצאה קבועה', cls: 'num', render: r => mCell(r.fixed_expense) },
     ],
-  });
+  };
+  return cfgOnly ? cfg : entityPage(cfg);
 }
 
-function setSizes() {
-  return entityPage({
+function setSizes(cfgOnly) {
+  const cfg = {
     title: 'גדלי קלף', bulk: 'parchment_sizes', store: Store.sizes,
     load: () => Store.sizes.list(),
     labelOf: (r) => r.name,
@@ -1774,7 +1812,8 @@ function setSizes() {
       { label: 'שם הגודל', render: r => esc(r.name) },
       { label: 'עלות ליחידה', cls: 'num', render: r => mCell(r.cost_per_unit) },
     ],
-  });
+  };
+  return cfgOnly ? cfg : entityPage(cfg);
 }
 
 async function setList(listName, title, withCorrection) {
@@ -2533,19 +2572,12 @@ async function trackItems() {
   ];
   const rows = applyFilters('track_items', cols, allRows);
 
-  const scrollOpts = C.scrolls.map(s => `<option value="${s.id}" ${+TRACK.scroll === s.id ? 'selected' : ''}>${esc(scrollLabel(s))}</option>`).join('');
-  const stationOpts = C.stations.map(s => `<option value="${s.id}" ${+TRACK.station === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
-  const holderOpts = C.contacts.map(c => `<option value="${c.id}" ${+TRACK.holder === c.id ? 'selected' : ''}>${esc(contactName(c))}</option>`).join('');
-
   $('view').innerHTML += `
     <div class="card">
       <div class="row">
-        <div class="field" style="max-width:300px"><label>ספר</label>
-          <select id="tkScroll">${optBlank('— כל הספרים —')}${scrollOpts}</select></div>
-        <div class="field" style="max-width:230px"><label>תחנה</label>
-          <select id="tkStation">${optBlank('— כל התחנות —')}${stationOpts}</select></div>
-        <div class="field" style="max-width:250px"><label>אצל מי</label>
-          <select id="tkHolder">${optBlank('— כולם —')}${holderOpts}</select></div>
+        <div style="flex:1;min-width:260px">${pickerHTML('tkScroll', 'ספר', itemsScrolls(), TRACK.scroll, 'כל הספרים — הקלד לחיפוש')}</div>
+        <div style="flex:1;min-width:200px">${pickerHTML('tkStation', 'תחנה', itemsStations(), TRACK.station, 'כל התחנות')}</div>
+        <div style="flex:1;min-width:220px">${pickerHTML('tkHolder', 'אצל מי', itemsContacts(), TRACK.holder, 'כולם — הקלד שם')}</div>
       </div>
       ${ME.caps.edit ? `<div class="toolbar">
         <button class="btn" id="tkGen">+ צור יריעות לספר</button>
@@ -2556,9 +2588,9 @@ async function trackItems() {
       ${tableHTML(cols, rows, { fkey: 'track_items' })}
     </div>`;
 
-  $('tkScroll').onchange = (e) => { TRACK.scroll = e.target.value; render(); };
-  $('tkStation').onchange = (e) => { TRACK.station = e.target.value; render(); };
-  $('tkHolder').onchange = (e) => { TRACK.holder = e.target.value; render(); };
+  wirePicker('tkScroll',  itemsScrolls(),  (v) => { TRACK.scroll = v; render(); });
+  wirePicker('tkStation', itemsStations(), (v) => { TRACK.station = v; render(); });
+  wirePicker('tkHolder',  itemsContacts(), (v) => { TRACK.holder = v; render(); });
   if ($('tkGen')) $('tkGen').onclick = openGenerate;
   wireSelection();
   wireFilters('track_items', cols, allRows);
@@ -2568,21 +2600,20 @@ async function trackItems() {
 // יצירת יריעות לספר
 function openGenerate() {
   const body = `
-    <div class="field"><label>ספר</label>
-      <select id="gnScroll">${optBlank('— בחר ספר —')}${C.scrolls.map(s =>
-        `<option value="${s.id}" data-sheets="${N(s.sheets_count) || N(s.product_parchment_units) || ''}">${esc(scrollLabel(s))}</option>`).join('')}</select></div>
+    ${pickerHTML('gnScroll', 'ספר', itemsScrolls(), '', 'הקלד מק"ט או שם…')}
     <div class="field"><label>מספר יריעות</label><input id="gnCount" type="number" min="1" max="2000">
       <div class="hint">ברירת המחדל מגיעה מהמוצר. בנביאים וכתובים הכמות משתנה — אפשר לשנות כאן.</div></div>
     <div class="mini">היריעות ייווצרו ממוספרות 1 עד N, ללא תחנה. יריעות שכבר קיימות לא ישוכפלו.</div>`;
   const m = modal({ title: 'יצירת יריעות למעקב', body,
     footer: `<button class="btn" data-ok>צור</button><button class="btn ghost" data-no>ביטול</button>` });
   m.el.querySelector('[data-no]').onclick = m.close;
-  $('gnScroll').onchange = (e) => {
-    const opt = e.target.selectedOptions[0];
-    if (opt && opt.dataset.sheets) $('gnCount').value = opt.dataset.sheets;
-  };
+  // בחירת ספר ממלאת אוטומטית את מספר היריעות המוגדר לו
+  wirePicker('gnScroll', itemsScrolls(), (v) => {
+    const s = C.scrolls.find(x => x.id === +v);
+    if (s) $('gnCount').value = N(s.sheets_count) || N(s.product_sheets_count) || N(s.product_parchment_units) || '';
+  });
   m.el.querySelector('[data-ok]').onclick = async () => {
-    const scroll_id = $('gnScroll').value;
+    const scroll_id = $('f_gnScroll').value;
     if (!scroll_id) return toast('יש לבחור ספר', 'err');
     try {
       const r = await Store.track.generate({ scroll_id, count: $('gnCount').value || undefined });
@@ -2596,9 +2627,7 @@ function openGenerate() {
 function openMove(ids) {
   const body = `
     <p class="mini">מעבירים <b>${ids.length}</b> יריעות. שדה שיישאר ריק לא ישתנה.</p>
-    <div class="field"><label>לתחנה</label>
-      <select id="mvStation">${optBlank('— לא לשנות —')}${C.stations.map(s =>
-        `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></div>
+    ${pickerHTML('mvStation', 'לתחנה', itemsStations(), '', 'לא לשנות')}
     <div class="field"><label>אצל מי</label>
       <div class="combo" data-combo="mvHolder">
         <input type="hidden" id="f_mvHolder" value="">
@@ -2610,9 +2639,10 @@ function openMove(ids) {
   const m = modal({ title: 'העברת יריעות', body,
     footer: `<button class="btn" data-ok>העבר</button><button class="btn ghost" data-no>ביטול</button>` });
   m.el.querySelector('[data-no]').onclick = m.close;
-  wireCombos(m.el, [{ k: 'mvHolder', type: 'combo', items: itemsContacts }]);
+  wireCombos(m.el, [{ k: 'mvHolder', type: 'combo', items: itemsContacts },
+                    { k: 'mvStation', type: 'combo', items: itemsStations }]);
   m.el.querySelector('[data-ok]').onclick = async () => {
-    const station_id = $('mvStation').value;
+    const station_id = $('f_mvStation').value;
     const holder_id = $('f_mvHolder').value;
     if (!station_id && !holder_id) return toast('יש לבחור תחנה או מחזיק', 'err');
     try {
@@ -2650,14 +2680,12 @@ async function trackSheets() {
   $('view').innerHTML += `
     <div class="card">
       <div class="row" style="align-items:flex-end">
-        <div class="field" style="max-width:420px;margin-bottom:0"><label>בחר ספר</label>
-          <select id="sgScroll">${scrolls.map(s =>
-            `<option value="${s.id}" ${+SHEETGRID.scrollId === s.id ? 'selected' : ''}>${esc(scrollLabel(s))}</option>`).join('')}</select></div>
+        <div style="max-width:460px;flex:1">${pickerHTML('sgScroll', 'בחר ספר', itemsScrolls(), SHEETGRID.scrollId, 'הקלד מק"ט או שם…')}</div>
         <div id="sgInfo" class="mini" style="padding-bottom:10px"></div>
       </div>
     </div>
     <div id="sgBody"><div class="card muted">טוען…</div></div>`;
-  $('sgScroll').onchange = (e) => { SHEETGRID.scrollId = +e.target.value; render(); };
+  wirePicker('sgScroll', itemsScrolls(), (v) => { if (v) { SHEETGRID.scrollId = +v; render(); } });
   if (!SHEETGRID.scrollId) { $('sgBody').innerHTML = '<div class="card empty">אין ספרים במערכת</div>'; return; }
 
   const scroll = scrolls.find(s => s.id === +SHEETGRID.scrollId) || {};
@@ -2918,8 +2946,8 @@ async function setSheetCount(target) {
 }
 
 // ---------- תחנות ----------
-function trackStations() {
-  return entityPage({
+function trackStations(cfgOnly) {
+  const cfg = {
     title: 'תחנות', bulk: 'stations', store: Store.stations,
     load: () => Store.stations.list(),
     labelOf: (r) => r.name,
@@ -2934,7 +2962,68 @@ function trackStations() {
       { label: 'שם התחנה', render: r => stationPill({ station_name: r.name, station_color: r.color }) },
       { label: 'סדר', cls: 'num', render: r => numCell(r.sort) },
     ],
+  };
+  return cfgOnly ? cfg : entityPage(cfg);
+}
+
+
+// ============ הוספה מהירה ============
+// כפתור צף שפותח כל טופס הזנה מכל מסך במערכת, בלי לנווט ללשונית.
+// ההגדרות נלקחות מאותן פונקציות שמזינות את המסכים עצמם, כדי שלא
+// ייווצרו שני טפסים שונים לאותה רשומה.
+const QUICK_ADD = [
+  { icon: '📖', label: 'ספר חדש (ס"ת)',      cap: 'finance', cfg: () => scrollCfg() },
+  { icon: '💰', label: 'תשלום לסופר',        cfg: () => scribePayCfg() },
+  { icon: '✍️', label: 'רישום עמודים',       cfg: () => pagesLogCfg() },
+  { icon: '💵', label: 'תשלום לקוח',         cap: 'finance', cfg: () => pageCustPay(true) },
+  { icon: '🧾', label: 'הוצאה לספר',         cfg: () => pageBookExp(true) },
+  { icon: '📜', label: 'הוצאת קלף',          cfg: () => pageParchExp(true) },
+  { icon: '🏢', label: 'הוצאת עסק',          cap: 'finance', cfg: () => pageBizExp(true) },
+  { sep: true },
+  { icon: '📦', label: 'רכישת מוצרים',       cfg: () => prodPurchases(true) },
+  { icon: '🛒', label: 'מכירת מוצרים',       cfg: () => prodSales(true) },
+  { icon: '💰', label: 'תשלום לסופר (מוצרים)', cfg: () => prodScribePay(true) },
+  { icon: '💵', label: 'תשלום לקוח (מוצרים)',  cap: 'finance', cfg: () => prodCustPay(true) },
+  { sep: true },
+  { icon: '👤', label: 'איש קשר',            cfg: () => setContacts(true) },
+  { icon: '🏷️', label: 'מוצר',               cfg: () => setProducts(true) },
+  { icon: '📐', label: 'גודל קלף',           cfg: () => setSizes(true) },
+  { icon: '📍', label: 'תחנה',               cfg: () => trackStations(true) },
+];
+
+function quickAddItems() {
+  return QUICK_ADD.filter(x => x.sep || !x.cap || (ME.caps && ME.caps[x.cap]));
+}
+
+function renderQuickAdd() {
+  const old = $('quickAdd'); if (old) old.remove();
+  if (!ME.caps.edit) return;
+  const items = quickAddItems();
+  const el = document.createElement('div');
+  el.id = 'quickAdd';
+  el.innerHTML = `
+    <div class="qa-menu hidden" id="qaMenu">
+      <div class="qa-head">הוספה מהירה</div>
+      ${items.map((x, i) => x.sep ? '<div class="qa-sep"></div>'
+        : `<button data-qa="${i}"><span class="qa-ico">${x.icon}</span>${esc(x.label)}</button>`).join('')}
+    </div>
+    <button class="qa-fab" id="qaFab" title="הוספה מהירה">+</button>`;
+  document.body.appendChild(el);
+
+  const menu = $('qaMenu');
+  $('qaFab').onclick = (e) => { e.stopPropagation(); menu.classList.toggle('hidden'); };
+  el.querySelectorAll('[data-qa]').forEach(b => {
+    b.onclick = (e) => {
+      e.stopPropagation();
+      menu.classList.add('hidden');
+      const item = items[+b.dataset.qa];
+      try {
+        const cfg = item.cfg();
+        openForm(cfg, null);
+      } catch (err) { toast('פתיחת הטופס נכשלה: ' + err.message, 'err'); }
+    };
   });
+  document.addEventListener('click', () => menu.classList.add('hidden'));
 }
 
 // ============ ניווט ============
@@ -3002,6 +3091,7 @@ async function boot(user) {
   $('loginScreen').classList.add('hidden');
   $('app').classList.remove('hidden');
   await reloadCaches();
+  renderQuickAdd();
   render();
 }
 
