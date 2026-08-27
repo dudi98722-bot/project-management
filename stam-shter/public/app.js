@@ -94,6 +94,10 @@ function scrollItemsBy(fieldKey, scrollField) {
   };
 }
 const itemsScrollsOfCustomer = scrollItemsBy('customer_id', 'customer_id');
+
+// עמודת המק"ט הידני — אותה הגדרה בכל טבלה שמציגה ספרים
+const skuCol = { label: 'מק"ט', render: r => r.sku ? `<b>${esc(r.sku)}</b>` : '<span class="muted">—</span>' };
+
 const optScrolls = (sel) => C.scrolls.map(s =>
   `<option value="${s.id}" ${+sel === s.id ? 'selected' : ''}>${esc(scrollLabel(s))}</option>`).join('');
 const purchaseLabel = (p) => `${p.product_name || 'מוצר'} · ${p.scribe_name || 'סופר'} (נשאר ${N(p.remaining_qty)})`;
@@ -675,7 +679,7 @@ async function pageScrolls() {
   const cols = [
     ...(ME.caps.del ? [selCol('scrolls')] : []),
     { label: '#', render: r => r.id },
-    { label: 'מק"ט', render: r => r.sku ? `<b>${esc(r.sku)}</b>` : '<span class="muted">—</span>' },
+    skuCol,
     { label: 'מוצר', render: r => esc(r.product_name || '—') },
     { label: 'סופר', render: r => esc(r.scribe_name || '—') },
     { label: 'רוכש', render: r => esc(r.customer_name || '—') },
@@ -1521,6 +1525,7 @@ async function repByScroll() {
   const rows = await Store.reports.byScroll();
   const cols = [
     { label: '#', render: r => r.id },
+    skuCol,
     { label: 'מוצר', render: r => esc(r.product_name || '—') },
     { label: 'סופר', render: r => esc(r.scribe_name || '—') },
     { label: 'רוכש', render: r => esc(r.customer_name || '—') },
@@ -1656,6 +1661,7 @@ function scribeCardHTML(d) {
     <div class="card"><h3>צד ס"ת</h3>
       ${tableHTML([
         { label: '#', render: r => r.id },
+        skuCol,
         { label: 'מוצר', render: r => esc(r.product_name || '—') },
         { label: 'עמודים', render: r => `${r.pages_written}/${r.product_pages}` },
         { label: 'מחיר לעמוד', cls: 'num', render: r => mCell(r.page_rate) },
@@ -1700,6 +1706,7 @@ function customerCardHTML(d) {
     <div class="card"><h3>צד ס"ת — ספרים שרכש</h3>
       ${tableHTML([
         { label: '#', render: r => r.id },
+        skuCol,
         { label: 'מוצר', render: r => esc(r.product_name || '—') },
         { label: 'עמודים', render: r => `${r.pages_written}/${r.product_pages}` },
         { label: 'מחיר', cls: 'num', render: r => mCell(r.buyer_total, r.buyer_currency) },
