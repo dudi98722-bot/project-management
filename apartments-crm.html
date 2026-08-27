@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 יז'";
+var APP_BUILD = "19.08 יח'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -8660,7 +8660,7 @@ function bulkMatchNewIncome(idx){
       '<div class="field"><label>תיאור / שם</label><input id="bn-desc" value="'+esc(preName)+'"></div>'+
       '<div class="field"><label>סכום ההכנסה (₪)</label><input id="bn-amount" type="number" step="0.01" value="'+rem+'"></div>'+
       '<div class="field"><label>תאריך</label><input id="bn-date" type="date" value="'+esc(m.date||todayISO())+'"></div>'+
-      '<div class="field full"><label>הערה</label><input id="bn-note" value="'+esc([m.details,m.kind].filter(Boolean).join(" · "))+'"></div>'+
+      '<div class="field full"><label>הערה</label><input id="bn-note" value="'+esc(moveNoteDefault(m))+'"></div>'+
       incFlagsHtml("bn")+
     '</div>',
     saveLabel:"צור והמשך",onSave:function(){
@@ -8819,6 +8819,16 @@ function incFlagsRead(px,inc){
   inc.noReport=!checked(px+"-inrep");
   inc.noFreilich=checked(px+"-frl");
 }
+/* ההערה של הכנסה שנוצרת משורת בנק. קודם נלקחו רק הפרטים והסוג של
+   השורה — וכששניהם היו ריקים ההכנסה נולדה בלי הערה בכלל, בעוד
+   שהכנסות מהמסלול המרוכז תמיד קיבלו "נסגר מ-N שורות בנק". עכשיו
+   תמיד נרשם מאיפה ההכנסה באה, והפרטים מתווספים כשיש. */
+function moveNoteDefault(m){
+  var extra=[m.details,m.kind].filter(Boolean).join(" · ");
+  return "נוצר משורת בנק "+dateHe(m.date)+
+    (moveBankLabel(m)?" · "+moveBankLabel(m):"")+
+    (extra?" · "+extra:"");
+}
 /* יצירת הכנסה חדשה משורת בנק — כשאין לה הזמנה קיימת להתאים אליה.
    נוצרת ההכנסה, ומיד גם התשלום שמקושר לשורה. */
 function createIncomeFromMove(moveId){
@@ -8841,7 +8851,7 @@ function createIncomeFromMove(moveId){
       '<div class="field"><label>סכום ההכנסה (₪)</label><input id="ni-amount" type="number" step="0.01" value="'+rem+'">'+
         '<div class="hint">סכום גדול מ-'+money(rem)+' יישאר עם חוב פתוח</div></div>'+
       '<div class="field"><label>תאריך</label><input id="ni-date" type="date" value="'+esc(m.date||todayISO())+'"></div>'+
-      '<div class="field full"><label>הערה</label><input id="ni-note" value="'+esc([m.details,m.kind].filter(Boolean).join(" · "))+'"></div>'+
+      '<div class="field full"><label>הערה</label><input id="ni-note" value="'+esc(moveNoteDefault(m))+'"></div>'+
       incFlagsHtml("ni")+
     '</div>',
     saveLabel:"צור הכנסה ורשום תשלום",onSave:function(){
