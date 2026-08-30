@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 כא'";
+var APP_BUILD = "19.08 כב'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -2460,6 +2460,12 @@ async function doLogin(){
   if(hasUserField && !name){ toast("יש להזין שם משתמש","err"); return; }
   if(!code){ toast("יש להזין קוד","err"); return; }
   var h=await hashCode(code);
+  /* ---------- שתי הפניות יוצאות יחד ----------
+     כל פנייה ל-Apps Script עולה 2-5 שניות, וקודם הן יצאו בזו אחר זו:
+     קודם אימות ורק אחריו טעינת הנתונים — כלומר המתנה כפולה בכל כניסה.
+     שתיהן צריכות בדיוק את אותו קוד, והשרת דוחה טעינה עם קוד שגוי,
+     ולכן אפשר להוציא אותן במקביל ולחסוך פנייה שלמה. */
+  var pLoad=api({action:"load",codeHash:h});
   var j=await api({action:"login",codeHash:h});
   if(!j||!j.ok){
     var er=j&&j.error;
@@ -2481,7 +2487,7 @@ async function doLogin(){
   if(!DB) DB=blankDB();
   try{ LAST_JSON=JSON.stringify(DB); }catch(e){}
   resetIdle();
-  var rec=await reconcileAfterAuth();
+  var rec=await reconcileAfterAuth(await pLoad);
   if(rec===null){
     setAuth(""); CU=null;
     toast("לא הצלחתי לטעון את הנתונים מהשרת — נסה שוב בעוד רגע","err");
@@ -3651,12 +3657,16 @@ window.addEventListener("pagehide",function(){
       body:JSON.stringify({action:"save",codeHash:h,data:DB}),keepalive:true});
   }catch(e){}
 });
+/* תרגום תשובת "load" גולמית לצורה שכל הקוראים מצפים לה. חולץ כדי
+   שגם טעינה שיצאה במקביל לאימות תעבור באותו מסלול. */
+function loadResult(j){
+  if(j&&j.ok){ setSync("ok"); return {data:(j.data||null),user:j.user}; }
+  setSync("err"); return {error:true,reason:(j&&j.error)};
+}
 async function serverLoad(){
   var h=getAuth();
   if(!h){ setSync("local"); return {error:true}; }
-  var j=await api({action:"load",codeHash:h});
-  if(j&&j.ok){ setSync("ok"); return {data:(j.data||null),user:j.user}; }
-  setSync("err"); return {error:true,reason:(j&&j.error)};
+  return loadResult(await api({action:"load",codeHash:h}));
 }
 
 /* ============================================================
@@ -3666,8 +3676,11 @@ async function serverLoad(){
    דוחפים את המקומי רק אם הוא באמת חדש יותר. דחיפה עיוורת של עותק ישן
    היא שמחקה תשלומים בעבר, ולכן ההשוואה כאן קריטית.
    מחזיר: true=להיכנס, false=אימות נכשל, null=אין רשת */
-async function reconcileAfterAuth(){
-  var res=await serverLoad();
+async function reconcileAfterAuth(pre){
+  var res = pre ? loadResult(pre) : await serverLoad();
+  /* הטעינה המקבילה נכשלה בעוד האימות הצליח (תקלת רשת רגעית) —
+     מנסים שוב ברצף, שלא ניפול לכניסה בלי נתונים. */
+  if(pre && res.error && res.reason!=="unauthorized") res=await serverLoad();
   if(res.error){
     if(res.reason==="unauthorized"){ setAuth(""); CU=null; return false; }
     if(hasDirtyMark() && DB && Array.isArray(DB.apartments)) return true;   // אין רשת אבל יש עבודה מקומית — לא חוסמים
