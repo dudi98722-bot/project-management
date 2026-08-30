@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 כו'";
+var APP_BUILD = "19.08 כז'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -7432,6 +7432,7 @@ function moduleIncome(aptId){
       noteCell(i.note)+
       '<td class="right" style="white-space:nowrap">'+
         '<button class="btn btn-ghost btn-sm" onclick="openIncomePays(\''+i.id+'\',\''+aptId+'\')" title="תשלומי ההזמנה">💳'+(tracked?' '+incomePays(i).length:'')+'</button>'+
+        (can("edit")&&debt>0.01?'<button class="btn btn-ghost btn-sm" title="סגירה מול שורות בדף הבנק" onclick="openIncomeBankMatch(\''+i.id+'\')">🏦</button>':'')+
         (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editIncome(\''+i.id+'\',\''+aptId+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="softDelete(\'income\',\''+i.id+'\',\'למחוק הכנסה?\')">🗑️</button>':'')+'</td></tr>';
   });
   h+='</tbody></table></div>';
@@ -12785,6 +12786,150 @@ async function saveUser(id,u){
    ב"שם המשתמש או קוד הכניסה שגויים", בלי שום רמז לסיבה. אם השמירה
    נכשלת לגמרי (או שסוגרים את הדפדפן לפניה) הוא לעולם לא יגיע לשם.
    לכן ממתינים לאישור השרת ואומרים במפורש מה קרה. */
+/* ============================================================
+   סגירת הזמנה מול שורות בנק — הכיוון ההפוך
+   ------------------------------------------------------------
+   עד כה ההתאמה תמיד התחילה משורת הבנק: "מול איזו הזמנה לסגור את
+   הכסף הזה?". כאן מתחילים מההזמנה: פותחים אותה, רואים את שורות
+   הבנק הפתוחות שהכי מתאימות לה, מסמנים כמה שצריך וסוגרים.
+   הדירוג עובד באותו היגיון של ההתאמה מהבנק — סכום, שם ותאריך.
+   ============================================================ */
+var IBM={incId:"",rows:[],q:""};
+function incomeMoveCandidates(inc){
+  var debt=incomeDebt(inc);
+  var words=String(inc.description||"").split(/\s+/).map(normKey).filter(function(w){ return w.length>=3; });
+  var dates=[inc.date,stayStart(inc),inc.endDate].filter(Boolean).map(function(d){ return Date.parse(d); });
+  var out=[];
+  allBankMoves().forEach(function(m){
+    if(!moveIsOpen(m)) return;                       /* רק שורות עם כסף פתוח */
+    var apt=moveAptId(m);
+    if(apt && apt!==inc.apartmentId) return;         /* שויכה כבר לפרוייקט אחר */
+    if(apt && !canSeeApartment(apt)) return;
+    var rem=moveRemaining(m), score=0, why=[];
+    if(Math.abs(rem-debt)<=0.01){ score+=100; why.push("סכום זהה לחוב"); }
+    else if(Math.abs(rem-(Number(inc.amount)||0))<=0.01){ score+=70; why.push("סכום זהה למחיר"); }
+    var txt=normKey(moveText(m)), hit=0;
+    for(var w=0;w<words.length && hit<2;w++) if(txt.indexOf(words[w])>=0) hit++;
+    if(hit){ score+=60*hit; why.push("השם מופיע בשורה"); }
+    var mDate=Date.parse(m.date), best=null;
+    for(var d=0;d<dates.length;d++){
+      var days=Math.abs(mDate-dates[d])/86400000;
+      if(best===null||days<best) best=days;
+    }
+    if(best!==null){
+      if(best<=3){ score+=30; why.push("תאריך קרוב"); }
+      else if(best<=14) score+=15;
+      else if(best<=45) score+=5;
+    }
+    out.push({m:m,rem:rem,score:score,why:why,days:best});
+  });
+  return out.sort(function(x,y){ return y.score-x.score || Math.abs(x.rem-debt)-Math.abs(y.rem-debt); });
+}
+function openIncomeBankMatch(incId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var inc=byId(DB.income,incId); if(!inc) return;
+  if(incomeDebt(inc)<=0.01){ toast("ההזמנה כבר סגורה במלואה","warn"); return; }
+  IBM={incId:incId,rows:incomeMoveCandidates(inc),q:""};
+  if(!IBM.rows.length){
+    toast("אין שורות בנק פתוחות שמתאימות להזמנה הזו","warn"); return;
+  }
+  openModal({title:"🏦 סגירת ההזמנה מול הבנק",wide:true,
+    bodyHtml:'<div id="ibm-body">'+incomeBankMatchHtml()+'</div>',
+    saveLabel:"בצע התאמה",onSave:function(){ return applyIncomeBankMatch(); }});
+}
+function ibmSearch(v){ IBM.q=v; var b=document.getElementById("ibm-body"); if(b) b.innerHTML=incomeBankMatchHtml(); }
+/* הסכום שייסגר מכל שורה מסומנת — מוגבל גם ביתרת השורה וגם בחוב שנותר */
+function ibmPlan(){
+  var inc=byId(DB.income,IBM.incId);
+  var left=inc?incomeDebt(inc):0, plan=[];
+  IBM.rows.forEach(function(r){
+    if(!r.pick) return;
+    var amt=(r.amt!=null&&r.amt>0)?round2(r.amt):round2(Math.min(r.rem,left));
+    amt=round2(Math.min(amt,r.rem,left));
+    if(amt<=0.01) return;
+    plan.push({r:r,amt:amt});
+    left=round2(left-amt);
+  });
+  return {plan:plan,left:left};
+}
+function ibmToggle(idx,on){ if(IBM.rows[idx]){ IBM.rows[idx].pick=!!on; ibmRefresh(); } }
+function ibmAmount(idx,v){
+  var r=IBM.rows[idx]; if(!r) return;
+  var n=Number(v)||0;
+  r.amt=(n>0)?round2(Math.min(n,r.rem)):null;
+  ibmRefresh();
+}
+function ibmRefresh(){ var b=document.getElementById("ibm-body"); if(b) b.innerHTML=incomeBankMatchHtml(); }
+function incomeBankMatchHtml(){
+  var inc=byId(DB.income,IBM.incId); if(!inc) return '<div class="empty">ההזמנה לא נמצאה</div>';
+  var debt=incomeDebt(inc), p=ibmPlan();
+  var willClose=round2(debt-p.left);
+  var q=String(IBM.q||"").trim();
+  var h='<div class="stat-grid" style="margin-bottom:10px">'+
+      stat("ההזמנה",esc(inc.description))+
+      stat("מחיר",money(inc.amount))+
+      stat("נותר לתשלום",money(debt),debt>0.01?"neg":"pos")+
+      stat("ייסגר עכשיו",money(willClose),willClose>0.01?"pos":"")+
+    '</div>'+
+    '<div class="toolbar" style="margin-bottom:8px">'+
+      '<input placeholder="חיפוש בשורות הבנק…" value="'+esc(IBM.q)+'" oninput="ibmSearch(this.value)" style="max-width:260px">'+
+      '<div class="sp"></div>'+
+      '<span class="'+(p.left>0.01?"muted":"badge badge-ok badge-unit")+'">'+
+        (p.left>0.01?("יישאר חוב "+money(p.left)):"ההזמנה תיסגר במלואה")+'</span>'+
+    '</div>';
+  var shown=IBM.rows.filter(function(r){ return !q || matches(q, moveText(r.m)+" "+moveBankLabel(r.m)); });
+  h+='<div class="table-wrap" style="max-height:340px"><table class="tbl"><thead><tr>'+
+    '<th style="width:30px"></th><th>תאריך</th><th>שורת הבנק</th><th>בנק</th>'+
+    '<th class="num">פתוח בשורה</th><th>למה מוצע</th><th class="num">לסגור</th></tr></thead><tbody>';
+  if(!shown.length) h+='<tr><td colspan="7" class="empty">אין שורות שמתאימות לחיפוש</td></tr>';
+  shown.forEach(function(r){
+    var idx=IBM.rows.indexOf(r);
+    var mine=p.plan.filter(function(x){ return x.r===r; })[0];
+    h+='<tr'+(r.score>=100?' style="background:#f0fdf4"':'')+'>'+
+      '<td class="chk"><input type="checkbox" style="width:auto"'+(r.pick?" checked":"")+
+        ' onchange="ibmToggle('+idx+',this.checked)"></td>'+
+      '<td>'+dateHe(r.m.date)+'</td>'+
+      '<td><b>'+esc((r.m.name||r.m.description||"—")).slice(0,48)+'</b>'+
+        (r.m.details?'<div class="hint">'+esc(String(r.m.details).slice(0,60))+'</div>':'')+'</td>'+
+      '<td>'+esc(moveBankLabel(r.m))+'</td>'+
+      '<td><b>'+money(r.rem)+'</b></td>'+
+      '<td class="muted">'+(r.why.length?esc(r.why.join(" · ")):'<span class="muted">—</span>')+'</td>'+
+      '<td>'+(r.pick
+        ? (mine
+            ? '<input type="number" step="0.01" style="max-width:110px" value="'+mine.amt+'" onchange="ibmAmount('+idx+',this.value)">'
+            /* סומנה אבל החוב כבר נגמר בשורות שמעליה — אומרים את זה
+               במפורש, אחרת נראה כאילו הסימון פשוט לא עבד */
+            : '<span class="badge badge-muted badge-unit">החוב נגמר</span>')
+        : '<span class="muted">—</span>')+'</td></tr>';
+  });
+  h+='</tbody></table></div>'+
+    '<div class="hint">מסומנות '+p.plan.length+' שורות. הסכום בכל שורה מוגבל ליתרה שבה ולחוב שנותר בהזמנה; '+
+    'אפשר לשנות אותו ידנית כדי לסגור רק חלק.</div>';
+  return h;
+}
+function applyIncomeBankMatch(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return false; }
+  var inc=byId(DB.income,IBM.incId); if(!inc){ toast("ההזמנה לא נמצאה","err"); return false; }
+  var p=ibmPlan();
+  if(!p.plan.length){ toast("לא סומנה אף שורת בנק","warn"); return false; }
+  var n=0, sum=0;
+  p.plan.forEach(function(x){
+    /* מחשבים מחדש מול המצב האמיתי בכל צעד — כך לא נרשם יותר מהחוב
+       גם אם משהו השתנה בין הבחירה לאישור */
+    var left=incomeDebt(inc), rem=moveRemaining(x.r.m);
+    var amt=round2(Math.min(x.amt,left,rem));
+    if(amt<=0.01) return;
+    applyMoveMatch(x.r.m,inc,amt);
+    n++; sum=round2(sum+amt);
+  });
+  if(!n){ toast("לא נותר מה לסגור","warn"); return false; }
+  save();
+  var leftNow=incomeDebt(inc);
+  toast("נסגרו "+n+" שורות בנק · "+money(sum)+
+    (leftNow>0.01?(" · נותר חוב "+money(leftNow)):" · ההזמנה נסגרה במלואה"), leftNow>0.01?"warn":"ok");
+  rerender();
+  return true;
+}
 /* ---------- אבחון כניסה ----------
    הבעיה שאי אפשר לראות מבחוץ: השרת מזהה משתמש לפי הקוד בלבד, והמנהל
    אינו רואה את הקודים (הם מגיעים אליו כ-"***"). לכן שני משתמשים עם
