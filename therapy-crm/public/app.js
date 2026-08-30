@@ -556,7 +556,7 @@ function waitingRowsHtml(rows) {
       <td class="hint">${esc(p.created_by_name || '')}</td>
       <td><span class="badge ${sCls}">${sLbl}</span></td>
       <td style="white-space:nowrap">
-        ${S.me.caps.assign && p.status === 'waiting' ? `<button class="btn sm green" onclick="openAssignModal(${p.id})">שבץ</button>` : ''}
+        ${(S.me.caps.assign || S.me.caps.viewAssign) && p.status === 'waiting' ? `<button class="btn sm ${S.me.caps.assign ? 'green' : 'sec'}" onclick="openAssignModal(${p.id})">שבץ</button>` : ''}
         ${S.me.caps.holds ? `<button class="btn sm sec" onclick="openHoldForPatient(${p.id})" title="העברה לרשימת השהיה">⏸ השהיה</button>` : ''}
         <button class="btn sm sec" onclick="openFilesModal(${p.id})" title="קבצים מצורפים">📎</button>
         ${canEditPatient() ? `<button class="btn sm sec" onclick="openPatientModal(${p.id})">עריכה</button>` : ''}
@@ -816,17 +816,20 @@ async function communityChanged(sel) {
 async function openAssignModal(patientId) {
   const p = S.patients.find(x => x.id === patientId);
   if (!p) return;
+  // מי שאין לו הרשאת שיבוץ רואה את המשבצות הפנויות בלבד, בלי הטופס
+  const canAssign = !!S.me.caps.assign;
   showModal(`
-  <h2>שיבוץ לטיפול — ${esc(p.last_name)} ${esc(p.first_name)} <button class="x" onclick="closeModal()">✕</button></h2>
+  <h2>${canAssign ? 'שיבוץ לטיפול' : 'מטפלים פנויים'} — ${esc(p.last_name)} ${esc(p.first_name)} <button class="x" onclick="closeModal()">✕</button></h2>
   <div class="hint" style="margin-bottom:10px">
     שעות מתאימות למטופל: ${(p.hours || []).map(hourRange).join(' · ') || 'כולן'}
     ${(p.preferred_therapists || []).length ? '<br>מטפלים מועדפים: ' + p.preferred_therapists.map(t => esc(t.name)).join(' · ') : ''}
     ${(p.preferred_groups || []).length ? ' <span class="hint">(מקבוצות: ' + p.preferred_groups.map(g => esc(g.name)).join(', ') + ')</span>' : ''}
   </div>
   <div class="card" style="box-shadow:none;border:1px solid var(--line);padding:12px" id="assign-avail">
-    <b style="font-size:13.5px">משבצות שבועיות פנויות (לפי שעות המטופל והעדפתו) — לחץ לבחירה:</b>
+    <b style="font-size:13.5px">משבצות שבועיות פנויות (לפי שעות המטופל והעדפתו)${canAssign ? ' — לחץ לבחירה:' : ':'}</b>
     <div id="avail-slots" style="margin-top:8px"><span class="hint">טוען זמינות...</span></div>
   </div>
+  ${!canAssign ? '<div class="modal-actions"><button type="button" class="btn sec" onclick="closeModal()">סגירה</button></div>' : `
   <form id="assign-form">
     <div class="grid3">
       <div class="field"><label>מטפל *</label><select name="therapist_id" id="as-therapist" required>
@@ -845,7 +848,9 @@ async function openAssignModal(patientId) {
       <button class="btn green">צור סדרת טיפולים</button>
       <button type="button" class="btn sec" onclick="closeModal()">ביטול</button>
     </div>
-  </form>`);
+  </form>`}`);
+
+  if (canAssign) {
   assignDateHint();
 
   document.getElementById('assign-form').addEventListener('submit', async (e) => {
@@ -865,17 +870,18 @@ async function openAssignModal(patientId) {
       closeModal(); await loadAll(); render();
     } catch (err) { btn.disabled = false; toast(err.message, true); }
   });
+  }
 
   // טעינת זמינות מסוננת לפי המטופל
   try {
     const av = await api(`/calendar/availability?weeks=${S.availWeeks}&patient_id=${p.id}`);
     const el = document.getElementById('avail-slots');
     const withSlots = av.therapists.filter(t => t.free_slots.length);
-    if (!withSlots.length) { el.innerHTML = '<span class="hint">לא נמצאו משבצות פנויות מתאימות — ניתן לבחור ידנית למטה</span>'; return; }
+    if (!withSlots.length) { el.innerHTML = `<span class="hint">לא נמצאו משבצות פנויות מתאימות${canAssign ? ' — ניתן לבחור ידנית למטה' : ''}</span>`; return; }
     el.innerHTML = withSlots.map(t => `
       <div style="margin-bottom:8px"><b>${esc(t.name)}:</b>
         <span class="slot-chips" style="display:inline-flex">
-        ${t.free_slots.map(s => `<span class="slot-chip" onclick="pickSlot(${t.therapist_id},${s.weekday},${s.hour})">${WEEKDAYS[s.weekday]} ${hourLabel(s.hour)}</span>`).join('')}
+        ${t.free_slots.map(s => `<span class="slot-chip"${canAssign ? ` onclick="pickSlot(${t.therapist_id},${s.weekday},${s.hour})"` : ' style="cursor:default"'}>${WEEKDAYS[s.weekday]} ${hourLabel(s.hour)}</span>`).join('')}
         </span>
       </div>`).join('');
   } catch (e) {
