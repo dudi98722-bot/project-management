@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 כד'";
+var APP_BUILD = "19.08 כה'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -10948,9 +10948,12 @@ function moduleSettings(){
     active(DB.users).forEach(function(u){
       var apts=(u.allowedApartments&&u.allowedApartments.length)?u.allowedApartments.map(function(id){var a=byId(DB.apartments,id);return a?a.name:"";}).join(", "):"הכל";
       h+='<tr><td>'+esc(u.name)+'</td><td>'+(u.email?esc(u.email):'<span class="muted">— אין</span>')+'</td><td>'+(ROLES[u.role]||"")+'</td><td>'+esc(apts)+'</td><td>'+(u.active?"✔️":"—")+'</td>'+
-        '<td class="right"><button class="btn btn-ghost btn-sm" onclick="editUser(\''+u.id+'\')">✏️</button>'+(u.id===CU.id?'':' <button class="btn btn-ghost btn-sm" onclick="softDelete(\'users\',\''+u.id+'\',\'למחוק משתמש?\')">🗑️</button>')+'</td></tr>';
+        '<td class="right" style="white-space:nowrap">'+
+        '<button class="btn btn-ghost btn-sm" title="בדוק מול השרת אם הכניסה תעבוד" onclick="checkUserLogin(\''+u.id+'\')">🔎</button>'+
+        '<button class="btn btn-ghost btn-sm" onclick="editUser(\''+u.id+'\')">✏️</button>'+(u.id===CU.id?'':' <button class="btn btn-ghost btn-sm" onclick="softDelete(\'users\',\''+u.id+'\',\'למחוק משתמש?\')">🗑️</button>')+'</td></tr>';
     });
-    h+='</tbody></table></div><div class="hint">קודי הכניסה נשמרים מוצפנים (SHA-256) ואינם ניתנים לצפייה. '+
+    h+='</tbody></table></div><div class="hint">🔎 בודק מול השרת למי הקוד באמת שייך — כשמשתמש חדש לא מצליח להיכנס, זה אומר בדיוק למה. '+
+      'קודי הכניסה נשמרים מוצפנים (SHA-256) ואינם ניתנים לצפייה. '+
       'בכניסה מזינים <b>שם משתמש + קוד</b> — השם חייב להתאים לשם שמוגדר כאן, והקוד ייחודי לכל משתמש. '+
       'שכחת קוד של מישהו? ערוך אותו וקבע לו קוד חדש.</div>';
   } else if(tab==="sheets"){
@@ -12774,7 +12777,7 @@ async function saveUser(id,u){
   }
   save(); closeModal(); rerender();
   toast(id?'"'+name+'" נשמר':'"'+name+'" נוסף — נכנסים עם השם "'+name+'" בדיוק, יחד עם הקוד',"ok");
-  if(madeId) confirmUserOnServer(madeId,name);
+  if(madeId) confirmUserOnServer(madeId,name,await hashCode(code));
 }
 /* ---------- אישור שהמשתמש באמת הגיע לשרת ----------
    הכניסה נבדקת מול השרת ולא מול העותק המקומי: המשתמש נוצר אצלי מיד,
@@ -12782,7 +12785,39 @@ async function saveUser(id,u){
    ב"שם המשתמש או קוד הכניסה שגויים", בלי שום רמז לסיבה. אם השמירה
    נכשלת לגמרי (או שסוגרים את הדפדפן לפניה) הוא לעולם לא יגיע לשם.
    לכן ממתינים לאישור השרת ואומרים במפורש מה קרה. */
-async function confirmUserOnServer(newId,name){
+/* ---------- אבחון כניסה ----------
+   הבעיה שאי אפשר לראות מבחוץ: השרת מזהה משתמש לפי הקוד בלבד, והמנהל
+   אינו רואה את הקודים (הם מגיעים אליו כ-"***"). לכן שני משתמשים עם
+   אותו קוד נראים תקינים לגמרי ברשימה — אבל השרת מחזיר תמיד את
+   הראשון שמתאים, והשני נדחה ב"שם המשתמש אינו תואם לקוד".
+   כאן שואלים את השרת ישירות למי הקוד שייך. */
+async function checkUserLogin(id){
+  var u=byId(DB.users,id); if(!u) return;
+  var code=prompt('בדיקת כניסה עבור "'+u.name+'"\n\nהקלד את קוד הכניסה שלו:',"");
+  if(code===null) return;
+  code=String(code).trim();
+  if(!code){ toast("לא הוזן קוד","warn"); return; }
+  toast("בודק מול השרת…","ok");
+  var h=await hashCode(code);
+  var j=await api({action:"login",codeHash:h});
+  if(!j){ toast("אין תשובה מהשרת — נסה שוב","err"); return; }
+  if(j.error==="network"){ toast("אין חיבור לשרת","err"); return; }
+  if(j.error==="too-many"){
+    toast("השרת חוסם זמנית בדיקות כניסה — נסה שוב בעוד "+Math.ceil((j.retryAfter||120)/60)+" דקות","warn"); return;
+  }
+  if(!j.ok || !j.user){
+    toast('❌ השרת אינו מזהה את הקוד הזה כלל. כלומר "'+u.name+'" לא נשמר בשרת עם הקוד הזה — '+
+      'ערוך אותו, קבע לו קוד מחדש, והמתן להודעת האישור','err');
+    return;
+  }
+  if(j.user.id===id){
+    toast('✅ הקוד שייך ל"'+u.name+'". הכניסה תעבוד עם השם "'+u.name+'" בדיוק ועם הקוד הזה',"ok");
+    return;
+  }
+  toast('❌ הקוד הזה שייך למשתמש אחר: "'+j.user.name+'". שני משתמשים אינם יכולים לחלוק קוד — '+
+    'השרת מזהה תמיד את הראשון, ולכן "'+u.name+'" נדחה. ערוך אותו ותן לו קוד אחר','err');
+}
+async function confirmUserOnServer(newId,name,newHash){
   if(!getAuth()) return;                 /* עבודה מקומית בלבד — אין למה להמתין */
   /* לא מסתפקים בכך שתור השמירה התרוקן — שואלים את השרת עצמו אם
      המשתמש נמצא אצלו. שמירה יכולה לחזור "בסדר" ובכל זאת המשתמש לא
@@ -12801,6 +12836,17 @@ async function confirmUserOnServer(newId,name){
         var onServer=(res.data.users||[]).some(function(u){
           return u && u.id===newId && !u.deleted && u.active; });
         if(onServer){
+          /* קיים בשרת — אבל האם הקוד שלו באמת מוביל אליו? המנהל אינו
+             רואה קודים של אחרים, ולכן הוא יכול לתת בתום לב קוד שכבר
+             תפוס; אז השרת מזהה את המשתמש הראשון והחדש נדחה. */
+          if(newHash){
+            var who=await api({action:"login",codeHash:newHash});
+            if(who && who.ok && who.user && who.user.id!==newId){
+              toast('"'+name+'" נשמר, אבל הקוד שנתת כבר שייך למשתמש "'+who.user.name+'" — '+
+                'ולכן הכניסה איתו לא תעבוד. ערוך אותו ותן לו קוד אחר','err');
+              return;
+            }
+          }
           toast('"'+name+'" אומת מול השרת — אפשר להיכנס איתו עכשיו, עם השם "'+name+'" בדיוק',"ok");
           return;
         }
