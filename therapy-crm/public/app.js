@@ -23,6 +23,7 @@ function mayEdit(field) {
   if (c.editNotes && field === 'notes') return true;
   if (c.editPref && ['preferred_therapist_ids', 'preferred_group_ids'].includes(field)) return true;
   if (c.editUrgency && field === 'urgency') return true;
+  if (c.editClientType && field === 'client_type') return true;
   if (c.editPatientLimited && ['last_name', 'first_name', 'hours'].includes(field)) return true;
   return false;
 }
@@ -581,6 +582,7 @@ function openPatientModal(id) {
   ${p && !S.me.caps.editPatient ? '<div class="hint" style="margin-bottom:10px">בהרשאה שלך ניתן לערוך: ' +
      [mayEdit('last_name') ? 'שם' : '', mayEdit('hours') ? 'שעות מתאימות' : '',
       mayEdit('notes') ? 'הערות' : '', mayEdit('urgency') ? 'דחיפות' : '',
+      mayEdit('client_type') ? 'בן/בת' : '',
       mayEdit('preferred_therapist_ids') ? 'שיוך למטפלים' : '',
       mayEdit('diagnosis') ? 'אבחנה' : '', mayEdit('notes2') ? 'הערה מקצועית' : ''].filter(Boolean).join(' · ') + '</div>' : ''}
   <form id="patient-form">
@@ -1074,6 +1076,47 @@ function singleUpdateHours() {
 }
 
 // העברת מטופל בודד להשהיה — מהכפתור שליד "שבץ" ברשימת הממתינים
+// מטמון הזמינות של מודאל ההשהיה — נטען פעם אחת לכל פתיחה
+let HOLD_AVAIL = null;
+
+// ימים ושעות פנויים של מטפל, בשורה קריאה אחת: "ראשון 9:00, 10:00 · שני 14:00"
+function slotsText(slots) {
+  const byDay = new Map();
+  slots.forEach(s => {
+    const d = Number(s.weekday);
+    if (!byDay.has(d)) byDay.set(d, []);
+    byDay.get(d).push(Number(s.hour));
+  });
+  return [...byDay.entries()].sort((a, b) => a[0] - b[0])
+    .map(([d, hs]) => `${WEEKDAYS[d]} ${[...new Set(hs)].sort((a, b) => a - b).map(hourLabel).join(', ')}`)
+    .join(' · ');
+}
+
+// ממלא את שורות הזמינות מתחת לכל מטפל ברשימת ההשהיה
+async function renderHoldAvail(patientId) {
+  const p = S.patients.find(x => x.id === patientId);
+  const els = [...document.querySelectorAll('.hp-slots')];
+  if (!els.length) return;
+  if (!HOLD_AVAIL) {
+    try {
+      const av = await api(`/calendar/availability?weeks=${S.availWeeks}`);
+      HOLD_AVAIL = new Map(av.therapists.map(t => [Number(t.therapist_id), t.free_slots || []]));
+    } catch (e) {
+      els.forEach(el => { el.textContent = 'שגיאה בטעינת זמינות'; });
+      return;
+    }
+  }
+  const allBox = document.getElementById('hp-allhours');
+  const showAll = !!(allBox && allBox.checked);
+  const hours = new Set((p && Array.isArray(p.hours) ? p.hours : []).map(Number));
+  els.forEach(el => {
+    const slots = (HOLD_AVAIL.get(Number(el.dataset.tid)) || [])
+      .filter(s => showAll || !hours.size || hours.has(Number(s.hour)));
+    el.textContent = slots.length ? '🕒 ' + slotsText(slots)
+      : (showAll ? 'אין משבצות פנויות בשבועות הקרובים' : 'אין משבצות פנויות בשעות שמתאימות למטופל');
+  });
+}
+
 function openHoldForPatient(patientId) {
   const p = S.patients.find(x => x.id === patientId);
   if (!p) return;
@@ -1089,9 +1132,16 @@ function openHoldForPatient(patientId) {
   ${already.size ? `<div class="hint" style="margin-bottom:10px">כבר בהשהיה אצל:
     ${(p.holds || []).map(h => `<span class="hold-chip">⏸ ${esc(h.therapist_name)}</span>`).join(' ')}</div>` : ''}
   <div class="field"><label>בחר מטפל אחד או יותר</label>
-    <div class="checkbox-list" id="hp-list" style="max-height:260px">
+    ${avail.length ? `<div class="hint" style="margin:-4px 0 6px">
+      מתחת לכל מטפל — הימים והשעות הפנויים אצלו ב-${S.availWeeks} השבועות הקרובים.
+      <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;margin-inline-start:6px">
+        <input type="checkbox" id="hp-allhours" onchange="renderHoldAvail(${p.id})"> הצג גם שעות שאינן מתאימות למטופל
+      </label>
+    </div>` : ''}
+    <div class="checkbox-list" id="hp-list" style="max-height:300px">
       ${avail.map(t => `<label><input type="checkbox" value="${t.id}"> ${esc(t.name)}
-        ${pref.includes(t.id) ? '<span class="badge b-blue">מועדף</span>' : ''}</label>`).join('')
+        ${pref.includes(t.id) ? '<span class="badge b-blue">מועדף</span>' : ''}
+        <span class="hint hp-slots" data-tid="${t.id}" style="display:block;padding-inline-start:22px">טוען זמינות…</span></label>`).join('')
         || '<span class="hint">המטופל כבר בהשהיה אצל כל המטפלים הפעילים</span>'}
     </div>
   </div>
@@ -1100,6 +1150,9 @@ function openHoldForPatient(patientId) {
     <button class="btn" onclick="saveHoldForPatient(${p.id})">העבר להשהיה</button>
     <button type="button" class="btn sec" onclick="closeModal()">ביטול</button>
   </div>`);
+
+  HOLD_AVAIL = null;
+  if (avail.length) renderHoldAvail(p.id);
 }
 
 async function saveHoldForPatient(patientId) {

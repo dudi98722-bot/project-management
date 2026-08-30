@@ -16,6 +16,7 @@ const { pool } = require('../db');
 //  editNotes          עריכת הערות כלליות (לא ההערה המקצועית)
 //  editPref           עריכת השיוך למטפלים ולקבוצות
 //  editUrgency        עריכת רמת הדחיפות
+//  editClientType     עריכת השדה בן/בת
 //  assign             שיבוץ לטיפול, פגישות וסדרות
 //  viewAssign         צפייה במסך השיבוץ ובמשבצות הפנויות, בלי לשבץ בפועל
 //  holds              ניהול רשימת ההשהיה (הוספה, הערה, הסרה)
@@ -27,7 +28,7 @@ const { pool } = require('../db');
 const R = (label, desc, c) => Object.assign({ label, desc,
   manageUsers: false, addPatient: false, editPatient: false, editPatientLimited: false,
   viewDiagnosis: false, editDiagnosis: false, viewNote2: false, editNote2: false,
-  editNotes: false, editPref: false, editUrgency: false,
+  editNotes: false, editPref: false, editUrgency: false, editClientType: false,
   assign: false, viewAssign: false, holds: false, files: false,
   del: false, edit: false, view: true }, c);
 
@@ -36,7 +37,7 @@ const ROLES = {
     'הכל: מטופלים, שיבוץ, מחיקה, וניהול משתמשים.', {
     manageUsers: true, addPatient: true, editPatient: true, editPatientLimited: true,
     viewDiagnosis: true, editDiagnosis: true, viewNote2: true, editNote2: true,
-    editNotes: true, editPref: true, editUrgency: true,
+    editNotes: true, editPref: true, editUrgency: true, editClientType: true,
     assign: true, viewAssign: true, holds: true, files: true, del: true, edit: true }),
 
   // מזכירה אחראית — הכל פתוח מלבד ניהול משתמשים
@@ -44,7 +45,7 @@ const ROLES = {
     'הכל מלבד ניהול משתמשים.', {
     addPatient: true, editPatient: true, editPatientLimited: true,
     viewDiagnosis: true, editDiagnosis: true, viewNote2: true, editNote2: true,
-    editNotes: true, editPref: true, editUrgency: true,
+    editNotes: true, editPref: true, editUrgency: true, editClientType: true,
     assign: true, viewAssign: true, holds: true, files: true, del: true, edit: true }),
 
   // מזכירה כללית — מוסיפה מטופלים ומצרפת קבצים; עורכת שם, שעות והערות
@@ -56,16 +57,17 @@ const ROLES = {
   // מדריך — תוכן קליני, שיוך למטפלים ורמת דחיפות. לא עורך פרטים
   // אישיים, לא מוחק ולא קובע פגישות.
   guide: R('מדריך',
-    'מעדכן אבחנה, הערה מקצועית, שיוך למטפלים ורמת דחיפות; מנהל רשימת השהיה, מצרף קבצים, ורואה אילו מטפלים פנויים למטופל. לא עורך פרטים אישיים, לא משבץ בפועל ולא מוחק.', {
+    'מעדכן אבחנה, הערה מקצועית, שיוך למטפלים, רמת דחיפות ובן/בת; מנהל רשימת השהיה, מצרף קבצים, ורואה אילו מטפלים פנויים למטופל. לא עורך שם, שעות או הערות, לא משבץ בפועל ולא מוחק.', {
     viewDiagnosis: true, editDiagnosis: true, viewNote2: true, editNote2: true,
-    editPref: true, editUrgency: true, viewAssign: true, holds: true, files: true }),
+    editPref: true, editUrgency: true, editClientType: true,
+    viewAssign: true, holds: true, files: true }),
 
   // פנינה — הכל פתוח מלבד ההערה המקצועית וניהול המשתמשים
   pnina: R('פנינה',
     'הכל מלבד ההערה המקצועית (לא רואה ולא עורכת) וניהול משתמשים.', {
     addPatient: true, editPatient: true, editPatientLimited: true,
     viewDiagnosis: true, editDiagnosis: true,
-    editNotes: true, editPref: true, editUrgency: true,
+    editNotes: true, editPref: true, editUrgency: true, editClientType: true,
     assign: true, viewAssign: true, holds: true, files: true, del: true, edit: true }),
 
   viewer: R('צופה',
@@ -76,13 +78,13 @@ const ROLES = {
     'תפקיד ותיק — כמו מזכירה אחראית.', {
     addPatient: true, editPatient: true, editPatientLimited: true,
     viewDiagnosis: true, editDiagnosis: true, viewNote2: true, editNote2: true,
-    editNotes: true, editPref: true, editUrgency: true,
+    editNotes: true, editPref: true, editUrgency: true, editClientType: true,
     assign: true, viewAssign: true, holds: true, files: true, del: true, edit: true }),
   clerk: R('רכז/ת',
     'תפקיד ותיק — כמו מנהל, אבל בלי מחיקה.', {
     addPatient: true, editPatient: true, editPatientLimited: true,
     viewDiagnosis: true, editDiagnosis: true, viewNote2: true, editNote2: true,
-    editNotes: true, editPref: true, editUrgency: true,
+    editNotes: true, editPref: true, editUrgency: true, editClientType: true,
     assign: true, viewAssign: true, holds: true, files: true, edit: true }),
 };
 
