@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 כז'";
+var APP_BUILD = "19.08 כח'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -11944,12 +11944,14 @@ function viewAptRentals(aptId){
       '<td>'+rentalStatusBadge(r)+'</td>'+
       noteCell(r.note)+
       '<td class="right" style="white-space:nowrap">'+(can("edit")?
+        '<button class="btn btn-ghost btn-sm" onclick="oneTimeCharge(\''+r.id+'\')" title="חיוב חד-פעמי — תיקונים, נזק, ועד בית">➕₪</button>'+
         '<button class="btn btn-ghost btn-sm" onclick="renewRental(\''+r.id+'\')" title="חידוש חוזה">🔄</button>'+
         '<button class="btn btn-ghost btn-sm" onclick="editRental(\''+r.id+'\')">✏️</button>'+
         '<button class="btn btn-ghost btn-sm" onclick="softDelete(\'rentals\',\''+r.id+'\',\'למחוק את הדירה?\')">🗑️</button>':'')+'</td></tr>';
   });
   h+='</tbody></table></div>'+
     '<div class="hint">שורות ההכנסה החודשיות נוצרות אוטומטית ומופיעות בלשונית <b>הכנסות</b> של הפרוייקט. '+
+    '<b>➕₪</b> מוסיף חיוב חד-פעמי לשוכר (תיקונים, נזק, ועד בית) — שורת הכנסה רגילה שאינה חוזרת. '+
     'תצוגה מרוכזת של כל הפרויקטים יחד — בלשונית <b>🔑 שכירויות</b> שבתפריט הראשי.</div>';
   return h;
 }
@@ -11960,6 +11962,60 @@ function rentalCollectionCell(r){
   return st.debt>0.01
     ? '<span class="neg">חוב '+money(st.debt)+'</span><div class="hint">'+st.openRows+' מתוך '+st.n+' פתוחות</div>'
     : '<span class="pos">✔ נגבה הכל</span><div class="hint">'+st.n+' חודשים · '+money(st.paid)+'</div>';
+}
+/* ---------- חיוב חד-פעמי על דירה בשכירות ----------
+   שכר הדירה חוזר כל תקופה ונוצר אוטומטית, אבל תיקון, נזק או ועד בית
+   הם חיוב בודד. נוצרת שורת הכנסה רגילה המשויכת לדירה — כך היא נכנסת
+   לחוב השוכר ולסטטוס הגבייה — אבל בלי periodYM, ולכן מנגנון היצירה
+   האוטומטית אינו רואה בה חודש שכבר חויב ואינו נוגע בה. */
+var ONETIME_KINDS=["תיקונים","נזק","ועד בית","חשמל / מים","ניקיון","אחר"];
+function oneTimeCharge(rentalId){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var r=byId(DB.rentals,rentalId); if(!r) return;
+  openModal({title:"➕ חיוב חד-פעמי — "+r.name,bodyHtml:
+    '<div class="hint" style="margin-bottom:10px">דירה <b>'+esc(r.name)+'</b>'+
+      (r.tenant?' · שוכר <b>'+esc(r.tenant)+'</b>':'')+
+      '. החיוב נכנס כשורת הכנסה בפרוייקט ומצטרף לחוב של הדירה.</div>'+
+    '<div class="form-grid">'+
+      '<div class="field"><label>סוג החיוב</label><select id="ot-kind" onchange="otKindPick()">'+
+        ONETIME_KINDS.map(function(k){ return '<option value="'+esc(k)+'">'+esc(k)+'</option>'; }).join("")+
+      '</select></div>'+
+      '<div class="field"><label>תיאור</label><input id="ot-desc" value="תיקונים"></div>'+
+      '<div class="field"><label>סכום (₪)</label><input id="ot-amount" type="number" step="0.01" placeholder="0"></div>'+
+      '<div class="field"><label>תאריך</label><input id="ot-date" type="date" value="'+todayISO()+'"></div>'+
+      '<div class="field full"><label>הערה</label><input id="ot-note" placeholder="במה מדובר"></div>'+
+      '<div class="field full"><label style="font-weight:400"><input type="checkbox" id="ot-await" style="width:auto;margin-inline-end:6px" checked>'+
+        'ממתין לתשלום — הסכום ייחשב כחוב עד שיירשם עליו תשלום</label></div>'+
+      incFlagsHtml("ot")+
+    '</div>',
+    saveLabel:"צור חיוב",onSave:function(){
+      var desc=val("ot-desc").trim();
+      var amt=Number(val("ot-amount"))||0;
+      if(!desc){ toast("תיאור חסר","err"); return false; }
+      if(amt<=0){ toast("סכום לא תקין","err"); return false; }
+      var row={id:uid(),apartmentId:r.apartmentId,
+        description:desc+" — "+r.name+(r.tenant?" · "+r.tenant:""),
+        amount:round2(amt), date:val("ot-date")||todayISO(),
+        receivedBy:"", split:null, units:null, startDate:"", endDate:"",
+        note:val("ot-note")||"", awaitsPayment:checked("ot-await"),
+        rentalId:r.id, periodYM:"", oneTime:true, payments:[], deleted:false};
+      incFlagsRead("ot",row);
+      DB.income.push(row);
+      save(); toast("נוצר חיוב של "+money(amt)+" על "+r.name,"ok"); rerender();
+      return true;
+    }});
+  /* התיאור נגרר אחרי הסוג כל עוד לא נערך ידנית */
+  window._OT_TOUCHED=false;
+  setTimeout(function(){
+    var d=document.getElementById("ot-desc");
+    if(d) d.addEventListener("input",function(){ window._OT_TOUCHED=true; });
+    var amt=document.getElementById("ot-amount"); if(amt) amt.focus();
+  },0);
+}
+function otKindPick(){
+  if(window._OT_TOUCHED) return;
+  var k=val("ot-kind"), d=document.getElementById("ot-desc");
+  if(d && k && k!=="אחר") d.value=k;
 }
 /* קיצורי דרך שנועלים את הפרוייקט מראש, כדי שלא צריך לבחור אותו שוב */
 function addRentalUnitsFor(aptId){ Q.rentApt=aptId; addRentalUnits(); }
@@ -12091,6 +12147,7 @@ function viewRentals(){
       '<td>'+rentalStatusBadge(r)+'</td>'+
       noteCell(r.note)+
       '<td class="right" style="white-space:nowrap">'+(can("edit")?
+        '<button class="btn btn-ghost btn-sm" onclick="oneTimeCharge(\''+r.id+'\')" title="חיוב חד-פעמי — תיקונים, נזק, ועד בית">➕₪</button>'+
         '<button class="btn btn-ghost btn-sm" onclick="renewRental(\''+r.id+'\')" title="חידוש חוזה">🔄</button>'+
         '<button class="btn btn-ghost btn-sm" onclick="editRental(\''+r.id+'\')">✏️</button>'+
         '<button class="btn btn-ghost btn-sm" onclick="softDelete(\'rentals\',\''+r.id+'\',\'למחוק את הדירה?\')">🗑️</button>':'')+'</td></tr>';
