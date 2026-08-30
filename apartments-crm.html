@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 כ'";
+var APP_BUILD = "19.08 כא'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -12721,7 +12721,8 @@ function editUser(id){
   var u=id?byId(DB.users,id):{name:"",role:"viewer",allowedApartments:[],partnerId:null,active:true};
   var aptChecks=active(DB.apartments).map(function(a){return '<label style="font-weight:400"><input type="checkbox" class="u-apt" value="'+a.id+'" style="width:auto" '+((u.allowedApartments||[]).indexOf(a.id)>=0?"checked":"")+'> '+esc(a.name)+'</label>';}).join("");
   openModal({title:id?"עריכת משתמש":"משתמש חדש",bodyHtml:
-    '<div class="field"><label>שם</label><input id="us-name" value="'+esc(u.name)+'"></div>'+
+    '<div class="field"><label>שם</label><input id="us-name" value="'+esc(u.name)+'">'+
+      '<div class="hint">זה גם שם המשתמש בכניסה — צריך להקליד אותו בדיוק כפי שנכתב כאן.</div></div>'+
     '<div class="field"><label>מייל לשחזור קוד</label><input id="us-email" type="email" value="'+esc(u.email||"")+'" placeholder="name@gmail.com">'+
       '<div class="hint">אם המשתמש ישכח את הקוד — קוד השחזור יישלח לכתובת הזו.</div></div>'+
     '<div class="field"><label>תפקיד</label><select id="us-role">'+Object.keys(ROLES).map(function(k){return '<option value="'+k+'"'+(u.role===k?" selected":"")+'>'+ROLES[k]+'</option>';}).join("")+'</select></div>'+
@@ -12757,7 +12758,31 @@ async function saveUser(id,u){
       allowedApartments:apts,partnerId:null,active:checked("us-active"),deleted:false});
   }
   save(); closeModal(); rerender();
-  toast(id?'"'+name+'" נשמר':'"'+name+'" נוסף — נכנסים עם השם "'+name+'" + הקוד שלו',"ok");
+  toast(id?'"'+name+'" נשמר':'"'+name+'" נוסף — נכנסים עם השם "'+name+'" בדיוק, יחד עם הקוד',"ok");
+  if(!id) confirmUserOnServer(name);
+}
+/* ---------- אישור שהמשתמש באמת הגיע לשרת ----------
+   הכניסה נבדקת מול השרת ולא מול העותק המקומי: המשתמש נוצר אצלי מיד,
+   אבל עד שהשמירה נוחתת בשרת הוא לא קיים שם — וניסיון כניסה נכשל
+   ב"שם המשתמש או קוד הכניסה שגויים", בלי שום רמז לסיבה. אם השמירה
+   נכשלת לגמרי (או שסוגרים את הדפדפן לפניה) הוא לעולם לא יגיע לשם.
+   לכן ממתינים לאישור השרת ואומרים במפורש מה קרה. */
+function confirmUserOnServer(name){
+  if(!getAuth()) return;                 /* עבודה מקומית בלבד — אין למה להמתין */
+  var t0=Date.now();
+  (function wait(){
+    if(!hasUnsaved() && !SAVEQ.timer){
+      toast('"'+name+'" נשמר גם בשרת — אפשר להיכנס איתו עכשיו',"ok");
+      return;
+    }
+    if(Date.now()-t0>25000){
+      toast('"'+name+'" נשמר במחשב הזה אבל עדיין לא הגיע לשרת — הכניסה איתו '+
+        'לא תעבוד עד שהשמירה תושלם. השאר את החלון פתוח, ואם הסימון למעלה '+
+        'נשאר אדום — פנה אליי',"warn");
+      return;
+    }
+    setTimeout(wait,700);
+  })();
 }
 function exportJSON(){
   /* עובר דרך שער ההורדות המרכזי — צופה לא מוריד גם גיבוי JSON */
