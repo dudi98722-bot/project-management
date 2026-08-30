@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 כב'";
+var APP_BUILD = "19.08 כג'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -12765,14 +12765,16 @@ async function saveUser(id,u){
     u.name=name; u.email=email; u.role=role; u.allowedApartments=apts; u.partnerId=null; u.active=checked("us-active");
     if(code) u.code=await hashCode(code);
   }
-  else{
+  var madeId=null;
+  if(!id){
     if(!code){ toast("יש להזין קוד","err"); return; }
-    DB.users.push({id:uid(),name:name,email:email,role:role,code:await hashCode(code),
+    madeId=uid();
+    DB.users.push({id:madeId,name:name,email:email,role:role,code:await hashCode(code),
       allowedApartments:apts,partnerId:null,active:checked("us-active"),deleted:false});
   }
   save(); closeModal(); rerender();
   toast(id?'"'+name+'" נשמר':'"'+name+'" נוסף — נכנסים עם השם "'+name+'" בדיוק, יחד עם הקוד',"ok");
-  if(!id) confirmUserOnServer(name);
+  if(madeId) confirmUserOnServer(madeId,name);
 }
 /* ---------- אישור שהמשתמש באמת הגיע לשרת ----------
    הכניסה נבדקת מול השרת ולא מול העותק המקומי: המשתמש נוצר אצלי מיד,
@@ -12780,22 +12782,36 @@ async function saveUser(id,u){
    ב"שם המשתמש או קוד הכניסה שגויים", בלי שום רמז לסיבה. אם השמירה
    נכשלת לגמרי (או שסוגרים את הדפדפן לפניה) הוא לעולם לא יגיע לשם.
    לכן ממתינים לאישור השרת ואומרים במפורש מה קרה. */
-function confirmUserOnServer(name){
+async function confirmUserOnServer(newId,name){
   if(!getAuth()) return;                 /* עבודה מקומית בלבד — אין למה להמתין */
   var t0=Date.now();
-  (function wait(){
-    if(!hasUnsaved() && !SAVEQ.timer){
-      toast('"'+name+'" נשמר גם בשרת — אפשר להיכנס איתו עכשיו',"ok");
+  /* שלב א': ממתינים שהשמירה תצא לדרך ותאושר */
+  while(hasUnsaved() || SAVEQ.timer){
+    if(Date.now()-t0>30000){
+      toast('"'+name+'" נשמר במחשב הזה אבל לא הצליח להגיע לשרת — הכניסה איתו '+
+        'לא תעבוד. אל תסגור את החלון; אם הסימון "מסונכרן" למעלה לא מתחלף לירוק — פנה אליי',"err");
       return;
     }
-    if(Date.now()-t0>25000){
-      toast('"'+name+'" נשמר במחשב הזה אבל עדיין לא הגיע לשרת — הכניסה איתו '+
-        'לא תעבוד עד שהשמירה תושלם. השאר את החלון פתוח, ואם הסימון למעלה '+
-        'נשאר אדום — פנה אליי',"warn");
-      return;
-    }
-    setTimeout(wait,700);
-  })();
+    await new Promise(function(r){ setTimeout(r,600); });
+  }
+  /* שלב ב': לא מסתפקים בכך שתור השמירה התרוקן — שואלים את השרת עצמו
+     אם המשתמש נמצא אצלו. שמירה יכולה לחזור "בסדר" ובכל זאת המשתמש לא
+     ייכנס למאגר (מיזוג, הגנה, או גרסה מקבילה שדרסה), ואז הכניסה איתו
+     נכשלת ב"שם המשתמש או קוד הכניסה שגויים" בלי שום רמז לסיבה. */
+  var res=await serverLoad();
+  if(!res || res.error || !res.data){
+    toast('"'+name+'" נשמר, אבל לא הצלחתי לאמת מול השרת שהוא נקלט. '+
+      'נסה להיכנס איתו — ואם לא עובד, פתח אותו שוב ולחץ שמירה',"warn");
+    return;
+  }
+  var onServer=(res.data.users||[]).some(function(u){
+    return u && u.id===newId && !u.deleted && u.active; });
+  if(onServer){
+    toast('"'+name+'" אומת מול השרת — אפשר להיכנס איתו עכשיו, עם השם "'+name+'" בדיוק',"ok");
+    return;
+  }
+  toast('"'+name+'" לא נמצא בשרת אחרי השמירה — הכניסה איתו לא תעבוד. '+
+    'סגור חלונות אחרים של המערכת, רענן, ונסה ליצור אותו שוב',"err");
 }
 function exportJSON(){
   /* עובר דרך שער ההורדות המרכזי — צופה לא מוריד גם גיבוי JSON */
