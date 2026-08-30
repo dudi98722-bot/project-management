@@ -57,10 +57,10 @@ const ROLES = {
   // מדריך — תוכן קליני, שיוך למטפלים ורמת דחיפות. לא עורך פרטים
   // אישיים, לא מוחק ולא קובע פגישות.
   guide: R('מדריך',
-    'מעדכן אבחנה, הערה מקצועית, שיוך למטפלים, רמת דחיפות ובן/בת; מנהל רשימת השהיה, מצרף קבצים, ורואה אילו מטפלים פנויים למטופל. לא עורך שם, שעות או הערות, לא משבץ בפועל ולא מוחק.', {
+    'מעדכן אבחנה, הערה מקצועית, הערות רגילות, שיוך למטפלים, רמת דחיפות ובן/בת; מצרף קבצים ורואה אילו מטפלים פנויים למטופל. רואה את רשימת ההשהיה אך לא מעביר אליה ולא מסיר ממנה, לא עורך שם או שעות, לא משבץ בפועל ולא מוחק.', {
     viewDiagnosis: true, editDiagnosis: true, viewNote2: true, editNote2: true,
-    editPref: true, editUrgency: true, editClientType: true,
-    viewAssign: true, holds: true, files: true }),
+    editNotes: true, editPref: true, editUrgency: true, editClientType: true,
+    viewAssign: true, files: true }),
 
   // פנינה — הכל פתוח מלבד ההערה המקצועית וניהול המשתמשים
   pnina: R('פנינה',
@@ -118,8 +118,10 @@ async function authenticate(req, res, next) {
     return res.status(401).json({ error: 'פג תוקף החיבור, יש להתחבר מחדש' });
   }
   // טוקן שהונפק לפני איפוס הסיסמה כבר לא תקף
+  // iat של JWT הוא בשניות שלמות (מעוגל למטה), ולכן טוקן שהונפק מיד אחרי
+  // איפוס הסיסמה עלול להיראות מוקדם ממנו בעד שנייה — שנייה של סבילות
   const changedAt = await passwordChangedAt(decoded.id);
-  if (changedAt && decoded.iat && decoded.iat * 1000 < changedAt) {
+  if (changedAt && decoded.iat && decoded.iat * 1000 + 1000 < changedAt) {
     return res.status(401).json({ error: 'הסיסמה שונתה, יש להתחבר מחדש' });
   }
   req.user = decoded;
