@@ -30,6 +30,22 @@ LEFT JOIN contacts ppsc     ON ppsc.id  = pp.scribe_id`;
 
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
 
+// העברת פריט בודד + רישום ביומן התנועות. מחזיר false אם הפריט כבר שם,
+// כדי שלא ייווצרו רישומי היסטוריה ריקים. משמש גם בהעברה רגילה וגם בהעברת כמות.
+async function applyMove(client, it, toStation, toHolder, date, note, userId) {
+  if (Number(it.station_id || 0) === Number(toStation || 0) &&
+      Number(it.holder_id || 0) === Number(toHolder || 0)) return false;
+  await client.query(
+    `UPDATE track_items SET station_id=$1, holder_id=$2, since=COALESCE($3::date,CURRENT_DATE),
+       updated_by=$4, updated_at=NOW() WHERE id=$5`,
+    [toStation, toHolder, date, userId, it.id]);
+  await client.query(
+    `INSERT INTO track_moves (item_id, date, from_station_id, from_holder_id, to_station_id, to_holder_id, note, created_by)
+     VALUES ($1, COALESCE($2::date,CURRENT_DATE), $3,$4,$5,$6,$7,$8)`,
+    [it.id, date, it.station_id, it.holder_id, toStation, toHolder, note, userId]);
+  return true;
+}
+
 // ---------- רשימת פריטים ----------
 router.get('/', authenticate, can('view'), async (req, res) => {
   try {
@@ -49,7 +65,7 @@ router.get('/', authenticate, can('view'), async (req, res) => {
 // ---------- סיכום: כמה פריטים בכל תחנה ואצל כל אדם ----------
 router.get('/summary', authenticate, can('view'), async (req, res) => {
   try {
-    const [byStation, byHolder, byScroll, unassigned] = await Promise.all([
+    const [byStation, byHolder, byScroll, byPurchase, unassigned] = await Promise.all([
       pool.query(`SELECT COALESCE(st.id,0) AS id, COALESCE(st.name,'ללא תחנה') AS name, st.color,
                     COUNT(*)::int AS items
                   FROM track_items t LEFT JOIN stations st ON st.id=t.station_id
@@ -70,15 +86,112 @@ router.get('/summary', authenticate, can('view'), async (req, res) => {
                   LEFT JOIN products p ON p.id=s.product_id
                   LEFT JOIN contacts sc ON sc.id=s.scribe_id
                   WHERE s.deleted=false GROUP BY s.id, p.name, sc.name ORDER BY s.id DESC`),
+      pool.query(`SELECT pp.id, p.name AS product_name, sc.name AS scribe_name,
+                    pp.quantity::int AS quantity,
+                    COUNT(t.id)::int AS items,
+                    COUNT(*) FILTER (WHERE t.station_id IS NOT NULL)::int AS placed,
+                    COUNT(DISTINCT (COALESCE(t.station_id,0), COALESCE(t.holder_id,0)))::int AS spots
+                  FROM prod_purchases pp
+                  JOIN track_items t ON t.purchase_id=pp.id AND t.deleted=false
+                  LEFT JOIN products p ON p.id=pp.product_id
+                  LEFT JOIN contacts sc ON sc.id=pp.scribe_id
+                  WHERE pp.deleted=false GROUP BY pp.id, p.name, sc.name, pp.quantity
+                  ORDER BY pp.id DESC`),
       pool.query(`SELECT COUNT(*)::int AS n FROM track_items
                   WHERE deleted=false AND station_id IS NULL AND holder_id IS NULL`),
     ]);
     res.json({
       by_station: byStation.rows, by_holder: byHolder.rows,
-      by_scroll: byScroll.rows, unassigned: unassigned.rows[0].n,
+      by_scroll: byScroll.rows, by_purchase: byPurchase.rows,
+      unassigned: unassigned.rows[0].n,
       total: byStation.rows.reduce((a, x) => a + x.items, 0),
     });
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+});
+
+// ---------- מיקומים לפי כמות ----------
+// למוצרים אין יריעות ממוספרות אלא כמות. הקבוצה היא צמד (תחנה, מחזיק),
+// והכמות היא מספר היחידות שנמצאות שם — כך אפשר לראות "20 במשרד, 5 אצל המוחק".
+router.get('/groups', authenticate, can('view'), async (req, res) => {
+  const purchaseId = num(req.query.purchase_id);
+  const scrollId   = num(req.query.scroll_id);
+  if (!purchaseId && !scrollId) return res.status(400).json({ error: 'יש לציין חבילה או ספר' });
+  try {
+    const col = purchaseId ? 'purchase_id' : 'scroll_id';
+    const r = await pool.query(
+      `SELECT COALESCE(t.station_id,0) AS station_id, st.name AS station_name, st.color AS station_color,
+              COALESCE(t.holder_id,0)  AS holder_id,  h.name  AS holder_name,
+              COUNT(*)::int AS qty,
+              MIN(t.since) AS since,
+              (CURRENT_DATE - MIN(t.since)) AS days
+       FROM track_items t
+       LEFT JOIN stations st ON st.id = t.station_id
+       LEFT JOIN contacts h  ON h.id  = t.holder_id
+       WHERE t.deleted=false AND t.${col}=$1
+       GROUP BY 1,2,3,4,5
+       ORDER BY qty DESC, st.name NULLS FIRST`, [purchaseId || scrollId]);
+    res.json(r.rows);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+});
+
+// ---------- העברת כמות ----------
+// מעביר N יחידות מתוך קבוצה מסוימת; השאר נשארות בדיוק היכן שהן.
+// כך "העברתי 20 מזוזות למוחק ומתוכן 5 המשיכו לתופר" נשמר נכון,
+// וכל יחידה שומרת היסטוריה משלה.
+router.post('/move-qty', authenticate, can('edit'), async (req, res) => {
+  const purchaseId = num(req.body.purchase_id);
+  const scrollId   = num(req.body.scroll_id);
+  const qty = num(req.body.qty);
+  if (!purchaseId && !scrollId) return res.status(400).json({ error: 'יש לציין חבילה או ספר' });
+  if (!Number.isInteger(qty) || qty <= 0) return res.status(400).json({ error: 'יש להזין כמות חיובית' });
+
+  const hasStation = req.body.station_id !== undefined && req.body.station_id !== '';
+  const hasHolder  = req.body.holder_id  !== undefined && req.body.holder_id  !== '';
+  if (!hasStation && !hasHolder) return res.status(400).json({ error: 'יש לבחור תחנה או מחזיק' });
+  const stationId = hasStation ? (req.body.station_id === null ? null : num(req.body.station_id)) : undefined;
+  const holderId  = hasHolder  ? (req.body.holder_id  === null ? null : num(req.body.holder_id))  : undefined;
+
+  // 0 = "ללא תחנה" / "ללא מחזיק" — כך אפשר להעביר גם יחידות שעדיין לא שויכו
+  const fromStation = num(req.body.from_station_id) || 0;
+  const fromHolder  = num(req.body.from_holder_id)  || 0;
+  const date = req.body.date || null;
+  const note = req.body.note || null;
+
+  const client = await pool.connect();
+  let moved = 0, available = 0;
+  try {
+    await client.query('BEGIN');
+    const col = purchaseId ? 'purchase_id' : 'scroll_id';
+    const id = purchaseId || scrollId;
+    const cnt = await client.query(
+      `SELECT COUNT(*)::int AS n FROM track_items
+       WHERE deleted=false AND ${col}=$1 AND COALESCE(station_id,0)=$2 AND COALESCE(holder_id,0)=$3`,
+      [id, fromStation, fromHolder]);
+    available = cnt.rows[0].n;
+    if (qty > available) {
+      await client.query('ROLLBACK'); client.release();
+      return res.status(400).json({ error: `במיקום הזה יש ${available} יחידות בלבד` });
+    }
+    const pick = await client.query(
+      `SELECT id, station_id, holder_id FROM track_items
+       WHERE deleted=false AND ${col}=$1 AND COALESCE(station_id,0)=$2 AND COALESCE(holder_id,0)=$3
+       ORDER BY seq LIMIT $4 FOR UPDATE`,
+      [id, fromStation, fromHolder, qty]);
+    for (const it of pick.rows) {
+      const toStation = hasStation ? stationId : it.station_id;
+      const toHolder  = hasHolder  ? holderId  : it.holder_id;
+      if (await applyMove(client, it, toStation, toHolder, date, note, req.user.id)) moved++;
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error(e); client.release();
+    return res.status(500).json({ error: 'ההעברה נכשלה: ' + e.message });
+  }
+  client.release();
+  await logAction(req.user, 'move-qty', 'track_items', purchaseId || scrollId,
+    { qty, moved, from_station: fromStation, from_holder: fromHolder, station_id: stationId, holder_id: holderId });
+  res.json({ moved, available, same: moved === 0 });
 });
 
 // ---------- יצירת יריעות לספר / יחידות לחבילה ----------
@@ -151,7 +264,6 @@ router.post('/move', authenticate, can('edit'), async (req, res) => {
 
   const client = await pool.connect();
   let moved = 0;
-  const records = [];
   try {
     await client.query('BEGIN');
     const cur = await client.query(
@@ -159,19 +271,7 @@ router.post('/move', authenticate, can('edit'), async (req, res) => {
     for (const it of cur.rows) {
       const toStation = hasStation ? stationId : it.station_id;
       const toHolder  = hasHolder  ? holderId  : it.holder_id;
-      // דילוג על פריט שכבר נמצא בדיוק שם — שלא ייווצר רישום ריק ביומן
-      if (Number(it.station_id || 0) === Number(toStation || 0) &&
-          Number(it.holder_id || 0) === Number(toHolder || 0)) continue;
-      const upd = await client.query(
-        `UPDATE track_items SET station_id=$1, holder_id=$2, since=COALESCE($3::date,CURRENT_DATE),
-           updated_by=$4, updated_at=NOW() WHERE id=$5 RETURNING *`,
-        [toStation, toHolder, date, req.user.id, it.id]);
-      await client.query(
-        `INSERT INTO track_moves (item_id, date, from_station_id, from_holder_id, to_station_id, to_holder_id, note, created_by)
-         VALUES ($1, COALESCE($2::date,CURRENT_DATE), $3,$4,$5,$6,$7,$8)`,
-        [it.id, date, it.station_id, it.holder_id, toStation, toHolder, note, req.user.id]);
-      moved++;
-      if (upd.rows.length) records.push(upd.rows[0]);
+      if (await applyMove(client, it, toStation, toHolder, date, note, req.user.id)) moved++;
     }
     await client.query('COMMIT');
   } catch (e) {

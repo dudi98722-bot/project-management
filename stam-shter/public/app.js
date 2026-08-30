@@ -118,6 +118,9 @@ const itemsSizes     = () => sortHe(C.sizes.map(s => ({ v: s.id, t: `${s.name} (
 const itemsScrolls   = () => sortHe(C.scrolls.map(s => ({ v: s.id, t: scrollLabel(s) })));
 const itemsPurchases = (sel) => sortHe(C.purchases.filter(p => N(p.remaining_qty) > 0 || +sel === p.id)
   .map(p => ({ v: p.id, t: `#${p.id} · ${purchaseLabel(p)}` })));
+// למעקב צריך גם חבילות שכבר נמכרו — היחידות עדיין יכולות להיות בדרך
+const itemsPurchasesAll = () => sortHe(C.purchases.map(p => ({ v: p.id,
+  t: `#${p.id} · ${p.product_name || 'מוצר'} · ${p.scribe_name || 'סופר'} (${N(p.quantity)} יח')` })));
 const itemsList = (arr) => sortHe(arr.map(x => ({ v: x.value, t: x.value + (x.is_correction ? '  ⟵ תיקונים' : '') })));
 
 function comboHTML(f, val) {
@@ -289,6 +292,10 @@ async function removeRow(store, id, label) {
 }
 
 // ---- טבלה גנרית ----
+// עמודה עם pin:true נדבקת לימין בגלילה לרוחב. ההצמדה עובדת רק על רצף
+// העמודות הראשונות — עמודה מוצמדת באמצע הייתה קופצת מעל שכנותיה.
+const colCls = (c) => `${c.cls || ''}${c.pin ? ' pin' : ''}`.trim();
+
 function tableHTML(cols, rows, opts) {
   opts = opts || {};
   if (!rows.length) return `<div class="empty"><div class="big">📭</div>אין נתונים להצגה</div>`;
@@ -296,20 +303,20 @@ function tableHTML(cols, rows, opts) {
   // והתפריט נבנה מהערכים המוצגים בפועל באותה עמודה.
   const fk = opts.fkey;
   const head = cols.map(c => {
-    if (c.labelHtml) return `<th class="${c.cls || ''}">${c.labelHtml}</th>`;
-    if (!fk || !c.label || !c.render) return `<th class="${c.cls || ''}">${esc(c.label || '')}</th>`;
+    if (c.labelHtml) return `<th class="${colCls(c)}">${c.labelHtml}</th>`;
+    if (!fk || !c.label || !c.render) return `<th class="${colCls(c)}">${esc(c.label || '')}</th>`;
     const picked = (filterState(fk).cols[c.label] || []);
     const uid = `${fk}|${c.label}`;
-    return `<th class="${c.cls || ''}"><span class="th-in">${esc(c.label)}
+    return `<th class="${colCls(c)}"><span class="th-in">${esc(c.label)}
       <button class="th-filt${picked.length ? ' on' : ''}" data-filtbtn="${esc(uid)}"
         title="סינון">${picked.length ? `▼${picked.length}` : '▽'}</button></span></th>`;
   }).join('');
   const body = rows.map((r, i) => `<tr ${opts.rowAttr ? opts.rowAttr(r) : ''}>${
-    cols.map(c => `<td class="${c.cls || ''}">${c.render(r, i)}</td>`).join('')}</tr>`).join('');
+    cols.map(c => `<td class="${colCls(c)}">${c.render(r, i)}</td>`).join('')}</tr>`).join('');
   let foot = '';
   if (opts.totals) {
     foot = `<tfoot><tr>${cols.map(c =>
-      `<td class="${c.cls || ''}">${c.total ? c.total(rows) : (c.totalLabel || '')}</td>`).join('')}</tr></tfoot>`;
+      `<td class="${colCls(c)}">${c.total ? c.total(rows) : (c.totalLabel || '')}</td>`).join('')}</tr></tfoot>`;
   }
   // כל טבלה מקבלת כפתור ייצוא. החיווט הוא בהאזנה גלובלית (wireExport),
   // כדי שגם טבלאות שנוצרות בתוך חלונות יעבדו בלי חיווט נוסף.
@@ -317,6 +324,67 @@ function tableHTML(cols, rows, opts) {
     `<div class="tbl-tools"><button class="btn ghost xs" data-xls title="הורדה לאקסל">⤓ אקסל</button></div>`;
   return `<div class="tbl-box">${tools}<div class="table-wrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody>${foot}</table></div></div>`;
 }
+
+// ===== פריסת טבלאות =====
+// שני דברים שאי אפשר לעשות ב-CSS בלבד:
+//  1. גובה התיבה — כדי שהכותרת הדביקה תעבוד, התיבה עצמה חייבת להיות
+//     אזור גלילה בגובה מוגבל. הגובה נקבע לפי המקום שנשאר עד תחתית המסך.
+//  2. מרחק ההצמדה של העמודות מימין — תלוי ברוחב האמיתי של העמודות,
+//     והוא ידוע רק אחרי שהדפדפן פרס את הטבלה.
+const PIN_MIN_W = 820;          // מתחת לזה המסך צר מדי, ההצמדה מבוטלת ב-CSS
+const _laidOut = new WeakSet();
+
+function layoutTable(wrap) {
+  const inModal = !!wrap.closest('#modalRoot');
+  const top = wrap.getBoundingClientRect().top + (inModal ? 0 : window.scrollY);
+  // רצפה של 360 פיקסלים: טבלה שמתחילה נמוך בדף עדיין מקבלת גובה שימושי,
+  // בלי שהתיבה תגלוש הרבה מתחת לקצה המסך.
+  wrap.style.maxHeight = Math.max(360, Math.round(window.innerHeight - top - 26)) + 'px';
+
+  const table = wrap.querySelector('table');
+  const head = table && table.tHead && table.tHead.rows[0];
+  if (!table) return;
+  table.querySelectorAll('.pin-edge').forEach(c => c.classList.remove('pin-edge'));
+  const pinned = table.querySelectorAll('.pin');
+  if (!head || !pinned.length) return;
+  if (window.innerWidth < PIN_MIN_W) { pinned.forEach(c => { c.style.right = ''; }); return; }
+
+  let n = 0;
+  while (n < head.cells.length && head.cells[n].classList.contains('pin')) n++;
+  if (!n) { pinned.forEach(c => { c.style.right = ''; }); return; }
+
+  const offs = []; let acc = 0;
+  for (let i = 0; i < n; i++) { offs.push(acc); acc += head.cells[i].getBoundingClientRect().width; }
+  for (const row of table.rows) {
+    if (row.cells.length !== head.cells.length) continue;   // שורה חריגה — לא נוגעים
+    for (let i = 0; i < n; i++) {
+      const c = row.cells[i];
+      if (!c.classList.contains('pin')) continue;
+      c.style.right = Math.round(offs[i]) + 'px';
+      if (i === n - 1) c.classList.add('pin-edge');
+    }
+  }
+}
+
+function layoutTables(force) {
+  document.querySelectorAll('.table-wrap').forEach(w => {
+    if (!force && _laidOut.has(w)) return;
+    _laidOut.add(w);
+    layoutTable(w);
+  });
+}
+
+let _layoutT = 0;
+function scheduleLayout(force) {
+  clearTimeout(_layoutT);
+  _layoutT = setTimeout(() => layoutTables(force), 40);
+}
+// כל טבלה חדשה בדף או בחלון מקבלת פריסה, בלי לחווט כל מקום בנפרד.
+// המשקיף עוקב אחרי הוספת אלמנטים בלבד; העדכונים שלנו הם מאפיינים, ולכן אין לולאה.
+new MutationObserver(() => scheduleLayout(false)).observe(document.body, { childList: true, subtree: true });
+window.addEventListener('resize', () => scheduleLayout(true));
+// גופן שנטען מאוחר משנה את רוחב העמודות — מודדים שוב אחריו
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => scheduleLayout(true));
 
 // ===== ייצוא טבלה לאקסל =====
 // קורא את הטבלה כפי שהיא מוצגת, כך שהקובץ תואם בדיוק למה שרואים על המסך
@@ -676,12 +744,14 @@ async function pageDash() {
 async function pageScrolls() {
   const allRows = C.scrolls;
   const cfg = scrollCfg();
+  // ארבע עמודות הזיהוי מוצמדות לימין (pin) ונשארות גלויות בגלילה לרוחב.
+  // 'סופר' הועלה לכאן דווקא כדי שיוכל להיות חלק מהרצף המוצמד.
   const cols = [
-    ...(ME.caps.del ? [selCol('scrolls')] : []),
-    { label: '#', render: r => r.id },
-    skuCol,
+    ...(ME.caps.del ? [{ ...selCol('scrolls'), pin: true }] : []),
+    { label: '#', pin: true, render: r => r.id },
+    { ...skuCol, pin: true },
+    { label: 'סופר', pin: true, render: r => esc(r.scribe_name || '—') },
     { label: 'מוצר', render: r => esc(r.product_name || '—') },
-    { label: 'סופר', render: r => esc(r.scribe_name || '—') },
     { label: 'רוכש', render: r => esc(r.customer_name || '—') },
     { label: 'תאריך', render: r => dt(r.sale_date) },
     { label: 'התקדמות', render: r => `<div class="bar ${r.progress_pct < 100 ? 'warn' : ''}"><span style="width:${Math.min(100, r.progress_pct)}%"></span></div>
@@ -2479,7 +2549,8 @@ function pageTrack() {
   const subs = [
     { k: 'summary', label: '📍 סקירה' },
     { k: 'sheets', label: '📄 יריעות לפי ספר' },
-    { k: 'items', label: 'כל היריעות' },
+    { k: 'products', label: '📦 מוצרים לפי כמות' },
+    { k: 'items', label: 'כל הפריטים' },
     { k: 'stations', label: 'תחנות' },
   ];
   renderSubtabs('track', subs);
@@ -2487,6 +2558,7 @@ function pageTrack() {
   if (s === 'stations') return trackStations();
   if (s === 'items') return trackItems();
   if (s === 'sheets') return trackSheets();
+  if (s === 'products') return trackProducts();
   return trackSummary();
 }
 
@@ -2498,7 +2570,7 @@ async function trackSummary() {
 
   $('view').innerHTML += `
     <div class="grid stat-grid">
-      ${st('סה"כ יריעות במעקב', d.total)}
+      ${st('סה"כ פריטים במעקב', d.total, '', 'יריעות ספרים + יחידות מוצרים')}
       ${st('לא שויכו לתחנה', d.unassigned, d.unassigned ? 'a' : '')}
       ${st('תחנות פעילות', d.by_station.filter(x => x.id).length)}
       ${st('אנשים שמחזיקים', d.by_holder.filter(x => x.id).length)}
@@ -2525,6 +2597,19 @@ async function trackSummary() {
     </div>
 
     ${chartBox('trkChart', 'התפלגות היריעות לפי תחנה', 300)}
+
+    ${(d.by_purchase && d.by_purchase.length) ? `<div class="card"><h3>לפי חבילת מוצרים</h3>
+      ${tableHTML([
+        { label: 'חבילה', render: r => `<span class="link" data-goto-pur="${r.id}">#${r.id} · ${esc(r.product_name || '')}</span>` },
+        { label: 'סופר', render: r => esc(r.scribe_name || '—') },
+        { label: 'יחידות במעקב', cls: 'num', render: r => r.items,
+          total: rs => rs.reduce((a, x) => a + x.items, 0) },
+        { label: 'בחבילה', cls: 'num', render: r => r.quantity },
+        { label: 'מיקומים', cls: 'num', render: r => r.spots },
+        { label: 'שויכו לתחנה', cls: 'num', render: r => `${r.placed} / ${r.items}` },
+        { label: 'התקדמות', render: r => `<div class="bar ${r.placed < r.items ? 'warn' : ''}">
+            <span style="width:${r.items ? Math.round(r.placed / r.items * 100) : 0}%"></span></div>` },
+      ], d.by_purchase, { totals: true })}</div>` : ''}
 
     <div class="card"><h3>לפי ספר</h3>
       ${tableHTML([
@@ -2557,14 +2642,19 @@ async function trackSummary() {
     SHEETGRID.scrollId = +b.dataset.gotoScroll;
     SUB.track = 'sheets'; render();
   });
+  document.querySelectorAll('[data-goto-pur]').forEach(b => b.onclick = () => {
+    PRODTRACK.purchaseId = +b.dataset.gotoPur;
+    SUB.track = 'products'; render();
+  });
 }
 
 // ---------- כל היריעות: סינון, בחירה מרובה והעברה ----------
-const TRACK = { scroll: '', station: '', holder: '' };
+const TRACK = { scroll: '', purchase: '', station: '', holder: '' };
 
 async function trackItems() {
   const filt = {};
   if (TRACK.scroll) filt.scroll_id = TRACK.scroll;
+  if (TRACK.purchase) filt.purchase_id = TRACK.purchase;
   if (TRACK.station) filt.station_id = TRACK.station;
   if (TRACK.holder) filt.holder_id = TRACK.holder;
   const allRows = await Store.track.list(filt);
@@ -2572,7 +2662,7 @@ async function trackItems() {
   const cols = [
     ...(ME.caps.edit ? [selCol('track_items')] : []),
     { label: 'שייך ל', render: r => esc(itemLabel(r)) },
-    { label: 'יריעה', cls: 'num', render: r => `<b>${r.seq}</b>${r.label ? ` · ${esc(r.label)}` : ''}` },
+    { label: 'יריעה / יחידה', cls: 'num', render: r => `<b>${r.seq}</b>${r.label ? ` · ${esc(r.label)}` : ''}` },
     { label: 'סופר', render: r => esc(r.scribe_name || r.purchase_scribe_name || '—') },
     { label: 'תחנה', render: r => stationPill(r) },
     { label: 'אצל מי', render: r => esc(r.holder_name || '—') },
@@ -2588,6 +2678,7 @@ async function trackItems() {
     <div class="card">
       <div class="row">
         <div style="flex:1;min-width:260px">${pickerHTML('tkScroll', 'ספר', itemsScrolls(), TRACK.scroll, 'כל הספרים — הקלד לחיפוש')}</div>
+        <div style="flex:1;min-width:260px">${pickerHTML('tkPur', 'חבילת מוצרים', itemsPurchasesAll(), TRACK.purchase, 'כל החבילות')}</div>
         <div style="flex:1;min-width:200px">${pickerHTML('tkStation', 'תחנה', itemsStations(), TRACK.station, 'כל התחנות')}</div>
         <div style="flex:1;min-width:220px">${pickerHTML('tkHolder', 'אצל מי', itemsContacts(), TRACK.holder, 'כולם — הקלד שם')}</div>
       </div>
@@ -2600,7 +2691,8 @@ async function trackItems() {
       ${tableHTML(cols, rows, { fkey: 'track_items' })}
     </div>`;
 
-  wirePicker('tkScroll',  itemsScrolls(),  (v) => { TRACK.scroll = v; render(); });
+  wirePicker('tkScroll',  itemsScrolls(),  (v) => { TRACK.scroll = v; if (v) TRACK.purchase = ''; render(); });
+  wirePicker('tkPur',     itemsPurchasesAll(), (v) => { TRACK.purchase = v; if (v) TRACK.scroll = ''; render(); });
   wirePicker('tkStation', itemsStations(), (v) => { TRACK.station = v; render(); });
   wirePicker('tkHolder',  itemsContacts(), (v) => { TRACK.holder = v; render(); });
   if ($('tkGen')) $('tkGen').onclick = openGenerate;
@@ -2679,6 +2771,126 @@ async function showHistory(id) {
   } catch (e) { toast(e.message, 'err'); }
 }
 
+
+// ---------- מוצרים לפי כמות ----------
+// מזוזות, תפילין וכדומה אינם מתפצלים ליריעות ממוספרות אלא נספרים בכמות.
+// המסך הזה מציג "כמה יחידות נמצאות איפה", ומאפשר להעביר חלק מהכמות בלבד:
+// שולחים 20 למוחק, ואחר כך מעבירים מתוכן 5 בלבד לתופר — השאר נשארות אצלו.
+// מתחת לפני השטח כל יחידה היא פריט מעקב נפרד, ולכן לכל אחת יש היסטוריה משלה.
+const PRODTRACK = { purchaseId: '' };
+
+async function trackProducts() {
+  const list = itemsPurchasesAll();
+  if (!PRODTRACK.purchaseId && C.purchases.length) PRODTRACK.purchaseId = C.purchases[0].id;
+
+  $('view').innerHTML += `
+    <div class="card">
+      <div class="row" style="align-items:flex-end">
+        <div style="max-width:560px;flex:1">${pickerHTML('ptPur', 'בחר חבילת מוצרים', list,
+          PRODTRACK.purchaseId, 'הקלד שם מוצר או סופר…')}</div>
+      </div>
+    </div>
+    <div id="ptBody"><div class="card muted">טוען…</div></div>`;
+  wirePicker('ptPur', list, (v) => { if (v) { PRODTRACK.purchaseId = +v; render(); } });
+
+  if (!PRODTRACK.purchaseId) {
+    $('ptBody').innerHTML = `<div class="card"><div class="empty"><div class="big">\U0001f4e6</div>
+      אין עדיין חבילות רכישה. פתח רכישה בלשונית "רכישות מוצרים" וחזור לכאן.</div></div>`;
+    return;
+  }
+  await drawProdTrack();
+}
+
+async function drawProdTrack() {
+  const pid = +PRODTRACK.purchaseId;
+  const pur = C.purchases.find(p => p.id === pid) || {};
+  let groups;
+  try { groups = await Store.track.groups({ purchase_id: pid }); }
+  catch (e) { $('ptBody').innerHTML = `<div class="card" style="color:var(--red)">${esc(e.message)}</div>`; return; }
+
+  const tracked = groups.reduce((a, g) => a + g.qty, 0);
+  const total   = N(pur.quantity);
+  const loose   = groups.filter(g => !g.station_id && !g.holder_id).reduce((a, g) => a + g.qty, 0);
+  const spots   = groups.filter(g => g.station_id || g.holder_id).length;
+  const missing = Math.max(0, total - tracked);
+
+  const st = (label, val, cls, sub) => `<div class="stat"><div class="label">${label}</div>
+    <div class="value ${cls || ''}">${val}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>`;
+
+  const cols = [
+    { label: 'תחנה', render: g => g.station_id ? stationPill(g) : '<span class="pill n">לא שויך</span>' },
+    { label: 'אצל מי', render: g => esc(g.holder_name || '—') },
+    { label: 'כמות', cls: 'num', render: g => `<b>${g.qty}</b>`,
+      total: rs => `<b>${rs.reduce((a, x) => a + x.qty, 0)}</b>` },
+    { label: 'מהתאריך', render: g => g.since ? dt(g.since) : '' },
+    { label: 'ימים', cls: 'num', render: g => g.days != null
+        ? `<span class="${g.days > 60 ? 'neg' : ''}">${g.days}</span>` : '' },
+    ...(ME.caps.edit ? [{ label: '', cls: 'center',
+      render: (g, i) => `<button class="btn xs" data-mvq="${i}">↔ העבר כמות</button>` }] : []),
+  ];
+
+  const genBtn = (ME.caps.edit && missing > 0)
+    ? `<button class="btn ${tracked ? 'ghost' : ''}" id="ptGen">+ הכנס ${missing} יחידות למעקב</button>` : '';
+
+  $('ptBody').innerHTML = `
+    <div class="grid stat-grid">
+      ${st('יחידות במעקב', tracked, '', `בחבילה: ${total}`)}
+      ${st('מיקומים', spots)}
+      ${st('לא שויכו לתחנה', loose, loose ? 'a' : '')}
+      ${st('עדיין לא במעקב', missing, missing ? 'a' : 'g')}
+    </div>
+    ${genBtn ? `<div class="card"><div class="toolbar">${genBtn}
+      <span class="mini">היחידות נכנסות ללא תחנה, ומשם מעבירים אותן בכמויות.</span></div></div>` : ''}
+    <div class="card"><h3>איפה נמצאות היחידות</h3>
+      ${tableHTML(cols, groups, { totals: true })}</div>`;
+
+  if ($('ptGen')) $('ptGen').onclick = async () => {
+    try {
+      const r = await Store.track.generate({ purchase_id: pid, count: total });
+      toast(r.created ? `נכנסו ${r.created} יחידות למעקב` : (r.message || 'לא נוצרו יחידות'), 'ok');
+      render();
+    } catch (e) { toast(e.message, 'err'); }
+  };
+  document.querySelectorAll('[data-mvq]').forEach(b =>
+    b.onclick = () => openMoveQty(groups[+b.dataset.mvq], pid));
+}
+
+// חלון העברת כמות — הכמות שלא מועברת נשארת בדיוק במקומה
+function openMoveQty(g, purchaseId) {
+  if (!g) return;
+  const where = [g.station_name, g.holder_name].filter(Boolean).join(' · ') || 'לא שויך';
+  const body = `
+    <p class="mini">מתוך <b>${esc(where)}</b> — נמצאות שם <b>${g.qty}</b> יחידות.</p>
+    <div class="field"><label>כמה להעביר</label>
+      <input id="mqQty" type="number" min="1" max="${g.qty}" value="${g.qty}">
+      <div class="hint">מה שלא מועבר נשאר בדיוק היכן שהוא נמצא היום.</div></div>
+    ${pickerHTML('mqStation', 'לתחנה', itemsStations(), '', 'לא לשנות')}
+    ${pickerHTML('mqHolder', 'אצל מי', itemsContacts(), '', 'לא לשנות — הקלד שם')}
+    <div class="field"><label>תאריך</label><input id="mqDate" type="date" value="${today()}"></div>
+    <div class="field"><label>הערה</label><input id="mqNote"></div>`;
+  const m = modal({ title: 'העברת כמות', body,
+    footer: `<button class="btn" data-ok>העבר</button><button class="btn ghost" data-no>ביטול</button>` });
+  m.el.querySelector('[data-no]').onclick = m.close;
+  wireCombos(m.el, [{ k: 'mqStation', type: 'combo', items: itemsStations },
+                    { k: 'mqHolder',  type: 'combo', items: itemsContacts }]);
+  m.el.querySelector('[data-ok]').onclick = async () => {
+    const qty = Math.floor(N($('mqQty').value));
+    if (!(qty > 0)) return toast('יש להזין כמות להעברה', 'err');
+    if (qty > g.qty) return toast(`במיקום הזה יש ${g.qty} יחידות בלבד`, 'err');
+    const station_id = $('f_mqStation').value;
+    const holder_id  = $('f_mqHolder').value;
+    if (!station_id && !holder_id) return toast('יש לבחור תחנה או מחזיק', 'err');
+    try {
+      const r = await Store.track.moveQty({
+        purchase_id: purchaseId, qty,
+        from_station_id: g.station_id, from_holder_id: g.holder_id,
+        station_id, holder_id, date: $('mqDate').value, note: $('mqNote').value });
+      if (!r.moved) return toast('היחידות כבר נמצאות בדיוק שם', 'err');
+      toast(`הועברו ${r.moved} יחידות`, 'ok');
+      m.close(); render();
+    } catch (e) { toast(e.message, 'err'); }
+  };
+}
 
 // ---------- גריד יריעות לספר, בסגנון אקסל ----------
 // כל שינוי נשמר מיד ונרשם ביומן התנועות. הניווט במקלדת:
@@ -3335,7 +3547,7 @@ const TABS = [
   { k: 'parchexp', label: 'הוצאות קלף', fn: pageParchExp },
   { k: 'bizexp', label: 'הוצאות עסק', fn: pageBizExp, cap: 'finance' },
   { k: 'prod', label: 'מוצרים', fn: pageProd },
-  { k: 'track', label: '📍 מעקב יריעות', fn: pageTrack },
+  { k: 'track', label: '📍 מעקב יריעות ומוצרים', fn: pageTrack },
   { k: 'reports', label: 'דוחות', fn: pageReports, cap: 'scribeReport' },
   { k: 'import', label: 'ייבוא', fn: pageImport, cap: 'edit' },
   { k: 'settings', label: 'הגדרות', fn: pageSettings },

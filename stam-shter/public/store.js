@@ -54,6 +54,8 @@
       summary: () => apiFetch('/track/summary'),
       generate: (d) => apiFetch('/track/generate', { method: 'POST', body: d }),
       move: (d) => apiFetch('/track/move', { method: 'POST', body: d }),
+      groups: (q) => apiFetch('/track/groups?' + new URLSearchParams(q)),
+      moveQty: (d) => apiFetch('/track/move-qty', { method: 'POST', body: d }),
       history: (id) => apiFetch('/track/' + id + '/history'),
     }),
     lists: {
