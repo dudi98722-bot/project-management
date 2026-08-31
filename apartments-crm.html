@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 כט'";
+var APP_BUILD = "19.08 ל'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -2289,10 +2289,19 @@ function restoreSelections(kept){
 function anySelectionMarked(){
   return !!document.querySelector(SEL_KEEP.map(function(p){ return "input."+p[0]+":checked"; }).join(","));
 }
+/* יעד גלילה שמחכה שהמילוי המדורג ישלים אליו. הרינדור בונה רק את
+   150 השורות הראשונות, ולכן העמוד קצר מדי ברגע השחזור — הדפדפן קוטם
+   את הקפיצה, והמשתמש שעמד עמוק בטבלה נזרק למעלה ("המסך קופץ").
+   כל מנת מילוי מנסה שוב עד שמגיעים; גלילה ידנית מבטלת את היעד. */
+var SCROLL_KEEP=null;
+["wheel","touchmove"].forEach(function(ev){
+  window.addEventListener(ev,function(){ SCROLL_KEEP=null; },{passive:true});
+});
 function rerender(){
   var sx=window.scrollX, sy=window.scrollY;
   renderApp();
   window.scrollTo(sx,sy);
+  SCROLL_KEEP=(sy>4)?{x:sx,y:sy}:null;
 }
 function renderApp(){
   if(!CU){ renderLogin(); return; }
@@ -8389,6 +8398,8 @@ function bmFillChunks(){
   var h="";
   batch.forEach(function(m){ h+=bankMoveRowHtml(m,job.selBm); });
   tbl.insertAdjacentHTML("beforeend",h);
+  /* העמוד התארך — אם שחזור הגלילה נקטם קודם, משלימים אליו עכשיו */
+  if(SCROLL_KEEP && Math.abs(window.scrollY-SCROLL_KEEP.y)>4) window.scrollTo(SCROLL_KEEP.x,SCROLL_KEEP.y);
   /* סימונים שנלכדו לפני הרינדור — מוחלים גם על השורות שהגיעו במנה */
   if(window._BM_KEPT){
     batch.forEach(function(m){
@@ -8806,8 +8817,19 @@ function openMoveMatch(id){
       stat("תאריך",dateHe(m.date))+stat("סכום",money(m.amount))+
       stat("נותר להתאמה",money(moveRemaining(m)),moveRemaining(m)>0.01?"neg":"pos")+
     '</div>'+
-    ((m.name||m.description||m.details)?'<div class="hint" style="margin-bottom:10px">מהבנק: <b>'+esc(m.name||m.description||"")+'</b>'+
-      (m.details?' · '+esc(m.details):'')+(m.kind?' · '+esc(m.kind):'')+(m.ref?' · אסמכתא '+esc(m.ref):'')+'</div>':'')+
+    /* כל העמודות של השורה — בדיוק כמו בטבלה, שלא יחסר מידע להחלטה */
+    '<div class="table-wrap" style="margin-bottom:10px"><table class="tbl" style="font-size:12.5px"><thead><tr>'+
+      '<th>שם</th><th>בנק</th><th>סוג</th><th>קטגוריה</th><th>תת קטגוריה</th><th>פרטים</th><th>אסמכתא</th><th>מסמך</th>'+
+    '</tr></thead><tbody><tr>'+
+      '<td><b>'+esc(m.name||m.description||"—")+'</b></td>'+
+      '<td>'+esc(moveBankLabel(m)||"—")+'</td>'+
+      '<td>'+esc(m.kind||"—")+'</td>'+
+      '<td>'+esc(m.style||"—")+'</td>'+
+      '<td>'+esc(m.subStyle||"—")+'</td>'+
+      '<td>'+esc(m.details||"—")+'</td>'+
+      '<td>'+esc(m.ref||"—")+'</td>'+
+      '<td>'+((DOC_STATES[moveDocState(m)]||{}).t||"—")+'</td>'+
+    '</tr></tbody></table></div>'+
     (stmtBanks().length>1?'<div class="field"><label>הבנק של השורה</label><select id="mv-bank" onchange="setMoveBank(\''+id+'\',this.value)">'+
       stmtBanks().map(function(b){ return '<option value="'+b.id+'"'+((m.stmtBankId||m.accountId)===b.id?" selected":"")+'>🏦 '+esc(b.name)+'</option>'; }).join("")+
     '</select><div class="hint">אם השורה סווגה לבנק הלא נכון — אפשר לתקן כאן.</div></div>':'')+
