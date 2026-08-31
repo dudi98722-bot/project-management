@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 כח'";
+var APP_BUILD = "19.08 כט'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -1187,6 +1187,26 @@ function apDeposits(aptId){ if(IX) return IX.depByApt[aptId]||IX_EMPTY;
 function apIncomeRaw(aptId){ if(IX) return IX.incByApt[aptId]||IX_EMPTY;
   return active(DB.income).filter(function(x){return x.apartmentId===aptId;}); }
 function apIncome(aptId){ return repFilter(apIncomeRaw(aptId)); }
+/* ---------- עמודת "פרייליך" בטבלת ההכנסות ----------
+   רואים במבט אחד מה ייכנס לדוח לפרייליך; עורך יכול להחליף את הסימון
+   בלחיצה, בלי לפתוח את טופס העריכה. שורה שסומנה "לא להציג בדוחות"
+   ממילא לא מופיעה באף דוח — ואז אין מה להחליף. */
+function incFrlCell(i){
+  if(i.noReport) return '<span class="badge badge-muted badge-unit" title="לא מוצגת באף דוח">לא בדוחות</span>';
+  var badge=i.noFreilich
+    ? '<span class="badge badge-danger badge-unit">🚫 לא</span>'
+    : '<span class="badge badge-ok badge-unit">✔ בדוח</span>';
+  if(!can("edit")) return badge;
+  return '<span style="cursor:pointer" title="לחיצה מחליפה: יופיע / לא יופיע בדוח לפרייליך" '+
+    'onclick="toggleIncFrl(\''+i.id+'\')">'+badge+'</span>';
+}
+function toggleIncFrl(id){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var i=byId(DB.income,id); if(!i) return;
+  i.noFreilich=!i.noFreilich;
+  save(); rerender();
+  toast(i.noFreilich?'"'+i.description+'" לא תופיע בדוח לפרייליך':'"'+i.description+'" תופיע בדוח לפרייליך',"ok");
+}
 /* הכנסות שנספרות בסיכומים — בלי אלה שסומנו "לא לחישוב".
    השורה עצמה נשארת בפירוט; היא רק לא נכנסת לאף סכום. */
 function apIncomeCalc(aptId){
@@ -7407,8 +7427,8 @@ function moduleIncome(aptId){
     (selI?'<th class="chk" data-xl-skip="1" style="width:30px"><input type="checkbox" title="סמן הכל" style="width:auto" onclick="ibAll(this.checked)"></th>':'')+
     '<th>תאריך</th><th>תיאור</th>'+
     (units.length?'<th>יחידות</th>':'')+
-    '<th>תקופה</th><th>סכום</th><th>שולם</th><th>יתרת חוב</th><th>נכנס ל…</th><th>הערה</th><th></th></tr></thead><tbody>';
-  if(!inc.length) h+='<tr><td colspan="'+((selI?1:0)+(units.length?10:9))+'" class="empty">'+(Q.incUnit?"אין הזמנות ביחידה הזו":"אין הכנסות")+'</td></tr>';
+    '<th>תקופה</th><th>סכום</th><th>שולם</th><th>יתרת חוב</th><th>נכנס ל…</th><th>פרייליך</th><th>הערה</th><th></th></tr></thead><tbody>';
+  if(!inc.length) h+='<tr><td colspan="'+((selI?1:0)+(units.length?11:10))+'" class="empty">'+(Q.incUnit?"אין הזמנות ביחידה הזו":"אין הכנסות")+'</td></tr>';
   inc.slice().sort(function(x,y){return x.date<y.date?1:-1;}).forEach(function(i){
     var tracked=incomeTracked(i), debt=incomeDebt(i);
     h+='<tr'+(i.excluded?' style="opacity:.55"':'')+'>'+
@@ -7429,6 +7449,7 @@ function moduleIncome(aptId){
       '<td>'+(i.receivedBy==="bank"
         ?'<span class="pill">🏦 בנק זמני</span><div class="hint" data-xl-skip="1">'+esc(incomeSplitLabel(i))+'</div>'
         :esc(incomeDestName(i)||"—"))+'</td>'+
+      '<td>'+incFrlCell(i)+'</td>'+
       noteCell(i.note)+
       '<td class="right" style="white-space:nowrap">'+
         '<button class="btn btn-ghost btn-sm" onclick="openIncomePays(\''+i.id+'\',\''+aptId+'\')" title="תשלומי ההזמנה">💳'+(tracked?' '+incomePays(i).length:'')+'</button>'+
