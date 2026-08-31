@@ -20,6 +20,7 @@ const { pool } = require('../db');
 //  assign             שיבוץ לטיפול, פגישות וסדרות
 //  viewAssign         צפייה במסך השיבוץ ובמשבצות הפנויות, בלי לשבץ בפועל
 //  holds              ניהול רשימת ההשהיה (הוספה, הערה, הסרה)
+//  viewHolds          צפייה ברשימת ההשהיה ובסימוני ההשהיה שברשימת הממתינים
 //  files              צירוף קבצים למטופל
 //  del                מחיקה רכה וביטול סדרות
 //  view               צפייה בנתונים ובלוח השנה
@@ -30,7 +31,7 @@ const R = (label, desc, c) => Object.assign({ label, desc,
   viewDiagnosis: false, editDiagnosis: false, viewNote2: false, editNote2: false,
   editNotes: false, editPref: false, editUrgency: false, editClientType: false,
   assign: false, viewAssign: false, holds: false, files: false,
-  del: false, edit: false, view: true }, c);
+  del: false, edit: false, view: true, viewHolds: true }, c);
 
 const ROLES = {
   admin: R('מנהל ראשי',
@@ -57,10 +58,10 @@ const ROLES = {
   // מדריך — תוכן קליני, שיוך למטפלים ורמת דחיפות. לא עורך פרטים
   // אישיים, לא מוחק ולא קובע פגישות.
   guide: R('מדריך',
-    'מעדכן אבחנה, הערה מקצועית, הערות רגילות, שיוך למטפלים, רמת דחיפות ובן/בת; מצרף קבצים ורואה אילו מטפלים פנויים למטופל. רואה את רשימת ההשהיה אך לא מעביר אליה ולא מסיר ממנה, לא עורך שם או שעות, לא משבץ בפועל ולא מוחק.', {
+    'מעדכן אבחנה, הערה מקצועית, הערות רגילות, שיוך למטפלים, רמת דחיפות ובן/בת; מצרף קבצים ורואה אילו מטפלים פנויים למטופל. אין לו גישה לרשימת ההשהיה, לא עורך שם או שעות, לא משבץ בפועל ולא מוחק.', {
     viewDiagnosis: true, editDiagnosis: true, viewNote2: true, editNote2: true,
     editNotes: true, editPref: true, editUrgency: true, editClientType: true,
-    viewAssign: true, files: true }),
+    viewAssign: true, files: true, viewHolds: false }),
 
   // פנינה — הכל פתוח מלבד ההערה המקצועית וניהול המשתמשים
   pnina: R('פנינה',

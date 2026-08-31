@@ -230,13 +230,15 @@ function renderNav() {
   const nav = document.getElementById('nav');
   nav.innerHTML = VIEWS
     .filter(([k]) => (k !== 'users' || S.me.caps.manageUsers)
-                  && (k !== 'existing' || S.me.caps.assign))
+                  && (k !== 'existing' || S.me.caps.assign)
+                  && (k !== 'holds' || S.me.caps.viewHolds))
     .map(([k, label]) => `<button class="${S.view === k ? 'active' : ''}" onclick="switchView('${k}')">${label}</button>`).join('');
 }
 function switchView(v) { S.view = v; renderNav(); render(); }
 
 function render() {
   const m = document.getElementById('main');
+  if (S.view === 'holds' && !S.me.caps.viewHolds) S.view = 'waiting';
   if (S.view === 'waiting') renderWaiting(m);
   else if (S.view === 'existing') renderExisting(m);
   else if (S.view === 'holds') renderHolds(m);
@@ -267,7 +269,10 @@ function renderWaiting(m) {
   <div class="card">
     <div class="toolbar">
       <div class="field"><label>חיפוש</label><input id="f-q" value="${esc(f.q)}" placeholder="שם / ת.ז / אבחנה / הערות" oninput="S.filters.q=this.value;S.page=1;applyWaitingFilters()"></div>
-      ${TOOLBAR_FILTERS.map(key => {
+      ${TOOLBAR_FILTERS.filter(key => {
+        const c = WAIT_COLS.find(x => x.key === key);
+        return !c || !c.cap || S.me.caps[c.cap];
+      }).map(key => {
         const c = WAIT_COLS.find(x => x.key === key);
         return `<div class="field"><label>${c.label}</label>${colFilterCell(c)}</div>`;
       }).join('')}
@@ -290,6 +295,9 @@ function renderWaiting(m) {
 // העמודות מוגדרות פעם אחת: כותרת, איך מסננים, ואיך שולפים ערך למיון.
 // אלה שמופיעות כמסננים בסרגל העליון (השאר ניתנות למיון בלבד):
 const TOOLBAR_FILTERS = ['status', 'urgency', 'suggested', 'daypart', 'hold', 'hmo', 'community', 'client_type', 'age'];
+// עמודות הטבלה עצמה: בלי אלה שקיימות לצורך סינון בלבד (filterOnly),
+// ובלי אלה שדורשות הרשאה שאין למשתמש (cap)
+const visibleCols = () => WAIT_COLS.filter(c => !c.filterOnly && (!c.cap || S.me.caps[c.cap]));
 const WAIT_COLS = [
   { key: 'name',      label: 'שם',          type: 'text',   sort: p => `${p.last_name} ${p.first_name}`,
     match: (p, v) => `${p.last_name} ${p.first_name} ${p.diagnosis || ''}`.includes(v) },
@@ -319,7 +327,7 @@ const WAIT_COLS = [
   { key: 'files',     label: 'קבצים',       type: 'select', sort: p => p.files_count || 0,
     options: () => [['yes', 'יש קבצים'], ['no', 'אין']],
     match: (p, v) => v.includes(p.files_count > 0 ? 'yes' : 'no') },
-  { key: 'suggested', label: 'מטפל מוצע',   type: 'select', sort: p => (p.preferred_therapists || []).length,
+  { key: 'suggested', label: 'מטפל מוצע',   type: 'select', filterOnly: true, sort: p => (p.preferred_therapists || []).length,
     // t:<id> = משויך למטפל הזה · none = בלי שיוך כלל
     options: () => {
       const t = new Map();
@@ -333,10 +341,10 @@ const WAIT_COLS = [
       return v.some(x => x === 'none' ? !pref.length
                        : pref.some(t => String(t.id) === x.slice(2)));
     } },
-  { key: 'daypart',   label: 'חלק יום',     type: 'select', sort: p => (p.hours || []).length,
+  { key: 'daypart',   label: 'חלק יום',     type: 'select', filterOnly: true, sort: p => (p.hours || []).length,
     options: () => (S.hourParts.parts || []).map(p => [p.key, p.label]),
     match: (p, v) => v.some(k => patientInPart(p, k)) },
-  { key: 'hold',      label: 'השהיה',       type: 'select', sort: p => (p.holds || []).length,
+  { key: 'hold',      label: 'השהיה',       type: 'select', cap: 'viewHolds', sort: p => (p.holds || []).length,
     // מלבד "בהשהיה / לא", אפשר לסנן לפי המטפל שאצלו ההשהיה (t:<id>)
     options: () => {
       const t = new Map();
@@ -497,7 +505,7 @@ function renderWaitingTable() {
   if (!el) return;
   el.innerHTML = `<table><thead>
     <tr>
-      ${WAIT_COLS.map(c => `<th data-col="${c.key}" class="sortable" onclick="sortWaiting('${c.key}')">${c.label}<span class="sort-arrow">${S.sort.key === c.key ? (S.sort.dir === 1 ? ' ▲' : ' ▼') : ''}</span></th>`).join('')}
+      ${visibleCols().map(c => `<th data-col="${c.key}" class="sortable" onclick="sortWaiting('${c.key}')">${c.label}<span class="sort-arrow">${S.sort.key === c.key ? (S.sort.dir === 1 ? ' ▲' : ' ▼') : ''}</span></th>`).join('')}
       <th></th>
     </tr>
   </thead><tbody id="waiting-body"></tbody></table>`;
@@ -518,7 +526,7 @@ function applyWaitingFilters() {
   const rows = S.pageSize === 'all' ? all : all.slice(from, from + size);
 
   if (!all.length) {
-    body.innerHTML = `<tr><td colspan="${WAIT_COLS.length + 1}"><div class="empty">אין מטופלים שתואמים לסינון</div></td></tr>`;
+    body.innerHTML = `<tr><td colspan="${visibleCols().length + 1}"><div class="empty">אין מטופלים שתואמים לסינון</div></td></tr>`;
     if (pager) pager.innerHTML = '';
     return;
   }
@@ -553,7 +561,7 @@ function waitingRowsHtml(rows) {
       <td><span class="badge ${uCls}">${uLbl}</span></td>
       <td style="font-size:13px">${pref}</td>
       <td>${p.files_count ? `<span class="clip" onclick="openFilesModal(${p.id})" title="${p.files_count} קבצים מצורפים">📎 ${p.files_count}</span>` : ''}</td>
-      <td>${(p.holds || []).length ? '<span class="hold-chip" title="' + esc(p.holds.map(h => h.therapist_name).join(', ')) + '">⏸ ' + p.holds.length + '</span>' : ''}</td>
+      ${S.me.caps.viewHolds ? `<td>${(p.holds || []).length ? '<span class="hold-chip" title="' + esc(p.holds.map(h => h.therapist_name).join(', ')) + '">⏸ ' + p.holds.length + '</span>' : ''}</td>` : ''}
       <td class="hint">${esc(p.created_by_name || '')}</td>
       <td><span class="badge ${sCls}">${sLbl}</span></td>
       <td style="white-space:nowrap">

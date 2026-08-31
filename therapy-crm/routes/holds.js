@@ -15,7 +15,7 @@ const LIST_SQL = `
     JOIN therapists t ON t.id = h.therapist_id`;
 
 // כל ההשהיות הפעילות (אפשר לסנן לפי מטפל)
-router.get('/', authenticate, async (req, res) => {
+router.get('/', authenticate, can('viewHolds'), async (req, res) => {
   try {
     const params = [];
     let where = 'h.released = false AND p.deleted = false';

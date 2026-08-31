@@ -8,7 +8,7 @@ const router = express.Router();
 const HMOS = ['מכבי', 'כללית', 'לאומית', 'מאוחדת'];
 const CLIENT_TYPES = ['בן', 'בת', 'הורים', 'מבוגר', 'מבוגרת'];
 // אבחנה והערה מקצועית נשלטות בנפרד — יש תפקידים שרואים אחת ולא את השנייה
-const FIELD_VIEW = { diagnosis: 'viewDiagnosis', notes2: 'viewNote2' };
+const FIELD_VIEW = { diagnosis: 'viewDiagnosis', notes2: 'viewNote2', holds: 'viewHolds' };
 const FIELD_EDIT = { diagnosis: 'editDiagnosis', notes2: 'editNote2' };
 
 // מסיר מהתשובה כל שדה רגיש שאין למשתמש הרשאת צפייה בו
