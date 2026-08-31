@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 לב'";
+var APP_BUILD = "19.08 לג'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -11988,7 +11988,7 @@ function viewAptRentals(aptId){
       noteCell(r.note)+
       '<td class="right" style="white-space:nowrap">'+(can("edit")?
         '<button class="btn btn-ghost btn-sm" onclick="oneTimeCharge(\''+r.id+'\')" title="חיוב חד-פעמי — תיקונים, נזק, ועד בית">➕₪</button>'+
-        '<button class="btn btn-ghost btn-sm" onclick="renewRental(\''+r.id+'\')" title="חידוש חוזה">🔄</button>'+
+        '<button class="btn btn-ghost btn-sm" onclick="renewRental(\''+r.id+'\')" title="חוזה חדש — חידוש לאותו שוכר או דייר חדש">📄</button>'+
         '<button class="btn btn-ghost btn-sm" onclick="editRental(\''+r.id+'\')">✏️</button>'+
         '<button class="btn btn-ghost btn-sm" onclick="softDelete(\'rentals\',\''+r.id+'\',\'למחוק את הדירה?\')">🗑️</button>':'')+'</td></tr>';
   });
@@ -12098,7 +12098,7 @@ function viewRentals(){
         '<td class="'+(d!==null&&d<0?"neg":"")+'">'+(d===null?'—':(d<0?('עברו '+Math.abs(d)+' ימים'):(d+' ימים')))+'</td>'+
         '<td>'+rentalStatusBadge(r)+'</td>'+
         '<td class="right" style="white-space:nowrap">'+(can("edit")?
-          '<button class="btn btn-sm" onclick="renewRental(\''+r.id+'\')" title="חידוש החוזה">🔄 חידוש</button>'+
+          '<button class="btn btn-sm" onclick="renewRental(\''+r.id+'\')" title="חידוש לאותו שוכר או דייר חדש">📄 חוזה חדש</button>'+
           '<button class="btn btn-ghost btn-sm" onclick="editRental(\''+r.id+'\')">✏️</button>':'')+'</td></tr>';
     });
     h+='</tbody></table></div>'+
@@ -12191,7 +12191,7 @@ function viewRentals(){
       noteCell(r.note)+
       '<td class="right" style="white-space:nowrap">'+(can("edit")?
         '<button class="btn btn-ghost btn-sm" onclick="oneTimeCharge(\''+r.id+'\')" title="חיוב חד-פעמי — תיקונים, נזק, ועד בית">➕₪</button>'+
-        '<button class="btn btn-ghost btn-sm" onclick="renewRental(\''+r.id+'\')" title="חידוש חוזה">🔄</button>'+
+        '<button class="btn btn-ghost btn-sm" onclick="renewRental(\''+r.id+'\')" title="חוזה חדש — חידוש לאותו שוכר או דייר חדש">📄</button>'+
         '<button class="btn btn-ghost btn-sm" onclick="editRental(\''+r.id+'\')">✏️</button>'+
         '<button class="btn btn-ghost btn-sm" onclick="softDelete(\'rentals\',\''+r.id+'\',\'למחוק את הדירה?\')">🗑️</button>':'')+'</td></tr>';
   });
@@ -12449,26 +12449,55 @@ function pruneRentalIncome(r){
   toast("הוסרו "+stale.length+" שורות שאינן בתוקף","warn");
 }
 /* חידוש חוזה — התקופה הנוכחית עוברת להיסטוריה והדירה מקבלת תקופה חדשה */
+/* מצב הטופס: false = ממשיכים עם אותו שוכר, true = שוכר חדש.
+   הבחירה רק ממלאת/מרוקנת את השדות — ההיגיון של השמירה זהה. */
+function rwMode(newTenant,r){
+  var bSame=document.getElementById("rw-same"), bNew=document.getElementById("rw-new");
+  if(bSame){ bSame.className="btn btn-sm"+(newTenant?"":" btn-primary"); }
+  if(bNew){ bNew.className="btn btn-sm"+(newTenant?" btn-primary":""); }
+  var t=document.getElementById("rw-tenant"), ph=document.getElementById("rw-phone");
+  if(!t) return;
+  if(newTenant){
+    t.value=""; if(ph) ph.value="";
+    t.placeholder="שם הדייר החדש"; t.focus();
+  } else {
+    t.value=window._RW_OLD?window._RW_OLD.tenant:""; if(ph) ph.value=window._RW_OLD?window._RW_OLD.phone:"";
+    t.placeholder="";
+  }
+}
 function renewRental(id){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var r=byId(DB.rentals,id); if(!r){ toast("הדירה לא נמצאה","err"); return; }
   /* ברירת מחדל: שנה קדימה מסיום החוזה הנוכחי (או מהיום, אם כבר עבר) */
   var base=(r.endDate && r.endDate>=todayISO()) ? r.endDate : todayISO();
   var newStart=addMonthsISO(base,0);
-  openModal({title:"🔄 חידוש חוזה — "+r.name,bodyHtml:
-    '<div class="hint" style="margin-bottom:10px">החוזה הנוכחי'+
-      (r.tenant?' של <b>'+esc(r.tenant)+'</b>':'')+
-      (r.endDate?' (מסתיים '+dateHe(r.endDate)+')':'')+
-      ' יישמר בהיסטוריה של הדירה, והדירה תקבל תקופה חדשה.</div>'+
+  var hasCur=!!(r.tenant||r.startDate||r.endDate);
+  window._RW_OLD={tenant:r.tenant||"",phone:r.phone||""};
+  /* ברירת המחדל: חוזה שכבר הסתיים — כנראה דייר חדש; חוזה חי — חידוש */
+  var defNew=hasCur && r.endDate && r.endDate<todayISO();
+  openModal({title:"📄 חוזה חדש — "+r.name,bodyHtml:
+    (hasCur
+      ? '<div class="card" style="background:#f8fafc;margin-bottom:12px;padding:10px 14px">'+
+          '<div class="muted" style="font-size:12px;margin-bottom:4px">החוזה הנוכחי — יעבור להיסטוריה של הדירה, שום דבר לא נמחק</div>'+
+          '<b>'+esc(r.tenant||"ללא שוכר")+'</b>'+
+          ((r.startDate||r.endDate)?' · '+(r.startDate?dateHe(r.startDate):"—")+' עד '+(r.endDate?dateHe(r.endDate):"—"):'')+
+          (r.rent?' · '+money(r.rent):'')+
+        '</div>'
+      : '')+
+    '<div class="toolbar" style="margin-bottom:12px">'+
+      '<span class="muted" style="align-self:center">החוזה החדש:</span>'+
+      '<button type="button" id="rw-same" class="btn btn-sm'+(defNew?'':' btn-primary')+'" onclick="rwMode(false)">🔄 אותו שוכר</button>'+
+      '<button type="button" id="rw-new" class="btn btn-sm'+(defNew?' btn-primary':'')+'" onclick="rwMode(true)">👤 שוכר חדש</button>'+
+    '</div>'+
     '<div class="form-grid">'+
-      '<div class="field"><label>שוכר</label><input id="rw-tenant" value="'+esc(r.tenant||"")+'">'+
+      '<div class="field"><label>שוכר</label><input id="rw-tenant" value="'+esc(defNew?"":(r.tenant||""))+'"'+(defNew?' placeholder="שם הדייר החדש"':'')+'>'+
         '<div class="hint">ריק = הדירה מתפנה</div></div>'+
-      '<div class="field"><label>טלפון</label><input id="rw-phone" value="'+esc(r.phone||"")+'"></div>'+
+      '<div class="field"><label>טלפון</label><input id="rw-phone" value="'+esc(defNew?"":(r.phone||""))+'"></div>'+
       '<div class="field"><label>תחילת החוזה החדש</label><input id="rw-start" type="date" value="'+esc(newStart)+'"></div>'+
       '<div class="field"><label>סיום</label><input id="rw-end" type="date" value="'+esc(addMonthsISO(newStart,12))+'"></div>'+
       '<div class="field"><label>שכר דירה חודשי (₪)</label><input id="rw-rent" type="number" step="0.01" value="'+esc(String(r.rent||""))+'"></div>'+
     '</div>',
-    saveLabel:"חדש את החוזה",onSave:function(){
+    saveLabel:"התחל חוזה חדש",onSave:function(){
       var sd=val("rw-start"), ed=val("rw-end");
       if(!sd){ toast("יש להזין תאריך התחלה","err"); return false; }
       if(sd && ed && ed<sd){ toast("תאריך הסיום מוקדם מתאריך ההתחלה","err"); return false; }
