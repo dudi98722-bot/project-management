@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 ל'";
+var APP_BUILD = "19.08 לא'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -12273,6 +12273,43 @@ function addRentalUnits(){
       toast("נוצרו "+made+" דירות","ok"); rerender();
     }});
 }
+/* ---------- עריכה ומחיקה של חוזה בהיסטוריה ----------
+   חוזה קודם הוא רישום עבר: מחיקתו מסירה אותו מהתיעוד של הדירה בלבד —
+   שורות הכנסה ותשלומים שנוצרו בתקופתו אינם נמחקים. אחרי כל פעולה
+   חוזרים לחלון עריכת הדירה עם הטבלה המעודכנת. */
+function rentalHistDel(rid,ix){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var r=byId(DB.rentals,rid); if(!r||!r.history||!r.history[ix]) return;
+  var x=r.history[ix];
+  if(!confirm('למחוק את החוזה של "'+(x.tenant||"—")+'" ('+
+    (x.startDate?dateHe(x.startDate):"—")+' – '+(x.endDate?dateHe(x.endDate):"—")+
+    ') מההיסטוריה של הדירה?\n\nשורות הכנסה ותשלומים מהתקופה הזו לא נמחקים.')) return;
+  r.history.splice(ix,1);
+  save(); toast("החוזה נמחק מההיסטוריה","ok");
+  editRental(rid);
+}
+function rentalHistEdit(rid,ix){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var r=byId(DB.rentals,rid); if(!r||!r.history||!r.history[ix]) return;
+  var x=r.history[ix];
+  openModal({title:"✏️ חוזה קודם — "+r.name,bodyHtml:
+    '<div class="form-grid">'+
+      '<div class="field"><label>שוכר</label><input id="rh-tenant" value="'+esc(x.tenant||"")+'"></div>'+
+      '<div class="field"><label>שכ"ד לכל חיוב (₪)</label><input id="rh-rent" type="number" step="0.01" value="'+esc(String(x.rent||""))+'"></div>'+
+      '<div class="field"><label>מתאריך</label><input id="rh-start" type="date" value="'+esc(x.startDate||"")+'"></div>'+
+      '<div class="field"><label>עד תאריך</label><input id="rh-end" type="date" value="'+esc(x.endDate||"")+'"></div>'+
+    '</div>',
+    saveLabel:"שמירה",onSave:function(){
+      var sd=val("rh-start"), ed=val("rh-end");
+      if(sd && ed && ed<sd){ toast("תאריך הסיום מוקדם מתאריך ההתחלה","err"); return false; }
+      x.tenant=val("rh-tenant").trim();
+      x.rent=Number(val("rh-rent"))||0;
+      x.startDate=sd; x.endDate=ed;
+      save(); toast("החוזה עודכן","ok");
+      editRental(rid);       /* חוזרים לחלון הדירה — כבר פתוח מחדש */
+      return false;
+    }});
+}
 function editRental(id){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var r=id?byId(DB.rentals,id):{apartmentId:Q.rentApt||"",name:"",tenant:"",phone:"",
@@ -12314,12 +12351,19 @@ function editRental(id){
       '</div>'+
       '<div id="rn-preview" class="hint"></div>'+
     '</div>'+
-    (hist.length?'<div class="section-title">חוזים קודמים ('+hist.length+')</div>'+
+    (hist.length?'<div class="section-title">חוזים קודמים ('+hist.length+') <span class="hint">אפשר לערוך או למחוק כל אחד</span></div>'+
       '<div class="table-wrap" style="max-height:170px"><table class="tbl"><thead><tr>'+
-      '<th>שוכר</th><th>מתאריך</th><th>עד תאריך</th><th>שכ"ד</th></tr></thead><tbody>'+
-      hist.slice().reverse().map(function(x){
+      '<th>שוכר</th><th>מתאריך</th><th>עד תאריך</th><th>שכ"ד</th><th></th></tr></thead><tbody>'+
+      /* האינדקס המקורי נשמר לפני היפוך הסדר — הכפתורים מצביעים
+         לחוזה הנכון גם כשהחדש מוצג ראשון */
+      hist.map(function(x,ix){ return {x:x,ix:ix}; }).reverse().map(function(e){
+        var x=e.x;
         return '<tr><td>'+esc(x.tenant||"—")+'</td><td>'+(x.startDate?dateHe(x.startDate):'—')+'</td>'+
-          '<td>'+(x.endDate?dateHe(x.endDate):'—')+'</td><td>'+(x.rent?money(x.rent):'—')+'</td></tr>'; }).join("")+
+          '<td>'+(x.endDate?dateHe(x.endDate):'—')+'</td><td>'+(x.rent?money(x.rent):'—')+'</td>'+
+          '<td class="right" style="white-space:nowrap">'+
+            '<button type="button" class="btn btn-ghost btn-sm" title="עריכת החוזה" onclick="rentalHistEdit(\''+r.id+'\','+e.ix+')">✏️</button>'+
+            '<button type="button" class="btn btn-ghost btn-sm" title="מחיקת החוזה מההיסטוריה" onclick="rentalHistDel(\''+r.id+'\','+e.ix+')">🗑️</button>'+
+          '</td></tr>'; }).join("")+
       '</tbody></table></div>':''),
     saveLabel:"שמירה",onSave:function(){
       var aptId=pickId("rn-apt");
