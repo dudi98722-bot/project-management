@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 לא'";
+var APP_BUILD = "19.08 לב'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -13022,10 +13022,12 @@ function incomeBankMatchHtml(){
         (p.left>0.01?("יישאר חוב "+money(p.left)):"ההזמנה תיסגר במלואה")+'</span>'+
     '</div>';
   var shown=IBM.rows.filter(function(r){ return !q || matches(q, moveText(r.m)+" "+moveBankLabel(r.m)); });
+  /* כל העמודות של שורת הבנק — כמו בטבלת התאמת הבנק, שלא יחסר מידע */
   h+='<div class="table-wrap" style="max-height:340px"><table class="tbl"><thead><tr>'+
     '<th style="width:30px"></th><th>תאריך</th><th>שורת הבנק</th><th>בנק</th>'+
+    '<th>סוג</th><th>קטגוריה</th><th>תת קטגוריה</th><th>פרטים</th><th>אסמכתא</th><th>מסמך</th>'+
     '<th class="num">פתוח בשורה</th><th>למה מוצע</th><th class="num">לסגור</th></tr></thead><tbody>';
-  if(!shown.length) h+='<tr><td colspan="7" class="empty">אין שורות שמתאימות לחיפוש</td></tr>';
+  if(!shown.length) h+='<tr><td colspan="13" class="empty">אין שורות שמתאימות לחיפוש</td></tr>';
   shown.forEach(function(r){
     var idx=IBM.rows.indexOf(r);
     var mine=p.plan.filter(function(x){ return x.r===r; })[0];
@@ -13033,9 +13035,14 @@ function incomeBankMatchHtml(){
       '<td class="chk"><input type="checkbox" style="width:auto"'+(r.pick?" checked":"")+
         ' onchange="ibmToggle('+idx+',this.checked)"></td>'+
       '<td>'+dateHe(r.m.date)+'</td>'+
-      '<td><b>'+esc((r.m.name||r.m.description||"—")).slice(0,48)+'</b>'+
-        (r.m.details?'<div class="hint">'+esc(String(r.m.details).slice(0,60))+'</div>':'')+'</td>'+
+      '<td><b>'+esc((r.m.name||r.m.description||"—")).slice(0,48)+'</b></td>'+
       '<td>'+esc(moveBankLabel(r.m))+'</td>'+
+      '<td>'+esc(r.m.kind||"—")+'</td>'+
+      '<td>'+esc(r.m.style||"—")+'</td>'+
+      '<td>'+esc(r.m.subStyle||"—")+'</td>'+
+      '<td class="muted" title="'+esc(r.m.details||"")+'" style="max-width:160px;overflow:hidden;text-overflow:ellipsis">'+esc(r.m.details||"—")+'</td>'+
+      '<td>'+esc(r.m.ref||"—")+'</td>'+
+      '<td>'+((DOC_STATES[moveDocState(r.m)]||{}).t||"—")+'</td>'+
       '<td><b>'+money(r.rem)+'</b></td>'+
       '<td class="muted">'+(r.why.length?esc(r.why.join(" · ")):'<span class="muted">—</span>')+'</td>'+
       '<td>'+(r.pick
