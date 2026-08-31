@@ -12,7 +12,7 @@ const SSTATUS = { scheduled: ['מתוזמנת', 'b-blue'], done: ['בוצעה', 
 function canEditPatient() {
   const c = S.me.caps;
   return !!(c.editPatient || c.editPatientLimited || c.editDiagnosis || c.editNote2
-         || c.editNotes || c.editPref || c.editUrgency);
+         || c.editNotes || c.editPref || c.editUrgency || c.editClientType);
 }
 // אילו שדות פתוחים לעריכה עבורו
 function mayEdit(field) {

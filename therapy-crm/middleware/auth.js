@@ -49,11 +49,13 @@ const ROLES = {
     editNotes: true, editPref: true, editUrgency: true, editClientType: true,
     assign: true, viewAssign: true, holds: true, files: true, del: true, edit: true }),
 
-  // מזכירה כללית — מוסיפה מטופלים ומצרפת קבצים; עורכת שם, שעות והערות
-  // כלליות; לא מוחקת, לא משבצת, ולא רואה אבחנה או הערה מקצועית
+  // מזכירה כללית — מעדכנת שיוך למטפלים, דחיפות, בן/בת, הערות והערה
+  // מקצועית; לא מוסיפה מטופלים, לא נוגעת בשם או בשעות, ולא רואה אבחנה
   secretary: R('מזכירה כללית',
-    'מוסיפה מטופלים, עורכת שם, שעות מתאימות והערות, ומצרפת קבצים. לא משבצת, לא מוחקת, ולא רואה אבחנה או הערה מקצועית.', {
-    addPatient: true, editPatientLimited: true, editNotes: true, files: true }),
+    'מעדכנת שיוך למטפלים, רמת דחיפות, בן/בת, הערות והערה מקצועית, ומצרפת קבצים. לא מוסיפה מטופלים, לא עורכת שם או שעות טיפול, לא משבצת, לא מוחקת ולא רואה אבחנה.', {
+    viewNote2: true, editNote2: true,
+    editNotes: true, editPref: true, editUrgency: true, editClientType: true,
+    files: true }),
 
   // מדריך — תוכן קליני, שיוך למטפלים ורמת דחיפות. לא עורך פרטים
   // אישיים, לא מוחק ולא קובע פגישות.
