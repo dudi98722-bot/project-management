@@ -1382,6 +1382,7 @@ function pageReports() {
     { k: 'inventory', label: 'מלאי מוצרים' },
     { k: 'scribecard', label: 'כרטיס סופר' },
     { k: 'custcard', label: 'כרטיס רוכש' },
+    { k: 'custprint', label: '🖨️ דוח לרוכש (להדפסה)' },
   ];
   renderSubtabs('reports', subs);
   const s = SUB.reports;
@@ -1393,6 +1394,7 @@ function pageReports() {
   if (s === 'customers') return repCustomerBalances();
   if (s === 'monthly') return repMonthly();
   if (s === 'inventory') return repInventory();
+  if (s === 'custprint') return repCustomerDoc();
   if (s === 'scribecard') return repCard('scribe');
   return repCard('customer');
 }
@@ -1903,6 +1905,173 @@ function customerCardHTML(d) {
                    { label: 'פריטה', cls: 'num', render: r => mCell(r.peritah) },
                    { label: 'ס"ה שולם', cls: 'num', render: r => mCell(r.paid_actual) }], d.product_payments)}
     </div>`;
+}
+
+// ---------- דוח מודפס לרוכש ----------
+// מסמך שנמסר ללקוח, ולכן הוא מציג רק את מה שנוגע לו: מה הזמין, כמה שילם
+// וכמה נשאר. עלות הפריטה אינה מופיעה כאן — היא הפסד המרה של העסק ואינה
+// חלק מהחוב שלו (calc.js: buyer_balance_now = לפי התקדמות פחות ששילם).
+const CUSTDOC = { id: '', mode: 'both' };
+const DOC_MODES = [['both', 'הכל'], ['scrolls', 'ס"ת בלבד'], ['products', 'מוצרים בלבד']];
+
+function repCustomerDoc() {
+  $('view').innerHTML += `
+    <div class="card noprint">
+      <div class="row" style="align-items:flex-end">
+        <div style="flex:1;min-width:290px">${pickerHTML('cdSel', 'בחר רוכש', itemsContacts(),
+          CUSTDOC.id, 'הקלד שם…')}</div>
+        <div class="field" style="min-width:270px"><label>מה להדפיס</label>
+          <div class="seg">${DOC_MODES.map(([v, t]) =>
+            `<button data-cdmode="${v}" class="${CUSTDOC.mode === v ? 'on' : ''}">${t}</button>`).join('')}</div>
+        </div>
+        <div class="field"><button class="btn" id="cdPrint" disabled>🖨️ הדפסה</button></div>
+      </div>
+      <div class="mini">המסמך מיועד למסירה ללקוח — הוא כולל רק את ההזמנות שלו, מה ששילם והיתרה.</div>
+    </div>
+    <div id="cdBody"></div>`;
+
+  const draw = async () => {
+    if (!CUSTDOC.id) { $('cdBody').innerHTML = ''; $('cdPrint').disabled = true; return; }
+    $('cdBody').innerHTML = '<div class="card muted">טוען…</div>';
+    try {
+      const d = await Store.reports.customer(CUSTDOC.id);
+      $('cdBody').innerHTML = custDocHTML(d, CUSTDOC.mode);
+      $('cdPrint').disabled = false;
+    } catch (e) {
+      $('cdBody').innerHTML = `<div class="card" style="color:var(--red)">${esc(e.message)}</div>`;
+      $('cdPrint').disabled = true;
+    }
+  };
+  wirePicker('cdSel', itemsContacts(), (v) => { CUSTDOC.id = v; draw(); });
+  document.querySelectorAll('[data-cdmode]').forEach(b => b.onclick = () => {
+    CUSTDOC.mode = b.dataset.cdmode;
+    document.querySelectorAll('[data-cdmode]').forEach(x => x.classList.toggle('on', x === b));
+    draw();
+  });
+  $('cdPrint').onclick = () => window.print();
+  if (CUSTDOC.id) draw();
+}
+
+// טבלה במסמך: מקבלת שורות מוכנות, כדי שכל טבלה תוכל להיראות אחרת
+function docTbl(head, rows, foot) {
+  if (!rows.length) return '<div class="doc-empty">אין רישומים להצגה.</div>';
+  return `<table>
+    <thead><tr>${head.map(h => `<th class="${h[1] || ''}">${esc(h[0])}</th>`).join('')}</tr></thead>
+    <tbody>${rows.join('')}</tbody>
+    ${foot ? `<tfoot><tr>${foot}</tr></tfoot>` : ''}</table>`;
+}
+const docS = (label, val, hi) =>
+  `<div class="doc-s${hi ? ' hi' : ''}"><span>${esc(label)}</span><b>${val}</b></div>`;
+
+function custDocHTML(d, mode) {
+  const t = d.scroll_totals, p = d.product_totals;
+  const showS = mode !== 'products', showP = mode !== 'scrolls';
+  const scrolls = showS ? (d.scrolls || []) : [];
+  const sPays   = showS ? (d.scroll_payments || []) : [];
+  const sales   = showP ? (d.sales || []) : [];
+  const pPays   = showP ? (d.product_payments || []) : [];
+  const M = (v, cur) => money(v, cur);
+
+  // המטבע נשמר לכל ספר בנפרד; סיכום של ספרים בשני מטבעות הוא נומינלי בלבד
+  const mixed = new Set(scrolls.map(x => x.buyer_currency || 'ILS')).size > 1;
+
+  let sum;
+  if (mode === 'scrolls') {
+    sum = docS('סה"כ הספרים', M(t.total_price)) + docS('שולם', M(t.paid))
+        + docS('לתשלום כעת', M(t.balance_now), true) + docS('יתרה כללית', M(t.balance_total));
+  } else if (mode === 'products') {
+    sum = docS('סה"כ הרכישות', M(p.revenue)) + docS('שולם', M(p.paid))
+        + docS('יתרה לתשלום', M(p.balance), true);
+  } else {
+    sum = docS('סה"כ הזמנות', M(N(t.total_price) + N(p.revenue)))
+        + docS('שולם', M(N(t.paid) + N(p.paid)))
+        + docS('לתשלום כעת', M(d.total_due_now), true)
+        + docS('יתרה כללית', M(d.total_due_overall));
+  }
+  const title = mode === 'scrolls' ? 'ריכוז ספרים'
+              : (mode === 'products' ? 'ריכוז מוצרים' : 'כרטיס לקוח');
+
+  const sRows = scrolls.map(r => `<tr>
+    <td>${r.sku ? esc(r.sku) : '#' + r.id}</td>
+    <td class="w">${esc(r.product_name || '—')}</td>
+    <td>${r.pages_written}/${r.product_pages} <span class="muted">(${r.progress_pct}%)</span></td>
+    <td class="n">${M(r.buyer_total, r.buyer_currency)}</td>
+    <td class="n">${M(r.buyer_due_progress, r.buyer_currency)}</td>
+    <td class="n">${M(r.customer_paid, r.buyer_currency)}</td>
+    <td class="n"><b>${M(r.buyer_balance_now, r.buyer_currency)}</b></td>
+    <td class="n">${M(r.buyer_balance_total, r.buyer_currency)}</td></tr>`);
+  const sFoot = `<td colspan="3">סה"כ ${scrolls.length} ספרים</td>
+    <td class="n">${M(sumBy(scrolls, 'buyer_total'))}</td>
+    <td class="n">${M(sumBy(scrolls, 'buyer_due_progress'))}</td>
+    <td class="n">${M(sumBy(scrolls, 'customer_paid'))}</td>
+    <td class="n">${M(sumBy(scrolls, 'buyer_balance_now'))}</td>
+    <td class="n">${M(sumBy(scrolls, 'buyer_balance_total'))}</td>`;
+
+  const spRows = sPays.map(r => `<tr>
+    <td>${dt(r.date)}</td>
+    <td class="n">${N(r.amount_ils) ? M(r.amount_ils) : ''}</td>
+    <td class="n">${N(r.amount_usd) ? M(r.amount_usd, 'USD') : ''}</td>
+    <td class="n">${N(r.rate) ? N(r.rate).toLocaleString('he-IL') : ''}</td>
+    <td class="n"><b>${M(r.paid_actual)}</b></td></tr>`);
+  const spFoot = `<td colspan="4">סה"כ שולם</td><td class="n">${M(sumBy(sPays, 'paid_actual'))}</td>`;
+
+  const pRows = sales.map(r => `<tr>
+    <td>${dt(r.date)}</td>
+    <td class="w">${esc(r.product_name || '—')}</td>
+    <td class="n">${N(r.quantity).toLocaleString('he-IL')}</td>
+    <td class="n">${M(r.price_per_unit)}</td>
+    <td class="n"><b>${M(r.total_sale)}</b></td></tr>`);
+  const pFoot = `<td colspan="2">סה"כ ${sales.length} רישומים</td>
+    <td class="n">${N(sumBy(sales, 'quantity')).toLocaleString('he-IL')}</td>
+    <td></td><td class="n">${M(sumBy(sales, 'total_sale'))}</td>`;
+
+  const ppRows = pPays.map(r => `<tr>
+    <td>${dt(r.date)}</td>
+    <td class="n">${N(r.amount_ils) ? M(r.amount_ils) : ''}</td>
+    <td class="n">${N(r.amount_usd) ? M(r.amount_usd, 'USD') : ''}</td>
+    <td class="n"><b>${M(r.paid_actual)}</b></td></tr>`);
+  const ppFoot = `<td colspan="3">סה"כ שולם</td><td class="n">${M(sumBy(pPays, 'paid_actual'))}</td>`;
+
+  return `<div class="doc">
+    <div class="doc-head">
+      <div class="doc-brand">
+        <div class="doc-logo">📜</div>
+        <div><div class="doc-biz">שטרנקוקר</div>
+             <div class="doc-tag">רכישת ומכירת מוצרי סת"ם</div></div>
+      </div>
+      <div class="doc-meta">
+        <div class="doc-title">${esc(title)}</div>
+        <div>הופק בתאריך ${dt(today())}</div>
+      </div>
+    </div>
+
+    <div class="doc-to">
+      <div>לכבוד<br><b>${esc(d.contact.name || '')}</b></div>
+      ${d.contact.phone ? `<div>טלפון<br><b style="font-size:14px">${esc(d.contact.phone)}</b></div>` : ''}
+    </div>
+
+    <div class="doc-sum">${sum}</div>
+    ${mixed ? '<div class="doc-note">שים לב: בכרטיס זה יש ספרים בשני מטבעות. שורת הסיכום מציגה סכום נומינלי.</div>' : ''}
+
+    ${showS ? `<div class="doc-sec">ספרים</div>
+      ${docTbl([['מק"ט'], ['פריט'], ['התקדמות'], ['מחיר מוסכם', 'n'], ['לתשלום לפי התקדמות', 'n'],
+                ['שולם', 'n'], ['לתשלום כעת', 'n'], ['יתרה כללית', 'n']], sRows, scrolls.length ? sFoot : '')}
+      <div class="doc-sec">תשלומים שהתקבלו (ספרים)</div>
+      ${docTbl([['תאריך'], ['שקלים', 'n'], ['דולרים', 'n'], ['שער', 'n'], ['נזקף לחשבון', 'n']],
+               spRows, sPays.length ? spFoot : '')}` : ''}
+
+    ${showP ? `<div class="doc-sec">מוצרים</div>
+      ${docTbl([['תאריך'], ['פריט'], ['כמות', 'n'], ["מחיר ליח'", 'n'], ['סה"כ', 'n']],
+               pRows, sales.length ? pFoot : '')}
+      <div class="doc-sec">תשלומים שהתקבלו (מוצרים)</div>
+      ${docTbl([['תאריך'], ['שקלים', 'n'], ['דולרים', 'n'], ['נזקף לחשבון', 'n']],
+               ppRows, pPays.length ? ppFoot : '')}` : ''}
+
+    <div class="doc-foot">
+      <div>"לתשלום כעת" מחושב לפי התקדמות הכתיבה בפועל. "יתרה כללית" היא היתרה על ההזמנה המלאה.</div>
+      <div>שטרנקוקר</div>
+    </div>
+  </div>`;
 }
 
 // ============ הגדרות ============
