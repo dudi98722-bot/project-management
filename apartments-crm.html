@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 לה'";
+var APP_BUILD = "19.08 לו'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -1207,10 +1207,20 @@ function toggleIncFrl(id){
   save(); rerender();
   toast(i.noFreilich?'"'+i.description+'" לא תופיע בדוח לפרייליך':'"'+i.description+'" תופיע בדוח לפרייליך',"ok");
 }
+/* בדוח אפשר לבקש לספור גם שורות "לא לחישוב". זו בחירת תצוגה בלבד —
+   הסימון על השורה לא משתנה, ומחוץ לדוחות ההתנהגות נשארת כשהייתה. */
+function inclExcluded(){ return !!state.params.repInclExcl; }
+function toggleInclExcl(){ state.params.repInclExcl=!state.params.repInclExcl; rerender(); }
 /* הכנסות שנספרות בסיכומים — בלי אלה שסומנו "לא לחישוב".
    השורה עצמה נשארת בפירוט; היא רק לא נכנסת לאף סכום. */
 function apIncomeCalc(aptId){
-  return apIncome(aptId).filter(function(i){ return !i.excluded; });
+  var list=apIncome(aptId);
+  if(REPORT_SCOPE && inclExcluded()) return list;
+  return list.filter(function(i){ return !i.excluded; });
+}
+/* כמה שורות "לא לחישוב" יש בדוח הנוכחי — לחיווי בסרגל */
+function excludedInReportCount(aptId){
+  return apIncome(aptId).filter(function(i){ return i.excluded; }).length;
 }
 /* ---------- תשלומי אורחים על הזמנה (הכנסה עם מעקב חוב) ----------
    הכנסה רגילה: הסכום הוא מה שנכנס. הזמנה: הסכום הוא המחיר המלא,
@@ -10041,7 +10051,8 @@ function moduleApartmentReportsInner(aptId){
 function reportShowAllBar(aptId){
   var nRep=hiddenFromReportCount(aptId), nFre=hiddenFromFreilichCount(aptId);
   var mode=reportMode();
-  if(!nRep && !nFre && mode==="regular") return "";
+  var nExcl=excludedInReportCount(aptId);
+  if(!nRep && !nFre && !nExcl && mode==="regular" && !inclExcluded()) return "";
   var note = mode==="all" ? ("מוצגות כל השורות — כולל "+(nRep+nFre)+" שמסומנות להסתרה")
     : mode==="freilich" ? ("מוסתרות "+(nRep+nFre)+" שורות: "+nRep+" מכל הדוחות + "+nFre+" מדוח פרייליך")
     : (nRep ? (nRep+" שורות מוסתרות מהדוחות") : "כל השורות מוצגות");
@@ -10052,8 +10063,19 @@ function reportShowAllBar(aptId){
       return '<button class="btn btn-sm'+(mode===k?" btn-primary":"")+'" onclick="setReportMode(\''+k+'\')">'+
         REPORT_MODES[k]+'</button>';
     }).join("")+
+    /* "לא לחישוב" — שורות שמוצגות בפירוט אך אינן נספרות. כאן אפשר
+       לבקש שייספרו בדוח הזה, בלי לגעת בסימון שעל השורה. */
+    (nExcl||inclExcluded()
+      ? '<span style="width:10px"></span>'+
+        '<button class="btn btn-sm'+(inclExcluded()?" btn-primary":"")+'" '+
+          'title="שורות שסומנו \'לא לחישוב\' מוצגות בפירוט אך אינן נספרות. כאן אפשר לכלול אותן בסכומי הדוח — הסימון עצמו לא משתנה" '+
+          'onclick="toggleInclExcl()">'+
+          (inclExcluded()?'✔ סופר גם "לא לחישוב"':'לספור גם "לא לחישוב"')+
+          (nExcl?' ('+nExcl+')':'')+'</button>'
+      : '')+
     '<div class="sp"></div>'+
-    '<span class="'+(mode==="regular"?"muted":"badge badge-warn")+'">'+esc(note)+'</span></div>';
+    '<span class="'+(mode==="regular"&&!inclExcluded()?"muted":"badge badge-warn")+'">'+esc(note)+
+      (inclExcluded()&&nExcl?' · '+(nExcl===1?'שורת "לא לחישוב" אחת נספרת':nExcl+' שורות "לא לחישוב" נספרות')+' בדוח':'')+'</span></div>';
 }
 function setReportMode(m){ state.params.repMode=m; rerender(); }
 
