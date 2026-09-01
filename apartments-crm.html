@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 לח'";
+var APP_BUILD = "19.08 לט'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -1153,8 +1153,12 @@ function repFilter(list){
   var mode=reportMode();
   if(mode==="all") return list;
   var out=list.filter(function(x){
+    /* דוח פרייליך הוא קהל נפרד עם רשימת החרגה משלו: מוצג בו הכל,
+       למעט מה שסומן במפורש "לא בדוח לפרייליך". הסימון "לא להציג
+       בדוחות" שייך לדוחות הרגילים ואינו מסתיר כאן — קודם הוא כן
+       הסתיר, וכך שורות שהיו אמורות להופיע בפרייליך נעלמו ממנו. */
+    if(mode==="freilich") return !x.noFreilich;
     if(x.noReport) return false;
-    if(mode==="freilich" && x.noFreilich) return false;
     return true;
   });
   return out.length===list.length ? list : out;   // בלי העתקה מיותרת
@@ -1170,10 +1174,12 @@ function hiddenFromReportCount(aptId){
   apIncomeRaw(aptId).forEach(function(i){ if(i.noReport) n++; });
   return n;
 }
+/* כמה שורות מוסתרות מדוח פרייליך — כל מה שסומן "לא בדוח לפרייליך",
+   בלי קשר לסימון "לא להציג בדוחות" שאינו חל שם. */
 function hiddenFromFreilichCount(aptId){
   var n=0;
-  apLeafExpensesRaw(aptId).forEach(function(e){ if(!e.noReport && e.noFreilich) n++; });
-  apIncomeRaw(aptId).forEach(function(i){ if(!i.noReport && i.noFreilich) n++; });
+  apLeafExpensesRaw(aptId).forEach(function(e){ if(e.noFreilich) n++; });
+  apIncomeRaw(aptId).forEach(function(i){ if(i.noFreilich) n++; });
   return n;
 }
 function apExpenses(aptId){ if(IX) return IX.expByApt[aptId]||IX_EMPTY;
@@ -1194,7 +1200,8 @@ function apIncome(aptId){ return repFilter(apIncomeRaw(aptId)); }
    בלחיצה, בלי לפתוח את טופס העריכה. שורה שסומנה "לא להציג בדוחות"
    ממילא לא מופיעה באף דוח — ואז אין מה להחליף. */
 function incFrlCell(i){
-  if(i.noReport) return '<span class="badge badge-muted badge-unit" title="לא מוצגת באף דוח">לא בדוחות</span>';
+  /* גם שורה שסומנה "לא להציג בדוחות" מופיעה בדוח פרייליך, ולכן
+     העמודה מציגה תמיד את מצב הפרייליך שלה בפני עצמו. */
   var badge=i.noFreilich
     ? '<span class="badge badge-danger badge-unit">🚫 לא</span>'
     : '<span class="badge badge-ok badge-unit">✔ בדוח</span>';
@@ -10080,7 +10087,10 @@ function reportShowAllBar(aptId){
   var nExcl=excludedInReportCount(aptId);
   if(!nRep && !nFre && !nExcl && mode==="regular" && !inclExcluded()) return "";
   var note = mode==="all" ? ("מוצגות כל השורות — כולל "+(nRep+nFre)+" שמסומנות להסתרה")
-    : mode==="freilich" ? ("מוסתרות "+(nRep+nFre)+" שורות: "+nRep+" מכל הדוחות + "+nFre+" מדוח פרייליך")
+    : mode==="freilich"
+      ? (nFre ? ("מוצג הכל, למעט "+nFre+' שורות שסומנו "לא בדוח לפרייליך"'
+                 +(nRep?' · שורות שסומנו "לא להציג בדוחות" כן מוצגות כאן':''))
+              : 'מוצג הכל — אין שורה שסומנה "לא בדוח לפרייליך"')
     : (nRep ? (nRep+" שורות מוסתרות מהדוחות") : "כל השורות מוצגות");
   return '<div class="toolbar no-print" style="background:'+(mode==="regular"?"#f8fafc":"#fff7ed")+
     ';border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:10px">'+
