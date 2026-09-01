@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 לד'";
+var APP_BUILD = "19.08 לה'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -11986,7 +11986,7 @@ function viewAptRentals(aptId){
       '<td>'+(d===null?'<span class="muted">—</span>':(d<0?'<span class="neg">עברו '+Math.abs(d)+'</span>':d))+'</td>'+
       '<td>'+(r.rent?money(r.rent):'<span class="muted">—</span>')+
         (r.autoIncome?' <span class="badge badge-mgmt badge-unit" title="חיוב '+esc(RENT_EVERY[rentEvery(r)])+' אוטומטי">🔁 '+esc(RENT_EVERY[rentEvery(r)])+'</span>':'')+'</td>'+
-      '<td>'+rentalCollectionCell(r)+'</td>'+
+      '<td>'+rentalCurrentCell(r)+'</td>'+
       '<td>'+rentalStatusBadge(r)+'</td>'+
       noteCell(r.note)+
       '<td class="right" style="white-space:nowrap">'+(can("edit")?
@@ -12008,7 +12008,7 @@ function viewAptRentals(aptId){
           '<td>'+(x.endDate?dateHe(x.endDate):'<span class="muted">—</span>')+'</td>'+
           '<td><span class="muted">—</span></td>'+
           '<td>'+(x.rent?money(x.rent):'<span class="muted">—</span>')+'</td>'+
-          '<td><span class="muted">—</span></td>'+
+          '<td>'+contractCollectionCell(rentalPeriodStats(r,x.startDate,x.endDate))+'</td>'+
           '<td><span class="badge badge-muted badge-unit">הסתיים</span></td>'+
           '<td></td>'+
           '<td class="right" style="white-space:nowrap">'+(can("edit")
@@ -12023,6 +12023,49 @@ function viewAptRentals(aptId){
     'שורות ההכנסה החודשיות נוצרות אוטומטית ומופיעות בלשונית <b>הכנסות</b> של הפרוייקט. '+
     '<b>➕₪</b> מוסיף חיוב חד-פעמי לשוכר (תיקונים, נזק, ועד בית) — שורת הכנסה רגילה שאינה חוזרת. '+
     'תצוגה מרוכזת של כל הפרויקטים יחד — בלשונית <b>🔑 שכירויות</b> שבתפריט הראשי.</div>';
+  return h;
+}
+/* ---------- גבייה לפי תקופת חוזה ----------
+   כל חיוב של הדירה משויך לחוזה לפי התקופה שהוא מייצג (ולא לפי מועד
+   התשלום): שורת שכ"ד יודעת את התקופה שלה, וחיוב חד-פעמי משויך לפי
+   תאריכו. חוזה בלי תאריך סיום סופר גם קדימה — כך חיוב שנרשם באיחור
+   נופל על החוזה הנוכחי ולא נעלם. */
+function rentalPeriodStats(r,start,end){
+  var billed=0, paid=0, open=0, n=0;
+  rentalIncome(r.id).forEach(function(i){
+    var d=i.startDate||i.date;
+    if(!d) return;
+    if(start && d<start) return;
+    if(end && d>end) return;
+    n++;
+    if(i.excluded) return;
+    var amt=Number(i.amount)||0, p=incomePaid(i);
+    billed+=amt; paid+=p;
+    if(amt-p>0.01) open++;
+  });
+  return {n:n, billed:round2(billed), paid:round2(paid),
+    debt:round2(billed-paid), openRows:open};
+}
+/* התא עצמו — עונה על שתי השאלות: כמה שולם, והאם נסגר */
+function contractCollectionCell(st){
+  if(!st.n) return '<span class="muted">אין חיובים</span>';
+  if(st.debt<=0.01) return '<span class="pos">✔ שולם במלואו</span>'+
+    '<div class="hint">'+st.n+' חיובים · '+money(st.paid)+'</div>';
+  return '<span class="neg">'+money(st.paid)+' מתוך '+money(st.billed)+'</span>'+
+    '<div class="hint">נותר '+money(st.debt)+' · '+st.openRows+' מתוך '+st.n+' פתוחות</div>';
+}
+/* השורה הראשית היא החוזה הנוכחי — ולכן מציגה את הגבייה שלו, ומתחת
+   שורת סיכום של כל החוזים כדי ששום כסף לא ייעלם מהעין. */
+function rentalCurrentCell(r){
+  if(!r.startDate) return rentalCollectionCell(r);
+  var cur=rentalPeriodStats(r,r.startDate,"");
+  var all=rentalIncomeStats(r);
+  var h=contractCollectionCell(cur);
+  if((r.history||[]).length){
+    h+='<div class="hint" title="כולל את כל החוזים הקודמים של הדירה">כל החוזים: '+
+      money(all.paid)+' מתוך '+money(all.billed)+
+      (all.debt>0.01?' · נותר '+money(all.debt):'')+'</div>';
+  }
   return h;
 }
 function rentalCollectionCell(r){
@@ -12213,7 +12256,7 @@ function viewRentals(){
       '<td>'+(r.startDate?dateHe(r.startDate):'<span class="muted">—</span>')+'</td>'+
       '<td>'+(r.rent?money(r.rent):'<span class="muted">—</span>')+
         (r.autoIncome?' <span class="badge badge-mgmt badge-unit" title="חיוב '+esc(RENT_EVERY[rentEvery(r)])+' אוטומטי">🔁 '+esc(RENT_EVERY[rentEvery(r)])+'</span>':'')+'</td>'+
-      '<td>'+rentalCollectionCell(r)+'</td>'+
+      '<td>'+rentalCurrentCell(r)+'</td>'+
       '<td>'+rentalStatusBadge(r)+'</td>'+
       noteCell(r.note)+
       '<td class="right" style="white-space:nowrap">'+(can("edit")?
