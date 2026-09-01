@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 לז'";
+var APP_BUILD = "19.08 לח'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -383,7 +383,9 @@ async function api(payload){
 }
 var SYNC="idle";
 function syncBadgeHtml(){
-  var m={idle:["⏳","מתחבר…"],saving:["🔄","שומר לשיטס…"],ok:["✅","מסונכרן לשיטס"],
+  /* בלי שם המנגנון: החיווי הזה גלוי לכל משתמש, ואין סיבה שידע איפה
+     ואיך הנתונים נשמרים. */
+  var m={idle:["⏳","מתחבר…"],saving:["🔄","שומר…"],ok:["✅","מסונכרן"],
          err:["⚠️","שגיאת סנכרון — מנסה שוב"],local:["💾","מקומי בלבד — לא מחובר"]};
   var x=m[SYNC]||m.idle;
   var clk=can("settings")?' style="cursor:pointer" title="לחץ להגדרות סנכרון" onclick="go(\'settings\',{stab:\'sheets\'})"':'';
@@ -3241,23 +3243,28 @@ function viewSettings(){ return moduleSettings(); }
 function viewImport(){ return moduleImport(); }
 function viewRecycle(){ return moduleRecycle(); }
 
-/* ---- סנכרון גוגל שיטס (best-effort) ---- */
+/* ---- סנכרון מול השרת (best-effort) ---- */
 function pushToSheets(){ serverSave(); }
+/* משיכה יזומה מחליפה את כל מה שבמכשיר בגרסת השרת. זו פעולה הרסנית
+   בלחיצה אחת, ולכן היא נעולה למנהל ודורשת אישור מפורש — גם כשאין
+   עבודה מקומית פתוחה. */
 async function pullFromSheets(){
-  if(!sheetsUrl()){ toast("לא הוגדר קישור לשיט","err"); return; }
-  if(SAVEQ.inflight){ toast("שמירה לשרת בעיצומה — המתן רגע ונסה שוב","warn"); return; }
-  if(hasUnsaved()||hasDirtyMark()){
-    if(!confirm("יש שינויים מקומיים שטרם נשמרו לשרת.\n\nטעינה מהשיט תדרוס אותם לצמיתות. להמשיך בכל זאת?")) return;
-  }
+  if(!CU || CU.role!=="admin"){ toast("אין הרשאה","err"); return; }
+  if(!sheetsUrl()){ toast("אין חיבור לשרת","err"); return; }
+  if(SAVEQ.inflight){ toast("שמירה בעיצומה — המתן רגע ונסה שוב","warn"); return; }
+  var dirty=hasUnsaved()||hasDirtyMark();
+  if(!confirm("טעינה מהשרת מחליפה את כל הנתונים שבמכשיר הזה בגרסה שבשרת."+
+    (dirty?"\n\n⚠️ יש כאן שינויים שטרם נשמרו — הם יימחקו לצמיתות.":"")+
+    "\n\nלהמשיך?")) return;
   if(SAVEQ.timer){ clearTimeout(SAVEQ.timer); SAVEQ.timer=null; }
   SAVEQ.dirty=false; SAVEQ.fails=0; clearDirtyMark();
   var res=await serverLoad();
-  if(res.error){ toast("שגיאת חיבור לשיט","err"); return; }
+  if(res.error){ toast("שגיאת חיבור לשרת","err"); return; }
   if(res.data && Array.isArray(res.data.apartments)){
     DB=normalizeDB(res.data); setSyncBase(res.data); saveLocal(); UNDO.length=0;   // סטאק ישן = בסיס לא תקף אחרי משיכה
-    toast("נטען מהשיט","ok"); rerender();
+    toast("הנתונים נטענו מהשרת","ok"); rerender();
   }
-  else toast("השיט ריק","warn");
+  else toast("אין נתונים בשרת","warn");
 }
 
 /* ---------- רענון אוטומטי משינויים של משתמשים אחרים ----------
@@ -10946,7 +10953,7 @@ async function runSalvage(){
 }
 function moduleSettings(){
   var tab=state.params.stab||"partners";
-  var tabs=[["partners","ספר שותפים"],["cats","קטגוריות"],["accounts","חשבונות"],["methods","אמצעי תשלום"],["users","משתמשים"],["sheets","גוגל שיטס"],["backup","גיבוי"]];
+  var tabs=[["partners","ספר שותפים"],["cats","קטגוריות"],["accounts","חשבונות"],["methods","אמצעי תשלום"],["users","משתמשים"],["sheets","סנכרון"],["backup","גיבוי"]];
   var h='<h2>הגדרות</h2><div class="tabs">'+tabs.map(function(t){return '<div class="tab'+(tab===t[0]?" active":"")+'" onclick="go(\'settings\',{stab:\''+t[0]+'\'})">'+t[1]+'</div>';}).join("")+'</div>';
   if(tab==="partners"){
     h+='<div class="toolbar"><button class="btn btn-primary btn-sm" onclick="editPartner(null)">➕ שותף</button>'+
@@ -11043,16 +11050,17 @@ function moduleSettings(){
       'שכחת קוד של מישהו? ערוך אותו וקבע לו קוד חדש.</div>';
   } else if(tab==="sheets"){
     var sm={ok:"✅ מסונכרן",saving:"🔄 שומר…",err:"⚠️ שגיאת סנכרון",local:"💾 מקומי בלבד",idle:"⏳ ממתין"};
-    h+='<div class="card"><h3>חיבור לגוגל שיטס</h3>'+
+    h+='<div class="card"><h3>סנכרון הנתונים</h3>'+
       '<div class="stat-grid" style="margin-bottom:12px">'+
         stat("מצב הסנכרון",(sm[SYNC]||sm.idle))+
         stat("אימות","נאכף בשרת ✅")+
       '</div>'+
       '<div class="toolbar">'+
       '<button class="btn btn-sm" onclick="markDirty();pushToSheets();toast(\'נשלח — עקוב אחרי חיווי הסנכרון למעלה\',\'ok\')">⬆️ שלח עכשיו</button>'+
-      '<button class="btn btn-sm" onclick="pullFromSheets()">⬇️ טען מהשיט</button></div>'+
-      '<div class="hint">כל מכשיר מתחבר אוטומטית — אין מה להגדיר. כל שינוי נשמר בגיליון מיד.<br>'+
-      'השרת דורש קוד כניסה תקף בכל בקשה, כך שגם מי שמגיע לכתובת ה-Apps Script לא מקבל שום נתון בלי קוד.</div></div>';
+      '<button class="btn btn-danger btn-sm" onclick="pullFromSheets()">⬇️ טען מהשרת (דורס מקומי)</button></div>'+
+      '<div class="hint">כל מכשיר מתחבר אוטומטית — אין מה להגדיר, וכל שינוי נשמר מיד.<br>'+
+      'השרת דורש קוד כניסה תקף בכל בקשה, וכל משתמש מקבל אך ורק את הנתונים שהתפקיד שלו מתיר.<br>'+
+      '<b>"טען מהשרת"</b> מחליף את כל הנתונים שבמכשיר הזה בגרסת השרת — להשתמש רק כשמשהו נראה לא תקין.</div></div>';
   } else if(tab==="backup"){
     if(CU&&CU.role==="admin"){
       h+='<div class="card" style="border:1px solid var(--warn);margin-bottom:12px"><h3>🩹 שחזור טבלאות שנמחקו</h3>'+
