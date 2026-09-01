@@ -362,7 +362,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 מ'";
+var APP_BUILD = "19.08 מא'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -12137,62 +12137,91 @@ function viewAptRentals(aptId){
     (debt>0.01?stat("חוב שכ\"ד פתוח",money(debt)):"")+
   '</div>';
 
-  h+='<div class="table-wrap"><table class="tbl"><thead><tr>'+
-    '<th>דירה</th><th>שוכר</th><th>טלפון</th><th>תחילת חוזה</th><th>סיום חוזה</th>'+
-    '<th>נותרו</th><th>שכ"ד</th><th>גבייה</th><th>סטטוס</th><th>הערה</th><th></th>'+
-    '</tr></thead><tbody>';
+  /* ---------- כרטיס לכל דירה ----------
+     קודם הכל ישב בטבלה שטוחה אחת: החוזה הנוכחי של דירה אחת, אחריו
+     החוזים הקודמים שלה, ומיד אחריהם דירה אחרת — בלי שום גבול ברור
+     ביניהן. כאן לכל דירה כרטיס משלה: שם הדירה ככותרת, סיכום הכסף
+     שלה, ומתחת החוזים שלה בלבד. */
   rs.slice().sort(function(x,y){ return String(x.name).localeCompare(String(y.name),"he"); })
     .forEach(function(r){
     var d=daysUntil(r.endDate), st=rentalStatus(r);
-    h+='<tr'+(st==="ended"?' style="background:#fef2f2"':st==="ending"?' style="background:#fffbeb"':'')+'>'+
-      '<td><b>'+esc(r.name)+'</b>'+((r.history||[]).length
-        ? ' <span class="pill" style="cursor:pointer" title="הצג/הסתר את החוזים הקודמים" '+
-          'onclick="rentToggleOpen(\''+r.id+'\')">'+r.history.length+' חוזים '+(RENT_OPEN[r.id]?'▲':'▼')+'</span>'
-        : '')+'</td>'+
-      '<td>'+esc(r.tenant||'—')+'</td>'+
-      '<td>'+(r.phone?'<a href="tel:'+esc(r.phone)+'">'+esc(r.phone)+'</a>':'<span class="muted">—</span>')+'</td>'+
-      '<td>'+(r.startDate?dateHe(r.startDate):'<span class="muted">—</span>')+'</td>'+
-      '<td>'+(r.endDate?dateHe(r.endDate):'<span class="muted">—</span>')+'</td>'+
-      '<td>'+(d===null?'<span class="muted">—</span>':(d<0?'<span class="neg">עברו '+Math.abs(d)+'</span>':d))+'</td>'+
-      '<td>'+(r.rent?money(r.rent):'<span class="muted">—</span>')+
-        (r.autoIncome?' <span class="badge badge-mgmt badge-unit" title="חיוב '+esc(RENT_EVERY[rentEvery(r)])+' אוטומטי">🔁 '+esc(RENT_EVERY[rentEvery(r)])+'</span>':'')+'</td>'+
-      '<td>'+rentalCurrentCell(r)+'</td>'+
-      '<td>'+rentalStatusBadge(r)+'</td>'+
-      noteCell(r.note)+
-      '<td class="right" style="white-space:nowrap">'+(can("edit")?
-        '<button class="btn btn-ghost btn-sm" onclick="oneTimeCharge(\''+r.id+'\')" title="חיוב חד-פעמי — תיקונים, נזק, ועד בית">➕₪</button>'+
-        '<button class="btn btn-ghost btn-sm" onclick="renewRental(\''+r.id+'\')" title="חוזה חדש — חידוש לאותו שוכר או דייר חדש">📄</button>'+
-        '<button class="btn btn-ghost btn-sm" onclick="editRental(\''+r.id+'\')">✏️</button>'+
-        '<button class="btn btn-ghost btn-sm" onclick="softDelete(\'rentals\',\''+r.id+'\',\'למחוק את הדירה?\')">🗑️</button>':'')+'</td></tr>';
-    /* ---------- החוזים הקודמים — שורה לכל חוזה, בתוך הטבלה ----------
-       השורה הראשית היא החוזה הנוכחי; אלה שמתחתיה הם העבר של אותה
-       דירה, מהחדש לישן, עם עריכה ומחיקה ישירות מכאן. */
-    if(RENT_OPEN[r.id] && (r.history||[]).length){
-      r.history.map(function(x,ix){ return {x:x,ix:ix}; }).reverse().forEach(function(e){
+    var hist=(r.history||[]);
+    var all=rentalIncomeStats(r);
+    var edge=st==="ended"?"#ef4444":st==="ending"?"#f59e0b":st==="free"?"#94a3b8":"#10b981";
+    h+='<div class="card" style="margin-bottom:12px;border-inline-start:4px solid '+edge+'">'+
+      '<div class="toolbar" style="margin-bottom:10px">'+
+        '<h3 style="margin:0">'+esc(r.name)+'</h3>'+
+        rentalStatusBadge(r)+
+        (r.autoIncome?' <span class="badge badge-mgmt badge-unit" title="חיוב אוטומטי">🔁 '+esc(RENT_EVERY[rentEvery(r)])+'</span>':'')+
+        '<div class="sp"></div>'+
+        (can("edit")
+          ? '<button class="btn btn-sm" onclick="renewRental(\''+r.id+'\')" title="חידוש לאותו שוכר או דייר חדש">📄 חוזה חדש</button>'+
+            '<button class="btn btn-ghost btn-sm" onclick="oneTimeCharge(\''+r.id+'\')" title="חיוב חד-פעמי — תיקונים, נזק, ועד בית">➕₪</button>'+
+            '<button class="btn btn-ghost btn-sm" onclick="editRental(\''+r.id+'\')" title="עריכת הדירה">✏️</button>'+
+            '<button class="btn btn-ghost btn-sm" onclick="softDelete(\'rentals\',\''+r.id+'\',\'למחוק את הדירה?\')" title="מחיקת הדירה">🗑️</button>'
+          : '')+
+      '</div>'+
+      /* סיכום הכסף של הדירה — על פני כל החוזים שהיו בה */
+      '<div class="stat-grid" style="margin-bottom:10px">'+
+        stat("שוכר נוכחי",(r.tenant?esc(r.tenant):'<span class="muted">פנויה</span>')+
+          (r.phone?'<div class="hint"><a href="tel:'+esc(r.phone)+'">'+esc(r.phone)+'</a></div>':''))+
+        stat("שכ\"ד לחיוב",r.rent?money(r.rent):'<span class="muted">—</span>')+
+        stat("חוזים",(hist.length+1)+((r.startDate||r.tenant)?'':' <span class="hint">(אין פעיל)</span>'))+
+        stat("חויב בסך הכל",money(all.billed))+
+        stat("שולם",money(all.paid),all.paid>0.01?"pos":"")+
+        stat("חוב פתוח",money(all.debt),all.debt>0.01?"neg":"pos")+
+      '</div>'+
+      (r.note?'<div class="hint" style="margin-bottom:8px">📝 '+esc(r.note)+'</div>':'')+
+      '<div class="table-wrap"><table class="tbl"><thead><tr>'+
+        '<th>החוזה</th><th>שוכר</th><th>תקופה</th><th>נותרו</th><th>שכ"ד</th><th>גבייה</th><th></th>'+
+      '</tr></thead><tbody>';
+    /* החוזה הנוכחי */
+    h+='<tr style="background:#f0fdf4">'+
+      '<td><b>חוזה נוכחי</b></td>'+
+      '<td>'+(r.tenant?esc(r.tenant):'<span class="muted">פנויה</span>')+'</td>'+
+      '<td>'+((r.startDate||r.endDate)
+        ? (r.startDate?dateHe(r.startDate):'—')+' – '+(r.endDate?dateHe(r.endDate):'<span class="muted">ללא סיום</span>')
+        : '<span class="muted">לא הוגדר</span>')+'</td>'+
+      '<td>'+(d===null?'<span class="muted">—</span>':(d<0?'<span class="neg">עברו '+Math.abs(d)+'</span>':d+' ימים'))+'</td>'+
+      '<td>'+(r.rent?money(r.rent):'<span class="muted">—</span>')+'</td>'+
+      '<td>'+(r.startDate?contractCollectionCell(rentalPeriodStats(r,r.startDate,"")):'<span class="muted">—</span>')+'</td>'+
+      '<td class="right">'+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editRental(\''+r.id+'\')" title="עריכה">✏️</button>':'')+'</td></tr>';
+    /* החוזים הקודמים — מהחדש לישן */
+    if(hist.length && RENT_OPEN[r.id]){
+      /* מיון לפי הזמן ולא לפי סדר ההוספה למערך: חוזה שנרשם מאוחר
+         יכול להיות ישן יותר, ואז ההיסטוריה הוצגה הפוך. */
+      hist.map(function(x,ix){ return {x:x,ix:ix}; })
+        .sort(function(p,q){
+          var pk=p.x.endDate||p.x.startDate||"", qk=q.x.endDate||q.x.startDate||"";
+          return pk<qk?1:pk>qk?-1:q.ix-p.ix;
+        })
+        .forEach(function(e){
         var x=e.x;
-        h+='<tr style="background:#f8fafc">'+
-          '<td class="muted" style="padding-inline-start:24px">↩ חוזה קודם</td>'+
+        h+='<tr>'+
+          '<td class="muted">↩ קודם</td>'+
           '<td>'+esc(x.tenant||"—")+'</td>'+
-          '<td><span class="muted">—</span></td>'+
-          '<td>'+(x.startDate?dateHe(x.startDate):'<span class="muted">—</span>')+'</td>'+
-          '<td>'+(x.endDate?dateHe(x.endDate):'<span class="muted">—</span>')+'</td>'+
+          '<td>'+(x.startDate?dateHe(x.startDate):'—')+' – '+(x.endDate?dateHe(x.endDate):'—')+'</td>'+
           '<td><span class="muted">—</span></td>'+
           '<td>'+(x.rent?money(x.rent):'<span class="muted">—</span>')+'</td>'+
           '<td>'+contractCollectionCell(rentalPeriodStats(r,x.startDate,x.endDate))+'</td>'+
-          '<td><span class="badge badge-muted badge-unit">הסתיים</span></td>'+
-          '<td></td>'+
           '<td class="right" style="white-space:nowrap">'+(can("edit")
             ? '<button class="btn btn-ghost btn-sm" title="עריכת החוזה" onclick="rentalHistEdit(\''+r.id+'\','+e.ix+',1)">✏️</button>'+
               '<button class="btn btn-ghost btn-sm" title="מחיקת החוזה מההיסטוריה" onclick="rentalHistDel(\''+r.id+'\','+e.ix+',1)">🗑️</button>'
             : '')+'</td></tr>';
       });
     }
+    h+='</tbody></table></div>';
+    if(hist.length){
+      h+='<div style="margin-top:8px"><button class="btn btn-ghost btn-sm" onclick="rentToggleOpen(\''+r.id+'\')">'+
+        (RENT_OPEN[r.id]?'▲ הסתר את '+hist.length+' החוזים הקודמים':'▼ הצג '+hist.length+' חוזים קודמים')+'</button></div>';
+    }
+    h+='</div>';
   });
-  h+='</tbody></table></div>'+
-    '<div class="hint">לחיצה על תגית <b>N חוזים ▼</b> ליד שם הדירה פותחת שורה לכל חוזה קודם — עם עריכה ומחיקה ישירות מהטבלה. '+
-    'שורות ההכנסה החודשיות נוצרות אוטומטית ומופיעות בלשונית <b>הכנסות</b> של הפרוייקט. '+
-    '<b>➕₪</b> מוסיף חיוב חד-פעמי לשוכר (תיקונים, נזק, ועד בית) — שורת הכנסה רגילה שאינה חוזרת. '+
-    'תצוגה מרוכזת של כל הפרויקטים יחד — בלשונית <b>🔑 שכירויות</b> שבתפריט הראשי.</div>';
+  h+='<div class="hint">כל דירה בכרטיס משלה: בכותרת הסיכום הכספי על פני <b>כל</b> החוזים שהיו בה, ובטבלה שבפנים החוזה הנוכחי '+
+    'ומתחתיו הקודמים — כל אחד עם הגבייה שלו. '+
+    '<b>📄 חוזה חדש</b> מעביר את החוזה הנוכחי להיסטוריה ופותח תקופה חדשה · '+
+    '<b>➕₪</b> מוסיף חיוב חד-פעמי (תיקונים, נזק, ועד בית) · '+
+    'שורות ההכנסה נוצרות אוטומטית ומופיעות בלשונית <b>הכנסות</b> של הפרוייקט.</div>';
   return h;
 }
 /* ---------- גבייה לפי תקופת חוזה ----------
