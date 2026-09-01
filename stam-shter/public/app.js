@@ -255,8 +255,10 @@ function readFields(fields) {
 // ---- טופס הוספה/עריכה גנרי ----
 function openForm(cfg, row, prefill) {
   const isEdit = !!row;
+  // שדה עם newOnly הוא עזר טופס שרלוונטי רק בהוספה (למשל הכנסה למעקב)
+  const fields = cfg.fields.filter(f => !(f.newOnly && isEdit));
   const base = Object.assign({}, cfg.defaults ? cfg.defaults() : {}, prefill || {});
-  const body = `<div class="row">${cfg.fields.map(f =>
+  const body = `<div class="row">${fields.map(f =>
     fieldHTML(f, row ? row[f.k] : base[f.k])).join('')}</div>`;
   const m = modal({
     title: (isEdit ? 'עריכה — ' : 'הוספה — ') + cfg.title,
@@ -264,17 +266,24 @@ function openForm(cfg, row, prefill) {
     footer: `<button class="btn" data-save>שמירה</button><button class="btn ghost" data-cancel>ביטול</button>`,
   });
   m.el.querySelector('[data-cancel]').onclick = m.close;
-  wireCombos(m.el, cfg.fields);
+  wireCombos(m.el, fields);
   const btn = m.el.querySelector('[data-save]');
   btn.onclick = async () => {
-    const data = readFields(cfg.fields);
+    const data = readFields(fields);
     if (cfg.validate) { const err = cfg.validate(data); if (err) return toast(err, 'err'); }
     btn.disabled = true;
     try {
-      if (isEdit) await cfg.store.update(row.id, data);
-      else await cfg.store.create(data);
-      toast('נשמר בהצלחה', 'ok');
+      // מפתח שמתחיל בקו תחתון הוא עזר טופס בלבד ואינו נשלח לשרת
+      const payload = {};
+      for (const k of Object.keys(data)) if (k[0] !== '_') payload[k] = data[k];
+      const saved = isEdit ? await cfg.store.update(row.id, payload) : await cfg.store.create(payload);
       m.close();
+      // פעולת המשך (למשל יצירת מעקב) — כישלון שלה אינו מבטל את השמירה,
+      // ולכן ההודעה חייבת להבחין בין השתיים.
+      if (cfg.afterSave) {
+        try { toast((await cfg.afterSave(saved, data, isEdit)) || 'נשמר בהצלחה', 'ok'); }
+        catch (e) { toast('נשמר, אבל הפעולה הנלווית נכשלה: ' + e.message, 'err'); }
+      } else toast('נשמר בהצלחה', 'ok');
       await reloadCaches();
       render();
     } catch (e) { toast(e.message, 'err'); btn.disabled = false; }
@@ -674,6 +683,14 @@ function wireRowActions(cfg, rows) {
       e.stopPropagation();
       const r = rows.find(x => x.id === +b.dataset.del);
       removeRow(cfg.store, r.id, cfg.labelOf ? cfg.labelOf(r) : ('#' + r.id));
+    };
+  });
+  // קפיצה משורת רכישה אל מסך המעקב של אותה חבילה
+  document.querySelectorAll('[data-trk]').forEach(b => {
+    b.onclick = (e) => {
+      e.stopPropagation();
+      PRODTRACK.purchaseId = +b.dataset.trk;
+      TAB = 'track'; SUB.track = 'products'; render();
     };
   });
 }
@@ -1153,20 +1170,29 @@ function prodPurchases(cfgOnly) {
     title: 'רכישות מוצרים', bulk: 'prod_purchases', store: Store.prodPurchases,
     load: () => Store.prodPurchases.list(),
     labelOf: (r) => `${r.product_name} מ${r.scribe_name}`,
-    defaults: () => ({ date: today(), purchase_type: 'רגיל' }),
+    defaults: () => ({ date: today(), purchase_type: 'רגיל',
+      _track: PURCH_TRACK.on, _station: PURCH_TRACK.station, _holder: PURCH_TRACK.holder }),
     totals: true,
-    note: 'כל רכישה היא <b>חבילה</b> שממנה מוכרים. מחיקת רכישה מעבירה גם את המכירות שנגזרו ממנה לסל המחזור.',
+    note: 'כל רכישה היא <b>חבילה</b> שממנה מוכרים. מחיקת רכישה מעבירה גם את המכירות שנגזרו ממנה לסל המחזור.'
+      + ' בהוספת רכישה אפשר לסמן <b>להכניס את היחידות למעקב</b> ולבחור תחנה — היחידות ייווצרו ויוצבו שם מיד.',
     fields: [
       { k: 'date', label: 'תאריך', type: 'date' },
       { k: 'scribe_id', label: 'סופר (המוכר)', type: 'combo', items: itemsContacts },
       { k: 'product_id', label: 'מוצר', type: 'combo', items: itemsProducts },
       { k: 'quantity', label: 'כמות', type: 'number' },
-      { k: 'cost_per_unit', label: 'עלות ליחידה', type: 'number', hint: 'מכאן נגזר החוב לסופר' },
+      { k: 'cost_per_unit', label: 'עלות ליחידה', type: 'number', hint: 'מכאן נגזר הסכום לתשלום לסופר' },
       { k: 'extra_cost_per_unit', label: 'עלות נוספת ליחידה', type: 'number', hint: 'לחישוב הרווח בלבד' },
       { k: 'purchase_type', label: 'סוג רכישה', type: 'select', blank: false, options: (v) =>
           `<option value="רגיל" ${v === 'רגיל' ? 'selected' : ''}>רגיל</option><option value="קומיסיון" ${v === 'קומיסיון' ? 'selected' : ''}>קומיסיון</option>` },
       { k: 'note', label: 'הערה', type: 'textarea' },
+      // עזרי טופס בלבד (קו תחתון) — נכנסים למעקב מיד עם שמירת הרכישה
+      { k: '_track', label: 'להכניס את היחידות למעקב', type: 'checkbox', newOnly: true },
+      { k: '_station', label: 'תחנה במעקב', type: 'combo', items: itemsStations, newOnly: true,
+        placeholder: 'ללא תחנה — הקלד לחיפוש', hint: 'בחירת תחנה או מחזיק מכניסה למעקב גם בלי לסמן' },
+      { k: '_holder', label: 'אצל מי', type: 'combo', items: itemsContacts, newOnly: true,
+        placeholder: 'ללא מחזיק — הקלד שם' },
     ],
+    afterSave: trackNewPurchase,
     cols: [
       // מספר החבילה — זה המזהה שמזינים בעמודת "מזהה רכישה" בייבוא מכירות
       { label: '#', render: r => `<b>${r.id}</b>` },
@@ -1179,10 +1205,42 @@ function prodPurchases(cfgOnly) {
       { label: "עלות ליח'", cls: 'num', render: r => mCell(r.cost_per_unit) },
       { label: "נוספת ליח'", cls: 'num', render: r => mCell(r.extra_cost_per_unit) },
       { label: 'סוג', render: r => `<span class="pill n">${esc(r.purchase_type || '')}</span>` },
-      { label: 'חוב לסופר', cls: 'num', render: r => mCell(r.owed_scribe), total: rows => mCell(sumBy(rows, 'owed_scribe')) },
+      { label: 'סה"כ לתשלום לסופר', cls: 'num', render: r => mCell(r.owed_scribe), total: rows => mCell(sumBy(rows, 'owed_scribe')) },
+      { label: '', cls: 'center', render: r => `<button class="btn ghost xs" data-trk="${r.id}" title="מעקב היחידות של החבילה">📍 מעקב</button>` },
     ],
   };
   return cfgOnly ? cfg : entityPage(cfg);
+}
+
+// הכנסת רכישה חדשה למעקב מיד עם שמירתה. הבחירה נזכרת לרכישה הבאה,
+// כי בהזנת סדרת רכישות היעד בדרך כלל זהה.
+const PURCH_TRACK = { on: false, station: '', holder: '' };
+
+async function trackNewPurchase(saved, data, isEdit) {
+  // בחירת תחנה או מחזיק מספיקה כשלעצמה — אחרת שכחה לסמן את התיבה
+  // הייתה מבטלת בשקט את כל מה שהמשתמש הזין.
+  const want = !!data._track || !!data._station || !!data._holder;
+  PURCH_TRACK.on = want;
+  PURCH_TRACK.station = data._station || '';
+  PURCH_TRACK.holder = data._holder || '';
+  if (isEdit || !want) return null;
+  const qty = Math.round(N(saved.quantity));
+  if (!(qty > 0)) return 'הרכישה נשמרה. לא נוצר מעקב — הכמות אפס.';
+
+  const g = await Store.track.generate({ purchase_id: saved.id, count: qty });
+  if (!g.created) return 'הרכישה נשמרה. לא נוצרו יחידות מעקב חדשות.';
+  if (!data._station && !data._holder) return `נשמר · ${g.created} יחידות נכנסו למעקב, ללא תחנה`;
+
+  const mv = await Store.track.moveQty({
+    purchase_id: saved.id, qty: g.created,
+    from_station_id: 0, from_holder_id: 0,      // היחידות נוצרו זה עתה, ללא שיוך
+    station_id: data._station, holder_id: data._holder,
+    date: data.date || today(), note: 'נכנס עם הרכישה',
+  });
+  const st = (C.stations.find(x => x.id === +data._station) || {}).name;
+  const who = C.contacts.find(x => x.id === +data._holder);
+  const where = [st, who && contactName(who)].filter(Boolean).join(' · ');
+  return `נשמר · ${mv.moved} יחידות נכנסו למעקב${where ? ' — ' + where : ''}`;
 }
 
 function prodSales(cfgOnly) {
