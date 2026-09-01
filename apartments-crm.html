@@ -101,6 +101,11 @@ table.tbl td.note{max-width:120px;overflow:hidden;text-overflow:ellipsis;color:v
 table.tbl.sheet-grid{font-size:12.5px;border-collapse:collapse;table-layout:fixed;width:max-content}
 .col-grip{position:absolute;top:0;bottom:0;inset-inline-end:-3px;width:7px;cursor:col-resize;z-index:5}
 .col-grip:hover{background:var(--brand);opacity:.5}
+/* פעולות העמודה — מופיעות רק בריחוף, שלא יעמיסו על הכותרת */
+.col-acts{display:none;margin-inline-start:5px;font-size:11px;letter-spacing:2px}
+.col-acts span{cursor:pointer;opacity:.55}
+.col-acts span:hover{opacity:1}
+table.tbl.sheet-grid th:hover .col-acts{display:inline}
 table.tbl.sheet-grid th,table.tbl.sheet-grid td{
   padding:0;text-align:right;border:1px solid #dde3f0;white-space:nowrap}
 table.tbl.sheet-grid thead th{padding:1px 0;font-size:11px}
@@ -357,7 +362,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 לט'";
+var APP_BUILD = "19.08 מ'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -11697,6 +11702,8 @@ function viewSheets(){
       '<button class="btn btn-sm" onclick="sheetApplyFmt(\''+s.id+'\',\'boxAll\')">▦ מסגרת לכל תא</button>'+
       '<button class="btn btn-sm" onclick="sheetApplyFmt(\''+s.id+'\',\'noBox\')">הסר מסגרת</button>'+
       '<button class="btn btn-ghost btn-sm" onclick="sheetApplyFmt(\''+s.id+'\',\'clear\')">נקה עיצוב</button>'+
+      '<span style="width:10px"></span>'+
+      '<button class="btn btn-sm" title="העתקת התאים המסומנים (גם Ctrl+C) — אפשר להדביק כאן או באקסל" onclick="sheetCopySel()">⧉ העתק</button>'+
       '<div class="sp"></div><span id="sheet-sel-lbl" class="muted">לא נבחר תא</span>'+
     '</div>';
   }
@@ -11711,7 +11718,15 @@ function viewSheets(){
           /* ידית הגרירה בקצה הפנימי (שמאל, ב-RTL) של הכותרת */
           '<div class="col-grip" data-c="'+c+'" title="גרור לשינוי רוחב · לחיצה כפולה לאיפוס" '+
             'onmousedown="sheetGripDown(event,\''+s.id+'\','+c+')" ondblclick="sheetGripReset(\''+s.id+'\','+c+')"></div>'+
-          '<div class="colletter" style="cursor:pointer" title="בחר את כל העמודה" onclick="sheetSelCol(\''+s.id+'\','+c+')">'+colLetter(c)+'</div>'+
+          '<div class="colletter" style="cursor:pointer" title="בחר את כל העמודה" onclick="sheetSelCol(\''+s.id+'\','+c+')">'+colLetter(c)+
+            (can("edit")
+              ? '<span class="col-acts" data-xl-skip="1">'+
+                '<span title="שכפל את העמודה עם התוכן" onclick="event.stopPropagation();sheetDupCol(\''+s.id+'\','+c+')">⧉</span>'+
+                '<span title="הוסף עמודה ריקה אחרי זו" onclick="event.stopPropagation();sheetInsertCol(\''+s.id+'\','+(c+1)+')">＋</span>'+
+                '<span title="מחק את העמודה" onclick="event.stopPropagation();sheetDelCol(\''+s.id+'\','+c+')">✕</span>'+
+                '</span>'
+              : '')+
+          '</div>'+
           (can("edit")
             ? '<input value="'+esc(name)+'" placeholder="כותרת"'+
               ' onchange="setSheetCol(\''+s.id+'\','+c+',this.value)">'
@@ -11749,7 +11764,9 @@ function viewSheets(){
   }
   h+=(can("edit")?'<td></td>':'')+'</tr></tfoot></table></div></div>'+
     '<div class="hint">לחיצה בוחרת תא · גרירה או Shift בוחרת טווח · לחיצה על אות העמודה או מספר השורה בוחרת אותה כולה · '+
-    'Enter יורד תא · אפשר להדביק טבלה שלמה מאקסל · שורת ה-Σ מסכמת רק מספרים.</div>';
+    'Enter יורד תא · אפשר להדביק טבלה שלמה מאקסל · שורת ה-Σ מסכמת רק מספרים.<br>'+
+    '<b>העתקה:</b> מסמנים טווח ולוחצים <b>Ctrl+C</b> (או "⧉ העתק") — ומדביקים ב-Ctrl+V בתא אחר, או ישר באקסל. '+
+    '<b>עמודות:</b> ריחוף מעל אות העמודה חושף <b>⧉</b> שכפול עם התוכן, <b>＋</b> הוספת עמודה אחריה ו-<b>✕</b> מחיקה.</div>';
   return h;
 }
 function newSheet(){
@@ -11811,8 +11828,102 @@ function delSheetRow(id,r){
   SHEETSEL=null;
   save(); rerender();
 }
+/* ---------- העתקה והדבקה של טווח תאים ----------
+   Ctrl+C על טווח מסומן מעתיק אותו כטבלה (מופרד בטאבים), כך שאפשר
+   להדביק גם לאקסל; Ctrl+V מדביק מהטווח שהועתק אל התא שעומדים בו.
+   ההדבקה עצמה כבר קיימת (applySheetPaste) ומשמשת גם למקור חיצוני. */
+function sheetRangeTsv(){
+  var sel=sheetSelNorm(); if(!sel) return "";
+  var sh=byId(DB.sheets,sel.id); if(!sh) return "";
+  var out=[];
+  for(var r=sel.r1;r<=sel.r2;r++){
+    var row=(sh.rows||[])[r]||[], line=[];
+    for(var c=sel.c1;c<=sel.c2;c++) line.push(String(row[c]==null?"":row[c]));
+    out.push(line.join("\t"));
+  }
+  return out.join("\n");
+}
+function sheetCopySel(){
+  var txt=sheetRangeTsv();
+  if(!txt){ toast("סמן קודם תא או טווח","warn"); return; }
+  var n=sheetSelCount();
+  function done(){ toast(n>1?("הועתקו "+n+" תאים"):"התא הועתק","ok"); }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(done,function(){ sheetCopyFallback(txt,done); });
+  } else sheetCopyFallback(txt,done);
+}
+/* דפדפן שחוסם גישה ללוח — מעתיקים דרך שדה זמני */
+function sheetCopyFallback(txt,done){
+  try{
+    var ta=document.createElement("textarea");
+    ta.value=txt; ta.style.cssText="position:fixed;top:-1000px;opacity:0";
+    document.body.appendChild(ta); ta.select();
+    document.execCommand("copy"); ta.remove(); done();
+  }catch(e){ toast("הדפדפן לא איפשר העתקה","err"); }
+}
+/* ---------- פעולות עמודה ---------- */
+function sheetColCells(s,c){
+  return (s.rows||[]).map(function(row){ return String((row&&row[c])==null?"":row[c]); });
+}
+/* הזזת העיצוב כשעמודה נוספת או נמחקת — אחרת הצבעים והמסגרות נשארים
+   על העמודה הישנה ומזייפים את התצוגה. */
+function shiftFmtCols(s,at,delta){
+  if(!s.fmt) return;
+  var next={};
+  Object.keys(s.fmt).forEach(function(k){
+    var p=k.split(","), rr=Number(p[0]), cc=Number(p[1]);
+    if(delta<0 && cc===at) return;                 // העמודה שנמחקה
+    next[fmtKey(rr, cc>=at ? cc+delta : cc)]=s.fmt[k];
+  });
+  s.fmt=next;
+  if(s.colW){
+    var w={};
+    Object.keys(s.colW).forEach(function(k){
+      var cc=Number(k);
+      if(delta<0 && cc===at) return;
+      w[cc>=at ? cc+delta : cc]=s.colW[k];
+    });
+    s.colW=w;
+  }
+}
+function sheetInsertCol(id,at,copyFrom){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var s=byId(DB.sheets,id); if(!s) return;
+  var n=sheetColCount(s);
+  at=Math.max(0,Math.min(Number(at),n));
+  s.cols=s.cols||[];
+  while(s.cols.length<n) s.cols.push("");
+  var srcName=(copyFrom!=null)?((s.cols[copyFrom]||"")+" (עותק)"):"";
+  s.cols.splice(at,0,srcName);
+  (s.rows||[]).forEach(function(row){
+    while(row.length<n) row.push("");
+    row.splice(at,0,(copyFrom!=null)?String(row[copyFrom]==null?"":row[copyFrom]):"");
+  });
+  shiftFmtCols(s,at,1);
+  SHEETSEL=null;
+  save(); rerender();
+  toast(copyFrom!=null?"העמודה שוכפלה":"נוספה עמודה","ok");
+}
+function sheetDupCol(id,c){ sheetInsertCol(id,c+1,c); }
+function sheetDelCol(id,c){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var s=byId(DB.sheets,id); if(!s) return;
+  if(sheetColCount(s)<=1){ toast("חייבת להישאר עמודה אחת","warn"); return; }
+  var hasData=sheetColCells(s,c).some(function(v){ return v.trim()!==""; });
+  if(hasData && !confirm('למחוק את העמודה "'+((s.cols&&s.cols[c])||colLetter(c))+'" על התוכן שבה?')) return;
+  if(s.cols) s.cols.splice(c,1);
+  (s.rows||[]).forEach(function(row){ if(row.length>c) row.splice(c,1); });
+  shiftFmtCols(s,c,-1);
+  SHEETSEL=null;
+  save(); rerender();
+  toast("העמודה נמחקה","ok");
+}
 /* ניווט במקלדת כמו בגיליון */
 function sheetKey(ev,r,c){
+  /* Ctrl+C על טווח מסומן — מעתיק את כולו ולא רק את התא שבפוקוס */
+  if((ev.ctrlKey||ev.metaKey) && (ev.key==="c"||ev.key==="C") && sheetSelCount()>1){
+    ev.preventDefault(); sheetCopySel(); return;
+  }
   var dr=0, dc=0;
   if(ev.key==="Enter"||ev.key==="ArrowDown") dr=1;
   else if(ev.key==="ArrowUp") dr=-1;
