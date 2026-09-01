@@ -357,7 +357,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 לו'";
+var APP_BUILD = "19.08 לז'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -1206,6 +1206,24 @@ function toggleIncFrl(id){
   i.noFreilich=!i.noFreilich;
   save(); rerender();
   toast(i.noFreilich?'"'+i.description+'" לא תופיע בדוח לפרייליך':'"'+i.description+'" תופיע בדוח לפרייליך',"ok");
+}
+/* ---------- עמודת "לחישוב" ----------
+   במקביל ל"פרייליך": רואים במבט אחד מה נספר בסיכומים ומה רק מוצג
+   בפירוט. לחיצה מחליפה, בלי לפתוח את טופס העריכה. */
+function incCalcCell(i){
+  var badge=i.excluded
+    ? '<span class="badge badge-muted badge-unit">🚫 לא נספר</span>'
+    : '<span class="badge badge-ok badge-unit">✔ נספר</span>';
+  if(!can("edit")) return badge;
+  return '<span style="cursor:pointer" title="לחיצה מחליפה: השורה תיספר בסיכומים (סה\'\'כ, בנק, דמי ניהול) או תישאר בפירוט בלבד" '+
+    'onclick="toggleIncCalc(\''+i.id+'\')">'+badge+'</span>';
+}
+function toggleIncCalc(id){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var i=byId(DB.income,id); if(!i) return;
+  i.excluded=!i.excluded;
+  save(); rerender();
+  toast(i.excluded?'"'+i.description+'" לא תיספר בסיכומים — נשארת בפירוט':'"'+i.description+'" נספרת בסיכומים',"ok");
 }
 /* בדוח אפשר לבקש לספור גם שורות "לא לחישוב". זו בחירת תצוגה בלבד —
    הסימון על השורה לא משתנה, ומחוץ לדוחות ההתנהגות נשארת כשהייתה. */
@@ -7446,8 +7464,8 @@ function moduleIncome(aptId){
     (selI?'<th class="chk" data-xl-skip="1" style="width:30px"><input type="checkbox" title="סמן הכל" style="width:auto" onclick="ibAll(this.checked)"></th>':'')+
     '<th>תאריך</th><th>תיאור</th>'+
     (units.length?'<th>יחידות</th>':'')+
-    '<th>תקופה</th><th>סכום</th><th>שולם</th><th>יתרת חוב</th><th>נכנס ל…</th><th>פרייליך</th><th>הערה</th><th></th></tr></thead><tbody>';
-  if(!inc.length) h+='<tr><td colspan="'+((selI?1:0)+(units.length?11:10))+'" class="empty">'+(Q.incUnit?"אין הזמנות ביחידה הזו":"אין הכנסות")+'</td></tr>';
+    '<th>תקופה</th><th>סכום</th><th>שולם</th><th>יתרת חוב</th><th>נכנס ל…</th><th>לחישוב</th><th>פרייליך</th><th>הערה</th><th></th></tr></thead><tbody>';
+  if(!inc.length) h+='<tr><td colspan="'+((selI?1:0)+(units.length?12:11))+'" class="empty">'+(Q.incUnit?"אין הזמנות ביחידה הזו":"אין הכנסות")+'</td></tr>';
   inc.slice().sort(function(x,y){return x.date<y.date?1:-1;}).forEach(function(i){
     var tracked=incomeTracked(i), debt=incomeDebt(i);
     h+='<tr'+(i.excluded?' style="opacity:.55"':'')+'>'+
@@ -7468,6 +7486,7 @@ function moduleIncome(aptId){
       '<td>'+(i.receivedBy==="bank"
         ?'<span class="pill">🏦 בנק זמני</span><div class="hint" data-xl-skip="1">'+esc(incomeSplitLabel(i))+'</div>'
         :esc(incomeDestName(i)||"—"))+'</td>'+
+      '<td>'+incCalcCell(i)+'</td>'+
       '<td>'+incFrlCell(i)+'</td>'+
       noteCell(i.note)+
       '<td class="right" style="white-space:nowrap">'+
