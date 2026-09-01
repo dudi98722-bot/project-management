@@ -4,4 +4,6 @@ const { crudRouter } = require('./_crud');
 module.exports = crudRouter('contacts', [
   { key: 'name', type: 'text' },
   { key: 'phone', type: 'text' },
+  // סיווג: ערכים מופרדים בפסיק, כי אדם יכול להיות סופר וגם רוכש
+  { key: 'kinds', type: 'text' },
 ], { orderBy: 't.name NULLS LAST' });

@@ -1,11 +1,12 @@
-// רשימות ערכים: סוגי הוצאות לספר ('expense_book') וסוגי הוצאות עסק ('expense_business').
+// רשימות ערכים: סוגי הוצאות לספר ('expense_book'), סוגי הוצאות עסק ('expense_business')
+// וסיווגי אנשי קשר ('contact_kind').
 // ל-list_items אין עמודות created_by/updated_by, ולכן ראוטר ייעודי ולא המפעל הגנרי.
 const express = require('express');
 const { pool, logAction, softDelete, restore } = require('../db');
 const { authenticate, can } = require('../middleware/auth');
 const router = express.Router();
 
-const VALID_LISTS = new Set(['expense_book', 'expense_business']);
+const VALID_LISTS = new Set(['expense_book', 'expense_business', 'contact_kind']);
 
 // רשימה אחת (?name=) או כל הרשימות מקובצות
 router.get('/', authenticate, can('view'), async (req, res) => {

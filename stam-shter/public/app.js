@@ -5,7 +5,7 @@
 // ============ מצב ============
 let ME = null, TAB = 'dash';
 const SUB = { prod: 'purchases', reports: 'overview', settings: 'contacts', system: 'recycle', track: 'summary', workspace: 'scribe' };
-const C = { contacts: [], products: [], sizes: [], expBook: [], expBiz: [], scrolls: [], purchases: [], stations: [] };
+const C = { contacts: [], products: [], sizes: [], expBook: [], expBiz: [], scrolls: [], purchases: [], stations: [], kinds: [] };
 const IMPORT = { spec: null, table: '', text: '', mode: 'create', opts: { createMissingContacts: false } };
 
 // ============ עזרים ============
@@ -123,6 +123,15 @@ const itemsPurchasesAll = () => sortHe(C.purchases.map(p => ({ v: p.id,
   t: `#${p.id} · ${p.product_name || 'מוצר'} · ${p.scribe_name || 'סופר'} (${N(p.quantity)} יח')` })));
 const itemsList = (arr) => sortHe(arr.map(x => ({ v: x.value, t: x.value + (x.is_correction ? '  ⟵ תיקונים' : '') })));
 
+// סיווג איש קשר נשמר כמחרוזת מופרדת בפסיקים — אדם יכול להיות
+// גם סופר וגם רוכש, ולכן לא ערך יחיד.
+const splitKinds = (v) => String(v == null ? '' : v).split(',').map(x => x.trim()).filter(Boolean);
+const kindPills = (v) => {
+  const ks = splitKinds(v);
+  return ks.length ? ks.map(k => `<span class="pill k">${esc(k)}</span>`).join(' ')
+                   : '<span class="muted">—</span>';
+};
+
 function comboHTML(f, val) {
   const items = f.items(val) || [];
   const cur = items.find(x => String(x.v) === String(val));
@@ -234,6 +243,15 @@ function fieldHTML(f, val) {
   } else if (f.type === 'checkbox') {
     return `<div class="chk"><input type="checkbox" id="f_${f.k}" ${v ? 'checked' : ''}>
             <label for="f_${f.k}">${esc(f.label)}</label></div>`;
+  } else if (f.type === 'multi') {
+    // ערך קיים שאינו ברשימה המנוהלת עדיין מוצג ומסומן, כדי ששמירה
+    // לא תמחק בשקט סיווג שנכנס בייבוא או שנמחק מהרשימה מאז.
+    const cur = splitKinds(v);
+    const opts = [...new Set(f.options().concat(cur))];
+    inner = `<div class="multi" id="f_${f.k}">${opts.length
+      ? opts.map(o => `<label><input type="checkbox" value="${esc(o)}"
+          ${cur.includes(o) ? 'checked' : ''}> ${esc(o)}</label>`).join('')
+      : '<span class="none">אין ערכים. אפשר להוסיף בהגדרות ← סיווגי אנשי קשר.</span>'}</div>`;
   } else {
     const step = f.type === 'number' ? 'step="any"' : '';
     inner = `<input id="f_${f.k}" type="${f.type || 'text'}" value="${esc(v)}" ${step} ${req}>`;
@@ -247,7 +265,11 @@ function readFields(fields) {
   for (const f of fields) {
     const el = $('f_' + f.k);
     if (!el) continue;
-    out[f.k] = f.type === 'checkbox' ? el.checked : el.value;
+    if (f.type === 'multi') {
+      out[f.k] = [...el.querySelectorAll('input:checked')].map(i => i.value).join(', ');
+    } else {
+      out[f.k] = f.type === 'checkbox' ? el.checked : el.value;
+    }
   }
   return out;
 }
@@ -735,6 +757,7 @@ async function reloadCaches() {
   ]);
   C.contacts = contacts; C.products = products; C.sizes = sizes;
   C.expBook = lists.expense_book || []; C.expBiz = lists.expense_business || [];
+  C.kinds = lists.contact_kind || [];
   C.scrolls = scrolls; C.purchases = purchases; C.stations = stations;
 }
 
@@ -1182,6 +1205,8 @@ function prodPurchases(cfgOnly) {
       { k: 'quantity', label: 'כמות', type: 'number' },
       { k: 'cost_per_unit', label: 'עלות ליחידה', type: 'number', hint: 'מכאן נגזר הסכום לתשלום לסופר' },
       { k: 'extra_cost_per_unit', label: 'עלות נוספת ליחידה', type: 'number', hint: 'לחישוב הרווח בלבד' },
+      { k: 'extra_cost_note', label: 'עבור מה העלות הנוספת', type: 'text',
+        hint: 'למשל: הובלה, בתי מזוזה, תיקונים' },
       { k: 'purchase_type', label: 'סוג רכישה', type: 'select', blank: false, options: (v) =>
           `<option value="רגיל" ${v === 'רגיל' ? 'selected' : ''}>רגיל</option><option value="קומיסיון" ${v === 'קומיסיון' ? 'selected' : ''}>קומיסיון</option>` },
       { k: 'note', label: 'הערה', type: 'textarea' },
@@ -1204,6 +1229,8 @@ function prodPurchases(cfgOnly) {
       { label: 'נשאר', cls: 'num', render: r => `<span class="pill ${N(r.remaining_qty) > 0 ? 'g' : 'n'}">${N(r.remaining_qty)}</span>` },
       { label: "עלות ליח'", cls: 'num', render: r => mCell(r.cost_per_unit) },
       { label: "נוספת ליח'", cls: 'num', render: r => mCell(r.extra_cost_per_unit) },
+      { label: 'עבור מה', cls: 'wrap', render: r => r.extra_cost_note
+          ? esc(r.extra_cost_note) : '<span class="muted">—</span>' },
       { label: 'סוג', render: r => `<span class="pill n">${esc(r.purchase_type || '')}</span>` },
       { label: 'סה"כ לתשלום לסופר', cls: 'num', render: r => mCell(r.owed_scribe), total: rows => mCell(sumBy(rows, 'owed_scribe')) },
       { label: '', cls: 'center', render: r => `<button class="btn ghost xs" data-trk="${r.id}" title="מעקב היחידות של החבילה">📍 מעקב</button>` },
@@ -1884,6 +1911,7 @@ function pageSettings() {
     { k: 'contacts', label: 'אנשי קשר' },
     { k: 'products', label: 'מוצרים' },
     { k: 'sizes', label: 'גדלי קלף' },
+    { k: 'kinds', label: 'סיווגי אנשי קשר' },
     { k: 'expbook', label: 'סוגי הוצאות לספר' },
     { k: 'expbiz', label: 'סוגי הוצאות עסק' },
   ];
@@ -1892,6 +1920,7 @@ function pageSettings() {
   if (s === 'contacts') return setContacts();
   if (s === 'products') return setProducts();
   if (s === 'sizes') return setSizes();
+  if (s === 'kinds') return setList('contact_kind', 'סיווגי אנשי קשר', false);
   if (s === 'expbook') return setList('expense_book', 'סוגי הוצאות לספר', true);
   return setList('expense_business', 'סוגי הוצאות עסק', false);
 }
@@ -1901,14 +1930,18 @@ function setContacts(cfgOnly) {
     title: 'אנשי קשר', bulk: 'contacts', store: Store.contacts,
     load: () => Store.contacts.list(),
     labelOf: (r) => contactName(r),
-    note: 'רשימה אחת — ממנה נבחרים גם הסופרים וגם הרוכשים. התפקיד נקבע בעסקה עצמה.',
+    note: 'רשימה אחת — ממנה נבחרים גם הסופרים וגם הרוכשים. התפקיד בעסקה נקבע בעסקה עצמה;'
+      + ' ה<b>סיווג</b> הוא תווית שלך לארגון הרשימה, ואפשר לסמן יותר מאחת.'
+      + ' את הערכים מנהלים בהגדרות ← <b>סיווגי אנשי קשר</b>.',
     fields: [
       { k: 'name', label: 'שם', type: 'text', required: true },
       { k: 'phone', label: 'טלפון', type: 'text' },
+      { k: 'kinds', label: 'סיווג', type: 'multi', options: () => sortHe(C.kinds.map(x => ({ t: x.value }))).map(x => x.t) },
     ],
     cols: [
       { label: 'שם', render: r => esc(r.name || '') },
       { label: 'טלפון', render: r => esc(r.phone || '') },
+      { label: 'סיווג', cls: 'wrap', render: r => kindPills(r.kinds) },
     ],
   };
   return cfgOnly ? cfg : entityPage(cfg);
@@ -3291,6 +3324,8 @@ function wsHeader(person, color, badge, otherMode, otherHasData) {
         <div style="font-size:24px;font-weight:800">${esc(person.name || '')}</div>
         ${person.phone ? `<a href="tel:${esc(person.phone)}" style="color:#e6fffa">${esc(person.phone)}</a>` : ''}
         <span class="pill" style="background:#fff;color:#0f172a">${badge}</span>
+        ${splitKinds(person.kinds).filter(k => k !== badge).map(k =>
+          `<span class="pill" style="background:rgba(255,255,255,.22);color:#fff">${esc(k)}</span>`).join(' ')}
         <div style="flex:1"></div>
         ${otherHasData ? `<button class="btn ghost sm" id="wsSwitch">
           ${otherMode === 'customer' ? '🛒 יש לו גם פעילות כלקוח' : '🖊️ הוא גם סופר'} ←</button>` : ''}

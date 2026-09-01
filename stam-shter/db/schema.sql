@@ -38,6 +38,9 @@ CREATE TABLE IF NOT EXISTS contacts (
 -- מיגרציה: פיצול שם/משפחה אוחד לשדה name יחיד.
 -- העמודות הישנות נשארות (מסדים קיימים), אך אינן בשימוש.
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS name VARCHAR(300);
+-- סיווג חופשי לאיש הקשר. אדם יכול להיות כמה דברים בו-זמנית (סופר שגם רוכש),
+-- ולכן מחרוזת של ערכים מופרדים בפסיק ולא ערך יחיד.
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS kinds VARCHAR(300);
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.columns
              WHERE table_name='contacts' AND column_name='first_name') THEN
@@ -63,6 +66,13 @@ CREATE TABLE IF NOT EXISTS list_items (
   deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMP, deleted_by INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_list_items ON list_items(list_name) WHERE deleted=false;
+
+-- סיווגי אנשי קשר (סופר / סוחר / רוכש ...). נזרעים פעם אחת בלבד:
+-- ערך שנמחק נשאר בטבלה עם deleted=true, ולכן הזריעה לא תחזור עליו.
+INSERT INTO list_items (list_name, value, sort)
+SELECT 'contact_kind', v.value, v.sort
+  FROM (VALUES ('סופר',0),('סוחר',1),('רוכש',2),('מגיה',3),('מוחק',4),('תופר',5)) AS v(value, sort)
+ WHERE NOT EXISTS (SELECT 1 FROM list_items WHERE list_name='contact_kind');
 
 -- קטלוג מוצרים
 CREATE TABLE IF NOT EXISTS products (
@@ -219,6 +229,9 @@ CREATE TABLE IF NOT EXISTS prod_purchases (
   updated_by INTEGER, updated_at TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_prodpur_scribe ON prod_purchases(scribe_id) WHERE deleted=false;
+-- עבור מה נגבתה העלות הנוספת (הובלה, בתי מזוזה, תיקונים...) — הסבר בלבד,
+-- אינו משתתף בחישוב. בלעדיו אי אפשר לזכור חודש אחר כך על מה שולם.
+ALTER TABLE prod_purchases ADD COLUMN IF NOT EXISTS extra_cost_note VARCHAR(300);
 
 -- תשלומים לסופר (מערכת המוצרים) — מצטבר ברמת הסופר, לא לפי רכישה בודדת
 CREATE TABLE IF NOT EXISTS prod_scribe_payments (

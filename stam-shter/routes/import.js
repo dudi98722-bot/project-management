@@ -19,6 +19,7 @@ const SPEC = {
     cols: [
       { key: 'name', label: 'שם', required: true },
       { key: 'phone', label: 'טלפון' },
+      { key: 'kinds', label: 'סיווג', nullable: true },
     ],
   },
   products: {
@@ -133,6 +134,7 @@ const SPEC = {
       { key: 'quantity', label: 'כמות', type: 'int' },
       { key: 'cost_per_unit', label: 'עלות ליחידה', type: 'num' },
       { key: 'extra_cost_per_unit', label: 'עלות נוספת ליחידה', type: 'num' },
+      { key: 'extra_cost_note', label: 'עבור מה העלות הנוספת', nullable: true },
       { key: 'purchase_type', label: 'סוג (רגיל/קומיסיון)', type: 'ptype' },
       { key: 'note', label: 'הערה' },
     ],

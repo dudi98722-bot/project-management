@@ -10,6 +10,7 @@ module.exports = crudRouter('prod_purchases', [
   { key: 'quantity', type: 'int' },
   { key: 'cost_per_unit', type: 'num' },
   { key: 'extra_cost_per_unit', type: 'num' },
+  { key: 'extra_cost_note', type: 'text' },
   { key: 'purchase_type', type: 'text' },
   { key: 'note', type: 'text' },
 ], {
