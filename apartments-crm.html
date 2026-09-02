@@ -109,9 +109,12 @@ table.tbl.sheet-grid{font-size:12.5px;border-collapse:collapse;table-layout:fixe
 /* תא שסומן כסכום בשקלים. הסימן מצויר ליד המספר ואינו חלק מהערך —
    כך הסיכומים, ההעתקה והייצוא ממשיכים לראות מספר נקי. */
 table.tbl.sheet-grid td.cur{position:relative}
-table.tbl.sheet-grid td.cur::after{content:"₪";position:absolute;inset-inline-start:4px;top:50%;
-  transform:translateY(-50%);font-size:11px;opacity:.55;pointer-events:none}
-table.tbl.sheet-grid td.cur input{padding-inline-start:15px}
+/* מיקום פיזי בכוונה: התא עצמו RTL אבל תא מספרי הוא LTR ומיושר לימין,
+   ולכן "inline-start" הצביע לשני צדדים שונים — הסימן נחת בדיוק על
+   הספרות. הסימן בשמאל, והרווח נפתח באותו צד. */
+table.tbl.sheet-grid td.cur::after{content:"₪";position:absolute;left:5px;top:50%;
+  transform:translateY(-50%);font-size:11px;opacity:.55;pointer-events:none;line-height:1}
+table.tbl.sheet-grid td.cur input{padding-left:17px}
 .col-acts{display:none;margin-inline-start:5px;font-size:11px;letter-spacing:2px}
 .col-acts span{cursor:pointer;opacity:.55}
 .col-acts span:hover{opacity:1}
@@ -374,7 +377,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 מו'";
+var APP_BUILD = "19.08 מז'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
