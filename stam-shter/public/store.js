@@ -36,6 +36,9 @@
       create: (d) => apiFetch(base, { method: 'POST', body: d }),
       update: (id, d) => apiFetch(base + '/' + id, { method: 'PUT', body: d }),
       remove: (id) => apiFetch(base + '/' + id, { method: 'DELETE' }),
+      // קיים רק בטבלאות שהוגדרו approvable בשרת
+      approve: (ids, approved) => apiFetch(base + '/approve',
+        { method: 'POST', body: { ids, approved } }),
     };
   }
 

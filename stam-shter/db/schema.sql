@@ -229,6 +229,22 @@ CREATE TABLE IF NOT EXISTS prod_purchases (
   updated_by INTEGER, updated_at TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_prodpur_scribe ON prod_purchases(scribe_id) WHERE deleted=false;
+
+-- אישור מנהל: העובד מזין, המנהל מסמן שבדק. שלוש הטבלאות שהעובד ממלא
+-- בהן את מה שקשור לכסף מול הסופרים. approved_at מתאפס בביטול אישור,
+-- כדי שלא יישאר תאריך שמתאר אישור שכבר לא קיים.
+ALTER TABLE prod_purchases       ADD COLUMN IF NOT EXISTS approved BOOLEAN DEFAULT false;
+ALTER TABLE prod_purchases       ADD COLUMN IF NOT EXISTS approved_by INTEGER;
+ALTER TABLE prod_purchases       ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP;
+ALTER TABLE prod_scribe_payments ADD COLUMN IF NOT EXISTS approved BOOLEAN DEFAULT false;
+ALTER TABLE prod_scribe_payments ADD COLUMN IF NOT EXISTS approved_by INTEGER;
+ALTER TABLE prod_scribe_payments ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP;
+ALTER TABLE scribe_payments      ADD COLUMN IF NOT EXISTS approved BOOLEAN DEFAULT false;
+ALTER TABLE scribe_payments      ADD COLUMN IF NOT EXISTS approved_by INTEGER;
+ALTER TABLE scribe_payments      ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP;
+UPDATE prod_purchases       SET approved=false WHERE approved IS NULL;
+UPDATE prod_scribe_payments SET approved=false WHERE approved IS NULL;
+UPDATE scribe_payments      SET approved=false WHERE approved IS NULL;
 -- עבור מה נגבתה העלות הנוספת (הובלה, בתי מזוזה, תיקונים...) — הסבר בלבד,
 -- אינו משתתף בחישוב. בלעדיו אי אפשר לזכור חודש אחר כך על מה שולם.
 ALTER TABLE prod_purchases ADD COLUMN IF NOT EXISTS extra_cost_note VARCHAR(300);

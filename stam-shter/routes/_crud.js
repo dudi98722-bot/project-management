@@ -23,7 +23,7 @@ function coerce(f, v) {
 // יוצר ראוטר CRUD.
 //   table   - שם הטבלה
 //   fields  - [{ key, type }]  type: 'text' | 'num' | 'int' | 'bool' | 'date'
-//   opts    - { orderBy, filterCols, softDeleteFn, viewSql }
+//   opts    - { orderBy, filterCols, softDeleteFn, viewSql, cap, approvable }
 // viewSql מאפשר שדות מחושבים/צירופים בקריאה; הטבלה תמיד בכינוי t.
 function crudRouter(table, fields, opts = {}) {
   const router = express.Router();
@@ -86,6 +86,29 @@ function crudRouter(table, fields, opts = {}) {
       res.json(r.rows[0]);
     } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
   });
+
+  // אישור מנהל — סימון קבוצתי של שורות שהעובד הזין.
+  // נרשם גם מי אישר ומתי, אחרת הסימון לא שווה הרבה כמעקב.
+  if (opts.approvable) {
+    router.post('/approve', authenticate, ...gate, can('approve'), async (req, res) => {
+      const ids = [...new Set((Array.isArray(req.body.ids) ? req.body.ids : [])
+        .map(Number).filter(n => Number.isInteger(n) && n > 0))];
+      if (!ids.length) return res.status(400).json({ error: 'לא נבחרו שורות' });
+      const approved = req.body.approved !== false;
+      try {
+        const r = await pool.query(
+          `UPDATE ${table}
+              SET approved=$1,
+                  approved_by = CASE WHEN $1 THEN $2::int ELSE NULL END,
+                  approved_at = CASE WHEN $1 THEN NOW() ELSE NULL END
+            WHERE id = ANY($3::bigint[]) AND deleted=false
+            RETURNING id`, [approved, req.user.id, ids]);
+        await logAction(req.user, approved ? 'approve' : 'unapprove', table, null,
+          { count: r.rows.length, ids });
+        res.json({ changed: r.rows.length, approved });
+      } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+    });
+  }
 
   // מחיקה רכה
   router.delete('/:id', authenticate, ...gate, can('del'), async (req, res) => {

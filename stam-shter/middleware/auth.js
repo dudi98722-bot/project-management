@@ -8,6 +8,8 @@ const jwt = require('jsonwebtoken');
 //  scribeReport - צפייה בדוח סופר בלבד (למי שאין לו viewReports)
 //  finance      - צד הכסף של הלקוחות: תשלומי לקוחות, הוצאות עסק,
 //                 ומחירי המכירה והרווח בלשונית ס"ת
+//  approve      - אישור שורות שהעובד הזין (רכישות ותשלומים לסופר).
+//                 מי שמזין אינו מי שמאשר, ולכן פקיד וניהול-סופרים לא מקבלים אותה.
 //  view         - צפייה בנתונים
 //
 // scribeops (ניהול סופרים): רואה רק את מה שנוגע לעבודה מול הסופרים —
@@ -15,11 +17,11 @@ const jwt = require('jsonwebtoken');
 // אין לו גישה לתשלומי לקוחות, להוצאות העסק, לדשבורד ולשאר הדוחות,
 // ומחירי הרוכש והרווח נחסכים ממנו גם בנתונים שהשרת שולח.
 const ROLES = {
-  admin:     { label: 'מנהל ראשי',    manageUsers: true,  edit: true,  del: true,  viewReports: true,  scribeReport: true, finance: true,  view: true },
-  manager:   { label: 'מנהל',         manageUsers: false, edit: true,  del: true,  viewReports: true,  scribeReport: true, finance: true,  view: true },
-  clerk:     { label: 'פקיד',         manageUsers: false, edit: true,  del: false, viewReports: true,  scribeReport: true, finance: true,  view: true },
-  scribeops: { label: 'ניהול סופרים', manageUsers: false, edit: true,  del: false, viewReports: false, scribeReport: true, finance: false, view: true },
-  viewer:    { label: 'צופה',         manageUsers: false, edit: false, del: false, viewReports: true,  scribeReport: true, finance: true,  view: true }
+  admin:     { label: 'מנהל ראשי',    manageUsers: true,  edit: true,  del: true,  viewReports: true,  scribeReport: true, finance: true,  approve: true,  view: true },
+  manager:   { label: 'מנהל',         manageUsers: false, edit: true,  del: true,  viewReports: true,  scribeReport: true, finance: true,  approve: true,  view: true },
+  clerk:     { label: 'פקיד',         manageUsers: false, edit: true,  del: false, viewReports: true,  scribeReport: true, finance: true,  approve: false, view: true },
+  scribeops: { label: 'ניהול סופרים', manageUsers: false, edit: true,  del: false, viewReports: false, scribeReport: true, finance: false, approve: false, view: true },
+  viewer:    { label: 'צופה',         manageUsers: false, edit: false, del: false, viewReports: true,  scribeReport: true, finance: true,  approve: false, view: true }
 };
 
 function authenticate(req, res, next) {

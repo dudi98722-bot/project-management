@@ -634,20 +634,34 @@ function selCol(table) {
   };
 }
 
-function updateSelBar() {
+function updateSelBar(cfg) {
   let bar = $('selBar');
   const checked = [...document.querySelectorAll('input[data-sel]:checked')];
   if (!checked.length) { if (bar) bar.remove(); return; }
   const table = checked[0].dataset.sel;
-  const ids = checked.map(c => +c.value);
+  // תיבה אחת יכולה לייצג כמה מזהים (שורה מקובצת במעקב)
+  const ids = [...new Set(checked.flatMap(c => String(c.value).split(',').map(Number))
+    .filter(n => Number.isInteger(n) && n > 0))];
   if (!bar) { bar = document.createElement('div'); bar.id = 'selBar'; document.body.appendChild(bar); }
   // ביריעות מציעים קודם כל העברה — זו הפעולה השכיחה, לא מחיקה
   const isTrack = table === 'track_items';
+  const canAppr = !!(cfg && cfg.approve && ME.caps.approve);
   bar.innerHTML = `<span>נבחרו <b>${ids.length}</b></span>
     ${isTrack && ME.caps.edit ? `<button class="btn sm" id="moveSelBtn">➜ העבר לתחנה</button>` : ''}
+    ${canAppr ? `<button class="btn green sm" id="apprSelBtn">✓ אשר נבחרים</button>
+                 <button class="btn ghost sm" id="unapprSelBtn">בטל אישור</button>` : ''}
     ${ME.caps.del ? `<button class="btn red sm" id="delSelBtn">🗑 מחק נבחרים</button>` : ''}
     <button class="btn ghost sm" id="clearSelBtn">ביטול</button>`;
   if ($('moveSelBtn')) $('moveSelBtn').onclick = () => openMove(ids);
+  const bulkAppr = async (val) => {
+    try {
+      const r = await cfg.store.approve(ids, val);
+      toast(val ? `אושרו ${r.changed} שורות` : `בוטל אישור ל-${r.changed} שורות`, 'ok');
+      invalidateRows(); render();
+    } catch (e) { toast(e.message, 'err'); }
+  };
+  if ($('apprSelBtn')) $('apprSelBtn').onclick = () => bulkAppr(true);
+  if ($('unapprSelBtn')) $('unapprSelBtn').onclick = () => bulkAppr(false);
   if ($('delSelBtn')) $('delSelBtn').onclick = async () => {
     if (!(await confirmBox(`להעביר ${ids.length} שורות לסל המחזור? (ניתן לשחזר מלשונית מערכת)`))) return;
     try {
@@ -658,11 +672,11 @@ function updateSelBar() {
   };
   $('clearSelBtn').onclick = () => {
     document.querySelectorAll('input[data-sel]:checked').forEach(c => { c.checked = false; });
-    updateSelBar();
+    updateSelBar(cfg);
   };
 }
 
-function wireSelection() {
+function wireSelection(cfg) {
   document.querySelectorAll('input[data-selall]').forEach(h => {
     h.onchange = () => {
       const t = h.dataset.selall;
@@ -670,7 +684,7 @@ function wireSelection() {
         c.checked = (c.dataset.sel === t) ? h.checked : false;
       });
       document.querySelectorAll('input[data-selall]').forEach(o => { if (o !== h) o.checked = false; });
-      updateSelBar();
+      updateSelBar(cfg);
     };
   });
   document.querySelectorAll('input[data-sel]').forEach(c => {
@@ -678,7 +692,7 @@ function wireSelection() {
       document.querySelectorAll('input[data-sel]:checked').forEach(o => {
         if (o.dataset.sel !== c.dataset.sel) o.checked = false;
       });
-      updateSelBar();
+      updateSelBar(cfg);
     };
   });
 }
@@ -717,6 +731,50 @@ function wireRowActions(cfg, rows) {
   });
 }
 
+// ===== אישור מנהל =====
+// העובד מזין, המנהל מסמן שבדק. הסימון נשמר עם מי אישר ומתי, אחרת אין
+// באמת מעקב. מי שאין לו הרשאת approve רואה את הסטטוס אך אינו יכול לשנותו.
+function approvalCol(cfg) {
+  return {
+    label: 'אישור', cls: 'center',
+    render: (r) => {
+      const who = r.approved_by_name ? ` ע"י ${r.approved_by_name}` : '';
+      const when = r.approved_at ? ' · ' + dt(r.approved_at) : '';
+      if (!ME.caps.approve) {
+        return r.approved
+          ? `<span class="pill g" title="${esc('אושר' + who + when)}">✓ אושר</span>`
+          : '<span class="pill a">ממתין</span>';
+      }
+      return `<button class="btn xs ${r.approved ? 'green' : 'ghost'}"
+        data-appr="${r.id}" data-apprval="${r.approved ? '0' : '1'}"
+        title="${r.approved ? esc('אושר' + who + when) + ' — לחיצה מבטלת' : 'לחץ לאישור'}"
+        >${r.approved ? '✓ אושר' : '○ ממתין'}</button>`;
+    },
+  };
+}
+
+// תגית מצב לראש הדף
+function pendingPill(rows) {
+  const n = (rows || []).filter(r => !r.approved).length;
+  return n ? `<span class="pill a">${n} ממתינות לאישור</span>`
+           : '<span class="pill g">הכל מאושר</span>';
+}
+
+// חיווט כפתורי האישור בטבלה
+function wireApprove(cfg) {
+  if (!ME.caps.approve || !cfg.approve) return;
+  document.querySelectorAll('[data-appr]').forEach(b => {
+    b.onclick = async (e) => {
+      e.stopPropagation();
+      b.disabled = true;
+      try {
+        await cfg.store.approve([+b.dataset.appr], b.dataset.apprval === '1');
+        invalidateRows(); render();
+      } catch (err) { toast(err.message, 'err'); b.disabled = false; }
+    };
+  });
+}
+
 // ---- דף ישות גנרי ----
 // מטמון שורות לדף — כדי שרינדור מחדש בעקבות סינון לא ייגש לשרת בכל הקלדה.
 // מתאפס בכל שינוי נתונים (reloadCaches).
@@ -726,13 +784,14 @@ function invalidateRows() { for (const k in ROWCACHE) delete ROWCACHE[k]; }
 async function entityPage(cfg) {
   const fkey = cfg.bulk || cfg.title.replace(/\W/g, '');
   const allRows = ROWCACHE[fkey] || (ROWCACHE[fkey] = await cfg.load());
-  const cols = cfg.cols.concat([actionsCol(cfg)]);
+  const cols = (cfg.approve ? cfg.cols.concat([approvalCol(cfg)]) : cfg.cols).concat([actionsCol(cfg)]);
   if ((ME.caps.del || ME.caps.edit) && cfg.bulk) cols.unshift(selCol(cfg.bulk));
   const rows = applyFilters(fkey, cols, allRows);
   $('view').innerHTML += `
     <div class="page-head">
       <h2>${esc(cfg.title)}</h2>
       ${cfg.subtitle ? `<span class="mini">${esc(cfg.subtitle)}</span>` : ''}
+      ${cfg.approve ? pendingPill(allRows) : ''}
       <div class="spacer"></div>
       ${bulkBtn(cfg.bulk, cfg.title, cfg.bulkPreset)}
       ${ME.caps.edit ? `<button class="btn" id="addBtn">+ הוספה</button>` : ''}
@@ -743,8 +802,9 @@ async function entityPage(cfg) {
       ${tableHTML(cols, rows, { totals: cfg.totals, fkey })}</div>`;
   if ($('addBtn')) $('addBtn').onclick = () => openForm(cfg, null);
   wireRowActions(cfg, rows);
+  wireApprove(cfg);
   wireBulkBtns();
-  wireSelection();
+  wireSelection(cfg);
   wireFilters(fkey, cols, allRows);
 }
 
@@ -941,7 +1001,7 @@ async function showScrollCard(id) {
 // המהירה תשתמש בהן ולא ייווצרו שתי גרסאות של אותו טופס.
 function scribePayCfg() {
   return {
-    title: 'תשלום לסופר', store: Store.scribePayments,
+    title: 'תשלום לסופר', store: Store.scribePayments, approve: true,
     labelOf: (r) => `תשלום ${money(r.amount)}`,
     defaults: () => ({ date: today() }),
     fields: [
@@ -989,6 +1049,7 @@ async function pageScribePay(cfgOnly) {
     { label: 'סכום ששולם', cls: 'num', render: r => mCell(r.amount), total: rows => mCell(sumBy(rows, 'amount')) },
     { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
     { label: 'יתרה לתשלום (הספר)', cls: 'num', render: r => { const s = scrollById(r.scroll_id); return s ? mCell(s.scribe_balance) : ''; } },
+    approvalCol(payCfg),
     actionsCol(payCfg),
   ];
   const pageCols = [
@@ -1006,7 +1067,8 @@ async function pageScribePay(cfgOnly) {
   $('view').innerHTML += `
     <div class="page-head"><h2>תשלום לסופר</h2></div>
     <div class="card">
-      <div class="page-head"><h3>תשלומים לסופר</h3><div class="spacer"></div>
+      <div class="page-head"><h3>תשלומים לסופר</h3>
+        ${pendingPill(allPays)}<div class="spacer"></div>
         ${bulkBtn('scribe_payments', 'תשלומים לסופר')}
         ${ME.caps.edit ? `<button class="btn sm" id="addPay">+ תשלום</button>` : ''}</div>
       ${filterBarHTML('scribe_payments', pays.length, allPays.length)}
@@ -1040,7 +1102,8 @@ async function pageScribePay(cfgOnly) {
   if (tables[1]) { tables[1].querySelectorAll('[data-edit],[data-del]').forEach(b => b.dataset.grp = 'page'); }
   wire('[data-grp="pay"]', payCfg, pays);
   wire('[data-grp="page"]', pageCfg, pages);
-  wireSelection();
+  wireApprove(payCfg);
+  wireSelection(payCfg);
   wireFilters('scribe_payments', payCols, allPays);
   wireFilters('pages_log', pageCols, allPages);
 }
@@ -1191,6 +1254,7 @@ function pageProd() {
 function prodPurchases(cfgOnly) {
   const cfg = {
     title: 'רכישות מוצרים', bulk: 'prod_purchases', store: Store.prodPurchases,
+    approve: true,
     load: () => Store.prodPurchases.list(),
     labelOf: (r) => `${r.product_name} מ${r.scribe_name}`,
     defaults: () => ({ date: today(), purchase_type: 'רגיל',
@@ -1311,6 +1375,7 @@ function prodSales(cfgOnly) {
 function prodScribePay(cfgOnly) {
   const cfg = {
     title: 'תשלומים לסופר (מוצרים)', bulk: 'prod_scribe_payments', store: Store.prodScribePayments,
+    approve: true,
     load: () => Store.prodScribePayments.list(),
     labelOf: (r) => `תשלום ${money(r.amount)}`,
     defaults: () => ({ date: today() }),
@@ -2909,7 +2974,33 @@ async function trackSummary() {
 }
 
 // ---------- כל היריעות: סינון, בחירה מרובה והעברה ----------
-const TRACK = { scroll: '', purchase: '', station: '', holder: '' };
+const TRACK = { scroll: '', purchase: '', station: '', holder: '', grouped: true };
+
+// קיבוץ פריטים שנמצאים באותו מצב בדיוק: אותה חבילה/ספר, אותה תחנה,
+// אותו מחזיק, מאותו תאריך ועם אותה הערה. חבילה של 37 מזוזות שכולן
+// באותו מקום מוצגת כשורה אחת במקום 37 שורות זהות.
+function groupTrackRows(rows) {
+  const map = new Map();
+  for (const r of rows) {
+    const key = [r.scroll_id || '', r.purchase_id || '', r.station_id || 0,
+                 r.holder_id || 0, r.since || '', r.note || ''].join('|');
+    let g = map.get(key);
+    if (!g) { g = Object.assign({}, r, { ids: [], seqs: [], qty: 0 }); map.set(key, g); }
+    g.ids.push(r.id);
+    g.seqs.push(Number(r.seq));
+    g.qty++;
+  }
+  // id מרוכב — כך תיבת הבחירה הגנרית מסמנת את כל הפריטים שבשורה
+  return [...map.values()].map(g => Object.assign(g, { id: g.ids.join(',') }));
+}
+
+// "1–37" כשהרצף שלם, אחרת רק הכמות — טווח שבור היה מטעה
+function seqLabel(g) {
+  const s = g.seqs.slice().sort((a, b) => a - b);
+  if (s.length === 1) return String(s[0]);
+  const whole = s[s.length - 1] - s[0] + 1 === s.length;
+  return whole ? `${s[0]}\u2013${s[s.length - 1]}` : `${s.length} פריטים`;
+}
 
 async function trackItems() {
   const filt = {};
@@ -2917,12 +3008,11 @@ async function trackItems() {
   if (TRACK.purchase) filt.purchase_id = TRACK.purchase;
   if (TRACK.station) filt.station_id = TRACK.station;
   if (TRACK.holder) filt.holder_id = TRACK.holder;
-  const allRows = await Store.track.list(filt);
+  const items = await Store.track.list(filt);
+  const grouped = TRACK.grouped;
+  const allRows = grouped ? groupTrackRows(items) : items;
 
-  const cols = [
-    ...(ME.caps.edit ? [selCol('track_items')] : []),
-    { label: 'שייך ל', render: r => esc(itemLabel(r)) },
-    { label: 'יריעה / יחידה', cls: 'num', render: r => `<b>${r.seq}</b>${r.label ? ` · ${esc(r.label)}` : ''}` },
+  const common = [
     { label: 'סופר', render: r => esc(r.scribe_name || r.purchase_scribe_name || '—') },
     { label: 'תחנה', render: r => stationPill(r) },
     { label: 'אצל מי', render: r => esc(r.holder_name || '—') },
@@ -2930,6 +3020,21 @@ async function trackItems() {
     { label: 'ימים', cls: 'num', render: r => r.days_at_station != null
         ? `<span class="${r.days_at_station > 60 ? 'neg' : ''}">${r.days_at_station}</span>` : '' },
     { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
+  ];
+  const cols = grouped ? [
+    ...(ME.caps.edit ? [selCol('track_items')] : []),
+    { label: 'שייך ל', render: r => esc(itemLabel(r)) },
+    { label: 'כמות', cls: 'num', render: r => `<b>${r.qty}</b>` },
+    { label: 'מספרים', cls: 'num', render: r => `<span class="muted">${seqLabel(r)}</span>` },
+    ...common,
+    { label: '', cls: 'center', render: r => `
+      ${ME.caps.edit ? `<button class="btn ghost xs" data-gmove="${r.id}">\u2194 העבר</button> ` : ''}
+      ${r.qty === 1 ? `<button class="btn ghost xs" data-hist="${r.ids[0]}">היסטוריה</button>` : ''}` },
+  ] : [
+    ...(ME.caps.edit ? [selCol('track_items')] : []),
+    { label: 'שייך ל', render: r => esc(itemLabel(r)) },
+    { label: 'יריעה / יחידה', cls: 'num', render: r => `<b>${r.seq}</b>${r.label ? ` \u00b7 ${esc(r.label)}` : ''}` },
+    ...common,
     { label: '', cls: 'center', render: r => `<button class="btn ghost xs" data-hist="${r.id}">היסטוריה</button>` },
   ];
   const rows = applyFilters('track_items', cols, allRows);
@@ -2942,9 +3047,16 @@ async function trackItems() {
         <div style="flex:1;min-width:200px">${pickerHTML('tkStation', 'תחנה', itemsStations(), TRACK.station, 'כל התחנות')}</div>
         <div style="flex:1;min-width:220px">${pickerHTML('tkHolder', 'אצל מי', itemsContacts(), TRACK.holder, 'כולם — הקלד שם')}</div>
       </div>
-      ${ME.caps.edit ? `<div class="toolbar">
-        <button class="btn" id="tkGen">+ צור יריעות לספר</button>
-        <span class="mini">סמן יריעות בטבלה כדי להעביר אותן לתחנה אחרת</span></div>` : ''}
+      <div class="toolbar">
+        <div class="seg">
+          <button data-tkview="1" class="${grouped ? 'on' : ''}">\u25a4 מקובץ</button>
+          <button data-tkview="0" class="${grouped ? '' : 'on'}">\u2263 מפורט</button>
+        </div>
+        ${ME.caps.edit ? `<button class="btn" id="tkGen">+ צור יריעות לספר</button>` : ''}
+        <span class="mini">${grouped
+          ? `${items.length} פריטים ב-${allRows.length} שורות — פריטים באותו מצב מוצגים יחד`
+          : 'סמן פריטים בטבלה כדי להעביר אותם לתחנה אחרת'}</span>
+      </div>
     </div>
     <div class="card">
       ${filterBarHTML('track_items', rows.length, allRows.length)}
@@ -2956,6 +3068,10 @@ async function trackItems() {
   wirePicker('tkStation', itemsStations(), (v) => { TRACK.station = v; render(); });
   wirePicker('tkHolder',  itemsContacts(), (v) => { TRACK.holder = v; render(); });
   if ($('tkGen')) $('tkGen').onclick = openGenerate;
+  document.querySelectorAll('[data-tkview]').forEach(b =>
+    b.onclick = () => { TRACK.grouped = b.dataset.tkview === '1'; render(); });
+  document.querySelectorAll('[data-gmove]').forEach(b => b.onclick = () =>
+    openMove(String(b.dataset.gmove).split(',').map(Number)));
   wireSelection();
   wireFilters('track_items', cols, allRows);
   document.querySelectorAll('[data-hist]').forEach(b => b.onclick = () => showHistory(+b.dataset.hist));

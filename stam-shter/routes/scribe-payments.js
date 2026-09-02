@@ -5,4 +5,11 @@ module.exports = crudRouter('scribe_payments', [
   { key: 'date', type: 'date' },
   { key: 'amount', type: 'num' },
   { key: 'note', type: 'text' },
-], { orderBy: 't.date DESC NULLS LAST, t.id DESC', filterCols: ['scroll_id'] });
+], {
+  orderBy: 't.date DESC NULLS LAST, t.id DESC',
+  filterCols: ['scroll_id'],
+  approvable: true,
+  viewSql: `SELECT t.*, ua.full_name AS approved_by_name
+            FROM scribe_payments t
+            LEFT JOIN users ua ON ua.id = t.approved_by`,
+});
