@@ -366,7 +366,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 מב'";
+var APP_BUILD = "19.08 מד'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -11716,6 +11716,7 @@ function viewSheets(){
       '<button class="btn btn-ghost btn-sm" onclick="sheetApplyFmt(\''+s.id+'\',\'clear\')">נקה עיצוב</button>'+
       '<span style="width:10px"></span>'+
       '<button class="btn btn-sm" title="העתקת התאים המסומנים (גם Ctrl+C) — אפשר להדביק כאן או באקסל" onclick="sheetCopySel()">⧉ העתק</button>'+
+      '<button class="btn btn-sm" title="מחיקת התוכן של התאים המסומנים (גם מקש Delete) — העיצוב נשאר" onclick="sheetClearSel(\''+s.id+'\')">🧹 נקה תוכן</button>'+
       '<div class="sp"></div><span id="sheet-sel-lbl" class="muted">לא נבחר תא</span>'+
     '</div>';
   }
@@ -11749,26 +11750,7 @@ function viewSheets(){
     })()+
     (can("edit")?'<th style="width:30px"></th>':'')+
     '</tr></thead><tbody>';
-  rows.forEach(function(r,ri){
-    h+='<tr><td class="rownum" style="cursor:pointer" title="בחר את כל השורה" onclick="sheetSelRow(\''+s.id+'\','+ri+')">'+(ri+1)+'</td>';
-    for(var c=0;c<nCols;c++){
-      var v=(r[c]==null?"":r[c]);
-      var isNum=cellNum(v)!==null;
-      var f=sheetFmt(s,ri,c);
-      var cls=[]; if(f){ if(f.bold) cls.push("bold"); ["bt","bb","bl","br"].forEach(function(k){ if(f[k]) cls.push(k); }); }
-      var sty=(f&&f.bg)?' style="background:'+esc(f.bg)+'"':'';
-      h+=can("edit")
-        ? '<td class="'+cls.join(" ")+'"'+sty+' data-cr="'+ri+'" data-cc="'+c+'"'+
-          ' onmousedown="sheetCellDown(event,\''+s.id+'\','+ri+','+c+')"'+
-          ' onmouseover="sheetCellOver(\''+s.id+'\','+ri+','+c+')">'+
-          '<input class="'+(isNum?"num":"")+'" value="'+esc(v)+'"'+
-          ' data-r="'+ri+'" data-c="'+c+'" onchange="setSheetCell(\''+s.id+'\','+ri+','+c+',this.value)"'+
-          ' onmouseup="sheetCellUp(event,this)"'+
-          ' onkeydown="sheetKey(event,'+ri+','+c+')" onpaste="sheetPaste(event,\''+s.id+'\','+ri+','+c+')"></td>'
-        : '<td class="cellval'+(isNum?" num":"")+" "+cls.join(" ")+'"'+sty+'>'+esc(v)+'</td>';
-    }
-    h+=(can("edit")?'<td class="right"><button class="btn btn-ghost btn-sm" title="מחק שורה" onclick="delSheetRow(\''+s.id+'\','+ri+')">✕</button></td>':'')+'</tr>';
-  });
+  rows.forEach(function(r,ri){ h+=sheetRowHtml(s,ri,nCols); });
   h+='</tbody><tfoot><tr><td class="rownum">Σ</td>';
   for(var c2=0;c2<nCols;c2++){
     h+='<td'+(counts[c2]?' title="'+counts[c2]+' תאים מספריים"':'')+'>'+
@@ -11778,7 +11760,8 @@ function viewSheets(){
     '<div class="hint">לחיצה בוחרת תא · גרירה או Shift בוחרת טווח · לחיצה על אות העמודה או מספר השורה בוחרת אותה כולה · '+
     'Enter יורד תא · אפשר להדביק טבלה שלמה מאקסל · שורת ה-Σ מסכמת רק מספרים.<br>'+
     '<b>העתקה:</b> מסמנים טווח ולוחצים <b>Ctrl+C</b> (או "⧉ העתק") — ומדביקים ב-Ctrl+V בתא אחר, או ישר באקסל. '+
-    '<b>עמודות:</b> ריחוף מעל אות העמודה חושף <b>⧉</b> שכפול עם התוכן, <b>＋</b> הוספת עמודה אחריה ו-<b>✕</b> מחיקה.</div>';
+    '<b>עמודות:</b> ריחוף מעל אות העמודה חושף <b>⧉</b> שכפול עם התוכן, <b>＋</b> הוספת עמודה אחריה ו-<b>✕</b> מחיקה.<br>'+
+    '<b>ניקוי:</b> מסמנים טווח ולוחצים <b>Delete</b> (או "🧹 נקה תוכן") — התוכן נמחק והעיצוב נשאר.</div>';
   return h;
 }
 function newSheet(){
@@ -11796,6 +11779,46 @@ function renameSheet(id){
   if(!name) return;
   s.name=name; save(); rerender();
 }
+/* שורה אחת של הגיליון — חולצה כדי שאפשר יהיה להוסיף שורה בודדת
+   בלי לבנות מחדש את כל הטבלה. */
+function sheetRowHtml(s,ri,nCols){
+  var r=(s.rows||[])[ri]||[];
+  var h='<tr><td class="rownum" style="cursor:pointer" title="בחר את כל השורה" onclick="sheetSelRow(\''+s.id+'\','+ri+')">'+(ri+1)+'</td>';
+  for(var c=0;c<nCols;c++){
+    var v=(r[c]==null?"":r[c]);
+    var isNum=cellNum(v)!==null;
+    var f=sheetFmt(s,ri,c);
+    var cls=[]; if(f){ if(f.bold) cls.push("bold"); ["bt","bb","bl","br"].forEach(function(k){ if(f[k]) cls.push(k); }); }
+    var sty=(f&&f.bg)?' style="background:'+esc(f.bg)+'"':'';
+    h+=can("edit")
+      ? '<td class="'+cls.join(" ")+'"'+sty+' data-cr="'+ri+'" data-cc="'+c+'"'+
+        ' onmousedown="sheetCellDown(event,\''+s.id+'\','+ri+','+c+')"'+
+        ' onmouseover="sheetCellOver(\''+s.id+'\','+ri+','+c+')">'+
+        '<input class="'+(isNum?"num":"")+'" value="'+esc(v)+'"'+
+        ' data-r="'+ri+'" data-c="'+c+'" onchange="setSheetCell(\''+s.id+'\','+ri+','+c+',this.value)"'+
+        ' onmouseup="sheetCellUp(event,this)"'+
+        ' onkeydown="sheetKey(event,'+ri+','+c+')" onpaste="sheetPaste(event,\''+s.id+'\','+ri+','+c+')"></td>'
+      : '<td class="cellval'+(isNum?" num":"")+" "+cls.join(" ")+'"'+sty+'>'+esc(v)+'</td>';
+  }
+  return h+(can("edit")?'<td class="right"><button class="btn btn-ghost btn-sm" title="מחק שורה" onclick="delSheetRow(\''+s.id+'\','+ri+')">✕</button></td>':'')+'</tr>';
+}
+/* שורת ה-Σ מתעדכנת במקום, בלי לבנות מחדש את הטבלה */
+function sheetRefreshSums(s){
+  var tbl=document.querySelector("table.sheet-grid");
+  if(!tbl||!tbl.tFoot||!tbl.tFoot.rows.length) return;
+  var nCols=sheetColCount(s), rows=(s.rows||[]);
+  for(var c=0;c<nCols;c++){
+    var sum=0, cnt=0;
+    for(var i=0;i<rows.length;i++){
+      var n=cellNum((rows[i]||[])[c]);
+      if(n!==null){ sum+=n; cnt++; }
+    }
+    var td=tbl.tFoot.rows[0].cells[c+1];
+    if(!td) continue;
+    td.innerHTML=cnt?esc(num(round2(sum))):'<span class="muted">—</span>';
+    if(cnt) td.title=cnt+" תאים מספריים"; else td.removeAttribute("title");
+  }
+}
 function setSheetCell(id,r,c,v){
   if(!can("edit")) return;
   var s=byId(DB.sheets,id); if(!s) return;
@@ -11803,8 +11826,38 @@ function setSheetCell(id,r,c,v){
   while(s.rows.length<=r) s.rows.push([]);
   var row=s.rows[r];
   while(row.length<=c) row.push("");
-  row[c]=sheetStripShekel(v);
+  var clean=sheetStripShekel(v);
+  row[c]=clean;
+  save();
+  /* ---------- עדכון במקום ----------
+     קודם כל הקלדה בתא בנתה מחדש את כל המסך: הטבלה נהרסה ונבנתה,
+     הפוקוס אבד והמסך קפץ. עכשיו מתעדכן רק מה שבאמת השתנה. */
+  var inp=document.querySelector('.sheet-grid input[data-r="'+r+'"][data-c="'+c+'"]');
+  if(!inp){ rerender(); return; }              /* לא על המסך — נופלים לרינדור מלא */
+  if(inp.value!==clean) inp.value=clean;       /* למשל אחרי הסרת ה-₪ */
+  inp.className=(cellNum(clean)!==null)?"num":"";
+  var tb=document.querySelector(".sheet-grid tbody");
+  /* הקלדה בשורה האחרונה — נפתחת שורה ריקה מתחתיה, כמו בגיליון */
+  if(tb && r===tb.rows.length-1) tb.insertAdjacentHTML("beforeend",sheetRowHtml(s,r+1,sheetColCount(s)));
+  sheetRefreshSums(s);
+  paintSheetSel();
+}
+/* ניקוי התוכן של הטווח המסומן — העיצוב נשאר */
+function sheetClearSel(id){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var sel=sheetSelNorm();
+  if(!sel || (id && sel.id!==id)){ toast("סמן קודם תא או קבוצת תאים","warn"); return; }
+  var s=byId(DB.sheets,sel.id); if(!s) return;
+  var n=0;
+  for(var r=sel.r1;r<=sel.r2;r++){
+    var row=(s.rows||[])[r]; if(!row) continue;
+    for(var c=sel.c1;c<=sel.c2;c++){
+      if(row[c]!=null && String(row[c])!==""){ row[c]=""; n++; }
+    }
+  }
+  if(!n){ toast("אין תוכן לנקות בטווח שנבחר","warn"); return; }
   save(); rerender();
+  toast("נוקה התוכן של "+n+(n===1?" תא":" תאים"),"ok");
 }
 function setSheetCol(id,c,v){
   if(!can("edit")) return;
@@ -11936,6 +11989,11 @@ function sheetKey(ev,r,c){
   if((ev.ctrlKey||ev.metaKey) && (ev.key==="c"||ev.key==="C") && sheetSelCount()>1){
     ev.preventDefault(); sheetCopySel(); return;
   }
+  /* Delete על טווח מסומן — מנקה את כולו. בתא בודד נשארת התנהגות
+     רגילה של מחיקת תו. */
+  if((ev.key==="Delete"||ev.key==="Backspace") && sheetSelCount()>1 && SHEETSEL){
+    ev.preventDefault(); sheetClearSel(SHEETSEL.id); return;
+  }
   var dr=0, dc=0;
   if(ev.key==="Enter"||ev.key==="ArrowDown") dr=1;
   else if(ev.key==="ArrowUp") dr=-1;
@@ -12034,13 +12092,24 @@ function dueDateIn(ym,day){
    נוצרים מראש: הם היו מציגים חוב שטרם נולד. */
 /* תדירות החיוב. r.rent הוא הסכום לכל חיוב — לא בהכרח חודשי — ולכן
    הדשבורד מנרמל אותו לערך חודשי כדי שהסיכומים יישארו בני-השוואה. */
-var RENT_EVERY={month:"חודשי",quarter:"רבעוני",half:"חצי-שנתי",year:"שנתי"};
-var RENT_EVERY_M={month:1,quarter:3,half:6,year:12};
+var RENT_EVERY={month:"חודשי",quarter:"רבעוני",half:"חצי-שנתי",year:"שנתי",once:"חד פעמי"};
+/* "חד פעמי" אינו תדירות אמיתית: הוא מייצר חיוב אחד לכל החוזה.
+   הצעד נשאר 1 רק כדי שחישובי החודשים לא יתחלקו באפס — הטיפול
+   האמיתי בו הוא ב-rentalDueMonths שמחזיר חודש אחד בלבד. */
+var RENT_EVERY_M={month:1,quarter:3,half:6,year:12,once:1};
+function rentIsOnce(r){ return rentEvery(r)==="once"; }
 function rentEvery(r){ return RENT_EVERY_M[r&&r.every] ? r.every : "month"; }
 function rentStepM(r){ return RENT_EVERY_M[rentEvery(r)]; }
-function rentMonthly(r){ return (Number(r&&r.rent)||0)/rentStepM(r); }
+/* הסכום החודשי המנורמל — לסיכומי "שכ"ד חודשי". חיוב חד-פעמי אינו
+   הכנסה חוזרת ולכן אינו נספר שם; הוא מופיע ככל חיוב בכרטיס הדירה. */
+function rentMonthly(r){ return rentIsOnce(r) ? 0 : (Number(r&&r.rent)||0)/rentStepM(r); }
 function rentPeriodLabel(r,ym){
   var st=rentStepM(r);
+  if(rentIsOnce(r)){
+    /* חיוב אחד לכל החוזה — התווית היא כל תקופת החוזה */
+    return (r.startDate?ymLabel(ymOf(r.startDate)):ymLabel(ym))+
+      (r.endDate?"–"+ymLabel(ymOf(r.endDate)):"");
+  }
   if(st===1) return ymLabel(ym);
   var last=ymAdd(ym,st-1);
   return ymLabel(ym)+"–"+ymLabel(last);
@@ -12054,6 +12123,8 @@ function rentalDueMonths(r){
   /* הצעד הוא לפי התדירות: חיוב שנתי מייצר שורה אחת לכל 12 חודשים,
      והמפתח נשאר חודש ההתחלה של התקופה — כך שגם אחרי שינוי תדירות
      לא נוצרות כפילויות על תקופה שכבר חויבה. */
+  /* חד פעמי: חיוב אחד בלבד, בחודש הראשון של החוזה */
+  if(rentIsOnce(r)) return [from];
   var step=rentStepM(r);
   var out=[], cur=from, guard=0;
   while(cur<=to && guard<600){ out.push(cur); cur=ymAdd(cur,step); guard++; }
@@ -12780,7 +12851,17 @@ function renewRental(id){
       '<div class="field"><label>טלפון</label><input id="rw-phone" value="'+esc(defNew?"":(r.phone||""))+'"></div>'+
       '<div class="field"><label>תחילת החוזה החדש</label><input id="rw-start" type="date" value="'+esc(newStart)+'"></div>'+
       '<div class="field"><label>סיום</label><input id="rw-end" type="date" value="'+esc(addMonthsISO(newStart,12))+'"></div>'+
-      '<div class="field"><label>שכר דירה חודשי (₪)</label><input id="rw-rent" type="number" step="0.01" value="'+esc(String(r.rent||""))+'"></div>'+
+      '<div class="field"><label>סכום לכל חיוב (₪)</label><input id="rw-rent" type="number" step="0.01" value="'+esc(String(r.rent||""))+'">'+
+        '<div class="hint">בחיוב חודשי — שכר הדירה החודשי; בשנתי או חד-פעמי — הסכום המלא</div></div>'+
+      '<div class="field"><label>תדירות החיוב</label><select id="rw-every">'+
+        Object.keys(RENT_EVERY).map(function(k){
+          return '<option value="'+k+'"'+(rentEvery(r)===k?" selected":"")+'>'+RENT_EVERY[k]+'</option>'; }).join("")+
+      '</select><div class="hint">"חד פעמי" = חיוב אחד לכל תקופת החוזה</div></div>'+
+      '<div class="field"><label>יום החיוב בחודש</label><input id="rw-due" type="number" min="1" max="28" value="'+esc(String(r.dueDay||1))+'"></div>'+
+      '<div class="field full"><label style="font-weight:400"><input type="checkbox" id="rw-auto" style="width:auto;margin-inline-end:6px"'+
+        (r.autoIncome?" checked":"")+'> ליצור שורות הכנסה אוטומטית לפי התדירות</label>'+
+        '<div class="hint">בכל מועד חיוב תיווצר שורת הכנסה מסומנת "ממתינה לתשלום", עד שיירשם עליה תשלום</div></div>'+
+      '<div class="field full"><label>הערה</label><input id="rw-note" value="'+esc(r.note||"")+'"></div>'+
     '</div>',
     saveLabel:"התחל חוזה חדש",onSave:function(){
       var sd=val("rw-start"), ed=val("rw-end");
@@ -12794,6 +12875,15 @@ function renewRental(id){
       }
       r.tenant=val("rw-tenant").trim(); r.phone=val("rw-phone").trim();
       r.startDate=sd; r.endDate=ed; r.rent=Number(val("rw-rent"))||0;
+      /* השדות האלה נשארו קודם על ערכי החוזה הקודם ודרשו פתיחת
+         עריכה נפרדת מיד אחרי יצירת החוזה. */
+      if(RENT_EVERY[val("rw-every")]) r.every=val("rw-every");
+      r.dueDay=Math.min(Math.max(Number(val("rw-due"))||1,1),28);
+      r.autoIncome=checked("rw-auto");
+      r.note=val("rw-note");
+      /* חוזה חדש מתחיל מנייה חדשה: בלי איפוס, מנגנון היצירה היה
+         מדלג על חודשים שכבר חויבו בחוזה הקודם. */
+      r.genFrom="";
       save(); toast(r.tenant?"החוזה חודש":"הדירה סומנה כפנויה","ok"); rerender();
     }});
 }
