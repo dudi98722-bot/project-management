@@ -106,6 +106,12 @@ table.tbl.sheet-grid{font-size:12.5px;border-collapse:collapse;table-layout:fixe
    מ-0 ל-"(1)" ואז ל-"(10)", והכפתורים שמשמאלו קפצו בכל סימון —
    זו הייתה ה"רעידה" של המסך. tabular-nums שומר על רוחב ספרה קבוע. */
 .selcount{display:inline-block;min-width:2.6em;text-align:center;font-variant-numeric:tabular-nums}
+/* תא שסומן כסכום בשקלים. הסימן מצויר ליד המספר ואינו חלק מהערך —
+   כך הסיכומים, ההעתקה והייצוא ממשיכים לראות מספר נקי. */
+table.tbl.sheet-grid td.cur{position:relative}
+table.tbl.sheet-grid td.cur::after{content:"₪";position:absolute;inset-inline-start:4px;top:50%;
+  transform:translateY(-50%);font-size:11px;opacity:.55;pointer-events:none}
+table.tbl.sheet-grid td.cur input{padding-inline-start:15px}
 .col-acts{display:none;margin-inline-start:5px;font-size:11px;letter-spacing:2px}
 .col-acts span{cursor:pointer;opacity:.55}
 .col-acts span:hover{opacity:1}
@@ -148,6 +154,8 @@ table.tbl.sheet-grid td.bb{border-bottom:2px solid #334155}
 table.tbl.sheet-grid td.bl{border-inline-start:2px solid #334155}
 table.tbl.sheet-grid td.br{border-inline-end:2px solid #334155}
 table.tbl.sheet-grid td.bold input,table.tbl.sheet-grid td.bold{font-weight:700}
+.sheet-status{min-height:20px;line-height:20px;font-size:12.5px;margin:4px 2px 6px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sheet-tools{display:flex;gap:5px;flex-wrap:wrap;align-items:center;
   background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:7px 9px;margin-bottom:8px}
 .sheet-swatch{width:24px;height:24px;border-radius:5px;border:1px solid #cbd5e1;cursor:pointer;padding:0}
@@ -366,7 +374,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 מד'";
+var APP_BUILD = "19.08 מו'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -11634,6 +11642,10 @@ function sheetApplyFmt(id,kind,value){
         bt:(r===sel.r1)?1:0, bb:(r===sel.r2)?1:0,
         bl:(c===sel.c1)?1:0, br:(c===sel.c2)?1:0});
       else if(kind==="noBox") patch(r,c,{bt:0,bb:0,bl:0,br:0});
+      else if(kind==="cur"){
+        var cc=sheetFmt(s,r,c);
+        patch(r,c,{cur:(cc&&cc.cur)?0:1});
+      }
       else if(kind==="clear") delete s.fmt[fmtKey(r,c)];
     }
   }
@@ -11645,7 +11657,35 @@ function sheetApplyFmt(id,kind,value){
     for(var r2=sel.r1;r2<=sel.r2;r2++)
       for(var c2=sel.c1;c2<=sel.c2;c2++) patch(r2,c2,{bold:on?1:0});
   }
-  save(); rerender();
+  /* אותו היגיון גם ל"₪": כל הטווח מקבל את אותו מצב לפי התא הראשון */
+  if(kind==="cur"){
+    var f0=sheetFmt(s,sel.r1,sel.c1);
+    var onc=!!(f0&&f0.cur);
+    for(var r3=sel.r1;r3<=sel.r2;r3++)
+      for(var c3=sel.c1;c3<=sel.c2;c3++) patch(r3,c3,{cur:onc?1:0});
+  }
+  save();
+  /* ---------- החלה במקום ----------
+     קודם כל שינוי עיצוב בנה מחדש את כל המסך, והמסך קפץ בכל הדגשה
+     או צביעה. כאן משנים רק את התאים שבטווח. */
+  sheetApplyFmtDom(s,sel);
+}
+/* מעדכן את התאים שבטווח לפי העיצוב השמור, בלי לבנות טבלה מחדש */
+function sheetApplyFmtDom(s,sel){
+  var any=false;
+  for(var r=sel.r1;r<=sel.r2;r++){
+    for(var c=sel.c1;c<=sel.c2;c++){
+      var td=document.querySelector('.sheet-grid td[data-cr="'+r+'"][data-cc="'+c+'"]');
+      if(!td) continue;
+      any=true;
+      var f=sheetFmt(s,r,c)||{};
+      ["bold","bt","bb","bl","br","cur"].forEach(function(k){ td.classList.toggle(k,!!f[k]); });
+      if(f.bg) td.style.background=f.bg; else td.style.removeProperty("background");
+    }
+  }
+  if(!any){ rerender(); return; }   /* הטווח אינו על המסך */
+  sheetRefreshSums(s);
+  paintSheetSel();
 }
 /* מחיקת שורה מזיזה את העיצוב של השורות שמתחתיה — אחרת ההדגשות
    נשארות על מספרי שורה ישנים ומופיעות על תאים לא נכונים */
@@ -11710,6 +11750,7 @@ function viewSheets(){
       }).join("")+
       '<span style="width:10px"></span>'+
       '<button class="btn btn-sm" onclick="sheetApplyFmt(\''+s.id+'\',\'bold\')"><b>מודגש</b></button>'+
+      '<button class="btn btn-sm" title="סימון התאים כסכום בשקלים — הסימן מוצג, והערך נשאר מספר נקי לסיכומים ולאקסל" onclick="sheetApplyFmt(\''+s.id+'\',\'cur\')">₪ שקל</button>'+
       '<button class="btn btn-sm" onclick="sheetApplyFmt(\''+s.id+'\',\'boxOut\')">⬛ מסגרת מסביב</button>'+
       '<button class="btn btn-sm" onclick="sheetApplyFmt(\''+s.id+'\',\'boxAll\')">▦ מסגרת לכל תא</button>'+
       '<button class="btn btn-sm" onclick="sheetApplyFmt(\''+s.id+'\',\'noBox\')">הסר מסגרת</button>'+
@@ -11717,8 +11758,11 @@ function viewSheets(){
       '<span style="width:10px"></span>'+
       '<button class="btn btn-sm" title="העתקת התאים המסומנים (גם Ctrl+C) — אפשר להדביק כאן או באקסל" onclick="sheetCopySel()">⧉ העתק</button>'+
       '<button class="btn btn-sm" title="מחיקת התוכן של התאים המסומנים (גם מקש Delete) — העיצוב נשאר" onclick="sheetClearSel(\''+s.id+'\')">🧹 נקה תוכן</button>'+
-      '<div class="sp"></div><span id="sheet-sel-lbl" class="muted">לא נבחר תא</span>'+
-    '</div>';
+    '</div>'+
+    /* שורת מצב בגובה קבוע, מחוץ לסרגל. כשהתווית ישבה בתוך הסרגל
+       היא התארכה מ"לא נבחר תא" ל"נבחרו 3 תאים · סה"כ 600", הסרגל
+       נשבר לשורה נוספת וכל הטבלה קפצה 47 פיקסלים מטה. */
+    '<div class="sheet-status"><span id="sheet-sel-lbl" class="muted">לא נבחר תא</span></div>';
   }
   h+='<div class="card" style="padding:0;overflow:hidden">'+
     '<div class="table-wrap" style="max-height:65vh"><table class="tbl sheet-grid"><thead><tr>'+
@@ -11754,14 +11798,16 @@ function viewSheets(){
   h+='</tbody><tfoot><tr><td class="rownum">Σ</td>';
   for(var c2=0;c2<nCols;c2++){
     h+='<td'+(counts[c2]?' title="'+counts[c2]+' תאים מספריים"':'')+'>'+
-      (counts[c2] ? esc(num(round2(sums[c2]))) : '<span class="muted">—</span>')+'</td>';
+      (counts[c2] ? esc(sheetColIsCur(s,c2)?money(round2(sums[c2])):num(round2(sums[c2])))
+                  : '<span class="muted">—</span>')+'</td>';
   }
   h+=(can("edit")?'<td></td>':'')+'</tr></tfoot></table></div></div>'+
     '<div class="hint">לחיצה בוחרת תא · גרירה או Shift בוחרת טווח · לחיצה על אות העמודה או מספר השורה בוחרת אותה כולה · '+
     'Enter יורד תא · אפשר להדביק טבלה שלמה מאקסל · שורת ה-Σ מסכמת רק מספרים.<br>'+
     '<b>העתקה:</b> מסמנים טווח ולוחצים <b>Ctrl+C</b> (או "⧉ העתק") — ומדביקים ב-Ctrl+V בתא אחר, או ישר באקסל. '+
     '<b>עמודות:</b> ריחוף מעל אות העמודה חושף <b>⧉</b> שכפול עם התוכן, <b>＋</b> הוספת עמודה אחריה ו-<b>✕</b> מחיקה.<br>'+
-    '<b>ניקוי:</b> מסמנים טווח ולוחצים <b>Delete</b> (או "🧹 נקה תוכן") — התוכן נמחק והעיצוב נשאר.</div>';
+    '<b>ניקוי:</b> מסמנים טווח ולוחצים <b>Delete</b> (או "🧹 נקה תוכן") — התוכן נמחק והעיצוב נשאר. '+
+    '<b>₪ שקל</b> מסמן תאים כסכום — הסימן מוצג בתא ובשורת הסיכום, והערך עצמו נשאר מספר נקי.</div>';
   return h;
 }
 function newSheet(){
@@ -11788,7 +11834,7 @@ function sheetRowHtml(s,ri,nCols){
     var v=(r[c]==null?"":r[c]);
     var isNum=cellNum(v)!==null;
     var f=sheetFmt(s,ri,c);
-    var cls=[]; if(f){ if(f.bold) cls.push("bold"); ["bt","bb","bl","br"].forEach(function(k){ if(f[k]) cls.push(k); }); }
+    var cls=[]; if(f){ if(f.bold) cls.push("bold"); if(f.cur) cls.push("cur"); ["bt","bb","bl","br"].forEach(function(k){ if(f[k]) cls.push(k); }); }
     var sty=(f&&f.bg)?' style="background:'+esc(f.bg)+'"':'';
     h+=can("edit")
       ? '<td class="'+cls.join(" ")+'"'+sty+' data-cr="'+ri+'" data-cc="'+c+'"'+
@@ -11801,6 +11847,16 @@ function sheetRowHtml(s,ri,nCols){
       : '<td class="cellval'+(isNum?" num":"")+" "+cls.join(" ")+'"'+sty+'>'+esc(v)+'</td>';
   }
   return h+(can("edit")?'<td class="right"><button class="btn btn-ghost btn-sm" title="מחק שורה" onclick="delSheetRow(\''+s.id+'\','+ri+')">✕</button></td>':'')+'</tr>';
+}
+/* עמודה שסומנה כשקלים — הסיכום שלה מוצג עם ₪ */
+function sheetColIsCur(s,c){
+  if(!s.fmt) return false;
+  var keys=Object.keys(s.fmt);
+  for(var i=0;i<keys.length;i++){
+    var p=keys[i].split(",");
+    if(Number(p[1])===c && s.fmt[keys[i]] && s.fmt[keys[i]].cur) return true;
+  }
+  return false;
 }
 /* שורת ה-Σ מתעדכנת במקום, בלי לבנות מחדש את הטבלה */
 function sheetRefreshSums(s){
@@ -11815,7 +11871,8 @@ function sheetRefreshSums(s){
     }
     var td=tbl.tFoot.rows[0].cells[c+1];
     if(!td) continue;
-    td.innerHTML=cnt?esc(num(round2(sum))):'<span class="muted">—</span>';
+    td.innerHTML=cnt?esc(sheetColIsCur(s,c)?money(round2(sum)):num(round2(sum)))
+                    :'<span class="muted">—</span>';
     if(cnt) td.title=cnt+" תאים מספריים"; else td.removeAttribute("title");
   }
 }
