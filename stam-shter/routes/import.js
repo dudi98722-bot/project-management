@@ -5,6 +5,7 @@
 const express = require('express');
 const { pool, logAction, softDelete, softDeleteScroll, softDeletePurchase } = require('../db');
 const { authenticate, can } = require('../middleware/auth');
+const { APPROVABLE } = require('./_crud');
 const router = express.Router();
 
 let sheets = null;
@@ -628,6 +629,13 @@ router.post('/:table', authenticate, can('edit'), async (req, res) => {
                   `INSERT INTO ${table} (${cols.join(',')}, created_by, updated_by)
                    VALUES (${ph}, $${cols.length + 1}, $${cols.length + 1}) RETURNING *`,
                   [...vals, req.user.id]);
+          }
+          // אותו כלל כמו בהזנה ידנית: ייבוא של מי שרשאי לאשר נחשב מאושר
+          if (mode !== 'update' && APPROVABLE.has(table) && req.caps && req.caps.approve) {
+            await client.query(
+              `UPDATE ${table} SET approved=true, approved_by=$1, approved_at=NOW() WHERE id=$2`,
+              [req.user.id, out.rows[0].id]);
+            out.rows[0].approved = true;
           }
           await client.query('RELEASE SAVEPOINT s');
           created++;

@@ -4,6 +4,10 @@ const express = require('express');
 const { pool, logAction, softDelete } = require('../db');
 const { authenticate, can } = require('../middleware/auth');
 
+// הטבלאות שדורשות אישור מנהל. מתמלא בזמן טעינת הראוטרים ונקרא ע"י הייבוא,
+// כדי שכלל האישור יהיה מוגדר במקום אחד ולא ישוכפל.
+const APPROVABLE = new Set();
+
 // num — ניקוי מספר ממחרוזת (₪, פסיקים, רווחים)
 function num(v) {
   if (v === null || v === undefined || v === '') return null;
@@ -34,6 +38,7 @@ function crudRouter(table, fields, opts = {}) {
   const base = opts.viewSql || `SELECT t.* FROM ${table} t`;
   // הרשאה נוספת שנדרשת לכל הפעולות בטבלה (למשל finance לתשלומי לקוחות)
   const gate = opts.cap ? [can(opts.cap)] : [];
+  if (opts.approvable) APPROVABLE.add(table);
 
   // רשימה (עם סינון אופציונלי)
   router.get('/', authenticate, ...gate, can('view'), async (req, res) => {
@@ -61,9 +66,13 @@ function crudRouter(table, fields, opts = {}) {
     try {
       const vals = fields.map(f => coerce(f, req.body[f.key]));
       const placeholders = cols.map((_, i) => `$${i + 1}`).join(',');
+      // מנהל שמזין בעצמו אינו צריך לאשר את עצמו — רק מה שהמזכיר מכניס ממתין
+      const selfOk = !!(opts.approvable && req.caps && req.caps.approve);
+      const extraCols = selfOk ? ', approved, approved_by, approved_at' : '';
+      const extraVals = selfOk ? `, true, $${cols.length + 1}, NOW()` : '';
       const r = await pool.query(
-        `INSERT INTO ${table} (${cols.join(',')}, created_by, updated_by)
-         VALUES (${placeholders}, $${cols.length + 1}, $${cols.length + 1}) RETURNING *`,
+        `INSERT INTO ${table} (${cols.join(',')}, created_by, updated_by${extraCols})
+         VALUES (${placeholders}, $${cols.length + 1}, $${cols.length + 1}${extraVals}) RETURNING *`,
         [...vals, req.user.id]
       );
       await logAction(req.user, 'add', table, r.rows[0].id, {}, r.rows[0]);
@@ -122,4 +131,4 @@ function crudRouter(table, fields, opts = {}) {
   return router;
 }
 
-module.exports = { crudRouter, num, coerce };
+module.exports = { crudRouter, num, coerce, APPROVABLE };

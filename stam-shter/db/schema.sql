@@ -245,6 +245,28 @@ ALTER TABLE scribe_payments      ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP;
 UPDATE prod_purchases       SET approved=false WHERE approved IS NULL;
 UPDATE prod_scribe_payments SET approved=false WHERE approved IS NULL;
 UPDATE scribe_payments      SET approved=false WHERE approved IS NULL;
+
+-- טבלת סימון למיגרציות חד-פעמיות. בלעדיה כל הרצה של הסכימה הייתה מריצה
+-- שוב את המילוי למטה ומבטלת ידנית ביטולי-אישור שהמנהל עשה במתכוון.
+CREATE TABLE IF NOT EXISTS schema_meta (
+  key VARCHAR(80) PRIMARY KEY,
+  applied_at TIMESTAMP DEFAULT NOW()
+);
+
+-- מילוי חד-פעמי: שורות שהוזנו בעבר בידי מנהל נחשבות מאושרות, כי הכלל הוא
+-- שרק מה שהמזכיר מכניס ממתין לאישור. שורות בלי יוצר ידוע נשארות ממתינות.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM schema_meta WHERE key = 'approve_backfill_v1') THEN
+    UPDATE prod_purchases t SET approved=true, approved_by=t.created_by, approved_at=t.created_at
+      WHERE t.approved=false AND t.created_by IN (SELECT id FROM users WHERE role IN ('admin','manager'));
+    UPDATE prod_scribe_payments t SET approved=true, approved_by=t.created_by, approved_at=t.created_at
+      WHERE t.approved=false AND t.created_by IN (SELECT id FROM users WHERE role IN ('admin','manager'));
+    UPDATE scribe_payments t SET approved=true, approved_by=t.created_by, approved_at=t.created_at
+      WHERE t.approved=false AND t.created_by IN (SELECT id FROM users WHERE role IN ('admin','manager'));
+    INSERT INTO schema_meta (key) VALUES ('approve_backfill_v1');
+  END IF;
+END $$;
 -- עבור מה נגבתה העלות הנוספת (הובלה, בתי מזוזה, תיקונים...) — הסבר בלבד,
 -- אינו משתתף בחישוב. בלעדיו אי אפשר לזכור חודש אחר כך על מה שולם.
 ALTER TABLE prod_purchases ADD COLUMN IF NOT EXISTS extra_cost_note VARCHAR(300);

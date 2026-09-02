@@ -289,6 +289,8 @@ function openForm(cfg, row, prefill) {
   });
   m.el.querySelector('[data-cancel]').onclick = m.close;
   wireCombos(m.el, fields);
+  // חיווט חי בתוך הטופס (למשל כפתור שממלא סכום מחושב)
+  if (cfg.onForm) cfg.onForm(m, isEdit);
   const btn = m.el.querySelector('[data-save]');
   btn.onclick = async () => {
     const data = readFields(fields);
@@ -655,9 +657,9 @@ function updateSelBar(cfg) {
   if ($('moveSelBtn')) $('moveSelBtn').onclick = () => openMove(ids);
   const bulkAppr = async (val) => {
     try {
-      const r = await cfg.store.approve(ids, val);
+      const r = await approveRows(cfg, ids, val);
       toast(val ? `אושרו ${r.changed} שורות` : `בוטל אישור ל-${r.changed} שורות`, 'ok');
-      invalidateRows(); render();
+      renderKeepScroll();
     } catch (e) { toast(e.message, 'err'); }
   };
   if ($('apprSelBtn')) $('apprSelBtn').onclick = () => bulkAppr(true);
@@ -753,26 +755,106 @@ function approvalCol(cfg) {
   };
 }
 
-// תגית מצב לראש הדף
-function pendingPill(rows) {
-  const n = (rows || []).filter(r => !r.approved).length;
-  return n ? `<span class="pill a">${n} ממתינות לאישור</span>`
-           : '<span class="pill g">הכל מאושר</span>';
+// תגית מצב לראש הדף. המונה נשמר ב-data-n כדי שאפשר יהיה לעדכן אותו
+// במקום אחרי אישור בודד, בלי לרנדר מחדש את הדף.
+function pendingPill(allRows, shownRows) {
+  const n = (allRows || []).filter(r => !r.approved).length;
+  // הכפתור מאשר רק את מה שמוצג אחרי סינון, ולכן הוא נוקב במספר שלו
+  const k = ((shownRows || allRows) || []).filter(r => !r.approved).length;
+  return `<span class="pill ${n ? 'a' : 'g'}" id="apprPill" data-n="${n}">${
+    n ? `${n} ממתינות לאישור` : 'הכל מאושר'}</span>
+    ${k && ME.caps.approve
+      ? `<button class="btn green sm" id="apprAllBtn" data-k="${k}">✓ אשר ${k} ממתינות${
+          k < n ? ' (המוצגות)' : ''}</button>` : ''}`;
+}
+
+// עדכון המונה בלי רינדור
+function bumpPending(delta) {
+  const el = $('apprPill');
+  if (!el) return;
+  const n = Math.max(0, (Number(el.dataset.n) || 0) + delta);
+  el.dataset.n = n;
+  el.className = 'pill ' + (n ? 'a' : 'g');
+  el.textContent = n ? `${n} ממתינות לאישור` : 'הכל מאושר';
+  // גם תווית הכפתור נגזרת מהמונה, אחרת היא נשארת על מספר ישן
+  const all = $('apprAllBtn');
+  if (!all) return;
+  const k = Math.max(0, (Number(all.dataset.k) || 0) + (delta < 0 ? -1 : 1));
+  all.dataset.k = k;
+  all.style.display = k ? '' : 'none';
+  all.textContent = `✓ אשר ${k} ממתינות` + (k < n ? ' (המוצגות)' : '');
+}
+
+// ציור מצב הכפתור במקום, בלי לרנדר את הטבלה מחדש
+function paintApprove(btn, val) {
+  btn.dataset.apprval = val ? '0' : '1';
+  btn.className = 'btn xs ' + (val ? 'green' : 'ghost');
+  btn.textContent = val ? '✓ אושר' : '○ ממתין';
+  btn.title = val ? `אושר ע"י ${ME.full_name || ME.username} · ${dt(today())} — לחיצה מבטלת`
+                  : 'לחץ לאישור';
+  btn.disabled = false;
+}
+
+// אישור/ביטול + עדכון המטמון, כדי שרינדור הבא יראה את אותו מצב
+async function approveRows(cfg, ids, val) {
+  const r = await cfg.store.approve(ids, val);
+  const fkey = cfg.bulk || cfg.title.replace(/\W/g, '');
+  const cache = ROWCACHE[fkey];
+  if (cache) {
+    const set = new Set(ids);
+    for (const row of cache) if (set.has(row.id)) {
+      row.approved = val;
+      row.approved_by_name = val ? (ME.full_name || ME.username) : null;
+      row.approved_at = val ? new Date().toISOString() : null;
+    }
+  }
+  return r;
+}
+
+// רינדור ששומר על מיקום הגלילה — גם של הדף וגם של תיבת הטבלה
+async function renderKeepScroll() {
+  const tops = [...document.querySelectorAll('.table-wrap')].map(w => w.scrollTop);
+  const y = window.scrollY;
+  await render();
+  const restore = () => {
+    [...document.querySelectorAll('.table-wrap')].forEach((w, i) => {
+      if (tops[i] != null) w.scrollTop = tops[i];
+    });
+    window.scrollTo(0, y);
+  };
+  restore();
+  setTimeout(restore, 80);   // אחרי ש-layoutTable קבע את גובה התיבה
 }
 
 // חיווט כפתורי האישור בטבלה
-function wireApprove(cfg) {
+function wireApprove(cfg, rows) {
   if (!ME.caps.approve || !cfg.approve) return;
   document.querySelectorAll('[data-appr]').forEach(b => {
     b.onclick = async (e) => {
       e.stopPropagation();
+      const val = b.dataset.apprval === '1';
       b.disabled = true;
       try {
-        await cfg.store.approve([+b.dataset.appr], b.dataset.apprval === '1');
-        invalidateRows(); render();
+        await approveRows(cfg, [+b.dataset.appr], val);
+        // עדכון במקום ולא render() — רינדור היה מחזיר את הגלילה לראש הטבלה
+        paintApprove(b, val);
+        bumpPending(val ? -1 : 1);
       } catch (err) { toast(err.message, 'err'); b.disabled = false; }
     };
   });
+
+  const all = $('apprAllBtn');
+  if (all) all.onclick = async () => {
+    const ids = (rows || []).filter(r => !r.approved).map(r => r.id);
+    if (!ids.length) return;
+    if (!(await confirmBox(`לאשר ${ids.length} שורות שמוצגות כעת?`))) return;
+    all.disabled = true;
+    try {
+      const r = await approveRows(cfg, ids, true);
+      toast(`אושרו ${r.changed} שורות`, 'ok');
+      renderKeepScroll();
+    } catch (err) { toast(err.message, 'err'); all.disabled = false; }
+  };
 }
 
 // ---- דף ישות גנרי ----
@@ -791,7 +873,7 @@ async function entityPage(cfg) {
     <div class="page-head">
       <h2>${esc(cfg.title)}</h2>
       ${cfg.subtitle ? `<span class="mini">${esc(cfg.subtitle)}</span>` : ''}
-      ${cfg.approve ? pendingPill(allRows) : ''}
+      ${cfg.approve ? pendingPill(allRows, rows) : ''}
       <div class="spacer"></div>
       ${bulkBtn(cfg.bulk, cfg.title, cfg.bulkPreset)}
       ${ME.caps.edit ? `<button class="btn" id="addBtn">+ הוספה</button>` : ''}
@@ -802,7 +884,7 @@ async function entityPage(cfg) {
       ${tableHTML(cols, rows, { totals: cfg.totals, fkey })}</div>`;
   if ($('addBtn')) $('addBtn').onclick = () => openForm(cfg, null);
   wireRowActions(cfg, rows);
-  wireApprove(cfg);
+  wireApprove(cfg, rows);
   wireBulkBtns();
   wireSelection(cfg);
   wireFilters(fkey, cols, allRows);
@@ -1068,7 +1150,7 @@ async function pageScribePay(cfgOnly) {
     <div class="page-head"><h2>תשלום לסופר</h2></div>
     <div class="card">
       <div class="page-head"><h3>תשלומים לסופר</h3>
-        ${pendingPill(allPays)}<div class="spacer"></div>
+        ${pendingPill(allPays, pays)}<div class="spacer"></div>
         ${bulkBtn('scribe_payments', 'תשלומים לסופר')}
         ${ME.caps.edit ? `<button class="btn sm" id="addPay">+ תשלום</button>` : ''}</div>
       ${filterBarHTML('scribe_payments', pays.length, allPays.length)}
@@ -1102,7 +1184,7 @@ async function pageScribePay(cfgOnly) {
   if (tables[1]) { tables[1].querySelectorAll('[data-edit],[data-del]').forEach(b => b.dataset.grp = 'page'); }
   wire('[data-grp="pay"]', payCfg, pays);
   wire('[data-grp="page"]', pageCfg, pages);
-  wireApprove(payCfg);
+  wireApprove(payCfg, pays);
   wireSelection(payCfg);
   wireFilters('scribe_payments', payCols, allPays);
   wireFilters('pages_log', pageCols, allPages);
@@ -1257,7 +1339,7 @@ function prodPurchases(cfgOnly) {
     approve: true,
     load: () => Store.prodPurchases.list(),
     labelOf: (r) => `${r.product_name} מ${r.scribe_name}`,
-    defaults: () => ({ date: today(), purchase_type: 'רגיל',
+    defaults: () => ({ date: today(), purchase_type: 'רגיל', _paidDate: today(),
       _track: PURCH_TRACK.on, _station: PURCH_TRACK.station, _holder: PURCH_TRACK.holder }),
     totals: true,
     note: 'כל רכישה היא <b>חבילה</b> שממנה מוכרים. מחיקת רכישה מעבירה גם את המכירות שנגזרו ממנה לסל המחזור.'
@@ -1274,6 +1356,12 @@ function prodPurchases(cfgOnly) {
       { k: 'purchase_type', label: 'סוג רכישה', type: 'select', blank: false, options: (v) =>
           `<option value="רגיל" ${v === 'רגיל' ? 'selected' : ''}>רגיל</option><option value="קומיסיון" ${v === 'קומיסיון' ? 'selected' : ''}>קומיסיון</option>` },
       { k: 'note', label: 'הערה', type: 'textarea' },
+      // תשלום לסופר ישירות מהרכישה, במקום לעבור ללשונית התשלומים
+      { k: '_paid', label: 'שולם עכשיו לסופר', type: 'number', newOnly: true,
+        hint: 'ריק = טרם שולם. התשלום נרשם בלשונית "תשלומים לסופר (מוצרים)"' },
+      { k: '_paidDate', label: 'תאריך התשלום', type: 'date', newOnly: true },
+      { k: '_paidNote', label: 'הערה לתשלום', type: 'text', newOnly: true,
+        hint: 'ריק = "עבור רכישה #מספר"' },
       // עזרי טופס בלבד (קו תחתון) — נכנסים למעקב מיד עם שמירת הרכישה
       { k: '_track', label: 'להכניס את היחידות למעקב', type: 'checkbox', newOnly: true },
       { k: '_station', label: 'תחנה במעקב', type: 'combo', items: itemsStations, newOnly: true,
@@ -1281,7 +1369,25 @@ function prodPurchases(cfgOnly) {
       { k: '_holder', label: 'אצל מי', type: 'combo', items: itemsContacts, newOnly: true,
         placeholder: 'ללא מחזיק — הקלד שם' },
     ],
-    afterSave: trackNewPurchase,
+    afterSave: afterNewPurchase,
+    // כפתור שממלא את הסכום המלא, כדי לא לחשב כמות × עלות ביד
+    onForm: (m, isEdit) => {
+      if (isEdit) return;
+      const amt = m.el.querySelector('#f__paid');
+      if (!amt) return;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn ghost xs';
+      btn.style.marginTop = '6px';
+      btn.textContent = 'מלא את הסכום המלא';
+      btn.onclick = () => {
+        const q = N(m.el.querySelector('#f_quantity').value);
+        const c = N(m.el.querySelector('#f_cost_per_unit').value);
+        if (!(q > 0 && c > 0)) return toast('יש למלא קודם כמות ועלות ליחידה', 'err');
+        amt.value = Math.round(q * c * 100) / 100;
+      };
+      amt.parentNode.insertBefore(btn, amt.nextSibling);
+    },
     cols: [
       // מספר החבילה — זה המזהה שמזינים בעמודת "מזהה רכישה" בייבוא מכירות
       { label: '#', render: r => `<b>${r.id}</b>` },
@@ -1306,6 +1412,27 @@ function prodPurchases(cfgOnly) {
 // הכנסת רכישה חדשה למעקב מיד עם שמירתה. הבחירה נזכרת לרכישה הבאה,
 // כי בהזנת סדרת רכישות היעד בדרך כלל זהה.
 const PURCH_TRACK = { on: false, station: '', holder: '' };
+
+// אחרי שמירת רכישה חדשה: רישום התשלום לסופר (אם הוזן) ואז המעקב.
+// כל אחד מהם עצמאי — כישלון של אחד לא מבטל את השני ולא את הרכישה עצמה.
+async function afterNewPurchase(saved, data, isEdit) {
+  const msgs = [];
+  if (!isEdit) {
+    const amt = Math.round(N(data._paid) * 100) / 100;
+    if (amt > 0) {
+      await Store.prodScribePayments.create({
+        date: data._paidDate || data.date || today(),
+        scribe_id: saved.scribe_id,
+        amount: amt,
+        note: data._paidNote || `עבור רכישה #${saved.id}`,
+      });
+      msgs.push(`נרשם תשלום ${money(amt)} לסופר`);
+    }
+  }
+  const trk = await trackNewPurchase(saved, data, isEdit);
+  if (trk) msgs.push(trk.replace(/^נשמר \u00b7 /, ''));
+  return msgs.length ? 'נשמר \u00b7 ' + msgs.join(' \u00b7 ') : null;
+}
 
 async function trackNewPurchase(saved, data, isEdit) {
   // בחירת תחנה או מחזיק מספיקה כשלעצמה — אחרת שכחה לסמן את התיבה
@@ -3659,8 +3786,43 @@ function wsWire(otherMode) {
   });
   document.querySelectorAll('[data-book]').forEach(b => b.onclick = () => showScrollCard(+b.dataset.book));
   document.querySelectorAll('[data-hist]').forEach(b => b.onclick = () => showHistory(+b.dataset.hist));
+
+  // שליפת השורה המלאה לפני פתיחת הטופס
+  const fullRow = async (cfg, id) => {
+    const raw = await cfg.store.get(id);
+    return (raw && raw.scroll) ? raw.scroll : raw;   // ס"ת מחזיר כרטיס עם השורה בתוכו
+  };
+  document.querySelectorAll('[data-wsedit]').forEach(b => b.onclick = async () => {
+    const fn = CFGS[b.dataset.cfg];
+    if (!fn) return toast('טופס לא נמצא', 'err');
+    b.disabled = true;
+    try { const cfg = fn(); openForm(cfg, await fullRow(cfg, +b.dataset.wsedit)); }
+    catch (e) { toast(e.message, 'err'); }
+    finally { b.disabled = false; }
+  });
+  document.querySelectorAll('[data-wsdel]').forEach(b => b.onclick = async () => {
+    const fn = CFGS[b.dataset.cfg];
+    if (!fn) return toast('טופס לא נמצא', 'err');
+    const cfg = fn();
+    const id = +b.dataset.wsdel;
+    let label = '#' + id;
+    try { const row = await fullRow(cfg, id); if (cfg.labelOf) label = cfg.labelOf(row); } catch (e) {}
+    removeRow(cfg.store, id, label);
+  });
   if ($('wsSwitch')) $('wsSwitch').onclick = () => { SUB.workspace = otherMode; render(); };
 }
+
+// עריכה ומחיקה מתוך מרחב העבודה. השורות כאן מגיעות מדוחות ולא תמיד
+// מכילות את כל שדות הטופס, ולכן בלחיצה נשלפת השורה המלאה מהשרת —
+// אחרת שמירה הייתה מוחקת בשקט שדות שלא הוצגו.
+function wsActs(cfgKey, id, cap) {
+  if (cap && !ME.caps[cap]) return '';
+  let h = '';
+  if (ME.caps.edit) h += `<button class="btn ghost xs" data-wsedit="${id}" data-cfg="${cfgKey}" title="עריכה">✎</button> `;
+  if (ME.caps.del) h += `<button class="btn ghost xs" data-wsdel="${id}" data-cfg="${cfgKey}" title="מחיקה">🗑</button>`;
+  return h;
+}
+const wsActCol = (cfgKey, cap) => ({ label: '', cls: 'center', render: r => wsActs(cfgKey, r.id, cap) });
 
 const wsScrollCol = { label: 'ספר', render: r => { const s = C.scrolls.find(x => x.id === +r.scroll_id); return s ? esc(scrollLabel(s)) : '—'; } };
 
@@ -3723,7 +3885,8 @@ async function loadScribeSpace(id) {
       { label: 'תיקונים', cls: 'num', render: r => mCell(r.corrections_paid), total: rs => mCell(sumBy(rs, 'corrections_paid')) },
       { label: 'יתרה', cls: 'num', render: r => `<b>${mCell(r.scribe_balance)}</b>`, total: rs => `<b>${mCell(sumBy(rs, 'scribe_balance'))}</b>` },
       { label: 'עתידי', cls: 'num', render: r => mCell(r.scribe_future_balance), total: rs => mCell(sumBy(rs, 'scribe_future_balance')) },
-      { label: '', cls: 'center', render: r => `<button class="btn ghost xs" data-book="${r.id}">כרטיס</button>` },
+      { label: '', cls: 'center', render: r => `<button class="btn ghost xs" data-book="${r.id}">כרטיס</button>
+          ${wsActs('scrollCfg', r.id, 'finance')}` },
     ], d.scrolls, { totals: true })) : ''}
 
     ${wsSec('pays', 'תשלומים ששולמו לו (ס"ת)', pays.length, tableHTML([
@@ -3731,6 +3894,7 @@ async function loadScribeSpace(id) {
       { label: 'תאריך', render: r => dt(r.date) },
       { label: 'סכום', cls: 'num', render: r => mCell(r.amount), total: rs => mCell(sumBy(rs, 'amount')) },
       { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
+      wsActCol('scribePayCfg'),
     ], pays, { totals: true }))}
 
     ${wsSec('pages', 'עמודים שכתב', pages.length, tableHTML([
@@ -3738,6 +3902,7 @@ async function loadScribeSpace(id) {
       { label: 'תאריך', render: r => dt(r.date) },
       { label: 'עמודים', cls: 'num', render: r => numCell(r.pages), total: rs => numCell(sumBy(rs, 'pages')) },
       { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
+      wsActCol('pagesLogCfg'),
     ], pages, { totals: true }))}
 
     ${wsSec('exp', 'הוצאות על הספרים שלו', bookExp.length + parchExp.length, tableHTML([
@@ -3746,6 +3911,8 @@ async function loadScribeSpace(id) {
       { label: 'סוג', render: r => esc(r.type || ('קלף · ' + (r.size_name || ''))) + (r.is_correction ? ' <span class="pill a">תיקונים</span>' : '') },
       { label: 'סכום', cls: 'num', render: r => mCell(r.amount !== undefined ? r.amount : r.total_cost),
         total: rs => mCell(rs.reduce((a, x) => a + N(x.amount !== undefined ? x.amount : x.total_cost), 0)) },
+      { label: '', cls: 'center', render: r =>
+          wsActs(r.parchment_size_id ? 'parchExpCfg' : 'bookExpCfg', r.id) },
     ], bookExp.concat(parchExp), { totals: true }))}
 
     ${sheets.length ? wsSec('sheets', 'יריעות שנמצאות אצלו', sheets.length, tableHTML([
@@ -3765,12 +3932,14 @@ async function loadScribeSpace(id) {
       { label: 'נשאר', cls: 'num', render: r => numCell(r.remaining_qty) },
       { label: "עלות ליח'", cls: 'num', render: r => mCell(r.cost_per_unit) },
       { label: 'חוב', cls: 'num', render: r => mCell(r.owed), total: rs => mCell(sumBy(rs, 'owed')) },
+      wsActCol('prodPurchaseCfg'),
     ], d.purchases, { totals: true })) : ''}
 
     ${d.product_payments.length ? wsSec('ppay', 'תשלומים לו (מוצרים)', d.product_payments.length, tableHTML([
       { label: 'תאריך', render: r => dt(r.date) },
       { label: 'סכום', cls: 'num', render: r => mCell(r.amount), total: rs => mCell(sumBy(rs, 'amount')) },
       { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
+      wsActCol('prodScribePayCfg'),
     ], d.product_payments, { totals: true })) : ''}`;
 
   wsWire('customer');
@@ -3822,7 +3991,8 @@ async function loadCustomerSpace(id) {
       { label: 'שילם', cls: 'num', render: r => mCell(r.customer_paid), total: rs => mCell(sumBy(rs, 'customer_paid')) },
       { label: 'יתרה מיידית', cls: 'num', render: r => `<b>${mCell(r.buyer_balance_now)}</b>`, total: rs => `<b>${mCell(sumBy(rs, 'buyer_balance_now'))}</b>` },
       { label: 'יתרה כללית', cls: 'num', render: r => mCell(r.buyer_balance_total), total: rs => mCell(sumBy(rs, 'buyer_balance_total')) },
-      { label: '', cls: 'center', render: r => `<button class="btn ghost xs" data-book="${r.id}">כרטיס</button>` },
+      { label: '', cls: 'center', render: r => `<button class="btn ghost xs" data-book="${r.id}">כרטיס</button>
+          ${wsActs('scrollCfg', r.id, 'finance')}` },
     ], d.scrolls, { totals: true })) : ''}
 
     ${wsSec('cpays', 'תשלומיו (ס"ת)', d.scroll_payments.length, tableHTML([
@@ -3833,6 +4003,7 @@ async function loadCustomerSpace(id) {
       { label: 'שער', cls: 'num', render: r => r.rate ? numCell(r.rate) : '' },
       { label: 'פריטה', cls: 'num', render: r => mCell(r.peritah), total: rs => mCell(sumBy(rs, 'peritah')) },
       { label: 'שולם בפועל', cls: 'num', render: r => mCell(r.paid_actual), total: rs => mCell(sumBy(rs, 'paid_actual')) },
+      wsActCol('custPayCfg'),
     ], d.scroll_payments, { totals: true }))}
 
     ${wsSec('sales', 'מכירות מוצרים לו', d.sales.length, tableHTML([
@@ -3841,6 +4012,7 @@ async function loadCustomerSpace(id) {
       { label: 'כמות', cls: 'num', render: r => numCell(r.quantity), total: rs => numCell(sumBy(rs, 'quantity')) },
       { label: "מחיר ליח'", cls: 'num', render: r => mCell(r.price_per_unit) },
       { label: 'סך מכירה', cls: 'num', render: r => mCell(r.total_sale), total: rs => mCell(sumBy(rs, 'total_sale')) },
+      wsActCol('prodSaleCfg'),
     ], d.sales, { totals: true }))}
 
     ${wsSec('cppays', 'תשלומיו (מוצרים)', d.product_payments.length, tableHTML([
@@ -3849,6 +4021,7 @@ async function loadCustomerSpace(id) {
       { label: '$', cls: 'num', render: r => numCell(r.amount_usd) },
       { label: 'פריטה', cls: 'num', render: r => mCell(r.peritah), total: rs => mCell(sumBy(rs, 'peritah')) },
       { label: 'ס"ה שולם', cls: 'num', render: r => mCell(r.paid_actual), total: rs => mCell(sumBy(rs, 'paid_actual')) },
+      wsActCol('prodCustPayCfg'),
     ], d.product_payments, { totals: true }))}`;
 
   wsWire('scribe');
