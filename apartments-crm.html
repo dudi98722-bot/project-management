@@ -102,6 +102,10 @@ table.tbl.sheet-grid{font-size:12.5px;border-collapse:collapse;table-layout:fixe
 .col-grip{position:absolute;top:0;bottom:0;inset-inline-end:-3px;width:7px;cursor:col-resize;z-index:5}
 .col-grip:hover{background:var(--brand);opacity:.5}
 /* פעולות העמודה — מופיעות רק בריחוף, שלא יעמיסו על הכותרת */
+/* מונה הבחירה שבתוך כפתורי "עדכון מרוכז". בלי רוחב שמור הוא גדל
+   מ-0 ל-"(1)" ואז ל-"(10)", והכפתורים שמשמאלו קפצו בכל סימון —
+   זו הייתה ה"רעידה" של המסך. tabular-nums שומר על רוחב ספרה קבוע. */
+.selcount{display:inline-block;min-width:2.6em;text-align:center;font-variant-numeric:tabular-nums}
 .col-acts{display:none;margin-inline-start:5px;font-size:11px;letter-spacing:2px}
 .col-acts span{cursor:pointer;opacity:.55}
 .col-acts span:hover{opacity:1}
@@ -362,7 +366,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 מא'";
+var APP_BUILD = "19.08 מב'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -4916,7 +4920,7 @@ function moduleExpenses(aptId){
   var exps=apExpenses(aptId);
   var h='<div class="toolbar"><h3 style="margin:0">הוצאות / שלבים</h3><div class="sp"></div>'+
     (can("edit")?'<button class="btn btn-primary btn-sm" onclick="openExpenseEditor(null,\''+aptId+'\')">➕ הוצאה חדשה</button>':'')+
-    (can("edit")&&exps.length?' <button class="btn btn-sm" onclick="openBulkExpEdit(\''+aptId+'\')">✏️ עדכון מרוכז <span id="eb-count"></span></button>':'')+
+    (can("edit")&&exps.length?' <button class="btn btn-sm" onclick="openBulkExpEdit(\''+aptId+'\')">✏️ עדכון מרוכז <span id="eb-count" class="selcount"></span></button>':'')+
     (can("edit")&&exps.length?' <button class="btn btn-sm" onclick="openBulkMgmt(\''+aptId+'\')">💼 דמי ניהול מרוכז</button>':'')+
     (can("edit")&&exps.length?' <button class="btn btn-danger btn-sm" onclick="deleteApartmentExpenses(\''+aptId+'\')">🗑️ מחק הכל</button>':'')+'</div>';
   if(!exps.length) return h+'<div class="empty">אין הוצאות עדיין.</div>';
@@ -5135,7 +5139,10 @@ function ebCount(){
   var n=ebVisibleBoxes(".eb-x:checked").length;
   var hidden=document.querySelectorAll(".eb-x:checked").length-n;
   var el=document.getElementById("eb-count");
-  if(el) el.textContent=n?("("+n+(hidden?" · "+hidden+" מוסתרים בסינון לא ישתנו":"")+")"):"";
+  /* רק המספר נשאר בכפתור. המשפט על השורות המוסתרות הופיע ונעלם
+     בתוך הכפתור והזיז את כל הסרגל — הוא עבר לפס הצף. */
+  if(el) el.textContent=n?("("+n+")"):"";
+  SEL_HIDDEN_NOTE=hidden?(hidden+" מוסתרים בסינון לא ישתנו"):"";
   updateSelSumBar();
 }
 function openBulkExpEdit(aptId){
@@ -5440,7 +5447,7 @@ function openBulkMgmt(aptId){
     '<div class="toolbar">'+
       '<button class="btn btn-sm" onclick="bulkMgmtSelectAll(true)">✔️ סמן הכל</button>'+
       '<button class="btn btn-sm" onclick="bulkMgmtSelectAll(false)">✕ נקה בחירה</button>'+
-      '<div class="sp"></div><span id="bm-count" class="pill"></span></div>'+
+      '<div class="sp"></div><span id="bm-count" class="pill selcount"></span></div>'+
     '<div class="table-wrap" style="max-height:300px;overflow:auto"><table class="tbl"><thead><tr>'+
       '<th></th><th>תאריך</th><th>שלב</th><th>סכום</th><th>דמי ניהול כיום</th></tr></thead><tbody>'+
       list.map(function(e){
@@ -5821,7 +5828,7 @@ function modulePayments(aptId){
         return '<option value="'+c.id+'"'+(Q.payCat===c.id?" selected":"")+'>'+esc(c.name)+'</option>'; }).join("")+
     '</select>'+
     ((Q.pay||Q.payWho||Q.paySrc||Q.payInv||Q.payCpa||Q.payCat)?'<button class="btn btn-ghost btn-sm" onclick="Q.pay=\'\';Q.payWho=\'\';Q.paySrc=\'\';Q.payInv=\'\';Q.payCpa=\'\';Q.payCat=\'\';rerender()">✕ נקה</button>':'')+
-    (can("edit")?'<button class="btn btn-primary btn-sm" onclick="openBulkPayEdit(\''+aptId+'\')">✏️ עדכון מרוכז <span id="pb-count"></span></button>':'')+
+    (can("edit")?'<button class="btn btn-primary btn-sm" onclick="openBulkPayEdit(\''+aptId+'\')">✏️ עדכון מרוכז <span id="pb-count" class="selcount"></span></button>':'')+
     (can("edit")?'<button class="btn btn-sm" onclick="openNoteImport(\''+aptId+'\')">📝 ייבוא הערות מאקסל</button>':'')+
     '<div class="sp"></div><span id="pay-count"></span></div>';
   h+='<div id="pay-table">'+payTableHtml(aptId)+'</div>';
@@ -6010,7 +6017,8 @@ function pbCount(){
   var n=visibleBoxes(".pb-x:checked").length;
   var hidden=document.querySelectorAll(".pb-x:checked").length-n;
   var el=document.getElementById("pb-count");
-  if(el) el.textContent=n?("("+n+(hidden?" · "+hidden+" מוסתרים לא ישתנו":"")+")"):"";
+  if(el) el.textContent=n?("("+n+")"):"";
+  SEL_HIDDEN_NOTE=hidden?(hidden+" מוסתרים בסינון לא ישתנו"):"";
   updateSelSumBar();
 }
 function openBulkPayEdit(aptId){
@@ -7466,7 +7474,7 @@ function moduleIncome(aptId){
       '<button class="btn btn-sm" onclick="openBulkIncome(\''+aptId+'\')">📋 הכנסה מרוכזת</button> '+
       '<button class="btn btn-sm" onclick="openIncomeImport(\''+aptId+'\')">📥 העלאת אקסל</button> '+
       '<button class="btn btn-sm" onclick="openIncomeMgmt(\''+aptId+'\')">🧾 דמי ניהול</button> '+
-      (all.length?'<button class="btn btn-sm" onclick="openBulkIncomeEdit(\''+aptId+'\')">✏️ עדכון מרוכז <span id="ib-count"></span></button> ':'')+
+      (all.length?'<button class="btn btn-sm" onclick="openBulkIncomeEdit(\''+aptId+'\')">✏️ עדכון מרוכז <span id="ib-count" class="selcount"></span></button> ':'')+
       '<button class="btn btn-sm" onclick="editRentalUnits(\''+aptId+'\')">🏠 הגדרות השכרה</button> '+
       '<button class="btn btn-sm" onclick="editIncomeSplitDefault(\''+aptId+'\')">⚙️ חלוקת ברירת מחדל</button>':'')+'</div>';
   if(units.length){
@@ -7602,7 +7610,7 @@ function openAllIncomePays(aptId){
         units.map(function(n){ return '<option value="'+esc(n)+'"'+(GPQ.unit===n?" selected":"")+'>'+esc(n)+'</option>'; }).join("")+
       '</select>':'')+
       ((GPQ.q||GPQ.method||GPQ.cpa||GPQ.unit)?'<button class="btn btn-ghost btn-sm" onclick="GPQ={q:\'\',method:\'\',cpa:\'\',unit:\'\'};openAllIncomePays('+JSON.stringify(aptId)+')">✕ נקה</button>':'')+
-      (can("edit")?'<button class="btn btn-primary btn-sm" onclick="openBulkIncPayEdit('+JSON.stringify(aptId)+')">✏️ עדכון מרוכז <span id="gb-count"></span></button>':'')+
+      (can("edit")?'<button class="btn btn-primary btn-sm" onclick="openBulkIncPayEdit('+JSON.stringify(aptId)+')">✏️ עדכון מרוכז <span id="gb-count" class="selcount"></span></button>':'')+
       '<div class="sp"></div><span id="gp-count"></span>'+
     '</div>'+
     '<div id="gp-table">'+gpTableHtml(aptId)+'</div>'});
@@ -8182,7 +8190,7 @@ function viewBankMatch(){
       (stmtBanks().length>1?'<button class="btn btn-sm" onclick="openMergeStmtBanks()">🔀 איחוד בנקים</button> ':'')+
       (stmtBanks().filter(function(b){ return stmtBankUse(b.id)===0; }).length
         ?'<button class="btn btn-sm" onclick="cleanEmptyStmtBanks()">🧹 נקה בנקים ריקים</button> ':'')+
-      (all.length?'<button class="btn btn-sm" onclick="openBulkBankMoveEdit()">✏️ עדכון מרוכז <span id="bm-count"></span></button> ':'')+
+      (all.length?'<button class="btn btn-sm" onclick="openBulkBankMoveEdit()">✏️ עדכון מרוכז <span id="bm-count" class="selcount"></span></button> ':'')+
       (all.length?'<button class="btn btn-sm" onclick="openBulkMatch()">🔗 התאמה מרוכזת</button> ':'')+
       (openMoves.length?'<button class="btn btn-sm" onclick="runAutoMatch()">⚡ התאמה אוטומטית</button> ':'')+
       (all.length?'<button class="btn btn-danger btn-sm" onclick="clearMatchedMoves()">🗑️ נקה מותאמות</button> ':''):'')+
@@ -9070,6 +9078,9 @@ function bmAll(v){ visibleBoxes(".bm-x").forEach(function(c){ c.checked=v; }); b
    מסמנים שורות בכל טבלה — ובפינה מופיע כמה סומנו ומה הסכום שלהן,
    כמו שורת הסטטוס באקסל. נעלם כשאין סימונים. */
 var SEL_SUM_SRC={ "bm-x":"bankMoves", "ib-x":"income", "eb-x":"expenses", "pb-x":"payments" };
+/* אזהרה על שורות מסומנות שהסינון מסתיר — מוצגת בפס הצף, שאינו
+   משתתף בפריסת העמוד ולכן אינו מזיז כלום. */
+var SEL_HIDDEN_NOTE="";
 function updateSelSumBar(){
   var total=0, n=0;
   Object.keys(SEL_SUM_SRC).forEach(function(cls){
@@ -9083,7 +9094,7 @@ function updateSelSumBar(){
     boxes.forEach(function(c){ n++; total+=amts[c.value]||0; });
   });
   var bar=document.getElementById("sel-sumbar");
-  if(!n){ if(bar) bar.remove(); return; }
+  if(!n){ SEL_HIDDEN_NOTE=""; if(bar) bar.remove(); return; }
   if(!bar){
     bar=document.createElement("div");
     bar.id="sel-sumbar";
@@ -9092,7 +9103,8 @@ function updateSelSumBar(){
       "box-shadow:0 8px 24px rgba(0,0,0,.3);font-size:13px;direction:rtl;pointer-events:none";
     document.body.appendChild(bar);
   }
-  bar.innerHTML='סומנו <b>'+n+'</b> · סה"כ <b>'+money(round2(total))+'</b>';
+  bar.innerHTML='סומנו <b>'+n+'</b> · סה"כ <b>'+money(round2(total))+'</b>'+
+    (SEL_HIDDEN_NOTE?' <span style="color:#fbbf24">· '+esc(SEL_HIDDEN_NOTE)+'</span>':'');
 }
 function bmCount(){
   var n=visibleBoxes(".bm-x:checked").length;
