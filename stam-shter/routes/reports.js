@@ -443,6 +443,7 @@ router.get('/customer/:id', async (req, res) => {
                   FROM customer_payments cp WHERE customer_id=$1 AND deleted=false
                   ORDER BY date DESC NULLS LAST`, [id]),
       pool.query(`SELECT s.*, p.name AS product_name,
+                    sc.name AS scribe_name,
                     COALESCE(s.currency,'ILS') AS currency,
                     COALESCE(pp.currency,'ILS') AS purchase_currency,
                     ${RAW_SALE_TOTAL} AS total_sale,
@@ -451,6 +452,7 @@ router.get('/customer/:id', async (req, res) => {
                   FROM prod_sales s
                   LEFT JOIN prod_purchases pp ON pp.id=s.purchase_id
                   LEFT JOIN products p ON p.id=pp.product_id
+                  LEFT JOIN contacts sc ON sc.id=pp.scribe_id
                   WHERE s.customer_id=$1 AND s.deleted=false ORDER BY s.date DESC NULLS LAST`, [id]),
       pool.query(`SELECT *, COALESCE(currency,'ILS') AS currency,
                     (CASE WHEN ${CUR_ROW}='USD' THEN COALESCE(amount_usd,0)

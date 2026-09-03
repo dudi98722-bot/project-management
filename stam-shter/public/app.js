@@ -2317,7 +2317,8 @@ function repCustomerDoc() {
 // כל עמודה עומדת בפני עצמה (render + foot), בלי colspan, כדי ששורת
 // הסיכום תישאר מיושרת גם כשמכבים עמודות באמצע.
 const DOC_OFF = new Set(['books|scribe', 'books|date', 'books|note',
-  'bpays|peritah', 'bpays|note', 'prods|cur', 'prods|note', 'ppays|cur', 'ppays|note']);
+  'bpays|peritah', 'bpays|note',
+  'prods|scribe', 'prods|cur', 'prods|note', 'ppays|cur', 'ppays|note']);
 const docColOn = (sec, k) => {
   const v = CUSTDOC.cols[`${sec}|${k}`];
   return v === undefined ? !DOC_OFF.has(`${sec}|${k}`) : !!v;
@@ -2372,6 +2373,7 @@ function docSections() {
     { k: 'prods', label: 'מוצרים', side: 'products', title: 'מוצרים', cols: [
       { k: 'date', label: 'תאריך', render: r => dt(r.date), foot: rows => `סה"כ ${rows.length}` },
       { k: 'item', label: 'פריט', cls: 'w', render: r => esc(r.product_name || '—') },
+      { k: 'scribe', label: 'סופר', cls: 'w', render: r => esc(r.scribe_name || '—') },
       { k: 'qty', label: 'כמות', cls: 'n', render: r => N(r.quantity).toLocaleString('he-IL'),
         foot: rows => N(sumBy(rows, 'quantity')).toLocaleString('he-IL') },
       { k: 'cur', label: 'מטבע', render: r => r.currency === 'USD' ? '$' : '₪' },
