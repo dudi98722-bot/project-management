@@ -2231,7 +2231,7 @@ function customerCardHTML(d) {
 // מסמך שנמסר ללקוח, ולכן הוא מציג רק את מה שנוגע לו: מה הזמין, כמה שילם
 // וכמה נשאר. עלות הפריטה אינה מופיעה כאן — היא הפסד המרה של העסק ואינה
 // חלק מהחוב שלו (calc.js: buyer_balance_now = לפי התקדמות פחות ששילם).
-const CUSTDOC = { id: '', mode: 'both' };
+const CUSTDOC = { id: '', mode: 'both', cols: loadDocCols(), _data: null, _id: null };
 const DOC_MODES = [['both', 'הכל'], ['scrolls', 'ס"ת בלבד'], ['products', 'מוצרים בלבד']];
 
 function repCustomerDoc() {
@@ -2247,14 +2247,38 @@ function repCustomerDoc() {
         <div class="field"><button class="btn" id="cdPrint" disabled>🖨️ הדפסה</button></div>
       </div>
       <div class="mini">המסמך מיועד למסירה ללקוח — הוא כולל רק את ההזמנות שלו, מה ששילם והיתרה.</div>
+      <div id="cdCols"></div>
     </div>
     <div id="cdBody"></div>`;
+
+  // בורר העמודות — נבנה מחדש בכל שינוי מצב, כי הסעיפים הרלוונטיים משתנים
+  const drawPicker = () => {
+    const secs = docSections().filter(s => docSecVisible(s, CUSTDOC.mode));
+    $('cdCols').innerHTML = `
+      <div class="doc-pick">
+        <div class="dp-head">עמודות בדוח
+          <button class="btn ghost xs" id="cdColsReset">החזר ברירת מחדל</button></div>
+        ${secs.map(sec => `<div class="dp-sec">
+          <span class="dp-name">${esc(sec.label)}</span>
+          ${sec.cols.map(c => `<label><input type="checkbox" data-dcol="${sec.k}|${c.k}"
+              ${docColOn(sec.k, c.k) ? 'checked' : ''}> ${esc(c.label)}</label>`).join('')}
+        </div>`).join('')}
+      </div>`;
+    $('cdCols').querySelectorAll('[data-dcol]').forEach(cb => cb.onchange = () => {
+      CUSTDOC.cols[cb.dataset.dcol] = cb.checked;
+      saveDocCols();
+      draw();
+    });
+    $('cdColsReset').onclick = () => { CUSTDOC.cols = {}; saveDocCols(); drawPicker(); draw(); };
+  };
 
   const draw = async () => {
     if (!CUSTDOC.id) { $('cdBody').innerHTML = ''; $('cdPrint').disabled = true; return; }
     $('cdBody').innerHTML = '<div class="card muted">טוען…</div>';
     try {
-      const d = await Store.reports.customer(CUSTDOC.id);
+      const d = CUSTDOC._data && CUSTDOC._id === CUSTDOC.id
+        ? CUSTDOC._data
+        : (CUSTDOC._data = await Store.reports.customer(CUSTDOC.id), CUSTDOC._id = CUSTDOC.id, CUSTDOC._data);
       $('cdBody').innerHTML = custDocHTML(d, CUSTDOC.mode);
       $('cdPrint').disabled = false;
     } catch (e) {
@@ -2262,39 +2286,133 @@ function repCustomerDoc() {
       $('cdPrint').disabled = true;
     }
   };
-  wirePicker('cdSel', itemsContacts(), (v) => { CUSTDOC.id = v; draw(); });
+  wirePicker('cdSel', itemsContacts(), (v) => { CUSTDOC.id = v; CUSTDOC._data = null; draw(); });
   document.querySelectorAll('[data-cdmode]').forEach(b => b.onclick = () => {
     CUSTDOC.mode = b.dataset.cdmode;
     document.querySelectorAll('[data-cdmode]').forEach(x => x.classList.toggle('on', x === b));
-    draw();
+    drawPicker(); draw();
   });
   $('cdPrint').onclick = () => window.print();
+  drawPicker();
   if (CUSTDOC.id) draw();
 }
 
-// טבלה במסמך: מקבלת שורות מוכנות, כדי שכל טבלה תוכל להיראות אחרת
-function docTbl(head, rows, foot) {
+// ---------- הגדרת העמודות של המסמך ----------
+// כל עמודה עומדת בפני עצמה (render + foot), בלי colspan, כדי ששורת
+// הסיכום תישאר מיושרת גם כשמכבים עמודות באמצע.
+const DOC_OFF = new Set(['books|scribe', 'books|date', 'books|note',
+  'bpays|peritah', 'bpays|note', 'prods|cur', 'prods|note', 'ppays|cur', 'ppays|note']);
+const docColOn = (sec, k) => {
+  const v = CUSTDOC.cols[`${sec}|${k}`];
+  return v === undefined ? !DOC_OFF.has(`${sec}|${k}`) : !!v;
+};
+function saveDocCols() {
+  try { localStorage.setItem('shter_doc_cols', JSON.stringify(CUSTDOC.cols)); } catch (e) {}
+}
+function loadDocCols() {
+  try { return JSON.parse(localStorage.getItem('shter_doc_cols') || '{}') || {}; } catch (e) { return {}; }
+}
+const docSecVisible = (sec, mode) =>
+  sec.side === 'scrolls' ? mode !== 'products' : mode !== 'scrolls';
+
+function docSections() {
+  const M = money;
+  const sc = (r) => r.buyer_currency;      // מטבע הספר
+  return [
+    { k: 'books', label: 'ספרים', side: 'scrolls', title: 'ספרים', cols: [
+      { k: 'sku', label: 'מק"ט', render: r => r.sku ? esc(r.sku) : '#' + r.id,
+        foot: rows => `סה"כ ${rows.length}` },
+      { k: 'item', label: 'פריט', cls: 'w', render: r => esc(r.product_name || '—') },
+      { k: 'scribe', label: 'סופר', cls: 'w', render: r => esc(r.scribe_name || '—') },
+      { k: 'date', label: 'תאריך', render: r => dt(r.sale_date) },
+      { k: 'prog', label: 'התקדמות',
+        render: r => `${r.pages_written}/${r.product_pages} <span class="muted">(${r.progress_pct}%)</span>` },
+      { k: 'price', label: 'מחיר מוסכם', cls: 'n', render: r => M(r.buyer_total, sc(r)),
+        foot: rows => M(sumBy(rows, 'buyer_total')) },
+      { k: 'due', label: 'לתשלום לפי התקדמות', cls: 'n', render: r => M(r.buyer_due_progress, sc(r)),
+        foot: rows => M(sumBy(rows, 'buyer_due_progress')) },
+      { k: 'paid', label: 'שולם', cls: 'n', render: r => M(r.customer_paid, sc(r)),
+        foot: rows => M(sumBy(rows, 'customer_paid')) },
+      { k: 'now', label: 'לתשלום כעת', cls: 'n', render: r => `<b>${M(r.buyer_balance_now, sc(r))}</b>`,
+        foot: rows => `<b>${M(sumBy(rows, 'buyer_balance_now'))}</b>` },
+      { k: 'tot', label: 'יתרה כללית', cls: 'n', render: r => M(r.buyer_balance_total, sc(r)),
+        foot: rows => M(sumBy(rows, 'buyer_balance_total')) },
+      { k: 'note', label: 'הערה', cls: 'w', render: r => esc(r.note || '') },
+    ]},
+
+    { k: 'bpays', label: 'תשלומים (ספרים)', side: 'scrolls', title: 'תשלומים שהתקבלו (ספרים)', cols: [
+      { k: 'date', label: 'תאריך', render: r => dt(r.date), foot: rows => `סה"כ ${rows.length}` },
+      { k: 'ils', label: 'שקלים', cls: 'n', render: r => N(r.amount_ils) ? M(r.amount_ils) : '',
+        foot: rows => M(sumBy(rows, 'amount_ils')) },
+      { k: 'usd', label: 'דולרים', cls: 'n', render: r => N(r.amount_usd) ? M(r.amount_usd, 'USD') : '' },
+      { k: 'rate', label: 'שער', cls: 'n', render: r => N(r.rate) ? N(r.rate).toLocaleString('he-IL') : '' },
+      { k: 'peritah', label: 'עלות פריטה', cls: 'n', render: r => N(r.peritah) ? M(r.peritah) : '',
+        foot: rows => M(sumBy(rows, 'peritah')) },
+      { k: 'credited', label: 'נזקף לחשבון', cls: 'n', render: r => `<b>${M(r.paid_actual)}</b>`,
+        foot: rows => `<b>${M(sumBy(rows, 'paid_actual'))}</b>` },
+      { k: 'note', label: 'הערה', cls: 'w', render: r => esc(r.note || '') },
+    ]},
+
+    { k: 'prods', label: 'מוצרים', side: 'products', title: 'מוצרים', cols: [
+      { k: 'date', label: 'תאריך', render: r => dt(r.date), foot: rows => `סה"כ ${rows.length}` },
+      { k: 'item', label: 'פריט', cls: 'w', render: r => esc(r.product_name || '—') },
+      { k: 'qty', label: 'כמות', cls: 'n', render: r => N(r.quantity).toLocaleString('he-IL'),
+        foot: rows => N(sumBy(rows, 'quantity')).toLocaleString('he-IL') },
+      { k: 'cur', label: 'מטבע', render: r => r.currency === 'USD' ? '$' : '₪' },
+      { k: 'unit', label: "מחיר ליח'", cls: 'n', render: r => M(r.price_per_unit, r.currency) },
+      { k: 'total', label: 'סה"כ', cls: 'n', render: r => `<b>${M(r.total_sale, r.currency)}</b>`,
+        foot: rows => docTwoCur(rows, 'total_sale') },
+      { k: 'note', label: 'הערה', cls: 'w', render: r => esc(r.note || '') },
+    ]},
+
+    { k: 'ppays', label: 'תשלומים (מוצרים)', side: 'products', title: 'תשלומים שהתקבלו (מוצרים)', cols: [
+      { k: 'date', label: 'תאריך', render: r => dt(r.date), foot: rows => `סה"כ ${rows.length}` },
+      { k: 'cur', label: 'מטבע', render: r => r.currency === 'USD' ? '$' : '₪' },
+      { k: 'ils', label: 'שקלים', cls: 'n',
+        render: r => (r.currency !== 'USD' && N(r.amount_ils)) ? M(r.amount_ils) : '' },
+      { k: 'usd', label: 'דולרים', cls: 'n', render: r => N(r.amount_usd) ? M(r.amount_usd, 'USD') : '' },
+      { k: 'credited', label: 'נזקף לחשבון', cls: 'n', render: r => `<b>${M(r.paid_actual, r.currency)}</b>`,
+        foot: rows => docTwoCur(rows, 'paid_actual') },
+      { k: 'note', label: 'הערה', cls: 'w', render: r => esc(r.note || '') },
+    ]},
+  ];
+}
+
+// סיכום דו-מטבעי בתא אחד — שני מטבעות לעולם אינם מחוברים
+const docTwoCur = (rows, key) => hasUsd(rows)
+  ? `<b>${money(sumCur(rows, key, 'ILS'))}</b><div class="doc-note">${money(sumCur(rows, key, 'USD'), 'USD')}</div>`
+  : `<b>${money(sumCur(rows, key, 'ILS') + sumCur(rows, key, 'USD'))}</b>`;
+
+// טבלה במסמך לפי הגדרות עמודות. בלי colspan — כל תא עומד מול הכותרת שלו.
+function docTbl(sec, rows) {
+  const cols = sec.cols.filter(c => docColOn(sec.k, c.k));
+  if (!cols.length) return '';
   if (!rows.length) return '<div class="doc-empty">אין רישומים להצגה.</div>';
   return `<table>
-    <thead><tr>${head.map(h => `<th class="${h[1] || ''}">${esc(h[0])}</th>`).join('')}</tr></thead>
-    <tbody>${rows.join('')}</tbody>
-    ${foot ? `<tfoot><tr>${foot}</tr></tfoot>` : ''}</table>`;
+    <thead><tr>${cols.map(c => `<th class="${c.cls || ''}">${esc(c.label)}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map(r => `<tr>${cols.map(c =>
+      `<td class="${c.cls || ''}">${c.render(r)}</td>`).join('')}</tr>`).join('')}</tbody>
+    <tfoot><tr>${cols.map(c =>
+      `<td class="${c.cls || ''}">${c.foot ? c.foot(rows) : ''}</td>`).join('')}</tr></tfoot>
+  </table>`;
 }
+
 const docS = (label, val, hi) =>
   `<div class="doc-s${hi ? ' hi' : ''}"><span>${esc(label)}</span><b>${val}</b></div>`;
 
 function custDocHTML(d, mode) {
   const t = d.scroll_totals, p = d.product_totals;
   const showS = mode !== 'products', showP = mode !== 'scrolls';
-  const scrolls = showS ? (d.scrolls || []) : [];
-  const sPays   = showS ? (d.scroll_payments || []) : [];
-  const sales   = showP ? (d.sales || []) : [];
-  const pPays   = showP ? (d.product_payments || []) : [];
-  const M = (v, cur) => money(v, cur);
+  const data = {
+    books: showS ? (d.scrolls || []) : [],
+    bpays: showS ? (d.scroll_payments || []) : [],
+    prods: showP ? (d.sales || []) : [],
+    ppays: showP ? (d.product_payments || []) : [],
+  };
+  const M = money;
 
   // המטבע נשמר לכל ספר בנפרד; סיכום של ספרים בשני מטבעות הוא נומינלי בלבד
-  const mixed = new Set(scrolls.map(x => x.buyer_currency || 'ILS')).size > 1;
-  // צד המוצרים בדולר מוצג בשורת סיכום נפרדת, בלי שום המרה
+  const mixed = new Set(data.books.map(x => x.buyer_currency || 'ILS')).size > 1;
   const usdProd = showP && (N(p.revenue_usd) || N(p.paid_usd) || N(p.balance_usd));
 
   let sum;
@@ -2315,55 +2433,9 @@ function custDocHTML(d, mode) {
   const title = mode === 'scrolls' ? 'ריכוז ספרים'
               : (mode === 'products' ? 'ריכוז מוצרים' : 'כרטיס לקוח');
 
-  const sRows = scrolls.map(r => `<tr>
-    <td>${r.sku ? esc(r.sku) : '#' + r.id}</td>
-    <td class="w">${esc(r.product_name || '—')}</td>
-    <td>${r.pages_written}/${r.product_pages} <span class="muted">(${r.progress_pct}%)</span></td>
-    <td class="n">${M(r.buyer_total, r.buyer_currency)}</td>
-    <td class="n">${M(r.buyer_due_progress, r.buyer_currency)}</td>
-    <td class="n">${M(r.customer_paid, r.buyer_currency)}</td>
-    <td class="n"><b>${M(r.buyer_balance_now, r.buyer_currency)}</b></td>
-    <td class="n">${M(r.buyer_balance_total, r.buyer_currency)}</td></tr>`);
-  const sFoot = `<td colspan="3">סה"כ ${scrolls.length} ספרים</td>
-    <td class="n">${M(sumBy(scrolls, 'buyer_total'))}</td>
-    <td class="n">${M(sumBy(scrolls, 'buyer_due_progress'))}</td>
-    <td class="n">${M(sumBy(scrolls, 'customer_paid'))}</td>
-    <td class="n">${M(sumBy(scrolls, 'buyer_balance_now'))}</td>
-    <td class="n">${M(sumBy(scrolls, 'buyer_balance_total'))}</td>`;
-
-  const spRows = sPays.map(r => `<tr>
-    <td>${dt(r.date)}</td>
-    <td class="n">${N(r.amount_ils) ? M(r.amount_ils) : ''}</td>
-    <td class="n">${N(r.amount_usd) ? M(r.amount_usd, 'USD') : ''}</td>
-    <td class="n">${N(r.rate) ? N(r.rate).toLocaleString('he-IL') : ''}</td>
-    <td class="n"><b>${M(r.paid_actual)}</b></td></tr>`);
-  const spFoot = `<td colspan="4">סה"כ שולם</td><td class="n">${M(sumBy(sPays, 'paid_actual'))}</td>`;
-
-  const pRows = sales.map(r => `<tr>
-    <td>${dt(r.date)}</td>
-    <td class="w">${esc(r.product_name || '—')}</td>
-    <td class="n">${N(r.quantity).toLocaleString('he-IL')}</td>
-    <td class="n">${M(r.price_per_unit, r.currency)}</td>
-    <td class="n"><b>${M(r.total_sale, r.currency)}</b></td></tr>`);
-  // שתי שורות סיכום כשיש שני מטבעות — סכום מעורבב היה מטעה את הלקוח
-  const pTot = (cur) => `<td colspan="2">סה"כ ${cur === 'USD' ? 'בדולרים' : 'בשקלים'}</td>
-    <td class="n">${N(sumCur(sales, 'quantity', cur)).toLocaleString('he-IL')}</td>
-    <td></td><td class="n">${M(sumCur(sales, 'total_sale', cur), cur)}</td>`;
-  const pFoot = hasUsd(sales)
-    ? `${pTot('ILS')}</tr><tr>${pTot('USD')}`
-    : `<td colspan="2">סה"כ ${sales.length} רישומים</td>
-       <td class="n">${N(sumBy(sales, 'quantity')).toLocaleString('he-IL')}</td>
-       <td></td><td class="n">${M(sumBy(sales, 'total_sale'))}</td>`;
-
-  const ppRows = pPays.map(r => `<tr>
-    <td>${dt(r.date)}</td>
-    <td class="n">${(r.currency !== 'USD' && N(r.amount_ils)) ? M(r.amount_ils) : ''}</td>
-    <td class="n">${N(r.amount_usd) ? M(r.amount_usd, 'USD') : ''}</td>
-    <td class="n"><b>${M(r.paid_actual, r.currency)}</b></td></tr>`);
-  const ppFoot = hasUsd(pPays)
-    ? `<td colspan="3">סה"כ שולם</td><td class="n">${M(sumCur(pPays, 'paid_actual', 'ILS'))}
-         <div class="doc-note">${M(sumCur(pPays, 'paid_actual', 'USD'), 'USD')}</div></td>`
-    : `<td colspan="3">סה"כ שולם</td><td class="n">${M(sumBy(pPays, 'paid_actual'))}</td>`;
+  // סעיף שכל עמודותיו כובו יורד לגמרי מהמסמך
+  const secs = docSections().filter(s => docSecVisible(s, mode))
+    .map(s => ({ s, html: docTbl(s, data[s.k]) })).filter(x => x.html);
 
   return `<div class="doc">
     <div class="doc-head">
@@ -2386,19 +2458,7 @@ function custDocHTML(d, mode) {
     <div class="doc-sum">${sum}</div>
     ${mixed ? '<div class="doc-note">שים לב: בכרטיס זה יש ספרים בשני מטבעות. שורת הסיכום מציגה סכום נומינלי.</div>' : ''}
 
-    ${showS ? `<div class="doc-sec">ספרים</div>
-      ${docTbl([['מק"ט'], ['פריט'], ['התקדמות'], ['מחיר מוסכם', 'n'], ['לתשלום לפי התקדמות', 'n'],
-                ['שולם', 'n'], ['לתשלום כעת', 'n'], ['יתרה כללית', 'n']], sRows, scrolls.length ? sFoot : '')}
-      <div class="doc-sec">תשלומים שהתקבלו (ספרים)</div>
-      ${docTbl([['תאריך'], ['שקלים', 'n'], ['דולרים', 'n'], ['שער', 'n'], ['נזקף לחשבון', 'n']],
-               spRows, sPays.length ? spFoot : '')}` : ''}
-
-    ${showP ? `<div class="doc-sec">מוצרים</div>
-      ${docTbl([['תאריך'], ['פריט'], ['כמות', 'n'], ["מחיר ליח'", 'n'], ['סה"כ', 'n']],
-               pRows, sales.length ? pFoot : '')}
-      <div class="doc-sec">תשלומים שהתקבלו (מוצרים)</div>
-      ${docTbl([['תאריך'], ['שקלים', 'n'], ['דולרים', 'n'], ['נזקף לחשבון', 'n']],
-               ppRows, pPays.length ? ppFoot : '')}` : ''}
+    ${secs.map(x => `<div class="doc-sec">${esc(x.s.title)}</div>${x.html}`).join('')}
 
     <div class="doc-foot">
       <div>"לתשלום כעת" מחושב לפי התקדמות הכתיבה בפועל. "יתרה כללית" היא היתרה על ההזמנה המלאה.</div>
