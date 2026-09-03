@@ -382,6 +382,10 @@ body.locked-out .content, body.locked-out .tabs, body.locked-out header .actions
       <h2>מזוזות לפי סוג <span class="hint">— בית יוסף מול ארי, כולל נשלח לכתר</span></h2>
       <div class="table-wrap"><table id="tbl-product"></table></div>
     </div>
+    <div class="card" id="card-grade">
+      <h2>פילוח לפי דרגה <span class="hint">— דרגת הסופר, כולל נשלח לכתר</span></h2>
+      <div class="table-wrap"><table id="tbl-grade"></table></div>
+    </div>
     <div class="card" id="card-monthly">
       <h2>פילוח חודשי</h2>
       <div class="table-wrap"><table id="tbl-monthly"></table></div>
@@ -1546,6 +1550,36 @@ function renderReports() {
     h+=`<tr style="background:#edf2f7;font-weight:800"><td>סה"כ</td><td>${tot.total||0}</td><td>${tot.approved||0}</td><td>${tot.pending||0}</td><td>${tot.pasul||0}</td><td>${tot.kosher||0}</td><td>${tot.sent||0}</td><td>${(tot.total||0)-(tot.sent||0)}</td></tr>`;
     pt.innerHTML = h+'</tbody>';
   }
+  // grade breakdown — לפי דרגת הסופר של כל מזוזה
+  const gt = document.getElementById('tbl-grade');
+  if (gt) {
+    const gradeOf = m => {
+      const s = (data.scribes||[]).find(x=>x.name===m.scribe);
+      const g = s && s.grade ? String(s.grade).trim() : '';
+      return g || 'ללא דרגה';
+    };
+    const byGrade = {};
+    mez.forEach(m=>{
+      const k = gradeOf(m);
+      if(!byGrade[k]) byGrade[k] = {total:0,approved:0,pending:0,pasul:0,kosher:0,sent:0};
+      const g = byGrade[k]; g.total++;
+      if(m.approve==='אושר') g.approved++; else if(m.approve==='ממתין') g.pending++;
+      else if(m.approve==='פסול') g.pasul++; else if(m.approve==='כשר') g.kosher++;
+      if(m.keter==='כן') g.sent++;
+    });
+    // מיון: דרגות לפי א-ב, "ללא דרגה" תמיד אחרון
+    const gkeys = Object.keys(byGrade).sort((a,b)=>
+      a==='ללא דרגה' ? 1 : b==='ללא דרגה' ? -1 : a.localeCompare(b,'he'));
+    if (!gkeys.length) gt.innerHTML = '<tr><td class="empty">אין נתונים</td></tr>';
+    else {
+      const tot = gkeys.reduce((a,k)=>{ Object.keys(byGrade[k]).forEach(x=>a[x]=(a[x]||0)+byGrade[k][x]); return a; }, {});
+      let h='<thead><tr><th>דרגה</th><th>סה"כ</th><th>אושרו</th><th>ממתינים</th><th>נפסלו</th><th>כשר</th><th>נשלחו לכתר</th><th>לא נשלחו</th></tr></thead><tbody>';
+      gkeys.forEach(k=>{ const g=byGrade[k];
+        h+=`<tr><td><b>${esc(k)}</b></td><td>${g.total}</td><td>${g.approved}</td><td>${g.pending}</td><td>${g.pasul}</td><td>${g.kosher}</td><td>${g.sent}</td><td>${g.total-g.sent}</td></tr>`; });
+      h+=`<tr style="background:#edf2f7;font-weight:800"><td>סה"כ</td><td>${tot.total||0}</td><td>${tot.approved||0}</td><td>${tot.pending||0}</td><td>${tot.pasul||0}</td><td>${tot.kosher||0}</td><td>${tot.sent||0}</td><td>${(tot.total||0)-(tot.sent||0)}</td></tr>`;
+      gt.innerHTML = h+'</tbody>';
+    }
+  }
   // monthly
   const mon = {};
   mez.forEach(m=>{
@@ -1718,6 +1752,12 @@ function closeAllOverlays(){
   });
   _printList = null;
   if (typeof _scanner !== 'undefined' && _scanner){ try{_scanner.stop().then(()=>_scanner.clear());}catch(e){} _scanner=null; }
+  // איפוס סינוני טבלת המזוזות — אחרת סינון של משתמש אחד (למשל אחרי סריקת ברקוד)
+  // נשאר על המסך גם למשתמש הבא והוא רואה רק מזוזה אחת
+  ['f-search','f-status','f-keter','f-missing'].forEach(id=>{
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  if (typeof selectedMez !== 'undefined' && selectedMez && selectedMez.clear) selectedMez.clear();
 }
 function showLoginGate(){
   closeAllOverlays();
@@ -1817,7 +1857,7 @@ function applyPermissions(){
     if (role==='supervisor') return ['card-status','card-product'].includes(id);                // משגיח: סטטוס + לפי סוג
     return false;
   };
-  ['card-finance','card-scribe-report','card-keter','card-customers','card-balances','card-status','card-product','card-monthly'].forEach(id=>{
+  ['card-finance','card-scribe-report','card-keter','card-customers','card-balances','card-status','card-product','card-grade','card-monthly'].forEach(id=>{
     const c=document.getElementById(id); if(c) c.style.display = reportVis(id) ? '' : 'none';
   });
   // chart cards
@@ -1835,7 +1875,11 @@ function applyPermissions(){
   if (bin) bin.style.display = can('users') ? '' : 'none';
   // user chip
   const chip = document.getElementById('userChip');
-  if (currentUser){ chip.style.display='inline-flex'; document.getElementById('userChipName').textContent = currentUser.name + ' · ' + (ROLE_LABELS[currentUser.role]||''); }
+  if (currentUser){ chip.style.display='inline-flex';
+    // לקוח: מציגים רק את השם, בלי תווית התפקיד לידו
+    const showRole = currentUser.role !== 'investor';
+    document.getElementById('userChipName').textContent =
+      currentUser.name + (showRole ? ' · ' + (ROLE_LABELS[currentUser.role]||'') : ''); }
   else chip.style.display='none';
 }
 function toggleAddForms(){
