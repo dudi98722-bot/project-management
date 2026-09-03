@@ -2318,7 +2318,8 @@ function repCustomerDoc() {
 // הסיכום תישאר מיושרת גם כשמכבים עמודות באמצע.
 const DOC_OFF = new Set(['books|scribe', 'books|date', 'books|note',
   'bpays|peritah', 'bpays|note',
-  'prods|scribe', 'prods|cur', 'prods|note', 'ppays|cur', 'ppays|note']);
+  'prods|scribe', 'prods|cur', 'prods|note',
+  'ppays|cur', 'ppays|peritah', 'ppays|note']);
 const docColOn = (sec, k) => {
   const v = CUSTDOC.cols[`${sec}|${k}`];
   return v === undefined ? !DOC_OFF.has(`${sec}|${k}`) : !!v;
@@ -2377,6 +2378,7 @@ function docSections() {
       { k: 'qty', label: 'כמות', cls: 'n', render: r => N(r.quantity).toLocaleString('he-IL'),
         foot: rows => N(sumBy(rows, 'quantity')).toLocaleString('he-IL') },
       { k: 'cur', label: 'מטבע', render: r => r.currency === 'USD' ? '$' : '₪' },
+      { k: 'type', label: 'סוג מכירה', render: r => esc(r.sale_type || 'רגיל') },
       { k: 'unit', label: "מחיר ליח'", cls: 'n', render: r => M(r.price_per_unit, r.currency) },
       { k: 'total', label: 'סה"כ', cls: 'n', render: r => `<b>${M(r.total_sale, r.currency)}</b>`,
         foot: rows => docTwoCur(rows, 'total_sale') },
@@ -2389,6 +2391,11 @@ function docSections() {
       { k: 'ils', label: 'שקלים', cls: 'n',
         render: r => (r.currency !== 'USD' && N(r.amount_ils)) ? M(r.amount_ils) : '' },
       { k: 'usd', label: 'דולרים', cls: 'n', render: r => N(r.amount_usd) ? M(r.amount_usd, 'USD') : '' },
+      // בתשלום דולרי אין המרה, ולכן אין לו שער ואין פריטה
+      { k: 'rate', label: 'שער', cls: 'n',
+        render: r => (r.currency !== 'USD' && N(r.rate)) ? N(r.rate).toLocaleString('he-IL') : '' },
+      { k: 'peritah', label: 'עלות פריטה', cls: 'n', render: r => N(r.peritah) ? M(r.peritah) : '',
+        foot: rows => M(sumBy(rows, 'peritah')) },
       { k: 'credited', label: 'נזקף לחשבון', cls: 'n', render: r => `<b>${M(r.paid_actual, r.currency)}</b>`,
         foot: rows => docTwoCur(rows, 'paid_actual') },
       { k: 'note', label: 'הערה', cls: 'w', render: r => esc(r.note || '') },
