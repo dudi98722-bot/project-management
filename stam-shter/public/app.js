@@ -487,6 +487,29 @@ function wireExport() {
 }
 
 const sumBy = (rows, k) => rows.reduce((a, r) => a + N(r[k]), 0);
+// סכימה של שורות מטבע אחד בלבד — במערכת המוצרים אין שער המרה, ולכן
+// חיבור שקלים ודולרים היה מחזיר מספר חסר משמעות.
+const sumCur = (rows, k, cur) => rows.reduce((a, r) =>
+  a + (((r.currency || 'ILS') === cur) ? N(r[k]) : 0), 0);
+const hasUsd = (rows) => rows.some(r => (r.currency || 'ILS') === 'USD');
+
+// ===== מטבע במערכת המוצרים =====
+const CUR_OPTS = (v) =>
+  `<option value="ILS" ${v !== 'USD' ? 'selected' : ''}>₪ שקל</option>` +
+  `<option value="USD" ${v === 'USD' ? 'selected' : ''}>$ דולר</option>`;
+const curField = (hint) => ({ k: 'currency', label: 'מטבע העסקה', type: 'select',
+  blank: false, options: CUR_OPTS, hint });
+const curPill = (r) => (r.currency === 'USD')
+  ? '<span class="pill" style="background:#dbeafe;color:#1e40af">$ דולר</span>'
+  : '<span class="pill n">₪ שקל</span>';
+const curCol = { label: 'מטבע', render: r => curPill(r) };
+// סכום במטבע השורה
+const mc = (v, r) => mCell(v, r && r.currency);
+// שורת סיכום דו-מטבעית: מציגה דולרים רק אם באמת יש
+const totalCur = (rows, k) => {
+  const ils = mCell(sumCur(rows, k, 'ILS'));
+  return hasUsd(rows) ? `${ils}<div class="mini">${money(sumCur(rows, k, 'USD'), 'USD')}</div>` : ils;
+};
 // ===== סינון טבלאות =====
 // לכל עמודה מסנן משלה בכותרת, ובנוסף חיפוש חופשי בכל הטבלה.
 // הסינון עובד על הטקסט המוצג בפועל, ולכן הוא זהה למה שהמשתמש רואה
@@ -919,7 +942,15 @@ async function pageDash() {
       ${st('חוב הרוכשים (מיידי)', money(d.owed_by_customers), 'a', `כללי: ${money(d.owed_by_customers_total)}`)}
       ${st('מלאי מוצרים', N(d.stock_units).toLocaleString('he-IL') + " יח'", '')}
       ${st('עלות פריטה', money(d.peritah_total), 'r', 'שתי המערכות')}
-    </div>`;
+    </div>
+    ${d.has_usd ? `<div class="page-head" style="margin-top:18px">
+        <h3 style="margin:0">צד הדולר</h3>
+        <span class="mini">מוצג בנפרד — אין במערכת שער המרה, ושום סכום אינו מעורבב</span></div>
+      <div class="grid stat-grid">
+        ${st('רווח מוצרים ($)', money(d.product_profit_usd, 'USD'), 'b')}
+        ${st('חוב לסופרים ($)', money(d.owed_to_scribes_usd, 'USD'), 'r')}
+        ${st('חוב הרוכשים ($)', money(d.owed_by_customers_usd, 'USD'), 'a')}
+      </div>` : ''}`;
 }
 
 // ============ ס"ת ============
@@ -1339,7 +1370,7 @@ function prodPurchases(cfgOnly) {
     approve: true,
     load: () => Store.prodPurchases.list(),
     labelOf: (r) => `${r.product_name} מ${r.scribe_name}`,
-    defaults: () => ({ date: today(), purchase_type: 'רגיל', _paidDate: today(),
+    defaults: () => ({ date: today(), purchase_type: 'רגיל', currency: 'ILS', _paidDate: today(),
       _track: PURCH_TRACK.on, _station: PURCH_TRACK.station, _holder: PURCH_TRACK.holder }),
     totals: true,
     note: 'כל רכישה היא <b>חבילה</b> שממנה מוכרים. מחיקת רכישה מעבירה גם את המכירות שנגזרו ממנה לסל המחזור.'
@@ -1355,6 +1386,7 @@ function prodPurchases(cfgOnly) {
         hint: 'למשל: הובלה, בתי מזוזה, תיקונים' },
       { k: 'purchase_type', label: 'סוג רכישה', type: 'select', blank: false, options: (v) =>
           `<option value="רגיל" ${v === 'רגיל' ? 'selected' : ''}>רגיל</option><option value="קומיסיון" ${v === 'קומיסיון' ? 'selected' : ''}>קומיסיון</option>` },
+      curField('כל הסכומים ברכישה הזו — עלות, תשלום לסופר והחוב — יהיו במטבע הזה'),
       { k: 'note', label: 'הערה', type: 'textarea' },
       // תשלום לסופר ישירות מהרכישה, במקום לעבור ללשונית התשלומים
       { k: '_paid', label: 'שולם עכשיו לסופר', type: 'number', newOnly: true,
@@ -1397,12 +1429,14 @@ function prodPurchases(cfgOnly) {
       { label: 'כמות', cls: 'num', render: r => numCell(r.quantity), total: rows => numCell(sumBy(rows, 'quantity')) },
       { label: 'נמכר', cls: 'num', render: r => numCell(r.sold_qty) },
       { label: 'נשאר', cls: 'num', render: r => `<span class="pill ${N(r.remaining_qty) > 0 ? 'g' : 'n'}">${N(r.remaining_qty)}</span>` },
-      { label: "עלות ליח'", cls: 'num', render: r => mCell(r.cost_per_unit) },
-      { label: "נוספת ליח'", cls: 'num', render: r => mCell(r.extra_cost_per_unit) },
+      curCol,
+      { label: "עלות ליח'", cls: 'num', render: r => mc(r.cost_per_unit, r) },
+      { label: "נוספת ליח'", cls: 'num', render: r => mc(r.extra_cost_per_unit, r) },
       { label: 'עבור מה', cls: 'wrap', render: r => r.extra_cost_note
           ? esc(r.extra_cost_note) : '<span class="muted">—</span>' },
       { label: 'סוג', render: r => `<span class="pill n">${esc(r.purchase_type || '')}</span>` },
-      { label: 'סה"כ לתשלום לסופר', cls: 'num', render: r => mCell(r.owed_scribe), total: rows => mCell(sumBy(rows, 'owed_scribe')) },
+      { label: 'סה"כ לתשלום לסופר', cls: 'num', render: r => mc(r.owed_scribe, r),
+        total: rows => totalCur(rows, 'owed_scribe') },
       { label: '', cls: 'center', render: r => `<button class="btn ghost xs" data-trk="${r.id}" title="מעקב היחידות של החבילה">📍 מעקב</button>` },
     ],
   };
@@ -1424,9 +1458,10 @@ async function afterNewPurchase(saved, data, isEdit) {
         date: data._paidDate || data.date || today(),
         scribe_id: saved.scribe_id,
         amount: amt,
+        currency: saved.currency || 'ILS',   // התשלום תמיד במטבע הרכישה
         note: data._paidNote || `עבור רכישה #${saved.id}`,
       });
-      msgs.push(`נרשם תשלום ${money(amt)} לסופר`);
+      msgs.push(`נרשם תשלום ${money(amt, saved.currency)} לסופר`);
     }
   }
   const trk = await trackNewPurchase(saved, data, isEdit);
@@ -1466,9 +1501,10 @@ function prodSales(cfgOnly) {
     title: 'מכירות מוצרים', bulk: 'prod_sales', store: Store.prodSales,
     load: () => Store.prodSales.list(),
     labelOf: (r) => `${r.quantity} × ${r.product_name}`,
-    defaults: () => ({ date: today(), sale_type: 'רגיל' }),
+    defaults: () => ({ date: today(), sale_type: 'רגיל', currency: 'ILS' }),
     totals: true,
-    note: 'לא ניתן למכור יותר מיתרת המלאי בחבילה. רווח = מכירה − (עלות + עלות נוספת) − 3% אם סומן.',
+    note: 'לא ניתן למכור יותר מיתרת המלאי בחבילה. רווח = מכירה − (עלות + עלות נוספת) − 3% אם סומן.'
+      + ' מטבע המכירה עצמאי ממטבע הרכישה; כשהם שונים הרווח אינו ניתן לחישוב במספר אחד ומוצג "—".',
     validate: (d) => (!d.purchase_id ? 'יש לבחור חבילת רכישה' : (N(d.quantity) <= 0 ? 'כמות חייבת להיות גדולה מאפס' : null)),
     fields: [
       { k: 'date', label: 'תאריך', type: 'date' },
@@ -1479,8 +1515,19 @@ function prodSales(cfgOnly) {
       { k: 'sale_type', label: 'סוג מכירה', type: 'select', blank: false, options: (v) =>
           `<option value="רגיל" ${v === 'רגיל' ? 'selected' : ''}>רגיל</option><option value="קומיסיון" ${v === 'קומיסיון' ? 'selected' : ''}>קומיסיון</option>` },
       { k: 'deduct_3pct', label: 'לנכות 3%', type: 'checkbox' },
+      curField('נקבע לפי החבילה שנבחרה, וניתן לשנות — אפשר לקנות בשקל ולמכור בדולר'),
       { k: 'note', label: 'הערה', type: 'textarea' },
     ],
+    // בחירת חבילה מיישרת את המטבע לזה שלה — ברוב המקרים זה מה שנכון
+    onForm: (m) => {
+      const pur = m.el.querySelector('#f_purchase_id');
+      const cur = m.el.querySelector('#f_currency');
+      if (!pur || !cur) return;
+      pur.addEventListener('change', () => {
+        const p = C.purchases.find(x => x.id === +pur.value);
+        if (p) cur.value = p.currency || 'ILS';
+      });
+    },
     cols: [
       { label: '#', render: r => `<b>${r.id}</b>` },
       { label: 'תאריך', render: r => dt(r.date) },
@@ -1488,12 +1535,18 @@ function prodSales(cfgOnly) {
       { label: 'מחבילה', render: r => r.purchase_id ? `<span class="pill n">#${r.purchase_id}</span>` : '—' },
       { label: 'מוצר', render: r => esc(r.product_name || '—') + (r.scribe_name ? ` <span class="mini">· ${esc(r.scribe_name)}</span>` : '') },
       { label: 'כמות', cls: 'num', render: r => numCell(r.quantity), total: rows => numCell(sumBy(rows, 'quantity')) },
-      { label: "מחיר ליח'", cls: 'num', render: r => mCell(r.price_per_unit) },
-      { label: "עלות ליח'", cls: 'num', render: r => mCell(r.unit_cost) },
+      curCol,
+      { label: "מחיר ליח'", cls: 'num', render: r => mc(r.price_per_unit, r) },
+      { label: "עלות ליח'", cls: 'num', render: r => mCell(r.unit_cost, r.purchase_currency) },
       { label: 'סוג', render: r => `<span class="pill n">${esc(r.sale_type || '')}</span>` },
       { label: '3%', cls: 'center', render: r => r.deduct_3pct ? '<span class="pill a">כן</span>' : '' },
-      { label: 'סך מכירה', cls: 'num', render: r => mCell(r.total_sale), total: rows => mCell(sumBy(rows, 'total_sale')) },
-      { label: 'סך רווח', cls: 'num', render: r => mCell(r.total_profit), total: rows => mCell(sumBy(rows, 'total_profit')) },
+      { label: 'סך מכירה', cls: 'num', render: r => mc(r.total_sale, r), total: rows => totalCur(rows, 'total_sale') },
+      // רווח מוצג רק כששני המטבעות זהים — אחרת הוא הפרש בין מטבעות
+      { label: 'סך רווח', cls: 'num',
+        render: r => r.total_profit == null
+          ? `<span class="muted" title="מטבע המכירה שונה ממטבע הרכישה">—</span>`
+          : mc(r.total_profit, r),
+        total: rows => totalCur(rows.filter(x => x.total_profit != null), 'total_profit') },
     ],
   };
   return cfgOnly ? cfg : entityPage(cfg);
@@ -1504,19 +1557,21 @@ function prodScribePay(cfgOnly) {
     title: 'תשלומים לסופר (מוצרים)', bulk: 'prod_scribe_payments', store: Store.prodScribePayments,
     approve: true,
     load: () => Store.prodScribePayments.list(),
-    labelOf: (r) => `תשלום ${money(r.amount)}`,
-    defaults: () => ({ date: today() }),
+    labelOf: (r) => `תשלום ${money(r.amount, r.currency)}`,
+    defaults: () => ({ date: today(), currency: 'ILS' }),
     totals: true,
     fields: [
       { k: 'date', label: 'תאריך', type: 'date' },
       { k: 'scribe_id', label: 'שם סופר', type: 'combo', items: itemsContacts },
       { k: 'amount', label: 'סך ששולם', type: 'number' },
+      curField('הסכום נקוב במטבע הזה, ומקוזז מהחוב באותו מטבע'),
       { k: 'note', label: 'הערה', type: 'textarea' },
     ],
     cols: [
       { label: 'תאריך', render: r => dt(r.date) },
       { label: 'סופר', render: r => esc(r.scribe_name || '—') },
-      { label: 'סך ששולם', cls: 'num', render: r => mCell(r.amount), total: rows => mCell(sumBy(rows, 'amount')) },
+      curCol,
+      { label: 'סך ששולם', cls: 'num', render: r => mc(r.amount, r), total: rows => totalCur(rows, 'amount') },
       { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
     ],
   };
@@ -1527,27 +1582,50 @@ function prodCustPay(cfgOnly) {
   const cfg = {
     title: 'תשלומי לקוחות (מוצרים)', bulk: 'prod_customer_payments', store: Store.prodCustomerPayments,
     load: () => Store.prodCustomerPayments.list(),
-    labelOf: (r) => `תשלום ${money(r.paid_actual)}`,
-    defaults: () => ({ date: today() }),
+    labelOf: (r) => `תשלום ${money(r.paid_actual, r.currency)}`,
+    defaults: () => ({ date: today(), currency: 'ILS' }),
     totals: true,
+    note: 'תשלום <b>שקלי</b> יכול לכלול דולרים שפרטת — הם מומרים לפי השער והפרש הפריטה נרשם.'
+      + ' תשלום <b>דולרי</b> נשאר דולרי: הוא מקוזז מחוב דולרי, בלי המרה ובלי פריטה.',
     fields: [
       { k: 'date', label: 'תאריך', type: 'date' },
       { k: 'customer_id', label: 'שם לקוח', type: 'combo', items: itemsContacts },
+      { k: 'currency', label: 'מטבע התשלום', type: 'select', blank: false, options: CUR_OPTS,
+        hint: 'דולרי = נשאר בדולר, בלי המרה' },
       { k: 'amount_ils', label: 'סכום ששולם בש"ח', type: 'number' },
       { k: 'amount_usd', label: 'סכום ששולם בדולר', type: 'number' },
       { k: 'rate', label: 'שער יציג', type: 'number' },
       { k: 'cash_in_hand', label: 'מזומן בש"ח ביד בפועל', type: 'number' },
       { k: 'note', label: 'הערה', type: 'textarea' },
     ],
+    // בתשלום דולרי אין מקום לשקלים, לשער ולפריטה — הם מוסתרים כדי שלא
+    // יוזנו בטעות ערכים שממילא לא ייספרו.
+    onForm: (m) => {
+      const cur = m.el.querySelector('#f_currency');
+      if (!cur) return;
+      const box = (id) => { const e = m.el.querySelector('#f_' + id); return e && e.closest('.field'); };
+      const ilsOnly = ['amount_ils', 'rate', 'cash_in_hand'].map(box).filter(Boolean);
+      const usdBox = box('amount_usd');
+      const apply = () => {
+        const usd = cur.value === 'USD';
+        ilsOnly.forEach(f => f.classList.toggle('hidden', usd));
+        if (usdBox) usdBox.querySelector('label').textContent = usd ? 'סכום ששולם בדולר' : 'סכום ששולם בדולר (לפריטה)';
+      };
+      cur.addEventListener('change', apply);
+      apply();
+    },
     cols: [
       { label: 'תאריך', render: r => dt(r.date) },
       { label: 'לקוח', render: r => esc(r.customer_name || '—') },
-      { label: 'ש"ח', cls: 'num', render: r => mCell(r.amount_ils), total: rows => mCell(sumBy(rows, 'amount_ils')) },
+      curCol,
+      { label: 'ש"ח', cls: 'num', render: r => r.currency === 'USD' ? '' : mCell(r.amount_ils),
+        total: rows => mCell(sumCur(rows, 'amount_ils', 'ILS')) },
       { label: 'דולר', cls: 'num', render: r => numCell(r.amount_usd), total: rows => numCell(sumBy(rows, 'amount_usd')) },
-      { label: 'שער', cls: 'num', render: r => r.rate ? numCell(r.rate) : '' },
-      { label: 'מזומן ביד', cls: 'num', render: r => r.amount_usd ? mCell(r.cash_in_hand) : '' },
-      { label: 'עלות פריטה', cls: 'num', render: r => r.amount_usd ? mCell(r.peritah) : '', total: rows => mCell(sumBy(rows, 'peritah')) },
-      { label: 'ס"ה שולם', cls: 'num', render: r => mCell(r.paid_actual), total: rows => mCell(sumBy(rows, 'paid_actual')) },
+      { label: 'שער', cls: 'num', render: r => (r.currency !== 'USD' && r.rate) ? numCell(r.rate) : '' },
+      { label: 'מזומן ביד', cls: 'num', render: r => (r.currency !== 'USD' && r.amount_usd) ? mCell(r.cash_in_hand) : '' },
+      { label: 'עלות פריטה', cls: 'num', render: r => N(r.peritah) ? mCell(r.peritah) : '',
+        total: rows => mCell(sumBy(rows, 'peritah')) },
+      { label: 'ס"ה שולם', cls: 'num', render: r => mc(r.paid_actual, r), total: rows => totalCur(rows, 'paid_actual') },
       { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
     ],
   };
@@ -1834,6 +1912,7 @@ async function repCharts() {
 async function repProfit() {
   const d = await Store.reports.profit();
   const line = (k, v, bold) => `<div class="k">${k}</div><div class="num ${bold ? 'b' : ''}">${bold ? `<b>${money(v)}</b>` : money(v)}</div>`;
+  const lineU = (k, v, bold) => `<div class="k">${k}</div><div class="num">${bold ? `<b>${money(v, 'USD')}</b>` : money(v, 'USD')}</div>`;
   $('view').innerHTML += `
     <div class="grid stat-grid">
       <div class="stat"><div class="label">רווח נקי כולל</div>
@@ -1861,6 +1940,17 @@ async function repProfit() {
       ${line('חוב לסופרים', d.products.owed_scribes)}
       ${line('חוב הלקוחות', d.products.customer_owes)}
     </div></div>
+    ${(d.products.revenue_usd || d.products.cost_usd || d.products.owed_scribes_usd || d.products.customer_owes_usd)
+      ? `<div class="card"><h3>מערכת מוצרים — דולר</h3>
+          <div class="mini" style="margin-bottom:8px">סכומים דולריים, ללא המרה. הם אינם נכללים ברווח הנקי השקלי.</div>
+          <div class="kv">
+          ${lineU('הכנסות ממכירות', d.products.revenue_usd)}
+          ${lineU('עלות המוצרים', d.products.cost_usd)}
+          ${lineU('ניכוי 3%', d.products.deduct_3pct_usd)}
+          ${lineU('רווח מוצרים', d.products.profit_usd, true)}
+          ${lineU('חוב לסופרים', d.products.owed_scribes_usd)}
+          ${lineU('חוב הלקוחות', d.products.customer_owes_usd)}
+        </div></div>` : ''}
     <div class="card"><h3>הוצאות עסק לפי סוג</h3>
       ${tableHTML([{ label: 'סוג', render: r => esc(r.type || '—') },
                    { label: 'סכום', cls: 'num', render: r => mCell(r.total), total: rows => mCell(sumBy(rows, 'total')) }],
@@ -1896,6 +1986,8 @@ async function repByScroll() {
 
 async function repScribeBalances() {
   const rows = await Store.reports.scribeBalances();
+  // עמודות הדולר נוספות רק כשיש נתוני דולר, כדי לא להעמיס טבלה שקלית
+  const usd = rows.some(r => N(r.product_balance_usd) || N(r.product_owed_usd) || N(r.product_paid_usd));
   const cols = [
     { label: 'סופר', render: r => `<span class="link" data-card="${r.id}">${esc(r.name)}</span>` },
     { label: 'טלפון', render: r => esc(r.phone || '') },
@@ -1906,6 +1998,11 @@ async function repScribeBalances() {
     { label: 'שולם מוצרים', cls: 'num', render: r => mCell(r.product_paid), total: rows => mCell(sumBy(rows, 'product_paid')) },
     { label: 'יתרה מוצרים', cls: 'num', render: r => mCell(r.product_balance), total: rows => mCell(sumBy(rows, 'product_balance')) },
     { label: 'סה"כ חוב', cls: 'num', render: r => `<b>${mCell(r.total_balance)}</b>`, total: rows => `<b>${mCell(sumBy(rows, 'total_balance'))}</b>` },
+    ...(usd ? [
+      { label: 'חוב מוצרים ($)', cls: 'num', render: r => money(r.product_owed_usd, 'USD'), total: rows => money(sumBy(rows, 'product_owed_usd'), 'USD') },
+      { label: 'שולם ($)', cls: 'num', render: r => money(r.product_paid_usd, 'USD'), total: rows => money(sumBy(rows, 'product_paid_usd'), 'USD') },
+      { label: 'יתרה ($)', cls: 'num', render: r => `<b>${money(r.product_balance_usd, 'USD')}</b>`, total: rows => `<b>${money(sumBy(rows, 'product_balance_usd'), 'USD')}</b>` },
+    ] : []),
   ];
   $('view').innerHTML += `<div class="card">${tableHTML(cols, rows, { totals: true })}</div>`;
   document.querySelectorAll('[data-card]').forEach(b => b.onclick = () => openCard('scribe', +b.dataset.card));
@@ -1913,6 +2010,7 @@ async function repScribeBalances() {
 
 async function repCustomerBalances() {
   const rows = await Store.reports.customerBalances();
+  const usd = rows.some(r => N(r.product_balance_usd) || N(r.product_revenue_usd) || N(r.product_paid_usd));
   const cols = [
     { label: 'רוכש', render: r => `<span class="link" data-card="${r.id}">${esc(r.name)}</span>` },
     { label: 'טלפון', render: r => esc(r.phone || '') },
@@ -1924,6 +2022,11 @@ async function repCustomerBalances() {
     { label: 'יתרה מוצרים', cls: 'num', render: r => mCell(r.product_balance), total: rows => mCell(sumBy(rows, 'product_balance')) },
     { label: 'סה"כ מיידי', cls: 'num', render: r => `<b>${mCell(r.total_due_now)}</b>`, total: rows => `<b>${mCell(sumBy(rows, 'total_due_now'))}</b>` },
     { label: 'סה"כ כללי', cls: 'num', render: r => mCell(r.total_due_overall), total: rows => mCell(sumBy(rows, 'total_due_overall')) },
+    ...(usd ? [
+      { label: 'מכירות ($)', cls: 'num', render: r => money(r.product_revenue_usd, 'USD'), total: rows => money(sumBy(rows, 'product_revenue_usd'), 'USD') },
+      { label: 'שילם ($)', cls: 'num', render: r => money(r.product_paid_usd, 'USD'), total: rows => money(sumBy(rows, 'product_paid_usd'), 'USD') },
+      { label: 'יתרה ($)', cls: 'num', render: r => `<b>${money(r.product_balance_usd, 'USD')}</b>`, total: rows => `<b>${money(sumBy(rows, 'product_balance_usd'), 'USD')}</b>` },
+    ] : []),
   ];
   $('view').innerHTML += `<div class="card">${tableHTML(cols, rows, { totals: true })}</div>`;
   document.querySelectorAll('[data-card]').forEach(b => b.onclick = () => openCard('customer', +b.dataset.card));
@@ -1947,6 +2050,17 @@ async function repMonthly() {
     { label: 'הוצ\' לספר+קלף', cls: 'num', render: r => mCell(r.book_expenses), total: rows => mCell(sumBy(rows, 'book_expenses')) },
     { label: 'הוצ\' עסק', cls: 'num', render: r => mCell(r.business_expenses), total: rows => mCell(sumBy(rows, 'business_expenses')) },
     { label: 'רווח', cls: 'num', render: r => `<b>${mCell(r.profit)}</b>`, total: rows => `<b>${mCell(sumBy(rows, 'profit'))}</b>` },
+    // עמודות דולר נוספות רק בשנה שיש בה פעילות דולרית
+    ...(d.has_usd ? [
+      { label: 'מכירות מוצרים ($)', cls: 'num', render: r => money(r.product_sales_usd, 'USD'),
+        total: rows => money(sumBy(rows, 'product_sales_usd'), 'USD') },
+      { label: 'רווח מוצרים ($)', cls: 'num', render: r => money(r.product_profit_usd, 'USD'),
+        total: rows => money(sumBy(rows, 'product_profit_usd'), 'USD') },
+      { label: 'תקבולים ($)', cls: 'num', render: r => money(r.received_usd, 'USD'),
+        total: rows => money(sumBy(rows, 'received_usd'), 'USD') },
+      { label: 'שולם לסופרים ($)', cls: 'num', render: r => money(r.paid_scribes_usd, 'USD'),
+        total: rows => money(sumBy(rows, 'paid_scribes_usd'), 'USD') },
+    ] : []),
   ];
   const years = [];
   for (let y = new Date().getFullYear() + 1; y >= 2020; y--) years.push(y);
@@ -1968,13 +2082,15 @@ async function repInventory() {
     { label: 'נקנה', cls: 'num', render: r => numCell(r.quantity) },
     { label: 'נמכר', cls: 'num', render: r => numCell(r.sold_qty) },
     { label: 'נשאר', cls: 'num', render: r => `<span class="pill ${N(r.remaining_qty) > 0 ? 'g' : 'n'}">${N(r.remaining_qty)}</span>` },
-    { label: "עלות ליח'", cls: 'num', render: r => mCell(r.unit_cost) },
-    { label: 'שווי מלאי', cls: 'num', render: r => mCell(r.stock_value), total: rows => mCell(sumBy(rows, 'stock_value')) },
+    curCol,
+    { label: "עלות ליח'", cls: 'num', render: r => mc(r.unit_cost, r) },
+    { label: 'שווי מלאי', cls: 'num', render: r => mc(r.stock_value, r), total: rows => totalCur(rows, 'stock_value') },
   ];
   $('view').innerHTML += `
     <div class="grid stat-grid">
       <div class="stat"><div class="label">יחידות במלאי</div><div class="value b">${N(d.total_units).toLocaleString('he-IL')}</div></div>
-      <div class="stat"><div class="label">שווי המלאי</div><div class="value a">${money(d.total_value)}</div></div>
+      <div class="stat"><div class="label">שווי המלאי</div><div class="value a">${money(d.total_value)}</div>
+        ${N(d.total_value_usd) ? `<div class="sub">+ ${money(d.total_value_usd, 'USD')}</div>` : ''}</div>
     </div>
     <div class="card">${tableHTML(cols, d.rows, { totals: true })}</div>`;
 }
@@ -2032,18 +2148,24 @@ function scribeCardHTML(d) {
         { label: 'מוצר', render: r => esc(r.product_name || '—') },
         { label: 'כמות', cls: 'num', render: r => numCell(r.quantity) },
         { label: 'נשאר', cls: 'num', render: r => numCell(r.remaining_qty) },
-        { label: "עלות ליח'", cls: 'num', render: r => mCell(r.cost_per_unit) },
-        { label: 'חוב', cls: 'num', render: r => mCell(r.owed) },
+        curCol,
+        { label: "עלות ליח'", cls: 'num', render: r => mc(r.cost_per_unit, r) },
+        { label: 'חוב', cls: 'num', render: r => mc(r.owed, r) },
       ], d.purchases)}
       <div class="kv" style="margin-top:10px">
         <div class="k">סה"כ חוב מוצרים</div><div class="num">${money(p.owed)}</div>
         <div class="k">שולם</div><div class="num">${money(p.paid)}</div>
         <div class="k"><b>יתרה</b></div><div class="num"><b>${money(p.balance)}</b></div>
+        ${N(p.owed_usd) || N(p.paid_usd) ? `
+          <div class="k">סה"כ חוב מוצרים ($)</div><div class="num">${money(p.owed_usd, 'USD')}</div>
+          <div class="k">שולם ($)</div><div class="num">${money(p.paid_usd, 'USD')}</div>
+          <div class="k"><b>יתרה ($)</b></div><div class="num"><b>${money(p.balance_usd, 'USD')}</b></div>` : ''}
       </div>
     </div>
     <div class="card"><h3>תשלומים ששולמו לו (מוצרים)</h3>
       ${tableHTML([{ label: 'תאריך', render: r => dt(r.date) },
-                   { label: 'סכום', cls: 'num', render: r => mCell(r.amount) },
+                   curCol,
+                   { label: 'סכום', cls: 'num', render: r => mc(r.amount, r) },
                    { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') }], d.product_payments)}
     </div>`;
 }
@@ -2082,20 +2204,26 @@ function customerCardHTML(d) {
       ${tableHTML([{ label: 'תאריך', render: r => dt(r.date) },
                    { label: 'מוצר', render: r => esc(r.product_name || '—') },
                    { label: 'כמות', cls: 'num', render: r => numCell(r.quantity) },
-                   { label: "מחיר ליח'", cls: 'num', render: r => mCell(r.price_per_unit) },
-                   { label: 'סך מכירה', cls: 'num', render: r => mCell(r.total_sale) }], d.sales)}
+                   curCol,
+                   { label: "מחיר ליח'", cls: 'num', render: r => mc(r.price_per_unit, r) },
+                   { label: 'סך מכירה', cls: 'num', render: r => mc(r.total_sale, r) }], d.sales)}
       <div class="kv" style="margin-top:10px">
         <div class="k">סה"כ מכירות</div><div class="num">${money(p.revenue)}</div>
         <div class="k">שילם</div><div class="num">${money(p.paid)}</div>
         <div class="k"><b>יתרה</b></div><div class="num"><b>${money(p.balance)}</b></div>
+        ${N(p.revenue_usd) || N(p.paid_usd) ? `
+          <div class="k">סה"כ מכירות ($)</div><div class="num">${money(p.revenue_usd, 'USD')}</div>
+          <div class="k">שילם ($)</div><div class="num">${money(p.paid_usd, 'USD')}</div>
+          <div class="k"><b>יתרה ($)</b></div><div class="num"><b>${money(p.balance_usd, 'USD')}</b></div>` : ''}
       </div>
     </div>
     <div class="card"><h3>תשלומיו (מוצרים)</h3>
       ${tableHTML([{ label: 'תאריך', render: r => dt(r.date) },
-                   { label: '₪', cls: 'num', render: r => mCell(r.amount_ils) },
+                   curCol,
+                   { label: '₪', cls: 'num', render: r => r.currency === 'USD' ? '' : mCell(r.amount_ils) },
                    { label: '$', cls: 'num', render: r => numCell(r.amount_usd) },
-                   { label: 'פריטה', cls: 'num', render: r => mCell(r.peritah) },
-                   { label: 'ס"ה שולם', cls: 'num', render: r => mCell(r.paid_actual) }], d.product_payments)}
+                   { label: 'פריטה', cls: 'num', render: r => N(r.peritah) ? mCell(r.peritah) : '' },
+                   { label: 'ס"ה שולם', cls: 'num', render: r => mc(r.paid_actual, r) }], d.product_payments)}
     </div>`;
 }
 
@@ -2166,6 +2294,8 @@ function custDocHTML(d, mode) {
 
   // המטבע נשמר לכל ספר בנפרד; סיכום של ספרים בשני מטבעות הוא נומינלי בלבד
   const mixed = new Set(scrolls.map(x => x.buyer_currency || 'ILS')).size > 1;
+  // צד המוצרים בדולר מוצג בשורת סיכום נפרדת, בלי שום המרה
+  const usdProd = showP && (N(p.revenue_usd) || N(p.paid_usd) || N(p.balance_usd));
 
   let sum;
   if (mode === 'scrolls') {
@@ -2173,12 +2303,14 @@ function custDocHTML(d, mode) {
         + docS('לתשלום כעת', M(t.balance_now), true) + docS('יתרה כללית', M(t.balance_total));
   } else if (mode === 'products') {
     sum = docS('סה"כ הרכישות', M(p.revenue)) + docS('שולם', M(p.paid))
-        + docS('יתרה לתשלום', M(p.balance), true);
+        + docS('יתרה לתשלום', M(p.balance), true)
+        + (usdProd ? docS('יתרה לתשלום ($)', M(p.balance_usd, 'USD'), true) : '');
   } else {
     sum = docS('סה"כ הזמנות', M(N(t.total_price) + N(p.revenue)))
         + docS('שולם', M(N(t.paid) + N(p.paid)))
         + docS('לתשלום כעת', M(d.total_due_now), true)
-        + docS('יתרה כללית', M(d.total_due_overall));
+        + docS('יתרה כללית', M(d.total_due_overall))
+        + (usdProd ? docS('יתרה לתשלום ($)', M(p.balance_usd, 'USD'), true) : '');
   }
   const title = mode === 'scrolls' ? 'ריכוז ספרים'
               : (mode === 'products' ? 'ריכוז מוצרים' : 'כרטיס לקוח');
@@ -2211,18 +2343,27 @@ function custDocHTML(d, mode) {
     <td>${dt(r.date)}</td>
     <td class="w">${esc(r.product_name || '—')}</td>
     <td class="n">${N(r.quantity).toLocaleString('he-IL')}</td>
-    <td class="n">${M(r.price_per_unit)}</td>
-    <td class="n"><b>${M(r.total_sale)}</b></td></tr>`);
-  const pFoot = `<td colspan="2">סה"כ ${sales.length} רישומים</td>
-    <td class="n">${N(sumBy(sales, 'quantity')).toLocaleString('he-IL')}</td>
-    <td></td><td class="n">${M(sumBy(sales, 'total_sale'))}</td>`;
+    <td class="n">${M(r.price_per_unit, r.currency)}</td>
+    <td class="n"><b>${M(r.total_sale, r.currency)}</b></td></tr>`);
+  // שתי שורות סיכום כשיש שני מטבעות — סכום מעורבב היה מטעה את הלקוח
+  const pTot = (cur) => `<td colspan="2">סה"כ ${cur === 'USD' ? 'בדולרים' : 'בשקלים'}</td>
+    <td class="n">${N(sumCur(sales, 'quantity', cur)).toLocaleString('he-IL')}</td>
+    <td></td><td class="n">${M(sumCur(sales, 'total_sale', cur), cur)}</td>`;
+  const pFoot = hasUsd(sales)
+    ? `${pTot('ILS')}</tr><tr>${pTot('USD')}`
+    : `<td colspan="2">סה"כ ${sales.length} רישומים</td>
+       <td class="n">${N(sumBy(sales, 'quantity')).toLocaleString('he-IL')}</td>
+       <td></td><td class="n">${M(sumBy(sales, 'total_sale'))}</td>`;
 
   const ppRows = pPays.map(r => `<tr>
     <td>${dt(r.date)}</td>
-    <td class="n">${N(r.amount_ils) ? M(r.amount_ils) : ''}</td>
+    <td class="n">${(r.currency !== 'USD' && N(r.amount_ils)) ? M(r.amount_ils) : ''}</td>
     <td class="n">${N(r.amount_usd) ? M(r.amount_usd, 'USD') : ''}</td>
-    <td class="n"><b>${M(r.paid_actual)}</b></td></tr>`);
-  const ppFoot = `<td colspan="3">סה"כ שולם</td><td class="n">${M(sumBy(pPays, 'paid_actual'))}</td>`;
+    <td class="n"><b>${M(r.paid_actual, r.currency)}</b></td></tr>`);
+  const ppFoot = hasUsd(pPays)
+    ? `<td colspan="3">סה"כ שולם</td><td class="n">${M(sumCur(pPays, 'paid_actual', 'ILS'))}
+         <div class="doc-note">${M(sumCur(pPays, 'paid_actual', 'USD'), 'USD')}</div></td>`
+    : `<td colspan="3">סה"כ שולם</td><td class="n">${M(sumBy(pPays, 'paid_actual'))}</td>`;
 
   return `<div class="doc">
     <div class="doc-head">
@@ -3856,6 +3997,7 @@ async function loadScribeSpace(id) {
     ${wsHeader(d.contact, '#0f766e,#115e59', 'סופר', 'customer', alsoCustomer)}
 
     <div class="grid stat-grid">
+      ${N(d.total_balance_usd) ? wsCard('חוב לסופר ($)', money(d.total_balance_usd, 'USD'), 'r', 'מוצרים בדולר') : ''}
       ${wsCard('סה"כ חוב לסופר', money(d.total_balance), d.total_balance > 0 ? 'r' : '',
         `ס"ת ${money(st.balance)} · מוצרים ${money(pt.balance)}`)}
       ${wsCard('יתרה עתידית (ס"ת)', money(st.future_balance), 'a', 'על מה שטרם נכתב')}
@@ -3930,14 +4072,16 @@ async function loadScribeSpace(id) {
       { label: 'מוצר', render: r => esc(r.product_name || '—') },
       { label: 'כמות', cls: 'num', render: r => numCell(r.quantity) },
       { label: 'נשאר', cls: 'num', render: r => numCell(r.remaining_qty) },
-      { label: "עלות ליח'", cls: 'num', render: r => mCell(r.cost_per_unit) },
-      { label: 'חוב', cls: 'num', render: r => mCell(r.owed), total: rs => mCell(sumBy(rs, 'owed')) },
+      curCol,
+      { label: "עלות ליח'", cls: 'num', render: r => mc(r.cost_per_unit, r) },
+      { label: 'חוב', cls: 'num', render: r => mc(r.owed, r), total: rs => totalCur(rs, 'owed') },
       wsActCol('prodPurchaseCfg'),
     ], d.purchases, { totals: true })) : ''}
 
     ${d.product_payments.length ? wsSec('ppay', 'תשלומים לו (מוצרים)', d.product_payments.length, tableHTML([
       { label: 'תאריך', render: r => dt(r.date) },
-      { label: 'סכום', cls: 'num', render: r => mCell(r.amount), total: rs => mCell(sumBy(rs, 'amount')) },
+      curCol,
+      { label: 'סכום', cls: 'num', render: r => mc(r.amount, r), total: rs => totalCur(rs, 'amount') },
       { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
       wsActCol('prodScribePayCfg'),
     ], d.product_payments, { totals: true })) : ''}`;
@@ -4010,17 +4154,20 @@ async function loadCustomerSpace(id) {
       { label: 'תאריך', render: r => dt(r.date) },
       { label: 'מוצר', render: r => esc(r.product_name || '—') },
       { label: 'כמות', cls: 'num', render: r => numCell(r.quantity), total: rs => numCell(sumBy(rs, 'quantity')) },
-      { label: "מחיר ליח'", cls: 'num', render: r => mCell(r.price_per_unit) },
-      { label: 'סך מכירה', cls: 'num', render: r => mCell(r.total_sale), total: rs => mCell(sumBy(rs, 'total_sale')) },
+      curCol,
+      { label: "מחיר ליח'", cls: 'num', render: r => mc(r.price_per_unit, r) },
+      { label: 'סך מכירה', cls: 'num', render: r => mc(r.total_sale, r), total: rs => totalCur(rs, 'total_sale') },
       wsActCol('prodSaleCfg'),
     ], d.sales, { totals: true }))}
 
     ${wsSec('cppays', 'תשלומיו (מוצרים)', d.product_payments.length, tableHTML([
       { label: 'תאריך', render: r => dt(r.date) },
-      { label: '₪', cls: 'num', render: r => mCell(r.amount_ils), total: rs => mCell(sumBy(rs, 'amount_ils')) },
+      curCol,
+      { label: '₪', cls: 'num', render: r => r.currency === 'USD' ? '' : mCell(r.amount_ils),
+        total: rs => mCell(sumCur(rs, 'amount_ils', 'ILS')) },
       { label: '$', cls: 'num', render: r => numCell(r.amount_usd) },
-      { label: 'פריטה', cls: 'num', render: r => mCell(r.peritah), total: rs => mCell(sumBy(rs, 'peritah')) },
-      { label: 'ס"ה שולם', cls: 'num', render: r => mCell(r.paid_actual), total: rs => mCell(sumBy(rs, 'paid_actual')) },
+      { label: 'פריטה', cls: 'num', render: r => N(r.peritah) ? mCell(r.peritah) : '', total: rs => mCell(sumBy(rs, 'peritah')) },
+      { label: 'ס"ה שולם', cls: 'num', render: r => mc(r.paid_actual, r), total: rs => totalCur(rs, 'paid_actual') },
       wsActCol('prodCustPayCfg'),
     ], d.product_payments, { totals: true }))}`;
 

@@ -7,15 +7,20 @@ module.exports = crudRouter('prod_customer_payments', [
   { key: 'amount_usd', type: 'num' },
   { key: 'rate', type: 'num' },
   { key: 'cash_in_hand', type: 'num' },
+  { key: 'currency', type: 'text' },
   { key: 'note', type: 'text' },
 ], {
   cap: 'finance',
   orderBy: 't.date DESC NULLS LAST, t.id DESC',
   filterCols: ['customer_id'],
+  // paid_actual הוא הסכום שנזקף לחשבון הלקוח, במטבע השורה:
+  // בשורת ILS — שקלים (כולל דולרים שהומרו); בשורת USD — דולרים כפי שהם.
   viewSql: `SELECT t.*,
               cu.name AS customer_name,
-              (COALESCE(t.amount_ils,0) + COALESCE(t.amount_usd,0) * COALESCE(t.rate,0)) AS paid_actual,
-              (CASE WHEN COALESCE(t.amount_usd,0) > 0
+              (CASE WHEN COALESCE(t.currency,'ILS')='USD'
+                    THEN COALESCE(t.amount_usd,0)
+                    ELSE COALESCE(t.amount_ils,0) + COALESCE(t.amount_usd,0) * COALESCE(t.rate,0) END) AS paid_actual,
+              (CASE WHEN COALESCE(t.currency,'ILS')='ILS' AND COALESCE(t.amount_usd,0) > 0
                 THEN COALESCE(t.amount_usd,0) * COALESCE(t.rate,0) - COALESCE(t.cash_in_hand,0) ELSE 0 END) AS peritah
             FROM prod_customer_payments t
             LEFT JOIN contacts cu ON cu.id = t.customer_id`,

@@ -246,6 +246,33 @@ UPDATE prod_purchases       SET approved=false WHERE approved IS NULL;
 UPDATE prod_scribe_payments SET approved=false WHERE approved IS NULL;
 UPDATE scribe_payments      SET approved=false WHERE approved IS NULL;
 
+-- ==================================================================
+--  מטבע לעסקאות מוצרים
+-- ==================================================================
+-- כל שורה כספית במערכת המוצרים נושאת מטבע משלה, והסכומים שבה נקובים בו.
+-- רכישה ומכירה עצמאיות זו מזו: אפשר לקנות בשקל ולמכור בדולר. הסיכומים
+-- מחושבים בנפרד לכל מטבע ולעולם אינם מומרים — אין במערכת שער גלובלי.
+-- ברירת המחדל 'ILS' שומרת על כל הנתונים הקיימים בדיוק כפי שהם.
+ALTER TABLE prod_purchases         ADD COLUMN IF NOT EXISTS currency VARCHAR(3) DEFAULT 'ILS';
+ALTER TABLE prod_sales             ADD COLUMN IF NOT EXISTS currency VARCHAR(3) DEFAULT 'ILS';
+ALTER TABLE prod_scribe_payments   ADD COLUMN IF NOT EXISTS currency VARCHAR(3) DEFAULT 'ILS';
+-- בתשלומי לקוחות המשמעות שונה: 'ILS' = ההתנהלות הישנה (שקלים + דולרים
+-- שהומרו לפי שער, עם פריטה); 'USD' = תשלום דולרי שנשאר דולרי, בלי המרה
+-- ובלי פריטה, ואז רק amount_usd נספר.
+ALTER TABLE prod_customer_payments ADD COLUMN IF NOT EXISTS currency VARCHAR(3) DEFAULT 'ILS';
+UPDATE prod_purchases         SET currency='ILS' WHERE currency IS NULL;
+UPDATE prod_sales             SET currency='ILS' WHERE currency IS NULL;
+UPDATE prod_scribe_payments   SET currency='ILS' WHERE currency IS NULL;
+UPDATE prod_customer_payments SET currency='ILS' WHERE currency IS NULL;
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['prod_purchases','prod_sales','prod_scribe_payments','prod_customer_payments'] LOOP
+    EXECUTE format('ALTER TABLE %I DROP CONSTRAINT IF EXISTS %I', t, t || '_currency_check');
+    EXECUTE format('ALTER TABLE %I ADD CONSTRAINT %I CHECK (currency IN (''ILS'',''USD''))', t, t || '_currency_check');
+  END LOOP;
+END $$;
+
 -- טבלת סימון למיגרציות חד-פעמיות. בלעדיה כל הרצה של הסכימה הייתה מריצה
 -- שוב את המילוי למטה ומבטלת ידנית ביטולי-אישור שהמנהל עשה במתכוון.
 CREATE TABLE IF NOT EXISTS schema_meta (

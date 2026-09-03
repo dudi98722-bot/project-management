@@ -12,24 +12,30 @@ const FIELDS = [
   { key: 'quantity', type: 'int' },
   { key: 'price_per_unit', type: 'num' },
   { key: 'sale_type', type: 'text' },
+  { key: 'currency', type: 'text' },
   { key: 'deduct_3pct', type: 'bool' },
   { key: 'note', type: 'text' },
 ];
 const COLS = FIELDS.map(f => f.key);
 
-// עלות היחידה נלקחת מהחבילה (עלות + עלות נוספת), והרווח מנכה 3% אם סומן
+// עלות היחידה נלקחת מהחבילה (עלות + עלות נוספת), והרווח מנכה 3% אם סומן.
+// כשמטבע המכירה שונה ממטבע הרכישה, הרווח הוא הפרש בין שני מטבעות ואי אפשר
+// לבטא אותו במספר אחד — לכן NULL, והממשק מציג "—" במקום מספר שגוי.
 const VIEW = `
 SELECT t.*,
   pp.product_id,
   p.name AS product_name,
   sc.name AS scribe_name,
   cu.name AS customer_name,
+  COALESCE(pp.currency,'ILS') AS purchase_currency,
   (COALESCE(pp.cost_per_unit,0) + COALESCE(pp.extra_cost_per_unit,0)) AS unit_cost,
   (COALESCE(t.quantity,0) * COALESCE(t.price_per_unit,0)) AS total_sale,
-  ((COALESCE(t.quantity,0) * COALESCE(t.price_per_unit,0))
-    - (COALESCE(t.quantity,0) * (COALESCE(pp.cost_per_unit,0) + COALESCE(pp.extra_cost_per_unit,0)))
-    - (CASE WHEN t.deduct_3pct THEN COALESCE(t.quantity,0) * COALESCE(t.price_per_unit,0) * 0.03 ELSE 0 END)
-  ) AS total_profit
+  (COALESCE(t.quantity,0) * (COALESCE(pp.cost_per_unit,0) + COALESCE(pp.extra_cost_per_unit,0))) AS total_cost,
+  (CASE WHEN COALESCE(t.currency,'ILS') = COALESCE(pp.currency,'ILS') THEN
+    ((COALESCE(t.quantity,0) * COALESCE(t.price_per_unit,0))
+      - (COALESCE(t.quantity,0) * (COALESCE(pp.cost_per_unit,0) + COALESCE(pp.extra_cost_per_unit,0)))
+      - (CASE WHEN t.deduct_3pct THEN COALESCE(t.quantity,0) * COALESCE(t.price_per_unit,0) * 0.03 ELSE 0 END))
+  END) AS total_profit
 FROM prod_sales t
 LEFT JOIN prod_purchases pp ON pp.id = t.purchase_id
 LEFT JOIN products  p  ON p.id  = pp.product_id

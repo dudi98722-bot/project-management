@@ -4,6 +4,7 @@ module.exports = crudRouter('prod_scribe_payments', [
   { key: 'date', type: 'date' },
   { key: 'scribe_id', type: 'int' },
   { key: 'amount', type: 'num' },
+  { key: 'currency', type: 'text' },
   { key: 'note', type: 'text' },
 ], {
   orderBy: 't.date DESC NULLS LAST, t.id DESC',
