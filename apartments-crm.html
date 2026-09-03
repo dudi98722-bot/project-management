@@ -377,7 +377,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 מז'";
+var APP_BUILD = "19.08 מח'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -6436,6 +6436,12 @@ function renderQuickPayNow(force){
         '</select></div>'
       : '')+
     '<div class="field"><label>אמצעי תשלום</label><select id="qe-pay-method" onchange="onMethodPick(\'qe-pay-method\')">'+methodOptions("transfer")+'</select></div>'+
+    /* סטטוס החשבונית נקבע כאן ולא רק בעריכה מאוחרת — זה הרגע שבו
+       יודעים אם התקבלה חשבונית או לא. */
+    '<div class="field"><label>חשבונית</label><select id="qe-pay-invoice">'+
+      invoiceStatusOptions("",false)+'</select></div>'+
+    '<div class="field full"><label>קישור לחשבונית <span class="hint">(אופציונלי)</span></label>'+
+      '<input id="qe-pay-link" placeholder="הדבק כאן קישור"></div>'+
   '</div>';
 }
 function onQuickPayAccount(){
@@ -6492,7 +6498,10 @@ function saveQuickExpense(){
   DB.expenses.push({id:eid,apartmentId:aptId,categoryId:pickCategoryId("qe-cat"),
     classification:val("qe-class")||"investment",
     description:desc,amount:amount,date:date,note:val("qe-note")||"",
-    hasInvoice:false,invoiceLink:"",
+    /* השלב מקבל את סימון החשבונית מהתשלום שנרשם איתו — כך התגית 📎
+       בטבלת ההוצאות נכונה כבר מהרגע הראשון */
+    hasInvoice:(checked("qe-paynow") && val("qe-pay-invoice")==="has"),
+    invoiceLink:(checked("qe-paynow")?(val("qe-pay-link")||""):""),
     mgmtEnabled:mgmtOn, mgmtSet:!!document.getElementById("qe-mgmt"),
     mgmtBaseType:mgmtOn?(val("qe-base")||"full"):"full",
     mgmtVatRate:mgmtOn?(isNaN(mgmtVatRaw)?18:mgmtVatRaw):18,
@@ -6513,10 +6522,12 @@ function saveQuickExpense(){
   var payMsg="";
   if(payNow){
     if(pAmt>0){
+      var qInv=val("qe-pay-invoice")||"";
       DB.payments.push({id:uid(),expenseId:eid,date:date,amount:pAmt,accountId:accId,
         payerPartnerId:payer,method:val("qe-pay-method")||"transfer",
         recipientType:"supplier",recipientManagerId:null,
-        hasInvoice:false,invoiceLink:"",note:"",deleted:false});
+        invoiceStatus:qInv, hasInvoice:(qInv==="has"),
+        invoiceLink:val("qe-pay-link")||"", note:"",deleted:false});
       payMsg=" · נרשם תשלום "+money(pAmt);
     }
   }
