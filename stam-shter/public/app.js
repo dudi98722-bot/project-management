@@ -380,7 +380,13 @@ function layoutTable(wrap) {
   table.querySelectorAll('.pin-edge').forEach(c => c.classList.remove('pin-edge'));
   const pinned = table.querySelectorAll('.pin');
   if (!head || !pinned.length) return;
-  if (window.innerWidth < PIN_MIN_W) { pinned.forEach(c => { c.style.right = ''; }); return; }
+  // טבלה שנכנסת במלואה לרוחב אינה זקוקה להצמדה, והצל של העמודה האחרונה
+  // היה נראה כקו אנכי מיותר באמצע הטבלה.
+  const overflows = table.scrollWidth > wrap.clientWidth + 1;
+  if (!overflows || window.innerWidth < PIN_MIN_W) {
+    pinned.forEach(c => { c.style.right = ''; });
+    return;
+  }
 
   let n = 0;
   while (n < head.cells.length && head.cells[n].classList.contains('pin')) n++;
@@ -889,8 +895,13 @@ function invalidateRows() { for (const k in ROWCACHE) delete ROWCACHE[k]; }
 async function entityPage(cfg) {
   const fkey = cfg.bulk || cfg.title.replace(/\W/g, '');
   const allRows = ROWCACHE[fkey] || (ROWCACHE[fkey] = await cfg.load());
-  const cols = (cfg.approve ? cfg.cols.concat([approvalCol(cfg)]) : cfg.cols).concat([actionsCol(cfg)]);
-  if ((ME.caps.del || ME.caps.edit) && cfg.bulk) cols.unshift(selCol(cfg.bulk));
+  // cfg.pin — כמה מעמודות הזיהוי הראשונות נצמדות לימין בגלילה לרוחב.
+  // תיבת הבחירה נספרת איתן, אחרת הרצף המוצמד נשבר כבר בעמודה הראשונה.
+  const lead = cfg.pin ? cfg.cols.map((c, i) => (i < cfg.pin ? { ...c, pin: true } : c)) : cfg.cols;
+  const cols = (cfg.approve ? lead.concat([approvalCol(cfg)]) : lead).concat([actionsCol(cfg)]);
+  if ((ME.caps.del || ME.caps.edit) && cfg.bulk) {
+    cols.unshift(cfg.pin ? { ...selCol(cfg.bulk), pin: true } : selCol(cfg.bulk));
+  }
   const rows = applyFilters(fkey, cols, allRows);
   $('view').innerHTML += `
     <div class="page-head">
@@ -1420,11 +1431,13 @@ function prodPurchases(cfgOnly) {
       };
       amt.parentNode.insertBefore(btn, amt.nextSibling);
     },
+    // מוצמדות: בחירה, מספר החבילה ושם הסופר — הזיהוי שנשאר מול העיניים
+    pin: 2,
     cols: [
       // מספר החבילה — זה המזהה שמזינים בעמודת "מזהה רכישה" בייבוא מכירות
       { label: '#', render: r => `<b>${r.id}</b>` },
-      { label: 'תאריך', render: r => dt(r.date) },
       { label: 'סופר', render: r => esc(r.scribe_name || '—') },
+      { label: 'תאריך', render: r => dt(r.date) },
       { label: 'מוצר', render: r => esc(r.product_name || '—') },
       { label: 'כמות', cls: 'num', render: r => numCell(r.quantity), total: rows => numCell(sumBy(rows, 'quantity')) },
       { label: 'נמכר', cls: 'num', render: r => numCell(r.sold_qty) },
@@ -1528,10 +1541,11 @@ function prodSales(cfgOnly) {
         if (p) cur.value = p.currency || 'ILS';
       });
     },
+    pin: 2,
     cols: [
       { label: '#', render: r => `<b>${r.id}</b>` },
-      { label: 'תאריך', render: r => dt(r.date) },
       { label: 'רוכש', render: r => esc(r.customer_name || '—') },
+      { label: 'תאריך', render: r => dt(r.date) },
       { label: 'מחבילה', render: r => r.purchase_id ? `<span class="pill n">#${r.purchase_id}</span>` : '—' },
       { label: 'מוצר', render: r => esc(r.product_name || '—') + (r.scribe_name ? ` <span class="mini">· ${esc(r.scribe_name)}</span>` : '') },
       { label: 'כמות', cls: 'num', render: r => numCell(r.quantity), total: rows => numCell(sumBy(rows, 'quantity')) },
@@ -1567,9 +1581,10 @@ function prodScribePay(cfgOnly) {
       curField('הסכום נקוב במטבע הזה, ומקוזז מהחוב באותו מטבע'),
       { k: 'note', label: 'הערה', type: 'textarea' },
     ],
+    pin: 1,
     cols: [
-      { label: 'תאריך', render: r => dt(r.date) },
       { label: 'סופר', render: r => esc(r.scribe_name || '—') },
+      { label: 'תאריך', render: r => dt(r.date) },
       curCol,
       { label: 'סך ששולם', cls: 'num', render: r => mc(r.amount, r), total: rows => totalCur(rows, 'amount') },
       { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
@@ -1614,9 +1629,10 @@ function prodCustPay(cfgOnly) {
       cur.addEventListener('change', apply);
       apply();
     },
+    pin: 1,
     cols: [
-      { label: 'תאריך', render: r => dt(r.date) },
       { label: 'לקוח', render: r => esc(r.customer_name || '—') },
+      { label: 'תאריך', render: r => dt(r.date) },
       curCol,
       { label: 'ש"ח', cls: 'num', render: r => r.currency === 'USD' ? '' : mCell(r.amount_ils),
         total: rows => mCell(sumCur(rows, 'amount_ils', 'ILS')) },
