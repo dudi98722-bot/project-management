@@ -78,6 +78,65 @@
     $('#userRole').textContent = ROLE_HE[u.role] || u.role;
     $('#demoBadge').classList.toggle('hidden', !window.Store.isDemo);
     buildTabs();
+    watchTables();
+  }
+
+  // ============================================================
+  //  סינון גנרי לטבלאות — שורת חיפוש בראש כל טבלה, עמודה-עמודה
+  // ============================================================
+  const fNorm = (s) => String(s == null ? '' : s).replace(/[,₪\s]/g, '').toLowerCase();
+  function addTableFilters(root) {
+    if (!root) return;
+    root.querySelectorAll('table').forEach(t => {
+      if (t.dataset.filtered) return;
+      const head = t.tHead && t.tHead.rows[0], body = t.tBodies && t.tBodies[0];
+      if (!head || !body) return;
+      if (body.rows.length < 4) return;                          // טבלה קצרה מאוד — אין צורך בסינון
+      // טבלת הזנה (שדות טקסט/מספר בשורות) — לא מסננים. תיבות סימון למחיקה מרובה כן מותרות.
+      if (body.querySelector('input:not([type="checkbox"]),select,textarea')) return;
+      t.dataset.filtered = '1';
+
+      const fr = document.createElement('tr');
+      fr.className = 'f-row';
+      fr.innerHTML = Array.from(head.cells, (c, i) => {
+        const label = (c.textContent || '').trim();
+        return label ? `<th><input class="f-in" data-col="${i}" placeholder="${esc(label)}" autocomplete="off"></th>` : '<th></th>';
+      }).join('');
+      t.tHead.appendChild(fr);
+
+      const cnt = document.createElement('div');
+      cnt.className = 'f-count hidden';
+      t.parentNode.insertBefore(cnt, t.nextSibling);
+
+      const apply = () => {
+        const active = Array.from(fr.querySelectorAll('.f-in'))
+          .map(i => ({ col: +i.dataset.col, v: i.value.trim().toLowerCase() })).filter(f => f.v);
+        let shown = 0;
+        Array.from(body.rows).forEach(r => {
+          const ok = active.every(f => {
+            const cell = r.cells[f.col]; if (!cell) return false;
+            const txt = (cell.textContent || '').toLowerCase();
+            return txt.indexOf(f.v) >= 0 || fNorm(txt).indexOf(fNorm(f.v)) >= 0;
+          });
+          r.style.display = ok ? '' : 'none';
+          if (ok) shown++;
+        });
+        if (active.length) { cnt.textContent = `🔍 מציג ${shown} מתוך ${body.rows.length} שורות`; cnt.classList.remove('hidden'); }
+        else cnt.classList.add('hidden');
+      };
+      fr.querySelectorAll('.f-in').forEach(i => { i.oninput = apply; i.onclick = (e) => e.stopPropagation(); });
+    });
+  }
+  // מאתר טבלאות חדשות אוטומטית בכל מסך/חלונית שנפתחת
+  let _fTimer = null, _fWatching = false;
+  function watchTables() {
+    if (_fWatching) return; _fWatching = true;
+    const scan = () => { addTableFilters($('#view')); addTableFilters($('#modalRoot')); };
+    // סורקים מיד (כדי שרינדור מתמשך כמו גרפים לא ידחה את הסריקה) ושוב בהשהיה קצרה
+    // עבור טבלאות שנטענות מאוחר. הסריקה מוגנת ב-data-filtered ולכן לא נכנסת ללולאה.
+    const obs = new MutationObserver(() => { scan(); clearTimeout(_fTimer); _fTimer = setTimeout(scan, 150); });
+    ['#view', '#modalRoot'].forEach(sel => { const el = $(sel); if (el) obs.observe(el, { childList: true, subtree: true }); });
+    scan();
   }
   const ROLE_HE = { admin: 'מנהל', secretary: 'מזכירה', owner: 'בעל עסק', reporter: 'מדווח', field: 'עובד שטח', home: 'בית' };
 
