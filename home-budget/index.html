@@ -108,10 +108,8 @@ tbody tr:hover{background:#f8fafc}
 #loginOverlay .lcard{background:#fff;border-radius:18px;padding:32px 26px;max-width:360px;
   width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.35)}
 #loginCode{font-size:24px;text-align:center;letter-spacing:8px;direction:ltr;margin-top:10px}
-#userPick{display:flex;flex-direction:column;gap:8px;margin:16px 0}
-#userPick button{padding:13px;border:2px solid var(--line);border-radius:11px;background:#fff;
-  font-size:15px;cursor:pointer}
-#userPick button:hover{border-color:var(--brand);background:#eef2ff}
+#credStep input,#connectStep input{margin-bottom:2px}
+#connectLink a:hover{color:var(--brand)}
 
 /* ---------- מודאל ---------- */
 #modalWrap{position:fixed;inset:0;z-index:400;background:rgba(15,23,42,.55);
@@ -402,16 +400,17 @@ tbody tr:hover{background:#f8fafc}
   <div class="lcard">
     <div style="font-size:40px">🏠</div>
     <h2 style="margin:8px 0 2px;font-size:20px" id="loginTitle">ניהול הוצאות בית</h2>
-    <p style="color:var(--dim);font-size:13px;margin:0" id="loginHint">בחר משתמש</p>
-    <div id="userPick"></div>
+    <p style="color:var(--dim);font-size:13px;margin:0" id="loginHint">הזן שם משתמש וקוד אישי</p>
 
-    <div id="codeStep" style="display:none">
-      <div style="font-size:13px;color:var(--dim);margin-bottom:6px" id="pinFor"></div>
-      <input type="password" id="loginCode" inputmode="numeric" maxlength="4" placeholder="••••"
+    <div id="credStep">
+      <input id="loginName" placeholder="שם משתמש" autocomplete="off" autocorrect="off"
+             autocapitalize="off" spellcheck="false" style="margin-top:14px"
+             onkeydown="if(event.key==='Enter')document.getElementById('loginCode').focus()">
+      <input type="password" id="loginCode" inputmode="numeric" maxlength="4" placeholder="קוד אישי"
+             autocomplete="off" style="margin-top:8px;text-align:center;letter-spacing:6px"
              onkeydown="if(event.key==='Enter')submitPin()">
       <div id="loginErr" style="color:var(--bad);min-height:20px;font-size:13px;margin-top:6px"></div>
       <button class="btn" style="width:100%" id="pinBtn" onclick="submitPin()">המשך</button>
-      <button class="btn ghost sm" style="width:100%;margin-top:8px" onclick="backToUsers()">חזרה</button>
     </div>
 
     <div id="otpStep" style="display:none">
@@ -424,9 +423,25 @@ tbody tr:hover{background:#f8fafc}
       <button class="btn" style="width:100%" id="otpBtn" onclick="submitOtp()">כניסה</button>
       <button class="btn ghost sm" style="width:100%;margin-top:8px" id="resendBtn"
               onclick="resendCode()">שלח קוד שוב</button>
-      <button class="btn ghost sm" style="width:100%;margin-top:6px" onclick="backToUsers()">התחל מחדש</button>
+      <button class="btn ghost sm" style="width:100%;margin-top:6px" onclick="backToCred()">התחל מחדש</button>
       <p style="font-size:11.5px;color:var(--dim);margin:12px 0 0;line-height:1.6">
         הקוד תקף ל-10 דקות. לאחר הכניסה המכשיר הזה יישאר מחובר 30 יום.</p>
+    </div>
+
+    <!-- חיבור ראשוני של מכשיר חדש. לא "הגדרות" — בלי זה מכשיר שלא
+         מכיר את כתובת השרת לא יכול בכלל להגיע למסך הכניסה. -->
+    <div id="connectStep" style="display:none">
+      <p style="font-size:13px;color:var(--dim);line-height:1.6;margin:14px 0 10px">
+        הדבק את כתובת החיבור שקיבלת מהמנהל<br>(מסתיימת ב-‎/exec)</p>
+      <input id="loginApi" dir="ltr" placeholder="https://script.google.com/.../exec">
+      <div id="connErr" style="color:var(--bad);min-height:20px;font-size:13px;margin-top:6px"></div>
+      <button class="btn" style="width:100%" onclick="saveApiFromLogin()">חבר מכשיר</button>
+      <button class="btn ghost sm" style="width:100%;margin-top:8px" onclick="backToCred()">חזרה</button>
+    </div>
+
+    <div id="connectLink" style="margin-top:14px;display:none">
+      <a href="#" id="connectLinkText" onclick="showStep('connectStep');return false"
+         style="color:var(--dim);font-size:12px">המכשיר אינו מחובר — חבר עכשיו</a>
     </div>
   </div>
 </div>
@@ -564,7 +579,7 @@ const ROLES = {
   admin: { label:'מנהל — גישה מלאה',
            tabs:['dash','classify','tx','import','add','sources','cats','settings'] },
   user:  { label:'סיווג, הזנה וצפייה בדוחות',
-           tabs:['dash','classify','add','settings'] }
+           tabs:['dash','classify','add'] }
 };
 function users(){
   let list = (DB.users||[]).filter(u=>!u.deleted);
@@ -681,60 +696,75 @@ async function syncNow(){
    כשאין חיבור לגיליון אין למי לשלוח מייל ואין נתונים בענן,
    ולכן נשארת כניסה מקומית עם קוד אישי בלבד.
    ------------------------------------------------------------ */
-let pickedUser=null, loginBusy=false, resendTimer=null;
+let challenge=null, loginBusy=false, resendTimer=null;
+
+/* הודעה אחידה לשם לא קיים ולקוד שגוי — אחרת אפשר לגלות מי רשום
+   במערכת פשוט על ידי ניחוש שמות. */
+const BAD_CREDS='שם משתמש או קוד אישי שגוי';
+const normName = s => String(s||'').replace(/\s+/g,' ').trim().toLowerCase();
 
 function showStep(which){
-  ['userPick','codeStep','otpStep'].forEach(s=>{
-    $(s).style.display = (s===which) ? (s==='userPick'?'flex':'block') : 'none';
+  ['credStep','otpStep','connectStep'].forEach(s=>{
+    $(s).style.display = (s===which) ? 'block' : 'none';
   });
-  $('loginHint').textContent = which==='userPick' ? 'בחר משתמש'
-                             : which==='codeStep' ? 'הקש את הקוד האישי שלך'
-                             : 'הקש את הקוד שנשלח אליך';
+  $('loginHint').textContent = which==='credStep' ? 'הזן שם משתמש וקוד אישי'
+                             : which==='otpStep' ? 'הקש את הקוד שנשלח אליך'
+                             : 'חיבור מכשיר חדש';
+  /* הקישור מוצג תמיד במסך הכניסה, גם כשהמכשיר כבר מחובר — אחרת כתובת
+     שגויה שנשמרה פעם אחת נועלת את המכשיר בלי שום דרך לתקן מבפנים. */
+  $('connectLink').style.display = (which==='credStep') ? 'block' : 'none';
+  $('connectLinkText').textContent = GS_URL ? 'בעיית חיבור? עדכן את כתובת השרת'
+                                            : 'המכשיר אינו מחובר — חבר עכשיו';
+  if(which==='connectStep'){ $('loginApi').value=GS_URL||''; $('connErr').textContent=''; }
 }
-async function showLogin(){
+/** מסך הכניסה לא חושף שום שם משתמש — כל אחד מקליד את שלו. */
+function showLogin(){
+  clearInterval(resendTimer);
+  challenge=null; loginBusy=false;
   $('loginOverlay').style.display='flex';
-  showStep('userPick');
-  $('userPick').innerHTML='<div style="color:var(--dim);font-size:13px;padding:8px">טוען...</div>';
-  let list=users();
-  if(GS_URL){
-    /* השמות מגיעים מהשרת — כך שגם מכשיר חדש יראה את המשתמשים
-       הנכונים, בלי שהקודים או המיילים ייצאו החוצה */
-    try{
-      const j=await apiRaw({action:'authmeta'});
-      if(j && j.status==='ok' && j.users && j.users.length) list=j.users;
-    }catch(e){}
-  }
-  $('userPick').innerHTML = list.map(u=>
-    '<button onclick="pickUser(\''+esc(u.id)+'\',\''+esc(u.name)+'\')">'+esc(u.name)+'</button>').join('');
+  $('loginName').value=''; $('loginCode').value='';
+  $('loginErr').textContent=''; $('otpErr').textContent='';
+  showStep('credStep');
+  setTimeout(()=>{ try{ $('loginName').focus(); }catch(e){} }, 60);
 }
-function pickUser(id, name){
-  pickedUser = {id, name: name || (users().find(u=>u.id===id)||{}).name || ''};
-  showStep('codeStep');
-  $('pinFor').textContent = pickedUser.name;
+function backToCred(){
+  clearInterval(resendTimer); challenge=null;
   $('loginCode').value=''; $('loginErr').textContent='';
-  setTimeout(()=>$('loginCode').focus(), 60);
+  showStep('credStep');
+  setTimeout(()=>{ try{ $('loginName').focus(); }catch(e){} }, 60);
 }
-function backToUsers(){
-  clearInterval(resendTimer); pickedUser=null; showLogin();
+
+/** חיבור ראשוני של מכשיר חדש, ממסך הכניסה עצמו. */
+function saveApiFromLogin(){
+  const u=$('loginApi').value.trim();
+  if(!/^https:\/\/script\.google\.com\/.+\/exec$/.test(u)){
+    $('connErr').textContent='הכתובת צריכה להתחיל ב-https://script.google.com ולהסתיים ב-/exec';
+    return;
+  }
+  GS_URL=u; DB.settings.apiUrl=u; queueSetting('apiUrl'); saveLocal();
+  toast('המכשיר חובר'); backToCred();
 }
 
 async function submitPin(){
-  if(!pickedUser || loginBusy) return;
+  if(loginBusy) return;
+  const name=$('loginName').value.trim();
   const pin=$('loginCode').value.trim();
-  if(!/^\d{4}$/.test(pin)){ $('loginErr').textContent='קוד בן 4 ספרות'; return; }
+  if(!name){ $('loginErr').textContent='הזן שם משתמש'; return; }
+  if(!/^\d{4}$/.test(pin)){ $('loginErr').textContent='קוד אישי בן 4 ספרות'; return; }
 
-  /* לא מחובר לגיליון — אין מייל ואין נתונים בענן, כניסה מקומית */
+  /* לא מחובר לגיליון — אין למי לשלוח מייל ואין נתונים בענן, כניסה מקומית */
   if(!GS_URL){
-    const u=users().find(x=>x.id===pickedUser.id);
-    if(u && String(u.code)===pin){ finishLogin(u, ''); }
-    else { $('loginErr').textContent='קוד שגוי'; $('loginCode').value=''; }
+    const u=users().find(x=>normName(x.name)===normName(name) && String(x.code)===pin);
+    if(u) finishLogin(u,'');
+    else { $('loginErr').textContent=BAD_CREDS; $('loginCode').value=''; }
     return;
   }
 
   loginBusy=true; $('pinBtn').textContent='שולח קוד...'; $('loginErr').textContent='';
   try{
-    const j=await apiRaw({action:'requestCode', userId:pickedUser.id, pin});
-    if(j.status!=='ok'){ $('loginErr').textContent=j.message||'שגיאה'; $('loginCode').value=''; return; }
+    const j=await apiRaw({action:'requestCode', name, pin});
+    if(j.status!=='ok'){ $('loginErr').textContent=j.message||BAD_CREDS; $('loginCode').value=''; return; }
+    challenge={ref:j.ref, name, pin};
     showStep('otpStep');
     $('otpSentTo').innerHTML='קוד בן 6 ספרות נשלח אל<br><b>'+esc(j.to)+'</b>';
     $('otpCode').value=''; $('otpErr').textContent='';
@@ -746,12 +776,12 @@ async function submitPin(){
 }
 
 async function submitOtp(){
-  if(!pickedUser || loginBusy) return;
+  if(!challenge || loginBusy) return;
   const otp=$('otpCode').value.trim();
   if(!/^\d{6}$/.test(otp)){ $('otpErr').textContent='קוד בן 6 ספרות'; return; }
   loginBusy=true; $('otpBtn').textContent='בודק...'; $('otpErr').textContent='';
   try{
-    const j=await apiRaw({action:'verifyCode', userId:pickedUser.id, otp});
+    const j=await apiRaw({action:'verifyCode', ref:challenge.ref, otp});
     if(j.status!=='ok'){ $('otpErr').textContent=j.message||'קוד שגוי'; $('otpCode').value=''; return; }
     finishLogin(j.user, j.token);
   }catch(e){
@@ -772,15 +802,17 @@ function startResendCooldown(){
   b.textContent='שלח קוד שוב (60)';
 }
 async function resendCode(){
-  const pin=$('loginCode').value.trim();
-  if(!pin){ backToUsers(); return; }
-  const j=await apiRaw({action:'requestCode', userId:pickedUser.id, pin});
-  if(j.status==='ok'){ startResendCooldown(); toast('קוד חדש נשלח'); }
-  else $('otpErr').textContent=j.message||'שגיאה';
+  if(!challenge){ backToCred(); return; }
+  try{
+    const j=await apiRaw({action:'requestCode', name:challenge.name, pin:challenge.pin});
+    if(j.status==='ok'){ challenge.ref=j.ref; startResendCooldown(); toast('קוד חדש נשלח'); }
+    else $('otpErr').textContent=j.message||'שגיאה';
+  }catch(e){ $('otpErr').textContent='אין תקשורת עם השרת'; }
 }
 
 function finishLogin(user, token){
   clearInterval(resendTimer);
+  challenge=null;
   CU = {id:user.id, name:user.name, role:user.role, email:user.email||''};
   TOKEN = token || '';
   try{
@@ -789,7 +821,8 @@ function finishLogin(user, token){
   }catch(e){}
   $('loginOverlay').style.display='none';
   $('userChip').style.display='block';
-  $('loginCode').value=''; $('otpCode').value='';
+  /* לא משאירים שם וקוד בשדות אחרי כניסה */
+  $('loginName').value=''; $('loginCode').value=''; $('otpCode').value='';
   renderAll();
   if(GS_URL && TOKEN) syncNow();
 }

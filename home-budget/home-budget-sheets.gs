@@ -12,9 +12,9 @@
  * לקרוא או לכתוב כלום, גם למי שיש בידיו את כתובת ה-/exec.
  *
  * API פתוח (ללא טוקן):
- *   POST {action:'authmeta'}                        -> רשימת שמות משתמשים בלבד
- *   POST {action:'requestCode', userId, pin}        -> שולח קוד למייל
- *   POST {action:'verifyCode',  userId, otp}        -> מחזיר טוקן
+ *   POST {action:'authmeta'}                        -> שם המערכת בלבד, בלי שמות משתמשים
+ *   POST {action:'requestCode', name, pin}          -> שולח קוד למייל, מחזיר ref
+ *   POST {action:'verifyCode',  ref, otp}           -> מחזיר טוקן
  *
  * API מוגן (חייב token):
  *   POST {action:'load',     token}                 -> כל הנתונים
@@ -112,8 +112,8 @@ function handle(e) {
 
     /* ---------- פתוח: כניסה ---------- */
     if (action === 'authmeta')    return json(authMeta());
-    if (action === 'requestCode') { lock.waitLock(20000); return json(requestCode(g('userId'), g('pin'))); }
-    if (action === 'verifyCode')  { lock.waitLock(20000); return json(verifyCode(g('userId'), g('otp'))); }
+    if (action === 'requestCode') { lock.waitLock(20000); return json(requestCode(g('name'), g('pin'))); }
+    if (action === 'verifyCode')  { lock.waitLock(20000); return json(verifyCode(g('ref'), g('otp'))); }
     if (action === 'logout')      { props().deleteProperty('sess_' + g('token')); return json({ status: 'ok' }); }
 
     /* ---------- מכאן ואילך חייב טוקן ---------- */
@@ -234,24 +234,28 @@ function maskEmail(e) {
   return e.slice(0, Math.min(2, at)) + '•••' + e.slice(at);
 }
 
-/** מה שמותר לחשוף לפני התחברות: שמות בלבד, ואם הוגדר אימייל.
- *  הקוד האישי והאימייל המלא לא יוצאים מכאן לעולם. */
+/** מסך הכניסה לא מקבל שום רשימת משתמשים — כל אחד מקליד את שמו.
+ *  חשיפת השמות הייתה מאפשרת לדעת מי רשום במערכת לפני כל אימות. */
 function authMeta() {
-  return {
-    status: 'ok',
-    app: APP_NAME,
-    users: readUsers().map(function (u) {
-      return { id: u.id, name: u.name, hasEmail: !!u.email };
-    })
-  };
+  return { status: 'ok', app: APP_NAME };
 }
 
-function requestCode(userId, pin) {
-  var u = findUser(userId);
-  if (!u) return { status: 'error', message: 'משתמש לא נמצא' };
+var BAD_CREDS = 'שם משתמש או קוד אישי שגוי';
 
-  /* הגבלת קצב — מונעת ניחוש קוד אישי וגם הצפת תיבת המייל */
-  var rlKey = 'rl_' + userId;
+function normName(s) {
+  return String(s == null ? '' : s).replace(/\s+/g, ' ').replace(/^ | $/g, '').toLowerCase();
+}
+function findUserByName(name) {
+  var want = normName(name);
+  if (!want) return null;
+  var m = readUsers().filter(function (u) { return normName(u.name) === want; });
+  return m.length ? m[0] : null;
+}
+
+function requestCode(name, pin) {
+  /* הגבלת קצב לפי השם שהוקלד, ולפני בדיקת קיומו — אחרת אפשר היה
+     להבדיל בין שם קיים לשם שאינו קיים לפי עצם קיום ההגבלה. */
+  var rlKey = 'rl_' + normName(name);
   var rl = {};
   try { rl = JSON.parse(props().getProperty(rlKey) || '{}'); } catch (x) {}
   if (!rl.since || (Date.now() - rl.since) > RL_WINDOW) rl = { since: Date.now(), n: 0 };
@@ -261,7 +265,10 @@ function requestCode(userId, pin) {
   rl.n++;
   props().setProperty(rlKey, JSON.stringify(rl));
 
-  if (String(u.code) !== String(pin)) return { status: 'error', message: 'קוד אישי שגוי' };
+  var u = findUserByName(name);
+  /* אותה הודעה לשם לא קיים ולקוד שגוי — בלי לרמוז מי רשום */
+  if (!u || String(u.code) !== String(pin)) return { status: 'error', message: BAD_CREDS };
+
   if (!u.email && u.role === 'admin') {
     /* מנהל בלי מייל — נשאב מחשבון הגוגל שמריץ את הסקריפט ונשמר.
        פותר את הביצה והתרנגולת של הכניסה הראשונה. */
@@ -274,9 +281,14 @@ function requestCode(userId, pin) {
   }
 
   var code = String(Math.floor(100000 + Math.random() * 900000));
-  props().setProperty('otp_' + userId, JSON.stringify({ c: code, exp: Date.now() + OTP_TTL, t: 0 }));
+  /* האתגר מזוהה במזהה אקראי ולא במזהה המשתמש — הדפדפן לא צריך
+     לדעת את מזהה המשתמש כדי להשלים כניסה. */
+  var ref = Utilities.getUuid();
+  props().setProperty('chal_' + ref, JSON.stringify({
+    u: u.id, n: normName(name), c: code, exp: Date.now() + OTP_TTL, t: 0
+  }));
   sendCodeMail(u, code);
-  return { status: 'ok', to: maskEmail(u.email) };
+  return { status: 'ok', ref: ref, to: maskEmail(u.email) };
 }
 
 function sendCodeMail(u, code) {
@@ -302,9 +314,9 @@ function sendCodeMail(u, code) {
   });
 }
 
-function verifyCode(userId, otp) {
-  var key = 'otp_' + userId;
-  var raw = props().getProperty(key);
+function verifyCode(ref, otp) {
+  var key = 'chal_' + String(ref || '');
+  var raw = ref ? props().getProperty(key) : null;
   if (!raw) return { status: 'error', message: 'לא נשלח קוד, או שכבר נעשה בו שימוש. בקש קוד חדש.' };
 
   var o = JSON.parse(raw);
@@ -323,10 +335,11 @@ function verifyCode(userId, otp) {
   }
 
   props().deleteProperty(key);
-  props().deleteProperty('rl_' + userId);
-  var u = findUser(userId);
+  if (o.n) props().deleteProperty('rl_' + o.n);
+  var u = findUser(o.u);
+  if (!u) return { status: 'error', message: 'המשתמש הוסר מהמערכת' };
   var token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
-  props().setProperty('sess_' + token, JSON.stringify({ u: userId, exp: Date.now() + SESS_TTL }));
+  props().setProperty('sess_' + token, JSON.stringify({ u: o.u, exp: Date.now() + SESS_TTL }));
   cleanupExpired();
   return { status: 'ok', token: token,
            user: { id: u.id, name: u.name, role: u.role, email: u.email } };
@@ -347,7 +360,7 @@ function cleanupExpired() {
   var all = props().getProperties();
   var now = Date.now();
   for (var k in all) {
-    if (k.indexOf('sess_') !== 0 && k.indexOf('otp_') !== 0) continue;
+    if (k.indexOf('sess_') !== 0 && k.indexOf('chal_') !== 0) continue;
     try {
       var v = JSON.parse(all[k]);
       if (v.exp && now > v.exp) props().deleteProperty(k);
