@@ -350,16 +350,25 @@ tbody tr:hover{background:#f8fafc}
     </div>
     <p id="apiState" style="font-size:12.5px;color:var(--dim);margin:12px 0 0"></p>
   </div>
-  <div class="card">
-    <h3>משתמשים</h3>
+  <div class="card" id="setUsersCard">
+    <h3>משתמשים והרשאות</h3>
+    <p style="color:var(--dim);font-size:13px;margin:0 0 12px;line-height:1.6">
+      <b>מנהל</b> — גישה מלאה לכל המסכים.<br>
+      <b>משתמש רגיל</b> — יכול לסווג נתונים, להזין תנועות חדשות ולצפות בדשבורד בלבד.
+      אינו רואה ייבוא, מקורות, קטגוריות, רשימת התנועות או ניהול משתמשים.
+    </p>
     <div class="table-wrap"><table id="usersTable"></table></div>
     <div class="row" style="margin-top:12px">
       <div><input id="nuName" placeholder="שם"></div>
       <div class="fix" style="min-width:120px"><input id="nuCode" placeholder="קוד 4 ספרות" maxlength="4" inputmode="numeric"></div>
+      <div class="fix" style="min-width:190px"><select id="nuRole">
+        <option value="user">משתמש רגיל</option>
+        <option value="admin">מנהל</option>
+      </select></div>
       <div class="fix"><button class="btn" onclick="addUser()">הוסף משתמש</button></div>
     </div>
   </div>
-  <div class="card">
+  <div class="card" id="setTitleCard">
     <h3>שם המערכת</h3>
     <div class="row">
       <div><input id="sTitle" placeholder="ניהול הוצאות בית"></div>
@@ -505,9 +514,34 @@ function seedCats(){
     id:uid('c'), name:c[0], kind:c[1], color:c[2], icon:c[3], ord:String(i), deleted:''
   }));
 }
+/* ---------------- הרשאות ----------------
+   מנהל רואה הכל. משתמש רגיל מוגבל לשלושה דברים: סיווג, הזנה וצפייה
+   בדוחות. הוא רואה גם את מסך ההגדרות, אך רק את כרטיס החיבור לגיליון —
+   בלעדיו הוא לא יוכל לחבר את המכשיר שלו והמערכת תהיה חסרת שימוש עבורו. */
+const ROLES = {
+  admin: { label:'מנהל — גישה מלאה',
+           tabs:['dash','classify','tx','import','add','sources','cats','settings'] },
+  user:  { label:'סיווג, הזנה וצפייה בדוחות',
+           tabs:['dash','classify','add','settings'] }
+};
 function users(){
-  try{ const u=JSON.parse(DB.settings.users||'null'); if(Array.isArray(u)&&u.length) return u; }catch(e){}
-  return [{id:'u1',name:'דודי',code:'1234'},{id:'u2',name:'בן/בת זוג',code:'5678'}];
+  let list=null;
+  try{ const u=JSON.parse(DB.settings.users||'null'); if(Array.isArray(u)&&u.length) list=u; }catch(e){}
+  if(!list) list=[{id:'u1', name:'דודי', code:'1234', role:'admin'},
+                  {id:'u2', name:'בן/בת זוג', code:'5678', role:'user'}];
+  list.forEach(u=>{ if(u.role!=='admin' && u.role!=='user') u.role='user'; });
+  /* אם לא נשאר אף מנהל — הראשון הופך למנהל, אחרת איש לא יוכל להיכנס להגדרות */
+  if(!list.some(u=>u.role==='admin')) list[0].role='admin';
+  return list;
+}
+function isAdmin(){ return !!CU && CU.role==='admin'; }
+function allowedTabs(){ return ROLES[(CU && CU.role) || 'user'].tabs; }
+function applyRole(){
+  const allow=allowedTabs();
+  document.querySelectorAll('#nav button').forEach(b=>{
+    b.style.display = allow.includes(b.dataset.tab) ? '' : 'none';
+  });
+  $('userChip').textContent = '👤 '+(CU?CU.name:'') + (isAdmin()?'':' · הרשאות מוגבלות');
 }
 function setSync(state, txt){ $('syncChip').textContent = txt; }
 
@@ -597,7 +631,6 @@ function tryLogin(){
     try{ localStorage.setItem(LSU, CU.id); }catch(e){}
     $('loginOverlay').style.display='none';
     $('userChip').style.display='block';
-    $('userChip').textContent='👤 '+CU.name;
     renderAll();
     if(GS_URL) syncNow();
   } else {
@@ -612,6 +645,7 @@ document.querySelectorAll('#nav button').forEach(b=>{
   b.onclick = ()=> gotoTab(b.dataset.tab);
 });
 function gotoTab(name){
+  if(!allowedTabs().includes(name)) name='dash';   // חסימה גם בניווט תכנותי
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on', b.dataset.tab===name));
   document.querySelectorAll('main section').forEach(s=>s.classList.toggle('on', s.id==='tab-'+name));
   if(name==='dash') renderDash();
@@ -968,7 +1002,8 @@ function renderTx(){
       '<td style="font-size:12px;color:var(--dim)">'+esc(t.src||'ידני')+'</td>'+
       '<td style="white-space:nowrap">'+
         '<button class="btn ghost sm" onclick="showProv(\''+esc(t.id)+'\')" title="מאיפה זה הגיע">🔎</button> '+
-        '<button class="btn ghost sm" onclick="editTx(\''+esc(t.id)+'\')">✏️</button></td></tr>'
+        (isAdmin()?'<button class="btn ghost sm" onclick="editTx(\''+esc(t.id)+'\')">✏️</button>':'')+
+        '</td></tr>'
     ).join('')+'</tbody>';
   if(rows.length>400) $('txSummary').textContent += ' — מוצגות 400 הראשונות';
 }
@@ -995,6 +1030,7 @@ function showProv(id){
 }
 
 function editTx(id){
+  if(!isAdmin()){ toast('עריכת תנועות מותרת למנהל בלבד'); return; }
   const t=DB.tx.find(x=>x.id===id); if(!t) return;
   const opts=DB.cats.filter(c=>!c.deleted&&c.kind===t.kind)
     .map(c=>'<option'+(c.name===t.category?' selected':'')+'>'+esc(c.name)+'</option>').join('');
@@ -1022,6 +1058,7 @@ function saveTx(id){
   queueRow('tx',t); saveLocal(); closeModal(); renderTx(); updateBadge(); toast('נשמר');
 }
 function delTx(id){
+  if(!isAdmin()){ toast('מחיקת תנועות מותרת למנהל בלבד'); return; }
   if(!confirm('למחוק את התנועה? היא תישאר בגיליון מסומנת כמחוקה.')) return;
   const t=DB.tx.find(x=>x.id===id); if(!t) return;
   t.deleted=new Date().toISOString().slice(0,10);
@@ -1456,11 +1493,34 @@ function renderSettings(){
   $('sTitle').value = DB.settings.title || '';
   $('apiState').textContent = GS_URL ? 'מחובר. הנתונים נשמרים גם בגיליון.'
                                      : 'לא מחובר — הנתונים נשמרים רק בדפדפן הזה.';
-  const us=users();
-  $('usersTable').innerHTML='<thead><tr><th>שם</th><th>קוד</th><th></th></tr></thead><tbody>'+
-    us.map(u=>'<tr><td>'+esc(u.name)+'</td><td class="num">'+esc(u.code)+'</td>'+
-      '<td>'+(us.length>1?'<button class="btn danger sm" onclick="delUser(\''+esc(u.id)+'\')">מחק</button>':'')+
-      '</td></tr>').join('')+'</tbody>';
+  /* ניהול משתמשים ושם המערכת — למנהל בלבד */
+  $('setUsersCard').style.display = isAdmin() ? '' : 'none';
+  $('setTitleCard').style.display = isAdmin() ? '' : 'none';
+  if(!isAdmin()) return;
+  const us=users(), admins=us.filter(u=>u.role==='admin').length;
+  $('usersTable').innerHTML='<thead><tr><th>שם</th><th>קוד</th><th>הרשאה</th><th></th></tr></thead><tbody>'+
+    us.map(u=>{
+      /* אסור להוריד את המנהל האחרון — זה נועל את המערכת */
+      const lockAdmin = u.role==='admin' && admins<=1;
+      return '<tr><td>'+esc(u.name)+'</td><td class="num">'+esc(u.code)+'</td>'+
+        '<td>'+(lockAdmin
+          ? '<span class="pill p-ok">מנהל</span>'
+          : '<select onchange="setRole(\''+esc(u.id)+'\',this.value)" style="min-width:170px">'+
+            Object.keys(ROLES).map(r=>'<option value="'+r+'"'+(r===u.role?' selected':'')+'>'+
+              ROLES[r].label+'</option>').join('')+'</select>')+'</td>'+
+        '<td>'+(us.length>1 && !lockAdmin
+          ? '<button class="btn danger sm" onclick="delUser(\''+esc(u.id)+'\')">מחק</button>' : '')+
+        '</td></tr>';
+    }).join('')+'</tbody>';
+}
+function setRole(id, role){
+  const list=users();
+  const u=list.find(x=>x.id===id); if(!u) return;
+  u.role=role;
+  if(!list.some(x=>x.role==='admin')){ toast('חייב להישאר לפחות מנהל אחד'); renderSettings(); return; }
+  saveUsers(list);
+  if(CU && CU.id===id){ CU.role=role; applyRole(); }   // שינוי עצמי חל מיד
+  renderSettings(); toast('ההרשאה עודכנה');
 }
 function saveApi(){
   const u=$('sApi').value.trim();
@@ -1484,13 +1544,14 @@ function saveUsers(list){
 function addUser(){
   const name=$('nuName').value.trim(), code=$('nuCode').value.trim();
   if(!name || !/^\d{4}$/.test(code)){ toast('שם + קוד בן 4 ספרות'); return; }
-  const list=users(); list.push({id:uid('u'), name, code});
-  saveUsers(list); $('nuName').value=''; $('nuCode').value='';
+  const list=users(); list.push({id:uid('u'), name, code, role:$('nuRole').value});
+  saveUsers(list); $('nuName').value=''; $('nuCode').value=''; $('nuRole').value='user';
   renderSettings(); toast('המשתמש נוסף');
 }
 function delUser(id){
   const list=users().filter(u=>u.id!==id);
   if(!list.length){ toast('חייב להישאר משתמש אחד'); return; }
+  if(!list.some(u=>u.role==='admin')){ toast('חייב להישאר לפחות מנהל אחד'); return; }
   saveUsers(list); renderSettings();
 }
 
@@ -1501,7 +1562,7 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
 
 /* ---------------- אתחול ---------------- */
 function renderAll(){
-  applyTitle(); updateBadge();
+  applyTitle(); applyRole(); updateBadge();
   const on=document.querySelector('#nav button.on');
   gotoTab(on?on.dataset.tab:'dash');
   fillAddCats();
@@ -1515,7 +1576,7 @@ function boot(){
   try{ saved=localStorage.getItem(LSU); }catch(e){}
   const u=saved && users().find(x=>x.id===saved);
   if(u){
-    CU=u; $('userChip').style.display='block'; $('userChip').textContent='👤 '+CU.name;
+    CU=u; $('userChip').style.display='block';
     renderAll(); if(GS_URL) syncNow();
   } else {
     showLogin();
