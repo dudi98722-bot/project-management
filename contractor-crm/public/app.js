@@ -178,7 +178,8 @@
       items.push({ t: 'sub_payment', cls: '', label: '➖ תשלום לקבלן משנה' });
       items.push({ t: 'business_expense', cls: 'ghost', label: '🧾 הוצאת עסק' });
     } else if (c.projectExpenseOnly) {
-      items.push({ t: 'project_expense', cls: 'ghost', label: '🧱 הוצאה לפרויקט' });
+      items.push({ t: 'project_expense', cls: '', label: '🧱 הוצאה לפרויקט' });
+      items.push({ t: 'business_expense', cls: 'ghost', label: '🧾 הוצאת עסק' });
     }
     if (!items.length) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
     bar.classList.remove('hidden');
@@ -1116,12 +1117,14 @@
   async function scrField() {
     loading();
     view().innerHTML = `
-      <div class="page-head"><h2>הזנת הוצאה לפרויקט</h2></div>
+      <div class="page-head"><h2>הזנת הוצאה</h2></div>
       <div class="card" style="max-width:520px">
-        <p class="muted">בחר פרויקט, הזן את ההוצאה וצרף חשבונית.</p>
-        <button class="btn full" id="fieldNew">🧾 הזנת הוצאה חדשה</button>
+        <p class="muted">בחר סוג הוצאה, הזן את הפרטים וצרף חשבונית.</p>
+        <button class="btn full" id="fieldNew" style="margin-bottom:10px">🧱 הוצאה לפרויקט</button>
+        <button class="btn ghost full" id="fieldBiz">🧾 הוצאת עסק</button>
       </div>`;
     $('#fieldNew').onclick = () => txForm('project_expense', {});
+    $('#fieldBiz').onclick = () => txForm('business_expense', {});
   }
 
   // ============================================================

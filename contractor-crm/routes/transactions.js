@@ -137,9 +137,9 @@ router.get('/', authenticate, can('viewBusiness'), async (req, res) => {
 router.post('/', authenticate, canAny(['writeTx', 'projectExpenseOnly']), async (req, res) => {
   const b = req.body || {};
   const type = b.type;
-  // מי שיש לו רק projectExpenseOnly (עובד שטח) - רשאי אך ורק להזין הוצאה לפרויקט
-  if (!req.caps.writeTx && type !== 'project_expense') {
-    return res.status(403).json({ error: 'אתה רשאי להזין רק הוצאה לפרויקט' });
+  // מי שיש לו רק projectExpenseOnly (עובד שטח) - רשאי להזין הוצאה לפרויקט או הוצאת עסק בלבד
+  if (!req.caps.writeTx && type !== 'project_expense' && type !== 'business_expense') {
+    return res.status(403).json({ error: 'אתה רשאי להזין רק הוצאה לפרויקט או הוצאת עסק' });
   }
   const err = validate(type, b);
   if (err) return res.status(400).json({ error: err });
