@@ -64,7 +64,7 @@ var RL_WINDOW = 15 * 60 * 1000;               //   בחלון של 15 דקות
    החלק הארוך מתוך הכתובת שלו:
    docs.google.com/spreadsheets/d/<<<המזהה נמצא כאן>>>/edit
    ------------------------------------------------------------ */
-var SHEET_ID = '';
+var SHEET_ID = '1aT7lV9gxe_FskJVZWICDWbbKzOCq7hKYWaLoz_nKPoY';
 
 function getSpreadsheet() {
   if (SHEET_ID) return SpreadsheetApp.openById(SHEET_ID);
@@ -115,6 +115,29 @@ var SHEETS = {
     fields:  ['key', 'value']
   }
 };
+
+/**
+ * ★ הרץ אותי פעם אחת מהעורך לפני הפריסה ★
+ *
+ * בעורך: בחר בתפריט הפונקציות למעלה את "setup" ולחץ Run (הרצה).
+ * גוגל יבקש אישור הרשאות — אשר. זה מה שנותן לסקריפט גישה לגיליון,
+ * ובלעדיו הכניסה נכשלת ב"אין לך הרשאה להתקשר אל SpreadsheetApp".
+ *
+ * הפונקציה גם יוצרת את כל הלשוניות ואת המשתמשים הראשונים,
+ * כך שאפשר לראות מיד בגיליון שהכל תקין.
+ */
+function setup() {
+  var ss = getSpreadsheet();
+  ['tx', 'cats', 'stencils', 'rules', 'users', 'settings'].forEach(function (k) { getSheet(k); });
+  var us = readUsers();
+  var msg = '✅ מחובר לגיליון: ' + ss.getName() +
+            '\nמשתמשים: ' + us.map(function (u) {
+              return u.name + ' (' + u.role + (u.email ? ', ' + u.email : ', בלי אימייל') + ')';
+            }).join(' | ') +
+            '\nהמייל שממנו יישלחו הקודים: ' + (ownerEmail() || 'לא זוהה');
+  Logger.log(msg);
+  return msg;
+}
 
 function doGet(e)  { return handle(e); }
 function doPost(e) { return handle(e); }
