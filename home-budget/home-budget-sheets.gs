@@ -667,26 +667,40 @@ function upsertMany(key, rows) {
     var ids = s.getRange(2, 1, last - 1, 1).getValues();
     for (var i = 0; i < ids.length; i++) idMap[String(ids[i][0])] = i + 2;
   }
+  /* בעדכון שורה קיימת, שדה שהאובייקט לא נושא בכלל (undefined) משאיר את
+     התא כמו שהוא — לא נמחק ל-''. אחרת אובייקט חלקי ממכשיר אחד היה מרוקן
+     בשקט תאים שמכשיר אחר כתב. שדה שמגיע כ-'' במפורש כן נכתב (למשל
+     ביטול מחיקה, שמאפס את 'נמחק'). */
   var appends = [], updates = {};
   rows.forEach(function (obj) {
-    var rowVals = cfg.fields.map(function (f) {
-      var v = obj[f];
-      return (v === undefined || v === null) ? '' : String(v);
-    });
     var r = idMap[String(obj.id)];
-    if (r) updates[r] = rowVals;
-    else appends.push(rowVals);
+    if (r) {
+      updates[r] = cfg.fields.map(function (f) {
+        var v = obj[f];
+        if (v === undefined) return null;                 // null = השאר את התא
+        return v === null ? '' : String(v);
+      });
+    } else {
+      appends.push(cfg.fields.map(function (f) {
+        var v = obj[f];
+        return (v === undefined || v === null) ? '' : String(v);
+      }));
+    }
   });
+  function mergeRow(existing, vals) {
+    return vals.map(function (v, i) { return v === null ? existing[i] : v; });
+  }
   /* עדכונים בודדים — שורה-שורה. עדכון מרוכז — קוראים את כל הבלוק פעם
-     אחת, מחליפים בזיכרון, וכותבים פעם אחת. */
+     אחת, ממזגים בזיכרון, וכותבים פעם אחת. */
   var upRows = Object.keys(updates);
   if (upRows.length > 10 && last >= 2) {
     var block = s.getRange(2, 1, last - 1, cfg.fields.length).getValues();
-    upRows.forEach(function (r) { block[Number(r) - 2] = updates[r]; });
+    upRows.forEach(function (r) { block[Number(r) - 2] = mergeRow(block[Number(r) - 2], updates[r]); });
     s.getRange(2, 1, last - 1, cfg.fields.length).setValues(block);
   } else {
     upRows.forEach(function (r) {
-      s.getRange(Number(r), 1, 1, cfg.fields.length).setValues([updates[r]]);
+      var rng = s.getRange(Number(r), 1, 1, cfg.fields.length);
+      rng.setValues([mergeRow(rng.getValues()[0], updates[r])]);
     });
   }
   if (appends.length) {

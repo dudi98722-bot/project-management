@@ -339,6 +339,8 @@ tbody tr.sel{background:var(--brand-soft)}
       <div><input id="txSearch" placeholder="חיפוש חופשי בתיאור ובהערה…" oninput="renderTx()"></div>
       <div class="fix" style="min-width:150px"><select id="txMonth" onchange="renderTx()"></select></div>
       <div class="fix"><button class="btn ghost sm" onclick="clearFilters('txTable')">נקה סינון</button></div>
+      <label class="fix" id="showDelWrap" style="display:none;font-size:12.5px;color:var(--dim);align-items:center;gap:6px;cursor:pointer">
+        <input type="checkbox" id="showDel" style="width:auto" onchange="selTx.clear();renderTx()"> הצג מחוקות</label>
       <div class="fix"><button class="btn sec sm" onclick="exportTx()">📤 ייצוא</button></div>
     </div>
     <div id="txSummary" style="font-size:13px;color:var(--dim);margin-bottom:8px"></div>
@@ -356,6 +358,7 @@ tbody tr.sel{background:var(--brand-soft)}
         <div class="fix"><input type="number" id="bulkDays" placeholder="± ימים" style="width:88px;text-align:center"></div>
         <div class="fix"><button class="btn sec sm" onclick="bulkApply('shift')">הזז תאריך</button></div>
         <div class="fix"><button class="btn danger sm" onclick="bulkDelete()">🗑️ מחק נבחרות</button></div>
+        <div class="fix" id="bulkRestoreWrap" style="display:none"><button class="btn sm" onclick="bulkRestore()">↩ שחזר נבחרות</button></div>
         <div class="fix"><button class="btn ghost sm" onclick="clearSel()">בטל בחירה</button></div>
       </div>
     </div>
@@ -482,6 +485,8 @@ tbody tr.sel{background:var(--brand-soft)}
   </div>
   <div class="card">
     <h3>הקטגוריות שלי</h3>
+    <label style="font-size:12.5px;color:var(--dim);display:flex;align-items:center;gap:6px;margin:-6px 0 10px;cursor:pointer">
+      <input type="checkbox" id="showDelCats" style="width:auto" onchange="renderCats()"> הצג קטגוריות שנמחקו</label>
     <div class="table-wrap"><table id="catsTable"></table></div>
   </div>
 </section>
@@ -744,6 +749,8 @@ function applyRole(){
     b.style.display = allow.includes(b.dataset.tab) ? '' : 'none';
   });
   $('userChip').textContent = '👤 '+(CU?CU.name:'') + (isAdmin()?'':' · הרשאות מוגבלות');
+  /* פקדי מנהל שחיים מחוץ ללשוניות המוסתרות נעלמים גם הם */
+  const sd=$('showDelWrap'); if(sd) sd.style.display = isAdmin() ? 'flex' : 'none';
 }
 function setSync(state, txt){ $('syncChip').textContent = txt; }
 
@@ -841,12 +848,11 @@ function mergeCloud(kind, cloudRows){
 /** דחיפה יזומה של כל מה שקיים מקומית — רשת ביטחון אם משהו לא עלה */
 async function pushAll(){
   if(!GS_URL || !TOKEN){ toast('צריך להיות מחובר לגיליון'); return; }
-  ['tx','cats','stencils','rules'].forEach(k=>
-    (DB[k]||[]).forEach(r=>{ if(r&&r.id&&!r.deleted) pending[k][r.id]=1; }));
-  savePending();
-  const n=pendingCount();
-  toast('מעלה '+n+' רשומות לגיליון…');
-  await flush();
+  /* לא דוחפים עותקים מקומיים על גבי הענן בעיוורון — זה היה דורס עריכות
+     שנעשו ממכשיר אחר. קודם מושכים; mergeCloud מחזיר לתור רק שורות שאין
+     בענן, ואז מעלים אותן. */
+  toast('מושך מהגיליון ומעלה מה שחסר…');
+  await syncNow();
   toast(pendingCount() ? 'נותרו '+pendingCount()+' — ננסה שוב' : 'הכל עלה לגיליון ✓');
   renderSettings();
 }
@@ -1543,7 +1549,12 @@ function renderTx(){
   const m=$('txMonth').value;
   /* החודש והחיפוש החופשי נשארים למעלה; קטגוריה, סטטוס ומקור עברו
      לשורת הסינון שבכותרת הטבלה */
-  const base=live().filter(t=>
+  const showDel = isAdmin() && $('showDel') && $('showDel').checked;
+  $('showDelWrap').style.display = isAdmin() ? 'flex' : 'none';
+  $('bulkRestoreWrap').style.display = showDel ? '' : 'none';
+  /* מחיקה רכה שאי אפשר לבטל היא חצי מחיקה רכה — כאן רואים ומשחזרים */
+  const pool = showDel ? DB.tx.filter(t=>t.deleted) : live();
+  const base=pool.filter(t=>
     (!m || monthOf(t.date)===m) &&
     (!q || (String(t.desc)+' '+String(t.note)).toLowerCase().includes(q))
   ).sort((a,b)=> (b.date||'').localeCompare(a.date||''));
@@ -1560,7 +1571,7 @@ function renderTx(){
     {key:'desc',   label:'תיאור',              filter:'text',   get:t=>t.desc},
     {key:'cat',    label:'קטגוריה',            filter:'select', get:t=>t.category||''},
     {key:'amount', label:'סכום',    cls:'num', filter:'text',   get:t=>num(t.amount)},
-    {key:'status', label:'סטטוס',              filter:'select', get:t=>STATUS_LBL[t.status]||'מסווג'},
+    {key:'status', label:'סטטוס',              filter:'select', get:t=>showDel?('נמחקה '+t.deleted):(STATUS_LBL[t.status]||'מסווג')},
     {key:'src',    label:'מקור',               filter:'select', get:t=>t.src||'ידני'},
     {key:'act',    label:'',                   filter:'none', sort:false, get:()=>''}
   );
@@ -1575,11 +1586,13 @@ function renderTx(){
       '<td>'+(t.category?catIcon(t.category)+' '+esc(t.category):'<span style="color:var(--faint)">—</span>')+'</td>'+
       '<td class="num money"'+(t.kind==='income'?' style="color:var(--ok)"':'')+'>'+
         (t.kind==='income'?'+':'')+fmt2(t.amount)+'</td>'+
-      '<td><span class="pill p-'+esc(t.status||'ok')+'">'+esc(STATUS_LBL[t.status]||'מסווג')+'</span></td>'+
+      '<td>'+(showDel ? '<span class="pill p-irrelevant">נמחקה '+esc(t.deleted)+'</span>'
+                      : '<span class="pill p-'+esc(t.status||'ok')+'">'+esc(STATUS_LBL[t.status]||'מסווג')+'</span>')+'</td>'+
       '<td style="font-size:12px;color:var(--dim)">'+esc(t.src||'ידני')+'</td>'+
       '<td style="white-space:nowrap">'+
         '<button class="btn ghost sm" onclick="showProv(\''+t.id+'\')" title="מאיפה זה הגיע">🔎</button> '+
-        (adm?'<button class="btn ghost sm" onclick="editTx(\''+t.id+'\')" title="עריכה">✏️</button>':'')+
+        (showDel ? '<button class="btn sm" onclick="restoreTx(\''+t.id+'\')">↩ שחזר</button>'
+         : adm ? '<button class="btn ghost sm" onclick="editTx(\''+t.id+'\')" title="עריכה">✏️</button>' : '')+
       '</td></tr>',
     onPaint:rows=>{
       /* הסיכום והבחירה המרוכזת עוקבים אחרי הסינון בפועל, כולל סינוני העמודות */
@@ -1628,6 +1641,18 @@ function bulkApply(what){
     queueRow('tx',t); n++;
   });
   saveLocal(); renderTx(); updateBadge(); toast(n+' תנועות עודכנו');
+}
+/** ביטול מחיקה רכה: מוחקים את החותמת ומעלים — בשרת זה כותב '' לעמודת 'נמחק' */
+function restoreTx(id){
+  if(!isAdmin()) return;
+  const t=DB.tx.find(x=>x.id===id); if(!t||!t.deleted) return;
+  t.deleted=''; queueRow('tx',t); saveLocal(); renderTx(); updateBadge(); toast('התנועה שוחזרה');
+}
+function bulkRestore(){
+  if(!isAdmin()) return;
+  const ids=[...selTx]; if(!ids.length){ toast('לא נבחרו שורות'); return; }
+  let n=0; ids.forEach(id=>{ const t=DB.tx.find(x=>x.id===id); if(t&&t.deleted){ t.deleted=''; queueRow('tx',t); n++; } });
+  selTx.clear(); saveLocal(); renderTx(); updateBadge(); toast(n+' תנועות שוחזרו');
 }
 function bulkDelete(){
   if(!isAdmin()) return;
@@ -2158,7 +2183,8 @@ function delRule(id){
 
 /* ---------------- קטגוריות ---------------- */
 function renderCats(){
-  const cs=DB.cats.filter(c=>!c.deleted);
+  const showDel=$('showDelCats') && $('showDelCats').checked;
+  const cs=DB.cats.filter(c=>showDel ? !!c.deleted : !c.deleted);
   const cnt=c=>live().filter(t=>t.category===c.name).length;
   const sum=c=>live().filter(t=>t.category===c.name).reduce((s,t)=>s+num(t.amount),0);
   smartTable({
@@ -2175,8 +2201,13 @@ function renderCats(){
       '<td><b style="color:'+esc(c.color)+'">'+esc(c.name)+'</b></td>'+
       '<td>'+(c.kind==='income'?'<span class="pill p-income">הכנסה</span>':'הוצאה')+'</td>'+
       '<td class="num">'+cnt(c)+'</td><td class="num money">'+fmt(sum(c))+' ₪</td>'+
-      '<td><button class="btn danger sm" onclick="delCat(\''+c.id+'\')">מחק</button></td></tr>'
+      '<td>'+(showDel ? '<button class="btn sm" onclick="restoreCat(\''+c.id+'\')">↩ שחזר</button>'
+                      : '<button class="btn danger sm" onclick="delCat(\''+c.id+'\')">מחק</button>')+'</td></tr>'
   });
+}
+function restoreCat(id){
+  const c=DB.cats.find(x=>x.id===id); if(!c||!c.deleted) return;
+  c.deleted=''; queueRow('cats',c); saveLocal(); renderCats(); toast('הקטגוריה שוחזרה');
 }
 function addCat(){
   const name=$('ncName').value.trim();
