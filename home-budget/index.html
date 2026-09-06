@@ -709,7 +709,11 @@ let challenge=null, loginBusy=false, resendTimer=null;
 /* הודעה אחידה לשם לא קיים ולקוד שגוי — אחרת אפשר לגלות מי רשום
    במערכת פשוט על ידי ניחוש שמות. */
 const BAD_CREDS='שם משתמש או קוד אישי שגוי';
-const normName = s => String(s||'').replace(/\s+/g,' ').trim().toLowerCase();
+/* מסיר גם סימני כיווניות בלתי נראים — הם נדבקים לטקסט עברי שעובר
+   בין עורכים, ובלי הסרתם שני שמות שנראים זהים אינם מזוהים כשווים */
+const normName = s => String(s||'')
+  .replace(/[​-‏‪-‮⁦-⁩﻿]/g,'')
+  .replace(/ /g,' ').replace(/\s+/g,' ').trim().toLowerCase();
 
 function showStep(which){
   ['credStep','otpStep','connectStep'].forEach(s=>{

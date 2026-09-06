@@ -130,11 +130,19 @@ function setup() {
   var ss = getSpreadsheet();
   ['tx', 'cats', 'stencils', 'rules', 'users', 'settings'].forEach(function (k) { getSheet(k); });
   var us = readUsers();
+  /* מדפיס גם את הערך המנורמל — זה מה שההשוואה בכניסה משתמשת בו.
+     אם השם שמוצג נראה תקין אבל המנורמל שונה, יש בתא תו בלתי נראה. */
+  var rows = us.map(function (u) {
+    return '  • שם להקלדה: "' + normName(u.name) + '"' +
+           '   קוד להקלדה: "' + normPin(u.code) + '"' +
+           '   הרשאה: ' + u.role +
+           '   מייל: ' + (u.email || '(חסר — לא יוכל לקבל קוד)') +
+           (normName(u.name) === String(u.name) ? '' : '   ⚠ בתא השם יש תווים מיותרים') +
+           (normPin(u.code) === String(u.code) ? '' : '   ⚠ בתא הקוד יש תווים מיותרים');
+  });
   var msg = '✅ מחובר לגיליון: ' + ss.getName() +
-            '\nמשתמשים: ' + us.map(function (u) {
-              return u.name + ' (' + u.role + (u.email ? ', ' + u.email : ', בלי אימייל') + ')';
-            }).join(' | ') +
-            '\nהמייל שממנו יישלחו הקודים: ' + (ownerEmail() || 'לא זוהה');
+            '\n\nכך מתחברים:\n' + rows.join('\n') +
+            '\n\nהקודים יישלחו מהמייל: ' + (ownerEmail() || 'לא זוהה');
   Logger.log(msg);
   return msg;
 }
@@ -314,8 +322,20 @@ function authMeta() {
 
 var BAD_CREDS = 'שם משתמש או קוד אישי שגוי';
 
+/** השוואת שמות בעברית: מסירים סימני כיווניות בלתי נראים (RLM/LRM ודומיהם)
+ *  ורווח קשיח. הם נדבקים לטקסט שעובר בין עורכים, הם לא נחשבים רווח,
+ *  ובלי הסרתם שני שמות שנראים זהים לחלוטין אינם מזוהים כשווים. */
 function normName(s) {
-  return String(s == null ? '' : s).replace(/\s+/g, ' ').replace(/^ | $/g, '').toLowerCase();
+  return String(s == null ? '' : s)
+    .replace(/[​-‏‪-‮⁦-⁩﻿]/g, '')
+    .replace(/ /g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^ | $/g, '')
+    .toLowerCase();
+}
+/** אותו ניקוי לקוד האישי — ספרות בלבד. */
+function normPin(s) {
+  return String(s == null ? '' : s).replace(/[^0-9]/g, '');
 }
 function findUserByName(name) {
   var want = normName(name);
@@ -346,11 +366,14 @@ function requestCode(name, pin) {
 
   /* קוד ריק או לא תקין נדחה כאן — אחרת שורת משתמש עם קוד ריק בגיליון
      הייתה נפתחת לכל אנונימי ששולח pin ריק. */
-  if (!/^\d{4}$/.test(String(pin == null ? '' : pin))) return { status: 'error', message: BAD_CREDS };
+  var pinIn = normPin(pin);
+  if (!/^\d{4}$/.test(pinIn)) return { status: 'error', message: BAD_CREDS };
 
   var u = findUserByName(name);
-  /* אותה הודעה לשם לא קיים ולקוד שגוי — בלי לרמוז מי רשום */
-  if (!u || !/^\d{4}$/.test(String(u.code)) || String(u.code) !== String(pin)) {
+  /* אותה הודעה לשם לא קיים ולקוד שגוי — בלי לרמוז מי רשום.
+     הקוד מהגיליון מנוקה גם הוא: תא שגוגל שמר כמספר, או שנכנס אליו
+     רווח, היה נכשל בהשוואה למרות שהוא נראה נכון. */
+  if (!u || normPin(u.code).length !== 4 || normPin(u.code) !== pinIn) {
     return { status: 'error', message: BAD_CREDS };
   }
 
