@@ -46,6 +46,9 @@
  */
 
 var APP_NAME  = 'ניהול הוצאות בית';
+/* חותם גרסה. מוחזר ב-authmeta, וכך אפשר לדעת מבחוץ איזו גרסת קוד
+   באמת פרוסה — העורך והפריסה יכולים להחזיק קוד שונה לגמרי. */
+var SCRIPT_VERSION = '2026-09-06-h';
 var OTP_TTL   = 10 * 60 * 1000;               // תוקף קוד המייל: 10 דקות
 var SESS_TTL  = 30 * 24 * 60 * 60 * 1000;     // תוקף התחברות: 30 יום
 var OTP_TRIES = 5;                            // ניסיונות לפני ביטול הקוד
@@ -171,6 +174,7 @@ function handle(e) {
 
     /* ---------- פתוח: כניסה ---------- */
     if (action === 'authmeta')    return json(authMeta());
+    if (action === 'diag')        return json(diag(g('key')));
     if (action === 'requestCode') { lock.waitLock(20000); return json(requestCode(g('name'), g('pin'))); }
     if (action === 'verifyCode')  { lock.waitLock(20000); return json(verifyCode(g('ref'), g('otp'))); }
     if (action === 'logout')      { props().deleteProperty('sess_' + g('token')); return json({ status: 'ok' }); }
@@ -325,7 +329,35 @@ function maskEmail(e) {
 /** מסך הכניסה לא מקבל שום רשימת משתמשים — כל אחד מקליד את שמו.
  *  חשיפת השמות הייתה מאפשרת לדעת מי רשום במערכת לפני כל אימות. */
 function authMeta() {
-  return { status: 'ok', app: APP_NAME };
+  return { status: 'ok', app: APP_NAME, v: SCRIPT_VERSION };
+}
+
+/**
+ * אבחון. מוגן במזהה הגיליון כסוד משותף — מי שאין לו אותו לא מקבל דבר.
+ * לא מחזיר קודים אישיים, רק את מה שדרוש כדי להבין למה כניסה נכשלת.
+ * אפשר להסיר את הפעולה הזו אחרי שהמערכת מתייצבת.
+ */
+function diag(key) {
+  if (!SHEET_ID || String(key) !== SHEET_ID) return { status: 'error', message: 'no' };
+  var out = { status: 'ok', v: SCRIPT_VERSION };
+  try { out.sheet = getSpreadsheet().getName(); }
+  catch (e) { out.sheet = 'שגיאה: ' + e; }
+  try {
+    out.users = readUsers().map(function (u) {
+      return {
+        להקליד:      normName(u.name),
+        שם_גולמי:    String(u.name),
+        שם_נקי:      normName(u.name) === String(u.name),
+        ספרות_בקוד:  normPin(u.code).length,
+        קוד_נקי:     normPin(u.code) === String(u.code),
+        הרשאה:       u.role,
+        יש_מייל:     !!u.email
+      };
+    });
+  } catch (e) { out.users = 'שגיאה: ' + e; }
+  try { out.mailQuota = MailApp.getRemainingDailyQuota(); }
+  catch (e) { out.mailQuota = 'אין הרשאת מייל: ' + e; }
+  return out;
 }
 
 var BAD_CREDS = 'שם משתמש או קוד אישי שגוי';
