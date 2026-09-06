@@ -4,140 +4,243 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>ניהול הוצאות בית</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="xlsx.full.min.js"></script>
 <script src="chart.umd.min.js"></script>
 <style>
+/* ============================================================
+   מערכת עיצוב — ניהול הוצאות בית
+   פלטה מרוסנת, גופן עברי אמיתי, טיפוגרפיה של תוכנת ניהול.
+   ============================================================ */
 :root{
-  --bg:#f1f5f9; --card:#fff; --line:#e2e8f0; --ink:#0f172a; --dim:#64748b;
-  --brand:#4f46e5; --brand2:#6366f1; --ok:#059669; --warn:#d97706; --bad:#dc2626;
-  --shadow:0 1px 3px rgba(15,23,42,.08),0 8px 24px rgba(15,23,42,.06);
+  --bg:#f4f5f7; --card:#fff; --card2:#fafbfc;
+  --line:#e6e8ec; --line2:#eef0f3;
+  --ink:#111827; --ink2:#374151; --dim:#6b7280; --faint:#9ca3af;
+  --brand:#5145cd; --brand-h:#443bb0; --brand-soft:#eef0fe; --brand-line:#c9c9f5;
+  --nav:#141a2e;
+  --ok:#047857; --ok-soft:#e7f6f0;
+  --bad:#be123c; --bad-soft:#fdeaef;
+  --warn:#b45309; --warn-soft:#fdf3e3;
+  --shadow-sm:0 1px 2px rgba(17,24,39,.05);
+  --shadow:0 1px 3px rgba(17,24,39,.06),0 6px 16px -4px rgba(17,24,39,.08);
+  --shadow-lg:0 12px 40px -8px rgba(17,24,39,.22);
+  --r:10px; --r-lg:14px;
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);
-     font-family:"Segoe UI",Rubik,Arial,sans-serif;font-size:14.5px;padding-bottom:40px}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;
+  font-family:Assistant,"Segoe UI",system-ui,-apple-system,Arial,sans-serif;
+  padding-bottom:48px;-webkit-font-smoothing:antialiased}
 button{font-family:inherit}
+h1,h2,h3{letter-spacing:-.01em}
+.num,.kpi .val,td.num,th.num{font-variant-numeric:tabular-nums lining-nums}
 
 /* ---------- כותרת וניווט ---------- */
-header{background:linear-gradient(135deg,#312e81,#4f46e5 65%,#6366f1);color:#fff;
-       padding:14px 16px 0;position:relative}
-header h1{margin:0;font-size:19px;font-weight:700;letter-spacing:-.2px}
-#userChip{position:absolute;top:14px;left:14px;background:rgba(255,255,255,.16);
-          border-radius:14px;padding:4px 12px;font-size:11.5px;cursor:pointer;display:none}
-#syncChip{position:absolute;top:44px;left:14px;font-size:10.5px;color:rgba(255,255,255,.8)}
-nav{display:flex;gap:4px;overflow-x:auto;margin-top:12px;padding-bottom:0;
-    scrollbar-width:none}
+header{background:var(--nav);color:#fff;padding:0 18px;position:relative}
+.hbar{display:flex;align-items:center;gap:14px;padding:13px 0 11px;max-width:1240px;margin:0 auto}
+header h1{margin:0;font-size:16.5px;font-weight:700;letter-spacing:-.015em}
+.hspace{flex:1}
+#userChip{background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.12);
+  border-radius:999px;padding:5px 13px;font-size:12px;cursor:pointer;display:none;
+  white-space:nowrap;transition:background .15s;color:#fff}
+#userChip:hover{background:rgba(255,255,255,.16)}
+#syncChip{font-size:11.5px;color:rgba(255,255,255,.55);white-space:nowrap}
+
+nav{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;max-width:1240px;margin:0 auto}
 nav::-webkit-scrollbar{display:none}
-nav button{background:transparent;border:0;color:rgba(255,255,255,.72);padding:9px 13px;
-           font-size:13.5px;cursor:pointer;white-space:nowrap;border-bottom:3px solid transparent;
-           border-radius:8px 8px 0 0}
-nav button.on{color:#fff;font-weight:600;border-bottom-color:#fff;background:rgba(255,255,255,.1)}
-nav .badge{background:#f59e0b;color:#3b2500;border-radius:9px;padding:1px 6px;
-           font-size:11px;font-weight:700;margin-inline-start:5px}
+nav button{background:transparent;border:0;color:rgba(255,255,255,.62);padding:10px 14px 11px;
+  font-size:13.5px;font-weight:500;cursor:pointer;white-space:nowrap;
+  border-radius:8px 8px 0 0;transition:color .15s,background .15s}
+nav button:hover{color:rgba(255,255,255,.92);background:rgba(255,255,255,.06)}
+nav button.on{color:var(--brand);background:var(--bg);font-weight:700}
+nav .badge{background:#f0b429;color:#3d2c00;border-radius:999px;padding:1px 7px;
+  font-size:11px;font-weight:700;margin-inline-start:6px;vertical-align:1px}
 
-main{padding:16px;max-width:1180px;margin:0 auto}
+main{padding:20px 18px;max-width:1240px;margin:0 auto}
 section{display:none}
-section.on{display:block}
+section.on{display:block;animation:fade .18s ease}
+@keyframes fade{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
 
-/* ---------- אלמנטים ---------- */
-.card{background:var(--card);border-radius:14px;padding:16px;box-shadow:var(--shadow);margin-bottom:14px}
-.card h3{margin:0 0 12px;font-size:15px;font-weight:600}
-.grid{display:grid;gap:12px}
-.g4{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
-.g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
-.kpi{background:var(--card);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow)}
-.kpi .lbl{font-size:12px;color:var(--dim);margin-bottom:4px}
-.kpi .val{font-size:25px;font-weight:700;letter-spacing:-.5px}
-.kpi .sub{font-size:11.5px;color:var(--dim);margin-top:3px;text-wrap:balance}
+/* ---------- כרטיסים ---------- */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);
+  padding:18px;box-shadow:var(--shadow-sm);margin-bottom:16px}
+.card h3{margin:0 0 14px;font-size:14.5px;font-weight:700;color:var(--ink)}
+.grid{display:grid;gap:14px}
+.g4{grid-template-columns:repeat(auto-fit,minmax(168px,1fr))}
+.g2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);
+  padding:15px 17px;box-shadow:var(--shadow-sm)}
+.kpi .lbl{font-size:12px;color:var(--dim);margin-bottom:6px;font-weight:500}
+.kpi .val{font-size:26px;font-weight:700;letter-spacing:-.025em;line-height:1.15}
+.kpi .sub{font-size:11.5px;color:var(--faint);margin-top:5px;text-wrap:balance}
 .up{color:var(--bad)} .down{color:var(--ok)}
 
-.insight{background:linear-gradient(135deg,#eef2ff,#e0e7ff);border:1px solid #c7d2fe;
-         border-radius:14px;padding:15px 17px;margin-bottom:14px;line-height:1.65;font-size:14.5px}
-.insight b{color:#3730a3}
+.insight{background:linear-gradient(135deg,#f7f7ff,#eef0fe);border:1px solid var(--brand-line);
+  border-radius:var(--r-lg);padding:16px 18px;margin-bottom:16px;line-height:1.7;font-size:14px}
+.insight b{color:#332d8f;font-weight:700}
 
-.btn{background:var(--brand);color:#fff;border:0;border-radius:9px;padding:9px 15px;
-     font-size:13.5px;cursor:pointer;font-weight:500}
-.btn:hover{background:#4338ca}
-.btn.sec{background:#fff;color:var(--ink);border:1px solid var(--line)}
-.btn.sec:hover{background:#f8fafc}
-.btn.sm{padding:5px 10px;font-size:12.5px}
-.btn.danger{background:var(--bad)}
-.btn.ghost{background:transparent;color:var(--dim);border:1px solid var(--line)}
+/* ---------- כפתורים ושדות ---------- */
+.btn{background:var(--brand);color:#fff;border:1px solid transparent;border-radius:var(--r);
+  padding:9px 16px;font-size:13.5px;cursor:pointer;font-weight:600;line-height:1.3;
+  transition:background .15s}
+.btn:hover{background:var(--brand-h)}
+.btn.sec{background:#fff;color:var(--ink2);border-color:var(--line);font-weight:500}
+.btn.sec:hover{background:var(--card2);border-color:#d6d9df}
+.btn.sm{padding:6px 11px;font-size:12.5px;border-radius:8px}
+.btn.danger{background:var(--bad)} .btn.danger:hover{background:#9f1239}
+.btn.ghost{background:transparent;color:var(--dim);border-color:var(--line);font-weight:500}
+.btn.ghost:hover{background:var(--card2);color:var(--ink2)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
 
-input,select,textarea{font-family:inherit;font-size:14px;padding:8px 10px;
-       border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);width:100%}
-input:focus,select:focus,textarea:focus{outline:2px solid #c7d2fe;border-color:var(--brand)}
-label.f{display:block;margin-bottom:10px}
-label.f span{display:block;font-size:12px;color:var(--dim);margin-bottom:4px}
+input,select,textarea{font-family:inherit;font-size:13.5px;padding:8px 11px;
+  border:1px solid var(--line);border-radius:var(--r);background:#fff;color:var(--ink);width:100%;
+  transition:border-color .15s,box-shadow .15s}
+input::placeholder,textarea::placeholder{color:var(--faint)}
+input:focus,select:focus,textarea:focus{outline:0;border-color:var(--brand);
+  box-shadow:0 0 0 3px rgba(81,69,205,.12)}
+select{cursor:pointer}
+label.f{display:block;margin-bottom:12px}
+label.f span{display:block;font-size:12px;color:var(--dim);margin-bottom:5px;font-weight:500}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .row>*{flex:1;min-width:110px}
 .row .fix{flex:0 0 auto;min-width:0}
 
-table{width:100%;border-collapse:collapse;font-size:13.5px}
-th{text-align:right;font-size:11.5px;color:var(--dim);font-weight:600;
-   padding:8px 9px;border-bottom:2px solid var(--line);white-space:nowrap}
-td{padding:8px 9px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
-tbody tr:hover{background:#f8fafc}
-.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
-.num{font-variant-numeric:tabular-nums;white-space:nowrap;direction:ltr;text-align:right}
+/* ---------- טבלאות ---------- */
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);
+  border-radius:var(--r);background:#fff}
+table{width:100%;border-collapse:separate;border-spacing:0;font-size:13.5px}
+thead th{text-align:right;font-size:11.5px;color:var(--dim);font-weight:700;letter-spacing:.02em;
+  padding:10px 11px;background:var(--card2);border-bottom:1px solid var(--line);white-space:nowrap}
+thead th.sortable{cursor:pointer;user-select:none}
+thead th.sortable:hover{color:var(--brand)}
+thead th .arrow{opacity:.35;font-size:9px;margin-inline-start:3px}
+thead th.sorted{color:var(--brand)}
+thead th.sorted .arrow{opacity:1}
+tr.filters th{background:#fff;padding:6px 7px;border-bottom:1px solid var(--line)}
+tr.filters input,tr.filters select{font-size:12px;padding:5px 8px;border-radius:7px;
+  border-color:var(--line2);background:var(--card2)}
+tr.filters input:focus,tr.filters select:focus{background:#fff}
+td{padding:9px 11px;border-bottom:1px solid var(--line2);vertical-align:middle}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover{background:#fafaff}
+tbody tr.sel{background:var(--brand-soft)}
+.num{white-space:nowrap;direction:ltr;text-align:right}
+.money{font-weight:600;letter-spacing:-.01em}
+.tfoot{padding:9px 12px;font-size:12.5px;color:var(--dim);background:var(--card2);
+  border-top:1px solid var(--line)}
 
-.pill{display:inline-block;border-radius:20px;padding:2px 9px;font-size:11.5px;font-weight:600}
-.p-ok{background:#dcfce7;color:#166534}
-.p-pending{background:#fef3c7;color:#92400e}
-.p-review{background:#fed7aa;color:#9a3412}
-.p-irrelevant{background:#e2e8f0;color:#475569}
-.p-income{background:#dbeafe;color:#1e40af}
+/* ---------- תגיות ---------- */
+.pill{display:inline-block;border-radius:999px;padding:3px 10px;font-size:11.5px;font-weight:600;
+  white-space:nowrap;line-height:1.4}
+.p-ok{background:var(--ok-soft);color:var(--ok)}
+.p-pending{background:var(--warn-soft);color:var(--warn)}
+.p-review{background:#ffedd5;color:#9a3412}
+.p-irrelevant{background:#eef0f3;color:var(--dim)}
+.p-income{background:#e8f0fe;color:#1e40af}
 
-.empty{text-align:center;color:var(--dim);padding:34px 16px;line-height:1.7}
-.bar{height:9px;background:#e2e8f0;border-radius:5px;overflow:hidden}
-.bar>i{display:block;height:100%;border-radius:5px}
+.empty{text-align:center;color:var(--dim);padding:40px 18px;line-height:1.8;font-size:13.5px}
+.empty .big{font-size:34px;display:block;margin-bottom:10px;opacity:.9}
+.bar{height:8px;background:var(--line2);border-radius:99px;overflow:hidden}
+.bar>i{display:block;height:100%;border-radius:99px;transition:width .4s ease}
 
-.drop{border:2px dashed #c7d2fe;border-radius:14px;padding:26px;text-align:center;
-      color:var(--dim);cursor:pointer;background:#fafaff;line-height:1.7}
-.drop.hot{background:#eef2ff;border-color:var(--brand)}
+.drop{border:1.5px dashed var(--brand-line);border-radius:var(--r-lg);padding:30px;
+  text-align:center;color:var(--dim);cursor:pointer;background:#fbfbff;line-height:1.8;
+  transition:background .15s,border-color .15s}
+.drop:hover,.drop.hot{background:var(--brand-soft);border-color:var(--brand)}
 
-.tiles{display:flex;gap:9px;flex-wrap:wrap}
-.tile{border:2px solid var(--line);border-radius:11px;padding:11px 15px;cursor:pointer;
-      background:#fff;font-size:13.5px;min-width:120px}
-.tile:hover{border-color:#c7d2fe}
-.tile.on{border-color:var(--brand);background:#eef2ff;font-weight:600}
-.tile .t2{font-size:11px;color:var(--dim);font-weight:400;margin-top:2px}
+.tiles{display:flex;gap:10px;flex-wrap:wrap}
+.tile{border:1px solid var(--line);border-radius:var(--r);padding:12px 16px;cursor:pointer;
+  background:#fff;font-size:13.5px;min-width:130px;font-weight:500;
+  transition:border-color .15s,background .15s,box-shadow .15s}
+.tile:hover{border-color:var(--brand-line);box-shadow:var(--shadow-sm)}
+.tile.on{border-color:var(--brand);background:var(--brand-soft);font-weight:700}
+.tile .t2{font-size:11.5px;color:var(--dim);font-weight:400;margin-top:3px}
+
+/* ---------- מסך הסיווג ---------- */
+.cgroup{border:1px solid var(--line);border-radius:var(--r-lg);margin-bottom:10px;
+  background:#fff;overflow:hidden;transition:border-color .15s,box-shadow .15s}
+.cgroup:hover{border-color:#d6d9df;box-shadow:var(--shadow-sm)}
+.chead{display:flex;align-items:flex-start;gap:12px;padding:13px 15px 10px;flex-wrap:wrap}
+.cdesc{font-size:14.5px;font-weight:700;line-height:1.35;word-break:break-word}
+.cmeta{font-size:12px;color:var(--dim);margin-top:4px;display:flex;gap:8px;flex-wrap:wrap;
+  align-items:center}
+.camt{margin-inline-start:auto;text-align:left;white-space:nowrap}
+.camt b{font-size:18px;font-weight:700;letter-spacing:-.02em}
+.camt .n{font-size:11.5px;color:var(--dim);display:block;margin-top:1px}
+.cbody{padding:0 15px 13px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:9px}
+.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 12px;
+  font-size:12.5px;cursor:pointer;font-weight:500;white-space:nowrap;transition:all .13s}
+.chip:hover{border-color:var(--brand);background:var(--brand-soft);color:var(--brand)}
+.crest{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.crest select{flex:1;min-width:150px}
+.cdetail{background:var(--card2);border-top:1px solid var(--line2);padding:9px 15px;
+  font-size:12.5px;color:var(--ink2)}
+.cdetail .r{padding:3px 0;display:flex;gap:10px;align-items:center}
+.cdetail .d{color:var(--dim);min-width:80px}
+.clink{background:none;border:0;color:var(--dim);font-size:12px;cursor:pointer;padding:2px 0;
+  text-decoration:underline;text-underline-offset:2px;font-family:inherit}
+.clink:hover{color:var(--brand)}
 
 /* ---------- מסך כניסה ---------- */
-#loginOverlay{position:fixed;inset:0;z-index:500;display:none;align-items:center;justify-content:center;
-  background:linear-gradient(135deg,#312e81,#4f46e5 60%,#6366f1);padding:16px}
-#loginOverlay .lcard{background:#fff;border-radius:18px;padding:32px 26px;max-width:360px;
-  width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.35)}
-#loginCode{font-size:24px;text-align:center;letter-spacing:8px;direction:ltr;margin-top:10px}
-#credStep input,#connectStep input{margin-bottom:2px}
-#connectLink a:hover{color:var(--brand)}
+#loginOverlay{position:fixed;inset:0;z-index:500;display:none;align-items:center;
+  justify-content:center;padding:18px;
+  background:radial-gradient(1100px 620px at 78% -8%,#3b3597 0%,transparent 55%),
+             radial-gradient(900px 560px at 12% 108%,#2a2f6b 0%,transparent 58%),
+             linear-gradient(168deg,#171b3a 0%,#10132b 100%)}
+#loginOverlay .lcard{background:#fff;border-radius:18px;padding:34px 30px 30px;max-width:378px;
+  width:100%;text-align:center;box-shadow:0 24px 70px rgba(0,0,0,.42)}
+.lmark{width:52px;height:52px;border-radius:15px;margin:0 auto 14px;display:grid;place-items:center;
+  font-size:26px;background:linear-gradient(150deg,var(--brand),#7b6ef0);
+  box-shadow:0 8px 22px -6px rgba(81,69,205,.55)}
+#loginOverlay h2{margin:0 0 3px;font-size:20px;font-weight:700;letter-spacing:-.02em}
+#loginHint{color:var(--dim);font-size:13px;margin:0 0 20px}
+#credStep input,#connectStep input{margin-bottom:9px;padding:11px 13px;font-size:14.5px}
+#loginCode{text-align:center;letter-spacing:5px;font-weight:600}
+#otpCode{font-size:26px;text-align:center;letter-spacing:9px;direction:ltr;font-weight:700;padding:12px}
+#loginOverlay .btn{padding:11px 16px;font-size:14.5px}
+#connectLink a{color:var(--faint);font-size:12px;text-decoration:none}
+#connectLink a:hover{color:var(--brand);text-decoration:underline}
+.lerr{color:var(--bad);min-height:20px;font-size:12.5px;margin:2px 0 8px;font-weight:500}
 
-/* ---------- מודאל ---------- */
-#modalWrap{position:fixed;inset:0;z-index:400;background:rgba(15,23,42,.55);
-  display:none;align-items:center;justify-content:center;padding:16px}
-#modal{background:#fff;border-radius:16px;max-width:560px;width:100%;max-height:88vh;
-  overflow:auto;padding:22px;box-shadow:0 24px 70px rgba(0,0,0,.4)}
-#modal h3{margin:0 0 14px;font-size:17px}
-.kv{display:grid;grid-template-columns:118px 1fr;gap:7px 12px;font-size:13px;line-height:1.6}
-.kv dt{color:var(--dim)}
+/* ---------- מודאל והודעות ---------- */
+#modalWrap{position:fixed;inset:0;z-index:400;background:rgba(17,24,39,.5);
+  display:none;align-items:center;justify-content:center;padding:18px}
+#modal{background:#fff;border-radius:16px;max-width:580px;width:100%;max-height:88vh;
+  overflow:auto;padding:24px;box-shadow:var(--shadow-lg)}
+#modal h3{margin:0 0 16px;font-size:16.5px;font-weight:700}
+.kv{display:grid;grid-template-columns:120px 1fr;gap:8px 14px;font-size:13px;line-height:1.65}
+.kv dt{color:var(--dim);font-weight:500}
 .kv dd{margin:0;word-break:break-word}
 
-#toast{position:fixed;bottom:18px;right:50%;transform:translateX(50%);background:#0f172a;color:#fff;
-  padding:11px 20px;border-radius:11px;font-size:13.5px;z-index:600;display:none;
-  box-shadow:0 8px 30px rgba(0,0,0,.3);max-width:88vw;text-align:center}
+#toast{position:fixed;bottom:22px;right:50%;transform:translateX(50%);background:#111827;
+  color:#fff;padding:12px 22px;border-radius:11px;font-size:13.5px;z-index:600;display:none;
+  box-shadow:var(--shadow-lg);max-width:88vw;text-align:center;font-weight:500}
 
 @media(max-width:640px){
-  main{padding:12px}
+  main{padding:14px 12px}
+  header{padding:0 12px}
+  .card{padding:15px;border-radius:12px}
+  .kpi{padding:13px 14px}
   .kpi .val{font-size:22px}
-  header h1{font-size:17px}
+  header h1{font-size:15.5px}
+  #syncChip{display:none}
+  .camt{margin-inline-start:0}
 }
 </style>
 </head>
 <body>
 
 <header>
-  <h1 id="appTitle">ניהול הוצאות בית</h1>
-  <div id="userChip" onclick="logout()" title="התנתקות מהמכשיר"></div>
-  <div id="syncChip">מקומי</div>
+  <div class="hbar">
+    <h1 id="appTitle">ניהול הוצאות בית</h1>
+    <div class="hspace"></div>
+    <div id="syncChip">מקומי</div>
+    <button id="userChip" onclick="logout()" title="התנתקות מהמכשיר"></button>
+  </div>
   <nav id="nav">
     <button data-tab="dash" class="on">📊 דשבורד</button>
     <button data-tab="classify">🏷️ לסיווג<span class="badge" id="pendBadge" style="display:none">0</span></button>
@@ -202,17 +305,9 @@ tbody tr:hover{background:#f8fafc}
 <section id="tab-tx">
   <div class="card">
     <div class="row" style="margin-bottom:12px">
-      <div><input id="txSearch" placeholder="חיפוש בתיאור / בית עסק..." oninput="renderTx()"></div>
-      <div class="fix" style="min-width:140px"><select id="txMonth" onchange="renderTx()"></select></div>
-      <div class="fix" style="min-width:130px"><select id="txCat" onchange="renderTx()"></select></div>
-      <div class="fix" style="min-width:130px"><select id="txStatus" onchange="renderTx()">
-        <option value="">כל הסטטוסים</option>
-        <option value="ok">מסווג</option>
-        <option value="pending">ממתין לסיווג</option>
-        <option value="review">לבדיקה</option>
-        <option value="irrelevant">לא רלוונטי</option>
-      </select></div>
-      <div class="fix" style="min-width:130px"><select id="txSrc" onchange="renderTx()"></select></div>
+      <div><input id="txSearch" placeholder="חיפוש חופשי בתיאור ובהערה…" oninput="renderTx()"></div>
+      <div class="fix" style="min-width:150px"><select id="txMonth" onchange="renderTx()"></select></div>
+      <div class="fix"><button class="btn ghost sm" onclick="clearFilters('txTable')">נקה סינון</button></div>
       <div class="fix"><button class="btn sec sm" onclick="exportTx()">📤 ייצוא</button></div>
     </div>
     <div id="txSummary" style="font-size:13px;color:var(--dim);margin-bottom:8px"></div>
@@ -398,9 +493,9 @@ tbody tr:hover{background:#f8fafc}
 
 <div id="loginOverlay">
   <div class="lcard">
-    <div style="font-size:40px">🏠</div>
-    <h2 style="margin:8px 0 2px;font-size:20px" id="loginTitle">ניהול הוצאות בית</h2>
-    <p style="color:var(--dim);font-size:13px;margin:0" id="loginHint">הזן שם משתמש וקוד אישי</p>
+    <div class="lmark">🏠</div>
+    <h2 id="loginTitle">ניהול הוצאות בית</h2>
+    <p id="loginHint">הזן שם משתמש וקוד אישי</p>
 
     <div id="credStep">
       <input id="loginName" placeholder="שם משתמש" autocomplete="off" autocorrect="off"
@@ -409,7 +504,7 @@ tbody tr:hover{background:#f8fafc}
       <input type="password" id="loginCode" inputmode="numeric" maxlength="4" placeholder="קוד אישי"
              autocomplete="off" style="margin-top:8px;text-align:center;letter-spacing:6px"
              onkeydown="if(event.key==='Enter')submitPin()">
-      <div id="loginErr" style="color:var(--bad);min-height:20px;font-size:13px;margin-top:6px"></div>
+      <div id="loginErr" class="lerr"></div>
       <button class="btn" style="width:100%" id="pinBtn" onclick="submitPin()">המשך</button>
     </div>
 
@@ -419,7 +514,7 @@ tbody tr:hover{background:#f8fafc}
       <input type="text" id="otpCode" inputmode="numeric" maxlength="6" placeholder="——————"
              style="font-size:24px;text-align:center;letter-spacing:8px;direction:ltr"
              onkeydown="if(event.key==='Enter')submitOtp()">
-      <div id="otpErr" style="color:var(--bad);min-height:20px;font-size:13px;margin-top:6px"></div>
+      <div id="otpErr" class="lerr"></div>
       <button class="btn" style="width:100%" id="otpBtn" onclick="submitOtp()">כניסה</button>
       <button class="btn ghost sm" style="width:100%;margin-top:8px" id="resendBtn"
               onclick="resendCode()">שלח קוד שוב</button>
@@ -436,7 +531,7 @@ tbody tr:hover{background:#f8fafc}
         <b>מנהל:</b> מקבלים אותה ב-Apps Script אחרי Deploy.<br>
         <b>משתמש רגיל:</b> בקש אותה מהמנהל.</p>
       <input id="loginApi" dir="ltr" placeholder="https://script.google.com/.../exec">
-      <div id="connErr" style="color:var(--bad);min-height:20px;font-size:13px;margin-top:6px"></div>
+      <div id="connErr" class="lerr"></div>
       <button class="btn" style="width:100%" onclick="saveApiFromLogin()">חבר מכשיר</button>
       <button class="btn sec sm" style="width:100%;margin-top:8px" onclick="useLocalMode()">
         המשך בלי גיליון — מצב מקומי</button>
@@ -1113,64 +1208,135 @@ function renderCatMonths(ym){
 }
 
 /* ---------------- מסך סיווג ---------------- */
+/* ============================================================
+   מסך הסיווג
+   כל המזהים והמטפלים עובדים לפי אינדקס, ואף פעם לא לפי הטקסט
+   שהגיע מהבנק. תיאור עם גרש (בחו'ל, צ'ק) שבר קודם את ה-onclick
+   ושתק לגמרי — הכפתור פשוט לא עשה כלום.
+   ============================================================ */
+let clsGroups=[], clsQuickCats=[], clsOpen=-1;
+
 function renderClassify(){
   const pend=live().filter(t=>t.status==='pending');
-  $('pendBadge').style.display = pend.length?'inline-block':'none';
-  $('pendBadge').textContent = pend.length;
+  updateBadge();
   if(!pend.length){
-    $('classifyList').innerHTML='<div class="empty">🎉 הכל מסווג!<br><br>'+
+    $('classifyList').innerHTML='<div class="empty"><span class="big">✓</span>'+
+      'הכל מסווג — אין מה לעשות כאן.<br><br>'+
       '<button class="btn" onclick="gotoTab(\'import\')">📥 ייבוא נתונים חדשים</button></div>';
     return;
   }
-  const groups={};
+  const map={};
   pend.forEach(t=>{
     const k=normDesc(t.desc).toLowerCase()||'—';
-    if(!groups[k]) groups[k]={desc:normDesc(t.desc)||'—', rows:[], sum:0};
-    groups[k].rows.push(t); groups[k].sum+=num(t.amount);
+    if(!map[k]) map[k]={desc:normDesc(t.desc)||'—', rows:[], sum:0};
+    map[k].rows.push(t); map[k].sum+=num(t.amount);
   });
-  const list=Object.entries(groups).sort((a,b)=>b[1].rows.length-a[1].rows.length);
-  const opts = DB.cats.filter(c=>!c.deleted)
-    .map(c=>'<option value="'+esc(c.name)+'">'+c.icon+' '+esc(c.name)+'</option>').join('');
-  $('classifyList').innerHTML = list.map(([k,g])=>{
-    const dates=g.rows.map(r=>r.date).sort();
-    const range = dates.length>1 ? (dates[0]+' — '+dates[dates.length-1]) : dates[0];
-    return '<div style="border:1px solid var(--line);border-radius:11px;padding:13px;margin-bottom:10px">'+
-      '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:9px">'+
-        '<div><b style="font-size:14.5px">'+esc(g.desc)+'</b>'+
-          '<div style="font-size:12px;color:var(--dim);margin-top:2px">'+
-            g.rows.length+' שורות · סה"כ '+fmt(g.sum)+' ₪ · '+esc(range)+
-            ' · מקור: '+esc(g.rows[0].src||'ידני')+'</div></div>'+
-        '<div class="num" style="font-size:17px;font-weight:700">'+fmt(g.sum)+' ₪</div></div>'+
-      '<div class="row">'+
-        '<div><select id="cls-'+esc(k)+'"><option value="">בחר קטגוריה...</option>'+opts+'</select></div>'+
-        '<div class="fix"><button class="btn sm" onclick="applyClass(\''+esc(k)+'\')">✓ סווג</button></div>'+
-        '<div class="fix"><button class="btn sec sm" onclick="markGroup(\''+esc(k)+'\',\'irrelevant\')">🚫 לא רלוונטי</button></div>'+
-        '<div class="fix"><button class="btn sec sm" onclick="markGroup(\''+esc(k)+'\',\'review\')">🔍 לבדיקה</button></div>'+
-        '<div class="fix" style="font-size:12px;color:var(--dim)">'+
-          '<label><input type="checkbox" id="rule-'+esc(k)+'" checked style="width:auto"> שמור ככלל</label></div>'+
-      '</div></div>';
-  }).join('');
-  window._clsGroups = groups;
+  /* הגדולות קודם — סיווג אחד שם מוריד הכי הרבה מהערימה */
+  clsGroups=Object.values(map).sort((a,b)=> b.rows.length-a.rows.length || b.sum-a.sum);
+
+  /* קיצורי הקטגוריות הם אלה שבאמת בשימוש אצלך, לא רשימה שרירותית */
+  const usage={};
+  live().forEach(t=>{ if(t.category) usage[t.category]=(usage[t.category]||0)+1; });
+  const cats=DB.cats.filter(c=>!c.deleted);
+  clsQuickCats=cats.slice().sort((a,b)=>(usage[b.name]||0)-(usage[a.name]||0)).slice(0,7);
+  const opts=cats.map((c,i)=>'<option value="'+i+'">'+c.icon+' '+esc(c.name)+'</option>').join('');
+
+  const total=pend.length;
+  $('classifyList').innerHTML =
+    '<div style="font-size:12.5px;color:var(--dim);margin-bottom:12px">'+
+      total+' תנועות ממתינות, מקובצות ל-'+clsGroups.length+' תיאורים. '+
+      'סיווג של קבוצה מסדר את כל שורותיה ונשמר ככלל להבא.</div>'+
+    clsGroups.map((g,i)=>{
+      const dates=g.rows.map(r=>r.date).filter(Boolean).sort();
+      const range=dates.length>1 ? dates[0]+' — '+dates[dates.length-1] : (dates[0]||'');
+      const kinds=[...new Set(g.rows.map(r=>r.kind))];
+      const srcs=[...new Set(g.rows.map(r=>r.src||'ידני'))];
+      return '<div class="cgroup">'+
+        '<div class="chead">'+
+          '<div style="flex:1;min-width:170px">'+
+            '<div class="cdesc">'+esc(g.desc)+'</div>'+
+            '<div class="cmeta">'+
+              '<span>'+g.rows.length+' שורות</span><span>·</span>'+
+              (range?'<span>'+esc(range)+'</span><span>·</span>':'')+
+              '<span>'+esc(srcs.join(', '))+'</span>'+
+              (kinds.length>1?'<span class="pill p-review">מעורב הכנסה והוצאה</span>':'')+
+            '</div>'+
+          '</div>'+
+          '<div class="camt"><b>'+fmt(g.sum)+' ₪</b>'+
+            '<span class="n">'+(g.rows.length>1?'ממוצע '+fmt(g.sum/g.rows.length)+' ₪':'&nbsp;')+'</span></div>'+
+        '</div>'+
+        '<div class="cbody">'+
+          '<div class="chips">'+
+            clsQuickCats.map((c,qi)=>'<button class="chip" onclick="clsQuick('+i+','+qi+')">'+
+              c.icon+' '+esc(c.name)+'</button>').join('')+
+          '</div>'+
+          '<div class="crest">'+
+            '<select id="cls-'+i+'"><option value="">קטגוריה אחרת…</option>'+opts+'</select>'+
+            '<button class="btn sm" onclick="clsApply('+i+')">סווג</button>'+
+            '<button class="btn sec sm" onclick="clsMark('+i+',\'irrelevant\')">🚫 לא רלוונטי</button>'+
+            '<button class="btn sec sm" onclick="clsMark('+i+',\'review\')">🔍 לבדיקה</button>'+
+            '<label class="fix" style="font-size:12px;color:var(--dim);display:flex;'+
+              'align-items:center;gap:5px;white-space:nowrap">'+
+              '<input type="checkbox" id="rule-'+i+'" checked style="width:auto"> זכור ככלל</label>'+
+            '<button class="clink" onclick="clsToggle('+i+')">'+
+              (clsOpen===i?'הסתר שורות':'הצג '+g.rows.length+' שורות')+'</button>'+
+          '</div>'+
+        '</div>'+
+        (clsOpen===i ? '<div class="cdetail">'+g.rows.slice(0,40).map(r=>
+            '<div class="r"><span class="d num">'+esc(r.date)+'</span>'+
+            '<span class="num money" style="min-width:78px">'+fmt2(r.amount)+' ₪</span>'+
+            '<span style="color:var(--dim)">'+esc(r.kind==='income'?'הכנסה':'הוצאה')+'</span>'+
+            '<span style="margin-inline-start:auto"><button class="clink" '+
+              'onclick="showProv(\''+r.id+'\')">מאיפה זה הגיע</button></span></div>').join('')+
+          (g.rows.length>40?'<div class="r" style="color:var(--dim)">ועוד '+(g.rows.length-40)+' שורות…</div>':'')+
+          '</div>' : '')+
+      '</div>';
+    }).join('');
 }
-function applyClass(key){
-  const g=window._clsGroups[key]; if(!g) return;
-  const cat=$('cls-'+key).value;
-  if(!cat){ toast('בחר קטגוריה'); return; }
-  const asRule = $('rule-'+key).checked;
+
+function clsToggle(i){ clsOpen = (clsOpen===i ? -1 : i); withScroll(renderClassify); }
+function clsQuick(i, qi){
+  const c=clsQuickCats[qi]; if(!c) return;
+  clsSet(i, c.name);
+}
+function clsApply(i){
+  const sel=$('cls-'+i);
+  const ci=sel? sel.value : '';
+  if(ci===''){ toast('בחר קטגוריה, או לחץ על אחד הקיצורים'); return; }
+  const cats=DB.cats.filter(c=>!c.deleted);
+  const c=cats[Number(ci)];
+  if(!c) return;
+  clsSet(i, c.name);
+}
+function clsSet(i, catName){
+  const g=clsGroups[i]; if(!g) return;
+  const asRule=($('rule-'+i)||{}).checked;
   g.rows.forEach(t=>{
-    t.category=cat; t.status='ok'; t.classBy='ידני: '+(CU?CU.name:'');
+    t.category=catName; t.status='ok'; t.classBy='ידני: '+(CU?CU.name:'');
     queueRow('tx',t);
   });
-  if(asRule) addRule(g.desc, cat, 'ok');
-  saveLocal(); renderClassify(); updateBadge();
-  toast(g.rows.length+' תנועות סווגו ל"'+cat+'"');
+  if(asRule) addRule(g.desc, catName, 'ok');
+  saveLocal();
+  if(clsOpen===i) clsOpen=-1;
+  withScroll(renderClassify);
+  toast(g.rows.length+' תנועות סווגו ל"'+catName+'"');
 }
-function markGroup(key, status){
-  const g=window._clsGroups[key]; if(!g) return;
+function clsMark(i, status){
+  const g=clsGroups[i]; if(!g) return;
+  const asRule=($('rule-'+i)||{}).checked;
   g.rows.forEach(t=>{ t.status=status; t.classBy='ידני: '+(CU?CU.name:''); queueRow('tx',t); });
-  if($('rule-'+key).checked && status==='irrelevant') addRule(g.desc, '', 'irrelevant');
-  saveLocal(); renderClassify(); updateBadge();
+  if(asRule && status==='irrelevant') addRule(g.desc, '', 'irrelevant');
+  saveLocal();
+  if(clsOpen===i) clsOpen=-1;
+  withScroll(renderClassify);
   toast(g.rows.length+' תנועות סומנו כ"'+STATUS_LBL[status]+'"');
+}
+/** שומר על מיקום הגלילה — בלי זה כל סיווג היה מקפיץ חזרה לראש
+ *  הרשימה, ואי אפשר לעבור על עשרות קבוצות ברצף. */
+function withScroll(fn){
+  const y=window.scrollY;
+  fn();
+  window.scrollTo(0, y);
 }
 function addRule(match, category, status){
   const m=normDesc(match); if(!m) return;
@@ -1185,67 +1351,150 @@ function updateBadge(){
   $('pendBadge').textContent = n;
 }
 
+/* ============================================================
+   טבלה חכמה — סינון ומיון בשורת הכותרת, כמו באקסל.
+   spec = { el, cols:[{key,label,filter:'text'|'select'|'none',cls,get,sort}],
+            rows, row(r)->HTML, limit, onPaint(shownRows) }
+   מפתחות העמודות נשלטים בקוד ולא מגיעים מהנתונים, ולכן בטוח
+   להשתמש בהם בתוך onclick. ערכים מהנתונים אף פעם לא נכנסים לשם.
+   ============================================================ */
+const tableSpecs={}, tableState={};
+
+function smartTable(spec){
+  tableSpecs[spec.el]=spec;
+  if(!tableState[spec.el]) tableState[spec.el]={f:{}, sk:null, sd:1};
+  const st=tableState[spec.el], t=$(spec.el);
+  if(!t) return;
+  let h='<thead><tr>';
+  spec.cols.forEach(c=>{
+    const canSort=c.sort!==false, on=st.sk===c.key;
+    h+='<th class="'+(c.cls||'')+(canSort?' sortable':'')+(on?' sorted':'')+'"'+
+       (canSort?' onclick="sortSmart(\''+spec.el+'\',\''+c.key+'\')"':'')+'>'+
+       (c.label||'')+(canSort?'<span class="arrow">'+(on?(st.sd>0?'▲':'▼'):'⇅')+'</span>':'')+'</th>';
+  });
+  h+='</tr>';
+  if(spec.cols.some(c=>c.filter&&c.filter!=='none')){
+    h+='<tr class="filters">';
+    spec.cols.forEach(c=>{
+      if(!c.filter||c.filter==='none'){ h+='<th></th>'; return; }
+      const v=st.f[c.key]||'';
+      if(c.filter==='select'){
+        const vals=[...new Set(spec.rows.map(r=>String(c.get(r)==null?'':c.get(r))))]
+          .filter(x=>x!=='').sort((a,b)=>a.localeCompare(b,'he'));
+        h+='<th><select onchange="filterSmart(\''+spec.el+'\',\''+c.key+'\',this.value)">'+
+           '<option value="">הכל</option>'+
+           vals.map(x=>'<option value="'+esc(x)+'"'+(x===v?' selected':'')+'>'+esc(x)+'</option>').join('')+
+           '</select></th>';
+      } else {
+        h+='<th><input placeholder="סנן…" value="'+esc(v)+'" '+
+           'oninput="filterSmart(\''+spec.el+'\',\''+c.key+'\',this.value)"></th>';
+      }
+    });
+    h+='</tr>';
+  }
+  h+='</thead><tbody id="'+spec.el+'__b"></tbody>';
+  t.innerHTML=h;
+  paintSmart(spec.el);
+}
+function smartRows(el){
+  const spec=tableSpecs[el], st=tableState[el];
+  let rows=spec.rows.filter(r=>spec.cols.every(c=>{
+    const f=st.f[c.key];
+    if(!f) return true;
+    const v=String(c.get(r)==null?'':c.get(r));
+    return c.filter==='select' ? v===f : v.toLowerCase().includes(String(f).toLowerCase());
+  }));
+  if(st.sk){
+    const c=spec.cols.find(x=>x.key===st.sk);
+    if(c) rows=rows.slice().sort((a,b)=>{
+      const av=c.get(a), bv=c.get(b);
+      const an=num(av), bn=num(bv);
+      const numeric = String(av).trim()!=='' && String(bv).trim()!=='' &&
+                      isFinite(an) && isFinite(bn) && /^[-\d.,₪\s]+$/.test(String(av));
+      const cmp = numeric ? an-bn : String(av==null?'':av).localeCompare(String(bv==null?'':bv),'he');
+      return cmp*st.sd;
+    });
+  }
+  return rows;
+}
+function paintSmart(el){
+  const spec=tableSpecs[el], rows=smartRows(el), body=$(el+'__b');
+  if(!body) return;
+  body.innerHTML = rows.length
+    ? rows.slice(0, spec.limit||600).map(spec.row).join('')
+    : '<tr><td colspan="'+spec.cols.length+'"><div class="empty">אין שורות שתואמות לסינון</div></td></tr>';
+  if(spec.onPaint) spec.onPaint(rows);
+}
+/* סינון מצייר מחדש רק את גוף הטבלה — כדי שהמיקוד בשדה הסינון לא יאבד תוך כדי הקלדה */
+function filterSmart(el,key,val){ tableState[el].f[key]=val; paintSmart(el); }
+function sortSmart(el,key){
+  const st=tableState[el];
+  if(st.sk===key) st.sd=-st.sd; else { st.sk=key; st.sd=1; }
+  smartTable(tableSpecs[el]);
+}
+function clearFilters(el){ tableState[el]={f:{},sk:null,sd:1}; smartTable(tableSpecs[el]); }
+
 /* ---------------- תנועות ---------------- */
 let selTx=new Set(), lastFiltered=[];
 function renderTx(){
   fillMonthSelect($('txMonth'), true);
-  const curC=$('txCat').value, curS=$('txSrc').value;
-  $('txCat').innerHTML='<option value="">כל הקטגוריות</option>'+
-    DB.cats.filter(c=>!c.deleted).map(c=>'<option>'+esc(c.name)+'</option>').join('');
-  $('bulkCat').innerHTML='<option value="">קטגוריה...</option>'+
+  $('bulkCat').innerHTML='<option value="">קטגוריה…</option>'+
     DB.cats.filter(c=>!c.deleted).map(c=>'<option value="'+esc(c.name)+'">'+c.icon+' '+esc(c.name)+'</option>').join('');
-  const srcs=[...new Set(live().map(t=>t.src).filter(Boolean))];
-  $('txSrc').innerHTML='<option value="">כל המקורות</option>'+
-    srcs.map(s=>'<option>'+esc(s)+'</option>').join('');
-  if(curC) $('txCat').value=curC;
-  if(curS) $('txSrc').value=curS;
 
   const q=$('txSearch').value.trim().toLowerCase();
-  const m=$('txMonth').value, c=$('txCat').value, st=$('txStatus').value, sr=$('txSrc').value;
-  let rows=live().filter(t=>
-    (!m  || monthOf(t.date)===m) &&
-    (!c  || t.category===c) &&
-    (!st || t.status===st) &&
-    (!sr || t.src===sr) &&
-    (!q  || (String(t.desc)+' '+String(t.note)).toLowerCase().includes(q))
+  const m=$('txMonth').value;
+  /* החודש והחיפוש החופשי נשארים למעלה; קטגוריה, סטטוס ומקור עברו
+     לשורת הסינון שבכותרת הטבלה */
+  const base=live().filter(t=>
+    (!m || monthOf(t.date)===m) &&
+    (!q || (String(t.desc)+' '+String(t.note)).toLowerCase().includes(q))
   ).sort((a,b)=> (b.date||'').localeCompare(a.date||''));
 
-  const e=rows.filter(t=>t.kind==='expense'&&(t.status==='ok'||t.status==='review'))
-              .reduce((s,t)=>s+num(t.amount),0);
-  const i=rows.filter(t=>t.kind==='income'&&(t.status==='ok'||t.status==='review'))
-              .reduce((s,t)=>s+num(t.amount),0);
-  $('txSummary').textContent = rows.length+' תנועות · הוצאות '+fmt(e)+' ₪ · הכנסות '+fmt(i)+' ₪ '+
-    '(לא כולל "לא רלוונטי" ו"ממתין לסיווג")';
-
-  /* הבחירה המרוכזת חלה על כל השורות המסוננות — לא רק על 400 המוצגות */
-  lastFiltered=rows.map(t=>t.id);
   selTx.forEach(id=>{ if(!DB.tx.some(t=>t.id===id&&!t.deleted)) selTx.delete(id); });
-  updateBulkBar();
-  if(!rows.length){ $('txTable').innerHTML='<tbody><tr><td><div class="empty">אין תנועות תואמות</div></td></tr></tbody>'; return; }
   const adm=isAdmin();
-  const allSel=adm && rows.every(t=>selTx.has(t.id));
-  $('txTable').innerHTML='<thead><tr>'+
-    (adm?'<th style="width:28px"><input type="checkbox" style="width:auto" '+(allSel?'checked':'')+
-         ' onchange="toggleSelAll(this.checked)" title="בחר את כל '+rows.length+' השורות המסוננות"></th>':'')+
-    '<th>תאריך</th><th>תיאור</th><th>קטגוריה</th><th class="num">סכום</th>'+
-    '<th>סטטוס</th><th>מקור</th><th></th></tr></thead><tbody>'+
-    rows.slice(0,400).map(t=>
-      '<tr'+(selTx.has(t.id)?' style="background:#eef2ff"':'')+'>'+
+
+  const cols=[];
+  if(adm) cols.push({key:'sel', label:'<input type="checkbox" style="width:auto" '+
+      'onchange="toggleSelAll(this.checked)" title="בחר את כל השורות המסוננות">',
+      sort:false, filter:'none', get:()=>''});
+  cols.push(
+    {key:'date',   label:'תאריך',   cls:'num', filter:'text',   get:t=>t.date},
+    {key:'desc',   label:'תיאור',              filter:'text',   get:t=>t.desc},
+    {key:'cat',    label:'קטגוריה',            filter:'select', get:t=>t.category||''},
+    {key:'amount', label:'סכום',    cls:'num', filter:'text',   get:t=>num(t.amount)},
+    {key:'status', label:'סטטוס',              filter:'select', get:t=>STATUS_LBL[t.status]||'מסווג'},
+    {key:'src',    label:'מקור',               filter:'select', get:t=>t.src||'ידני'},
+    {key:'act',    label:'',                   filter:'none', sort:false, get:()=>''}
+  );
+
+  smartTable({
+    el:'txTable', rows:base, cols, limit:400,
+    row:t=>'<tr'+(selTx.has(t.id)?' class="sel"':'')+'>'+
       (adm?'<td><input type="checkbox" style="width:auto" '+(selTx.has(t.id)?'checked':'')+
-           ' onchange="toggleSel(\''+esc(t.id)+'\',this.checked)"></td>':'')+
+           ' onchange="toggleSel(\''+t.id+'\',this.checked)"></td>':'')+
       '<td class="num">'+esc(t.date)+'</td>'+
       '<td>'+esc(t.desc)+(t.note?'<div style="font-size:11.5px;color:var(--dim)">'+esc(t.note)+'</div>':'')+'</td>'+
-      '<td>'+(t.category?catIcon(t.category)+' '+esc(t.category):'<span style="color:var(--dim)">—</span>')+'</td>'+
-      '<td class="num" style="color:'+(t.kind==='income'?'var(--ok)':'inherit')+'">'+
+      '<td>'+(t.category?catIcon(t.category)+' '+esc(t.category):'<span style="color:var(--faint)">—</span>')+'</td>'+
+      '<td class="num money"'+(t.kind==='income'?' style="color:var(--ok)"':'')+'>'+
         (t.kind==='income'?'+':'')+fmt2(t.amount)+'</td>'+
       '<td><span class="pill p-'+esc(t.status||'ok')+'">'+esc(STATUS_LBL[t.status]||'מסווג')+'</span></td>'+
       '<td style="font-size:12px;color:var(--dim)">'+esc(t.src||'ידני')+'</td>'+
       '<td style="white-space:nowrap">'+
-        '<button class="btn ghost sm" onclick="showProv(\''+esc(t.id)+'\')" title="מאיפה זה הגיע">🔎</button> '+
-        (isAdmin()?'<button class="btn ghost sm" onclick="editTx(\''+esc(t.id)+'\')">✏️</button>':'')+
-        '</td></tr>'
-    ).join('')+'</tbody>';
-  if(rows.length>400) $('txSummary').textContent += ' — מוצגות 400 הראשונות (הבחירה המרוכזת חלה על כולן)';
+        '<button class="btn ghost sm" onclick="showProv(\''+t.id+'\')" title="מאיפה זה הגיע">🔎</button> '+
+        (adm?'<button class="btn ghost sm" onclick="editTx(\''+t.id+'\')" title="עריכה">✏️</button>':'')+
+      '</td></tr>',
+    onPaint:rows=>{
+      /* הסיכום והבחירה המרוכזת עוקבים אחרי הסינון בפועל, כולל סינוני העמודות */
+      lastFiltered=rows.map(t=>t.id);
+      const cnt=t=>t.status==='ok'||t.status==='review';
+      const e=rows.filter(t=>t.kind==='expense'&&cnt(t)).reduce((s,t)=>s+num(t.amount),0);
+      const i=rows.filter(t=>t.kind==='income'&&cnt(t)).reduce((s,t)=>s+num(t.amount),0);
+      $('txSummary').textContent = rows.length+' תנועות · הוצאות '+fmt(e)+' ₪ · הכנסות '+fmt(i)+' ₪'+
+        ' (לא כולל "לא רלוונטי" ו"ממתין לסיווג")'+
+        (rows.length>400?' — מוצגות 400 הראשונות, הפעולות המרוכזות חלות על כולן':'');
+      updateBulkBar();
+    }
+  });
 }
 
 /* ---------------- עדכון ומחיקה מרוכזים ---------------- */
@@ -1740,22 +1989,30 @@ function matchRule(desc){
 function renderSrcTable(){
   const st=DB.stencils.filter(s=>!s.deleted);
   if(!st.length){ $('srcTable').innerHTML='<tbody><tr><td><div class="empty">'+
-    'עדיין אין שטאנצים.<br>עבור ל"ייבוא", בחר "מקור חדש", מפה את העמודות ושמור.'+
+    '<span class="big">🧩</span>עדיין אין שטאנצים.<br>'+
+    'עבור ל"ייבוא", בחר "מקור חדש", מפה את העמודות ושמור.'+
     '</div></td></tr></tbody>'; return; }
-  $('srcTable').innerHTML='<thead><tr><th>שם</th><th>סוג</th><th>אמצעי תשלום</th>'+
-    '<th>דילוג</th><th>עמודות</th><th class="num">תנועות</th><th></th></tr></thead><tbody>'+
-    st.map(s=>{
-      const m=safeJson(s.map);
-      const cols=Object.entries(m).map(([k,v])=>({date:'תאריך',desc:'תיאור',amount:'סכום',
-        debit:'חובה',credit:'זכות',note:'הערה'}[k]+'='+String.fromCharCode(65+v))).join(' · ');
-      const n=live().filter(t=>t.src===s.name).length;
-      return '<tr><td><b>'+esc(s.name)+'</b></td>'+
-        '<td>'+(s.type==='credit'?'💳 אשראי':'🏦 בנק')+'</td>'+
-        '<td>'+esc(s.payment||'—')+'</td><td class="num">'+esc(s.skip)+'</td>'+
-        '<td style="font-size:12px;color:var(--dim)">'+esc(cols)+'</td>'+
-        '<td class="num">'+n+'</td>'+
-        '<td><button class="btn danger sm" onclick="delStencil(\''+esc(s.id)+'\')">מחק</button></td></tr>';
-    }).join('')+'</tbody>';
+  const colsOf=s=>Object.entries(safeJson(s.map)).map(([k,v])=>
+    ({date:'תאריך',desc:'תיאור',amount:'סכום',debit:'חובה',credit:'זכות',note:'הערה'}[k]
+     +'='+String.fromCharCode(65+v))).join(' · ');
+  smartTable({
+    el:'srcTable', rows:st,
+    cols:[
+      {key:'name', label:'שם',           filter:'text',   get:s=>s.name},
+      {key:'type', label:'סוג',          filter:'select', get:s=>s.type==='credit'?'אשראי':'בנק'},
+      {key:'pay',  label:'אמצעי תשלום',  filter:'select', get:s=>s.payment||''},
+      {key:'skip', label:'דילוג', cls:'num', filter:'none', get:s=>num(s.skip)},
+      {key:'cols', label:'עמודות',       filter:'text',   get:colsOf},
+      {key:'n',    label:'תנועות', cls:'num', filter:'none', get:s=>live().filter(t=>t.src===s.name).length},
+      {key:'act',  label:'', filter:'none', sort:false, get:()=>''}
+    ],
+    row:s=>'<tr><td><b>'+esc(s.name)+'</b></td>'+
+      '<td>'+(s.type==='credit'?'💳 אשראי':'🏦 בנק')+'</td>'+
+      '<td>'+esc(s.payment||'—')+'</td><td class="num">'+esc(s.skip)+'</td>'+
+      '<td style="font-size:12px;color:var(--dim)">'+esc(colsOf(s))+'</td>'+
+      '<td class="num">'+live().filter(t=>t.src===s.name).length+'</td>'+
+      '<td><button class="btn danger sm" onclick="delStencil(\''+s.id+'\')">מחק</button></td></tr>'
+  });
 }
 function delStencil(id){
   if(!confirm('למחוק את השטאנץ? התנועות שכבר יובאו יישארו.')) return;
@@ -1767,15 +2024,21 @@ function renderRulesTable(){
   const rs=DB.rules.filter(r=>!r.deleted);
   if(!rs.length){ $('rulesTable').innerHTML='<tbody><tr><td><div class="empty">'+
     'כללים נוצרים לבד בכל פעם שאתה מסווג במסך "לסיווג".</div></td></tr></tbody>'; return; }
-  $('rulesTable').innerHTML='<thead><tr><th>אם התיאור מכיל</th><th>אז</th>'+
-    '<th class="num">שימושים</th><th></th></tr></thead><tbody>'+
-    rs.sort((a,b)=>Number(b.hits||0)-Number(a.hits||0)).map(r=>
-      '<tr><td><b>'+esc(r.match)+'</b></td>'+
+  const dest=r=>r.status==='irrelevant'?'לא רלוונטי':(r.category||'—');
+  smartTable({
+    el:'rulesTable', rows:rs,
+    cols:[
+      {key:'match', label:'אם התיאור מכיל', filter:'text',   get:r=>r.match},
+      {key:'dest',  label:'אז',             filter:'select', get:dest},
+      {key:'hits',  label:'שימושים', cls:'num', filter:'none', get:r=>num(r.hits||0)},
+      {key:'act',   label:'', filter:'none', sort:false, get:()=>''}
+    ],
+    row:r=>'<tr><td><b>'+esc(r.match)+'</b></td>'+
       '<td>'+(r.status==='irrelevant'?'<span class="pill p-irrelevant">לא רלוונטי</span>'
            : catIcon(r.category)+' '+esc(r.category))+'</td>'+
       '<td class="num">'+esc(r.hits||0)+'</td>'+
-      '<td><button class="btn danger sm" onclick="delRule(\''+esc(r.id)+'\')">מחק</button></td></tr>'
-    ).join('')+'</tbody>';
+      '<td><button class="btn danger sm" onclick="delRule(\''+r.id+'\')">מחק</button></td></tr>'
+  });
 }
 function delRule(id){
   const r=DB.rules.find(x=>x.id===id); if(!r) return;
@@ -1786,17 +2049,24 @@ function delRule(id){
 /* ---------------- קטגוריות ---------------- */
 function renderCats(){
   const cs=DB.cats.filter(c=>!c.deleted);
-  $('catsTable').innerHTML='<thead><tr><th></th><th>שם</th><th>סוג</th>'+
-    '<th class="num">תנועות</th><th class="num">סה"כ</th><th></th></tr></thead><tbody>'+
-    cs.map(c=>{
-      const rows=live().filter(t=>t.category===c.name);
-      const sum=rows.reduce((s,t)=>s+num(t.amount),0);
-      return '<tr><td style="font-size:19px">'+esc(c.icon)+'</td>'+
-        '<td><b style="color:'+esc(c.color)+'">'+esc(c.name)+'</b></td>'+
-        '<td>'+(c.kind==='income'?'<span class="pill p-income">הכנסה</span>':'הוצאה')+'</td>'+
-        '<td class="num">'+rows.length+'</td><td class="num">'+fmt(sum)+' ₪</td>'+
-        '<td><button class="btn danger sm" onclick="delCat(\''+esc(c.id)+'\')">מחק</button></td></tr>';
-    }).join('')+'</tbody>';
+  const cnt=c=>live().filter(t=>t.category===c.name).length;
+  const sum=c=>live().filter(t=>t.category===c.name).reduce((s,t)=>s+num(t.amount),0);
+  smartTable({
+    el:'catsTable', rows:cs,
+    cols:[
+      {key:'icon', label:'', filter:'none', sort:false, get:c=>c.icon},
+      {key:'name', label:'שם',   filter:'text',   get:c=>c.name},
+      {key:'kind', label:'סוג',  filter:'select', get:c=>c.kind==='income'?'הכנסה':'הוצאה'},
+      {key:'n',    label:'תנועות', cls:'num', filter:'none', get:cnt},
+      {key:'sum',  label:'סה"כ',  cls:'num', filter:'none', get:sum},
+      {key:'act',  label:'', filter:'none', sort:false, get:()=>''}
+    ],
+    row:c=>'<tr><td style="font-size:19px">'+esc(c.icon)+'</td>'+
+      '<td><b style="color:'+esc(c.color)+'">'+esc(c.name)+'</b></td>'+
+      '<td>'+(c.kind==='income'?'<span class="pill p-income">הכנסה</span>':'הוצאה')+'</td>'+
+      '<td class="num">'+cnt(c)+'</td><td class="num money">'+fmt(sum(c))+' ₪</td>'+
+      '<td><button class="btn danger sm" onclick="delCat(\''+c.id+'\')">מחק</button></td></tr>'
+  });
 }
 function addCat(){
   const name=$('ncName').value.trim();
