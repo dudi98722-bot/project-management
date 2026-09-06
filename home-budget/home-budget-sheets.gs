@@ -147,7 +147,7 @@ function handle(e) {
         /* ניהול משתמשים — מנהל בלבד, ונבדק כאן ולא רק בממשק */
         else if (o.op === 'upsertUser') {
           if (me.role !== 'admin') return json({ status: 'error', message: 'ניהול משתמשים מותר למנהל בלבד' });
-          var guard = guardAdmins(o.rows || [], []);
+          var guard = guardAdmins(o.rows || [], []) || guardNames(o.rows || []);
           if (guard) return json({ status: 'error', message: guard });
           upsertMany('users', o.rows || []); count += (o.rows || []).length;
         }
@@ -186,7 +186,7 @@ function readUsers() {
   var old = null;
   try { old = JSON.parse(s.users || 'null'); } catch (x) {}
   var seed = (old && old.length) ? old
-           : [{ id: 'u1', name: 'דודי', code: '1234', role: 'admin' },
+           : [{ id: 'u1', name: 'דוד', code: '1234', role: 'admin' },
               { id: 'u2', name: 'בן/בת זוג', code: '5678', role: 'user' }];
   seed.forEach(function (u) {
     if (u.role !== 'admin' && u.role !== 'user') u.role = 'user';
@@ -225,6 +225,25 @@ function guardAdmins(upserts, delIds) {
   var admins = 0;
   for (var k in byId) if (byId[k].role === 'admin' && !byId[k].deleted) admins++;
   return admins ? '' : 'חייב להישאר לפחות מנהל אחד במערכת';
+}
+
+/** השם הוא מה שמקלידים בכניסה, ולכן חייב להיות ייחודי וקיים —
+ *  שני משתמשים באותו שם היו חוסמים את הכניסה של אחד מהם. */
+function guardNames(upserts) {
+  var byId = {};
+  readUsers().forEach(function (u) { byId[String(u.id)] = normName(u.name); });
+  (upserts || []).forEach(function (u) {
+    if (u.deleted) delete byId[String(u.id)];
+    else byId[String(u.id)] = normName(u.name);
+  });
+  var seen = {};
+  for (var k in byId) {
+    var n = byId[k];
+    if (!n) return 'שם משתמש לא יכול להיות ריק';
+    if (seen[n]) return 'כבר קיים משתמש בשם "' + n + '"';
+    seen[n] = true;
+  }
+  return '';
 }
 
 function maskEmail(e) {

@@ -592,7 +592,7 @@ function users(){
     /* מיגרציה מגרסה קודמת ששמרה משתמשים בתוך ההגדרות */
     try{ const u=JSON.parse(DB.settings.users||'null'); if(Array.isArray(u)&&u.length) list=u; }catch(e){}
   }
-  if(!list.length) list=[{id:'u1', name:'דודי', code:'1234', role:'admin', email:''},
+  if(!list.length) list=[{id:'u1', name:'דוד', code:'1234', role:'admin', email:''},
                          {id:'u2', name:'בן/בת זוג', code:'5678', role:'user', email:''}];
   list.forEach(u=>{ if(u.role!=='admin' && u.role!=='user') u.role='user'; });
   /* אם לא נשאר אף מנהל — הראשון הופך למנהל, אחרת איש לא יוכל להיכנס להגדרות */
@@ -1801,7 +1801,9 @@ function renderSettings(){
     us.map(u=>{
       /* אסור להוריד או למחוק את המנהל האחרון — זה נועל את המערכת */
       const lockAdmin = u.role==='admin' && admins<=1;
-      return '<tr><td>'+esc(u.name)+'</td>'+
+      return '<tr>'+
+        '<td><input value="'+esc(u.name)+'" placeholder="שם לכניסה" style="min-width:130px" '+
+          'onchange="setUserField(\''+esc(u.id)+'\',\'name\',this.value)"></td>'+
         '<td><input type="email" dir="ltr" value="'+esc(u.email||'')+'" placeholder="name@gmail.com" '+
           'style="min-width:200px" onchange="setUserField(\''+esc(u.id)+'\',\'email\',this.value)"></td>'+
         '<td><input value="'+esc(u.code||'')+'" maxlength="4" inputmode="numeric" '+
@@ -1821,7 +1823,14 @@ function renderSettings(){
 }
 function setUserField(id, field, value){
   const u=DB.users.find(x=>x.id===id); if(!u) return;
-  value=String(value||'').trim();
+  value=String(value||'').replace(/\s+/g,' ').trim();
+  if(field==='name'){
+    if(!value){ toast('שם המשתמש לא יכול להיות ריק'); renderSettings(); return; }
+    /* השם הוא מה שמקלידים בכניסה — שני משתמשים באותו שם ימנעו כניסה מאחד מהם */
+    if(users().some(x=>x.id!==id && normName(x.name)===normName(value))){
+      toast('כבר קיים משתמש בשם הזה'); renderSettings(); return;
+    }
+  }
   if(field==='code' && !/^\d{4}$/.test(value)){ toast('קוד אישי חייב להיות 4 ספרות'); renderSettings(); return; }
   if(field==='email' && value && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)){
     toast('כתובת אימייל לא תקינה'); renderSettings(); return;
@@ -1832,9 +1841,15 @@ function setUserField(id, field, value){
   }
   u[field]=value;
   queueRow('users',u); saveLocal();
-  if(CU && CU.id===id && field==='role'){ CU.role=value; applyRole(); }  // שינוי עצמי חל מיד
+  /* שינוי על עצמך חל מיד — בלי זה השם או ההרשאה בראש המסך משקרים */
+  if(CU && CU.id===id){
+    if(field==='role') CU.role=value;
+    if(field==='name') CU.name=value;
+    applyRole();
+  }
   renderSettings();
-  toast(field==='email'?'האימייל נשמר':field==='code'?'הקוד האישי עודכן':'ההרשאה עודכנה');
+  toast(field==='email'?'האימייל נשמר':field==='code'?'הקוד האישי עודכן':
+        field==='name'?'השם עודכן — זה השם לכניסה מעכשיו':'ההרשאה עודכנה');
 }
 function saveApi(){
   const u=$('sApi').value.trim();
@@ -1856,6 +1871,7 @@ function addUser(){
   const name=$('nuName').value.trim(), code=$('nuCode').value.trim(),
         email=$('nuEmail').value.trim();
   if(!name || !/^\d{4}$/.test(code)){ toast('שם + קוד בן 4 ספרות'); return; }
+  if(users().some(x=>normName(x.name)===normName(name))){ toast('כבר קיים משתמש בשם הזה'); return; }
   if(email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ toast('כתובת אימייל לא תקינה'); return; }
   if(GS_URL && !email){ toast('חובה אימייל — הקוד החד-פעמי נשלח אליו'); return; }
   const u={id:uid('u'), name, code, email, role:$('nuRole').value, deleted:''};
