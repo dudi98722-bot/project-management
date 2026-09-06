@@ -129,6 +129,13 @@ var SHEETS = {
 function setup() {
   var ss = getSpreadsheet();
   ['tx', 'cats', 'stencils', 'rules', 'users', 'settings'].forEach(function (k) { getSheet(k); });
+
+  /* נגיעה ב-MailApp כדי שמסך ההרשאות יבקש גם את הרשאת שליחת המייל.
+     getRemainingDailyQuota דורש בדיוק את אותה הרשאה כמו sendEmail, אבל
+     לא שולח כלום — בלי הקריאה הזו הכניסה נכשלת ברגע שליחת הקוד. */
+  var quota = '?';
+  try { quota = MailApp.getRemainingDailyQuota(); }
+  catch (e) { quota = 'אין הרשאה — אשר את בקשת ההרשאות ונסה שוב'; }
   var us = readUsers();
   /* מדפיס גם את הערך המנורמל — זה מה שההשוואה בכניסה משתמשת בו.
      אם השם שמוצג נראה תקין אבל המנורמל שונה, יש בתא תו בלתי נראה. */
@@ -142,7 +149,8 @@ function setup() {
   });
   var msg = '✅ מחובר לגיליון: ' + ss.getName() +
             '\n\nכך מתחברים:\n' + rows.join('\n') +
-            '\n\nהקודים יישלחו מהמייל: ' + (ownerEmail() || 'לא זוהה');
+            '\n\nהקודים יישלחו מהמייל: ' + (ownerEmail() || 'לא זוהה') +
+            '\nמכסת מיילים שנותרה היום: ' + quota;
   Logger.log(msg);
   return msg;
 }
