@@ -591,8 +591,13 @@ function getSheet(key) {
       s.deleteColumns(cfg.headers.length + 1, s.getMaxColumns() - cfg.headers.length);
     }
     try { ss.setSpreadsheetLocale('iw_IL'); } catch (x) {}
+    /* הלשונית שגוגל יוצר כברירת מחדל נמחקת רק אם היא ריקה לגמרי.
+       הסקריפט יכול להצביע על גיליון קיים של המשתמש, ו"גיליון1" שם עלול
+       להכיל נתונים אמיתיים — מחיקה שלהם היא הרס בלתי הפיך, לא ניקוי. */
     var def = ss.getSheetByName('Sheet1') || ss.getSheetByName('גיליון1');
-    if (def && ss.getSheets().length > 1) { try { ss.deleteSheet(def); } catch (x) {} }
+    if (def && ss.getSheets().length > 1 && def.getLastRow() === 0 && def.getLastColumn() === 0) {
+      try { ss.deleteSheet(def); } catch (x) {}
+    }
   }
   return s;
 }
