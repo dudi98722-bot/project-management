@@ -52,8 +52,28 @@ var OTP_TRIES = 5;                            // ניסיונות לפני בי�
 var RL_MAX    = 5;                            // בקשות קוד מקסימום
 var RL_WINDOW = 15 * 60 * 1000;               //   בחלון של 15 דקות
 
+/* ------------------------------------------------------------
+   איזה גיליון משמש את המערכת
+   ------------------------------------------------------------
+   בדרך הרגילה הסקריפט נוצר מתוך הגיליון (בגיליון: תוספים ←
+   Apps Script), ואז getActiveSpreadsheet מוצא אותו לבד — השאר
+   את SHEET_ID ריק.
+
+   אם יצרת פרויקט עצמאי ב-script.google.com, אין לו "גיליון פעיל"
+   והוא ייכשל בשגיאת הרשאה. במקרה כזה הדבק כאן את מזהה הגיליון —
+   החלק הארוך מתוך הכתובת שלו:
+   docs.google.com/spreadsheets/d/<<<המזהה נמצא כאן>>>/edit
+   ------------------------------------------------------------ */
+var SHEET_ID = '';
+
 function getSpreadsheet() {
-  return SpreadsheetApp.getActiveSpreadsheet();
+  if (SHEET_ID) return SpreadsheetApp.openById(SHEET_ID);
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) {
+    throw new Error('הסקריפט אינו מחובר לגיליון. פתח את הגיליון ← תוספים ← ' +
+                    'Apps Script והדבק שם את הקוד, או מלא את SHEET_ID בראש הקובץ.');
+  }
+  return ss;
 }
 
 var SHEETS = {
@@ -135,6 +155,12 @@ function handle(e) {
       var count = 0;
       for (var i = 0; i < ops.length; i++) {
         var o = ops[i];
+        /* משתמש רגיל רשאי רק לסווג ולהזין: לכתוב תנועות, ולשמור כלל
+           שנלמד מהסיווג. כל שאר הכתיבות — מחיקות, קטגוריות, מקורות
+           והגדרות — נחסמות כאן ולא רק בהסתרת הלשוניות בממשק. */
+        if (me.role !== 'admin' && o.op !== 'upsertTx' && o.op !== 'upsertRule') {
+          return json({ status: 'error', message: 'הפעולה מותרת למנהל בלבד' });
+        }
         if (o.op === 'upsertTx')            { upsertMany('tx', o.rows || []);       count += (o.rows || []).length; }
         else if (o.op === 'delTx')          { markDeleted('tx', o.ids || []);       count += (o.ids || []).length; }
         else if (o.op === 'upsertCat')      { upsertMany('cats', o.rows || []);     count += (o.rows || []).length; }
@@ -149,6 +175,10 @@ function handle(e) {
           if (me.role !== 'admin') return json({ status: 'error', message: 'ניהול משתמשים מותר למנהל בלבד' });
           var guard = guardAdmins(o.rows || [], []) || guardNames(o.rows || []);
           if (guard) return json({ status: 'error', message: guard });
+          /* החלפת קוד אישי היא הצעד שמייל הקוד עצמו ממליץ עליו כשמישהו
+             מנסה להיכנס. בלי ביטול ההתחברויות הקיימות היא לא הייתה
+             מנתקת את מי שכבר נכנס. */
+          revokeOnCodeChange(o.rows || []);
           upsertMany('users', o.rows || []); count += (o.rows || []).length;
         }
         else if (o.op === 'delUser') {
@@ -272,9 +302,15 @@ function findUserByName(name) {
 }
 
 function requestCode(name, pin) {
+  /* נקודת הכניסה היחידה שאנונימי יכול לקרוא לה שוב ושוב, ולכן היא גם
+     היחידה שיכולה למלא את מאגר המאפיינים. מנקים כאן מדי פעם, ולא רק
+     בכניסה מוצלחת — תוקף לעולם לא מצליח, ובלי זה הוא היה מצטבר לנצח. */
+  if (Math.random() < 0.1) cleanupExpired();
+
   /* הגבלת קצב לפי השם שהוקלד, ולפני בדיקת קיומו — אחרת אפשר היה
-     להבדיל בין שם קיים לשם שאינו קיים לפי עצם קיום ההגבלה. */
-  var rlKey = 'rl_' + normName(name);
+     להבדיל בין שם קיים לשם שאינו קיים לפי עצם קיום ההגבלה.
+     המפתח נחתך באורך כדי ששם ארוך לא ינפח את המאגר. */
+  var rlKey = 'rl_' + normName(name).substring(0, 60);
   var rl = {};
   try { rl = JSON.parse(props().getProperty(rlKey) || '{}'); } catch (x) {}
   if (!rl.since || (Date.now() - rl.since) > RL_WINDOW) rl = { since: Date.now(), n: 0 };
@@ -282,11 +318,18 @@ function requestCode(name, pin) {
     return { status: 'error', message: 'יותר מדי ניסיונות. נסה שוב בעוד רבע שעה.' };
   }
   rl.n++;
+  rl.exp = Date.now() + RL_WINDOW;       /* כדי ש-cleanupExpired ידע למחוק */
   props().setProperty(rlKey, JSON.stringify(rl));
+
+  /* קוד ריק או לא תקין נדחה כאן — אחרת שורת משתמש עם קוד ריק בגיליון
+     הייתה נפתחת לכל אנונימי ששולח pin ריק. */
+  if (!/^\d{4}$/.test(String(pin == null ? '' : pin))) return { status: 'error', message: BAD_CREDS };
 
   var u = findUserByName(name);
   /* אותה הודעה לשם לא קיים ולקוד שגוי — בלי לרמוז מי רשום */
-  if (!u || String(u.code) !== String(pin)) return { status: 'error', message: BAD_CREDS };
+  if (!u || !/^\d{4}$/.test(String(u.code)) || String(u.code) !== String(pin)) {
+    return { status: 'error', message: BAD_CREDS };
+  }
 
   if (!u.email && u.role === 'admin') {
     /* מנהל בלי מייל — נשאב מחשבון הגוגל שמריץ את הסקריפט ונשמר.
@@ -364,6 +407,25 @@ function verifyCode(ref, otp) {
            user: { id: u.id, name: u.name, role: u.role, email: u.email } };
 }
 
+/** ביטול כל ההתחברויות של משתמש — נקרא כשהקוד האישי שלו מוחלף. */
+function revokeSessions(userId) {
+  var all = props().getProperties();
+  for (var k in all) {
+    if (k.indexOf('sess_') !== 0) continue;
+    try {
+      if (String(JSON.parse(all[k]).u) === String(userId)) props().deleteProperty(k);
+    } catch (x) {}
+  }
+}
+function revokeOnCodeChange(rows) {
+  var before = {};
+  readUsers().forEach(function (u) { before[String(u.id)] = String(u.code); });
+  (rows || []).forEach(function (u) {
+    var old = before[String(u.id)];
+    if (old !== undefined && String(u.code) !== old) revokeSessions(u.id);
+  });
+}
+
 function authUser(token) {
   if (!token) return null;
   var raw = props().getProperty('sess_' + token);
@@ -379,10 +441,11 @@ function cleanupExpired() {
   var all = props().getProperties();
   var now = Date.now();
   for (var k in all) {
-    if (k.indexOf('sess_') !== 0 && k.indexOf('chal_') !== 0) continue;
+    if (k.indexOf('sess_') !== 0 && k.indexOf('chal_') !== 0 && k.indexOf('rl_') !== 0) continue;
     try {
       var v = JSON.parse(all[k]);
-      if (v.exp && now > v.exp) props().deleteProperty(k);
+      var exp = v.exp || (v.since ? v.since + RL_WINDOW : 0);
+      if (!exp || now > exp) props().deleteProperty(k);
     } catch (x) { props().deleteProperty(k); }
   }
 }
@@ -423,6 +486,7 @@ function getSheet(key) {
  *  המנהל מקבל אימייל מלא כדי שיוכל לערוך; משתמש רגיל מקבל שם בלבד. */
 function loadAll(me) {
   var out = {
+    status: 'ok',          /* הלקוח דוחה כל תשובה בלי status — בלי זה כל טעינה נכשלת */
     tx: readAll('tx'),
     cats: readAll('cats'),
     stencils: readAll('stencils'),

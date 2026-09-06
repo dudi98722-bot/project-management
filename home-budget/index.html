@@ -600,7 +600,8 @@ function users(){
   return list;
 }
 function isAdmin(){ return !!CU && CU.role==='admin'; }
-function allowedTabs(){ return ROLES[(CU && CU.role) || 'user'].tabs; }
+/* תפקיד לא מוכר נופל להרשאה המצומצמת ולא מפיל את הדף */
+function allowedTabs(){ return (ROLES[(CU && CU.role)] || ROLES.user).tabs; }
 function applyRole(){
   const allow=allowedTabs();
   document.querySelectorAll('#nav button').forEach(b=>{
@@ -784,9 +785,13 @@ async function submitOtp(){
   if(!challenge || loginBusy) return;
   const otp=$('otpCode').value.trim();
   if(!/^\d{6}$/.test(otp)){ $('otpErr').textContent='קוד בן 6 ספרות'; return; }
+  const myRef=challenge.ref;
   loginBusy=true; $('otpBtn').textContent='בודק...'; $('otpErr').textContent='';
   try{
-    const j=await apiRaw({action:'verifyCode', ref:challenge.ref, otp});
+    const j=await apiRaw({action:'verifyCode', ref:myRef, otp});
+    /* "התחל מחדש" באמצע הבדיקה מבטל את הכניסה — בלי זה היא הייתה
+       מושלמת אחרי שהמשתמש כבר ביטל אותה */
+    if(!challenge || challenge.ref!==myRef) return;
     if(j.status!=='ok'){ $('otpErr').textContent=j.message||'קוד שגוי'; $('otpCode').value=''; return; }
     finishLogin(j.user, j.token);
   }catch(e){
@@ -807,12 +812,14 @@ function startResendCooldown(){
   b.textContent='שלח קוד שוב (60)';
 }
 async function resendCode(){
-  if(!challenge){ backToCred(); return; }
+  if(!challenge || loginBusy) { if(!challenge) backToCred(); return; }
+  loginBusy=true;
   try{
     const j=await apiRaw({action:'requestCode', name:challenge.name, pin:challenge.pin});
-    if(j.status==='ok'){ challenge.ref=j.ref; startResendCooldown(); toast('קוד חדש נשלח'); }
+    if(j.status==='ok'){ if(challenge) challenge.ref=j.ref; startResendCooldown(); toast('קוד חדש נשלח'); }
     else $('otpErr').textContent=j.message||'שגיאה';
   }catch(e){ $('otpErr').textContent='אין תקשורת עם השרת'; }
+  finally{ loginBusy=false; }
 }
 
 function finishLogin(user, token){
@@ -1487,6 +1494,7 @@ function openMapper(){
   $('mType').value    = st? (st.type||'bank') : 'bank';
   $('mPayment').value = st? (st.payment||'') : '';
   $('mName').value    = st? st.name : '';
+  $('mapGrid').innerHTML='';       /* קובץ או מקור חדש — מתחילים מיפוי מאפס */
   renderMapGrid();
   renderMapPreview();
   $('mapCard').scrollIntoView({behavior:'smooth', block:'start'});
@@ -1505,7 +1513,11 @@ const FIELD_OPTS=[
 ];
 function renderMapGrid(){
   const cols=Math.max(...curGrid.slice(0,20).map(r=>r.length));
-  const saved = curStencil ? safeJson(curStencil.map) : autoGuessMap(cols);
+  /* אחרי הרינדור הראשון, מקור האמת הוא מה שהמשתמש בחר בפועל. בלי זה
+     כל שינוי ידני של עמודה נדרס מיד — onchange קורא ל-renderMapPreview
+     שמצייר מחדש מהניחוש האוטומטי, והבחירה נעלמת. */
+  const existing = $('col-0') ? readMap() : null;
+  const saved = existing || (curStencil ? safeJson(curStencil.map) : autoGuessMap(cols));
   let h='<table><thead><tr>';
   for(let c=0;c<cols;c++){
     const sel=Object.keys(saved).find(k=>saved[k]===c)||'';
