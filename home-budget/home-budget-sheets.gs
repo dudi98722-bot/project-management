@@ -48,7 +48,21 @@
 var APP_NAME  = 'ניהול הוצאות בית';
 /* חותם גרסה. מוחזר ב-authmeta, וכך אפשר לדעת מבחוץ איזו גרסת קוד
    באמת פרוסה — העורך והפריסה יכולים להחזיק קוד שונה לגמרי. */
-var SCRIPT_VERSION = '2026-09-06-h';
+var SCRIPT_VERSION = '2026-09-06-i';
+
+/* ------------------------------------------------------------
+   אימות דו-שלבי במייל
+   ------------------------------------------------------------
+   true  = כניסה בשם + קוד אישי + קוד חד-פעמי למייל (מומלץ)
+   false = כניסה בשם + קוד אישי בלבד, בלי מייל
+
+   כרגע כבוי כדי לעקוף את בעיית הרשאת המייל. גם כשהוא כבוי, כל
+   גישה לנתונים עדיין מחייבת טוקן שמתקבל רק אחרי אימות מוצלח —
+   מה שנופל הוא הגורם השני בלבד, לא ההגנה על הנתונים.
+
+   להחזרה: החלף ל-true, שמור, ופרוס גרסה חדשה.
+   ------------------------------------------------------------ */
+var REQUIRE_EMAIL_CODE = false;
 var OTP_TTL   = 10 * 60 * 1000;               // תוקף קוד המייל: 10 דקות
 var SESS_TTL  = 30 * 24 * 60 * 60 * 1000;     // תוקף התחברות: 30 יום
 var OTP_TRIES = 5;                            // ניסיונות לפני ביטול הקוד
@@ -417,6 +431,17 @@ function requestCode(name, pin) {
     return { status: 'error', message: BAD_CREDS };
   }
 
+  /* אימות המייל כבוי — השם והקוד אומתו, מנפיקים טוקן מיד.
+     נמצא כאן, לפני בדיקת המייל, כדי שגם משתמש בלי מייל יוכל להיכנס. */
+  if (!REQUIRE_EMAIL_CODE) {
+    props().deleteProperty(rlKey);
+    var tok = newToken();
+    props().setProperty('sess_' + tok, JSON.stringify({ u: u.id, exp: Date.now() + SESS_TTL }));
+    cleanupExpired();
+    return { status: 'ok', skipOtp: true, token: tok,
+             user: { id: u.id, name: u.name, role: u.role, email: u.email } };
+  }
+
   if (!u.email && u.role === 'admin') {
     /* מנהל בלי מייל — נשאב מחשבון הגוגל שמריץ את הסקריפט ונשמר.
        פותר את הביצה והתרנגולת של הכניסה הראשונה. */
@@ -486,11 +511,15 @@ function verifyCode(ref, otp) {
   if (o.n) props().deleteProperty('rl_' + o.n);
   var u = findUser(o.u);
   if (!u) return { status: 'error', message: 'המשתמש הוסר מהמערכת' };
-  var token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
+  var token = newToken();
   props().setProperty('sess_' + token, JSON.stringify({ u: o.u, exp: Date.now() + SESS_TTL }));
   cleanupExpired();
   return { status: 'ok', token: token,
            user: { id: u.id, name: u.name, role: u.role, email: u.email } };
+}
+
+function newToken() {
+  return Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
 }
 
 /** ביטול כל ההתחברויות של משתמש — נקרא כשהקוד האישי שלו מוחלף. */

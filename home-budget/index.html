@@ -787,6 +787,8 @@ async function submitPin(){
   try{
     const j=await apiRaw({action:'requestCode', name, pin});
     if(j.status!=='ok'){ $('loginErr').textContent=j.message||BAD_CREDS; $('loginCode').value=''; return; }
+    /* השרת יכול להיות מוגדר בלי אימות מייל — אז הוא מחזיר טוקן מיד */
+    if(j.skipOtp && j.token){ finishLogin(j.user, j.token); return; }
     challenge={ref:j.ref, name, pin};
     showStep('otpStep');
     $('otpSentTo').innerHTML='קוד בן 6 ספרות נשלח אל<br><b>'+esc(j.to)+'</b>';
