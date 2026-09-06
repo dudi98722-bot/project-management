@@ -138,7 +138,7 @@ tbody tr:hover{background:#f8fafc}
 
 <header>
   <h1 id="appTitle">ניהול הוצאות בית</h1>
-  <div id="userChip" onclick="logout()" title="החלפת משתמש"></div>
+  <div id="userChip" onclick="logout()" title="התנתקות מהמכשיר"></div>
   <div id="syncChip">מקומי</div>
   <nav id="nav">
     <button data-tab="dash" class="on">📊 דשבורד</button>
@@ -218,6 +218,23 @@ tbody tr:hover{background:#f8fafc}
       <div class="fix"><button class="btn sec sm" onclick="exportTx()">📤 ייצוא</button></div>
     </div>
     <div id="txSummary" style="font-size:13px;color:var(--dim);margin-bottom:8px"></div>
+    <div id="bulkBar" style="display:none;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:10px 12px;margin-bottom:10px">
+      <div class="row">
+        <div class="fix"><b id="bulkCount"></b></div>
+        <div class="fix" style="min-width:170px"><select id="bulkCat"><option value="">קטגוריה...</option></select></div>
+        <div class="fix"><button class="btn sm" onclick="bulkApply('category')">החל קטגוריה</button></div>
+        <div class="fix" style="min-width:150px"><select id="bulkStatus">
+          <option value="">סטטוס...</option>
+          <option value="ok">מסווג</option><option value="pending">ממתין לסיווג</option>
+          <option value="review">לבדיקה</option><option value="irrelevant">לא רלוונטי</option>
+        </select></div>
+        <div class="fix"><button class="btn sm" onclick="bulkApply('status')">החל סטטוס</button></div>
+        <div class="fix"><input type="number" id="bulkDays" placeholder="± ימים" style="width:88px;text-align:center"></div>
+        <div class="fix"><button class="btn sec sm" onclick="bulkApply('shift')">הזז תאריך</button></div>
+        <div class="fix"><button class="btn danger sm" onclick="bulkDelete()">🗑️ מחק נבחרות</button></div>
+        <div class="fix"><button class="btn ghost sm" onclick="clearSel()">בטל בחירה</button></div>
+      </div>
+    </div>
     <div class="table-wrap"><table id="txTable"></table></div>
   </div>
 </section>
@@ -357,9 +374,11 @@ tbody tr:hover{background:#f8fafc}
       <b>משתמש רגיל</b> — יכול לסווג נתונים, להזין תנועות חדשות ולצפות בדשבורד בלבד.
       אינו רואה ייבוא, מקורות, קטגוריות, רשימת התנועות או ניהול משתמשים.
     </p>
+    <p id="usersHint" style="color:var(--warn);font-size:12.5px;margin:0 0 12px"></p>
     <div class="table-wrap"><table id="usersTable"></table></div>
     <div class="row" style="margin-top:12px">
-      <div><input id="nuName" placeholder="שם"></div>
+      <div style="min-width:120px"><input id="nuName" placeholder="שם"></div>
+      <div style="min-width:180px"><input id="nuEmail" type="email" dir="ltr" placeholder="אימייל"></div>
       <div class="fix" style="min-width:120px"><input id="nuCode" placeholder="קוד 4 ספרות" maxlength="4" inputmode="numeric"></div>
       <div class="fix" style="min-width:190px"><select id="nuRole">
         <option value="user">משתמש רגיל</option>
@@ -383,14 +402,31 @@ tbody tr:hover{background:#f8fafc}
   <div class="lcard">
     <div style="font-size:40px">🏠</div>
     <h2 style="margin:8px 0 2px;font-size:20px" id="loginTitle">ניהול הוצאות בית</h2>
-    <p style="color:var(--dim);font-size:13px;margin:0">בחר משתמש והקש קוד</p>
+    <p style="color:var(--dim);font-size:13px;margin:0" id="loginHint">בחר משתמש</p>
     <div id="userPick"></div>
+
     <div id="codeStep" style="display:none">
+      <div style="font-size:13px;color:var(--dim);margin-bottom:6px" id="pinFor"></div>
       <input type="password" id="loginCode" inputmode="numeric" maxlength="4" placeholder="••••"
-             onkeydown="if(event.key==='Enter')tryLogin()">
+             onkeydown="if(event.key==='Enter')submitPin()">
       <div id="loginErr" style="color:var(--bad);min-height:20px;font-size:13px;margin-top:6px"></div>
-      <button class="btn" style="width:100%" onclick="tryLogin()">כניסה</button>
+      <button class="btn" style="width:100%" id="pinBtn" onclick="submitPin()">המשך</button>
       <button class="btn ghost sm" style="width:100%;margin-top:8px" onclick="backToUsers()">חזרה</button>
+    </div>
+
+    <div id="otpStep" style="display:none">
+      <div style="font-size:34px;margin-bottom:2px">📬</div>
+      <div style="font-size:13.5px;color:var(--dim);line-height:1.6;margin-bottom:10px" id="otpSentTo"></div>
+      <input type="text" id="otpCode" inputmode="numeric" maxlength="6" placeholder="——————"
+             style="font-size:24px;text-align:center;letter-spacing:8px;direction:ltr"
+             onkeydown="if(event.key==='Enter')submitOtp()">
+      <div id="otpErr" style="color:var(--bad);min-height:20px;font-size:13px;margin-top:6px"></div>
+      <button class="btn" style="width:100%" id="otpBtn" onclick="submitOtp()">כניסה</button>
+      <button class="btn ghost sm" style="width:100%;margin-top:8px" id="resendBtn"
+              onclick="resendCode()">שלח קוד שוב</button>
+      <button class="btn ghost sm" style="width:100%;margin-top:6px" onclick="backToUsers()">התחל מחדש</button>
+      <p style="font-size:11.5px;color:var(--dim);margin:12px 0 0;line-height:1.6">
+        הקוד תקף ל-10 דקות. לאחר הכניסה המכשיר הזה יישאר מחובר 30 יום.</p>
     </div>
   </div>
 </div>
@@ -404,7 +440,7 @@ tbody tr:hover{background:#f8fafc}
    הנתונים נשמרים מקומית ומסונכרנים ל-Google Sheets.
    ============================================================ */
 
-const LS = 'hb_db_v1', LSU = 'hb_user';
+const LS = 'hb_db_v1', LSU = 'hb_user', LST = 'hb_token';
 const STATUS_LBL = {ok:'מסווג', pending:'ממתין לסיווג', review:'לבדיקה', irrelevant:'לא רלוונטי'};
 
 const DEFAULT_CATS = [
@@ -425,10 +461,13 @@ const DEFAULT_CATS = [
 const CREDIT_RE = /(כרטיס(?:י)?\s*אשראי|ישראכרט|ישרא-?כרט|כאל|לאומי\s*קארד|מקס\s*איט|מאסטרקארד|אמריקן\s*אקספרס|דיינרס|visa|cal\b|max\b)/i;
 const TRANSFER_RE = /(העברה\s*עצמית|העברה\s*בין\s*חשבונות|העברה\s*לחשבון\s*אחר)/i;
 
-let DB = {tx:[], cats:[], stencils:[], rules:[], settings:{}};
+let DB = {tx:[], cats:[], stencils:[], rules:[], users:[], settings:{}};
 let CU = null;
 let GS_URL = '';
-let pending = {tx:{}, cats:{}, stencils:{}, rules:{}, settings:{}, del:{tx:[],cats:[],stencils:[],rules:[]}};
+let TOKEN = '';
+const emptyPending = () => ({tx:{}, cats:{}, stencils:{}, rules:{}, users:{}, settings:{},
+                             del:{tx:[],cats:[],stencils:[],rules:[],users:[]}});
+let pending = emptyPending();
 let flushTimer = null, flushing = false;
 
 /* ---------------- עזרים ---------------- */
@@ -476,8 +515,7 @@ function thisMonth(){
 /** המרת ערך מהקובץ לתאריך YYYY-MM-DD. מחזיר '' אם אין תאריך תקין. */
 function parseDate(v, fmtMode){
   if(v==null || v==='') return '';
-  if(v instanceof Date && !isNaN(v))
-    return v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+String(v.getDate()).padStart(2,'0');
+  if(v instanceof Date && !isNaN(v)) return dateObjToISO(v);
   if(typeof v==='number' && v>20000 && v<80000){          // תאריך סריאלי של אקסל
     const d=new Date(Math.round((v-25569)*86400*1000));
     return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');
@@ -507,6 +545,10 @@ function loadLocal(){
   try{ const r=localStorage.getItem(LS); if(r) DB=Object.assign(DB, JSON.parse(r)); }catch(e){}
   if(!DB.cats || !DB.cats.length) seedCats();
   if(!DB.settings) DB.settings={};
+  /* המשתמשים חיים בלשונית משלהם. בהרצה ראשונה מממשים את ברירת המחדל
+     לרשומות אמיתיות, כדי שיהיה מה לערוך ולסנכרן. */
+  if(!DB.users || !DB.users.length)
+    DB.users = users().map(u=>Object.assign({email:'', deleted:''}, u));
   GS_URL = DB.settings.apiUrl || '';
 }
 function seedCats(){
@@ -525,10 +567,13 @@ const ROLES = {
            tabs:['dash','classify','add','settings'] }
 };
 function users(){
-  let list=null;
-  try{ const u=JSON.parse(DB.settings.users||'null'); if(Array.isArray(u)&&u.length) list=u; }catch(e){}
-  if(!list) list=[{id:'u1', name:'דודי', code:'1234', role:'admin'},
-                  {id:'u2', name:'בן/בת זוג', code:'5678', role:'user'}];
+  let list = (DB.users||[]).filter(u=>!u.deleted);
+  if(!list.length){
+    /* מיגרציה מגרסה קודמת ששמרה משתמשים בתוך ההגדרות */
+    try{ const u=JSON.parse(DB.settings.users||'null'); if(Array.isArray(u)&&u.length) list=u; }catch(e){}
+  }
+  if(!list.length) list=[{id:'u1', name:'דודי', code:'1234', role:'admin', email:''},
+                         {id:'u2', name:'בן/בת זוג', code:'5678', role:'user', email:''}];
   list.forEach(u=>{ if(u.role!=='admin' && u.role!=='user') u.role='user'; });
   /* אם לא נשאר אף מנהל — הראשון הופך למנהל, אחרת איש לא יוכל להיכנס להגדרות */
   if(!list.some(u=>u.role==='admin')) list[0].role='admin';
@@ -553,19 +598,31 @@ function schedFlush(){
   clearTimeout(flushTimer); flushTimer=setTimeout(flush, 1200);
 }
 function hasPending(){
-  return Object.keys(pending.tx).length || Object.keys(pending.cats).length ||
-         Object.keys(pending.stencils).length || Object.keys(pending.rules).length ||
-         Object.keys(pending.settings).length ||
-         pending.del.tx.length || pending.del.cats.length ||
-         pending.del.stencils.length || pending.del.rules.length;
+  return ['tx','cats','stencils','rules','users','settings'].some(k=>Object.keys(pending[k]).length) ||
+         ['tx','cats','stencils','rules','users'].some(k=>pending.del[k].length);
+}
+/** כל פנייה לשרת היא POST עם הטוקן בגוף הבקשה ולא בכתובת —
+ *  כתובות נשמרות בהיסטוריה ובלוגים, גוף הבקשה לא. */
+function apiRaw(payload){
+  return fetch(GS_URL, {method:'POST', body: JSON.stringify(payload)}).then(r=>r.json());
 }
 function apiPost(payload){
-  return fetch(GS_URL, {method:'POST', body: JSON.stringify(payload)})
-    .then(r=>r.json())
-    .then(j=>{ if(!j || j.status!=='ok') throw new Error((j&&j.message)||'שגיאת שרת'); return j; });
+  return apiRaw(Object.assign({token:TOKEN}, payload)).then(j=>{
+    if(j && j.status==='unauthorized'){ sessionExpired(); throw new Error('unauthorized'); }
+    if(!j || j.status!=='ok') throw new Error((j&&j.message)||'שגיאת שרת');
+    return j;
+  });
+}
+/** התחברות פגה או בוטלה — חוזרים למסך הכניסה בלי לאבד נתונים מקומיים */
+function sessionExpired(){
+  TOKEN=''; CU=null;
+  try{ localStorage.removeItem(LST); localStorage.removeItem(LSU); }catch(e){}
+  setSync('err','ההתחברות פגה');
+  showLogin();
+  toast('ההתחברות פגה — יש להתחבר מחדש');
 }
 async function flush(){
-  if(!GS_URL || flushing) return;
+  if(!GS_URL || !TOKEN || flushing) return;
   if(!hasPending()){ setSync('on','מסונכרן'); return; }
   flushing=true; setSync('saving','שומר בענן...');
   try{
@@ -573,72 +630,177 @@ async function flush(){
     const pack=(kind,op)=>{
       const ids=Object.keys(pending[kind]);
       if(!ids.length) return;
-      const rows=ids.map(id=>DB[kind].find(x=>x.id===id)).filter(Boolean);
+      const rows=ids.map(id=>(DB[kind]||[]).find(x=>x.id===id)).filter(Boolean);
       if(rows.length) ops.push({op, rows});
     };
     pack('tx','upsertTx'); pack('cats','upsertCat');
-    pack('stencils','upsertStencil'); pack('rules','upsertRule');
+    pack('stencils','upsertStencil'); pack('rules','upsertRule'); pack('users','upsertUser');
     if(pending.del.tx.length)       ops.push({op:'delTx',       ids:pending.del.tx});
     if(pending.del.cats.length)     ops.push({op:'delCat',      ids:pending.del.cats});
     if(pending.del.stencils.length) ops.push({op:'delStencil',  ids:pending.del.stencils});
     if(pending.del.rules.length)    ops.push({op:'delRule',     ids:pending.del.rules});
+    if(pending.del.users.length)    ops.push({op:'delUser',     ids:pending.del.users});
     Object.keys(pending.settings).forEach(k=>
       ops.push({op:'setSetting', key:k, value:String(DB.settings[k]==null?'':DB.settings[k])}));
     if(ops.length) await apiPost({action:'batch', ops});
-    pending={tx:{},cats:{},stencils:{},rules:{},settings:{},del:{tx:[],cats:[],stencils:[],rules:[]}};
+    pending=emptyPending();
     saveLocal(); setSync('on','מסונכרן ✓');
   }catch(e){
-    setSync('err','שגיאת סנכרון — יישמר שוב');
-    clearTimeout(flushTimer); flushTimer=setTimeout(flush, 15000);
+    if(String(e.message)!=='unauthorized'){
+      setSync('err','שגיאת סנכרון — יישמר שוב');
+      clearTimeout(flushTimer); flushTimer=setTimeout(flush, 15000);
+    }
   }finally{ flushing=false; }
 }
 async function syncNow(){
   if(!GS_URL){ toast('לא מחובר — הדבק כתובת /exec בהגדרות'); return; }
+  if(!TOKEN){ showLogin(); return; }
   setSync('saving','טוען מהענן...');
   try{
     await flush();
-    const j = await fetch(GS_URL+'?action=load').then(r=>r.json());
+    const j = await apiPost({action:'load'});
     if(j && j.tx){
       DB.tx=j.tx; DB.cats=j.cats&&j.cats.length?j.cats:DB.cats;
-      DB.stencils=j.stencils||[]; DB.rules=j.rules||[];
+      DB.stencils=j.stencils||[]; DB.rules=j.rules||[]; DB.users=j.users||[];
       DB.settings=Object.assign({}, j.settings||{}, {apiUrl:GS_URL});
+      if(j.me && CU){ CU.role=j.me.role; CU.name=j.me.name; }   // ההרשאה נקבעת בשרת
       saveLocal(); renderAll(); setSync('on','מסונכרן ✓'); toast('הנתונים נטענו מהענן');
     }
-  }catch(e){ setSync('err','שגיאה בטעינה'); toast('לא הצלחתי לטעון — בדוק את הכתובת'); }
+  }catch(e){
+    if(String(e.message)!=='unauthorized'){
+      setSync('err','שגיאה בטעינה'); toast('לא הצלחתי לטעון — בדוק את הכתובת');
+    }
+  }
 }
 
 /* ---------------- כניסה ---------------- */
-let pickedUser=null;
-function showLogin(){
-  const box=$('userPick');
-  box.innerHTML = users().map(u=>
-    '<button onclick="pickUser(\''+esc(u.id)+'\')">'+esc(u.name)+'</button>').join('');
-  $('codeStep').style.display='none'; box.style.display='flex';
-  $('loginOverlay').style.display='flex';
+/* ------------------------------------------------------------
+   כניסה בשני שלבים: קוד אישי, ואז קוד חד-פעמי שנשלח למייל.
+   כשהמערכת מחוברת לגיליון שני השלבים נבדקים בשרת — הדפדפן לא
+   מחזיק את הקוד האישי ולא יכול לאשר כניסה בעצמו.
+   כשאין חיבור לגיליון אין למי לשלוח מייל ואין נתונים בענן,
+   ולכן נשארת כניסה מקומית עם קוד אישי בלבד.
+   ------------------------------------------------------------ */
+let pickedUser=null, loginBusy=false, resendTimer=null;
+
+function showStep(which){
+  ['userPick','codeStep','otpStep'].forEach(s=>{
+    $(s).style.display = (s===which) ? (s==='userPick'?'flex':'block') : 'none';
+  });
+  $('loginHint').textContent = which==='userPick' ? 'בחר משתמש'
+                             : which==='codeStep' ? 'הקש את הקוד האישי שלך'
+                             : 'הקש את הקוד שנשלח אליך';
 }
-function pickUser(id){
-  pickedUser = users().find(u=>u.id===id);
-  $('userPick').style.display='none';
-  $('codeStep').style.display='block';
+async function showLogin(){
+  $('loginOverlay').style.display='flex';
+  showStep('userPick');
+  $('userPick').innerHTML='<div style="color:var(--dim);font-size:13px;padding:8px">טוען...</div>';
+  let list=users();
+  if(GS_URL){
+    /* השמות מגיעים מהשרת — כך שגם מכשיר חדש יראה את המשתמשים
+       הנכונים, בלי שהקודים או המיילים ייצאו החוצה */
+    try{
+      const j=await apiRaw({action:'authmeta'});
+      if(j && j.status==='ok' && j.users && j.users.length) list=j.users;
+    }catch(e){}
+  }
+  $('userPick').innerHTML = list.map(u=>
+    '<button onclick="pickUser(\''+esc(u.id)+'\',\''+esc(u.name)+'\')">'+esc(u.name)+'</button>').join('');
+}
+function pickUser(id, name){
+  pickedUser = {id, name: name || (users().find(u=>u.id===id)||{}).name || ''};
+  showStep('codeStep');
+  $('pinFor').textContent = pickedUser.name;
   $('loginCode').value=''; $('loginErr').textContent='';
   setTimeout(()=>$('loginCode').focus(), 60);
 }
-function backToUsers(){ $('codeStep').style.display='none'; $('userPick').style.display='flex'; }
-function tryLogin(){
-  if(!pickedUser) return;
-  if($('loginCode').value === String(pickedUser.code)){
-    CU = pickedUser;
-    try{ localStorage.setItem(LSU, CU.id); }catch(e){}
-    $('loginOverlay').style.display='none';
-    $('userChip').style.display='block';
-    renderAll();
-    if(GS_URL) syncNow();
-  } else {
-    $('loginErr').textContent='קוד שגוי';
-    $('loginCode').value='';
-  }
+function backToUsers(){
+  clearInterval(resendTimer); pickedUser=null; showLogin();
 }
-function logout(){ try{ localStorage.removeItem(LSU); }catch(e){} CU=null; showLogin(); }
+
+async function submitPin(){
+  if(!pickedUser || loginBusy) return;
+  const pin=$('loginCode').value.trim();
+  if(!/^\d{4}$/.test(pin)){ $('loginErr').textContent='קוד בן 4 ספרות'; return; }
+
+  /* לא מחובר לגיליון — אין מייל ואין נתונים בענן, כניסה מקומית */
+  if(!GS_URL){
+    const u=users().find(x=>x.id===pickedUser.id);
+    if(u && String(u.code)===pin){ finishLogin(u, ''); }
+    else { $('loginErr').textContent='קוד שגוי'; $('loginCode').value=''; }
+    return;
+  }
+
+  loginBusy=true; $('pinBtn').textContent='שולח קוד...'; $('loginErr').textContent='';
+  try{
+    const j=await apiRaw({action:'requestCode', userId:pickedUser.id, pin});
+    if(j.status!=='ok'){ $('loginErr').textContent=j.message||'שגיאה'; $('loginCode').value=''; return; }
+    showStep('otpStep');
+    $('otpSentTo').innerHTML='קוד בן 6 ספרות נשלח אל<br><b>'+esc(j.to)+'</b>';
+    $('otpCode').value=''; $('otpErr').textContent='';
+    startResendCooldown();
+    setTimeout(()=>$('otpCode').focus(), 60);
+  }catch(e){
+    $('loginErr').textContent='אין תקשורת עם השרת';
+  }finally{ loginBusy=false; $('pinBtn').textContent='המשך'; }
+}
+
+async function submitOtp(){
+  if(!pickedUser || loginBusy) return;
+  const otp=$('otpCode').value.trim();
+  if(!/^\d{6}$/.test(otp)){ $('otpErr').textContent='קוד בן 6 ספרות'; return; }
+  loginBusy=true; $('otpBtn').textContent='בודק...'; $('otpErr').textContent='';
+  try{
+    const j=await apiRaw({action:'verifyCode', userId:pickedUser.id, otp});
+    if(j.status!=='ok'){ $('otpErr').textContent=j.message||'קוד שגוי'; $('otpCode').value=''; return; }
+    finishLogin(j.user, j.token);
+  }catch(e){
+    $('otpErr').textContent='אין תקשורת עם השרת';
+  }finally{ loginBusy=false; $('otpBtn').textContent='כניסה'; }
+}
+
+function startResendCooldown(){
+  let left=60;
+  const b=$('resendBtn');
+  b.disabled=true; b.style.opacity='.5';
+  clearInterval(resendTimer);
+  resendTimer=setInterval(()=>{
+    left--;
+    b.textContent = left>0 ? ('שלח קוד שוב ('+left+')') : 'שלח קוד שוב';
+    if(left<=0){ clearInterval(resendTimer); b.disabled=false; b.style.opacity='1'; }
+  }, 1000);
+  b.textContent='שלח קוד שוב (60)';
+}
+async function resendCode(){
+  const pin=$('loginCode').value.trim();
+  if(!pin){ backToUsers(); return; }
+  const j=await apiRaw({action:'requestCode', userId:pickedUser.id, pin});
+  if(j.status==='ok'){ startResendCooldown(); toast('קוד חדש נשלח'); }
+  else $('otpErr').textContent=j.message||'שגיאה';
+}
+
+function finishLogin(user, token){
+  clearInterval(resendTimer);
+  CU = {id:user.id, name:user.name, role:user.role, email:user.email||''};
+  TOKEN = token || '';
+  try{
+    localStorage.setItem(LSU, CU.id);
+    if(TOKEN) localStorage.setItem(LST, TOKEN);
+  }catch(e){}
+  $('loginOverlay').style.display='none';
+  $('userChip').style.display='block';
+  $('loginCode').value=''; $('otpCode').value='';
+  renderAll();
+  if(GS_URL && TOKEN) syncNow();
+}
+
+async function logout(){
+  if(!confirm('להתנתק מהמכשיר הזה? בכניסה הבאה יישלח קוד חדש למייל.')) return;
+  if(GS_URL && TOKEN){ try{ await apiRaw({action:'logout', token:TOKEN}); }catch(e){} }
+  TOKEN=''; CU=null;
+  try{ localStorage.removeItem(LSU); localStorage.removeItem(LST); }catch(e){}
+  showLogin();
+}
 
 /* ---------------- ניווט ---------------- */
 document.querySelectorAll('#nav button').forEach(b=>{
@@ -960,11 +1122,14 @@ function updateBadge(){
 }
 
 /* ---------------- תנועות ---------------- */
+let selTx=new Set(), lastFiltered=[];
 function renderTx(){
   fillMonthSelect($('txMonth'), true);
   const curC=$('txCat').value, curS=$('txSrc').value;
   $('txCat').innerHTML='<option value="">כל הקטגוריות</option>'+
     DB.cats.filter(c=>!c.deleted).map(c=>'<option>'+esc(c.name)+'</option>').join('');
+  $('bulkCat').innerHTML='<option value="">קטגוריה...</option>'+
+    DB.cats.filter(c=>!c.deleted).map(c=>'<option value="'+esc(c.name)+'">'+c.icon+' '+esc(c.name)+'</option>').join('');
   const srcs=[...new Set(live().map(t=>t.src).filter(Boolean))];
   $('txSrc').innerHTML='<option value="">כל המקורות</option>'+
     srcs.map(s=>'<option>'+esc(s)+'</option>').join('');
@@ -988,12 +1153,23 @@ function renderTx(){
   $('txSummary').textContent = rows.length+' תנועות · הוצאות '+fmt(e)+' ₪ · הכנסות '+fmt(i)+' ₪ '+
     '(לא כולל "לא רלוונטי" ו"ממתין לסיווג")';
 
+  /* הבחירה המרוכזת חלה על כל השורות המסוננות — לא רק על 400 המוצגות */
+  lastFiltered=rows.map(t=>t.id);
+  selTx.forEach(id=>{ if(!DB.tx.some(t=>t.id===id&&!t.deleted)) selTx.delete(id); });
+  updateBulkBar();
   if(!rows.length){ $('txTable').innerHTML='<tbody><tr><td><div class="empty">אין תנועות תואמות</div></td></tr></tbody>'; return; }
+  const adm=isAdmin();
+  const allSel=adm && rows.every(t=>selTx.has(t.id));
   $('txTable').innerHTML='<thead><tr>'+
+    (adm?'<th style="width:28px"><input type="checkbox" style="width:auto" '+(allSel?'checked':'')+
+         ' onchange="toggleSelAll(this.checked)" title="בחר את כל '+rows.length+' השורות המסוננות"></th>':'')+
     '<th>תאריך</th><th>תיאור</th><th>קטגוריה</th><th class="num">סכום</th>'+
     '<th>סטטוס</th><th>מקור</th><th></th></tr></thead><tbody>'+
     rows.slice(0,400).map(t=>
-      '<tr><td class="num">'+esc(t.date)+'</td>'+
+      '<tr'+(selTx.has(t.id)?' style="background:#eef2ff"':'')+'>'+
+      (adm?'<td><input type="checkbox" style="width:auto" '+(selTx.has(t.id)?'checked':'')+
+           ' onchange="toggleSel(\''+esc(t.id)+'\',this.checked)"></td>':'')+
+      '<td class="num">'+esc(t.date)+'</td>'+
       '<td>'+esc(t.desc)+(t.note?'<div style="font-size:11.5px;color:var(--dim)">'+esc(t.note)+'</div>':'')+'</td>'+
       '<td>'+(t.category?catIcon(t.category)+' '+esc(t.category):'<span style="color:var(--dim)">—</span>')+'</td>'+
       '<td class="num" style="color:'+(t.kind==='income'?'var(--ok)':'inherit')+'">'+
@@ -1005,7 +1181,51 @@ function renderTx(){
         (isAdmin()?'<button class="btn ghost sm" onclick="editTx(\''+esc(t.id)+'\')">✏️</button>':'')+
         '</td></tr>'
     ).join('')+'</tbody>';
-  if(rows.length>400) $('txSummary').textContent += ' — מוצגות 400 הראשונות';
+  if(rows.length>400) $('txSummary').textContent += ' — מוצגות 400 הראשונות (הבחירה המרוכזת חלה על כולן)';
+}
+
+/* ---------------- עדכון ומחיקה מרוכזים ---------------- */
+function toggleSel(id,on){ on?selTx.add(id):selTx.delete(id); updateBulkBar(); }
+function toggleSelAll(on){ lastFiltered.forEach(id=>on?selTx.add(id):selTx.delete(id)); renderTx(); }
+function clearSel(){ selTx.clear(); renderTx(); }
+function updateBulkBar(){
+  const n=isAdmin()?selTx.size:0;
+  $('bulkBar').style.display=n?'block':'none';
+  $('bulkCount').textContent=n+' נבחרו';
+}
+function shiftDate(iso,days){
+  const d=new Date(iso+'T00:00:00Z'); if(isNaN(d)) return iso;
+  d.setUTCDate(d.getUTCDate()+days); return d.toISOString().slice(0,10);
+}
+function bulkApply(what){
+  if(!isAdmin()) return;
+  const ids=[...selTx]; if(!ids.length) return;
+  const cat=$('bulkCat').value, st=$('bulkStatus').value, days=parseInt($('bulkDays').value,10);
+  if(what==='category' && !cat){ toast('בחר קטגוריה'); return; }
+  if(what==='status' && !st){ toast('בחר סטטוס'); return; }
+  if(what==='shift' && !days){ toast('הזן מספר ימים (למשל 1 או -1)'); return; }
+  const label = what==='category' ? 'קטגוריה "'+cat+'"'
+              : what==='status'   ? 'סטטוס "'+STATUS_LBL[st]+'"'
+              : 'הזזת תאריך ב-'+days+' ימים';
+  if(!confirm('להחיל '+label+' על '+ids.length+' תנועות?')) return;
+  let n=0;
+  ids.forEach(id=>{
+    const t=DB.tx.find(x=>x.id===id&&!x.deleted); if(!t) return;
+    if(what==='category'){ t.category=cat; if(t.status==='pending') t.status='ok'; t.classBy='מרוכז: '+CU.name; }
+    else if(what==='status'){ t.status=st; t.classBy='מרוכז: '+CU.name; }
+    else if(what==='shift'){ t.date=shiftDate(t.date,days); }
+    queueRow('tx',t); n++;
+  });
+  saveLocal(); renderTx(); updateBadge(); toast(n+' תנועות עודכנו');
+}
+function bulkDelete(){
+  if(!isAdmin()) return;
+  const ids=[...selTx]; if(!ids.length) return;
+  if(!confirm('למחוק '+ids.length+' תנועות?\nהן יישארו בגיליון מסומנות כמחוקות, וניתן יהיה לייבא אותן מחדש.')) return;
+  const stamp=new Date().toISOString().slice(0,10);
+  let n=0;
+  ids.forEach(id=>{ const t=DB.tx.find(x=>x.id===id); if(t&&!t.deleted){ t.deleted=stamp; queueDel('tx',id); n++; } });
+  selTx.clear(); saveLocal(); renderTx(); updateBadge(); toast(n+' תנועות נמחקו');
 }
 
 /* חלונית "מאיפה זה הגיע" — תיעוד המקור המלא */
@@ -1163,16 +1383,56 @@ $('fileInput').addEventListener('change', e=>{ if(e.target.files[0]) readFile(e.
     if(ev==='drop' && e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]);
   });
 });
+/* ------------------------------------------------------------
+   תאריכים מאקסל — בלי אזור זמן.
+   אקסל שומר תאריך כמספר ימים מ-1899. SheetJS ממיר אותו ל-Date דרך שעון
+   המחשב, מעוגן ב-1899 — ואז נכנס היסט היסטורי של ~40 שניות של ירושלים,
+   התאריך נוחת 40 שניות לפני חצות, ו-01/06 הופך ל-31/05.
+   לכן ממירים כאן בעצמנו, בחשבון ימים טהור: מספר ← יום, בלי Date מקומי.
+   ------------------------------------------------------------ */
+function serialToISO(n, date1904){
+  let day=Math.floor(Number(n)+1/1440);            // סובלנות של דקה לשגיאות עיגול
+  if(date1904) day+=1462;                          // מערכת התאריכים של מק
+  const d=new Date((day-25569)*86400000);
+  return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');
+}
+/** אם בכל זאת הגיע Date: שעה של דקות ספורות לפני חצות היא כמעט תמיד
+ *  שגיאת המרה ולא זמן אמיתי — מעגלים ליום הבא. */
+function dateObjToISO(v){
+  if(v.getHours()===23 && v.getMinutes()>=55) v=new Date(v.getTime()+10*60*1000);
+  return v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+String(v.getDate()).padStart(2,'0');
+}
+/** הגיליון → גריד של טקסטים. תאי תאריך (לפי פורמט התא) מומרים דרך
+ *  serialToISO; כל השאר מקבל את הטקסט המוצג באקסל (עם פסיקי אלפים
+ *  וסימני מטבע — num() יודע לנקות אותם). */
+function gridFromSheet(sh, date1904){
+  if(!sh || !sh['!ref']) return [];
+  const rng=XLSX.utils.decode_range(sh['!ref']);
+  const out=[];
+  for(let r=rng.s.r; r<=rng.e.r; r++){
+    const row=[];
+    for(let c=rng.s.c; c<=rng.e.c; c++){
+      const cell=sh[XLSX.utils.encode_cell({r,c})];
+      if(!cell || cell.v==null){ row.push(''); continue; }
+      if(cell.t==='n' && cell.z && XLSX.SSF.is_date(cell.z)) row.push(serialToISO(cell.v, date1904));
+      else if(cell.t==='d' && cell.v instanceof Date) row.push(dateObjToISO(cell.v));
+      else row.push(cell.w!=null ? String(cell.w) : String(cell.v));
+    }
+    out.push(row);
+  }
+  return out;
+}
 function readFile(file){
   if(typeof XLSX==='undefined'){ toast('ספריית האקסל לא נטענה'); return; }
   curFileName=file.name;
   const r=new FileReader();
   r.onload=ev=>{
     try{
-      const wb=XLSX.read(ev.target.result,{type:'array',cellDates:true});
+      /* cellNF שומר את פורמט התא — ככה מזהים תאריך. בלי cellDates בכוונה. */
+      const wb=XLSX.read(ev.target.result,{type:'array',cellNF:true});
+      const date1904=!!(wb.Workbook&&wb.Workbook.WBProps&&wb.Workbook.WBProps.date1904);
       const sh=wb.Sheets[wb.SheetNames[0]];
-      curGrid=XLSX.utils.sheet_to_json(sh,{header:1,raw:true,defval:''})
-                  .filter(r=>r.some(c=>String(c).trim()!==''));
+      curGrid=gridFromSheet(sh,date1904).filter(r=>r.some(c=>String(c).trim()!==''));
       openMapper();
     }catch(err){ toast('לא הצלחתי לקרוא את הקובץ'); }
   };
@@ -1498,29 +1758,45 @@ function renderSettings(){
   $('setTitleCard').style.display = isAdmin() ? '' : 'none';
   if(!isAdmin()) return;
   const us=users(), admins=us.filter(u=>u.role==='admin').length;
-  $('usersTable').innerHTML='<thead><tr><th>שם</th><th>קוד</th><th>הרשאה</th><th></th></tr></thead><tbody>'+
+  $('usersTable').innerHTML='<thead><tr><th>שם</th><th>אימייל לקוד הכניסה</th>'+
+    '<th>קוד אישי</th><th>הרשאה</th><th></th></tr></thead><tbody>'+
     us.map(u=>{
-      /* אסור להוריד את המנהל האחרון — זה נועל את המערכת */
+      /* אסור להוריד או למחוק את המנהל האחרון — זה נועל את המערכת */
       const lockAdmin = u.role==='admin' && admins<=1;
-      return '<tr><td>'+esc(u.name)+'</td><td class="num">'+esc(u.code)+'</td>'+
+      return '<tr><td>'+esc(u.name)+'</td>'+
+        '<td><input type="email" dir="ltr" value="'+esc(u.email||'')+'" placeholder="name@gmail.com" '+
+          'style="min-width:200px" onchange="setUserField(\''+esc(u.id)+'\',\'email\',this.value)"></td>'+
+        '<td><input value="'+esc(u.code||'')+'" maxlength="4" inputmode="numeric" '+
+          'style="width:74px;text-align:center" onchange="setUserField(\''+esc(u.id)+'\',\'code\',this.value)"></td>'+
         '<td>'+(lockAdmin
           ? '<span class="pill p-ok">מנהל</span>'
-          : '<select onchange="setRole(\''+esc(u.id)+'\',this.value)" style="min-width:170px">'+
+          : '<select onchange="setUserField(\''+esc(u.id)+'\',\'role\',this.value)" style="min-width:170px">'+
             Object.keys(ROLES).map(r=>'<option value="'+r+'"'+(r===u.role?' selected':'')+'>'+
               ROLES[r].label+'</option>').join('')+'</select>')+'</td>'+
         '<td>'+(us.length>1 && !lockAdmin
           ? '<button class="btn danger sm" onclick="delUser(\''+esc(u.id)+'\')">מחק</button>' : '')+
         '</td></tr>';
     }).join('')+'</tbody>';
+  $('usersHint').textContent = GS_URL
+    ? 'בלי אימייל תקין המשתמש לא יוכל להיכנס — הקוד החד-פעמי נשלח לשם.'
+    : 'הקוד למייל יופעל אחרי חיבור לגיליון. עד אז הכניסה היא בקוד האישי בלבד.';
 }
-function setRole(id, role){
-  const list=users();
-  const u=list.find(x=>x.id===id); if(!u) return;
-  u.role=role;
-  if(!list.some(x=>x.role==='admin')){ toast('חייב להישאר לפחות מנהל אחד'); renderSettings(); return; }
-  saveUsers(list);
-  if(CU && CU.id===id){ CU.role=role; applyRole(); }   // שינוי עצמי חל מיד
-  renderSettings(); toast('ההרשאה עודכנה');
+function setUserField(id, field, value){
+  const u=DB.users.find(x=>x.id===id); if(!u) return;
+  value=String(value||'').trim();
+  if(field==='code' && !/^\d{4}$/.test(value)){ toast('קוד אישי חייב להיות 4 ספרות'); renderSettings(); return; }
+  if(field==='email' && value && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)){
+    toast('כתובת אימייל לא תקינה'); renderSettings(); return;
+  }
+  if(field==='role'){
+    const after=users().map(x=>x.id===id?Object.assign({},x,{role:value}):x);
+    if(!after.some(x=>x.role==='admin')){ toast('חייב להישאר לפחות מנהל אחד'); renderSettings(); return; }
+  }
+  u[field]=value;
+  queueRow('users',u); saveLocal();
+  if(CU && CU.id===id && field==='role'){ CU.role=value; applyRole(); }  // שינוי עצמי חל מיד
+  renderSettings();
+  toast(field==='email'?'האימייל נשמר':field==='code'?'הקוד האישי עודכן':'ההרשאה עודכנה');
 }
 function saveApi(){
   const u=$('sApi').value.trim();
@@ -1538,21 +1814,25 @@ function applyTitle(){
   const t=DB.settings.title || 'ניהול הוצאות בית';
   $('appTitle').textContent=t; $('loginTitle').textContent=t; document.title=t;
 }
-function saveUsers(list){
-  DB.settings.users=JSON.stringify(list); queueSetting('users'); saveLocal();
-}
 function addUser(){
-  const name=$('nuName').value.trim(), code=$('nuCode').value.trim();
+  const name=$('nuName').value.trim(), code=$('nuCode').value.trim(),
+        email=$('nuEmail').value.trim();
   if(!name || !/^\d{4}$/.test(code)){ toast('שם + קוד בן 4 ספרות'); return; }
-  const list=users(); list.push({id:uid('u'), name, code, role:$('nuRole').value});
-  saveUsers(list); $('nuName').value=''; $('nuCode').value=''; $('nuRole').value='user';
+  if(email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ toast('כתובת אימייל לא תקינה'); return; }
+  if(GS_URL && !email){ toast('חובה אימייל — הקוד החד-פעמי נשלח אליו'); return; }
+  const u={id:uid('u'), name, code, email, role:$('nuRole').value, deleted:''};
+  DB.users.push(u); queueRow('users',u); saveLocal();
+  $('nuName').value=''; $('nuCode').value=''; $('nuEmail').value=''; $('nuRole').value='user';
   renderSettings(); toast('המשתמש נוסף');
 }
 function delUser(id){
-  const list=users().filter(u=>u.id!==id);
-  if(!list.length){ toast('חייב להישאר משתמש אחד'); return; }
-  if(!list.some(u=>u.role==='admin')){ toast('חייב להישאר לפחות מנהל אחד'); return; }
-  saveUsers(list); renderSettings();
+  const rest=users().filter(u=>u.id!==id);
+  if(!rest.length){ toast('חייב להישאר משתמש אחד'); return; }
+  if(!rest.some(u=>u.role==='admin')){ toast('חייב להישאר לפחות מנהל אחד'); return; }
+  if(!confirm('למחוק את המשתמש? הוא לא יוכל להיכנס יותר.')) return;
+  const u=DB.users.find(x=>x.id===id); if(!u) return;
+  u.deleted=new Date().toISOString().slice(0,10);
+  queueDel('users',id); saveLocal(); renderSettings();
 }
 
 /* ---------------- מודאל ---------------- */
@@ -1572,12 +1852,17 @@ function boot(){
   applyTitle();
   $('aDate').value=new Date().toISOString().slice(0,10);
   fillAddCats();
-  let saved=null;
-  try{ saved=localStorage.getItem(LSU); }catch(e){}
-  const u=saved && users().find(x=>x.id===saved);
-  if(u){
+  let savedId=null;
+  try{ savedId=localStorage.getItem(LSU); TOKEN=localStorage.getItem(LST)||''; }catch(e){}
+  const u = savedId && users().find(x=>x.id===savedId);
+
+  /* מחובר לגיליון: בלי טוקן אין כניסה, גם אם נשמר משתמש קודם.
+     תוקף הטוקן נבדק בשרת בטעינה הראשונה — אם פג, נחזור למסך הכניסה. */
+  if(GS_URL && !TOKEN){ showLogin(); }
+  else if(u){
     CU=u; $('userChip').style.display='block';
-    renderAll(); if(GS_URL) syncNow();
+    renderAll();
+    if(GS_URL) syncNow();
   } else {
     showLogin();
   }

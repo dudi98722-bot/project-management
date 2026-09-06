@@ -1,37 +1,56 @@
 /**
  * ניהול הוצאות בית ↔ Google Sheets (backend)
  * ------------------------------------------------------------
- * שומר תנועות, קטגוריות, שטאנצים (מקורות ייבוא), כללי סיווג והגדרות.
- * כל תנועה נשמרת יחד עם תיעוד מלא מאיפה היא הגיעה.
+ * שומר תנועות, קטגוריות, שטאנצים (מקורות ייבוא), כללי סיווג, משתמשים
+ * והגדרות. כל תנועה נשמרת יחד עם תיעוד מלא מאיפה היא הגיעה.
  *
- * API:
- *   GET  ?action=load                       -> כל הנתונים JSON
- *   POST  {action:'importTx', rows:[...]}   -> ייבוא עם דילוג כפולות בצד השרת
- *   POST  {action:'batch', ops:[...]}       -> פעולות מרובות בנעילה אחת
+ * אבטחה
+ * ------
+ * הכניסה היא בשני שלבים: קוד אישי + קוד חד-פעמי שנשלח למייל המשתמש.
+ * שני השלבים נבדקים כאן בשרת, לא בדפדפן. בסיום מתקבל טוקן שתוקפו
+ * 30 יום, וכל בקשת נתונים חייבת לשאת אותו — בלי טוקן תקף לא ניתן
+ * לקרוא או לכתוב כלום, גם למי שיש בידיו את כתובת ה-/exec.
+ *
+ * API פתוח (ללא טוקן):
+ *   POST {action:'authmeta'}                        -> רשימת שמות משתמשים בלבד
+ *   POST {action:'requestCode', userId, pin}        -> שולח קוד למייל
+ *   POST {action:'verifyCode',  userId, otp}        -> מחזיר טוקן
+ *
+ * API מוגן (חייב token):
+ *   POST {action:'load',     token}                 -> כל הנתונים
+ *   POST {action:'importTx', token, rows:[...]}     -> ייבוא עם דילוג כפולות
+ *   POST {action:'batch',    token, ops:[...]}      -> פעולות מרובות בנעילה אחת
+ *   POST {action:'logout',   token}                 -> ביטול הטוקן
  *
  *   פעולות בתוך ops:
- *        {op:'upsertTx',       rows:[...]}
- *        {op:'delTx',          ids:[...]}
- *        {op:'upsertCat',      rows:[...]}
- *        {op:'delCat',         ids:[...]}
- *        {op:'upsertStencil',  rows:[...]}
- *        {op:'delStencil',     ids:[...]}
- *        {op:'upsertRule',     rows:[...]}
- *        {op:'delRule',        ids:[...]}
- *        {op:'setSetting',     key:'..', value:'..'}
+ *        {op:'upsertTx',rows} {op:'delTx',ids}
+ *        {op:'upsertCat',rows} {op:'delCat',ids}
+ *        {op:'upsertStencil',rows} {op:'delStencil',ids}
+ *        {op:'upsertRule',rows} {op:'delRule',ids}
+ *        {op:'upsertUser',rows} {op:'delUser',ids}   <-- מנהל בלבד
+ *        {op:'setSetting',key,value}
  *
- * הגדרה (פעם אחת) — הסקריפט "קשור" לגיליון עצמו, כך שהקוד והנתונים
- * יושבים באותו קובץ ב-Drive:
+ * הגדרה (פעם אחת):
  *   1. צור גיליון חדש בשם "ניהול הוצאות בית".
  *   2. בתוך הגיליון: Extensions (תוספים) ← Apps Script (סקריפט של Apps).
  *   3. מחק את הקוד שבעורך והדבק את כל הקוד הזה במקומו.
  *   4. Deploy ← New deployment ← Web app
  *        Execute as: Me   |   Who has access: Anyone
- *   5. אשר הרשאות (Authorize / Allow).
+ *   5. אשר הרשאות (Authorize / Allow) — כולל הרשאת שליחת מייל.
  *   6. העתק את כתובת ה-/exec והדבק אותה במסך ההגדרות של המערכת.
+ *
+ * שים לב: "Who has access: Anyone" נדרש כדי שהדפדפן יוכל לפנות לשרת,
+ * אבל הגישה לנתונים עצמם חסומה מאחורי הטוקן.
  *
  * הלשוניות נוצרות לבד בשימוש הראשון — אין צורך להכין כלום מראש.
  */
+
+var APP_NAME  = 'ניהול הוצאות בית';
+var OTP_TTL   = 10 * 60 * 1000;               // תוקף קוד המייל: 10 דקות
+var SESS_TTL  = 30 * 24 * 60 * 60 * 1000;     // תוקף התחברות: 30 יום
+var OTP_TRIES = 5;                            // ניסיונות לפני ביטול הקוד
+var RL_MAX    = 5;                            // בקשות קוד מקסימום
+var RL_WINDOW = 15 * 60 * 1000;               //   בחלון של 15 דקות
 
 function getSpreadsheet() {
   return SpreadsheetApp.getActiveSpreadsheet();
@@ -55,7 +74,8 @@ var SHEETS = {
   stencils: {
     name: 'מקורות',
     headers: ['מזהה', 'שם', 'סוג', 'אמצעי תשלום', 'שורות לדילוג',
-              'מיפוי עמודות (JSON)', 'פורמט תאריך', 'שיטת סכום', 'היפוך סימן', 'נמחק'],
+              'מיפוי עמודות (JSON)', 'פורמט תאריך', 'שיטת סכום',
+              'משמעות מספר חיובי', 'נמחק'],
     fields:  ['id', 'name', 'type', 'payment', 'skip',
               'map', 'dateFmt', 'amountMode', 'signFlip', 'deleted']
   },
@@ -63,6 +83,11 @@ var SHEETS = {
     name: 'כללי סיווג',
     headers: ['מזהה', 'טקסט לזיהוי', 'סוג התאמה', 'קטגוריה', 'סטטוס', 'פעמים', 'נמחק'],
     fields:  ['id', 'match', 'matchType', 'category', 'status', 'hits', 'deleted']
+  },
+  users: {
+    name: 'משתמשים',
+    headers: ['מזהה', 'שם', 'אימייל', 'קוד אישי', 'הרשאה', 'נמחק'],
+    fields:  ['id', 'name', 'email', 'code', 'role', 'deleted']
   },
   settings: {
     name: 'הגדרות',
@@ -82,22 +107,34 @@ function handle(e) {
     if (e && e.postData && e.postData.contents) {
       try { body = JSON.parse(e.postData.contents); } catch (x) {}
     }
-    var action = p.action || (body && body.action) || '';
+    var g = function (k) { return p[k] !== undefined ? p[k] : (body ? body[k] : undefined); };
+    var action = g('action') || '';
 
-    if (action === 'load') return json(loadAll());
+    /* ---------- פתוח: כניסה ---------- */
+    if (action === 'authmeta')    return json(authMeta());
+    if (action === 'requestCode') { lock.waitLock(20000); return json(requestCode(g('userId'), g('pin'))); }
+    if (action === 'verifyCode')  { lock.waitLock(20000); return json(verifyCode(g('userId'), g('otp'))); }
+    if (action === 'logout')      { props().deleteProperty('sess_' + g('token')); return json({ status: 'ok' }); }
+
+    /* ---------- מכאן ואילך חייב טוקן ---------- */
+    var me = authUser(g('token'));
+    if (!me) return json({ status: 'unauthorized', message: 'ההתחברות פגה — יש להתחבר מחדש' });
+
+    if (action === 'load') return json(loadAll(me));
 
     if (action === 'importTx') {
       lock.waitLock(30000);
-      var rows = (body && body.rows) || (p.rows ? JSON.parse(p.rows) : []);
-      var res = importTx(rows);
+      var res = importTx(g('rows') || []);
       return json({ status: 'ok', added: res.added, dups: res.dups });
     }
 
     if (action === 'batch') {
       lock.waitLock(30000);
-      var ops = p.ops ? JSON.parse(p.ops) : ((body && body.ops) || []);
+      var ops = g('ops') || [];
+      if (typeof ops === 'string') ops = JSON.parse(ops);
       var count = 0;
-      ops.forEach(function (o) {
+      for (var i = 0; i < ops.length; i++) {
+        var o = ops[i];
         if (o.op === 'upsertTx')            { upsertMany('tx', o.rows || []);       count += (o.rows || []).length; }
         else if (o.op === 'delTx')          { markDeleted('tx', o.ids || []);       count += (o.ids || []).length; }
         else if (o.op === 'upsertCat')      { upsertMany('cats', o.rows || []);     count += (o.rows || []).length; }
@@ -107,7 +144,20 @@ function handle(e) {
         else if (o.op === 'upsertRule')     { upsertMany('rules', o.rows || []);    count += (o.rows || []).length; }
         else if (o.op === 'delRule')        { markDeleted('rules', o.ids || []);    count += (o.ids || []).length; }
         else if (o.op === 'setSetting')     { setSetting(o.key, o.value);           count++; }
-      });
+        /* ניהול משתמשים — מנהל בלבד, ונבדק כאן ולא רק בממשק */
+        else if (o.op === 'upsertUser') {
+          if (me.role !== 'admin') return json({ status: 'error', message: 'ניהול משתמשים מותר למנהל בלבד' });
+          var guard = guardAdmins(o.rows || [], []);
+          if (guard) return json({ status: 'error', message: guard });
+          upsertMany('users', o.rows || []); count += (o.rows || []).length;
+        }
+        else if (o.op === 'delUser') {
+          if (me.role !== 'admin') return json({ status: 'error', message: 'ניהול משתמשים מותר למנהל בלבד' });
+          var guard2 = guardAdmins([], o.ids || []);
+          if (guard2) return json({ status: 'error', message: guard2 });
+          markDeleted('users', o.ids || []); count += (o.ids || []).length;
+        }
+      }
       return json({ status: 'ok', count: count });
     }
 
@@ -118,6 +168,189 @@ function handle(e) {
     try { lock.releaseLock(); } catch (x) {}
   }
 }
+
+/* ============================================================
+   כניסה ואימות
+   ============================================================ */
+
+function props() { return PropertiesService.getScriptProperties(); }
+
+/** רשימת המשתמשים. בשימוש הראשון נוצרת מתוך ההגדרות הישנות
+ *  (settings.users מגרסה קודמת) או מברירת מחדל. */
+function readUsers() {
+  var list = readAll('users').filter(function (u) { return !u.deleted; });
+  if (list.length) return list;
+
+  var s = {};
+  readAll('settings').forEach(function (r) { s[r.key] = r.value; });
+  var old = null;
+  try { old = JSON.parse(s.users || 'null'); } catch (x) {}
+  var seed = (old && old.length) ? old
+           : [{ id: 'u1', name: 'דודי', code: '1234', role: 'admin' }];
+  seed.forEach(function (u) {
+    if (u.role !== 'admin' && u.role !== 'user') u.role = 'user';
+    if (!u.email) u.email = '';
+    u.deleted = '';
+  });
+  var hasAdmin = seed.some(function (u) { return u.role === 'admin'; });
+  if (!hasAdmin) seed[0].role = 'admin';
+  upsertMany('users', seed);
+  return seed;
+}
+
+function findUser(id) {
+  var m = readUsers().filter(function (u) { return String(u.id) === String(id); });
+  return m.length ? m[0] : null;
+}
+
+/** מוודא שלא נמחק ולא הורד המנהל האחרון — גם אם הבקשה הגיעה
+ *  בעקיפה על הממשק. */
+function guardAdmins(upserts, delIds) {
+  var list = readUsers();
+  var byId = {};
+  list.forEach(function (u) { byId[String(u.id)] = { role: u.role, deleted: false }; });
+  (upserts || []).forEach(function (u) {
+    byId[String(u.id)] = { role: u.role, deleted: !!u.deleted };
+  });
+  (delIds || []).forEach(function (id) {
+    if (byId[String(id)]) byId[String(id)].deleted = true;
+  });
+  var admins = 0;
+  for (var k in byId) if (byId[k].role === 'admin' && !byId[k].deleted) admins++;
+  return admins ? '' : 'חייב להישאר לפחות מנהל אחד במערכת';
+}
+
+function maskEmail(e) {
+  e = String(e || '');
+  var at = e.indexOf('@');
+  if (at < 1) return '';
+  return e.slice(0, Math.min(2, at)) + '•••' + e.slice(at);
+}
+
+/** מה שמותר לחשוף לפני התחברות: שמות בלבד, ואם הוגדר אימייל.
+ *  הקוד האישי והאימייל המלא לא יוצאים מכאן לעולם. */
+function authMeta() {
+  return {
+    status: 'ok',
+    app: APP_NAME,
+    users: readUsers().map(function (u) {
+      return { id: u.id, name: u.name, hasEmail: !!u.email };
+    })
+  };
+}
+
+function requestCode(userId, pin) {
+  var u = findUser(userId);
+  if (!u) return { status: 'error', message: 'משתמש לא נמצא' };
+
+  /* הגבלת קצב — מונעת ניחוש קוד אישי וגם הצפת תיבת המייל */
+  var rlKey = 'rl_' + userId;
+  var rl = {};
+  try { rl = JSON.parse(props().getProperty(rlKey) || '{}'); } catch (x) {}
+  if (!rl.since || (Date.now() - rl.since) > RL_WINDOW) rl = { since: Date.now(), n: 0 };
+  if (rl.n >= RL_MAX) {
+    return { status: 'error', message: 'יותר מדי ניסיונות. נסה שוב בעוד רבע שעה.' };
+  }
+  rl.n++;
+  props().setProperty(rlKey, JSON.stringify(rl));
+
+  if (String(u.code) !== String(pin)) return { status: 'error', message: 'קוד אישי שגוי' };
+  if (!u.email) {
+    return { status: 'error',
+             message: 'למשתמש הזה לא הוגדר אימייל. המנהל צריך להזין אותו בהגדרות ← משתמשים.' };
+  }
+
+  var code = String(Math.floor(100000 + Math.random() * 900000));
+  props().setProperty('otp_' + userId, JSON.stringify({ c: code, exp: Date.now() + OTP_TTL, t: 0 }));
+  sendCodeMail(u, code);
+  return { status: 'ok', to: maskEmail(u.email) };
+}
+
+function sendCodeMail(u, code) {
+  var html =
+    '<div style="direction:rtl;text-align:right;font-family:Arial,Helvetica,sans-serif;' +
+    'max-width:460px;margin:0 auto;padding:24px;color:#0f172a">' +
+      '<h2 style="margin:0 0 4px;font-size:19px">' + APP_NAME + '</h2>' +
+      '<p style="margin:0 0 20px;color:#64748b;font-size:14px">שלום ' + escapeHtml(u.name) + ', הנה קוד הכניסה שלך:</p>' +
+      '<div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:12px;' +
+      'padding:18px;text-align:center;font-size:34px;font-weight:bold;' +
+      'letter-spacing:9px;direction:ltr;color:#3730a3">' + code + '</div>' +
+      '<p style="margin:18px 0 0;color:#64748b;font-size:13px;line-height:1.7">' +
+        'הקוד תקף ל-10 דקות ולשימוש אחד בלבד.<br>' +
+        'אם לא ניסית להתחבר עכשיו — אל תמסור את הקוד לאיש, ' +
+        'וכדאי להחליף את הקוד האישי במערכת.' +
+      '</p>' +
+    '</div>';
+  MailApp.sendEmail({
+    to: u.email,
+    subject: 'קוד כניסה ' + code + ' — ' + APP_NAME,
+    htmlBody: html,
+    name: APP_NAME
+  });
+}
+
+function verifyCode(userId, otp) {
+  var key = 'otp_' + userId;
+  var raw = props().getProperty(key);
+  if (!raw) return { status: 'error', message: 'לא נשלח קוד, או שכבר נעשה בו שימוש. בקש קוד חדש.' };
+
+  var o = JSON.parse(raw);
+  if (Date.now() > o.exp) {
+    props().deleteProperty(key);
+    return { status: 'error', message: 'הקוד פג תוקף. בקש קוד חדש.' };
+  }
+  o.t = (o.t || 0) + 1;
+  if (o.t > OTP_TRIES) {
+    props().deleteProperty(key);
+    return { status: 'error', message: 'יותר מדי ניסיונות. בקש קוד חדש.' };
+  }
+  if (String(o.c) !== String(otp)) {
+    props().setProperty(key, JSON.stringify(o));
+    return { status: 'error', message: 'קוד שגוי (' + (OTP_TRIES - o.t + 1) + ' ניסיונות נותרו)' };
+  }
+
+  props().deleteProperty(key);
+  props().deleteProperty('rl_' + userId);
+  var u = findUser(userId);
+  var token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
+  props().setProperty('sess_' + token, JSON.stringify({ u: userId, exp: Date.now() + SESS_TTL }));
+  cleanupExpired();
+  return { status: 'ok', token: token,
+           user: { id: u.id, name: u.name, role: u.role, email: u.email } };
+}
+
+function authUser(token) {
+  if (!token) return null;
+  var raw = props().getProperty('sess_' + token);
+  if (!raw) return null;
+  var s;
+  try { s = JSON.parse(raw); } catch (x) { return null; }
+  if (Date.now() > s.exp) { props().deleteProperty('sess_' + token); return null; }
+  return findUser(s.u);
+}
+
+/** ניקוי טוקנים וקודים שפג תוקפם — כדי שאחסון המאפיינים לא יתמלא. */
+function cleanupExpired() {
+  var all = props().getProperties();
+  var now = Date.now();
+  for (var k in all) {
+    if (k.indexOf('sess_') !== 0 && k.indexOf('otp_') !== 0) continue;
+    try {
+      var v = JSON.parse(all[k]);
+      if (v.exp && now > v.exp) props().deleteProperty(k);
+    } catch (x) { props().deleteProperty(k); }
+  }
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/* ============================================================
+   נתונים
+   ============================================================ */
 
 function getSheet(key) {
   var cfg = SHEETS[key];
@@ -141,15 +374,27 @@ function getSheet(key) {
   return s;
 }
 
-function loadAll() {
+/** הקוד האישי של משתמשים אחרים לא נשלח לדפדפן.
+ *  המנהל מקבל אימייל מלא כדי שיוכל לערוך; משתמש רגיל מקבל שם בלבד. */
+function loadAll(me) {
   var out = {
     tx: readAll('tx'),
     cats: readAll('cats'),
     stencils: readAll('stencils'),
     rules: readAll('rules'),
+    users: readUsers().map(function (u) {
+      var safe = { id: u.id, name: u.name, role: u.role, deleted: u.deleted || '' };
+      if (me.role === 'admin') { safe.email = u.email; safe.code = u.code; }
+      else if (String(u.id) === String(me.id)) { safe.email = u.email; }
+      return safe;
+    }),
+    me: { id: me.id, name: me.name, role: me.role },
     settings: {}
   };
-  readAll('settings').forEach(function (r) { out.settings[r.key] = r.value; });
+  readAll('settings').forEach(function (r) {
+    if (r.key === 'users') return;          // שארית מגרסה קודמת — לא בשימוש יותר
+    out.settings[r.key] = r.value;
+  });
   out.ts = new Date().toISOString();
   return out;
 }
@@ -173,7 +418,9 @@ function readAll(key) {
 function normalize(v) {
   if (v === null || v === undefined) return '';
   if (v instanceof Date) {
-    return v.getFullYear() + '-' + pad(v.getMonth() + 1) + '-' + pad(v.getDate());
+    /* היום הקלנדרי לפי אזור הזמן של הגיליון עצמו — לא של הסקריפט.
+       הבדל ביניהם היה מזיז תאריך שלם יום אחורה. */
+    return Utilities.formatDate(v, getSpreadsheet().getSpreadsheetTimeZone(), 'yyyy-MM-dd');
   }
   return String(v);
 }
@@ -191,16 +438,28 @@ function upsertMany(key, rows) {
     var ids = s.getRange(2, 1, last - 1, 1).getValues();
     for (var i = 0; i < ids.length; i++) idMap[String(ids[i][0])] = i + 2;
   }
-  var appends = [];
+  var appends = [], updates = {};
   rows.forEach(function (obj) {
     var rowVals = cfg.fields.map(function (f) {
       var v = obj[f];
       return (v === undefined || v === null) ? '' : String(v);
     });
     var r = idMap[String(obj.id)];
-    if (r) s.getRange(r, 1, 1, cfg.fields.length).setValues([rowVals]);
+    if (r) updates[r] = rowVals;
     else appends.push(rowVals);
   });
+  /* עדכונים בודדים — שורה-שורה. עדכון מרוכז — קוראים את כל הבלוק פעם
+     אחת, מחליפים בזיכרון, וכותבים פעם אחת. */
+  var upRows = Object.keys(updates);
+  if (upRows.length > 10 && last >= 2) {
+    var block = s.getRange(2, 1, last - 1, cfg.fields.length).getValues();
+    upRows.forEach(function (r) { block[Number(r) - 2] = updates[r]; });
+    s.getRange(2, 1, last - 1, cfg.fields.length).setValues(block);
+  } else {
+    upRows.forEach(function (r) {
+      s.getRange(Number(r), 1, 1, cfg.fields.length).setValues([updates[r]]);
+    });
+  }
   if (appends.length) {
     s.getRange(s.getLastRow() + 1, 1, appends.length, cfg.fields.length)
      .setNumberFormat('@').setValues(appends);
@@ -219,11 +478,16 @@ function markDeleted(key, ids) {
   if (delCol < 1) return;
   var wanted = {};
   ids.forEach(function (id) { wanted[String(id)] = true; });
-  var idVals = s.getRange(2, 1, last - 1, 1).getValues();
+  /* קריאה אחת וכתיבה אחת של כל העמודה — מחיקה מרוכזת של מאות שורות
+     בקריאת setValue לכל שורה בנפרד הייתה לוקחת דקות. */
+  var idVals  = s.getRange(2, 1, last - 1, 1).getValues();
+  var delVals = s.getRange(2, delCol, last - 1, 1).getValues();
   var stamp = new Date().toISOString().slice(0, 10);
+  var changed = false;
   for (var i = 0; i < idVals.length; i++) {
-    if (wanted[String(idVals[i][0])]) s.getRange(i + 2, delCol).setValue(stamp);
+    if (wanted[String(idVals[i][0])] && !delVals[i][0]) { delVals[i][0] = stamp; changed = true; }
   }
+  if (changed) s.getRange(2, delCol, last - 1, 1).setValues(delVals);
 }
 
 function setSetting(k, v) {
@@ -252,7 +516,8 @@ function dedupKey(t) {
 
 function importTx(rows) {
   var existing = {};
-  readAll('tx').forEach(function (t) { existing[dedupKey(t)] = true; });
+  /* שורות שנמחקו לא חוסמות ייבוא מחדש — אחרת אי אפשר לתקן ייבוא שגוי */
+  readAll('tx').forEach(function (t) { if (!t.deleted) existing[dedupKey(t)] = true; });
   var toAdd = [], dups = 0;
   (rows || []).forEach(function (r) {
     if (!r || !r.date || !r.amount) return;
