@@ -48,7 +48,7 @@
 var APP_NAME  = 'ניהול הוצאות בית';
 /* חותם גרסה. מוחזר ב-authmeta, וכך אפשר לדעת מבחוץ איזו גרסת קוד
    באמת פרוסה — העורך והפריסה יכולים להחזיק קוד שונה לגמרי. */
-var SCRIPT_VERSION = '2026-09-06-i';
+var SCRIPT_VERSION = '2026-09-06-j';
 
 /* ------------------------------------------------------------
    אימות דו-שלבי במייל
@@ -739,15 +739,21 @@ function dedupKey(t) {
 }
 
 function importTx(rows) {
-  var existing = {};
-  /* שורות שנמחקו לא חוסמות ייבוא מחדש — אחרת אי אפשר לתקן ייבוא שגוי */
-  readAll('tx').forEach(function (t) { if (!t.deleted) existing[dedupKey(t)] = true; });
+  /* כפילויות נספרות ולא נבדקות כקיום: שתי הוצאות זהות באותו יום הן
+     מציאות, ורק ייבוא חוזר של אותו קובץ צריך להידלג. שורות שנמחקו
+     אינן נספרות, אחרת אי אפשר לתקן ייבוא שגוי. */
+  var have = {}, seen = {};
+  readAll('tx').forEach(function (t) {
+    if (t.deleted) return;
+    var k = dedupKey(t);
+    have[k] = (have[k] || 0) + 1;
+  });
   var toAdd = [], dups = 0;
   (rows || []).forEach(function (r) {
     if (!r || !r.date || !r.amount) return;
     var key = dedupKey(r);
-    if (existing[key]) { dups++; return; }
-    existing[key] = true;
+    seen[key] = (seen[key] || 0) + 1;
+    if (seen[key] <= (have[key] || 0)) { dups++; return; }
     if (!r.id) r.id = 't-' + Date.now() + '-' + Math.floor(Math.random() * 1000000);
     toAdd.push(r);
   });

@@ -30,7 +30,7 @@
 }
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;
+body{margin:0;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;overflow-x:hidden;
   font-family:Assistant,"Segoe UI",system-ui,-apple-system,Arial,sans-serif;
   padding-bottom:48px;-webkit-font-smoothing:antialiased}
 button{font-family:inherit}
@@ -272,12 +272,12 @@ tbody tr.sel{background:var(--brand-soft)}
     </div>
     <div class="card">
       <h3>טופ בתי עסק</h3>
-      <div id="topMerch"></div>
+      <div class="table-wrap" id="topMerch"></div>
     </div>
   </div>
   <div class="card">
     <h3>הוצאות חריגות החודש</h3>
-    <div id="outliers"></div>
+    <div class="table-wrap" id="outliers"></div>
   </div>
   <div class="card">
     <h3>מגמה — 12 חודשים אחרונים</h3>
@@ -388,6 +388,13 @@ tbody tr.sel{background:var(--brand-soft)}
       <div class="fix" style="align-self:end;margin-bottom:10px">
         <button class="btn" onclick="runImport()">📥 ייבא לתוך המערכת</button></div>
     </div>
+    <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--dim);
+                  margin-top:2px;cursor:pointer">
+      <input type="checkbox" id="impAll" style="width:auto">
+      ייבא הכל, גם שורות שכבר קיימות במערכת
+      <span style="color:var(--faint)">— בדרך כלל מיותר: המערכת ממילא מוסיפה
+      הוצאות זהות שקרו באמת פעמיים, ומדלגת רק על ייבוא חוזר של אותו קובץ</span>
+    </label>
   </div>
 
   <div class="card" id="importResult" style="display:none"></div>
@@ -1430,6 +1437,10 @@ function smartTable(spec){
       if(c.filter==='select'){
         const vals=[...new Set(spec.rows.map(r=>String(c.get(r)==null?'':c.get(r))))]
           .filter(x=>x!=='').sort((a,b)=>a.localeCompare(b,'he'));
+        /* הערך המסונן נשאר ברשימה גם אם אף שורה לא נושאת אותו יותר.
+           בלי זה הבורר היה חוזר להציג "הכל" בזמן שהסינון עדיין פעיל,
+           והטבלה הייתה נראית ריקה בלי שום הסבר. */
+        if(v && vals.indexOf(v)<0) vals.unshift(v);
         h+='<th><select onchange="filterSmart(\''+spec.el+'\',\''+c.key+'\',this.value)">'+
            '<option value="">הכל</option>'+
            vals.map(x=>'<option value="'+esc(x)+'"'+(x===v?' selected':'')+'>'+esc(x)+'</option>').join('')+
@@ -1469,9 +1480,16 @@ function smartRows(el){
 function paintSmart(el){
   const spec=tableSpecs[el], rows=smartRows(el), body=$(el+'__b');
   if(!body) return;
+  const active=Object.keys(tableState[el].f).filter(k=>tableState[el].f[k]);
   body.innerHTML = rows.length
     ? rows.slice(0, spec.limit||600).map(spec.row).join('')
-    : '<tr><td colspan="'+spec.cols.length+'"><div class="empty">אין שורות שתואמות לסינון</div></td></tr>';
+    : '<tr><td colspan="'+spec.cols.length+'"><div class="empty">'+
+      (active.length
+        ? '<span class="big">🔍</span>יש '+spec.rows.length+' שורות, אבל אף אחת לא תואמת לסינון.<br>'+
+          '<button class="btn sm" style="margin-top:12px" onclick="clearFilters(\''+el+'\')">'+
+          'נקה סינון והצג הכל</button>'
+        : 'אין כאן שורות עדיין')+
+      '</div></td></tr>';
   if(spec.onPaint) spec.onPaint(rows);
 }
 /* סינון מצייר מחדש רק את גוף הטבלה — כדי שהמיקוד בשדה הסינון לא יאבד תוך כדי הקלדה */
@@ -1880,6 +1898,7 @@ function autoGuessMap(cols){
   return best;
 }
 function readMap(){
+  if(!curGrid || !curGrid.length) return {};
   const cols=Math.max(...curGrid.slice(0,20).map(r=>r.length));
   const map={};
   for(let c=0;c<cols;c++){
@@ -1970,16 +1989,27 @@ function runImport(){
   const type=$('mType').value;
   const stamp=new Date().toISOString().slice(0,16).replace('T',' ');
 
-  /* מפתחות קיימים למניעת כפילות */
-  const seen={};
-  live().forEach(t=>seen[[t.date,t.kind,num(t.amount).toFixed(2),normDesc(t.desc),t.src].join('|')]=1);
+  /* ------------------------------------------------------------
+     כפילויות — לפי ספירה, לא לפי קיום.
+     שתי הוצאות זהות באותו יום הן דבר אמיתי (שתי חניות, שתי קפה),
+     ואסור לבלוע את השנייה. מצד שני, ייבוא חוזר של אותו קובץ לא
+     אמור להכפיל הכל. לכן סופרים כמה פעמים כל שורה כבר קיימת,
+     וכמה פעמים היא מופיעה בקובץ — ומוסיפים רק את ההפרש.
+       קובץ 2, קיים 0  ->  שתיהן נכנסות
+       קובץ 2, קיים 2  ->  אף אחת (אותו קובץ שוב)
+       קובץ 2, קיים 1  ->  אחת
+     ------------------------------------------------------------ */
+  const importAll = $('impAll') && $('impAll').checked;
+  const dupKey = o => [o.date, o.kind, num(o.amount).toFixed(2), normDesc(o.desc), o.src].join('|');
+  const have={};
+  live().forEach(t=>{ const k=dupKey(t); have[k]=(have[k]||0)+1; });
 
   let added=0, dups=0, autoC=0, excl=0;
-  const fresh=[];
+  const fresh=[], seen={};
   rows.forEach(r=>{
-    const key=[r.date,r.kind,num(r.amount).toFixed(2),normDesc(r.desc),srcName].join('|');
-    if(seen[key]){ dups++; return; }
-    seen[key]=1;
+    const key=dupKey({date:r.date, kind:r.kind, amount:r.amount, desc:r.desc, src:srcName});
+    seen[key]=(seen[key]||0)+1;
+    if(!importAll && seen[key] <= (have[key]||0)){ dups++; return; }
     const t={
       id:uid('t'), date:r.date, desc:r.desc, amount:r.amount, kind:r.kind,
       category:'', status:'pending', payment:r.payment, note:r.note,
@@ -2011,7 +2041,7 @@ function runImport(){
   $('importResult').innerHTML='<h3>✅ הייבוא הסתיים</h3>'+
     '<div class="grid g4">'+
       kpi('נוספו', added+'', 'מתוך '+rows.length+' שורות בקובץ')+
-      kpi('כפולות שדולגו', dups+'', dups?'כבר היו במערכת':'לא נמצאו כפילויות')+
+      kpi('דולגו', dups+'', dups?'כבר יובאו קודם מאותו מקור':'לא נמצאו שורות שכבר יובאו')+
       kpi('סווגו אוטומטית', autoC+'', 'לפי כללים שנלמדו')+
       kpi('הוחרגו', excl+'', 'חיובי אשראי / העברות פנימיות')+
     '</div>'+
