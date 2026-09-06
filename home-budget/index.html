@@ -1,0 +1,1528 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>ניהול הוצאות בית</title>
+<script src="xlsx.full.min.js"></script>
+<script src="chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#f1f5f9; --card:#fff; --line:#e2e8f0; --ink:#0f172a; --dim:#64748b;
+  --brand:#4f46e5; --brand2:#6366f1; --ok:#059669; --warn:#d97706; --bad:#dc2626;
+  --shadow:0 1px 3px rgba(15,23,42,.08),0 8px 24px rgba(15,23,42,.06);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+     font-family:"Segoe UI",Rubik,Arial,sans-serif;font-size:14.5px;padding-bottom:40px}
+button{font-family:inherit}
+
+/* ---------- כותרת וניווט ---------- */
+header{background:linear-gradient(135deg,#312e81,#4f46e5 65%,#6366f1);color:#fff;
+       padding:14px 16px 0;position:relative}
+header h1{margin:0;font-size:19px;font-weight:700;letter-spacing:-.2px}
+#userChip{position:absolute;top:14px;left:14px;background:rgba(255,255,255,.16);
+          border-radius:14px;padding:4px 12px;font-size:11.5px;cursor:pointer;display:none}
+#syncChip{position:absolute;top:44px;left:14px;font-size:10.5px;color:rgba(255,255,255,.8)}
+nav{display:flex;gap:4px;overflow-x:auto;margin-top:12px;padding-bottom:0;
+    scrollbar-width:none}
+nav::-webkit-scrollbar{display:none}
+nav button{background:transparent;border:0;color:rgba(255,255,255,.72);padding:9px 13px;
+           font-size:13.5px;cursor:pointer;white-space:nowrap;border-bottom:3px solid transparent;
+           border-radius:8px 8px 0 0}
+nav button.on{color:#fff;font-weight:600;border-bottom-color:#fff;background:rgba(255,255,255,.1)}
+nav .badge{background:#f59e0b;color:#3b2500;border-radius:9px;padding:1px 6px;
+           font-size:11px;font-weight:700;margin-inline-start:5px}
+
+main{padding:16px;max-width:1180px;margin:0 auto}
+section{display:none}
+section.on{display:block}
+
+/* ---------- אלמנטים ---------- */
+.card{background:var(--card);border-radius:14px;padding:16px;box-shadow:var(--shadow);margin-bottom:14px}
+.card h3{margin:0 0 12px;font-size:15px;font-weight:600}
+.grid{display:grid;gap:12px}
+.g4{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.kpi{background:var(--card);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow)}
+.kpi .lbl{font-size:12px;color:var(--dim);margin-bottom:4px}
+.kpi .val{font-size:25px;font-weight:700;letter-spacing:-.5px}
+.kpi .sub{font-size:11.5px;color:var(--dim);margin-top:3px;text-wrap:balance}
+.up{color:var(--bad)} .down{color:var(--ok)}
+
+.insight{background:linear-gradient(135deg,#eef2ff,#e0e7ff);border:1px solid #c7d2fe;
+         border-radius:14px;padding:15px 17px;margin-bottom:14px;line-height:1.65;font-size:14.5px}
+.insight b{color:#3730a3}
+
+.btn{background:var(--brand);color:#fff;border:0;border-radius:9px;padding:9px 15px;
+     font-size:13.5px;cursor:pointer;font-weight:500}
+.btn:hover{background:#4338ca}
+.btn.sec{background:#fff;color:var(--ink);border:1px solid var(--line)}
+.btn.sec:hover{background:#f8fafc}
+.btn.sm{padding:5px 10px;font-size:12.5px}
+.btn.danger{background:var(--bad)}
+.btn.ghost{background:transparent;color:var(--dim);border:1px solid var(--line)}
+
+input,select,textarea{font-family:inherit;font-size:14px;padding:8px 10px;
+       border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);width:100%}
+input:focus,select:focus,textarea:focus{outline:2px solid #c7d2fe;border-color:var(--brand)}
+label.f{display:block;margin-bottom:10px}
+label.f span{display:block;font-size:12px;color:var(--dim);margin-bottom:4px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.row>*{flex:1;min-width:110px}
+.row .fix{flex:0 0 auto;min-width:0}
+
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:right;font-size:11.5px;color:var(--dim);font-weight:600;
+   padding:8px 9px;border-bottom:2px solid var(--line);white-space:nowrap}
+td{padding:8px 9px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+tbody tr:hover{background:#f8fafc}
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap;direction:ltr;text-align:right}
+
+.pill{display:inline-block;border-radius:20px;padding:2px 9px;font-size:11.5px;font-weight:600}
+.p-ok{background:#dcfce7;color:#166534}
+.p-pending{background:#fef3c7;color:#92400e}
+.p-review{background:#fed7aa;color:#9a3412}
+.p-irrelevant{background:#e2e8f0;color:#475569}
+.p-income{background:#dbeafe;color:#1e40af}
+
+.empty{text-align:center;color:var(--dim);padding:34px 16px;line-height:1.7}
+.bar{height:9px;background:#e2e8f0;border-radius:5px;overflow:hidden}
+.bar>i{display:block;height:100%;border-radius:5px}
+
+.drop{border:2px dashed #c7d2fe;border-radius:14px;padding:26px;text-align:center;
+      color:var(--dim);cursor:pointer;background:#fafaff;line-height:1.7}
+.drop.hot{background:#eef2ff;border-color:var(--brand)}
+
+.tiles{display:flex;gap:9px;flex-wrap:wrap}
+.tile{border:2px solid var(--line);border-radius:11px;padding:11px 15px;cursor:pointer;
+      background:#fff;font-size:13.5px;min-width:120px}
+.tile:hover{border-color:#c7d2fe}
+.tile.on{border-color:var(--brand);background:#eef2ff;font-weight:600}
+.tile .t2{font-size:11px;color:var(--dim);font-weight:400;margin-top:2px}
+
+/* ---------- מסך כניסה ---------- */
+#loginOverlay{position:fixed;inset:0;z-index:500;display:none;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#312e81,#4f46e5 60%,#6366f1);padding:16px}
+#loginOverlay .lcard{background:#fff;border-radius:18px;padding:32px 26px;max-width:360px;
+  width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+#loginCode{font-size:24px;text-align:center;letter-spacing:8px;direction:ltr;margin-top:10px}
+#userPick{display:flex;flex-direction:column;gap:8px;margin:16px 0}
+#userPick button{padding:13px;border:2px solid var(--line);border-radius:11px;background:#fff;
+  font-size:15px;cursor:pointer}
+#userPick button:hover{border-color:var(--brand);background:#eef2ff}
+
+/* ---------- מודאל ---------- */
+#modalWrap{position:fixed;inset:0;z-index:400;background:rgba(15,23,42,.55);
+  display:none;align-items:center;justify-content:center;padding:16px}
+#modal{background:#fff;border-radius:16px;max-width:560px;width:100%;max-height:88vh;
+  overflow:auto;padding:22px;box-shadow:0 24px 70px rgba(0,0,0,.4)}
+#modal h3{margin:0 0 14px;font-size:17px}
+.kv{display:grid;grid-template-columns:118px 1fr;gap:7px 12px;font-size:13px;line-height:1.6}
+.kv dt{color:var(--dim)}
+.kv dd{margin:0;word-break:break-word}
+
+#toast{position:fixed;bottom:18px;right:50%;transform:translateX(50%);background:#0f172a;color:#fff;
+  padding:11px 20px;border-radius:11px;font-size:13.5px;z-index:600;display:none;
+  box-shadow:0 8px 30px rgba(0,0,0,.3);max-width:88vw;text-align:center}
+
+@media(max-width:640px){
+  main{padding:12px}
+  .kpi .val{font-size:22px}
+  header h1{font-size:17px}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1 id="appTitle">ניהול הוצאות בית</h1>
+  <div id="userChip" onclick="logout()" title="החלפת משתמש"></div>
+  <div id="syncChip">מקומי</div>
+  <nav id="nav">
+    <button data-tab="dash" class="on">📊 דשבורד</button>
+    <button data-tab="classify">🏷️ לסיווג<span class="badge" id="pendBadge" style="display:none">0</span></button>
+    <button data-tab="tx">📋 תנועות</button>
+    <button data-tab="import">📥 ייבוא</button>
+    <button data-tab="add">➕ הזנה</button>
+    <button data-tab="sources">🧩 מקורות</button>
+    <button data-tab="cats">🗂️ קטגוריות</button>
+    <button data-tab="settings">⚙️ הגדרות</button>
+  </nav>
+</header>
+
+<main>
+
+<!-- ============ דשבורד ============ -->
+<section id="tab-dash" class="on">
+  <div class="row" style="margin-bottom:12px">
+    <div class="fix" style="min-width:170px">
+      <select id="dashMonth" onchange="renderDash()"></select>
+    </div>
+    <div class="fix"><button class="btn sec sm" onclick="renderDash()">רענן</button></div>
+  </div>
+  <div id="insightBox"></div>
+  <div class="grid g4" id="kpis" style="margin-bottom:14px"></div>
+  <div class="grid g2">
+    <div class="card">
+      <h3>לאן הכסף הולך — לפי קטגוריה</h3>
+      <div id="catBreak"></div>
+    </div>
+    <div class="card">
+      <h3>טופ בתי עסק</h3>
+      <div id="topMerch"></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>הוצאות חריגות החודש</h3>
+    <div id="outliers"></div>
+  </div>
+  <div class="card">
+    <h3>מגמה — 12 חודשים אחרונים</h3>
+    <div style="height:270px"><canvas id="trendChart"></canvas></div>
+  </div>
+  <div class="card">
+    <h3>קטגוריה לאורך החודשים</h3>
+    <div class="table-wrap" id="catMonths"></div>
+  </div>
+</section>
+
+<!-- ============ לסיווג ============ -->
+<section id="tab-classify">
+  <div class="card">
+    <h3>תנועות שממתינות לסיווג</h3>
+    <p style="color:var(--dim);font-size:13px;margin:0 0 12px;line-height:1.6">
+      שורות עם אותו תיאור מקובצות יחד — סיווג אחד מסדר את כולן.
+      כל סיווג ידני נשמר ככלל, כך שבייבוא הבא זה יסווג לבד.
+    </p>
+    <div id="classifyList"></div>
+  </div>
+</section>
+
+<!-- ============ תנועות ============ -->
+<section id="tab-tx">
+  <div class="card">
+    <div class="row" style="margin-bottom:12px">
+      <div><input id="txSearch" placeholder="חיפוש בתיאור / בית עסק..." oninput="renderTx()"></div>
+      <div class="fix" style="min-width:140px"><select id="txMonth" onchange="renderTx()"></select></div>
+      <div class="fix" style="min-width:130px"><select id="txCat" onchange="renderTx()"></select></div>
+      <div class="fix" style="min-width:130px"><select id="txStatus" onchange="renderTx()">
+        <option value="">כל הסטטוסים</option>
+        <option value="ok">מסווג</option>
+        <option value="pending">ממתין לסיווג</option>
+        <option value="review">לבדיקה</option>
+        <option value="irrelevant">לא רלוונטי</option>
+      </select></div>
+      <div class="fix" style="min-width:130px"><select id="txSrc" onchange="renderTx()"></select></div>
+      <div class="fix"><button class="btn sec sm" onclick="exportTx()">📤 ייצוא</button></div>
+    </div>
+    <div id="txSummary" style="font-size:13px;color:var(--dim);margin-bottom:8px"></div>
+    <div class="table-wrap"><table id="txTable"></table></div>
+  </div>
+</section>
+
+<!-- ============ ייבוא ============ -->
+<section id="tab-import">
+  <div class="card">
+    <h3>1. בחר מקור</h3>
+    <div class="tiles" id="srcTiles"></div>
+  </div>
+
+  <div class="card" id="pasteCard" style="display:none">
+    <h3>2. הדבק נתונים או גרור קובץ</h3>
+    <div class="drop" id="dropZone" onclick="document.getElementById('fileInput').click()">
+      גררו לכאן קובץ אקסל / CSV<br>או לחצו לבחירה
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none">
+    </div>
+    <div style="text-align:center;color:var(--dim);font-size:12px;margin:10px 0">— או —</div>
+    <textarea id="pasteBox" rows="6" placeholder="העתק מהאקסל (Ctrl+C) והדבק כאן (Ctrl+V)..."></textarea>
+    <div style="margin-top:10px"><button class="btn" onclick="loadPaste()">טען את ההדבקה</button></div>
+  </div>
+
+  <div class="card" id="mapCard" style="display:none">
+    <h3>3. מיפוי עמודות</h3>
+    <div class="row" style="margin-bottom:12px">
+      <label class="f fix" style="min-width:150px"><span>שורות כותרת לדילוג</span>
+        <input type="number" id="mSkip" min="0" value="0" onchange="renderMapPreview()"></label>
+      <label class="f fix" style="min-width:150px"><span>פורמט תאריך</span>
+        <select id="mDateFmt" onchange="renderMapPreview()">
+          <option value="auto">זיהוי אוטומטי</option>
+          <option value="dmy">יום/חודש/שנה</option>
+          <option value="mdy">חודש/יום/שנה</option>
+          <option value="ymd">שנה-חודש-יום</option>
+        </select></label>
+      <label class="f fix" style="min-width:170px"><span>סוג המקור</span>
+        <select id="mType" onchange="renderMapPreview()">
+          <option value="bank">חשבון בנק (עו"ש)</option>
+          <option value="credit">כרטיס אשראי</option>
+        </select></label>
+      <label class="f fix" style="min-width:170px"><span>אמצעי תשלום שיירשם</span>
+        <input id="mPayment" placeholder="למשל: פועלים / ויזה 4821"></label>
+    </div>
+    <div class="table-wrap" id="mapGrid"></div>
+    <div id="mSignWrap" style="margin-top:12px;display:none">
+      <label class="f" style="max-width:330px"><span>בעמודת הסכום, מספר חיובי הוא</span>
+        <select id="mPosMeans" onchange="renderMapPreview()">
+          <option value="expense">הוצאה</option>
+          <option value="income">הכנסה</option>
+        </select></label>
+    </div>
+    <h3 style="margin-top:18px">תצוגה מקדימה</h3>
+    <div class="table-wrap" id="mapPreview"></div>
+    <div class="row" style="margin-top:14px">
+      <label class="f" style="max-width:280px"><span>שמור כשטאנץ בשם</span>
+        <input id="mName" placeholder="למשל: עו&quot;ש פועלים"></label>
+      <div class="fix" style="align-self:end;margin-bottom:10px">
+        <button class="btn sec" onclick="saveStencil()">💾 שמור שטאנץ</button></div>
+      <div class="fix" style="align-self:end;margin-bottom:10px">
+        <button class="btn" onclick="runImport()">📥 ייבא לתוך המערכת</button></div>
+    </div>
+  </div>
+
+  <div class="card" id="importResult" style="display:none"></div>
+</section>
+
+<!-- ============ הזנה ידנית ============ -->
+<section id="tab-add">
+  <div class="card" style="max-width:460px;margin:0 auto">
+    <h3>הזנה מהירה</h3>
+    <label class="f"><span>סכום</span>
+      <input type="number" id="aAmount" inputmode="decimal" step="0.01"
+             style="font-size:26px;text-align:center;font-weight:700"></label>
+    <label class="f"><span>סוג</span>
+      <select id="aKind" onchange="fillAddCats()">
+        <option value="expense">הוצאה</option><option value="income">הכנסה</option>
+      </select></label>
+    <label class="f"><span>קטגוריה</span><select id="aCat"></select></label>
+    <label class="f"><span>תיאור / בית עסק</span><input id="aDesc"></label>
+    <label class="f"><span>תאריך</span><input type="date" id="aDate"></label>
+    <label class="f"><span>אמצעי תשלום</span><input id="aPayment" placeholder="מזומן / אשראי..."></label>
+    <label class="f"><span>הערה</span><input id="aNote"></label>
+    <button class="btn" style="width:100%;padding:13px;font-size:16px" onclick="addManual()">שמור תנועה</button>
+  </div>
+</section>
+
+<!-- ============ מקורות (שטאנצים) ============ -->
+<section id="tab-sources">
+  <div class="card">
+    <h3>שטאנצים שמורים</h3>
+    <p style="color:var(--dim);font-size:13px;margin:0 0 12px;line-height:1.6">
+      כל שטאנץ זוכר את מבנה העמודות של מקור אחד. מקור חדש נוצר במסך הייבוא —
+      ממפים פעם אחת ושומרים, ומאז זה בחירה והדבקה.
+    </p>
+    <div class="table-wrap"><table id="srcTable"></table></div>
+  </div>
+  <div class="card">
+    <h3>כללי סיווג שנלמדו</h3>
+    <div class="table-wrap"><table id="rulesTable"></table></div>
+  </div>
+</section>
+
+<!-- ============ קטגוריות ============ -->
+<section id="tab-cats">
+  <div class="card">
+    <h3>הוספת קטגוריה</h3>
+    <div class="row">
+      <div><input id="ncName" placeholder="שם הקטגוריה"></div>
+      <div class="fix" style="min-width:120px"><select id="ncKind">
+        <option value="expense">הוצאה</option><option value="income">הכנסה</option></select></div>
+      <div class="fix" style="min-width:80px"><input id="ncIcon" placeholder="🏷️" value="🏷️"></div>
+      <div class="fix" style="min-width:70px"><input type="color" id="ncColor" value="#6366f1" style="padding:3px;height:38px"></div>
+      <div class="fix"><button class="btn" onclick="addCat()">הוסף</button></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>הקטגוריות שלי</h3>
+    <div class="table-wrap"><table id="catsTable"></table></div>
+  </div>
+</section>
+
+<!-- ============ הגדרות ============ -->
+<section id="tab-settings">
+  <div class="card">
+    <h3>חיבור ל-Google Sheets</h3>
+    <label class="f"><span>כתובת ה-/exec של ה-Apps Script</span>
+      <input id="sApi" placeholder="https://script.google.com/macros/s/.../exec"></label>
+    <div class="row">
+      <div class="fix"><button class="btn" onclick="saveApi()">התחבר ושמור</button></div>
+      <div class="fix"><button class="btn sec" onclick="syncNow()">סנכרן עכשיו</button></div>
+    </div>
+    <p id="apiState" style="font-size:12.5px;color:var(--dim);margin:12px 0 0"></p>
+  </div>
+  <div class="card">
+    <h3>משתמשים</h3>
+    <div class="table-wrap"><table id="usersTable"></table></div>
+    <div class="row" style="margin-top:12px">
+      <div><input id="nuName" placeholder="שם"></div>
+      <div class="fix" style="min-width:120px"><input id="nuCode" placeholder="קוד 4 ספרות" maxlength="4" inputmode="numeric"></div>
+      <div class="fix"><button class="btn" onclick="addUser()">הוסף משתמש</button></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>שם המערכת</h3>
+    <div class="row">
+      <div><input id="sTitle" placeholder="ניהול הוצאות בית"></div>
+      <div class="fix"><button class="btn sec" onclick="saveTitle()">שמור</button></div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<div id="loginOverlay">
+  <div class="lcard">
+    <div style="font-size:40px">🏠</div>
+    <h2 style="margin:8px 0 2px;font-size:20px" id="loginTitle">ניהול הוצאות בית</h2>
+    <p style="color:var(--dim);font-size:13px;margin:0">בחר משתמש והקש קוד</p>
+    <div id="userPick"></div>
+    <div id="codeStep" style="display:none">
+      <input type="password" id="loginCode" inputmode="numeric" maxlength="4" placeholder="••••"
+             onkeydown="if(event.key==='Enter')tryLogin()">
+      <div id="loginErr" style="color:var(--bad);min-height:20px;font-size:13px;margin-top:6px"></div>
+      <button class="btn" style="width:100%" onclick="tryLogin()">כניסה</button>
+      <button class="btn ghost sm" style="width:100%;margin-top:8px" onclick="backToUsers()">חזרה</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalWrap" onclick="if(event.target===this)closeModal()"><div id="modal"></div></div>
+<div id="toast"></div>
+
+<script>
+/* ============================================================
+   ניהול הוצאות בית — לוגיקה
+   הנתונים נשמרים מקומית ומסונכרנים ל-Google Sheets.
+   ============================================================ */
+
+const LS = 'hb_db_v1', LSU = 'hb_user';
+const STATUS_LBL = {ok:'מסווג', pending:'ממתין לסיווג', review:'לבדיקה', irrelevant:'לא רלוונטי'};
+
+const DEFAULT_CATS = [
+  ['מזון וסופר','expense','#16a34a','🛒'], ['אוכל בחוץ','expense','#65a30d','🍽️'],
+  ['דיור — משכנתא/שכ"ד','expense','#0891b2','🏠'], ['ארנונה וועד בית','expense','#0e7490','🏛️'],
+  ['חשמל, מים וגז','expense','#f59e0b','💡'], ['תקשורת','expense','#8b5cf6','📱'],
+  ['רכב ותחבורה','expense','#dc2626','🚗'], ['חינוך','expense','#2563eb','🎓'],
+  ['בריאות','expense','#db2777','⚕️'], ['ביטוחים','expense','#475569','🛡️'],
+  ['ביגוד והנעלה','expense','#c026d3','👕'], ['בית ותחזוקה','expense','#78716c','🔧'],
+  ['צדקה ומעשרות','expense','#ca8a04','🤲'], ['אירועים ומתנות','expense','#e11d48','🎁'],
+  ['חגים','expense','#7c3aed','🕎'], ['פנאי','expense','#0ea5e9','🎈'],
+  ['הלוואות והחזרים','expense','#334155','🏦'], ['שונות','expense','#94a3b8','🏷️'],
+  ['משכורת','income','#059669','💼'], ['קצבאות','income','#0d9488','🧾'],
+  ['הכנסות נוספות','income','#10b981','➕'], ['מתנות שהתקבלו','income','#84cc16','🎀']
+];
+
+/* חיוב אשראי מרוכז בעו"ש — נספר פעמיים אם לא מחריגים אותו */
+const CREDIT_RE = /(כרטיס(?:י)?\s*אשראי|ישראכרט|ישרא-?כרט|כאל|לאומי\s*קארד|מקס\s*איט|מאסטרקארד|אמריקן\s*אקספרס|דיינרס|visa|cal\b|max\b)/i;
+const TRANSFER_RE = /(העברה\s*עצמית|העברה\s*בין\s*חשבונות|העברה\s*לחשבון\s*אחר)/i;
+
+let DB = {tx:[], cats:[], stencils:[], rules:[], settings:{}};
+let CU = null;
+let GS_URL = '';
+let pending = {tx:{}, cats:{}, stencils:{}, rules:{}, settings:{}, del:{tx:[],cats:[],stencils:[],rules:[]}};
+let flushTimer = null, flushing = false;
+
+/* ---------------- עזרים ---------------- */
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = p => p+'-'+Date.now()+'-'+Math.floor(Math.random()*100000);
+const fmt = n => (Math.round(Number(n||0)*100)/100).toLocaleString('he-IL',
+                  {minimumFractionDigits:0, maximumFractionDigits:0});
+const fmt2 = n => (Math.round(Number(n||0)*100)/100).toLocaleString('he-IL',
+                  {minimumFractionDigits:2, maximumFractionDigits:2});
+const normDesc = s => String(s||'').replace(/[־–—]+/g,'-').replace(/\s+/g,' ').trim();
+const monthOf = d => String(d||'').slice(0,7);
+
+function toast(msg, ms=2600){
+  const t=$('toast'); t.textContent=msg; t.style.display='block';
+  clearTimeout(t._t); t._t=setTimeout(()=>t.style.display='none', ms);
+}
+function num(v){
+  if(typeof v==='number') return isFinite(v)?v:0;
+  let s=String(v==null?'':v).replace(/[₪,\s ]/g,'').replace(/[־–—]/g,'-').trim();
+  if(!s) return 0;
+  let neg=false;
+  if(/^\(.*\)$/.test(s)){ neg=true; s=s.slice(1,-1); }
+  const n=parseFloat(s);
+  if(!isFinite(n)) return 0;
+  return neg ? -n : n;
+}
+function heMonth(ym){
+  if(!ym) return '';
+  const names=['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+  const [y,m]=ym.split('-');
+  return names[Number(m)-1]+' '+y;
+}
+function addMonths(ym, k){
+  let [y,m]=ym.split('-').map(Number);
+  m+=k; y+=Math.floor((m-1)/12); m=((m-1)%12+12)%12+1;
+  return y+'-'+String(m).padStart(2,'0');
+}
+function thisMonth(){
+  const d=new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+}
+
+/** המרת ערך מהקובץ לתאריך YYYY-MM-DD. מחזיר '' אם אין תאריך תקין. */
+function parseDate(v, fmtMode){
+  if(v==null || v==='') return '';
+  if(v instanceof Date && !isNaN(v))
+    return v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+String(v.getDate()).padStart(2,'0');
+  if(typeof v==='number' && v>20000 && v<80000){          // תאריך סריאלי של אקסל
+    const d=new Date(Math.round((v-25569)*86400*1000));
+    return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');
+  }
+  const s=String(v).trim();
+  const m=s.match(/(\d{1,4})[\/\.\-](\d{1,2})[\/\.\-](\d{2,4})/);
+  if(!m) return '';
+  let a=Number(m[1]), b=Number(m[2]), c=Number(m[3]);
+  let y,mo,d;
+  let mode=fmtMode||'auto';
+  if(mode==='auto'){
+    if(a>31) mode='ymd';
+    else if(b>12) mode='dmy';
+    else mode='dmy';                                      // ברירת מחדל ישראלית
+  }
+  if(mode==='ymd'){ y=a; mo=b; d=c; }
+  else if(mode==='mdy'){ mo=a; d=b; y=c; }
+  else { d=a; mo=b; y=c; }
+  if(y<100) y += y<70 ? 2000 : 1900;
+  if(mo<1||mo>12||d<1||d>31) return '';
+  return y+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+}
+
+/* ---------------- אחסון מקומי + סנכרון ---------------- */
+function saveLocal(){ try{ localStorage.setItem(LS, JSON.stringify(DB)); }catch(e){} }
+function loadLocal(){
+  try{ const r=localStorage.getItem(LS); if(r) DB=Object.assign(DB, JSON.parse(r)); }catch(e){}
+  if(!DB.cats || !DB.cats.length) seedCats();
+  if(!DB.settings) DB.settings={};
+  GS_URL = DB.settings.apiUrl || '';
+}
+function seedCats(){
+  DB.cats = DEFAULT_CATS.map((c,i)=>({
+    id:uid('c'), name:c[0], kind:c[1], color:c[2], icon:c[3], ord:String(i), deleted:''
+  }));
+}
+function users(){
+  try{ const u=JSON.parse(DB.settings.users||'null'); if(Array.isArray(u)&&u.length) return u; }catch(e){}
+  return [{id:'u1',name:'דודי',code:'1234'},{id:'u2',name:'בן/בת זוג',code:'5678'}];
+}
+function setSync(state, txt){ $('syncChip').textContent = txt; }
+
+function queueRow(kind, row){ pending[kind][row.id]=1; saveLocal(); schedFlush(); }
+function queueDel(kind, id){ pending.del[kind].push(id); saveLocal(); schedFlush(); }
+function queueSetting(k){ pending.settings[k]=1; saveLocal(); schedFlush(); }
+function schedFlush(){
+  if(!GS_URL){ setSync('off','מקומי — לא מחובר'); return; }
+  clearTimeout(flushTimer); flushTimer=setTimeout(flush, 1200);
+}
+function hasPending(){
+  return Object.keys(pending.tx).length || Object.keys(pending.cats).length ||
+         Object.keys(pending.stencils).length || Object.keys(pending.rules).length ||
+         Object.keys(pending.settings).length ||
+         pending.del.tx.length || pending.del.cats.length ||
+         pending.del.stencils.length || pending.del.rules.length;
+}
+function apiPost(payload){
+  return fetch(GS_URL, {method:'POST', body: JSON.stringify(payload)})
+    .then(r=>r.json())
+    .then(j=>{ if(!j || j.status!=='ok') throw new Error((j&&j.message)||'שגיאת שרת'); return j; });
+}
+async function flush(){
+  if(!GS_URL || flushing) return;
+  if(!hasPending()){ setSync('on','מסונכרן'); return; }
+  flushing=true; setSync('saving','שומר בענן...');
+  try{
+    const ops=[];
+    const pack=(kind,op)=>{
+      const ids=Object.keys(pending[kind]);
+      if(!ids.length) return;
+      const rows=ids.map(id=>DB[kind].find(x=>x.id===id)).filter(Boolean);
+      if(rows.length) ops.push({op, rows});
+    };
+    pack('tx','upsertTx'); pack('cats','upsertCat');
+    pack('stencils','upsertStencil'); pack('rules','upsertRule');
+    if(pending.del.tx.length)       ops.push({op:'delTx',       ids:pending.del.tx});
+    if(pending.del.cats.length)     ops.push({op:'delCat',      ids:pending.del.cats});
+    if(pending.del.stencils.length) ops.push({op:'delStencil',  ids:pending.del.stencils});
+    if(pending.del.rules.length)    ops.push({op:'delRule',     ids:pending.del.rules});
+    Object.keys(pending.settings).forEach(k=>
+      ops.push({op:'setSetting', key:k, value:String(DB.settings[k]==null?'':DB.settings[k])}));
+    if(ops.length) await apiPost({action:'batch', ops});
+    pending={tx:{},cats:{},stencils:{},rules:{},settings:{},del:{tx:[],cats:[],stencils:[],rules:[]}};
+    saveLocal(); setSync('on','מסונכרן ✓');
+  }catch(e){
+    setSync('err','שגיאת סנכרון — יישמר שוב');
+    clearTimeout(flushTimer); flushTimer=setTimeout(flush, 15000);
+  }finally{ flushing=false; }
+}
+async function syncNow(){
+  if(!GS_URL){ toast('לא מחובר — הדבק כתובת /exec בהגדרות'); return; }
+  setSync('saving','טוען מהענן...');
+  try{
+    await flush();
+    const j = await fetch(GS_URL+'?action=load').then(r=>r.json());
+    if(j && j.tx){
+      DB.tx=j.tx; DB.cats=j.cats&&j.cats.length?j.cats:DB.cats;
+      DB.stencils=j.stencils||[]; DB.rules=j.rules||[];
+      DB.settings=Object.assign({}, j.settings||{}, {apiUrl:GS_URL});
+      saveLocal(); renderAll(); setSync('on','מסונכרן ✓'); toast('הנתונים נטענו מהענן');
+    }
+  }catch(e){ setSync('err','שגיאה בטעינה'); toast('לא הצלחתי לטעון — בדוק את הכתובת'); }
+}
+
+/* ---------------- כניסה ---------------- */
+let pickedUser=null;
+function showLogin(){
+  const box=$('userPick');
+  box.innerHTML = users().map(u=>
+    '<button onclick="pickUser(\''+esc(u.id)+'\')">'+esc(u.name)+'</button>').join('');
+  $('codeStep').style.display='none'; box.style.display='flex';
+  $('loginOverlay').style.display='flex';
+}
+function pickUser(id){
+  pickedUser = users().find(u=>u.id===id);
+  $('userPick').style.display='none';
+  $('codeStep').style.display='block';
+  $('loginCode').value=''; $('loginErr').textContent='';
+  setTimeout(()=>$('loginCode').focus(), 60);
+}
+function backToUsers(){ $('codeStep').style.display='none'; $('userPick').style.display='flex'; }
+function tryLogin(){
+  if(!pickedUser) return;
+  if($('loginCode').value === String(pickedUser.code)){
+    CU = pickedUser;
+    try{ localStorage.setItem(LSU, CU.id); }catch(e){}
+    $('loginOverlay').style.display='none';
+    $('userChip').style.display='block';
+    $('userChip').textContent='👤 '+CU.name;
+    renderAll();
+    if(GS_URL) syncNow();
+  } else {
+    $('loginErr').textContent='קוד שגוי';
+    $('loginCode').value='';
+  }
+}
+function logout(){ try{ localStorage.removeItem(LSU); }catch(e){} CU=null; showLogin(); }
+
+/* ---------------- ניווט ---------------- */
+document.querySelectorAll('#nav button').forEach(b=>{
+  b.onclick = ()=> gotoTab(b.dataset.tab);
+});
+function gotoTab(name){
+  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on', b.dataset.tab===name));
+  document.querySelectorAll('main section').forEach(s=>s.classList.toggle('on', s.id==='tab-'+name));
+  if(name==='dash') renderDash();
+  if(name==='classify') renderClassify();
+  if(name==='tx') renderTx();
+  if(name==='import') renderSrcTiles();
+  if(name==='sources'){ renderSrcTable(); renderRulesTable(); }
+  if(name==='cats') renderCats();
+  if(name==='settings') renderSettings();
+  window.scrollTo(0,0);
+}
+
+/* ---------------- נתונים נגזרים ---------------- */
+const live = () => DB.tx.filter(t=>!t.deleted);
+/** מה שנספר בדוחות: מסווג + לבדיקה. "לא רלוונטי" ו"ממתין" לא נספרים. */
+const counted = () => live().filter(t=>t.status==='ok'||t.status==='review');
+const catByName = n => DB.cats.find(c=>c.name===n && !c.deleted);
+function catColor(n){ const c=catByName(n); return c?c.color:'#94a3b8'; }
+function catIcon(n){ const c=catByName(n); return c?c.icon:'🏷️'; }
+function monthsList(){
+  const set={};
+  live().forEach(t=>{ if(t.date) set[monthOf(t.date)]=1; });
+  set[thisMonth()]=1;
+  return Object.keys(set).sort().reverse();
+}
+function fillMonthSelect(el, withAll){
+  const cur=el.value;
+  const ms=monthsList();
+  el.innerHTML=(withAll?'<option value="">כל החודשים</option>':'')+
+    ms.map(m=>'<option value="'+m+'">'+heMonth(m)+'</option>').join('');
+  if(cur && [...el.options].some(o=>o.value===cur)) el.value=cur;
+  /* ברירת המחדל היא החודש הנוכחי, לא החודש האחרון שיש בו נתונים —
+     קובץ אשראי מכיל לפעמים חיובים עתידיים ואסור שהם יחטפו את התצוגה */
+  else if(!withAll) el.value = ms.includes(thisMonth()) ? thisMonth() : ms[0];
+}
+
+/* ---------------- דשבורד ---------------- */
+let trendChartObj=null;
+function renderDash(){
+  fillMonthSelect($('dashMonth'), false);
+  const ym = $('dashMonth').value || thisMonth();
+  const rows = counted().filter(t=>monthOf(t.date)===ym);
+  const exp = rows.filter(t=>t.kind==='expense');
+  const inc = rows.filter(t=>t.kind==='income');
+  const totExp = exp.reduce((s,t)=>s+num(t.amount),0);
+  const totInc = inc.reduce((s,t)=>s+num(t.amount),0);
+
+  /* ממוצע 3 חודשים קודמים להשוואה */
+  const prevs=[1,2,3].map(k=>addMonths(ym,-k));
+  const prevTotals=prevs.map(m=>counted().filter(t=>t.kind==='expense'&&monthOf(t.date)===m)
+                                          .reduce((s,t)=>s+num(t.amount),0));
+  const withData=prevTotals.filter(v=>v>0);
+  const avg = withData.length ? withData.reduce((a,b)=>a+b,0)/withData.length : 0;
+
+  /* --- שורת התובנה --- */
+  let ins='';
+  if(!rows.length){
+    ins='עדיין אין תנועות בחודש הזה. אחרי ייבוא ראשון תופיע כאן תמונת המצב.';
+  } else if(!avg){
+    ins='זה החודש הראשון עם נתונים — סך ההוצאות '+fmt(totExp)+' ₪. '+
+        'מהחודש הבא כבר תופיע כאן השוואה לממוצע.';
+  } else {
+    const diff=totExp-avg, pct=Math.round(diff/avg*100);
+    const byCat={}, byCatPrev={};
+    exp.forEach(t=>byCat[t.category||'ללא קטגוריה']=(byCat[t.category||'ללא קטגוריה']||0)+num(t.amount));
+    prevs.forEach(m=>counted().filter(t=>t.kind==='expense'&&monthOf(t.date)===m)
+      .forEach(t=>{ const k=t.category||'ללא קטגוריה';
+        byCatPrev[k]=(byCatPrev[k]||0)+num(t.amount)/(withData.length||1); }));
+    const deltas=Object.keys(byCat).map(k=>({k, d:byCat[k]-(byCatPrev[k]||0)}))
+      .sort((a,b)=>Math.abs(b.d)-Math.abs(a.d)).slice(0,2)
+      .filter(x=>Math.abs(x.d)>avg*0.03);
+    const dir = pct>0?'גבוה':'נמוך';
+    const cls = pct>0?'up':'down';
+    ins = '<b>'+heMonth(ym)+'</b> — הוצאות של <b>'+fmt(totExp)+' ₪</b>, '+
+          '<span class="'+cls+'">'+dir+' ב-'+Math.abs(pct)+'%</span> מהממוצע של שלושת החודשים הקודמים ('+fmt(avg)+' ₪).';
+    if(deltas.length){
+      ins += ' התזוזות הבולטות מול הממוצע: ' + deltas.map(x=>
+        '<b>'+esc(x.k)+'</b> <span class="'+(x.d>0?'up':'down')+'">'+
+        (x.d>0?'+':'−')+fmt(Math.abs(x.d))+' ₪</span>').join(', ') + '.';
+    }
+  }
+  const pend = live().filter(t=>t.status==='pending').length;
+  const rev  = live().filter(t=>t.status==='review').length;
+  let flags='';
+  if(pend) flags+='<div style="margin-top:9px;font-size:13px">🏷️ <b>'+pend+'</b> תנועות ממתינות לסיווג — '+
+    '<a href="#" onclick="gotoTab(\'classify\');return false" style="color:var(--brand)">לסיווג עכשיו</a></div>';
+  if(rev) flags+='<div style="margin-top:5px;font-size:13px">🔍 <b>'+rev+'</b> תנועות מסומנות לבדיקה</div>';
+  $('insightBox').innerHTML='<div class="insight">'+ins+flags+'</div>';
+
+  /* --- KPI --- */
+  const today=new Date(), curYM=thisMonth();
+  const daysIn=new Date(Number(ym.slice(0,4)), Number(ym.slice(5,7)), 0).getDate();
+  const dayNow = (ym===curYM) ? today.getDate() : daysIn;
+  const perDay = dayNow ? totExp/dayNow : 0;
+  const forecast = perDay*daysIn;
+  const net = totInc-totExp;
+  $('kpis').innerHTML =
+    kpi('הוצאות החודש', fmt(totExp)+' ₪', avg?('ממוצע 3 חודשים: '+fmt(avg)+' ₪'):'') +
+    kpi('הכנסות החודש', fmt(totInc)+' ₪', inc.length+' תנועות') +
+    kpi('נשאר', (net>=0?'':'−')+fmt(Math.abs(net))+' ₪',
+        net>=0?'הכנסות מעל הוצאות':'הוצאות מעל הכנסות',
+        net>=0?'down':'up') +
+    /* תחזית מיומיים-שלושה של נתונים מכפילה כל הוצאה חד-פעמית ומטעה.
+       מציגים אותה רק אחרי שבוע, כשיש בסיס אמיתי לקצב. */
+    kpi('ממוצע יומי', fmt(perDay)+' ₪',
+        ym!==curYM ? ('על פני '+daysIn+' ימים')
+        : dayNow>=8 ? ('תחזית לסוף החודש: '+fmt(forecast)+' ₪')
+        : ('יום '+dayNow+' בחודש — מוקדם לתחזית'));
+
+  renderCatBreak(exp, totExp);
+  renderTopMerch(exp);
+  renderOutliers(exp, ym);
+  renderTrend(ym);
+  renderCatMonths(ym);
+}
+function kpi(lbl,val,sub,cls){
+  return '<div class="kpi"><div class="lbl">'+esc(lbl)+'</div>'+
+         '<div class="val '+(cls||'')+'">'+val+'</div>'+
+         (sub?'<div class="sub">'+esc(sub)+'</div>':'')+'</div>';
+}
+
+function renderCatBreak(exp, tot){
+  const by={};
+  exp.forEach(t=>{ const k=t.category||'ללא קטגוריה'; by[k]=(by[k]||0)+num(t.amount); });
+  const list=Object.entries(by).sort((a,b)=>b[1]-a[1]);
+  if(!list.length){ $('catBreak').innerHTML='<div class="empty">אין הוצאות בחודש זה</div>'; return; }
+  $('catBreak').innerHTML = list.map(([k,v])=>{
+    const p = tot? Math.round(v/tot*100):0;
+    return '<div style="margin-bottom:11px">'+
+      '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">'+
+        '<span>'+catIcon(k)+' '+esc(k)+'</span>'+
+        '<span class="num"><b>'+fmt(v)+' ₪</b> <span style="color:var(--dim)">'+p+'%</span></span></div>'+
+      '<div class="bar"><i style="width:'+p+'%;background:'+catColor(k)+'"></i></div></div>';
+  }).join('');
+}
+
+function renderTopMerch(exp){
+  const by={};
+  exp.forEach(t=>{ const k=normDesc(t.desc)||'—'; if(!by[k])by[k]={n:0,v:0}; by[k].n++; by[k].v+=num(t.amount); });
+  const list=Object.entries(by).sort((a,b)=>b[1].v-a[1].v).slice(0,10);
+  if(!list.length){ $('topMerch').innerHTML='<div class="empty">—</div>'; return; }
+  $('topMerch').innerHTML='<table><tbody>'+list.map(([k,o])=>
+    '<tr><td>'+esc(k)+'</td>'+
+    '<td class="num" style="color:var(--dim);width:60px">'+o.n+'×</td>'+
+    '<td class="num" style="width:95px"><b>'+fmt(o.v)+' ₪</b></td></tr>').join('')+'</tbody></table>';
+}
+
+/** חריגות: תנועה שגדולה פי 2 מהממוצע ההיסטורי של אותה קטגוריה */
+function renderOutliers(exp, ym){
+  const hist={};
+  counted().filter(t=>t.kind==='expense'&&monthOf(t.date)!==ym).forEach(t=>{
+    const k=t.category||'—'; if(!hist[k])hist[k]={n:0,s:0}; hist[k].n++; hist[k].s+=num(t.amount);
+  });
+  const out=exp.filter(t=>{
+    const h=hist[t.category||'—'];
+    if(!h||h.n<3) return num(t.amount)>=1500;
+    return num(t.amount) > (h.s/h.n)*2.5 && num(t.amount)>=250;
+  }).sort((a,b)=>num(b.amount)-num(a.amount)).slice(0,8);
+  if(!out.length){ $('outliers').innerHTML='<div class="empty">אין חריגות בולטות החודש 👍</div>'; return; }
+  $('outliers').innerHTML='<table><tbody>'+out.map(t=>{
+    const h=hist[t.category||'—'];
+    const avgTxt = (h&&h.n>=3) ? ('רגיל בקטגוריה: ~'+fmt(h.s/h.n)+' ₪') : 'סכום גבוה';
+    return '<tr onclick="showProv(\''+esc(t.id)+'\')" style="cursor:pointer">'+
+      '<td>'+esc(t.date)+'</td><td>'+esc(t.desc)+'</td>'+
+      '<td>'+catIcon(t.category)+' '+esc(t.category||'—')+'</td>'+
+      '<td style="color:var(--dim);font-size:12px">'+esc(avgTxt)+'</td>'+
+      '<td class="num"><b>'+fmt(t.amount)+' ₪</b></td></tr>';
+  }).join('')+'</tbody></table>';
+}
+
+function renderTrend(ym){
+  const months=[]; for(let i=11;i>=0;i--) months.push(addMonths(ym,-i));
+  const e=months.map(m=>counted().filter(t=>t.kind==='expense'&&monthOf(t.date)===m)
+                                 .reduce((s,t)=>s+num(t.amount),0));
+  const n=months.map(m=>counted().filter(t=>t.kind==='income'&&monthOf(t.date)===m)
+                                 .reduce((s,t)=>s+num(t.amount),0));
+  /* ממוצע נע 3 חודשים */
+  const ma=e.map((_,i)=>{ const w=e.slice(Math.max(0,i-2),i+1); return w.reduce((a,b)=>a+b,0)/w.length; });
+  if(trendChartObj) trendChartObj.destroy();
+  if(typeof Chart==='undefined') return;
+  trendChartObj = new Chart($('trendChart'), {
+    data:{ labels: months.map(m=>heMonth(m).replace(/ \d{4}$/,'')),
+      datasets:[
+        {type:'bar', label:'הוצאות', data:e, backgroundColor:'#818cf8', borderRadius:5, order:2},
+        {type:'bar', label:'הכנסות', data:n, backgroundColor:'#34d399', borderRadius:5, order:2},
+        {type:'line', label:'ממוצע נע 3 חודשים', data:ma, borderColor:'#dc2626',
+         borderWidth:2, pointRadius:0, tension:.35, order:1}
+      ]},
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ labels:{ font:{family:'Segoe UI'} } },
+        tooltip:{ callbacks:{ label:c=>c.dataset.label+': '+fmt(c.parsed.y)+' ₪' } } },
+      scales:{ y:{ ticks:{ callback:v=>fmt(v) } } } }
+  });
+}
+
+/** טבלת קטגוריה × חודש — מגלה זחילה איטית שלא מרגישים בה חודש-חודש */
+function renderCatMonths(ym){
+  const months=[]; for(let i=5;i>=0;i--) months.push(addMonths(ym,-i));
+  const cats={};
+  counted().filter(t=>t.kind==='expense'&&months.includes(monthOf(t.date))).forEach(t=>{
+    const k=t.category||'ללא קטגוריה';
+    if(!cats[k]) cats[k]={};
+    cats[k][monthOf(t.date)]=(cats[k][monthOf(t.date)]||0)+num(t.amount);
+  });
+  const keys=Object.keys(cats).sort((a,b)=>
+    (cats[b][ym]||0)-(cats[a][ym]||0));
+  if(!keys.length){ $('catMonths').innerHTML='<div class="empty">—</div>'; return; }
+  /* החודש הנוכחי כמעט תמיד חלקי — אם ייכלל בחישוב הוא יגרור כל מגמה כלפי מטה
+     ויסתיר עליות אמיתיות. לכן משווים רק בין חודשים שהסתיימו. */
+  const cmp = months.filter(m=>m!==thisMonth());
+  const canTrend = cmp.length>=4;
+  const half = Math.floor(cmp.length/2);
+
+  let h='<table><thead><tr><th>קטגוריה</th>'+
+    months.map(m=>'<th class="num">'+heMonth(m).replace(/ \d{4}$/,'')+
+      (m===thisMonth()?'<div style="font-weight:400;font-size:10px">חלקי</div>':'')+'</th>').join('')+
+    '<th class="num">מגמה</th></tr></thead><tbody>';
+  keys.forEach(k=>{
+    const vals=months.map(m=>cats[k][m]||0);
+    let trend='<span style="color:var(--dim)">—</span>';
+    if(canTrend){
+      const cv=cmp.map(m=>cats[k][m]||0);
+      const early=cv.slice(0,half).reduce((a,b)=>a+b,0)/half;
+      const late=cv.slice(half).reduce((a,b)=>a+b,0)/(cv.length-half);
+      if(early>0){
+        const p=Math.round((late-early)/early*100);
+        if(p>=15) trend='<span class="up">▲ '+p+'%</span>';
+        else if(p<=-15) trend='<span class="down">▼ '+Math.abs(p)+'%</span>';
+      }
+    }
+    h+='<tr><td>'+catIcon(k)+' '+esc(k)+'</td>'+
+       vals.map((v,i)=>'<td class="num"'+(months[i]===thisMonth()?' style="color:var(--dim)"':'')+'>'+
+         (v?fmt(v):'<span style="color:#cbd5e1">–</span>')+'</td>').join('')+
+       '<td class="num">'+trend+'</td></tr>';
+  });
+  h+='</tbody></table><div style="font-size:11.5px;color:var(--dim);margin-top:8px">'+
+     'עמודת המגמה משווה בין מחצית החודשים הראשונה לשנייה, ומתעלמת מהחודש הנוכחי כל עוד הוא לא הסתיים.</div>';
+  $('catMonths').innerHTML=h;
+}
+
+/* ---------------- מסך סיווג ---------------- */
+function renderClassify(){
+  const pend=live().filter(t=>t.status==='pending');
+  $('pendBadge').style.display = pend.length?'inline-block':'none';
+  $('pendBadge').textContent = pend.length;
+  if(!pend.length){
+    $('classifyList').innerHTML='<div class="empty">🎉 הכל מסווג!<br><br>'+
+      '<button class="btn" onclick="gotoTab(\'import\')">📥 ייבוא נתונים חדשים</button></div>';
+    return;
+  }
+  const groups={};
+  pend.forEach(t=>{
+    const k=normDesc(t.desc).toLowerCase()||'—';
+    if(!groups[k]) groups[k]={desc:normDesc(t.desc)||'—', rows:[], sum:0};
+    groups[k].rows.push(t); groups[k].sum+=num(t.amount);
+  });
+  const list=Object.entries(groups).sort((a,b)=>b[1].rows.length-a[1].rows.length);
+  const opts = DB.cats.filter(c=>!c.deleted)
+    .map(c=>'<option value="'+esc(c.name)+'">'+c.icon+' '+esc(c.name)+'</option>').join('');
+  $('classifyList').innerHTML = list.map(([k,g])=>{
+    const dates=g.rows.map(r=>r.date).sort();
+    const range = dates.length>1 ? (dates[0]+' — '+dates[dates.length-1]) : dates[0];
+    return '<div style="border:1px solid var(--line);border-radius:11px;padding:13px;margin-bottom:10px">'+
+      '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:9px">'+
+        '<div><b style="font-size:14.5px">'+esc(g.desc)+'</b>'+
+          '<div style="font-size:12px;color:var(--dim);margin-top:2px">'+
+            g.rows.length+' שורות · סה"כ '+fmt(g.sum)+' ₪ · '+esc(range)+
+            ' · מקור: '+esc(g.rows[0].src||'ידני')+'</div></div>'+
+        '<div class="num" style="font-size:17px;font-weight:700">'+fmt(g.sum)+' ₪</div></div>'+
+      '<div class="row">'+
+        '<div><select id="cls-'+esc(k)+'"><option value="">בחר קטגוריה...</option>'+opts+'</select></div>'+
+        '<div class="fix"><button class="btn sm" onclick="applyClass(\''+esc(k)+'\')">✓ סווג</button></div>'+
+        '<div class="fix"><button class="btn sec sm" onclick="markGroup(\''+esc(k)+'\',\'irrelevant\')">🚫 לא רלוונטי</button></div>'+
+        '<div class="fix"><button class="btn sec sm" onclick="markGroup(\''+esc(k)+'\',\'review\')">🔍 לבדיקה</button></div>'+
+        '<div class="fix" style="font-size:12px;color:var(--dim)">'+
+          '<label><input type="checkbox" id="rule-'+esc(k)+'" checked style="width:auto"> שמור ככלל</label></div>'+
+      '</div></div>';
+  }).join('');
+  window._clsGroups = groups;
+}
+function applyClass(key){
+  const g=window._clsGroups[key]; if(!g) return;
+  const cat=$('cls-'+key).value;
+  if(!cat){ toast('בחר קטגוריה'); return; }
+  const asRule = $('rule-'+key).checked;
+  g.rows.forEach(t=>{
+    t.category=cat; t.status='ok'; t.classBy='ידני: '+(CU?CU.name:'');
+    queueRow('tx',t);
+  });
+  if(asRule) addRule(g.desc, cat, 'ok');
+  saveLocal(); renderClassify(); updateBadge();
+  toast(g.rows.length+' תנועות סווגו ל"'+cat+'"');
+}
+function markGroup(key, status){
+  const g=window._clsGroups[key]; if(!g) return;
+  g.rows.forEach(t=>{ t.status=status; t.classBy='ידני: '+(CU?CU.name:''); queueRow('tx',t); });
+  if($('rule-'+key).checked && status==='irrelevant') addRule(g.desc, '', 'irrelevant');
+  saveLocal(); renderClassify(); updateBadge();
+  toast(g.rows.length+' תנועות סומנו כ"'+STATUS_LBL[status]+'"');
+}
+function addRule(match, category, status){
+  const m=normDesc(match); if(!m) return;
+  const ex=DB.rules.find(r=>!r.deleted && normDesc(r.match).toLowerCase()===m.toLowerCase());
+  if(ex){ ex.category=category; ex.status=status; queueRow('rules',ex); return; }
+  const r={id:uid('r'), match:m, matchType:'contains', category, status, hits:'0', deleted:''};
+  DB.rules.push(r); queueRow('rules',r);
+}
+function updateBadge(){
+  const n=live().filter(t=>t.status==='pending').length;
+  $('pendBadge').style.display = n?'inline-block':'none';
+  $('pendBadge').textContent = n;
+}
+
+/* ---------------- תנועות ---------------- */
+function renderTx(){
+  fillMonthSelect($('txMonth'), true);
+  const curC=$('txCat').value, curS=$('txSrc').value;
+  $('txCat').innerHTML='<option value="">כל הקטגוריות</option>'+
+    DB.cats.filter(c=>!c.deleted).map(c=>'<option>'+esc(c.name)+'</option>').join('');
+  const srcs=[...new Set(live().map(t=>t.src).filter(Boolean))];
+  $('txSrc').innerHTML='<option value="">כל המקורות</option>'+
+    srcs.map(s=>'<option>'+esc(s)+'</option>').join('');
+  if(curC) $('txCat').value=curC;
+  if(curS) $('txSrc').value=curS;
+
+  const q=$('txSearch').value.trim().toLowerCase();
+  const m=$('txMonth').value, c=$('txCat').value, st=$('txStatus').value, sr=$('txSrc').value;
+  let rows=live().filter(t=>
+    (!m  || monthOf(t.date)===m) &&
+    (!c  || t.category===c) &&
+    (!st || t.status===st) &&
+    (!sr || t.src===sr) &&
+    (!q  || (String(t.desc)+' '+String(t.note)).toLowerCase().includes(q))
+  ).sort((a,b)=> (b.date||'').localeCompare(a.date||''));
+
+  const e=rows.filter(t=>t.kind==='expense'&&(t.status==='ok'||t.status==='review'))
+              .reduce((s,t)=>s+num(t.amount),0);
+  const i=rows.filter(t=>t.kind==='income'&&(t.status==='ok'||t.status==='review'))
+              .reduce((s,t)=>s+num(t.amount),0);
+  $('txSummary').textContent = rows.length+' תנועות · הוצאות '+fmt(e)+' ₪ · הכנסות '+fmt(i)+' ₪ '+
+    '(לא כולל "לא רלוונטי" ו"ממתין לסיווג")';
+
+  if(!rows.length){ $('txTable').innerHTML='<tbody><tr><td><div class="empty">אין תנועות תואמות</div></td></tr></tbody>'; return; }
+  $('txTable').innerHTML='<thead><tr>'+
+    '<th>תאריך</th><th>תיאור</th><th>קטגוריה</th><th class="num">סכום</th>'+
+    '<th>סטטוס</th><th>מקור</th><th></th></tr></thead><tbody>'+
+    rows.slice(0,400).map(t=>
+      '<tr><td class="num">'+esc(t.date)+'</td>'+
+      '<td>'+esc(t.desc)+(t.note?'<div style="font-size:11.5px;color:var(--dim)">'+esc(t.note)+'</div>':'')+'</td>'+
+      '<td>'+(t.category?catIcon(t.category)+' '+esc(t.category):'<span style="color:var(--dim)">—</span>')+'</td>'+
+      '<td class="num" style="color:'+(t.kind==='income'?'var(--ok)':'inherit')+'">'+
+        (t.kind==='income'?'+':'')+fmt2(t.amount)+'</td>'+
+      '<td><span class="pill p-'+esc(t.status||'ok')+'">'+esc(STATUS_LBL[t.status]||'מסווג')+'</span></td>'+
+      '<td style="font-size:12px;color:var(--dim)">'+esc(t.src||'ידני')+'</td>'+
+      '<td style="white-space:nowrap">'+
+        '<button class="btn ghost sm" onclick="showProv(\''+esc(t.id)+'\')" title="מאיפה זה הגיע">🔎</button> '+
+        '<button class="btn ghost sm" onclick="editTx(\''+esc(t.id)+'\')">✏️</button></td></tr>'
+    ).join('')+'</tbody>';
+  if(rows.length>400) $('txSummary').textContent += ' — מוצגות 400 הראשונות';
+}
+
+/* חלונית "מאיפה זה הגיע" — תיעוד המקור המלא */
+function showProv(id){
+  const t=DB.tx.find(x=>x.id===id); if(!t) return;
+  const rowsHtml=[
+    ['תאריך', t.date], ['תיאור', t.desc],
+    ['סכום', fmt2(t.amount)+' ₪ ('+(t.kind==='income'?'הכנסה':'הוצאה')+')'],
+    ['קטגוריה', t.category||'—'], ['סטטוס', STATUS_LBL[t.status]||'—'],
+    ['אמצעי תשלום', t.payment||'—'], ['הערה', t.note||'—'],
+    ['—','—'],
+    ['מקור', t.src||'הזנה ידנית'],
+    ['קובץ', t.srcFile||'—'],
+    ['שורה בקובץ', t.srcRow||'—'],
+    ['תאריך ייבוא', t.importedAt||'—'],
+    ['ייבא', t.importedBy||t.enteredBy||'—'],
+    ['אופן סיווג', t.classBy||'—'],
+    ['טקסט גולמי', t.srcRaw||'—']
+  ].filter(r=>r[0]!=='—').map(r=>'<dt>'+esc(r[0])+'</dt><dd>'+esc(r[1])+'</dd>').join('');
+  openModal('<h3>🔎 מאיפה זה הגיע</h3><dl class="kv">'+rowsHtml+'</dl>'+
+    '<div style="margin-top:16px;text-align:left"><button class="btn sec" onclick="closeModal()">סגור</button></div>');
+}
+
+function editTx(id){
+  const t=DB.tx.find(x=>x.id===id); if(!t) return;
+  const opts=DB.cats.filter(c=>!c.deleted&&c.kind===t.kind)
+    .map(c=>'<option'+(c.name===t.category?' selected':'')+'>'+esc(c.name)+'</option>').join('');
+  const sOpts=Object.keys(STATUS_LBL).map(s=>
+    '<option value="'+s+'"'+(s===t.status?' selected':'')+'>'+STATUS_LBL[s]+'</option>').join('');
+  openModal('<h3>עריכת תנועה</h3>'+
+    '<label class="f"><span>תאריך</span><input type="date" id="eDate" value="'+esc(t.date)+'"></label>'+
+    '<label class="f"><span>תיאור</span><input id="eDesc" value="'+esc(t.desc)+'"></label>'+
+    '<label class="f"><span>סכום</span><input type="number" step="0.01" id="eAmount" value="'+esc(t.amount)+'"></label>'+
+    '<label class="f"><span>קטגוריה</span><select id="eCat"><option value="">—</option>'+opts+'</select></label>'+
+    '<label class="f"><span>סטטוס</span><select id="eStatus">'+sOpts+'</select></label>'+
+    '<label class="f"><span>הערה</span><input id="eNote" value="'+esc(t.note||'')+'"></label>'+
+    '<div class="row" style="margin-top:8px">'+
+      '<div class="fix"><button class="btn" onclick="saveTx(\''+esc(id)+'\')">שמור</button></div>'+
+      '<div class="fix"><button class="btn sec" onclick="closeModal()">ביטול</button></div>'+
+      '<div class="fix" style="margin-inline-start:auto"><button class="btn danger sm" onclick="delTx(\''+esc(id)+'\')">מחק</button></div>'+
+    '</div>');
+}
+function saveTx(id){
+  const t=DB.tx.find(x=>x.id===id); if(!t) return;
+  t.date=$('eDate').value; t.desc=$('eDesc').value;
+  t.amount=String(num($('eAmount').value));
+  t.category=$('eCat').value; t.status=$('eStatus').value; t.note=$('eNote').value;
+  t.classBy='ידני: '+(CU?CU.name:'');
+  queueRow('tx',t); saveLocal(); closeModal(); renderTx(); updateBadge(); toast('נשמר');
+}
+function delTx(id){
+  if(!confirm('למחוק את התנועה? היא תישאר בגיליון מסומנת כמחוקה.')) return;
+  const t=DB.tx.find(x=>x.id===id); if(!t) return;
+  t.deleted=new Date().toISOString().slice(0,10);
+  queueDel('tx',id); saveLocal(); closeModal(); renderTx(); updateBadge(); toast('נמחק');
+}
+
+function exportTx(){
+  const rows=[['תאריך','תיאור','סכום','סוג','קטגוריה','סטטוס','אמצעי תשלום','הערה',
+               'מקור','קובץ','שורה','תאריך ייבוא','ייבא','אופן סיווג','טקסט גולמי']];
+  live().sort((a,b)=>(a.date||'').localeCompare(b.date||'')).forEach(t=>rows.push([
+    t.date,t.desc,t.amount,(t.kind==='income'?'הכנסה':'הוצאה'),t.category,
+    STATUS_LBL[t.status]||'',t.payment,t.note,t.src,t.srcFile,t.srcRow,
+    t.importedAt,t.importedBy||t.enteredBy,t.classBy,t.srcRaw]));
+  const csv='﻿'+rows.map(r=>r.map(c=>'"'+String(c==null?'':c).replace(/"/g,'""')+'"').join(',')).join('\r\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download='הוצאות-בית-'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();
+}
+
+/* ---------------- הזנה ידנית ---------------- */
+function fillAddCats(){
+  const kind=$('aKind').value;
+  $('aCat').innerHTML=DB.cats.filter(c=>!c.deleted&&c.kind===kind)
+    .map(c=>'<option>'+esc(c.name)+'</option>').join('');
+}
+function addManual(){
+  const amt=num($('aAmount').value);
+  if(!amt){ toast('הזן סכום'); return; }
+  const t={
+    id:uid('t'), date:$('aDate').value||new Date().toISOString().slice(0,10),
+    desc:$('aDesc').value.trim()||'הזנה ידנית', amount:String(Math.abs(amt)),
+    kind:$('aKind').value, category:$('aCat').value, status:'ok',
+    payment:$('aPayment').value.trim(), note:$('aNote').value.trim(),
+    src:'', srcFile:'', srcRow:'', srcRaw:'', importedAt:'', importedBy:'',
+    classBy:'ידני: '+(CU?CU.name:''), enteredBy:(CU?CU.name:''), deleted:''
+  };
+  DB.tx.push(t); queueRow('tx',t); saveLocal();
+  $('aAmount').value=''; $('aDesc').value=''; $('aNote').value='';
+  toast('נשמר ✓  '+fmt(amt)+' ₪');
+}
+
+/* ---------------- ייבוא ---------------- */
+let curGrid=null, curStencil=null, curFileName='';
+
+function renderSrcTiles(){
+  const st=DB.stencils.filter(s=>!s.deleted);
+  $('srcTiles').innerHTML = st.map(s=>{
+    const n=live().filter(t=>t.src===s.name).length;
+    return '<div class="tile'+(curStencil&&curStencil.id===s.id?' on':'')+'" onclick="pickStencil(\''+esc(s.id)+'\')">'+
+      (s.type==='credit'?'💳':'🏦')+' '+esc(s.name)+
+      '<div class="t2">'+n+' תנועות</div></div>';
+  }).join('') +
+  '<div class="tile'+(curStencil===null&&curGrid?' on':'')+'" onclick="newStencil()" '+
+  'style="border-style:dashed">➕ מקור חדש<div class="t2">מיפוי עמודות ידני</div></div>';
+}
+function pickStencil(id){
+  curStencil=DB.stencils.find(s=>s.id===id)||null;
+  $('pasteCard').style.display='block';
+  $('mapCard').style.display='none';
+  $('importResult').style.display='none';
+  renderSrcTiles();
+  toast('מקור נבחר: '+(curStencil?curStencil.name:''));
+}
+function newStencil(){
+  curStencil=null;
+  $('pasteCard').style.display='block';
+  $('mapCard').style.display='none';
+  $('importResult').style.display='none';
+  renderSrcTiles();
+}
+
+/** פיצול הדבקה: אקסל מדביק TSV. אם אין טאבים — CSV עם תמיכה במרכאות. */
+function splitPaste(text){
+  const lines=text.replace(/\r/g,'').split('\n').filter(l=>l.trim()!=='');
+  if(!lines.length) return [];
+  /* לא לבדוק רק את השורה הראשונה — בדוחות בנק היא כותרת הדוח בלי מפרידים */
+  const useTab = lines.some(l=>l.includes('\t'));
+  return lines.map(l=>{
+    if(useTab) return l.split('\t');
+    const out=[]; let cur='', q=false;
+    for(let i=0;i<l.length;i++){
+      const ch=l[i];
+      if(ch==='"'){ if(q && l[i+1]==='"'){ cur+='"'; i++; } else q=!q; }
+      else if(ch===',' && !q){ out.push(cur); cur=''; }
+      else cur+=ch;
+    }
+    out.push(cur); return out;
+  });
+}
+function loadPaste(){
+  const txt=$('pasteBox').value;
+  if(!txt.trim()){ toast('הדבק נתונים קודם'); return; }
+  curGrid=splitPaste(txt); curFileName='הדבקה';
+  openMapper();
+}
+$('fileInput').addEventListener('change', e=>{ if(e.target.files[0]) readFile(e.target.files[0]); });
+['dragover','dragleave','drop'].forEach(ev=>{
+  $('dropZone').addEventListener(ev, e=>{
+    e.preventDefault();
+    $('dropZone').classList.toggle('hot', ev==='dragover');
+    if(ev==='drop' && e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]);
+  });
+});
+function readFile(file){
+  if(typeof XLSX==='undefined'){ toast('ספריית האקסל לא נטענה'); return; }
+  curFileName=file.name;
+  const r=new FileReader();
+  r.onload=ev=>{
+    try{
+      const wb=XLSX.read(ev.target.result,{type:'array',cellDates:true});
+      const sh=wb.Sheets[wb.SheetNames[0]];
+      curGrid=XLSX.utils.sheet_to_json(sh,{header:1,raw:true,defval:''})
+                  .filter(r=>r.some(c=>String(c).trim()!==''));
+      openMapper();
+    }catch(err){ toast('לא הצלחתי לקרוא את הקובץ'); }
+  };
+  r.readAsArrayBuffer(file);
+}
+
+function openMapper(){
+  if(!curGrid || !curGrid.length){ toast('הקובץ ריק'); return; }
+  $('mapCard').style.display='block';
+  $('importResult').style.display='none';
+  const st=curStencil;
+  $('mSkip').value    = st? (st.skip||0) : guessSkip();
+  $('mDateFmt').value = st? (st.dateFmt||'auto') : 'auto';
+  $('mType').value    = st? (st.type||'bank') : 'bank';
+  $('mPayment').value = st? (st.payment||'') : '';
+  $('mName').value    = st? st.name : '';
+  renderMapGrid();
+  renderMapPreview();
+  $('mapCard').scrollIntoView({behavior:'smooth', block:'start'});
+}
+/** ניחוש שורות כותרת: השורה הראשונה שיש בה תאריך תקין היא תחילת הנתונים */
+function guessSkip(){
+  for(let i=0;i<Math.min(curGrid.length,15);i++){
+    if(curGrid[i].some(c=>parseDate(c,'auto'))) return i;
+  }
+  return 1;
+}
+const FIELD_OPTS=[
+  ['','— התעלם —'],['date','תאריך'],['desc','תיאור / בית עסק'],
+  ['amount','סכום (עמודה אחת)'],['debit','חובה (הוצאה)'],['credit','זכות (הכנסה)'],
+  ['note','הערה']
+];
+function renderMapGrid(){
+  const cols=Math.max(...curGrid.slice(0,20).map(r=>r.length));
+  const saved = curStencil ? safeJson(curStencil.map) : autoGuessMap(cols);
+  let h='<table><thead><tr>';
+  for(let c=0;c<cols;c++){
+    const sel=Object.keys(saved).find(k=>saved[k]===c)||'';
+    h+='<th><select id="col-'+c+'" onchange="renderMapPreview()">'+
+       FIELD_OPTS.map(o=>'<option value="'+o[0]+'"'+(o[0]===sel?' selected':'')+'>'+o[1]+'</option>').join('')+
+       '</select><div style="text-align:center;color:var(--dim);margin-top:3px">'+
+       String.fromCharCode(65+c)+'</div></th>';
+  }
+  h+='</tr></thead><tbody>';
+  curGrid.slice(0,6).forEach((r,ri)=>{
+    h+='<tr style="'+(ri<Number($('mSkip').value)?'opacity:.4':'')+'">';
+    for(let c=0;c<cols;c++) h+='<td style="font-size:12px;max-width:170px;overflow:hidden;'+
+      'text-overflow:ellipsis;white-space:nowrap">'+esc(r[c]==null?'':r[c])+'</td>';
+    h+='</tr>';
+  });
+  $('mapGrid').innerHTML=h+'</tbody></table>';
+}
+function safeJson(s){ try{ return JSON.parse(s||'{}'); }catch(e){ return {}; } }
+/** ניחוש ראשוני לפי כותרות נפוצות של בנקים וחברות אשראי.
+ *  שורת הכותרת היא לא בהכרח הראשונה — בדוחות בנק יש מעליה שורות כותרת
+ *  של הדוח עצמו. לכן סורקים את השורות הראשונות ובוחרים את המתאימה ביותר. */
+function mapFromHeaderRow(head, cols){
+  const map={};
+  head.forEach((raw,i)=>{
+    if(i>=cols) return;
+    const h=String(raw||'');
+    if(/תארי?ך/.test(h) && !/ערך/.test(h) && map.date===undefined) map.date=i;
+    else if(/(תיאור|פרטים|בית\s?עסק|שם\s?בית|פעולה|נמען|ספק)/.test(h) && map.desc===undefined) map.desc=i;
+    else if(/חובה/.test(h) && map.debit===undefined) map.debit=i;
+    else if(/זכות/.test(h) && map.credit===undefined) map.credit=i;
+    else if(/(סכום|חיוב)/.test(h) && !/יתרה/.test(h) && map.amount===undefined) map.amount=i;
+  });
+  return map;
+}
+function autoGuessMap(cols){
+  let best={}, bestScore=0;
+  for(let r=0; r<Math.min(curGrid.length,10); r++){
+    const m=mapFromHeaderRow(curGrid[r]||[], cols);
+    /* שורת כותרת אמיתית מזוהה לפי כמה שדות נמצאו בה, ותאריך הוא תנאי סף */
+    const score=Object.keys(m).length + (m.date!==undefined?1:0);
+    if(m.date!==undefined && score>bestScore){ best=m; bestScore=score; }
+  }
+  return best;
+}
+function readMap(){
+  const cols=Math.max(...curGrid.slice(0,20).map(r=>r.length));
+  const map={};
+  for(let c=0;c<cols;c++){
+    const el=$('col-'+c); if(!el||!el.value) continue;
+    if(map[el.value]===undefined) map[el.value]=c;
+  }
+  return map;
+}
+/** הפעלת השטאנץ על הגריד -> רשימת תנועות מוכנות */
+function buildRows(){
+  const map=readMap();
+  const skip=Number($('mSkip').value)||0;
+  const dfmt=$('mDateFmt').value, type=$('mType').value, payment=$('mPayment').value.trim();
+  const mode = (map.debit!==undefined||map.credit!==undefined) ? 'debitcredit' : 'single';
+  $('mSignWrap').style.display = mode==='single' ? 'block' : 'none';
+  const posMeans = $('mPosMeans') ? $('mPosMeans').value : 'expense';
+  const out=[], skipped=[];
+  for(let r=skip; r<curGrid.length; r++){
+    const row=curGrid[r]; if(!row) continue;
+    const date=parseDate(row[map.date], dfmt);
+    if(!date){ if(row.some(c=>String(c).trim()!=='')) skipped.push(r+1); continue; }
+    let amount=0, kind='expense';
+    if(mode==='debitcredit'){
+      const d=Math.abs(num(row[map.debit])), c=Math.abs(num(row[map.credit]));
+      if(d>0){ amount=d; kind='expense'; }
+      else if(c>0){ amount=c; kind='income'; }
+      else continue;
+    } else {
+      const a=num(row[map.amount]);
+      if(!a) continue;
+      amount=Math.abs(a);
+      if(type==='credit') kind='expense';                       // באשראי הכל הוצאה
+      else if(posMeans==='expense') kind = a>0?'expense':'income';
+      else kind = a>0?'income':'expense';
+    }
+    out.push({
+      date, desc:normDesc(row[map.desc])||'(ללא תיאור)',
+      amount:String(amount), kind,
+      note: map.note!==undefined ? normDesc(row[map.note]) : '',
+      payment, srcRow:String(r+1),
+      srcRaw: row.map(c=>String(c==null?'':c)).join(' | ').slice(0,400)
+    });
+  }
+  return {rows:out, skipped};
+}
+function renderMapPreview(){
+  renderMapGrid();
+  const {rows, skipped}=buildRows();
+  if(!rows.length){
+    $('mapPreview').innerHTML='<div class="empty">לא זוהתה אף שורה.<br>'+
+      'בדוק שסימנת עמודת <b>תאריך</b> ועמודת <b>סכום</b> (או חובה/זכות), ושמספר שורות הדילוג נכון.</div>';
+    return;
+  }
+  const tot=rows.reduce((s,r)=>s+(r.kind==='expense'?num(r.amount):0),0);
+  $('mapPreview').innerHTML=
+    '<div style="font-size:13px;color:var(--dim);margin-bottom:8px">זוהו <b>'+rows.length+'</b> שורות · '+
+    'סה"כ הוצאות '+fmt(tot)+' ₪'+(skipped.length?' · דולגו '+skipped.length+' שורות ללא תאריך תקין':'')+'</div>'+
+    '<table><thead><tr><th>תאריך</th><th>תיאור</th><th class="num">סכום</th><th>סוג</th></tr></thead><tbody>'+
+    rows.slice(0,5).map(r=>'<tr><td class="num">'+esc(r.date)+'</td><td>'+esc(r.desc)+'</td>'+
+      '<td class="num">'+fmt2(r.amount)+'</td><td>'+(r.kind==='income'?'הכנסה':'הוצאה')+'</td></tr>').join('')+
+    '</tbody></table>';
+}
+function saveStencil(){
+  const name=$('mName').value.trim();
+  if(!name){ toast('תן שם לשטאנץ'); return; }
+  const map=readMap();
+  if(map.date===undefined){ toast('חייבים לסמן עמודת תאריך'); return; }
+  if(map.amount===undefined && map.debit===undefined && map.credit===undefined){
+    toast('חייבים לסמן עמודת סכום, או חובה/זכות'); return;
+  }
+  const mode=(map.debit!==undefined||map.credit!==undefined)?'debitcredit':'single';
+  let s = curStencil || DB.stencils.find(x=>!x.deleted && x.name===name);
+  if(!s){ s={id:uid('s'), deleted:''}; DB.stencils.push(s); }
+  Object.assign(s, {
+    name, type:$('mType').value, payment:$('mPayment').value.trim(),
+    skip:String($('mSkip').value||0), map:JSON.stringify(map),
+    dateFmt:$('mDateFmt').value, amountMode:mode,
+    signFlip: $('mPosMeans')?$('mPosMeans').value:'expense'
+  });
+  curStencil=s;
+  queueRow('stencils',s); saveLocal(); renderSrcTiles();
+  toast('השטאנץ "'+name+'" נשמר — בפעם הבאה רק לבחור ולהדביק');
+}
+function runImport(){
+  const {rows}=buildRows();
+  if(!rows.length){ toast('אין שורות לייבוא'); return; }
+  const srcName = ($('mName').value.trim()) || (curStencil?curStencil.name:'') || 'ייבוא ידני';
+  const type=$('mType').value;
+  const stamp=new Date().toISOString().slice(0,16).replace('T',' ');
+
+  /* מפתחות קיימים למניעת כפילות */
+  const seen={};
+  live().forEach(t=>seen[[t.date,t.kind,num(t.amount).toFixed(2),normDesc(t.desc),t.src].join('|')]=1);
+
+  let added=0, dups=0, autoC=0, excl=0;
+  const fresh=[];
+  rows.forEach(r=>{
+    const key=[r.date,r.kind,num(r.amount).toFixed(2),normDesc(r.desc),srcName].join('|');
+    if(seen[key]){ dups++; return; }
+    seen[key]=1;
+    const t={
+      id:uid('t'), date:r.date, desc:r.desc, amount:r.amount, kind:r.kind,
+      category:'', status:'pending', payment:r.payment, note:r.note,
+      src:srcName, srcFile:curFileName, srcRow:r.srcRow, srcRaw:r.srcRaw,
+      importedAt:stamp, importedBy:(CU?CU.name:''), classBy:'', enteredBy:'', deleted:''
+    };
+    /* חיוב אשראי מרוכז / העברה עצמית בעו"ש — מוחרג כדי שלא ייספר פעמיים */
+    if(type==='bank' && (CREDIT_RE.test(t.desc)||TRANSFER_RE.test(t.desc))){
+      t.status='irrelevant';
+      t.classBy='אוטומטי: זוהה כחיוב אשראי/העברה פנימית';
+      t.note=(t.note?t.note+' · ':'')+'הוחרג למניעת ספירה כפולה';
+      excl++;
+    } else {
+      const rule=matchRule(t.desc);
+      if(rule){
+        t.category=rule.category; t.status=rule.status||'ok';
+        t.classBy='כלל: '+rule.match;
+        rule.hits=String(Number(rule.hits||0)+1); queueRow('rules',rule);
+        autoC++;
+      }
+    }
+    fresh.push(t); added++;
+  });
+  fresh.forEach(t=>{ DB.tx.push(t); queueRow('tx',t); });
+  saveLocal(); updateBadge();
+
+  const pend=fresh.filter(t=>t.status==='pending').length;
+  $('importResult').style.display='block';
+  $('importResult').innerHTML='<h3>✅ הייבוא הסתיים</h3>'+
+    '<div class="grid g4">'+
+      kpi('נוספו', added+'', 'מתוך '+rows.length+' שורות בקובץ')+
+      kpi('כפולות שדולגו', dups+'', dups?'כבר היו במערכת':'לא נמצאו כפילויות')+
+      kpi('סווגו אוטומטית', autoC+'', 'לפי כללים שנלמדו')+
+      kpi('הוחרגו', excl+'', 'חיובי אשראי / העברות פנימיות')+
+    '</div>'+
+    (pend? '<p style="margin:14px 0 0">נשארו <b>'+pend+'</b> תנועות לסיווג. '+
+      '<button class="btn sm" onclick="gotoTab(\'classify\')">🏷️ עבור למסך הסיווג</button></p>'
+         : '<p style="margin:14px 0 0">הכל סווג אוטומטית 🎉</p>')+
+    (excl? '<p style="font-size:12.5px;color:var(--dim);margin:10px 0 0">'+
+      excl+' שורות זוהו כחיוב אשראי מרוכז או כהעברה בין חשבונות והוחרגו, '+
+      'כדי שאותה הוצאה לא תיספר גם בעו"ש וגם בפירוט האשראי. '+
+      'ניתן לראותן בלשונית "תנועות" בסינון "לא רלוונטי".</p>':'');
+  $('pasteBox').value=''; curGrid=null;
+  $('mapCard').style.display='none';
+  $('importResult').scrollIntoView({behavior:'smooth'});
+}
+function matchRule(desc){
+  const d=normDesc(desc).toLowerCase();
+  if(!d) return null;
+  return DB.rules.filter(r=>!r.deleted)
+    .sort((a,b)=>String(b.match).length-String(a.match).length)
+    .find(r=>d.includes(normDesc(r.match).toLowerCase())) || null;
+}
+
+/* ---------------- מקורות + כללים ---------------- */
+function renderSrcTable(){
+  const st=DB.stencils.filter(s=>!s.deleted);
+  if(!st.length){ $('srcTable').innerHTML='<tbody><tr><td><div class="empty">'+
+    'עדיין אין שטאנצים.<br>עבור ל"ייבוא", בחר "מקור חדש", מפה את העמודות ושמור.'+
+    '</div></td></tr></tbody>'; return; }
+  $('srcTable').innerHTML='<thead><tr><th>שם</th><th>סוג</th><th>אמצעי תשלום</th>'+
+    '<th>דילוג</th><th>עמודות</th><th class="num">תנועות</th><th></th></tr></thead><tbody>'+
+    st.map(s=>{
+      const m=safeJson(s.map);
+      const cols=Object.entries(m).map(([k,v])=>({date:'תאריך',desc:'תיאור',amount:'סכום',
+        debit:'חובה',credit:'זכות',note:'הערה'}[k]+'='+String.fromCharCode(65+v))).join(' · ');
+      const n=live().filter(t=>t.src===s.name).length;
+      return '<tr><td><b>'+esc(s.name)+'</b></td>'+
+        '<td>'+(s.type==='credit'?'💳 אשראי':'🏦 בנק')+'</td>'+
+        '<td>'+esc(s.payment||'—')+'</td><td class="num">'+esc(s.skip)+'</td>'+
+        '<td style="font-size:12px;color:var(--dim)">'+esc(cols)+'</td>'+
+        '<td class="num">'+n+'</td>'+
+        '<td><button class="btn danger sm" onclick="delStencil(\''+esc(s.id)+'\')">מחק</button></td></tr>';
+    }).join('')+'</tbody>';
+}
+function delStencil(id){
+  if(!confirm('למחוק את השטאנץ? התנועות שכבר יובאו יישארו.')) return;
+  const s=DB.stencils.find(x=>x.id===id); if(!s) return;
+  s.deleted=new Date().toISOString().slice(0,10);
+  queueDel('stencils',id); saveLocal(); renderSrcTable(); renderSrcTiles();
+}
+function renderRulesTable(){
+  const rs=DB.rules.filter(r=>!r.deleted);
+  if(!rs.length){ $('rulesTable').innerHTML='<tbody><tr><td><div class="empty">'+
+    'כללים נוצרים לבד בכל פעם שאתה מסווג במסך "לסיווג".</div></td></tr></tbody>'; return; }
+  $('rulesTable').innerHTML='<thead><tr><th>אם התיאור מכיל</th><th>אז</th>'+
+    '<th class="num">שימושים</th><th></th></tr></thead><tbody>'+
+    rs.sort((a,b)=>Number(b.hits||0)-Number(a.hits||0)).map(r=>
+      '<tr><td><b>'+esc(r.match)+'</b></td>'+
+      '<td>'+(r.status==='irrelevant'?'<span class="pill p-irrelevant">לא רלוונטי</span>'
+           : catIcon(r.category)+' '+esc(r.category))+'</td>'+
+      '<td class="num">'+esc(r.hits||0)+'</td>'+
+      '<td><button class="btn danger sm" onclick="delRule(\''+esc(r.id)+'\')">מחק</button></td></tr>'
+    ).join('')+'</tbody>';
+}
+function delRule(id){
+  const r=DB.rules.find(x=>x.id===id); if(!r) return;
+  r.deleted=new Date().toISOString().slice(0,10);
+  queueDel('rules',id); saveLocal(); renderRulesTable();
+}
+
+/* ---------------- קטגוריות ---------------- */
+function renderCats(){
+  const cs=DB.cats.filter(c=>!c.deleted);
+  $('catsTable').innerHTML='<thead><tr><th></th><th>שם</th><th>סוג</th>'+
+    '<th class="num">תנועות</th><th class="num">סה"כ</th><th></th></tr></thead><tbody>'+
+    cs.map(c=>{
+      const rows=live().filter(t=>t.category===c.name);
+      const sum=rows.reduce((s,t)=>s+num(t.amount),0);
+      return '<tr><td style="font-size:19px">'+esc(c.icon)+'</td>'+
+        '<td><b style="color:'+esc(c.color)+'">'+esc(c.name)+'</b></td>'+
+        '<td>'+(c.kind==='income'?'<span class="pill p-income">הכנסה</span>':'הוצאה')+'</td>'+
+        '<td class="num">'+rows.length+'</td><td class="num">'+fmt(sum)+' ₪</td>'+
+        '<td><button class="btn danger sm" onclick="delCat(\''+esc(c.id)+'\')">מחק</button></td></tr>';
+    }).join('')+'</tbody>';
+}
+function addCat(){
+  const name=$('ncName').value.trim();
+  if(!name){ toast('הזן שם'); return; }
+  if(DB.cats.some(c=>!c.deleted&&c.name===name)){ toast('כבר קיימת קטגוריה בשם הזה'); return; }
+  const c={id:uid('c'), name, kind:$('ncKind').value, color:$('ncColor').value,
+           icon:$('ncIcon').value||'🏷️', ord:String(DB.cats.length), deleted:''};
+  DB.cats.push(c); queueRow('cats',c); saveLocal();
+  $('ncName').value=''; renderCats(); toast('נוספה קטגוריה "'+name+'"');
+}
+function delCat(id){
+  const c=DB.cats.find(x=>x.id===id); if(!c) return;
+  const n=live().filter(t=>t.category===c.name).length;
+  if(!confirm(n? ('לקטגוריה משויכות '+n+' תנועות. הן יישארו אך ללא קטגוריה. להמשיך?')
+               : 'למחוק את הקטגוריה?')) return;
+  c.deleted=new Date().toISOString().slice(0,10);
+  queueDel('cats',id); saveLocal(); renderCats();
+}
+
+/* ---------------- הגדרות ---------------- */
+function renderSettings(){
+  $('sApi').value = GS_URL;
+  $('sTitle').value = DB.settings.title || '';
+  $('apiState').textContent = GS_URL ? 'מחובר. הנתונים נשמרים גם בגיליון.'
+                                     : 'לא מחובר — הנתונים נשמרים רק בדפדפן הזה.';
+  const us=users();
+  $('usersTable').innerHTML='<thead><tr><th>שם</th><th>קוד</th><th></th></tr></thead><tbody>'+
+    us.map(u=>'<tr><td>'+esc(u.name)+'</td><td class="num">'+esc(u.code)+'</td>'+
+      '<td>'+(us.length>1?'<button class="btn danger sm" onclick="delUser(\''+esc(u.id)+'\')">מחק</button>':'')+
+      '</td></tr>').join('')+'</tbody>';
+}
+function saveApi(){
+  const u=$('sApi').value.trim();
+  if(u && !/^https:\/\/script\.google\.com\/.+\/exec$/.test(u)){
+    if(!confirm('הכתובת לא נראית כמו /exec של Apps Script. לשמור בכל זאת?')) return;
+  }
+  GS_URL=u; DB.settings.apiUrl=u; queueSetting('apiUrl'); saveLocal();
+  renderSettings(); toast('נשמר'); if(u) syncNow();
+}
+function saveTitle(){
+  DB.settings.title=$('sTitle').value.trim();
+  queueSetting('title'); saveLocal(); applyTitle(); toast('נשמר');
+}
+function applyTitle(){
+  const t=DB.settings.title || 'ניהול הוצאות בית';
+  $('appTitle').textContent=t; $('loginTitle').textContent=t; document.title=t;
+}
+function saveUsers(list){
+  DB.settings.users=JSON.stringify(list); queueSetting('users'); saveLocal();
+}
+function addUser(){
+  const name=$('nuName').value.trim(), code=$('nuCode').value.trim();
+  if(!name || !/^\d{4}$/.test(code)){ toast('שם + קוד בן 4 ספרות'); return; }
+  const list=users(); list.push({id:uid('u'), name, code});
+  saveUsers(list); $('nuName').value=''; $('nuCode').value='';
+  renderSettings(); toast('המשתמש נוסף');
+}
+function delUser(id){
+  const list=users().filter(u=>u.id!==id);
+  if(!list.length){ toast('חייב להישאר משתמש אחד'); return; }
+  saveUsers(list); renderSettings();
+}
+
+/* ---------------- מודאל ---------------- */
+function openModal(html){ $('modal').innerHTML=html; $('modalWrap').style.display='flex'; }
+function closeModal(){ $('modalWrap').style.display='none'; }
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
+
+/* ---------------- אתחול ---------------- */
+function renderAll(){
+  applyTitle(); updateBadge();
+  const on=document.querySelector('#nav button.on');
+  gotoTab(on?on.dataset.tab:'dash');
+  fillAddCats();
+}
+function boot(){
+  loadLocal();
+  applyTitle();
+  $('aDate').value=new Date().toISOString().slice(0,10);
+  fillAddCats();
+  let saved=null;
+  try{ saved=localStorage.getItem(LSU); }catch(e){}
+  const u=saved && users().find(x=>x.id===saved);
+  if(u){
+    CU=u; $('userChip').style.display='block'; $('userChip').textContent='👤 '+CU.name;
+    renderAll(); if(GS_URL) syncNow();
+  } else {
+    showLogin();
+  }
+  setSync(GS_URL?'on':'off', GS_URL?'מחובר':'מקומי — לא מחובר');
+}
+boot();
+</script>
+</body>
+</html>
