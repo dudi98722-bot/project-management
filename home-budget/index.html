@@ -457,6 +457,7 @@ tbody tr.sel{background:var(--brand-soft)}
     <div class="row">
       <div class="fix"><button class="btn" onclick="saveApi()">התחבר ושמור</button></div>
       <div class="fix"><button class="btn sec" onclick="syncNow()">סנכרן עכשיו</button></div>
+      <div class="fix"><button class="btn sec" onclick="pushAll()">⬆ העלה הכל לגיליון</button></div>
     </div>
     <p id="apiState" style="font-size:12.5px;color:var(--dim);margin:12px 0 0"></p>
   </div>
@@ -557,7 +558,7 @@ tbody tr.sel{background:var(--brand-soft)}
    הנתונים נשמרים מקומית ומסונכרנים ל-Google Sheets.
    ============================================================ */
 
-const LS = 'hb_db_v1', LSU = 'hb_user', LST = 'hb_token';
+const LS = 'hb_db_v1', LSU = 'hb_user', LST = 'hb_token', LSP = 'hb_pending_v1';
 const STATUS_LBL = {ok:'מסווג', pending:'ממתין לסיווג', review:'לבדיקה', irrelevant:'לא רלוונטי'};
 
 const DEFAULT_CATS = [
@@ -708,9 +709,27 @@ function applyRole(){
 }
 function setSync(state, txt){ $('syncChip').textContent = txt; }
 
-function queueRow(kind, row){ pending[kind][row.id]=1; saveLocal(); schedFlush(); }
-function queueDel(kind, id){ pending.del[kind].push(id); saveLocal(); schedFlush(); }
-function queueSetting(k){ pending.settings[k]=1; saveLocal(); schedFlush(); }
+/* תור ההעלאה נשמר בדיסק. קודם הוא חי רק בזיכרון, ולכן רענון של
+   הדף לפני שהסנכרון הספיק לרוץ מחק את התור — הנתונים נשארו
+   בדפדפן אבל לא עלו לגיליון לעולם. */
+function savePending(){ try{ localStorage.setItem(LSP, JSON.stringify(pending)); }catch(e){} }
+function loadPending(){
+  try{
+    const r=localStorage.getItem(LSP);
+    if(r){ const q=JSON.parse(r); pending=Object.assign(emptyPending(), q);
+           pending.del=Object.assign(emptyPending().del, q.del||{}); }
+  }catch(e){}
+}
+function queueRow(kind, row){ pending[kind][row.id]=1; saveLocal(); savePending(); schedFlush(); }
+function queueDel(kind, id){ pending.del[kind].push(id); saveLocal(); savePending(); schedFlush(); }
+function queueSetting(k){ pending.settings[k]=1; saveLocal(); savePending(); schedFlush(); }
+/** כמה שינויים ממתינים להעלאה — מוצג למשתמש כדי שלא יחשוב שהכל בענן */
+function pendingCount(){
+  return ['tx','cats','stencils','rules','users','settings']
+           .reduce((n,k)=>n+Object.keys(pending[k]).length,0) +
+         ['tx','cats','stencils','rules','users']
+           .reduce((n,k)=>n+pending.del[k].length,0);
+}
 function schedFlush(){
   if(!GS_URL){ setSync('off','מקומי — לא מחובר'); return; }
   clearTimeout(flushTimer); flushTimer=setTimeout(flush, 1200);
@@ -762,7 +781,7 @@ async function flush(){
       ops.push({op:'setSetting', key:k, value:String(DB.settings[k]==null?'':DB.settings[k])}));
     if(ops.length) await apiPost({action:'batch', ops});
     pending=emptyPending();
-    saveLocal(); setSync('on','מסונכרן ✓');
+    saveLocal(); savePending(); setSync('on','מסונכרן ✓');
   }catch(e){
     if(String(e.message)!=='unauthorized'){
       setSync('err','שגיאת סנכרון — יישמר שוב');
@@ -770,6 +789,30 @@ async function flush(){
     }
   }finally{ flushing=false; }
 }
+/** מיזוג נתוני הענן עם המקומיים.
+ *  הענן הוא המקור, אבל שורה שקיימת רק כאן ועוד לא הספיקה לעלות
+ *  אינה נמחקת — היא נשמרת ונכנסת שוב לתור ההעלאה. קודם הטעינה
+ *  פשוט דרסה את הכל, וכל מה שהוזן ולא הספיק להסתנכרן נעלם. */
+function mergeCloud(kind, cloudRows){
+  const cloud=cloudRows||[];
+  const ids={}; cloud.forEach(r=>{ if(r&&r.id) ids[r.id]=1; });
+  const localOnly=(DB[kind]||[]).filter(r=>r&&r.id&&!ids[r.id]);
+  localOnly.forEach(r=>{ pending[kind][r.id]=1; });
+  return cloud.concat(localOnly);
+}
+/** דחיפה יזומה של כל מה שקיים מקומית — רשת ביטחון אם משהו לא עלה */
+async function pushAll(){
+  if(!GS_URL || !TOKEN){ toast('צריך להיות מחובר לגיליון'); return; }
+  ['tx','cats','stencils','rules'].forEach(k=>
+    (DB[k]||[]).forEach(r=>{ if(r&&r.id&&!r.deleted) pending[k][r.id]=1; }));
+  savePending();
+  const n=pendingCount();
+  toast('מעלה '+n+' רשומות לגיליון…');
+  await flush();
+  toast(pendingCount() ? 'נותרו '+pendingCount()+' — ננסה שוב' : 'הכל עלה לגיליון ✓');
+  renderSettings();
+}
+
 async function syncNow(){
   if(!GS_URL){ toast('לא מחובר — הדבק כתובת /exec בהגדרות'); return; }
   if(!TOKEN){ showLogin(); return; }
@@ -778,11 +821,17 @@ async function syncNow(){
     await flush();
     const j = await apiPost({action:'load'});
     if(j && j.tx){
-      DB.tx=j.tx; DB.cats=j.cats&&j.cats.length?j.cats:DB.cats;
-      DB.stencils=j.stencils||[]; DB.rules=j.rules||[]; DB.users=j.users||[];
-      DB.settings=Object.assign({}, j.settings||{}, {apiUrl:GS_URL});
-      if(j.me && CU){ CU.role=j.me.role; CU.name=j.me.name; }   // ההרשאה נקבעת בשרת
-      saveLocal(); renderAll(); setSync('on','מסונכרן ✓'); toast('הנתונים נטענו מהענן');
+      DB.tx       = mergeCloud('tx',       j.tx);
+      DB.cats     = (j.cats && j.cats.length) ? mergeCloud('cats', j.cats) : DB.cats;
+      DB.stencils = mergeCloud('stencils', j.stencils);
+      DB.rules    = mergeCloud('rules',    j.rules);
+      DB.users    = j.users||[];                                 // המשתמשים נקבעים בשרת
+      DB.settings = Object.assign({}, j.settings||{}, {apiUrl:GS_URL});
+      if(j.me && CU){ CU.role=j.me.role; CU.name=j.me.name; }    // ההרשאה נקבעת בשרת
+      saveLocal(); savePending(); renderAll();
+      const left=pendingCount();
+      if(left){ setSync('saving', left+' ממתינים להעלאה'); schedFlush(); }
+      else { setSync('on','מסונכרן ✓'); toast('הנתונים נטענו מהענן'); }
     }
   }catch(e){
     if(String(e.message)!=='unauthorized'){
@@ -2090,8 +2139,10 @@ function delCat(id){
 function renderSettings(){
   $('sApi').value = GS_URL;
   $('sTitle').value = DB.settings.title || '';
-  $('apiState').textContent = GS_URL ? 'מחובר. הנתונים נשמרים גם בגיליון.'
-                                     : 'לא מחובר — הנתונים נשמרים רק בדפדפן הזה.';
+  const waiting = typeof pendingCount==='function' ? pendingCount() : 0;
+  $('apiState').textContent = !GS_URL ? 'לא מחובר — הנתונים נשמרים רק בדפדפן הזה.'
+    : waiting ? ('מחובר. ' + waiting + ' שינויים עדיין ממתינים להעלאה — לחץ "העלה הכל לגיליון".')
+    : 'מחובר. כל השינויים נשמרו גם בגיליון.';
   /* ניהול משתמשים ושם המערכת — למנהל בלבד */
   $('setUsersCard').style.display = isAdmin() ? '' : 'none';
   $('setTitleCard').style.display = isAdmin() ? '' : 'none';
@@ -2204,6 +2255,7 @@ function renderAll(){
 }
 function boot(){
   loadLocal();
+  loadPending();
   applyTitle();
   $('aDate').value=new Date().toISOString().slice(0,10);
   fillAddCats();
