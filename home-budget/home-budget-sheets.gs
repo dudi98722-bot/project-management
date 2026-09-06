@@ -186,7 +186,8 @@ function readUsers() {
   var old = null;
   try { old = JSON.parse(s.users || 'null'); } catch (x) {}
   var seed = (old && old.length) ? old
-           : [{ id: 'u1', name: 'דודי', code: '1234', role: 'admin' }];
+           : [{ id: 'u1', name: 'דודי', code: '1234', role: 'admin' },
+              { id: 'u2', name: 'בן/בת זוג', code: '5678', role: 'user' }];
   seed.forEach(function (u) {
     if (u.role !== 'admin' && u.role !== 'user') u.role = 'user';
     if (!u.email) u.email = '';
@@ -196,6 +197,12 @@ function readUsers() {
   if (!hasAdmin) seed[0].role = 'admin';
   upsertMany('users', seed);
   return seed;
+}
+
+/** המייל של בעל הסקריפט — מי שפרס אותו. הוא המנהל הראשון, ובלי זה
+ *  אי אפשר להיכנס בפעם הראשונה כדי להזין מיילים. */
+function ownerEmail() {
+  try { return Session.getEffectiveUser().getEmail() || ''; } catch (x) { return ''; }
 }
 
 function findUser(id) {
@@ -255,6 +262,12 @@ function requestCode(userId, pin) {
   props().setProperty(rlKey, JSON.stringify(rl));
 
   if (String(u.code) !== String(pin)) return { status: 'error', message: 'קוד אישי שגוי' };
+  if (!u.email && u.role === 'admin') {
+    /* מנהל בלי מייל — נשאב מחשבון הגוגל שמריץ את הסקריפט ונשמר.
+       פותר את הביצה והתרנגולת של הכניסה הראשונה. */
+    u.email = ownerEmail();
+    if (u.email) upsertMany('users', [u]);
+  }
   if (!u.email) {
     return { status: 'error',
              message: 'למשתמש הזה לא הוגדר אימייל. המנהל צריך להזין אותו בהגדרות ← משתמשים.' };
