@@ -431,12 +431,17 @@ tbody tr:hover{background:#f8fafc}
     <!-- חיבור ראשוני של מכשיר חדש. לא "הגדרות" — בלי זה מכשיר שלא
          מכיר את כתובת השרת לא יכול בכלל להגיע למסך הכניסה. -->
     <div id="connectStep" style="display:none">
-      <p style="font-size:13px;color:var(--dim);line-height:1.6;margin:14px 0 10px">
-        הדבק את כתובת החיבור שקיבלת מהמנהל<br>(מסתיימת ב-‎/exec)</p>
+      <p style="font-size:13px;color:var(--dim);line-height:1.65;margin:14px 0 10px;text-align:right">
+        זו הכתובת של הגיליון שבו נשמרים הנתונים — מסתיימת ב-‎<span dir="ltr">/exec</span>.<br>
+        <b>מנהל:</b> מקבלים אותה ב-Apps Script אחרי Deploy.<br>
+        <b>משתמש רגיל:</b> בקש אותה מהמנהל.</p>
       <input id="loginApi" dir="ltr" placeholder="https://script.google.com/.../exec">
       <div id="connErr" style="color:var(--bad);min-height:20px;font-size:13px;margin-top:6px"></div>
       <button class="btn" style="width:100%" onclick="saveApiFromLogin()">חבר מכשיר</button>
       <button class="btn ghost sm" style="width:100%;margin-top:8px" onclick="backToCred()">חזרה</button>
+      <p style="font-size:11.5px;color:var(--dim);line-height:1.6;margin:12px 0 0">
+        עוד לא הקמת את הגיליון? לחץ "חזרה" והתחבר רגיל —<br>
+        המערכת תעבוד, והנתונים יישמרו רק במכשיר הזה.</p>
     </div>
 
     <div id="connectLink" style="margin-top:14px;display:none">
@@ -713,8 +718,8 @@ function showStep(which){
   /* הקישור מוצג תמיד במסך הכניסה, גם כשהמכשיר כבר מחובר — אחרת כתובת
      שגויה שנשמרה פעם אחת נועלת את המכשיר בלי שום דרך לתקן מבפנים. */
   $('connectLink').style.display = (which==='credStep') ? 'block' : 'none';
-  $('connectLinkText').textContent = GS_URL ? 'בעיית חיבור? עדכן את כתובת השרת'
-                                            : 'המכשיר אינו מחובר — חבר עכשיו';
+  $('connectLinkText').textContent = GS_URL ? 'בעיית חיבור? עדכן את כתובת הגיליון'
+                                            : '🔗 חיבור לגיליון Google';
   if(which==='connectStep'){ $('loginApi').value=GS_URL||''; $('connErr').textContent=''; }
 }
 /** מסך הכניסה לא חושף שום שם משתמש — כל אחד מקליד את שלו. */
