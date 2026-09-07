@@ -4025,6 +4025,8 @@ function wsHeader(person, color, badge, otherMode, otherHasData, showBank) {
         ${splitKinds(person.kinds).filter(k => k !== badge).map(k =>
           `<span class="pill" style="background:rgba(255,255,255,.22);color:#fff">${esc(k)}</span>`).join(' ')}
         <div style="flex:1"></div>
+        ${ME.caps.edit ? `<button class="btn ghost sm" data-wsedit="${person.id}" data-cfg="contactCfg"
+            title="שם, טלפון, סיווג ופרטי חשבון בנק">✎ ${showBank ? 'טלפון ופרטי בנק' : 'עריכת פרטים'}</button>` : ''}
         ${otherHasData ? `<button class="btn ghost sm" id="wsSwitch">
           ${otherMode === 'customer' ? '🛒 יש לו גם פעילות כלקוח' : '🖊️ הוא גם סופר'} ←</button>` : ''}
       </div>
@@ -4048,6 +4050,7 @@ const WS_CFGS = () => ({
   prodScribePayCfg: () => prodScribePay(true),
   prodCustPayCfg: () => prodCustPay(true),
   bizExpCfg: () => pageBizExp(true),
+  contactCfg: () => setContacts(true),
 });
 
 // סעיף מתקפל
