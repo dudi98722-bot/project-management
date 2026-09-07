@@ -1342,16 +1342,57 @@ function pageBizExp(cfgOnly) {
     labelOf: (r) => `${r.type || 'הוצאה'} ${money(r.amount)}`,
     defaults: () => ({ date: today() }),
     totals: true,
+    note: 'סוג הוצאה שמסומן כ<b>תיקונים</b> (בהגדרות ← סוגי הוצאות עסק) מציע לקזז את הסכום מהחוב לסופר.'
+      + ' הוצאה מקוזזת יורדת מ"סה"כ לתשלום" של אותו סופר ואינה נספרת כהוצאת עסק — הוא נושא בה, לא העסק.',
+    validate: (d) => (d._offset && !d.scribe_id ? 'יש לבחור מאיזה סופר לקזז את התיקון' : null),
     fields: [
       { k: 'date', label: 'תאריך', type: 'date' },
       { k: 'type', label: 'סוג הוצאה', type: 'combo', items: () => itemsList(C.expBiz) },
+      // שני השדות הבאים נחשפים רק כשסוג ההוצאה מסומן כתיקונים
+      { k: '_offset', label: 'לקזז מסופר — הסכום יורד ממה שמגיע לו', type: 'checkbox' },
+      { k: 'scribe_id', label: 'מאיזה סופר לקזז', type: 'combo', items: itemsContacts,
+        placeholder: 'הקלד שם סופר…' },
       { k: 'amount', label: 'סכום', type: 'number' },
       { k: 'note', label: 'הערה', type: 'textarea' },
     ],
+    // בחירת סוג "תיקונים" חושפת את שאלת הקיזוז; אישור חושף את בחירת הסופר.
+    // בהוצאה חדשה הקיזוז מסומן מראש, כי זה המסלול הרגיל של תיקון.
+    onForm: (m, isEdit) => {
+      const typeHid = m.el.querySelector('#f_type');
+      const chk = m.el.querySelector('#f__offset');
+      const scribeHid = m.el.querySelector('#f_scribe_id');
+      if (!typeHid || !chk || !scribeHid) return;
+      const chkBox = chk.closest('.chk'), scribeBox = scribeHid.closest('.field');
+      const isCorr = () => { const it = C.expBiz.find(x => x.value === typeHid.value); return !!(it && it.is_correction); };
+      let lastType = typeHid.value;
+      if (isEdit && scribeHid.value) chk.checked = true;
+      const apply = () => {
+        const corr = isCorr();
+        // מעבר לסוג תיקונים בהוצאה חדשה — מציעים קיזוז מיד
+        if (corr && typeHid.value !== lastType && !isEdit) chk.checked = true;
+        if (!corr) chk.checked = false;
+        lastType = typeHid.value;
+        const on = corr && chk.checked;
+        chkBox.classList.toggle('hidden', !corr);
+        scribeBox.classList.toggle('hidden', !on);
+        if (!on) { scribeHid.value = ''; const t = m.el.querySelector('#t_scribe_id'); if (t) { t.value = ''; t.classList.remove('picked'); } }
+      };
+      typeHid.addEventListener('change', apply);
+      chk.addEventListener('change', apply);
+      apply();
+    },
     cols: [
       { label: 'תאריך', render: r => dt(r.date) },
       { label: 'סוג הוצאה', render: r => esc(r.type || '') },
-      { label: 'סכום', cls: 'num', render: r => mCell(r.amount), total: rows => mCell(sumBy(rows, 'amount')) },
+      { label: 'מקוזז מסופר', render: r => r.scribe_id
+          ? `<span class="pill a" title="יורד מהחוב לסופר; לא נספר כהוצאת עסק">↩ ${esc(r.scribe_name || '')}</span>` : '' },
+      // שורת הסיכום מפרידה: הוצאות העסק לחוד, והמקוזזות מסופרים לחוד
+      { label: 'סכום', cls: 'num', render: r => mCell(r.amount),
+        total: rows => {
+          const own = sumBy(rows.filter(r => !r.scribe_id), 'amount');
+          const corr = sumBy(rows.filter(r => r.scribe_id), 'amount');
+          return mCell(own) + (corr ? `<div class="mini">מקוזז מסופרים ${money(corr)}</div>` : '');
+        } },
       { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
     ],
   };
@@ -2013,6 +2054,8 @@ async function repScribeBalances() {
     { label: 'חוב מוצרים', cls: 'num', render: r => mCell(r.product_owed), total: rows => mCell(sumBy(rows, 'product_owed')) },
     { label: 'שולם מוצרים', cls: 'num', render: r => mCell(r.product_paid), total: rows => mCell(sumBy(rows, 'product_paid')) },
     { label: 'יתרה מוצרים', cls: 'num', render: r => mCell(r.product_balance), total: rows => mCell(sumBy(rows, 'product_balance')) },
+    { label: 'תיקונים שקוזזו', cls: 'num', render: r => N(r.corrections) ? `<span class="neg">−${money(r.corrections)}</span>` : '',
+      total: rows => N(sumBy(rows, 'corrections')) ? `−${money(sumBy(rows, 'corrections'))}` : '' },
     { label: 'סה"כ חוב', cls: 'num', render: r => `<b>${mCell(r.total_balance)}</b>`, total: rows => `<b>${mCell(sumBy(rows, 'total_balance'))}</b>` },
     ...(usd ? [
       { label: 'חוב מוצרים ($)', cls: 'num', render: r => money(r.product_owed_usd, 'USD'), total: rows => money(sumBy(rows, 'product_owed_usd'), 'USD') },
@@ -2139,7 +2182,8 @@ function scribeCardHTML(d) {
   return `
     <div class="grid stat-grid">
       <div class="stat"><div class="label">סה"כ חוב לסופר</div><div class="value r">${money(d.total_balance)}</div>
-        <div class="sub">ס"ת ${money(t.balance)} + מוצרים ${money(p.balance)}</div></div>
+        <div class="sub">ס"ת ${money(t.balance)} + מוצרים ${money(p.balance)}${
+          N(d.corrections_total) ? ` − תיקונים ${money(d.corrections_total)}` : ''}</div></div>
       <div class="stat"><div class="label">יתרה עתידית (ס"ת)</div><div class="value a">${money(t.future_balance)}</div></div>
       <div class="stat"><div class="label">ספרים</div><div class="value">${t.count}</div></div>
     </div>
@@ -2509,7 +2553,7 @@ function pageSettings() {
   if (s === 'sizes') return setSizes();
   if (s === 'kinds') return setList('contact_kind', 'סיווגי אנשי קשר', false);
   if (s === 'expbook') return setList('expense_book', 'סוגי הוצאות לספר', true);
-  return setList('expense_business', 'סוגי הוצאות עסק', false);
+  return setList('expense_business', 'סוגי הוצאות עסק', true);
 }
 
 function setContacts(cfgOnly) {
@@ -2598,7 +2642,9 @@ async function setList(listName, title, withCorrection) {
     <div class="page-head"><h2>${esc(title)}</h2><div class="spacer"></div>
       ${bulkBtn('list_items', title, { list_name: listName })}
       ${ME.caps.edit ? `<button class="btn" id="addLi">+ הוספה</button>` : ''}</div>
-    ${withCorrection ? `<div class="card mini">ערך המסומן כ<b>תיקונים</b> נזקף לצד הסופר במקום להיחשב הוצאה לספר. אפשר לסמן יותר מאחד.</div>` : ''}
+    ${withCorrection ? `<div class="card mini">${listName === 'expense_business'
+      ? 'ערך המסומן כ<b>תיקונים</b> מציע בהזנת ההוצאה לקזז אותה מהחוב לסופר; הוצאה מקוזזת אינה נספרת כהוצאת עסק.'
+      : 'ערך המסומן כ<b>תיקונים</b> נזקף לצד הסופר במקום להיחשב הוצאה לספר.'} אפשר לסמן יותר מאחד.</div>` : ''}
     <div class="card">${tableHTML(cols, rows)}</div>`;
 
   const openLi = (row) => {
@@ -3987,6 +4033,7 @@ const WS_CFGS = () => ({
   prodSaleCfg: () => prodSales(true),
   prodScribePayCfg: () => prodScribePay(true),
   prodCustPayCfg: () => prodCustPay(true),
+  bizExpCfg: () => pageBizExp(true),
 });
 
 // סעיף מתקפל
@@ -4084,7 +4131,8 @@ async function loadScribeSpace(id) {
     <div class="grid stat-grid">
       ${N(d.total_balance_usd) ? wsCard('חוב לסופר ($)', money(d.total_balance_usd, 'USD'), 'r', 'מוצרים בדולר') : ''}
       ${wsCard('סה"כ חוב לסופר', money(d.total_balance), d.total_balance > 0 ? 'r' : '',
-        `ס"ת ${money(st.balance)} · מוצרים ${money(pt.balance)}`)}
+        `ס"ת ${money(st.balance)} · מוצרים ${money(pt.balance)}${
+          N(d.corrections_total) ? ` · תיקונים −${money(d.corrections_total)}` : ''}`)}
       ${wsCard('יתרה עתידית (ס"ת)', money(st.future_balance), 'a', 'על מה שטרם נכתב')}
       ${wsCard('ספרים', st.count, 'b', `${openBooks} פעילים`)}
       ${wsCard('שולם לו', money(N(st.paid) + N(pt.paid)), 'g', `תיקונים ${money(st.corrections)}`)}
@@ -4099,6 +4147,7 @@ async function loadScribeSpace(id) {
       ${ME.caps.finance ? wsAct('ספר חדש', '📖', 'scrollCfg', { scribe_id: id }) : ''}
       ${wsAct('רכישה ממנו', '📦', 'prodPurchaseCfg', { scribe_id: id })}
       ${wsAct('תשלום (מוצרים)', '💰', 'prodScribePayCfg', { scribe_id: id })}
+      ${ME.caps.finance ? wsAct('תיקון לקיזוז ממנו', '↩', 'bizExpCfg', { scribe_id: id, _offset: true }) : ''}
     </div></div>
 
     ${d.scrolls.length ? wsSec('books', 'הספרים שהוא כותב', d.scrolls.length, tableHTML([
@@ -4162,6 +4211,15 @@ async function loadScribeSpace(id) {
       { label: 'חוב', cls: 'num', render: r => mc(r.owed, r), total: rs => totalCur(rs, 'owed') },
       wsActCol('prodPurchaseCfg'),
     ], d.purchases, { totals: true })) : ''}
+
+    ${(d.corrections || []).length ? wsSec('corr', 'תיקונים שקוזזו ממנו', d.corrections.length, tableHTML([
+      { label: 'תאריך', render: r => dt(r.date) },
+      { label: 'סוג', render: r => esc(r.type || '') },
+      { label: 'סכום', cls: 'num', render: r => `<span class="neg">−${money(r.amount)}</span>`,
+        total: rs => `<span class="neg">−${money(sumBy(rs, 'amount'))}</span>` },
+      { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
+      wsActCol('bizExpCfg', 'finance'),
+    ], d.corrections, { totals: true })) : ''}
 
     ${d.product_payments.length ? wsSec('ppay', 'תשלומים לו (מוצרים)', d.product_payments.length, tableHTML([
       { label: 'תאריך', render: r => dt(r.date) },

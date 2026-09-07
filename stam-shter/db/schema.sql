@@ -273,6 +273,12 @@ BEGIN
   END LOOP;
 END $$;
 
+-- הוצאת עסק מסוג "תיקונים" יכולה להיזקף לסופר: הסכום מקוזז מהחוב לו,
+-- ובמקביל אינו נספר כהוצאת עסק — העסק שילם למתקן, אבל הסופר נושא בכך
+-- דרך התשלום המופחת, כך שלעסק זו לא הוצאה נוספת.
+ALTER TABLE business_expenses ADD COLUMN IF NOT EXISTS scribe_id BIGINT REFERENCES contacts(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_bizexp_scribe ON business_expenses(scribe_id) WHERE deleted=false;
+
 -- טבלת סימון למיגרציות חד-פעמיות. בלעדיה כל הרצה של הסכימה הייתה מריצה
 -- שוב את המילוי למטה ומבטלת ידנית ביטולי-אישור שהמנהל עשה במתכוון.
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -292,6 +298,14 @@ BEGIN
     UPDATE scribe_payments t SET approved=true, approved_by=t.created_by, approved_at=t.created_at
       WHERE t.approved=false AND t.created_by IN (SELECT id FROM users WHERE role IN ('admin','manager'));
     INSERT INTO schema_meta (key) VALUES ('approve_backfill_v1');
+  END IF;
+  -- סוג הוצאת עסק בשם "תיקונים" שכבר הוזן מסומן פעם אחת כתיקונים,
+  -- כדי שהקיזוז מסופר יוצע מיד בלי צורך לסמן זאת ידנית בהגדרות.
+  IF NOT EXISTS (SELECT 1 FROM schema_meta WHERE key = 'bizexp_corrections_v1') THEN
+    UPDATE list_items SET is_correction=true
+      WHERE list_name='expense_business' AND deleted=false AND is_correction=false
+        AND TRIM(value) IN ('תיקונים','תיקון');
+    INSERT INTO schema_meta (key) VALUES ('bizexp_corrections_v1');
   END IF;
 END $$;
 -- עבור מה נגבתה העלות הנוספת (הובלה, בתי מזוזה, תיקונים...) — הסבר בלבד,

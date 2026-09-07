@@ -55,6 +55,11 @@ const POWED_USD    = `(CASE WHEN ${CUR_ROW}='USD' THEN COALESCE(quantity,0)*COAL
 
 const sum = (rows, key) => r2(rows.reduce((a, x) => a + n(x[key]), 0));
 
+// הוצאות עסק: "שלנו" = לא מקוזזות מסופר; "תיקונים" = מקוזזות ממנו.
+// המקוזזות אינן הוצאה של העסק — הסופר נושא בהן דרך התשלום המופחת.
+const BIZ_OWN  = 'WHERE deleted=false AND scribe_id IS NULL';
+const BIZ_CORR = 'WHERE deleted=false AND scribe_id IS NOT NULL';
+
 // סיכומי מערכת המוצרים
 async function prodTotals() {
   const [sales, purch, scribePaid, custPaid] = await Promise.all([
@@ -97,17 +102,19 @@ async function prodTotals() {
 // ---------- דשבורד ----------
 router.get('/overview', async (req, res) => {
   try {
-    const [scrolls, prod, biz, stock] = await Promise.all([
+    const [scrolls, prod, biz, stock, corr] = await Promise.all([
       getScrolls(),
       prodTotals(),
-      pool.query('SELECT COALESCE(SUM(amount),0) AS total FROM business_expenses WHERE deleted=false'),
+      pool.query(`SELECT COALESCE(SUM(amount),0) AS total FROM business_expenses ${BIZ_OWN}`),
       pool.query(`SELECT COALESCE(SUM(pp.quantity - COALESCE(sd.sold,0)),0) AS units
                   FROM prod_purchases pp
                   LEFT JOIN (SELECT purchase_id, SUM(quantity) sold FROM prod_sales WHERE deleted=false GROUP BY purchase_id) sd
                     ON sd.purchase_id = pp.id
                   WHERE pp.deleted=false`),
+      pool.query(`SELECT COALESCE(SUM(amount),0) AS total FROM business_expenses ${BIZ_CORR}`),
     ]);
     const bizExp = n(biz.rows[0].total);
+    const corrections = n(corr.rows[0].total);
     const scrollProfit = sum(scrolls, 'expected_profit');
     res.json({
       scrolls_count: scrolls.length,
@@ -117,7 +124,9 @@ router.get('/overview', async (req, res) => {
       business_expenses: r2(bizExp),
       // רווח נקי: פריטת ס"ת כבר בתוך הרווח לספר; פריטת המוצרים יורדת כאן
       net_profit: r2(scrollProfit + prod.profit - prod.peritah - bizExp),
-      owed_to_scribes: r2(sum(scrolls, 'scribe_balance') + prod.owed_scribes),
+      // תיקונים שקוזזו מסופרים יורדים מהחוב הכולל להם
+      owed_to_scribes: r2(sum(scrolls, 'scribe_balance') + prod.owed_scribes - corrections),
+      scribe_corrections: r2(corrections),
       owed_by_customers: r2(sum(scrolls, 'buyer_balance_now') + prod.customer_owes),
       owed_by_customers_total: r2(sum(scrolls, 'buyer_balance_total') + prod.customer_owes),
       stock_units: n(stock.rows[0].units),
@@ -139,7 +148,7 @@ router.get('/profit', async (req, res) => {
       getScrolls(),
       prodTotals(),
       pool.query(`SELECT type, COALESCE(SUM(amount),0) AS total FROM business_expenses
-                  WHERE deleted=false GROUP BY type ORDER BY total DESC`),
+                  ${BIZ_OWN} GROUP BY type ORDER BY total DESC`),
     ]);
     const bizExp = r2(biz.rows.reduce((a, x) => a + n(x.total), 0));
     const scrollProfit = sum(scrolls, 'expected_profit');
@@ -178,11 +187,13 @@ router.get('/scribe-balances', async (req, res) => {
           COALESCE(pu.owed,0) AS owed,
           COALESCE(pa.paid,0) AS paid,
           COALESCE(pu.owed_usd,0) AS owed_usd,
-          COALESCE(pa.paid_usd,0) AS paid_usd
+          COALESCE(pa.paid_usd,0) AS paid_usd,
+          COALESCE(bc.corr,0) AS corrections
         FROM contacts c
         LEFT JOIN (SELECT scribe_id, SUM(${POWED_ILS}) owed, SUM(${POWED_USD}) owed_usd FROM prod_purchases WHERE deleted=false GROUP BY scribe_id) pu ON pu.scribe_id=c.id
         LEFT JOIN (SELECT scribe_id, SUM(${SPAID_ILS}) paid, SUM(${SPAID_USD}) paid_usd FROM prod_scribe_payments WHERE deleted=false GROUP BY scribe_id) pa ON pa.scribe_id=c.id
-        WHERE c.deleted=false AND (pu.owed IS NOT NULL OR pa.paid IS NOT NULL)`),
+        LEFT JOIN (SELECT scribe_id, SUM(amount) corr FROM business_expenses ${BIZ_CORR} GROUP BY scribe_id) bc ON bc.scribe_id=c.id
+        WHERE c.deleted=false AND (pu.owed IS NOT NULL OR pa.paid IS NOT NULL OR bc.corr IS NOT NULL)`),
       pool.query('SELECT id, name, phone FROM contacts WHERE deleted=false'),
     ]);
     const byId = new Map(contacts.rows.map(c => [c.id, c]));
@@ -195,6 +206,7 @@ router.get('/scribe-balances', async (req, res) => {
           scroll_balance: 0, scroll_future: 0, scrolls_count: 0,
           product_owed: 0, product_paid: 0, product_balance: 0, total_balance: 0,
           product_owed_usd: 0, product_paid_usd: 0, product_balance_usd: 0,
+          corrections: 0,
         });
       }
       return acc.get(id);
@@ -212,6 +224,7 @@ router.get('/scribe-balances', async (req, res) => {
       b.product_balance = n(p.owed) - n(p.paid);
       b.product_owed_usd = n(p.owed_usd); b.product_paid_usd = n(p.paid_usd);
       b.product_balance_usd = n(p.owed_usd) - n(p.paid_usd);
+      b.corrections = n(p.corrections);
     }
     const out = [...acc.values()].map(b => ({
       ...b,
@@ -220,7 +233,8 @@ router.get('/scribe-balances', async (req, res) => {
       product_balance: r2(b.product_balance),
       product_owed_usd: r2(b.product_owed_usd), product_paid_usd: r2(b.product_paid_usd),
       product_balance_usd: r2(b.product_balance_usd),
-      total_balance: r2(b.scroll_balance + b.product_balance),
+      corrections: r2(b.corrections),
+      total_balance: r2(b.scroll_balance + b.product_balance - b.corrections),
     })).sort((a, b) => b.total_balance - a.total_balance);
     res.json(out);
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
@@ -304,7 +318,7 @@ router.get('/monthly', async (req, res) => {
       q(`SELECT EXTRACT(MONTH FROM e.date)::int m, SUM(e.quantity*COALESCE(z.cost_per_unit,0)) v
           FROM parchment_expenses e LEFT JOIN parchment_sizes z ON z.id=e.parchment_size_id
           WHERE e.deleted=false AND EXTRACT(YEAR FROM e.date)=$1 GROUP BY 1`),
-      q('SELECT EXTRACT(MONTH FROM date)::int m, SUM(amount) v FROM business_expenses WHERE deleted=false AND EXTRACT(YEAR FROM date)=$1 GROUP BY 1'),
+      q(`SELECT EXTRACT(MONTH FROM date)::int m, SUM(amount) v FROM business_expenses ${BIZ_OWN} AND EXTRACT(YEAR FROM date)=$1 GROUP BY 1`),
     ]);
     const pick = (rows, key = 'v') => { const m = {}; for (const r of rows.rows) m[r.m] = n(r[key]); return m; };
     const pSalesV = pick(prodSales), pSalesP = pick(prodSales, 'p');
@@ -383,7 +397,7 @@ router.get('/inventory', async (req, res) => {
 router.get('/scribe/:id', async (req, res) => {
   const id = req.params.id;
   try {
-    const [contact, scrolls, purchases, payments] = await Promise.all([
+    const [contact, scrolls, purchases, payments, corrRows] = await Promise.all([
       pool.query('SELECT * FROM contacts WHERE id=$1', [id]),
       getScrolls({ scribe_id: id }),
       pool.query(`SELECT pp.*, p.name AS product_name,
@@ -397,6 +411,8 @@ router.get('/scribe/:id', async (req, res) => {
                     ON sd.purchase_id=pp.id
                   WHERE pp.scribe_id=$1 AND pp.deleted=false ORDER BY pp.date DESC NULLS LAST`, [id]),
       pool.query('SELECT * FROM prod_scribe_payments WHERE scribe_id=$1 AND deleted=false ORDER BY date DESC NULLS LAST', [id]),
+      pool.query(`SELECT id, date, type, amount, note FROM business_expenses
+                  WHERE scribe_id=$1 AND deleted=false ORDER BY date DESC NULLS LAST, id DESC`, [id]),
     ]);
     if (!contact.rows.length) return res.status(404).json({ error: 'איש הקשר לא נמצא' });
     const c = contact.rows[0];
@@ -426,7 +442,10 @@ router.get('/scribe/:id', async (req, res) => {
         owed: prodOwed, paid: prodPaid, balance: r2(prodOwed - prodPaid),
         owed_usd: prodOwedU, paid_usd: prodPaidU, balance_usd: r2(prodOwedU - prodPaidU),
       },
-      total_balance: r2(scrollBalance + prodOwed - prodPaid),
+      // תיקונים שקוזזו ממנו (הוצאות עסק שנזקפו לסופר) — יורדים מהחוב הכולל
+      corrections: corrRows.rows,
+      corrections_total: sum(corrRows.rows, 'amount'),
+      total_balance: r2(scrollBalance + prodOwed - prodPaid - sum(corrRows.rows, 'amount')),
       total_balance_usd: r2(prodOwedU - prodPaidU),
     });
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }

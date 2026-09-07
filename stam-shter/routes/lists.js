@@ -7,6 +7,7 @@ const { authenticate, can } = require('../middleware/auth');
 const router = express.Router();
 
 const VALID_LISTS = new Set(['expense_book', 'expense_business', 'contact_kind']);
+const CORR_LISTS  = new Set(['expense_book', 'expense_business']);
 
 // רשימה אחת (?name=) או כל הרשימות מקובצות
 router.get('/', authenticate, can('view'), async (req, res) => {
@@ -34,7 +35,7 @@ router.post('/', authenticate, can('edit'), async (req, res) => {
     const r = await pool.query(
       'INSERT INTO list_items (list_name, value, sort, is_correction) VALUES ($1,$2,$3,$4) RETURNING *',
       [list_name, String(value).trim(), Number(sort) || 0,
-       list_name === 'expense_book' ? !!is_correction : false]);
+       CORR_LISTS.has(list_name) ? !!is_correction : false]);
     await logAction(req.user, 'add', 'list_items', r.rows[0].id, { list_name }, r.rows[0]);
     res.status(201).json(r.rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
@@ -45,8 +46,8 @@ router.put('/:id', authenticate, can('edit'), async (req, res) => {
   try {
     const cur = await pool.query('SELECT * FROM list_items WHERE id=$1 AND deleted=false', [req.params.id]);
     if (!cur.rows.length) return res.status(404).json({ error: 'לא נמצא' });
-    // דגל "תיקונים" רלוונטי רק לסוגי הוצאות לספר
-    const corr = cur.rows[0].list_name === 'expense_book'
+    // דגל "תיקונים": בהוצאות לספר נזקף לסופר של הספר, בהוצאות עסק מציע קיזוז מסופר
+    const corr = CORR_LISTS.has(cur.rows[0].list_name)
       ? (is_correction === undefined ? cur.rows[0].is_correction : !!is_correction)
       : false;
     const r = await pool.query(
