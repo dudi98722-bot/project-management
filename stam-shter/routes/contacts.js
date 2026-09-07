@@ -6,6 +6,7 @@ module.exports = crudRouter('contacts', [
   { key: 'phone', type: 'text' },
   // סיווג: ערכים מופרדים בפסיק, כי אדם יכול להיות סופר וגם רוכש
   { key: 'kinds', type: 'text' },
+  { key: 'address', type: 'text' },
   { key: 'bank', type: 'text' },
   { key: 'bank_branch', type: 'text' },
   { key: 'bank_account', type: 'text' },

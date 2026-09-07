@@ -2671,6 +2671,7 @@ function setContacts(cfgOnly) {
       { k: 'name', label: 'שם', type: 'text', required: true },
       { k: 'phone', label: 'טלפון', type: 'text' },
       { k: 'kinds', label: 'סיווג', type: 'multi', options: () => sortHe(C.kinds.map(x => ({ t: x.value }))).map(x => x.t) },
+      { k: 'address', label: 'כתובת', type: 'text' },
       { k: 'bank', label: 'בנק', type: 'text', hint: 'להעברות לסופר — מוצג במרחב הסופר' },
       { k: 'bank_branch', label: 'סניף', type: 'text' },
       { k: 'bank_account', label: 'מספר חשבון', type: 'text' },
@@ -2678,6 +2679,7 @@ function setContacts(cfgOnly) {
     cols: [
       { label: 'שם', render: r => esc(r.name || '') },
       { label: 'טלפון', render: r => esc(r.phone || '') },
+      { label: 'כתובת', cls: 'wrap', render: r => esc(r.address || '') },
       { label: 'סיווג', cls: 'wrap', render: r => kindPills(r.kinds) },
       { label: 'חשבון בנק', render: r => esc(bankText(r)) },
     ],
@@ -3515,6 +3517,14 @@ async function trackItems() {
   if (TRACK.station) filt.station_id = TRACK.station;
   if (TRACK.holder) filt.holder_id = TRACK.holder;
   const items = await Store.track.list(filt);
+  // חיווי מה מסונן כרגע — כדי שמסך ריק לא ייראה כתקלה
+  const anyFilter = !!(TRACK.scroll || TRACK.purchase || TRACK.station || TRACK.holder);
+  const filterNames = [
+    TRACK.scroll && (C.scrolls.find(x => x.id === +TRACK.scroll) || {}).sku,
+    TRACK.purchase && ('חבילה #' + TRACK.purchase),
+    TRACK.station && (C.stations.find(x => x.id === +TRACK.station) || {}).name,
+    TRACK.holder && (() => { const c = C.contacts.find(x => x.id === +TRACK.holder); return c && contactName(c); })(),
+  ].filter(Boolean).join(' · ');
   const grouped = TRACK.grouped;
   const allRows = grouped ? groupTrackRows(items) : items;
 
@@ -3553,6 +3563,9 @@ async function trackItems() {
         <div style="flex:1;min-width:200px">${pickerHTML('tkStation', 'תחנה', itemsStations(), TRACK.station, 'כל התחנות')}</div>
         <div style="flex:1;min-width:220px">${pickerHTML('tkHolder', 'אצל מי', itemsContacts(), TRACK.holder, 'כולם — הקלד שם')}</div>
       </div>
+      ${anyFilter ? `<div class="toolbar" style="margin-bottom:0">
+        <button class="btn ghost sm" id="tkClear">✕ נקה סינון</button>
+        <span class="mini">מסונן לפי: ${filterNames}</span></div>` : ''}
       <div class="toolbar">
         <div class="seg">
           <button data-tkview="1" class="${grouped ? 'on' : ''}">\u25a4 מקובץ</button>
@@ -3574,6 +3587,11 @@ async function trackItems() {
   wirePicker('tkStation', itemsStations(), (v) => { TRACK.station = v; render(); });
   wirePicker('tkHolder',  itemsContacts(), (v) => { TRACK.holder = v; render(); });
   if ($('tkGen')) $('tkGen').onclick = openGenerate;
+  if ($('tkClear')) $('tkClear').onclick = () => {
+    TRACK.scroll = ''; TRACK.purchase = ''; TRACK.station = ''; TRACK.holder = '';
+    FILTERS.track_items = { q: '', cols: {} };
+    render();
+  };
   document.querySelectorAll('[data-tkview]').forEach(b =>
     b.onclick = () => { TRACK.grouped = b.dataset.tkview === '1'; render(); });
   document.querySelectorAll('[data-gmove]').forEach(b => b.onclick = () =>
@@ -4116,6 +4134,7 @@ function wsHeader(person, color, badge, otherMode, otherHasData, showBank) {
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
         <div style="font-size:24px;font-weight:800">${esc(person.name || '')}</div>
         ${person.phone ? `<a href="tel:${esc(person.phone)}" style="color:#e6fffa">${esc(person.phone)}</a>` : ''}
+        ${person.address ? `<span style="color:#e6fffa;font-size:13px">📍 ${esc(person.address)}</span>` : ''}
         <span class="pill" style="background:#fff;color:#0f172a">${badge}</span>
         ${splitKinds(person.kinds).filter(k => k !== badge).map(k =>
           `<span class="pill" style="background:rgba(255,255,255,.22);color:#fff">${esc(k)}</span>`).join(' ')}
@@ -4566,7 +4585,20 @@ function renderSubtabs(group, subs) {
   }, 0);
 }
 
+// יציאה מלשונית מנקה את הסינון שלה. בלי זה מסנן שהושאר דלוק חוזר
+// כשחוזרים, והמסך נראה ריק בלי סיבה נראית לעין.
+// בחירה (איזה ספר/חבילה מוצגים) אינה סינון ולכן נשמרת — איפוס שלה היה
+// מחייב לבחור מחדש בכל חזרה.
+function resetTabState(leftTab) {
+  for (const k in FILTERS) delete FILTERS[k];   // חיפוש חופשי ומסנני עמודות
+  if (leftTab === 'track') {
+    TRACK.scroll = ''; TRACK.purchase = ''; TRACK.station = ''; TRACK.holder = '';
+  }
+}
+
 async function render() {
+  if (render._lastTab && render._lastTab !== TAB) resetTabState(render._lastTab);
+  render._lastTab = TAB;
   renderTabs();
   const allowed = visibleTabs();
   let tab = allowed.find(t => t.k === TAB);

@@ -43,6 +43,7 @@ ALTER TABLE contacts ADD COLUMN IF NOT EXISTS name VARCHAR(300);
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS kinds VARCHAR(300);
 -- פרטי חשבון בנק להעברות לסופר. טקסט ולא מספר — מספרי חשבון מתחילים
 -- לעיתים באפס, ואסור שהוא יאבד.
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS address VARCHAR(300);
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS bank VARCHAR(100);
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS bank_branch VARCHAR(50);
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS bank_account VARCHAR(50);
