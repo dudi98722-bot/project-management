@@ -432,11 +432,13 @@ body.picking{padding-bottom:96px}
     </div>
     <div class="table-wrap" id="mapGrid"></div>
     <div id="mSignWrap" style="margin-top:12px;display:none">
-      <label class="f" style="max-width:330px"><span>בעמודת הסכום, מספר חיובי הוא</span>
-        <select id="mPosMeans" onchange="renderMapPreview()">
-          <option value="expense">הוצאה</option>
-          <option value="income">הכנסה</option>
+      <label class="f" style="max-width:380px">
+        <span>בעמודת הסכום, מספר חיובי הוא</span>
+        <select id="mPosMeans" onchange="markPosTouched()">
+          <option value="expense">הוצאה (חובה)</option>
+          <option value="income">הכנסה (זכות) — וכל מספר שלילי הוא הוצאה</option>
         </select></label>
+      <div id="mSignHint" style="font-size:12px;color:var(--brand);margin:-6px 0 4px"></div>
     </div>
     <h3 style="margin-top:18px">תצוגה מקדימה</h3>
     <div class="table-wrap" id="mapPreview"></div>
@@ -706,13 +708,22 @@ function toast(msg, ms=2600){
 }
 function num(v){
   if(typeof v==='number') return isFinite(v)?v:0;
-  let s=String(v==null?'':v).replace(/[₪,\s ]/g,'').replace(/[־–—]/g,'-').trim();
+  let s=String(v==null?'':v)
+    /* סימני כיווניות בלתי נראים נדבקים לייצוא עברי ומפילים את parseFloat */
+    .replace(/[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g,'')
+    .replace(/[₪,\s\u00a0]/g,'')
+    .replace(/[־–—\u2212]/g,'-')
+    .trim();
   if(!s) return 0;
   let neg=false;
   if(/^\(.*\)$/.test(s)){ neg=true; s=s.slice(1,-1); }
+  /* בנקים בישראל כותבים לא פעם את המינוס אחרי המספר: "1,234.50-".
+     parseFloat התעלם ממנו, וחובה נקראה כזכות. */
+  if(/-\s*$/.test(s)){ neg=true; s=s.replace(/-\s*$/,''); }
+  if(/^-/.test(s)){ neg=true; s=s.slice(1); }
   const n=parseFloat(s);
   if(!isFinite(n)) return 0;
-  return neg ? -n : n;
+  return neg ? -Math.abs(n) : Math.abs(n);
 }
 function heMonth(ym){
   if(!ym) return '';
@@ -2060,6 +2071,7 @@ function readFile(file){
 
 function openMapper(){
   if(!curGrid || !curGrid.length){ toast('הקובץ ריק'); return; }
+  posTouched = !!(curStencil && curStencil.signFlip);   /* שטאנץ שמור — כבדו את הבחירה שבו */
   $('mapCard').style.display='block';
   $('importResult').style.display='none';
   const st=curStencil;
@@ -2118,11 +2130,14 @@ function mapFromHeaderRow(head, cols){
   head.forEach((raw,i)=>{
     if(i>=cols) return;
     const h=String(raw||'');
+    /* כותרת שמכילה גם חובה וגם זכות היא עמודה אחת מעורבת, לא שתיים */
+    const mixed = /חובה/.test(h) && /זכות/.test(h);
     if(/תארי?ך/.test(h) && !/ערך/.test(h) && map.date===undefined) map.date=i;
     else if(/(תיאור|פרטים|בית\s?עסק|שם\s?בית|פעולה|נמען|ספק)/.test(h) && map.desc===undefined) map.desc=i;
+    else if(mixed && map.amount===undefined) map.amount=i;
     else if(/חובה/.test(h) && map.debit===undefined) map.debit=i;
     else if(/זכות/.test(h) && map.credit===undefined) map.credit=i;
-    else if(/(סכום|חיוב)/.test(h) && !/יתרה/.test(h) && map.amount===undefined) map.amount=i;
+    else if(/(סכום|חיוב|תנועה|סק\"ח)/.test(h) && !/יתרה/.test(h) && map.amount===undefined) map.amount=i;
   });
   return map;
 }
@@ -2153,6 +2168,7 @@ function buildRows(){
   const dfmt=$('mDateFmt').value, type=$('mType').value, payment=$('mPayment').value.trim();
   const mode = (map.debit!==undefined||map.credit!==undefined) ? 'debitcredit' : 'single';
   $('mSignWrap').style.display = mode==='single' ? 'block' : 'none';
+  if(mode==='single') autoSign(map, skip);
   const posMeans = $('mPosMeans') ? $('mPosMeans').value : 'expense';
   const out=[], skipped=[];
   for(let r=skip; r<curGrid.length; r++){
@@ -2183,6 +2199,30 @@ function buildRows(){
   }
   return {rows:out, skipped};
 }
+/** עמודה אחת שיש בה גם חיוביים וגם שליליים היא עו"ש מעורב: זכות
+ *  נרשמת רגיל וחובה במינוס. מזהים לבד ומכוונים את הבורר, כל עוד
+ *  המשתמש לא בחר בעצמו. */
+let posTouched=false;
+function markPosTouched(){ posTouched=true; renderMapPreview(); }
+function autoSign(map, skip){
+  const el=$('mPosMeans'); if(!el || map.amount===undefined) return;
+  let pos=0, neg=0;
+  for(let r=skip; r<curGrid.length; r++){
+    const a=num((curGrid[r]||[])[map.amount]);
+    if(a>0) pos++; else if(a<0) neg++;
+  }
+  const hint=$('mSignHint');
+  if(pos && neg){
+    if(!posTouched) el.value='income';
+    if(hint) hint.textContent='זוהתה עמודה מעורבת: '+pos+' שורות חיוביות ('+
+      (el.value==='income'?'זכות':'חובה')+') ו-'+neg+' שליליות ('+
+      (el.value==='income'?'חובה':'זכות')+').';
+  } else if(hint){
+    hint.textContent = (pos||neg)
+      ? ('כל הסכומים באותו סימן ('+(neg?'שליליים':'חיוביים')+') — בחר מה הם מייצגים.')
+      : '';
+  }
+}
 function renderMapPreview(){
   renderMapGrid();
   const {rows, skipped}=buildRows();
@@ -2194,7 +2234,10 @@ function renderMapPreview(){
   const tot=rows.reduce((s,r)=>s+(r.kind==='expense'?num(r.amount):0),0);
   $('mapPreview').innerHTML=
     '<div style="font-size:13px;color:var(--dim);margin-bottom:8px">זוהו <b>'+rows.length+'</b> שורות · '+
-    'סה"כ הוצאות '+fmt(tot)+' ₪'+(skipped.length?' · דולגו '+skipped.length+' שורות ללא תאריך תקין':'')+'</div>'+
+    '<b>'+rows.filter(r=>r.kind==='expense').length+'</b> הוצאות ('+fmt(tot)+' ₪) · '+
+    '<b>'+rows.filter(r=>r.kind==='income').length+'</b> הכנסות ('+
+    fmt(rows.reduce((s,r)=>s+(r.kind==='income'?num(r.amount):0),0))+' ₪)'+
+    (skipped.length?' · דולגו '+skipped.length+' שורות ללא תאריך תקין':'')+'</div>'+
     '<table><thead><tr><th>תאריך</th><th>תיאור</th><th class="num">סכום</th><th>סוג</th></tr></thead><tbody>'+
     rows.slice(0,5).map(r=>'<tr><td class="num">'+esc(r.date)+'</td><td>'+esc(r.desc)+'</td>'+
       '<td class="num">'+fmt2(r.amount)+'</td><td>'+(r.kind==='income'?'הכנסה':'הוצאה')+'</td></tr>').join('')+
