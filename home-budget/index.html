@@ -130,6 +130,23 @@ tbody tr.sel{background:var(--brand-soft)}
 .tfoot{padding:9px 12px;font-size:12.5px;color:var(--dim);background:var(--card2);
   border-top:1px solid var(--line)}
 
+/* ---------- סרגל הפעולות המרוכזות ---------- */
+/* צף בתחתית המסך. כשהיה בזרימת הדף, כל סימון של שורה הוסיף אותו
+   למעלה והקפיץ את כל הטבלה. */
+#bulkBar{position:fixed;left:0;right:0;bottom:0;z-index:120;display:none;
+  background:#fff;border-top:1px solid var(--brand-line);padding:11px 16px;
+  box-shadow:0 -6px 20px -6px rgba(17,24,39,.14)}
+#bulkBar.on{display:block}
+#bulkBar .row{max-width:1240px;margin:0 auto}
+body.picking{padding-bottom:96px}
+
+/* ---------- בורר קטגוריה בתוך התא ---------- */
+.catsel{font-size:12.5px;padding:4px 8px;border-radius:999px;border:1px solid var(--line);
+  background:#fff;max-width:180px;cursor:pointer}
+.catsel.pending{background:var(--warn-soft);border-color:#f0d9a8;color:var(--warn);font-weight:600}
+.catsel.review{background:#ffedd5;border-color:#fed7aa;color:#9a3412;font-weight:600}
+.catsel.irrelevant{background:#eef0f3;border-color:var(--line);color:var(--dim)}
+
 /* ---------- תגיות ---------- */
 .pill{display:inline-block;border-radius:999px;padding:3px 10px;font-size:11.5px;font-weight:600;
   white-space:nowrap;line-height:1.4}
@@ -344,7 +361,7 @@ tbody tr.sel{background:var(--brand-soft)}
       <div class="fix"><button class="btn sec sm" onclick="exportTx()">📤 ייצוא</button></div>
     </div>
     <div id="txSummary" style="font-size:13px;color:var(--dim);margin-bottom:8px"></div>
-    <div id="bulkBar" style="display:none;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:10px 12px;margin-bottom:10px">
+    <div id="bulkBar">
       <div class="row">
         <div class="fix"><b id="bulkCount"></b></div>
         <div class="fix" style="min-width:170px"><select id="bulkCat"><option value="">קטגוריה...</option></select></div>
@@ -1453,18 +1470,43 @@ function renderClassify(){
               (clsOpen===i?'הסתר שורות':'הצג '+g.rows.length+' שורות')+'</button>'+
           '</div>'+
         '</div>'+
-        (clsOpen===i ? '<div class="cdetail">'+g.rows.slice(0,40).map(r=>
-            '<div class="r"><span class="d num">'+esc(r.date)+'</span>'+
-            '<span class="num money" style="min-width:78px">'+fmt2(r.amount)+' ₪</span>'+
-            '<span style="color:var(--dim)">'+esc(r.kind==='income'?'הכנסה':'הוצאה')+'</span>'+
-            '<span style="margin-inline-start:auto"><button class="clink" '+
-              act('showProv',r.id)+'>מאיפה זה הגיע</button></span></div>').join('')+
-          (g.rows.length>40?'<div class="r" style="color:var(--dim)">ועוד '+(g.rows.length-40)+' שורות…</div>':'')+
-          '</div>' : '')+
+        (clsOpen===i ? clsDetail(g) : '')+
       '</div>';
     }).join('');
 }
 
+/** פתיחת קבוצה: כל השורות, כל העמודות, וקטגוריה נפרדת לכל שורה —
+ *  לפעמים אותו בית עסק מתפצל לכמה קטגוריות. */
+function clsDetail(g){
+  return '<div class="cdetail" style="padding:0">'+
+    '<div class="table-wrap" style="border:0;border-radius:0">'+
+    '<table><thead><tr>'+
+      '<th>תאריך</th><th>תיאור</th><th class="num">סכום</th><th>סוג</th>'+
+      '<th>אמצעי תשלום</th><th>מקור</th><th>הערה</th><th>קטגוריה לשורה</th><th></th>'+
+    '</tr></thead><tbody>'+
+    g.rows.map(r=>'<tr>'+
+      '<td class="num">'+esc(r.date)+'</td>'+
+      '<td>'+esc(r.desc)+'</td>'+
+      '<td class="num money">'+fmt2(r.amount)+'</td>'+
+      '<td>'+(r.kind==='income'?'הכנסה':'הוצאה')+'</td>'+
+      '<td style="color:var(--dim)">'+esc(r.payment||'—')+'</td>'+
+      '<td style="color:var(--dim)">'+esc(r.src||'ידני')+'</td>'+
+      '<td style="color:var(--dim)">'+esc(r.note||'—')+'</td>'+
+      '<td><select class="catsel"'+act('clsRowCat',r.id)+'>'+
+          '<option value="">בחר…</option>'+catOptions(r.category)+'</select></td>'+
+      '<td><button class="clink"'+act('showProv',r.id)+'>מאיפה זה הגיע</button></td>'+
+    '</tr>').join('')+
+    '</tbody></table></div></div>';
+}
+/** סיווג שורה בודדת מתוך הקבוצה, בלי לגעת בשאר. */
+function clsRowCat(id, el){
+  const t=DB.tx.find(x=>x.id===id && !x.deleted);
+  if(!t || !el.value) return;
+  t.category=el.value; t.status='ok'; t.classBy='ידני: '+(CU?CU.name:'');
+  queueRow('tx',t); saveLocal(); updateBadge();
+  withScroll(renderClassify);
+  toast('השורה סווגה ל"'+el.value+'"');
+}
 function clsToggle(i){ clsOpen = (clsOpen===i ? -1 : i); withScroll(renderClassify); }
 function clsQuick(i, qi){
   const c=clsQuickCats[qi]; if(!c) return;
@@ -1618,6 +1660,40 @@ function clearFilters(el){ tableState[el]={f:{},sk:null,sd:1}; smartTable(tableS
 
 /* ---------------- תנועות ---------------- */
 let selTx=new Set(), lastFiltered=[];
+
+/** הערך שמייצג את התנועה בעמודת הקטגוריה — לתצוגה ולסינון גם יחד. */
+function catState(t){
+  if(t.deleted) return 'נמחקה';
+  if(t.status && t.status!=='ok') return STATUS_LBL[t.status];
+  return t.category || 'ללא קטגוריה';
+}
+/** אפשרויות קטגוריה. שמות הקטגוריות הם נתוני משתמש — esc בטוח כאן
+ *  כי הם נכנסים למאפיין ולטקסט, ולא לקוד. */
+function catOptions(sel){
+  return DB.cats.filter(c=>!c.deleted)
+    .map(c=>'<option value="'+esc(c.name)+'"'+(c.name===sel?' selected':'')+'>'+
+            esc(c.icon)+' '+esc(c.name)+'</option>').join('');
+}
+/** בורר קטגוריה בתוך התא — שינוי קטגוריה בלי להיכנס למסך עריכה. */
+function catCell(t, showDel){
+  if(showDel) return '<span class="pill p-irrelevant">נמחקה '+esc(t.deleted)+'</span>';
+  if(!isAdmin()) return t.category ? catIcon(t.category)+' '+esc(t.category)
+                                   : '<span class="pill p-pending">ממתין לסיווג</span>';
+  const st = (t.status && t.status!=='ok') ? t.status : '';
+  const head = st ? STATUS_LBL[st] : (t.category ? '' : 'ללא קטגוריה');
+  return '<select class="catsel '+esc(st)+'"'+act('setRowCat',t.id)+'>'+
+         (head ? '<option value="">'+esc(head)+'</option>' : '')+
+         catOptions(t.category)+'</select>';
+}
+/** בחירה בתא: מסווגת מיד, ומורידה את התנועה מ"ממתין לסיווג". */
+function setRowCat(id, el){
+  const t=DB.tx.find(x=>x.id===id && !x.deleted);
+  if(!t || !el.value) return;
+  t.category=el.value; t.status='ok'; t.classBy='ידני: '+(CU?CU.name:'');
+  queueRow('tx',t); saveLocal(); updateBadge();
+  const y=window.scrollY; renderTx(); window.scrollTo(0,y);
+  toast('סווג ל"'+el.value+'"');
+}
 function renderTx(){
   fillMonthSelect($('txMonth'), true);
   $('bulkCat').innerHTML='<option value="">קטגוריה…</option>'+
@@ -1644,14 +1720,17 @@ function renderTx(){
   if(adm) cols.push({key:'sel', label:'<input type="checkbox" style="width:auto" '+
       'onchange="toggleSelAll(this.checked)" title="בחר את כל השורות המסוננות">',
       sort:false, filter:'none', get:()=>''});
+  /* עמודת הסטטוס ירדה. המצב חי בתוך עמודת הקטגוריה: תנועה שסווגה
+     מציגה את הקטגוריה, ותנועה שלא — "ממתין לסיווג". הסינון על אותה
+     עמודה מכסה את שניהם. */
   cols.push(
-    {key:'date',   label:'תאריך',   cls:'num', filter:'text',   get:t=>t.date},
-    {key:'desc',   label:'תיאור',              filter:'text',   get:t=>t.desc},
-    {key:'cat',    label:'קטגוריה',            filter:'select', get:t=>t.category||''},
-    {key:'amount', label:'סכום',    cls:'num', filter:'text',   get:t=>num(t.amount)},
-    {key:'status', label:'סטטוס',              filter:'select', get:t=>showDel?('נמחקה '+t.deleted):(STATUS_LBL[t.status]||'מסווג')},
-    {key:'src',    label:'מקור',               filter:'select', get:t=>t.src||'ידני'},
-    {key:'act',    label:'',                   filter:'none', sort:false, get:()=>''}
+    {key:'date',   label:'תאריך',    cls:'num', filter:'text',   get:t=>t.date},
+    {key:'desc',   label:'תיאור',               filter:'text',   get:t=>t.desc},
+    {key:'cat',    label:'קטגוריה',             filter:'select', get:catState},
+    {key:'amount', label:'סכום',     cls:'num', filter:'text',   get:t=>num(t.amount)},
+    {key:'pay',    label:'אמצעי תשלום',         filter:'select', get:t=>t.payment||''},
+    {key:'src',    label:'מקור',                filter:'select', get:t=>t.src||'ידני'},
+    {key:'act',    label:'',                    filter:'none', sort:false, get:()=>''}
   );
 
   smartTable({
@@ -1661,11 +1740,10 @@ function renderTx(){
            act('toggleSel',t.id)+'></td>':'')+
       '<td class="num">'+esc(t.date)+'</td>'+
       '<td>'+esc(t.desc)+(t.note?'<div style="font-size:11.5px;color:var(--dim)">'+esc(t.note)+'</div>':'')+'</td>'+
-      '<td>'+(t.category?catIcon(t.category)+' '+esc(t.category):'<span style="color:var(--faint)">—</span>')+'</td>'+
+      '<td>'+catCell(t, showDel)+'</td>'+
       '<td class="num money"'+(t.kind==='income'?' style="color:var(--ok)"':'')+'>'+
         (t.kind==='income'?'+':'')+fmt2(t.amount)+'</td>'+
-      '<td>'+(showDel ? '<span class="pill p-irrelevant">נמחקה '+esc(t.deleted)+'</span>'
-                      : '<span class="pill p-'+esc(t.status||'ok')+'">'+esc(STATUS_LBL[t.status]||'מסווג')+'</span>')+'</td>'+
+      '<td style="font-size:12.5px;color:var(--dim)">'+esc(t.payment||'—')+'</td>'+
       '<td style="font-size:12px;color:var(--dim)">'+esc(t.src||'ידני')+'</td>'+
       '<td style="white-space:nowrap">'+
         '<button class="btn ghost sm"'+act('showProv',t.id)+' title="מאיפה זה הגיע">🔎</button> '+
@@ -1687,12 +1765,26 @@ function renderTx(){
 }
 
 /* ---------------- עדכון ומחיקה מרוכזים ---------------- */
-function toggleSel(id,on){ on?selTx.add(id):selTx.delete(id); updateBulkBar(); }
-function toggleSelAll(on){ lastFiltered.forEach(id=>on?selTx.add(id):selTx.delete(id)); renderTx(); }
-function clearSel(){ selTx.clear(); renderTx(); }
+/* מסמנים ישירות ב-DOM. ציור מחדש של הטבלה על כל תיבה היה מאבד את
+   מקום הגלילה ומאפס את מצב התיבה שהמשתמש בדיוק לחץ עליה. */
+function paintSel(id,on){
+  const cb=document.querySelector('#txTable [data-act="toggleSel"][data-id="'+CSS.escape(id)+'"]');
+  if(!cb) return;
+  cb.checked=on;
+  const tr=cb.closest('tr'); if(tr) tr.classList.toggle('sel',on);
+}
+function toggleSel(id,on){ on?selTx.add(id):selTx.delete(id); paintSel(id,on); updateBulkBar(); }
+function toggleSelAll(on){
+  lastFiltered.forEach(id=>{ on?selTx.add(id):selTx.delete(id); paintSel(id,on); });
+  updateBulkBar();
+}
+function clearSel(){
+  const ids=[...selTx]; selTx.clear(); ids.forEach(id=>paintSel(id,false)); updateBulkBar();
+}
 function updateBulkBar(){
   const n=isAdmin()?selTx.size:0;
-  $('bulkBar').style.display=n?'block':'none';
+  $('bulkBar').classList.toggle('on', !!n);
+  document.body.classList.toggle('picking', !!n);
   $('bulkCount').textContent=n+' נבחרו';
 }
 function shiftDate(iso,days){
@@ -2425,6 +2517,8 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
 /* הפעולות המורשות. שם שאינו כאן פשוט לא רץ. */
 Object.assign(ACTIONS,{
   showProv, editTx, saveTx, delTx, restoreTx,
+  setRowCat:(id,el)=>setRowCat(id,el),
+  clsRowCat:(id,el)=>clsRowCat(id,el),
   pickStencil, delStencil, delRule, delCat, restoreCat, delUser,
   toggleSel:(id,el)=>toggleSel(id, el.checked),
   userName:(id,el)=>setUserField(id,'name',el.value),
