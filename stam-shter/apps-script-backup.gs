@@ -90,8 +90,21 @@ function driveFolder(sub) {
     root = parents.hasNext() ? parents.next() : DriveApp.getRootFolder();
   }
   if (!sub) return root;
+  // תת-התיקייה נזכרת לפי מזהה ולא לפי שם — כך אפשר לשנות לה שם או להזיז
+  // אותה בדרייב בלי שהסקריפט יצור תיקייה חדשה בשם הישן.
+  var props = PropertiesService.getScriptProperties();
+  var key = 'FOLDER_' + sub;
+  var savedId = props.getProperty(key);
+  if (savedId) {
+    try {
+      var saved = DriveApp.getFolderById(savedId);
+      if (!saved.isTrashed()) return saved;
+    } catch (e) { /* נמחקה — נמצא או ניצור מחדש */ }
+  }
   var it = root.getFoldersByName(sub);
-  return it.hasNext() ? it.next() : root.createFolder(sub);
+  var folder = it.hasNext() ? it.next() : root.createFolder(sub);
+  props.setProperty(key, folder.getId());
+  return folder;
 }
 
 function saveToDrive(u) {
