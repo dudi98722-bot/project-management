@@ -124,4 +124,29 @@ function strip(it) {
   return rest;
 }
 
-module.exports = { enabled, backup, mirrorMany, drain };
+// העלאת קובץ לדרייב דרך אותו Web App. לא עובר בתור: המשתמש ממתין
+// לתשובה, וקובץ גדול לא צריך להיתקע מאחורי אצוות גיבוי.
+async function uploadFile({ name, mime, data, folder }) {
+  if (!enabled()) throw new Error('גיבוי גוגל לא מוגדר — לא ניתן להעלות קבצים');
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 120000);   // קובץ גדול לוקח זמן
+  try {
+    const res = await fetch(WEBHOOK(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secret: SECRET(), upload: { name, mime, data, folder } }),
+      redirect: 'follow',
+      signal: ctrl.signal,
+    });
+    const text = await res.text();
+    let out = null;
+    try { out = JSON.parse(text); } catch (e) {}
+    // תשובה שאינה JSON היא כמעט תמיד דף שגיאה של Apps Script (פריסה סגורה)
+    if (!out || out.ok !== true) {
+      throw new Error((out && out.error) || 'התשובה מהדרייב אינה תקינה — בדוק שהפריסה פתוחה');
+    }
+    return out;
+  } finally { clearTimeout(t); }
+}
+
+module.exports = { enabled, backup, mirrorMany, drain, uploadFile };

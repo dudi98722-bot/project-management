@@ -55,6 +55,10 @@ function doPost(e) {
     var body = JSON.parse(e.postData.contents);
     if (!body || body.secret !== secret) return out({ ok: false, error: 'unauthorized' });
 
+    // העלאת קובץ לדרייב (צילום ת"ז). נשמר בתיקייה פרטית וללא שיתוף —
+    // קישור שדולף לא חושף כלום למי שאינו מורשה בתיקייה.
+    if (body.upload) return out(saveToDrive(body.upload));
+
     var items = (body.items && body.items.length) ? body.items : [];
     if (!items.length) return out({ ok: true, written: 0 });
 
@@ -69,6 +73,37 @@ function doPost(e) {
     return out({ ok: true, written: items.length });
   } catch (err) {
     return out({ ok: false, error: String((err && err.message) || err) });
+  }
+}
+
+// ---------- שמירת קובץ בדרייב ----------
+// התיקייה נוצרת ליד הגיליון בפעם הראשונה. אין setSharing בכוונה:
+// ברירת המחדל בדרייב היא פרטי, וזה מה שנדרש לתעודות זהות.
+function driveFolder(sub) {
+  var rootId = PropertiesService.getScriptProperties().getProperty('DRIVE_FOLDER_ID');
+  var root;
+  if (rootId) {
+    root = DriveApp.getFolderById(rootId);
+  } else {
+    var file = DriveApp.getFileById(SpreadsheetApp.getActive().getId());
+    var parents = file.getParents();
+    root = parents.hasNext() ? parents.next() : DriveApp.getRootFolder();
+  }
+  if (!sub) return root;
+  var it = root.getFoldersByName(sub);
+  return it.hasNext() ? it.next() : root.createFolder(sub);
+}
+
+function saveToDrive(u) {
+  try {
+    if (!u.data) return { ok: false, error: 'no data' };
+    var folder = driveFolder(u.folder || 'id-photos');
+    var blob = Utilities.newBlob(Utilities.base64Decode(u.data), u.mime || 'application/octet-stream',
+                                 u.name || ('file-' + new Date().getTime()));
+    var f = folder.createFile(blob);
+    return { ok: true, url: f.getUrl(), fileId: f.getId(), folder: folder.getName() };
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err) };
   }
 }
 

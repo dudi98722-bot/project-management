@@ -49,7 +49,10 @@
       me: () => apiFetch('/auth/me'),
     },
     // נתוני יסוד
-    contacts: res('/contacts'),
+    contacts: Object.assign(res('/contacts'), {
+      uploadIdPhoto: (id, body) => apiFetch('/contacts/' + id + '/id-photo', { method: 'POST', body }),
+      removeIdPhoto: (id) => apiFetch('/contacts/' + id + '/id-photo', { method: 'DELETE' }),
+    }),
     products: res('/products'),
     sizes: res('/parchment-sizes'),
     stations: res('/stations'),

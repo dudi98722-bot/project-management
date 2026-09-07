@@ -126,6 +126,46 @@ const itemsList = (arr) => sortHe(arr.map(x => ({ v: x.value, t: x.value + (x.is
 // סיווג איש קשר נשמר כמחרוזת מופרדת בפסיקים — אדם יכול להיות
 // גם סופר וגם רוכש, ולכן לא ערך יחיד.
 const splitKinds = (v) => String(v == null ? '' : v).split(',').map(x => x.trim()).filter(Boolean);
+// ===== צילום ת"ז =====
+// תמונה מהטלפון היא 3-8MB, וב-base64 היא מתנפחת בשליש. דוחסים בדפדפן
+// לפני השליחה — אחרת ההעלאה נתקעת ומכסת Apps Script נשרפת לחינם.
+const ID_MAX_PX = 1800;
+function shrinkImage(file) {
+  return new Promise((resolve) => {
+    if (!/^image\//i.test(file.type) || /heic|heif/i.test(file.type)) return resolve(null);
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, ID_MAX_PX / Math.max(img.width, img.height));
+      if (scale === 1 && file.size < 900 * 1024) return resolve(null);   // קטן ממילא
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * scale);
+      c.height = Math.round(img.height * scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      c.toBlob(b => resolve(b && b.size < file.size ? b : null), 'image/jpeg', 0.85);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+const toBase64 = (blob) => new Promise((resolve, reject) => {
+  const fr = new FileReader();
+  fr.onload = () => resolve(String(fr.result).split(',')[1]);
+  fr.onerror = () => reject(new Error('קריאת הקובץ נכשלה'));
+  fr.readAsDataURL(blob);
+});
+
+async function uploadIdPhoto(contactId, file, onMsg) {
+  const smaller = await shrinkImage(file);
+  const blob = smaller || file;
+  const mime = smaller ? 'image/jpeg' : (file.type || 'application/octet-stream');
+  const name = smaller ? file.name.replace(/\.[^.]+$/, '') + '.jpg' : file.name;
+  if (blob.size > 8 * 1024 * 1024) throw new Error('הקובץ גדול מדי גם אחרי דחיסה (מקסימום 8MB)');
+  if (onMsg) onMsg(`מעלה ${Math.max(1, Math.round(blob.size / 1024))}KB…`);
+  return Store.contacts.uploadIdPhoto(contactId, { name, mime, data: await toBase64(blob) });
+}
+
 // "בנק X · סניף Y · חשבון Z" — רק החלקים שמולאו
 const bankText = (c) => [
   c.bank ? `בנק ${c.bank}` : '',
@@ -296,7 +336,7 @@ function openForm(cfg, row, prefill) {
   m.el.querySelector('[data-cancel]').onclick = m.close;
   wireCombos(m.el, fields);
   // חיווט חי בתוך הטופס (למשל כפתור שממלא סכום מחושב)
-  if (cfg.onForm) cfg.onForm(m, isEdit);
+  if (cfg.onForm) cfg.onForm(m, isEdit, row);
   const btn = m.el.querySelector('[data-save]');
   btn.onclick = async () => {
     const data = readFields(fields);
@@ -2676,12 +2716,61 @@ function setContacts(cfgOnly) {
       { k: 'bank_branch', label: 'סניף', type: 'text' },
       { k: 'bank_account', label: 'מספר חשבון', type: 'text' },
     ],
+    // ההעלאה היא פעולה עצמאית מול הדרייב ולא שדה בטופס: היא דורשת שהרשומה
+    // כבר קיימת, ולכן מוצגת רק בעריכה.
+    onForm: (m, isEdit, row) => {
+      const box = document.createElement('div');
+      box.className = 'field';
+      box.innerHTML = !isEdit
+        ? `<label>צילום ת"ז</label><div class="hint">שמור את איש הקשר, ואז פתח אותו לעריכה כדי לצרף צילום.</div>`
+        : `<label>צילום ת"ז</label>
+           <div id="idpBox" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+             <input type="file" id="idpFile" accept="image/*,application/pdf" style="flex:1;min-width:170px">
+             <span id="idpState" class="mini"></span>
+           </div>
+           <div class="hint">נשמר בתיקייה פרטית בדרייב. הקישור נפתח רק למי שמחובר לחשבון עם גישה.</div>`;
+      m.el.querySelector('.m-body .row').appendChild(box);
+      if (!isEdit) return;
+
+      const state = box.querySelector('#idpState');
+      const paint = (url) => {
+        state.innerHTML = url
+          ? `<a href="${esc(url)}" target="_blank" rel="noopener">🪪 צפייה</a>
+             <button type="button" class="btn ghost xs" id="idpDel">הסר</button>`
+          : '<span class="muted">אין צילום</span>';
+        const del = box.querySelector('#idpDel');
+        if (del) del.onclick = async () => {
+          if (!(await confirmBox('להסיר את הקישור לצילום? הקובץ עצמו יישאר בדרייב.'))) return;
+          try { await Store.contacts.removeIdPhoto(row.id); paint(''); invalidateRows(); }
+          catch (e) { toast(e.message, 'err'); }
+        };
+      };
+      paint(row.id_photo_url);
+
+      box.querySelector('#idpFile').onchange = async (e) => {
+        const f = e.target.files && e.target.files[0];
+        if (!f) return;
+        state.textContent = 'מכין…';
+        try {
+          const r = await uploadIdPhoto(row.id, f, (msg) => { state.textContent = msg; });
+          paint(r.id_photo_url);
+          invalidateRows();
+          toast('הצילום נשמר בדרייב', 'ok');
+        } catch (err) {
+          state.innerHTML = '<span class="neg">ההעלאה נכשלה</span>';
+          toast(err.message, 'err');
+        } finally { e.target.value = ''; }
+      };
+    },
     cols: [
       { label: 'שם', render: r => esc(r.name || '') },
       { label: 'טלפון', render: r => esc(r.phone || '') },
       { label: 'כתובת', cls: 'wrap', render: r => esc(r.address || '') },
       { label: 'סיווג', cls: 'wrap', render: r => kindPills(r.kinds) },
       { label: 'חשבון בנק', render: r => esc(bankText(r)) },
+      { label: 'צילום ת"ז', cls: 'center', render: r => r.id_photo_url
+          ? `<a href="${esc(r.id_photo_url)}" target="_blank" rel="noopener" title="נפתח בדרייב">🪪 צפייה</a>`
+          : '<span class="muted">—</span>' },
     ],
   };
   return cfgOnly ? cfg : entityPage(cfg);
@@ -4135,6 +4224,8 @@ function wsHeader(person, color, badge, otherMode, otherHasData, showBank) {
         <div style="font-size:24px;font-weight:800">${esc(person.name || '')}</div>
         ${person.phone ? `<a href="tel:${esc(person.phone)}" style="color:#e6fffa">${esc(person.phone)}</a>` : ''}
         ${person.address ? `<span style="color:#e6fffa;font-size:13px">📍 ${esc(person.address)}</span>` : ''}
+        ${person.id_photo_url ? `<a href="${esc(person.id_photo_url)}" target="_blank" rel="noopener"
+            style="color:#e6fffa;font-size:13px" title="נפתח בדרייב">🪪 צילום ת"ז</a>` : ''}
         <span class="pill" style="background:#fff;color:#0f172a">${badge}</span>
         ${splitKinds(person.kinds).filter(k => k !== badge).map(k =>
           `<span class="pill" style="background:rgba(255,255,255,.22);color:#fff">${esc(k)}</span>`).join(' ')}

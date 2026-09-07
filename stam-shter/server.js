@@ -7,8 +7,22 @@ const { pool } = require('./db');
 
 const app = express();
 app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
-app.use(express.json({ limit: '10mb' }));
+// 14mb ולא 10: צילום ת"ז של 8MB הופך ל-~10.7MB אחרי base64, וגבול נמוך
+// מדי היה דוחה קובץ שהמערכת מצהירה שהוא תקין.
+app.use(express.json({ limit: '14mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// גוף גדול מדי נדחה ע"י express לפני הראוטר, ובלי זה המשתמש היה מקבל
+// "שגיאת שרת" סתמית במקום לדעת שהקובץ פשוט גדול מדי.
+app.use((err, req, res, next) => {
+  if (err && (err.type === 'entity.too.large' || err.status === 413)) {
+    return res.status(413).json({ error: 'הקובץ גדול מדי. המקסימום 8MB' });
+  }
+  if (err && err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'הנתונים שנשלחו אינם תקינים' });
+  }
+  return next(err);
+});
 
 // ===== API =====
 app.use('/api/auth', require('./routes/auth'));
