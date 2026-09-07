@@ -1146,11 +1146,81 @@ function scribePayCfg() {
   };
 }
 
+// "1-5, 8, 12-14" -> [1,2,3,4,5,8,12,13,14]. מחזיר null על קלט לא תקין,
+// כי ניחוש כאן היה מעביר יריעות שהמשתמש לא התכוון אליהן.
+function parseSeqList(str) {
+  const out = new Set();
+  for (const part of String(str || '').split(/[,;\s]+/).filter(Boolean)) {
+    const m = part.match(/^(\d+)\s*[-\u2013]\s*(\d+)$/);
+    if (m) {
+      const a = +m[1], b = +m[2];
+      if (!(a >= 1) || b < a || b - a > 2000) return null;
+      for (let i = a; i <= b; i++) out.add(i);
+    } else if (/^\d+$/.test(part) && +part >= 1) {
+      out.add(+part);
+    } else return null;
+  }
+  return [...out].sort((a, b) => a - b);
+}
+
+// התחנה האחרונה נזכרת — בדיווח סדרתי היעד בדרך כלל זהה
+const PAGES_TRACK = { station: '', holder: '' };
+
+// רישום העמודים ועדכון מיקום היריעות באותה שמירה. היריעות נוצרות
+// אוטומטית אם טרם נוצרו, אחרת הדיווח היה נכשל על ספר שלא נפתח לו מעקב.
+async function afterPagesLog(saved, data, isEdit) {
+  PAGES_TRACK.station = data._station || '';
+  PAGES_TRACK.holder = data._holder || '';
+  const raw = String(data._sheets || '').trim();
+  if (isEdit || !raw) return null;
+
+  const seqs = parseSeqList(raw);
+  if (!seqs || !seqs.length) throw new Error('רשימת היריעות לא תקינה. לדוגמה: 1-5 או 1,3,7-9');
+  const scrollId = +saved.scroll_id;
+  if (!scrollId) throw new Error('אין ספר שאליו לשייך את היריעות');
+
+  let items = await Store.track.list({ scroll_id: scrollId });
+  let created = 0;
+  if (!items.length) {
+    const g = await Store.track.generate({ scroll_id: scrollId });
+    created = g.created || 0;
+    items = await Store.track.list({ scroll_id: scrollId });
+  }
+  const bySeq = new Map(items.map(i => [Number(i.seq), i.id]));
+  const ids = [], missing = [];
+  for (const q of seqs) { const id = bySeq.get(q); if (id) ids.push(id); else missing.push(q); }
+  if (!ids.length) throw new Error(`היריעות ${missing.join(', ')} לא קיימות בספר הזה`);
+
+  const r = await Store.track.move({
+    ids,
+    station_id: data._station || '',
+    holder_id: data._holder || '',
+    date: data.date || today(),
+    note: 'עודכן ברישום עמודים',
+  });
+  const st = (C.stations.find(x => x.id === +data._station) || {}).name;
+  const who = C.contacts.find(x => x.id === +data._holder);
+  const where = [st, who && contactName(who)].filter(Boolean).join(' \u00b7 ');
+  return `נשמר \u00b7 ${r.moved} יריעות עודכנו${where ? ' \u2190 ' + where : ''}`
+    + (created ? ` \u00b7 נפתח מעקב ל-${created} יריעות` : '')
+    + (missing.length ? ` \u00b7 לא נמצאו: ${missing.join(', ')}` : '');
+}
+
 function pagesLogCfg() {
   return {
     title: 'עמודים שנכתבו', store: Store.pagesLog,
     labelOf: (r) => `${r.pages} עמודים`,
-    defaults: () => ({ date: today() }),
+    defaults: () => ({ date: today(), _station: PAGES_TRACK.station, _holder: PAGES_TRACK.holder }),
+    // תקינות רשימת היריעות נבדקת כאן ולא ב-afterSave: קלט שגוי היה שומר
+    // את רישום העמודים ורק אחר כך נכשל, ומשאיר את המשתמש עם שורה למחוק.
+    validate: (d) => {
+      const raw = String(d._sheets || '').trim();
+      if (!raw) return null;
+      if (!parseSeqList(raw)) return 'רשימת היריעות לא תקינה. לדוגמה: 1-5 או 1,3,7-9';
+      if (!d._station && !d._holder) return 'יש לבחור לאיזו תחנה או אצל מי היריעות עוברות';
+      return null;
+    },
+    afterSave: afterPagesLog,
     fields: [
       { k: '_scribe', label: 'סופר (לצמצום הרשימה)', type: 'combo', items: itemsContacts,
         placeholder: 'כל הסופרים…' },
@@ -1158,8 +1228,33 @@ function pagesLogCfg() {
         placeholder: 'הספרים של הסופר שנבחר…' },
       { k: 'date', label: 'תאריך', type: 'date' },
       { k: 'pages', label: 'כמות עמודים שנכתבה', type: 'number' },
+      // עדכון מעקב היריעות באותה פעולה, במקום לעבור ללשונית המעקב
+      { k: '_sheets', label: 'אילו יריעות', type: 'text', newOnly: true,
+        placeholder: 'לדוגמה 1-5 או 1,3,7-9',
+        hint: 'ריק = לא מעדכן יריעות' },
+      { k: '_station', label: 'לאיזו תחנה', type: 'combo', items: itemsStations, newOnly: true,
+        placeholder: 'לא לשנות' },
+      { k: '_holder', label: 'אצל מי', type: 'combo', items: itemsContacts, newOnly: true,
+        placeholder: 'לא לשנות — הקלד שם' },
       { k: 'note', label: 'הערה', type: 'textarea' },
     ],
+    // הרמז מציג כמה יריעות יש לספר שנבחר, כדי לא לנחש טווח
+    onForm: (m, isEdit) => {
+      if (isEdit) return;
+      const scr = m.el.querySelector('#f_scroll_id');
+      const box = m.el.querySelector('#f__sheets');
+      if (!scr || !box) return;
+      const hint = box.closest('.field').querySelector('.hint');
+      const upd = () => {
+        const sc = C.scrolls.find(x => x.id === +scr.value);
+        const n = sc ? (N(sc.sheets_count) || N(sc.product_sheets_count) || N(sc.product_parchment_units)) : 0;
+        hint.textContent = n
+          ? `לספר הזה ${n} יריעות. ריק = לא מעדכן יריעות`
+          : 'ריק = לא מעדכן יריעות';
+      };
+      scr.addEventListener('change', upd);
+      upd();
+    },
   };
 }
 
