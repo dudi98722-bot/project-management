@@ -41,6 +41,11 @@ ALTER TABLE contacts ADD COLUMN IF NOT EXISTS name VARCHAR(300);
 -- סיווג חופשי לאיש הקשר. אדם יכול להיות כמה דברים בו-זמנית (סופר שגם רוכש),
 -- ולכן מחרוזת של ערכים מופרדים בפסיק ולא ערך יחיד.
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS kinds VARCHAR(300);
+-- פרטי חשבון בנק להעברות לסופר. טקסט ולא מספר — מספרי חשבון מתחילים
+-- לעיתים באפס, ואסור שהוא יאבד.
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS bank VARCHAR(100);
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS bank_branch VARCHAR(50);
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS bank_account VARCHAR(50);
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.columns
              WHERE table_name='contacts' AND column_name='first_name') THEN

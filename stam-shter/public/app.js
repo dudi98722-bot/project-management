@@ -126,6 +126,12 @@ const itemsList = (arr) => sortHe(arr.map(x => ({ v: x.value, t: x.value + (x.is
 // סיווג איש קשר נשמר כמחרוזת מופרדת בפסיקים — אדם יכול להיות
 // גם סופר וגם רוכש, ולכן לא ערך יחיד.
 const splitKinds = (v) => String(v == null ? '' : v).split(',').map(x => x.trim()).filter(Boolean);
+// "בנק X · סניף Y · חשבון Z" — רק החלקים שמולאו
+const bankText = (c) => [
+  c.bank ? `בנק ${c.bank}` : '',
+  c.bank_branch ? `סניף ${c.bank_branch}` : '',
+  c.bank_account ? `חשבון ${c.bank_account}` : '',
+].filter(Boolean).join(' · ');
 const kindPills = (v) => {
   const ks = splitKinds(v);
   return ks.length ? ks.map(k => `<span class="pill k">${esc(k)}</span>`).join(' ')
@@ -2179,7 +2185,9 @@ async function openCard(kind, id) {
 
 function scribeCardHTML(d) {
   const t = d.scroll_totals, p = d.product_totals;
+  const bank = bankText(d.contact || {});
   return `
+    ${bank ? `<div class="card mini">🏦 ${esc(bank)}</div>` : ''}
     <div class="grid stat-grid">
       <div class="stat"><div class="label">סה"כ חוב לסופר</div><div class="value r">${money(d.total_balance)}</div>
         <div class="sub">ס"ת ${money(t.balance)} + מוצרים ${money(p.balance)}${
@@ -2568,11 +2576,15 @@ function setContacts(cfgOnly) {
       { k: 'name', label: 'שם', type: 'text', required: true },
       { k: 'phone', label: 'טלפון', type: 'text' },
       { k: 'kinds', label: 'סיווג', type: 'multi', options: () => sortHe(C.kinds.map(x => ({ t: x.value }))).map(x => x.t) },
+      { k: 'bank', label: 'בנק', type: 'text', hint: 'להעברות לסופר — מוצג במרחב הסופר' },
+      { k: 'bank_branch', label: 'סניף', type: 'text' },
+      { k: 'bank_account', label: 'מספר חשבון', type: 'text' },
     ],
     cols: [
       { label: 'שם', render: r => esc(r.name || '') },
       { label: 'טלפון', render: r => esc(r.phone || '') },
       { label: 'סיווג', cls: 'wrap', render: r => kindPills(r.kinds) },
+      { label: 'חשבון בנק', render: r => esc(bankText(r)) },
     ],
   };
   return cfgOnly ? cfg : entityPage(cfg);
@@ -4001,9 +4013,11 @@ function pageWorkspace() {
 }
 
 // כותרת אישית משותפת לשני המרחבים, עם מעבר מהיר לצד השני כשיש בו פעילות
-function wsHeader(person, color, badge, otherMode, otherHasData) {
+function wsHeader(person, color, badge, otherMode, otherHasData, showBank) {
+  const bank = showBank ? bankText(person) : '';
   return `
     <div class="card" style="background:linear-gradient(135deg,${color});color:#fff;border:none">
+      ${bank ? `<div style="font-size:13px;color:#d1fae5;margin-bottom:6px">🏦 ${esc(bank)}</div>` : ''}
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
         <div style="font-size:24px;font-weight:800">${esc(person.name || '')}</div>
         ${person.phone ? `<a href="tel:${esc(person.phone)}" style="color:#e6fffa">${esc(person.phone)}</a>` : ''}
@@ -4059,6 +4073,8 @@ function wsWire(otherMode) {
   });
   document.querySelectorAll('[data-book]').forEach(b => b.onclick = () => showScrollCard(+b.dataset.book));
   document.querySelectorAll('[data-hist]').forEach(b => b.onclick = () => showHistory(+b.dataset.hist));
+  document.querySelectorAll('[data-gmove]').forEach(b => b.onclick = () =>
+    openMove(String(b.dataset.gmove).split(',').map(Number)));
 
   // שליפת השורה המלאה לפני פתיחת הטופס
   const fullRow = async (cfg, id) => {
@@ -4097,20 +4113,44 @@ function wsActs(cfgKey, id, cap) {
 }
 const wsActCol = (cfgKey, cap) => ({ label: '', cls: 'center', render: r => wsActs(cfgKey, r.id, cap) });
 
+// קיבוץ הפריטים של הסופר לפי מצב (אותה חבילה/ספר, תחנה, מחזיק, תאריך),
+// ממוין לפי תחנה — כך רואים מיד "מה אצל המוחק, מה בתפירה, מה לא שויך".
+function ownedGroups(items) {
+  const key = (g) => (g.station_name ? '0' + g.station_name : '1') + '|' + itemLabel(g);
+  return groupTrackRows(items).sort((a, b) => key(a).localeCompare(key(b), 'he'));
+}
+// תגיות סיכום: כמה פריטים בכל תחנה
+function stationChips(items) {
+  const m = new Map();
+  for (const r of items) {
+    const k = r.station_name || 'לא שויך';
+    if (!m.has(k)) m.set(k, { n: 0, color: r.station_color });
+    m.get(k).n++;
+  }
+  return [...m.entries()]
+    .sort((a, b) => b[1].n - a[1].n)
+    .map(([name, v]) => name === 'לא שויך'
+      ? `<span class="pill n">לא שויך <b>${v.n}</b></span>`
+      : `<span class="pill" style="background:${esc(v.color || '#e0f2fe')};color:#075985">${esc(name)} <b>${v.n}</b></span>`)
+    .join('');
+}
+
 const wsScrollCol = { label: 'ספר', render: r => { const s = C.scrolls.find(x => x.id === +r.scroll_id); return s ? esc(scrollLabel(s)) : '—'; } };
 
 // ---------- מרחב סופר ----------
 async function loadScribeSpace(id) {
   $('wsBody').innerHTML = '<div class="card muted">טוען…</div>';
-  let d, sheets, pays, pages, bookExp, parchExp, alsoCustomer = false;
+  let d, sheets, owned, pays, pages, bookExp, parchExp, alsoCustomer = false;
   try {
-    const [rep, sh, p1, p2, p3, p4] = await Promise.all([
+    const [rep, sh, ow, p1, p2, p3, p4] = await Promise.all([
       Store.reports.scribe(id),
       Store.track.list({ holder_id: id }).catch(() => []),
+      // מה ששייך לו (יריעות ספריו ויחידות חבילותיו) — לא מה שהוא מחזיק
+      Store.track.list({ scribe_id: id }).catch(() => []),
       Store.scribePayments.list(), Store.pagesLog.list(),
       Store.bookExpenses.list(), Store.parchmentExpenses.list(),
     ]);
-    d = rep; sheets = sh;
+    d = rep; sheets = sh; owned = ow;
     const mine = new Set(d.scrolls.map(s => s.id));
     const only = (arr) => arr.filter(r => mine.has(+r.scroll_id));
     pays = only(p1); pages = only(p2); bookExp = only(p3); parchExp = only(p4);
@@ -4126,7 +4166,7 @@ async function loadScribeSpace(id) {
   const openBooks = d.scrolls.filter(s => s.status !== 'done').length;
 
   $('wsBody').innerHTML = `
-    ${wsHeader(d.contact, '#0f766e,#115e59', 'סופר', 'customer', alsoCustomer)}
+    ${wsHeader(d.contact, '#0f766e,#115e59', 'סופר', 'customer', alsoCustomer, true)}
 
     <div class="grid stat-grid">
       ${N(d.total_balance_usd) ? wsCard('חוב לסופר ($)', money(d.total_balance_usd, 'USD'), 'r', 'מוצרים בדולר') : ''}
@@ -4191,7 +4231,23 @@ async function loadScribeSpace(id) {
           wsActs(r.parchment_size_id ? 'parchExpCfg' : 'bookExpCfg', r.id) },
     ], bookExp.concat(parchExp), { totals: true }))}
 
-    ${sheets.length ? wsSec('sheets', 'יריעות שנמצאות אצלו', sheets.length, tableHTML([
+    ${owned.length ? wsSec('owned', 'היריעות והמוצרים שלו — באיזו תחנה', owned.length, `
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">${stationChips(owned)}</div>
+      ${tableHTML([
+        { label: 'שייך ל', render: r => esc(itemLabel(r)) },
+        { label: 'כמות', cls: 'num', render: r => `<b>${r.qty}</b>` },
+        { label: 'מספרים', cls: 'num', render: r => `<span class="muted">${seqLabel(r)}</span>` },
+        { label: 'תחנה', render: r => stationPill(r) },
+        { label: 'אצל מי', render: r => esc(r.holder_name || '—') },
+        { label: 'מתאריך', render: r => r.since ? dt(r.since) : '' },
+        { label: 'ימים', cls: 'num', render: r => r.days_at_station != null
+            ? `<span class="${r.days_at_station > 60 ? 'neg' : ''}">${r.days_at_station}</span>` : '' },
+        { label: '', cls: 'center', render: r => `
+          ${ME.caps.edit ? `<button class="btn ghost xs" data-gmove="${r.id}">↔ העבר</button> ` : ''}
+          ${r.qty === 1 ? `<button class="btn ghost xs" data-hist="${r.ids[0]}">🕘</button>` : ''}` },
+      ], ownedGroups(owned))}`) : ''}
+
+    ${sheets.length ? wsSec('sheets', 'יריעות שנמצאות אצלו (כמחזיק)', sheets.length, tableHTML([
       { label: 'שייך ל', render: r => esc(itemLabel(r)) },
       { label: 'יריעה', cls: 'num', render: r => `<b>${r.seq}</b>` },
       { label: 'תחנה', render: r => stationPill(r) },

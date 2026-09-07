@@ -55,6 +55,12 @@ router.get('/', authenticate, can('view'), async (req, res) => {
     add('t.purchase_id', req.query.purchase_id);
     add('t.station_id', req.query.station_id);
     add('t.holder_id', req.query.holder_id);
+    // כל מה ששייך לסופר: יריעות הספרים שהוא כותב ויחידות החבילות שנקנו ממנו —
+    // בלי קשר לאיפה הן נמצאות עכשיו (זה שונה מ-holder_id, שהוא מי שמחזיק)
+    if (req.query.scribe_id !== undefined && req.query.scribe_id !== '') {
+      vals.push(req.query.scribe_id);
+      where.push(`(s.scribe_id=$${vals.length} OR pp.scribe_id=$${vals.length})`);
+    }
     const r = await pool.query(
       `${VIEW} WHERE ${where.join(' AND ')}
        ORDER BY t.scroll_id NULLS LAST, t.purchase_id NULLS LAST, t.seq`, vals);

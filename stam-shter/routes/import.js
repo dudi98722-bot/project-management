@@ -21,6 +21,9 @@ const SPEC = {
       { key: 'name', label: 'שם', required: true },
       { key: 'phone', label: 'טלפון' },
       { key: 'kinds', label: 'סיווג', nullable: true },
+      { key: 'bank', label: 'בנק', nullable: true },
+      { key: 'bank_branch', label: 'סניף', nullable: true },
+      { key: 'bank_account', label: 'חשבון', nullable: true },
     ],
   },
   products: {
