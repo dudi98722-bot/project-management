@@ -109,16 +109,25 @@ label.f span{display:block;font-size:12px;color:var(--dim);margin-bottom:5px;fon
 .row .fix{flex:0 0 auto;min-width:0}
 
 /* ---------- טבלאות ---------- */
-.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);
-  border-radius:var(--r);background:#fff}
+.table-wrap{overflow:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);
+  border-radius:var(--r);background:#fff;
+  /* גובה מרבי — רק טבלה שחורגת ממנו גוללת בתוך עצמה. זה גם מה שמאפשר
+     לכותרת להיצמד: sticky נצמד למיכל הגלילה, ובלי מיכל כזה הכותרת
+     הייתה נגללת החוצה יחד עם הדף. */
+  max-height:min(72vh,760px)}
 table{width:100%;border-collapse:separate;border-spacing:0;font-size:13.5px}
 thead th{text-align:right;font-size:11.5px;color:var(--dim);font-weight:700;letter-spacing:.02em;
-  padding:10px 11px;background:var(--card2);border-bottom:1px solid var(--line);white-space:nowrap}
+  padding:10px 11px;background:var(--card2);border-bottom:1px solid var(--line);white-space:nowrap;
+  /* שורת הכותרת נשארת למעלה בכל גלילה */
+  position:sticky;top:0;z-index:3;height:36px;box-sizing:border-box}
+thead tr:first-child th{box-shadow:0 1px 0 var(--line)}
 thead th.sortable{cursor:pointer;user-select:none}
 thead th .arrow{opacity:.35;font-size:9px;margin-inline-start:3px}
 thead th.sorted{color:var(--brand)}
 thead th.sorted .arrow{opacity:1}
-tr.filters th{background:#fff;padding:6px 7px;border-bottom:1px solid var(--line)}
+/* שורת הסינון נצמדת מתחת לשורת הכותרת — 36px הוא הגובה הקבוע שלה */
+tr.filters th{background:#fff;padding:6px 7px;border-bottom:1px solid var(--line);
+  position:sticky;top:36px;z-index:2;height:auto;box-shadow:0 1px 0 var(--line)}
 tr.filters input,tr.filters select{font-size:12px;padding:5px 8px;border-radius:7px;
   border-color:var(--line2);background:var(--card2)}
 tr.filters input:focus,tr.filters select:focus{background:#fff}
