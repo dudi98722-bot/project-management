@@ -16,6 +16,7 @@ SELECT t.*,
   cu.name AS customer_name,
   pprod.name AS purchase_product_name,
   ppsc.name  AS purchase_scribe_name,
+  pp.date    AS purchase_date,
   (CURRENT_DATE - t.since) AS days_at_station
 FROM track_items t
 LEFT JOIN stations st ON st.id = t.station_id

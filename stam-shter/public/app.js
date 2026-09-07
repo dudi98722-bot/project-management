@@ -3460,7 +3460,10 @@ const itemsStations = () => C.stations.map(s => ({ v: s.id, t: s.name }));
 
 function itemLabel(r) {
   if (r.scroll_id) return `ספר #${r.scroll_id} · ${r.product_name || ''}`;
-  if (r.purchase_id) return `חבילה #${r.purchase_id} · ${r.purchase_product_name || ''}`;
+  // התאריך מבדיל בין שתי חבילות של אותו מוצר מאותו סופר — בלעדיו הן
+  // נראו כשורה כפולה במעקב, כשבפועל אלה שתי רכישות שונות
+  if (r.purchase_id) return `חבילה #${r.purchase_id} · ${r.purchase_product_name || ''}`
+    + (r.purchase_date ? ` · ${dt(r.purchase_date)}` : '');
   return '—';
 }
 const stationPill = (r) => r.station_name
