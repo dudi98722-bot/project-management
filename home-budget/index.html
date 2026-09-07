@@ -627,9 +627,40 @@ let CU = null;
 let GS_URL = '';
 let TOKEN = '';
 const emptyPending = () => ({tx:{}, cats:{}, stencils:{}, rules:{}, users:{}, settings:{},
-                             del:{tx:[],cats:[],stencils:[],rules:[],users:[]}});
+                             del:{tx:[],cats:[],stencils:[],rules:[],users:[]},
+                             undel:{tx:[],cats:[],stencils:[],rules:[],users:[]}});
 let pending = emptyPending();
 let flushTimer = null, flushing = false;
+
+/* ============================================================
+   פעולות על שורות — דרך data-act, לא דרך onclick שנבנה ממחרוזת
+   ------------------------------------------------------------
+   מזהה שמגיע מהגיליון הוא נתון שהמשתמש השני (או כל מי שעורך את
+   הגיליון) שולט בו. כשהוא הושחל לתוך onclick, מזהה עם מרכאה סגר
+   את המאפיין והזריק אלמנט משלו — קוד שרץ בהקשר של המנהל עם TOKEN
+   בהישג יד. esc() לא מגן כאן: הדפדפן מפענח ישויות לפני שהוא מהדר
+   את גוף המטפל. הפתרון: המזהה יושב ב-data-id (הקשר מאפיין, שם esc
+   כן בטוח), והפעולה נבחרת מרשימת שמות מורשים.
+   ============================================================ */
+const ACTIONS={};
+function act(name, id){
+  return ' data-act="'+name+'" data-id="'+esc(id)+'"';
+}
+function runAct(e){
+  const el=e.target.closest('[data-act]');
+  if(!el) return;
+  const fn=ACTIONS[el.dataset.act];
+  if(!fn) return;
+  if(e.type==='click') e.preventDefault();
+  fn(el.dataset.id, el);
+}
+document.addEventListener('click', runAct);
+document.addEventListener('change', runAct);
+
+/** מזהה תקין הוא רק מה ש-uid() מייצר. שורה עם מזהה אחר לא נכנסת
+ *  ל-DOM בכלל — גם אם נכתבה ידנית בגיליון. */
+const ID_OK=/^[a-z]{1,4}-[0-9]{10,16}-[0-9]{1,7}$/;
+function safeId(v){ return ID_OK.test(String(v==null?'':v)); }
 
 /* ---------------- עזרים ---------------- */
 const $ = id => document.getElementById(id);
@@ -701,7 +732,18 @@ function parseDate(v, fmtMode){
 }
 
 /* ---------------- אחסון מקומי + סנכרון ---------------- */
-function saveLocal(){ try{ localStorage.setItem(LS, JSON.stringify(DB)); }catch(e){} }
+function saveLocal(){
+  try{
+    /* כשיש שרת הוא מקור האמת לקודים, ואין סיבה שהם ישכבו בדפדפן —
+       אחרי יציאה כל מי שניגש למכשיר היה קורא את הקוד של כל משתמש.
+       במצב מקומי אין שרת, ושם הקוד הוא האימות היחיד, אז הוא נשמר. */
+    const out = GS_URL
+      ? Object.assign({}, DB, {users:(DB.users||[]).map(u=>{
+          const c=Object.assign({},u); delete c.code; return c; })})
+      : DB;
+    localStorage.setItem(LS, JSON.stringify(out));
+  }catch(e){}
+}
 function loadLocal(){
   try{ const r=localStorage.getItem(LS); if(r) DB=Object.assign(DB, JSON.parse(r)); }catch(e){}
   if(!DB.cats || !DB.cats.length) seedCats();
@@ -762,18 +804,24 @@ function loadPending(){
   try{
     const r=localStorage.getItem(LSP);
     if(r){ const q=JSON.parse(r); pending=Object.assign(emptyPending(), q);
-           pending.del=Object.assign(emptyPending().del, q.del||{}); }
+           pending.del=Object.assign(emptyPending().del, q.del||{});
+           pending.undel=Object.assign(emptyPending().undel, q.undel||{}); }
   }catch(e){}
 }
-function queueRow(kind, row){ pending[kind][row.id]=1; saveLocal(); savePending(); schedFlush(); }
+let seqCounter=0;
+/* לכל שינוי מספר סידורי עולה. אחרי שליחה מוצלחת מוחקים מהתור רק
+   רשומות שהמספר שלהן לא השתנה — שינוי שנעשה בזמן שהאצווה הייתה
+   בדרך שומר על מספר חדש ונשאר בתור במקום להימחק ולהיעלם. */
+function queueRow(kind, row){ pending[kind][row.id]=++seqCounter; saveLocal(); savePending(); schedFlush(); }
 function queueDel(kind, id){ pending.del[kind].push(id); saveLocal(); savePending(); schedFlush(); }
-function queueSetting(k){ pending.settings[k]=1; saveLocal(); savePending(); schedFlush(); }
+function queueUndel(kind, id){ pending.undel[kind].push(id); saveLocal(); savePending(); schedFlush(); }
+function queueSetting(k){ pending.settings[k]=++seqCounter; saveLocal(); savePending(); schedFlush(); }
 /** כמה שינויים ממתינים להעלאה — מוצג למשתמש כדי שלא יחשוב שהכל בענן */
 function pendingCount(){
   return ['tx','cats','stencils','rules','users','settings']
            .reduce((n,k)=>n+Object.keys(pending[k]).length,0) +
          ['tx','cats','stencils','rules','users']
-           .reduce((n,k)=>n+pending.del[k].length,0);
+           .reduce((n,k)=>n+pending.del[k].length+pending.undel[k].length,0);
 }
 function schedFlush(){
   if(!GS_URL){ setSync('off','מקומי — לא מחובר'); return; }
@@ -781,7 +829,7 @@ function schedFlush(){
 }
 function hasPending(){
   return ['tx','cats','stencils','rules','users','settings'].some(k=>Object.keys(pending[k]).length) ||
-         ['tx','cats','stencils','rules','users'].some(k=>pending.del[k].length);
+         ['tx','cats','stencils','rules','users'].some(k=>pending.del[k].length || pending.undel[k].length);
 }
 /** כל פנייה לשרת היא POST עם הטוקן בגוף הבקשה ולא בכתובת —
  *  כתובות נשמרות בהיסטוריה ובלוגים, גוף הבקשה לא. */
@@ -808,10 +856,11 @@ async function flush(){
   if(!hasPending()){ setSync('on','מסונכרן'); return; }
   flushing=true; setSync('saving','שומר בענן...');
   try{
-    const ops=[];
+    const ops=[], snap={};
     const pack=(kind,op)=>{
       const ids=Object.keys(pending[kind]);
       if(!ids.length) return;
+      snap[kind]={}; ids.forEach(id=>{ snap[kind][id]=pending[kind][id]; });
       const rows=ids.map(id=>(DB[kind]||[]).find(x=>x.id===id)).filter(Boolean);
       if(rows.length) ops.push({op, rows});
     };
@@ -822,11 +871,28 @@ async function flush(){
     if(pending.del.stencils.length) ops.push({op:'delStencil',  ids:pending.del.stencils});
     if(pending.del.rules.length)    ops.push({op:'delRule',     ids:pending.del.rules});
     if(pending.del.users.length)    ops.push({op:'delUser',     ids:pending.del.users});
+    /* ביטול מחיקה נשלח כפעולה נפרדת. בלי זה, כתיבה רגילה של שורה עם
+       'נמחק' ריק הייתה מחייה בשקט שורות שמכשיר אחר מחק. */
+    ['tx','cats','stencils','rules','users'].forEach(k=>{
+      if(pending.undel[k].length)
+        ops.push({op:'undel'+k.charAt(0).toUpperCase()+k.slice(1), ids:pending.undel[k]});
+    });
+    const delSnap=JSON.parse(JSON.stringify(pending.del));
+    const undelSnap=JSON.parse(JSON.stringify(pending.undel));
+    const setSnap=Object.assign({}, pending.settings);
     Object.keys(pending.settings).forEach(k=>
       ops.push({op:'setSetting', key:k, value:String(DB.settings[k]==null?'':DB.settings[k])}));
     if(ops.length) await apiPost({action:'batch', ops});
-    pending=emptyPending();
-    saveLocal(); savePending(); setSync('on','מסונכרן ✓');
+    /* מוחקים מהתור רק את מה שבאמת נשלח ולא השתנה מאז */
+    Object.keys(snap).forEach(kind=>Object.keys(snap[kind]).forEach(id=>{
+      if(pending[kind][id]===snap[kind][id]) delete pending[kind][id];
+    }));
+    Object.keys(setSnap).forEach(k=>{ if(pending.settings[k]===setSnap[k]) delete pending.settings[k]; });
+    ['tx','cats','stencils','rules','users'].forEach(k=>{
+      pending.del[k]=pending.del[k].filter(id=>delSnap[k].indexOf(id)<0);
+      pending.undel[k]=pending.undel[k].filter(id=>undelSnap[k].indexOf(id)<0);
+    });
+    saveLocal(); savePending(); setSync('on', pendingCount()? pendingCount()+' ממתינים':'מסונכרן ✓');
   }catch(e){
     if(String(e.message)!=='unauthorized'){
       setSync('err','שגיאת סנכרון — יישמר שוב');
@@ -839,7 +905,11 @@ async function flush(){
  *  אינה נמחקת — היא נשמרת ונכנסת שוב לתור ההעלאה. קודם הטעינה
  *  פשוט דרסה את הכל, וכל מה שהוזן ולא הספיק להסתנכרן נעלם. */
 function mergeCloud(kind, cloudRows){
-  const cloud=cloudRows||[];
+  /* מזהה שלא נראה כמו מזהה שהמערכת מייצרת מקורו בעריכה ידנית של
+     הגיליון או בניסיון הזרקה. לא נוגעים בשורה ולא מציגים אותה. */
+  const bad=(cloudRows||[]).filter(r=>r&&!safeId(r.id)).length;
+  if(bad) console.warn('דולגו '+bad+' שורות עם מזהה לא תקין ב-'+kind);
+  const cloud=(cloudRows||[]).filter(r=>r&&safeId(r.id));
   const ids={}; cloud.forEach(r=>{ if(r&&r.id) ids[r.id]=1; });
   const localOnly=(DB[kind]||[]).filter(r=>r&&r.id&&!ids[r.id]);
   localOnly.forEach(r=>{ pending[kind][r.id]=1; });
@@ -869,7 +939,7 @@ async function syncNow(){
       DB.cats     = (j.cats && j.cats.length) ? mergeCloud('cats', j.cats) : DB.cats;
       DB.stencils = mergeCloud('stencils', j.stencils);
       DB.rules    = mergeCloud('rules',    j.rules);
-      DB.users    = j.users||[];                                 // המשתמשים נקבעים בשרת
+      DB.users    = mergeCloud('users', j.users);                 // גם משתמש שנוסף ולא הספיק לעלות שורד
       DB.settings = Object.assign({}, j.settings||{}, {apiUrl:GS_URL});
       if(j.me && CU){ CU.role=j.me.role; CU.name=j.me.name; }    // ההרשאה נקבעת בשרת
       saveLocal(); savePending(); renderAll();
@@ -1047,9 +1117,14 @@ function finishLogin(user, token){
 }
 
 async function logout(){
-  if(!confirm('להתנתק מהמכשיר הזה? בכניסה הבאה יישלח קוד חדש למייל.')) return;
+  if(pendingCount() && !confirm(pendingCount()+' שינויים עדיין לא עלו לגיליון.\n'+
+     'להתנתק בכל זאת? הם יישארו במכשיר וינסו לעלות בכניסה הבאה.')) return;
+  if(!confirm('להתנתק מהמכשיר הזה?')) return;
+  try{ await flush(); }catch(e){}
   if(GS_URL && TOKEN){ try{ await apiRaw({action:'logout', token:TOKEN}); }catch(e){} }
   TOKEN=''; CU=null;
+  /* תור של משתמש אחד לא נשאר תלוי על מי שייכנס אחריו */
+  pending=emptyPending(); savePending();
   try{ localStorage.removeItem(LSU); localStorage.removeItem(LST); }catch(e){}
   showLogin();
 }
@@ -1077,8 +1152,11 @@ const live = () => DB.tx.filter(t=>!t.deleted);
 /** מה שנספר בדוחות: מסווג + לבדיקה. "לא רלוונטי" ו"ממתין" לא נספרים. */
 const counted = () => live().filter(t=>t.status==='ok'||t.status==='review');
 const catByName = n => DB.cats.find(c=>c.name===n && !c.deleted);
-function catColor(n){ const c=catByName(n); return c?c.color:'#94a3b8'; }
-function catIcon(n){ const c=catByName(n); return c?c.icon:'🏷️'; }
+/* אייקון וצבע נכתבים על ידי המשתמש ונשמרים בגיליון — הם נתונים,
+   לא קוד. הצבע נכנס לתוך style ולכן חייב להיות צבע ותו לא. */
+function catColor(n){ const c=catByName(n); const v=c&&c.color;
+  return /^#[0-9a-fA-F]{6}$/.test(v||'') ? v : '#94a3b8'; }
+function catIcon(n){ const c=catByName(n); return esc((c?c.icon:'🏷️')||'🏷️').slice(0,12); }
 function monthsList(){
   const set={};
   live().forEach(t=>{ if(t.date) set[monthOf(t.date)]=1; });
@@ -1222,7 +1300,7 @@ function renderOutliers(exp, ym){
   $('outliers').innerHTML='<table><tbody>'+out.map(t=>{
     const h=hist[t.category||'—'];
     const avgTxt = (h&&h.n>=3) ? ('רגיל בקטגוריה: ~'+fmt(h.s/h.n)+' ₪') : 'סכום גבוה';
-    return '<tr onclick="showProv(\''+esc(t.id)+'\')" style="cursor:pointer">'+
+    return '<tr'+act('showProv',t.id)+' style="cursor:pointer">'+
       '<td>'+esc(t.date)+'</td><td>'+esc(t.desc)+'</td>'+
       '<td>'+catIcon(t.category)+' '+esc(t.category||'—')+'</td>'+
       '<td style="color:var(--dim);font-size:12px">'+esc(avgTxt)+'</td>'+
@@ -1380,7 +1458,7 @@ function renderClassify(){
             '<span class="num money" style="min-width:78px">'+fmt2(r.amount)+' ₪</span>'+
             '<span style="color:var(--dim)">'+esc(r.kind==='income'?'הכנסה':'הוצאה')+'</span>'+
             '<span style="margin-inline-start:auto"><button class="clink" '+
-              'onclick="showProv(\''+r.id+'\')">מאיפה זה הגיע</button></span></div>').join('')+
+              act('showProv',r.id)+'>מאיפה זה הגיע</button></span></div>').join('')+
           (g.rows.length>40?'<div class="r" style="color:var(--dim)">ועוד '+(g.rows.length-40)+' שורות…</div>':'')+
           '</div>' : '')+
       '</div>';
@@ -1580,7 +1658,7 @@ function renderTx(){
     el:'txTable', rows:base, cols, limit:400,
     row:t=>'<tr'+(selTx.has(t.id)?' class="sel"':'')+'>'+
       (adm?'<td><input type="checkbox" style="width:auto" '+(selTx.has(t.id)?'checked':'')+
-           ' onchange="toggleSel(\''+t.id+'\',this.checked)"></td>':'')+
+           act('toggleSel',t.id)+'></td>':'')+
       '<td class="num">'+esc(t.date)+'</td>'+
       '<td>'+esc(t.desc)+(t.note?'<div style="font-size:11.5px;color:var(--dim)">'+esc(t.note)+'</div>':'')+'</td>'+
       '<td>'+(t.category?catIcon(t.category)+' '+esc(t.category):'<span style="color:var(--faint)">—</span>')+'</td>'+
@@ -1590,9 +1668,9 @@ function renderTx(){
                       : '<span class="pill p-'+esc(t.status||'ok')+'">'+esc(STATUS_LBL[t.status]||'מסווג')+'</span>')+'</td>'+
       '<td style="font-size:12px;color:var(--dim)">'+esc(t.src||'ידני')+'</td>'+
       '<td style="white-space:nowrap">'+
-        '<button class="btn ghost sm" onclick="showProv(\''+t.id+'\')" title="מאיפה זה הגיע">🔎</button> '+
-        (showDel ? '<button class="btn sm" onclick="restoreTx(\''+t.id+'\')">↩ שחזר</button>'
-         : adm ? '<button class="btn ghost sm" onclick="editTx(\''+t.id+'\')" title="עריכה">✏️</button>' : '')+
+        '<button class="btn ghost sm"'+act('showProv',t.id)+' title="מאיפה זה הגיע">🔎</button> '+
+        (showDel ? '<button class="btn sm"'+act('restoreTx',t.id)+'>↩ שחזר</button>'
+         : adm ? '<button class="btn ghost sm"'+act('editTx',t.id)+' title="עריכה">✏️</button>' : '')+
       '</td></tr>',
     onPaint:rows=>{
       /* הסיכום והבחירה המרוכזת עוקבים אחרי הסינון בפועל, כולל סינוני העמודות */
@@ -1646,12 +1724,12 @@ function bulkApply(what){
 function restoreTx(id){
   if(!isAdmin()) return;
   const t=DB.tx.find(x=>x.id===id); if(!t||!t.deleted) return;
-  t.deleted=''; queueRow('tx',t); saveLocal(); renderTx(); updateBadge(); toast('התנועה שוחזרה');
+  t.deleted=''; queueUndel('tx',id); saveLocal(); renderTx(); updateBadge(); toast('התנועה שוחזרה');
 }
 function bulkRestore(){
   if(!isAdmin()) return;
   const ids=[...selTx]; if(!ids.length){ toast('לא נבחרו שורות'); return; }
-  let n=0; ids.forEach(id=>{ const t=DB.tx.find(x=>x.id===id); if(t&&t.deleted){ t.deleted=''; queueRow('tx',t); n++; } });
+  let n=0; ids.forEach(id=>{ const t=DB.tx.find(x=>x.id===id); if(t&&t.deleted){ t.deleted=''; queueUndel('tx',id); n++; } });
   selTx.clear(); saveLocal(); renderTx(); updateBadge(); toast(n+' תנועות שוחזרו');
 }
 function bulkDelete(){
@@ -1700,9 +1778,9 @@ function editTx(id){
     '<label class="f"><span>סטטוס</span><select id="eStatus">'+sOpts+'</select></label>'+
     '<label class="f"><span>הערה</span><input id="eNote" value="'+esc(t.note||'')+'"></label>'+
     '<div class="row" style="margin-top:8px">'+
-      '<div class="fix"><button class="btn" onclick="saveTx(\''+esc(id)+'\')">שמור</button></div>'+
+      '<div class="fix"><button class="btn"'+act('saveTx',id)+'>שמור</button></div>'+
       '<div class="fix"><button class="btn sec" onclick="closeModal()">ביטול</button></div>'+
-      '<div class="fix" style="margin-inline-start:auto"><button class="btn danger sm" onclick="delTx(\''+esc(id)+'\')">מחק</button></div>'+
+      '<div class="fix" style="margin-inline-start:auto"><button class="btn danger sm"'+act('delTx',id)+'>מחק</button></div>'+
     '</div>');
 }
 function saveTx(id){
@@ -1728,7 +1806,11 @@ function exportTx(){
     t.date,t.desc,t.amount,(t.kind==='income'?'הכנסה':'הוצאה'),t.category,
     STATUS_LBL[t.status]||'',t.payment,t.note,t.src,t.srcFile,t.srcRow,
     t.importedAt,t.importedBy||t.enteredBy,t.classBy,t.srcRaw]));
-  const csv='﻿'+rows.map(r=>r.map(c=>'"'+String(c==null?'':c).replace(/"/g,'""')+'"').join(',')).join('\r\n');
+  /* תא שמתחיל ב-= + - @ הופך לנוסחה חיה כשפותחים את הקובץ באקסל.
+     תיאור מהבנק יכול להתחיל כך, ולכן מקדימים גרש מנטרל. */
+  const cell=c=>{ let v=String(c==null?'':c); if(/^[=+\-@\t\r]/.test(v)) v="'"+v;
+                  return '"'+v.replace(/"/g,'""')+'"'; };
+  const csv='﻿'+rows.map(r=>r.map(cell).join(',')).join('\r\n');
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
   a.download='הוצאות-בית-'+new Date().toISOString().slice(0,10)+'.csv';
@@ -1764,7 +1846,7 @@ function renderSrcTiles(){
   const st=DB.stencils.filter(s=>!s.deleted);
   $('srcTiles').innerHTML = st.map(s=>{
     const n=live().filter(t=>t.src===s.name).length;
-    return '<div class="tile'+(curStencil&&curStencil.id===s.id?' on':'')+'" onclick="pickStencil(\''+esc(s.id)+'\')">'+
+    return '<div class="tile'+(curStencil&&curStencil.id===s.id?' on':'')+'"'+act('pickStencil',s.id)+'>'+
       (s.type==='credit'?'💳':'🏦')+' '+esc(s.name)+
       '<div class="t2">'+n+' תנועות</div></div>';
   }).join('') +
@@ -2115,7 +2197,9 @@ function runImport(){
 function matchRule(desc){
   const d=normDesc(desc).toLowerCase();
   if(!d) return null;
-  return DB.rules.filter(r=>!r.deleted)
+  /* כלל בלי טקסט זיהוי היה מתאים לכל תיאור ומסווג בשקט את כל
+     הייבוא הבא. כלל כזה פשוט לא משתתף. */
+  return DB.rules.filter(r=>!r.deleted && normDesc(r.match).length>=2)
     .sort((a,b)=>String(b.match).length-String(a.match).length)
     .find(r=>d.includes(normDesc(r.match).toLowerCase())) || null;
 }
@@ -2146,7 +2230,7 @@ function renderSrcTable(){
       '<td>'+esc(s.payment||'—')+'</td><td class="num">'+esc(s.skip)+'</td>'+
       '<td style="font-size:12px;color:var(--dim)">'+esc(colsOf(s))+'</td>'+
       '<td class="num">'+live().filter(t=>t.src===s.name).length+'</td>'+
-      '<td><button class="btn danger sm" onclick="delStencil(\''+s.id+'\')">מחק</button></td></tr>'
+      '<td><button class="btn danger sm"'+act('delStencil',s.id)+'>מחק</button></td></tr>'
   });
 }
 function delStencil(id){
@@ -2172,7 +2256,7 @@ function renderRulesTable(){
       '<td>'+(r.status==='irrelevant'?'<span class="pill p-irrelevant">לא רלוונטי</span>'
            : catIcon(r.category)+' '+esc(r.category))+'</td>'+
       '<td class="num">'+esc(r.hits||0)+'</td>'+
-      '<td><button class="btn danger sm" onclick="delRule(\''+r.id+'\')">מחק</button></td></tr>'
+      '<td><button class="btn danger sm"'+act('delRule',r.id)+'>מחק</button></td></tr>'
   });
 }
 function delRule(id){
@@ -2201,13 +2285,13 @@ function renderCats(){
       '<td><b style="color:'+esc(c.color)+'">'+esc(c.name)+'</b></td>'+
       '<td>'+(c.kind==='income'?'<span class="pill p-income">הכנסה</span>':'הוצאה')+'</td>'+
       '<td class="num">'+cnt(c)+'</td><td class="num money">'+fmt(sum(c))+' ₪</td>'+
-      '<td>'+(showDel ? '<button class="btn sm" onclick="restoreCat(\''+c.id+'\')">↩ שחזר</button>'
-                      : '<button class="btn danger sm" onclick="delCat(\''+c.id+'\')">מחק</button>')+'</td></tr>'
+      '<td>'+(showDel ? '<button class="btn sm"'+act('restoreCat',c.id)+'>↩ שחזר</button>'
+                      : '<button class="btn danger sm"'+act('delCat',c.id)+'>מחק</button>')+'</td></tr>'
   });
 }
 function restoreCat(id){
   const c=DB.cats.find(x=>x.id===id); if(!c||!c.deleted) return;
-  c.deleted=''; queueRow('cats',c); saveLocal(); renderCats(); toast('הקטגוריה שוחזרה');
+  c.deleted=''; queueUndel('cats',id); saveLocal(); renderCats(); toast('הקטגוריה שוחזרה');
 }
 function addCat(){
   const name=$('ncName').value.trim();
@@ -2247,18 +2331,18 @@ function renderSettings(){
       const lockAdmin = u.role==='admin' && admins<=1;
       return '<tr>'+
         '<td><input value="'+esc(u.name)+'" placeholder="שם לכניסה" style="min-width:130px" '+
-          'onchange="setUserField(\''+esc(u.id)+'\',\'name\',this.value)"></td>'+
+          act('userName',u.id)+'></td>'+
         '<td><input type="email" dir="ltr" value="'+esc(u.email||'')+'" placeholder="name@gmail.com" '+
-          'style="min-width:200px" onchange="setUserField(\''+esc(u.id)+'\',\'email\',this.value)"></td>'+
+          'style="min-width:200px"'+act('userEmail',u.id)+'></td>'+
         '<td><input value="'+esc(u.code||'')+'" maxlength="4" inputmode="numeric" '+
-          'style="width:74px;text-align:center" onchange="setUserField(\''+esc(u.id)+'\',\'code\',this.value)"></td>'+
+          'style="width:74px;text-align:center"'+act('userCode',u.id)+'></td>'+
         '<td>'+(lockAdmin
           ? '<span class="pill p-ok">מנהל</span>'
-          : '<select onchange="setUserField(\''+esc(u.id)+'\',\'role\',this.value)" style="min-width:170px">'+
+          : '<select'+act('userRole',u.id)+' style="min-width:170px">'+
             Object.keys(ROLES).map(r=>'<option value="'+r+'"'+(r===u.role?' selected':'')+'>'+
               ROLES[r].label+'</option>').join('')+'</select>')+'</td>'+
         '<td>'+(us.length>1 && !lockAdmin
-          ? '<button class="btn danger sm" onclick="delUser(\''+esc(u.id)+'\')">מחק</button>' : '')+
+          ? '<button class="btn danger sm"'+act('delUser',u.id)+'>מחק</button>' : '')+
         '</td></tr>';
     }).join('')+'</tbody>';
   $('usersHint').textContent = GS_URL
@@ -2337,6 +2421,17 @@ function delUser(id){
 function openModal(html){ $('modal').innerHTML=html; $('modalWrap').classList.add('open'); }
 function closeModal(){ $('modalWrap').classList.remove('open'); }
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
+
+/* הפעולות המורשות. שם שאינו כאן פשוט לא רץ. */
+Object.assign(ACTIONS,{
+  showProv, editTx, saveTx, delTx, restoreTx,
+  pickStencil, delStencil, delRule, delCat, restoreCat, delUser,
+  toggleSel:(id,el)=>toggleSel(id, el.checked),
+  userName:(id,el)=>setUserField(id,'name',el.value),
+  userEmail:(id,el)=>setUserField(id,'email',el.value),
+  userCode:(id,el)=>setUserField(id,'code',el.value),
+  userRole:(id,el)=>setUserField(id,'role',el.value),
+});
 
 /* ---------------- אתחול ---------------- */
 function renderAll(){

@@ -48,7 +48,7 @@
 var APP_NAME  = 'ניהול הוצאות בית';
 /* חותם גרסה. מוחזר ב-authmeta, וכך אפשר לדעת מבחוץ איזו גרסת קוד
    באמת פרוסה — העורך והפריסה יכולים להחזיק קוד שונה לגמרי. */
-var SCRIPT_VERSION = '2026-09-06-j';
+var SCRIPT_VERSION = '2026-09-07-a';
 
 /* ------------------------------------------------------------
    אימות דו-שלבי במייל
@@ -216,6 +216,7 @@ function handle(e) {
            שנלמד מהסיווג. כל שאר הכתיבות — מחיקות, קטגוריות, מקורות
            והגדרות — נחסמות כאן ולא רק בהסתרת הלשוניות בממשק. */
         if (me.role !== 'admin' && o.op !== 'upsertTx' && o.op !== 'upsertRule') {
+          /* גם ביטול מחיקה הוא פעולת מנהל — הוא נופל לכאן ממילא */
           return json({ status: 'error', message: 'הפעולה מותרת למנהל בלבד' });
         }
         if (o.op === 'upsertTx')            { upsertMany('tx', o.rows || []);       count += (o.rows || []).length; }
@@ -227,6 +228,10 @@ function handle(e) {
         else if (o.op === 'upsertRule')     { upsertMany('rules', o.rows || []);    count += (o.rows || []).length; }
         else if (o.op === 'delRule')        { markDeleted('rules', o.ids || []);    count += (o.ids || []).length; }
         else if (o.op === 'setSetting')     { setSetting(o.key, o.value);           count++; }
+        else if (o.op === 'undelTx')        { unmarkDeleted('tx', o.ids || []);       count += (o.ids || []).length; }
+        else if (o.op === 'undelCats')      { unmarkDeleted('cats', o.ids || []);     count += (o.ids || []).length; }
+        else if (o.op === 'undelStencils')  { unmarkDeleted('stencils', o.ids || []); count += (o.ids || []).length; }
+        else if (o.op === 'undelRules')     { unmarkDeleted('rules', o.ids || []);    count += (o.ids || []).length; }
         /* ניהול משתמשים — מנהל בלבד, ונבדק כאן ולא רק בממשק */
         else if (o.op === 'upsertUser') {
           if (me.role !== 'admin') return json({ status: 'error', message: 'ניהול משתמשים מותר למנהל בלבד' });
@@ -590,13 +595,24 @@ function getSheet(key) {
     if (s.getMaxColumns() > cfg.headers.length) {
       s.deleteColumns(cfg.headers.length + 1, s.getMaxColumns() - cfg.headers.length);
     }
-    try { ss.setSpreadsheetLocale('iw_IL'); } catch (x) {}
+    /* לא משנים את אזור השפה של גיליון קיים של המשתמש */
     /* הלשונית שגוגל יוצר כברירת מחדל נמחקת רק אם היא ריקה לגמרי.
        הסקריפט יכול להצביע על גיליון קיים של המשתמש, ו"גיליון1" שם עלול
        להכיל נתונים אמיתיים — מחיקה שלהם היא הרס בלתי הפיך, לא ניקוי. */
     var def = ss.getSheetByName('Sheet1') || ss.getSheetByName('גיליון1');
     if (def && ss.getSheets().length > 1 && def.getLastRow() === 0 && def.getLastColumn() === 0) {
       try { ss.deleteSheet(def); } catch (x) {}
+    }
+  }
+  else {
+    /* לשונית קיימת בשם זהה אך במבנה אחר היא הגיליון של המשתמש, לא שלנו.
+       קריאה וכתיבה לפי העמודות שלנו היו הורסות אותה. */
+    var head = s.getRange(1, 1, 1, cfg.headers.length).getValues()[0]
+                .map(function (h) { return String(h).replace(/^\s+|\s+$/g, ''); });
+    var same = head.join('|') === cfg.headers.join('|');
+    if (!same && s.getLastRow() > 0) {
+      throw new Error('הלשונית "' + cfg.name + '" כבר קיימת בגיליון במבנה אחר. ' +
+        'שנה את שמה, או הצבע את SHEET_ID לגיליון ריק, כדי שהמערכת לא תכתוב עליה.');
     }
   }
   return s;
@@ -611,10 +627,14 @@ function loadAll(me) {
     cats: readAll('cats'),
     stencils: readAll('stencils'),
     rules: readAll('rules'),
-    users: readUsers().map(function (u) {
+    /* מנהל מקבל את כל המשתמשים כי הוא מנהל אותם. משתמש רגיל מקבל
+       את עצמו בלבד — מסך הכניסה מסתיר שמות, ואין טעם שהם ידלפו כאן. */
+    users: readUsers().filter(function (u) {
+      return me.role === 'admin' || String(u.id) === String(me.id);
+    }).map(function (u) {
       var safe = { id: u.id, name: u.name, role: u.role, deleted: u.deleted || '' };
       if (me.role === 'admin') { safe.email = u.email; safe.code = u.code; }
-      else if (String(u.id) === String(me.id)) { safe.email = u.email; }
+      else { safe.email = u.email; }
       return safe;
     }),
     me: { id: me.id, name: me.name, role: me.role },
@@ -687,8 +707,16 @@ function upsertMany(key, rows) {
       }));
     }
   });
+  var delCol = cfg.fields.indexOf('deleted');
   function mergeRow(existing, vals) {
-    return vals.map(function (v, i) { return v === null ? existing[i] : v; });
+    return vals.map(function (v, i) {
+      if (v === null) return existing[i];
+      /* שורה שכבר מסומנת כמחוקה לא קמה לתחייה מכתיבה רגילה. ביטול
+         מחיקה נעשה רק דרך פעולת undel ייעודית, אחרת מכשיר עם עותק
+         ישן היה מחזיר בשקט שורות שמכשיר אחר מחק. */
+      if (i === delCol && v === '' && existing[i]) return existing[i];
+      return v;
+    });
   }
   /* עדכונים בודדים — שורה-שורה. עדכון מרוכז — קוראים את כל הבלוק פעם
      אחת, ממזגים בזיכרון, וכותבים פעם אחת. */
@@ -696,11 +724,13 @@ function upsertMany(key, rows) {
   if (upRows.length > 10 && last >= 2) {
     var block = s.getRange(2, 1, last - 1, cfg.fields.length).getValues();
     upRows.forEach(function (r) { block[Number(r) - 2] = mergeRow(block[Number(r) - 2], updates[r]); });
-    s.getRange(2, 1, last - 1, cfg.fields.length).setValues(block);
+    /* setNumberFormat('@') גם בעדכון: תא שאיבד את עיצוב הטקסט היה
+       הופך תיאור שמתחיל ב-= לנוסחה חיה בגיליון. */
+    s.getRange(2, 1, last - 1, cfg.fields.length).setNumberFormat('@').setValues(block);
   } else {
     upRows.forEach(function (r) {
       var rng = s.getRange(Number(r), 1, 1, cfg.fields.length);
-      rng.setValues([mergeRow(rng.getValues()[0], updates[r])]);
+      rng.setNumberFormat('@').setValues([mergeRow(rng.getValues()[0], updates[r])]);
     });
   }
   if (appends.length) {
@@ -729,6 +759,26 @@ function markDeleted(key, ids) {
   var changed = false;
   for (var i = 0; i < idVals.length; i++) {
     if (wanted[String(idVals[i][0])] && !delVals[i][0]) { delVals[i][0] = stamp; changed = true; }
+  }
+  if (changed) s.getRange(2, delCol, last - 1, 1).setValues(delVals);
+}
+
+/** ביטול מחיקה רכה — מנקה את חותמת 'נמחק' בשורות שנבחרו. */
+function unmarkDeleted(key, ids) {
+  if (!ids || !ids.length) return;
+  var cfg = SHEETS[key];
+  var s = getSheet(key);
+  var last = s.getLastRow();
+  if (last < 2) return;
+  var delCol = cfg.fields.indexOf('deleted') + 1;
+  if (delCol < 1) return;
+  var wanted = {};
+  ids.forEach(function (id) { wanted[String(id)] = true; });
+  var idVals  = s.getRange(2, 1, last - 1, 1).getValues();
+  var delVals = s.getRange(2, delCol, last - 1, 1).getValues();
+  var changed = false;
+  for (var i = 0; i < idVals.length; i++) {
+    if (wanted[String(idVals[i][0])] && delVals[i][0]) { delVals[i][0] = ''; changed = true; }
   }
   if (changed) s.getRange(2, delCol, last - 1, 1).setValues(delVals);
 }
