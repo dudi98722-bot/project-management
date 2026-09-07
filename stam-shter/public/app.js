@@ -3592,11 +3592,25 @@ function groupTrackRows(rows) {
 }
 
 // "1–37" כשהרצף שלם, אחרת רק הכמות — טווח שבור היה מטעה
+// [1,2,3,7,12,13,14] -> "1-3, 7, 12-14". קודם הוצג "N פריטים" כשהרצף
+// נשבר, וזה הסתיר בדיוק את המידע שמחפשים — אילו יריעות נמצאות שם.
+function seqRanges(seqs) {
+  const s = [...new Set(seqs.map(Number))].sort((a, b) => a - b);
+  const parts = [];
+  let i = 0;
+  while (i < s.length) {
+    let j = i;
+    while (j + 1 < s.length && s[j + 1] === s[j] + 1) j++;
+    parts.push(i === j ? String(s[i]) : `${s[i]}\u2013${s[j]}`);
+    i = j + 1;
+  }
+  return parts;
+}
 function seqLabel(g) {
-  const s = g.seqs.slice().sort((a, b) => a - b);
-  if (s.length === 1) return String(s[0]);
-  const whole = s[s.length - 1] - s[0] + 1 === s.length;
-  return whole ? `${s[0]}\u2013${s[s.length - 1]}` : `${s.length} פריטים`;
+  const parts = seqRanges(g.seqs);
+  if (parts.length <= 4) return parts.join(', ');
+  // רשימה ארוכה נחתכת בתצוגה, והמלאה נשארת ב-title ובחלון הפירוט
+  return `${parts.slice(0, 3).join(', ')} ועוד ${parts.length - 3}`;
 }
 
 async function trackItems() {
@@ -3744,6 +3758,41 @@ function openMove(ids) {
       m.close(); await reloadCaches(); render();
     } catch (e) { toast(e.message, 'err'); }
   };
+}
+
+// כל הפריטים של שורה מקובצת, עם היסטוריה ומחיקה לכל אחד
+async function showGroupDetail(ids, title) {
+  try {
+    const all = await Store.track.list({});
+    const set = new Set(ids);
+    const rows = all.filter(r => set.has(r.id)).sort((a, b) => Number(a.seq) - Number(b.seq));
+    if (!rows.length) return toast('לא נמצאו פריטים', 'err');
+    const body = tableHTML([
+      { label: 'מס\'', cls: 'num', render: r => `<b>${r.seq}</b>` },
+      { label: 'שייך ל', render: r => esc(itemLabel(r)) },
+      { label: 'תחנה', render: r => stationPill(r) },
+      { label: 'אצל מי', render: r => esc(r.holder_name || '—') },
+      { label: 'מתאריך', render: r => r.since ? dt(r.since) : '' },
+      { label: 'ימים', cls: 'num', render: r => r.days_at_station != null
+          ? `<span class="${r.days_at_station > 60 ? 'neg' : ''}">${r.days_at_station}</span>` : '' },
+      { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
+      { label: '', cls: 'center', render: r => `
+        <button class="btn ghost xs" data-hist="${r.id}">🕘</button>
+        ${ME.caps.del ? `<button class="btn ghost xs" data-gdel="${r.id}" title="מחק יריעה">🗑</button>` : ''}` },
+    ], rows);
+    const m = modal({ title: title || `פירוט ${rows.length} פריטים`, body, wide: true });
+    m.el.querySelectorAll('[data-hist]').forEach(b =>
+      b.onclick = () => showHistory(+b.dataset.hist));
+    m.el.querySelectorAll('[data-gdel]').forEach(b => b.onclick = async () => {
+      const r = rows.find(x => x.id === +b.dataset.gdel);
+      if (!(await confirmBox(`להעביר את יריעה ${r.seq} לסל המחזור?`))) return;
+      try {
+        await Store.track.remove(r.id);
+        toast('הועבר לסל המחזור', 'ok');
+        m.close(); render();
+      } catch (e) { toast(e.message, 'err'); }
+    });
+  } catch (e) { toast(e.message, 'err'); }
 }
 
 async function showHistory(id) {
@@ -4283,6 +4332,22 @@ function wsWire(otherMode) {
   document.querySelectorAll('[data-hist]').forEach(b => b.onclick = () => showHistory(+b.dataset.hist));
   document.querySelectorAll('[data-gmove]').forEach(b => b.onclick = () =>
     openMove(String(b.dataset.gmove).split(',').map(Number)));
+  document.querySelectorAll('[data-gdetail]').forEach(b => b.onclick = () =>
+    showGroupDetail(String(b.dataset.gdetail).split(',').map(Number)));
+  document.querySelectorAll('[data-gdelall]').forEach(b => b.onclick = async () => {
+    const ids = String(b.dataset.gdelall).split(',').map(Number);
+    if (!(await confirmBox(`להעביר ${ids.length} פריטים לסל המחזור? (ניתן לשחזר מלשונית מערכת)`))) return;
+    try {
+      const r = await Store.import.bulkDelete('track_items', ids);
+      toast(`הועברו לסל המחזור: ${r.deleted}`, 'ok');
+      render();
+    } catch (e) { toast(e.message, 'err'); }
+  });
+  document.querySelectorAll('[data-sheetdel]').forEach(b => b.onclick = async () => {
+    if (!(await confirmBox('להעביר את היריעה לסל המחזור?'))) return;
+    try { await Store.track.remove(+b.dataset.sheetdel); toast('הועבר לסל המחזור', 'ok'); render(); }
+    catch (e) { toast(e.message, 'err'); }
+  });
 
   // שליפת השורה המלאה לפני פתיחת הטופס
   const fullRow = async (cfg, id) => {
@@ -4452,7 +4517,9 @@ async function loadScribeSpace(id) {
             ? `<span class="${r.days_at_station > 60 ? 'neg' : ''}">${r.days_at_station}</span>` : '' },
         { label: '', cls: 'center', render: r => `
           ${ME.caps.edit ? `<button class="btn ghost xs" data-gmove="${r.id}">↔ העבר</button> ` : ''}
-          ${r.qty === 1 ? `<button class="btn ghost xs" data-hist="${r.ids[0]}">🕘</button>` : ''}` },
+          <button class="btn ghost xs" data-gdetail="${r.id}" title="פירוט מלא">📋</button>
+          ${r.qty === 1 ? `<button class="btn ghost xs" data-hist="${r.ids[0]}">🕘</button> ` : ''}
+          ${ME.caps.del ? `<button class="btn ghost xs" data-gdelall="${r.id}" title="מחק את כל הפריטים בשורה">🗑</button>` : ''}` },
       ], ownedGroups(owned))}`) : ''}
 
     ${sheets.length ? wsSec('sheets', 'יריעות שנמצאות אצלו (כמחזיק)', sheets.length, tableHTML([
@@ -4462,7 +4529,9 @@ async function loadScribeSpace(id) {
       { label: 'מתאריך', render: r => r.since ? dt(r.since) : '' },
       { label: 'ימים', cls: 'num', render: r => r.days_at_station != null
           ? `<span class="${r.days_at_station > 60 ? 'neg' : ''}">${r.days_at_station}</span>` : '' },
-      { label: '', cls: 'center', render: r => `<button class="btn ghost xs" data-hist="${r.id}">🕘</button>` },
+      { label: '', cls: 'center', render: r => `
+        <button class="btn ghost xs" data-hist="${r.id}">🕘</button>
+        ${ME.caps.del ? ` <button class="btn ghost xs" data-sheetdel="${r.id}" title="מחק יריעה">🗑</button>` : ''}` },
     ], sheets)) : ''}
 
     ${d.purchases.length ? wsSec('purch', 'רכישות מוצרים ממנו', d.purchases.length, tableHTML([

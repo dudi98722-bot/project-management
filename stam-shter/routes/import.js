@@ -413,9 +413,16 @@ router.get('/spec', authenticate, can('view'), (req, res) => {
 // ---------- מחיקה מרוכזת ----------
 // מחיקה רכה לפי רשימת מזהים — לסל המחזור, עם אותן הדבקות כמו במסכים:
 // ספר מוריד איתו את היומנים שלו, רכישה מורידה את המכירות שנגזרו ממנה.
+// טבלאות שמותר למחוק מהן מרוכזות אך אין להן ספק ייבוא — יריעות המעקב
+// נוצרות במערכת ולא מיובאות, אבל פס הבחירה במעקב ומרחב העבודה מוחקים
+// מהן. בלי זה כל מחיקה מרוכזת של יריעות נכשלה ב"טבלה לא נתמכת".
+const BULK_DELETE_EXTRA = new Set(['track_items']);
+
 router.post('/:table/delete', authenticate, can('del'), async (req, res) => {
   const table = req.params.table;
-  if (!SPEC[table]) return res.status(400).json({ error: 'טבלה לא נתמכת' });
+  if (!SPEC[table] && !BULK_DELETE_EXTRA.has(table)) {
+    return res.status(400).json({ error: 'טבלה לא נתמכת' });
+  }
   const ids = [...new Set((Array.isArray(req.body.ids) ? req.body.ids : [])
     .map(Number).filter(n => Number.isInteger(n) && n > 0))];
   if (!ids.length) return res.status(400).json({ error: 'לא התקבלו מזהים' });
