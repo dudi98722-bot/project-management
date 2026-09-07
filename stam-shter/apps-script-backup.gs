@@ -107,6 +107,15 @@ function saveToDrive(u) {
   }
 }
 
+// הרצה חד-פעמית מהעורך כדי לאשר לסקריפט גישה לדרייב (לצילומי ת"ז).
+// פונייה ישירה ל-DriveApp מכריחה את גוגל לבקש את ההרשאה, גם כשהרצת
+// פונקציה אחרת לא ביקשה אותה.
+function authorizeDrive() {
+  var f = driveFolder('id-photos');
+  Logger.log('הגישה לדרייב אושרה. תיקיית הצילומים: ' + f.getName() + ' (' + f.getId() + ')');
+  return f.getId();
+}
+
 // בדיקת חיים מהדפדפן
 function doGet() {
   return out({ ok: true, service: 'stam-shter backup', configured: !!getSecret(), tabs: Object.keys(TABS).length });
