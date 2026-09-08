@@ -350,6 +350,53 @@ function restoreMissingTables(stored, incoming) {
   }
   return restored;
 }
+/* ============================================================
+   מחיקה המונית בשמירה אחת
+   ------------------------------------------------------------
+   מחיקה במערכת היא רכה: השורה נשארת ומסומנת deleted:true. לכן
+   restoreMissingTables (שבודק "טבלה ריקה") ו-shrinkGuard (שסופר
+   שורות) עיוורים למצב שבו טבלה שלמה מסומנת כמחוקה — מספר השורות
+   זהה, הטבלה אינה ריקה, והנתונים נעלמים. כך נמחקו כל הגיליונות.
+
+   מחיקה בודדת תמיד עוברת, גם של הפריט האחרון. מה שנחסם: קפיצה
+   מכמה פריטים חיים לאפס בשמירה אחת, או מחיקת רוב טבלה גדולה.
+   השורות משוחזרות מהשמור ומדווחות ללקוח.
+   ============================================================ */
+function liveCount(arr) {
+  var n = 0;
+  for (var i = 0; i < (arr || []).length; i++) if (arr[i] && !arr[i].deleted) n++;
+  return n;
+}
+function restoreMassDeleted(stored, incoming) {
+  var restored = [];
+  if (!stored || !incoming) return restored;
+  for (var k in stored) {
+    if (!stored.hasOwnProperty(k)) continue;
+    if (k === "settings" || k === "meta") continue;
+    if (!Array.isArray(stored[k]) || !Array.isArray(incoming[k])) continue;
+    var before = liveCount(stored[k]), after = liveCount(incoming[k]);
+    if (after >= before) continue;
+    var mass = (before >= 2 && after === 0) || (before >= 8 && after < before * 0.3);
+    if (!mass) continue;
+    /* מחזירים לחיים רק שורות שהיו חיות בשמור ונמחקו בשמירה הזו */
+    var alive = {};
+    for (var i = 0; i < stored[k].length; i++) {
+      var r = stored[k][i];
+      if (r && !r.deleted && r.id != null) alive[r.id] = 1;
+    }
+    var n = 0;
+    for (var j = 0; j < incoming[k].length; j++) {
+      var x = incoming[k][j];
+      if (x && x.deleted && alive[x.id]) {
+        x.deleted = false;
+        delete x.deletedAt; delete x.deletedByUser;
+        n++;
+      }
+    }
+    if (n) restored.push(k + " (" + n + " שורות)");
+  }
+  return restored;
+}
 function activeUserCount(d) {
   var n = 0, us = (d && d.users) || [];
   for (var i = 0; i < us.length; i++) if (!us[i].deleted && us[i].active) n++;
@@ -363,6 +410,13 @@ function shrinkGuard(stored, incoming) {
   return "rows " + before + " -> " + after;     // נחסם ומדווח
 }
 
+/* טבלה שראויה לשחזור מגיבוי: ריקה או שכולה מסומנת מחוקה היום,
+   ומאוכלסת בגיבוי. הבדיקה הישנה הסתכלה רק על "ריקה". */
+function tableNeedsSalvage(cur, bak) {
+  if (!Array.isArray(bak) || liveCount(bak) === 0) return false;
+  if (!Array.isArray(cur)) return true;
+  return liveCount(cur) === 0;
+}
 function salvageFromBackups() {
   var lock = LockService.getScriptLock();
   try { lock.waitLock(20000); } catch (e) { return { ok: false, error: "busy" }; }
@@ -383,12 +437,10 @@ function salvageFromBackups() {
       for (var k in bak) {
         if (!bak.hasOwnProperty(k)) continue;
         if (k === "users" || k === "settings" || k === "meta") continue;
-        if (!Array.isArray(bak[k]) || !bak[k].length) continue;
-        var curArr = cur[k];
-        if (!Array.isArray(curArr) || curArr.length === 0) {
-          cur[k] = bak[k];
-          restored.push(k + " (" + bak[k].length + " מ-" + names[j].slice(BAK_PREFIX.length) + ")");
-        }
+        /* גם טבלה שכולה מסומנת מחוקה ראויה לשחזור — לא רק ריקה */
+        if (!tableNeedsSalvage(cur[k], bak[k])) continue;
+        cur[k] = bak[k];
+        restored.push(k + " (" + liveCount(bak[k]) + " מ-" + names[j].slice(BAK_PREFIX.length) + ")");
       }
     }
     if (!restored.length) return { ok: true, restored: [] };
@@ -429,6 +481,8 @@ function saveWithRevGuard(data, user) {
        במערכת הן רכות (deleted:true), ולכן היעדר מוחלט או ריקון מוחלט
        של טבלה מאוכלסת לעולם אינו לגיטימי — משחזרים מהשמור. */
     var restoredTables = restoreMissingTables(stored, toSave);
+    /* גם מחיקה רכה של טבלה שלמה מוחזרת — ההגנות האחרות עיוורות לה */
+    restoredTables = restoredTables.concat(restoreMassDeleted(stored, toSave));
     var guard = shrinkGuard(stored, toSave);
     if (guard) return { ok: false, error: "shrink-guard", detail: guard };
     /* מחיקת כל המשתמשים בשמירה אחת = נעילת כולם בחוץ. לא קורה בעריכה

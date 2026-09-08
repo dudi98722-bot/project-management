@@ -377,7 +377,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 מח'";
+var APP_BUILD = "19.08 מט'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -3607,6 +3607,63 @@ function resolveConflictAndResave(){
     SAVEQ.dirty=true; SAVEQ.fails++; scheduleRetry();
   });
 }
+/* ============================================================
+   הגנה מפני מחיקה המונית בשמירה אחת
+   ------------------------------------------------------------
+   מחיקה במערכת היא רכה: השורה נשארת ומסומנת deleted:true. לכן כל
+   ההגנות שסופרות שורות או בודקות "טבלה ריקה" עיוורות למצב שבו
+   טבלה שלמה מסומנת כמחוקה — מספר השורות זהה, הטבלה אינה ריקה,
+   והנתונים נעלמים מהמסך. כך נמחקו כל הגיליונות החופשיים.
+
+   מחיקה בודדת תמיד עוברת (גם של הפריט האחרון). מה שנחסם הוא קפיצה
+   מכמה פריטים חיים לאפס בשמירה אחת, או מחיקה של רוב טבלה גדולה —
+   דבר שאינו קורה בעריכה אנושית רגילה.
+   ============================================================ */
+function liveCounts(db){
+  var out={};
+  MERGE_TABLES.forEach(function(T){
+    var n=0;
+    (db&&db[T]||[]).forEach(function(x){ if(x && !x.deleted) n++; });
+    out[T]=n;
+  });
+  return out;
+}
+/* מחזיר רשימת טבלאות חשודות, או [] כשהכול תקין */
+function massDeleteCheck(prevDb,nextDb){
+  if(!prevDb||!nextDb) return [];
+  var a=liveCounts(prevDb), b=liveCounts(nextDb), bad=[];
+  MERGE_TABLES.forEach(function(T){
+    var before=a[T]||0, after=b[T]||0;
+    if(after>=before) return;
+    /* טבלה שלמה נמחקה בבת אחת */
+    if(before>=2 && after===0) bad.push({t:T,before:before,after:after});
+    /* רוב טבלה גדולה נמחק בבת אחת */
+    else if(before>=8 && after<before*0.3) bad.push({t:T,before:before,after:after});
+  });
+  return bad;
+}
+var TABLE_NAMES={apartments:"פרוייקטים",partners:"שותפים",apartmentPartners:"שיוך שותפים",
+  managers:"מנהלים",categories:"קטגוריות",expenses:"שלבים והוצאות",expenseSplits:"חלוקות",
+  expenseManagerFees:"דמי ניהול",accounts:"חשבונות",payments:"תשלומים",deposits:"הפקדות",
+  income:"הכנסות",bankMoves:"שורות בנק",stmtBanks:"בנקים",withdrawals:"משיכות",
+  incMgmtPays:"דמי ניהול הכנסות",recurring:"הוראות קבע",rentals:"שכירויות",sheets:"גיליונות חופשיים",
+  users:"משתמשים"};
+function tableName(T){ return TABLE_NAMES[T]||T; }
+/* משחזר את השורות שנמחקו בטבלאות החשודות מהבסיס האחרון שסונכרן */
+function undoMassDelete(bad){
+  var base=null;
+  try{ base=SYNCBASE?JSON.parse(SYNCBASE):null; }catch(e){ base=null; }
+  if(!base) return false;
+  var restored=0;
+  bad.forEach(function(x){
+    var alive={};
+    (base[x.t]||[]).forEach(function(r){ if(r && !r.deleted && r.id!=null) alive[r.id]=1; });
+    (DB[x.t]||[]).forEach(function(r){
+      if(r && r.deleted && alive[r.id]){ r.deleted=false; delete r.deletedAt; delete r.deletedByUser; restored++; }
+    });
+  });
+  return restored>0;
+}
 /* ---------- תור שמירה ----------
    כל שמירה שולחת את כל מסד הנתונים. כששולחים כמה בקשות במקביל הן אינן
    חוזרות בהכרח בסדר שנשלחו, ובקשה ישנה שמגיעה אחרונה דורסת שינויים
@@ -3656,6 +3713,29 @@ async function flushSave(){
       }
     }
   }catch(e){}
+  /* בלם אחרון לפני שהמחיקה יוצאת לשרת. הבסיס הוא המצב האחרון
+     שסונכרן, ולכן ההשוואה מולו תופסת גם מחיקה שקרתה בלי שהמשתמש
+     ביקש אותה. */
+  var bad=massDeleteCheck(SYNCBASE?JSON.parse(SYNCBASE):null, DB);
+  if(bad.length && !SAVEQ.massOk){
+    var undone=undoMassDelete(bad);
+    var names=bad.map(function(x){ return tableName(x.t)+" ("+x.before+"→"+x.after+")"; }).join(", ");
+    SAVEQ.inflight=false;
+    if(undone){
+      SAVEQ.dirty=true; setSync("saving");
+      toast("⚠️ נחסמה מחיקה של "+names+" — הנתונים שוחזרו ולא נשלחו לשרת. "+
+        "אם באמת רצית למחוק, מחק פריט־פריט","err");
+      saveLocal();
+      rerender();
+      setTimeout(flushSave,1200);
+      return;
+    }
+    SAVEQ.dirty=true; setSync("err");
+    toast("⚠️ נחסמה שמירה שהייתה מוחקת "+names+". הנתונים נשמרו מקומית בלבד — "+
+      "רענן את הדף וודא שהכול במקום לפני שמירה נוספת","err");
+    return;
+  }
+  SAVEQ.massOk=false;
   var snap=JSON.stringify(DB);                                      // תמונת מצב עדכנית
   var payload='{"action":"save","codeHash":'+JSON.stringify(h)+',"data":'+snap+'}';
   fetch(SHEETS_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:payload})
