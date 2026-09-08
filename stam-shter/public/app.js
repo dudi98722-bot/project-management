@@ -1632,23 +1632,84 @@ function prodPurchases(cfgOnly) {
         placeholder: 'ללא מחזיק — הקלד שם' },
     ],
     afterSave: afterNewPurchase,
-    // כפתור שממלא את הסכום המלא, כדי לא לחשב כמות × עלות ביד
     onForm: (m, isEdit) => {
       if (isEdit) return;
+
+      // כפתור שממלא את הסכום המלא, כדי לא לחשב כמות × עלות ביד
       const amt = m.el.querySelector('#f__paid');
-      if (!amt) return;
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'btn ghost xs';
-      btn.style.marginTop = '6px';
-      btn.textContent = 'מלא את הסכום המלא';
-      btn.onclick = () => {
-        const q = N(m.el.querySelector('#f_quantity').value);
-        const c = N(m.el.querySelector('#f_cost_per_unit').value);
-        if (!(q > 0 && c > 0)) return toast('יש למלא קודם כמות ועלות ליחידה', 'err');
-        amt.value = Math.round(q * c * 100) / 100;
+      if (amt) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn ghost xs';
+        btn.style.marginTop = '6px';
+        btn.textContent = 'מלא את הסכום המלא';
+        btn.onclick = () => {
+          const q = N(m.el.querySelector('#f_quantity').value);
+          const c = N(m.el.querySelector('#f_cost_per_unit').value);
+          if (!(q > 0 && c > 0)) return toast('יש למלא קודם כמות ועלות ליחידה', 'err');
+          amt.value = Math.round(q * c * 100) / 100;
+        };
+        amt.parentNode.insertBefore(btn, amt.nextSibling);
+      }
+
+      // מילוי העלויות לפי הרכישה האחרונה של אותו מוצר מאותו סופר.
+      // C.purchases ממוין תאריך יורד, ולכן ההתאמה הראשונה היא האחרונה שנרכשה.
+      // המטבע נגרר יחד עם המחיר — מספר בלי המטבע שלו הוא מספר שגוי.
+      const scr = m.el.querySelector('#f_scribe_id');
+      const prd = m.el.querySelector('#f_product_id');
+      const cost = m.el.querySelector('#f_cost_per_unit');
+      const extra = m.el.querySelector('#f_extra_cost_per_unit');
+      const note = m.el.querySelector('#f_extra_cost_note');
+      const cur = m.el.querySelector('#f_currency');
+      if (!scr || !prd || !cost) return;
+
+      const tip = document.createElement('div');
+      tip.className = 'hint';
+      cost.closest('.field').appendChild(tip);
+
+      // שדה שמולא אוטומטית מותר לעדכן שוב; מה שהוקלד ביד לא נדרס לעולם.
+      const auto = {};
+      const mine = (el, k, base) => {
+        const v = String(el.value || '').trim();
+        return v === (base === undefined ? '' : base) || (auto[k] !== undefined && v === auto[k]);
       };
-      amt.parentNode.insertBefore(btn, amt.nextSibling);
+      const put = (el, k, val) => {
+        if (!mine(el, k)) return false;
+        el.value = val; auto[k] = String(val);
+        return true;
+      };
+
+      const apply = () => {
+        const sid = +scr.value, pid = +prd.value;
+        if (!sid || !pid) { tip.textContent = ''; return; }
+        const last = C.purchases.find(x => +x.scribe_id === sid && +x.product_id === pid);
+        if (!last) {
+          tip.style.color = '';
+          tip.textContent = 'אין רכישה קודמת של המוצר הזה מהסופר הזה — אין ממה למלא.';
+          return;
+        }
+        const filled = [];
+        // המטבע נגרר רק יחד עם המחיר. סכום שהוקלד ביד נשאר במטבע שנבחר לו —
+        // החלפת מטבע מתחת לסכום קיים הופכת ₪999 ל-$999 בלי שאיש שם לב.
+        const costFree = mine(cost, 'cost');
+        if (costFree && cur && last.currency && mine(cur, 'cur', 'ILS')) {
+          cur.value = last.currency; auto.cur = cur.value;
+          if (last.currency === 'USD') filled.push('מטבע');
+        }
+        if (N(last.cost_per_unit) > 0 && put(cost, 'cost', N(last.cost_per_unit))) filled.push('עלות ליחידה');
+        if (extra && N(last.extra_cost_per_unit) > 0
+            && put(extra, 'extra', N(last.extra_cost_per_unit))) filled.push('עלות נוספת');
+        if (note && last.extra_cost_note && put(note, 'note', last.extra_cost_note)) filled.push('עבור מה');
+
+        const src = `רכישה #${last.id} מ-${dt(last.date)} · ${money(last.cost_per_unit, last.currency)} ליחידה`;
+        tip.style.color = filled.length ? 'var(--ok, #15803d)' : '';
+        tip.textContent = filled.length
+          ? `מולא לפי ${src} (${filled.join(', ')}). אפשר לשנות.`
+          : `הרכישה הקודמת: ${src}. השדות שמולאו ביד לא שונו.`;
+      };
+      scr.addEventListener('change', apply);
+      prd.addEventListener('change', apply);
+      apply();   // גם כשהטופס נפתח עם סופר או מוצר מוכנים מראש
     },
     // מוצמדות: בחירה, מספר החבילה ושם הסופר — הזיהוי שנשאר מול העיניים
     pin: 2,
@@ -3731,25 +3792,49 @@ async function trackSummary() {
 }
 
 // ---------- כל היריעות: סינון, בחירה מרובה והעברה ----------
-const TRACK = { scroll: '', purchase: '', station: '', holder: '', grouped: true };
+const TRACK = { scroll: '', purchase: '', station: '', holder: '', mode: 'grouped' };
 
 // קיבוץ פריטים שנמצאים באותו מצב בדיוק: אותה חבילה/ספר, אותה תחנה,
 // אותו מחזיק, מאותו תאריך ועם אותה הערה. חבילה של 37 מזוזות שכולן
 // באותו מקום מוצגת כשורה אחת במקום 37 שורות זהות.
-function groupTrackRows(rows) {
+//
+// merge=true מאחד גם חבילות: מתעלמים ממספר הרכישה, מהתאריך ומההערה,
+// ומה שקובע הוא איזה מוצר של איזה סופר נמצא איפה. שתי רכישות של אותן
+// מזוזות מאותו סופר שיושבות באותה תחנה הן שורה אחת. זו תצוגה בלבד —
+// כל יחידה נשארת שייכת לרכישה שלה, והעלויות והמכירות אינן משתנות.
+function groupTrackRows(rows, merge) {
   const map = new Map();
   for (const r of rows) {
-    const key = [r.scroll_id || '', r.purchase_id || '', r.station_id || 0,
-                 r.holder_id || 0, r.since || '', r.note || ''].join('|');
+    const what = r.scroll_id ? 's' + r.scroll_id
+      : merge ? `m${r.purchase_scribe_id || 0}/${r.purchase_product_id || 0}`
+              : 'p' + (r.purchase_id || '');
+    const key = [what, r.station_id || 0, r.holder_id || 0,
+                 merge ? '' : (r.since || ''), merge ? '' : (r.note || '')].join('|');
     let g = map.get(key);
-    if (!g) { g = Object.assign({}, r, { ids: [], seqs: [], qty: 0 }); map.set(key, g); }
+    if (!g) { g = Object.assign({}, r, { ids: [], seqs: [], qty: 0, purs: [], notes: [] }); map.set(key, g); }
     g.ids.push(r.id);
     g.seqs.push(Number(r.seq));
     g.qty++;
+    if (r.purchase_id && !g.purs.includes(r.purchase_id)) g.purs.push(r.purchase_id);
+    if (r.note && !g.notes.includes(r.note)) g.notes.push(r.note);
+    // מהתאריכים נשמר הישן ביותר: כשבודקים כמה זמן משהו תקוע בתחנה,
+    // המספר שמעניין הוא של היחידה שממתינה הכי הרבה זמן.
+    if (r.since && (!g.since || String(r.since) < String(g.since))) {
+      g.since = r.since; g.days_at_station = r.days_at_station;
+    }
   }
   // id מרוכב — כך תיבת הבחירה הגנרית מסמנת את כל הפריטים שבשורה
-  return [...map.values()].map(g => Object.assign(g, { id: g.ids.join(',') }));
+  return [...map.values()].map(g => Object.assign(g, {
+    id: g.ids.join(','),
+    note: g.notes.join(' \u00b7 '),
+    purs: g.purs.sort((a, b) => a - b),
+  }));
 }
+
+// כותרת שורה מאוחדת: כשהיא חוצה כמה חבילות, מספר החבילה כבר לא מזהה אותה
+const groupLabel = (r) => (!r.scroll_id && r.purs && r.purs.length > 1)
+  ? [r.purchase_product_name, r.purchase_scribe_name].filter(Boolean).join(' \u00b7 ')
+  : itemLabel(r);
 
 // "1–37" כשהרצף שלם, אחרת רק הכמות — טווח שבור היה מטעה
 // [1,2,3,7,12,13,14] -> "1-3, 7, 12-14". קודם הוצג "N פריטים" כשהרצף
@@ -3788,8 +3873,9 @@ async function trackItems() {
     TRACK.station && (C.stations.find(x => x.id === +TRACK.station) || {}).name,
     TRACK.holder && (() => { const c = C.contacts.find(x => x.id === +TRACK.holder); return c && contactName(c); })(),
   ].filter(Boolean).join(' · ');
-  const grouped = TRACK.grouped;
-  const allRows = grouped ? groupTrackRows(items) : items;
+  const merge = TRACK.mode === 'merged';
+  const grouped = TRACK.mode !== 'detail';
+  const allRows = grouped ? groupTrackRows(items, merge) : items;
 
   const common = [
     { label: 'סופר', render: r => esc(r.scribe_name || r.purchase_scribe_name || '—') },
@@ -3802,13 +3888,17 @@ async function trackItems() {
   ];
   const cols = grouped ? [
     ...(ME.caps.edit ? [selCol('track_items')] : []),
-    { label: 'שייך ל', render: r => esc(itemLabel(r)) },
+    { label: 'שייך ל', render: r => esc(groupLabel(r)) },
     { label: 'כמות', cls: 'num', render: r => `<b>${r.qty}</b>` },
-    { label: 'מספרים', cls: 'num', render: r => `<span class="muted">${seqLabel(r)}</span>` },
+    { label: merge ? 'חבילות / מספרים' : 'מספרים', cls: 'num', render: r => r.purs.length > 1
+        ? `<span class="muted" title="${r.purs.length} רכישות שונות">#${r.purs.join(', #')}</span>`
+        : `<span class="muted">${seqLabel(r)}</span>` },
     ...common,
     { label: '', cls: 'center', render: r => `
       ${ME.caps.edit ? `<button class="btn ghost xs" data-gmove="${r.id}">\u2194 העבר</button> ` : ''}
-      ${r.qty === 1 ? `<button class="btn ghost xs" data-hist="${r.ids[0]}">היסטוריה</button>` : ''}` },
+      ${r.qty === 1
+        ? `<button class="btn ghost xs" data-hist="${r.ids[0]}">היסטוריה</button>`
+        : `<button class="btn ghost xs" data-gdetail="${r.id}" title="פירוט כל היחידות">📋 פירוט</button>`}` },
   ] : [
     ...(ME.caps.edit ? [selCol('track_items')] : []),
     { label: 'שייך ל', render: r => esc(itemLabel(r)) },
@@ -3831,13 +3921,16 @@ async function trackItems() {
         <span class="mini">מסונן לפי: ${filterNames}</span></div>` : ''}
       <div class="toolbar">
         <div class="seg">
-          <button data-tkview="1" class="${grouped ? 'on' : ''}">\u25a4 מקובץ</button>
-          <button data-tkview="0" class="${grouped ? '' : 'on'}">\u2263 מפורט</button>
+          <button data-tkview="merged" class="${merge ? 'on' : ''}">\u2295 מאוחד</button>
+          <button data-tkview="grouped" class="${TRACK.mode === 'grouped' ? 'on' : ''}">\u25a4 מקובץ</button>
+          <button data-tkview="detail" class="${grouped ? '' : 'on'}">\u2263 מפורט</button>
         </div>
         ${ME.caps.edit ? `<button class="btn" id="tkGen">+ צור יריעות לספר</button>` : ''}
-        <span class="mini">${grouped
-          ? `${items.length} פריטים ב-${allRows.length} שורות — פריטים באותו מצב מוצגים יחד`
-          : 'סמן פריטים בטבלה כדי להעביר אותם לתחנה אחרת'}</span>
+        <span class="mini">${!grouped
+          ? 'סמן פריטים בטבלה כדי להעביר אותם לתחנה אחרת'
+          : `${items.length} פריטים ב-${allRows.length} שורות — ` + (merge
+              ? 'חבילות של אותו מוצר מאותו סופר שנמצאות באותו מקום מוצגות יחד'
+              : 'פריטים באותו מצב מוצגים יחד')}</span>
       </div>
     </div>
     <div class="card">
@@ -3856,9 +3949,11 @@ async function trackItems() {
     render();
   };
   document.querySelectorAll('[data-tkview]').forEach(b =>
-    b.onclick = () => { TRACK.grouped = b.dataset.tkview === '1'; render(); });
+    b.onclick = () => { TRACK.mode = b.dataset.tkview; render(); });
   document.querySelectorAll('[data-gmove]').forEach(b => b.onclick = () =>
     openMove(String(b.dataset.gmove).split(',').map(Number)));
+  document.querySelectorAll('[data-gdetail]').forEach(b => b.onclick = () =>
+    showGroupDetail(String(b.dataset.gdetail).split(',').map(Number)));
   wireSelection();
   wireFilters('track_items', cols, allRows);
   document.querySelectorAll('[data-hist]').forEach(b => b.onclick = () => showHistory(+b.dataset.hist));
