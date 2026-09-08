@@ -156,15 +156,21 @@ const toBase64 = (blob) => new Promise((resolve, reject) => {
   fr.readAsDataURL(blob);
 });
 
-async function uploadIdPhoto(contactId, file, onMsg) {
+async function uploadContactPhoto(contactId, kind, file, onMsg) {
   const smaller = await shrinkImage(file);
   const blob = smaller || file;
   const mime = smaller ? 'image/jpeg' : (file.type || 'application/octet-stream');
   const name = smaller ? file.name.replace(/\.[^.]+$/, '') + '.jpg' : file.name;
   if (blob.size > 8 * 1024 * 1024) throw new Error('הקובץ גדול מדי גם אחרי דחיסה (מקסימום 8MB)');
   if (onMsg) onMsg(`מעלה ${Math.max(1, Math.round(blob.size / 1024))}KB…`);
-  return Store.contacts.uploadIdPhoto(contactId, { name, mime, data: await toBase64(blob) });
+  return Store.contacts.uploadPhoto(contactId, kind, { name, mime, data: await toBase64(blob) });
 }
+
+// סוגי הצילומים המצורפים לאיש קשר. שניהם נשמרים באותה תיקייה בדרייב.
+const CONTACT_PHOTOS = [
+  { kind: 'id',   url: 'id_photo_url',   label: 'צילום ת"ז',      icon: '🪪' },
+  { kind: 'cert', url: 'cert_photo_url', label: 'צילום תעודת סופר', icon: '📜' },
+];
 
 // "בנק X · סניף Y · חשבון Z" — רק החלקים שמולאו
 const bankText = (c) => [
@@ -2863,50 +2869,53 @@ function setContacts(cfgOnly) {
       { k: 'bank_account', label: 'מספר חשבון', type: 'text' },
     ],
     // ההעלאה היא פעולה עצמאית מול הדרייב ולא שדה בטופס: היא דורשת שהרשומה
-    // כבר קיימת, ולכן מוצגת רק בעריכה.
+    // כבר קיימת, ולכן מוצגת רק בעריכה. שני הסוגים נבנים מאותה פונקציה.
     onForm: (m, isEdit, row) => {
-      const box = document.createElement('div');
-      box.className = 'field';
-      box.innerHTML = !isEdit
-        ? `<label>צילום ת"ז</label><div class="hint">שמור את איש הקשר, ואז פתח אותו לעריכה כדי לצרף צילום.</div>`
-        : `<label>צילום ת"ז</label>
-           <div id="idpBox" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-             <input type="file" id="idpFile" accept="image/*,application/pdf" style="flex:1;min-width:170px">
-             <span id="idpState" class="mini"></span>
-           </div>
-           <div class="hint">נשמר בתיקייה פרטית בדרייב. הקישור נפתח רק למי שמחובר לחשבון עם גישה.</div>`;
-      m.el.querySelector('.m-body .row').appendChild(box);
-      if (!isEdit) return;
+      const row1 = m.el.querySelector('.m-body .row');
+      for (const ph of CONTACT_PHOTOS) {
+        const box = document.createElement('div');
+        box.className = 'field';
+        box.innerHTML = !isEdit
+          ? `<label>${esc(ph.label)}</label><div class="hint">שמור את איש הקשר, ואז פתח אותו לעריכה כדי לצרף צילום.</div>`
+          : `<label>${esc(ph.label)}</label>
+             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+               <input type="file" data-phfile="${ph.kind}" accept="image/*,application/pdf" style="flex:1;min-width:170px">
+               <span data-phstate="${ph.kind}" class="mini"></span>
+             </div>
+             <div class="hint">נשמר בתיקייה פרטית בדרייב. הקישור נפתח רק למי שמחובר לחשבון עם גישה.</div>`;
+        row1.appendChild(box);
+        if (!isEdit) continue;
 
-      const state = box.querySelector('#idpState');
-      const paint = (url) => {
-        state.innerHTML = url
-          ? `<a href="${esc(url)}" target="_blank" rel="noopener">🪪 צפייה</a>
-             <button type="button" class="btn ghost xs" id="idpDel">הסר</button>`
-          : '<span class="muted">אין צילום</span>';
-        const del = box.querySelector('#idpDel');
-        if (del) del.onclick = async () => {
-          if (!(await confirmBox('להסיר את הקישור לצילום? הקובץ עצמו יישאר בדרייב.'))) return;
-          try { await Store.contacts.removeIdPhoto(row.id); paint(''); invalidateRows(); }
-          catch (e) { toast(e.message, 'err'); }
+        const state = box.querySelector(`[data-phstate="${ph.kind}"]`);
+        const paint = (url) => {
+          state.innerHTML = url
+            ? `<a href="${esc(url)}" target="_blank" rel="noopener">${ph.icon} צפייה</a>
+               <button type="button" class="btn ghost xs" data-phdel="${ph.kind}">הסר</button>`
+            : '<span class="muted">אין צילום</span>';
+          const del = box.querySelector(`[data-phdel="${ph.kind}"]`);
+          if (del) del.onclick = async () => {
+            if (!(await confirmBox('להסיר את הקישור לצילום? הקובץ עצמו יישאר בדרייב.'))) return;
+            try { await Store.contacts.removePhoto(row.id, ph.kind); paint(''); invalidateRows(); }
+            catch (e) { toast(e.message, 'err'); }
+          };
         };
-      };
-      paint(row.id_photo_url);
+        paint(row[ph.url]);
 
-      box.querySelector('#idpFile').onchange = async (e) => {
-        const f = e.target.files && e.target.files[0];
-        if (!f) return;
-        state.textContent = 'מכין…';
-        try {
-          const r = await uploadIdPhoto(row.id, f, (msg) => { state.textContent = msg; });
-          paint(r.id_photo_url);
-          invalidateRows();
-          toast('הצילום נשמר בדרייב', 'ok');
-        } catch (err) {
-          state.innerHTML = '<span class="neg">ההעלאה נכשלה</span>';
-          toast(err.message, 'err');
-        } finally { e.target.value = ''; }
-      };
+        box.querySelector(`[data-phfile="${ph.kind}"]`).onchange = async (e) => {
+          const f = e.target.files && e.target.files[0];
+          if (!f) return;
+          state.textContent = 'מכין…';
+          try {
+            const r = await uploadContactPhoto(row.id, ph.kind, f, (msg) => { state.textContent = msg; });
+            paint(r[ph.url]);
+            invalidateRows();
+            toast(`${ph.label} נשמר בדרייב`, 'ok');
+          } catch (err) {
+            state.innerHTML = '<span class="neg">ההעלאה נכשלה</span>';
+            toast(err.message, 'err');
+          } finally { e.target.value = ''; }
+        };
+      }
     },
     cols: [
       { label: 'שם', render: r => esc(r.name || '') },
@@ -2914,9 +2923,11 @@ function setContacts(cfgOnly) {
       { label: 'כתובת', cls: 'wrap', render: r => esc(r.address || '') },
       { label: 'סיווג', cls: 'wrap', render: r => kindPills(r.kinds) },
       { label: 'חשבון בנק', render: r => esc(bankText(r)) },
-      { label: 'צילום ת"ז', cls: 'center', render: r => r.id_photo_url
-          ? `<a href="${esc(r.id_photo_url)}" target="_blank" rel="noopener" title="נפתח בדרייב">🪪 צפייה</a>`
-          : '<span class="muted">—</span>' },
+      { label: 'צילומים', cls: 'center', render: r => {
+          const links = CONTACT_PHOTOS.filter(ph => r[ph.url]).map(ph =>
+            `<a href="${esc(r[ph.url])}" target="_blank" rel="noopener" title="${esc(ph.label)} — נפתח בדרייב">${ph.icon}</a>`);
+          return links.length ? links.join(' ') : '<span class="muted">—</span>';
+        } },
     ],
   };
   return cfgOnly ? cfg : entityPage(cfg);
@@ -4422,8 +4433,9 @@ function wsHeader(person, color, badge, otherMode, otherHasData, showBank) {
         <div style="font-size:24px;font-weight:800">${esc(person.name || '')}</div>
         ${person.phone ? `<a href="tel:${esc(person.phone)}" style="color:#e6fffa">${esc(person.phone)}</a>` : ''}
         ${person.address ? `<span style="color:#e6fffa;font-size:13px">📍 ${esc(person.address)}</span>` : ''}
-        ${person.id_photo_url ? `<a href="${esc(person.id_photo_url)}" target="_blank" rel="noopener"
-            style="color:#e6fffa;font-size:13px" title="נפתח בדרייב">🪪 צילום ת"ז</a>` : ''}
+        ${CONTACT_PHOTOS.filter(ph => person[ph.url]).map(ph =>
+          `<a href="${esc(person[ph.url])}" target="_blank" rel="noopener"
+             style="color:#e6fffa;font-size:13px" title="נפתח בדרייב">${ph.icon} ${esc(ph.label)}</a>`).join(' ')}
         <span class="pill" style="background:#fff;color:#0f172a">${badge}</span>
         ${splitKinds(person.kinds).filter(k => k !== badge).map(k =>
           `<span class="pill" style="background:rgba(255,255,255,.22);color:#fff">${esc(k)}</span>`).join(' ')}

@@ -17,13 +17,20 @@ const router = crudRouter('contacts', [
   // הקישור נכתב רק דרך מסלול ההעלאה, לא בעריכה ידנית
 ], { orderBy: 't.name NULLS LAST' });
 
-// ---------- צילום ת"ז ----------
+// ---------- צילומים מצורפים ----------
 // הקובץ עולה לתיקייה פרטית בדרייב ולא מקבל שיתוף ציבורי; הקישור נפתח
 // רק למי שמחובר לחשבון גוגל עם גישה לתיקייה. במסד נשמר הקישור בלבד.
+// שני הסוגים חולקים מסלול אחד, כדי שלא ייווצרו שתי לוגיקות העלאה שונות.
 const MAX_BYTES = 8 * 1024 * 1024;
 const OK_MIME = /^(image\/(jpeg|png|webp|heic|heif)|application\/pdf)$/i;
+const PHOTOS = {
+  id:   { col: 'id_photo',   label: 'תז',          folder: 'id-photos' },
+  cert: { col: 'cert_photo', label: 'תעודת סופר',  folder: 'id-photos' },
+};
 
-router.post('/:id/id-photo', authenticate, can('edit'), async (req, res) => {
+router.post('/:id/photo/:kind', authenticate, can('edit'), async (req, res) => {
+  const spec = PHOTOS[req.params.kind];
+  if (!spec) return res.status(400).json({ error: 'סוג צילום לא מוכר' });
   try {
     const { name, mime, data } = req.body || {};
     if (!data) return res.status(400).json({ error: 'לא התקבל קובץ' });
@@ -42,15 +49,15 @@ router.post('/:id/id-photo', authenticate, can('edit'), async (req, res) => {
       return res.status(503).json({ error: 'החיבור לדרייב אינו מוגדר. הגדר BACKUP_WEBHOOK_URL ו-BACKUP_SECRET' });
     }
     const ext = String(name || '').match(/\.[a-z0-9]+$/i);
-    const fileName = `תז - ${cur.rows[0].name || cur.rows[0].id}${ext ? ext[0] : ''}`;
-    const up = await sheets.uploadFile({ name: fileName, mime, data, folder: 'id-photos' });
+    const fileName = `${spec.label} - ${cur.rows[0].name || cur.rows[0].id}${ext ? ext[0] : ''}`;
+    const up = await sheets.uploadFile({ name: fileName, mime, data, folder: spec.folder });
 
     const r = await pool.query(
-      `UPDATE contacts SET id_photo_url=$1, id_photo_name=$2, updated_by=$3, updated_at=NOW()
-       WHERE id=$4 RETURNING id, id_photo_url, id_photo_name`,
+      `UPDATE contacts SET ${spec.col}_url=$1, ${spec.col}_name=$2, updated_by=$3, updated_at=NOW()
+       WHERE id=$4 RETURNING id, ${spec.col}_url, ${spec.col}_name`,
       [up.url, fileName, req.user.id, req.params.id]);
     // בלוג נרשם רק שהועלה צילום — לא הקישור, שלא יישמר בגיליון הפעולות
-    await logAction(req.user, 'id-photo', 'contacts', req.params.id, { uploaded: true });
+    await logAction(req.user, 'photo', 'contacts', req.params.id, { kind: req.params.kind, uploaded: true });
     res.json(r.rows[0]);
   } catch (e) {
     console.error(e);
@@ -60,13 +67,15 @@ router.post('/:id/id-photo', authenticate, can('edit'), async (req, res) => {
 
 // הסרת הקישור. הקובץ נשאר בדרייב — מחיקה משם היא פעולה בלתי הפיכה
 // שראוי שתיעשה במודע בדרייב עצמו.
-router.delete('/:id/id-photo', authenticate, can('edit'), async (req, res) => {
+router.delete('/:id/photo/:kind', authenticate, can('edit'), async (req, res) => {
+  const spec = PHOTOS[req.params.kind];
+  if (!spec) return res.status(400).json({ error: 'סוג צילום לא מוכר' });
   try {
     const r = await pool.query(
-      `UPDATE contacts SET id_photo_url=NULL, id_photo_name=NULL, updated_by=$1, updated_at=NOW()
+      `UPDATE contacts SET ${spec.col}_url=NULL, ${spec.col}_name=NULL, updated_by=$1, updated_at=NOW()
        WHERE id=$2 AND deleted=false RETURNING id`, [req.user.id, req.params.id]);
     if (!r.rows.length) return res.status(404).json({ error: 'לא נמצא' });
-    await logAction(req.user, 'id-photo-remove', 'contacts', req.params.id, {});
+    await logAction(req.user, 'photo-remove', 'contacts', req.params.id, { kind: req.params.kind });
     res.json({ message: 'הקישור הוסר. הקובץ עצמו נשאר בדרייב' });
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });

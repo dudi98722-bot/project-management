@@ -48,6 +48,9 @@ ALTER TABLE contacts ADD COLUMN IF NOT EXISTS address VARCHAR(300);
 -- דרך המסד — תעודות זהות של מאות אנשים במסד הן סיכון מיותר.
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS id_photo_url TEXT;
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS id_photo_name VARCHAR(300);
+-- תעודת סופר — אותו מנגנון ואותה תיקייה בדרייב
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS cert_photo_url TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS cert_photo_name VARCHAR(300);
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS bank VARCHAR(100);
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS bank_branch VARCHAR(50);
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS bank_account VARCHAR(50);

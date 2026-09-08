@@ -54,8 +54,8 @@
       markDone: (ids, done) => apiFetch('/reminders/done', { method: 'POST', body: { ids, done } }),
     }),
     contacts: Object.assign(res('/contacts'), {
-      uploadIdPhoto: (id, body) => apiFetch('/contacts/' + id + '/id-photo', { method: 'POST', body }),
-      removeIdPhoto: (id) => apiFetch('/contacts/' + id + '/id-photo', { method: 'DELETE' }),
+      uploadPhoto: (id, kind, body) => apiFetch('/contacts/' + id + '/photo/' + kind, { method: 'POST', body }),
+      removePhoto: (id, kind) => apiFetch('/contacts/' + id + '/photo/' + kind, { method: 'DELETE' }),
     }),
     products: res('/products'),
     sizes: res('/parchment-sizes'),
