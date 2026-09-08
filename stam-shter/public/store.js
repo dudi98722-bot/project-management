@@ -56,6 +56,10 @@
     products: res('/products'),
     sizes: res('/parchment-sizes'),
     stations: res('/stations'),
+    settings: {
+      all: () => apiFetch('/settings'),
+      set: (key, value) => apiFetch('/settings/' + key, { method: 'PUT', body: { value } }),
+    },
     track: Object.assign(res('/track'), {
       summary: () => apiFetch('/track/summary'),
       generate: (d) => apiFetch('/track/generate', { method: 'POST', body: d }),

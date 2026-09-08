@@ -34,6 +34,7 @@ app.use('/api/lists', require('./routes/lists'));
 app.use('/api/products', require('./routes/products'));
 app.use('/api/parchment-sizes', require('./routes/parchment-sizes'));
 app.use('/api/stations', require('./routes/stations'));
+app.use('/api/settings', require('./routes/settings'));
 
 // מערכת א' — ס"ת
 app.use('/api/scrolls', require('./routes/scrolls'));

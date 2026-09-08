@@ -154,7 +154,9 @@ router.get('/profit', async (req, res) => {
     const scrollProfit = sum(scrolls, 'expected_profit');
     res.json({
       scrolls: {
-        revenue: sum(scrolls, 'buyer_total'),
+        // revenue_ils ולא buyer_total: מחיר שנקוב בדולר מומר, אחרת שורת
+        // ההכנסות לא הייתה תואמת את שורת הרווח שמתחתיה
+        revenue: sum(scrolls, 'revenue_ils'),
         scribe_cost: sum(scrolls, 'scribe_book_price'),
         peritah: sum(scrolls, 'peritah_cost'),
         fixed_expenses: sum(scrolls, 'fixed_expense'),
@@ -334,7 +336,7 @@ router.get('/monthly', async (req, res) => {
       const d = new Date(s.sale_date);
       if (d.getFullYear() !== year) continue;
       const m = d.getMonth() + 1;
-      scrollSales[m] = (scrollSales[m] || 0) + n(s.buyer_total);
+      scrollSales[m] = (scrollSales[m] || 0) + n(s.revenue_ils);
       scrollProfit[m] = (scrollProfit[m] || 0) + n(s.expected_profit);
     }
 

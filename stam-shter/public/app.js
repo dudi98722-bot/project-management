@@ -5,7 +5,7 @@
 // ============ מצב ============
 let ME = null, TAB = 'dash';
 const SUB = { prod: 'purchases', reports: 'overview', settings: 'contacts', system: 'recycle', track: 'summary', workspace: 'scribe' };
-const C = { contacts: [], products: [], sizes: [], expBook: [], expBiz: [], scrolls: [], purchases: [], stations: [], kinds: [] };
+const C = { contacts: [], products: [], sizes: [], expBook: [], expBiz: [], scrolls: [], purchases: [], stations: [], kinds: [], settings: { usd_rate: 3 } };
 const IMPORT = { spec: null, table: '', text: '', mode: 'create', opts: { createMissingContacts: false } };
 
 // ============ עזרים ============
@@ -980,6 +980,7 @@ async function reloadCaches() {
   C.contacts = contacts; C.products = products; C.sizes = sizes;
   C.expBook = lists.expense_book || []; C.expBiz = lists.expense_business || [];
   C.kinds = lists.contact_kind || [];
+  try { C.settings = await Store.settings.all(); } catch (e) { C.settings = { usd_rate: 3 }; }
   C.scrolls = scrolls; C.purchases = purchases; C.stations = stations;
 }
 
@@ -1039,7 +1040,9 @@ async function pageScrolls() {
       total: rows => mCell(sumBy(rows, 'buyer_balance_now')) },
     { label: 'יתרת סופר', cls: 'num', render: r => mCell(r.scribe_balance),
       total: rows => mCell(sumBy(rows, 'scribe_balance')) },
-    { label: 'רווח צפוי', cls: 'num', render: r => mCell(r.expected_profit),
+    { label: 'רווח צפוי', cls: 'num',
+      render: r => mCell(r.expected_profit) + (r.in_usd
+        ? ` <span class="pill n" title="מחיר ${money(r.buyer_total, 'USD')} הומר לפי שער ${r.usd_rate_used} = ${money(r.revenue_ils)}">×${r.usd_rate_used}</span>` : ''),
       total: rows => mCell(sumBy(rows, 'expected_profit')) },
     { label: 'סטטוס', render: r => `<span class="pill ${r.status === 'done' ? 'done' : 'active'}">${r.status === 'done' ? 'הושלם' : 'פעיל'}</span>` },
     { label: '', cls: 'center', render: r => `<button class="btn ghost xs" data-card="${r.id}">כרטיס</button>` },
@@ -2686,6 +2689,7 @@ function pageSettings() {
     { k: 'products', label: 'מוצרים' },
     { k: 'sizes', label: 'גדלי קלף' },
     { k: 'kinds', label: 'סיווגי אנשי קשר' },
+    ...(ME.caps.finance ? [{ k: 'rates', label: 'שער דולר' }] : []),
     { k: 'expbook', label: 'סוגי הוצאות לספר' },
     { k: 'expbiz', label: 'סוגי הוצאות עסק' },
   ];
@@ -2695,8 +2699,42 @@ function pageSettings() {
   if (s === 'products') return setProducts();
   if (s === 'sizes') return setSizes();
   if (s === 'kinds') return setList('contact_kind', 'סיווגי אנשי קשר', false);
+  if (s === 'rates') return setRates();
   if (s === 'expbook') return setList('expense_book', 'סוגי הוצאות לספר', true);
   return setList('expense_business', 'סוגי הוצאות עסק', true);
+}
+
+// שער ההמרה לשורת הרווח בלבד
+async function setRates() {
+  const cur = (C.settings && C.settings.usd_rate) || 3;
+  $('view').innerHTML += `
+    <div class="page-head"><h2>שער דולר</h2></div>
+    <div class="card mini">
+      משמש <b>רק לשורת הרווח</b> בס"ת: כשהמכירה לרוכש בדולר, המחיר מומר לשקלים
+      כדי להתחשבן מול עלויות הסופר, הקלף וההוצאות שנקובות בשקלים.
+      המחיר, מה ששולם והיתרות ממשיכים להיות מוצגים בדולר ואינם מומרים.
+    </div>
+    <div class="card">
+      <div class="row" style="align-items:flex-end">
+        <div class="field" style="max-width:220px">
+          <label>שער נוכחי (₪ לדולר)</label>
+          <input id="rateVal" type="number" step="0.01" min="0.01" value="${esc(String(cur))}">
+        </div>
+        <div class="field"><button class="btn" id="rateSave">שמירה</button></div>
+      </div>
+      <div class="mini">שינוי השער משפיע מיד על כל שורות הרווח של ספרים שנמכרו בדולר.</div>
+    </div>`;
+  $('rateSave').onclick = async () => {
+    const v = Number($('rateVal').value);
+    if (!(v > 0)) return toast('יש להזין שער חיובי', 'err');
+    try {
+      await Store.settings.set('usd_rate', v);
+      C.settings.usd_rate = v;
+      invalidateRows();
+      toast('השער עודכן', 'ok');
+      render();
+    } catch (e) { toast(e.message, 'err'); }
+  };
 }
 
 function setContacts(cfgOnly) {

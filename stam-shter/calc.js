@@ -23,6 +23,8 @@ SELECT s.*,
   COALESCE(be.other_expenses, 0) AS book_expenses,
   COALESCE(pe.parchment_actual,0) AS parchment_actual,
   COALESCE(cp.paid, 0)           AS customer_paid,
+  COALESCE(cp.paid_usd_raw, 0)   AS paid_usd_raw,
+  COALESCE(cp.paid_ils_raw, 0)   AS paid_ils_raw,
   COALESCE(cp.peritah, 0)        AS peritah_cost
 FROM scrolls s
 LEFT JOIN products        p  ON p.id  = s.product_id
@@ -57,6 +59,10 @@ LEFT JOIN (
   -- COALESCE על כל רכיב: NULL באחד השדות היה מעלים את התשלום כולו מהסכום
   SELECT scroll_id,
     SUM(COALESCE(amount_ils,0) + COALESCE(amount_usd,0) * COALESCE(rate,0)) AS paid,
+    -- הסכומים הגולמיים נשמרים בנפרד: בספר שנמכר בדולר התשלום נספר
+    -- בדולרים ולא מומר, ולכן המכפלה בשער אינה מתאימה לו
+    SUM(COALESCE(amount_usd,0)) AS paid_usd_raw,
+    SUM(COALESCE(amount_ils,0)) AS paid_ils_raw,
     SUM(CASE WHEN COALESCE(amount_usd,0) > 0
         THEN COALESCE(amount_usd,0) * COALESCE(rate,0) - COALESCE(cash_in_hand,0) ELSE 0 END) AS peritah
   FROM customer_payments WHERE deleted=false GROUP BY scroll_id
@@ -66,8 +72,29 @@ WHERE s.deleted = false`;
 const n = (v) => (v === null || v === undefined || isNaN(v)) ? 0 : Number(v);
 const r2 = (v) => Math.round(n(v) * 100) / 100;
 
+// שער ההמרה משמש רק לשורת הרווח: המחיר לרוכש נקוב בדולר, אך העלויות
+// (סופר, קלף, הוצאות) נקובות בשקלים, ובלי המרה החיסור היה מחזיר הפסד
+// מדומה. כל שאר מספרי צד הרוכש נשארים במטבע הספר ואינם מומרים.
+const DEFAULT_USD_RATE = 3;
+let rateCache = { value: DEFAULT_USD_RATE, at: 0 };
+async function usdRate() {
+  if (Date.now() - rateCache.at < 60000) return rateCache.value;
+  try {
+    const r = await pool.query("SELECT value FROM settings WHERE key='usd_rate'");
+    const v = r.rows.length ? Number(r.rows[0].value) : NaN;
+    rateCache = { value: (isFinite(v) && v > 0) ? v : DEFAULT_USD_RATE, at: Date.now() };
+  } catch (e) {
+    rateCache = { value: DEFAULT_USD_RATE, at: Date.now() };
+  }
+  return rateCache.value;
+}
+const invalidateRate = () => { rateCache.at = 0; };
+
 // מחיל את נוסחאות האפיון על שורה גולמית מהשאילתה למעלה
-function computeScroll(row) {
+function computeScroll(row, rate) {
+  const usdRateUsed = (isFinite(rate) && rate > 0) ? rate : DEFAULT_USD_RATE;
+  // ספר שנמכר בדולר: כל צד הרוכש נקוב בדולר
+  const inUsd = String(row.buyer_currency || 'ILS').toUpperCase() === 'USD';
   const pages      = n(row.product_pages);
   const pageRate   = n(row.page_rate);
   const written    = n(row.pages_written);
@@ -85,7 +112,11 @@ function computeScroll(row) {
   // --- צד רוכש ---
   const buyerPageRate     = pages > 0 ? buyerTotal / pages : 0;
   const buyerDueProgress  = r2(written * buyerPageRate);
-  const customerPaid      = r2(row.customer_paid);
+  // בספר דולרי התשלום נספר בדולרים כפי שנרשם; שקלים שהתקבלו בו מומרים
+  // לדולר לפי השער. בספר שקלי — ההתנהגות הישנה, ללא שינוי.
+  const customerPaid      = inUsd
+    ? r2(n(row.paid_usd_raw) + n(row.paid_ils_raw) / usdRateUsed)
+    : r2(row.customer_paid);
   const buyerBalanceNow   = r2(buyerDueProgress - customerPaid);
   const buyerBalanceTotal = r2(buyerTotal - customerPaid);
 
@@ -103,8 +134,10 @@ function computeScroll(row) {
   // שנצברו: זה ייראה כהפסד אמיתי ויעוות גם את הסיכומים. הרווח שלו 0
   // עד שייקבע רוכש ומחיר.
   const sold = !!row.customer_id && buyerTotal > 0;
+  // ההכנסה מומרת לשקלים כדי להתחשבן מול עלויות שקליות
+  const revenueIls = inUsd ? r2(buyerTotal * usdRateUsed) : buyerTotal;
   const expectedProfit = sold ? r2(
-    buyerTotal - scribeBookPrice - peritah - fixedExpense - bookExpenses - parchmentExpected
+    revenueIls - scribeBookPrice - peritah - fixedExpense - bookExpenses - parchmentExpected
   ) : 0;
 
   return Object.assign({}, row, {
@@ -128,6 +161,9 @@ function computeScroll(row) {
     parchment_expected: parchmentExpected,
     parchment_actual: parchmentActual,
     peritah_cost: peritah,
+    in_usd: inUsd,
+    usd_rate_used: inUsd ? usdRateUsed : null,
+    revenue_ils: revenueIls,
     fixed_expense: fixedExpense,
     fixed_expense_overridden: hasOverride,
     book_expenses: bookExpenses,
@@ -145,8 +181,8 @@ async function getScrolls(filter = {}) {
   if (filter.status)      { vals.push(filter.status);      where.push(`s.status      = $${vals.length}`); }
   const sql = SCROLL_SQL + (where.length ? ' AND ' + where.join(' AND ') : '') +
               ' ORDER BY s.sale_date DESC NULLS LAST, s.id DESC';
-  const res = await pool.query(sql, vals);
-  return res.rows.map(computeScroll);
+  const [res, rate] = await Promise.all([pool.query(sql, vals), usdRate()]);
+  return res.rows.map(r => computeScroll(r, rate));
 }
 
 async function getScroll(id) {
@@ -154,4 +190,4 @@ async function getScroll(id) {
   return rows[0] || null;
 }
 
-module.exports = { getScrolls, getScroll, computeScroll, n, r2 };
+module.exports = { getScrolls, getScroll, computeScroll, n, r2, usdRate, invalidateRate, DEFAULT_USD_RATE };
