@@ -370,6 +370,40 @@ CREATE TABLE IF NOT EXISTS prod_customer_payments (
 CREATE INDEX IF NOT EXISTS idx_prodcustpay ON prod_customer_payments(customer_id) WHERE deleted=false;
 
 -- ==================================================================
+--  יומן שיחות ותזכורות
+-- ==================================================================
+
+-- שיחה עם איש קשר: מתי דיברנו ומה נאמר. משויכת תמיד לאיש קשר.
+CREATE TABLE IF NOT EXISTS contact_calls (
+  id BIGSERIAL PRIMARY KEY,
+  contact_id BIGINT REFERENCES contacts(id) ON DELETE SET NULL,
+  date DATE,
+  summary TEXT,                          -- מה היה בשיחה
+  deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMP, deleted_by INTEGER,
+  created_by INTEGER, created_at TIMESTAMP DEFAULT NOW(),
+  updated_by INTEGER, updated_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_calls_contact ON contact_calls(contact_id) WHERE deleted=false;
+CREATE INDEX IF NOT EXISTS idx_calls_date ON contact_calls(date) WHERE deleted=false;
+
+-- תזכורת. contact_id אופציונלי: תזכורת יכולה להיות קשורה לאיש קשר
+-- (ואז מופיעה במרחב שלו) או כללית לגמרי.
+CREATE TABLE IF NOT EXISTS reminders (
+  id BIGSERIAL PRIMARY KEY,
+  contact_id BIGINT REFERENCES contacts(id) ON DELETE SET NULL,
+  due_date DATE,
+  text TEXT,
+  done BOOLEAN DEFAULT false,
+  done_at TIMESTAMP, done_by INTEGER,
+  deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMP, deleted_by INTEGER,
+  created_by INTEGER, created_at TIMESTAMP DEFAULT NOW(),
+  updated_by INTEGER, updated_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_rem_contact ON reminders(contact_id) WHERE deleted=false;
+CREATE INDEX IF NOT EXISTS idx_rem_open ON reminders(due_date) WHERE deleted=false AND done=false;
+UPDATE reminders SET done=false WHERE done IS NULL;
+
+-- ==================================================================
 --  כללי
 -- ==================================================================
 CREATE TABLE IF NOT EXISTS settings (

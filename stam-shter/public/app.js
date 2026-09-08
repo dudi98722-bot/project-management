@@ -4,7 +4,7 @@
 
 // ============ מצב ============
 let ME = null, TAB = 'dash';
-const SUB = { prod: 'purchases', reports: 'overview', settings: 'contacts', system: 'recycle', track: 'summary', workspace: 'scribe' };
+const SUB = { prod: 'purchases', reports: 'overview', settings: 'contacts', system: 'recycle', track: 'summary', workspace: 'scribe', diary: 'reminders' };
 const C = { contacts: [], products: [], sizes: [], expBook: [], expBiz: [], scrolls: [], purchases: [], stations: [], kinds: [], settings: { usd_rate: 3 } };
 const IMPORT = { spec: null, table: '', text: '', mode: 'create', opts: { createMissingContacts: false } };
 
@@ -965,6 +965,7 @@ async function entityPage(cfg) {
   if ($('addBtn')) $('addBtn').onclick = () => openForm(cfg, null);
   wireRowActions(cfg, rows);
   wireApprove(cfg, rows);
+  wireReminders();
   wireBulkBtns();
   wireSelection(cfg);
   wireFilters(fkey, cols, allRows);
@@ -986,7 +987,13 @@ async function reloadCaches() {
 
 // ============ דשבורד ============
 async function pageDash() {
-  const d = await Store.reports.overview();
+  // התזכורות נטענות במקביל — תזכורת שלא רואים אותה היא חסרת ערך
+  const [d, rems] = await Promise.all([
+    Store.reports.overview(),
+    Store.reminders.list().catch(() => []),
+  ]);
+  const open = rems.filter(r => !r.done);
+  const late = open.filter(r => r.overdue);
   const st = (label, val, cls, sub) => `<div class="stat"><div class="label">${label}</div>
     <div class="value ${cls || ''}">${val}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>`;
   $('view').innerHTML += `
@@ -1001,6 +1008,25 @@ async function pageDash() {
       ${st('מלאי מוצרים', N(d.stock_units).toLocaleString('he-IL') + " יח'", '')}
       ${st('עלות פריטה', money(d.peritah_total), 'r', 'שתי המערכות')}
     </div>
+    ${open.length ? `<div class="card">
+      <div class="page-head" style="margin-bottom:10px">
+        <h3 style="margin:0">⏰ תזכורות פתוחות <span class="pill ${late.length ? 'r' : 'a'}">${open.length}</span></h3>
+        ${late.length ? `<span class="pill r">${late.length} באיחור</span>` : ''}
+        <div class="spacer"></div>
+        <button class="btn ghost sm" id="dashRem">לכל התזכורות ←</button>
+      </div>
+      ${tableHTML([
+        { label: '', cls: 'center', render: r => ME.caps.edit
+            ? `<button class="btn xs ghost" data-remdone="${r.id}" data-remval="1" title="סמן כבוצע">○</button>` : '○' },
+        { label: 'מה לזכור', cls: 'wrap', render: r => esc(r.text || '') },
+        { label: 'לתאריך', render: r => r.due_date
+            ? `${dt(r.due_date)}${r.overdue ? ` <span class="pill r">באיחור ${r.days_late}</span>` : ''}` : '' },
+        { label: 'קשור ל', render: r => r.contact_id
+            ? `<span class="link" data-remcontact="${r.contact_id}">${esc(r.contact_name || '')}</span>`
+            : '<span class="muted">כללי</span>' },
+      ], open.slice(0, 8), { noExport: true })}
+      ${open.length > 8 ? `<div class="mini" style="margin-top:8px">מוצגות 8 מתוך ${open.length}</div>` : ''}
+    </div>` : ''}
     ${d.has_usd ? `<div class="page-head" style="margin-top:18px">
         <h3 style="margin:0">צד הדולר</h3>
         <span class="mini">מוצג בנפרד — אין במערכת שער המרה, ושום סכום אינו מעורבב</span></div>
@@ -1009,6 +1035,8 @@ async function pageDash() {
         ${st('חוב לסופרים ($)', money(d.owed_to_scribes_usd, 'USD'), 'r')}
         ${st('חוב הרוכשים ($)', money(d.owed_by_customers_usd, 'USD'), 'a')}
       </div>` : ''}`;
+  wireReminders();
+  if ($('dashRem')) $('dashRem').onclick = () => { TAB = 'diary'; SUB.diary = 'reminders'; render(); };
 }
 
 // ============ ס"ת ============
@@ -2682,6 +2710,86 @@ function custDocHTML(d, mode) {
   </div>`;
 }
 
+// ============ יומן שיחות ותזכורות ============
+function callsCfg(cfgOnly) {
+  const cfg = {
+    title: 'יומן שיחות', bulk: 'contact_calls', store: Store.contactCalls,
+    load: () => Store.contactCalls.list(),
+    labelOf: (r) => `שיחה ${dt(r.date)}`,
+    defaults: () => ({ date: today() }),
+    note: 'תיעוד שיחות עם אנשי הקשר. השיחות מופיעות גם במרחב העבודה של אותו אדם.',
+    pin: 1,
+    fields: [
+      { k: 'contact_id', label: 'עם מי', type: 'combo', items: itemsContacts, required: true },
+      { k: 'date', label: 'תאריך השיחה', type: 'date' },
+      { k: 'summary', label: 'מה היה בשיחה', type: 'textarea' },
+    ],
+    cols: [
+      { label: 'עם מי', render: r => esc(r.contact_name || '—') },
+      { label: 'תאריך', render: r => dt(r.date) },
+      { label: 'תוכן השיחה', cls: 'wrap', render: r => esc(r.summary || '') },
+      { label: 'נרשם ע"י', render: r => esc(r.created_by_name || '') },
+    ],
+  };
+  return cfgOnly ? cfg : entityPage(cfg);
+}
+
+function remindersCfg(cfgOnly) {
+  const cfg = {
+    title: 'תזכורות', bulk: 'reminders', store: Store.reminders,
+    load: () => Store.reminders.list(),
+    labelOf: (r) => r.text || ('תזכורת #' + r.id),
+    defaults: () => ({ due_date: today() }),
+    note: 'תזכורת יכולה להיות משויכת לאיש קשר — ואז היא מופיעה גם במרחב שלו — או כללית.',
+    fields: [
+      { k: 'text', label: 'מה לזכור', type: 'textarea', required: true },
+      { k: 'due_date', label: 'לאיזה תאריך', type: 'date' },
+      { k: 'contact_id', label: 'קשור לאיש קשר (לא חובה)', type: 'combo', items: itemsContacts,
+        placeholder: 'תזכורת כללית — השאר ריק' },
+    ],
+    cols: [
+      { label: '', cls: 'center', render: r => ME.caps.edit
+          ? `<button class="btn xs ${r.done ? 'green' : 'ghost'}" data-remdone="${r.id}" data-remval="${r.done ? '0' : '1'}"
+              title="${r.done ? esc('בוצע' + (r.done_by_name ? ' ע"י ' + r.done_by_name : '')) + ' — לחיצה מבטלת' : 'סמן כבוצע'}"
+              >${r.done ? '✓' : '○'}</button>`
+          : (r.done ? '<span class="pill g">✓</span>' : '<span class="pill a">○</span>') },
+      { label: 'מה לזכור', cls: 'wrap', render: r => r.done
+          ? `<span class="muted" style="text-decoration:line-through">${esc(r.text || '')}</span>`
+          : esc(r.text || '') },
+      { label: 'לתאריך', render: r => r.due_date
+          ? `${dt(r.due_date)}${r.overdue ? ` <span class="pill r">באיחור ${r.days_late} ימים</span>` : ''}` : '' },
+      { label: 'קשור ל', render: r => r.contact_id
+          ? `<span class="link" data-remcontact="${r.contact_id}">${esc(r.contact_name || '')}</span>`
+          : '<span class="muted">כללי</span>' },
+    ],
+  };
+  return cfgOnly ? cfg : entityPage(cfg);
+}
+
+function pageDiary() {
+  const subs = [
+    { k: 'reminders', label: '⏰ תזכורות' },
+    { k: 'calls', label: '📞 יומן שיחות' },
+  ];
+  renderSubtabs('diary', subs);
+  return SUB.diary === 'calls' ? callsCfg() : remindersCfg();
+}
+
+// חיווט הסימון ומעבר לאיש הקשר — נקרא מ-entityPage דרך wireApprove
+function wireReminders() {
+  document.querySelectorAll('[data-remdone]').forEach(b => b.onclick = async (e) => {
+    e.stopPropagation();
+    b.disabled = true;
+    try {
+      await Store.reminders.markDone([+b.dataset.remdone], b.dataset.remval === '1');
+      invalidateRows(); renderKeepScroll();
+    } catch (err) { toast(err.message, 'err'); b.disabled = false; }
+  });
+  document.querySelectorAll('[data-remcontact]').forEach(b => b.onclick = () => {
+    WS.id = +b.dataset.remcontact; TAB = 'workspace'; SUB.workspace = 'scribe'; render();
+  });
+}
+
 // ============ הגדרות ============
 function pageSettings() {
   const subs = [
@@ -4346,6 +4454,8 @@ const WS_CFGS = () => ({
   prodCustPayCfg: () => prodCustPay(true),
   bizExpCfg: () => pageBizExp(true),
   contactCfg: () => setContacts(true),
+  callsCfg: () => callsCfg(true),
+  remindersCfg: () => remindersCfg(true),
 });
 
 // סעיף מתקפל
@@ -4375,6 +4485,7 @@ function wsWire(otherMode) {
     openMove(String(b.dataset.gmove).split(',').map(Number)));
   document.querySelectorAll('[data-gdetail]').forEach(b => b.onclick = () =>
     showGroupDetail(String(b.dataset.gdetail).split(',').map(Number)));
+  wireReminders();
   document.querySelectorAll('[data-gdelall]').forEach(b => b.onclick = async () => {
     const ids = String(b.dataset.gdelall).split(',').map(Number);
     if (!(await confirmBox(`להעביר ${ids.length} פריטים לסל המחזור? (ניתן לשחזר מלשונית מערכת)`))) return;
@@ -4413,6 +4524,40 @@ function wsWire(otherMode) {
     removeRow(cfg.store, id, label);
   });
   if ($('wsSwitch')) $('wsSwitch').onclick = () => { SUB.workspace = otherMode; render(); };
+}
+
+// שיחות ותזכורות של אותו אדם — זהה בשני המרחבים, ולכן נבנה פעם אחת.
+// נטען בנפרד מהדוח כי אלה טבלאות שאינן חלק מהחישוב הכספי.
+async function wsDiary(id) {
+  const [calls, rems] = await Promise.all([
+    Store.contactCalls.list({ contact_id: id }).catch(() => []),
+    Store.reminders.list({ contact_id: id }).catch(() => []),
+  ]);
+  return { calls, rems };
+}
+
+function wsDiaryHTML(d, id) {
+  const open = (d.rems || []).filter(r => !r.done).length;
+  return `
+    ${wsSec('rem', 'תזכורות', open ? `${open} פתוחות` : (d.rems.length ? 'הכל בוצע' : 0), tableHTML([
+      { label: '', cls: 'center', render: r => ME.caps.edit
+          ? `<button class="btn xs ${r.done ? 'green' : 'ghost'}" data-remdone="${r.id}" data-remval="${r.done ? '0' : '1'}"
+              title="${r.done ? 'בוצע — לחיצה מבטלת' : 'סמן כבוצע'}">${r.done ? '✓' : '○'}</button>`
+          : (r.done ? '✓' : '○') },
+      { label: 'מה לזכור', cls: 'wrap', render: r => r.done
+          ? `<span class="muted" style="text-decoration:line-through">${esc(r.text || '')}</span>`
+          : esc(r.text || '') },
+      { label: 'לתאריך', render: r => r.due_date
+          ? `${dt(r.due_date)}${r.overdue ? ` <span class="pill r">באיחור ${r.days_late}</span>` : ''}` : '' },
+      wsActCol('remindersCfg'),
+    ], d.rems))}
+
+    ${wsSec('calls', 'יומן שיחות', d.calls.length, tableHTML([
+      { label: 'תאריך', render: r => dt(r.date) },
+      { label: 'מה היה בשיחה', cls: 'wrap', render: r => esc(r.summary || '') },
+      { label: 'נרשם ע"י', render: r => esc(r.created_by_name || '') },
+      wsActCol('callsCfg'),
+    ], d.calls))}`;
 }
 
 // עריכה ומחיקה מתוך מרחב העבודה. השורות כאן מגיעות מדוחות ולא תמיד
@@ -4454,7 +4599,7 @@ const wsScrollCol = { label: 'ספר', render: r => { const s = C.scrolls.find(x
 // ---------- מרחב סופר ----------
 async function loadScribeSpace(id) {
   $('wsBody').innerHTML = '<div class="card muted">טוען…</div>';
-  let d, sheets, owned, pays, pages, bookExp, parchExp, alsoCustomer = false;
+  let d, sheets, owned, pays, pages, bookExp, parchExp, diary, alsoCustomer = false;
   try {
     const [rep, sh, ow, p1, p2, p3, p4] = await Promise.all([
       Store.reports.scribe(id),
@@ -4465,6 +4610,7 @@ async function loadScribeSpace(id) {
       Store.bookExpenses.list(), Store.parchmentExpenses.list(),
     ]);
     d = rep; sheets = sh; owned = ow;
+    diary = await wsDiary(id);
     const mine = new Set(d.scrolls.map(s => s.id));
     const only = (arr) => arr.filter(r => mine.has(+r.scroll_id));
     pays = only(p1); pages = only(p2); bookExp = only(p3); parchExp = only(p4);
@@ -4501,6 +4647,8 @@ async function loadScribeSpace(id) {
       ${ME.caps.finance ? wsAct('ספר חדש', '📖', 'scrollCfg', { scribe_id: id }) : ''}
       ${wsAct('רכישה ממנו', '📦', 'prodPurchaseCfg', { scribe_id: id })}
       ${wsAct('תשלום (מוצרים)', '💰', 'prodScribePayCfg', { scribe_id: id })}
+      ${wsAct('רישום שיחה', '📞', 'callsCfg', { contact_id: id })}
+      ${wsAct('תזכורת', '⏰', 'remindersCfg', { contact_id: id })}
       ${ME.caps.finance ? wsAct('תיקון לקיזוז ממנו', '↩', 'bizExpCfg', { scribe_id: id, _offset: true }) : ''}
     </div></div>
 
@@ -4575,6 +4723,8 @@ async function loadScribeSpace(id) {
         ${ME.caps.del ? ` <button class="btn ghost xs" data-sheetdel="${r.id}" title="מחק יריעה">🗑</button>` : ''}` },
     ], sheets)) : ''}
 
+    ${wsDiaryHTML(diary, id)}
+
     ${d.purchases.length ? wsSec('purch', 'רכישות מוצרים ממנו', d.purchases.length, tableHTML([
       { label: 'תאריך', render: r => dt(r.date) },
       { label: 'מוצר', render: r => esc(r.product_name || '—') },
@@ -4609,7 +4759,7 @@ async function loadScribeSpace(id) {
 // ---------- מרחב לקוח ----------
 async function loadCustomerSpace(id) {
   $('wsBody').innerHTML = '<div class="card muted">טוען…</div>';
-  let d, alsoScribe = false;
+  let d, diary, alsoScribe = false;
   try {
     const [rep, sc] = await Promise.all([
       Store.reports.customer(id),
@@ -4617,6 +4767,7 @@ async function loadCustomerSpace(id) {
     ]);
     d = rep;
     alsoScribe = !!(sc && (sc.scrolls.length || sc.purchases.length));
+    diary = await wsDiary(id);
   } catch (e) {
     $('wsBody').innerHTML = `<div class="card" style="color:var(--red)">${esc(e.message)}</div>`;
     return;
@@ -4639,6 +4790,8 @@ async function loadCustomerSpace(id) {
       ${wsAct('מכירה לו', '🛒', 'prodSaleCfg', { customer_id: id })}
       ${wsAct('תשלום לקוח (מוצרים)', '💵', 'prodCustPayCfg', { customer_id: id })}
       ${wsAct('ספר חדש עבורו', '📖', 'scrollCfg', { customer_id: id })}
+      ${wsAct('רישום שיחה', '📞', 'callsCfg', { contact_id: id })}
+      ${wsAct('תזכורת', '⏰', 'remindersCfg', { contact_id: id })}
     </div></div>
 
     ${d.scrolls.length ? wsSec('cbooks', 'ספרים שרכש', d.scrolls.length, tableHTML([
@@ -4666,6 +4819,8 @@ async function loadCustomerSpace(id) {
       { label: 'שולם בפועל', cls: 'num', render: r => mCell(r.paid_actual), total: rs => mCell(sumBy(rs, 'paid_actual')) },
       wsActCol('custPayCfg'),
     ], d.scroll_payments, { totals: true }))}
+
+    ${wsDiaryHTML(diary, id)}
 
     ${wsSec('sales', 'מכירות מוצרים לו', d.sales.length, tableHTML([
       { label: 'תאריך', render: r => dt(r.date) },
@@ -4709,6 +4864,9 @@ const QUICK_ADD = [
   { icon: '🛒', label: 'מכירת מוצרים',       cfg: () => prodSales(true) },
   { icon: '💰', label: 'תשלום לסופר (מוצרים)', cfg: () => prodScribePay(true) },
   { icon: '💵', label: 'תשלום לקוח (מוצרים)',  cap: 'finance', cfg: () => prodCustPay(true) },
+  { sep: true },
+  { icon: '⏰', label: 'תזכורת',                cfg: () => remindersCfg(true) },
+  { icon: '📞', label: 'רישום שיחה',           cfg: () => callsCfg(true) },
   { sep: true },
   { icon: '👤', label: 'איש קשר',            cfg: () => setContacts(true) },
   { icon: '🏷️', label: 'מוצר',               cfg: () => setProducts(true) },
@@ -4763,6 +4921,7 @@ const TABS = [
   { k: 'bizexp', label: 'הוצאות עסק', fn: pageBizExp, cap: 'finance' },
   { k: 'prod', label: 'מוצרים', fn: pageProd },
   { k: 'track', label: '📍 מעקב יריעות ומוצרים', fn: pageTrack },
+  { k: 'diary', label: '⏰ תזכורות ושיחות', fn: pageDiary },
   { k: 'reports', label: 'דוחות', fn: pageReports, cap: 'scribeReport' },
   { k: 'import', label: 'ייבוא', fn: pageImport, cap: 'edit' },
   { k: 'settings', label: 'הגדרות', fn: pageSettings },

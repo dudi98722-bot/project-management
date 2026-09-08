@@ -7,6 +7,8 @@ const router = express.Router();
 // טבלה -> תווית בעברית + ביטוי לתיאור השורה בתצוגה
 const TABLES = {
   contacts:               { label: 'אנשי קשר',              desc: 'name' },
+  contact_calls:          { label: 'שיחות',                 desc: `'שיחה '||COALESCE(to_char(date,'DD/MM/YYYY'),'')` },
+  reminders:              { label: 'תזכורות',               desc: 'text' },
   products:               { label: 'מוצרים',                desc: 'name' },
   parchment_sizes:        { label: 'גדלי קלף',              desc: 'name' },
   list_items:             { label: 'ערכי רשימות',           desc: 'value' },

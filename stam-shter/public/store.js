@@ -49,6 +49,10 @@
       me: () => apiFetch('/auth/me'),
     },
     // נתוני יסוד
+    contactCalls: res('/contact-calls'),
+    reminders: Object.assign(res('/reminders'), {
+      markDone: (ids, done) => apiFetch('/reminders/done', { method: 'POST', body: { ids, done } }),
+    }),
     contacts: Object.assign(res('/contacts'), {
       uploadIdPhoto: (id, body) => apiFetch('/contacts/' + id + '/id-photo', { method: 'POST', body }),
       removeIdPhoto: (id) => apiFetch('/contacts/' + id + '/id-photo', { method: 'DELETE' }),
