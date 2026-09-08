@@ -377,7 +377,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 מט'";
+var APP_BUILD = "19.08 נא'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -651,6 +651,14 @@ function uid(){ return "id" + Date.now().toString(36) + Math.random().toString(3
 function num(n){ n = Number(n)||0; return n.toLocaleString("he-IL",{maximumFractionDigits:2}); }
 function money(n){ return "₪" + num(n); }
 function todayISO(){ var d=new Date(); return d.toISOString().slice(0,10); }
+/* תאריך ושעה — ליומן השינויים של הגיליון */
+function dateTimeHe(iso){
+  if(!iso) return "";
+  var d=new Date(iso);
+  if(isNaN(d.getTime())) return String(iso).slice(0,16).replace("T"," ");
+  function p2(n){ return (n<10?"0":"")+n; }
+  return p2(d.getDate())+"/"+p2(d.getMonth()+1)+"/"+d.getFullYear()+" "+p2(d.getHours())+":"+p2(d.getMinutes());
+}
 function dateHe(iso){ if(!iso) return ""; var s=esc(String(iso).slice(0,10)); var p=s.split("-"); return p.length===3? p[2]+"/"+p[1]+"/"+p[0] : s; }
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
 function round2(n){ return Math.round((Number(n)||0)*100)/100; }
@@ -1032,6 +1040,7 @@ function normalizeDB(d){
     s.rows=s.rows||[]; s.cols=s.cols||[];
     s.fmt=(s.fmt&&typeof s.fmt==="object")?s.fmt:{};   // עיצוב תאים: "שורה,עמודה" → {bg,bold,bt,bb,bl,br}
     s.colW=(s.colW&&typeof s.colW==="object")?s.colW:{};   // רוחב עמודות שנקבע בגרירה
+    s.log=Array.isArray(s.log)?s.log.slice(-400):[];       // יומן שינויים חסום בגודלו
     s.rows.forEach(function(r,i){
       if(!Array.isArray(r)){ s.rows[i]=[]; return; }
       for(var ci=0;ci<r.length;ci++) r[ci]=sheetStripShekel(r[ci]);
@@ -5684,6 +5693,7 @@ function addManagerFromExpense(aptId,eId){
     }});
 }
 function openExpenseEditor(eId,aptId,presetParent){
+  _exPayBuilt=false;   /* טופס חדש — בלוק התשלום נבנה מחדש */
   var a=byId(DB.apartments,aptId);
   var e=eId?byId(DB.expenses,eId):null;
   var curParent = e ? (e.parentId||"") : (presetParent||"");
@@ -5765,8 +5775,48 @@ function openExpenseEditor(eId,aptId,presetParent){
       '<div class="hint">דמי הניהול (כולל מע"מ) מתחלקים בין השותפים לפי חלוקת ההוצאה שלמעלה.</div>'+
       '</div>';
   }
+  /* רישום תשלום יחד עם השלב — רק בשלב חדש שאינו מכל. בעריכה
+     התשלומים מנוהלים ברשימת התשלומים של השלב, ושם המקום הנכון. */
+  if(!eId && !cont){
+    body+='<div class="section-title">רישום תשלום עכשיו <span class="hint">(אופציונלי)</span></div>'+
+      '<div class="field"><label style="font-weight:400"><input type="checkbox" id="ex-paynow" style="width:auto;margin-inline-end:6px" onchange="toggleExpPayNow(\''+aptId+'\')"> נרשם גם תשלום על השלב הזה</label></div>'+
+      '<div id="ex-pay" style="display:none"></div>';
+  }
   openModal({title:eId?"עריכת הוצאה":"הוצאה חדשה",wide:true,bodyHtml:body,saveLabel:"שמירה",onSave:function(){ return saveExpense(eId,aptId); }});
   setTimeout(function(){ updateSplitSum(); updateMgmtPreview(); },30);
+}
+/* בלוק התשלום בטופס ההוצאה — נבנה בפתיחה הראשונה בלבד, כדי שערכים
+   שהמשתמש כבר הקליד לא יידרסו בכל סימון וביטול. */
+var _exPayBuilt=false;
+function toggleExpPayNow(aptId){
+  var on=checked("ex-paynow"), w=document.getElementById("ex-pay");
+  if(!w) return;
+  w.style.display=on?"block":"none";
+  if(!on || _exPayBuilt) return;
+  _exPayBuilt=true;
+  var parts=apPartners(aptId);
+  w.innerHTML='<div class="form-grid">'+
+    '<div class="field"><label>סכום התשלום</label><input id="ex-pay-amount" type="number" step="0.01" value="'+esc(String(Number(val("ex-amount"))||""))+'"></div>'+
+    '<div class="field"><label>תאריך התשלום</label><input id="ex-pay-date" type="date" value="'+esc(val("ex-date")||todayISO())+'"></div>'+
+    '<div class="field"><label>מהחשבון</label><select id="ex-pay-account" onchange="onExpPayAccount()">'+
+      '<option value="">— ידני / ללא חשבון —</option>'+
+      availAccounts(aptId).map(function(ac){
+        return '<option value="'+ac.id+'">'+esc(ac.name)+(ac.isBank?" 🏦 (בנק זמני)":"")+'</option>'; }).join("")+
+    '</select></div>'+
+    (parts.length
+      ? '<div class="field"><label>מי שילם</label><select id="ex-pay-payer"><option value="">—</option>'+
+          parts.map(function(p){return '<option value="'+p.partnerId+'">'+esc(partnerName(p.partnerId))+'</option>';}).join("")+
+        '</select></div>'
+      : '')+
+    '<div class="field"><label>אמצעי תשלום</label><select id="ex-pay-method" onchange="onMethodPick(\'ex-pay-method\')">'+methodOptions("transfer")+'</select></div>'+
+    '<div class="field"><label>חשבונית</label><select id="ex-pay-invoice">'+invoiceStatusOptions("",false)+'</select></div>'+
+    '<div class="field full"><label>קישור לחשבונית <span class="hint">(אופציונלי)</span></label><input id="ex-pay-link" placeholder="הדבק כאן קישור"></div>'+
+  '</div>';
+}
+function onExpPayAccount(){
+  var payer=document.getElementById("ex-pay-payer"); if(!payer) return;
+  if(accountIsBank(val("ex-pay-account"))){ payer.value=""; payer.disabled=true; }
+  else payer.disabled=false;
 }
 function saveExpense(eId,aptId){
   var a=byId(DB.apartments,aptId);
@@ -5877,10 +5927,30 @@ function saveExpense(eId,aptId){
     }));
   }
   syncAutoMgmtPayments(eId);   // תשלום "שווה ערך" אוטומטי לפי הגדרת הפרויקט
+  /* ---------- תשלום שנרשם יחד עם השלב ----------
+     נוצר רק אחרי שהשלב עצמו נשמר בהצלחה, כדי שלא יישאר תשלום
+     יתום אם משהו נכשל למעלה. */
+  var payMsg="";
+  if(document.getElementById("ex-paynow") && checked("ex-paynow")){
+    var pAmt=Number(val("ex-pay-amount"))||0;
+    if(pAmt>0){
+      var accId=val("ex-pay-account")||null;
+      var isBank=accountIsBank(accId);
+      var payer=isBank?null:(val("ex-pay-payer")||null);
+      var inv=val("ex-pay-invoice")||"";
+      DB.payments.push({id:uid(),expenseId:eId,date:val("ex-pay-date")||val("ex-date")||todayISO(),
+        amount:round2(pAmt),accountId:accId,payerPartnerId:payer,
+        method:val("ex-pay-method")||"transfer",
+        recipientType:"supplier",recipientManagerId:null,
+        invoiceStatus:inv, hasInvoice:(inv==="has"),
+        invoiceLink:val("ex-pay-link")||"", note:"",deleted:false});
+      payMsg=" · נרשם תשלום "+money(pAmt);
+    }
+  }
   /* סכום המכל נגזר מתתי-השלבים — מסנכרנים את האב הישן ואת החדש */
   if(oldParent && oldParent!==e.parentId) syncParentAmount(oldParent);
   if(e.parentId) syncParentAmount(e.parentId);
-  save(); toast("ההוצאה נשמרה","ok"); rerender();
+  save(); toast("ההוצאה נשמרה"+payMsg,"ok"); rerender();
 }
 
 /* ---------- לשונית תשלומים: כל תשלומי הפרוייקט במקום אחד ---------- */
@@ -11703,6 +11773,12 @@ function sheetGripReset(id,c){
   delete sh.colW[c];
   save(); rerender();
 }
+/* היסטוריה של התא המסומן — מהסרגל */
+function sheetSelHistory(id){
+  var sel=sheetSelNorm();
+  if(!sel || sel.id!==id){ toast("סמן קודם תא","warn"); return; }
+  sheetCellHistory(id,sel.r1,sel.c1);
+}
 function sheetSelCol(id,c){
   var s=byId(DB.sheets,id); if(!s) return;
   var n=Math.max((s.rows||[]).length,SHEET_MIN_ROWS);
@@ -11852,6 +11928,7 @@ function viewSheets(){
       '<span style="width:10px"></span>'+
       '<button class="btn btn-sm" title="העתקת התאים המסומנים (גם Ctrl+C) — אפשר להדביק כאן או באקסל" onclick="sheetCopySel()">⧉ העתק</button>'+
       '<button class="btn btn-sm" title="מחיקת התוכן של התאים המסומנים (גם מקש Delete) — העיצוב נשאר" onclick="sheetClearSel(\''+s.id+'\')">🧹 נקה תוכן</button>'+
+      '<button class="btn btn-sm" title="היסטוריית השינויים של התא המסומן (גם בלחיצה ימנית על התא)" onclick="sheetSelHistory(\''+s.id+'\')">🕘 היסטוריה</button>'+
     '</div>'+
     /* שורת מצב בגובה קבוע, מחוץ לסרגל. כשהתווית ישבה בתוך הסרגל
        היא התארכה מ"לא נבחר תא" ל"נבחרו 3 תאים · סה"כ 600", הסרגל
@@ -11901,7 +11978,8 @@ function viewSheets(){
     '<b>העתקה:</b> מסמנים טווח ולוחצים <b>Ctrl+C</b> (או "⧉ העתק") — ומדביקים ב-Ctrl+V בתא אחר, או ישר באקסל. '+
     '<b>עמודות:</b> ריחוף מעל אות העמודה חושף <b>⧉</b> שכפול עם התוכן, <b>＋</b> הוספת עמודה אחריה ו-<b>✕</b> מחיקה.<br>'+
     '<b>ניקוי:</b> מסמנים טווח ולוחצים <b>Delete</b> (או "🧹 נקה תוכן") — התוכן נמחק והעיצוב נשאר. '+
-    '<b>₪ שקל</b> מסמן תאים כסכום — הסימן מוצג בתא ובשורת הסיכום, והערך עצמו נשאר מספר נקי.</div>';
+    '<b>₪ שקל</b> מסמן תאים כסכום — הסימן מוצג בתא ובשורת הסיכום, והערך עצמו נשאר מספר נקי.<br>'+
+    '<b>היסטוריה:</b> לחיצה ימנית על תא (או "🕘 היסטוריה") מציגה מי שינה אותו, מתי, מה היה ומה נכנס — עם אפשרות להחזיר ערך קודם.</div>';
   return h;
 }
 function newSheet(){
@@ -11933,6 +12011,7 @@ function sheetRowHtml(s,ri,nCols){
     h+=can("edit")
       ? '<td class="'+cls.join(" ")+'"'+sty+' data-cr="'+ri+'" data-cc="'+c+'"'+
         ' onmousedown="sheetCellDown(event,\''+s.id+'\','+ri+','+c+')"'+
+        ' oncontextmenu="event.preventDefault();sheetCellHistory(\''+s.id+'\','+ri+','+c+')"'+
         ' onmouseover="sheetCellOver(\''+s.id+'\','+ri+','+c+')">'+
         '<input class="'+(isNum?"num":"")+'" value="'+esc(v)+'"'+
         ' data-r="'+ri+'" data-c="'+c+'" onchange="setSheetCell(\''+s.id+'\','+ri+','+c+',this.value)"'+
@@ -11970,6 +12049,21 @@ function sheetRefreshSums(s){
     if(cnt) td.title=cnt+" תאים מספריים"; else td.removeAttribute("title");
   }
 }
+/* ---------- יומן שינויים של הגיליון ----------
+   לכל שינוי בתא נשמר מי שינה, מתי, ומה היה קודם. היומן חסום
+   ב-SHEET_LOG_MAX רשומות לגיליון — אחרת הוא היה מנפח את מסד
+   הנתונים, שנשלח בשלמותו בכל שמירה. */
+var SHEET_LOG_MAX=400;
+function sheetLogAdd(s,r,c,before,after){
+  if(String(before)===String(after)) return;
+  s.log=Array.isArray(s.log)?s.log:[];
+  s.log.push({r:r,c:c,b:String(before==null?"":before),a:String(after==null?"":after),
+    t:new Date().toISOString(),u:(CU&&CU.name)||""});
+  if(s.log.length>SHEET_LOG_MAX) s.log=s.log.slice(-SHEET_LOG_MAX);
+}
+function sheetCellLog(s,r,c){
+  return (s.log||[]).filter(function(x){ return x.r===r && x.c===c; }).reverse();
+}
 function setSheetCell(id,r,c,v){
   if(!can("edit")) return;
   var s=byId(DB.sheets,id); if(!s) return;
@@ -11978,6 +12072,8 @@ function setSheetCell(id,r,c,v){
   var row=s.rows[r];
   while(row.length<=c) row.push("");
   var clean=sheetStripShekel(v);
+  var prev=row[c];
+  sheetLogAdd(s,r,c,prev,clean);
   row[c]=clean;
   save();
   /* ---------- עדכון במקום ----------
@@ -11993,6 +12089,50 @@ function setSheetCell(id,r,c,v){
   sheetRefreshSums(s);
   paintSheetSel();
 }
+/* היסטוריית התא — נפתחת בלחיצה ימנית או מהסרגל */
+function sheetCellHistory(id,r,c){
+  var s=byId(DB.sheets,id); if(!s) return;
+  var rows=sheetCellLog(s,r,c);
+  var cur=((s.rows||[])[r]||[])[c];
+  var addr=colLetter(c)+(r+1);
+  var h='<div class="stat-grid" style="margin-bottom:10px">'+
+      stat("התא",addr)+
+      stat("הערך כעת",(cur==null||cur==="")?'<span class="muted">ריק</span>':esc(String(cur)))+
+      stat("שינויים",rows.length)+
+    '</div>';
+  if(!rows.length){
+    h+='<div class="empty">אין שינויים מתועדים לתא הזה.</div>'+
+      '<div class="hint" style="text-align:center">התיעוד נשמר מרגע העדכון האחרון של המערכת. '+
+      'ערכים שהוזנו לפניו אינם מופיעים כאן.</div>';
+  } else {
+    h+='<div class="table-wrap" style="max-height:320px"><table class="tbl"><thead><tr>'+
+      '<th>מתי</th><th>מי</th><th>מה היה</th><th>מה נכנס</th><th></th>'+
+      '</tr></thead><tbody>'+
+      rows.map(function(x,i){
+        return '<tr><td>'+esc(dateTimeHe(x.t))+'</td>'+
+          '<td>'+esc(x.u||"—")+'</td>'+
+          '<td class="muted">'+(x.b===""?'<span class="muted">ריק</span>':esc(x.b))+'</td>'+
+          '<td><b>'+(x.a===""?'<span class="muted">ריק</span>':esc(x.a))+'</b></td>'+
+          '<td class="right">'+(can("edit")&&String(x.b)!==String(cur)
+            ? '<button class="btn btn-ghost btn-sm" title="החזר את הערך הזה לתא" onclick="sheetRevertCell(\''+id+'\','+r+','+c+','+i+')">↩ שחזר</button>'
+            : '')+'</td></tr>';
+      }).join("")+
+      '</tbody></table></div>'+
+      '<div class="hint">מוצגים עד '+SHEET_LOG_MAX+' השינויים האחרונים בגיליון כולו. הישן ביותר נמחק כשנוספים חדשים.</div>';
+  }
+  openModal({title:"🕘 היסטוריית התא "+addr,wide:true,bodyHtml:h,saveLabel:null});
+}
+/* מחזיר לתא ערך מתוך ההיסטוריה */
+function sheetRevertCell(id,r,c,i){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var s=byId(DB.sheets,id); if(!s) return;
+  var rows=sheetCellLog(s,r,c), x=rows[i]; if(!x) return;
+  closeModal();
+  setSheetCell(id,r,c,x.b);
+  var inp=document.querySelector('.sheet-grid input[data-r="'+r+'"][data-c="'+c+'"]');
+  if(inp) inp.value=x.b;
+  toast('הוחזר הערך "'+(x.b===""?"ריק":x.b)+'" לתא '+colLetter(c)+(r+1),"ok");
+}
 /* ניקוי התוכן של הטווח המסומן — העיצוב נשאר */
 function sheetClearSel(id){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
@@ -12003,7 +12143,7 @@ function sheetClearSel(id){
   for(var r=sel.r1;r<=sel.r2;r++){
     var row=(s.rows||[])[r]; if(!row) continue;
     for(var c=sel.c1;c<=sel.c2;c++){
-      if(row[c]!=null && String(row[c])!==""){ row[c]=""; n++; }
+      if(row[c]!=null && String(row[c])!==""){ sheetLogAdd(s,r,c,row[c],""); row[c]=""; n++; }
     }
   }
   if(!n){ toast("אין תוכן לנקות בטווח שנבחר","warn"); return; }
@@ -12175,7 +12315,9 @@ function applySheetPaste(id,txt,r0,c0){
     cells.forEach(function(v,j){
       var c=c0+j;
       while(row.length<=c) row.push("");
-      row[c]=sheetStripShekel(v.trim());
+      var nv=sheetStripShekel(v.trim());
+      sheetLogAdd(s,r,c,row[c],nv);
+      row[c]=nv;
     });
   });
   save(); rerender();
