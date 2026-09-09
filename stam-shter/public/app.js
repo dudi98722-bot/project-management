@@ -48,7 +48,16 @@ function modal(opts) {
       ${opts.footer ? `<div class="m-foot">${opts.footer}</div>` : ''}
     </div>`;
   root.appendChild(wrap);
-  const close = () => wrap.remove();
+  // הכניסה כולה ב-CSS דרך @starting-style; כאן רק היציאה, שדורשת
+  // להשהות את ההסרה עד שהמעבר נגמר.
+  let closing = false;
+  const close = () => {
+    if (closing) return;          // סגירה כפולה (Esc + לחיצה) לא תריץ שוב
+    closing = true;
+    wrap.classList.add('out');
+    wrap.style.pointerEvents = 'none';   // חלונית שנסגרת לא אמורה לקלוט לחיצות
+    setTimeout(() => wrap.remove(), 130);
+  };
   wrap.querySelector('.x').onclick = close;
   wrap.onclick = (e) => { if (e.target === wrap) close(); };
   return { el: wrap, close };

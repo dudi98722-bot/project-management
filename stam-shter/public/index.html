@@ -12,7 +12,19 @@
     --line:#e5e7eb; --brand:#0f766e; --brand-d:#115e59; --accent:#0ea5e9;
     --gold:#c98a2e; --green:#16a34a; --red:#dc2626; --amber:#d97706; --soft:#f6f7f8;
     --shadow:0 1px 3px rgba(15,23,42,.08),0 8px 24px rgba(15,23,42,.06); --radius:14px;
+    /* עקומות התאוצה. המובנות של CSS חלשות מדי ומרגישות רפויות.
+       ease-out לכל מה שנכנס או מגיב ללחיצה — הוא מתחיל מהר, וזה בדיוק
+       הרגע שבו העין מסתכלת. ease-in לא בשימוש: הוא מתחיל לאט ולכן
+       מרגיש איטי גם כשהוא באותו אורך זמן. */
+    --ease-out:cubic-bezier(.23,1,.32,1);
+    --ease-in-out:cubic-bezier(.77,0,.175,1);
   }
+
+  /* ---------- תנועה ----------
+     המערכת הזו פתוחה כל היום. מעבר בין לשוניות, ציור טבלה מחדש וסינון
+     נשארים בכוונה בלי אנימציה: פעולה שחוזרת מאות פעמים ביום הופכת כל
+     השהיה, קצרה ככל שתהיה, לעיכוב מורגש. מונפש רק מה שבאמת מופיע —
+     חלוניות, תפריטים נפתחים, לחיצות והודעות. */
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
   body{font-family:"Assistant","Segoe UI",Arial,sans-serif;background:var(--soft);color:var(--ink);font-size:15px;line-height:1.5}
@@ -33,11 +45,17 @@
   /* ---------- שדות וכפתורים ---------- */
   .field{text-align:right;margin-bottom:14px}
   .field label{display:block;font-size:13px;color:var(--muted);margin-bottom:5px}
-  .field input,.field select,.field textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;outline:none;transition:border .15s}
-  .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--brand)}
+  .field input,.field select,.field textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;outline:none;
+    transition:border-color 140ms var(--ease-out),box-shadow 140ms var(--ease-out)}
+  /* טבעת מיקוד ולא רק שינוי גבול — בטופס צפוף צריך לראות מיד איפה עומדים */
+  .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(15,118,110,.13)}
   .field .hint{font-size:12px;color:var(--muted);margin-top:4px}
-  .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:none;border-radius:10px;padding:10px 17px;font-size:15px;font-weight:600;background:var(--brand);color:#fff;transition:filter .15s,transform .05s}
-  .btn:hover{filter:brightness(.95)} .btn:active{transform:translateY(1px)}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:none;border-radius:10px;padding:10px 17px;font-size:15px;font-weight:600;background:var(--brand);color:#fff;
+    transition:filter 140ms var(--ease-out),transform 120ms var(--ease-out)}
+  /* הקטנה קלה בלחיצה — המשוב שאומר שהממשק שמע את הלחיצה.
+     scale עדיף על הזזה: הוא נראה כמו לחיצה ולא כמו קפיצה. */
+  .btn:active{transform:scale(.97)}
+  @media (hover:hover) and (pointer:fine){ .btn:hover{filter:brightness(.95)} }
   .btn:disabled{opacity:.55;cursor:not-allowed}
   .btn.full{width:100%}
   .btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
@@ -83,7 +101,8 @@
   .th-filt{border:none;background:none;color:#94a3b8;font-size:11px;padding:1px 3px;border-radius:5px;line-height:1}
   .th-filt:hover{background:#e2e8f0;color:var(--ink)}
   .th-filt.on{color:#fff;background:var(--brand);font-weight:700}
-  .filt-menu{position:absolute;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 30px rgba(15,23,42,.18);z-index:70;width:270px;padding:9px}
+  .filt-menu{position:absolute;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 30px rgba(15,23,42,.18);z-index:70;width:270px;padding:9px;
+    transform-origin:top center;animation:menu-in 150ms var(--ease-out)}
   .filt-search{width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px}
   .filt-actions{font-size:12px;color:var(--muted);margin-bottom:5px}
   .filt-list{max-height:260px;overflow-y:auto}
@@ -93,7 +112,12 @@
   .filt-foot{display:flex;gap:6px;padding-top:7px;margin-top:5px;border-top:1px solid var(--line)}
   /* ---------- השלמה אוטומטית ---------- */
   .combo{position:relative}
-  .combo-menu{position:absolute;top:100%;left:0;right:0;margin-top:3px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 30px rgba(15,23,42,.18);z-index:75;max-height:240px;overflow-y:auto}
+  /* תפריט נפתח מוצג בהחלפת display, ולכן keyframe ולא transition —
+     transition אינו רץ כשאלמנט עובר מ-none. נפתח מהשדה שמעליו ולא
+     מהמרכז, כי משם הוא בא. */
+  @keyframes menu-in{from{opacity:0;transform:scale(.97) translateY(-5px)}}
+  .combo-menu{position:absolute;top:100%;left:0;right:0;margin-top:3px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 30px rgba(15,23,42,.18);z-index:75;max-height:240px;overflow-y:auto;
+    transform-origin:top center;animation:menu-in 150ms var(--ease-out)}
   .combo-menu div{padding:8px 11px;font-size:14px;cursor:pointer}
   .combo-menu div:hover,.combo-menu div.act{background:var(--soft)}
   .combo-menu .none{color:var(--muted);cursor:default}
@@ -150,8 +174,25 @@
   .mbar .b.neg{background:var(--red)}
 
   /* ---------- מודאל ---------- */
-  .modal-bg{position:fixed;inset:0;background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;z-index:60;padding:16px}
-  .modal{background:#fff;border-radius:16px;box-shadow:var(--shadow);width:100%;max-width:620px;max-height:92vh;overflow:auto}
+  /* החלונית נפתחת מדי פעם ולא מאות פעמים ביום, ולכן היא כן מונפשת:
+     בלי זה היא פשוט מתקיימת פתאום, וזה נראה כמו תקלה. נכנסת מ-0.96
+     ולא מ-0 — שום דבר במציאות לא מופיע מכלום. היציאה מהירה מהכניסה:
+     המשתמש כבר החליט לסגור, ואין סיבה להמתין לו. */
+  /* המצב הגלוי הוא ברירת המחדל, והכניסה מוגדרת ב-@starting-style.
+     זה חשוב ולא רק אלגנטי: אם המעבר לא ירוץ מסיבה כלשהי — דפדפן ישן,
+     לשונית מוסתרת, שעון אנימציה מושהה — החלונית פשוט תופיע גלויה.
+     ההפך (להתחיל שקוף ולהאיר בעזרת מחלקה) משאיר חלונית בלתי נראית. */
+  .modal-bg{position:fixed;inset:0;background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;z-index:60;padding:16px;
+    opacity:1;transition:opacity 190ms var(--ease-out)}
+  @starting-style{ .modal-bg{opacity:0} }
+  .modal{background:#fff;border-radius:16px;box-shadow:var(--shadow);width:100%;max-width:620px;max-height:92vh;overflow:auto;
+    opacity:1;transform:scale(1);transition:opacity 190ms var(--ease-out),transform 190ms var(--ease-out)}
+  /* נכנסת מ-0.96 ולא מ-0: שום דבר במציאות לא מופיע מכלום.
+     מהמרכז — החלונית אינה תלויה בכפתור שפתח אותה, בשונה מתפריט נפתח. */
+  @starting-style{ .modal-bg .modal{opacity:0;transform:scale(.96)} }
+  /* היציאה מהירה מהכניסה — המשתמש כבר החליט לסגור */
+  .modal-bg.out{opacity:0;transition-duration:120ms}
+  .modal-bg.out .modal{opacity:0;transform:scale(.985);transition-duration:120ms}
   .modal.lg{max-width:1000px}
   .modal .m-head{display:flex;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:#fff;z-index:2}
   .modal .m-head h3{margin:0;font-size:17px;flex:1}
@@ -178,9 +219,13 @@
   #quickAdd{position:fixed;bottom:24px;right:24px;z-index:85;display:flex;flex-direction:column;align-items:flex-end;gap:10px}
   .qa-fab{width:56px;height:56px;border-radius:50%;border:none;background:var(--brand);color:#fff;font-size:30px;line-height:1;
     box-shadow:0 6px 20px rgba(15,118,110,.4);transition:transform .15s,filter .15s}
-  .qa-fab:hover{filter:brightness(1.08);transform:scale(1.06)}
+  /* הגדלה במעבר עכבר רק במכשיר עם עכבר — במגע כל נגיעה נחשבת hover,
+     והכפתור היה נשאר מוגדל אחרי הלחיצה */
+  @media (hover:hover) and (pointer:fine){ .qa-fab:hover{filter:brightness(1.08);transform:scale(1.06)} }
+  .qa-fab:active{transform:scale(.95)}
   .qa-menu{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 40px rgba(15,23,42,.22);
-    padding:8px;min-width:230px;max-height:70vh;overflow-y:auto}
+    padding:8px;min-width:230px;max-height:70vh;overflow-y:auto;
+    transform-origin:bottom left;animation:menu-in 160ms var(--ease-out)}
   .qa-head{font-size:12px;color:var(--muted);padding:4px 10px 8px;font-weight:600}
   .qa-menu button{display:flex;align-items:center;gap:10px;width:100%;text-align:right;background:none;border:none;
     padding:9px 11px;border-radius:9px;font-size:14px;color:var(--ink);font-family:inherit}
@@ -260,9 +305,23 @@
     a{text-decoration:none;color:inherit}
     @page{size:A4;margin:12mm}
   }
-  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--bg);color:#fff;padding:12px 20px;border-radius:10px;box-shadow:var(--shadow);z-index:90;opacity:0;transition:opacity .2s,bottom .2s;pointer-events:none;max-width:90vw;text-align:center}
-  #toast.show{opacity:1;bottom:30px}
+  /* transform ולא bottom: הזזה דרך bottom מחייבת את הדפדפן לחשב פריסה
+     מחדש בכל פריים, ו-transform רץ על הכרטיס הגרפי */
+  #toast{position:fixed;bottom:26px;left:50%;background:var(--bg);color:#fff;padding:12px 20px;border-radius:10px;box-shadow:var(--shadow);z-index:90;
+    opacity:0;transform:translateX(-50%) translateY(10px);
+    transition:opacity 200ms var(--ease-out),transform 200ms var(--ease-out);pointer-events:none;max-width:90vw;text-align:center}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   #toast.err{background:var(--red)} #toast.ok{background:var(--green)}
+
+  /* תנועה מופחתת אינה "בלי אנימציה" אלא בלי תזוזה. שקיפות נשארת, כי
+     היא זו שמסבירה שמשהו נפתח או נסגר. */
+  @media (prefers-reduced-motion:reduce){
+    .modal{transform:none!important;transition:opacity 120ms linear}
+    .modal-bg{transition:opacity 120ms linear}
+    .combo-menu,.qa-menu,.filt-menu{animation:none}
+    .btn:active,.qa-fab:active,.qa-fab:hover{transform:none}
+    #toast{transform:translateX(-50%)!important;transition:opacity 150ms linear}
+  }
 
   @media(max-width:640px){
     main#view{padding:11px} .stat .value{font-size:20px}
