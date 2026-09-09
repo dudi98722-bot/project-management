@@ -486,6 +486,7 @@ router.get('/scribe/:id', async (req, res) => {
                     COALESCE(sd.sold,0) AS sold_qty,
                     ${RETURNED_QTY} AS returned_qty,
                     ${CONSIGN_OPEN_QTY} AS consign_open_qty,
+                    (${CONSIGN_OPEN_QTY} * COALESCE(pp.cost_per_unit,0)) AS consign_open_value,
                     ${STOCK_QTY} AS remaining_qty,
                     COALESCE(pp.currency,'ILS') AS currency,
                     ${OWED_QTY} AS owed_qty,
@@ -525,6 +526,10 @@ router.get('/scribe/:id', async (req, res) => {
       product_totals: {
         owed: prodOwed, paid: prodPaid, balance: r2(prodOwed - prodPaid),
         owed_usd: prodOwedU, paid_usd: prodPaidU, balance_usd: r2(prodOwedU - prodPaidU),
+        // סחורה שנרכשה ממנו בקומיסיון וטרם התממשה — לא חוב, אבל צריך לדעת
+        consign_units: purchases.rows.reduce((a, x) => a + n(x.consign_open_qty), 0),
+        consign_value: byCur(purchases.rows, 'consign_open_value', 'ILS'),
+        consign_value_usd: byCur(purchases.rows, 'consign_open_value', 'USD'),
       },
       // תיקונים שקוזזו ממנו (הוצאות עסק שנזקפו לסופר) — יורדים מהחוב הכולל
       corrections: corrRows.rows,
@@ -598,6 +603,10 @@ router.get('/customer/:id', async (req, res) => {
         peritah: sum(prodPays.rows, 'peritah'),
         revenue_usd: prodRevenueU, paid_usd: prodPaidU,
         balance_usd: r2(prodRevenueU - prodPaidU),
+        // מונח אצלו בקומיסיון — נמסר לו וטרם דווח כנמכר, ולכן אינו חוב
+        consign_units: sales.rows.reduce((a, x) => a + n(x.consigned_qty), 0),
+        consign_value: byCur(sales.rows, 'consigned_value', 'ILS'),
+        consign_value_usd: byCur(sales.rows, 'consigned_value', 'USD'),
       },
       total_due_now: r2(sum(scrolls, 'buyer_balance_now') + prodRevenue - prodPaid),
       total_due_overall: r2(sum(scrolls, 'buyer_balance_total') + prodRevenue - prodPaid),

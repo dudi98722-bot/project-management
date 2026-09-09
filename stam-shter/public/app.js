@@ -925,6 +925,45 @@ function paintApprove(btn, val) {
   btn.disabled = false;
 }
 
+// עמודת הקומיסיון בטבלת מכירות. שורת קומיסיון שטרם דווחה מציגה חיוב 0,
+// וזה נראה כמו טעות עד שכתוב לידה למה — הסחורה מונחת אצלו ועדיין לא
+// הפכה לכסף. מכאן גם מדווחים שהיא נמכרה, בלי לעבור ללשונית אחרת.
+const consignSaleCol = {
+  label: 'קומיסיון', cls: 'center',
+  render: (r) => {
+    if (r.sale_type !== 'קומיסיון') return '<span class="muted">—</span>';
+    if (!(N(r.consigned_qty) > 0)) return '<span class="pill g" title="כל הכמות דווחה כנמכרה">הכל דווח</span>';
+    return `<span class="pill a" title="נמסר וטרם דווח כנמכר — אינו חוב שלו">מונח ${N(r.consigned_qty)} · ${money(r.consigned_value, r.currency)}</span>`
+      + (ME.caps.edit ? ` <button class="btn ghost xs" data-crep="${r.id}" title="הלקוח מכר — רישום חיוב">🤝 דיווח</button>` : '');
+  },
+};
+
+// אותו רעיון בצד הרכישה: מה שנקנה בקומיסיון וטרם התממש אינו מחייב אותנו
+const consignPurchCol = {
+  label: 'קומיסיון', cls: 'center',
+  render: (r) => {
+    if (r.purchase_type !== 'קומיסיון') return '<span class="muted">—</span>';
+    return N(r.consign_open_qty) > 0
+      ? `<span class="pill a" title="נרכש בקומיסיון וטרם התממש — טרם מחייב אותך">טרם נמכר ${N(r.consign_open_qty)}</span>`
+      : '<span class="pill g">הכל התממש</span>';
+  },
+};
+
+// חיווי הקומיסיון של איש קשר אחד — אותה שורה בדיוק בכרטיס ובמרחב,
+// בשני הצדדים. תמיד לצד היתרה ולעולם לא בתוכה: זו סחורה שממתינה,
+// לא כסף שמישהו חייב.
+function consignStat(t, side) {
+  const units = N(t && t.consign_units);
+  if (!units) return '';
+  const val = money(t.consign_value);
+  const usd = N(t && t.consign_value_usd) ? ` · ${money(t.consign_value_usd, 'USD')}` : '';
+  return side === 'scribe'
+    ? { label: 'בקומיסיון · טרם נמכר', value: `${units} יח'`, cls: 'a',
+        sub: `בעלות ${val}${usd} — טרם מחייב אותך` }
+    : { label: 'מונח אצלו בקומיסיון', value: `${units} יח'`, cls: 'a',
+        sub: `בשווי ${val}${usd} — טרם חוב שלו` };
+}
+
 // מפתח המטמון והסינון של מסך ישות.
 // \W בג'אווהסקריפט תופס גם אותיות עבריות, ולכן כותרת עברית התקפלה
 // למחרוזת ריקה — ושתי לשוניות בלי bulk חלקו בשקט את אותו מטמון והציגו
@@ -2628,8 +2667,14 @@ function repCard(kind) {
 async function openCard(kind, id) {
   try {
     const d = await Store.reports[kind](id);
-    modal({ title: `כרטיס ${kind === 'scribe' ? 'סופר' : 'רוכש'} — ${esc(d.contact.name)}`, wide: true,
+    const m = modal({ title: `כרטיס ${kind === 'scribe' ? 'סופר' : 'רוכש'} — ${esc(d.contact.name)}`, wide: true,
             body: kind === 'scribe' ? scribeCardHTML(d) : customerCardHTML(d) });
+    // הכרטיס נסגר לפני טופס הדיווח: אחרי השמירה המספרים שבו כבר לא
+    // נכונים, וכרטיס שמראה נתון ישן גרוע מכרטיס שנסגר.
+    m.el.querySelectorAll('[data-crep]').forEach(b => b.onclick = () => {
+      m.close();
+      openForm(prodConsign(true), null, { sale_id: +b.dataset.crep, date: today() });
+    });
   } catch (e) { toast(e.message, 'err'); }
 }
 
@@ -2644,6 +2689,9 @@ function scribeCardHTML(d) {
           N(d.corrections_total) ? ` − תיקונים ${money(d.corrections_total)}` : ''}</div></div>
       <div class="stat"><div class="label">יתרה עתידית (ס"ת)</div><div class="value a">${money(t.future_balance)}</div></div>
       <div class="stat"><div class="label">ספרים</div><div class="value">${t.count}</div></div>
+      ${(() => { const c = consignStat(p, 'scribe'); return c
+        ? `<div class="stat"><div class="label">${c.label}</div><div class="value ${c.cls}">${c.value}</div>
+             <div class="sub">${c.sub}</div></div>` : ''; })()}
     </div>
     <div class="card"><h3>צד ס"ת</h3>
       ${tableHTML([
@@ -2666,6 +2714,7 @@ function scribeCardHTML(d) {
         { label: 'מוצר', render: r => esc(r.product_name || '—') },
         { label: 'כמות', cls: 'num', render: r => numCell(r.quantity) },
         { label: 'נשאר', cls: 'num', render: r => numCell(r.remaining_qty) },
+        consignPurchCol,
         curCol,
         { label: "עלות ליח'", cls: 'num', render: r => mc(r.cost_per_unit, r) },
         { label: 'חוב', cls: 'num', render: r => mc(r.owed, r) },
@@ -2695,6 +2744,9 @@ function customerCardHTML(d) {
       <div class="stat"><div class="label">חוב מיידי</div><div class="value r">${money(d.total_due_now)}</div></div>
       <div class="stat"><div class="label">חוב כללי</div><div class="value a">${money(d.total_due_overall)}</div></div>
       <div class="stat"><div class="label">עלות פריטה</div><div class="value">${money(N(t.peritah) + N(p.peritah))}</div></div>
+      ${(() => { const c = consignStat(p, 'customer'); return c
+        ? `<div class="stat"><div class="label">${c.label}</div><div class="value ${c.cls}">${c.value}</div>
+             <div class="sub">${c.sub}</div></div>` : ''; })()}
     </div>
     <div class="card"><h3>צד ס"ת — ספרים שרכש</h3>
       ${tableHTML([
@@ -2722,11 +2774,14 @@ function customerCardHTML(d) {
       ${tableHTML([{ label: 'תאריך', render: r => dt(r.date) },
                    { label: 'מוצר', render: r => esc(r.product_name || '—') },
                    { label: 'כמות', cls: 'num', render: r => numCell(r.quantity) },
+                   consignSaleCol,
                    curCol,
                    { label: "מחיר ליח'", cls: 'num', render: r => mc(r.price_per_unit, r) },
-                   { label: 'סך מכירה', cls: 'num', render: r => mc(r.total_sale, r) }], d.sales)}
+                   { label: 'סך לחיוב', cls: 'num', render: r => mc(r.total_sale, r) }], d.sales)}
       <div class="kv" style="margin-top:10px">
-        <div class="k">סה"כ מכירות</div><div class="num">${money(p.revenue)}</div>
+        <div class="k">סה"כ לחיוב</div><div class="num">${money(p.revenue)}</div>
+        ${N(p.consign_units) ? `<div class="k">מונח אצלו בקומיסיון</div>
+          <div class="num">${N(p.consign_units)} יח' · ${money(p.consign_value)}</div>` : ''}
         <div class="k">שילם</div><div class="num">${money(p.paid)}</div>
         <div class="k"><b>יתרה</b></div><div class="num"><b>${money(p.balance)}</b></div>
         ${N(p.revenue_usd) || N(p.paid_usd) ? `
@@ -4892,6 +4947,8 @@ function wsWire(otherMode) {
   });
   document.querySelectorAll('[data-book]').forEach(b => b.onclick = () => showScrollCard(+b.dataset.book));
   document.querySelectorAll('[data-hist]').forEach(b => b.onclick = () => showHistory(+b.dataset.hist));
+  document.querySelectorAll('[data-crep]').forEach(b => b.onclick = () =>
+    openForm(prodConsign(true), null, { sale_id: +b.dataset.crep, date: today() }));
   document.querySelectorAll('[data-gmove]').forEach(b => b.onclick = () =>
     openMove(String(b.dataset.gmove).split(',').map(Number)));
   document.querySelectorAll('[data-gdetail]').forEach(b => b.onclick = () =>
@@ -5048,6 +5105,8 @@ async function loadScribeSpace(id) {
       ${wsCard('ספרים', st.count, 'b', `${openBooks} פעילים`)}
       ${wsCard('שולם לו', money(N(st.paid) + N(pt.paid)), 'g', `תיקונים ${money(st.corrections)}`)}
       ${wsCard('יריעות אצלו', sheets.length, sheets.length ? 'b' : '')}
+      ${(() => { const c = consignStat(pt, 'scribe');
+        return c ? wsCard(c.label, c.value, c.cls, c.sub) : ''; })()}
     </div>
 
     <div class="card"><h3>פעולות</h3><div class="toolbar">
@@ -5141,6 +5200,7 @@ async function loadScribeSpace(id) {
       { label: 'מוצר', render: r => esc(r.product_name || '—') },
       { label: 'כמות', cls: 'num', render: r => numCell(r.quantity) },
       { label: 'נשאר', cls: 'num', render: r => numCell(r.remaining_qty) },
+      consignPurchCol,
       curCol,
       { label: "עלות ליח'", cls: 'num', render: r => mc(r.cost_per_unit, r) },
       { label: 'חוב', cls: 'num', render: r => mc(r.owed, r), total: rs => totalCur(rs, 'owed') },
@@ -5194,6 +5254,8 @@ async function loadCustomerSpace(id) {
       ${wsCard('שילם', money(N(ct.paid) + N(pt.paid)), 'g')}
       ${wsCard('ספרים שרכש', ct.count, 'b', `שווי ${money(ct.total_price)}`)}
       ${wsCard('עלות פריטה', money(N(ct.peritah) + N(pt.peritah)))}
+      ${(() => { const c = consignStat(pt, 'customer');
+        return c ? wsCard(c.label, c.value, c.cls, c.sub) : ''; })()}
     </div>
 
     <div class="card"><h3>פעולות</h3><div class="toolbar">
@@ -5237,9 +5299,10 @@ async function loadCustomerSpace(id) {
       { label: 'תאריך', render: r => dt(r.date) },
       { label: 'מוצר', render: r => esc(r.product_name || '—') },
       { label: 'כמות', cls: 'num', render: r => numCell(r.quantity), total: rs => numCell(sumBy(rs, 'quantity')) },
+      consignSaleCol,
       curCol,
       { label: "מחיר ליח'", cls: 'num', render: r => mc(r.price_per_unit, r) },
-      { label: 'סך מכירה', cls: 'num', render: r => mc(r.total_sale, r), total: rs => totalCur(rs, 'total_sale') },
+      { label: 'סך לחיוב', cls: 'num', render: r => mc(r.total_sale, r), total: rs => totalCur(rs, 'total_sale') },
       wsActCol('prodSaleCfg'),
     ], d.sales, { totals: true }))}
 
