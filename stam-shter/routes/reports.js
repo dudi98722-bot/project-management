@@ -24,9 +24,29 @@ router.use((req, res, next) => {
 // גלובלי. לכן כל ביטוי קיים בשתי גרסאות — ILS ו-USD — וכל אחת מאפסת את
 // השורות של המטבע האחר. הגרסאות חסרות הסיומת נשארו שקליות, ולכן כל
 // חישוב קיים ממשיך להחזיר בדיוק את אותו מספר כל עוד אין נתוני דולר.
-const RAW_SALE_TOTAL = '(COALESCE(s.quantity,0) * COALESCE(s.price_per_unit,0))';
-const RAW_SALE_COST  = '(COALESCE(s.quantity,0) * (COALESCE(pp.cost_per_unit,0) + COALESCE(pp.extra_cost_per_unit,0)))';
+// ===== קומיסיון =====
+// העיקרון: חוב נוצר רק כשהכסף באמת נוצר.
+// לכל מכירה יש "כמות שהתממשה" — במכירה רגילה זו הכמות כולה, ובמכירת
+// קומיסיון רק מה שהלקוח דיווח שמכר הלאה. ההכנסה, העלות, הרווח והחוב
+// של הלקוח נגזרים ממנה ולא מהכמות שנמסרה לו. הכמות שנמסרה וטרם דווחה
+// היא "מונח אצלו" — סחורה שלי שיושבת אצלו ואינה חוב.
+// כל שאילתה שמשתמשת בביטויים האלה חייבת לכלול את CONSIGN_JOIN.
+const CONSIGN_JOIN = `LEFT JOIN (SELECT sale_id, SUM(quantity) AS reported
+                                   FROM prod_consign_reports WHERE deleted=false GROUP BY sale_id) cr
+                        ON cr.sale_id = s.id`;
+const IS_CONSIGN_S = "COALESCE(s.sale_type,'רגיל')='קומיסיון'";
+// LEAST/GREATEST — דיווח על יותר ממה שנמסר לא ייצור חוב מדומה או כמות שלילית
+const REALIZED_QTY  = `(CASE WHEN ${IS_CONSIGN_S}
+                          THEN LEAST(COALESCE(cr.reported,0), COALESCE(s.quantity,0))
+                          ELSE COALESCE(s.quantity,0) END)`;
+const CONSIGNED_QTY = `(CASE WHEN ${IS_CONSIGN_S}
+                          THEN GREATEST(COALESCE(s.quantity,0) - COALESCE(cr.reported,0), 0)
+                          ELSE 0 END)`;
+
+const RAW_SALE_TOTAL = `(${REALIZED_QTY} * COALESCE(s.price_per_unit,0))`;
+const RAW_SALE_COST  = `(${REALIZED_QTY} * (COALESCE(pp.cost_per_unit,0) + COALESCE(pp.extra_cost_per_unit,0)))`;
 const RAW_SALE_3PCT  = `(CASE WHEN s.deduct_3pct THEN ${RAW_SALE_TOTAL} * 0.03 ELSE 0 END)`;
+const RAW_CONSIGNED  = `(${CONSIGNED_QTY} * COALESCE(s.price_per_unit,0))`;
 const CUR_S  = "COALESCE(s.currency,'ILS')";
 const CUR_PP = "COALESCE(pp.currency,'ILS')";
 
@@ -37,6 +57,8 @@ const SALE_COST    = `(CASE WHEN ${CUR_PP}='ILS' THEN ${RAW_SALE_COST}  ELSE 0 E
 const SALE_COST_U  = `(CASE WHEN ${CUR_PP}='USD' THEN ${RAW_SALE_COST}  ELSE 0 END)`;
 const SALE_3PCT    = `(CASE WHEN ${CUR_S}='ILS'  THEN ${RAW_SALE_3PCT}  ELSE 0 END)`;
 const SALE_3PCT_U  = `(CASE WHEN ${CUR_S}='USD'  THEN ${RAW_SALE_3PCT}  ELSE 0 END)`;
+const CONSIGNED    = `(CASE WHEN ${CUR_S}='ILS'  THEN ${RAW_CONSIGNED}   ELSE 0 END)`;
+const CONSIGNED_U  = `(CASE WHEN ${CUR_S}='USD'  THEN ${RAW_CONSIGNED}   ELSE 0 END)`;
 
 // תשלומי לקוחות של ס"ת — טבלה בלי עמודת מטבע, ההתנהגות לא השתנתה
 const PERITAH    = '(CASE WHEN COALESCE(amount_usd,0) > 0 THEN COALESCE(amount_usd,0) * COALESCE(rate,0) - COALESCE(cash_in_hand,0) ELSE 0 END)';
@@ -50,8 +72,35 @@ const PPERITAH     = `(CASE WHEN ${CUR_ROW}='ILS' AND COALESCE(amount_usd,0) > 0
 // תשלומים לסופר ורכישות — הסכום נקוב במטבע השורה
 const SPAID_ILS    = `(CASE WHEN ${CUR_ROW}='ILS' THEN COALESCE(amount,0) ELSE 0 END)`;
 const SPAID_USD    = `(CASE WHEN ${CUR_ROW}='USD' THEN COALESCE(amount,0) ELSE 0 END)`;
-const POWED_ILS    = `(CASE WHEN ${CUR_ROW}='ILS' THEN COALESCE(quantity,0)*COALESCE(cost_per_unit,0) ELSE 0 END)`;
-const POWED_USD    = `(CASE WHEN ${CUR_ROW}='USD' THEN COALESCE(quantity,0)*COALESCE(cost_per_unit,0) ELSE 0 END)`;
+// הצירופים שכל שאילתת רכישות זקוקה להם: החזרות לסופר, ומה שהתממש ונמכר
+// מתוך החבילה. הכינויים rt ו-sd קבועים, וכל ביטוי למטה מסתמך עליהם.
+const PURCH_JOINS = `
+  LEFT JOIN (SELECT purchase_id, SUM(quantity) AS returned
+               FROM prod_returns WHERE deleted=false GROUP BY purchase_id) rt ON rt.purchase_id = pp.id
+  LEFT JOIN (SELECT s.purchase_id,
+                    SUM(COALESCE(s.quantity,0)) AS sold,
+                    SUM(${REALIZED_QTY})        AS realized
+               FROM prod_sales s ${CONSIGN_JOIN}
+              WHERE s.deleted=false GROUP BY s.purchase_id) sd ON sd.purchase_id = pp.id`;
+
+// הכמות שמחייבת תשלום לסופר: ברכישה רגילה כל מה שנקנה פחות מה שהוחזר לו;
+// ברכישת קומיסיון רק מה שהתממש בפועל — לא משלמים על סחורה שטרם נמכרה.
+const IS_CONSIGN_P = "COALESCE(pp.purchase_type,'רגיל')='קומיסיון'";
+const RETURNED_QTY = 'COALESCE(rt.returned,0)';
+const OWED_QTY = `(CASE WHEN ${IS_CONSIGN_P}
+                     THEN COALESCE(sd.realized,0)
+                     ELSE GREATEST(COALESCE(pp.quantity,0) - ${RETURNED_QTY}, 0) END)`;
+// סחורת קומיסיון שעדיין לא הפכה לכסף — לא במלאי ולא בחוב, אבל צריך לדעת עליה
+const CONSIGN_OPEN_QTY = `(CASE WHEN ${IS_CONSIGN_P}
+                            THEN GREATEST(COALESCE(pp.quantity,0) - ${RETURNED_QTY} - COALESCE(sd.realized,0), 0)
+                            ELSE 0 END)`;
+const STOCK_QTY = `GREATEST(COALESCE(pp.quantity,0) - COALESCE(sd.sold,0) - ${RETURNED_QTY}, 0)`;
+
+const CUR_PROW     = "COALESCE(pp.currency,'ILS')";
+const POWED_ILS    = `(CASE WHEN ${CUR_PROW}='ILS' THEN ${OWED_QTY}*COALESCE(pp.cost_per_unit,0) ELSE 0 END)`;
+const POWED_USD    = `(CASE WHEN ${CUR_PROW}='USD' THEN ${OWED_QTY}*COALESCE(pp.cost_per_unit,0) ELSE 0 END)`;
+const PCONSIGN_ILS = `(CASE WHEN ${CUR_PROW}='ILS' THEN ${CONSIGN_OPEN_QTY}*COALESCE(pp.cost_per_unit,0) ELSE 0 END)`;
+const PCONSIGN_USD = `(CASE WHEN ${CUR_PROW}='USD' THEN ${CONSIGN_OPEN_QTY}*COALESCE(pp.cost_per_unit,0) ELSE 0 END)`;
 
 const sum = (rows, key) => r2(rows.reduce((a, x) => a + n(x[key]), 0));
 
@@ -66,14 +115,20 @@ async function prodTotals() {
     pool.query(`SELECT COALESCE(SUM(${SALE_TOTAL}),0)   AS revenue,
                        COALESCE(SUM(${SALE_COST}),0)    AS cost,
                        COALESCE(SUM(${SALE_3PCT}),0)    AS deduct,
+                       COALESCE(SUM(${CONSIGNED}),0)    AS consigned,
                        COALESCE(SUM(${SALE_TOTAL_U}),0) AS revenue_usd,
                        COALESCE(SUM(${SALE_COST_U}),0)  AS cost_usd,
-                       COALESCE(SUM(${SALE_3PCT_U}),0)  AS deduct_usd
+                       COALESCE(SUM(${SALE_3PCT_U}),0)  AS deduct_usd,
+                       COALESCE(SUM(${CONSIGNED_U}),0)  AS consigned_usd
                 FROM prod_sales s
                 LEFT JOIN prod_purchases pp ON pp.id = s.purchase_id
+                ${CONSIGN_JOIN}
                 WHERE s.deleted=false`),
-    pool.query(`SELECT COALESCE(SUM(${POWED_ILS}),0) AS owed, COALESCE(SUM(${POWED_USD}),0) AS owed_usd
-                FROM prod_purchases WHERE deleted=false`),
+    pool.query(`SELECT COALESCE(SUM(${POWED_ILS}),0) AS owed, COALESCE(SUM(${POWED_USD}),0) AS owed_usd,
+                       COALESCE(SUM(${PCONSIGN_ILS}),0) AS consign_open,
+                       COALESCE(SUM(${PCONSIGN_USD}),0) AS consign_open_usd,
+                       COALESCE(SUM(${CONSIGN_OPEN_QTY}),0) AS consign_open_units
+                FROM prod_purchases pp ${PURCH_JOINS} WHERE pp.deleted=false`),
     pool.query(`SELECT COALESCE(SUM(${SPAID_ILS}),0) AS paid, COALESCE(SUM(${SPAID_USD}),0) AS paid_usd
                 FROM prod_scribe_payments WHERE deleted=false`),
     pool.query(`SELECT COALESCE(SUM(${PPAID_ILS}),0) AS paid, COALESCE(SUM(${PPAID_USD}),0) AS paid_usd,
@@ -90,6 +145,12 @@ async function prodTotals() {
     customer_paid: r2(n(cp.paid)),
     customer_owes: r2(revenue - n(cp.paid)),
     peritah: r2(n(cp.peritah)),
+    // קומיסיון: סחורה שיצאה או שנקנתה ועדיין לא הפכה לכסף
+    consigned_out: r2(n(q.consigned)),
+    consigned_out_usd: r2(n(q.consigned_usd)),
+    consign_open_cost: r2(n(pu.consign_open)),
+    consign_open_cost_usd: r2(n(pu.consign_open_usd)),
+    consign_open_units: n(pu.consign_open_units),
     // צד הדולר — אותם מדדים בדיוק, בלי שום המרה
     revenue_usd: r2(revenueU), cost_usd: r2(costU), deduct_3pct_usd: r2(deductU),
     profit_usd: r2(revenueU - costU - deductU),
@@ -106,10 +167,8 @@ router.get('/overview', async (req, res) => {
       getScrolls(),
       prodTotals(),
       pool.query(`SELECT COALESCE(SUM(amount),0) AS total FROM business_expenses ${BIZ_OWN}`),
-      pool.query(`SELECT COALESCE(SUM(pp.quantity - COALESCE(sd.sold,0)),0) AS units
-                  FROM prod_purchases pp
-                  LEFT JOIN (SELECT purchase_id, SUM(quantity) sold FROM prod_sales WHERE deleted=false GROUP BY purchase_id) sd
-                    ON sd.purchase_id = pp.id
+      pool.query(`SELECT COALESCE(SUM(${STOCK_QTY}),0) AS units
+                  FROM prod_purchases pp ${PURCH_JOINS}
                   WHERE pp.deleted=false`),
       pool.query(`SELECT COALESCE(SUM(amount),0) AS total FROM business_expenses ${BIZ_CORR}`),
     ]);
@@ -130,6 +189,12 @@ router.get('/overview', async (req, res) => {
       owed_by_customers: r2(sum(scrolls, 'buyer_balance_now') + prod.customer_owes),
       owed_by_customers_total: r2(sum(scrolls, 'buyer_balance_total') + prod.customer_owes),
       stock_units: n(stock.rows[0].units),
+      // קומיסיון — מוצג בנפרד, כי אלה לא חובות אלא סחורה שממתינה
+      consigned_out: prod.consigned_out,
+      consigned_out_usd: prod.consigned_out_usd,
+      consign_open_units: prod.consign_open_units,
+      consign_open_cost: prod.consign_open_cost,
+      consign_open_cost_usd: prod.consign_open_cost_usd,
       peritah_total: r2(sum(scrolls, 'peritah_cost') + prod.peritah),
       // דולר — מוצג בנפרד ולעולם לא מחובר לשקלים
       product_profit_usd: prod.profit_usd,
@@ -187,12 +252,16 @@ router.get('/scribe-balances', async (req, res) => {
       pool.query(`
         SELECT c.id,
           COALESCE(pu.owed,0) AS owed,
+          COALESCE(pu.consign_units,0) AS consign_units,
           COALESCE(pa.paid,0) AS paid,
           COALESCE(pu.owed_usd,0) AS owed_usd,
           COALESCE(pa.paid_usd,0) AS paid_usd,
           COALESCE(bc.corr,0) AS corrections
         FROM contacts c
-        LEFT JOIN (SELECT scribe_id, SUM(${POWED_ILS}) owed, SUM(${POWED_USD}) owed_usd FROM prod_purchases WHERE deleted=false GROUP BY scribe_id) pu ON pu.scribe_id=c.id
+        LEFT JOIN (SELECT pp.scribe_id, SUM(${POWED_ILS}) owed, SUM(${POWED_USD}) owed_usd,
+                          SUM(${CONSIGN_OPEN_QTY}) consign_units
+                   FROM prod_purchases pp ${PURCH_JOINS}
+                   WHERE pp.deleted=false GROUP BY pp.scribe_id) pu ON pu.scribe_id=c.id
         LEFT JOIN (SELECT scribe_id, SUM(${SPAID_ILS}) paid, SUM(${SPAID_USD}) paid_usd FROM prod_scribe_payments WHERE deleted=false GROUP BY scribe_id) pa ON pa.scribe_id=c.id
         LEFT JOIN (SELECT scribe_id, SUM(amount) corr FROM business_expenses ${BIZ_CORR} GROUP BY scribe_id) bc ON bc.scribe_id=c.id
         WHERE c.deleted=false AND (pu.owed IS NOT NULL OR pa.paid IS NOT NULL OR bc.corr IS NOT NULL)`),
@@ -208,6 +277,7 @@ router.get('/scribe-balances', async (req, res) => {
           scroll_balance: 0, scroll_future: 0, scrolls_count: 0,
           product_owed: 0, product_paid: 0, product_balance: 0, total_balance: 0,
           product_owed_usd: 0, product_paid_usd: 0, product_balance_usd: 0,
+          consign_units: 0,
           corrections: 0,
         });
       }
@@ -227,6 +297,7 @@ router.get('/scribe-balances', async (req, res) => {
       b.product_owed_usd = n(p.owed_usd); b.product_paid_usd = n(p.paid_usd);
       b.product_balance_usd = n(p.owed_usd) - n(p.paid_usd);
       b.corrections = n(p.corrections);
+      b.consign_units = n(p.consign_units);
     }
     const out = [...acc.values()].map(b => ({
       ...b,
@@ -249,10 +320,14 @@ router.get('/customer-balances', async (req, res) => {
       getScrolls(),
       pool.query(`
         SELECT c.id, COALESCE(sl.revenue,0) AS revenue, COALESCE(pm.paid,0) AS paid,
-               COALESCE(sl.revenue_usd,0) AS revenue_usd, COALESCE(pm.paid_usd,0) AS paid_usd
+               COALESCE(sl.revenue_usd,0) AS revenue_usd, COALESCE(pm.paid_usd,0) AS paid_usd,
+               COALESCE(sl.consigned,0) AS consigned, COALESCE(sl.consigned_usd,0) AS consigned_usd,
+               COALESCE(sl.consign_units,0) AS consign_units
         FROM contacts c
-        LEFT JOIN (SELECT s.customer_id, SUM(${SALE_TOTAL}) revenue, SUM(${SALE_TOTAL_U}) revenue_usd
-                   FROM prod_sales s LEFT JOIN prod_purchases pp ON pp.id=s.purchase_id
+        LEFT JOIN (SELECT s.customer_id, SUM(${SALE_TOTAL}) revenue, SUM(${SALE_TOTAL_U}) revenue_usd,
+                          SUM(${CONSIGNED}) consigned, SUM(${CONSIGNED_U}) consigned_usd,
+                          SUM(${CONSIGNED_QTY}) consign_units
+                   FROM prod_sales s LEFT JOIN prod_purchases pp ON pp.id=s.purchase_id ${CONSIGN_JOIN}
                    WHERE s.deleted=false GROUP BY s.customer_id) sl ON sl.customer_id=c.id
         LEFT JOIN (SELECT customer_id, SUM(${PPAID_ILS}) paid, SUM(${PPAID_USD}) paid_usd
                    FROM prod_customer_payments WHERE deleted=false GROUP BY customer_id) pm ON pm.customer_id=c.id
@@ -269,6 +344,8 @@ router.get('/customer-balances', async (req, res) => {
           scroll_due_now: 0, scroll_due_total: 0, scrolls_count: 0,
           product_revenue: 0, product_paid: 0, product_balance: 0,
           product_revenue_usd: 0, product_paid_usd: 0, product_balance_usd: 0,
+          // סחורה שמונחת אצלו בקומיסיון — לא חוב, אבל חייב להופיע לצד היתרה
+          consigned: 0, consigned_usd: 0, consign_units: 0,
         });
       }
       return acc.get(id);
@@ -286,6 +363,8 @@ router.get('/customer-balances', async (req, res) => {
       b.product_balance = n(p.revenue) - n(p.paid);
       b.product_revenue_usd = n(p.revenue_usd); b.product_paid_usd = n(p.paid_usd);
       b.product_balance_usd = n(p.revenue_usd) - n(p.paid_usd);
+      b.consigned = n(p.consigned); b.consigned_usd = n(p.consigned_usd);
+      b.consign_units = n(p.consign_units);
     }
     const out = [...acc.values()].map(b => ({
       ...b,
@@ -310,7 +389,7 @@ router.get('/monthly', async (req, res) => {
       getScrolls(),
       q(`SELECT EXTRACT(MONTH FROM s.date)::int m, SUM(${SALE_TOTAL}) v, SUM(${SALE_TOTAL} - ${SALE_COST} - ${SALE_3PCT}) p,
                 SUM(${SALE_TOTAL_U}) vu, SUM(${SALE_TOTAL_U} - ${SALE_COST_U} - ${SALE_3PCT_U}) pu
-          FROM prod_sales s LEFT JOIN prod_purchases pp ON pp.id=s.purchase_id
+          FROM prod_sales s LEFT JOIN prod_purchases pp ON pp.id=s.purchase_id ${CONSIGN_JOIN}
           WHERE s.deleted=false AND EXTRACT(YEAR FROM s.date)=$1 GROUP BY 1`),
       q(`SELECT EXTRACT(MONTH FROM date)::int m, SUM(${PAID_TOTAL}) v FROM customer_payments WHERE deleted=false AND EXTRACT(YEAR FROM date)=$1 GROUP BY 1`),
       q(`SELECT EXTRACT(MONTH FROM date)::int m, SUM(${PPAID_ILS}) v, SUM(${PPAID_USD}) vu FROM prod_customer_payments WHERE deleted=false AND EXTRACT(YEAR FROM date)=$1 GROUP BY 1`),
@@ -373,15 +452,16 @@ router.get('/inventory', async (req, res) => {
       SELECT pp.*, p.name AS product_name,
         sc.name AS scribe_name,
         COALESCE(sd.sold,0) AS sold_qty,
-        (pp.quantity - COALESCE(sd.sold,0)) AS remaining_qty,
+        ${RETURNED_QTY} AS returned_qty,
+        ${CONSIGN_OPEN_QTY} AS consign_open_qty,
+        ${STOCK_QTY} AS remaining_qty,
         COALESCE(pp.currency,'ILS') AS currency,
         (pp.cost_per_unit + pp.extra_cost_per_unit) AS unit_cost,
-        ((pp.quantity - COALESCE(sd.sold,0)) * (pp.cost_per_unit + pp.extra_cost_per_unit)) AS stock_value
+        (${STOCK_QTY} * (pp.cost_per_unit + pp.extra_cost_per_unit)) AS stock_value
       FROM prod_purchases pp
       LEFT JOIN products p  ON p.id  = pp.product_id
       LEFT JOIN contacts sc ON sc.id = pp.scribe_id
-      LEFT JOIN (SELECT purchase_id, SUM(quantity) sold FROM prod_sales WHERE deleted=false GROUP BY purchase_id) sd
-        ON sd.purchase_id = pp.id
+      ${PURCH_JOINS}
       WHERE pp.deleted=false
       ORDER BY remaining_qty DESC, pp.date DESC NULLS LAST`);
     const val = (cur) => r2(r.rows.reduce((a, x) =>
@@ -404,13 +484,15 @@ router.get('/scribe/:id', async (req, res) => {
       getScrolls({ scribe_id: id }),
       pool.query(`SELECT pp.*, p.name AS product_name,
                     COALESCE(sd.sold,0) AS sold_qty,
-                    (pp.quantity - COALESCE(sd.sold,0)) AS remaining_qty,
+                    ${RETURNED_QTY} AS returned_qty,
+                    ${CONSIGN_OPEN_QTY} AS consign_open_qty,
+                    ${STOCK_QTY} AS remaining_qty,
                     COALESCE(pp.currency,'ILS') AS currency,
-                    (pp.quantity * pp.cost_per_unit) AS owed
+                    ${OWED_QTY} AS owed_qty,
+                    (${OWED_QTY} * pp.cost_per_unit) AS owed
                   FROM prod_purchases pp
                   LEFT JOIN products p ON p.id=pp.product_id
-                  LEFT JOIN (SELECT purchase_id, SUM(quantity) sold FROM prod_sales WHERE deleted=false GROUP BY purchase_id) sd
-                    ON sd.purchase_id=pp.id
+                  ${PURCH_JOINS}
                   WHERE pp.scribe_id=$1 AND pp.deleted=false ORDER BY pp.date DESC NULLS LAST`, [id]),
       pool.query('SELECT * FROM prod_scribe_payments WHERE scribe_id=$1 AND deleted=false ORDER BY date DESC NULLS LAST', [id]),
       pool.query(`SELECT id, date, type, amount, note FROM business_expenses
@@ -467,6 +549,9 @@ router.get('/customer/:id', async (req, res) => {
                     sc.name AS scribe_name,
                     COALESCE(s.currency,'ILS') AS currency,
                     COALESCE(pp.currency,'ILS') AS purchase_currency,
+                    ${REALIZED_QTY}  AS realized_qty,
+                    ${CONSIGNED_QTY} AS consigned_qty,
+                    ${RAW_CONSIGNED} AS consigned_value,
                     ${RAW_SALE_TOTAL} AS total_sale,
                     (CASE WHEN ${CUR_S} = ${CUR_PP}
                           THEN ${RAW_SALE_TOTAL} - ${RAW_SALE_COST} - ${RAW_SALE_3PCT} END) AS total_profit
@@ -474,6 +559,7 @@ router.get('/customer/:id', async (req, res) => {
                   LEFT JOIN prod_purchases pp ON pp.id=s.purchase_id
                   LEFT JOIN products p ON p.id=pp.product_id
                   LEFT JOIN contacts sc ON sc.id=pp.scribe_id
+                  ${CONSIGN_JOIN}
                   WHERE s.customer_id=$1 AND s.deleted=false ORDER BY s.date DESC NULLS LAST`, [id]),
       pool.query(`SELECT *, COALESCE(currency,'ILS') AS currency,
                     (CASE WHEN ${CUR_ROW}='USD' THEN COALESCE(amount_usd,0)

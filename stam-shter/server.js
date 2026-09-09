@@ -52,6 +52,8 @@ app.use('/api/prod/purchases', require('./routes/prod-purchases'));
 app.use('/api/prod/scribe-payments', require('./routes/prod-scribe-payments'));
 app.use('/api/prod/sales', require('./routes/prod-sales'));
 app.use('/api/prod/customer-payments', require('./routes/prod-customer-payments'));
+app.use('/api/prod/returns', require('./routes/prod-returns'));
+app.use('/api/prod/consign', require('./routes/prod-consign'));
 
 // דוחות + סל מחזור + ייבוא
 app.use('/api/reports', require('./routes/reports'));

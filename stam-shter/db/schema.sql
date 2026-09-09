@@ -519,3 +519,67 @@ ALTER TABLE scrolls ADD COLUMN IF NOT EXISTS fixed_expense_override DECIMAL(14,2
 CREATE UNIQUE INDEX IF NOT EXISTS uq_scroll_scribe_product_sku
   ON scrolls (scribe_id, product_id, sku)
   WHERE deleted = false AND sku IS NOT NULL;
+
+-- ==================================================================
+--  קומיסיון
+-- ==================================================================
+-- העיקרון: בקומיסיון החוב נוצר רק כשהכסף באמת נוצר.
+--   רכישה בקומיסיון — אני חייב לסופר רק על מה שהתממש בפועל.
+--   מכירה בקומיסיון — הלקוח חייב לי רק על מה שהוא דיווח שמכר.
+-- שתי השרשראות מחוברות: דיווח של לקוח מחייב אותו וגם מחייב אותי לסופר.
+
+-- החזרת סחורה לסופר. חלה על כל רכישה, לא רק על קומיסיון — גם סחורה
+-- שנקנתה רגיל אפשר להחזיר, ואז אין עליה חוב ואין אותה במלאי.
+CREATE TABLE IF NOT EXISTS prod_returns (
+  id BIGSERIAL PRIMARY KEY,
+  date DATE,
+  purchase_id BIGINT REFERENCES prod_purchases(id) ON DELETE SET NULL,
+  quantity INTEGER DEFAULT 0,
+  note TEXT,
+  deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMP, deleted_by INTEGER,
+  created_by INTEGER, created_at TIMESTAMP DEFAULT NOW(),
+  updated_by INTEGER, updated_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_prodret_purchase ON prod_returns(purchase_id) WHERE deleted=false;
+
+-- דיווח של לקוח קומיסיון על מה שמכר הלאה. כל דיווח מחייב אותו במחיר
+-- שנקבע לו במכירה — לא במחיר שהוא קיבל מהקונה שלו, שהוא עניינו.
+CREATE TABLE IF NOT EXISTS prod_consign_reports (
+  id BIGSERIAL PRIMARY KEY,
+  date DATE,
+  sale_id BIGINT REFERENCES prod_sales(id) ON DELETE SET NULL,
+  quantity INTEGER DEFAULT 0,
+  note TEXT,
+  -- true = הלקוח דיווח בעצמו דרך הפורטל, ולא הוזן במשרד
+  by_customer BOOLEAN DEFAULT false,
+  deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMP, deleted_by INTEGER,
+  created_by INTEGER, created_at TIMESTAMP DEFAULT NOW(),
+  updated_by INTEGER, updated_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_consign_sale ON prod_consign_reports(sale_id) WHERE deleted=false;
+
+-- משתמש שהוא לקוח: רואה רק את הקומיסיון שלו, דרך ממשק נפרד.
+-- contact_id הוא הקישור לאיש הקשר, והוא מקור האמת היחיד לשיוך —
+-- הפורטל לעולם לא מקבל מזהה לקוח מהדפדפן.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS contact_id BIGINT REFERENCES contacts(id) ON DELETE SET NULL;
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check
+  CHECK (role IN ('admin','manager','clerk','scribeops','viewer','customer'));
+CREATE UNIQUE INDEX IF NOT EXISTS uq_user_contact ON users (contact_id) WHERE contact_id IS NOT NULL;
+
+-- הגירה חד-פעמית: עד כה "קומיסיון" היה תווית בלבד, וכל מכירת קומיסיון
+-- חייבה את הלקוח במלוא הסכום. כדי שאף חוב קיים לא ישתנה למפרע, כל
+-- מכירת קומיסיון שהוזנה עד היום נרשמת כמדווחת במלואה. מי שהסחורה
+-- עדיין מונחת אצלו — מקטינים לו את הדיווח ידנית, וזו פעולה מודעת.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM schema_meta WHERE key = 'consign_backfill_v1') THEN
+    INSERT INTO prod_consign_reports (date, sale_id, quantity, note, created_by, created_at)
+      SELECT COALESCE(s.date, CURRENT_DATE), s.id, s.quantity,
+             'נרשם אוטומטית בהפעלת מנגנון הקומיסיון — לפני כן חויב מלוא הסכום',
+             s.created_by, COALESCE(s.created_at, NOW())
+        FROM prod_sales s
+       WHERE s.deleted=false AND s.sale_type='קומיסיון' AND COALESCE(s.quantity,0) > 0;
+    INSERT INTO schema_meta (key) VALUES ('consign_backfill_v1');
+  END IF;
+END $$;

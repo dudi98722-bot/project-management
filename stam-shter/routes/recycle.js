@@ -25,6 +25,8 @@ const TABLES = {
   prod_scribe_payments:   { label: 'תשלומי סופר (מוצרים)',  desc: `'₪'||amount` },
   prod_sales:             { label: 'מכירות מוצרים',         desc: `quantity||' יח\\''` },
   prod_customer_payments: { label: 'תשלומי לקוחות (מוצרים)', desc: `'₪'||amount_ils||' / $'||amount_usd` },
+  prod_returns:           { label: 'החזרות לסופר',          desc: `quantity||' יח\''` },
+  prod_consign_reports:   { label: 'דיווחי קומיסיון',       desc: `quantity||' יח\''` },
 };
 
 // סיכום: כמה רשומות מחוקות יש בכל טבלה

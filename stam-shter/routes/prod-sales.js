@@ -21,6 +21,16 @@ const COLS = FIELDS.map(f => f.key);
 // עלות היחידה נלקחת מהחבילה (עלות + עלות נוספת), והרווח מנכה 3% אם סומן.
 // כשמטבע המכירה שונה ממטבע הרכישה, הרווח הוא הפרש בין שני מטבעות ואי אפשר
 // לבטא אותו במספר אחד — לכן NULL, והממשק מציג "—" במקום מספר שגוי.
+// במכירת קומיסיון החוב נוצר רק על מה שהלקוח דיווח שמכר. השאר "מונח אצלו":
+// סחורה שלי שיושבת אצלו, לא חוב ולא מלאי אצלי. במכירה רגילה הכמות
+// שהתממשה היא הכמות כולה, וכל החישוב נשאר בדיוק כשהיה.
+const REALIZED = `(CASE WHEN COALESCE(t.sale_type,'רגיל')='קומיסיון'
+                     THEN LEAST(COALESCE(cr.reported,0), COALESCE(t.quantity,0))
+                     ELSE COALESCE(t.quantity,0) END)`;
+const CONSIGNED = `(CASE WHEN COALESCE(t.sale_type,'רגיל')='קומיסיון'
+                      THEN GREATEST(COALESCE(t.quantity,0) - COALESCE(cr.reported,0), 0)
+                      ELSE 0 END)`;
+
 const VIEW = `
 SELECT t.*,
   pp.product_id,
@@ -29,18 +39,25 @@ SELECT t.*,
   cu.name AS customer_name,
   COALESCE(pp.currency,'ILS') AS purchase_currency,
   (COALESCE(pp.cost_per_unit,0) + COALESCE(pp.extra_cost_per_unit,0)) AS unit_cost,
-  (COALESCE(t.quantity,0) * COALESCE(t.price_per_unit,0)) AS total_sale,
-  (COALESCE(t.quantity,0) * (COALESCE(pp.cost_per_unit,0) + COALESCE(pp.extra_cost_per_unit,0))) AS total_cost,
+  ${REALIZED}  AS realized_qty,
+  ${CONSIGNED} AS consigned_qty,
+  (${CONSIGNED} * COALESCE(t.price_per_unit,0)) AS consigned_value,
+  (COALESCE(t.quantity,0) * COALESCE(t.price_per_unit,0)) AS delivered_value,
+  (${REALIZED} * COALESCE(t.price_per_unit,0)) AS total_sale,
+  (${REALIZED} * (COALESCE(pp.cost_per_unit,0) + COALESCE(pp.extra_cost_per_unit,0))) AS total_cost,
   (CASE WHEN COALESCE(t.currency,'ILS') = COALESCE(pp.currency,'ILS') THEN
-    ((COALESCE(t.quantity,0) * COALESCE(t.price_per_unit,0))
-      - (COALESCE(t.quantity,0) * (COALESCE(pp.cost_per_unit,0) + COALESCE(pp.extra_cost_per_unit,0)))
-      - (CASE WHEN t.deduct_3pct THEN COALESCE(t.quantity,0) * COALESCE(t.price_per_unit,0) * 0.03 ELSE 0 END))
+    ((${REALIZED} * COALESCE(t.price_per_unit,0))
+      - (${REALIZED} * (COALESCE(pp.cost_per_unit,0) + COALESCE(pp.extra_cost_per_unit,0)))
+      - (CASE WHEN t.deduct_3pct THEN ${REALIZED} * COALESCE(t.price_per_unit,0) * 0.03 ELSE 0 END))
   END) AS total_profit
 FROM prod_sales t
 LEFT JOIN prod_purchases pp ON pp.id = t.purchase_id
 LEFT JOIN products  p  ON p.id  = pp.product_id
 LEFT JOIN contacts  sc ON sc.id = pp.scribe_id
-LEFT JOIN contacts  cu ON cu.id = t.customer_id`;
+LEFT JOIN contacts  cu ON cu.id = t.customer_id
+LEFT JOIN (SELECT sale_id, SUM(quantity) AS reported
+             FROM prod_consign_reports WHERE deleted=false GROUP BY sale_id) cr
+  ON cr.sale_id = t.id`;
 
 // יתרת המלאי בחבילה. excludeSaleId — כדי שעריכת מכירה לא תיחשב כמלאי תפוס על ידי עצמה.
 // נקרא בתוך טרנזקציה עם נעילת שורת הרכישה, כדי ששתי מכירות במקביל לא יעברו את המלאי.
@@ -51,7 +68,11 @@ async function remainingFor(client, purchaseId, excludeSaleId) {
     `SELECT COALESCE(SUM(quantity),0) AS sold FROM prod_sales
      WHERE purchase_id=$1 AND deleted=false AND ($2::bigint IS NULL OR id <> $2)`,
     [purchaseId, excludeSaleId || null]);
-  return Number(p.rows[0].quantity) - Number(s.rows[0].sold);
+  // סחורה שהוחזרה לסופר איננה עוד במלאי, ואי אפשר למכור אותה
+  const rt = await client.query(
+    'SELECT COALESCE(SUM(quantity),0) AS returned FROM prod_returns WHERE purchase_id=$1 AND deleted=false',
+    [purchaseId]);
+  return Number(p.rows[0].quantity) - Number(s.rows[0].sold) - Number(rt.rows[0].returned);
 }
 
 router.get('/', authenticate, can('view'), async (req, res) => {
