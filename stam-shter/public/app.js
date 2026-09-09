@@ -13,6 +13,7 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s === null || s === undefined ? '' : s)
   .replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 const N = (v) => { const x = parseFloat(v); return isNaN(x) ? 0 : x; };
+const r2 = (v) => Math.round(N(v) * 100) / 100;
 
 function money(v, cur) {
   const x = N(v);
@@ -119,6 +120,14 @@ const itemsScrolls   = () => sortHe(C.scrolls.map(s => ({ v: s.id, t: scrollLabe
 const itemsPurchases = (sel) => sortHe(C.purchases.filter(p => N(p.remaining_qty) > 0 || +sel === p.id)
   .map(p => ({ v: p.id, t: `#${p.id} · ${purchaseLabel(p)}` })));
 // למעקב צריך גם חבילות שכבר נמכרו — היחידות עדיין יכולות להיות בדרך
+// מכירות קומיסיון שעדיין מונחת בהן סחורה. נטענות בנפרד מהמטמון הכללי,
+// כי הן משתנות בכל דיווח ורשימה ישנה הייתה מציעה מכירות שכבר סגורות.
+let CONSIGN_SALES = [];
+const itemsConsignSales = (sel) => sortHe(CONSIGN_SALES
+  .filter(s => N(s.consigned_qty) > 0 || +sel === s.id)
+  .map(s => ({ v: s.id,
+    t: `#${s.id} · ${s.customer_name || 'ללא לקוח'} · ${s.product_name || ''} · מונח ${N(s.consigned_qty)}` })));
+
 const itemsPurchasesAll = () => sortHe(C.purchases.map(p => ({ v: p.id,
   t: `#${p.id} · ${p.product_name || 'מוצר'} · ${p.scribe_name || 'סופר'} (${N(p.quantity)} יח')` })));
 const itemsList = (arr) => sortHe(arr.map(x => ({ v: x.value, t: x.value + (x.is_correction ? '  ⟵ תיקונים' : '') })));
@@ -833,6 +842,16 @@ function wireRowActions(cfg, rows) {
       TAB = 'track'; SUB.track = 'products'; render();
     };
   });
+  // החזרה לסופר משורת הרכישה, ודיווח מכירה משורת מכירת הקומיסיון —
+  // הטופס נפתח כשהחבילה או המכירה כבר בחורות בו.
+  document.querySelectorAll('[data-pret]').forEach(b => {
+    b.onclick = (e) => { e.stopPropagation();
+      openForm(prodReturns(true), null, { purchase_id: +b.dataset.pret, date: today() }); };
+  });
+  document.querySelectorAll('[data-crep]').forEach(b => {
+    b.onclick = (e) => { e.stopPropagation();
+      openForm(prodConsign(true), null, { sale_id: +b.dataset.crep, date: today() }); };
+  });
 }
 
 // ===== אישור מנהל =====
@@ -1011,6 +1030,10 @@ async function reloadCaches() {
   C.extraNotes = lists.purchase_extra_note || []; C.saleNotes = lists.sale_note || [];
   try { C.settings = await Store.settings.all(); } catch (e) { C.settings = { usd_rate: 3 }; }
   C.scrolls = scrolls; C.purchases = purchases; C.stations = stations;
+  try {
+    const sales = await Store.prodSales.list();
+    CONSIGN_SALES = sales.filter(s => s.sale_type === 'קומיסיון');
+  } catch (e) { CONSIGN_SALES = []; }
 }
 
 // ============ דשבורד ============
@@ -1036,6 +1059,13 @@ async function pageDash() {
       ${st('מלאי מוצרים', N(d.stock_units).toLocaleString('he-IL') + " יח'", '')}
       ${st('עלות פריטה', money(d.peritah_total), 'r', 'שתי המערכות')}
     </div>
+    ${(N(d.consigned_out) || N(d.consign_open_units)) ? `<div class="grid stat-grid">
+      ${st('מונח אצל לקוחות בקומיסיון', money(d.consigned_out), 'a',
+           'נמסר וטרם דווח כנמכר — אינו חוב שלהם')}
+      ${N(d.consigned_out_usd) ? st('מונח אצל לקוחות ($)', money(d.consigned_out_usd, 'USD'), 'a') : ''}
+      ${st('נרכש בקומיסיון וטרם נמכר', N(d.consign_open_units).toLocaleString('he-IL') + " יח'", 'a',
+           `בעלות ${money(d.consign_open_cost)} — טרם מחייב את הסופרים`)}
+    </div>` : ''}
     ${open.length ? `<div class="card">
       <div class="page-head" style="margin-bottom:10px">
         <h3 style="margin:0">⏰ תזכורות פתוחות <span class="pill ${late.length ? 'r' : 'a'}">${open.length}</span></h3>
@@ -1606,6 +1636,8 @@ function pageProd() {
     { k: 'sales', label: 'מכירות' },
     { k: 'scribepay', label: 'תשלומים לסופר' },
     ...(ME.caps.finance ? [{ k: 'custpay', label: 'תשלומי לקוחות' }] : []),
+    { k: 'consign', label: '🤝 דיווחי קומיסיון' },
+    { k: 'returns', label: '↩ החזרות לסופר' },
   ];
   if (!ME.caps.finance && SUB.prod === 'custpay') SUB.prod = 'purchases';
   renderSubtabs('prod', subs);
@@ -1613,6 +1645,8 @@ function pageProd() {
   if (s === 'purchases') return prodPurchases();
   if (s === 'sales') return prodSales();
   if (s === 'scribepay') return prodScribePay();
+  if (s === 'consign') return prodConsign();
+  if (s === 'returns') return prodReturns();
   return prodCustPay();
 }
 
@@ -1744,16 +1778,30 @@ function prodPurchases(cfgOnly) {
       { label: 'מוצר', render: r => esc(r.product_name || '—') },
       { label: 'כמות', cls: 'num', render: r => numCell(r.quantity), total: rows => numCell(sumBy(rows, 'quantity')) },
       { label: 'נמכר', cls: 'num', render: r => numCell(r.sold_qty) },
+      { label: 'הוחזר', cls: 'num', render: r => N(r.returned_qty)
+          ? `<span class="pill a" title="הוחזר לסופר — אינו במלאי ואינו מחייב">↩ ${N(r.returned_qty)}</span>`
+          : '<span class="muted">—</span>' },
       { label: 'נשאר', cls: 'num', render: r => `<span class="pill ${N(r.remaining_qty) > 0 ? 'g' : 'n'}">${N(r.remaining_qty)}</span>` },
+      // קומיסיון: מה שנקנה וטרם הפך לכסף — לא מחייב אותנו לסופר
+      { label: 'בקומיסיון · טרם נמכר', cls: 'num', render: r => r.purchase_type === 'קומיסיון'
+          ? `<span class="pill ${N(r.consign_open_qty) > 0 ? 'a' : 'g'}"
+               title="נרכש בקומיסיון ועדיין לא התממש — אין עליו חוב לסופר">${N(r.consign_open_qty)}</span>`
+          : '<span class="muted">—</span>',
+        total: rows => numCell(sumBy(rows, 'consign_open_qty')) },
       curCol,
       { label: "עלות ליח'", cls: 'num', render: r => mc(r.cost_per_unit, r) },
       { label: "נוספת ליח'", cls: 'num', render: r => mc(r.extra_cost_per_unit, r) },
       { label: 'עבור מה', cls: 'wrap', render: r => r.extra_cost_note
           ? esc(r.extra_cost_note) : '<span class="muted">—</span>' },
       { label: 'סוג', render: r => `<span class="pill n">${esc(r.purchase_type || '')}</span>` },
-      { label: 'סה"כ לתשלום לסופר', cls: 'num', render: r => mc(r.owed_scribe, r),
+      { label: 'סה"כ לתשלום לסופר', cls: 'num',
+        render: r => mc(r.owed_scribe, r) + (r.purchase_type === 'קומיסיון'
+          ? `<div class="mini" title="בקומיסיון משלמים רק על מה שהתממש">לפי ${N(r.owed_qty)} מתוך ${N(r.quantity)}</div>` : ''),
         total: rows => totalCur(rows, 'owed_scribe') },
-      { label: '', cls: 'center', render: r => `<button class="btn ghost xs" data-trk="${r.id}" title="מעקב היחידות של החבילה">📍 מעקב</button>` },
+      { label: '', cls: 'center', render: r => `
+        <button class="btn ghost xs" data-trk="${r.id}" title="מעקב היחידות של החבילה">📍 מעקב</button>
+        ${ME.caps.edit && N(r.remaining_qty) > 0
+          ? ` <button class="btn ghost xs" data-pret="${r.id}" title="החזרת סחורה לסופר">↩ החזרה</button>` : ''}` },
     ],
   };
   return cfgOnly ? cfg : entityPage(cfg);
@@ -1859,13 +1907,130 @@ function prodSales(cfgOnly) {
       { label: "עלות ליח'", cls: 'num', render: r => mCell(r.unit_cost, r.purchase_currency) },
       { label: 'סוג', render: r => `<span class="pill n">${esc(r.sale_type || '')}</span>` },
       { label: '3%', cls: 'center', render: r => r.deduct_3pct ? '<span class="pill a">כן</span>' : '' },
-      { label: 'סך מכירה', cls: 'num', render: r => mc(r.total_sale, r), total: rows => totalCur(rows, 'total_sale') },
+      // בקומיסיון הסחורה כבר אצל הלקוח אבל עדיין אינה חוב שלו
+      { label: 'מונח אצלו', cls: 'num', render: r => r.sale_type === 'קומיסיון'
+          ? (N(r.consigned_qty) > 0
+              ? `<span class="pill a" title="נמסר וטרם דווח כנמכר — אינו חוב">${N(r.consigned_qty)} · ${money(r.consigned_value, r.currency)}</span>`
+              : '<span class="pill g">הכל דווח</span>')
+          : '<span class="muted">—</span>',
+        total: rows => totalCur(rows, 'consigned_value') },
+      { label: 'סך לחיוב', cls: 'num',
+        render: r => mc(r.total_sale, r) + (r.sale_type === 'קומיסיון'
+          ? `<div class="mini" title="מחויב רק מה שהלקוח דיווח שמכר">לפי ${N(r.realized_qty)} מתוך ${N(r.quantity)}</div>` : ''),
+        total: rows => totalCur(rows, 'total_sale') },
       // רווח מוצג רק כששני המטבעות זהים — אחרת הוא הפרש בין מטבעות
       { label: 'סך רווח', cls: 'num',
         render: r => r.total_profit == null
           ? `<span class="muted" title="מטבע המכירה שונה ממטבע הרכישה">—</span>`
           : mc(r.total_profit, r),
         total: rows => totalCur(rows.filter(x => x.total_profit != null), 'total_profit') },
+      { label: '', cls: 'center', render: r => (ME.caps.edit && r.sale_type === 'קומיסיון' && N(r.consigned_qty) > 0)
+          ? `<button class="btn ghost xs" data-crep="${r.id}" title="הלקוח מכר — רישום חיוב">🤝 דיווח מכירה</button>` : '' },
+    ],
+  };
+  return cfgOnly ? cfg : entityPage(cfg);
+}
+
+// ---------- החזרות לסופר ----------
+// סחורה שחוזרת לסופר יוצאת מהמלאי ומפסיקה לחייב. חלה גם על רכישה רגילה,
+// לא רק על קומיסיון — גם סחורה שנקנתה במלואה אפשר להחזיר.
+function prodReturns(cfgOnly) {
+  const cfg = {
+    title: 'החזרות לסופר', store: Store.prodReturns,
+    load: () => Store.prodReturns.list(),
+    labelOf: (r) => `החזרה ${N(r.quantity)} יח'`,
+    defaults: () => ({ date: today() }),
+    note: 'יחידה שהוחזרה לסופר יוצאת מהמלאי ואינה נספרת בחוב אליו.'
+      + ' אי אפשר להחזיר סחורה שכבר נמכרה — קודם מוחקים את המכירה.',
+    validate: (d) => (!d.purchase_id ? 'יש לבחור חבילת רכישה'
+      : (N(d.quantity) <= 0 ? 'הכמות חייבת להיות גדולה מאפס' : null)),
+    fields: [
+      { k: 'date', label: 'תאריך ההחזרה', type: 'date' },
+      { k: 'purchase_id', label: 'מאיזו חבילה', type: 'combo', items: itemsPurchasesAll, required: true },
+      { k: 'quantity', label: 'כמה יחידות', type: 'number' },
+      { k: 'note', label: 'הערה', type: 'textarea' },
+    ],
+    // חיווי כמה בכלל אפשר להחזיר מהחבילה שנבחרה
+    onForm: (m) => {
+      const pur = m.el.querySelector('#f_purchase_id');
+      const qty = m.el.querySelector('#f_quantity');
+      if (!pur || !qty) return;
+      const tip = document.createElement('div');
+      tip.className = 'hint';
+      qty.closest('.field').appendChild(tip);
+      const show = () => {
+        const p = C.purchases.find(x => x.id === +pur.value);
+        tip.textContent = p
+          ? `בחבילה נשארו ${N(p.remaining_qty)} יחידות שאפשר להחזיר (מתוך ${N(p.quantity)} שנרכשו).`
+          : '';
+      };
+      pur.addEventListener('change', show);
+      show();
+    },
+    pin: 1,
+    cols: [
+      { label: 'תאריך', render: r => dt(r.date) },
+      { label: 'מחבילה', render: r => r.purchase_id ? `<span class="pill n">#${r.purchase_id}</span>` : '—' },
+      { label: 'מוצר', render: r => esc(r.product_name || '—') },
+      { label: 'לסופר', render: r => esc(r.scribe_name || '—') },
+      { label: 'סוג הרכישה', render: r => `<span class="pill n">${esc(r.purchase_type || '')}</span>` },
+      { label: 'כמות', cls: 'num', render: r => numCell(r.quantity), total: rows => numCell(sumBy(rows, 'quantity')) },
+      { label: 'שווי שירד מהחוב', cls: 'num', render: r => mc(r.value, r), total: rows => totalCur(rows, 'value') },
+      { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
+    ],
+  };
+  return cfgOnly ? cfg : entityPage(cfg);
+}
+
+// ---------- דיווחי קומיסיון ----------
+// מה שלקוח הקומיסיון מכר הלאה. כל דיווח מחייב אותו, ואם החבילה נרכשה
+// בקומיסיון — מחייב באותו רגע גם אותנו כלפי הסופר.
+function prodConsign(cfgOnly) {
+  const cfg = {
+    title: 'דיווחי קומיסיון', store: Store.prodConsign,
+    load: () => Store.prodConsign.list(),
+    labelOf: (r) => `דיווח ${N(r.quantity)} יח'`,
+    defaults: () => ({ date: today() }),
+    note: 'מכירה בקומיסיון אינה מחייבת את הלקוח עד שהוא מוכר הלאה.'
+      + ' כל דיווח כאן מחייב אותו במחיר שנקבע לו במכירה.',
+    validate: (d) => (!d.sale_id ? 'יש לבחור מכירה בקומיסיון'
+      : (N(d.quantity) <= 0 ? 'הכמות חייבת להיות גדולה מאפס' : null)),
+    fields: [
+      { k: 'date', label: 'תאריך הדיווח', type: 'date' },
+      { k: 'sale_id', label: 'על איזו מכירה', type: 'combo', items: itemsConsignSales, required: true,
+        hint: 'מוצגות רק מכירות בקומיסיון שעדיין מונחת בהן סחורה' },
+      { k: 'quantity', label: 'כמה יחידות נמכרו', type: 'number' },
+      { k: 'note', label: 'הערה', type: 'textarea' },
+    ],
+    onForm: (m) => {
+      const sale = m.el.querySelector('#f_sale_id');
+      const qty = m.el.querySelector('#f_quantity');
+      if (!sale || !qty) return;
+      const tip = document.createElement('div');
+      tip.className = 'hint';
+      qty.closest('.field').appendChild(tip);
+      const show = () => {
+        const s = (CONSIGN_SALES || []).find(x => x.id === +sale.value);
+        tip.textContent = s
+          ? `מונח אצלו ${N(s.consigned_qty)} יחידות. דיווח על הכל יחייב ${money(s.consigned_value, s.currency)}.`
+          : '';
+      };
+      sale.addEventListener('change', show);
+      show();
+    },
+    pin: 1,
+    cols: [
+      { label: 'תאריך', render: r => dt(r.date) },
+      { label: 'לקוח', render: r => esc(r.customer_name || '—') },
+      { label: 'ממכירה', render: r => r.sale_id ? `<span class="pill n">#${r.sale_id}</span>` : '—' },
+      { label: 'מוצר', render: r => esc(r.product_name || '—') },
+      { label: 'כמות', cls: 'num', render: r => numCell(r.quantity), total: rows => numCell(sumBy(rows, 'quantity')) },
+      { label: "מחיר ליח'", cls: 'num', render: r => mc(r.price_per_unit, r) },
+      { label: 'סכום שחויב', cls: 'num', render: r => mc(r.value, r), total: rows => totalCur(rows, 'value') },
+      { label: 'דווח ע"י', render: r => r.by_customer
+          ? '<span class="pill a" title="הלקוח דיווח בעצמו">הלקוח</span>'
+          : '<span class="pill n">המשרד</span>' },
+      { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
     ],
   };
   return cfgOnly ? cfg : entityPage(cfg);
@@ -2318,6 +2483,12 @@ async function repScribeBalances() {
     { label: 'חוב מוצרים', cls: 'num', render: r => mCell(r.product_owed), total: rows => mCell(sumBy(rows, 'product_owed')) },
     { label: 'שולם מוצרים', cls: 'num', render: r => mCell(r.product_paid), total: rows => mCell(sumBy(rows, 'product_paid')) },
     { label: 'יתרה מוצרים', cls: 'num', render: r => mCell(r.product_balance), total: rows => mCell(sumBy(rows, 'product_balance')) },
+    // סחורה שנרכשה ממנו בקומיסיון וטרם נמכרה — עדיין אינה חוב אליו
+    { label: 'בקומיסיון · טרם נמכר', cls: 'num',
+      render: r => N(r.consign_units)
+        ? `<span class="pill a" title="נרכש בקומיסיון ועדיין לא התממש — טרם מחייב">${N(r.consign_units)} יח'</span>`
+        : '<span class="muted">—</span>',
+      total: rows => numCell(sumBy(rows, 'consign_units')) },
     { label: 'תיקונים שקוזזו', cls: 'num', render: r => N(r.corrections) ? `<span class="neg">−${money(r.corrections)}</span>` : '',
       total: rows => N(sumBy(rows, 'corrections')) ? `−${money(sumBy(rows, 'corrections'))}` : '' },
     { label: 'סה"כ חוב', cls: 'num', render: r => `<b>${mCell(r.total_balance)}</b>`, total: rows => `<b>${mCell(sumBy(rows, 'total_balance'))}</b>` },
@@ -2343,6 +2514,12 @@ async function repCustomerBalances() {
     { label: 'מכירות מוצרים', cls: 'num', render: r => mCell(r.product_revenue), total: rows => mCell(sumBy(rows, 'product_revenue')) },
     { label: 'שולם מוצרים', cls: 'num', render: r => mCell(r.product_paid), total: rows => mCell(sumBy(rows, 'product_paid')) },
     { label: 'יתרה מוצרים', cls: 'num', render: r => mCell(r.product_balance), total: rows => mCell(sumBy(rows, 'product_balance')) },
+    // סחורה שמונחת אצלו — מוצגת לצד היתרה ולא בתוכה, כי אינה חוב
+    { label: 'מונח אצלו (קומיסיון)', cls: 'num',
+      render: r => N(r.consign_units)
+        ? `<span class="pill a" title="נמסר וטרם דווח כנמכר">${N(r.consign_units)} יח' · ${money(r.consigned)}</span>`
+        : '<span class="muted">—</span>',
+      total: rows => mCell(sumBy(rows, 'consigned')) },
     { label: 'סה"כ מיידי', cls: 'num', render: r => `<b>${mCell(r.total_due_now)}</b>`, total: rows => `<b>${mCell(sumBy(rows, 'total_due_now'))}</b>` },
     { label: 'סה"כ כללי', cls: 'num', render: r => mCell(r.total_due_overall), total: rows => mCell(sumBy(rows, 'total_due_overall')) },
     ...(usd ? [
@@ -2557,8 +2734,22 @@ function customerCardHTML(d) {
 // מסמך שנמסר ללקוח, ולכן הוא מציג רק את מה שנוגע לו: מה הזמין, כמה שילם
 // וכמה נשאר. עלות הפריטה אינה מופיעה כאן — היא הפסד המרה של העסק ואינה
 // חלק מהחוב שלו (calc.js: buyer_balance_now = לפי התקדמות פחות ששילם).
-const CUSTDOC = { id: '', mode: 'both', cols: loadDocCols(), _data: null, _id: null };
+const CUSTDOC = { id: '', mode: 'both', cols: loadDocCols(), scope: 'all', picked: [],
+                  colsOpen: false, _data: null, _id: null };
 const DOC_MODES = [['both', 'הכל'], ['scrolls', 'ס"ת בלבד'], ['products', 'מוצרים בלבד']];
+const DOC_SCOPES = [['all', 'כל הספרים'], ['open', 'רק פתוחים'], ['pick', 'בחירה ידנית']];
+
+// הספרים שייכנסו למסמך. הסינון הזה חייב להוביל גם לחישוב מחדש של
+// שורת הסיכום — מסמך שמראה שני ספרים וסיכום של עשרה הוא מסמך שקרי.
+function docScrolls(d) {
+  const all = d.scrolls || [];
+  if (CUSTDOC.scope === 'open') return all.filter(s => s.status !== 'done');
+  if (CUSTDOC.scope === 'pick') {
+    const set = new Set(CUSTDOC.picked.map(Number));
+    return all.filter(s => set.has(+s.id));
+  }
+  return all;
+}
 
 function repCustomerDoc() {
   $('view').innerHTML += `
@@ -2573,13 +2764,54 @@ function repCustomerDoc() {
         <div class="field"><button class="btn" id="cdPrint" disabled>🖨️ הדפסה</button></div>
       </div>
       <div class="mini">המסמך מיועד למסירה ללקוח — הוא כולל רק את ההזמנות שלו, מה ששילם והיתרה.</div>
+      <div id="cdScope"></div>
+      <div class="toolbar" style="margin-bottom:0">
+        <button class="btn ghost sm" id="cdColsBtn"></button>
+        <span class="mini" id="cdColsSum"></span>
+      </div>
       <div id="cdCols"></div>
     </div>
     <div id="cdBody"></div>`;
 
-  // בורר העמודות — נבנה מחדש בכל שינוי מצב, כי הסעיפים הרלוונטיים משתנים
+  // בחירת הספרים — מוצגת רק כשהמסמך כולל ספרים בכלל
+  const drawScope = () => {
+    const box = $('cdScope');
+    if (CUSTDOC.mode === 'products' || !CUSTDOC.id) { box.innerHTML = ''; return; }
+    const all = (CUSTDOC._data && CUSTDOC._data.scrolls) || [];
+    box.innerHTML = `
+      <div class="field" style="margin-top:10px"><label>אילו ספרים</label>
+        <div class="seg">${DOC_SCOPES.map(([v, t]) =>
+          `<button data-cdscope="${v}" class="${CUSTDOC.scope === v ? 'on' : ''}">${t}</button>`).join('')}</div>
+      </div>
+      ${CUSTDOC.scope === 'pick' ? `<div class="doc-pick"><div class="dp-sec" style="border:0">
+        ${all.length ? all.map(s => `<label><input type="checkbox" data-cdbook="${s.id}"
+            ${CUSTDOC.picked.map(Number).includes(+s.id) ? 'checked' : ''}>
+            ${esc(scrollLabel(s))}</label>`).join('') : '<span class="muted">אין ספרים ללקוח הזה</span>'}
+      </div></div>` : ''}`;
+    box.querySelectorAll('[data-cdscope]').forEach(b => b.onclick = () => {
+      CUSTDOC.scope = b.dataset.cdscope;
+      // מעבר לבחירה ידנית בפעם הראשונה מתחיל מהכל מסומן, ולא ממסמך ריק
+      if (CUSTDOC.scope === 'pick' && !CUSTDOC.picked.length) CUSTDOC.picked = all.map(s => s.id);
+      drawScope(); draw();
+    });
+    box.querySelectorAll('[data-cdbook]').forEach(cb => cb.onchange = () => {
+      const id = +cb.dataset.cdbook;
+      CUSTDOC.picked = cb.checked
+        ? [...new Set([...CUSTDOC.picked.map(Number), id])]
+        : CUSTDOC.picked.map(Number).filter(x => x !== id);
+      draw();
+    });
+  };
+
+  // בורר העמודות — נבנה מחדש בכל שינוי מצב, כי הסעיפים הרלוונטיים משתנים.
+  // מקופל כברירת מחדל: ברוב ההדפסות לא נוגעים בו, והוא תפס את כל המסך.
   const drawPicker = () => {
     const secs = docSections().filter(s => docSecVisible(s, CUSTDOC.mode));
+    const on = secs.reduce((a, sec) => a + sec.cols.filter(c => docColOn(sec.k, c.k)).length, 0);
+    const total = secs.reduce((a, sec) => a + sec.cols.length, 0);
+    $('cdColsBtn').textContent = `${CUSTDOC.colsOpen ? '▾' : '▸'} עמודות בדוח`;
+    $('cdColsSum').textContent = `${on} מתוך ${total} עמודות מוצגות`;
+    $('cdCols').hidden = !CUSTDOC.colsOpen;
     $('cdCols').innerHTML = `
       <div class="doc-pick">
         <div class="dp-head">עמודות בדוח
@@ -2599,12 +2831,14 @@ function repCustomerDoc() {
   };
 
   const draw = async () => {
-    if (!CUSTDOC.id) { $('cdBody').innerHTML = ''; $('cdPrint').disabled = true; return; }
+    if (!CUSTDOC.id) { $('cdBody').innerHTML = ''; $('cdPrint').disabled = true; drawScope(); return; }
     $('cdBody').innerHTML = '<div class="card muted">טוען…</div>';
     try {
-      const d = CUSTDOC._data && CUSTDOC._id === CUSTDOC.id
-        ? CUSTDOC._data
-        : (CUSTDOC._data = await Store.reports.customer(CUSTDOC.id), CUSTDOC._id = CUSTDOC.id, CUSTDOC._data);
+      const fresh = !(CUSTDOC._data && CUSTDOC._id === CUSTDOC.id);
+      const d = fresh
+        ? (CUSTDOC._data = await Store.reports.customer(CUSTDOC.id), CUSTDOC._id = CUSTDOC.id, CUSTDOC._data)
+        : CUSTDOC._data;
+      if (fresh) drawScope();   // רשימת הספרים נבנית מהנתונים שהגיעו זה עתה
       $('cdBody').innerHTML = custDocHTML(d, CUSTDOC.mode);
       $('cdPrint').disabled = false;
     } catch (e) {
@@ -2612,14 +2846,21 @@ function repCustomerDoc() {
       $('cdPrint').disabled = true;
     }
   };
-  wirePicker('cdSel', itemsContacts(), (v) => { CUSTDOC.id = v; CUSTDOC._data = null; draw(); });
+  wirePicker('cdSel', itemsContacts(), (v) => {
+    // לקוח אחר — הבחירה הידנית של הספרים שייכת ללקוח הקודם ואינה תקפה
+    CUSTDOC.id = v; CUSTDOC._data = null; CUSTDOC.picked = [];
+    if (CUSTDOC.scope === 'pick') CUSTDOC.scope = 'all';
+    draw();
+  });
   document.querySelectorAll('[data-cdmode]').forEach(b => b.onclick = () => {
     CUSTDOC.mode = b.dataset.cdmode;
     document.querySelectorAll('[data-cdmode]').forEach(x => x.classList.toggle('on', x === b));
-    drawPicker(); draw();
+    drawPicker(); drawScope(); draw();
   });
+  $('cdColsBtn').onclick = () => { CUSTDOC.colsOpen = !CUSTDOC.colsOpen; drawPicker(); };
   $('cdPrint').onclick = () => window.print();
   drawPicker();
+  drawScope();
   if (CUSTDOC.id) draw();
 }
 
@@ -2736,11 +2977,22 @@ const docS = (label, val, hi) =>
   `<div class="doc-s${hi ? ' hi' : ''}"><span>${esc(label)}</span><b>${val}</b></div>`;
 
 function custDocHTML(d, mode) {
-  const t = d.scroll_totals, p = d.product_totals;
+  const p = d.product_totals;
   const showS = mode !== 'products', showP = mode !== 'scrolls';
-  const data = {
-    books: showS ? (d.scrolls || []) : [],
-    bpays: showS ? (d.scroll_payments || []) : [],
+  // הספרים שנבחרו, והתשלומים ששייכים דווקא להם. סיכום שאינו נגזר
+  // מהשורות שמופיעות במסמך הוא סיכום שקרי, ולכן הוא מחושב כאן מחדש.
+  const books = showS ? docScrolls(d) : [];
+  const ids = new Set(books.map(x => +x.id));
+  const bpays = showS ? (d.scroll_payments || []).filter(x => ids.has(+x.scroll_id)) : [];
+  const partial = showS && books.length !== (d.scrolls || []).length;
+  const sm = (k) => r2(books.reduce((a, x) => a + N(x[k]), 0));
+  const t = partial ? {
+    count: books.length,
+    total_price: sm('buyer_total'), due_progress: sm('buyer_due_progress'),
+    paid: sm('customer_paid'), peritah: sm('peritah_cost'),
+    balance_now: sm('buyer_balance_now'), balance_total: sm('buyer_balance_total'),
+  } : d.scroll_totals;
+  const data = { books, bpays,
     prods: showP ? (d.sales || []) : [],
     ppays: showP ? (d.product_payments || []) : [],
   };
@@ -2759,10 +3011,13 @@ function custDocHTML(d, mode) {
         + docS('יתרה לתשלום', M(p.balance), true)
         + (usdProd ? docS('יתרה לתשלום ($)', M(p.balance_usd, 'USD'), true) : '');
   } else {
+    // כשהמסמך כולל רק חלק מהספרים, החיבור הכולל נגזר מהשורות שבמסמך
+    const dueNow = partial ? r2(N(t.balance_now) + N(p.balance)) : N(d.total_due_now);
+    const dueAll = partial ? r2(N(t.balance_total) + N(p.balance)) : N(d.total_due_overall);
     sum = docS('סה"כ הזמנות', M(N(t.total_price) + N(p.revenue)))
         + docS('שולם', M(N(t.paid) + N(p.paid)))
-        + docS('לתשלום כעת', M(d.total_due_now), true)
-        + docS('יתרה כללית', M(d.total_due_overall))
+        + docS('לתשלום כעת', M(dueNow), true)
+        + docS('יתרה כללית', M(dueAll))
         + (usdProd ? docS('יתרה לתשלום ($)', M(p.balance_usd, 'USD'), true) : '');
   }
   const title = mode === 'scrolls' ? 'ריכוז ספרים'
@@ -2792,6 +3047,8 @@ function custDocHTML(d, mode) {
 
     <div class="doc-sum">${sum}</div>
     ${mixed ? '<div class="doc-note">שים לב: בכרטיס זה יש ספרים בשני מטבעות. שורת הסיכום מציגה סכום נומינלי.</div>' : ''}
+    ${partial ? `<div class="doc-note">המסמך מתייחס ל-${books.length} ${books.length === 1 ? 'ספר' : 'ספרים'}${
+      CUSTDOC.scope === 'open' ? ' פתוחים' : ''} מתוך ${(d.scrolls || []).length}. הסכומים מתייחסים לספרים שבמסמך בלבד.</div>` : ''}
 
     ${secs.map(x => `<div class="doc-sec">${esc(x.s.title)}</div>${x.html}`).join('')}
 

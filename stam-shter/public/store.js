@@ -93,6 +93,8 @@
     prodSales: res('/prod/sales'),
     prodCustomerPayments: res('/prod/customer-payments'),
     // דוחות
+    prodReturns: res('/prod/returns'),
+    prodConsign: res('/prod/consign'),
     reports: {
       overview: () => apiFetch('/reports/overview'),
       profit: () => apiFetch('/reports/profit'),
