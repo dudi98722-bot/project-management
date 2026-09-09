@@ -3495,6 +3495,10 @@ async function pageUsers() {
     { label: 'שם משתמש', render: r => esc(r.username) },
     { label: 'שם מלא', render: r => esc(r.full_name || '') },
     { label: 'תפקיד', render: r => `<span class="pill n">${esc(r.role_label || r.role)}</span>` },
+    { label: 'רואה את', render: r => r.role === 'customer'
+        ? (r.contact_name ? `<span class="pill a">${esc(r.contact_name)}</span>`
+                          : '<span class="pill r">לא משויך</span>')
+        : '<span class="muted">כל המערכת</span>' },
     { label: 'פעיל', render: r => r.active ? '<span class="pill g">כן</span>' : '<span class="pill r">לא</span>' },
     { label: 'כניסה אחרונה', render: r => r.last_login ? dt(r.last_login) : '—' },
     { label: '', cls: 'center', render: r => `<button class="btn ghost xs" data-eu="${r.id}">✎</button>` },
@@ -3513,12 +3517,28 @@ async function pageUsers() {
       <div class="field"><label>סיסמא ${row ? '(השאר ריק כדי לא לשנות)' : ''}</label><input id="u_pass" type="password"></div>
       <div class="field"><label>תפקיד</label><select id="u_role">
         ${roles.map(r => `<option value="${r.role}" ${row && row.role === r.role ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select></div>
+      <div id="u_cbox" class="hidden">
+        ${pickerHTML('u_contact', 'איזה לקוח הוא רואה', itemsContacts(),
+          row ? row.contact_id : '', 'הקלד שם לקוח…')}
+        <div class="hint">משתמש קומיסיון רואה את הלקוח הזה בלבד — את מה שנמסר לו,
+          מה שדיווח שמכר ומה שהוא חייב. הוא אינו רואה עלויות, סופרים או לקוחות אחרים.</div>
+      </div>
       ${row ? `<div class="chk"><input type="checkbox" id="u_act" ${row.active ? 'checked' : ''}><label for="u_act">משתמש פעיל</label></div>` : ''}`;
     const m = modal({ title: row ? 'עריכת משתמש' : 'משתמש חדש', body,
       footer: `<button class="btn" data-ok>שמירה</button><button class="btn ghost" data-no>ביטול</button>` });
     m.el.querySelector('[data-no]').onclick = m.close;
+    // בחירת הלקוח מוצגת רק לתפקיד קומיסיון — לשאר התפקידים אין משמעות
+    wirePicker('u_contact', itemsContacts(), () => {});
+    const roleSel = m.el.querySelector('#u_role');
+    const syncRole = () => m.el.querySelector('#u_cbox').classList.toggle('hidden', roleSel.value !== 'customer');
+    roleSel.onchange = syncRole;
+    syncRole();
     m.el.querySelector('[data-ok]').onclick = async () => {
       const d = { full_name: $('u_full').value, role: $('u_role').value, username: $('u_name').value };
+      if (d.role === 'customer') {
+        d.contact_id = $('f_u_contact').value;
+        if (!d.contact_id) return toast('יש לבחור את הלקוח שהמשתמש רואה', 'err');
+      }
       if ($('u_pass').value) d.password = $('u_pass').value;
       if (row) d.active = $('u_act').checked;
       try {
@@ -5453,8 +5473,127 @@ async function render() {
 }
 
 // ============ כניסה ============
+// ============ פורטל לקוח הקומיסיון ============
+// מסך נפרד לגמרי, ולא גרסה מצומצמת של המערכת: לקוח הקומיסיון אינו
+// רואה לשוניות, דוחות או הוספה מהירה — רק את מה שאצלו ואת מה שהוא חייב.
+async function renderPortal() {
+  const v = $('view');
+  v.innerHTML = '<div class="card muted">טוען…</div>';
+  let d;
+  try { d = await Store.portal.me(); }
+  catch (e) { v.innerHTML = `<div class="card" style="color:var(--red)">${esc(e.message)}</div>`; return; }
+
+  const t = d.totals;
+  const usd = N(t.billed_usd) || N(t.paid_usd) || N(t.holding_value_usd);
+  const st = (label, val, cls, sub) => `<div class="stat"><div class="label">${label}</div>
+    <div class="value ${cls || ''}">${val}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>`;
+
+  const open = d.items.filter(x => N(x.holding_qty) > 0);
+
+  v.innerHTML = `
+    <div class="card" style="background:linear-gradient(135deg,#c98a2e,#a1701f);color:#fff;border:none">
+      <div style="font-size:13px;color:#fdf0d5">קומיסיון</div>
+      <h2 style="margin:4px 0 0">${esc(d.contact.name)}</h2>
+    </div>
+
+    <div class="grid stat-grid">
+      ${st('מונח אצלך עכשיו', `${N(t.holding_units)} יח'`, 'a',
+           `בשווי ${money(t.holding_value)}${usd && N(t.holding_value_usd) ? ` · ${money(t.holding_value_usd, 'USD')}` : ''}`)}
+      ${st('סה"כ שדיווחת שמכרת', money(t.billed), 'b', 'זה מה שחויבת עליו')}
+      ${st('שילמת', money(t.paid), 'g')}
+      ${st('יתרה לתשלום', money(t.owed), N(t.owed) > 0 ? 'r' : 'g')}
+      ${usd ? st('יתרה לתשלום ($)', money(t.owed_usd, 'USD'), N(t.owed_usd) > 0 ? 'r' : 'g') : ''}
+    </div>
+
+    <div class="card">
+      <div class="page-head" style="margin-bottom:10px"><h3 style="margin:0">מה שמונח אצלך</h3></div>
+      ${open.length ? tableHTML([
+        { label: 'תאריך מסירה', render: r => dt(r.date) },
+        { label: 'מוצר', render: r => esc(r.product_name || '—') },
+        { label: 'נמסר', cls: 'num', render: r => numCell(r.quantity) },
+        { label: 'דיווחת שמכרת', cls: 'num', render: r => numCell(r.billed_qty) },
+        { label: 'נשאר אצלך', cls: 'num', render: r => `<b>${N(r.holding_qty)}</b>` },
+        { label: "מחיר ליח'", cls: 'num', render: r => mc(r.price_per_unit, r) },
+        { label: 'שווי מה שנשאר', cls: 'num', render: r => mc(r.holding_value, r),
+          total: rows => totalCur(rows, 'holding_value') },
+        { label: '', cls: 'center', render: r => `<button class="btn xs" data-prep="${r.id}">מכרתי — דיווח</button>` },
+      ], open, { totals: true })
+      : '<div class="empty"><div class="big">📦</div>אין כרגע סחורה שמונחת אצלך</div>'}
+    </div>
+
+    <div class="card">
+      <div class="page-head" style="margin-bottom:10px"><h3 style="margin:0">מה שדיווחת שמכרת</h3></div>
+      ${tableHTML([
+        { label: 'תאריך מסירה', render: r => dt(r.date) },
+        { label: 'מוצר', render: r => esc(r.product_name || '—') },
+        { label: 'כמות שחויבת', cls: 'num', render: r => numCell(r.billed_qty) },
+        { label: "מחיר ליח'", cls: 'num', render: r => mc(r.price_per_unit, r) },
+        { label: 'סכום', cls: 'num', render: r => mc(r.billed_value, r),
+          total: rows => totalCur(rows, 'billed_value') },
+      ], d.items.filter(x => N(x.billed_qty) > 0), { totals: true })}
+    </div>
+
+    <div class="card">
+      <div class="page-head" style="margin-bottom:10px"><h3 style="margin:0">התשלומים ששילמת</h3></div>
+      ${tableHTML([
+        { label: 'תאריך', render: r => dt(r.date) },
+        { label: 'סכום', cls: 'num', render: r => mc(r.amount, r), total: rows => totalCur(rows, 'amount') },
+        { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
+      ], d.payments, { totals: true })}
+    </div>`;
+
+  document.querySelectorAll('[data-prep]').forEach(b => b.onclick = () => {
+    const row = d.items.find(x => +x.id === +b.dataset.prep);
+    portalReport(row);
+  });
+}
+
+// דיווח על מכירה. הכמות מוגבלת למה שבאמת מונח אצלו, והשרת בודק שוב —
+// הבדיקה כאן היא נוחות, לא הגנה.
+function portalReport(row) {
+  const max = N(row.holding_qty);
+  const body = `
+    <p class="mini">${esc(row.product_name || '')} — מונח אצלך <b>${max}</b> יחידות,
+       ${money(row.price_per_unit, row.currency)} ליחידה.</p>
+    <div class="field"><label>כמה מכרת</label>
+      <input id="pr_q" type="number" min="1" max="${max}" step="1" value="${max}">
+      <div class="hint" id="pr_sum"></div></div>
+    <div class="field"><label>תאריך המכירה</label><input id="pr_d" type="date" value="${today()}"></div>
+    <div class="field"><label>הערה (לא חובה)</label><input id="pr_n"></div>`;
+  const m = modal({ title: 'דיווח על מכירה', body,
+    footer: `<button class="btn" data-ok>שלח דיווח</button><button class="btn ghost" data-no>ביטול</button>` });
+  m.el.querySelector('[data-no]').onclick = m.close;
+  const sum = () => {
+    const q = Math.min(Math.max(Math.round(N($('pr_q').value)), 0), max);
+    $('pr_sum').textContent = q > 0
+      ? `הדיווח יחייב אותך ב-${money(q * N(row.price_per_unit), row.currency)}`
+      : 'יש להזין כמות';
+  };
+  $('pr_q').oninput = sum;
+  sum();
+  m.el.querySelector('[data-ok]').onclick = async () => {
+    const q = Math.round(N($('pr_q').value));
+    if (!(q > 0)) return toast('יש להזין כמות', 'err');
+    if (q > max) return toast(`מונח אצלך ${max} יחידות בלבד`, 'err');
+    try {
+      await Store.portal.report({ sale_id: row.id, quantity: q, date: $('pr_d').value, note: $('pr_n').value });
+      toast('הדיווח נקלט', 'ok'); m.close(); renderPortal();
+    } catch (e) { toast(e.message, 'err'); }
+  };
+}
+
 async function boot(user) {
   ME = user;
+  // לקוח קומיסיון נעצר כאן: אין לו לשוניות, אין מטמון של נתוני המערכת,
+  // ואין הוספה מהירה. מסך אחד, שלו.
+  if (user.caps && user.caps.portal) {
+    $('userName').textContent = user.full_name || user.username;
+    $('userRole').textContent = user.caps.label || '';
+    $('loginScreen').classList.add('hidden');
+    $('app').classList.remove('hidden');
+    $('tabs').innerHTML = '';
+    return renderPortal();
+  }
   wireExport();
   // מי שאין לו דשבורד ייפתח על הלשונית הראשונה שמותרת לו
   if (!(user.caps && user.caps.viewReports)) TAB = 'scribepay';

@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS users (
 -- בלי לשבור מסדים קיימים (CREATE TABLE IF NOT EXISTS לא מעדכן אילוצים).
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
 ALTER TABLE users ADD CONSTRAINT users_role_check
-  CHECK (role IN ('admin','manager','clerk','scribeops','viewer'));
+  CHECK (role IN ('admin','manager','clerk','scribeops','viewer','customer'));
 
 -- ==================================================================
 --  נתוני יסוד (הגדרות)
@@ -561,10 +561,10 @@ CREATE INDEX IF NOT EXISTS idx_consign_sale ON prod_consign_reports(sale_id) WHE
 -- משתמש שהוא לקוח: רואה רק את הקומיסיון שלו, דרך ממשק נפרד.
 -- contact_id הוא הקישור לאיש הקשר, והוא מקור האמת היחיד לשיוך —
 -- הפורטל לעולם לא מקבל מזהה לקוח מהדפדפן.
+-- התפקיד 'customer' מוגדר למעלה, ברשימת התפקידים היחידה. הגדרה שנייה
+-- כאן הייתה נופלת בכל עליית שרת: ההגדרה המוקדמת רצה לפניה ומפילה את
+-- האילוץ על כל משתמש קומיסיון שכבר קיים.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS contact_id BIGINT REFERENCES contacts(id) ON DELETE SET NULL;
-ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
-ALTER TABLE users ADD CONSTRAINT users_role_check
-  CHECK (role IN ('admin','manager','clerk','scribeops','viewer','customer'));
 CREATE UNIQUE INDEX IF NOT EXISTS uq_user_contact ON users (contact_id) WHERE contact_id IS NOT NULL;
 
 -- אין כאן מילוי אוטומטי, בכוונה.

@@ -107,6 +107,11 @@
       customer: (id) => apiFetch('/reports/customer/' + id),
     },
     users: Object.assign(res('/users'), { roles: () => apiFetch('/users/roles') }),
+    // פורטל הקומיסיון — הלקוח לעולם אינו שולח מזהה לקוח, הוא נגזר בשרת
+    portal: {
+      me: () => apiFetch('/portal/me'),
+      report: (body) => apiFetch('/portal/report', { method: 'POST', body }),
+    },
     recycle: {
       summary: () => apiFetch('/recycle'),
       list: (table) => apiFetch('/recycle/' + table),

@@ -54,6 +54,7 @@ app.use('/api/prod/sales', require('./routes/prod-sales'));
 app.use('/api/prod/customer-payments', require('./routes/prod-customer-payments'));
 app.use('/api/prod/returns', require('./routes/prod-returns'));
 app.use('/api/prod/consign', require('./routes/prod-consign'));
+app.use('/api/portal', require('./routes/portal'));
 
 // דוחות + סל מחזור + ייבוא
 app.use('/api/reports', require('./routes/reports'));

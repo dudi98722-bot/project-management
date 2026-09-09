@@ -11,6 +11,7 @@ const jwt = require('jsonwebtoken');
 //  approve      - אישור שורות שהעובד הזין (רכישות ותשלומים לסופר).
 //                 מי שמזין אינו מי שמאשר, ולכן פקיד וניהול-סופרים לא מקבלים אותה.
 //  view         - צפייה בנתונים
+//  portal       - גישה לפורטל הקומיסיון בלבד, ולשום דבר אחר
 //
 // scribeops (ניהול סופרים): רואה רק את מה שנוגע לעבודה מול הסופרים —
 // הגדרות, דוח סופר, תשלום לסופר, הוצאות לספר, רכישות ומכירות.
@@ -21,7 +22,11 @@ const ROLES = {
   manager:   { label: 'מנהל',         manageUsers: false, edit: true,  del: true,  viewReports: true,  scribeReport: true, finance: true,  approve: true,  view: true },
   clerk:     { label: 'פקיד',         manageUsers: false, edit: true,  del: false, viewReports: true,  scribeReport: true, finance: true,  approve: false, view: true },
   scribeops: { label: 'ניהול סופרים', manageUsers: false, edit: true,  del: false, viewReports: false, scribeReport: true, finance: false, approve: false, view: true },
-  viewer:    { label: 'צופה',         manageUsers: false, edit: false, del: false, viewReports: true,  scribeReport: true, finance: true,  approve: false, view: true }
+  viewer:    { label: 'צופה',         manageUsers: false, edit: false, del: false, viewReports: true,  scribeReport: true, finance: true,  approve: false, view: true },
+  // לקוח קומיסיון: כל ההרשאות כבויות, ורק דלת אחת פתוחה — הפורטל שלו.
+  // חייב להופיע כאן במפורש: authenticate נופל ל-ROLES.viewer כשהתפקיד
+  // אינו מוכר, וצופה רואה את כל המערכת.
+  customer:  { label: 'לקוח קומיסיון', manageUsers: false, edit: false, del: false, viewReports: false, scribeReport: false, finance: false, approve: false, view: false, portal: true }
 };
 
 function authenticate(req, res, next) {
