@@ -184,7 +184,7 @@ const SPEC = {
   },
 };
 
-const VALID_LISTS = new Set(['expense_book', 'expense_business']);
+const { VALID_LISTS } = require('./lists');
 
 // ---------- המרות ----------
 // פרסר מספרים קפדני. עקרונות:

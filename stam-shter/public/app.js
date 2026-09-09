@@ -5,7 +5,7 @@
 // ============ מצב ============
 let ME = null, TAB = 'dash';
 const SUB = { prod: 'purchases', reports: 'overview', settings: 'contacts', system: 'recycle', track: 'summary', workspace: 'scribe', diary: 'reminders' };
-const C = { contacts: [], products: [], sizes: [], expBook: [], expBiz: [], scrolls: [], purchases: [], stations: [], kinds: [], settings: { usd_rate: 3 } };
+const C = { contacts: [], products: [], sizes: [], expBook: [], expBiz: [], scrolls: [], purchases: [], stations: [], kinds: [], extraNotes: [], saleNotes: [], settings: { usd_rate: 3 } };
 const IMPORT = { spec: null, table: '', text: '', mode: 'create', opts: { createMissingContacts: false } };
 
 // ============ עזרים ============
@@ -186,12 +186,19 @@ const kindPills = (v) => {
 
 function comboHTML(f, val) {
   const items = f.items(val) || [];
-  const cur = items.find(x => String(x.v) === String(val));
+  const v = val == null ? '' : String(val);
+  const cur = f.free ? null : items.find(x => String(x.v) === String(v));
+  // ברשימה פתוחה זה textarea ולא input, כדי שהערה רב-שורתית קיימת לא תאבד
+  // את השורות שלה ברגע שפותחים את השורה לעריכה.
+  const box = f.free
+    ? `<textarea class="combo-inp free" id="t_${f.k}" rows="${f.rows || 2}" autocomplete="off"
+         placeholder="${esc(f.placeholder || 'בחר מהרשימה או הקלד חופשי')}">${esc(v)}</textarea>`
+    : `<input class="combo-inp${cur ? ' picked' : ''}" id="t_${f.k}" autocomplete="off"
+         placeholder="${esc(f.placeholder || 'הקלד לחיפוש…')}" value="${esc(cur ? cur.t : '')}">`;
   return `<div class="field"><label>${esc(f.label)}</label>
     <div class="combo" data-combo="${f.k}">
-      <input type="hidden" id="f_${f.k}" value="${esc(val == null ? '' : val)}">
-      <input class="combo-inp${cur ? ' picked' : ''}" id="t_${f.k}" autocomplete="off"
-        placeholder="${esc(f.placeholder || 'הקלד לחיפוש…')}" value="${esc(cur ? cur.t : '')}">
+      <input type="hidden" id="f_${f.k}" value="${esc(v)}">
+      ${box}
       <div class="combo-menu" style="display:none"></div>
     </div>
     ${f.hint ? `<div class="hint">${esc(f.hint)}</div>` : ''}</div>`;
@@ -204,6 +211,7 @@ function wireCombos(root, fields) {
     const hid = box.querySelector('input[type=hidden]');
     const inp = box.querySelector('.combo-inp');
     const menu = box.querySelector('.combo-menu');
+    const free = !!f.free;   // רשימה פתוחה: מה שהוקלד הוא הערך
     let items = f.items(hid.value) || [];
     let act = -1;
 
@@ -224,23 +232,34 @@ function wireCombos(root, fields) {
       });
     };
     const pick = (v, t) => {
-      hid.value = v; inp.value = t; inp.classList.add('picked');
+      hid.value = v; inp.value = free ? v : t;
+      if (!free) inp.classList.add('picked');
       menu.style.display = 'none'; act = -1;
       hid.dispatchEvent(new Event('change', { bubbles: true }));
     };
     const close = () => { menu.style.display = 'none'; act = -1; };
 
-    inp.onfocus = () => { items = f.items(hid.value) || []; act = -1; draw(inp.value === (items.find(x => String(x.v) === String(hid.value)) || {}).t ? '' : inp.value); };
+    inp.onfocus = () => {
+      items = f.items(hid.value) || [];
+      act = -1;
+      // ברשימה פתוחה מציגים תמיד את כל ההצעות: הערך שכבר בשדה הוא טקסט,
+      // וסינון לפיו היה מציג "אין תוצאות" בדיוק כשרוצים לבחור משהו אחר.
+      if (free) return draw('');
+      draw(inp.value === (items.find(x => String(x.v) === String(hid.value)) || {}).t ? '' : inp.value);
+    };
     inp.oninput = () => {
       // ריענון הרשימה לפני הניקוי — שדה תלוי (למשל ספרים לפי הסופר שנבחר)
       // עשוי להשתנות בין פתיחה לפתיחה, ואסור להסתמך רק על אירוע ה-focus.
       items = f.items(hid.value) || [];
+      act = -1;
+      if (free) { hid.value = inp.value; return draw(inp.value); }
       hid.value = ''; inp.classList.remove('picked');   // הקלדה מבטלת בחירה קודמת
-      act = -1; draw(inp.value);
+      draw(inp.value);
     };
     inp.onblur = () => {
       setTimeout(() => {
         close();
+        if (free) return;   // טקסט חופשי הוא ערך תקף — אין מה לנקות
         // טקסט שלא נבחר מהרשימה — אם הוא תואם בדיוק פריט, נבחר אותו; אחרת מנוקה
         if (!hid.value) {
           const exact = items.find(x => String(x.t).toLowerCase() === inp.value.trim().toLowerCase());
@@ -258,11 +277,13 @@ function wireCombos(root, fields) {
         opts.forEach((o, i) => o.classList.toggle('act', i === act));
         if (opts[act]) opts[act].scrollIntoView({ block: 'nearest' });
       } else if (e.key === 'Enter') {
-        if (menu.style.display !== 'none' && opts.length) {
+        // ברשימה פתוחה Enter בוחר רק אחרי סימון מפורש בחצים; אחרת הוא
+        // פותח שורה חדשה בהערה, ולא מחליף בשקט את מה שהוקלד בהצעה הראשונה.
+        if (menu.style.display !== 'none' && opts.length && !(free && act < 0)) {
           e.preventDefault();
           const o = opts[act >= 0 ? act : 0];
           pick(o.dataset.v, o.textContent);
-        }
+        } else if (free) { close(); }
       } else if (e.key === 'Escape') { close(); }
     };
   }
@@ -987,6 +1008,7 @@ async function reloadCaches() {
   C.contacts = contacts; C.products = products; C.sizes = sizes;
   C.expBook = lists.expense_book || []; C.expBiz = lists.expense_business || [];
   C.kinds = lists.contact_kind || [];
+  C.extraNotes = lists.purchase_extra_note || []; C.saleNotes = lists.sale_note || [];
   try { C.settings = await Store.settings.all(); } catch (e) { C.settings = { usd_rate: 3 }; }
   C.scrolls = scrolls; C.purchases = purchases; C.stations = stations;
 }
@@ -1612,8 +1634,9 @@ function prodPurchases(cfgOnly) {
       { k: 'quantity', label: 'כמות', type: 'number' },
       { k: 'cost_per_unit', label: 'עלות ליחידה', type: 'number', hint: 'מכאן נגזר הסכום לתשלום לסופר' },
       { k: 'extra_cost_per_unit', label: 'עלות נוספת ליחידה', type: 'number', hint: 'לחישוב הרווח בלבד' },
-      { k: 'extra_cost_note', label: 'עבור מה העלות הנוספת', type: 'text',
-        hint: 'למשל: הובלה, בתי מזוזה, תיקונים' },
+      { k: 'extra_cost_note', label: 'עבור מה העלות הנוספת', type: 'combo', free: true, rows: 1,
+        items: () => itemsList(C.extraNotes), placeholder: 'בחר מהרשימה או הקלד חופשי',
+        hint: 'הרשימה נערכת בהגדרות ← עבור מה העלות הנוספת. אפשר גם להקליד ערך שאינו בה.' },
       { k: 'purchase_type', label: 'סוג רכישה', type: 'select', blank: false, options: (v) =>
           `<option value="רגיל" ${v === 'רגיל' ? 'selected' : ''}>רגיל</option><option value="קומיסיון" ${v === 'קומיסיון' ? 'selected' : ''}>קומיסיון</option>` },
       curField('כל הסכומים ברכישה הזו — עלות, תשלום לסופר והחוב — יהיו במטבע הזה'),
@@ -1809,7 +1832,9 @@ function prodSales(cfgOnly) {
           `<option value="רגיל" ${v === 'רגיל' ? 'selected' : ''}>רגיל</option><option value="קומיסיון" ${v === 'קומיסיון' ? 'selected' : ''}>קומיסיון</option>` },
       { k: 'deduct_3pct', label: 'לנכות 3%', type: 'checkbox' },
       curField('נקבע לפי החבילה שנבחרה, וניתן לשנות — אפשר לקנות בשקל ולמכור בדולר'),
-      { k: 'note', label: 'הערה', type: 'textarea' },
+      { k: 'note', label: 'הערה', type: 'combo', free: true,
+        items: () => itemsList(C.saleNotes), placeholder: 'בחר מהרשימה או הקלד חופשי',
+        hint: 'הרשימה נערכת בהגדרות ← הערות למכירה. אפשר גם להקליד הערה חופשית.' },
     ],
     // בחירת חבילה מיישרת את המטבע לזה שלה — ברוב המקרים זה מה שנכון
     onForm: (m) => {
@@ -2867,6 +2892,8 @@ function pageSettings() {
     ...(ME.caps.finance ? [{ k: 'rates', label: 'שער דולר' }] : []),
     { k: 'expbook', label: 'סוגי הוצאות לספר' },
     { k: 'expbiz', label: 'סוגי הוצאות עסק' },
+    { k: 'purchnotes', label: 'עבור מה העלות הנוספת' },
+    { k: 'salenotes', label: 'הערות למכירה' },
   ];
   renderSubtabs('settings', subs);
   const s = SUB.settings;
@@ -2876,6 +2903,10 @@ function pageSettings() {
   if (s === 'kinds') return setList('contact_kind', 'סיווגי אנשי קשר', false);
   if (s === 'rates') return setRates();
   if (s === 'expbook') return setList('expense_book', 'סוגי הוצאות לספר', true);
+  if (s === 'purchnotes') return setList('purchase_extra_note', 'עבור מה העלות הנוספת', false,
+    'הערכים מוצעים בטופס <b>רכישת מוצרים</b>, בשדה "עבור מה העלות הנוספת". זו הצעה בלבד — בטופס אפשר גם להקליד ערך שאינו כאן.');
+  if (s === 'salenotes') return setList('sale_note', 'הערות למכירה', false,
+    'הערכים מוצעים בטופס <b>מכירת מוצרים</b>, בשדה ההערה. זו הצעה בלבד — בטופס אפשר גם להקליד הערה חופשית.');
   return setList('expense_business', 'סוגי הוצאות עסק', true);
 }
 
@@ -3036,7 +3067,7 @@ function setSizes(cfgOnly) {
   return cfgOnly ? cfg : entityPage(cfg);
 }
 
-async function setList(listName, title, withCorrection) {
+async function setList(listName, title, withCorrection, note) {
   const rows = await Store.lists.one(listName);
   const cols = [
     ...(ME.caps.del ? [selCol('list_items')] : []),
@@ -3058,6 +3089,7 @@ async function setList(listName, title, withCorrection) {
     <div class="page-head"><h2>${esc(title)}</h2><div class="spacer"></div>
       ${bulkBtn('list_items', title, { list_name: listName })}
       ${ME.caps.edit ? `<button class="btn" id="addLi">+ הוספה</button>` : ''}</div>
+    ${note ? `<div class="card mini">${note}</div>` : ''}
     ${withCorrection ? `<div class="card mini">${listName === 'expense_business'
       ? 'ערך המסומן כ<b>תיקונים</b> מציע בהזנת ההוצאה לקזז אותה מהחוב לסופר; הוצאה מקוזזת אינה נספרת כהוצאת עסק.'
       : 'ערך המסומן כ<b>תיקונים</b> נזקף לצד הסופר במקום להיחשב הוצאה לספר.'} אפשר לסמן יותר מאחד.</div>` : ''}

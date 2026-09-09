@@ -1,12 +1,15 @@
-// רשימות ערכים: סוגי הוצאות לספר ('expense_book'), סוגי הוצאות עסק ('expense_business')
-// וסיווגי אנשי קשר ('contact_kind').
+// רשימות ערכים: סוגי הוצאות לספר ('expense_book'), סוגי הוצאות עסק ('expense_business'),
+// סיווגי אנשי קשר ('contact_kind'), ושתי רשימות הצעה — עבור מה העלות הנוספת
+// ברכישה ('purchase_extra_note') והערות למכירה ('sale_note').
+// בשתי האחרונות הרשימה היא הצעה בלבד: בטופס אפשר גם להקליד טקסט שאינו בה.
 // ל-list_items אין עמודות created_by/updated_by, ולכן ראוטר ייעודי ולא המפעל הגנרי.
 const express = require('express');
 const { pool, logAction, softDelete, restore } = require('../db');
 const { authenticate, can } = require('../middleware/auth');
 const router = express.Router();
 
-const VALID_LISTS = new Set(['expense_book', 'expense_business', 'contact_kind']);
+const VALID_LISTS = new Set(['expense_book', 'expense_business', 'contact_kind',
+                             'purchase_extra_note', 'sale_note']);
 const CORR_LISTS  = new Set(['expense_book', 'expense_business']);
 
 // רשימה אחת (?name=) או כל הרשימות מקובצות
@@ -67,3 +70,5 @@ router.delete('/:id', authenticate, can('del'), async (req, res) => {
 });
 
 module.exports = router;
+// מקור אחד לשמות הרשימות — הייבוא המרוכז מאמת מולו
+module.exports.VALID_LISTS = VALID_LISTS;
