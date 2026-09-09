@@ -925,10 +925,16 @@ function paintApprove(btn, val) {
   btn.disabled = false;
 }
 
+// מפתח המטמון והסינון של מסך ישות.
+// \W בג'אווהסקריפט תופס גם אותיות עבריות, ולכן כותרת עברית התקפלה
+// למחרוזת ריקה — ושתי לשוניות בלי bulk חלקו בשקט את אותו מטמון והציגו
+// זו את הנתונים של זו. הנפילה האחרונה שומרת על העברית.
+const fkeyOf = (cfg) => cfg.bulk || cfg.key || String(cfg.title || '').replace(/\s+/g, '_');
+
 // אישור/ביטול + עדכון המטמון, כדי שרינדור הבא יראה את אותו מצב
 async function approveRows(cfg, ids, val) {
   const r = await cfg.store.approve(ids, val);
-  const fkey = cfg.bulk || cfg.title.replace(/\W/g, '');
+  const fkey = fkeyOf(cfg);
   const cache = ROWCACHE[fkey];
   if (cache) {
     const set = new Set(ids);
@@ -994,7 +1000,7 @@ const ROWCACHE = {};
 function invalidateRows() { for (const k in ROWCACHE) delete ROWCACHE[k]; }
 
 async function entityPage(cfg) {
-  const fkey = cfg.bulk || cfg.title.replace(/\W/g, '');
+  const fkey = fkeyOf(cfg);
   const allRows = ROWCACHE[fkey] || (ROWCACHE[fkey] = await cfg.load());
   // cfg.pin — כמה מעמודות הזיהוי הראשונות נצמדות לימין בגלילה לרוחב.
   // תיבת הבחירה נספרת איתן, אחרת הרצף המוצמד נשבר כבר בעמודה הראשונה.
@@ -1945,7 +1951,7 @@ function prodSales(cfgOnly) {
 // לא רק על קומיסיון — גם סחורה שנקנתה במלואה אפשר להחזיר.
 function prodReturns(cfgOnly) {
   const cfg = {
-    title: 'החזרות לסופר', store: Store.prodReturns,
+    title: 'החזרות לסופר', key: 'prod_returns', store: Store.prodReturns,
     load: () => Store.prodReturns.list(),
     labelOf: (r) => `החזרה ${N(r.quantity)} יח'`,
     defaults: () => ({ date: today() }),
@@ -1996,7 +2002,7 @@ function prodReturns(cfgOnly) {
 // בקומיסיון — מחייב באותו רגע גם אותנו כלפי הסופר.
 function prodConsign(cfgOnly) {
   const cfg = {
-    title: 'דיווחי קומיסיון', store: Store.prodConsign,
+    title: 'דיווחי קומיסיון', key: 'prod_consign_reports', store: Store.prodConsign,
     load: () => Store.prodConsign.list(),
     labelOf: (r) => `דיווח ${N(r.quantity)} יח'`,
     defaults: () => ({ date: today() }),

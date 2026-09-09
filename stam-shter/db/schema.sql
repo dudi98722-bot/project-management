@@ -567,19 +567,9 @@ ALTER TABLE users ADD CONSTRAINT users_role_check
   CHECK (role IN ('admin','manager','clerk','scribeops','viewer','customer'));
 CREATE UNIQUE INDEX IF NOT EXISTS uq_user_contact ON users (contact_id) WHERE contact_id IS NOT NULL;
 
--- הגירה חד-פעמית: עד כה "קומיסיון" היה תווית בלבד, וכל מכירת קומיסיון
--- חייבה את הלקוח במלוא הסכום. כדי שאף חוב קיים לא ישתנה למפרע, כל
--- מכירת קומיסיון שהוזנה עד היום נרשמת כמדווחת במלואה. מי שהסחורה
--- עדיין מונחת אצלו — מקטינים לו את הדיווח ידנית, וזו פעולה מודעת.
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM schema_meta WHERE key = 'consign_backfill_v1') THEN
-    INSERT INTO prod_consign_reports (date, sale_id, quantity, note, created_by, created_at)
-      SELECT COALESCE(s.date, CURRENT_DATE), s.id, s.quantity,
-             'נרשם אוטומטית בהפעלת מנגנון הקומיסיון — לפני כן חויב מלוא הסכום',
-             s.created_by, COALESCE(s.created_at, NOW())
-        FROM prod_sales s
-       WHERE s.deleted=false AND s.sale_type='קומיסיון' AND COALESCE(s.quantity,0) > 0;
-    INSERT INTO schema_meta (key) VALUES ('consign_backfill_v1');
-  END IF;
-END $$;
+-- אין כאן מילוי אוטומטי, בכוונה.
+-- בהפעלת המנגנון נרשמו כל מכירות הקומיסיון הקיימות כמדווחות במלואן,
+-- כדי שאף חוב לא ישתנה למפרע. בפועל הסחורה מונחת אצל הלקוחות ואיש
+-- מהם לא מכר הלאה, ולכן הרישומים ההם נמחקו והמצב הנכון הוא ההפך:
+-- מכירת קומיסיון מתחילה כשאפס דווח, והדיווח נרשם כשהלקוח באמת מוכר.
+-- המפתח consign_backfill_v1 עשוי להופיע ב-schema_meta במסדים ותיקים.
