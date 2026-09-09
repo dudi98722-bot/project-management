@@ -377,7 +377,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 נא'";
+var APP_BUILD = "19.08 נב'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -2301,9 +2301,15 @@ function softDelete(entity,id,msg){
      שחזור של כל הקבוצה בלחיצה אחת מסל המחזור. */
   var kidCount = (entity==="expenses") ? expenseChildren(id).length : 0;
   if(kidCount) msg=(msg||"למחוק פריט זה?")+" לשלב יש "+kidCount+" תתי-שלבים — הם יימחקו יחד איתו (ניתן לשחזר יחד מסל המחזור).";
+  /* הכנסה שיש לה התאמות בנק: בלי שחרורן שורות הבנק נשארות "מותאמות"
+     להכנסה שכבר לא קיימת — הכסף תפוס, לא רואים למה, ואפשר ליצור
+     עליו הכנסה שנייה. מודיעים מראש כמה שורות ישוחררו. */
+  var freeN = (entity==="income") ? incomeBankMatchCount(id) : 0;
+  if(freeN) msg=(msg||"למחוק פריט זה?")+"\n\nלהכנסה מותאמות "+freeN+" שורות בנק — הן ישוחררו ויחזרו למצב \'לא מותאם\'.";
   confirmDelete(msg||"למחוק פריט זה?",function(){
     var it=byId(DB[entity],id); if(!it) return;
     it.deleted=true;
+    if(entity==="income") releaseIncomeMatches(id);
     if(entity==="expenses"){
       var tag="expense:"+id;
       expenseChildren(id).forEach(function(k){ k.deleted=true; k.deletedBy=tag; });
@@ -2313,6 +2319,69 @@ function softDelete(entity,id,msg){
   });
 }
 
+/* ---------- קשר בין הכנסה לשורות הבנק שהותאמו לה ---------- */
+function incomeBankMatchCount(incId){
+  var n=0;
+  (DB.bankMoves||[]).forEach(function(m){
+    if(m.deleted) return;
+    (m.matches||[]).forEach(function(x){ if(!x.deleted && x.incomeId===incId) n++; });
+  });
+  return n;
+}
+/* משחרר את כל שורות הבנק שהותאמו להכנסה — הן חוזרות "לא מותאמות" */
+function releaseIncomeMatches(incId){
+  var n=0;
+  (DB.bankMoves||[]).forEach(function(m){
+    (m.matches||[]).forEach(function(x){
+      if(!x.deleted && x.incomeId===incId){ x.deleted=true; n++; }
+    });
+  });
+  return n;
+}
+/* ---------- התאמות יתומות ----------
+   התאמה שמצביעה להכנסה שנמחקה או שאינה קיימת. שורת הבנק נראית
+   "מותאמת", העמודה "הותאם ל…" מציגה מקף, והכסף תפוס בלי סיבה. */
+function orphanMatches(){
+  var out=[];
+  (DB.bankMoves||[]).forEach(function(m){
+    if(m.deleted) return;
+    (m.matches||[]).forEach(function(x){
+      if(x.deleted) return;
+      var inc=byId(DB.income,x.incomeId);
+      if(!inc || inc.deleted) out.push({m:m,x:x});
+    });
+  });
+  return out;
+}
+function fixOrphanMatches(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var list=orphanMatches();
+  if(!list.length){ toast("לא נמצאו התאמות יתומות — הכול תקין","ok"); return; }
+  var sum=round2(list.reduce(function(a,o){ return a+(Number(o.x.amount)||0); },0));
+  var rows=list.slice(0,40).map(function(o){
+    return '<tr><td>'+dateHe(o.m.date)+'</td>'+
+      '<td>'+esc((o.m.name||o.m.description||"—")).slice(0,40)+'</td>'+
+      '<td>'+esc(moveBankLabel(o.m))+'</td>'+
+      '<td><b>'+money(o.x.amount)+'</b></td></tr>';
+  }).join("");
+  openModal({title:"🔧 התאמות להכנסות שנמחקו",wide:true,bodyHtml:
+    '<div class="stat-grid" style="margin-bottom:10px">'+
+      stat("שורות בנק",list.length)+stat("סכום תפוס",money(sum))+
+    '</div>'+
+    '<div class="hint" style="margin-bottom:10px">השורות האלה מסומנות "מותאם" מול הכנסה שכבר לא קיימת — '+
+    'ולכן הכסף שלהן נחשב מוסבר, העמודה "הותאם ל…" ריקה, ואפשר בטעות ליצור עליו הכנסה נוספת. '+
+    'שחרור יחזיר אותן למצב "לא מותאם" כדי שתוכל להתאים אותן מחדש. <b>שום שורת בנק לא נמחקת.</b></div>'+
+    '<div class="table-wrap" style="max-height:300px"><table class="tbl"><thead><tr>'+
+    '<th>תאריך</th><th>שורת הבנק</th><th>בנק</th><th class="num">סכום</th>'+
+    '</tr></thead><tbody>'+rows+'</tbody></table></div>'+
+    (list.length>40?'<div class="hint">מוצגות 40 הראשונות מתוך '+list.length+'.</div>':''),
+    saveLabel:"שחרר "+list.length+" שורות",onSave:function(){
+      var n=0;
+      list.forEach(function(o){ o.x.deleted=true; n++; });
+      save(); toast("שוחררו "+n+" שורות בנק — הן חזרו למצב 'לא מותאם'","ok"); rerender();
+      return true;
+    }});
+}
 /* ============================================================
    ניווט / ראוטר
    ============================================================ */
@@ -8369,6 +8438,11 @@ function viewBankMatch(){
     /* דוחות — למנהלים בלבד, ככלל ההרשאות הקבוע */
     (CU&&CU.role==="admin"&&all.length
       ? '<button class="btn '+(BQ.report?"btn-primary":"")+' btn-sm" onclick="bmToggleReport()">📊 דוחות</button> '
+      : '')+
+    /* בדיקת שלמות — מוצגת רק כשבאמת יש מה לתקן */
+    (CU&&CU.role==="admin"&&orphanMatches().length
+      ? '<button class="btn btn-danger btn-sm" onclick="fixOrphanMatches()">🔧 '+
+        orphanMatches().length+' התאמות להכנסות שנמחקו</button> '
       : '')+
     '<div class="sp"></div></div>';
   h+='<div class="toolbar">'+
