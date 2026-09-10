@@ -46,7 +46,7 @@ function parseDate(v) {
 }
 
 // ===== ייבוא מטפלים =====
-router.post('/therapists', authenticate, can('edit'), async (req, res) => {
+router.post('/therapists', authenticate, can('editTherapists'), async (req, res) => {
   const rows = Array.isArray((req.body || {}).rows) ? req.body.rows : [];
   if (!rows.length) return res.status(400).json({ error: 'לא התקבלו שורות' });
 

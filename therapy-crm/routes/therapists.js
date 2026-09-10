@@ -35,7 +35,7 @@ router.get('/', authenticate, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-router.post('/', authenticate, can('edit'), async (req, res) => {
+router.post('/', authenticate, can('editTherapists'), async (req, res) => {
   const b = req.body || {};
   const name = String(b.name || '').trim();
   if (!name) return res.status(400).json({ error: 'שם מטפל חובה' });
@@ -51,7 +51,7 @@ router.post('/', authenticate, can('edit'), async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-router.put('/:id', authenticate, can('edit'), async (req, res) => {
+router.put('/:id', authenticate, can('editTherapists'), async (req, res) => {
   const b = req.body || {};
   const name = String(b.name || '').trim();
   if (!name) return res.status(400).json({ error: 'שם מטפל חובה' });
@@ -68,7 +68,7 @@ router.put('/:id', authenticate, can('edit'), async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-router.delete('/:id', authenticate, can('del'), async (req, res) => {
+router.delete('/:id', authenticate, can('deleteTherapists'), async (req, res) => {
   try {
     // חסימה אם יש סדרות פעילות
     const act = await pool.query(
@@ -82,7 +82,7 @@ router.delete('/:id', authenticate, can('del'), async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-router.post('/:id/restore', authenticate, can('del'), async (req, res) => {
+router.post('/:id/restore', authenticate, can('deleteTherapists'), async (req, res) => {
   try {
     const ok = await restore('therapists', req.params.id, req.user);
     if (!ok) return res.status(404).json({ error: 'לא נמצא' });

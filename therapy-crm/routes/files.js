@@ -122,7 +122,7 @@ router.get('/:id/download', authenticate, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-router.delete('/:id', authenticate, can('del'), async (req, res) => {
+router.delete('/:id', authenticate, can('deleteFiles'), async (req, res) => {
   const fid = validId(req.params.id);
   if (!fid) return res.status(400).json({ error: 'מזהה לא תקין' });
   try {

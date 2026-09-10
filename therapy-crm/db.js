@@ -24,7 +24,7 @@ async function logAction(user, action, tableName, recordId, details) {
 }
 
 // ===== מחיקה רכה בלבד — לעולם לא מוחקים פיזית =====
-const SOFT_TABLES = new Set(['patients', 'therapists', 'therapist_groups', 'assignments', 'sessions']);
+const SOFT_TABLES = new Set(['patients', 'therapists', 'therapist_groups', 'assignments', 'sessions', 'intake_waiting']);
 
 function validId(id) { const n = Number(id); return (Number.isInteger(n) && n > 0) ? n : null; }
 

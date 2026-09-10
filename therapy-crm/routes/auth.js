@@ -4,7 +4,8 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { pool } = require('../db');
 const mailer = require('../lib/mailer');
-const { authenticate, ROLES, forgetPassword } = require('../middleware/auth');
+const { authenticate, forgetPassword } = require('../middleware/auth');
+const { capsFor } = require('../lib/permissions');
 const router = express.Router();
 
 // הגנת brute-force: חסימה אחרי 8 ניסיונות כושלים ב-15 דקות לפי שם המשתמש
@@ -39,7 +40,7 @@ router.post('/login', async (req, res) => {
     const token = jwt.sign(
       { id: user.id, username: user.username, role: user.role, full_name: user.full_name },
       process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '12h' });
-    const caps = ROLES[user.role] || ROLES.viewer;
+    const caps = await capsFor(user.role);
     res.json({ token, user: { id: user.id, username: user.username, role: user.role, full_name: user.full_name, caps } });
   } catch (err) { console.error(err); res.status(500).json({ error: 'שגיאת שרת' }); }
 });

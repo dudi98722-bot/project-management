@@ -34,7 +34,7 @@ router.get('/', authenticate, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-router.post('/', authenticate, can('edit'), async (req, res) => {
+router.post('/', authenticate, can('editTherapists'), async (req, res) => {
   const name = String((req.body || {}).name || '').trim();
   if (!name) return res.status(400).json({ error: 'שם קבוצה חובה' });
   try {
@@ -46,7 +46,7 @@ router.post('/', authenticate, can('edit'), async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-router.put('/:id', authenticate, can('edit'), async (req, res) => {
+router.put('/:id', authenticate, can('editTherapists'), async (req, res) => {
   const name = String((req.body || {}).name || '').trim();
   if (!name) return res.status(400).json({ error: 'שם קבוצה חובה' });
   try {
@@ -62,7 +62,7 @@ router.put('/:id', authenticate, can('edit'), async (req, res) => {
 });
 
 // עדכון חברי קבוצה בבת אחת: { therapist_ids: [1,2,3] }
-router.put('/:id/members', authenticate, can('edit'), async (req, res) => {
+router.put('/:id/members', authenticate, can('editTherapists'), async (req, res) => {
   const ids = Array.isArray((req.body || {}).therapist_ids)
     ? (req.body).therapist_ids.map(validId).filter(Boolean) : [];
   const gid = validId(req.params.id);
@@ -88,7 +88,7 @@ router.put('/:id/members', authenticate, can('edit'), async (req, res) => {
   } finally { client.release(); }
 });
 
-router.delete('/:id', authenticate, can('del'), async (req, res) => {
+router.delete('/:id', authenticate, can('deleteTherapists'), async (req, res) => {
   try {
     const ok = await softDelete('therapist_groups', req.params.id, req.user);
     if (!ok) return res.status(404).json({ error: 'לא נמצא' });

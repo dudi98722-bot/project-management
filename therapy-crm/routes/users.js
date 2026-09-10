@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { pool, logAction } = require('../db');
 const { authenticate, can, ROLES, forgetPassword } = require('../middleware/auth');
+const { isCustomized, matrix, saveMatrix } = require('../lib/permissions');
 const router = express.Router();
 
 // מייל ריק נשמר כ-NULL, כדי שהאילוץ הייחודי לא ייתפס על מחרוזת ריקה
@@ -10,15 +11,52 @@ function cleanEmail(v) {
   return e || null;
 }
 
+// תווית ותיאור לכל תפקיד. תפקיד שהמנהל שינה לו הרשאות מסומן — התיאור הקבוע
+// כבר לא מתאר אותו במדויק
+async function roleInfo() {
+  const out = {};
+  for (const [k, v] of Object.entries(ROLES)) {
+    out[k] = { label: v.label, desc: v.desc || '', custom: await isCustomized(k) };
+  }
+  return out;
+}
+
 router.get('/', authenticate, can('manageUsers'), async (req, res) => {
   try {
     const r = await pool.query('SELECT id, username, role, full_name, email, active, last_login, created_at FROM users ORDER BY id');
-    res.json(r.rows.map(u => ({ ...u, role_label: (ROLES[u.role] || {}).label || u.role, role_desc: (ROLES[u.role] || {}).desc || '' })));
+    const info = await roleInfo();
+    res.json(r.rows.map(u => {
+      const i = info[u.role] || {};
+      return { ...u, role_label: i.label || u.role, role_desc: i.desc || '', role_custom: !!i.custom };
+    }));
   } catch (e) { res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-router.get('/roles', authenticate, can('manageUsers'), (req, res) => {
-  res.json(Object.entries(ROLES).map(([k, v]) => ({ role: k, label: v.label, desc: v.desc || '' })));
+router.get('/roles', authenticate, can('manageUsers'), async (req, res) => {
+  try {
+    const info = await roleInfo();
+    res.json(Object.entries(info).map(([k, v]) => ({ role: k, label: v.label, desc: v.desc, custom: v.custom })));
+  } catch (e) { res.status(500).json({ error: 'שגיאת שרת' }); }
+});
+
+// ===== מסך ההרשאות: מה מותר לכל סוג משתמש =====
+router.get('/permissions', authenticate, can('manageUsers'), async (req, res) => {
+  try { res.json(await matrix()); }
+  catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+});
+
+// { roles: { guide: { editNotes: true, holds: false, ... }, ... } }
+// מוגדר לפני PUT /:id — אחרת "permissions" היה נתפס כמזהה משתמש
+router.put('/permissions', authenticate, can('manageUsers'), async (req, res) => {
+  const roles = (req.body || {}).roles;
+  if (!roles || typeof roles !== 'object' || Array.isArray(roles)) {
+    return res.status(400).json({ error: 'בקשה לא תקינה' });
+  }
+  try {
+    const changed = await saveMatrix(roles, req.user);
+    await logAction(req.user, 'edit', 'role_permissions', '', { roles: changed });
+    res.json(await matrix());
+  } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
 router.post('/', authenticate, can('manageUsers'), async (req, res) => {

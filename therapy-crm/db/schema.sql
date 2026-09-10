@@ -264,3 +264,36 @@ CREATE INDEX IF NOT EXISTS idx_resets_user ON password_resets (user_id) WHERE us
 
 -- איפוס סיסמה מבטל טוקנים שהונפקו לפניו
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ;
+
+-- ===== הרשאות לפי תפקיד: רק מה שהמנהל שינה מברירות המחדל שבקוד =====
+-- (lib/permissions.js). הרשאה שאין לה שורה כאן — חלה ברירת המחדל שלה.
+CREATE TABLE IF NOT EXISTS role_permissions (
+  role TEXT NOT NULL,
+  cap TEXT NOT NULL,
+  allowed BOOLEAN NOT NULL,
+  updated_by_name TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (role, cap)
+);
+
+-- ===== ממתינים לאינטייק — רשימה נפרדת לגמרי מרשימת הממתינים לשיבוץ =====
+CREATE TABLE IF NOT EXISTS intake_waiting (
+  id BIGSERIAL PRIMARY KEY,
+  last_name TEXT NOT NULL,
+  first_name TEXT NOT NULL,
+  national_id TEXT,
+  hmo TEXT,
+  urgency_reason TEXT,         -- סיבת דחיפות (טקסט חופשי)
+  created_by BIGINT,
+  created_by_name TEXT,
+  updated_by BIGINT,
+  updated_by_name TEXT,
+  deleted BOOLEAN NOT NULL DEFAULT false,
+  deleted_at TIMESTAMPTZ,
+  deleted_by BIGINT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+-- אותה ת.ז לא נכנסת פעמיים לרשימה הפעילה
+CREATE UNIQUE INDEX IF NOT EXISTS uq_intake_national_id
+  ON intake_waiting (national_id) WHERE deleted = false AND national_id IS NOT NULL;

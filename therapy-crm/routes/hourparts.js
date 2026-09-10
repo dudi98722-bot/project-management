@@ -23,7 +23,7 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // שמירת המיפוי כולו: { map: { "8": "morning", ... } }
-router.put('/', authenticate, can('edit'), async (req, res) => {
+router.put('/', authenticate, can('editHourParts'), async (req, res) => {
   const map = (req.body || {}).map || {};
   const rows = Object.entries(map)
     .map(([h, p]) => [Number(h), String(p)])

@@ -249,7 +249,7 @@ router.post('/single', authenticate, can('assign'), async (req, res) => {
 });
 
 // ביטול סדרה: פגישות עתידיות מבוטלות; אם למטופל אין סדרה פעילה אחרת — חוזר לרשימת ההמתנה
-router.put('/:id/cancel', authenticate, can('assign'), async (req, res) => {
+router.put('/:id/cancel', authenticate, can('cancelSeries'), async (req, res) => {
   const id = validId(req.params.id);
   if (!id) return res.status(400).json({ error: 'מזהה לא תקין' });
   const client = await pool.connect();
@@ -279,7 +279,7 @@ router.put('/:id/cancel', authenticate, can('assign'), async (req, res) => {
 });
 
 // עדכון סטטוס פגישה בודדת: scheduled / done / cancelled / no_show
-router.put('/sessions/:id', authenticate, can('assign'), async (req, res) => {
+router.put('/sessions/:id', authenticate, can('editSessions'), async (req, res) => {
   const status = String((req.body || {}).status || '');
   if (!['scheduled', 'done', 'cancelled', 'no_show'].includes(status)) return res.status(400).json({ error: 'סטטוס לא תקין' });
   try {

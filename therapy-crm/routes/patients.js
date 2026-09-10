@@ -2,6 +2,7 @@
 const express = require('express');
 const { pool, logAction, softDelete, restore, validId } = require('../db');
 const { authenticate, can, canAny } = require('../middleware/auth');
+const { FIELD_CAPS } = require('../lib/permissions');
 const sheets = require('../sheets');
 const router = express.Router();
 
@@ -10,6 +11,8 @@ const CLIENT_TYPES = ['בן', 'בת', 'הורים', 'מבוגר', 'מבוגרת'
 // אבחנה והערה מקצועית נשלטות בנפרד — יש תפקידים שרואים אחת ולא את השנייה
 const FIELD_VIEW = { diagnosis: 'viewDiagnosis', notes2: 'viewNote2', holds: 'viewHolds' };
 const FIELD_EDIT = { diagnosis: 'editDiagnosis', notes2: 'editNote2' };
+// מי שיש לו הרשאת עריכה לשדה אחד לפחות רשאי לשלוח עדכון
+const ANY_FIELD_EDIT = [...new Set(Object.values(FIELD_CAPS))];
 
 // מסיר מהתשובה כל שדה רגיש שאין למשתמש הרשאת צפייה בו
 function scope(rows, caps) {
@@ -19,26 +22,11 @@ function scope(rows, caps) {
   return Array.isArray(rows) ? rows.map(strip) : strip(rows);
 }
 
-// כל השדות הרגילים של מטופל (בלי האבחנה וההערה המקצועית, שנשלטות בנפרד)
-const GENERAL_FIELDS = ['last_name', 'first_name', 'national_id', 'intake_date', 'birth_date',
-  'hmo', 'client_type', 'community', 'notes', 'urgency', 'hours',
-  'preferred_therapist_ids', 'preferred_group_ids'];
-
-// אילו שדות המשתמש רשאי לשנות. מוחזרת תמיד רשימה מפורשת ולא 'all',
-// אחרת מי שיש לו editPatient היה דורס גם שדות שאין לו הרשאה עליהם —
-// ומכיוון שהטופס מסתיר אותם, הם היו נמחקים בכל שמירה.
+// אילו שדות המשתמש רשאי לשנות — כל שדה לפי ההרשאה שלו במסך ההרשאות.
+// מוחזרת תמיד רשימה מפורשת: שדה שאינו ברשימה נשמר בערכו הקיים, ולכן
+// טופס שנועל או מסתיר שדה לא מוחק אותו בשמירה.
 function editableFields(caps) {
-  const f = [];
-  if (caps.editPatient) f.push(...GENERAL_FIELDS);
-  else {
-    if (caps.editPatientLimited) f.push('last_name', 'first_name', 'hours');
-    if (caps.editNotes) f.push('notes');
-    if (caps.editPref) f.push('preferred_therapist_ids', 'preferred_group_ids');
-    if (caps.editUrgency) f.push('urgency');
-    if (caps.editClientType) f.push('client_type');
-  }
-  Object.keys(FIELD_EDIT).forEach(k => { if (caps[FIELD_EDIT[k]]) f.push(k); });
-  return f;
+  return Object.keys(FIELD_CAPS).filter(f => caps[FIELD_CAPS[f]]);
 }
 
 // ביצירת מטופל — מאפסים שדות רגישים שאין למשתמש הרשאת כתיבה עליהם
@@ -112,8 +100,9 @@ router.get('/', authenticate, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
+// field_caps — איזו הרשאה פותחת כל שדה, כדי שהטופס ינעל בדיוק מה שהשרת חוסם
 router.get('/meta', authenticate, (req, res) => {
-  res.json({ hmos: HMOS, client_types: CLIENT_TYPES, all_hours: ALL_HOURS });
+  res.json({ hmos: HMOS, client_types: CLIENT_TYPES, all_hours: ALL_HOURS, field_caps: FIELD_CAPS });
 });
 
 router.get('/:id', authenticate, async (req, res) => {
@@ -143,7 +132,7 @@ router.post('/', authenticate, can('addPatient'), async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-router.put('/:id', authenticate, canAny('editPatient', 'editPatientLimited', 'editDiagnosis', 'editNote2', 'editNotes', 'editPref', 'editUrgency', 'editClientType'), async (req, res) => {
+router.put('/:id', authenticate, canAny(...ANY_FIELD_EDIT), async (req, res) => {
   const allowed = editableFields(req.caps);
   const { out, errors } = cleanBody(req.body || {});
   // אימות שם חובה רלוונטי רק למי שרשאי לגעת בשם
@@ -180,8 +169,8 @@ router.put('/:id', authenticate, canAny('editPatient', 'editPatientLimited', 'ed
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-// שינוי סטטוס בלבד (waiting / assigned / done)
-router.put('/:id/status', authenticate, canAny('editPatient', 'assign'), async (req, res) => {
+// שינוי סטטוס בלבד (waiting / assigned / done) — חלק מהשיבוץ
+router.put('/:id/status', authenticate, can('assign'), async (req, res) => {
   const status = String((req.body || {}).status || '');
   if (!['waiting', 'assigned', 'done'].includes(status)) return res.status(400).json({ error: 'סטטוס לא תקין' });
   try {
@@ -193,7 +182,7 @@ router.put('/:id/status', authenticate, canAny('editPatient', 'assign'), async (
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-router.delete('/:id', authenticate, can('del'), async (req, res) => {
+router.delete('/:id', authenticate, can('deletePatient'), async (req, res) => {
   try {
     const ok = await softDelete('patients', req.params.id, req.user);
     if (!ok) return res.status(404).json({ error: 'לא נמצא' });
@@ -203,7 +192,7 @@ router.delete('/:id', authenticate, can('del'), async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-router.post('/:id/restore', authenticate, can('del'), async (req, res) => {
+router.post('/:id/restore', authenticate, can('deletePatient'), async (req, res) => {
   try {
     const ok = await restore('patients', req.params.id, req.user);
     if (!ok) return res.status(404).json({ error: 'לא נמצא' });

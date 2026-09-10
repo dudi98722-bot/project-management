@@ -8,24 +8,20 @@ const PSTATUS = { waiting: ['ממתין', 'b-amber'], assigned: ['משובץ', '
 const ASTATUS = { active: ['פעילה', 'b-green'], completed: ['הושלמה', 'b-blue'], cancelled: ['בוטלה', 'b-gray'] };
 const SSTATUS = { scheduled: ['מתוזמנת', 'b-blue'], done: ['בוצעה', 'b-green'], cancelled: ['בוטלה', 'b-gray'], no_show: ['לא הגיע', 'b-red'] };
 
-// האם המשתמש רשאי לפתוח טופס עריכת מטופל בכלל (ולו לשדה אחד)
-function canEditPatient() {
-  const c = S.me.caps;
-  return !!(c.editPatient || c.editPatientLimited || c.editDiagnosis || c.editNote2
-         || c.editNotes || c.editPref || c.editUrgency || c.editClientType);
-}
+// איזו הרשאה פותחת כל שדה מגיע מהשרת (/patients/meta), כך שהטופס נועל בדיוק מה שהשרת חוסם
 // אילו שדות פתוחים לעריכה עבורו
 function mayEdit(field) {
-  const c = S.me.caps;
-  if (c.editPatient) return true;
-  if (c.editDiagnosis && field === 'diagnosis') return true;
-  if (c.editNote2 && field === 'notes2') return true;
-  if (c.editNotes && field === 'notes') return true;
-  if (c.editPref && ['preferred_therapist_ids', 'preferred_group_ids'].includes(field)) return true;
-  if (c.editUrgency && field === 'urgency') return true;
-  if (c.editClientType && field === 'client_type') return true;
-  if (c.editPatientLimited && ['last_name', 'first_name', 'hours'].includes(field)) return true;
-  return false;
+  const cap = (S.meta.field_caps || {})[field];
+  return !!(cap && S.me.caps[cap]);
+}
+// האם המשתמש רשאי לפתוח טופס עריכת מטופל בכלל (ולו לשדה אחד)
+function canEditPatient() {
+  return Object.keys(S.meta.field_caps || {}).some(f => mayEdit(f));
+}
+// האם כל השדות שהוא רואה פתוחים לעריכה (אז אין צורך בשורת "בהרשאה שלך ניתן לערוך")
+function mayEditAll() {
+  const hidden = { diagnosis: !S.me.caps.viewDiagnosis, notes2: !S.me.caps.viewNote2 };
+  return Object.keys(S.meta.field_caps || {}).every(f => hidden[f] || mayEdit(f));
 }
 
 const S = {
@@ -205,11 +201,13 @@ async function enterApp() {
 }
 
 async function loadAll() {
-  const [patients, therapists, groups, communities, assignments, meta, hourParts] = await Promise.all([
-    api('/patients'), api('/therapists'), api('/groups'),
+  // /auth/me נטען מחדש בכל רענון: שינוי במסך ההרשאות מגיע למשתמש בלי להתחבר מחדש
+  const [me, patients, therapists, groups, communities, assignments, meta, hourParts] = await Promise.all([
+    api('/auth/me'), api('/patients'), api('/therapists'), api('/groups'),
     api('/lists?name=community'), api('/assignments'), api('/patients/meta'),
     api('/hour-parts'),
   ]);
+  S.me = me.user;
   S.patients = patients; S.therapists = therapists; S.groups = groups;
   S.communities = communities; S.assignments = assignments; S.meta = meta;
   S.hourParts = hourParts;
@@ -218,6 +216,7 @@ async function loadAll() {
 // ===== ניווט =====
 const VIEWS = [
   ['waiting', 'רשימת ממתינים'],
+  ['intake', 'ממתינים לאינטייק'],
   ['existing', 'מטופלים קיימים'],
   ['holds', 'רשימת השהיה'],
   ['matches', 'התאמות'],
@@ -226,20 +225,33 @@ const VIEWS = [
   ['therapists', 'מטפלים'],
   ['users', 'משתמשים'],
 ];
+// ההרשאה שנדרשת כדי לראות כל לשונית (רשימת הממתינים פתוחה לכולם)
+const VIEW_CAP = {
+  intake: 'viewIntake', existing: 'assign', holds: 'viewHolds', matches: 'tabMatches',
+  series: 'tabSeries', calendar: 'tabCalendar', therapists: 'tabTherapists', users: 'manageUsers',
+};
+function canView(k) { return !VIEW_CAP[k] || !!S.me.caps[VIEW_CAP[k]]; }
+
 function renderNav() {
   const nav = document.getElementById('nav');
   nav.innerHTML = VIEWS
-    .filter(([k]) => (k !== 'users' || S.me.caps.manageUsers)
-                  && (k !== 'existing' || S.me.caps.assign)
-                  && (k !== 'holds' || S.me.caps.viewHolds))
+    .filter(([k]) => canView(k))
     .map(([k, label]) => `<button class="${S.view === k ? 'active' : ''}" onclick="switchView('${k}')">${label}</button>`).join('');
 }
-function switchView(v) { S.view = v; renderNav(); render(); }
+function switchView(v) {
+  if (!canView(v)) return;
+  if (S.view === 'users' && v !== 'users' && permDirty()
+      && !confirm('יש שינויים בהרשאות שלא נשמרו. לעבור בלי לשמור?')) return;
+  S.view = v; render();
+}
 
 function render() {
   const m = document.getElementById('main');
-  if (S.view === 'holds' && !S.me.caps.viewHolds) S.view = 'waiting';
+  // לשונית שההרשאה אליה נסגרה בינתיים — חוזרים לרשימת הממתינים
+  if (!canView(S.view)) S.view = 'waiting';
+  renderNav();
   if (S.view === 'waiting') renderWaiting(m);
+  else if (S.view === 'intake') renderIntake(m);
   else if (S.view === 'existing') renderExisting(m);
   else if (S.view === 'holds') renderHolds(m);
   else if (S.view === 'matches') renderMatches(m);
@@ -269,6 +281,10 @@ function renderWaiting(m) {
   <div class="card">
     <div class="toolbar">
       <div class="field"><label>חיפוש</label><input id="f-q" value="${esc(f.q)}" placeholder="שם / ת.ז / אבחנה / הערות" oninput="S.filters.q=this.value;S.page=1;applyWaitingFilters()"></div>
+      <div class="field"><label>הצג</label><div class="seg" id="waiting-scope">
+        <button type="button" data-scope="waiting" class="${waitingScope() === 'waiting' ? 'on' : ''}" onclick="setWaitingScope('waiting')">ממתינים בלבד</button>
+        <button type="button" data-scope="all" class="${waitingScope() === 'all' ? 'on' : ''}" onclick="setWaitingScope('all')">כל המטופלים</button>
+      </div></div>
       ${TOOLBAR_FILTERS.filter(key => {
         const c = WAIT_COLS.find(x => x.key === key);
         return !c || !c.cap || S.me.caps[c.cap];
@@ -434,6 +450,7 @@ function toggleMultiValue(key, value, checked) {
       !chosen.length ? 'הכל' : chosen.length === 1 ? chosen[0][1] : `${chosen.length} נבחרו`;
     box.querySelector('.ms-btn').classList.toggle('on', chosen.length > 0);
   }
+  if (key === 'status') syncWaitingScope();
 }
 
 // לחיצה על קובייה בראש המסך = קיצור לסינון
@@ -460,7 +477,25 @@ function freshColFilters() {
     o[c.key] = (c.type === 'range' || c.type === 'daterange') ? { from: '', to: '' }
              : c.type === 'select' ? [] : '';
   }
+  // ברירת המחדל: רק מי שעדיין ממתין. "כל המטופלים" מציג גם משובצים ומי שסיים
+  o.status = ['waiting'];
   return o;
+}
+
+// מצב הכפתור "ממתינים בלבד / כל המטופלים" נגזר מסינון הסטטוס עצמו,
+// כך שבחירה ידנית ברשימת הסטטוס לא סותרת אותו
+function waitingScope() {
+  const s = (S.colFilters || freshColFilters()).status;
+  return !s.length ? 'all' : (s.length === 1 && s[0] === 'waiting') ? 'waiting' : '';
+}
+function setWaitingScope(kind) {
+  S.colFilters.status = kind === 'all' ? [] : ['waiting'];
+  S.page = 1;
+  renderWaiting(document.getElementById('main'));
+}
+function syncWaitingScope() {
+  const cur = waitingScope();
+  document.querySelectorAll('#waiting-scope button').forEach(b => b.classList.toggle('on', b.dataset.scope === cur));
 }
 
 function sortWaiting(key) {
@@ -569,7 +604,7 @@ function waitingRowsHtml(rows) {
         ${S.me.caps.holds ? `<button class="btn sm sec" onclick="openHoldForPatient(${p.id})" title="העברה לרשימת השהיה">⏸ השהיה</button>` : ''}
         <button class="btn sm sec" onclick="openFilesModal(${p.id})" title="קבצים מצורפים">📎</button>
         ${canEditPatient() ? `<button class="btn sm sec" onclick="openPatientModal(${p.id})">עריכה</button>` : ''}
-        ${S.me.caps.del ? `<button class="btn sm sec" onclick="deletePatient(${p.id})">🗑</button>` : ''}
+        ${S.me.caps.deletePatient ? `<button class="btn sm sec" onclick="deletePatient(${p.id})">🗑</button>` : ''}
       </td>
     </tr>`;
   }).join('');
@@ -584,11 +619,16 @@ async function deletePatient(id) {
 // ----- טופס מטופל -----
 function openPatientModal(id) {
   const p = id ? S.patients.find(x => x.id === id) : null;
+  // מזהה שלא נמצא (נמחק בינתיים) לא יפתח בטעות טופס "מטופל חדש"
+  if (id && !p) return toast('המטופל לא נמצא — רענן את הדף', true);
   const hours = p ? (p.hours || ALL_HOURS) : ALL_HOURS.slice();
   showModal(`
   <h2>${p ? 'עריכת מטופל' : 'מטופל חדש'} <button class="x" onclick="closeModal()">✕</button></h2>
-  ${p && !S.me.caps.editPatient ? '<div class="hint" style="margin-bottom:10px">בהרשאה שלך ניתן לערוך: ' +
-     [mayEdit('last_name') ? 'שם' : '', mayEdit('hours') ? 'שעות מתאימות' : '',
+  ${p && !mayEditAll() ? '<div class="hint" style="margin-bottom:10px">בהרשאה שלך ניתן לערוך: ' +
+     [mayEdit('last_name') ? 'שם' : '', mayEdit('national_id') ? 'ת.ז' : '',
+      mayEdit('intake_date') ? 'תאריך אינטייק' : '', mayEdit('birth_date') ? 'תאריך לידה' : '',
+      mayEdit('hmo') ? 'קופה' : '', mayEdit('community') ? 'קהילה' : '',
+      mayEdit('hours') ? 'שעות מתאימות' : '',
       mayEdit('notes') ? 'הערות' : '', mayEdit('urgency') ? 'דחיפות' : '',
       mayEdit('client_type') ? 'בן/בת' : '',
       mayEdit('preferred_therapist_ids') ? 'שיוך למטפלים' : '',
@@ -613,7 +653,7 @@ function openPatientModal(id) {
         <option value="">—</option>
         ${S.communities.map(c => `<option value="${esc(c.value)}" ${p && p.community === c.value ? 'selected' : ''}>${esc(c.value)}</option>`).join('')}
         ${p && p.community && !S.communities.some(c => c.value === p.community) ? `<option selected value="${esc(p.community)}">${esc(p.community)}</option>` : ''}
-        ${S.me.caps.edit ? '<option value="__new__">+ הוספה חדשה...</option>' : ''}
+        ${S.me.caps.editLists ? '<option value="__new__">+ הוספה חדשה...</option>' : ''}
       </select></div>
       <div class="field"><label>רמת דחיפות</label><select name="urgency" ${p && !mayEdit('urgency') ? 'disabled' : ''}>
         <option value="1" ${p && p.urgency === 1 ? 'selected' : ''}>1 — דחוף</option>
@@ -823,20 +863,28 @@ async function communityChanged(sel) {
 // =====================================================================
 // שיבוץ לטיפול (יצירת סדרה)
 // =====================================================================
-async function openAssignModal(patientId) {
+// fromTherapistId / holdId — כשהשיבוץ נפתח משורה ברשימת ההשהיה: המטפל של ההשהיה
+// נבחר מראש, מוצגות המשבצות שלו, ואפשר להסיר את ההשהיה מיד אחרי השיבוץ
+async function openAssignModal(patientId, fromTherapistId, holdId) {
   const p = S.patients.find(x => x.id === patientId);
-  if (!p) return;
+  if (!p) return toast('המטופל לא נמצא — רענן את הדף', true);
   // מי שאין לו הרשאת שיבוץ רואה את המשבצות הפנויות בלבד, בלי הטופס
   const canAssign = !!S.me.caps.assign;
+  const fromT = fromTherapistId ? S.therapists.find(t => t.id === fromTherapistId) : null;
+  _assignCtx = { p, canAssign, fromT, onlyFrom: !!fromT };
   showModal(`
   <h2>${canAssign ? 'שיבוץ לטיפול' : 'מטפלים פנויים'} — ${esc(p.last_name)} ${esc(p.first_name)} <button class="x" onclick="closeModal()">✕</button></h2>
   <div class="hint" style="margin-bottom:10px">
+    ${fromT ? `מתוך רשימת ההשהיה אצל <b>${esc(fromT.name)}</b><br>` : ''}
     שעות מתאימות למטופל: ${(p.hours || []).map(hourRange).join(' · ') || 'כולן'}
     ${(p.preferred_therapists || []).length ? '<br>מטפלים מועדפים: ' + p.preferred_therapists.map(t => esc(t.name)).join(' · ') : ''}
     ${(p.preferred_groups || []).length ? ' <span class="hint">(מקבוצות: ' + p.preferred_groups.map(g => esc(g.name)).join(', ') + ')</span>' : ''}
   </div>
   <div class="card" style="box-shadow:none;border:1px solid var(--line);padding:12px" id="assign-avail">
-    <b style="font-size:13.5px">משבצות שבועיות פנויות (לפי שעות המטופל והעדפתו)${canAssign ? ' — לחץ לבחירה:' : ':'}</b>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <b style="font-size:13.5px" id="avail-title"></b>
+      ${fromT ? '<button type="button" class="link-btn" id="avail-scope" onclick="toggleAssignScope()"></button>' : ''}
+    </div>
     <div id="avail-slots" style="margin-top:8px"><span class="hint">טוען זמינות...</span></div>
   </div>
   ${!canAssign ? '<div class="modal-actions"><button type="button" class="btn sec" onclick="closeModal()">סגירה</button></div>' : `
@@ -844,7 +892,7 @@ async function openAssignModal(patientId) {
     <div class="grid3">
       <div class="field"><label>מטפל *</label><select name="therapist_id" id="as-therapist" required>
         <option value="">בחר...</option>
-        ${S.therapists.filter(t => t.active).map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}
+        ${S.therapists.filter(t => t.active).map(t => `<option value="${t.id}" ${fromT && t.id === fromT.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
       </select></div>
       <div class="field"><label>כמות טיפולים בסדרה *</label><input name="total_sessions" id="as-total" type="number" min="1" max="200" value="12" required></div>
       <div class="field"><label>שעה *</label><select name="hour" id="as-hour" required>
@@ -854,6 +902,8 @@ async function openAssignModal(patientId) {
       <div class="field" style="grid-column:span 2"><label>הערות</label><input name="notes"></div>
     </div>
     <div class="hint" id="as-hint"></div>
+    ${fromT && holdId && S.me.caps.holds ? `<label class="group-check" style="margin-top:8px">
+      <input type="checkbox" id="as-release" checked> להסיר מרשימת ההשהיה אצל ${esc(fromT.name)} אחרי השיבוץ</label>` : ''}
     <div class="modal-actions">
       <button class="btn green">צור סדרת טיפולים</button>
       <button type="button" class="btn sec" onclick="closeModal()">ביטול</button>
@@ -868,6 +918,7 @@ async function openAssignModal(patientId) {
     const fd = new FormData(e.target);
     const btn = e.target.querySelector('button.btn');
     btn.disabled = true; // מניעת לחיצה כפולה
+    const release = !!(document.getElementById('as-release') || {}).checked;
     try {
       const r = await api('/assignments', {
         method: 'POST', body: {
@@ -876,28 +927,59 @@ async function openAssignModal(patientId) {
           hour: Number(fd.get('hour')), notes: fd.get('notes'),
         }
       });
-      toast(seriesCreatedMsg(r));
+      let msg = seriesCreatedMsg(r);
+      // השיבוץ כבר נוצר; כישלון בהסרת ההשהיה רק מדווח, לא מבטל אותו
+      if (release) {
+        try { await api(`/holds/${holdId}/release`, { method: 'PUT' }); msg += ' · הוסר מרשימת ההשהיה'; }
+        catch (err2) { msg += ' · ההסרה מרשימת ההשהיה נכשלה: ' + err2.message; }
+      }
+      toast(msg);
       closeModal(); await loadAll(); render();
     } catch (err) { btn.disabled = false; toast(err.message, true); }
   });
   }
 
-  // טעינת זמינות מסוננת לפי המטופל
+  await loadAssignAvail();
+}
+
+// ההקשר של מודאל השיבוץ הפתוח, כדי לטעון מחדש את הזמינות בלי לבנות את המודאל
+let _assignCtx = null, _availSeq = 0;
+
+// משבצות פנויות למטופל. כשהמודאל נפתח מרשימת ההשהיה — כברירת מחדל רק אצל
+// המטפל של ההשהיה, עם מעבר לכל המטפלים המתאימים לפי העדפת המטופל
+async function loadAssignAvail() {
+  const ctx = _assignCtx;
+  if (!ctx || !document.getElementById('avail-slots')) return;
+  const seq = ++_availSeq;
+  const only = !!(ctx.fromT && ctx.onlyFrom);
+  const title = document.getElementById('avail-title');
+  if (title) title.textContent = (only
+    ? `משבצות שבועיות פנויות אצל ${ctx.fromT.name} (לפי שעות המטופל)`
+    : 'משבצות שבועיות פנויות (לפי שעות המטופל והעדפתו)') + (ctx.canAssign ? ' — לחץ לבחירה:' : ':');
+  const scope = document.getElementById('avail-scope');
+  if (scope) scope.textContent = only ? 'הצג את כל המטפלים המתאימים' : `הצג רק את ${ctx.fromT.name}`;
+  document.getElementById('avail-slots').innerHTML = '<span class="hint">טוען זמינות...</span>';
   try {
-    const av = await api(`/calendar/availability?weeks=${S.availWeeks}&patient_id=${p.id}`);
+    const av = await api(`/calendar/availability?weeks=${S.availWeeks}&patient_id=${ctx.p.id}${only ? '&therapist_id=' + ctx.fromT.id : ''}`);
     const el = document.getElementById('avail-slots');
+    if (!el || seq !== _availSeq) return;   // המודאל נסגר, או שנשלחה טעינה חדשה יותר
     const withSlots = av.therapists.filter(t => t.free_slots.length);
-    if (!withSlots.length) { el.innerHTML = `<span class="hint">לא נמצאו משבצות פנויות מתאימות${canAssign ? ' — ניתן לבחור ידנית למטה' : ''}</span>`; return; }
+    if (!withSlots.length) { el.innerHTML = `<span class="hint">לא נמצאו משבצות פנויות מתאימות${ctx.canAssign ? ' — ניתן לבחור ידנית למטה' : ''}</span>`; return; }
     el.innerHTML = withSlots.map(t => `
       <div style="margin-bottom:8px"><b>${esc(t.name)}:</b>
         <span class="slot-chips" style="display:inline-flex">
-        ${t.free_slots.map(s => `<span class="slot-chip"${canAssign ? ` onclick="pickSlot(${t.therapist_id},${s.weekday},${s.hour})"` : ' style="cursor:default"'}>${WEEKDAYS[s.weekday]} ${hourLabel(s.hour)}</span>`).join('')}
+        ${t.free_slots.map(s => `<span class="slot-chip"${ctx.canAssign ? ` onclick="pickSlot(${t.therapist_id},${s.weekday},${s.hour})"` : ' style="cursor:default"'}>${WEEKDAYS[s.weekday]} ${hourLabel(s.hour)}</span>`).join('')}
         </span>
       </div>`).join('');
   } catch (e) {
     const el = document.getElementById('avail-slots');
-    if (el) el.innerHTML = '<span class="hint">שגיאה בטעינת זמינות</span>';
+    if (el && seq === _availSeq) el.innerHTML = '<span class="hint">שגיאה בטעינת זמינות</span>';
   }
+}
+function toggleAssignScope() {
+  if (!_assignCtx) return;
+  _assignCtx.onlyFrom = !_assignCtx.onlyFrom;
+  loadAssignAvail();
 }
 
 function pickSlot(tid, weekday, hour) {
@@ -922,7 +1004,7 @@ function renderExisting(m) {
     <div class="toolbar">
       <h2 style="margin:0">קליטת מטופל קיים</h2>
       <div class="spacer"></div>
-      ${S.me.caps.edit ? `<button class="btn sec" onclick="openImportModal('existing')">📄 ייבוא רשימה מאקסל</button>` : ''}
+      ${S.me.caps.assign ? `<button class="btn sec" onclick="openImportModal('existing')">📄 ייבוא רשימה מאקסל</button>` : ''}
     </div>
     <div class="hint" style="margin-bottom:12px">
       למטופלים שכבר בטיפול — רק שם, מטפל, שעה וכמות פגישות. בלי שאר הפרטים (אפשר להשלים אחר-כך בעריכה).
@@ -961,7 +1043,7 @@ function renderExisting(m) {
       <td>${(a.done_count || 0) + (a.past_count || 0)} / ${a.total_sessions}</td>
       <td style="white-space:nowrap">
         <button class="btn sm sec" onclick="openSessionsModal(${a.id})">פגישות</button>
-        ${S.me.caps.edit ? `<button class="btn sm sec" onclick="openSingleModal(${a.patient_id})">+ פגישה</button>` : ''}
+        ${S.me.caps.assign ? `<button class="btn sm sec" onclick="openSingleModal(${a.patient_id})">+ פגישה</button>` : ''}
       </td>
     </tr>`).join('')}
     </tbody></table>`}
@@ -1243,7 +1325,7 @@ function renderMatches(m) {
           <div class="hint" style="margin-top:4px">${hoursSummary(p.hours)}${p.urgent ? ' · ' + p.urgent + ' דחופים' : ''}</div>
         </div>`).join('')}
     </div>
-    ${S.me.caps.edit ? `<button class="btn sec" onclick="openHourPartsModal()">⚙ הגדרת שעות לחלקי היום</button>` : ''}
+    ${S.me.caps.editHourParts ? `<button class="btn sec" onclick="openHourPartsModal()">⚙ הגדרת שעות לחלקי היום</button>` : ''}
   </div>
 
   <div class="card">
@@ -1329,6 +1411,117 @@ async function saveHourParts() {
 }
 
 // =====================================================================
+// ממתינים לאינטייק — רשימה נפרדת, בלי קשר לרשימת הממתינים לשיבוץ
+// =====================================================================
+let _intake = [], _intakeQ = '';
+
+async function renderIntake(m) {
+  m.innerHTML = `
+  <div class="card">
+    <div class="toolbar">
+      <div class="field"><label>חיפוש</label><input value="${esc(_intakeQ)}" placeholder="שם / ת.ז / סיבת דחיפות"
+        oninput="_intakeQ=this.value;renderIntakeTable()"></div>
+      <div class="spacer"></div>
+      ${S.me.caps.editIntake ? '<button class="btn" onclick="openIntakeModal(null)">+ הוספה לרשימה</button>' : ''}
+    </div>
+    <div class="hint" style="margin-bottom:10px">
+      פונים שממתינים לשיחת אינטייק, לפי סדר ההצטרפות. הרשימה נפרדת מרשימת הממתינים לשיבוץ.
+    </div>
+    <div id="intake-table"><div class="empty">טוען...</div></div>
+  </div>`;
+  try {
+    _intake = await api('/intake');
+    renderIntakeTable();
+  } catch (e) {
+    const el = document.getElementById('intake-table');
+    if (el) el.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+  }
+}
+
+// מרענן רק את הטבלה — שדה החיפוש לא נבנה מחדש, כדי שהמיקוד לא יקפוץ
+function renderIntakeTable() {
+  const el = document.getElementById('intake-table');
+  if (!el) return;
+  if (!_intake.length) { el.innerHTML = '<div class="empty">אין ממתינים לאינטייק</div>'; return; }
+  const q = _intakeQ.trim();
+  // המספור הוא המקום בתור, ונשמר גם כשמחפשים
+  const rows = _intake.map((r, i) => ({ ...r, pos: i + 1 }))
+    .filter(r => !q || `${r.last_name} ${r.first_name} ${r.national_id || ''} ${r.urgency_reason || ''}`.includes(q));
+  const canEdit = !!S.me.caps.editIntake;
+  el.innerHTML = (!rows.length ? '<div class="empty">אין תוצאות לחיפוש</div>' : `
+    <div class="table-wrap"><table><thead><tr>
+      <th>#</th><th>שם משפחה</th><th>שם פרטי</th><th>ת.ז</th><th>קופ"ח</th><th>סיבת דחיפות</th><th>הוזן ע"י</th><th>מתאריך</th>${canEdit ? '<th></th>' : ''}
+    </tr></thead><tbody>
+    ${rows.map(r => `<tr>
+      <td class="hint">${r.pos}</td>
+      <td><b>${esc(r.last_name)}</b></td>
+      <td><b>${esc(r.first_name)}</b></td>
+      <td>${esc(r.national_id || '')}</td>
+      <td>${esc(r.hmo || '')}</td>
+      <td style="white-space:pre-wrap;min-width:180px">${esc(r.urgency_reason || '')}</td>
+      <td class="hint">${esc(r.created_by_name || '')}</td>
+      <td>${fmtDateHe(String(r.created_at).slice(0, 10))}</td>
+      ${canEdit ? `<td style="white-space:nowrap">
+        <button class="btn sm sec" onclick="openIntakeModal(${r.id})">עריכה</button>
+        <button class="btn sm sec" onclick="removeIntake(${r.id})" title="הסרה מהרשימה (למשל אחרי האינטייק)">הסרה</button>
+      </td>` : ''}
+    </tr>`).join('')}
+    </tbody></table></div>`)
+    + `<div class="hint" style="margin-top:8px">${_intake.length} ממתינים לאינטייק${rows.length !== _intake.length ? ` · מוצגים ${rows.length}` : ''}</div>`;
+}
+
+function openIntakeModal(id) {
+  const r = id ? _intake.find(x => x.id === id) : null;
+  if (id && !r) return toast('הרשומה לא נמצאה — רענן את הדף', true);
+  showModal(`
+  <h2>${r ? 'עריכת ממתין לאינטייק' : 'הוספה לממתינים לאינטייק'} <button class="x" onclick="closeModal()">✕</button></h2>
+  <form id="intake-form">
+    <div class="grid2">
+      <div class="field"><label>שם משפחה *</label><input name="last_name" value="${esc(r ? r.last_name : '')}" required></div>
+      <div class="field"><label>שם פרטי *</label><input name="first_name" value="${esc(r ? r.first_name : '')}" required></div>
+      <div class="field"><label>מספר זהות</label><input name="national_id" value="${esc(r ? r.national_id : '')}" maxlength="10" inputmode="numeric"></div>
+      <div class="field"><label>קופת חולים</label><select name="hmo">
+        <option value="">—</option>
+        ${S.meta.hmos.map(h => `<option ${r && r.hmo === h ? 'selected' : ''}>${esc(h)}</option>`).join('')}
+      </select></div>
+    </div>
+    <div class="field"><label>סיבת דחיפות</label><textarea name="urgency_reason" rows="3">${esc(r ? r.urgency_reason : '')}</textarea></div>
+    ${r ? `<div class="hint">הוזן ע"י ${esc(r.created_by_name || '—')} · ${fmtDateHe(String(r.created_at).slice(0, 10))}${r.updated_by_name ? ' | עודכן לאחרונה ע"י ' + esc(r.updated_by_name) : ''}</div>` : ''}
+    <div class="modal-actions">
+      <button class="btn">${r ? 'שמירה' : 'הוספה'}</button>
+      <button type="button" class="btn sec" onclick="closeModal()">ביטול</button>
+    </div>
+  </form>`);
+  document.getElementById('intake-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const btn = e.target.querySelector('button.btn');
+    btn.disabled = true;   // מניעת הוספה כפולה בלחיצה חוזרת
+    const body = {
+      last_name: fd.get('last_name'), first_name: fd.get('first_name'), national_id: fd.get('national_id'),
+      hmo: fd.get('hmo') || null, urgency_reason: fd.get('urgency_reason'),
+    };
+    try {
+      if (r) await api('/intake/' + r.id, { method: 'PUT', body });
+      else await api('/intake', { method: 'POST', body });
+      toast(r ? 'נשמר' : 'נוסף לרשימת הממתינים לאינטייק');
+      closeModal();
+      if (S.view === 'intake') renderIntake(document.getElementById('main'));
+    } catch (err) { btn.disabled = false; toast(err.message, true); }
+  });
+}
+
+async function removeIntake(id) {
+  const r = _intake.find(x => x.id === id);
+  if (!confirm(`להסיר את ${r ? r.last_name + ' ' + r.first_name : 'הרשומה'} מרשימת הממתינים לאינטייק?`)) return;
+  try {
+    await api('/intake/' + id, { method: 'DELETE' });
+    toast('הוסר מהרשימה');
+    renderIntake(document.getElementById('main'));
+  } catch (e) { toast(e.message, true); }
+}
+
+// =====================================================================
 // רשימת השהיה — מטופלים שממתינים למטפל מסוים
 // =====================================================================
 function renderHolds(m) {
@@ -1374,7 +1567,11 @@ async function loadHoldsList() {
           <td class="hint">${esc(h.note || '')}</td>
           <td class="hint">${esc(h.created_by_name || '')}</td>
           <td>${fmtDateHe(String(h.created_at).slice(0, 10))}</td>
-          <td>${S.me.caps.holds ? `<button class="btn sm sec" onclick="releaseHold(${h.id})">הסר</button>` : ''}</td>
+          <td style="white-space:nowrap">
+            ${S.me.caps.assign || S.me.caps.viewAssign ? `<button class="btn sm ${S.me.caps.assign ? 'green' : 'sec'}" onclick="openAssignModal(${h.patient_id},${h.therapist_id},${h.id})">שבץ</button>` : ''}
+            ${canEditPatient() ? `<button class="btn sm sec" onclick="openPatientModal(${h.patient_id})">עריכה</button>` : ''}
+            ${S.me.caps.holds ? `<button class="btn sm sec" onclick="releaseHold(${h.id})">הסר</button>` : ''}
+          </td>
         </tr>`;
       }).join('')}
       </tbody></table></div>
@@ -1461,7 +1658,7 @@ function renderSeries(m) {
         <td><span class="badge ${sCls}">${sLbl}</span></td>
         <td style="white-space:nowrap">
           <button class="btn sm sec" onclick="openSessionsModal(${a.id})">פגישות</button>
-          ${S.me.caps.del && a.status === 'active' ? `<button class="btn sm danger" onclick="cancelAssignment(${a.id})">בטל סדרה</button>` : ''}
+          ${S.me.caps.cancelSeries && a.status === 'active' ? `<button class="btn sm danger" onclick="cancelAssignment(${a.id})">בטל סדרה</button>` : ''}
         </td>
       </tr>`;
     }).join('')}
@@ -1492,11 +1689,11 @@ async function openSessionsModal(aid) {
       <td>${s.session_num}</td><td>${fmtDateHe(s.date)}</td><td>${WEEKDAYS[weekdayOf(s.date)]}</td><td>${hourRange(s.hour)}</td>
       <td><span class="badge ${cls}">${lbl}</span></td>
       <td style="white-space:nowrap">
-      ${S.me.caps.edit && s.status === 'scheduled' ? `
+      ${S.me.caps.editSessions && s.status === 'scheduled' ? `
         <button class="btn sm green" onclick="setSessionStatus(${s.id},'done',${aid})">בוצעה</button>
         <button class="btn sm sec" onclick="setSessionStatus(${s.id},'no_show',${aid})">לא הגיע</button>
         <button class="btn sm sec" onclick="setSessionStatus(${s.id},'cancelled',${aid})">בטל</button>` : ''}
-      ${S.me.caps.edit && s.status !== 'scheduled' ? `<button class="btn sm sec" onclick="setSessionStatus(${s.id},'scheduled',${aid})">החזר לתזמון</button>` : ''}
+      ${S.me.caps.editSessions && s.status !== 'scheduled' ? `<button class="btn sm sec" onclick="setSessionStatus(${s.id},'scheduled',${aid})">החזר לתזמון</button>` : ''}
       </td>
     </tr>`;
   }).join('')}
@@ -1537,7 +1734,7 @@ async function renderHolidaysView() {
     בתאריכים שמוגדרים כאן לא נקבעות פגישות: יצירת סדרה מדלגת עליהם אוטומטית לשבוע הבא,
     ופגישה בודדת נחסמת. אפשר להוסיף יום בודד או טווח (למשל כל חול המועד).
   </div>
-  ${S.me.caps.edit ? `
+  ${S.me.caps.editHolidays ? `
   <form id="hol-form" class="toolbar" style="align-items:end">
     <div class="field"><label>מתאריך *</label><input type="date" name="from" required></div>
     <div class="field"><label>עד תאריך (ריק = יום בודד)</label><input type="date" name="to"></div>
@@ -1546,7 +1743,7 @@ async function renderHolidaysView() {
   </form>` : ''}
   <div id="hol-list"><div class="empty">טוען...</div></div>`;
 
-  if (S.me.caps.edit) {
+  if (S.me.caps.editHolidays) {
     document.getElementById('hol-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
@@ -1573,7 +1770,7 @@ async function loadHolidaysList() {
         <td>${fmtDateHe(h.date)}</td>
         <td>${WEEKDAYS[weekdayOf(h.date)]}</td>
         <td>${esc(h.name || '')}</td>
-        <td>${S.me.caps.edit ? `<button class="btn sm sec" onclick="deleteHoliday(${h.id})">🗑</button>` : ''}</td>
+        <td>${S.me.caps.editHolidays ? `<button class="btn sm sec" onclick="deleteHoliday(${h.id})">🗑</button>` : ''}</td>
       </tr>`).join('')}
       </tbody></table></div>
       <div class="hint" style="margin-top:8px">מוצגים ימים מ-30 הימים האחרונים והלאה</div>`;
@@ -1693,8 +1890,8 @@ function renderTherapists(m) {
     <div class="toolbar">
       <h2 style="margin:0">מטפלים</h2>
       <div class="spacer"></div>
-      ${S.me.caps.edit ? `<button class="btn sec" onclick="openImportModal('therapists')">📄 ייבוא מאקסל</button>` : ''}
-      ${S.me.caps.edit ? `<button class="btn" onclick="openTherapistModal(null)">+ מטפל חדש</button>` : ''}
+      ${S.me.caps.editTherapists ? `<button class="btn sec" onclick="openImportModal('therapists')">📄 ייבוא מאקסל</button>` : ''}
+      ${S.me.caps.editTherapists ? `<button class="btn" onclick="openTherapistModal(null)">+ מטפל חדש</button>` : ''}
     </div>
     <div class="table-wrap">
     ${!S.therapists.length ? '<div class="empty">אין מטפלים</div>' : `
@@ -1711,8 +1908,8 @@ function renderTherapists(m) {
         <td>${(t.groups || []).map(g => `<span class="member-chip">${esc(g.name)}</span>`).join(' ')}</td>
         <td>${t.active ? '<span class="badge b-green">פעיל</span>' : '<span class="badge b-gray">לא פעיל</span>'}</td>
         <td style="white-space:nowrap">
-          ${S.me.caps.edit ? `<button class="btn sm sec" onclick="openTherapistModal(${t.id})">עריכה</button>` : ''}
-          ${S.me.caps.del ? `<button class="btn sm sec" onclick="deleteTherapist(${t.id})">🗑</button>` : ''}
+          ${S.me.caps.editTherapists ? `<button class="btn sm sec" onclick="openTherapistModal(${t.id})">עריכה</button>` : ''}
+          ${S.me.caps.deleteTherapists ? `<button class="btn sm sec" onclick="deleteTherapist(${t.id})">🗑</button>` : ''}
         </td>
       </tr>`;
     }).join('')}
@@ -1724,7 +1921,7 @@ function renderTherapists(m) {
     <div class="toolbar">
       <h2 style="margin:0">קבוצות מטפלים</h2>
       <div class="spacer"></div>
-      ${S.me.caps.edit ? `<button class="btn sec" onclick="createGroup()">+ קבוצה חדשה</button>` : ''}
+      ${S.me.caps.editTherapists ? `<button class="btn sec" onclick="createGroup()">+ קבוצה חדשה</button>` : ''}
     </div>
     <div class="hint" style="margin-bottom:10px">קבוצה (למשל "מטפלים חרדים") משמשת להעדפת שיוך של מטופל — בבחירתה יוצגו כל המטפלים התואמים שבה</div>
     ${!S.groups.length ? '<div class="empty">אין קבוצות</div>' : S.groups.map(g => `
@@ -1732,8 +1929,8 @@ function renderTherapists(m) {
         <b>${esc(g.name)}</b>
         <span>${(g.members || []).map(mm => `<span class="member-chip">${esc(mm.name)}</span>`).join(' ') || '<span class="hint">אין מטפלים בקבוצה</span>'}</span>
         <div class="spacer"></div>
-        ${S.me.caps.edit ? `<button class="btn sm sec" onclick="openGroupMembers(${g.id})">עריכת חברים</button>` : ''}
-        ${S.me.caps.del ? `<button class="btn sm sec" onclick="deleteGroup(${g.id})">🗑</button>` : ''}
+        ${S.me.caps.editTherapists ? `<button class="btn sm sec" onclick="openGroupMembers(${g.id})">עריכת חברים</button>` : ''}
+        ${S.me.caps.deleteTherapists ? `<button class="btn sm sec" onclick="deleteGroup(${g.id})">🗑</button>` : ''}
       </div>`).join('')}
   </div>`;
 }
@@ -1851,11 +2048,15 @@ let _users = [], _roles = [];
 async function renderUsers(m) {
   m.innerHTML = '<div class="card"><div class="empty">טוען...</div></div>';
   try {
-    const [users, roles] = await Promise.all([api('/users'), api('/users/roles')]);
+    const [users, roles, perm] = await Promise.all([api('/users'), api('/users/roles'), api('/users/permissions')]);
     _users = users; _roles = roles;
+    // רענון המסך (למשל אחרי שמירת משתמש) לא מוחק סימונים בטבלה שעוד לא נשמרו
+    const keep = permDirty() ? _permDraft : null;
+    permLoad(perm);
+    if (keep) _permDraft = keep;
     m.innerHTML = `<div class="card">
       <div class="toolbar">
-        <h2 style="margin:0">משתמשים והרשאות</h2>
+        <h2 style="margin:0">משתמשים</h2>
         <div class="spacer"></div>
         <button class="btn" onclick="openUserModal(null)">+ משתמש חדש</button>
       </div>
@@ -1864,17 +2065,18 @@ async function renderUsers(m) {
         <td><b>${esc(u.username)}</b></td>
         <td>${esc(u.full_name || '')}</td>
         <td class="hint">${esc(u.email || '')}</td>
-        <td>${esc(u.role_label)}<div class="hint role-desc">${esc(u.role_desc || '')}</div></td>
+        <td>${esc(u.role_label)}${u.role_custom
+          ? ' <span class="badge b-amber" title="ההרשאות של סוג המשתמש הזה שונו בטבלת ההרשאות">הרשאות מותאמות</span>'
+          : `<div class="hint role-desc">${esc(u.role_desc || '')}</div>`}</td>
         <td>${u.active ? '<span class="badge b-green">פעיל</span>' : '<span class="badge b-gray">מושבת</span>'}</td>
         <td>${u.last_login ? fmtDateHe(u.last_login.slice(0, 10)) : '—'}</td>
         <td><button class="btn sm sec" onclick="openUserModal(${u.id})">עריכה</button></td>
       </tr>`).join('')}
       </tbody></table></div>
-      <div class="hint" style="margin-top:10px">
-        ${roles.map(r => `<div style="margin-bottom:4px"><b>${esc(r.label)}</b> — ${esc(r.desc)}</div>`).join('')}
-        <div style="margin-top:6px">רק מנהל ראשי יכול להוסיף ולערוך משתמשים.</div>
-      </div>
-    </div>`;
+      <div class="hint" style="margin-top:10px">רק מנהל ראשי יכול להוסיף ולערוך משתמשים ולשנות הרשאות.</div>
+    </div>
+    <div class="card" id="perm-card"></div>`;
+    renderPermissions();
   } catch (e) { m.innerHTML = `<div class="card"><div class="empty">${esc(e.message)}</div></div>`; }
 }
 
@@ -1882,7 +2084,118 @@ async function renderUsers(m) {
 function showRoleDesc(role) {
   const el = document.getElementById('role-desc');
   const r = _roles.find(x => x.role === role);
-  if (el) el.textContent = r ? r.desc : '';
+  if (el) el.textContent = !r ? '' : r.custom ? 'ההרשאות של סוג המשתמש הזה שונו — ראה טבלת ההרשאות' : r.desc;
+}
+
+// =====================================================================
+// הרשאות לפי סוג משתמש — צפייה / עריכה לכל פעולה במערכת
+// =====================================================================
+// _perm = מה שנשמר בשרת; _permDraft = הסימונים שעל המסך, עד לשמירה
+let _perm = null, _permDraft = {};
+
+function permLoad(perm) {
+  _perm = perm;
+  _permDraft = {};
+  perm.roles.forEach(r => { _permDraft[r.role] = { ...r.caps }; });
+}
+// תפקידים ותיקים מוצגים רק אם יש להם משתמשים
+function permRoles() { return _perm ? _perm.roles.filter(r => !r.legacy || r.users > 0) : []; }
+function permDirty() {
+  return !!_perm && _perm.roles.some(r =>
+    Object.keys(r.caps).some(k => !!(_permDraft[r.role] || {})[k] !== !!r.caps[k]));
+}
+
+function renderPermissions() {
+  const card = document.getElementById('perm-card');
+  if (!card || !_perm) return;
+  const roles = permRoles();
+  const cell = (r, cap, row) => {
+    if (!cap) return '<td class="perm-cell"></td>';
+    if (cap === 'always') return '<td class="perm-cell"><span class="perm-always" title="פתוח תמיד">✓</span></td>';
+    const locked = r.locked || _perm.locked.includes(cap);
+    const on = !!_permDraft[r.role][cap];
+    const custom = !r.locked && on !== !!r.defaults[cap];
+    return `<td class="perm-cell${custom ? ' custom' : ''}"><input type="checkbox" data-role="${r.role}" data-cap="${cap}"
+      title="${esc(r.label)} — ${esc(row.label)}: ${cap === row.view ? 'צפייה' : 'עריכה'}"
+      ${on ? 'checked' : ''} ${locked ? 'disabled' : ''} onchange="permToggle(this)"></td>`;
+  };
+  card.innerHTML = `
+    <div class="toolbar">
+      <h2 style="margin:0">הרשאות לפי סוג משתמש</h2>
+      <div class="spacer"></div>
+      <span class="hint" id="perm-status"></span>
+      <button class="btn sec" id="perm-undo" onclick="permUndo()">ביטול שינויים</button>
+      <button class="btn" id="perm-save" onclick="savePermissions()">שמירת הרשאות</button>
+    </div>
+    <div class="hint" style="margin-bottom:10px">
+      לכל פעולה: 👁 צפייה · ✏️ עריכה. סימון עריכה מסמן גם צפייה, והסרת צפייה מסירה גם את העריכה.
+      רקע צהוב = שונה מברירת המחדל. השינוי חל מיד אחרי השמירה על כל המשתמשים מאותו סוג
+      (מי שכבר מחובר יראה אותו בפעולה הבאה או ברענון הדף). מנהל ראשי מקבל תמיד את כל ההרשאות.
+    </div>
+    <div class="perm-wrap"><table class="perm-table">
+      <thead><tr>
+        <th class="perm-action">פעולה</th>
+        ${roles.map(r => `<th colspan="2" class="perm-role" title="${esc(r.desc)}">${esc(r.label)}
+          <div class="hint">${r.users} משתמשים</div>
+          ${r.locked ? '' : `<button type="button" class="link-btn" onclick="permResetRole('${r.role}')">ברירת מחדל</button>`}
+          <div class="perm-sub"><span>👁</span><span>✏️</span></div></th>`).join('')}
+      </tr></thead>
+      <tbody>
+      ${_perm.sections.map(sec => `
+        <tr class="perm-sec"><td colspan="${roles.length * 2 + 1}">${esc(sec.title)}</td></tr>
+        ${sec.rows.map(row => `<tr>
+          <td class="perm-action">${esc(row.label)}${row.hint ? `<div class="hint">${esc(row.hint)}</div>` : ''}</td>
+          ${roles.map(r => cell(r, row.view, row) + cell(r, row.edit, row)).join('')}
+        </tr>`).join('')}`).join('')}
+      </tbody>
+    </table></div>`;
+  permStatus();
+}
+
+// סימון או הסרה, כולל ההרשאות הנגררות: עריכה מסמנת צפייה, הסרת צפייה מסירה עריכה
+function permToggle(el) {
+  const role = el.dataset.role, cap = el.dataset.cap, d = _permDraft[role];
+  d[cap] = el.checked;
+  if (el.checked) (_perm.implies[cap] || []).forEach(v => { d[v] = true; });
+  else Object.entries(_perm.implies).forEach(([k, needs]) => { if (needs.includes(cap)) d[k] = false; });
+  permSync(role);
+}
+function permResetRole(role) {
+  const r = _perm.roles.find(x => x.role === role);
+  if (!r) return;
+  _permDraft[role] = { ...r.defaults };
+  permSync(role);
+}
+function permUndo() { permLoad(_perm); renderPermissions(); }
+
+// מעדכן רק את התיבות של תפקיד אחד — בלי לבנות את הטבלה מחדש, כך שהגלילה נשמרת
+function permSync(role) {
+  const r = _perm.roles.find(x => x.role === role);
+  document.querySelectorAll(`.perm-table input[data-role="${role}"]`).forEach(i => {
+    const on = !!_permDraft[role][i.dataset.cap];
+    i.checked = on;
+    i.closest('td').classList.toggle('custom', on !== !!r.defaults[i.dataset.cap]);
+  });
+  permStatus();
+}
+function permStatus() {
+  const dirty = permDirty();
+  const st = document.getElementById('perm-status');
+  if (st) st.textContent = dirty ? 'יש שינויים שלא נשמרו' : '';
+  ['perm-save', 'perm-undo'].forEach(id => { const b = document.getElementById(id); if (b) b.disabled = !dirty; });
+}
+
+async function savePermissions() {
+  const roles = {};
+  _perm.roles.filter(r => !r.locked).forEach(r => { roles[r.role] = _permDraft[r.role]; });
+  const btn = document.getElementById('perm-save');
+  if (btn) btn.disabled = true;
+  try {
+    permLoad(await api('/users/permissions', { method: 'PUT', body: { roles } }));
+    toast('ההרשאות נשמרו');
+    await loadAll();   // גם ההרשאות של המשתמש הנוכחי נטענות מחדש
+    render();
+  } catch (e) { toast(e.message, true); permStatus(); }
 }
 
 function openUserModal(userId) {
@@ -2005,7 +2318,7 @@ async function loadFilesList(patientId) {
           <div class="hint">${fileSize(f.size_bytes)} · ${esc(f.uploaded_by_name || '')} · ${fmtDateHe(String(f.created_at).slice(0,10))}</div>
         </div>
         ${drive}
-        ${S.me.caps.del ? `<button class="btn sm sec" onclick="deleteFile(${f.id},${patientId})">🗑</button>` : ''}
+        ${S.me.caps.deleteFiles ? `<button class="btn sm sec" onclick="deleteFile(${f.id},${patientId})">🗑</button>` : ''}
       </div>`;
     }).join('');
     // הגיבוי רץ ברקע — רענון קצר כדי שהסטטוס יתעדכן מעצמו

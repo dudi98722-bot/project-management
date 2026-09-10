@@ -24,7 +24,7 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // הוספה: תאריך בודד { date, name } או טווח { from, to, name } (כולל, עד שנה)
-router.post('/', authenticate, can('edit'), async (req, res) => {
+router.post('/', authenticate, can('editHolidays'), async (req, res) => {
   const b = req.body || {};
   const name = b.name ? String(b.name).trim() : null;
   const from = parseDate(b.from || b.date);
@@ -47,7 +47,7 @@ router.post('/', authenticate, can('edit'), async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-router.delete('/:id', authenticate, can('edit'), async (req, res) => {
+router.delete('/:id', authenticate, can('editHolidays'), async (req, res) => {
   try {
     const r = await pool.query('DELETE FROM holidays WHERE id=$1 RETURNING id, date, name', [req.params.id]);
     if (!r.rows.length) return res.status(404).json({ error: 'לא נמצא' });
