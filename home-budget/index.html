@@ -139,6 +139,16 @@ tbody tr.sel{background:var(--brand-soft)}
 .tfoot{padding:9px 12px;font-size:12.5px;color:var(--dim);background:var(--card2);
   border-top:1px solid var(--line)}
 
+/* ---------- פס "לא מחובר" ---------- */
+/* חיווי החיבור היה טקסט אפור קטן בכותרת, ובנייד הוא הוסתר לגמרי.
+   כך אפשר היה לייבא חודשים שלמים למכשיר שמנותק מהגיליון בלי לדעת. */
+#connBar{display:none;background:var(--warn-soft);border-bottom:1px solid #f0d9a8;color:var(--warn);
+  font-size:13px;padding:9px 18px}
+#connBar.on{display:block}
+#connBar .in{max-width:1240px;margin:0 auto;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+#connBar b{font-weight:700}
+#connBar .btn{padding:6px 12px;font-size:12.5px}
+
 /* ---------- סרגל הפעולות המרוכזות ---------- */
 /* צף בתחתית המסך. כשהיה בזרימת הדף, כל סימון של שורה הוסיף אותו
    למעלה והקפיץ את כל הטבלה. */
@@ -309,6 +319,7 @@ body.picking{padding-bottom:96px}
     <button data-tab="settings">⚙️ הגדרות</button>
   </nav>
 </header>
+<div id="connBar"><div class="in"></div></div>
 
 <main>
 
@@ -831,7 +842,44 @@ function applyRole(){
   /* פקדי מנהל שחיים מחוץ ללשוניות המוסתרות נעלמים גם הם */
   const sd=$('showDelWrap'); if(sd) sd.style.display = isAdmin() ? 'flex' : 'none';
 }
-function setSync(state, txt){ $('syncChip').textContent = txt; }
+function setSync(state, txt){ $('syncChip').textContent = txt; renderConnBar(); }
+/** הפס מוצג בכל מצב שבו הנתונים לא מגיעים לגיליון, ואומר בדיוק למה. */
+function renderConnBar(){
+  const bar=$('connBar'); if(!bar) return;
+  const left=(typeof pendingCount==='function')?pendingCount():0;
+  const waiting = left ? ' <span style="opacity:.85">('+left+' שינויים ממתינים להעלאה)</span>' : '';
+  let html='';
+  if(!GS_URL){
+    html='<span>⚠ <b>המכשיר לא מחובר לגיליון</b> — כל מה שתזין או תייבא נשמר רק בדפדפן הזה.'+waiting+'</span>'+
+         '<button class="btn" onclick="connectDevice()">חבר לגיליון</button>';
+  } else if(!TOKEN){
+    html='<span>⚠ <b>מחובר לגיליון אבל לא מזוהה</b> — הנתונים יעלו רק אחרי התחברות.'+waiting+'</span>'+
+         '<button class="btn" onclick="showLogin()">התחבר</button>';
+  }
+  bar.querySelector('.in').innerHTML=html;
+  bar.classList.toggle('on', !!html);
+}
+/** חיבור המכשיר מכל מקום — גם למשתמש רגיל שאין לו הגדרות. */
+function connectDevice(){
+  openModal('<h3>חיבור לגיליון Google</h3>'+
+    '<p style="font-size:13px;color:var(--dim);line-height:1.65;margin:0 0 12px">'+
+    'הדבק את כתובת ה-Apps Script שמסתיימת ב-<span dir="ltr">/exec</span>. '+
+    'מנהל מקבל אותה ב-Apps Script אחרי Deploy; משתמש רגיל מבקש מהמנהל.</p>'+
+    '<input id="mApi" dir="ltr" placeholder="https://script.google.com/.../exec" value="'+esc(GS_URL||'')+'">'+
+    '<div id="mApiErr" class="lerr"></div>'+
+    '<div class="row"><div class="fix"><button class="btn" onclick="saveApiFromModal()">חבר</button></div>'+
+    '<div class="fix"><button class="btn sec" onclick="closeModal()">ביטול</button></div></div>');
+  setTimeout(()=>{ try{ $('mApi').focus(); }catch(e){} },60);
+}
+function saveApiFromModal(){
+  const u=$('mApi').value.trim();
+  if(!/^https:\/\/script\.google\.com\/.+\/exec$/.test(u)){
+    $('mApiErr').textContent='הכתובת צריכה להתחיל ב-https://script.google.com ולהסתיים ב-/exec'; return;
+  }
+  GS_URL=u; DB.settings.apiUrl=u; saveLocal(); closeModal();
+  toast('המכשיר חובר לגיליון');
+  if(TOKEN) syncNow(); else showLogin();
+}
 
 /* תור ההעלאה נשמר בדיסק. קודם הוא חי רק בזיכרון, ולכן רענון של
    הדף לפני שהסנכרון הספיק לרוץ מחק את התור — הנתונים נשארו
@@ -1060,7 +1108,7 @@ function useLocalMode(){
   try{ localStorage.removeItem(LST); }catch(e){}
   saveLocal();
   toast('מצב מקומי — הכניסה בשם ובקוד אישי בלבד');
-  backToCred();
+  renderConnBar(); backToCred();
 }
 
 async function submitPin(){
@@ -2320,7 +2368,13 @@ function runImport(){
 
   const pend=fresh.filter(t=>t.status==='pending').length;
   $('importResult').style.display='block';
-  $('importResult').innerHTML='<h3>✅ הייבוא הסתיים</h3>'+
+  const dest = (GS_URL && TOKEN)
+    ? '<div style="font-size:13px;color:var(--ok);margin:-6px 0 12px">☁ נשלח לגיליון Google</div>'
+    : '<div style="font-size:13px;color:var(--warn);background:var(--warn-soft);border:1px solid #f0d9a8;'+
+      'border-radius:10px;padding:9px 12px;margin:-6px 0 12px"><b>נשמר במכשיר הזה בלבד.</b> המכשיר '+
+      (GS_URL?'לא מזוהה — התחבר':'לא מחובר לגיליון — לחץ "חבר לגיליון" בפס שלמעלה')+
+      ' כדי שהנתונים יעלו.</div>';
+  $('importResult').innerHTML='<h3>✅ הייבוא הסתיים</h3>'+dest+
     '<div class="grid g4">'+
       kpi('נוספו', added+'', 'מתוך '+rows.length+' שורות בקובץ')+
       kpi('דולגו', dups+'', dups?'כבר יובאו קודם מאותו מקור':'לא נמצאו שורות שכבר יובאו')+
@@ -2528,7 +2582,7 @@ function saveApi(){
   if(u && !/^https:\/\/script\.google\.com\/.+\/exec$/.test(u)){
     if(!confirm('הכתובת לא נראית כמו /exec של Apps Script. לשמור בכל זאת?')) return;
   }
-  GS_URL=u; DB.settings.apiUrl=u; queueSetting('apiUrl'); saveLocal();
+  GS_URL=u; DB.settings.apiUrl=u; saveLocal(); renderConnBar();
   renderSettings(); toast('נשמר'); if(u) syncNow();
 }
 function saveTitle(){
@@ -2581,7 +2635,7 @@ Object.assign(ACTIONS,{
 
 /* ---------------- אתחול ---------------- */
 function renderAll(){
-  applyTitle(); applyRole(); updateBadge();
+  applyTitle(); applyRole(); updateBadge(); renderConnBar();
   const on=document.querySelector('#nav button.on');
   gotoTab(on?on.dataset.tab:'dash');
   fillAddCats();

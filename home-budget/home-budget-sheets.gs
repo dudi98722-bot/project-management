@@ -48,7 +48,7 @@
 var APP_NAME  = 'ניהול הוצאות בית';
 /* חותם גרסה. מוחזר ב-authmeta, וכך אפשר לדעת מבחוץ איזו גרסת קוד
    באמת פרוסה — העורך והפריסה יכולים להחזיק קוד שונה לגמרי. */
-var SCRIPT_VERSION = '2026-09-07-a';
+var SCRIPT_VERSION = '2026-09-11-a';
 
 /* ------------------------------------------------------------
    אימות דו-שלבי במייל
@@ -376,6 +376,20 @@ function diag(key) {
   } catch (e) { out.users = 'שגיאה: ' + e; }
   try { out.mailQuota = MailApp.getRemainingDailyQuota(); }
   catch (e) { out.mailQuota = 'אין הרשאת מייל: ' + e; }
+  /* ספירות — כדי לדעת מבחוץ אם נתונים בכלל הגיעו לגיליון, ומתי לאחרונה */
+  try {
+    var tx = readAll('tx');
+    var lastImp = '';
+    tx.forEach(function (t) { if (t.importedAt && t.importedAt > lastImp) lastImp = t.importedAt; });
+    out.counts = {
+      tx: tx.length,
+      txDeleted: tx.filter(function (t) { return t.deleted; }).length,
+      cats: readAll('cats').length,
+      stencils: readAll('stencils').length,
+      rules: readAll('rules').length,
+      lastImportedAt: lastImp
+    };
+  } catch (e) { out.counts = 'שגיאה: ' + e; }
   return out;
 }
 
