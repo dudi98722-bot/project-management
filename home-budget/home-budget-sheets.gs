@@ -48,7 +48,7 @@
 var APP_NAME  = 'ניהול הוצאות בית';
 /* חותם גרסה. מוחזר ב-authmeta, וכך אפשר לדעת מבחוץ איזו גרסת קוד
    באמת פרוסה — העורך והפריסה יכולים להחזיק קוד שונה לגמרי. */
-var SCRIPT_VERSION = '2026-09-11-a';
+var SCRIPT_VERSION = '2026-09-11-b';
 
 /* ------------------------------------------------------------
    אימות דו-שלבי במייל
@@ -240,7 +240,7 @@ function handle(e) {
           /* החלפת קוד אישי היא הצעד שמייל הקוד עצמו ממליץ עליו כשמישהו
              מנסה להיכנס. בלי ביטול ההתחברויות הקיימות היא לא הייתה
              מנתקת את מי שכבר נכנס. */
-          revokeOnCodeChange(o.rows || []);
+          revokeOnCodeChange(o.rows || [], g('token'));
           upsertMany('users', o.rows || []); count += (o.rows || []).length;
         }
         else if (o.op === 'delUser') {
@@ -542,21 +542,25 @@ function newToken() {
 }
 
 /** ביטול כל ההתחברויות של משתמש — נקרא כשהקוד האישי שלו מוחלף. */
-function revokeSessions(userId) {
+/** keepToken — ההתחברות שביצעה את הבקשה אינה מבוטלת: מנהל שמחליף את
+ *  הקוד של עצמו לא אמור להיזרק מהמכשיר שממנו הוא עובד. */
+function revokeSessions(userId, keepToken) {
   var all = props().getProperties();
   for (var k in all) {
     if (k.indexOf('sess_') !== 0) continue;
+    if (keepToken && k === 'sess_' + keepToken) continue;
     try {
       if (String(JSON.parse(all[k]).u) === String(userId)) props().deleteProperty(k);
     } catch (x) {}
   }
 }
-function revokeOnCodeChange(rows) {
+function revokeOnCodeChange(rows, keepToken) {
   var before = {};
-  readUsers().forEach(function (u) { before[String(u.id)] = String(u.code); });
+  readUsers().forEach(function (u) { before[String(u.id)] = normPin(u.code); });
   (rows || []).forEach(function (u) {
+    if (!u || u.code === undefined) return;          /* אובייקט בלי קוד אינו שינוי קוד */
     var old = before[String(u.id)];
-    if (old !== undefined && String(u.code) !== old) revokeSessions(u.id);
+    if (old !== undefined && normPin(u.code) !== old) revokeSessions(u.id, keepToken);
   });
 }
 

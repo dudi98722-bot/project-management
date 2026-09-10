@@ -48,7 +48,9 @@ header h1{margin:0;font-size:16.5px;font-weight:700;letter-spacing:-.015em}
 #userChip{background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.12);
   border-radius:999px;padding:5px 13px;font-size:12px;cursor:pointer;display:none;
   white-space:nowrap;transition:background .15s;color:#fff}
-#syncChip{font-size:11.5px;color:rgba(255,255,255,.55);white-space:nowrap}
+#syncChip{font-size:11.5px;color:rgba(255,255,255,.55);white-space:nowrap;background:none;border:0;
+  cursor:pointer;padding:4px 6px;border-radius:6px;transition:color var(--dur-fast) ease}
+#syncChip:hover{color:#fff}
 
 nav{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;max-width:1240px;margin:0 auto}
 nav::-webkit-scrollbar{display:none}
@@ -305,7 +307,7 @@ body.picking{padding-bottom:96px}
   <div class="hbar">
     <h1 id="appTitle">ניהול הוצאות בית</h1>
     <div class="hspace"></div>
-    <div id="syncChip">מקומי</div>
+    <button id="syncChip" onclick="syncNow()" title="לחץ לסנכרון עם הגיליון">מקומי</button>
     <button id="userChip" onclick="logout()" title="התנתקות מהמכשיר"></button>
   </div>
   <nav id="nav">
@@ -532,17 +534,6 @@ body.picking{padding-bottom:96px}
 
 <!-- ============ הגדרות ============ -->
 <section id="tab-settings">
-  <div class="card">
-    <h3>חיבור ל-Google Sheets</h3>
-    <label class="f"><span>כתובת ה-/exec של ה-Apps Script</span>
-      <input id="sApi" placeholder="https://script.google.com/macros/s/.../exec"></label>
-    <div class="row">
-      <div class="fix"><button class="btn" onclick="saveApi()">התחבר ושמור</button></div>
-      <div class="fix"><button class="btn sec" onclick="syncNow()">סנכרן עכשיו</button></div>
-      <div class="fix"><button class="btn sec" onclick="pushAll()">⬆ העלה הכל לגיליון</button></div>
-    </div>
-    <p id="apiState" style="font-size:12.5px;color:var(--dim);margin:12px 0 0"></p>
-  </div>
   <div class="card" id="setUsersCard">
     <h3>משתמשים והרשאות</h3>
     <p style="color:var(--dim);font-size:13px;margin:0 0 12px;line-height:1.6">
@@ -690,7 +681,13 @@ function runAct(e){
   if(!el) return;
   const fn=ACTIONS[el.dataset.act];
   if(!fn) return;
-  if(e.type==='click') e.preventDefault();
+  /* שדות טופס פועלים רק ב-change, כפתורים וקישורים רק ב-click.
+     בלי ההפרדה, לחיצה בשדה כדי להציב סמן הפעילה את פעולת השינוי עם
+     הערך הקיים — ושלחה עדכון משתמש מיותר לשרת, שביטל את ההתחברות. */
+  const isField=/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName);
+  if(e.type==='click' && isField) return;
+  if(e.type==='change' && !isField) return;
+  if(e.type==='click' && el.tagName==='A') e.preventDefault();
   fn(el.dataset.id, el);
 }
 document.addEventListener('click', runAct);
@@ -2511,12 +2508,7 @@ function delCat(id){
 
 /* ---------------- הגדרות ---------------- */
 function renderSettings(){
-  $('sApi').value = GS_URL;
   $('sTitle').value = DB.settings.title || '';
-  const waiting = typeof pendingCount==='function' ? pendingCount() : 0;
-  $('apiState').textContent = !GS_URL ? 'לא מחובר — הנתונים נשמרים רק בדפדפן הזה.'
-    : waiting ? ('מחובר. ' + waiting + ' שינויים עדיין ממתינים להעלאה — לחץ "העלה הכל לגיליון".')
-    : 'מחובר. כל השינויים נשמרו גם בגיליון.';
   /* ניהול משתמשים ושם המערכת — למנהל בלבד */
   $('setUsersCard').style.display = isAdmin() ? '' : 'none';
   $('setTitleCard').style.display = isAdmin() ? '' : 'none';
@@ -2576,14 +2568,6 @@ function setUserField(id, field, value){
   renderSettings();
   toast(field==='email'?'האימייל נשמר':field==='code'?'הקוד האישי עודכן':
         field==='name'?'השם עודכן — זה השם לכניסה מעכשיו':'ההרשאה עודכנה');
-}
-function saveApi(){
-  const u=$('sApi').value.trim();
-  if(u && !/^https:\/\/script\.google\.com\/.+\/exec$/.test(u)){
-    if(!confirm('הכתובת לא נראית כמו /exec של Apps Script. לשמור בכל זאת?')) return;
-  }
-  GS_URL=u; DB.settings.apiUrl=u; saveLocal(); renderConnBar();
-  renderSettings(); toast('נשמר'); if(u) syncNow();
 }
 function saveTitle(){
   DB.settings.title=$('sTitle').value.trim();

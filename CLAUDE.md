@@ -19,3 +19,5 @@
 - פריסה ל-VPS: `ssh root@64.176.175.180` (מפתח ברירת מחדל) ומשיכת הקובץ מ-raw.githubusercontent
   עם ה-SHA של הקומיט (לא main — יש CDN cache).
 - הודעות קומיט בעברית דרך קובץ (`git commit -F`) — here-string ב-PowerShell משבש עברית.
+- `ssh` לשרת — **דרך PowerShell**, לא דרך כלי ה-Bash: ב-Bash נתיב הבית של המשתמש
+  (שם בעברית) משתבש, `.ssh` לא נמצא, וזה נכשל ב-"Permission denied (publickey)".
