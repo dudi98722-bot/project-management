@@ -123,6 +123,14 @@ thead th{text-align:right;font-size:11.5px;color:var(--dim);font-weight:700;lett
   /* שורת הכותרת נשארת למעלה בכל גלילה */
   position:sticky;top:0;z-index:3;height:36px;box-sizing:border-box}
 thead tr:first-child th{box-shadow:0 1px 0 var(--line)}
+/* דוחות: בדסקטופ הכותרת נצמדת לגלילת הדף עצמו. דוח קצר לא גולל בתוך
+   המיכל שלו, ו-sticky בתוך מיכל שלא גולל לא עושה כלום — הכותרת נעלמה
+   יחד עם הדף. בנייד נשארת גלילה פנימית, אחרת טבלה רחבה חורגת מהמסך. */
+@media (min-width:900px){
+  .table-wrap.report{overflow:visible;max-height:none}
+  .table-wrap.report thead tr:first-child th:first-child{border-top-right-radius:var(--r)}
+  .table-wrap.report thead tr:first-child th:last-child{border-top-left-radius:var(--r)}
+}
 thead th.sortable{cursor:pointer;user-select:none}
 thead th .arrow{opacity:.35;font-size:9px;margin-inline-start:3px}
 thead th .hlbl{cursor:pointer;user-select:none}
@@ -179,6 +187,17 @@ tbody tr.sel{background:var(--brand-soft)}
 #bulkBar.on{display:block}
 #bulkBar .row{max-width:1240px;margin:0 auto}
 body.picking{padding-bottom:96px}
+
+/* ---------- קומבו: מקלידים ומקבלים הצעות ---------- */
+input.combo{cursor:text}
+input.combo::placeholder{color:inherit;opacity:.85}
+#comboList{position:fixed;z-index:310;background:#fff;border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:var(--shadow-lg);padding:5px;max-height:280px;overflow:auto;display:none}
+#comboList.on{display:block}
+.cb-item{padding:8px 11px;border-radius:7px;font-size:13.5px;cursor:pointer;white-space:nowrap}
+.cb-item.on{background:var(--brand-soft);color:var(--brand);font-weight:600}
+.cb-item.new{color:var(--brand)}
+.cb-empty{padding:8px 11px;font-size:12.5px;color:var(--faint)}
 
 /* ---------- בורר קטגוריה בתוך התא ---------- */
 .catsel{font-size:12.5px;padding:4px 8px;border-radius:999px;border:1px solid var(--line);
@@ -298,6 +317,7 @@ body.picking{padding-bottom:96px}
 @media (hover:hover) and (pointer:fine){
   .colbtn:hover{color:var(--brand);background:var(--brand-soft)}
   .cm-item:hover{background:var(--card2)}
+  .cb-item:hover{background:var(--card2)}
   #userChip:hover{background:rgba(255,255,255,.16)}
   nav button:hover{color:rgba(255,255,255,.92);background:rgba(255,255,255,.06)}
   .btn:hover{background:var(--brand-h)}
@@ -364,12 +384,12 @@ body.picking{padding-bottom:96px}
     </div>
     <div class="card">
       <h3>טופ בתי עסק</h3>
-      <div class="table-wrap" id="topMerch"></div>
+      <div class="table-wrap report" id="topMerch"></div>
     </div>
   </div>
   <div class="card">
     <h3>הוצאות חריגות החודש</h3>
-    <div class="table-wrap" id="outliers"></div>
+    <div class="table-wrap report" id="outliers"></div>
   </div>
   <div class="card">
     <h3>מגמה — 12 חודשים אחרונים</h3>
@@ -377,7 +397,7 @@ body.picking{padding-bottom:96px}
   </div>
   <div class="card">
     <h3>קטגוריה לאורך החודשים</h3>
-    <div class="table-wrap" id="catMonths"></div>
+    <div class="table-wrap report" id="catMonths"></div>
   </div>
 </section>
 
@@ -408,7 +428,7 @@ body.picking{padding-bottom:96px}
     <div id="bulkBar">
       <div class="row">
         <div class="fix"><b id="bulkCount"></b></div>
-        <div class="fix" style="min-width:170px"><select id="bulkCat"><option value="">קטגוריה...</option></select></div>
+        <div class="fix" style="min-width:190px" id="bulkCatWrap"></div>
         <div class="fix"><button class="btn sm" onclick="bulkApply('category')">החל קטגוריה</button></div>
         <div class="fix" style="min-width:150px"><select id="bulkStatus">
           <option value="">סטטוס...</option>
@@ -508,7 +528,7 @@ body.picking{padding-bottom:96px}
       <select id="aKind" onchange="fillAddCats()">
         <option value="expense">הוצאה</option><option value="income">הכנסה</option>
       </select></label>
-    <label class="f"><span>קטגוריה</span><select id="aCat"></select></label>
+    <label class="f"><span>קטגוריה</span><div id="aCatWrap"></div></label>
     <label class="f"><span>תיאור / בית עסק</span><input id="aDesc"></label>
     <label class="f"><span>תאריך</span><input type="date" id="aDate"></label>
     <label class="f"><span>אמצעי תשלום</span><input id="aPayment" placeholder="מזומן / אשראי..."></label>
@@ -647,6 +667,7 @@ body.picking{padding-bottom:96px}
 <div id="modalWrap" onclick="if(event.target===this)closeModal()"><div id="modal"></div></div>
 <div id="toast"></div>
 <div id="colMenu" role="menu"></div>
+<div id="comboList" role="listbox"></div>
 
 <script>
 /* ============================================================
@@ -1391,7 +1412,8 @@ function renderTopMerch(exp){
   exp.forEach(t=>{ const k=normDesc(t.desc)||'—'; if(!by[k])by[k]={n:0,v:0}; by[k].n++; by[k].v+=num(t.amount); });
   const list=Object.entries(by).sort((a,b)=>b[1].v-a[1].v).slice(0,10);
   if(!list.length){ $('topMerch').innerHTML='<div class="empty">—</div>'; return; }
-  $('topMerch').innerHTML='<table><tbody>'+list.map(([k,o])=>
+  $('topMerch').innerHTML='<table><thead><tr><th>בית עסק</th><th class="num">פעמים</th>'+
+    '<th class="num">סכום</th></tr></thead><tbody>'+list.map(([k,o])=>
     '<tr><td>'+esc(k)+'</td>'+
     '<td class="num" style="color:var(--dim);width:60px">'+o.n+'×</td>'+
     '<td class="num" style="width:95px"><b>'+fmt(o.v)+' ₪</b></td></tr>').join('')+'</tbody></table>';
@@ -1409,7 +1431,8 @@ function renderOutliers(exp, ym){
     return num(t.amount) > (h.s/h.n)*2.5 && num(t.amount)>=250;
   }).sort((a,b)=>num(b.amount)-num(a.amount)).slice(0,8);
   if(!out.length){ $('outliers').innerHTML='<div class="empty">אין חריגות בולטות החודש 👍</div>'; return; }
-  $('outliers').innerHTML='<table><tbody>'+out.map(t=>{
+  $('outliers').innerHTML='<table><thead><tr><th>תאריך</th><th>תיאור</th><th>קטגוריה</th>'+
+    '<th>רגיל בקטגוריה</th><th class="num">סכום</th></tr></thead><tbody>'+out.map(t=>{
     const h=hist[t.category||'—'];
     const avgTxt = (h&&h.n>=3) ? ('רגיל בקטגוריה: ~'+fmt(h.s/h.n)+' ₪') : 'סכום גבוה';
     return '<tr'+act('showProv',t.id)+' style="cursor:pointer">'+
@@ -1522,7 +1545,7 @@ function renderClassify(){
   live().forEach(t=>{ if(t.category) usage[t.category]=(usage[t.category]||0)+1; });
   const cats=DB.cats.filter(c=>!c.deleted);
   clsQuickCats=cats.slice().sort((a,b)=>(usage[b.name]||0)-(usage[a.name]||0)).slice(0,7);
-  const opts=cats.map((c,i)=>'<option value="'+i+'">'+c.icon+' '+esc(c.name)+'</option>').join('');
+  const opts=cats.map((c,i)=>'<option value="'+i+'">'+c.icon+' '+esc(c.name)+'</option>').join('')+NEW_CAT_OPT;
 
   const total=pend.length;
   $('classifyList').innerHTML =
@@ -1554,7 +1577,7 @@ function renderClassify(){
               c.icon+' '+esc(c.name)+'</button>').join('')+
           '</div>'+
           '<div class="crest">'+
-            '<select id="cls-'+i+'"><option value="">קטגוריה אחרת…</option>'+opts+'</select>'+
+            comboField({id:'cls-'+i, kind:(g.rows[0]||{}).kind, value:'', placeholder:'קטגוריה אחרת — הקלד…', style:'flex:1;min-width:170px'})+
             '<button class="btn sm" onclick="clsApply('+i+')">סווג</button>'+
             '<button class="btn sec sm" onclick="clsMark('+i+',\'irrelevant\')">🚫 לא רלוונטי</button>'+
             '<button class="btn sec sm" onclick="clsMark('+i+',\'review\')">🔍 לבדיקה</button>'+
@@ -1587,8 +1610,7 @@ function clsDetail(g){
       '<td style="color:var(--dim)">'+esc(r.payment||'—')+'</td>'+
       '<td style="color:var(--dim)">'+esc(r.src||'ידני')+'</td>'+
       '<td style="color:var(--dim)">'+esc(r.note||'—')+'</td>'+
-      '<td><select class="catsel"'+act('clsRowCat',r.id)+'>'+
-          '<option value="">בחר…</option>'+catOptions(r.category)+'</select></td>'+
+      '<td>'+comboField({cls:'catsel', act:'clsRowCat', id:r.id, kind:r.kind, value:r.category, placeholder:'הקלד קטגוריה…'})+'</td>'+
       '<td><button class="clink"'+act('showProv',r.id)+'>מאיפה זה הגיע</button></td>'+
     '</tr>').join('')+
     '</tbody></table></div></div>';
@@ -1596,11 +1618,14 @@ function clsDetail(g){
 /** סיווג שורה בודדת מתוך הקבוצה, בלי לגעת בשאר. */
 function clsRowCat(id, el){
   const t=DB.tx.find(x=>x.id===id && !x.deleted);
-  if(!t || !el.value) return;
-  t.category=el.value; t.status='ok'; t.classBy='ידני: '+(CU?CU.name:'');
-  queueRow('tx',t); saveLocal(); updateBadge();
-  withScroll(renderClassify);
-  toast('השורה סווגה ל"'+el.value+'"');
+  if(!t) return;
+  const ok=pickCat(el.value, name=>{
+    t.category=name; t.status='ok'; t.classBy='ידני: '+(CU?CU.name:'');
+    queueRow('tx',t); saveLocal(); updateBadge();
+    withScroll(renderClassify);
+    toast('השורה סווגה ל"'+name+'"');
+  }, t.kind);
+  if(!ok && el.value===NEW_CAT) el.value='';
 }
 function clsToggle(i){ clsOpen = (clsOpen===i ? -1 : i); withScroll(renderClassify); }
 function clsQuick(i, qi){
@@ -1608,13 +1633,10 @@ function clsQuick(i, qi){
   clsSet(i, c.name);
 }
 function clsApply(i){
-  const sel=$('cls-'+i);
-  const ci=sel? sel.value : '';
-  if(ci===''){ toast('בחר קטגוריה, או לחץ על אחד הקיצורים'); return; }
-  const cats=DB.cats.filter(c=>!c.deleted);
-  const c=cats[Number(ci)];
-  if(!c) return;
-  clsSet(i, c.name);
+  const inp=$('cls-'+i);
+  const name=inp ? (inp.dataset.value||'') : '';
+  if(!name){ toast('הקלד קטגוריה ובחר מהרשימה, או לחץ על אחד הקיצורים'); return; }
+  clsSet(i, name);
 }
 function clsSet(i, catName){
   const g=clsGroups[i]; if(!g) return;
@@ -1692,16 +1714,13 @@ function smartTable(spec){
       if(!c.filter||c.filter==='none'){ h+='<th></th>'; return; }
       const v=st.f[c.key]||'';
       if(c.filter==='select'){
+        /* מקלידים ומקבלים את הערכים הקיימים בעמודה; התאמה חלקית מספיקה */
         const vals=[...new Set(spec.rows.map(r=>String(c.get(r)==null?'':c.get(r))))]
           .filter(x=>x!=='').sort((a,b)=>a.localeCompare(b,'he'));
-        /* הערך המסונן נשאר ברשימה גם אם אף שורה לא נושאת אותו יותר.
-           בלי זה הבורר היה חוזר להציג "הכל" בזמן שהסינון עדיין פעיל,
-           והטבלה הייתה נראית ריקה בלי שום הסבר. */
-        if(v && vals.indexOf(v)<0) vals.unshift(v);
-        h+='<th><select onchange="filterSmart(\''+spec.el+'\',\''+c.key+'\',this.value)">'+
-           '<option value="">הכל</option>'+
-           vals.map(x=>'<option value="'+esc(x)+'"'+(x===v?' selected':'')+'>'+esc(x)+'</option>').join('')+
-           '</select></th>';
+        const dl='dl_'+spec.el+'_'+c.key;
+        h+='<th><input list="'+dl+'" placeholder="הכל" value="'+esc(v)+'" autocomplete="off" '+
+           'oninput="filterSmart(\''+spec.el+'\',\''+c.key+'\',this.value)">'+
+           '<datalist id="'+dl+'">'+vals.map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist></th>';
       } else {
         h+='<th><input placeholder="סנן…" value="'+esc(v)+'" '+
            'oninput="filterSmart(\''+spec.el+'\',\''+c.key+'\',this.value)"></th>';
@@ -1719,7 +1738,7 @@ function smartRows(el){
     const f=st.f[c.key];
     if(!f) return true;
     const v=String(c.get(r)==null?'':c.get(r));
-    return c.filter==='select' ? v===f : v.toLowerCase().includes(String(f).toLowerCase());
+    return v.toLowerCase().includes(String(f).toLowerCase());
   }));
   if(st.sk){
     const c=spec.cols.find(x=>x.key===st.sk);
@@ -1807,10 +1826,163 @@ function catState(t){
 }
 /** אפשרויות קטגוריה. שמות הקטגוריות הם נתוני משתמש — esc בטוח כאן
  *  כי הם נכנסים למאפיין ולטקסט, ולא לקוד. */
+const NEW_CAT='__new__';
+const NEW_CAT_OPT='<option value="'+NEW_CAT+'">＋ קטגוריה חדשה…</option>';
 function catOptions(sel){
   return DB.cats.filter(c=>!c.deleted)
     .map(c=>'<option value="'+esc(c.name)+'"'+(c.name===sel?' selected':'')+'>'+
-            esc(c.icon)+' '+esc(c.name)+'</option>').join('');
+            esc(c.icon)+' '+esc(c.name)+'</option>').join('')+NEW_CAT_OPT;
+}
+
+/* ---------------- קטגוריה חדשה מתוך ההוצאה ---------------- */
+/* יצירה בלי ללכת להגדרות: הבחירה "＋ קטגוריה חדשה…" פותחת חלון קטן,
+   והקטגוריה שנוצרת מוחלת מיד על מה שממנו נפתח. */
+let newCatCb=null;
+function createCat(name, kind, icon, color){
+  name=String(name||'').replace(/\s+/g,' ').trim();
+  if(!name){ toast('הזן שם'); return null; }
+  const dup=DB.cats.find(c=>!c.deleted && normName(c.name)===normName(name));
+  if(dup) return dup;                       /* קיימת כבר — משתמשים בה */
+  const c={id:uid('c'), name, kind:kind||'expense', color:color||'#6366f1',
+           icon:(icon||'').trim()||'🏷️', ord:String(DB.cats.length), deleted:''};
+  DB.cats.push(c); queueRow('cats',c); saveLocal();
+  return c;
+}
+function openNewCatModal(onCreated, kind){
+  newCatCb=onCreated;
+  openModal('<h3>קטגוריה חדשה</h3>'+
+    '<label class="f"><span>שם</span><input id="ncmName" placeholder="למשל: חוגים"></label>'+
+    '<div class="row">'+
+      '<label class="f" style="flex:1"><span>סוג</span><select id="ncmKind">'+
+        '<option value="expense"'+(kind==='income'?'':' selected')+'>הוצאה</option>'+
+        '<option value="income"'+(kind==='income'?' selected':'')+'>הכנסה</option></select></label>'+
+      '<label class="f fix" style="min-width:90px"><span>אייקון</span><input id="ncmIcon" value="🏷️"></label>'+
+      '<label class="f fix" style="min-width:70px"><span>צבע</span><input type="color" id="ncmColor" value="#6366f1" style="padding:3px;height:38px"></label>'+
+    '</div>'+
+    '<div class="row"><div class="fix"><button class="btn" onclick="submitNewCat()">צור והחל</button></div>'+
+    '<div class="fix"><button class="btn sec" onclick="cancelNewCat()">ביטול</button></div></div>');
+  setTimeout(()=>{ try{ $('ncmName').focus(); }catch(e){} },60);
+  const inp=$('ncmName'); if(inp) inp.onkeydown=e=>{ if(e.key==='Enter') submitNewCat(); };
+}
+function submitNewCat(){
+  const c=createCat($('ncmName').value, $('ncmKind').value, $('ncmIcon').value, $('ncmColor').value);
+  if(!c) return;
+  closeModal();
+  const cb=newCatCb; newCatCb=null;
+  toast('נוצרה קטגוריה "'+c.name+'"');
+  if(cb) cb(c.name);
+}
+function cancelNewCat(){ newCatCb=null; closeModal(); }
+/* ---------------- קומבו לקטגוריה ----------------
+   מתחילים להקליד ומקבלים את מה שרלוונטי. Enter בוחר, חצים מנווטים,
+   Esc סוגר. טקסט שאינו קטגוריה קיימת מציע "צור" — יצירה בלחיצה אחת.
+   השדה לא נושא data-act: runAct מתעלם ממנו, והפעולה נקראת רק מבחירה
+   מפורשת — הקלדה חלקית לעולם לא נשמרת כקטגוריה. */
+let comboState=null;
+/** הטקסט שהמשתמש באמת הקליד.
+ *  כל עוד השדה מציג את הערך השמור ("🛒 מזון וסופר") — לא הוקלד כלום, ומציגים
+ *  את כל הרשימה. אחרת מסירים רק אייקון מוביל: רצף בלי אותיות וספרות. קודם
+ *  הוסרה "המילה הראשונה" באופן עיוור, ו"שיעורי נגינה" נוצרה בשם "נגינה". */
+function comboQuery(input){
+  if(input.value===comboDisplay(input.dataset.value)) return '';
+  return String(input.value||'').replace(/^[^\p{L}\p{N}\s]+\s+/u,'').trim();
+}
+function comboItems(input){
+  const kind=input.dataset.kind||'';
+  const text=comboQuery(input);
+  const q=normName(text);
+  const cats=DB.cats.filter(c=>!c.deleted && (!kind||c.kind===kind));
+  const items=cats.filter(c=>!q || normName(c.name).includes(q))
+    .map(c=>({value:c.name, label:esc(c.icon)+' '+esc(c.name)}));
+  if(q && !cats.some(c=>normName(c.name)===q))
+    items.push({value:'__create__', create:text, label:'＋ צור "'+esc(text)+'"', cls:'new'});
+  items.push({value:NEW_CAT, label:'＋ קטגוריה חדשה…', cls:'new'});
+  return items;
+}
+function comboPaint(){
+  const st=comboState; if(!st) return;
+  $('comboList').innerHTML = st.items.length
+    ? st.items.map((it,i)=>'<div class="cb-item '+(it.cls||'')+(i===st.idx?' on':'')+'" data-i="'+i+'">'+it.label+'</div>').join('')
+    : '<div class="cb-empty">אין התאמות</div>';
+  const on=$('comboList').querySelector('.cb-item.on'); if(on) on.scrollIntoView({block:'nearest'});
+}
+function comboOpen(input){
+  const items=comboItems(input);
+  comboState={input, items, idx: items.length?0:-1};
+  const box=$('comboList'), r=input.getBoundingClientRect();
+  box.style.top=(r.bottom+4)+'px';
+  box.style.right=Math.max(8, innerWidth-r.right)+'px';
+  box.style.minWidth=Math.max(210, r.width)+'px';
+  comboPaint(); box.classList.add('on');
+}
+function comboClose(){ $('comboList').classList.remove('on'); comboState=null; }
+function comboDisplay(value){
+  if(!value || value===NEW_CAT) return '';
+  const c=DB.cats.find(x=>x.name===value); return c ? (c.icon+' '+c.name) : value;
+}
+function comboSet(input, value){ input.dataset.value=value||''; input.value=comboDisplay(value); }
+/** בחירה סופית — מפעילה את הפעולה של השדה, או רק שומרת אותו לקריאה מאוחרת. */
+function comboApply(input, value){
+  if(value===NEW_CAT){
+    openNewCatModal(name=>comboApply(input,name), input.dataset.kind||'');
+    input.value=comboDisplay(input.dataset.value); return;
+  }
+  comboSet(input, value);
+  const act=input.dataset.comboAct;
+  if(act && ACTIONS[act]) ACTIONS[act](input.dataset.id, {value, dataset:input.dataset});
+  else if(typeof input.oncombo==='function') input.oncombo(value);
+}
+function comboPick(i){
+  const st=comboState; if(!st) return;
+  const it=st.items[i]; if(!it) return;
+  const input=st.input; comboClose();
+  if(it.value==='__create__'){
+    const c=createCat(it.create, input.dataset.kind||'expense'); if(!c){ input.focus(); return; }
+    toast('נוצרה קטגוריה "'+c.name+'"'); comboApply(input, c.name); return;
+  }
+  comboApply(input, it.value);
+}
+document.addEventListener('focusin', e=>{
+  if(!(e.target.matches && e.target.matches('input[data-combo]'))) return;
+  /* מסמנים את הטקסט הקיים — הקלדה מחליפה אותו במקום להידבק אליו */
+  try{ e.target.select(); }catch(x){}
+  comboOpen(e.target);
+});
+document.addEventListener('input',   e=>{ if(comboState && e.target===comboState.input) comboOpen(e.target); });
+document.addEventListener('focusout',e=>{
+  if(comboState && e.target===comboState.input) setTimeout(()=>{
+    /* יציאה בלי בחירה: מחזירים את התצוגה לערך השמור — הקלדה חלקית לא נשארת */
+    if(comboState && comboState.input===e.target){ e.target.value=comboDisplay(e.target.dataset.value); comboClose(); }
+  },150);
+});
+document.addEventListener('keydown', e=>{
+  const st=comboState; if(!st || e.target!==st.input) return;
+  if(e.key==='ArrowDown'){ e.preventDefault(); st.idx=Math.min(st.items.length-1, st.idx+1); comboPaint(); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); st.idx=Math.max(0, st.idx-1); comboPaint(); }
+  else if(e.key==='Enter'){ e.preventDefault(); comboPick(st.idx); }
+  else if(e.key==='Escape'){ st.input.value=comboDisplay(st.input.dataset.value); comboClose(); }
+  else if(e.key==='Tab'){ comboClose(); }
+});
+$('comboList').addEventListener('mousedown', e=>{
+  const it=e.target.closest('.cb-item'); e.preventDefault();   /* לא לאבד מיקוד לפני הבחירה */
+  if(it) comboPick(Number(it.dataset.i));
+});
+document.addEventListener('scroll', ()=>{ if(comboState) comboClose(); }, true);
+/** תבנית שדה קומבו. הערכים מהנתונים עוברים esc — הם במאפיינים, לא בקוד. */
+function comboField(o){
+  return '<input class="combo '+(o.cls||'')+'" data-combo="cat" autocomplete="off" spellcheck="false"'+
+    (o.act?' data-combo-act="'+o.act+'" data-id="'+o.id+'"':'')+
+    (o.id&&!o.act?' id="'+o.id+'"':'')+
+    (o.kind?' data-kind="'+esc(o.kind)+'"':'')+
+    ' data-value="'+esc(o.value||'')+'" value="'+esc(comboDisplay(o.value||''))+'"'+
+    ' placeholder="'+esc(o.placeholder||'הקלד קטגוריה…')+'"'+(o.style?' style="'+o.style+'"':'')+'>';
+}
+
+/** מפעיל בחירה בבורר: שם קטגוריה מחיל ישירות, "חדשה" פותח יצירה ואז מחיל. */
+function pickCat(value, apply, kind){
+  if(value===NEW_CAT){ openNewCatModal(apply, kind); return false; }
+  if(!value) return false;
+  apply(value); return true;
 }
 /** בורר קטגוריה בתוך התא — שינוי קטגוריה בלי להיכנס למסך עריכה. */
 function catCell(t, showDel){
@@ -1818,24 +1990,25 @@ function catCell(t, showDel){
   if(!isAdmin()) return t.category ? catIcon(t.category)+' '+esc(t.category)
                                    : '<span class="pill p-pending">ממתין לסיווג</span>';
   const st = (t.status && t.status!=='ok') ? t.status : '';
-  const head = st ? STATUS_LBL[st] : (t.category ? '' : 'ללא קטגוריה');
-  return '<select class="catsel '+esc(st)+'"'+act('setRowCat',t.id)+'>'+
-         (head ? '<option value="">'+esc(head)+'</option>' : '')+
-         catOptions(t.category)+'</select>';
+  const head = st ? STATUS_LBL[st] : (t.category ? '' : 'הקלד קטגוריה…');
+  return comboField({cls:'catsel '+st, act:'setRowCat', id:t.id, kind:t.kind, value:t.category,
+                     placeholder:head||'הקלד קטגוריה…'});
 }
 /** בחירה בתא: מסווגת מיד, ומורידה את התנועה מ"ממתין לסיווג". */
 function setRowCat(id, el){
   const t=DB.tx.find(x=>x.id===id && !x.deleted);
-  if(!t || !el.value) return;
-  t.category=el.value; t.status='ok'; t.classBy='ידני: '+(CU?CU.name:'');
-  queueRow('tx',t); saveLocal(); updateBadge();
-  const y=window.scrollY; renderTx(); window.scrollTo(0,y);
-  toast('סווג ל"'+el.value+'"');
+  if(!t) return;
+  const ok=pickCat(el.value, name=>{
+    t.category=name; t.status='ok'; t.classBy='ידני: '+(CU?CU.name:'');
+    queueRow('tx',t); saveLocal(); updateBadge();
+    const y=window.scrollY; renderTx(); window.scrollTo(0,y);
+    toast('סווג ל"'+name+'"');
+  }, t.kind);
+  if(!ok && el.value===NEW_CAT) el.value=t.category||'';   /* הבורר לא נשאר על "חדשה" */
 }
 function renderTx(){
   fillMonthSelect($('txMonth'), true);
-  $('bulkCat').innerHTML='<option value="">קטגוריה…</option>'+
-    DB.cats.filter(c=>!c.deleted).map(c=>'<option value="'+esc(c.name)+'">'+c.icon+' '+esc(c.name)+'</option>').join('');
+  if(!$('bulkCat')) $('bulkCatWrap').innerHTML=comboField({id:'bulkCat', value:'', placeholder:'הקלד קטגוריה…'});
 
   const q=$('txSearch').value.trim().toLowerCase();
   const m=$('txMonth').value;
@@ -1932,7 +2105,7 @@ function shiftDate(iso,days){
 function bulkApply(what){
   if(!isAdmin()) return;
   const ids=[...selTx]; if(!ids.length) return;
-  const cat=$('bulkCat').value, st=$('bulkStatus').value, days=parseInt($('bulkDays').value,10);
+  const cat=$('bulkCat').dataset.value||'', st=$('bulkStatus').value, days=parseInt($('bulkDays').value,10);
   if(what==='category' && !cat){ toast('בחר קטגוריה'); return; }
   if(what==='status' && !st){ toast('בחר סטטוס'); return; }
   if(what==='shift' && !days){ toast('הזן מספר ימים (למשל 1 או -1)'); return; }
@@ -2004,7 +2177,7 @@ function editTx(id){
     '<label class="f"><span>תאריך</span><input type="date" id="eDate" value="'+esc(t.date)+'"></label>'+
     '<label class="f"><span>תיאור</span><input id="eDesc" value="'+esc(t.desc)+'"></label>'+
     '<label class="f"><span>סכום</span><input type="number" step="0.01" id="eAmount" value="'+esc(t.amount)+'"></label>'+
-    '<label class="f"><span>קטגוריה</span><select id="eCat"><option value="">—</option>'+opts+'</select></label>'+
+    '<label class="f"><span>קטגוריה</span>'+comboField({id:'eCat', kind:t.kind, value:t.category, placeholder:'הקלד קטגוריה…'})+'</label>'+
     '<label class="f"><span>סטטוס</span><select id="eStatus">'+sOpts+'</select></label>'+
     '<label class="f"><span>הערה</span><input id="eNote" value="'+esc(t.note||'')+'"></label>'+
     '<div class="row" style="margin-top:8px">'+
@@ -2017,7 +2190,7 @@ function saveTx(id){
   const t=DB.tx.find(x=>x.id===id); if(!t) return;
   t.date=$('eDate').value; t.desc=$('eDesc').value;
   t.amount=String(num($('eAmount').value));
-  t.category=$('eCat').value; t.status=$('eStatus').value; t.note=$('eNote').value;
+  t.category=$('eCat').dataset.value||''; t.status=$('eStatus').value; t.note=$('eNote').value;
   t.classBy='ידני: '+(CU?CU.name:'');
   queueRow('tx',t); saveLocal(); closeModal(); renderTx(); updateBadge(); toast('נשמר');
 }
@@ -2050,8 +2223,9 @@ function exportTx(){
 /* ---------------- הזנה ידנית ---------------- */
 function fillAddCats(){
   const kind=$('aKind').value;
-  $('aCat').innerHTML=DB.cats.filter(c=>!c.deleted&&c.kind===kind)
-    .map(c=>'<option>'+esc(c.name)+'</option>').join('');
+  const cur=$('aCat') ? ($('aCat').dataset.value||'') : '';
+  const keep=DB.cats.some(c=>!c.deleted&&c.kind===kind&&c.name===cur) ? cur : '';
+  $('aCatWrap').innerHTML=comboField({id:'aCat', kind, value:keep, placeholder:'הקלד קטגוריה…'});
 }
 function addManual(){
   const amt=num($('aAmount').value);
@@ -2059,7 +2233,7 @@ function addManual(){
   const t={
     id:uid('t'), date:$('aDate').value||new Date().toISOString().slice(0,10),
     desc:$('aDesc').value.trim()||'הזנה ידנית', amount:String(Math.abs(amt)),
-    kind:$('aKind').value, category:$('aCat').value, status:'ok',
+    kind:$('aKind').value, category:$('aCat').dataset.value||'', status:'ok',
     payment:$('aPayment').value.trim(), note:$('aNote').value.trim(),
     src:'', srcFile:'', srcRow:'', srcRaw:'', importedAt:'', importedBy:'',
     classBy:'ידני: '+(CU?CU.name:''), enteredBy:(CU?CU.name:''), deleted:''
@@ -2288,34 +2462,123 @@ function buildRows(){
   $('mSignWrap').style.display = mode==='single' ? 'block' : 'none';
   if(mode==='single') autoSign(map, skip);
   const posMeans = $('mPosMeans') ? $('mPosMeans').value : 'expense';
-  const out=[], skipped=[];
+  const out=[], skipped=[], skippedRows=[];
   for(let r=skip; r<curGrid.length; r++){
     const row=curGrid[r]; if(!row) continue;
-    const date=parseDate(row[map.date], dfmt);
-    if(!date){ if(row.some(c=>String(c).trim()!=='')) skipped.push(r+1); continue; }
-    let amount=0, kind='expense';
-    if(mode==='debitcredit'){
-      const d=Math.abs(num(row[map.debit])), c=Math.abs(num(row[map.credit]));
-      if(d>0){ amount=d; kind='expense'; }
-      else if(c>0){ amount=c; kind='income'; }
-      else continue;
-    } else {
-      const a=num(row[map.amount]);
-      if(!a) continue;
-      amount=Math.abs(a);
-      if(type==='credit') kind='expense';                       // באשראי הכל הוצאה
-      else if(posMeans==='expense') kind = a>0?'expense':'income';
-      else kind = a>0?'income':'expense';
-    }
-    out.push({
-      date, desc:normDesc(row[map.desc])||'(ללא תיאור)',
-      amount:String(amount), kind,
+    if(!row.some(c=>String(c==null?'':c).trim()!=='')) continue;   /* שורה ריקה לגמרי */
+    const base={
+      desc:normDesc(row[map.desc])||'(ללא תיאור)',
       note: map.note!==undefined ? normDesc(row[map.note]) : '',
       payment, srcRow:String(r+1),
       srcRaw: row.map(c=>String(c==null?'':c)).join(' | ').slice(0,400)
-    });
+    };
+    const date=parseDate(row[map.date], dfmt);
+    let amount=0, kind='expense', hasAmount=false;
+    if(mode==='debitcredit'){
+      const d=Math.abs(num(row[map.debit])), c=Math.abs(num(row[map.credit]));
+      if(d>0){ amount=d; kind='expense'; hasAmount=true; }
+      else if(c>0){ amount=c; kind='income'; hasAmount=true; }
+    } else {
+      const a=num(row[map.amount]);
+      if(a){
+        hasAmount=true; amount=Math.abs(a);
+        if(type==='credit') kind='expense';                       // באשראי הכל הוצאה
+        else if(posMeans==='expense') kind = a>0?'expense':'income';
+        else kind = a>0?'income':'expense';
+      }
+    }
+    const built=Object.assign(base,{date:date||'', amount:String(amount), kind});
+    /* מה שדולג לא נעלם — נשמר עם הסיבה, כדי שאפשר יהיה לראות ולהכניס בכל זאת */
+    if(!date){ skipped.push(r+1); skippedRows.push(Object.assign(built,{reason:'nodate'})); continue; }
+    if(!hasAmount){ skippedRows.push(Object.assign(built,{reason:'noamount'})); continue; }
+    out.push(built);
   }
-  return {rows:out, skipped};
+  return {rows:out, skipped, skippedRows};
+}
+
+/* ---------------- שורות שדולגו: הצגה וייבוא בכל זאת ---------------- */
+const SKIP_REASON={dup:'כבר יובא קודם', nodate:'ללא תאריך תקין', noamount:'ללא סכום'};
+let lastSkipped={list:[], meta:null};
+
+/** בניית תנועה מתוך שורה מפוענחת — כולל החרגת חיוב אשראי וכללי סיווג. */
+function buildTx(r, srcName, type, stamp, srcFile){
+  const t={
+    id:uid('t'), date:r.date, desc:r.desc, amount:r.amount, kind:r.kind,
+    category:'', status:'pending', payment:r.payment, note:r.note||'',
+    src:srcName, srcFile:srcFile, srcRow:r.srcRow, srcRaw:r.srcRaw,
+    importedAt:stamp, importedBy:(CU?CU.name:''), classBy:'', enteredBy:'', deleted:''
+  };
+  let excluded=false, auto=false;
+  /* חיוב אשראי מרוכז / העברה עצמית בעו"ש — מוחרג כדי שלא ייספר פעמיים */
+  if(type==='bank' && (CREDIT_RE.test(t.desc)||TRANSFER_RE.test(t.desc))){
+    t.status='irrelevant';
+    t.classBy='אוטומטי: זוהה כחיוב אשראי/העברה פנימית';
+    t.note=(t.note?t.note+' · ':'')+'הוחרג למניעת ספירה כפולה';
+    excluded=true;
+  } else {
+    const rule=matchRule(t.desc);
+    if(rule){
+      t.category=rule.category; t.status=rule.status||'ok';
+      t.classBy='כלל: '+rule.match;
+      rule.hits=String(Number(rule.hits||0)+1); queueRow('rules',rule);
+      auto=true;
+    }
+  }
+  return {t, excluded, auto};
+}
+
+function renderSkippedPanel(){
+  const box=$('skipPanel'); if(!box) return;
+  const L=lastSkipped.list;
+  if(!L.length){ box.innerHTML=''; return; }
+  const anyDate=L.some(x=>x.reason==='nodate');
+  const byReason={}; L.forEach(x=>byReason[x.reason]=(byReason[x.reason]||0)+1);
+  box.innerHTML=
+    '<div style="border:1px solid #f0d9a8;background:var(--warn-soft);border-radius:var(--r-lg);padding:14px;margin-top:14px">'+
+    '<div style="font-weight:700;margin-bottom:4px">דולגו '+L.length+' שורות</div>'+
+    '<div style="font-size:12.5px;color:var(--dim);margin-bottom:10px">'+
+      Object.keys(byReason).map(k=>byReason[k]+' '+SKIP_REASON[k]).join(' · ')+
+      '. סמן את מה שבכל זאת צריך להיכנס.</div>'+
+    '<div class="table-wrap" style="max-height:340px"><table><thead><tr>'+
+      '<th style="width:28px"><input type="checkbox" style="width:auto" onchange="skipTickAll(this.checked)" title="סמן הכל"></th>'+
+      '<th>שורה</th><th>תאריך</th><th>תיאור</th><th class="num">סכום</th><th>סוג</th><th>סיבה</th></tr></thead><tbody>'+
+    L.map((x,i)=>'<tr>'+
+      '<td>'+(x.reason==='noamount'?'<span title="אין מה לייבא בלי סכום" style="color:var(--faint)">—</span>'
+             :'<input type="checkbox" style="width:auto" class="skipck" data-idx="'+i+'">')+'</td>'+
+      '<td class="num">'+esc(x.srcRow)+'</td>'+
+      '<td class="num">'+(x.date?esc(x.date):'<span style="color:var(--faint)">—</span>')+'</td>'+
+      '<td>'+esc(x.desc)+(x.reason==='nodate'?'<div style="font-size:11px;color:var(--faint)">'+esc(x.srcRaw.slice(0,80))+'</div>':'')+'</td>'+
+      '<td class="num">'+(num(x.amount)?fmt2(x.amount):'—')+'</td>'+
+      '<td>'+(num(x.amount)?(x.kind==='income'?'הכנסה':'הוצאה'):'—')+'</td>'+
+      '<td><span class="pill '+(x.reason==='dup'?'p-irrelevant':'p-pending')+'">'+SKIP_REASON[x.reason]+'</span></td></tr>').join('')+
+    '</tbody></table></div>'+
+    '<div class="row" style="margin-top:12px">'+
+      (anyDate?'<label class="f fix" style="min-width:190px;margin:0"><span>תאריך לשורות ללא תאריך</span>'+
+        '<input type="date" id="skipDate"></label>':'')+
+      '<div class="fix"><button class="btn" onclick="importSkipped()">📥 ייבא את המסומנות בכל זאת</button></div>'+
+    '</div></div>';
+}
+function skipTickAll(on){ document.querySelectorAll('.skipck').forEach(c=>c.checked=on); }
+function importSkipped(){
+  const meta=lastSkipped.meta; if(!meta) return;
+  const picked=[...document.querySelectorAll('.skipck:checked')].map(c=>Number(c.dataset.idx));
+  if(!picked.length){ toast('לא סומנו שורות'); return; }
+  const date=$('skipDate')?$('skipDate').value:'';
+  const stamp=new Date().toISOString().slice(0,16).replace('T',' ');
+  let n=0, needDate=0; const done=new Set();
+  picked.forEach(i=>{
+    const x=lastSkipped.list[i]; if(!x || x.reason==='noamount') return;
+    const r=Object.assign({}, x);
+    if(x.reason==='nodate'){ if(!date){ needDate++; return; } r.date=date; }
+    const {t}=buildTx(r, meta.srcName, meta.type, stamp, meta.srcFile);
+    /* מתועד בתוך התנועה — גם בעוד שנה יהיה ברור שזו הכנסה מכוונת בכל זאת */
+    t.note=(t.note?t.note+' · ':'')+(x.reason==='dup'?'יובא בכל זאת אף שכבר היה קיים':'יובא בכל זאת — התאריך הוזן ידנית');
+    DB.tx.push(t); queueRow('tx',t); n++; done.add(i);
+  });
+  lastSkipped.list=lastSkipped.list.filter((_,i)=>!done.has(i));
+  saveLocal(); updateBadge(); renderSkippedPanel();
+  if(needDate) toast('בחר תאריך לשורות ללא תאריך ('+needDate+')');
+  else toast(n+' שורות יובאו בכל זאת');
 }
 /** עמודה אחת שיש בה גם חיוביים וגם שליליים היא עו"ש מעורב: זכות
  *  נרשמת רגיל וחובה במינוס. מזהים לבד ומכוונים את הבורר, כל עוד
@@ -2406,32 +2669,14 @@ function runImport(){
 
   let added=0, dups=0, autoC=0, excl=0;
   const fresh=[], seen={};
+  const skippedNow=[...(buildRows().skippedRows||[])];
   rows.forEach(r=>{
     const key=dupKey({date:r.date, kind:r.kind, amount:r.amount, desc:r.desc, src:srcName});
     seen[key]=(seen[key]||0)+1;
-    if(!importAll && seen[key] <= (have[key]||0)){ dups++; return; }
-    const t={
-      id:uid('t'), date:r.date, desc:r.desc, amount:r.amount, kind:r.kind,
-      category:'', status:'pending', payment:r.payment, note:r.note,
-      src:srcName, srcFile:curFileName, srcRow:r.srcRow, srcRaw:r.srcRaw,
-      importedAt:stamp, importedBy:(CU?CU.name:''), classBy:'', enteredBy:'', deleted:''
-    };
-    /* חיוב אשראי מרוכז / העברה עצמית בעו"ש — מוחרג כדי שלא ייספר פעמיים */
-    if(type==='bank' && (CREDIT_RE.test(t.desc)||TRANSFER_RE.test(t.desc))){
-      t.status='irrelevant';
-      t.classBy='אוטומטי: זוהה כחיוב אשראי/העברה פנימית';
-      t.note=(t.note?t.note+' · ':'')+'הוחרג למניעת ספירה כפולה';
-      excl++;
-    } else {
-      const rule=matchRule(t.desc);
-      if(rule){
-        t.category=rule.category; t.status=rule.status||'ok';
-        t.classBy='כלל: '+rule.match;
-        rule.hits=String(Number(rule.hits||0)+1); queueRow('rules',rule);
-        autoC++;
-      }
-    }
-    fresh.push(t); added++;
+    if(!importAll && seen[key] <= (have[key]||0)){ dups++; skippedNow.push(Object.assign({},r,{reason:'dup'})); return; }
+    const built=buildTx(r, srcName, type, stamp, curFileName);
+    if(built.excluded) excl++; else if(built.auto) autoC++;
+    fresh.push(built.t); added++;
   });
   fresh.forEach(t=>{ DB.tx.push(t); queueRow('tx',t); });
   saveLocal(); updateBadge();
@@ -2457,7 +2702,9 @@ function runImport(){
     (excl? '<p style="font-size:12.5px;color:var(--dim);margin:10px 0 0">'+
       excl+' שורות זוהו כחיוב אשראי מרוכז או כהעברה בין חשבונות והוחרגו, '+
       'כדי שאותה הוצאה לא תיספר גם בעו"ש וגם בפירוט האשראי. '+
-      'ניתן לראותן בלשונית "תנועות" בסינון "לא רלוונטי".</p>':'');
+      'ניתן לראותן בלשונית "תנועות" בסינון "לא רלוונטי".</p>':'')+'<div id="skipPanel"></div>';
+  lastSkipped={list:skippedNow, meta:{srcName, type, srcFile:curFileName}};
+  renderSkippedPanel();
   $('pasteBox').value=''; curGrid=null;
   $('mapCard').style.display='none';
   $('importResult').scrollIntoView({behavior:'smooth'});
@@ -2562,13 +2809,11 @@ function restoreCat(id){
   c.deleted=''; queueUndel('cats',id); saveLocal(); renderCats(); toast('הקטגוריה שוחזרה');
 }
 function addCat(){
-  const name=$('ncName').value.trim();
-  if(!name){ toast('הזן שם'); return; }
-  if(DB.cats.some(c=>!c.deleted&&c.name===name)){ toast('כבר קיימת קטגוריה בשם הזה'); return; }
-  const c={id:uid('c'), name, kind:$('ncKind').value, color:$('ncColor').value,
-           icon:$('ncIcon').value||'🏷️', ord:String(DB.cats.length), deleted:''};
-  DB.cats.push(c); queueRow('cats',c); saveLocal();
-  $('ncName').value=''; renderCats(); toast('נוספה קטגוריה "'+name+'"');
+  const before=DB.cats.length;
+  const c=createCat($('ncName').value, $('ncKind').value, $('ncIcon').value, $('ncColor').value);
+  if(!c) return;
+  if(DB.cats.length===before){ toast('כבר קיימת קטגוריה בשם הזה'); return; }
+  $('ncName').value=''; renderCats(); toast('נוספה קטגוריה "'+c.name+'"');
 }
 function delCat(id){
   const c=DB.cats.find(x=>x.id===id); if(!c) return;
