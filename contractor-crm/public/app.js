@@ -29,6 +29,19 @@
   function loading() { view().innerHTML = '<div class="empty"><div class="big">⏳</div>טוען...</div>'; }
   async function guard(promise) { try { return await promise; } catch (e) { toast(e.message || 'שגיאה', 'err'); throw e; } }
 
+  // מונע שליחה כפולה: בזמן שהפעולה רצה הכפתור נעול ולחיצות נוספות נבלעות
+  function lockClick(el) {
+    if (!el || !el.onclick || el._locked) return el;
+    const fn = el.onclick; el._locked = true;
+    el.onclick = async (e) => {
+      if (el._busy) return;
+      el._busy = true; el.disabled = true;
+      try { await fn.call(el, e); } catch (err) { /* guard כבר הציג הודעה */ }
+      finally { el._busy = false; if (el.isConnected) el.disabled = false; }
+    };
+    return el;
+  }
+
   // ---------- modal ----------
   function openModal(title, bodyHtml, buttons) {
     const root = $('#modalRoot');
@@ -39,7 +52,24 @@
     const close = () => { root.innerHTML = ''; };
     $('[data-close]', root).onclick = close;
     bg.onclick = (e) => { if (e.target === bg) close(); };
-    (buttons || []).forEach((b, i) => { const el = root.querySelector(`[data-mi="${i}"]`); if (el) el.onclick = () => b.onClick(close); });
+    // בזמן שפעולה רצה (למשל העלאת חשבונית + שמירה) כל כפתורי החלונית ננעלים —
+    // אחרת לחיצה חוזרת בזמן ההמתנה יוצרת רשומה כפולה
+    let busy = false;
+    (buttons || []).forEach((b, i) => {
+      const el = root.querySelector(`[data-mi="${i}"]`); if (!el) return;
+      el.onclick = async () => {
+        if (busy) return;
+        busy = true;
+        const foot = Array.from(root.querySelectorAll('.m-foot .btn')), label = el.textContent;
+        foot.forEach(x => { x.disabled = true; });
+        el.textContent = '⏳ ' + label;
+        try { await b.onClick(close); } catch (e) { /* guard כבר הציג הודעה */ }
+        finally {
+          busy = false;
+          if (el.isConnected) { foot.forEach(x => { x.disabled = false; }); el.textContent = label; }
+        }
+      };
+    });
     return { close, root };
   }
   function confirmDialog(msg, okLabel) {
@@ -1862,7 +1892,7 @@
           <td><input class="pr_amt" data-stage="${s.id}" type="number" placeholder="0" value="${ex != null ? ex : ''}" style="width:110px;padding:7px;border:1px solid var(--line);border-radius:8px"></td></tr>`; }).join('')}
         </tbody></table></div>
         <button class="btn green" id="pr_addAll" style="margin-top:12px">➕ הוסף לבקשה</button>`;
-      $('#pr_addAll').onclick = addAll;
+      $('#pr_addAll').onclick = addAll; lockClick($('#pr_addAll'));
     }
 
     // הוספת כל השלבים שהוזן בהם סכום (שלב שכבר בבקשה — מוחלף בערך החדש)
@@ -1973,6 +2003,7 @@
         const saved = await guard(window.Store.payreq.create({ project_id: null, project_name: null, stage_id: null, stage_name: text, sub_name: '', requested: amt, sub_remaining: 0, client_owes: 0 }));
         lines.unshift(saved); renderReport(); toast('נוסף', 'ok');
       };
+      lockClick($('#pr_maddBtn'));
       const clr = $('#pr_clear'); if (clr) clr.onclick = async () => {
         if (!await confirmDialog('למחוק את כל הבקשה? ניתן לשחזר מסל המחזור.', 'מחיקת הכל')) return;
         await guard(window.Store.payreq.clear()); lines = []; renderReport(); renderStagesForm(); toast('כל הבקשה נמחקה', 'ok');
