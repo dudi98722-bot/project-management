@@ -225,7 +225,7 @@ table.ac-tbl .ac-state{height:22px;margin-top:3px;white-space:nowrap}
 table.ac-tbl .ac-out{height:20px;white-space:nowrap}
 table.ac-tbl .ac-acts{height:28px;display:flex;gap:2px;justify-content:center;white-space:nowrap}
 table.ac-tbl .ac-acts .btn{padding:2px 7px;font-size:12px}
-table.ac-tbl .ac-cat{position:sticky;inset-inline-start:0;z-index:3;background:#fff;min-width:150px;font-weight:700;
+table.ac-tbl .ac-cat{position:sticky;right:0;inset-inline-start:0;z-index:3;background:#fff;min-width:150px;font-weight:700;
   box-shadow:inset 1px 0 0 #e3e7f3}
 table.ac-tbl thead th.ac-cat{z-index:7;background:#eef1fa;vertical-align:bottom}
 table.ac-tbl td.ac-cell{text-align:center}
@@ -236,6 +236,14 @@ table.ac-tbl td.ac-warn{background:#fff1dc}
 .ac-n{display:inline-block;width:18px;font-size:10.5px;color:#64748b;text-align:start}
 .ac-warn-key{background:#fff1dc;padding:0 5px;border-radius:4px}
 .cat-scope{height:19px;line-height:19px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* הטבלה ממלאת את המסך עד תחתיתו (--ac-h נקבע ב-aptCatsFit): העמוד לא נגלל,
+   שני פסי הגלילה גלויים, ושורת הפרוייקטים ועמודת הקטגוריות נשארות מקובעות */
+#ac-wrap .table-wrap{max-height:var(--ac-h,calc(100vh - 210px))}
+/* הריווח התחתון (90px) שמור לפס הסיכום של סימונים במסכים אחרים — כאן
+   אין סימונים, והמקום הולך לשורות נוספות בטבלה */
+.content.ac-fill{padding-bottom:12px}
+.ac-help{margin-bottom:8px}
+.ac-help summary{cursor:pointer;color:var(--muted);font-size:12.5px;user-select:none;width:max-content}
 /* שורת סינון העמודות — נדבקת מתחת לכותרות */
 table.tbl thead tr.filter-row th,table.tbl thead tr.filter-row td{
   background:#f8f9fe;position:sticky;top:34px;z-index:4;padding:5px 6px;
@@ -406,7 +414,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 נז'";
+var APP_BUILD = "19.08 נח'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -2815,7 +2823,9 @@ function renderApp(){
   if(typeof aptCatsRememberScroll==="function") aptCatsRememberScroll();
   app.innerHTML = topbarHtml() + navHtml() + '<div class="content" id="content"></div>';
   renderView();
-  /* מיד, באותה משימה — בלי פריים אחד שבו הטבלה מוצגת בראשה */
+  /* מיד, באותה משימה — בלי פריים אחד שבו הטבלה מוצגת בראשה.
+     קודם הגובה (הוא קובע עד כמה אפשר לגלול), ואז הגלילה. */
+  if(typeof aptCatsFit==="function") aptCatsFit();
   if(typeof aptCatsRestoreScroll==="function") aptCatsRestoreScroll();
   restoreSelections(kept);
   updateSelSumBar();
@@ -14110,11 +14120,11 @@ function aptCatsViewHtml(){
       '<button class="btn btn-sm" onclick="aptCatsFillUsage()" title="לכל פרוייקט שעדיין אין לו רשימה — מסמן את הקטגוריות שכבר רשומות בשלבים שלו">📥 מלא לפי השימוש בפועל</button>'+
       '<div class="sp"></div><span class="muted" id="ac-sum">'+aptCatsSummary()+'</span>'+
     '</div>'+
-    '<div class="hint" style="margin-bottom:8px">'+
+    '<details class="ac-help" ontoggle="aptCatsFit()"><summary>ℹ️ איך זה עובד</summary><div class="hint" style="margin-top:4px">'+
       'סמן לכל פרוייקט את הקטגוריות שלו. בהוצאה של הפרוייקט (רגילה, מהירה, עדכון מרוכז וכלל תקופתי) יוצגו לבחירה <b>רק</b> הקטגוריות שסומנו. '+
       'פרוייקט שלא סומן לו כלום (<span class="badge badge-unit">הכל</span>) — <b>כל הקטגוריות זמינות בו</b>, כמו היום.<br>'+
       'המספר הקטן ליד התיבה = כמה שלבים כבר רשומים בקטגוריה הזו בפרוייקט. <span class="ac-warn-key">כתום</span> = יש שלבים בקטגוריה שלא סומנה. '+
-      'שלבים קיימים לא משתנים. קטגוריה חדשה שנוצרת בהגדרות לא נוספת לפרוייקטים מוגבלים — יש לסמן אותה כאן.</div>'+
+      'שלבים קיימים לא משתנים. קטגוריה חדשה שנוצרת בהגדרות לא נוספת לפרוייקטים מוגבלים — יש לסמן אותה כאן.</div></details>'+
     '<div id="ac-wrap">'+aptCatsTableHtml()+'</div>';
 }
 function aptCatsTableHtml(){
@@ -14166,6 +14176,20 @@ function aptCatsStateHtml(l){
 function aptCatsOutHtml(out){
   return out ? '<span class="badge badge-warn badge-unit" title="שלבים שרשומים בקטגוריות שלא סומנו לפרוייקט">⚠ '+out+' שלבים מחוץ</span>' : "";
 }
+/* גובה הטבלה = מהמקום שלה ועד תחתית המסך. כך אין גלילה של העמוד: כל
+   גלילה היא בתוך הטבלה, ושם השורה והעמודה המקובעות נשארות במקומן. */
+function aptCatsFit(){
+  var box=document.getElementById("ac-wrap"), w=box&&box.querySelector(".table-wrap");
+  if(!w) return;
+  var content=document.getElementById("content"); if(content) content.classList.add("ac-fill");
+  var docTop=w.getBoundingClientRect().top+window.scrollY;
+  var h=Math.max(260, Math.floor(window.innerHeight-docTop-16));
+  box.style.setProperty("--ac-h",h+"px");
+  /* ריווח תחתון של הדף שעדיין גולש — מורידים אותו מהגובה */
+  var over=document.documentElement.scrollHeight-window.innerHeight;
+  if(over>0 && h-over>=260) box.style.setProperty("--ac-h",(h-over)+"px");
+}
+window.addEventListener("resize",function(){ if(document.getElementById("ac-wrap")) aptCatsFit(); });
 function aptCatsRememberScroll(){
   var w=document.querySelector("#ac-wrap .table-wrap");
   if(w){ ACQ.st=w.scrollTop; ACQ.sl=w.scrollLeft; }
