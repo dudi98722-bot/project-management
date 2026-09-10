@@ -3,7 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#4A4A2A">
+<meta name="theme-color" content="#3A3A1E">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="קופה קטנה">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="icon-180.png">
 <title>שניצל שף — קופה קטנה</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -240,6 +248,179 @@ table.tbl tfoot td{background:#F7F6EF;font-weight:800;color:var(--olive);border-
   body{background:#fff}
   .card{box-shadow:none;border:1px solid #ccc}
 }
+
+/* =====================================================================
+   שכבת אפליקציה למובייל
+   העקרונות: תגובה מיידית ללחיצה, חומרים שקופים שהתוכן נע מתחתיהם,
+   וגיליונות שנגררים באצבע עם תנופה — ולא אנימציה קבועה שאי אפשר לעצור.
+   ===================================================================== */
+:root{
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --nav-h: 60px;
+}
+*{ -webkit-tap-highlight-color: transparent; }
+button, .mcard, .bnav-item, .sheet-item{ touch-action: manipulation; }
+
+/* המשוב מופיע ברגע הלחיצה, לא בשחרור */
+.btn, .icon-btn, .bnav-item, .mcard, .sheet-item, .fab{
+  transition: transform .1s ease-out, background-color .15s, border-color .15s, color .15s;
+}
+.btn:active, .icon-btn:active, .fab:active{ transform: scale(.96); }
+.bnav-item:active, .sheet-item:active{ transform: scale(.94); }
+.mcard:active{ transform: scale(.985); background: var(--yellow-pale); }
+
+/* טיפוגרפיה: ככל שהטקסט גדל הוא צריך מרווח אותיות הדוק יותר */
+.stat .val, .mc-amt, .bal-pill b, .gate-card h1, .modal-head h3{ letter-spacing:-.02em; }
+.stat .val{ line-height:1.1; }
+.bnav-item, .mc-date, .mc-bot{ letter-spacing:.01em; }
+
+/* ---------- ניווט תחתון ---------- */
+.bnav{ display:none; }
+.fab{ display:none; }
+.grabber{ display:none; }
+
+.sheet-list{ display:flex; flex-direction:column; gap:2px; margin:-4px 0; }
+.sheet-item{ display:flex; align-items:center; gap:12px; width:100%; text-align:start;
+  padding:14px 12px; border-radius:12px; font-size:15.5px; font-weight:600; color:var(--ink); }
+.sheet-item .ic{ font-size:19px; width:24px; text-align:center; }
+.sheet-item:hover{ background:var(--yellow-pale); }
+.sheet-item.on{ background:var(--yellow-soft); color:var(--olive-dark); }
+
+.fgrid{ display:grid; grid-template-columns:1fr 1fr; gap:0 12px; }
+.fgrid .field:first-child, .fgrid .field.wide{ grid-column:1/-1; }
+
+/* נקודת סנכרון — מראה שנתונים מהמטמון מתרעננים ברקע */
+.syncdot{ width:7px; height:7px; border-radius:50%; background:var(--yellow);
+  opacity:0; transition:opacity .25s; margin-inline-start:2px; }
+.syncdot.on{ opacity:1; animation:pulse 1.1s ease-in-out infinite; }
+@keyframes pulse{ 0%,100%{opacity:.35} 50%{opacity:1} }
+
+@media(max-width:720px){
+  /* השורה העליונה והניווט הם שכבה צפה שהתוכן נע מתחתיה */
+  .topbar{
+    background: rgba(58,58,30,.86);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    padding-top: var(--safe-t);
+  }
+  .tabs{ display:none; }
+  .wrap{ padding: 14px 12px calc(var(--nav-h) + var(--safe-b) + 28px); }
+
+  .bnav{
+    display:flex; position:fixed; inset-inline:0; bottom:0; z-index:60;
+    padding: 5px 4px calc(5px + var(--safe-b));
+    background: rgba(250,250,246,.80);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+    backdrop-filter: blur(22px) saturate(180%);
+    border-top: 1px solid rgba(255,255,255,.6);
+    box-shadow: 0 -1px 0 rgba(74,74,42,.09), 0 -10px 28px rgba(0,0,0,.06);
+  }
+  .bnav-item{
+    flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:3px; min-height:50px; padding:5px 2px; border-radius:13px;
+    color:var(--muted); font-size:11px; font-weight:600;
+  }
+  .bnav-item .ic{ font-size:19px; line-height:1; transition:transform .18s ease-out; }
+  .bnav-item.on{ color:var(--olive-dark); }
+  .bnav-item.on .ic{ transform:translateY(-1px) scale(1.08); }
+
+  .fab{
+    display:flex; position:fixed; inset-inline-end:15px; z-index:55;
+    bottom: calc(var(--nav-h) + var(--safe-b) + 14px);
+    width:58px; height:58px; border-radius:20px; align-items:center; justify-content:center;
+    background:var(--yellow); color:var(--olive-dark); font-size:30px; font-weight:600;
+    line-height:1; padding-bottom:3px;
+    box-shadow:0 10px 26px rgba(200,163,0,.42), 0 2px 6px rgba(0,0,0,.16);
+  }
+
+  /* מודאל = גיליון שנגרר מלמטה. האנימציה מונעת ב-JS כדי שאפשר יהיה
+     לתפוס אותו באמצע התנועה ולהפוך כיוון. */
+  .modal{ padding:0; align-items:flex-end; background:rgba(26,26,26,0); }
+  .modal-box{
+    max-width:none; width:100%; border-radius:24px 24px 0 0; max-height:92vh;
+    animation:none; will-change:transform;
+    padding-bottom: var(--safe-b);
+    box-shadow:0 -10px 40px rgba(0,0,0,.22);
+  }
+  .modal-box.wide{ max-width:none; }
+  .grabber{ display:block; width:38px; height:5px; border-radius:3px;
+    background:var(--line3, #D8D8D0); margin:9px auto 2px; }
+  .modal-head{ padding:8px 20px 14px; }
+  .modal-head h3{ font-size:18px; }
+  .modal-body{ padding:16px 20px 20px; }
+  .modal-foot{ padding:12px 20px calc(12px + var(--safe-b)); }
+  .modal-foot .btn{ flex:1; }
+
+  /* מטרות נגיעה, וגופן 16px כדי ש-iOS לא יזום את הדף בפוקוס */
+  .inp, .f-inp, select.inp, textarea.inp{ font-size:16px; }
+  .btn{ min-height:46px; padding:11px 16px; }
+  .btn-sm{ min-height:38px; }
+  .icon-btn{ width:40px; height:40px; font-size:16px; }
+
+  .page-head{ margin-bottom:12px; }
+  .page-head h2{ font-size:17px; }
+  .stats{ grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }
+  .stat{ padding:13px 14px; }
+  .stat .lbl{ font-size:11.5px; }
+  .stat .val{ font-size:19px; }
+  .stat .sub{ font-size:11px; }
+  .stat.big{ grid-column:1/-1; }
+  .stat.big .val{ font-size:30px; }
+  .card-title{ padding:13px 14px; font-size:14.5px; gap:7px; }
+  .count-line{ padding:11px 14px; }
+}
+
+/* מה שה-FAB כבר עושה לא צריך להופיע פעמיים */
+@media(max-width:720px){
+  .only-desk{ display:none !important; }
+  /* כרטיס רביעי בודד בשורה נראה שבור — שיתפרס לרוחב */
+  .stat:nth-child(4):last-child{ grid-column:1/-1; }
+}
+
+/* ---------- כרטיס שורה (מחליף את הטבלה במסך צר) ---------- */
+.mlist{ display:flex; flex-direction:column; }
+.mcard{ display:block; width:100%; text-align:start; padding:13px 14px;
+  border-bottom:1px solid var(--line-2); background:transparent; }
+.mcard:last-of-type{ border-bottom:none; }
+.mc-top{ display:flex; align-items:center; gap:8px; }
+.mc-date{ font-size:12.5px; color:var(--muted); font-variant-numeric:tabular-nums; }
+.mc-amt{ margin-inline-start:auto; font-size:17.5px; font-weight:800;
+  font-variant-numeric:tabular-nums; white-space:nowrap; }
+.mc-amt.in{ color:var(--green); }
+.mc-amt.out{ color:var(--red); }
+.mc-note{ margin-top:5px; font-size:14.5px; line-height:1.45; }
+.mc-note.empty{ color:var(--muted); }
+.mc-bot{ margin-top:7px; display:flex; align-items:center; gap:8px;
+  font-size:12px; color:var(--muted); }
+.mc-bot .row-acts{ margin-inline-start:auto; }
+.mcard[onclick]{ cursor:pointer; position:relative; }
+.mcard[onclick]::after{
+  content:"\203A"; position:absolute; inset-inline-start:12px; top:50%;
+  transform:translateY(-50%) scaleX(-1); color:var(--line);
+  font-size:20px; line-height:1;
+}
+
+/* ---------- העדפות נגישות ---------- */
+@media (prefers-reduced-motion: reduce){
+  *, *::before, *::after{ animation-duration:.01ms !important; animation-iteration-count:1 !important; }
+  .btn:active, .icon-btn:active, .bnav-item:active, .mcard:active, .sheet-item:active, .fab:active{
+    transform:none;
+  }
+  .bnav-item .ic{ transition:none; }
+  .modal-box{ animation:none; }
+}
+@media (prefers-reduced-transparency: reduce){
+  .topbar{ background:var(--olive); -webkit-backdrop-filter:none; backdrop-filter:none; }
+  .bnav{ background:#FAFAF6; -webkit-backdrop-filter:none; backdrop-filter:none; }
+  .modal{ backdrop-filter:none; }
+}
+@media (prefers-contrast: more){
+  .bnav{ background:#fff; border-top:2px solid var(--olive); }
+  .bnav-item{ color:var(--olive-2); }
+  .inp, .f-inp{ border-color:var(--olive-2); }
+  .mcard{ border-bottom-color:var(--line); }
+}
 </style>
 </head>
 <body>
@@ -259,7 +440,7 @@ table.tbl tfoot td{background:#F7F6EF;font-weight:800;color:var(--olive);border-
    להזין כלום; אם היא ריקה, מנהל מזין אותה פעם אחת והיא נשמרת בדפדפן. */
 var DEFAULT_GS_URL = 'https://script.google.com/macros/s/AKfycbxLJ9ILdKoCW_y4BPHYBWcH-oVc-TKjjNcfH1nqUnHlK6yO97_2aEP3tHhNxAaUveTuGQ/exec';
 
-var LS_URL = 'kupa_gs_url', LS_TOK = 'kupa_token';
+var LS_URL = 'kupa_gs_url', LS_TOK = 'kupa_token', LS_CACHE = 'kupa_cache';
 
 var S = {
   url:  DEFAULT_GS_URL || lsGet(LS_URL) || '',
@@ -330,6 +511,7 @@ var ROLE_HE = { super:'מנהל ראשי', admin:'מנהל', employee:'עובד'
 
 function toast(text, kind){
   var host = document.getElementById('toasts');
+  if(kind === 'ok') haptic(10);
   var el = document.createElement('div');
   el.className = 'toast ' + (kind||'info');
   el.textContent = text;
@@ -414,8 +596,9 @@ function doSetup(btn){
     busy(btn,false);
     if(!r.ok) return setMsg('m', r.error);
     S.token = r.token; lsSet(LS_TOK, r.token);
+    applyPayload(r); cacheSet(r);
     toast('נוצר מנהל ראשי — ברוך הבא','ok');
-    loadAll();
+    renderApp();
   });
 }
 
@@ -448,37 +631,75 @@ function doLogin(btn){
     busy(btn,false);
     if(!r.ok) return setMsg('m', r.error);
     S.token = r.token; lsSet(LS_TOK, r.token);
-    loadAll();
+    applyPayload(r); cacheSet(r); haptic(10);
+    renderApp();                       /* הכניסה כבר החזירה את הנתונים */
   });
 }
 function logout(){
-  S.token=''; S.user=null; lsDel(LS_TOK); closeModal();
+  S.token=''; S.user=null; lsDel(LS_TOK); lsDel(LS_CACHE); closeModal();
   showLogin();
 }
 
 /* ---------- טעינת נתונים ---------- */
+function applyPayload(r){
+  S.user = r.user; S.today = r.today || todayISO();
+  S.deposits = r.deposits || []; S.withdrawals = r.withdrawals || [];
+  S.categories = r.categories || []; S.users = r.users || [];
+  S.totals = r.totals || {deposits:0,withdrawals:0,balance:0};
+}
+/* מטמון מקומי: האפליקציה נפתחת מיד עם מה שהיה, ומתרעננת ברקע */
+function cacheSet(r){ try{ localStorage.setItem(LS_CACHE, JSON.stringify(r)); }catch(e){} }
+function cacheGet(){
+  try{
+    var o = JSON.parse(localStorage.getItem(LS_CACHE) || 'null');
+    return (o && o.user) ? o : null;
+  }catch(e){ return null; }
+}
+
 function loadAll(){
+  setSync(true);
   return api('load',{}).then(function(r){
+    setSync(false);
     if(!r.ok){
-      if(String(r.error||'').indexOf('פג תוקף')>=0){ S.token=''; lsDel(LS_TOK); showLogin(); }
-      else { toast(r.error,'err'); }
+      if(String(r.error||'').indexOf('פג תוקף')>=0){
+        S.token=''; S.user=null; lsDel(LS_TOK); lsDel(LS_CACHE); showLogin();
+      } else {
+        toast(r.error,'err');
+      }
       byId('boot').classList.add('hide');
       return false;
     }
-    S.user = r.user; S.today = r.today || todayISO();
-    S.deposits = r.deposits || []; S.withdrawals = r.withdrawals || [];
-    S.categories = r.categories || []; S.users = r.users || [];
-    S.totals = r.totals || {deposits:0,withdrawals:0,balance:0};
-    renderApp();
+    var before = S.user;
+    applyPayload(r); cacheSet(r);
+    if(before && before.role === r.user.role) softRefresh(); else renderApp();
     return true;
   });
+}
+/* רענון שאינו בונה מחדש את כל המסך */
+function softRefresh(){
+  var b = byId('balpill');
+  if(b) b.textContent = money0(S.totals.balance);
+  renderTab();
 }
 function refresh(){ return loadAll(); }
 
 function boot(){
   if(!S.url) return showUrlSetup();
-  if(S.token) return loadAll().then(function(ok){ if(ok===false && !S.user) pingThenGate(); });
-  pingThenGate();
+  if(S.token){
+    var c = cacheGet();
+    if(c){ applyPayload(c); renderApp(); }      /* מציג מיד, בלי לחכות לרשת */
+    return loadAll().then(function(ok){ if(ok===false && !S.user) pingThenGate(); });
+  }
+  showLogin();                                  /* מסך הכניסה עולה מיד */
+  api('ping',{}).then(function(r){
+    if(r && r.ok && r.needsSetup) showFirstSetup();
+  });
+}
+
+function registerSW(){
+  if(!('serviceWorker' in navigator)) return;
+  if(location.protocol !== 'https:' && location.hostname !== 'localhost') return;
+  try{ navigator.serviceWorker.register('sw.js'); }catch(e){}
 }
 function pingThenGate(){
   api('ping',{}).then(function(r){
@@ -515,7 +736,8 @@ function renderApp(){
     '<div class="topbar"><div class="topbar-in">' +
       '<div class="brand"><span class="brand-mark">🍗</span>' +
         '<span class="bn">שניצל שף<small>קופה קטנה</small></span></div>' +
-      '<div class="bal-pill"><span>יתרה בקופה</span><b>' + money0(bal) + '</b></div>' +
+      '<div class="bal-pill"><span>יתרה בקופה</span><b id="balpill">' + money0(bal) + '</b>' +
+        '<i class="syncdot" id="syncdot"></i></div>' +
       '<div class="who">' +
         '<button class="who-btn" onclick="toggleMenu(event)">' +
           '<span class="avatar">' + esc(initials(S.user.fullName)) + '</span>' +
@@ -535,11 +757,23 @@ function renderApp(){
                '<span>' + t.i + '</span>' + t.t + '</button>';
       }).join('') +
     '</div></div>' +
-    '<div class="wrap" id="wrap"></div>';
+    '<div class="wrap" id="wrap"></div>' +
+    bottomNav(tabs);
   byId('boot').classList.add('hide');
   renderTab();
+  if(S.syncing) setSync(true);
 }
-function go(k){ S.tab = k; renderApp(); window.scrollTo(0,0); }
+function setSync(on){
+  S.syncing = on;
+  var d = byId('syncdot');
+  if(d) d.classList.toggle('on', !!on);
+}
+function go(k){
+  if(S.tab === k){
+    return window.scrollTo({ top:0, behavior: reduceMotion() ? 'auto' : 'smooth' });
+  }
+  S.tab = k; haptic(6); renderApp(); window.scrollTo(0,0);
+}
 function toggleMenu(ev){ ev.stopPropagation(); byId('usermenu').classList.toggle('hide'); }
 function closeMenu(){ var m = byId('usermenu'); if(m) m.classList.add('hide'); }
 document.addEventListener('click', closeMenu);
@@ -576,8 +810,8 @@ function renderDash(w){
   w.innerHTML =
     '<div class="page-head"><h2>סקירה כללית</h2>' +
       '<div class="spacer"></div>' +
-      '<button class="btn btn-yellow" onclick="entryModal(\'deposit\')">⬆️ הפקדה</button>' +
-      '<button class="btn btn-primary" onclick="entryModal(\'withdrawal\')">⬇️ משיכה</button>' +
+      '<button class="btn btn-yellow only-desk" onclick="entryModal(\'deposit\')">⬆️ הפקדה</button>' +
+      '<button class="btn btn-primary only-desk" onclick="entryModal(\'withdrawal\')">⬇️ משיכה</button>' +
     '</div>' +
     '<div class="stats">' +
       '<div class="stat big' + (S.totals.balance<0?' neg':'') + '">' +
@@ -595,7 +829,7 @@ function renderDash(w){
         '<div class="sub">הפרש הפקדות פחות משיכות</div></div>' +
     '</div>' +
     '<div class="card"><div class="card-title">🕘 תנועות אחרונות</div>' +
-      (recent.length ? '<div class="tbl-scroll"><table class="tbl">' +
+      (recent.length ? (isMobile() ? mobileRecent(recent) : '<div class="tbl-scroll"><table class="tbl">' +
         '<thead><tr><th class="nosort">תאריך</th><th class="nosort">תנועה</th>' +
         '<th class="nosort">פירוט</th><th class="nosort">נרשם על ידי</th>' +
         '<th class="nosort" style="text-align:end">סכום</th></tr></thead><tbody>' +
@@ -607,9 +841,25 @@ function renderDash(w){
             '<td>' + esc(r.what) + '</td><td class="muted">' + esc(r.who) + '</td>' +
             '<td class="num ' + (r.t==='in'?'in':'out') + '" style="text-align:end">' +
               (r.t==='in'?'+':'−') + money(r.amount) + '</td></tr>';
-        }).join('') + '</tbody></table></div>'
+        }).join('') + '</tbody></table></div>')
         : '<div class="empty"><span class="ico">🗒️</span>עדיין אין תנועות בקופה.<br>התחל בהפקדה ראשונה.</div>') +
-    '</div>';
+    '</div>' + fab('');
+}
+
+/* אותן תנועות, כשאין רוחב לטבלה */
+function mobileRecent(list){
+  return '<div class="mlist">' + list.map(function(r){
+    var inn = (r.t === 'in');
+    return '<div class="mcard">' +
+      '<div class="mc-top"><span class="mc-date">' + fmtDate(r.date) + '</span>' +
+        '<span class="chip" style="background:' + (inn?'var(--green-soft)':'var(--red-soft)') +
+          ';color:' + (inn?'var(--green)':'var(--red)') + '">' +
+          (inn?'הפקדה':'משיכה') + '</span>' +
+        '<span class="mc-amt ' + (inn?'in':'out') + '">' + (inn?'+':'−') + money(r.amount) + '</span>' +
+      '</div>' +
+      '<div class="mc-note">' + esc(r.what) + '</div>' +
+      '<div class="mc-bot">' + esc(r.who) + '</div></div>';
+  }).join('') + '</div>';
 }
 
 /* =====================================================================
@@ -772,6 +1022,20 @@ function sortBy(tk, k){
 function tableShell(tk, opts){
   opts = opts || {};
   var T = TABLES[tk], s = sstate(tk), acts = opts.actions && isManager();
+
+  if(isMobile()){                    /* במסך צר: כרטיסים, והסינון בגיליון נפרד */
+    var n = Object.keys(fstate(tk)).length;
+    return '<div class="card">' +
+      '<div class="card-title">' + T.icon + ' ' + T.title +
+        '<div class="spacer"></div>' +
+        '<button class="btn btn-ghost btn-sm" onclick="filterSheet(\'' + tk + '\')">' +
+          'סינון' + (n ? ' · ' + n : '') + '</button>' +
+        '<button class="btn btn-ghost btn-sm" onclick="exportTable(\'' + tk + '\')">📤</button>' +
+      '</div>' +
+      '<div class="mlist" id="mc-' + tk + '"></div>' +
+      '<div class="count-line" id="cl-' + tk + '"></div></div>';
+  }
+
   return '<div class="card">' +
     '<div class="card-title">' + T.icon + ' ' + T.title +
       '<div class="spacer"></div>' +
@@ -796,7 +1060,30 @@ function tableShell(tk, opts){
 function refreshTable(tk){
   var T = TABLES[tk], rows = tableRows(tk), all = T.rows().length;
   var acts = !!(T.kind || tk==='cat' || tk==='usr') && isManager();
-  var tb = byId('tb-'+tk), tf = byId('tf-'+tk), cl = byId('cl-'+tk);
+  var cl = byId('cl-'+tk);
+  updateSheetCount(tk);
+
+  var mc = byId('mc-'+tk);
+  if(mc){                                        /* מצב כרטיסים */
+    mc.innerHTML = rows.length
+      ? rows.map(function(r){ return mcardHtml(tk, r); }).join('')
+      : '<div class="empty"><span class="ico">🔍</span>' +
+        (all ? 'אין שורות שמתאימות לסינון' : 'אין עדיין נתונים כאן') + '</div>';
+    if(cl){
+      var money_col = T.cols.filter(function(c){ return c.sum && c.type==='money'; })[0];
+      var tot = money_col
+        ? rows.reduce(function(a,r){ return a + (Number(r[money_col.k])||0); }, 0) : null;
+      cl.innerHTML =
+        '<span>' + (rows.length===all
+          ? 'סך הכל <b>' + all + '</b> שורות'
+          : '<span class="chip">מציג ' + rows.length + ' מתוך ' + all + '</span>') + '</span>' +
+        (tot===null ? '' :
+          '<span style="margin-inline-start:auto;font-weight:800;color:var(--olive)">' + money(tot) + '</span>');
+    }
+    return;
+  }
+
+  var tb = byId('tb-'+tk), tf = byId('tf-'+tk);
   if(!tb) return;
   var nCols = T.cols.length + (acts?1:0);
 
@@ -867,9 +1154,10 @@ function rowActions(tk, r){
 function renderEntries(w, tk){
   var kind = TABLES[tk].kind;
   w.innerHTML =
-    '<div class="page-head"><h2>' + TABLES[tk].icon + ' ' + TABLES[tk].title + '</h2></div>' +
+    '<div class="page-head only-desk"><h2>' + TABLES[tk].icon + ' ' + TABLES[tk].title + '</h2></div>' +
     tableShell(tk, { actions:true, add:'entryModal(\'' + kind + '\')',
-                     addLabel: kind==='deposit' ? 'הפקדה חדשה' : 'משיכה חדשה' });
+                     addLabel: kind==='deposit' ? 'הפקדה חדשה' : 'משיכה חדשה' }) +
+    fab(kind);
   refreshTable(tk);
 }
 function renderCats(w){
@@ -1027,17 +1315,22 @@ function renderReports(w){
 /* =====================================================================
    מודאלים
    ===================================================================== */
-function openModal(html){ byId('modal-host').innerHTML = '<div class="modal" onclick="bgClose(event)">' + html + '</div>'; }
+function openModal(html){
+  var host = byId('modal-host');
+  host.innerHTML = '<div class="modal" onclick="bgClose(event)">' + html + '</div>';
+  if(isMobile()) attachSheetDrag(host.querySelector('.modal-box'), host.querySelector('.modal'));
+}
 function closeModal(){ byId('modal-host').innerHTML = ''; }
 function bgClose(ev){ if(ev.target.classList.contains('modal')) closeModal(); }
 document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeModal(); });
 
 function modalBox(title, body, foot, wide){
   return '<div class="modal-box' + (wide?' wide':'') + '" onclick="event.stopPropagation()">' +
+    '<div class="grabber"></div>' +
     '<div class="modal-head"><h3>' + title + '</h3>' +
       '<button class="x" onclick="closeModal()">✕</button></div>' +
     '<div class="modal-body"><div id="mm" class="msg"></div>' + body + '</div>' +
-    '<div class="modal-foot">' + foot + '</div></div>';
+    (foot ? '<div class="modal-foot">' + foot + '</div>' : '') + '</div>';
 }
 
 /* ---------- הפקדה / משיכה ---------- */
@@ -1557,7 +1850,311 @@ function saveXlsx(sheets,filename){
   }catch(err){ toast("הייצוא נכשל: "+err.message,"err"); }
 }
 
+/* =====================================================================
+   שכבת אפליקציה למובייל — תנועה, ניווט וגיליונות נגררים
+   ===================================================================== */
+var MQ = window.matchMedia('(max-width:720px)');
+function isMobile(){ return MQ.matches; }
+(function(){
+  /* לא מסתמכים רק על אירוע ה-media query — בחלק מהדפדפנים הוא לא נורה
+     בסיבוב מסך. בודקים גם ב-resize, ומרעננים רק כשבאמת עברנו פריסה. */
+  var was = isMobile(), t = null;
+  function check(){
+    var now = isMobile();
+    if(now !== was){ was = now; if(S.user) renderApp(); }
+  }
+  function onChange(){ clearTimeout(t); t = setTimeout(check, 120); }
+  if(MQ.addEventListener) MQ.addEventListener('change', onChange);
+  else if(MQ.addListener) MQ.addListener(onChange);
+  window.addEventListener('resize', onChange);
+  window.addEventListener('orientationchange', onChange);
+})();
+
+function reduceMotion(){
+  try{ return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){ return false; }
+}
+/* רטט קצר — רק ברגעים שבאמת קרה משהו (שמירה, מחיקה, סגירת גיליון) */
+function haptic(ms){
+  try{ if(navigator.vibrate && !reduceMotion()) navigator.vibrate(ms); }catch(e){}
+}
+
+/* ---------------------------------------------------------------------
+   קפיץ. מונע מהערך שעל המסך, נושא איתו מהירות, וניתן לעצירה באמצע —
+   בלי זה אי אפשר לתפוס גיליון שנע ולהחזיר אותו.
+   damping: 1 = בלי חריגה · 0.8 = קפיצה קלה   |   response: כמה מהר מגיע ליעד
+   --------------------------------------------------------------------- */
+function spring(from, to, opt, onFrame, onDone){
+  opt = opt || {};
+  var zeta = (opt.damping == null) ? 1 : opt.damping;
+  var w0   = 2 * Math.PI / (opt.response || 0.35);
+  var x    = from - to;
+  var v    = opt.velocity || 0;
+  var last = performance.now();
+  var raf, stopped = false;
+
+  if(reduceMotion()){ onFrame(to); if(onDone) onDone(); return { stop:function(){} }; }
+
+  function step(now){
+    var dt = Math.min((now - last) / 1000, 1/30);
+    last = now;
+    /* מחלקים כל פריים לצעדי משנה — אחרת האינטגרציה עצמה מוסיפה ריסון
+       והקפיץ יוצא רדום יותר ממה שהוגדר */
+    var n = Math.max(1, Math.ceil(dt * 240)), h = dt / n;
+    for(var i = 0; i < n; i++){
+      v += (-w0 * w0 * x - 2 * zeta * w0 * v) * h;
+      x += v * h;
+    }
+    if(Math.abs(x) < 0.5 && Math.abs(v) < 5){
+      onFrame(to); stopped = true;
+      if(onDone) onDone();
+      return;
+    }
+    onFrame(to + x);
+    raf = requestAnimationFrame(step);
+  }
+  raf = requestAnimationFrame(step);
+
+  return {
+    stop:     function(){ if(!stopped){ cancelAnimationFrame(raf); stopped = true; } },
+    value:    function(){ return to + x; },
+    velocity: function(){ return v; }
+  };
+}
+
+/* לאן התנועה תגיע אם משחררים עכשיו — אותה נוסחה של דעיכת גלילה */
+function project(v, rate){
+  rate = rate || 0.998;
+  return (v / 1000) * rate / (1 - rate);
+}
+/* התנגדות בגבול: ככל שמושכים מעבר לקצה, הגיליון נגרר פחות */
+function rubber(over, dim, c){
+  c = c || 0.55;
+  return (over * dim * c) / (dim + c * Math.abs(over));
+}
+
+/* ---------- ניווט תחתון ---------- */
+function bottomNav(tabs){
+  var inBar = tabs, more = [];
+  if(tabs.length > 4){ inBar = tabs.slice(0, 3); more = tabs.slice(3); }
+  var html = inBar.map(function(t){
+    return '<button class="bnav-item' + (S.tab===t.k?' on':'') + '" onclick="go(\'' + t.k + '\')">' +
+           '<span class="ic">' + t.i + '</span>' + t.t + '</button>';
+  }).join('');
+  if(more.length){
+    var active = more.some(function(t){ return t.k === S.tab; });
+    html += '<button class="bnav-item' + (active?' on':'') + '" onclick="moreSheet()">' +
+            '<span class="ic">☰</span>עוד</button>';
+  }
+  return '<nav class="bnav">' + html + '</nav>';
+}
+
+function moreSheet(){
+  var rest = TABS.filter(function(t){ return !t.mgr || isManager(); }).slice(3);
+  openModal(modalBox('עוד',
+    '<div class="sheet-list">' +
+      rest.map(function(t){
+        return '<button class="sheet-item' + (S.tab===t.k?' on':'') + '" ' +
+               'onclick="closeModal();go(\'' + t.k + '\')">' +
+               '<span class="ic">' + t.i + '</span>' + t.t + '</button>';
+      }).join('') +
+      '<button class="sheet-item" onclick="closeModal();refresh();toast(\'הנתונים רועננו\',\'ok\')">' +
+        '<span class="ic">🔄</span>רענון נתונים</button>' +
+      '<button class="sheet-item" onclick="closeModal();passwordModal()">' +
+        '<span class="ic">🔑</span>החלפת סיסמה</button>' +
+      '<button class="sheet-item" onclick="closeModal();logout()">' +
+        '<span class="ic">🚪</span>יציאה</button>' +
+    '</div>', ''));
+}
+
+/* כפתור הפעולה הצף — הדבר שעושים הכי הרבה, במקום שהאגודל מגיע אליו */
+function fab(kind){
+  if(!isMobile()) return '';
+  var call = kind ? ('entryModal(\'' + kind + '\')') : 'fabChoice()';
+  return '<button class="fab" onclick="' + call + '" aria-label="רישום חדש">＋</button>';
+}
+function fabChoice(){
+  openModal(modalBox('רישום חדש',
+    '<div class="sheet-list">' +
+      '<button class="sheet-item" onclick="closeModal();entryModal(\'deposit\')">' +
+        '<span class="ic">⬆️</span>הפקדה לקופה</button>' +
+      '<button class="sheet-item" onclick="closeModal();entryModal(\'withdrawal\')">' +
+        '<span class="ic">⬇️</span>משיכה מהקופה</button>' +
+    '</div>', ''));
+}
+
+/* ---------- כרטיס שורה במקום שורת טבלה ---------- */
+function mcardHtml(tk, r){
+  /* העריכה והמחיקה יושבות רמה אחת פנימה — נגיעה על הכרטיס
+     פותחת אותן, והרשימה נשארת נקייה וקצרה */
+  var tap = isManager()
+    ? ' onclick="cardActions(\'' + tk + '\',\'' + r.id + '\')"'
+    : '';
+  var acts = '';
+  if(tk === 'dep'){
+    return '<div class="mcard"' + tap + '>' +
+      '<div class="mc-top"><span class="mc-date">' + fmtDate(r.date) + '</span>' +
+        '<span class="mc-amt in">+' + money(r.amount) + '</span></div>' +
+      '<div class="mc-note' + (r.note?'':' empty') + '">' + (r.note ? esc(r.note) : 'ללא הערה') + '</div>' +
+      '<div class="mc-bot">' + esc(r.userName) + acts + '</div></div>';
+  }
+  if(tk === 'wd'){
+    return '<div class="mcard"' + tap + '>' +
+      '<div class="mc-top"><span class="mc-date">' + fmtDate(r.date) + '</span>' +
+        '<span class="chip">' + esc(r.catName) + '</span>' +
+        '<span class="mc-amt out">−' + money(r.amount) + '</span></div>' +
+      '<div class="mc-note' + (r.details?'':' empty') + '">' +
+        (r.details ? esc(r.details) : 'ללא פירוט') + '</div>' +
+      '<div class="mc-bot">' + esc(r.userName) + acts + '</div></div>';
+  }
+  if(tk === 'cat'){
+    return '<div class="mcard"' + tap + '>' +
+      '<div class="mc-top"><span style="font-weight:600;font-size:15px">' + esc(r.name) + '</span>' +
+        '<span class="mc-amt out">' + money(r.total) + '</span></div>' +
+      '<div class="mc-bot">' + (r.uses === 1 ? 'משיכה אחת' : r.uses + ' משיכות') +
+        ' · נוצר על ידי ' + esc(r.userName) + acts + '</div></div>';
+  }
+  return '<div class="mcard"' + tap + '>' +
+    '<div class="mc-top"><span style="font-weight:600;font-size:15px">' + esc(r.fullName) + '</span>' +
+      '<span class="chip role-' + esc(r.role) + '">' + esc(r.roleHe) + '</span>' +
+      (r.active ? '' : '<span class="chip off">מושבת</span>') + '</div>' +
+    '<div class="mc-bot" dir="ltr" style="justify-content:flex-end">' + esc(r.username) + '</div>' +
+    '<div class="mc-bot">' + r.entries + ' רשומות' + acts + '</div></div>';
+}
+
+/* נגיעה על כרטיס — מה אפשר לעשות איתו */
+function cardActions(tk, id){
+  if(!isManager()) return;
+  var rows = TABLES[tk].rows().filter(function(r){ return r.id === id; });
+  if(!rows.length) return;
+  var r = rows[0], title, edit, del;
+
+  if(tk === 'dep' || tk === 'wd'){
+    var kind = TABLES[tk].kind;
+    title = fmtDate(r.date) + ' · ' + money(r.amount);
+    edit  = "closeModal();entryModal('" + kind + "','" + id + "')";
+    del   = "closeModal();askDeleteEntry('" + kind + "','" + id + "')";
+  } else if(tk === 'cat'){
+    title = r.name;
+    edit  = "closeModal();catModal('" + id + "')";
+    del   = "closeModal();askDeleteCat('" + id + "')";
+  } else {
+    title = r.fullName;
+    edit  = "closeModal();userModal('" + id + "')";
+    del   = (r.id === S.user.id) ? '' : "closeModal();askDeleteUser('" + id + "')";
+  }
+
+  haptic(6);
+  openModal(modalBox(title,
+    '<div class="sheet-list">' +
+      '<button class="sheet-item" onclick="' + edit + '">' +
+        '<span class="ic">✏️</span>עריכה</button>' +
+      (del ? '<button class="sheet-item" style="color:var(--red)" onclick="' + del + '">' +
+        '<span class="ic">🗑️</span>' +
+        (tk === 'usr' ? 'השבתה' : 'מחיקה') + '</button>' : '') +
+    '</div>', ''));
+}
+
+/* ---------- סינון ומיון כגיליון ---------- */
+function filterSheet(tk){
+  var T = TABLES[tk];
+  openModal(modalBox('סינון · ' + T.title,
+    '<div class="fgrid">' +
+      T.cols.map(function(c, i){
+        return '<div class="field' + (c.type==='text'||i===0?' wide':'') + '">' +
+               '<label>' + c.t + '</label>' + filterCell(tk, c) + '</div>';
+      }).join('') +
+      '<div class="field wide"><label>מיון</label>' +
+        '<select class="inp" onchange="setSort(\'' + tk + '\',this.value)">' +
+          T.cols.map(function(c){
+            var s = sstate(tk);
+            return '<option value="' + c.k + '|-1"' + (s.k===c.k && s.dir<0 ? ' selected':'') + '>' +
+                     c.t + ' — מהגבוה לנמוך</option>' +
+                   '<option value="' + c.k + '|1"' + (s.k===c.k && s.dir>0 ? ' selected':'') + '>' +
+                     c.t + ' — מהנמוך לגבוה</option>';
+          }).join('') +
+        '</select></div>' +
+    '</div>',
+    '<button class="btn btn-ghost" onclick="clearFilters(\'' + tk + '\');closeModal()">נקה הכל</button>' +
+    '<button class="btn btn-primary" onclick="closeModal()" id="fsheet-go">הצג תוצאות</button>'));
+  updateSheetCount(tk);
+}
+function setSort(tk, v){
+  var p = String(v).split('|');
+  S.sorts[tk] = { k: p[0], dir: Number(p[1]) };
+  refreshTable(tk);
+}
+function updateSheetCount(tk){
+  var b = byId('fsheet-go');
+  if(b) b.textContent = 'הצג ' + tableRows(tk).length + ' תוצאות';
+}
+
+/* ---------- גרירת גיליון ---------- */
+function attachSheetDrag(box, scrim){
+  if(!box) return;
+  var head = box;                 /* גוררים מהמסגרת, לא מהתוכן שנגלל */
+  var H = box.getBoundingClientRect().height || window.innerHeight * 0.6;
+  var y = H, anim = null, dragging = false, grabY = 0, hist = [];
+
+  function paint(v){
+    y = v;
+    box.style.transform = 'translate3d(0,' + v + 'px,0)';
+    if(scrim) scrim.style.background =
+      'rgba(26,26,26,' + (0.45 * Math.max(0, Math.min(1, 1 - v / H))).toFixed(3) + ')';
+  }
+  /* כשהדפדפן לא מצייר (לשונית ברקע, מסך כבוי) אין פריימים כלל —
+     במצב כזה פותחים את הגיליון מיד, כדי שלא יישאר תקוע מחוץ למסך */
+  if(document.hidden || reduceMotion()){
+    paint(0);
+  } else {
+    paint(H);
+    anim = spring(H, 0, { damping: 0.8, response: 0.3 }, paint);
+    setTimeout(function(){
+      if(!dragging && y > 1){ if(anim) anim.stop(); paint(0); }
+    }, 700);
+  }
+
+  function down(e){
+    if(e.target.closest('button,input,select,textarea,a,.modal-body')) return;
+    if(anim){ anim.stop(); anim = null; }        /* תופסים את התנועה איפה שהיא */
+    dragging = true;
+    grabY = e.clientY - y;                        /* שומרים את נקודת האחיזה */
+    hist = [{ t: performance.now(), y: e.clientY }];
+    try{ head.setPointerCapture(e.pointerId); }catch(err){}
+  }
+  function move(e){
+    if(!dragging) return;
+    var d = e.clientY - grabY;
+    if(d < 0) d = -rubber(-d, H);                 /* התנגדות כלפי מעלה */
+    paint(d);
+    hist.push({ t: performance.now(), y: e.clientY });
+    if(hist.length > 6) hist.shift();
+  }
+  function up(){
+    if(!dragging) return;
+    dragging = false;
+    var v = 0;
+    if(hist.length > 1){
+      var a = hist[0], b = hist[hist.length - 1], dt = (b.t - a.t) / 1000;
+      if(dt > 0) v = (b.y - a.y) / dt;
+    }
+    if(y + project(v) > H * 0.4){
+      haptic(8);
+      var done = false, fin = function(){ if(!done){ done = true; closeModal(); } };
+      anim = spring(y, H, { damping: 1, response: 0.26, velocity: v }, paint, fin);
+      setTimeout(fin, 500);          /* הסגירה קורית גם אם האנימציה לא רצה */
+    } else {
+      /* חזרה למקום אחרי תנופה — קצת קפיצה, כי הייתה תנועה פיזית */
+      anim = spring(y, 0, { damping: 0.8, response: 0.3, velocity: v }, paint);
+    }
+  }
+  head.addEventListener('pointerdown', down);
+  head.addEventListener('pointermove', move);
+  head.addEventListener('pointerup', up);
+  head.addEventListener('pointercancel', up);
+}
+
 /* ---------- הפעלה ---------- */
+registerSW();
 boot();
 </script>
 </body>

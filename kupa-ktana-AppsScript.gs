@@ -21,8 +21,8 @@
 
 var TZ        = 'Asia/Jerusalem';
 var SS_ID     = '';                    // ריק = הסקריפט משתמש בגיליון שאליו הוא מחובר
-var TOKEN_TTL = 12 * 60 * 60 * 1000;   // תוקף כניסה: 12 שעות
-var PBKDF_ROUNDS = 1200;               // סיבובי גיבוב לסיסמה
+var TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;   // תוקף כניסה: 30 יום
+var PBKDF_ROUNDS = 60;                 // סיבובי גיבוב לסיסמה
 
 /* ---------- הגדרת הלשוניות בגיליון ---------- */
 var SHEETS = {
@@ -53,7 +53,13 @@ var NUM_FIELDS  = { amount: 1 };
 var BOOL_FIELDS = { deleted: 1, active: 1 };
 
 /* =====================  תשתית גיליון  ===================== */
+var _ssCache = null, _shCache = {};
 function ss_() {
+  if (_ssCache) return _ssCache;
+  _ssCache = ssOpen_();
+  return _ssCache;
+}
+function ssOpen_() {
   if (SS_ID) return SpreadsheetApp.openById(SS_ID);
   var saved = PropertiesService.getScriptProperties().getProperty('kupa_ss_id');
   if (saved) { try { return SpreadsheetApp.openById(saved); } catch (e) {} }
@@ -65,6 +71,7 @@ function ss_() {
 }
 
 function sheet_(key) {
+  if (_shCache[key]) return _shCache[key];
   var cfg = SHEETS[key], ss = ss_();
   var sh = ss.getSheetByName(cfg.name);
   if (!sh) {
@@ -74,6 +81,7 @@ function sheet_(key) {
     sh.setFrozenRows(1);
     sh.setRightToLeft(true);
   }
+  _shCache[key] = sh;
   return sh;
 }
 
@@ -161,12 +169,35 @@ function secret_() {
   return s;
 }
 function hashPass_(pass, salt) {
-  var v = String(salt) + '|' + String(pass);
+  var bytes = Utilities.newBlob(String(salt) + '|' + String(pass)).getBytes();
   for (var i = 0; i < PBKDF_ROUNDS; i++) {
+    bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes);
+  }
+  return 'v2$' + Utilities.base64Encode(bytes);
+}
+
+/* הגיבוב מהגרסה הראשונה — איטי (2,400 קריאות). נשאר רק כדי לאמת סיסמאות
+   שנוצרו לפניו; בכניסה מוצלחת הן מוסבות אוטומטית לגיבוב החדש. */
+function hashLegacy_(pass, salt) {
+  var v = String(salt) + '|' + String(pass);
+  for (var i = 0; i < 1200; i++) {
     v = Utilities.base64Encode(
       Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, v, Utilities.Charset.UTF_8));
   }
   return v;
+}
+
+/* מאמת סיסמה מול משתמש. מחזיר true/false, ומשדרג גיבוב ישן תוך כדי. */
+function verifyPass_(u, pass) {
+  if (String(u.hash).indexOf('v2$') === 0) {
+    return hashPass_(pass, u.salt) === u.hash;
+  }
+  if (hashLegacy_(pass, u.salt) !== u.hash) return false;
+  try {
+    u.hash = hashPass_(pass, u.salt);
+    writeRow_('users', u._row, u);
+  } catch (e) {}
+  return true;
 }
 function newSalt_() { return Utilities.getUuid().replace(/-/g, ''); }
 
@@ -256,7 +287,9 @@ function setupSuper_(p) {
               salt: salt, hash: hashPass_(pass, salt), active: true, createdAt: now_() };
     insert_('users', u);
     seedCategories_(u);
-    return json_({ ok: true, token: makeToken_(u.id), user: pubUser_(u) });
+    var out = payload_(u);
+    out.token = makeToken_(u.id);
+    return json_(out);
   } finally { lock.releaseLock(); }
 }
 
@@ -278,8 +311,10 @@ function login_(p) {
   for (var i = 0; i < users.length; i++) {
     var u = users[i];
     if (String(u.username).toLowerCase() === username && u.active) {
-      if (hashPass_(pass, u.salt) === u.hash) {
-        return json_({ ok: true, token: makeToken_(u.id), user: pubUser_(u) });
+      if (verifyPass_(u, pass)) {
+        var out = payload_(u);
+        out.token = makeToken_(u.id);
+        return json_(out);
       }
       return err_('שם משתמש או סיסמה שגויים');
     }
@@ -291,7 +326,12 @@ function login_(p) {
 function load_(p) {
   var me = auth_(p.token);
   if (!me) return err_('פג תוקף החיבור — התחבר מחדש');
+  return json_(payload_(me));
+}
 
+/* בונה את מצב המערכת המלא למשתמש נתון. משמש גם ב-load וגם בכניסה,
+   כדי שהכניסה תסתיים בסבב רשת אחד ולא בשניים. */
+function payload_(me) {
   var deposits    = readAll_('deposits');
   var withdrawals = readAll_('withdrawals');
   var categories  = readAll_('categories');
@@ -309,7 +349,7 @@ function load_(p) {
   if (isManager_(me)) {
     out.users = readAll_('users', true).map(function (u) { return pubUser_(u); });
   }
-  return json_(out);
+  return out;
 }
 
 /* ---------- הפקדה / משיכה: הוספה ועריכה ---------- */
@@ -532,7 +572,7 @@ function changePass_(p) {                        /* כל משתמש מחליף �
   if (!me) return err_('פג תוקף החיבור — התחבר מחדש');
   var oldP = String(p.oldPassword || ''), newP = String(p.newPassword || '');
   if (newP.length < 4) return err_('הסיסמה החדשה חייבת 4 תווים לפחות');
-  if (hashPass_(oldP, me.salt) !== me.hash) return err_('הסיסמה הנוכחית שגויה');
+  if (!verifyPass_(me, oldP)) return err_('הסיסמה הנוכחית שגויה');
 
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
