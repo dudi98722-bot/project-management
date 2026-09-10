@@ -1072,21 +1072,99 @@ function deleteSelectedMez(){
   toast(n+' מזוזות הועברו לסל המיחזור');
 }
 
-// ---- image per mezuza (compressed, stored on the record) ----
+// ---- image per mezuza ----
+// התמונה באיכות מלאה נשמרת בגוגל דרייב דרך סקריפט הגוגל. בגיליון נשמרות רק תמונה ממוזערת
+// לטבלה (img) ומזהה הקובץ בדרייב (imgFile), כדי שכל שמירה תישאר קלה.
+// אם סקריפט הגוגל עוד לא עודכן (מחזיר idle) — שומרים דחוס בתא כמו קודם.
+const IMG_FULL_MAX = 2400, IMG_FULL_Q = 0.85;   // תמונה מלאה: הצד הארוך בפיקסלים, איכות JPEG
+const IMG_THUMB_MAX = 160, IMG_THUMB_Q = 0.6;   // ממוזערת לטבלה
+const _fullImgCache = new Map();                // fileId -> data URL, כדי לא לטעון שוב
+let _imgViewToken = 0;
+function cacheFullImage(fileId, src){
+  _fullImgCache.set(fileId, src);
+  while (_fullImgCache.size > 12) _fullImgCache.delete(_fullImgCache.keys().next().value);
+}
 function pickImage(id){
   if (!canEditField('img')) return toast('אין הרשאה');
   const inp = document.createElement('input');
   inp.type='file'; inp.accept='image/*'; inp.capture='environment';
-  inp.onchange = ()=>{
-    const f = inp.files[0]; if(!f) return;
-    compressImage(f, 600, 0.55, dataUrl=>{
-      if (!dataUrl) { toast('לא ניתן לעבד את התמונה — נסה JPEG'); return; }
-      const m = data.mezuzot.find(x=>x.id===id); if(!m) return;
-      m.img = dataUrl; save(); toast('תמונה נשמרה');
-    });
-  };
+  inp.onchange = ()=>{ const f = inp.files[0]; if (f) handlePickedImage(id, f); };
   inp.click();
 }
+async function handlePickedImage(id, file){
+  if (!canEditField('img')) return toast('אין הרשאה');
+  let img;
+  try { img = await decodeImageFile(file); }
+  catch(e){ toast('לא ניתן לעבד את התמונה — נסה JPEG'); return; }
+  const full  = resizeToDataURL(img, IMG_FULL_MAX, IMG_FULL_Q);
+  const thumb = resizeToDataURL(img, IMG_THUMB_MAX, IMG_THUMB_Q);
+  const first = data.mezuzot.find(x=>x.id===id); if (!first) return;
+  toast('מעלה תמונה באיכות מלאה…');
+  suppressPullUntil = Date.now() + 45000;          // לא לאמץ נתונים מהשרת באמצע ההעלאה
+  const res = await uploadImageToDrive(first, full);
+  const m = data.mezuzot.find(x=>x.id===id);       // לחפש מחדש: הנתונים אולי התחלפו בזמן ההעלאה
+  if (!m) { suppressPullUntil = Date.now(); return; }
+  if (res.status === 'ok' && res.fileId){
+    cacheFullImage(res.fileId, full);
+    m.img = thumb; m.imgFile = res.fileId;
+    save(); renderMezuzot(); toast('התמונה נשמרה באיכות מלאה');
+  } else if (res.status === 'idle'){
+    compressImage(file, 600, 0.55, dataUrl=>{
+      if (!dataUrl) { suppressPullUntil = Date.now(); toast('לא ניתן לעבד את התמונה — נסה JPEG'); return; }
+      const mm = data.mezuzot.find(x=>x.id===id); if (!mm) return;
+      mm.img = dataUrl; save(); renderMezuzot();
+      toast('נשמר באיכות נמוכה — צריך לעדכן את סקריפט הגוגל');
+    });
+  } else {
+    suppressPullUntil = Date.now();                // ההעלאה נכשלה: לחזור לסנכרון רגיל מיד
+    toast('העלאת התמונה נכשלה: ' + (res.message || 'שגיאת רשת'));
+  }
+}
+function decodeImageFile(file){
+  return new Promise((resolve, reject)=>{
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload  = ()=>{ URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error('decode')); };   // למשל HEIC
+    img.src = url;
+  });
+}
+function resizeToDataURL(img, maxSide, quality){
+  const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.max(1, Math.round(img.naturalWidth*scale)), h = Math.max(1, Math.round(img.naturalHeight*scale));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);    // רקע לבן לתמונות שקופות
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, 0, 0, w, h);
+  return c.toDataURL('image/jpeg', quality);
+}
+function uploadImageToDrive(m, dataUrl){
+  if (!GS_URL) return Promise.resolve({ status:'idle' });
+  const body = new URLSearchParams();
+  body.append('action', 'uploadImg');
+  body.append('id', m.id);
+  body.append('sku', m.sku || '');
+  body.append('data', dataUrl.slice(dataUrl.indexOf(',') + 1));
+  return fetch(GS_URL, { method:'POST', body })
+    .then(r=>r.json())
+    .catch(err=>({ status:'error', message: String((err && err.message) || err) }));
+}
+// התמונה באיכות מלאה: מדרייב אם יש, אחרת מה ששמור בתא
+function getFullImage(m){
+  if (!m.imgFile) return Promise.resolve(m.img || '');
+  if (_fullImgCache.has(m.imgFile)) return Promise.resolve(_fullImgCache.get(m.imgFile));
+  const fileId = m.imgFile;
+  return fetch(GS_URL + '?action=img&file=' + encodeURIComponent(fileId))
+    .then(r=>r.json())
+    .then(res=>{
+      if (!res || res.status !== 'ok' || !res.data) throw new Error((res && res.message) || 'img');
+      const src = 'data:' + (res.mime || 'image/jpeg') + ';base64,' + res.data;
+      cacheFullImage(fileId, src);
+      return src;
+    });
+}
+// שמירה דחוסה בתא — משמשת רק כשסקריפט הגוגל עוד לא עודכן לשמירה בדרייב
 // compress + downscale in a loop until the data-URL fits safely below the sheet cell limit (45000)
 function compressImage(file, maxSize, quality, cb){
   const LIMIT = 40000;
@@ -1128,7 +1206,18 @@ function showImageLightbox(src){
   };
   probe.src = src;
 }
-function viewImage(id){ const m=data.mezuzot.find(x=>x.id===id); if(m&&m.img) showImageLightbox(m.img); }
+function viewImage(id){
+  const m = data.mezuzot.find(x=>x.id===id); if (!m || (!m.img && !m.imgFile)) return;
+  const token = ++_imgViewToken;
+  if (m.imgFile && !_fullImgCache.has(m.imgFile)) toast('טוען תמונה באיכות מלאה…');
+  getFullImage(m)
+    .then(src=>{ if (token === _imgViewToken && src) showImageLightbox(src); })
+    .catch(()=>{
+      if (token !== _imgViewToken) return;
+      toast('לא ניתן לטעון את התמונה המלאה — מוצגת תמונה מוקטנת');
+      if (m.img) showImageLightbox(m.img);
+    });
+}
 
 // ---- details modal (also the scan target) ----
 function showMezuzaDetails(id){
@@ -1138,11 +1227,16 @@ function showMezuzaDetails(id){
   const row=(k,v)=>`<div class="det-row"><span class="k">${k}</span><span class="v">${esc(v)||'—'}</span></div>`;
   const rc=(c,k,v)=>colVis(c)?row(k,v):'';
   document.getElementById('det-body').innerHTML =
-    (m.img?`<img class="det-img" src="${m.img}" style="cursor:zoom-in" onclick="viewImage('${m.id}')" title="לחץ להגדלה">`:'') +
+    ((m.img||m.imgFile)?`<img class="det-img" id="det-img" data-id="${m.id}" src="${m.img||''}" style="cursor:zoom-in" onclick="viewImage('${m.id}')" title="לחץ להגדלה">`:'') +
     row('מק"ט', m.sku) + rc('scribe','סופר', m.scribe) + row('דרגת סופר', scribeGrade(m)) + row('מוצר', m.product) + row('תאריך', m.date) +
     rc('price','מחיר ליחי\'', ILS(m.price)) + rc('comp','הגהת מחשב', m.comp) + rc('g1','גברא 1', m.g1) + rc('g2','גברא 2', m.g2) +
     row('אישור הרב', m.approve) + rc('scribePay','לתשלום לסופר', ILS(scribePay(m))) + row('הולוגרמה בד"ץ', m.holo) + rc('keter','נשלח לכתר', m.keter);
   document.getElementById('detailOverlay').classList.add('show');
+  // להחליף את התמונה הממוזערת בתמונה המלאה ברגע שהיא נטענת
+  if (m.imgFile) getFullImage(m).then(src=>{
+    const el = document.getElementById('det-img');
+    if (el && el.dataset.id === m.id && src) el.src = src;
+  }).catch(()=>{});
 }
 function closeDetails(){ document.getElementById('detailOverlay').classList.remove('show'); }
 function findBySku(sku){ sku=String(sku).trim(); return alive(data.mezuzot).find(m=>String(m.sku).trim()===sku); }
