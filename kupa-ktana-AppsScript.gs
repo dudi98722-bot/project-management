@@ -38,8 +38,9 @@ var SHEETS = {
   },
   withdrawals: {
     name: 'משיכות',
-    headers: ['מזהה', 'תאריך', 'סכום', 'סוג הוצאה', 'מזהה סוג', 'פרטים נוספים', 'נרשם על ידי', 'מזהה משתמש', 'נרשם בתאריך', 'עודכן בתאריך', 'נמחק'],
-    fields:  ['id', 'date', 'amount', 'catName', 'catId', 'details', 'userName', 'userId', 'createdAt', 'updatedAt', 'deleted']
+    /* עמודות חדשות נוספות רק בסוף: הנתונים נקראים לפי מיקום, והזזה הייתה משבשת שורות קיימות */
+    headers: ['מזהה', 'תאריך', 'סכום', 'סוג הוצאה', 'מזהה סוג', 'פרטים נוספים', 'נרשם על ידי', 'מזהה משתמש', 'נרשם בתאריך', 'עודכן בתאריך', 'נמחק', 'התקבלה חשבונית'],
+    fields:  ['id', 'date', 'amount', 'catName', 'catId', 'details', 'userName', 'userId', 'createdAt', 'updatedAt', 'deleted', 'invoice']
   },
   categories: {
     name: 'סוגי הוצאות',
@@ -50,7 +51,14 @@ var SHEETS = {
 
 var DATE_FIELDS = { date: 1 };
 var NUM_FIELDS  = { amount: 1 };
-var BOOL_FIELDS = { deleted: 1, active: 1 };
+var BOOL_FIELDS = { deleted: 1, active: 1, invoice: 1 };
+
+var API_VERSION    = 2;    // הממשק בודק את המספר הזה כדי לדעת אילו יכולות קיימות בשרת
+var SCHEMA_VERSION = '2';  // להעלות בכל פעם שמוסיפים עמודה לגיליון
+
+/* רוחב כל לשונית בגרסה הראשונה. אם בעמודה שנוספה אחר כך כבר יש ערך
+   שאינו שלנו — זה תוכן שהוקלד ידנית בגיליון, ואסור לדרוס אותו. */
+var V1_WIDTH = { users: 8, deposits: 9, withdrawals: 11, categories: 6 };
 
 /* =====================  תשתית גיליון  ===================== */
 var _ssCache = null, _shCache = {};
@@ -134,6 +142,31 @@ function findRow_(key, id) {
 function writeRow_(key, rowNum, o) {
   var cfg = SHEETS[key];
   sheet_(key).getRange(rowNum, 1, 1, cfg.headers.length).setValues([rowValues_(key, o)]);
+}
+
+/* משלים כותרות של עמודות חדשות בגיליון שכבר קיים. רץ פעם אחת לכל גרסת
+   סכמה: שורות ישנות נקראות עם ערך ריק בעמודה החדשה, בלי להזיז שום נתון. */
+function ensureSchema_() {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('kupa_schema') === SCHEMA_VERSION) return;
+  Object.keys(SHEETS).forEach(function (key) {
+    var cfg = SHEETS[key], sh = sheet_(key);
+    var row = sh.getRange(1, 1, 1, cfg.headers.length).getValues()[0];
+    for (var i = 0; i < cfg.headers.length; i++) {
+      var cur = String(row[i] === null || row[i] === undefined ? '' : row[i]).trim();
+      if (cur === cfg.headers[i]) continue;
+      if (cur === '') {
+        sh.getRange(1, i + 1).setValue(cfg.headers[i])
+          .setFontWeight('bold').setBackground('#4A4A2A').setFontColor('#FFFFFF');
+      } else if (i >= (V1_WIDTH[key] || 0)) {
+        throw new Error('בלשונית "' + cfg.name + '" עמודה ' + (i + 1) + ' מכילה "' + cur +
+          '", והמערכת צריכה אותה עבור "' + cfg.headers[i] + '". ' +
+          'העבר את מה שהוספת ידנית לעמודה פנויה אחרי העמודות של המערכת, ונסה שוב.');
+      }
+      /* כותרת ותיקה ששונתה ידנית לא מפריעה — הקריאה היא לפי מיקום */
+    }
+  });
+  props.setProperty('kupa_schema', SCHEMA_VERSION);
 }
 
 /* =====================  עזרים  ===================== */
@@ -245,13 +278,15 @@ function route_(e) {
   var p = (e && e.parameter) ? e.parameter : {};
   var action = p.action || '';
   try {
+    ensureSchema_();
     switch (action) {
-      case 'ping':         return json_({ ok: true, app: 'kupa', needsSetup: needsSetup_() });
+      case 'ping':         return json_({ ok: true, app: 'kupa', needsSetup: needsSetup_(), apiVersion: API_VERSION });
       case 'setupSuper':   return setupSuper_(p);
       case 'login':        return login_(p);
       case 'load':         return load_(p);
       case 'saveEntry':    return saveEntry_(p);
       case 'deleteEntry':  return deleteEntry_(p);
+      case 'setInvoice':   return setInvoice_(p);
       case 'addCategory':  return addCategory_(p);
       case 'saveCategory': return saveCategory_(p);
       case 'saveUser':     return saveUser_(p);
@@ -342,7 +377,7 @@ function payload_(me) {
   categories.forEach(function (c)  { delete c._row; });
 
   var out = {
-    ok: true, user: pubUser_(me), today: today_(),
+    ok: true, apiVersion: API_VERSION, user: pubUser_(me), today: today_(),
     deposits: deposits, withdrawals: withdrawals, categories: categories,
     totals: { deposits: totalIn, withdrawals: totalOut, balance: totalIn - totalOut }
   };
@@ -379,6 +414,8 @@ function saveEntry_(p) {
         if (!cat) return err_('יש לבחור סוג הוצאה');
         row.catId = cat.id; row.catName = cat.name;
         row.details = clean_(p.details, 500);
+        /* רק אם נשלח — עריכה מדף ישן שלא מכיר את השדה לא תאפס את הסימון */
+        if (p.invoice !== undefined) row.invoice = (p.invoice === '1');
       }
       writeRow_(kind, row._row, row);
       delete row._row;
@@ -396,9 +433,29 @@ function saveEntry_(p) {
       if (!c2) return err_('יש לבחור סוג הוצאה');
       o.catId = c2.id; o.catName = c2.name;
       o.details = clean_(p.details, 500);
+      o.invoice = (p.invoice === '1');
     }
     insert_(kind, o);
     return json_({ ok: true, entry: o });
+  } finally { lock.releaseLock(); }
+}
+
+/* סימון חשבונית על משיכה קיימת. אחרי הרישום זו עריכה, ולכן מנהלים בלבד —
+   כמו כל עריכת שורה. מחפשים רק בלשונית המשיכות: להפקדה אין חשבונית. */
+function setInvoice_(p) {
+  var me = auth_(p.token);
+  if (!me) return err_('פג תוקף החיבור — התחבר מחדש');
+  if (!isManager_(me)) return err_('רק מנהל רשאי לעדכן חשבונית אחרי הרישום');
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var row = findRow_('withdrawals', clean_(p.id, 40));
+    if (!row || row.deleted) return err_('המשיכה לא נמצאה');
+    row.invoice = (p.value === '1');
+    row.updatedAt = now_();
+    writeRow_('withdrawals', row._row, row);
+    return json_({ ok: true, invoice: row.invoice });
   } finally { lock.releaseLock(); }
 }
 

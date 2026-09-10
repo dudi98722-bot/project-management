@@ -23,6 +23,7 @@
   --green:#1E8E5A; --green-soft:#E7F5EE;
   --red:#D14343; --red-soft:#FCECEC;
   --blue:#3B6FD4; --blue-soft:#EAF0FC;
+  --amber:#A8660F; --amber-soft:#FDF1DC;
   --radius:14px; --radius-sm:9px;
   --shadow:0 2px 10px rgba(0,0,0,.05);
   --shadow-md:0 10px 34px rgba(0,0,0,.13);
@@ -394,12 +395,54 @@ button, .mcard, .bnav-item, .sheet-item{ touch-action: manipulation; }
 .mc-bot{ margin-top:7px; display:flex; align-items:center; gap:8px;
   font-size:12px; color:var(--muted); }
 .mc-bot .row-acts{ margin-inline-start:auto; }
-.mcard[onclick]{ cursor:pointer; position:relative; }
+.mcard[onclick]{ cursor:pointer; position:relative; padding-inline-end:30px; }
 .mcard[onclick]::after{
-  content:"\203A"; position:absolute; inset-inline-start:12px; top:50%;
-  transform:translateY(-50%) scaleX(-1); color:var(--line);
-  font-size:20px; line-height:1;
+  content:"\2039"; position:absolute; inset-inline-end:11px; top:50%;
+  transform:translateY(-50%); color:#C9C8BD;
+  font-size:22px; line-height:1;
 }
+
+/* ---------- חשבונית ---------- */
+.inv{ display:inline-flex; align-items:center; gap:4px; padding:2px 9px; border-radius:999px;
+  font-size:12px; font-weight:600; white-space:nowrap; line-height:1.6;
+  border:1px solid transparent; font-family:inherit; }
+.inv.ok{ background:var(--green-soft); color:var(--green); }
+.inv.miss{ background:var(--amber-soft); color:var(--amber); }
+button.inv{ cursor:pointer; transition:transform .1s ease-out, border-color .15s; }
+button.inv:hover{ border-color:currentColor; }
+button.inv:active{ transform:scale(.94); }
+.mc-bot .inv{ margin-inline-start:auto; }
+
+/* מתג בסגנון iOS. הכיוון מראה: דלוק = הכפתור בצד שמאל */
+.sw-row{ position:relative; display:flex; align-items:center; gap:12px; padding:12px 14px;
+  border:1px solid var(--line); border-radius:var(--radius-sm); background:#fff;
+  cursor:pointer; margin-bottom:14px; user-select:none;
+  transition:background-color .2s, border-color .2s; }
+.sw-row .sw-txt{ flex:1; font-weight:600; color:var(--olive); line-height:1.35; }
+.sw-row .sw-txt small{ display:block; font-weight:400; font-size:12px; color:var(--muted); margin-top:1px; }
+.sw-in{ position:absolute; opacity:0; width:1px; height:1px; pointer-events:none; }
+.sw{ position:relative; flex-shrink:0; width:50px; height:30px; border-radius:15px;
+  background:#E3E2D8; transition:background-color .2s ease-out; }
+.sw::after{ content:""; position:absolute; top:3px; right:3px; width:24px; height:24px;
+  border-radius:50%; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.22);
+  transition:transform .22s cubic-bezier(.2,.8,.2,1); }
+.sw-in:checked + .sw{ background:var(--green); }
+.sw-in:checked + .sw::after{ transform:translateX(-20px); }
+.sw-in:focus-visible + .sw{ outline:2px solid var(--yellow); outline-offset:2px; }
+.sw-row:has(.sw-in:checked){ border-color:#BFE3CF; background:var(--green-soft); }
+
+.stat-link{ display:block; width:100%; text-align:start; font:inherit; color:inherit; cursor:pointer; }
+.stat-link .val, .stat-link .sub{ display:block; }
+.stat-link:hover{ border-color:var(--amber); }
+.stat.warn::after{ background:var(--amber); }
+.stat.warn .val{ color:var(--amber); }
+
+/* ---------- לוגו ---------- */
+.brand-logo{ height:36px; width:auto; display:block; border-radius:9px;
+  box-shadow:0 1px 3px rgba(0,0,0,.25); }
+.gate-brand{ width:128px; height:128px; margin:0 auto 16px; border-radius:28px; overflow:hidden;
+  background:var(--yellow); box-shadow:0 12px 32px rgba(0,0,0,.16); }
+.gate-brand img{ width:100%; height:100%; object-fit:cover; display:block; }
 
 /* ---------- העדפות נגישות ---------- */
 @media (prefers-reduced-motion: reduce){
@@ -408,6 +451,7 @@ button, .mcard, .bnav-item, .sheet-item{ touch-action: manipulation; }
     transform:none;
   }
   .bnav-item .ic{ transition:none; }
+  .sw, .sw::after, .sw-row, button.inv{ transition:none; }
   .modal-box{ animation:none; }
 }
 @media (prefers-reduced-transparency: reduce){
@@ -420,6 +464,8 @@ button, .mcard, .bnav-item, .sheet-item{ touch-action: manipulation; }
   .bnav-item{ color:var(--olive-2); }
   .inp, .f-inp{ border-color:var(--olive-2); }
   .mcard{ border-bottom-color:var(--line); }
+  .sw{ box-shadow:inset 0 0 0 1px var(--olive-2); }
+  .inv{ border-color:currentColor; }
 }
 </style>
 </head>
@@ -570,7 +616,7 @@ function saveUrl(btn){
 
 function showFirstSetup(){
   paint(screenHtml(
-    '<div class="gate-logo">🍗</div>' +
+    gateLogo() +
     '<h1>התקנה ראשונית</h1>' +
     '<p class="sub">הגדר את המנהל הראשי של הקופה</p>' +
     '<div class="steps"><span class="step-dot on"></span><span class="step-dot on"></span></div>' +
@@ -604,9 +650,9 @@ function doSetup(btn){
 
 function showLogin(){
   paint(screenHtml(
-    '<div class="gate-logo">🍗</div>' +
-    '<h1>שניצל שף</h1>' +
-    '<p class="sub">ניהול קופה קטנה</p>' +
+    gateLogo() +
+    '<h1>קופה קטנה</h1>' +
+    '<p class="sub">שניצל שף · כניסה לצוות</p>' +
     '<div id="m" class="msg"></div>' +
     '<div class="field"><label>שם משתמש</label>' +
     '<input id="un" class="inp" dir="ltr" autocomplete="username"></div>' +
@@ -647,9 +693,99 @@ function logout(){
 /* ---------- טעינת נתונים ---------- */
 function applyPayload(r){
   S.user = r.user; S.today = r.today || todayISO();
-  S.deposits = r.deposits || []; S.withdrawals = r.withdrawals || [];
+  S.apiVersion = r.apiVersion || 0;
+  S.deposits = r.deposits || []; S.withdrawals = (r.withdrawals || []).map(decorateWd);
   S.categories = r.categories || []; S.users = r.users || [];
   S.totals = r.totals || {deposits:0,withdrawals:0,balance:0};
+}
+
+/* סימון חשבונית מוצג רק מול שרת שתומך בו — אחרת היה מופיע מתג שלא נשמר */
+function hasInvoice(){ return (S.apiVersion || 0) >= 2; }
+function decorateWd(w){ w.invoiceHe = w.invoice ? 'התקבלה' : 'חסרה'; return w; }
+
+/* שומר את המצב הנוכחי במטמון, אחרי שינוי מקומי שלא עבר טעינה מחדש */
+function cacheState(){
+  cacheSet({ ok:true, apiVersion:S.apiVersion, user:S.user, today:S.today,
+             deposits:S.deposits, withdrawals:S.withdrawals, categories:S.categories,
+             users:S.users, totals:S.totals });
+}
+
+/* תג החשבונית. אצל מנהל, בטבלה, הוא כפתור שמחליף מצב בנגיעה אחת */
+function invBadge(r, clickable, long){
+  var ok = !!r.invoice;
+  var txt = long ? (ok ? '✓ חשבונית התקבלה' : 'חסרה חשבונית')
+                 : (ok ? '✓ התקבלה' : 'חסרה');
+  var cls = 'inv ' + (ok ? 'ok' : 'miss');
+  if(!clickable) return '<span class="' + cls + '">' + txt + '</span>';
+  return '<button class="' + cls + '" title="' + (ok ? 'לחץ לסימון שחסרה' : 'לחץ לסימון שהתקבלה') +
+         '" onclick="' + "event.stopPropagation();toggleInvoice('" + r.id + "')" + '">' + txt + '</button>';
+}
+
+/* המסך מתעדכן מיד והשרת ברקע. אם השמירה נכשלת — הסימון חוזר למצבו */
+function toggleInvoice(id){
+  if(!isManager() || !hasInvoice()) return;
+  var w = S.withdrawals.filter(function(x){ return x.id === id; })[0];
+  if(!w) return;
+  var next = !w.invoice;
+  w.invoice = next; decorateWd(w);
+  haptic(8);
+  redrawInvoice();
+  api('setInvoice', { id:id, value: next ? '1' : '0' }).then(function(r){
+    if(r && r.ok){ cacheState(); return; }
+    w.invoice = !next; decorateWd(w);
+    redrawInvoice();
+    toast((r && r.error) || 'השמירה נכשלה — הסימון לא עודכן', 'err');
+  });
+}
+function redrawInvoice(){
+  if(S.tab === 'wd') refreshTable('wd');
+  else if(S.tab === 'rep') renderTab();
+}
+
+/* כמה כסף יצא בתקופה בלי חשבונית — ובלחיצה, אילו משיכות אלה */
+function missingInvoiceStat(list){
+  var miss = list.filter(function(x){ return !x.invoice; });
+  if(!miss.length){
+    return '<div class="stat in"><div class="lbl">🧾 חשבוניות</div>' +
+      '<div class="val">הכל התקבל</div><div class="sub">אין משיכות בלי חשבונית</div></div>';
+  }
+  var total = miss.reduce(function(a,x){ return a + (Number(x.amount)||0); }, 0);
+  return '<button class="stat stat-link warn" onclick="showMissingInvoices()">' +
+    '<span class="lbl">🧾 ללא חשבונית</span>' +
+    '<span class="val">' + money(total) + '</span>' +
+    '<span class="sub">' + (miss.length === 1 ? 'משיכה אחת' : miss.length + ' משיכות') +
+      ' · הצג ‹</span></button>';
+}
+function showMissingInvoices(){
+  var f = { invoiceHe: { eq: 'חסרה' } };
+  if(S.repMonth !== 'all') f.date = { from: S.repMonth + '-01', to: S.repMonth + '-31' };
+  S.filters.wd = f;
+  go('wd');
+}
+
+/* הלוגו נטען מקובץ. כשהקובץ חסר חוזרים לסמל הקודם, וזוכרים זאת
+   כדי לא לבקש שוב ושוב קובץ שלא קיים בכל מעבר מסך */
+var LOGO_MISSING = {};
+function brandHtml(){
+  if(LOGO_MISSING.mark){
+    return '<span class="brand-mark">🍗</span><span class="bn">שניצל שף<small>קופה קטנה</small></span>';
+  }
+  return '<img class="brand-logo" src="logo-mark.png" alt="שניצל שף" onerror="brandFallback(this)">' +
+         '<span class="bn">קופה קטנה</span>';
+}
+function brandFallback(img){
+  LOGO_MISSING.mark = true;
+  var brand = img.parentNode;
+  if(brand) brand.innerHTML = brandHtml();
+}
+function gateLogo(){
+  if(LOGO_MISSING.full) return '<div class="gate-logo">🍗</div>';
+  return '<div class="gate-brand"><img src="logo.png" alt="שניצל שף" onerror="gateFallback(this)"></div>';
+}
+function gateFallback(img){
+  LOGO_MISSING.full = true;
+  var box = img.parentNode;
+  if(box){ box.className = 'gate-logo'; box.textContent = '🍗'; }
 }
 /* מטמון מקומי: האפליקציה נפתחת מיד עם מה שהיה, ומתרעננת ברקע */
 function cacheSet(r){ try{ localStorage.setItem(LS_CACHE, JSON.stringify(r)); }catch(e){} }
@@ -738,8 +874,7 @@ function renderApp(){
   var bal = S.totals.balance;
   byId('screen').innerHTML =
     '<div class="topbar"><div class="topbar-in">' +
-      '<div class="brand"><span class="brand-mark">🍗</span>' +
-        '<span class="bn">שניצל שף<small>קופה קטנה</small></span></div>' +
+      '<div class="brand">' + brandHtml() + '</div>' +
       '<div class="bal-pill"><span>יתרה בקופה</span><b id="balpill">' + money0(bal) + '</b>' +
         '<i class="syncdot" id="syncdot"></i></div>' +
       '<div class="who">' +
@@ -869,6 +1004,15 @@ function mobileRecent(list){
 /* =====================================================================
    מנוע טבלאות — סינון "כמו אקסל", מיון, סיכום וייצוא
    ===================================================================== */
+var WD_COLS = [
+  { k:'date',      t:'תאריך',          type:'date' },
+  { k:'amount',    t:'סכום',           type:'money', cls:'out', sum:true, end:true },
+  { k:'catName',   t:'סוג הוצאה',      type:'pick', chip:true },
+  { k:'details',   t:'פרטים נוספים',   type:'text' },
+  { k:'invoiceHe', t:'חשבונית',        type:'pick', invoice:true, needsInvoice:true },
+  { k:'userName',  t:'נרשם על ידי',    type:'pick' },
+  { k:'createdAt', t:'נרשם בתאריך',    type:'text', muted:true }
+];
 var TABLES = {
   dep: {
     title:'הפקדות', icon:'⬆️', kind:'deposit', file:'הפקדות',
@@ -884,14 +1028,9 @@ var TABLES = {
   wd: {
     title:'משיכות', icon:'⬇️', kind:'withdrawal', file:'משיכות',
     rows:function(){ return S.withdrawals; },
-    cols:[
-      { k:'date',     t:'תאריך',          type:'date' },
-      { k:'amount',   t:'סכום',           type:'money', cls:'out', sum:true, end:true },
-      { k:'catName',  t:'סוג הוצאה',      type:'pick', chip:true },
-      { k:'details',  t:'פרטים נוספים',   type:'text' },
-      { k:'userName', t:'נרשם על ידי',    type:'pick' },
-      { k:'createdAt',t:'נרשם בתאריך',    type:'text', muted:true }
-    ]
+    get cols(){
+      return WD_COLS.filter(function(c){ return !c.needsInvoice || hasInvoice(); });
+    }
   },
   cat: {
     title:'סוגי הוצאות', icon:'🏷️', file:'סוגי הוצאות',
@@ -1124,6 +1263,7 @@ function cellHtml(c, r){
   if(c.role)  return '<td><span class="chip role-' + esc(r.role) + '">' + esc(v) + '</span></td>';
   if(c.status)return '<td><span class="chip' + (r.active?'':' off') + '">' + esc(v) + '</span></td>';
   if(c.chip)  return '<td><span class="chip">' + esc(v) + '</span></td>';
+  if(c.invoice) return '<td>' + invBadge(r, isManager()) + '</td>';
   return '<td' + (c.muted?' class="muted"':'') + (c.ltr?' dir="ltr"':'') + '>' +
          (v ? esc(v) : '<span class="muted">—</span>') + '</td>';
 }
@@ -1266,9 +1406,10 @@ function renderReports(w){
       '<div class="stat big' + ((totIn-totOut)<0?' neg':'') + '"><div class="lbl">📊 מאזן התקופה</div>' +
         '<div class="val">' + money(totIn-totOut) + '</div>' +
         '<div class="sub">' + (S.repMonth==='all'?'כל התקופות':monthLabel(S.repMonth)) + '</div></div>' +
-      '<div class="stat"><div class="lbl">🧾 ממוצע למשיכה</div>' +
+      '<div class="stat"><div class="lbl">🧮 ממוצע למשיכה</div>' +
         '<div class="val">' + money(R.wd.length ? totOut/R.wd.length : 0) + '</div>' +
         '<div class="sub">' + cats.length + ' סוגי הוצאה בשימוש</div></div>' +
+      (hasInvoice() ? missingInvoiceStat(R.wd) : '') +
     '</div>' +
     '<div class="rep-grid">' +
       '<div class="card"><div class="card-title">🏷️ הוצאות לפי סוג</div><div class="card-pad">' +
@@ -1366,7 +1507,14 @@ function entryModal(kind, id){
         '</select>' +
         '<button class="btn btn-ghost" onclick="inlineNewCat(this)" title="סוג הוצאה חדש">➕</button></div></div>' +
         '<div class="field"><label>פרטים נוספים</label>' +
-        '<textarea id="e-det" class="inp" placeholder="ספק, מספר חשבונית, פירוט…">' + esc(e?e.details:'') + '</textarea></div>');
+        '<textarea id="e-det" class="inp" placeholder="ספק, מספר חשבונית, פירוט…">' + esc(e?e.details:'') + '</textarea></div>' +
+        (hasInvoice()
+          ? '<label class="sw-row"><span class="sw-txt">🧾 התקבלה חשבונית' +
+              '<small>' + (isManager() ? 'אפשר לסמן גם מאוחר יותר' : 'אם יש בידך חשבונית — סמן עכשיו') +
+              '</small></span>' +
+            '<input type="checkbox" id="e-inv" class="sw-in"' + ((e && e.invoice) ? ' checked' : '') + '>' +
+            '<span class="sw" aria-hidden="true"></span></label>'
+          : ''));
 
   openModal(modalBox(
     (e ? '✏️ עריכת ' : (isDep?'⬆️ ':'⬇️ ')) + (isDep?'הפקדה':'משיכה'),
@@ -1406,6 +1554,8 @@ function saveEntry(btn, kind, id){
     p.catId = val('e-cat');
     if(!p.catId) return setMsg('mm','יש לבחור סוג הוצאה');
     p.details = val('e-det');
+    var inv = byId('e-inv');
+    if(inv) p.invoice = inv.checked ? '1' : '0';
   }
   setMsg('mm',''); busy(btn,true,'שומר…');
   api('saveEntry',p).then(function(r){
@@ -1601,6 +1751,7 @@ function exportReport(){
   var sum = function(a){ return a.reduce(function(s,x){ return s + (Number(x.amount)||0); },0); };
   var totIn = sum(R.dep), totOut = sum(R.wd);
   var period = S.repMonth==='all' ? 'כל התקופות' : monthLabel(S.repMonth);
+  var missing = R.wd.filter(function(x){ return !x.invoice; });
 
   var byCat = {};
   R.wd.forEach(function(x){
@@ -1640,7 +1791,9 @@ function exportReport(){
             ['סך הפקדות',{v:totIn,t:'money'}],
             ['סך משיכות',{v:totOut,t:'money'}],
             ['מאזן התקופה',{v:totIn-totOut,t:'money'}],
-            ['יתרה בקופה כרגע',{v:S.totals.balance,t:'money'}]] },
+            ['יתרה בקופה כרגע',{v:S.totals.balance,t:'money'}]].concat(hasInvoice() ? [[],
+            ['משיכות ללא חשבונית',{v:missing.length,t:'n'}],
+            ['סכום ללא חשבונית',{v:sum(missing),t:'money'}]] : []) },
     { name:'לפי סוג הוצאה',
       rows:[['סוג הוצאה','מספר משיכות','סכום','אחוז מסך המשיכות']].concat(
         cats.map(function(c){
@@ -1660,9 +1813,11 @@ function exportReport(){
           return [u.name, {v:u.n,t:'n'}, {v:u.inn,t:'money'}, {v:u.out,t:'money'}];
         })) },
     { name:'משיכות מפורט',
-      rows:[['תאריך','סכום','סוג הוצאה','פרטים נוספים','נרשם על ידי']].concat(
+      rows:[['תאריך','סכום','סוג הוצאה','פרטים נוספים','נרשם על ידי']
+              .concat(hasInvoice() ? ['חשבונית'] : [])].concat(
         R.wd.slice().sort(function(a,b){ return a.date<b.date?1:-1; }).map(function(x){
-          return [{v:x.date,t:'d'}, {v:x.amount,t:'money'}, x.catName, x.details, x.userName];
+          return [{v:x.date,t:'d'}, {v:x.amount,t:'money'}, x.catName, x.details, x.userName]
+            .concat(hasInvoice() ? [x.invoice ? 'התקבלה' : 'חסרה'] : []);
         })) },
     { name:'הפקדות מפורט',
       rows:[['תאריך','סכום','הערה','נרשם על ידי']].concat(
@@ -2008,7 +2163,8 @@ function mcardHtml(tk, r){
         '<span class="mc-amt out">−' + money(r.amount) + '</span></div>' +
       '<div class="mc-note' + (r.details?'':' empty') + '">' +
         (r.details ? esc(r.details) : 'ללא פירוט') + '</div>' +
-      '<div class="mc-bot">' + esc(r.userName) + acts + '</div></div>';
+      '<div class="mc-bot">' + esc(r.userName) +
+        (hasInvoice() ? invBadge(r, false, true) : '') + acts + '</div></div>';
   }
   if(tk === 'cat'){
     return '<div class="mcard"' + tap + '>' +
@@ -2047,9 +2203,15 @@ function cardActions(tk, id){
     del   = (r.id === S.user.id) ? '' : "closeModal();askDeleteUser('" + id + "')";
   }
 
+  var inv = '';
+  if(tk === 'wd' && hasInvoice()){        /* הפעולה הנפוצה ביותר — ראשונה ברשימה */
+    inv = '<button class="sheet-item" onclick="' + "closeModal();toggleInvoice('" + id + "')" + '">' +
+          '<span class="ic">🧾</span>' +
+          (r.invoice ? 'סמן שחסרה חשבונית' : 'סמן שהתקבלה חשבונית') + '</button>';
+  }
   haptic(6);
   openModal(modalBox(title,
-    '<div class="sheet-list">' +
+    '<div class="sheet-list">' + inv +
       '<button class="sheet-item" onclick="' + edit + '">' +
         '<span class="ic">✏️</span>עריכה</button>' +
       (del ? '<button class="sheet-item" style="color:var(--red)" onclick="' + del + '">' +
