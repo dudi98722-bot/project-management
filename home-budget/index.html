@@ -125,6 +125,25 @@ thead th{text-align:right;font-size:11.5px;color:var(--dim);font-weight:700;lett
 thead tr:first-child th{box-shadow:0 1px 0 var(--line)}
 thead th.sortable{cursor:pointer;user-select:none}
 thead th .arrow{opacity:.35;font-size:9px;margin-inline-start:3px}
+thead th .hlbl{cursor:pointer;user-select:none}
+.colbtn{background:none;border:0;color:var(--faint);cursor:pointer;font-size:11px;padding:0 4px;
+  margin-inline-start:2px;border-radius:5px;line-height:1.4;vertical-align:middle;
+  transition:color var(--dur-fast) ease,background var(--dur-fast) ease}
+thead th.sorted .colbtn{color:var(--brand)}
+/* תפריט העמודה — מוצמד למסך כדי שלא ייחתך בטבלה שגוללת */
+#colMenu{position:fixed;z-index:300;min-width:190px;background:#fff;border:1px solid var(--line);
+  border-radius:var(--r);box-shadow:var(--shadow-lg);padding:6px;
+  visibility:hidden;opacity:0;transform:scale(.97);transform-origin:top right;
+  transition:opacity var(--dur-fast) var(--ease-out),transform var(--dur-fast) var(--ease-out),
+             visibility 0s linear var(--dur-fast)}
+#colMenu.on{visibility:visible;opacity:1;transform:none;transition-delay:0s}
+.cm-title{font-size:11.5px;color:var(--faint);padding:5px 10px 7px;font-weight:600}
+.cm-item{display:flex;align-items:center;gap:9px;width:100%;text-align:right;background:none;border:0;
+  padding:8px 10px;border-radius:7px;font-size:13.5px;color:var(--ink);cursor:pointer;font-family:inherit}
+.cm-item.on{background:var(--brand-soft);color:var(--brand);font-weight:600}
+.cm-item.dim{color:var(--dim)}
+.cm-ico{width:14px;text-align:center;color:var(--dim)}
+.cm-item.on .cm-ico{color:var(--brand)}
 thead th.sorted{color:var(--brand)}
 thead th.sorted .arrow{opacity:1}
 /* שורת הסינון נצמדת מתחת לשורת הכותרת — 36px הוא הגובה הקבוע שלה */
@@ -277,6 +296,8 @@ body.picking{padding-bottom:96px}
 }
 /* ---------- hover: רק כשיש עכבר. במגע hover נתקע אחרי הקשה ---------- */
 @media (hover:hover) and (pointer:fine){
+  .colbtn:hover{color:var(--brand);background:var(--brand-soft)}
+  .cm-item:hover{background:var(--card2)}
   #userChip:hover{background:rgba(255,255,255,.16)}
   nav button:hover{color:rgba(255,255,255,.92);background:rgba(255,255,255,.06)}
   .btn:hover{background:var(--brand-h)}
@@ -294,6 +315,7 @@ body.picking{padding-bottom:96px}
 /* ---------- תנועה מופחתת: פחות ועדין יותר, לא אפס — opacity נשאר ---------- */
 @media (prefers-reduced-motion:reduce){
   .btn:active,.chip:active{transform:none}
+  #colMenu{transform:none}
   #toast{transform:translate(50%,0)}
   #modal{transform:none}
   #loginOverlay .lcard{@starting-style{transform:none}}
@@ -624,6 +646,7 @@ body.picking{padding-bottom:96px}
 
 <div id="modalWrap" onclick="if(event.target===this)closeModal()"><div id="modal"></div></div>
 <div id="toast"></div>
+<div id="colMenu" role="menu"></div>
 
 <script>
 /* ============================================================
@@ -692,6 +715,13 @@ function runAct(e){
 }
 document.addEventListener('click', runAct);
 document.addEventListener('change', runAct);
+/* תיבות סימון בטבלה לא מקבלות מיקוד בלחיצה. מיקוד גורם לדפדפן לגלגל
+   את מיכל הטבלה כדי לחשוף את התיבה — ובטבלה עם כותרת דביקה, שורה
+   שיושבת חלקית מתחתיה "קופצת" בכל סימון. הסימון עצמו לא תלוי במיקוד. */
+document.addEventListener('mousedown', e=>{
+  const cb=e.target.closest('input[type="checkbox"]');
+  if(cb && cb.closest('table')) e.preventDefault();
+});
 
 /** מזהה תקין הוא רק מה ש-uid() מייצר. שורה עם מזהה אחר לא נכנסת
  *  ל-DOM בכלל — גם אם נכתבה ידנית בגיליון. */
@@ -1646,9 +1676,14 @@ function smartTable(spec){
   let h='<thead><tr>';
   spec.cols.forEach(c=>{
     const canSort=c.sort!==false, on=st.sk===c.key;
-    h+='<th class="'+(c.cls||'')+(canSort?' sortable':'')+(on?' sorted':'')+'"'+
-       (canSort?' onclick="sortSmart(\''+spec.el+'\',\''+c.key+'\')"':'')+'>'+
-       (c.label||'')+(canSort?'<span class="arrow">'+(on?(st.sd>0?'▲':'▼'):'⇅')+'</span>':'')+'</th>';
+    /* מפתח הטבלה ומפתח העמודה נשלטים בקוד — בטוחים בתוך data-id */
+    const ref=spec.el+'|'+c.key;
+    h+='<th class="'+(c.cls||'')+(canSort?' sortable':'')+(on?' sorted':'')+'">'+
+       (canSort
+         ? '<span class="hlbl" data-act="sortToggle" data-id="'+ref+'">'+(c.label||'')+
+           '<span class="arrow">'+(on?(st.sd>0?'▲':'▼'):'⇅')+'</span></span>'+
+           '<button class="colbtn" data-act="colMenu" data-id="'+ref+'" title="מיון העמודה">▾</button>'
+         : (c.label||''))+'</th>';
   });
   h+='</tr>';
   if(spec.cols.some(c=>c.filter&&c.filter!=='none')){
@@ -1722,6 +1757,44 @@ function sortSmart(el,key){
   smartTable(tableSpecs[el]);
 }
 function clearFilters(el){ tableState[el]={f:{},sk:null,sd:1}; smartTable(tableSpecs[el]); }
+function setSort(el,key,dir){ const st=tableState[el]; st.sk=key; st.sd=dir||1; smartTable(tableSpecs[el]); }
+
+/* ---------- תפריט עמודה: מיין מא׳ עד ת׳ / מת׳ עד א׳ ---------- */
+/* כמו התפריט שנפתח מחץ העמודה באקסל. הניסוח מותאם לסוג העמודה:
+   טקסט לפי א-ת, מספרים מהקטן לגדול, תאריכים מהישן לחדש. */
+let colMenuOpen=null;
+function colType(c){ return c.type || (c.cls==='num' ? 'num' : c.key==='date' ? 'date' : 'text'); }
+function openColMenu(el,key,btn){
+  const spec=tableSpecs[el], st=tableState[el], c=spec&&spec.cols.find(x=>x.key===key);
+  if(!c) return;
+  if(colMenuOpen===el+'|'+key){ closeColMenu(); return; }
+  const type=colType(c);
+  const L = type==='num'  ? ['מהקטן לגדול','מהגדול לקטן']
+          : type==='date' ? ['מהישן לחדש','מהחדש לישן']
+          :                 ['מיין מא׳ עד ת׳','מיין מת׳ עד א׳'];
+  const on = st.sk===key ? st.sd : 0;
+  const title=String(c.label||'').replace(/<[^>]*>/g,'').trim();
+  const m=$('colMenu');
+  m.innerHTML=
+    (title?'<div class="cm-title">'+esc(title)+'</div>':'')+
+    '<button class="cm-item'+(on>0?' on':'')+'" data-act="colSort" data-id="'+el+'|'+key+'|1">'+
+      '<span class="cm-ico">↑</span>'+L[0]+'</button>'+
+    '<button class="cm-item'+(on<0?' on':'')+'" data-act="colSort" data-id="'+el+'|'+key+'|-1">'+
+      '<span class="cm-ico">↓</span>'+L[1]+'</button>'+
+    (on?'<button class="cm-item dim" data-act="colClear" data-id="'+el+'">'+
+      '<span class="cm-ico">✕</span>בטל מיון</button>':'');
+  /* מיקום קבוע מתחת לכפתור — הטבלה עצמה גוללת, ותפריט בתוכה היה נחתך */
+  const r=btn.getBoundingClientRect();
+  m.style.top=(r.bottom+4)+'px';
+  m.style.right=Math.max(8, window.innerWidth-r.right)+'px';
+  m.classList.add('on'); colMenuOpen=el+'|'+key;
+}
+function closeColMenu(){ const m=$('colMenu'); if(m) m.classList.remove('on'); colMenuOpen=null; }
+document.addEventListener('click', e=>{
+  if(colMenuOpen && !e.target.closest('#colMenu') && !e.target.closest('.colbtn')) closeColMenu();
+}, true);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeColMenu(); });
+document.addEventListener('scroll', ()=>{ if(colMenuOpen) closeColMenu(); }, true);
 
 /* ---------------- תנועות ---------------- */
 let selTx=new Set(), lastFiltered=[];
@@ -2608,6 +2681,10 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
 Object.assign(ACTIONS,{
   showProv, editTx, saveTx, delTx, restoreTx,
   setRowCat:(id,el)=>setRowCat(id,el),
+  sortToggle:(id)=>{ const [el,key]=id.split('|'); sortSmart(el,key); },
+  colMenu:(id,btn)=>{ const [el,key]=id.split('|'); openColMenu(el,key,btn); },
+  colSort:(id)=>{ const [el,key,dir]=id.split('|'); setSort(el,key,Number(dir)); closeColMenu(); },
+  colClear:(id)=>{ setSort(id,null,1); closeColMenu(); },
   clsRowCat:(id,el)=>clsRowCat(id,el),
   pickStencil, delStencil, delRule, delCat, restoreCat, delUser,
   toggleSel:(id,el)=>toggleSel(id, el.checked),
