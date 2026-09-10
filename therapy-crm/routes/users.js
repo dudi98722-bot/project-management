@@ -11,7 +11,7 @@ function cleanEmail(v) {
   return e || null;
 }
 
-// תווית ותיאור לכל תפקיד. תפקיד שהמנהל שינה לו הרשאות מסומן — התיאור הקבוע
+// תווית ותיאור לכל תפקיד. תפקיד שההרשאות שלו שונו מסומן — התיאור הקבוע
 // כבר לא מתאר אותו במדויק
 async function roleInfo() {
   const out = {};
@@ -21,7 +21,7 @@ async function roleInfo() {
   return out;
 }
 
-router.get('/', authenticate, can('manageUsers'), async (req, res) => {
+router.get('/', authenticate, can('viewUsers'), async (req, res) => {
   try {
     const r = await pool.query('SELECT id, username, role, full_name, email, active, last_login, created_at FROM users ORDER BY id');
     const info = await roleInfo();
@@ -32,22 +32,22 @@ router.get('/', authenticate, can('manageUsers'), async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-router.get('/roles', authenticate, can('manageUsers'), async (req, res) => {
+router.get('/roles', authenticate, can('viewUsers'), async (req, res) => {
   try {
     const info = await roleInfo();
     res.json(Object.entries(info).map(([k, v]) => ({ role: k, label: v.label, desc: v.desc, custom: v.custom })));
   } catch (e) { res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-// ===== מסך ההרשאות: מה מותר לכל סוג משתמש =====
-router.get('/permissions', authenticate, can('manageUsers'), async (req, res) => {
+// ===== טבלת ההרשאות: מנהל ראשי ומנהל בלבד =====
+router.get('/permissions', authenticate, can('managePermissions'), async (req, res) => {
   try { res.json(await matrix()); }
   catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
 // { roles: { guide: { editNotes: true, holds: false, ... }, ... } }
 // מוגדר לפני PUT /:id — אחרת "permissions" היה נתפס כמזהה משתמש
-router.put('/permissions', authenticate, can('manageUsers'), async (req, res) => {
+router.put('/permissions', authenticate, can('managePermissions'), async (req, res) => {
   const roles = (req.body || {}).roles;
   if (!roles || typeof roles !== 'object' || Array.isArray(roles)) {
     return res.status(400).json({ error: 'בקשה לא תקינה' });
@@ -59,10 +59,15 @@ router.put('/permissions', authenticate, can('manageUsers'), async (req, res) =>
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
+// ניהול משתמשים ניתן לפתוח בטבלת ההרשאות לתפקידים נוספים, אבל מנהל ראשי נשאר
+// בידי מנהל ראשי: אחרת מי שקיבל ניהול משתמשים היה יוצר לעצמו גישה מלאה
+const ADMIN_ONLY_MSG = 'רק מנהל ראשי יכול ליצור או לערוך משתמש מסוג מנהל ראשי';
+
 router.post('/', authenticate, can('manageUsers'), async (req, res) => {
   const { username, password, role, full_name, email } = req.body || {};
   if (!username || !password) return res.status(400).json({ error: 'שם משתמש וסיסמא חובה' });
   if (!ROLES[role]) return res.status(400).json({ error: 'תפקיד לא תקין' });
+  if (role === 'admin' && req.user.role !== 'admin') return res.status(403).json({ error: ADMIN_ONLY_MSG });
   try {
     const hash = await bcrypt.hash(password, 10);
     const r = await pool.query(
@@ -89,6 +94,11 @@ router.put('/:id', authenticate, can('manageUsers'), async (req, res) => {
   }
 
   try {
+    if (req.user.role !== 'admin') {
+      const cur = await pool.query('SELECT role FROM users WHERE id=$1', [req.params.id]);
+      if (!cur.rows.length) return res.status(404).json({ error: 'לא נמצא' });
+      if (cur.rows[0].role === 'admin' || role === 'admin') return res.status(403).json({ error: ADMIN_ONLY_MSG });
+    }
     if (password) {
       const hash = await bcrypt.hash(password, 10);
       await pool.query('UPDATE users SET password_hash=$1, password_changed_at=NOW() WHERE id=$2', [hash, req.params.id]);

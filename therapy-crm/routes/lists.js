@@ -14,7 +14,7 @@ router.get('/', authenticate, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-router.post('/', authenticate, can('editLists'), async (req, res) => {
+router.post('/', authenticate, can('editCommunity'), async (req, res) => {
   const { list_name, value } = req.body || {};
   if (!list_name || !value || !String(value).trim()) return res.status(400).json({ error: 'שם רשימה וערך חובה' });
   try {
@@ -26,7 +26,7 @@ router.post('/', authenticate, can('editLists'), async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-router.delete('/:id', authenticate, can('editLists'), async (req, res) => {
+router.delete('/:id', authenticate, can('editCommunity'), async (req, res) => {
   try {
     const r = await pool.query('DELETE FROM list_items WHERE id=$1 RETURNING id, list_name, value', [req.params.id]);
     if (!r.rows.length) return res.status(404).json({ error: 'לא נמצא' });

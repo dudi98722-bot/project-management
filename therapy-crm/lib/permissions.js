@@ -1,10 +1,11 @@
-// ===== הרשאות: קטלוג הפעולות, ברירות המחדל לכל תפקיד, והשינויים שהמנהל קבע =====
-// המנהל מסמן בלשונית "משתמשים" מה מותר לכל סוג משתמש. ברירות המחדל מוגדרות כאן,
-// ובמסד (role_permissions) נשמרות רק ההרשאות שהמנהל שינה מהן — כך הרשאה חדשה
-// שנוספת בקוד מקבלת את ברירת המחדל שלה, בלי לדרוס את מה שהמנהל כבר קבע.
+// ===== הרשאות: קטלוג הפעולות, ברירות המחדל לכל תפקיד, והשינויים שנקבעו במסך =====
+// מנהל ראשי ומנהל מסמנים בלשונית "משתמשים" מה מותר לכל סוג משתמש. ברירות המחדל
+// מוגדרות כאן, ובמסד (role_permissions) נשמרות רק ההרשאות ששונו מהן — כך הרשאה חדשה
+// שנוספת בקוד מקבלת את ברירת המחדל שלה, בלי לדרוס את מה שכבר נקבע.
 const { pool } = require('../db');
 
-// איזו הרשאה פותחת לעריכה כל שדה של מטופל — משותף לשרת ולטופס (נשלח ב-/patients/meta)
+// איזו הרשאה פותחת כל שדה של מטופל לעריכה ולצפייה — משותף לשרת ולטופס
+// (נשלח ב-/patients/meta, כך שהטופס נועל ומסתיר בדיוק מה שהשרת חוסם)
 const FIELD_CAPS = {
   last_name: 'editName', first_name: 'editName',
   national_id: 'editNationalId', intake_date: 'editIntakeDate', birth_date: 'editBirthDate',
@@ -13,120 +14,148 @@ const FIELD_CAPS = {
   preferred_therapist_ids: 'editPref', preferred_group_ids: 'editPref',
   notes: 'editNotes', diagnosis: 'editDiagnosis', notes2: 'editNote2',
 };
+const FIELD_VIEW_CAPS = {
+  last_name: 'viewName', first_name: 'viewName',
+  national_id: 'viewNationalId', intake_date: 'viewIntakeDate', birth_date: 'viewBirthDate',
+  hmo: 'viewHmo', community: 'viewCommunity', client_type: 'viewClientType',
+  urgency: 'viewUrgency', hours: 'viewHours',
+  preferred_therapist_ids: 'viewPref', preferred_group_ids: 'viewPref',
+  notes: 'viewNotes', diagnosis: 'viewDiagnosis', notes2: 'viewNote2',
+};
 
-// טבלת ההרשאות שבמסך: כל שורה היא נושא, עם הרשאת צפייה (view) ו/או עריכה (edit).
-// 'always' = פתוח לכל מי שנכנס למערכת.
+// טבלת ההרשאות שבמסך. שורת נושא = צפייה (view) + עריכה (edit);
+// שורת פעולה (action) = פעולה אחת, עם תיבת סימון אחת.
 const CATALOG = [
+  { title: 'רשימת הממתינים', rows: [
+    { label: 'רשימת הממתינים', hint: 'צפייה = הלשונית · עריכה = הוספת מטופל חדש וייבוא מאקסל', view: 'tabWaiting', edit: 'addPatient' },
+    { label: 'מחיקת מטופל', action: 'deletePatient' },
+  ]},
   { title: 'פרטי מטופל', rows: [
-    { label: 'שם משפחה ושם פרטי', view: 'always', edit: 'editName' },
-    { label: 'מספר זהות', view: 'always', edit: 'editNationalId' },
-    { label: 'תאריך אינטייק', view: 'always', edit: 'editIntakeDate' },
-    { label: 'תאריך לידה', view: 'always', edit: 'editBirthDate' },
-    { label: 'קופת חולים', view: 'always', edit: 'editHmo' },
-    { label: 'השתייכות קהילתית', view: 'always', edit: 'editCommunity' },
-    { label: 'בן / בת', view: 'always', edit: 'editClientType' },
-    { label: 'רמת דחיפות', view: 'always', edit: 'editUrgency' },
-    { label: 'שעות מתאימות לטיפול', view: 'always', edit: 'editHours' },
-    { label: 'שיוך למטפלים', view: 'always', edit: 'editPref' },
-    { label: 'הערות', view: 'always', edit: 'editNotes' },
+    { label: 'שם משפחה ושם פרטי', hint: 'בלי צפייה המטופל מוצג כ"מטופל #מספר"', view: 'viewName', edit: 'editName' },
+    { label: 'מספר זהות', view: 'viewNationalId', edit: 'editNationalId' },
+    { label: 'תאריך אינטייק', view: 'viewIntakeDate', edit: 'editIntakeDate' },
+    { label: 'תאריך לידה וגיל', view: 'viewBirthDate', edit: 'editBirthDate' },
+    { label: 'קופת חולים', view: 'viewHmo', edit: 'editHmo' },
+    { label: 'השתייכות קהילתית', hint: 'עריכה כוללת הוספת קהילה חדשה לרשימה', view: 'viewCommunity', edit: 'editCommunity' },
+    { label: 'בן / בת', view: 'viewClientType', edit: 'editClientType' },
+    { label: 'רמת דחיפות', view: 'viewUrgency', edit: 'editUrgency' },
+    { label: 'שעות מתאימות לטיפול', view: 'viewHours', edit: 'editHours' },
+    { label: 'שיוך למטפלים', view: 'viewPref', edit: 'editPref' },
+    { label: 'הערות', view: 'viewNotes', edit: 'editNotes' },
     { label: 'אבחנה', view: 'viewDiagnosis', edit: 'editDiagnosis' },
     { label: 'הערה מקצועית', view: 'viewNote2', edit: 'editNote2' },
   ]},
-  { title: 'מטופלים', rows: [
-    { label: 'הוספת מטופל חדש', hint: 'כולל ייבוא מאקסל', edit: 'addPatient' },
-    { label: 'מחיקת מטופל', edit: 'deletePatient' },
-    { label: 'קבצים מצורפים', hint: 'צפייה = הורדה · עריכה = צירוף קבצים', view: 'always', edit: 'files' },
-    { label: 'מחיקת קבצים מצורפים', edit: 'deleteFiles' },
-    { label: 'הוספת קהילה חדשה לרשימה', edit: 'editLists' },
+  { title: 'קבצים מצורפים', rows: [
+    { label: 'קבצים מצורפים', hint: 'צפייה = רשימת הקבצים והורדה · עריכה = צירוף קבצים', view: 'viewFiles', edit: 'files' },
+    { label: 'מחיקת קבצים מצורפים', action: 'deleteFiles' },
   ]},
   { title: 'השהיה ושיבוץ', rows: [
     { label: 'רשימת השהיה', hint: 'עריכה = העברה להשהיה והסרה ממנה', view: 'viewHolds', edit: 'holds' },
     { label: 'שיבוץ לטיפול', hint: 'צפייה = המטפלים הפנויים למטופל · עריכה = שיבוץ בפועל, פגישה בודדת ולשונית מטופלים קיימים', view: 'viewAssign', edit: 'assign' },
-    { label: 'עדכון פגישה', hint: 'בוצעה / לא הגיע / בוטלה', edit: 'editSessions' },
-    { label: 'ביטול סדרת טיפולים', edit: 'cancelSeries' },
+    { label: 'סדרות טיפול', hint: 'צפייה = הלשונית · עריכה = ביטול סדרה', view: 'tabSeries', edit: 'cancelSeries' },
+    { label: 'פגישות', hint: 'צפייה = רשימת הפגישות בסדרה · עריכה = בוצעה / לא הגיע / בוטלה', view: 'viewSessions', edit: 'editSessions' },
   ]},
   { title: 'ממתינים לאינטייק', rows: [
     { label: 'ממתינים לאינטייק', hint: 'עריכה = הוספה, עריכה והסרה מהרשימה', view: 'viewIntake', edit: 'editIntake' },
   ]},
   { title: 'לשוניות והגדרות', rows: [
     { label: 'התאמות', hint: 'עריכה = הגדרת השעות של חלקי היום', view: 'tabMatches', edit: 'editHourParts' },
-    { label: 'סדרות טיפול', view: 'tabSeries' },
     { label: 'לוח שנה', hint: 'עריכה = ימי חופש וחג', view: 'tabCalendar', edit: 'editHolidays' },
     { label: 'מטפלים וקבוצות', hint: 'עריכה = הוספה ועריכה של מטפלים, לו"ז וקבוצות', view: 'tabTherapists', edit: 'editTherapists' },
-    { label: 'מחיקת מטפלים וקבוצות', edit: 'deleteTherapists' },
-    { label: 'משתמשים והרשאות', hint: 'מנהל ראשי בלבד', edit: 'manageUsers' },
+    { label: 'מחיקת מטפלים וקבוצות', action: 'deleteTherapists' },
+    { label: 'משתמשים', hint: 'צפייה = רשימת המשתמשים · עריכה = הוספה ועריכה של משתמשים', view: 'viewUsers', edit: 'manageUsers' },
   ]},
 ];
 
 // הרשאה משמאל גוררת את אלה שמימין. עריכה בלי צפייה מסוכנת: טופס שלא מציג שדה
 // שולח אותו ריק, ומי שרשאי לערוך אותו היה מוחק את התוכן בכל שמירה.
 const IMPLIES = {
-  editDiagnosis: ['viewDiagnosis'], editNote2: ['viewNote2'],
-  holds: ['viewHolds'], assign: ['viewAssign'], editIntake: ['viewIntake'],
-  editHourParts: ['tabMatches'], editHolidays: ['tabCalendar'], cancelSeries: ['tabSeries'],
+  ...Object.fromEntries(Object.keys(FIELD_CAPS).map(f => [FIELD_CAPS[f], [FIELD_VIEW_CAPS[f]]])),
+  addPatient: ['tabWaiting', 'viewName'], deletePatient: ['tabWaiting'],
+  files: ['viewFiles'], deleteFiles: ['viewFiles'],
+  holds: ['viewHolds'], assign: ['viewAssign'], cancelSeries: ['tabSeries'], editSessions: ['viewSessions'],
+  editIntake: ['viewIntake'],
+  editHourParts: ['tabMatches'], editHolidays: ['tabCalendar'],
   editTherapists: ['tabTherapists'], deleteTherapists: ['tabTherapists'],
+  manageUsers: ['viewUsers'],
 };
 
-const CAP_KEYS = [...new Set(CATALOG.flatMap(s => s.rows.flatMap(r => [r.view, r.edit])))]
-  .filter(c => c && c !== 'always');
-// ניהול משתמשים נשאר של מנהל ראשי בלבד — מי שמקבל אותו יכול לשנות לעצמו את כל השאר
-const LOCKED_CAPS = new Set(['manageUsers']);
+const CAP_KEYS = [...new Set(CATALOG.flatMap(s => s.rows.flatMap(r => [r.view, r.edit, r.action])))].filter(Boolean);
+// נשמר למקרה שתתווסף הרשאה שאסור לשנות; היום אין כזו — כל תיבה בטבלה ניתנת לסימון
+const LOCKED_CAPS = new Set();
 const EDITABLE_CAPS = CAP_KEYS.filter(c => !LOCKED_CAPS.has(c));
 
 function applyImplications(caps) {
-  for (const [cap, needs] of Object.entries(IMPLIES)) {
-    if (caps[cap]) needs.forEach(n => { caps[n] = true; });
+  for (let pass = 0; pass < 3; pass++) {
+    for (const [cap, needs] of Object.entries(IMPLIES)) {
+      if (caps[cap]) needs.forEach(n => { caps[n] = true; });
+    }
   }
   return caps;
 }
 
+// managePermissions — עריכת טבלת ההרשאות. קבוע לפי תפקיד (מנהל ראשי ומנהל) ולא מופיע
+// בטבלה, כדי שאף אחד לא יוכל לנעול את עצמו או לפתוח אותו לתפקיד אחר.
 const R = (label, desc, grants) => {
-  const o = { label, desc };
+  const o = { label, desc, managePermissions: false };
   CAP_KEYS.forEach(k => { o[k] = false; });
   grants.forEach(k => { o[k] = true; });
   return applyImplications(o);
 };
 
-const PATIENT_FIELDS = ['editName', 'editNationalId', 'editIntakeDate', 'editBirthDate', 'editHmo',
+// הצפייה שכל התפקידים קיבלו עד היום: הלשוניות, פרטי המטופל, קבצים, פגישות, השהיה ואינטייק
+const BASE_VIEW = ['tabWaiting', 'tabMatches', 'tabSeries', 'tabCalendar', 'tabTherapists',
+  'viewIntake', 'viewHolds', 'viewFiles', 'viewSessions',
+  'viewName', 'viewNationalId', 'viewIntakeDate', 'viewBirthDate', 'viewHmo', 'viewCommunity',
+  'viewClientType', 'viewUrgency', 'viewHours', 'viewPref', 'viewNotes'];
+const EDIT_FIELDS = ['editName', 'editNationalId', 'editIntakeDate', 'editBirthDate', 'editHmo',
   'editCommunity', 'editClientType', 'editUrgency', 'editHours', 'editPref', 'editNotes'];
-const TABS = ['tabMatches', 'tabSeries', 'tabCalendar', 'tabTherapists', 'viewIntake'];
 // כל מה שמזכירה אחראית מקבלת — הבסיס לתפקידים עם גישה רחבה
-const FULL = [...PATIENT_FIELDS, ...TABS,
+const FULL = [...BASE_VIEW, ...EDIT_FIELDS,
   'viewDiagnosis', 'editDiagnosis', 'viewNote2', 'editNote2',
-  'addPatient', 'deletePatient', 'files', 'deleteFiles', 'editLists',
-  'viewHolds', 'holds', 'viewAssign', 'assign', 'editSessions', 'cancelSeries',
+  'addPatient', 'deletePatient', 'files', 'deleteFiles',
+  'holds', 'viewAssign', 'assign', 'cancelSeries', 'editSessions',
   'editIntake', 'editHourParts', 'editHolidays', 'editTherapists', 'deleteTherapists'];
 const without = (list, ...drop) => list.filter(c => !drop.includes(c));
 
 const ROLES = {
+  // כל ההרשאות, תמיד — כולל כל הרשאה שתתווסף לקטלוג בעתיד
   admin: R('מנהל ראשי',
-    'הכל: מטופלים, שיבוץ, מחיקה, וניהול משתמשים והרשאות.', [...FULL, 'manageUsers']),
+    'כל ההרשאות במערכת, תמיד — כולל ניהול משתמשים ועריכת טבלת ההרשאות.', [...CAP_KEYS, 'managePermissions']),
 
-  head_secretary: R('מזכירה אחראית', 'הכל מלבד ניהול משתמשים.', FULL),
+  manager: R('מנהל',
+    'כמו מזכירה אחראית, ובנוסף עורך את טבלת ההרשאות.', [...FULL, 'managePermissions']),
+
+  head_secretary: R('מזכירה אחראית', 'הכל מלבד ניהול משתמשים והרשאות.', FULL),
 
   secretary: R('מזכירה כללית',
     'מעדכנת שיוך למטפלים, רמת דחיפות, בן/בת, הערות והערה מקצועית, ומצרפת קבצים. לא מוסיפה מטופלים, לא עורכת שם או שעות טיפול, לא משבצת, לא מוחקת ולא רואה אבחנה.',
-    [...TABS, 'viewHolds', 'viewNote2', 'editNote2', 'editNotes', 'editPref', 'editUrgency', 'editClientType', 'files']),
+    [...BASE_VIEW, 'viewNote2', 'editNote2', 'editNotes', 'editPref', 'editUrgency', 'editClientType', 'files']),
 
   guide: R('מדריך',
     'מעדכן אבחנה, הערה מקצועית, הערות רגילות, שיוך למטפלים, רמת דחיפות ובן/בת; מנהל רשימת השהיה, מצרף קבצים, ורואה אילו מטפלים פנויים למטופל. לא עורך שם או שעות, לא משבץ בפועל ולא מוחק.',
-    [...TABS, 'viewDiagnosis', 'editDiagnosis', 'viewNote2', 'editNote2', 'editNotes', 'editPref',
-     'editUrgency', 'editClientType', 'viewHolds', 'holds', 'viewAssign', 'files']),
+    [...BASE_VIEW, 'viewDiagnosis', 'editDiagnosis', 'viewNote2', 'editNote2', 'editNotes', 'editPref',
+     'editUrgency', 'editClientType', 'holds', 'viewAssign', 'files']),
 
   pnina: R('פנינה',
     'הכל מלבד ההערה המקצועית (לא רואה ולא עורכת) וניהול משתמשים.', without(FULL, 'viewNote2', 'editNote2')),
 
-  viewer: R('צופה', 'צפייה בלבד בכל הנתונים, בלי לערוך דבר.',
-    [...TABS, 'viewHolds', 'viewDiagnosis', 'viewNote2']),
+  viewer: R('צופה', 'צפייה בלבד בכל הנתונים, בלי לערוך דבר.', [...BASE_VIEW, 'viewDiagnosis', 'viewNote2']),
 
-  // ===== תפקידים ותיקים — נשמרים כדי שמשתמשים קיימים לא יאבדו גישה =====
-  manager: R('מנהל', 'תפקיד ותיק — כמו מזכירה אחראית.', FULL),
-  clerk: R('רכז/ת', 'תפקיד ותיק — כמו מנהל, אבל בלי מחיקה.',
+  // ===== תפקיד ותיק — נשמר כדי שמשתמשים קיימים לא יאבדו גישה =====
+  clerk: R('רכז/ת', 'תפקיד ותיק — כמו מזכירה אחראית, אבל בלי מחיקה.',
     without(FULL, 'deletePatient', 'deleteFiles', 'cancelSeries', 'deleteTherapists')),
 };
-const LEGACY_ROLES = new Set(['manager', 'clerk']);
+const LEGACY_ROLES = new Set(['clerk']);
 
-// השינויים שהמנהל קבע נקראים מהמסד ונשמרים במטמון קצר, כדי לא לשאול בכל בקשה
+// מי שאין לו צפייה בשם המטופל רואה "מטופל #מספר" — בכל מקום שבו השרת מחזיר שם
+const hiddenName = (id) => `מטופל #${id}`;
+function maskPatientNames(rows, caps, idKey = 'patient_id', nameKey = 'patient_name') {
+  if (!Array.isArray(rows) || (caps && caps.viewName)) return rows;
+  return rows.map(r => ({ ...r, [nameKey]: hiddenName(r[idKey]) }));
+}
+
+// השינויים שנקבעו במסך נקראים מהמסד ונשמרים במטמון קצר, כדי לא לשאול בכל בקשה
 let _ovr = { at: 0, map: null };
 const OVR_TTL = 30 * 1000;
 
@@ -145,7 +174,7 @@ async function overrides() {
 }
 function forgetOverrides() { _ovr = { at: 0, map: null }; }
 
-// ההרשאות בפועל של תפקיד: ברירת המחדל + מה שהמנהל שינה
+// ההרשאות בפועל של תפקיד: ברירת המחדל + מה שנקבע במסך
 async function capsFor(role) {
   const key = ROLES[role] ? role : 'viewer';
   const caps = { ...ROLES[key] };
@@ -181,7 +210,7 @@ async function matrix() {
 }
 
 // שמירה: { role: { cap: true/false } }. כל תפקיד שנשלח נשמר במלואו, ובמסד נרשם רק
-// מה ששונה מברירת המחדל. מנהל ראשי והרשאות נעולות אינם ניתנים לשינוי.
+// מה ששונה מברירת המחדל. מנהל ראשי אינו ניתן לשינוי.
 async function saveMatrix(input, user) {
   const client = await pool.connect();
   const changed = [];
@@ -213,6 +242,6 @@ async function saveMatrix(input, user) {
 }
 
 module.exports = {
-  FIELD_CAPS, CATALOG, IMPLIES, CAP_KEYS, EDITABLE_CAPS, ROLES,
-  capsFor, isCustomized, matrix, saveMatrix,
+  FIELD_CAPS, FIELD_VIEW_CAPS, CATALOG, IMPLIES, CAP_KEYS, EDITABLE_CAPS, ROLES,
+  capsFor, isCustomized, matrix, saveMatrix, hiddenName, maskPatientNames,
 };

@@ -2,6 +2,7 @@
 const express = require('express');
 const { pool, validId } = require('../db');
 const { authenticate } = require('../middleware/auth');
+const { maskPatientNames } = require('../lib/permissions');
 const router = express.Router();
 
 function parseDate(s) {
@@ -39,7 +40,7 @@ router.get('/week', authenticate, async (req, res) => {
        ORDER BY s.date, s.hour`, [tid, fmtDate(start), fmtDate(end)]);
     const hr = await pool.query('SELECT date, name FROM holidays WHERE date BETWEEN $1 AND $2 ORDER BY date',
       [fmtDate(start), fmtDate(end)]);
-    res.json({ therapist: tr.rows[0], week_start: fmtDate(start), week_end: fmtDate(end), sessions: sr.rows, holidays: hr.rows });
+    res.json({ therapist: tr.rows[0], week_start: fmtDate(start), week_end: fmtDate(end), sessions: maskPatientNames(sr.rows, req.caps), holidays: hr.rows });
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 

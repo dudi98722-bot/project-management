@@ -2,23 +2,33 @@
 const express = require('express');
 const { pool, logAction, softDelete, restore, validId } = require('../db');
 const { authenticate, can, canAny } = require('../middleware/auth');
-const { FIELD_CAPS } = require('../lib/permissions');
+const { FIELD_CAPS, FIELD_VIEW_CAPS } = require('../lib/permissions');
 const sheets = require('../sheets');
 const router = express.Router();
 
 const HMOS = ['מכבי', 'כללית', 'לאומית', 'מאוחדת'];
 const CLIENT_TYPES = ['בן', 'בת', 'הורים', 'מבוגר', 'מבוגרת'];
-// אבחנה והערה מקצועית נשלטות בנפרד — יש תפקידים שרואים אחת ולא את השנייה
-const FIELD_VIEW = { diagnosis: 'viewDiagnosis', notes2: 'viewNote2', holds: 'viewHolds' };
+// הרשאת הצפייה של כל שדה בתשובה — עמודות המטופל, ועוד שדות מחושבים
+const FIELD_VIEW = { ...FIELD_VIEW_CAPS,
+  preferred_therapists: 'viewPref', preferred_groups: 'viewPref', holds: 'viewHolds', files_count: 'viewFiles' };
 const FIELD_EDIT = { diagnosis: 'editDiagnosis', notes2: 'editNote2' };
 // מי שיש לו הרשאת עריכה לשדה אחד לפחות רשאי לשלוח עדכון
 const ANY_FIELD_EDIT = [...new Set(Object.values(FIELD_CAPS))];
 
-// מסיר מהתשובה כל שדה רגיש שאין למשתמש הרשאת צפייה בו
+// מסיר מהתשובה כל שדה שאין למשתמש הרשאת צפייה בו. השם לא נמחק אלא מוחלף
+// ב"מטופל #מספר", כדי שכל המסכים ימשיכו להציג שורה מזוהה
 function scope(rows, caps) {
   const hidden = Object.keys(FIELD_VIEW).filter(k => !(caps && caps[FIELD_VIEW[k]]));
   if (!hidden.length) return rows;
-  const strip = (p) => { const o = { ...p }; hidden.forEach(k => delete o[k]); return o; };
+  const strip = (p) => {
+    const o = { ...p };
+    hidden.forEach(k => {
+      if (k === 'last_name') o.last_name = 'מטופל';
+      else if (k === 'first_name') o.first_name = '#' + p.id;
+      else delete o[k];
+    });
+    return o;
+  };
   return Array.isArray(rows) ? rows.map(strip) : strip(rows);
 }
 
@@ -100,9 +110,11 @@ router.get('/', authenticate, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-// field_caps — איזו הרשאה פותחת כל שדה, כדי שהטופס ינעל בדיוק מה שהשרת חוסם
+// field_caps / field_view_caps — איזו הרשאה פותחת כל שדה לעריכה ולצפייה,
+// כדי שהטופס ינעל ויסתיר בדיוק מה שהשרת חוסם
 router.get('/meta', authenticate, (req, res) => {
-  res.json({ hmos: HMOS, client_types: CLIENT_TYPES, all_hours: ALL_HOURS, field_caps: FIELD_CAPS });
+  res.json({ hmos: HMOS, client_types: CLIENT_TYPES, all_hours: ALL_HOURS,
+    field_caps: FIELD_CAPS, field_view_caps: FIELD_VIEW_CAPS });
 });
 
 router.get('/:id', authenticate, async (req, res) => {

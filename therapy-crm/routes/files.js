@@ -55,7 +55,7 @@ async function backupToDrive(fileRow, patientName) {
   }
 }
 
-router.get('/patient/:id', authenticate, async (req, res) => {
+router.get('/patient/:id', authenticate, can('viewFiles'), async (req, res) => {
   const pid = validId(req.params.id);
   if (!pid) return res.status(400).json({ error: 'מזהה לא תקין' });
   try {
@@ -106,7 +106,7 @@ router.post('/patient/:id', authenticate, can('files'), (req, res) => {
   });
 });
 
-router.get('/:id/download', authenticate, async (req, res) => {
+router.get('/:id/download', authenticate, can('viewFiles'), async (req, res) => {
   const fid = validId(req.params.id);
   if (!fid) return res.status(400).json({ error: 'מזהה לא תקין' });
   try {

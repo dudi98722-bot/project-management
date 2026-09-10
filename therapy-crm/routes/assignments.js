@@ -4,6 +4,7 @@ const express = require('express');
 const { pool, logAction, validId } = require('../db');
 const { authenticate, can } = require('../middleware/auth');
 const sheets = require('../sheets');
+const { maskPatientNames } = require('../lib/permissions');
 const {
   parseDate, fmtDate, worksAt, weeklySlotOccupied, insertWeeklySessions,
   isSlotTaken, SLOT_TAKEN_MSG, WEEKLY_TAKEN_MSG,
@@ -31,11 +32,11 @@ router.get('/', authenticate, async (req, res) => {
     if (req.query.therapist_id) { params.push(req.query.therapist_id); parts.push(`a.therapist_id=$${params.length}`); }
     if (req.query.status) { params.push(req.query.status); parts.push(`a.status=$${params.length}`); }
     const r = await pool.query(`${LIST_SQL} WHERE ${parts.join(' AND ')} ORDER BY a.created_at DESC`, params);
-    res.json(r.rows);
+    res.json(maskPatientNames(r.rows, req.caps));
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-router.get('/:id/sessions', authenticate, async (req, res) => {
+router.get('/:id/sessions', authenticate, can('viewSessions'), async (req, res) => {
   try {
     const r = await pool.query(
       `SELECT s.*, t.name AS therapist_name, p.last_name || ' ' || p.first_name AS patient_name
@@ -43,7 +44,7 @@ router.get('/:id/sessions', authenticate, async (req, res) => {
        JOIN therapists t ON t.id=s.therapist_id
        JOIN patients p ON p.id=s.patient_id
        WHERE s.assignment_id=$1 AND s.deleted=false ORDER BY s.session_num`, [req.params.id]);
-    res.json(r.rows);
+    res.json(maskPatientNames(r.rows, req.caps));
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 

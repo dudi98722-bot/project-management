@@ -18,10 +18,14 @@ function mayEdit(field) {
 function canEditPatient() {
   return Object.keys(S.meta.field_caps || {}).some(f => mayEdit(f));
 }
+// אילו שדות הוא רואה — שדה בלי הרשאת צפייה לא מוצג בכלל, גם לא נעול
+function mayView(field) {
+  const cap = (S.meta.field_view_caps || {})[field];
+  return !cap || !!S.me.caps[cap];
+}
 // האם כל השדות שהוא רואה פתוחים לעריכה (אז אין צורך בשורת "בהרשאה שלך ניתן לערוך")
 function mayEditAll() {
-  const hidden = { diagnosis: !S.me.caps.viewDiagnosis, notes2: !S.me.caps.viewNote2 };
-  return Object.keys(S.meta.field_caps || {}).every(f => hidden[f] || mayEdit(f));
+  return Object.keys(S.meta.field_caps || {}).every(f => !mayView(f) || mayEdit(f));
 }
 
 const S = {
@@ -225,12 +229,16 @@ const VIEWS = [
   ['therapists', 'מטפלים'],
   ['users', 'משתמשים'],
 ];
-// ההרשאה שנדרשת כדי לראות כל לשונית (רשימת הממתינים פתוחה לכולם)
+// ההרשאה שנדרשת כדי לראות כל לשונית. משתמשים: מי שרואה את רשימת המשתמשים,
+// או מי שעורך את טבלת ההרשאות (מנהל ראשי ומנהל)
 const VIEW_CAP = {
-  intake: 'viewIntake', existing: 'assign', holds: 'viewHolds', matches: 'tabMatches',
-  series: 'tabSeries', calendar: 'tabCalendar', therapists: 'tabTherapists', users: 'manageUsers',
+  waiting: 'tabWaiting', intake: 'viewIntake', existing: 'assign', holds: 'viewHolds', matches: 'tabMatches',
+  series: 'tabSeries', calendar: 'tabCalendar', therapists: 'tabTherapists',
 };
-function canView(k) { return !VIEW_CAP[k] || !!S.me.caps[VIEW_CAP[k]]; }
+function canView(k) {
+  if (k === 'users') return !!(S.me.caps.viewUsers || S.me.caps.managePermissions);
+  return !VIEW_CAP[k] || !!S.me.caps[VIEW_CAP[k]];
+}
 
 function renderNav() {
   const nav = document.getElementById('nav');
@@ -247,10 +255,11 @@ function switchView(v) {
 
 function render() {
   const m = document.getElementById('main');
-  // לשונית שההרשאה אליה נסגרה בינתיים — חוזרים לרשימת הממתינים
-  if (!canView(S.view)) S.view = 'waiting';
+  // לשונית שההרשאה אליה נסגרה בינתיים — עוברים ללשונית הראשונה שמותרת
+  if (!canView(S.view)) S.view = (VIEWS.find(([k]) => canView(k)) || [''])[0];
   renderNav();
-  if (S.view === 'waiting') renderWaiting(m);
+  if (!S.view) m.innerHTML = '<div class="card"><div class="empty">אין לך הרשאה לאף לשונית. פנה למנהל המערכת.</div></div>';
+  else if (S.view === 'waiting') renderWaiting(m);
   else if (S.view === 'intake') renderIntake(m);
   else if (S.view === 'existing') renderExisting(m);
   else if (S.view === 'holds') renderHolds(m);
@@ -274,7 +283,7 @@ function renderWaiting(m) {
   m.innerHTML = `
   <div class="stat-cards">
     <div class="stat-card clickable" onclick="statFilter('waiting')"><div class="num">${nWait}</div><div class="lbl">ממתינים לשיבוץ</div></div>
-    <div class="stat-card clickable" onclick="statFilter('urgent')"><div class="num">${nUrgent}</div><div class="lbl">דחופים ברשימה</div></div>
+    ${S.me.caps.viewUrgency ? `<div class="stat-card clickable" onclick="statFilter('urgent')"><div class="num">${nUrgent}</div><div class="lbl">דחופים ברשימה</div></div>` : ''}
     <div class="stat-card clickable" onclick="statFilter('assigned')"><div class="num">${nAssigned}</div><div class="lbl">משובצים לטיפול</div></div>
     <div class="stat-card clickable" onclick="switchView('therapists')"><div class="num">${S.therapists.filter(t => t.active).length}</div><div class="lbl">מטפלים פעילים</div></div>
   </div>
@@ -317,33 +326,33 @@ const visibleCols = () => WAIT_COLS.filter(c => !c.filterOnly && (!c.cap || S.me
 const WAIT_COLS = [
   { key: 'name',      label: 'שם',          type: 'text',   sort: p => `${p.last_name} ${p.first_name}`,
     match: (p, v) => `${p.last_name} ${p.first_name} ${p.diagnosis || ''}`.includes(v) },
-  { key: 'national_id', label: 'ת.ז',       type: 'text',   sort: p => p.national_id || '',
+  { key: 'national_id', label: 'ת.ז',       type: 'text',   cap: 'viewNationalId', sort: p => p.national_id || '',
     match: (p, v) => String(p.national_id || '').includes(v) },
-  { key: 'age',       label: 'גיל',         type: 'range',  sort: p => calcAge(p.birth_date) ?? -1,
+  { key: 'age',       label: 'גיל',         type: 'range',  cap: 'viewBirthDate', sort: p => calcAge(p.birth_date) ?? -1,
     match: (p, v) => { const a = calcAge(p.birth_date);
       if (v.from !== '' && (a == null || a < Number(v.from))) return false;
       if (v.to   !== '' && (a == null || a > Number(v.to))) return false; return true; } },
-  { key: 'hmo',       label: 'קופה',        type: 'select', sort: p => p.hmo || '',
+  { key: 'hmo',       label: 'קופה',        type: 'select', cap: 'viewHmo', sort: p => p.hmo || '',
     options: () => S.meta.hmos, match: (p, v) => v.includes(p.hmo || '') },
-  { key: 'client_type', label: 'סוג',       type: 'select', sort: p => p.client_type || '',
+  { key: 'client_type', label: 'סוג',       type: 'select', cap: 'viewClientType', sort: p => p.client_type || '',
     options: () => S.meta.client_types, match: (p, v) => v.includes(p.client_type || '') },
-  { key: 'community', label: 'קהילה',       type: 'select', sort: p => p.community || '',
+  { key: 'community', label: 'קהילה',       type: 'select', cap: 'viewCommunity', sort: p => p.community || '',
     options: () => [...new Set(S.patients.map(x => x.community).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'he')),
     match: (p, v) => v.includes(p.community || '') },
-  { key: 'intake',    label: 'אינטייק',     type: 'daterange', sort: p => p.intake_date || '',
+  { key: 'intake',    label: 'אינטייק',     type: 'daterange', cap: 'viewIntakeDate', sort: p => p.intake_date || '',
     match: (p, v) => { const d = p.intake_date || '';
       if (v.from && (!d || d < v.from)) return false;
       if (v.to   && (!d || d > v.to)) return false; return true; } },
-  { key: 'urgency',   label: 'דחיפות',      type: 'select', sort: p => p.urgency,
+  { key: 'urgency',   label: 'דחיפות',      type: 'select', cap: 'viewUrgency', sort: p => p.urgency,
     options: () => [['1', 'דחוף'], ['2', 'רגיל'], ['3', 'נמוך']],
     match: (p, v) => v.includes(String(p.urgency)) },
-  { key: 'pref',      label: 'העדפת שיוך',  type: 'text',   sort: p => (p.preferred_therapists || []).length,
+  { key: 'pref',      label: 'העדפת שיוך',  type: 'text',   cap: 'viewPref', sort: p => (p.preferred_therapists || []).length,
     match: (p, v) => (p.preferred_therapists || []).map(t => t.name).join(' ').includes(v)
                   || (p.preferred_groups || []).map(g => g.name).join(' ').includes(v) },
-  { key: 'files',     label: 'קבצים',       type: 'select', sort: p => p.files_count || 0,
+  { key: 'files',     label: 'קבצים',       type: 'select', cap: 'viewFiles', sort: p => p.files_count || 0,
     options: () => [['yes', 'יש קבצים'], ['no', 'אין']],
     match: (p, v) => v.includes(p.files_count > 0 ? 'yes' : 'no') },
-  { key: 'suggested', label: 'מטפל מוצע',   type: 'select', filterOnly: true, sort: p => (p.preferred_therapists || []).length,
+  { key: 'suggested', label: 'מטפל מוצע',   type: 'select', filterOnly: true, cap: 'viewPref', sort: p => (p.preferred_therapists || []).length,
     // t:<id> = משויך למטפל הזה · none = בלי שיוך כלל
     options: () => {
       const t = new Map();
@@ -357,7 +366,7 @@ const WAIT_COLS = [
       return v.some(x => x === 'none' ? !pref.length
                        : pref.some(t => String(t.id) === x.slice(2)));
     } },
-  { key: 'daypart',   label: 'חלק יום',     type: 'select', filterOnly: true, sort: p => (p.hours || []).length,
+  { key: 'daypart',   label: 'חלק יום',     type: 'select', filterOnly: true, cap: 'viewHours', sort: p => (p.hours || []).length,
     options: () => (S.hourParts.parts || []).map(p => [p.key, p.label]),
     match: (p, v) => v.some(k => patientInPart(p, k)) },
   { key: 'hold',      label: 'השהיה',       type: 'select', cap: 'viewHolds', sort: p => (p.holds || []).length,
@@ -579,35 +588,36 @@ function applyWaitingFilters() {
   }
 }
 
+// תא לכל עמודה ברשימת הממתינים, לפי המפתח ב-WAIT_COLS — כך עמודה שנסתרת
+// בגלל הרשאת צפייה נעלמת יחד עם הכותרת שלה, והטבלה נשארת מיושרת
+const WAIT_CELLS = {
+  name: p => `<td><b>${esc(p.last_name)} ${esc(p.first_name)}</b>${p.diagnosis ? `<div class="hint">${esc(p.diagnosis)}</div>` : ''}</td>`,
+  national_id: p => `<td>${esc(p.national_id || '')}</td>`,
+  age: p => { const a = calcAge(p.birth_date); return `<td>${a != null ? `<span class="age-view">${a}</span>` : ''}</td>`; },
+  hmo: p => `<td>${esc(p.hmo || '')}</td>`,
+  client_type: p => `<td>${esc(p.client_type || '')}</td>`,
+  community: p => `<td>${esc(p.community || '')}</td>`,
+  intake: p => `<td>${fmtDateHe(p.intake_date)}</td>`,
+  urgency: p => { const [l, c] = URGENCY[p.urgency] || URGENCY[2]; return `<td><span class="badge ${c}">${l}</span></td>`; },
+  pref: p => `<td style="font-size:13px">${prefSummary(p)}</td>`,
+  files: p => `<td>${p.files_count ? `<span class="clip" onclick="openFilesModal(${p.id})" title="${p.files_count} קבצים מצורפים">📎 ${p.files_count}</span>` : ''}</td>`,
+  hold: p => `<td>${(p.holds || []).length ? '<span class="hold-chip" title="' + esc(p.holds.map(h => h.therapist_name).join(', ')) + '">⏸ ' + p.holds.length + '</span>' : ''}</td>`,
+  created_by: p => `<td class="hint">${esc(p.created_by_name || '')}</td>`,
+  status: p => { const [l, c] = PSTATUS[p.status] || PSTATUS.waiting; return `<td><span class="badge ${c}">${l}</span></td>`; },
+};
+
 function waitingRowsHtml(rows) {
-  return rows.map(p => {
-    const age = calcAge(p.birth_date);
-    const [uLbl, uCls] = URGENCY[p.urgency] || URGENCY[2];
-    const [sLbl, sCls] = PSTATUS[p.status] || PSTATUS.waiting;
-    const pref = prefSummary(p);
-    return `<tr>
-      <td><b>${esc(p.last_name)} ${esc(p.first_name)}</b>${p.diagnosis ? `<div class="hint">${esc(p.diagnosis)}</div>` : ''}</td>
-      <td>${esc(p.national_id || '')}</td>
-      <td>${age != null ? `<span class="age-view">${age}</span>` : ''}</td>
-      <td>${esc(p.hmo || '')}</td>
-      <td>${esc(p.client_type || '')}</td>
-      <td>${esc(p.community || '')}</td>
-      <td>${fmtDateHe(p.intake_date)}</td>
-      <td><span class="badge ${uCls}">${uLbl}</span></td>
-      <td style="font-size:13px">${pref}</td>
-      <td>${p.files_count ? `<span class="clip" onclick="openFilesModal(${p.id})" title="${p.files_count} קבצים מצורפים">📎 ${p.files_count}</span>` : ''}</td>
-      ${S.me.caps.viewHolds ? `<td>${(p.holds || []).length ? '<span class="hold-chip" title="' + esc(p.holds.map(h => h.therapist_name).join(', ')) + '">⏸ ' + p.holds.length + '</span>' : ''}</td>` : ''}
-      <td class="hint">${esc(p.created_by_name || '')}</td>
-      <td><span class="badge ${sCls}">${sLbl}</span></td>
+  const cols = visibleCols();
+  return rows.map(p => `<tr>
+      ${cols.map(c => WAIT_CELLS[c.key](p)).join('')}
       <td style="white-space:nowrap">
         ${(S.me.caps.assign || S.me.caps.viewAssign) && p.status === 'waiting' ? `<button class="btn sm ${S.me.caps.assign ? 'green' : 'sec'}" onclick="openAssignModal(${p.id})">שבץ</button>` : ''}
         ${S.me.caps.holds ? `<button class="btn sm sec" onclick="openHoldForPatient(${p.id})" title="העברה לרשימת השהיה">⏸ השהיה</button>` : ''}
-        <button class="btn sm sec" onclick="openFilesModal(${p.id})" title="קבצים מצורפים">📎</button>
+        ${S.me.caps.viewFiles ? `<button class="btn sm sec" onclick="openFilesModal(${p.id})" title="קבצים מצורפים">📎</button>` : ''}
         ${canEditPatient() ? `<button class="btn sm sec" onclick="openPatientModal(${p.id})">עריכה</button>` : ''}
         ${S.me.caps.deletePatient ? `<button class="btn sm sec" onclick="deletePatient(${p.id})">🗑</button>` : ''}
       </td>
-    </tr>`;
-  }).join('');
+    </tr>`).join('');
 }
 
 async function deletePatient(id) {
@@ -635,39 +645,39 @@ function openPatientModal(id) {
       mayEdit('diagnosis') ? 'אבחנה' : '', mayEdit('notes2') ? 'הערה מקצועית' : ''].filter(Boolean).join(' · ') + '</div>' : ''}
   <form id="patient-form">
     <div class="grid2">
-      <div class="field"><label>שם משפחה *</label><input name="last_name" value="${esc(p ? p.last_name : '')}" required ${p && !mayEdit('last_name') ? 'disabled' : ''}></div>
-      <div class="field"><label>שם פרטי *</label><input name="first_name" value="${esc(p ? p.first_name : '')}" required ${p && !mayEdit('first_name') ? 'disabled' : ''}></div>
-      <div class="field"><label>מספר זהות</label><input name="national_id" value="${esc(p ? p.national_id : '')}" maxlength="10" ${p && !mayEdit('national_id') ? 'disabled' : ''}></div>
-      <div class="field"><label>תאריך אינטייק</label><input name="intake_date" type="date" value="${p && p.intake_date ? p.intake_date : todayStr()}" ${p && !mayEdit('intake_date') ? 'disabled' : ''}></div>
-      <div class="field"><label>תאריך לידה</label><input name="birth_date" type="date" value="${p && p.birth_date ? p.birth_date : ''}" oninput="updateAgeView(this.value)" ${p && !mayEdit('birth_date') ? 'disabled' : ''}></div>
-      <div class="field"><label>גיל (אוטומטי)</label><div id="age-view" class="age-view" style="padding:8px 2px">${(() => { const a = p ? calcAge(p.birth_date) : null; return a != null ? a + ' שנים' : '—'; })()}</div></div>
-      <div class="field"><label>קופת חולים</label><select name="hmo" ${p && !mayEdit('hmo') ? 'disabled' : ''}>
+      ${mayView('last_name') ? `<div class="field"><label>שם משפחה *</label><input name="last_name" value="${esc(p ? p.last_name : '')}" required ${p && !mayEdit('last_name') ? 'disabled' : ''}></div>
+      <div class="field"><label>שם פרטי *</label><input name="first_name" value="${esc(p ? p.first_name : '')}" required ${p && !mayEdit('first_name') ? 'disabled' : ''}></div>` : ''}
+      ${mayView('national_id') ? `<div class="field"><label>מספר זהות</label><input name="national_id" value="${esc(p ? p.national_id : '')}" maxlength="10" ${p && !mayEdit('national_id') ? 'disabled' : ''}></div>` : ''}
+      ${mayView('intake_date') ? `<div class="field"><label>תאריך אינטייק</label><input name="intake_date" type="date" value="${p && p.intake_date ? p.intake_date : todayStr()}" ${p && !mayEdit('intake_date') ? 'disabled' : ''}></div>` : ''}
+      ${mayView('birth_date') ? `<div class="field"><label>תאריך לידה</label><input name="birth_date" type="date" value="${p && p.birth_date ? p.birth_date : ''}" oninput="updateAgeView(this.value)" ${p && !mayEdit('birth_date') ? 'disabled' : ''}></div>
+      <div class="field"><label>גיל (אוטומטי)</label><div id="age-view" class="age-view" style="padding:8px 2px">${(() => { const a = p ? calcAge(p.birth_date) : null; return a != null ? a + ' שנים' : '—'; })()}</div></div>` : ''}
+      ${mayView('hmo') ? `<div class="field"><label>קופת חולים</label><select name="hmo" ${p && !mayEdit('hmo') ? 'disabled' : ''}>
         <option value="">—</option>
         ${S.meta.hmos.map(h => `<option ${p && p.hmo === h ? 'selected' : ''}>${h}</option>`).join('')}
-      </select></div>
-      <div class="field"><label>בן / בת</label><select name="client_type" ${p && !mayEdit('client_type') ? 'disabled' : ''}>
+      </select></div>` : ''}
+      ${mayView('client_type') ? `<div class="field"><label>בן / בת</label><select name="client_type" ${p && !mayEdit('client_type') ? 'disabled' : ''}>
         <option value="">—</option>
         ${S.meta.client_types.map(t => `<option ${p && p.client_type === t ? 'selected' : ''}>${t}</option>`).join('')}
-      </select></div>
-      <div class="field"><label>השתייכות קהילתית</label><select name="community" onchange="communityChanged(this)" ${p && !mayEdit('community') ? 'disabled' : ''}>
+      </select></div>` : ''}
+      ${mayView('community') ? `<div class="field"><label>השתייכות קהילתית</label><select name="community" onchange="communityChanged(this)" ${p && !mayEdit('community') ? 'disabled' : ''}>
         <option value="">—</option>
         ${S.communities.map(c => `<option value="${esc(c.value)}" ${p && p.community === c.value ? 'selected' : ''}>${esc(c.value)}</option>`).join('')}
         ${p && p.community && !S.communities.some(c => c.value === p.community) ? `<option selected value="${esc(p.community)}">${esc(p.community)}</option>` : ''}
-        ${S.me.caps.editLists ? '<option value="__new__">+ הוספה חדשה...</option>' : ''}
-      </select></div>
-      <div class="field"><label>רמת דחיפות</label><select name="urgency" ${p && !mayEdit('urgency') ? 'disabled' : ''}>
+        ${S.me.caps.editCommunity ? '<option value="__new__">+ הוספה חדשה...</option>' : ''}
+      </select></div>` : ''}
+      ${mayView('urgency') ? `<div class="field"><label>רמת דחיפות</label><select name="urgency" ${p && !mayEdit('urgency') ? 'disabled' : ''}>
         <option value="1" ${p && p.urgency === 1 ? 'selected' : ''}>1 — דחוף</option>
         <option value="2" ${!p || p.urgency === 2 ? 'selected' : ''}>2 — רגיל</option>
         <option value="3" ${p && p.urgency === 3 ? 'selected' : ''}>3 — נמוך</option>
-      </select></div>
+      </select></div>` : ''}
     </div>
     ${S.me.caps.viewDiagnosis ? `<div class="field"><label>אבחנה</label><input name="diagnosis" value="${esc(p ? p.diagnosis : '')}" ${p && !mayEdit('diagnosis') ? 'disabled' : ''}></div>` : ''}
     <div class="grid2">
-      <div class="field"><label>הערות</label><textarea name="notes" rows="2" ${p && !mayEdit('notes') ? 'disabled' : ''}>${esc(p ? p.notes : '')}</textarea></div>
+      ${mayView('notes') ? `<div class="field"><label>הערות</label><textarea name="notes" rows="2" ${p && !mayEdit('notes') ? 'disabled' : ''}>${esc(p ? p.notes : '')}</textarea></div>` : ''}
       ${S.me.caps.viewNote2 ? `<div class="field"><label>הערה מקצועית</label><textarea name="notes2" rows="2" ${p && !mayEdit('notes2') ? 'disabled' : ''}>${esc(p ? p.notes2 : '')}</textarea></div>` : ''}
     </div>
 
-    <div class="field">
+    ${mayView('hours') ? `<div class="field">
       <label>שעות מתאימות לטיפול (לחץ להסרת שעה שלא מתאימה)</label>
       <div class="hours-tools">
         <button type="button" class="btn sec sm" onclick="setAllHours(true)" ${p && !mayEdit('hours') ? 'disabled' : ''}>בחר הכל</button>
@@ -676,12 +686,12 @@ function openPatientModal(id) {
       <div class="hours-grid" id="hours-grid">
         ${ALL_HOURS.map(h => `<div class="hour-chip ${hours.includes(h) ? 'on' : ''}" data-h="${h}" onclick="${p && !mayEdit('hours') ? '' : "this.classList.toggle('on')"}">${hourRange(h)}</div>`).join('')}
       </div>
-    </div>
+    </div>` : ''}
 
-    <div class="field">
+    ${mayView('preferred_therapist_ids') ? `<div class="field">
       <label>שיוך למטפלים</label>
       ${prefSectionHtml(p)}
-    </div>
+    </div>` : ''}
 
     ${p && (p.created_by_name || p.updated_by_name) ? '<div class="hint" style="margin-top:6px">' +
       (p.created_by_name ? 'הוזן ע"י ' + esc(p.created_by_name) + (p.created_at ? ' · ' + fmtDateHe(String(p.created_at).slice(0,10)) : '') : '') +
@@ -702,7 +712,8 @@ function openPatientModal(id) {
       client_type: fd.get('client_type') || null, community: fd.get('community') === '__new__' ? null : (fd.get('community') || null),
       diagnosis: fd.get('diagnosis'), notes: fd.get('notes'), notes2: fd.get('notes2'),
       urgency: Number(fd.get('urgency')),
-      hours: [...document.querySelectorAll('#hours-grid .hour-chip.on')].map(c => Number(c.dataset.h)),
+      // שעות שלא מוצגות לו לא נשלחות — השרת שומר את הקיים (ובמטופל חדש: כל השעות)
+      hours: document.getElementById('hours-grid') ? [...document.querySelectorAll('#hours-grid .hour-chip.on')].map(c => Number(c.dataset.h)) : undefined,
       preferred_therapist_ids: mayEdit('preferred_therapist_ids') ? [..._pref.therapists] : undefined,
       preferred_group_ids: mayEdit('preferred_therapist_ids') ? [..._pref.groups] : undefined,
     };
@@ -876,7 +887,7 @@ async function openAssignModal(patientId, fromTherapistId, holdId) {
   <h2>${canAssign ? 'שיבוץ לטיפול' : 'מטפלים פנויים'} — ${esc(p.last_name)} ${esc(p.first_name)} <button class="x" onclick="closeModal()">✕</button></h2>
   <div class="hint" style="margin-bottom:10px">
     ${fromT ? `מתוך רשימת ההשהיה אצל <b>${esc(fromT.name)}</b><br>` : ''}
-    שעות מתאימות למטופל: ${(p.hours || []).map(hourRange).join(' · ') || 'כולן'}
+    ${S.me.caps.viewHours ? 'שעות מתאימות למטופל: ' + ((p.hours || []).map(hourRange).join(' · ') || 'כולן') : ''}
     ${(p.preferred_therapists || []).length ? '<br>מטפלים מועדפים: ' + p.preferred_therapists.map(t => esc(t.name)).join(' · ') : ''}
     ${(p.preferred_groups || []).length ? ' <span class="hint">(מקבוצות: ' + p.preferred_groups.map(g => esc(g.name)).join(', ') + ')</span>' : ''}
   </div>
@@ -1042,7 +1053,7 @@ function renderExisting(m) {
       <td>${fmtDateHe(a.start_date)}</td>
       <td>${(a.done_count || 0) + (a.past_count || 0)} / ${a.total_sessions}</td>
       <td style="white-space:nowrap">
-        <button class="btn sm sec" onclick="openSessionsModal(${a.id})">פגישות</button>
+        ${S.me.caps.viewSessions ? `<button class="btn sm sec" onclick="openSessionsModal(${a.id})">פגישות</button>` : ''}
         ${S.me.caps.assign ? `<button class="btn sm sec" onclick="openSingleModal(${a.patient_id})">+ פגישה</button>` : ''}
       </td>
     </tr>`).join('')}
@@ -1197,7 +1208,7 @@ async function renderHoldAvail(patientId) {
     }
   }
   const allBox = document.getElementById('hp-allhours');
-  const showAll = !!(allBox && allBox.checked);
+  const showAll = !!(allBox && allBox.checked) || !S.me.caps.viewHours;
   const hours = new Set((p && Array.isArray(p.hours) ? p.hours : []).map(Number));
   els.forEach(el => {
     const slots = (HOLD_AVAIL.get(Number(el.dataset.tid)) || [])
@@ -1224,7 +1235,7 @@ function openHoldForPatient(patientId) {
   <div class="field"><label>בחר מטפל אחד או יותר</label>
     ${avail.length ? `<div class="hint" style="margin:-4px 0 6px">
       מתחת לכל מטפל — הימים והשעות הפנויים אצלו ב-${S.availWeeks} השבועות הקרובים.
-      <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;margin-inline-start:6px">
+      <label style="display:${S.me.caps.viewHours ? 'inline-flex' : 'none'};align-items:center;gap:5px;cursor:pointer;margin-inline-start:6px">
         <input type="checkbox" id="hp-allhours" onchange="renderHoldAvail(${p.id})"> הצג גם שעות שאינן מתאימות למטופל
       </label>
     </div>` : ''}
@@ -1291,6 +1302,9 @@ function hoursSummary(hs) {
 
 function renderMatches(m) {
   const waiting = S.patients.filter(p => p.status === 'waiting');
+  // בלי צפייה בשעות או בשיוך הנתונים לא מגיעים מהשרת — מציגים הודעה ולא ספירה ריקה ומטעה
+  const canHours = !!S.me.caps.viewHours, canPref = !!S.me.caps.viewPref;
+  const noAccess = (what) => `<div class="empty">אין לך הרשאת צפייה ב${what} של המטופלים</div>`;
 
   // ספירה לכל מטפל: כמה ממתינים משויכים אליו
   const counts = new Map();
@@ -1313,6 +1327,7 @@ function renderMatches(m) {
   m.innerHTML = `
   <div class="card">
     <h2>ממתינים לפי חלק יום</h2>
+    ${!canHours ? noAccess('שעות') : `
     <div class="hint" style="margin-bottom:12px">
       מטופל נספר בכל חלק יום שיש לו בו לפחות שעה מתאימה אחת, ולכן אותו מטופל יכול להופיע בכמה חלקים.
       לחיצה על קובייה מציגה את הרשימה.
@@ -1324,7 +1339,7 @@ function renderMatches(m) {
           <div class="lbl">${esc(p.label)}</div>
           <div class="hint" style="margin-top:4px">${hoursSummary(p.hours)}${p.urgent ? ' · ' + p.urgent + ' דחופים' : ''}</div>
         </div>`).join('')}
-    </div>
+    </div>`}
     ${S.me.caps.editHourParts ? `<button class="btn sec" onclick="openHourPartsModal()">⚙ הגדרת שעות לחלקי היום</button>` : ''}
   </div>
 
@@ -1332,8 +1347,9 @@ function renderMatches(m) {
     <div class="toolbar">
       <h2 style="margin:0">ממתינים לפי מטפל מוצע</h2>
       <div class="spacer"></div>
-      <span class="hint">${waiting.length} ממתינים${noPref ? ` · ${noPref} בלי שיוך` : ''}</span>
+      ${canPref ? `<span class="hint">${waiting.length} ממתינים${noPref ? ` · ${noPref} בלי שיוך` : ''}</span>` : ''}
     </div>
+    ${!canPref ? noAccess('שיוך למטפלים') : `
     <div class="hint" style="margin-bottom:12px">
       לחיצה על מטפל מציגה את רשימת הממתינים ששויכו אליו.
     </div>
@@ -1347,7 +1363,7 @@ function renderMatches(m) {
     </div>` : '<div class="empty">אף ממתין לא שויך למטפל</div>'}
     ${noPref ? `<div style="margin-top:12px">
       <button class="btn sec" onclick="matchNoPref()">הצג ${noPref} ממתינים בלי שיוך</button>
-    </div>` : ''}
+    </div>` : ''}`}
   </div>`;
 }
 
@@ -1554,7 +1570,7 @@ async function loadHoldsList() {
     const rows = await api(allT ? '/holds' : `/holds?therapist_id=${S.holdTherapist}`);
     if (!rows.length) { el.innerHTML = `<div class="empty">${allT ? 'אין מטופלים בהשהיה' : 'אין מטופלים בהשהיה אצל מטפל זה'}</div>`; return; }
     el.innerHTML = `<div class="table-wrap"><table>
-      <thead><tr><th>#</th><th>מטופל</th>${allT ? '<th>מטפל</th>' : ''}<th>דחיפות</th><th>סטטוס</th><th>הערה</th><th>הוזן ע"י</th><th>מתאריך</th><th></th></tr></thead><tbody>
+      <thead><tr><th>#</th><th>מטופל</th>${allT ? '<th>מטפל</th>' : ''}${S.me.caps.viewUrgency ? '<th>דחיפות</th>' : ''}<th>סטטוס</th><th>הערה</th><th>הוזן ע"י</th><th>מתאריך</th><th></th></tr></thead><tbody>
       ${rows.map((h, i) => {
         const [uLbl, uCls] = URGENCY[h.urgency] || URGENCY[2];
         const [sLbl, sCls] = PSTATUS[h.patient_status] || PSTATUS.waiting;
@@ -1562,7 +1578,7 @@ async function loadHoldsList() {
           <td class="hint">${i + 1}</td>
           <td><b>${esc(h.patient_name)}</b></td>
           ${allT ? `<td>${esc(h.therapist_name)}</td>` : ''}
-          <td><span class="badge ${uCls}">${uLbl}</span></td>
+          ${S.me.caps.viewUrgency ? `<td><span class="badge ${uCls}">${uLbl}</span></td>` : ''}
           <td><span class="badge ${sCls}">${sLbl}</span></td>
           <td class="hint">${esc(h.note || '')}</td>
           <td class="hint">${esc(h.created_by_name || '')}</td>
@@ -1657,7 +1673,7 @@ function renderSeries(m) {
         <td>${single ? '—' : `${doneish} / ${a.total_sessions} ${a.cancelled_count ? `<span class="hint">(${a.cancelled_count} בוטלו)</span>` : ''}`}</td>
         <td><span class="badge ${sCls}">${sLbl}</span></td>
         <td style="white-space:nowrap">
-          <button class="btn sm sec" onclick="openSessionsModal(${a.id})">פגישות</button>
+          ${S.me.caps.viewSessions ? `<button class="btn sm sec" onclick="openSessionsModal(${a.id})">פגישות</button>` : ''}
           ${S.me.caps.cancelSeries && a.status === 'active' ? `<button class="btn sm danger" onclick="cancelAssignment(${a.id})">בטל סדרה</button>` : ''}
         </td>
       </tr>`;
@@ -1825,7 +1841,7 @@ async function renderWeekView() {
           if (s) {
             const [lbl] = SSTATUS[s.status] || SSTATUS.scheduled;
             const numTxt = s.kind === 'single' ? 'פגישה בודדת' : `פגישה ${s.session_num}/${s.total_sessions}`;
-            return `<td class="cal-slot-busy${pastCls}" onclick="openSessionsModal(${s.assignment_id})">${esc(s.patient_name)}<small>${numTxt}${s.status !== 'scheduled' ? ' · ' + lbl : ''}</small></td>`;
+            return `<td class="cal-slot-busy${pastCls}" ${S.me.caps.viewSessions ? `onclick="openSessionsModal(${s.assignment_id})"` : ''}>${esc(s.patient_name)}<small>${numTxt}${s.status !== 'scheduled' ? ' · ' + lbl : ''}</small></td>`;
           }
           if (holByDate.has(d)) return `<td class="cal-slot-holiday" title="${esc(holByDate.get(d))}"></td>`;
           if (working) return `<td class="cal-slot-free${pastCls}">פנוי</td>`;
@@ -2047,20 +2063,28 @@ async function deleteGroup(id) {
 let _users = [], _roles = [];
 async function renderUsers(m) {
   m.innerHTML = '<div class="card"><div class="empty">טוען...</div></div>';
+  const c = S.me.caps;
   try {
-    const [users, roles, perm] = await Promise.all([api('/users'), api('/users/roles'), api('/users/permissions')]);
-    _users = users; _roles = roles;
-    // רענון המסך (למשל אחרי שמירת משתמש) לא מוחק סימונים בטבלה שעוד לא נשמרו
-    const keep = permDirty() ? _permDraft : null;
-    permLoad(perm);
-    if (keep) _permDraft = keep;
-    m.innerHTML = `<div class="card">
+    // רשימת המשתמשים — למי שרשאי לראות אותה; טבלת ההרשאות — למנהל ראשי ולמנהל
+    const [users, roles, perm] = await Promise.all([
+      c.viewUsers ? api('/users') : null,
+      c.viewUsers ? api('/users/roles') : null,
+      c.managePermissions ? api('/users/permissions') : null,
+    ]);
+    _users = users || []; _roles = roles || [];
+    if (perm) {
+      // רענון המסך (למשל אחרי שמירת משתמש) לא מוחק סימונים בטבלה שעוד לא נשמרו
+      const keep = permDirty() ? _permDraft : null;
+      permLoad(perm);
+      if (keep) _permDraft = keep;
+    } else _perm = null;
+    m.innerHTML = (users ? `<div class="card">
       <div class="toolbar">
         <h2 style="margin:0">משתמשים</h2>
         <div class="spacer"></div>
-        <button class="btn" onclick="openUserModal(null)">+ משתמש חדש</button>
+        ${c.manageUsers ? '<button class="btn" onclick="openUserModal(null)">+ משתמש חדש</button>' : ''}
       </div>
-      <div class="table-wrap"><table><thead><tr><th>שם משתמש</th><th>שם מלא</th><th>מייל</th><th>תפקיד</th><th>פעיל</th><th>כניסה אחרונה</th><th></th></tr></thead><tbody>
+      <div class="table-wrap"><table><thead><tr><th>שם משתמש</th><th>שם מלא</th><th>מייל</th><th>תפקיד</th><th>פעיל</th><th>כניסה אחרונה</th>${c.manageUsers ? '<th></th>' : ''}</tr></thead><tbody>
       ${users.map(u => `<tr>
         <td><b>${esc(u.username)}</b></td>
         <td>${esc(u.full_name || '')}</td>
@@ -2070,12 +2094,10 @@ async function renderUsers(m) {
           : `<div class="hint role-desc">${esc(u.role_desc || '')}</div>`}</td>
         <td>${u.active ? '<span class="badge b-green">פעיל</span>' : '<span class="badge b-gray">מושבת</span>'}</td>
         <td>${u.last_login ? fmtDateHe(u.last_login.slice(0, 10)) : '—'}</td>
-        <td><button class="btn sm sec" onclick="openUserModal(${u.id})">עריכה</button></td>
+        ${c.manageUsers ? `<td><button class="btn sm sec" onclick="openUserModal(${u.id})">עריכה</button></td>` : ''}
       </tr>`).join('')}
       </tbody></table></div>
-      <div class="hint" style="margin-top:10px">רק מנהל ראשי יכול להוסיף ולערוך משתמשים ולשנות הרשאות.</div>
-    </div>
-    <div class="card" id="perm-card"></div>`;
+    </div>` : '') + (perm ? '<div class="card" id="perm-card"></div>' : '');
     renderPermissions();
   } catch (e) { m.innerHTML = `<div class="card"><div class="empty">${esc(e.message)}</div></div>`; }
 }
@@ -2088,7 +2110,7 @@ function showRoleDesc(role) {
 }
 
 // =====================================================================
-// הרשאות לפי סוג משתמש — צפייה / עריכה לכל פעולה במערכת
+// הרשאות לפי סוג משתמש — צפייה / עריכה לכל נושא, ותיבה אחת לכל פעולה
 // =====================================================================
 // _perm = מה שנשמר בשרת; _permDraft = הסימונים שעל המסך, עד לשמירה
 let _perm = null, _permDraft = {};
@@ -2098,7 +2120,7 @@ function permLoad(perm) {
   _permDraft = {};
   perm.roles.forEach(r => { _permDraft[r.role] = { ...r.caps }; });
 }
-// תפקידים ותיקים מוצגים רק אם יש להם משתמשים
+// תפקיד ותיק מוצג רק אם יש לו משתמשים
 function permRoles() { return _perm ? _perm.roles.filter(r => !r.legacy || r.users > 0) : []; }
 function permDirty() {
   return !!_perm && _perm.roles.some(r =>
@@ -2109,16 +2131,19 @@ function renderPermissions() {
   const card = document.getElementById('perm-card');
   if (!card || !_perm) return;
   const roles = permRoles();
-  const cell = (r, cap, row) => {
-    if (!cap) return '<td class="perm-cell"></td>';
-    if (cap === 'always') return '<td class="perm-cell"><span class="perm-always" title="פתוח תמיד">✓</span></td>';
-    const locked = r.locked || _perm.locked.includes(cap);
+  const box = (r, cap, row, span, what) => {
+    const attrs = span ? ' colspan="2"' : '';
+    // מנהל ראשי מקבל תמיד הכל — מסומן בלי תיבה שאפשר להוריד
+    if (r.locked) return `<td class="perm-cell perm-all"${attrs} title="מנהל ראשי — תמיד כל ההרשאות">✓</td>`;
     const on = !!_permDraft[r.role][cap];
-    const custom = !r.locked && on !== !!r.defaults[cap];
-    return `<td class="perm-cell${custom ? ' custom' : ''}"><input type="checkbox" data-role="${r.role}" data-cap="${cap}"
-      title="${esc(r.label)} — ${esc(row.label)}: ${cap === row.view ? 'צפייה' : 'עריכה'}"
-      ${on ? 'checked' : ''} ${locked ? 'disabled' : ''} onchange="permToggle(this)"></td>`;
+    const custom = on !== !!r.defaults[cap];
+    return `<td class="perm-cell${custom ? ' custom' : ''}"${attrs}><input type="checkbox" data-role="${r.role}" data-cap="${cap}"
+      title="${esc(r.label)} — ${esc(row.label)}${what ? ': ' + what : ''}" ${on ? 'checked' : ''} onchange="permToggle(this)"></td>`;
   };
+  const cells = (r, row) => row.action
+    ? box(r, row.action, row, true, '')
+    : (row.view ? box(r, row.view, row, false, 'צפייה') : '<td class="perm-cell"></td>')
+      + (row.edit ? box(r, row.edit, row, false, 'עריכה') : '<td class="perm-cell"></td>');
   card.innerHTML = `
     <div class="toolbar">
       <h2 style="margin:0">הרשאות לפי סוג משתמש</h2>
@@ -2128,15 +2153,15 @@ function renderPermissions() {
       <button class="btn" id="perm-save" onclick="savePermissions()">שמירת הרשאות</button>
     </div>
     <div class="hint" style="margin-bottom:10px">
-      לכל פעולה: 👁 צפייה · ✏️ עריכה. סימון עריכה מסמן גם צפייה, והסרת צפייה מסירה גם את העריכה.
-      רקע צהוב = שונה מברירת המחדל. השינוי חל מיד אחרי השמירה על כל המשתמשים מאותו סוג
-      (מי שכבר מחובר יראה אותו בפעולה הבאה או ברענון הדף). מנהל ראשי מקבל תמיד את כל ההרשאות.
+      לכל נושא: 👁 צפייה · ✏️ עריכה, ולפעולה בודדת (כמו מחיקה) תיבה אחת. סימון עריכה מסמן גם צפייה,
+      והסרת צפייה מסירה גם את העריכה. רקע צהוב = שונה מברירת המחדל. השינוי חל מיד אחרי השמירה על כל
+      המשתמשים מאותו סוג. מנהל ראשי מקבל תמיד את כל ההרשאות; את הטבלה עורכים מנהל ראשי ומנהל.
     </div>
     <div class="perm-wrap"><table class="perm-table">
       <thead><tr>
         <th class="perm-action">פעולה</th>
         ${roles.map(r => `<th colspan="2" class="perm-role" title="${esc(r.desc)}">${esc(r.label)}
-          <div class="hint">${r.users} משתמשים</div>
+          <div class="hint">${r.users} משתמשים${r.locked ? ' · תמיד הכל' : ''}</div>
           ${r.locked ? '' : `<button type="button" class="link-btn" onclick="permResetRole('${r.role}')">ברירת מחדל</button>`}
           <div class="perm-sub"><span>👁</span><span>✏️</span></div></th>`).join('')}
       </tr></thead>
@@ -2145,7 +2170,7 @@ function renderPermissions() {
         <tr class="perm-sec"><td colspan="${roles.length * 2 + 1}">${esc(sec.title)}</td></tr>
         ${sec.rows.map(row => `<tr>
           <td class="perm-action">${esc(row.label)}${row.hint ? `<div class="hint">${esc(row.hint)}</div>` : ''}</td>
-          ${roles.map(r => cell(r, row.view, row) + cell(r, row.edit, row)).join('')}
+          ${roles.map(r => cells(r, row)).join('')}
         </tr>`).join('')}`).join('')}
       </tbody>
     </table></div>`;
@@ -2209,7 +2234,7 @@ function openUserModal(userId) {
       <div class="field"><label>שם מלא</label><input name="full_name" value="${esc(u ? u.full_name : '')}"></div>
       <div class="field"><label>מייל (לשחזור סיסמה)</label><input name="email" type="email" value="${esc(u ? u.email : '')}" placeholder="name@example.com" autocomplete="off"></div>
       <div class="field"><label>תפקיד</label><select name="role" onchange="showRoleDesc(this.value)">
-        ${roles.map(r => `<option value="${r.role}" ${u && u.role === r.role ? 'selected' : ''}>${r.label}</option>`).join('')}
+        ${roles.filter(r => r.role !== 'admin' || S.me.role === 'admin').map(r => `<option value="${r.role}" ${u && u.role === r.role ? 'selected' : ''}>${r.label}</option>`).join('')}
       </select>
       <div class="hint role-desc" id="role-desc"></div></div>
       <div class="field"><label>${u ? 'סיסמא חדשה (ריק = ללא שינוי)' : 'סיסמא *'}</label><input name="password" type="password" autocomplete="new-password" ${u ? '' : 'required'}></div>

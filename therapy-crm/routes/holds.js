@@ -3,6 +3,7 @@
 const express = require('express');
 const { pool, logAction, validId } = require('../db');
 const { authenticate, can } = require('../middleware/auth');
+const { maskPatientNames, hiddenName } = require('../lib/permissions');
 const router = express.Router();
 
 const LIST_SQL = `
@@ -21,7 +22,10 @@ router.get('/', authenticate, can('viewHolds'), async (req, res) => {
     let where = 'h.released = false AND p.deleted = false';
     if (req.query.therapist_id) { params.push(validId(req.query.therapist_id)); where += ` AND h.therapist_id=$${params.length}`; }
     const r = await pool.query(`${LIST_SQL} WHERE ${where} ORDER BY t.name, p.urgency, h.created_at`, params);
-    res.json(r.rows);
+    // שם ודחיפות מוצגים רק למי שרשאי לראות אותם בפרטי המטופל
+    let rows = maskPatientNames(r.rows, req.caps);
+    if (!req.caps.viewUrgency) rows = rows.map(({ urgency, ...rest }) => rest);
+    res.json(rows);
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
@@ -42,7 +46,7 @@ router.post('/', authenticate, can('holds'), async (req, res) => {
     for (const pid of ids) {
       const pr = await pool.query('SELECT last_name, first_name FROM patients WHERE id=$1 AND deleted=false', [pid]);
       if (!pr.rows.length) { skipped.push({ id: pid, reason: 'מטופל לא נמצא' }); continue; }
-      const name = `${pr.rows[0].last_name} ${pr.rows[0].first_name}`;
+      const name = req.caps.viewName ? `${pr.rows[0].last_name} ${pr.rows[0].first_name}` : hiddenName(pid);
       // ON CONFLICT מול האינדקס הייחודי — מטופל שכבר בהשהיה אצל המטפל הזה לא נכפל
       const r = await pool.query(
         `INSERT INTO holds (therapist_id, patient_id, note, created_by, created_by_name)
