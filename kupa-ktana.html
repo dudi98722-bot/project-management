@@ -596,9 +596,9 @@ function doSetup(btn){
     busy(btn,false);
     if(!r.ok) return setMsg('m', r.error);
     S.token = r.token; lsSet(LS_TOK, r.token);
-    applyPayload(r); cacheSet(r);
     toast('נוצר מנהל ראשי — ברוך הבא','ok');
-    renderApp();
+    if(r.deposits){ applyPayload(r); cacheSet(r); renderApp(); }
+    else { loadAll(); }
   });
 }
 
@@ -631,8 +631,12 @@ function doLogin(btn){
     busy(btn,false);
     if(!r.ok) return setMsg('m', r.error);
     S.token = r.token; lsSet(LS_TOK, r.token);
-    applyPayload(r); cacheSet(r); haptic(10);
-    renderApp();                       /* הכניסה כבר החזירה את הנתונים */
+    haptic(10);
+    if(r.deposits){                    /* הכניסה כבר החזירה את הנתונים */
+      applyPayload(r); cacheSet(r); renderApp();
+    } else {
+      loadAll();                       /* גרסת שרת ישנה — מביאים אותם בנפרד */
+    }
   });
 }
 function logout(){
