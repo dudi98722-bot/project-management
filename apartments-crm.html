@@ -406,7 +406,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 נד'";
+var APP_BUILD = "19.08 נו'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -2607,7 +2607,29 @@ function bankPayIssues(){
       payless.push({m:m,x:x,inc:inc});
     });
   });
-  return {unlinked:unlinked, unresolved:unresolved, payless:payless};
+  /* 3. אותו תשלום מקושר ליותר משורת בנק אחת — הכסף נספר פעמיים.
+     הקישור הראשון נשאר, הנוספים משתחררים. */
+  var doubleLinked=[];
+  Object.keys(ix.live).forEach(function(pid){
+    var arr=ix.live[pid]; if(arr.length<2) return;
+    arr.slice(1).forEach(function(o){
+      var inc=byId(DB.income,o.x.incomeId);
+      doubleLinked.push({m:o.m,x:o.x,inc:inc||null});
+    });
+  });
+  /* 4. שורת בנק שהוקצה ממנה יותר מהסכום שלה — לבדיקה ידנית בלבד:
+     אי אפשר לדעת לבד איזו מההתאמות היא הטעות. */
+  var overAllocated=allBankMoves().filter(function(m){
+    return moveAllocated(m) > (Number(m.amount)||0)+0.01;
+  });
+  return {unlinked:unlinked, unresolved:unresolved, payless:payless, doubleLinked:doubleLinked, overAllocated:overAllocated};
+}
+/* מספר הבעיות לכל סוג — לתג התקינות בסרגל */
+function bankHealth(){
+  var r=bankPayIssues();
+  return {r:r, orphans:orphanMatches().length,
+    fixable:r.unlinked.length+r.payless.length+r.doubleLinked.length,
+    review:r.overAllocated.length};
 }
 /* קישור תשלום קיים לשורת הבנק — בלי ליצור תשלום חדש */
 function linkBankPay(o,ix){
@@ -2632,7 +2654,9 @@ function relinkIncomeBankPays(incId){
 function fixBankPayLinks(){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var r=bankPayIssues();
-  if(!r.unlinked.length && !r.payless.length){ toast("לא נמצאו אי-התאמות בין הבנק להזמנות","ok"); return; }
+  if(!r.unlinked.length && !r.payless.length && !r.doubleLinked.length && !r.overAllocated.length){
+    toast("לא נמצאו אי-התאמות בין הבנק להזמנות","ok"); return;
+  }
   function row(date,amt,moveTxt,bank,inc){
     return '<tr><td>'+dateHe(date)+'</td><td><b>'+money(amt)+'</b></td>'+
       '<td>'+esc(String(moveTxt||"—").slice(0,40))+'</td><td>'+esc(bank||"—")+'</td>'+
@@ -2653,6 +2677,22 @@ function fixBankPayLinks(){
       'כדי שתוכל להתאים אותה שוב. <b>שום שורת בנק לא נמחקת.</b></div>'+
       head+r.payless.map(function(o){ return row(o.m.date,o.x.amount,o.m.name||o.m.description,moveBankLabel(o.m),o.inc); }).join("")+'</tbody></table></div>';
   }
+  if(r.doubleLinked.length){
+    h+='<div class="section-title">✌️ תשלום שמקושר לשתי שורות בנק — נספר פעמיים ('+r.doubleLinked.length+')</div>'+
+      '<div class="hint" style="margin-bottom:6px">אותו תשלום בהזמנה מקושר ליותר משורת בנק אחת. התיקון משאיר את הקישור הראשון '+
+      'ומשחרר את השורות הנוספות ל"לא מותאם". <b>לא נמחק תשלום ולא נמחקת שורת בנק.</b></div>'+
+      head+r.doubleLinked.map(function(o){ return row(o.m.date,o.x.amount,o.m.name||o.m.description,moveBankLabel(o.m),o.inc); }).join("")+'</tbody></table></div>';
+  }
+  if(r.overAllocated.length){
+    h+='<div class="section-title">⚠ שורת בנק שהוקצה ממנה יותר מהסכום שלה ('+r.overAllocated.length+') — לבדיקה ידנית</div>'+
+      '<div class="hint" style="margin-bottom:6px">סך ההתאמות בשורה גדול מסכום השורה. אי אפשר לדעת אוטומטית איזו התאמה שגויה — '+
+      'פתח את השורה בהתאמת הבנק ובטל את ההתאמה המיותרת.</div>'+
+      '<div class="table-wrap" style="max-height:180px"><table class="tbl"><thead><tr><th>תאריך</th><th>שורת הבנק</th><th class="num">סכום השורה</th><th class="num">הוקצה</th></tr></thead><tbody>'+
+      r.overAllocated.slice(0,50).map(function(m){
+        return '<tr><td>'+dateHe(m.date)+'</td><td>'+esc(String(m.name||m.description||"—").slice(0,40))+'</td>'+
+          '<td>'+money(m.amount)+'</td><td class="neg"><b>'+money(moveAllocated(m))+'</b></td></tr>';
+      }).join("")+'</tbody></table></div>';
+  }
   if(r.unresolved.length){
     h+='<div class="section-title">לא יתוקן אוטומטית ('+r.unresolved.length+')</div>'+
       '<div class="hint" style="margin-bottom:6px">תשלומים "מדף הבנק" בלי שורה מקושרת, שלא נמצאה להם שורה אחת ודאית. אפשר לבדוק אותם ידנית.</div>'+
@@ -2661,17 +2701,18 @@ function fixBankPayLinks(){
         return '<tr><td>'+dateHe(o.g.date)+'</td><td>'+money(o.g.amount)+'</td><td>'+esc(o.inc.description)+'</td><td class="muted">'+esc(o.why)+'</td></tr>';
       }).join("")+'</tbody></table></div>';
   }
-  var n=r.unlinked.length+r.payless.length;
+  var n=r.unlinked.length+r.payless.length+r.doubleLinked.length;
   openModal({title:"🔗 אי-התאמות בין הבנק להזמנות",wide:true,bodyHtml:h,
-    saveLabel:"תקן "+n,onSave:function(){
+    saveLabel:n?("תקן "+n):null,onSave:n?function(){
       var ix=bankPayIndex(), a=0, b=0;
       r.unlinked.forEach(function(o){ if(!o.g.deleted && !o.inc.deleted && linkBankPay(o,ix)) a++; });
       r.payless.forEach(function(o){ if(!o.x.deleted){ o.x.deleted=true; b++; } });
+      r.doubleLinked.forEach(function(o){ if(!o.x.deleted){ o.x.deleted=true; b++; } });
       save();
       toast((a?"קושרו "+a+" שורות בנק לתשלומים הקיימים":"")+(a&&b?" · ":"")+(b?"שוחררו "+b+" שורות":""),"ok");
       rerender();
       return true;
-    }});
+    }:null});
 }
 function fixOrphanMatches(){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
@@ -2769,6 +2810,9 @@ function renderApp(){
   try{ if(typeof closeColPicker==="function") closeColPicker(); }catch(e){}
   clientScopeMgmt();   // משתמש "דמי ניהול" — רק נתוני דמי הניהול
   var app=document.getElementById("app");
+  /* מיקום הגלילה בטבלת "קטגוריות לפי פרוייקט" נקרא עכשיו — השורה הבאה
+     מוחקת את המסך, ואחריה כבר אין טבלה לקרוא ממנה */
+  if(typeof aptCatsRememberScroll==="function") aptCatsRememberScroll();
   app.innerHTML = topbarHtml() + navHtml() + '<div class="content" id="content"></div>';
   renderView();
   restoreSelections(kept);
@@ -4168,7 +4212,19 @@ async function flushSave(){
             }
           });
         }
-        if(SAVEQ.dirty){ setSync("saving"); setTimeout(flushSave,0); }   // שינויים שנעשו בזמן השליחה
+        if(SAVEQ.dirty){
+          /* שינויים שנעשו בזמן השליחה קיבלו את אותו מונה כמו השמירה שנשלחה
+             (הבסיס עוד לא התעדכן כשנשמרו). בלי העלאה, הבדיקה המוקדמת ראתה
+             "השרת כבר במונה שלנו" והפעילה מיזוג מדומה מול השמירה של עצמנו:
+             המסך נבנה מחדש (קפיצה) והופיעה ההודעה "שולבו שינויים ממשתמש אחר".
+             השרת נמצא עכשיו בדיוק במצב שנשלח, ולכן בסיס+1 הוא המונה הנכון —
+             ושמירה של מישהו אחר שתגיע בינתיים עדיין תיתפס בבדיקה המוקדמת. */
+          if(DB && DB.meta && (Number(DB.meta.rev)||0) <= SYNCREV){
+            DB.meta.rev = SYNCREV+1;
+            try{ LAST_JSON=JSON.stringify(DB); vaultPut(LSKEY, LAST_JSON); }catch(e){}
+          }
+          setSync("saving"); setTimeout(flushSave,0);
+        }
         else { clearDirtyMark(); setSync("ok"); }
         return;
       }
@@ -8805,11 +8861,21 @@ function viewBankMatch(){
       ? '<button class="btn btn-danger btn-sm" onclick="fixOrphanMatches()">🔧 '+
         orphanMatches().length+' התאמות להכנסות שנמחקו</button> '
       : '')+
+    /* בדיקת תקינות שרצה בכל כניסה למסך: תג ירוק כשהכול תקין — כך רואים
+       שהבדיקה נעשתה, ולא רק "אין כפתור". כשיש בעיה — כפתור עם מספר. */
     (function(){
       if(!(CU&&CU.role==="admin")) return '';
-      var r=bankPayIssues(), n=r.unlinked.length+r.payless.length;
-      return n ? '<button class="btn btn-danger btn-sm" onclick="fixBankPayLinks()" '+
-        'title="הזמנה ששולמה מדף הבנק ששורת הבנק שלה לא מקושרת, או להפך">🔗 '+n+' אי-התאמות בין הבנק להזמנות</button> ' : '';
+      var hb=bankHealth();
+      if(!hb.fixable && !hb.review && !hb.orphans){
+        return '<span class="badge badge-ok badge-unit" style="padding:5px 10px" title="נבדק עכשיו: אין התאמות להכנסות שנמחקו, '+
+          'אין תשלום מהבנק בלי שורה מקושרת, אין שורה מותאמת בלי תשלום, אין תשלום שנספר בשתי שורות, '+
+          'ואין שורה שהוקצה ממנה יותר מהסכום שלה">✅ ההתאמות תקינות</span> ';
+      }
+      return (hb.fixable ? '<button class="btn btn-danger btn-sm" onclick="fixBankPayLinks()" '+
+          'title="הזמנה ששולמה מדף הבנק ששורת הבנק שלה לא מקושרת, שורה מותאמת בלי תשלום, או תשלום שנספר פעמיים">🔗 '+
+          hb.fixable+' אי-התאמות בין הבנק להזמנות</button> ' : '')+
+        (hb.review ? '<button class="btn btn-sm" onclick="fixBankPayLinks()" '+
+          'title="שורות שהוקצה מהן יותר מהסכום שלהן">⚠ '+hb.review+' שורות בנק לבדיקה</button> ' : '');
     })()+
     '<div class="sp"></div></div>';
   h+='<div class="toolbar">'+
@@ -14007,7 +14073,8 @@ function deleteApartmentExpenses(aptId){
 /* ============================================================
    מסך "קטגוריות לפי פרוייקט" — שורה לכל קטגוריה, עמודה לכל פרוייקט
    ============================================================ */
-var ACQ={q:"",apt:""};    // חיפוש קטגוריה / סינון פרוייקט
+var ACQ={q:"",apt:"",st:0,sl:0};    // חיפוש קטגוריה / סינון פרוייקט / מיקום הגלילה בטבלה
+var ACU={};    // מפת השימוש מהרינדור האחרון (פרוייקט → קטגוריה → שלבים) — סימון לא משנה אותה
 /* ספירת שלבים לכל פרוייקט+קטגוריה במעבר אחד. שלבי-אב לא נספרים —
    הכסף והקטגוריה יושבים בתתי-השלבים. */
 function aptCatUsage(){
@@ -14030,6 +14097,11 @@ function aptCatsSummary(){
   return lim+" פרוייקטים עם רשימה · "+(apts.length-lim)+" ללא הגבלה";
 }
 function aptCatsViewHtml(){
+  /* רינדור מלא של המסך (למשל אחרי מיזוג אמיתי עם שמירה מחלון אחר)
+     מחזיר את הטבלה לאותו מקום גלילה. המיקום נקרא כאן, מהטבלה הקיימת
+     שעוד לא הוחלפה — לא סומכים רק על אירוע הגלילה, שלא תמיד נורה. */
+  aptCatsRememberScroll();
+  setTimeout(aptCatsRestoreScroll,0);
   return '<div class="toolbar">'+
       searchBox("ac-q",ACQ.q,"חיפוש קטגוריה…","ACQ.q=this.value;aptCatsRefresh()")+
       searchBox("ac-apt",ACQ.apt,"סינון פרוייקט…","ACQ.apt=this.value;aptCatsRefresh()")+
@@ -14050,17 +14122,17 @@ function aptCatsTableHtml(){
   if(!apts.length) return '<div class="empty">'+(ACQ.apt?"אין פרוייקט שמתאים לסינון":"אין פרוייקטים")+'</div>';
   var cats=allCats.filter(function(c){ return matches(ACQ.q,c.name); });
   var use=aptCatUsage(), lists={};
+  ACU=use;
   apts.forEach(function(a){ lists[a.id]=aptCatIds(a.id); });
-  var h='<div class="table-wrap"><table class="tbl ac-tbl" data-tools="off" data-xl="off"><thead><tr><th class="ac-cat">קטגוריה</th>';
+  var h='<div class="table-wrap" onscroll="ACQ.st=this.scrollTop;ACQ.sl=this.scrollLeft">'+
+    '<table class="tbl ac-tbl" data-tools="off" data-xl="off"><thead><tr><th class="ac-cat">קטגוריה</th>';
   apts.forEach(function(a){
     var l=lists[a.id], u=use[a.id]||{}, out=0;
     if(l) Object.keys(u).forEach(function(cid){ if(l.indexOf(cid)<0) out+=u[cid]; });
-    h+='<th class="ac-apt">'+
+    h+='<th class="ac-apt" data-apt="'+a.id+'">'+
       '<div class="ac-name" title="'+esc(a.name)+'">'+esc(a.name)+'</div>'+
-      '<div class="ac-state">'+(l
-        ? '<span class="badge badge-ok badge-unit">'+l.length+' קטגוריות</span>'
-        : '<span class="badge badge-unit" title="לא סומנה אף קטגוריה — כל הקטגוריות זמינות">הכל</span>')+'</div>'+
-      '<div class="ac-out">'+(out?'<span class="badge badge-warn badge-unit" title="שלבים שרשומים בקטגוריות שלא סומנו לפרוייקט">⚠ '+out+' שלבים מחוץ</span>':"")+'</div>'+
+      '<div class="ac-state">'+aptCatsStateHtml(l)+'</div>'+
+      '<div class="ac-out">'+aptCatsOutHtml(out)+'</div>'+
       '<div class="ac-acts">'+
         '<button class="btn btn-ghost btn-sm" title="סמן את הקטגוריות שכבר בשימוש בפרוייקט" onclick="aptCatsUsage(\''+a.id+'\')">📥</button>'+
         '<button class="btn btn-ghost btn-sm" title="'+(ACQ.q?"סמן את הקטגוריות שמוצגות בחיפוש":"סמן את כל הקטגוריות")+'" onclick="aptCatsSetAll(\''+a.id+'\',true)">✔</button>'+
@@ -14069,10 +14141,10 @@ function aptCatsTableHtml(){
   });
   h+='</tr></thead><tbody>';
   cats.forEach(function(c){
-    h+='<tr><td class="ac-cat">'+esc(c.name)+'</td>';
+    h+='<tr data-cat="'+c.id+'"><td class="ac-cat">'+esc(c.name)+'</td>';
     apts.forEach(function(a){
       var l=lists[a.id], on=!!(l && l.indexOf(c.id)>=0), n=(use[a.id]||{})[c.id]||0;
-      h+='<td class="ac-cell'+(l?"":" ac-open")+(l&&!on&&n?" ac-warn":"")+'">'+
+      h+='<td class="ac-cell'+(l?"":" ac-open")+(l&&!on&&n?" ac-warn":"")+'" data-apt="'+a.id+'" data-cat="'+c.id+'">'+
         '<label class="ac-lbl" title="'+esc(a.name)+" · "+esc(c.name)+'">'+
           '<input type="checkbox"'+(on?" checked":"")+' onchange="aptCatToggle(\''+a.id+'\',\''+c.id+'\',this.checked)">'+
           '<span class="ac-n">'+(n?n:"")+'</span></label></td>';
@@ -14085,6 +14157,44 @@ function aptCatsTableHtml(){
 /* רענון הטבלה בלבד, בלי לאבד את מיקום הגלילה — כך סימון תא לא מקפיץ.
    לטבלה אין כפתור "אקסל" (data-xl="off"): הכפתור נתלה מעליה באיחור אחרי
    כל רענון, והטבלה קפצה 28px למטה ובחזרה בכל סימון. */
+function aptCatsStateHtml(l){
+  return l ? '<span class="badge badge-ok badge-unit">'+l.length+' קטגוריות</span>'
+           : '<span class="badge badge-unit" title="לא סומנה אף קטגוריה — כל הקטגוריות זמינות">הכל</span>';
+}
+function aptCatsOutHtml(out){
+  return out ? '<span class="badge badge-warn badge-unit" title="שלבים שרשומים בקטגוריות שלא סומנו לפרוייקט">⚠ '+out+' שלבים מחוץ</span>' : "";
+}
+function aptCatsRememberScroll(){
+  var w=document.querySelector("#ac-wrap .table-wrap");
+  if(w){ ACQ.st=w.scrollTop; ACQ.sl=w.scrollLeft; }
+}
+function aptCatsRestoreScroll(){
+  var w=document.querySelector("#ac-wrap .table-wrap");
+  if(w && (ACQ.st || ACQ.sl)){ w.scrollTop=ACQ.st||0; w.scrollLeft=ACQ.sl||0; }
+}
+/* צביעה במקום של עמודות הפרוייקטים שהשתנו — בלי לבנות את הטבלה מחדש.
+   משתנים רק מחלקות, מצב התיבות והתוויות בכותרת (בגובה קבוע), כך
+   שאזור הגלילה, הפוקוס ומיקום העכבר נשארים בדיוק במקומם. */
+function aptCatsPaint(aptIds){
+  var box=document.getElementById("ac-wrap"); if(!box) return;
+  (aptIds||[]).forEach(function(aptId){
+    var l=aptCatIds(aptId), u=ACU[aptId]||{}, out=0;
+    if(l) Object.keys(u).forEach(function(cid){ if(l.indexOf(cid)<0) out+=u[cid]; });
+    var th=box.querySelector('th.ac-apt[data-apt="'+aptId+'"]');
+    if(th){
+      var st=th.querySelector(".ac-state"), ot=th.querySelector(".ac-out");
+      if(st) st.innerHTML=aptCatsStateHtml(l);
+      if(ot) ot.innerHTML=aptCatsOutHtml(out);
+    }
+    box.querySelectorAll('td.ac-cell[data-apt="'+aptId+'"]').forEach(function(td){
+      var cid=td.getAttribute("data-cat"), on=!!(l && l.indexOf(cid)>=0), n=u[cid]||0;
+      td.classList.toggle("ac-open",!l);
+      td.classList.toggle("ac-warn",!!(l && !on && n));
+      var cb=td.querySelector("input"); if(cb && cb.checked!==on) cb.checked=on;
+    });
+  });
+  var sum=document.getElementById("ac-sum"); if(sum) sum.textContent=aptCatsSummary();
+}
 function aptCatsRefresh(){
   var box=document.getElementById("ac-wrap"); if(!box) return;
   var tw=box.querySelector(".table-wrap"), sl=tw?tw.scrollLeft:0, st=tw?tw.scrollTop:0;
@@ -14110,7 +14220,7 @@ function aptCatToggle(aptId,catId,on){
   var now=!!aptCatIds(aptId);
   if(!was && now) toast('"'+aptCatsName(aptId)+'" מוגבל עכשיו לקטגוריות שסומנו',"ok");
   else if(was && !now) toast('בוטלה ההגבלה ב"'+aptCatsName(aptId)+'" — כל הקטגוריות זמינות בו',"warn");
-  aptCatsRefresh();
+  aptCatsPaint([aptId]);
 }
 function aptCatsSetAll(aptId,on){
   if(!aptCatsGuard()) return;
@@ -14133,7 +14243,7 @@ function aptCatsSetAll(aptId,on){
     delete aptCatsWrite()[aptId];
     save(); toast('בוטלה ההגבלה ב"'+name+'"',"ok");
   }
-  aptCatsRefresh();
+  aptCatsPaint([aptId]);
 }
 function aptCatsUsage(aptId){
   if(!aptCatsGuard()) return;
@@ -14144,7 +14254,7 @@ function aptCatsUsage(aptId){
   if(!add.length){ toast("כל הקטגוריות שבשימוש כבר מסומנות","warn"); return; }
   aptCatsWrite()[aptId]=list.concat(add);
   save(); toast('סומנו '+add.length+' קטגוריות לפי השימוש ב"'+name+'"',"ok");
-  aptCatsRefresh();
+  aptCatsPaint([aptId]);
 }
 function aptCatsFillUsage(){
   if(!aptCatsGuard()) return;
@@ -14157,7 +14267,7 @@ function aptCatsFillUsage(){
   var m=aptCatsWrite();
   todo.forEach(function(a){ m[a.id]=Object.keys(use[a.id]); });
   save(); toast("הוגדרו רשימות ל-"+todo.length+" פרוייקטים","ok");
-  aptCatsRefresh();
+  aptCatsPaint(todo.map(function(a){ return a.id; }));
 }
 function editCategory(id){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
