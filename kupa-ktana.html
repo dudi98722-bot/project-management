@@ -1,0 +1,1564 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#4A4A2A">
+<title>שניצל שף — קופה קטנה</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --yellow:#F5C800; --yellow-soft:#FFF6C4; --yellow-pale:#FFFDEE;
+  --olive:#4A4A2A; --olive-2:#6B6B3A; --olive-dark:#3A3A1E;
+  --bg:#F0EFE8; --card:#FFFFFF; --line:#E3E2D8; --line-2:#EFEEE6;
+  --ink:#1A1A1A; --muted:#8A8A78;
+  --green:#1E8E5A; --green-soft:#E7F5EE;
+  --red:#D14343; --red-soft:#FCECEC;
+  --blue:#3B6FD4; --blue-soft:#EAF0FC;
+  --radius:14px; --radius-sm:9px;
+  --shadow:0 2px 10px rgba(0,0,0,.05);
+  --shadow-md:0 10px 34px rgba(0,0,0,.13);
+}
+html,body{height:100%}
+body{
+  font-family:"Rubik","Heebo","Assistant","Segoe UI",Arial,"Noto Sans Hebrew",sans-serif;
+  background:var(--bg); color:var(--ink); font-size:14.5px; line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:none;background:none}
+a{color:var(--blue)}
+.hide{display:none !important}
+
+/* ---------- כפתורים ---------- */
+.btn{display:inline-flex;align-items:center;gap:7px;justify-content:center;
+  padding:9px 16px;border-radius:var(--radius-sm);font-weight:600;font-size:14px;
+  border:1px solid transparent;transition:filter .15s,box-shadow .15s;white-space:nowrap}
+.btn:hover{filter:brightness(.96)}
+.btn:active{transform:translateY(1px)}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.btn-primary{background:var(--olive);color:#fff}
+.btn-yellow{background:var(--yellow);color:var(--olive-dark)}
+.btn-ghost{background:#fff;border-color:var(--line);color:var(--olive-2)}
+.btn-ghost:hover{background:var(--yellow-pale);border-color:var(--yellow)}
+.btn-danger{background:var(--red-soft);color:var(--red);border-color:#F3D4D4}
+.btn-sm{padding:5px 10px;font-size:13px;border-radius:7px}
+.btn-block{width:100%}
+
+/* ---------- שדות ---------- */
+.field{display:block;margin-bottom:14px}
+.field>label{display:block;font-size:13px;font-weight:600;color:var(--olive-2);margin-bottom:5px}
+.inp{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:var(--radius-sm);
+  background:#fff;transition:border-color .15s,box-shadow .15s}
+.inp:focus{outline:none;border-color:var(--yellow);box-shadow:0 0 0 3px var(--yellow-soft)}
+select.inp{cursor:pointer}
+textarea.inp{resize:vertical;min-height:64px}
+.hint{font-size:12px;color:var(--muted);margin-top:5px}
+
+/* ---------- מסכי פתיחה ---------- */
+.gate{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:22px}
+.gate-card{background:var(--card);border-radius:20px;padding:34px 30px;width:100%;max-width:420px;
+  box-shadow:var(--shadow-md);border-top:6px solid var(--yellow)}
+.gate-logo{width:56px;height:56px;border-radius:16px;background:var(--yellow);color:var(--olive-dark);
+  display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 14px}
+.gate-card h1{font-size:22px;font-weight:800;color:var(--olive);text-align:center}
+.gate-card .sub{text-align:center;color:var(--muted);font-size:13.5px;margin:5px 0 22px}
+.steps{display:flex;gap:6px;justify-content:center;margin-bottom:20px}
+.step-dot{width:26px;height:4px;border-radius:2px;background:var(--line)}
+.step-dot.on{background:var(--yellow)}
+
+/* ---------- הודעות ---------- */
+.msg{padding:9px 12px;border-radius:var(--radius-sm);font-size:13.5px;margin-bottom:14px;display:none}
+.msg.on{display:block}
+.msg-err{background:var(--red-soft);color:var(--red)}
+.msg-ok{background:var(--green-soft);color:var(--green)}
+.msg-info{background:var(--blue-soft);color:var(--blue)}
+
+/* ---------- שלד האפליקציה ---------- */
+.topbar{background:var(--olive);color:#fff;position:sticky;top:0;z-index:40;box-shadow:var(--shadow)}
+.topbar-in{max-width:1280px;margin:0 auto;padding:0 18px;height:60px;display:flex;align-items:center;gap:14px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:17px;white-space:nowrap}
+.brand-mark{width:34px;height:34px;border-radius:10px;background:var(--yellow);color:var(--olive-dark);
+  display:flex;align-items:center;justify-content:center;font-size:18px}
+.brand small{display:block;font-size:11px;font-weight:500;opacity:.72;line-height:1}
+.bal-pill{margin-inline-start:auto;display:flex;align-items:center;gap:9px;background:rgba(255,255,255,.11);
+  padding:6px 14px;border-radius:999px;font-size:13px}
+.bal-pill b{font-size:16.5px;font-weight:800;color:var(--yellow)}
+.who{display:flex;align-items:center;gap:8px;position:relative}
+.who-btn{display:flex;align-items:center;gap:8px;padding:5px 9px;border-radius:9px;color:#fff;
+  background:rgba(255,255,255,.09)}
+.who-btn:hover{background:rgba(255,255,255,.17)}
+.avatar{width:28px;height:28px;border-radius:50%;background:var(--yellow);color:var(--olive-dark);
+  display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px}
+.who-name{font-size:13px;text-align:start;line-height:1.15}
+.who-name small{display:block;opacity:.7;font-size:11px}
+.menu{position:absolute;top:46px;inset-inline-end:0;background:#fff;border-radius:12px;min-width:190px;
+  box-shadow:var(--shadow-md);padding:6px;z-index:50}
+.menu button{display:flex;align-items:center;gap:9px;width:100%;padding:9px 11px;border-radius:8px;
+  color:var(--ink);font-size:13.5px;text-align:start}
+.menu button:hover{background:var(--yellow-pale)}
+
+.tabs{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:60px;z-index:30}
+.tabs-in{max-width:1280px;margin:0 auto;padding:0 12px;display:flex;gap:2px;overflow-x:auto}
+.tab{padding:12px 15px;font-size:14px;font-weight:600;color:var(--muted);white-space:nowrap;
+  border-bottom:3px solid transparent;display:flex;align-items:center;gap:7px}
+.tab:hover{color:var(--olive-2);background:var(--yellow-pale)}
+.tab.on{color:var(--olive);border-bottom-color:var(--yellow)}
+
+.wrap{max-width:1280px;margin:0 auto;padding:20px 18px 60px}
+.page-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.page-head h2{font-size:19px;font-weight:800;color:var(--olive)}
+.page-head .spacer{margin-inline-start:auto}
+
+/* ---------- כרטיסים ---------- */
+.card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
+  border:1px solid var(--line-2);overflow:hidden}
+.card-pad{padding:16px 18px}
+.card-title{font-size:15px;font-weight:700;color:var(--olive);padding:14px 18px;
+  border-bottom:1px solid var(--line-2);display:flex;align-items:center;gap:9px}
+.card-title .spacer{margin-inline-start:auto}
+
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:13px;margin-bottom:20px}
+.stat{background:var(--card);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow);
+  border:1px solid var(--line-2);position:relative;overflow:hidden}
+.stat::after{content:"";position:absolute;inset-block-start:0;inset-inline-start:0;width:4px;height:100%;background:var(--line)}
+.stat.big::after{background:var(--yellow)}
+.stat.in::after{background:var(--green)}
+.stat.out::after{background:var(--red)}
+.stat .lbl{font-size:12.5px;color:var(--muted);font-weight:600;display:flex;align-items:center;gap:6px}
+.stat .val{font-size:25px;font-weight:800;margin-top:5px;letter-spacing:-.4px}
+.stat.big .val{color:var(--olive);font-size:31px}
+.stat.in .val{color:var(--green)}
+.stat.out .val{color:var(--red)}
+.stat .sub{font-size:12px;color:var(--muted);margin-top:3px}
+.stat.neg .val{color:var(--red)}
+
+/* ---------- טבלאות ---------- */
+.tbl-scroll{overflow-x:auto}
+table.tbl{width:100%;border-collapse:collapse;font-size:13.5px;min-width:640px}
+table.tbl th,table.tbl td{padding:9px 11px;text-align:start;border-bottom:1px solid var(--line-2);
+  vertical-align:middle}
+table.tbl thead th{background:var(--olive);color:#fff;font-weight:700;font-size:13px;
+  position:sticky;top:0;white-space:nowrap;cursor:pointer;user-select:none}
+table.tbl thead th:hover{background:var(--olive-dark)}
+table.tbl thead th.nosort{cursor:default}
+table.tbl thead th .arw{opacity:.5;font-size:10px;margin-inline-start:3px}
+table.tbl tr.filt th{background:var(--yellow-pale);padding:6px 7px;position:sticky;top:37px;cursor:default}
+table.tbl tr.filt th:hover{background:var(--yellow-pale)}
+.f-inp{width:100%;padding:5px 7px;border:1px solid var(--line);border-radius:6px;font-size:12.5px;background:#fff}
+.f-inp:focus{outline:none;border-color:var(--yellow);box-shadow:0 0 0 2px var(--yellow-soft)}
+.f-pair{display:flex;gap:4px}
+table.tbl tbody tr:hover{background:var(--yellow-pale)}
+table.tbl tbody tr.zebra{background:#FCFCF9}
+table.tbl tbody tr.zebra:hover{background:var(--yellow-pale)}
+table.tbl tfoot td{background:#F7F6EF;font-weight:800;color:var(--olive);border-top:2px solid var(--yellow)}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}
+.num.in{color:var(--green)}
+.num.out{color:var(--red)}
+.empty{padding:38px 18px;text-align:center;color:var(--muted)}
+.empty .ico{font-size:34px;display:block;margin-bottom:8px;opacity:.5}
+.chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;
+  background:var(--yellow-soft);color:var(--olive-dark);white-space:nowrap}
+.chip.role-super{background:#EDE4FA;color:#6B3FA0}
+.chip.role-admin{background:var(--blue-soft);color:var(--blue)}
+.chip.role-employee{background:var(--line-2);color:var(--olive-2)}
+.chip.off{background:var(--red-soft);color:var(--red)}
+.row-acts{display:flex;gap:5px;justify-content:flex-end}
+.icon-btn{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;
+  font-size:14px;border:1px solid var(--line);background:#fff}
+.icon-btn:hover{background:var(--yellow-pale);border-color:var(--yellow)}
+.icon-btn.del:hover{background:var(--red-soft);border-color:#F3D4D4}
+.muted{color:var(--muted)}
+.count-line{font-size:12.5px;color:var(--muted);padding:9px 16px;border-top:1px solid var(--line-2);
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
+/* ---------- דוחות ---------- */
+.rep-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+.bar-row{display:grid;grid-template-columns:1fr auto;gap:4px;padding:9px 0;border-bottom:1px solid var(--line-2)}
+.bar-row:last-child{border-bottom:none}
+.bar-top{display:flex;align-items:baseline;gap:8px;grid-column:1/-1}
+.bar-top .nm{font-weight:600;font-size:13.5px}
+.bar-top .amt{margin-inline-start:auto;font-weight:800;font-variant-numeric:tabular-nums}
+.bar-top .pct{font-size:12px;color:var(--muted);min-width:42px;text-align:end}
+.bar-track{grid-column:1/-1;height:7px;background:var(--line-2);border-radius:4px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px;background:var(--yellow);transition:width .35s}
+.bar-fill.out{background:var(--red)}
+.bar-fill.in{background:var(--green)}
+.seg{display:inline-flex;background:var(--line-2);border-radius:9px;padding:3px;gap:2px}
+.seg button{padding:6px 13px;border-radius:7px;font-size:13px;font-weight:600;color:var(--olive-2)}
+.seg button.on{background:#fff;color:var(--olive);box-shadow:var(--shadow)}
+
+/* ---------- מודאל ---------- */
+.modal{position:fixed;inset:0;background:rgba(26,26,26,.45);display:flex;align-items:center;
+  justify-content:center;padding:18px;z-index:100;backdrop-filter:blur(2px)}
+.modal-box{background:#fff;border-radius:18px;width:100%;max-width:430px;box-shadow:var(--shadow-md);
+  max-height:92vh;display:flex;flex-direction:column;animation:pop .16s ease-out}
+.modal-box.wide{max-width:620px}
+@keyframes pop{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
+.modal-head{padding:16px 20px;border-bottom:1px solid var(--line-2);display:flex;align-items:center;gap:10px}
+.modal-head h3{font-size:17px;font-weight:800;color:var(--olive)}
+.modal-head .x{margin-inline-start:auto;width:30px;height:30px;border-radius:8px;font-size:17px;color:var(--muted)}
+.modal-head .x:hover{background:var(--line-2)}
+.modal-body{padding:18px 20px;overflow-y:auto}
+.modal-foot{padding:14px 20px;border-top:1px solid var(--line-2);display:flex;gap:9px;justify-content:flex-end}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+.cat-pick{display:flex;gap:7px}
+.cat-pick .inp{flex:1}
+
+/* ---------- טוסט ---------- */
+#toasts{position:fixed;inset-block-end:20px;inset-inline-start:50%;transform:translateX(50%);
+  z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
+.toast{padding:11px 18px;border-radius:11px;font-size:14px;font-weight:600;color:#fff;
+  box-shadow:var(--shadow-md);animation:up .2s ease-out;max-width:92vw}
+@keyframes up{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.toast.ok{background:var(--green)}
+.toast.err{background:var(--red)}
+.toast.info{background:var(--olive)}
+
+/* ---------- טעינה ---------- */
+.spin{width:15px;height:15px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;
+  border-radius:50%;display:inline-block;animation:sp .7s linear infinite}
+.spin.dark{border-color:rgba(74,74,42,.25);border-top-color:var(--olive)}
+@keyframes sp{to{transform:rotate(360deg)}}
+#boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg);z-index:300}
+
+@media(max-width:720px){
+  .topbar-in{height:56px;padding:0 12px;gap:9px}
+  .brand span.bn{display:none}
+  .bal-pill{padding:5px 11px;font-size:12px}
+  .bal-pill span{display:none}
+  .who-name{display:none}
+  .wrap{padding:15px 12px 50px}
+  .stat .val{font-size:22px}
+  .stat.big .val{font-size:26px}
+  .modal{padding:0;align-items:flex-end}
+  .modal-box{max-width:none;border-radius:18px 18px 0 0;max-height:94vh}
+  .grid2{grid-template-columns:1fr}
+}
+@media print{
+  .topbar,.tabs,.page-head .spacer,.row-acts,.filt{display:none !important}
+  body{background:#fff}
+  .card{box-shadow:none;border:1px solid #ccc}
+}
+</style>
+</head>
+<body>
+
+<div id="boot"><span class="spin dark"></span></div>
+<div id="screen"></div>
+<div id="modal-host"></div>
+<div id="toasts"></div>
+
+<script>
+/* =====================================================================
+   שניצל שף — קופה קטנה
+   ממשק סטטי מלא. כל הנתונים נשמרים בגוגל שיטס דרך Apps Script Web App.
+   ===================================================================== */
+
+/* כתובת ה-Web App של Apps Script. כשהיא מוגדרת כאן — אף אחד לא צריך
+   להזין כלום; אם היא ריקה, מנהל מזין אותה פעם אחת והיא נשמרת בדפדפן. */
+var DEFAULT_GS_URL = '';
+
+var LS_URL = 'kupa_gs_url', LS_TOK = 'kupa_token';
+
+var S = {
+  url:  DEFAULT_GS_URL || lsGet(LS_URL) || '',
+  token: lsGet(LS_TOK) || '',
+  user: null,
+  today: '',
+  deposits: [], withdrawals: [], categories: [], users: [],
+  totals: { deposits:0, withdrawals:0, balance:0 },
+  tab: 'dash',
+  repMonth: 'all',
+  filters: {}, sorts: {}
+};
+
+function lsGet(k){ try{ return localStorage.getItem(k)||''; }catch(e){ return ''; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+function lsDel(k){ try{ localStorage.removeItem(k); }catch(e){} }
+
+/* ---------- קריאות לשרת ---------- */
+function api(action, params){
+  var body = new URLSearchParams();
+  body.append('action', action);
+  if (S.token) body.append('token', S.token);
+  Object.keys(params||{}).forEach(function(k){
+    if (params[k] !== undefined && params[k] !== null) body.append(k, params[k]);
+  });
+  return fetch(S.url, { method:'POST', body:body })
+    .then(function(r){ return r.json(); })
+    .catch(function(){ return { ok:false, error:'אין תקשורת עם השרת — בדוק חיבור אינטרנט' }; });
+}
+
+/* ---------- עזרים ---------- */
+function esc(s){
+  return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function money(n){
+  n = Number(n)||0;
+  var neg = n < 0;
+  var s = Math.abs(n).toLocaleString('he-IL',{minimumFractionDigits:2,maximumFractionDigits:2});
+  return (neg?'-':'') + '₪' + s;
+}
+function money0(n){
+  n = Number(n)||0;
+  return (n<0?'-':'') + '₪' + Math.abs(n).toLocaleString('he-IL',{maximumFractionDigits:0});
+}
+function fmtDate(iso){
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso||''));
+  return m ? (m[3]+'/'+m[2]+'/'+m[1]) : String(iso||'');
+}
+function monthOf(iso){ return String(iso||'').slice(0,7); }
+function monthLabel(ym){
+  var M = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+  var p = String(ym||'').split('-');
+  return p.length===2 ? (M[+p[1]-1]+' '+p[0]) : ym;
+}
+function todayISO(){
+  var d = new Date(), p = function(x){ return ('0'+x).slice(-2); };
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+}
+function initials(name){
+  var p = String(name||'').trim().split(/\s+/);
+  return ((p[0]||'')[0]||'') + ((p[1]||'')[0]||'');
+}
+function isManager(){ return !!S.user && (S.user.role==='super' || S.user.role==='admin'); }
+function isSuper(){ return !!S.user && S.user.role==='super'; }
+var ROLE_HE = { super:'מנהל ראשי', admin:'מנהל', employee:'עובד' };
+
+function toast(text, kind){
+  var host = document.getElementById('toasts');
+  var el = document.createElement('div');
+  el.className = 'toast ' + (kind||'info');
+  el.textContent = text;
+  host.appendChild(el);
+  setTimeout(function(){
+    el.style.transition='opacity .25s'; el.style.opacity='0';
+    setTimeout(function(){ el.remove(); }, 260);
+  }, 3200);
+}
+function byId(id){ return document.getElementById(id); }
+function val(id){ var e=byId(id); return e ? e.value.trim() : ''; }
+function setMsg(id, text, kind){
+  var e = byId(id); if(!e) return;
+  if(!text){ e.className='msg'; e.textContent=''; return; }
+  e.className = 'msg on msg-' + (kind||'err');
+  e.textContent = text;
+}
+function busy(btn, on, label){
+  if(!btn) return;
+  if(on){ btn.dataset.lbl = btn.innerHTML; btn.disabled = true;
+          btn.innerHTML = '<span class="spin"></span> ' + (label||'רגע…'); }
+  else  { btn.disabled = false; if(btn.dataset.lbl) btn.innerHTML = btn.dataset.lbl; }
+}
+
+/* =====================================================================
+   מסכי פתיחה: חיבור לשרת · התקנה · כניסה
+   ===================================================================== */
+function screenHtml(inner){ return '<div class="gate"><div class="gate-card">' + inner + '</div></div>'; }
+function paint(html){ byId('screen').innerHTML = html; byId('boot').classList.add('hide'); }
+
+function showUrlSetup(){
+  paint(screenHtml(
+    '<div class="gate-logo">🔗</div>' +
+    '<h1>חיבור לגיליון</h1>' +
+    '<p class="sub">הדבק את כתובת ה-Web App של Apps Script</p>' +
+    '<div id="m" class="msg"></div>' +
+    '<div class="field"><label>כתובת /exec</label>' +
+    '<input id="u" class="inp" dir="ltr" placeholder="https://script.google.com/macros/s/.../exec"></div>' +
+    '<button class="btn btn-primary btn-block" onclick="saveUrl(this)">התחבר</button>' +
+    '<p class="hint">הכתובת נשמרת בדפדפן הזה. כדי שכל העובדים לא יצטרכו להזין אותה — ' +
+    'שלח אותה למי שמתחזק את המערכת כדי שתוטמע בקוד.</p>'
+  ));
+}
+function saveUrl(btn){
+  var u = val('u');
+  if(!/^https:\/\/script\.google\.com\/macros\/s\/[^\/]+\/exec/.test(u)){
+    return setMsg('m','הכתובת חייבת להיות קישור /exec של Apps Script');
+  }
+  S.url = u; busy(btn,true,'בודק…');
+  api('ping',{}).then(function(r){
+    busy(btn,false);
+    if(!r.ok || r.app!=='kupa'){ return setMsg('m', r.error || 'הכתובת לא מגיבה כמו שרת של קופה קטנה'); }
+    lsSet(LS_URL,u); boot();
+  });
+}
+
+function showFirstSetup(){
+  paint(screenHtml(
+    '<div class="gate-logo">🍗</div>' +
+    '<h1>התקנה ראשונית</h1>' +
+    '<p class="sub">הגדר את המנהל הראשי של הקופה</p>' +
+    '<div class="steps"><span class="step-dot on"></span><span class="step-dot on"></span></div>' +
+    '<div id="m" class="msg"></div>' +
+    '<div class="field"><label>שם מלא</label><input id="fn" class="inp" placeholder="דודי"></div>' +
+    '<div class="field"><label>שם משתמש</label>' +
+    '<input id="un" class="inp" dir="ltr" autocomplete="username" placeholder="dudi"></div>' +
+    '<div class="field"><label>סיסמה</label>' +
+    '<input id="pw" class="inp" type="password" autocomplete="new-password" placeholder="לפחות 4 תווים"></div>' +
+    '<button class="btn btn-primary btn-block" onclick="doSetup(this)">צור מנהל ראשי</button>' +
+    '<p class="hint">המנהל הראשי הוא היחיד שאפשר לשנות את פרטיו רק על ידי עצמו. ' +
+    'אחריו אפשר להוסיף מנהלים ועובדים מתוך המערכת.</p>'
+  ));
+  var f = byId('fn'); if(f) f.focus();
+  bindEnter(['fn','un','pw'], function(){ doSetup(null); });
+}
+function doSetup(btn){
+  var fn = val('fn'), un = val('un'), pw = byId('pw').value;
+  if(!un || un.length<3) return setMsg('m','שם משתמש חייב 3 תווים לפחות');
+  if(pw.length<4) return setMsg('m','סיסמה חייבת 4 תווים לפחות');
+  setMsg('m',''); busy(btn,true,'יוצר…');
+  api('setupSuper',{username:un, password:pw, fullName:fn}).then(function(r){
+    busy(btn,false);
+    if(!r.ok) return setMsg('m', r.error);
+    S.token = r.token; lsSet(LS_TOK, r.token);
+    toast('נוצר מנהל ראשי — ברוך הבא','ok');
+    loadAll();
+  });
+}
+
+function showLogin(){
+  paint(screenHtml(
+    '<div class="gate-logo">🍗</div>' +
+    '<h1>שניצל שף</h1>' +
+    '<p class="sub">ניהול קופה קטנה</p>' +
+    '<div id="m" class="msg"></div>' +
+    '<div class="field"><label>שם משתמש</label>' +
+    '<input id="un" class="inp" dir="ltr" autocomplete="username"></div>' +
+    '<div class="field"><label>סיסמה</label>' +
+    '<input id="pw" class="inp" type="password" autocomplete="current-password"></div>' +
+    '<button class="btn btn-primary btn-block" onclick="doLogin(this)">כניסה</button>'
+  ));
+  var u = byId('un'); if(u) u.focus();
+  bindEnter(['un','pw'], function(){ doLogin(null); });
+}
+function bindEnter(ids, fn){
+  ids.forEach(function(id){
+    var e = byId(id); if(!e) return;
+    e.addEventListener('keydown', function(ev){ if(ev.key==='Enter'){ ev.preventDefault(); fn(); } });
+  });
+}
+function doLogin(btn){
+  var un = val('un'), pw = byId('pw').value;
+  if(!un || !pw) return setMsg('m','יש להזין שם משתמש וסיסמה');
+  setMsg('m',''); busy(btn,true,'מתחבר…');
+  api('login',{username:un, password:pw}).then(function(r){
+    busy(btn,false);
+    if(!r.ok) return setMsg('m', r.error);
+    S.token = r.token; lsSet(LS_TOK, r.token);
+    loadAll();
+  });
+}
+function logout(){
+  S.token=''; S.user=null; lsDel(LS_TOK); closeModal();
+  showLogin();
+}
+
+/* ---------- טעינת נתונים ---------- */
+function loadAll(){
+  return api('load',{}).then(function(r){
+    if(!r.ok){
+      if(String(r.error||'').indexOf('פג תוקף')>=0){ S.token=''; lsDel(LS_TOK); showLogin(); }
+      else { toast(r.error,'err'); }
+      byId('boot').classList.add('hide');
+      return false;
+    }
+    S.user = r.user; S.today = r.today || todayISO();
+    S.deposits = r.deposits || []; S.withdrawals = r.withdrawals || [];
+    S.categories = r.categories || []; S.users = r.users || [];
+    S.totals = r.totals || {deposits:0,withdrawals:0,balance:0};
+    renderApp();
+    return true;
+  });
+}
+function refresh(){ return loadAll(); }
+
+function boot(){
+  if(!S.url) return showUrlSetup();
+  if(S.token) return loadAll().then(function(ok){ if(ok===false && !S.user) pingThenGate(); });
+  pingThenGate();
+}
+function pingThenGate(){
+  api('ping',{}).then(function(r){
+    if(!r.ok){
+      byId('boot').classList.add('hide');
+      return paint(screenHtml(
+        '<div class="gate-logo">⚠️</div><h1>אין חיבור לשרת</h1>' +
+        '<p class="sub">' + esc(r.error||'הגיליון לא מגיב') + '</p>' +
+        '<button class="btn btn-ghost btn-block" onclick="resetUrl()">הגדר כתובת מחדש</button>'));
+    }
+    if(r.needsSetup) showFirstSetup(); else showLogin();
+  });
+}
+function resetUrl(){ lsDel(LS_URL); S.url = DEFAULT_GS_URL || ''; boot(); }
+
+/* =====================================================================
+   שלד האפליקציה
+   ===================================================================== */
+var TABS = [
+  { k:'dash', t:'סקירה',        i:'📊' },
+  { k:'dep',  t:'הפקדות',       i:'⬆️' },
+  { k:'wd',   t:'משיכות',       i:'⬇️' },
+  { k:'rep',  t:'דוחות',        i:'📈', mgr:true },
+  { k:'cat',  t:'סוגי הוצאות',  i:'🏷️' },
+  { k:'usr',  t:'משתמשים',      i:'👥', mgr:true }
+];
+
+function renderApp(){
+  var tabs = TABS.filter(function(t){ return !t.mgr || isManager(); });
+  if(!tabs.some(function(t){ return t.k===S.tab; })) S.tab = 'dash';
+
+  var bal = S.totals.balance;
+  byId('screen').innerHTML =
+    '<div class="topbar"><div class="topbar-in">' +
+      '<div class="brand"><span class="brand-mark">🍗</span>' +
+        '<span class="bn">שניצל שף<small>קופה קטנה</small></span></div>' +
+      '<div class="bal-pill"><span>יתרה בקופה</span><b>' + money0(bal) + '</b></div>' +
+      '<div class="who">' +
+        '<button class="who-btn" onclick="toggleMenu(event)">' +
+          '<span class="avatar">' + esc(initials(S.user.fullName)) + '</span>' +
+          '<span class="who-name">' + esc(S.user.fullName) +
+            '<small>' + ROLE_HE[S.user.role] + '</small></span>' +
+        '</button>' +
+        '<div id="usermenu" class="menu hide">' +
+          '<button onclick="closeMenu();passwordModal()">🔑 החלפת סיסמה</button>' +
+          '<button onclick="closeMenu();refresh();toast(\'הנתונים רועננו\',\'ok\')">🔄 רענן נתונים</button>' +
+          '<button onclick="closeMenu();logout()">🚪 יציאה</button>' +
+        '</div>' +
+      '</div>' +
+    '</div></div>' +
+    '<div class="tabs"><div class="tabs-in">' +
+      tabs.map(function(t){
+        return '<button class="tab' + (S.tab===t.k?' on':'') + '" onclick="go(\'' + t.k + '\')">' +
+               '<span>' + t.i + '</span>' + t.t + '</button>';
+      }).join('') +
+    '</div></div>' +
+    '<div class="wrap" id="wrap"></div>';
+  byId('boot').classList.add('hide');
+  renderTab();
+}
+function go(k){ S.tab = k; renderApp(); window.scrollTo(0,0); }
+function toggleMenu(ev){ ev.stopPropagation(); byId('usermenu').classList.toggle('hide'); }
+function closeMenu(){ var m = byId('usermenu'); if(m) m.classList.add('hide'); }
+document.addEventListener('click', closeMenu);
+
+function renderTab(){
+  var w = byId('wrap');
+  if(S.tab==='dash') return renderDash(w);
+  if(S.tab==='dep')  return renderEntries(w,'dep');
+  if(S.tab==='wd')   return renderEntries(w,'wd');
+  if(S.tab==='rep')  return renderReports(w);
+  if(S.tab==='cat')  return renderCats(w);
+  if(S.tab==='usr')  return renderUsers(w);
+}
+
+/* =====================================================================
+   סקירה
+   ===================================================================== */
+function renderDash(w){
+  var ym = monthOf(S.today);
+  var mDep = S.deposits.filter(function(d){ return monthOf(d.date)===ym; });
+  var mWd  = S.withdrawals.filter(function(x){ return monthOf(x.date)===ym; });
+  var sum  = function(a){ return a.reduce(function(s,x){ return s + (Number(x.amount)||0); },0); };
+
+  var recent = S.deposits.map(function(d){ return {t:'in', date:d.date, amount:d.amount,
+                  what:d.note||'הפקדה', who:d.userName, at:d.createdAt}; })
+    .concat(S.withdrawals.map(function(x){ return {t:'out', date:x.date, amount:x.amount,
+                  what:x.catName + (x.details?(' · '+x.details):''), who:x.userName, at:x.createdAt}; }))
+    .sort(function(a,b){
+      var x=(a.date||'')+'|'+(a.at||''), y=(b.date||'')+'|'+(b.at||'');
+      return x<y?1:(x>y?-1:0);
+    })
+    .slice(0,10);
+
+  w.innerHTML =
+    '<div class="page-head"><h2>סקירה כללית</h2>' +
+      '<div class="spacer"></div>' +
+      '<button class="btn btn-yellow" onclick="entryModal(\'deposit\')">⬆️ הפקדה</button>' +
+      '<button class="btn btn-primary" onclick="entryModal(\'withdrawal\')">⬇️ משיכה</button>' +
+    '</div>' +
+    '<div class="stats">' +
+      '<div class="stat big' + (S.totals.balance<0?' neg':'') + '">' +
+        '<div class="lbl">💰 יתרה בקופה כרגע</div>' +
+        '<div class="val">' + money(S.totals.balance) + '</div>' +
+        '<div class="sub">' + S.deposits.length + ' הפקדות · ' + S.withdrawals.length + ' משיכות</div></div>' +
+      '<div class="stat in"><div class="lbl">⬆️ סך ההפקדות</div>' +
+        '<div class="val">' + money(S.totals.deposits) + '</div>' +
+        '<div class="sub">החודש: ' + money(sum(mDep)) + '</div></div>' +
+      '<div class="stat out"><div class="lbl">⬇️ סך המשיכות</div>' +
+        '<div class="val">' + money(S.totals.withdrawals) + '</div>' +
+        '<div class="sub">החודש: ' + money(sum(mWd)) + '</div></div>' +
+      '<div class="stat"><div class="lbl">📅 ' + monthLabel(ym) + '</div>' +
+        '<div class="val">' + money(sum(mDep) - sum(mWd)) + '</div>' +
+        '<div class="sub">הפרש הפקדות פחות משיכות</div></div>' +
+    '</div>' +
+    '<div class="card"><div class="card-title">🕘 תנועות אחרונות</div>' +
+      (recent.length ? '<div class="tbl-scroll"><table class="tbl">' +
+        '<thead><tr><th class="nosort">תאריך</th><th class="nosort">תנועה</th>' +
+        '<th class="nosort">פירוט</th><th class="nosort">נרשם על ידי</th>' +
+        '<th class="nosort" style="text-align:end">סכום</th></tr></thead><tbody>' +
+        recent.map(function(r,i){
+          return '<tr' + (i%2?' class="zebra"':'') + '><td class="num">' + fmtDate(r.date) + '</td>' +
+            '<td><span class="chip" style="background:' + (r.t==='in'?'var(--green-soft)':'var(--red-soft)') +
+              ';color:' + (r.t==='in'?'var(--green)':'var(--red)') + '">' +
+              (r.t==='in'?'הפקדה':'משיכה') + '</span></td>' +
+            '<td>' + esc(r.what) + '</td><td class="muted">' + esc(r.who) + '</td>' +
+            '<td class="num ' + (r.t==='in'?'in':'out') + '" style="text-align:end">' +
+              (r.t==='in'?'+':'−') + money(r.amount) + '</td></tr>';
+        }).join('') + '</tbody></table></div>'
+        : '<div class="empty"><span class="ico">🗒️</span>עדיין אין תנועות בקופה.<br>התחל בהפקדה ראשונה.</div>') +
+    '</div>';
+}
+
+/* =====================================================================
+   מנוע טבלאות — סינון "כמו אקסל", מיון, סיכום וייצוא
+   ===================================================================== */
+var TABLES = {
+  dep: {
+    title:'הפקדות', icon:'⬆️', kind:'deposit', file:'הפקדות',
+    rows:function(){ return S.deposits; },
+    cols:[
+      { k:'date',     t:'תאריך',          type:'date' },
+      { k:'amount',   t:'סכום',           type:'money', cls:'in', sum:true, end:true },
+      { k:'note',     t:'הערה',           type:'text' },
+      { k:'userName', t:'נרשם על ידי',    type:'pick' },
+      { k:'createdAt',t:'נרשם בתאריך',    type:'text', muted:true }
+    ]
+  },
+  wd: {
+    title:'משיכות', icon:'⬇️', kind:'withdrawal', file:'משיכות',
+    rows:function(){ return S.withdrawals; },
+    cols:[
+      { k:'date',     t:'תאריך',          type:'date' },
+      { k:'amount',   t:'סכום',           type:'money', cls:'out', sum:true, end:true },
+      { k:'catName',  t:'סוג הוצאה',      type:'pick', chip:true },
+      { k:'details',  t:'פרטים נוספים',   type:'text' },
+      { k:'userName', t:'נרשם על ידי',    type:'pick' },
+      { k:'createdAt',t:'נרשם בתאריך',    type:'text', muted:true }
+    ]
+  },
+  cat: {
+    title:'סוגי הוצאות', icon:'🏷️', file:'סוגי הוצאות',
+    rows:function(){
+      return S.categories.map(function(c){
+        var used = S.withdrawals.filter(function(w){ return w.catId===c.id; });
+        return { id:c.id, name:c.name, userName:c.userName, createdAt:c.createdAt,
+                 uses:used.length,
+                 total:used.reduce(function(s,w){ return s+(Number(w.amount)||0); },0) };
+      });
+    },
+    cols:[
+      { k:'name',     t:'שם הסוג',       type:'text' },
+      { k:'uses',     t:'מספר משיכות',   type:'num', sum:true },
+      { k:'total',    t:'סך ההוצאה',     type:'money', cls:'out', sum:true, end:true },
+      { k:'userName', t:'נוצר על ידי',   type:'pick' },
+      { k:'createdAt',t:'נוצר בתאריך',   type:'text', muted:true }
+    ]
+  },
+  usr: {
+    title:'משתמשים', icon:'👥', file:'משתמשים',
+    rows:function(){
+      return S.users.map(function(u){
+        var mine = S.deposits.filter(function(d){ return d.userId===u.id; }).length +
+                   S.withdrawals.filter(function(w){ return w.userId===u.id; }).length;
+        return { id:u.id, fullName:u.fullName, username:u.username, role:u.role,
+                 roleHe:ROLE_HE[u.role]||u.role, active:u.active,
+                 activeHe:u.active?'פעיל':'מושבת', entries:mine, createdAt:u.createdAt };
+      });
+    },
+    cols:[
+      { k:'fullName', t:'שם מלא',        type:'text' },
+      { k:'username', t:'שם משתמש',      type:'text', ltr:true },
+      { k:'roleHe',   t:'תפקיד',         type:'pick', role:true },
+      { k:'activeHe', t:'סטטוס',         type:'pick', status:true },
+      { k:'entries',  t:'רשומות שהזין',  type:'num', sum:true },
+      { k:'createdAt',t:'נוצר בתאריך',   type:'text', muted:true }
+    ]
+  }
+};
+
+function fstate(tk){ return (S.filters[tk] = S.filters[tk] || {}); }
+function sstate(tk){
+  if(!S.sorts[tk]){
+    var c = TABLES[tk].cols[0];
+    S.sorts[tk] = { k: (tk==='dep'||tk==='wd') ? 'date' : c.k, dir: (tk==='dep'||tk==='wd') ? -1 : 1 };
+  }
+  return S.sorts[tk];
+}
+
+/* --- שורת הסינון --- */
+function filterCell(tk, col){
+  var f = fstate(tk), v = f[col.k] || {};
+  if(col.type==='date'){
+    return '<div class="f-pair">' +
+      '<input class="f-inp" type="date" title="מתאריך" value="' + esc(v.from||'') + '" ' +
+        'onchange="setFilt(\'' + tk + '\',\'' + col.k + '\',\'from\',this.value)">' +
+      '<input class="f-inp" type="date" title="עד תאריך" value="' + esc(v.to||'') + '" ' +
+        'onchange="setFilt(\'' + tk + '\',\'' + col.k + '\',\'to\',this.value)"></div>';
+  }
+  if(col.type==='money' || col.type==='num'){
+    return '<div class="f-pair">' +
+      '<input class="f-inp" type="number" step="any" placeholder="מ-" value="' + esc(v.min||'') + '" ' +
+        'oninput="setFilt(\'' + tk + '\',\'' + col.k + '\',\'min\',this.value)">' +
+      '<input class="f-inp" type="number" step="any" placeholder="עד" value="' + esc(v.max||'') + '" ' +
+        'oninput="setFilt(\'' + tk + '\',\'' + col.k + '\',\'max\',this.value)"></div>';
+  }
+  if(col.type==='pick'){
+    var vals = {};
+    TABLES[tk].rows().forEach(function(r){ if(r[col.k]!=='' && r[col.k]!=null) vals[r[col.k]] = 1; });
+    var opts = Object.keys(vals).sort(function(a,b){ return String(a).localeCompare(String(b),'he'); });
+    return '<select class="f-inp" onchange="setFilt(\'' + tk + '\',\'' + col.k + '\',\'eq\',this.value)">' +
+      '<option value="">הכל</option>' +
+      opts.map(function(o){
+        return '<option value="' + esc(o) + '"' + ((v.eq===o)?' selected':'') + '>' + esc(o) + '</option>';
+      }).join('') + '</select>';
+  }
+  return '<input class="f-inp" type="search" placeholder="חיפוש…" value="' + esc(v.q||'') + '" ' +
+    'oninput="setFilt(\'' + tk + '\',\'' + col.k + '\',\'q\',this.value)">';
+}
+function setFilt(tk, key, part, value){
+  var f = fstate(tk);
+  f[key] = f[key] || {};
+  if(value==='' || value==null) delete f[key][part]; else f[key][part] = value;
+  if(!Object.keys(f[key]).length) delete f[key];
+  refreshTable(tk);
+}
+function clearFilters(tk){ S.filters[tk] = {}; renderTab(); }
+function hasFilters(tk){ return Object.keys(fstate(tk)).length > 0; }
+
+function passes(tk, row){
+  var f = fstate(tk), cols = TABLES[tk].cols, ok = true;
+  cols.forEach(function(col){
+    if(!ok) return;
+    var v = f[col.k]; if(!v) return;
+    var cell = row[col.k];
+    if(col.type==='date'){
+      var d = String(cell||'');
+      if(v.from && d < v.from) ok = false;
+      if(v.to   && d > v.to)   ok = false;
+    } else if(col.type==='money' || col.type==='num'){
+      var n = Number(cell)||0;
+      if(v.min!==undefined && n < Number(v.min)) ok = false;
+      if(v.max!==undefined && n > Number(v.max)) ok = false;
+    } else if(col.type==='pick'){
+      if(v.eq!==undefined && String(cell) !== v.eq) ok = false;
+    } else {
+      if(v.q && String(cell||'').toLowerCase().indexOf(String(v.q).toLowerCase()) < 0) ok = false;
+    }
+  });
+  return ok;
+}
+function tableRows(tk){
+  var s = sstate(tk);
+  var out = TABLES[tk].rows().filter(function(r){ return passes(tk,r); });
+  var col = TABLES[tk].cols.filter(function(c){ return c.k===s.k; })[0] || {};
+  out.sort(function(a,b){
+    var x = a[s.k], y = b[s.k];
+    if(col.type==='money' || col.type==='num'){ x = Number(x)||0; y = Number(y)||0; return (x-y)*s.dir; }
+    x = String(x==null?'':x); y = String(y==null?'':y);
+    return x.localeCompare(y,'he',{numeric:true}) * s.dir;
+  });
+  return out;
+}
+function sortBy(tk, k){
+  var s = sstate(tk);
+  if(s.k===k) s.dir = -s.dir; else { s.k = k; s.dir = 1; }
+  renderTab();
+}
+
+/* --- שלד הטבלה: נבנה פעם אחת, כדי שהקלדה בסינון לא תאבד פוקוס --- */
+function tableShell(tk, opts){
+  opts = opts || {};
+  var T = TABLES[tk], s = sstate(tk), acts = opts.actions && isManager();
+  return '<div class="card">' +
+    '<div class="card-title">' + T.icon + ' ' + T.title +
+      '<div class="spacer"></div>' +
+      (hasFilters(tk) ? '<button class="btn btn-ghost btn-sm" onclick="clearFilters(\'' + tk + '\')">✕ נקה סינון</button>' : '') +
+      '<button class="btn btn-ghost btn-sm" onclick="exportTable(\'' + tk + '\')">📤 ייצוא לאקסל</button>' +
+      (opts.add ? '<button class="btn btn-yellow btn-sm" onclick="' + opts.add + '">➕ ' + (opts.addLabel||'הוספה') + '</button>' : '') +
+    '</div>' +
+    '<div class="tbl-scroll"><table class="tbl"><thead>' +
+      '<tr>' + T.cols.map(function(c){
+        var arw = (s.k===c.k) ? '<span class="arw">' + (s.dir>0?'▲':'▼') + '</span>' : '';
+        return '<th onclick="sortBy(\'' + tk + '\',\'' + c.k + '\')"' +
+               (c.end?' style="text-align:end"':'') + '>' + c.t + arw + '</th>';
+      }).join('') + (acts ? '<th class="nosort" style="width:86px"></th>' : '') + '</tr>' +
+      '<tr class="filt">' + T.cols.map(function(c){
+        return '<th>' + filterCell(tk,c) + '</th>';
+      }).join('') + (acts ? '<th></th>' : '') + '</tr>' +
+    '</thead><tbody id="tb-' + tk + '"></tbody>' +
+    '<tfoot id="tf-' + tk + '"></tfoot></table></div>' +
+    '<div class="count-line" id="cl-' + tk + '"></div></div>';
+}
+
+function refreshTable(tk){
+  var T = TABLES[tk], rows = tableRows(tk), all = T.rows().length;
+  var acts = !!(T.kind || tk==='cat' || tk==='usr') && isManager();
+  var tb = byId('tb-'+tk), tf = byId('tf-'+tk), cl = byId('cl-'+tk);
+  if(!tb) return;
+  var nCols = T.cols.length + (acts?1:0);
+
+  if(!rows.length){
+    tb.innerHTML = '<tr><td colspan="' + nCols + '"><div class="empty"><span class="ico">🔍</span>' +
+      (all ? 'אין שורות שמתאימות לסינון' : 'אין עדיין נתונים כאן') + '</div></td></tr>';
+    tf.innerHTML = '';
+  } else {
+    tb.innerHTML = rows.map(function(r,i){
+      return '<tr' + (i%2?' class="zebra"':'') + '>' +
+        T.cols.map(function(c){ return cellHtml(c,r); }).join('') +
+        (acts ? '<td>' + rowActions(tk,r) + '</td>' : '') + '</tr>';
+    }).join('');
+    var foot = T.cols.map(function(c){
+      if(!c.sum) return '<td></td>';
+      var t = rows.reduce(function(s,r){ return s + (Number(r[c.k])||0); },0);
+      return '<td class="num' + (c.cls?' '+c.cls:'') + '"' + (c.end?' style="text-align:end"':'') + '>' +
+        (c.type==='money' ? money(t) : t) + '</td>';
+    }).join('');
+    tf.innerHTML = '<tr>' + foot + (acts?'<td></td>':'') + '</tr>';
+  }
+  cl.innerHTML = (rows.length===all)
+    ? '<span>סך הכל <b>' + all + '</b> שורות</span>'
+    : '<span class="chip">מציג ' + rows.length + ' מתוך ' + all + '</span>' +
+      '<button class="btn btn-ghost btn-sm" onclick="clearFilters(\'' + tk + '\')">נקה סינון</button>';
+}
+
+function cellHtml(c, r){
+  var v = r[c.k];
+  if(c.type==='date')  return '<td class="num">' + fmtDate(v) + '</td>';
+  if(c.type==='money') return '<td class="num' + (c.cls?' '+c.cls:'') + '"' +
+                              (c.end?' style="text-align:end"':'') + '>' + money(v) + '</td>';
+  if(c.type==='num')   return '<td class="num">' + (Number(v)||0) + '</td>';
+  if(c.role)  return '<td><span class="chip role-' + esc(r.role) + '">' + esc(v) + '</span></td>';
+  if(c.status)return '<td><span class="chip' + (r.active?'':' off') + '">' + esc(v) + '</span></td>';
+  if(c.chip)  return '<td><span class="chip">' + esc(v) + '</span></td>';
+  return '<td' + (c.muted?' class="muted"':'') + (c.ltr?' dir="ltr"':'') + '>' +
+         (v ? esc(v) : '<span class="muted">—</span>') + '</td>';
+}
+
+function rowActions(tk, r){
+  if(tk==='dep' || tk==='wd'){
+    var kind = TABLES[tk].kind;
+    return '<div class="row-acts">' +
+      '<button class="icon-btn" title="עריכה" onclick="entryModal(\'' + kind + '\',\'' + r.id + '\')">✏️</button>' +
+      '<button class="icon-btn del" title="מחיקה" onclick="askDeleteEntry(\'' + kind + '\',\'' + r.id + '\')">🗑️</button>' +
+      '</div>';
+  }
+  if(tk==='cat'){
+    return '<div class="row-acts">' +
+      '<button class="icon-btn" title="שינוי שם" onclick="catModal(\'' + r.id + '\')">✏️</button>' +
+      '<button class="icon-btn del" title="מחיקה" onclick="askDeleteCat(\'' + r.id + '\')">🗑️</button>' +
+      '</div>';
+  }
+  if(tk==='usr'){
+    var locked = (r.role==='super' && !isSuper()) || (r.id===S.user.id);
+    return '<div class="row-acts">' +
+      '<button class="icon-btn" title="עריכה"' + (locked && r.id!==S.user.id ? ' disabled style="opacity:.35"' : '') +
+        ' onclick="userModal(\'' + r.id + '\')">✏️</button>' +
+      (r.id===S.user.id ? '' :
+        '<button class="icon-btn del" title="השבתה"' + (locked?' disabled style="opacity:.35"':'') +
+        ' onclick="askDeleteUser(\'' + r.id + '\')">🗑️</button>') +
+      '</div>';
+  }
+  return '';
+}
+
+function renderEntries(w, tk){
+  var kind = TABLES[tk].kind;
+  w.innerHTML =
+    '<div class="page-head"><h2>' + TABLES[tk].icon + ' ' + TABLES[tk].title + '</h2></div>' +
+    tableShell(tk, { actions:true, add:'entryModal(\'' + kind + '\')',
+                     addLabel: kind==='deposit' ? 'הפקדה חדשה' : 'משיכה חדשה' });
+  refreshTable(tk);
+}
+function renderCats(w){
+  w.innerHTML =
+    '<div class="page-head"><h2>🏷️ סוגי הוצאות</h2></div>' +
+    '<div class="card card-pad" style="margin-bottom:16px">' +
+      '<div style="display:flex;gap:9px;flex-wrap:wrap;align-items:center">' +
+        '<input id="newcat" class="inp" style="flex:1;min-width:200px" placeholder="שם סוג הוצאה חדש…">' +
+        '<button class="btn btn-yellow" onclick="addCatQuick(this)">➕ הוסף סוג</button>' +
+      '</div>' +
+      '<p class="hint">כל משתמש רשאי להוסיף סוג הוצאה חדש. שינוי שם ומחיקה — מנהלים בלבד.</p>' +
+    '</div>' +
+    tableShell('cat', { actions:true });
+  refreshTable('cat');
+  bindEnter(['newcat'], function(){ addCatQuick(null); });
+}
+function renderUsers(w){
+  w.innerHTML =
+    '<div class="page-head"><h2>👥 משתמשים</h2></div>' +
+    tableShell('usr', { actions:true, add:'userModal()', addLabel:'משתמש חדש' });
+  refreshTable('usr');
+}
+
+/* =====================================================================
+   דוחות (מנהלים)
+   ===================================================================== */
+function monthsPresent(){
+  var m = {};
+  S.deposits.forEach(function(d){ if(d.date) m[monthOf(d.date)] = 1; });
+  S.withdrawals.forEach(function(w){ if(w.date) m[monthOf(w.date)] = 1; });
+  return Object.keys(m).sort().reverse();
+}
+function repRows(){
+  var m = S.repMonth;
+  var f = function(a){ return m==='all' ? a : a.filter(function(x){ return monthOf(x.date)===m; }); };
+  return { dep:f(S.deposits), wd:f(S.withdrawals) };
+}
+function setRepMonth(m){ S.repMonth = m; renderTab(); }
+
+function renderReports(w){
+  var months = monthsPresent();
+  if(S.repMonth!=='all' && months.indexOf(S.repMonth)<0) S.repMonth = 'all';
+  var R = repRows();
+  var sum = function(a){ return a.reduce(function(s,x){ return s + (Number(x.amount)||0); },0); };
+  var totIn = sum(R.dep), totOut = sum(R.wd);
+
+  /* פילוח לפי סוג הוצאה */
+  var byCat = {};
+  R.wd.forEach(function(x){
+    var k = x.catName || '(ללא סוג)';
+    byCat[k] = byCat[k] || { name:k, amount:0, count:0 };
+    byCat[k].amount += Number(x.amount)||0;
+    byCat[k].count++;
+  });
+  var cats = Object.keys(byCat).map(function(k){ return byCat[k]; })
+    .sort(function(a,b){ return b.amount - a.amount; });
+  var maxCat = cats.length ? cats[0].amount : 0;
+
+  /* פילוח לפי חודש */
+  var byMonth = {};
+  S.deposits.forEach(function(d){
+    var k = monthOf(d.date); byMonth[k] = byMonth[k] || {m:k,inn:0,out:0};
+    byMonth[k].inn += Number(d.amount)||0;
+  });
+  S.withdrawals.forEach(function(x){
+    var k = monthOf(x.date); byMonth[k] = byMonth[k] || {m:k,inn:0,out:0};
+    byMonth[k].out += Number(x.amount)||0;
+  });
+  var mons = Object.keys(byMonth).sort().reverse().map(function(k){ return byMonth[k]; });
+  var maxMon = mons.reduce(function(s,x){ return Math.max(s, x.inn, x.out); }, 0);
+
+  /* פילוח לפי משתמש */
+  var byUser = {};
+  R.dep.forEach(function(d){
+    var k = d.userName||'—'; byUser[k] = byUser[k]||{name:k,inn:0,out:0,n:0};
+    byUser[k].inn += Number(d.amount)||0; byUser[k].n++;
+  });
+  R.wd.forEach(function(x){
+    var k = x.userName||'—'; byUser[k] = byUser[k]||{name:k,inn:0,out:0,n:0};
+    byUser[k].out += Number(x.amount)||0; byUser[k].n++;
+  });
+  var users = Object.keys(byUser).map(function(k){ return byUser[k]; })
+    .sort(function(a,b){ return b.out - a.out; });
+
+  w.innerHTML =
+    '<div class="page-head"><h2>📈 דוחות וניתוח</h2>' +
+      '<div class="spacer"></div>' +
+      '<select class="inp" style="width:auto" onchange="setRepMonth(this.value)">' +
+        '<option value="all"' + (S.repMonth==='all'?' selected':'') + '>כל התקופות</option>' +
+        months.map(function(m){
+          return '<option value="' + m + '"' + (S.repMonth===m?' selected':'') + '>' + monthLabel(m) + '</option>';
+        }).join('') +
+      '</select>' +
+      '<button class="btn btn-ghost" onclick="exportReport()">📤 ייצוא הדוח</button>' +
+      '<button class="btn btn-ghost" onclick="window.print()">🖨️ הדפסה</button>' +
+    '</div>' +
+    '<div class="stats">' +
+      '<div class="stat in"><div class="lbl">⬆️ הפקדות בתקופה</div><div class="val">' + money(totIn) + '</div>' +
+        '<div class="sub">' + R.dep.length + ' רשומות</div></div>' +
+      '<div class="stat out"><div class="lbl">⬇️ משיכות בתקופה</div><div class="val">' + money(totOut) + '</div>' +
+        '<div class="sub">' + R.wd.length + ' רשומות</div></div>' +
+      '<div class="stat big' + ((totIn-totOut)<0?' neg':'') + '"><div class="lbl">📊 מאזן התקופה</div>' +
+        '<div class="val">' + money(totIn-totOut) + '</div>' +
+        '<div class="sub">' + (S.repMonth==='all'?'כל התקופות':monthLabel(S.repMonth)) + '</div></div>' +
+      '<div class="stat"><div class="lbl">🧾 ממוצע למשיכה</div>' +
+        '<div class="val">' + money(R.wd.length ? totOut/R.wd.length : 0) + '</div>' +
+        '<div class="sub">' + cats.length + ' סוגי הוצאה בשימוש</div></div>' +
+    '</div>' +
+    '<div class="rep-grid">' +
+      '<div class="card"><div class="card-title">🏷️ הוצאות לפי סוג</div><div class="card-pad">' +
+        (cats.length ? cats.map(function(c){
+          var pct = totOut ? (c.amount/totOut*100) : 0;
+          return '<div class="bar-row"><div class="bar-top">' +
+            '<span class="nm">' + esc(c.name) + '</span>' +
+            '<span class="muted" style="font-size:12px">' +
+              (c.count===1 ? 'משיכה אחת' : c.count + ' משיכות') + '</span>' +
+            '<span class="amt">' + money(c.amount) + '</span>' +
+            '<span class="pct">' + pct.toFixed(1) + '%</span></div>' +
+            '<div class="bar-track"><div class="bar-fill out" style="width:' +
+              (maxCat ? (c.amount/maxCat*100) : 0) + '%"></div></div></div>';
+        }).join('') : '<div class="empty"><span class="ico">🏷️</span>אין משיכות בתקופה זו</div>') +
+      '</div></div>' +
+      '<div class="card"><div class="card-title">📅 תנועה חודשית</div><div class="card-pad">' +
+        (mons.length ? mons.map(function(m){
+          return '<div class="bar-row"><div class="bar-top">' +
+            '<span class="nm">' + monthLabel(m.m) + '</span>' +
+            '<span class="amt" style="color:var(--green)">+' + money(m.inn) + '</span>' +
+            '<span class="amt" style="color:var(--red);margin-inline-start:10px">−' + money(m.out) + '</span></div>' +
+            '<div class="bar-track"><div class="bar-fill in" style="width:' +
+              (maxMon ? (m.inn/maxMon*100) : 0) + '%"></div></div>' +
+            '<div class="bar-track" style="margin-top:3px"><div class="bar-fill out" style="width:' +
+              (maxMon ? (m.out/maxMon*100) : 0) + '%"></div></div></div>';
+        }).join('') : '<div class="empty"><span class="ico">📅</span>אין נתונים</div>') +
+      '</div></div>' +
+    '</div>' +
+    '<div class="card" style="margin-top:16px"><div class="card-title">👤 פעילות לפי משתמש</div>' +
+      (users.length ? '<div class="tbl-scroll"><table class="tbl">' +
+        '<thead><tr><th class="nosort">משתמש</th><th class="nosort">רשומות</th>' +
+        '<th class="nosort" style="text-align:end">הפקיד</th>' +
+        '<th class="nosort" style="text-align:end">משך</th></tr></thead><tbody>' +
+        users.map(function(u,i){
+          return '<tr' + (i%2?' class="zebra"':'') + '><td>' + esc(u.name) + '</td>' +
+            '<td class="num">' + u.n + '</td>' +
+            '<td class="num in" style="text-align:end">' + money(u.inn) + '</td>' +
+            '<td class="num out" style="text-align:end">' + money(u.out) + '</td></tr>';
+        }).join('') + '</tbody>' +
+        '<tfoot><tr><td>סך הכל</td><td class="num">' + (R.dep.length+R.wd.length) + '</td>' +
+        '<td class="num in" style="text-align:end">' + money(totIn) + '</td>' +
+        '<td class="num out" style="text-align:end">' + money(totOut) + '</td></tr></tfoot>' +
+        '</table></div>'
+        : '<div class="empty"><span class="ico">👤</span>אין פעילות בתקופה זו</div>') +
+    '</div>';
+}
+
+/* =====================================================================
+   מודאלים
+   ===================================================================== */
+function openModal(html){ byId('modal-host').innerHTML = '<div class="modal" onclick="bgClose(event)">' + html + '</div>'; }
+function closeModal(){ byId('modal-host').innerHTML = ''; }
+function bgClose(ev){ if(ev.target.classList.contains('modal')) closeModal(); }
+document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeModal(); });
+
+function modalBox(title, body, foot, wide){
+  return '<div class="modal-box' + (wide?' wide':'') + '" onclick="event.stopPropagation()">' +
+    '<div class="modal-head"><h3>' + title + '</h3>' +
+      '<button class="x" onclick="closeModal()">✕</button></div>' +
+    '<div class="modal-body"><div id="mm" class="msg"></div>' + body + '</div>' +
+    '<div class="modal-foot">' + foot + '</div></div>';
+}
+
+/* ---------- הפקדה / משיכה ---------- */
+function entryModal(kind, id){
+  var isDep = (kind==='deposit');
+  var list = isDep ? S.deposits : S.withdrawals;
+  var e = id ? list.filter(function(x){ return x.id===id; })[0] : null;
+  if(id && !e) return toast('השורה לא נמצאה','err');
+  if(e && !isManager()) return toast('רק מנהל רשאי לערוך שורות','err');
+
+  var body =
+    '<div class="grid2">' +
+      '<div class="field"><label>תאריך</label>' +
+        '<input id="e-date" class="inp" type="date" value="' + esc(e ? e.date : (S.today||todayISO())) + '"></div>' +
+      '<div class="field"><label>סכום (₪)</label>' +
+        '<input id="e-amt" class="inp" type="number" step="0.01" min="0.01" inputmode="decimal" ' +
+        'value="' + (e ? e.amount : '') + '" placeholder="0.00"></div>' +
+    '</div>' +
+    (isDep
+      ? '<div class="field"><label>הערה</label>' +
+        '<textarea id="e-note" class="inp" placeholder="מקור ההפקדה, מי הפקיד…">' + esc(e?e.note:'') + '</textarea></div>'
+      : '<div class="field"><label>עבור איזה סוג הוצאה</label>' +
+        '<div class="cat-pick"><select id="e-cat" class="inp">' +
+          '<option value="">— בחר סוג —</option>' +
+          S.categories.map(function(c){
+            return '<option value="' + esc(c.id) + '"' + ((e && e.catId===c.id)?' selected':'') + '>' +
+                   esc(c.name) + '</option>';
+          }).join('') +
+        '</select>' +
+        '<button class="btn btn-ghost" onclick="inlineNewCat(this)" title="סוג הוצאה חדש">➕</button></div></div>' +
+        '<div class="field"><label>פרטים נוספים</label>' +
+        '<textarea id="e-det" class="inp" placeholder="ספק, מספר חשבונית, פירוט…">' + esc(e?e.details:'') + '</textarea></div>');
+
+  openModal(modalBox(
+    (e ? '✏️ עריכת ' : (isDep?'⬆️ ':'⬇️ ')) + (isDep?'הפקדה':'משיכה'),
+    body,
+    '<button class="btn btn-ghost" onclick="closeModal()">ביטול</button>' +
+    '<button class="btn btn-primary" onclick="saveEntry(this,\'' + kind + '\',\'' + (id||'') + '\')">' +
+      (e?'שמור שינויים':'שמור') + '</button>'
+  ));
+  setTimeout(function(){ var a = byId('e-amt'); if(a && !e) a.focus(); }, 60);
+}
+
+function inlineNewCat(btn){
+  var name = prompt('שם סוג ההוצאה החדש:');
+  if(!name || !name.trim()) return;
+  busy(btn,true,'');
+  api('addCategory',{name:name.trim()}).then(function(r){
+    busy(btn,false);
+    if(!r.ok) return toast(r.error,'err');
+    if(!S.categories.some(function(c){ return c.id===r.category.id; })) S.categories.push(r.category);
+    var sel = byId('e-cat');
+    sel.innerHTML = '<option value="">— בחר סוג —</option>' +
+      S.categories.map(function(c){
+        return '<option value="' + esc(c.id) + '"' + (c.id===r.category.id?' selected':'') + '>' +
+               esc(c.name) + '</option>';
+      }).join('');
+    toast(r.existed ? 'הסוג כבר היה קיים ונבחר' : 'סוג ההוצאה נוסף','ok');
+  });
+}
+
+function saveEntry(btn, kind, id){
+  var date = val('e-date'), amt = val('e-amt');
+  if(!date) return setMsg('mm','יש לבחור תאריך');
+  if(!amt || Number(amt) <= 0) return setMsg('mm','יש להזין סכום גדול מאפס');
+  var p = { kind:kind, id:id||'', date:date, amount:amt };
+  if(kind==='deposit'){ p.note = val('e-note'); }
+  else {
+    p.catId = val('e-cat');
+    if(!p.catId) return setMsg('mm','יש לבחור סוג הוצאה');
+    p.details = val('e-det');
+  }
+  setMsg('mm',''); busy(btn,true,'שומר…');
+  api('saveEntry',p).then(function(r){
+    if(!r.ok){ busy(btn,false); return setMsg('mm', r.error); }
+    closeModal();
+    toast(id ? 'השורה עודכנה' : (kind==='deposit'?'ההפקדה נרשמה':'המשיכה נרשמה'), 'ok');
+    refresh();
+  });
+}
+
+function askDeleteEntry(kind, id){
+  var list = kind==='deposit' ? S.deposits : S.withdrawals;
+  var e = list.filter(function(x){ return x.id===id; })[0];
+  if(!e) return;
+  confirmModal('מחיקת ' + (kind==='deposit'?'הפקדה':'משיכה'),
+    'למחוק את השורה מתאריך ' + fmtDate(e.date) + ' בסך ' + money(e.amount) + '?<br>' +
+    '<span class="muted">השורה תיעלם מהמערכת והיתרה תתעדכן.</span>',
+    function(btn){
+      busy(btn,true,'מוחק…');
+      api('deleteEntry',{kind:kind,id:id}).then(function(r){
+        if(!r.ok){ busy(btn,false); return setMsg('mm',r.error); }
+        closeModal(); toast('השורה נמחקה','ok'); refresh();
+      });
+    });
+}
+
+/* ---------- סוגי הוצאות ---------- */
+function addCatQuick(btn){
+  var name = val('newcat');
+  if(!name) return toast('יש להזין שם','err');
+  busy(btn,true,'מוסיף…');
+  api('addCategory',{name:name}).then(function(r){
+    busy(btn,false);
+    if(!r.ok) return toast(r.error,'err');
+    byId('newcat').value = '';
+    toast(r.existed ? 'הסוג כבר קיים' : 'סוג ההוצאה נוסף','ok');
+    refresh();
+  });
+}
+function catModal(id){
+  var c = S.categories.filter(function(x){ return x.id===id; })[0];
+  if(!c) return;
+  openModal(modalBox('✏️ שינוי שם סוג הוצאה',
+    '<div class="field"><label>שם הסוג</label>' +
+    '<input id="c-name" class="inp" value="' + esc(c.name) + '"></div>' +
+    '<p class="hint">שינוי השם יעודכן גם בכל המשיכות הקיימות שמשויכות לסוג הזה.</p>',
+    '<button class="btn btn-ghost" onclick="closeModal()">ביטול</button>' +
+    '<button class="btn btn-primary" onclick="saveCat(this,\'' + id + '\')">שמור</button>'));
+}
+function saveCat(btn, id){
+  var name = val('c-name');
+  if(!name) return setMsg('mm','יש להזין שם');
+  busy(btn,true,'שומר…');
+  api('saveCategory',{id:id, name:name}).then(function(r){
+    if(!r.ok){ busy(btn,false); return setMsg('mm',r.error); }
+    closeModal(); toast('השם עודכן','ok'); refresh();
+  });
+}
+function askDeleteCat(id){
+  var c = S.categories.filter(function(x){ return x.id===id; })[0];
+  if(!c) return;
+  confirmModal('מחיקת סוג הוצאה',
+    'למחוק את הסוג "' + esc(c.name) + '"?<br>' +
+    '<span class="muted">מחיקה אפשרית רק אם אין משיכות שמשויכות אליו.</span>',
+    function(btn){
+      busy(btn,true,'מוחק…');
+      api('saveCategory',{id:id, remove:'1'}).then(function(r){
+        if(!r.ok){ busy(btn,false); return setMsg('mm',r.error); }
+        closeModal(); toast('הסוג נמחק','ok'); refresh();
+      });
+    });
+}
+
+/* ---------- משתמשים ---------- */
+function userModal(id){
+  var u = id ? S.users.filter(function(x){ return x.id===id; })[0] : null;
+  if(id && !u) return;
+  if(u && u.role==='super' && !isSuper()) return toast('אין הרשאה לשנות את פרטי המנהל הראשי','err');
+
+  var roles = [['employee','עובד — מדווח הפקדות ומשיכות, מוסיף סוגי הוצאה'],
+               ['admin','מנהל — הכל, חוץ מפרטי המנהל הראשי'],
+               ['super','מנהל ראשי — הרשאות מלאות']];
+  if(!isSuper()) roles = roles.filter(function(r){ return r[0]!=='super'; });
+
+  openModal(modalBox(u ? '✏️ עריכת משתמש' : '👤 משתמש חדש',
+    '<div class="grid2">' +
+      '<div class="field"><label>שם מלא</label>' +
+        '<input id="u-full" class="inp" value="' + esc(u?u.fullName:'') + '" placeholder="ישראל ישראלי"></div>' +
+      '<div class="field"><label>שם משתמש</label>' +
+        '<input id="u-name" class="inp" dir="ltr" value="' + esc(u?u.username:'') + '" placeholder="israel"></div>' +
+    '</div>' +
+    '<div class="field"><label>תפקיד</label><select id="u-role" class="inp">' +
+      roles.map(function(r){
+        return '<option value="' + r[0] + '"' + ((u&&u.role===r[0])?' selected':'') + '>' + r[1] + '</option>';
+      }).join('') + '</select></div>' +
+    '<div class="field"><label>סיסמה' + (u?' חדשה':'') + '</label>' +
+      '<input id="u-pass" class="inp" type="password" autocomplete="new-password" placeholder="' +
+        (u?'להשאיר ריק כדי לא לשנות':'לפחות 4 תווים') + '"></div>' +
+    (u && u.id!==S.user.id
+      ? '<div class="field"><label>סטטוס</label><select id="u-act" class="inp">' +
+        '<option value="1"' + (u.active?' selected':'') + '>פעיל</option>' +
+        '<option value="0"' + (u.active?'':' selected') + '>מושבת — לא יכול להתחבר</option></select></div>'
+      : ''),
+    '<button class="btn btn-ghost" onclick="closeModal()">ביטול</button>' +
+    '<button class="btn btn-primary" onclick="saveUser(this,\'' + (id||'') + '\')">שמור</button>'));
+}
+function saveUser(btn, id){
+  var p = { id:id||'', fullName:val('u-full'), username:val('u-name'),
+            role:val('u-role'), password: byId('u-pass').value };
+  var act = byId('u-act');
+  if(act) p.active = act.value;
+  if(!p.username || p.username.length<3) return setMsg('mm','שם משתמש חייב 3 תווים לפחות');
+  if(!id && p.password.length<4) return setMsg('mm','סיסמה חייבת 4 תווים לפחות');
+  setMsg('mm',''); busy(btn,true,'שומר…');
+  api('saveUser',p).then(function(r){
+    if(!r.ok){ busy(btn,false); return setMsg('mm',r.error); }
+    closeModal(); toast(id?'המשתמש עודכן':'המשתמש נוצר','ok'); refresh();
+  });
+}
+function askDeleteUser(id){
+  var u = S.users.filter(function(x){ return x.id===id; })[0];
+  if(!u) return;
+  confirmModal('השבתת משתמש',
+    'להשבית את "' + esc(u.fullName) + '"?<br>' +
+    '<span class="muted">הוא לא יוכל להתחבר יותר, אבל כל הרשומות שהזין יישארו במערכת.</span>',
+    function(btn){
+      busy(btn,true,'משבית…');
+      api('deleteUser',{id:id}).then(function(r){
+        if(!r.ok){ busy(btn,false); return setMsg('mm',r.error); }
+        closeModal(); toast('המשתמש הושבת','ok'); refresh();
+      });
+    });
+}
+
+/* ---------- סיסמה ---------- */
+function passwordModal(){
+  openModal(modalBox('🔑 החלפת סיסמה',
+    '<div class="field"><label>סיסמה נוכחית</label>' +
+      '<input id="p-old" class="inp" type="password" autocomplete="current-password"></div>' +
+    '<div class="field"><label>סיסמה חדשה</label>' +
+      '<input id="p-new" class="inp" type="password" autocomplete="new-password" placeholder="לפחות 4 תווים"></div>' +
+    '<div class="field"><label>אימות סיסמה חדשה</label>' +
+      '<input id="p-new2" class="inp" type="password" autocomplete="new-password"></div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">ביטול</button>' +
+    '<button class="btn btn-primary" onclick="savePass(this)">החלף סיסמה</button>'));
+}
+function savePass(btn){
+  var o = byId('p-old').value, n = byId('p-new').value, n2 = byId('p-new2').value;
+  if(n.length<4) return setMsg('mm','הסיסמה החדשה חייבת 4 תווים לפחות');
+  if(n!==n2)     return setMsg('mm','אימות הסיסמה אינו תואם');
+  setMsg('mm',''); busy(btn,true,'מחליף…');
+  api('changePass',{oldPassword:o, newPassword:n}).then(function(r){
+    if(!r.ok){ busy(btn,false); return setMsg('mm',r.error); }
+    closeModal(); toast('הסיסמה הוחלפה','ok');
+  });
+}
+
+/* ---------- אישור כללי ---------- */
+var _confirmFn = null;
+function confirmModal(title, html, fn){
+  _confirmFn = fn;
+  openModal(modalBox('⚠️ ' + title, '<p>' + html + '</p>',
+    '<button class="btn btn-ghost" onclick="closeModal()">ביטול</button>' +
+    '<button class="btn btn-danger" onclick="_confirmFn(this)">כן, בצע</button>'));
+}
+
+/* =====================================================================
+   ייצוא לאקסל
+   ===================================================================== */
+function exportTable(tk){
+  var T = TABLES[tk], rows = tableRows(tk);
+  var head = T.cols.map(function(c){ return c.t; });
+  var body = rows.map(function(r){
+    return T.cols.map(function(c){
+      var v = r[c.k];
+      if(c.type==='date')  return { v:v, t:'d' };
+      if(c.type==='money') return { v:Number(v)||0, t:'money' };
+      if(c.type==='num')   return { v:Number(v)||0, t:'n' };
+      return String(v==null?'':v);
+    });
+  });
+  var foot = T.cols.map(function(c,i){
+    if(i===0) return 'סך הכל (' + rows.length + ' שורות)';
+    if(!c.sum) return '';
+    var t = rows.reduce(function(s,r){ return s + (Number(r[c.k])||0); },0);
+    return { v:t, t: c.type==='money' ? 'money' : 'n' };
+  });
+  saveXlsx([{ name:T.file, rows:[head].concat(body), foot:[foot] }], T.file + ' — שניצל שף');
+}
+
+function exportReport(){
+  var R = repRows();
+  var sum = function(a){ return a.reduce(function(s,x){ return s + (Number(x.amount)||0); },0); };
+  var totIn = sum(R.dep), totOut = sum(R.wd);
+  var period = S.repMonth==='all' ? 'כל התקופות' : monthLabel(S.repMonth);
+
+  var byCat = {};
+  R.wd.forEach(function(x){
+    var k = x.catName || '(ללא סוג)';
+    byCat[k] = byCat[k] || { name:k, amount:0, count:0 };
+    byCat[k].amount += Number(x.amount)||0; byCat[k].count++;
+  });
+  var cats = Object.keys(byCat).map(function(k){ return byCat[k]; })
+    .sort(function(a,b){ return b.amount - a.amount; });
+
+  var byMonth = {};
+  S.deposits.forEach(function(d){
+    var k = monthOf(d.date); byMonth[k] = byMonth[k]||{m:k,inn:0,out:0};
+    byMonth[k].inn += Number(d.amount)||0;
+  });
+  S.withdrawals.forEach(function(x){
+    var k = monthOf(x.date); byMonth[k] = byMonth[k]||{m:k,inn:0,out:0};
+    byMonth[k].out += Number(x.amount)||0;
+  });
+  var mons = Object.keys(byMonth).sort().reverse().map(function(k){ return byMonth[k]; });
+
+  var byUser = {};
+  R.dep.forEach(function(d){
+    var k=d.userName||'—'; byUser[k]=byUser[k]||{name:k,inn:0,out:0,n:0};
+    byUser[k].inn+=Number(d.amount)||0; byUser[k].n++;
+  });
+  R.wd.forEach(function(x){
+    var k=x.userName||'—'; byUser[k]=byUser[k]||{name:k,inn:0,out:0,n:0};
+    byUser[k].out+=Number(x.amount)||0; byUser[k].n++;
+  });
+  var users = Object.keys(byUser).map(function(k){ return byUser[k]; })
+    .sort(function(a,b){ return b.out-a.out; });
+
+  saveXlsx([
+    { name:'סיכום',
+      rows:[['דוח קופה קטנה — שניצל שף'],['תקופה', period],[],
+            ['סך הפקדות',{v:totIn,t:'money'}],
+            ['סך משיכות',{v:totOut,t:'money'}],
+            ['מאזן התקופה',{v:totIn-totOut,t:'money'}],
+            ['יתרה בקופה כרגע',{v:S.totals.balance,t:'money'}]] },
+    { name:'לפי סוג הוצאה',
+      rows:[['סוג הוצאה','מספר משיכות','סכום','אחוז מסך המשיכות']].concat(
+        cats.map(function(c){
+          return [c.name, {v:c.count,t:'n'}, {v:c.amount,t:'money'},
+                  {v: totOut ? c.amount/totOut*100 : 0, t:'pct'}];
+        })),
+      foot:[['סך הכל',{v:R.wd.length,t:'n'},{v:totOut,t:'money'},'']] },
+    { name:'לפי חודש',
+      rows:[['חודש','הפקדות','משיכות','מאזן']].concat(
+        mons.map(function(m){
+          return [monthLabel(m.m), {v:m.inn,t:'money'}, {v:m.out,t:'money'},
+                  {v:m.inn-m.out,t:'money'}];
+        })) },
+    { name:'לפי משתמש',
+      rows:[['משתמש','רשומות','הפקיד','משך']].concat(
+        users.map(function(u){
+          return [u.name, {v:u.n,t:'n'}, {v:u.inn,t:'money'}, {v:u.out,t:'money'}];
+        })) },
+    { name:'משיכות מפורט',
+      rows:[['תאריך','סכום','סוג הוצאה','פרטים נוספים','נרשם על ידי']].concat(
+        R.wd.slice().sort(function(a,b){ return a.date<b.date?1:-1; }).map(function(x){
+          return [{v:x.date,t:'d'}, {v:x.amount,t:'money'}, x.catName, x.details, x.userName];
+        })) },
+    { name:'הפקדות מפורט',
+      rows:[['תאריך','סכום','הערה','נרשם על ידי']].concat(
+        R.dep.slice().sort(function(a,b){ return a.date<b.date?1:-1; }).map(function(d){
+          return [{v:d.date,t:'d'}, {v:d.amount,t:'money'}, d.note, d.userName];
+        })) }
+  ], 'דוח קופה קטנה — ' + period);
+}
+
+var _crcT=null;
+function crc32(b){
+  if(!_crcT){ _crcT=new Uint32Array(256);
+    for(var i=0;i<256;i++){ var c=i; for(var k=0;k<8;k++) c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1); _crcT[i]=c>>>0; } }
+  var c=0xFFFFFFFF;
+  for(var j=0;j<b.length;j++) c=_crcT[(c^b[j])&0xFF]^(c>>>8);
+  return (c^0xFFFFFFFF)>>>0;
+}
+function zipStore(files){
+  function u16(v){ return [v&255,(v>>8)&255]; }
+  function u32(v){ return [v&255,(v>>8)&255,(v>>16)&255,(v>>>24)&255]; }
+  var parts=[], cd=[], off=0;
+  files.forEach(function(f){
+    var nm=new TextEncoder().encode(f.name), crc=crc32(f.data), len=f.data.length;
+    var lh=[].concat([0x50,0x4B,0x03,0x04],u16(20),u16(0x0800),u16(0),u16(0),u16(0),
+      u32(crc),u32(len),u32(len),u16(nm.length),u16(0));
+    parts.push(new Uint8Array(lh),nm,f.data);
+    cd.push({nm:nm,crc:crc,len:len,off:off});
+    off+=lh.length+nm.length+len;
+  });
+  var cdStart=off, cdParts=[];
+  cd.forEach(function(c){
+    var h=[].concat([0x50,0x4B,0x01,0x02],u16(20),u16(20),u16(0x0800),u16(0),u16(0),u16(0),
+      u32(c.crc),u32(c.len),u32(c.len),u16(c.nm.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(c.off));
+    cdParts.push(new Uint8Array(h),c.nm);
+    off+=h.length+c.nm.length;
+  });
+  var eocd=new Uint8Array([].concat([0x50,0x4B,0x05,0x06],u16(0),u16(0),
+    u16(files.length),u16(files.length),u32(off-cdStart),u32(cdStart),u16(0)));
+  return new Blob(parts.concat(cdParts,[eocd]),
+    {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+}
+
+function xlEsc(s){
+  return String(s==null?"":s).replace(/[&<>"']/g,function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"}[c];
+  }).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,"");   // תווי בקרה פוסלים את הקובץ
+}
+function colLetter(i){ var s=""; i++; while(i>0){ var m=(i-1)%26; s=String.fromCharCode(65+m)+s; i=(i-m-1)/26; } return s; }
+function xlDate(iso){    // מספר סידורי של אקסל: ימים מאז 30/12/1899
+  var p=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso||"")); if(!p) return null;
+  return Math.round((Date.UTC(+p[1],+p[2]-1,+p[3])-Date.UTC(1899,11,30))/86400000);
+}
+/* סגנונות: 0 טקסט · 1 כותרת · 2 כסף · 3 תאריך · 4 אחוז · 5 סיכום-מספר · 6 סיכום-טקסט */
+var XL_STYLES='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+'<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+
+'<numFmts count="3"><numFmt numFmtId="164" formatCode="dd/mm/yyyy"/>'+
+'<numFmt numFmtId="165" formatCode="#,##0.00"/><numFmt numFmtId="166" formatCode="0.##&quot;%&quot;"/></numFmts>'+
+'<fonts count="3">'+
+'<font><sz val="11"/><name val="Arial"/></font>'+
+'<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Arial"/></font>'+
+'<font><b/><sz val="11"/><name val="Arial"/></font></fonts>'+
+'<fills count="3"><fill><patternFill patternType="none"/></fill>'+
+'<fill><patternFill patternType="gray125"/></fill>'+
+'<fill><patternFill patternType="solid"><fgColor rgb="FF4F6BED"/><bgColor indexed="64"/></patternFill></fill></fills>'+
+'<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>'+
+'<border><left/><right/><top style="thin"><color rgb="FF888888"/></top><bottom/><diagonal/></border></borders>'+
+'<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'+
+'<cellXfs count="7">'+
+'<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'+
+'<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>'+
+'<xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'+
+'<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'+
+'<xf numFmtId="166" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'+
+'<xf numFmtId="165" fontId="2" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1"/>'+
+'<xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1"/></cellXfs>'+
+'<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+
+function safeSheetName(s,used){
+  var n=String(s||"גיליון").replace(/[\\\/\?\*\[\]:]/g," ").trim().slice(0,28)||"גיליון";
+  var base=n, i=2; while(used[n]){ n=base.slice(0,26)+" "+(i++); }
+  used[n]=1; return n;
+}
+/* sheets: [{name, rows:[[cell,…]], foot:[[cell,…]]}]
+   cell: מחרוזת/מספר, או {v,t} כאשר t = s|n|money|pct|d  */
+function xlsxBlob(sheets){
+  var files=[], used={}, names=[];
+  function put(nm,str){ files.push({name:nm,data:new TextEncoder().encode(str)}); }
+  var XD='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+
+  sheets.forEach(function(sh,si){
+    var name=safeSheetName(sh.name,used); names.push(name);
+    var body=(sh.rows||[]).filter(function(r){ return r && r.length; });
+    var foot=(sh.foot||[]);
+    var nCols=0;
+    body.concat(foot).forEach(function(r){ if(r.length>nCols) nCols=r.length; });
+    if(!nCols){ nCols=1; body=[["אין נתונים"]]; }
+
+    var widths=new Array(nCols).fill(10);
+    body.concat(foot).forEach(function(r){
+      for(var i=0;i<nCols;i++){
+        var c=r[i]; if(c==null) continue;
+        var v=(typeof c==="object")?c.v:c;
+        var L=String(v==null?"":v).length+3;
+        if(L>widths[i]) widths[i]=Math.min(L,46);
+      }
+    });
+
+    function cellXml(ref,c,foot){
+      if(c==null||c==="") return '<c r="'+ref+'"'+(foot?' s="6"':'')+'/>';
+      var t=(typeof c==="object")?(c.t||"s"):((typeof c==="number")?"n":"s");
+      var v=(typeof c==="object")?c.v:c;
+      if(v===""||v==null) return '<c r="'+ref+'"'+(foot?' s="6"':'')+'/>';
+      if(t==="d"){ var d=xlDate(v); if(d==null) return '<c r="'+ref+'" t="inlineStr"'+(foot?' s="6"':'')+'><is><t>'+xlEsc(v)+'</t></is></c>';
+        return '<c r="'+ref+'" s="3"><v>'+d+'</v></c>'; }
+      if(t==="n"||t==="money"||t==="pct"){
+        var n=Number(v); if(!isFinite(n)) n=0;
+        var s=foot?5:(t==="money"?2:(t==="pct"?4:0));
+        return '<c r="'+ref+'" s="'+s+'"><v>'+n+'</v></c>';
+      }
+      return '<c r="'+ref+'" t="inlineStr"'+(foot?' s="6"':'')+'><is><t xml:space="preserve">'+xlEsc(v)+'</t></is></c>';
+    }
+
+    var xml=XD+'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+
+      '<sheetViews><sheetView rightToLeft="1"'+(si===0?' tabSelected="1"':'')+' workbookViewId="0">'+
+      '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'+
+      '<sheetFormatPr defaultRowHeight="15"/><cols>';
+    for(var i=0;i<nCols;i++) xml+='<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+widths[i]+'" customWidth="1"/>';
+    xml+='</cols><sheetData>';
+    var rn=0;
+    body.forEach(function(r,ri){
+      rn++;
+      xml+='<row r="'+rn+'">';
+      for(var i=0;i<nCols;i++){
+        var c=r[i];
+        if(ri===0){    // שורת כותרת
+          var v=(c&&typeof c==="object")?c.v:c;
+          xml+= (v==null||v==="") ? '<c r="'+colLetter(i)+rn+'" s="1"/>'
+            : '<c r="'+colLetter(i)+rn+'" s="1" t="inlineStr"><is><t xml:space="preserve">'+xlEsc(v)+'</t></is></c>';
+        } else xml+=cellXml(colLetter(i)+rn,c,false);
+      }
+      xml+='</row>';
+    });
+    foot.forEach(function(r){
+      rn++;
+      xml+='<row r="'+rn+'">';
+      for(var i=0;i<nCols;i++) xml+=cellXml(colLetter(i)+rn,r[i],true);
+      xml+='</row>';
+    });
+    xml+='</sheetData>';
+    if(body.length>1) xml+='<autoFilter ref="A1:'+colLetter(nCols-1)+body.length+'"/>';
+    xml+='</worksheet>';
+    put("xl/worksheets/sheet"+(si+1)+".xml",xml);
+  });
+
+  put("[Content_Types].xml",XD+'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'+
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'+
+    '<Default Extension="xml" ContentType="application/xml"/>'+
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'+
+    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'+
+    names.map(function(_,i){ return '<Override PartName="/xl/worksheets/sheet'+(i+1)+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'; }).join("")+
+    '</Types>');
+  put("_rels/.rels",XD+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>');
+  put("xl/workbook.xml",XD+'<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '+
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'+
+    names.map(function(n,i){ return '<sheet name="'+xlEsc(n)+'" sheetId="'+(i+1)+'" r:id="rId'+(i+1)+'"/>'; }).join("")+
+    '</sheets></workbook>');
+  put("xl/_rels/workbook.xml.rels",XD+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+    names.map(function(_,i){ return '<Relationship Id="rId'+(i+1)+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet'+(i+1)+'.xml"/>'; }).join("")+
+    '<Relationship Id="rIdS" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>');
+  put("xl/styles.xml",XL_STYLES);
+  return zipStore(files);
+}
+/* שער מרכזי להורדות — רק משתמש מחובר מוריד קבצים. */
+function canDownload(){ return !!S.user; }
+function downloadBlob(blob,filename){
+  if(!canDownload()){ toast("יש להתחבר כדי להוריד קבצים","err"); return; }
+  var url=URL.createObjectURL(blob), a=document.createElement("a");
+  a.href=url; a.download=filename; a.style.display="none";
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); },2000);
+}
+function stamp(){ var d=new Date(); function p(x){return ("0"+x).slice(-2);}
+  return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); }
+function saveXlsx(sheets,filename){
+  try{
+    downloadBlob(xlsxBlob(sheets),String(filename).replace(/[\\\/:*?"<>|]/g,"-")+" "+stamp()+".xlsx");
+    toast("הקובץ ירד — ניתן לפתוח באקסל","ok");
+  }catch(err){ toast("הייצוא נכשל: "+err.message,"err"); }
+}
+
+/* ---------- הפעלה ---------- */
+boot();
+</script>
+</body>
+</html>
