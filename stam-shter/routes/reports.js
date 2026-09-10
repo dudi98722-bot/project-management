@@ -104,6 +104,74 @@ const PCONSIGN_USD = `(CASE WHEN ${CUR_PROW}='USD' THEN ${CONSIGN_OPEN_QTY}*COAL
 
 const sum = (rows, key) => r2(rows.reduce((a, x) => a + n(x[key]), 0));
 
+// ===== שוטף =====
+// כל שורת חיוב במוצרים מקבלת תאריך פירעון: מכירה רגילה — תאריך המכירה
+// ועוד ימי השוטף של הלקוח; קומיסיון — תאריך הדיווח ועוד ימי השוטף
+// לקומיסיון. שורה בלי תאריך נחשבת מיידית: אין ממה לדחות.
+//
+// בקומיסיון הדיווחים נספרים לפי הסדר, והכמות של כל דיווח נחתכת במה
+// שעוד נשאר מהמכירה. כך סכום השורות שווה בדיוק להכנסה שמחושבת בכל
+// שאר הדוחות (LEAST על סך הדיווחים), גם אם דווח יותר ממה שנמסר.
+const DUE_LINES = `
+  SELECT s.customer_id, COALESCE(s.currency,'ILS') AS currency,
+         (COALESCE(s.quantity,0) * COALESCE(s.price_per_unit,0)) AS amount,
+         (s.date + GREATEST(COALESCE(c.pay_days,0), 0)) AS due_date
+    FROM prod_sales s
+    JOIN contacts c ON c.id = s.customer_id
+   WHERE s.deleted=false AND COALESCE(s.sale_type,'רגיל') <> 'קומיסיון'
+  UNION ALL
+  SELECT x.customer_id, x.currency,
+         (GREATEST(LEAST(x.quantity, x.sale_qty - (x.cum - x.quantity)), 0) * x.price_per_unit) AS amount,
+         (x.date + GREATEST(COALESCE(x.consign_pay_days,0), 0)) AS due_date
+    FROM (
+      SELECT s.customer_id, COALESCE(s.currency,'ILS') AS currency,
+             COALESCE(cr.quantity,0) AS quantity, COALESCE(s.quantity,0) AS sale_qty,
+             COALESCE(s.price_per_unit,0) AS price_per_unit, cr.date, c.consign_pay_days,
+             SUM(COALESCE(cr.quantity,0)) OVER (PARTITION BY cr.sale_id
+                                                ORDER BY cr.date NULLS FIRST, cr.id) AS cum
+        FROM prod_consign_reports cr
+        JOIN prod_sales s ON s.id = cr.sale_id
+        JOIN contacts c   ON c.id = s.customer_id
+       WHERE cr.deleted=false AND s.deleted=false AND s.sale_type='קומיסיון'
+    ) x`;
+
+// לכל לקוח: כמה מהחיוב עוד לא הגיע זמנו, מתי הפירעון הבא, ומה השוטף שלו
+async function customerTerms(customerId) {
+  const one = !!customerId;
+  const [due, cs] = await Promise.all([
+    pool.query(
+      `SELECT d.customer_id,
+              SUM(CASE WHEN d.currency='ILS' AND d.due_date > CURRENT_DATE THEN d.amount ELSE 0 END) AS later,
+              SUM(CASE WHEN d.currency='USD' AND d.due_date > CURRENT_DATE THEN d.amount ELSE 0 END) AS later_usd,
+              MIN(CASE WHEN d.due_date > CURRENT_DATE THEN d.due_date END) AS next_due
+         FROM (${DUE_LINES}) d
+        ${one ? 'WHERE d.customer_id = $1' : ''}
+        GROUP BY d.customer_id`, one ? [customerId] : []),
+    pool.query(
+      `SELECT id, pay_days, consign_pay_days FROM contacts
+        WHERE ${one ? 'id = $1' : '(pay_days IS NOT NULL OR consign_pay_days IS NOT NULL)'}`,
+      one ? [customerId] : []),
+  ]);
+  const out = new Map();
+  const get = (id) => {
+    if (!out.has(+id)) out.set(+id, { later: 0, later_usd: 0, next_due: null, pay_days: null, consign_pay_days: null });
+    return out.get(+id);
+  };
+  for (const r of due.rows) Object.assign(get(r.customer_id), { later: n(r.later), later_usd: n(r.later_usd), next_due: r.next_due });
+  for (const r of cs.rows) Object.assign(get(r.id), { pay_days: r.pay_days, consign_pay_days: r.consign_pay_days });
+  return out;
+}
+
+// חלוקת היתרה למיידי ולפי השוטף. תשלום סוגר קודם את מה שכבר הגיע
+// זמנו, ורק העודף יורד ממה שעתידי — כמו שמתחשבנים בפועל.
+function splitTerms(revenue, later, paid) {
+  const rev = n(revenue);
+  const lat = Math.min(Math.max(n(later), 0), Math.max(rev, 0));
+  const balance = rev - n(paid);
+  const immediate = Math.min(Math.max((rev - lat) - n(paid), 0), Math.max(balance, 0));
+  return { immediate: r2(immediate), by_terms: r2(balance - immediate) };
+}
+
 // הוצאות עסק: "שלנו" = לא מקוזזות מסופר; "תיקונים" = מקוזזות ממנו.
 // המקוזזות אינן הוצאה של העסק — הסופר נושא בהן דרך התשלום המופחת.
 const BIZ_OWN  = 'WHERE deleted=false AND scribe_id IS NULL';
@@ -366,16 +434,30 @@ router.get('/customer-balances', async (req, res) => {
       b.consigned = n(p.consigned); b.consigned_usd = n(p.consigned_usd);
       b.consign_units = n(p.consign_units);
     }
-    const out = [...acc.values()].map(b => ({
-      ...b,
-      scroll_due_now: r2(b.scroll_due_now), scroll_due_total: r2(b.scroll_due_total),
-      product_revenue: r2(b.product_revenue), product_paid: r2(b.product_paid),
-      product_balance: r2(b.product_balance),
-      product_revenue_usd: r2(b.product_revenue_usd), product_paid_usd: r2(b.product_paid_usd),
-      product_balance_usd: r2(b.product_balance_usd),
-      total_due_now: r2(b.scroll_due_now + b.product_balance),
-      total_due_overall: r2(b.scroll_due_total + b.product_balance),
-    })).sort((a, b) => b.total_due_now - a.total_due_now);
+    const terms = await customerTerms();
+    const out = [...acc.values()].map(b => {
+      const tm = terms.get(+b.id) || {};
+      const sp = splitTerms(b.product_revenue, tm.later, b.product_paid);
+      const su = splitTerms(b.product_revenue_usd, tm.later_usd, b.product_paid_usd);
+      return {
+        ...b,
+        scroll_due_now: r2(b.scroll_due_now), scroll_due_total: r2(b.scroll_due_total),
+        product_revenue: r2(b.product_revenue), product_paid: r2(b.product_paid),
+        product_balance: r2(b.product_balance),
+        product_revenue_usd: r2(b.product_revenue_usd), product_paid_usd: r2(b.product_paid_usd),
+        product_balance_usd: r2(b.product_balance_usd),
+        // בלי שוטף — כל יתרת המוצרים מיידית (כך היה עד כה)
+        total_due_now: r2(b.scroll_due_now + b.product_balance),
+        total_due_overall: r2(b.scroll_due_total + b.product_balance),
+        // עם שוטף
+        pay_days: tm.pay_days == null ? null : tm.pay_days,
+        consign_pay_days: tm.consign_pay_days == null ? null : tm.consign_pay_days,
+        product_immediate: sp.immediate, product_by_terms: sp.by_terms,
+        product_immediate_usd: su.immediate, product_by_terms_usd: su.by_terms,
+        next_due_date: tm.next_due || null,
+        total_due_now_terms: r2(b.scroll_due_now + sp.immediate),
+      };
+    }).sort((a, b) => b.total_due_now - a.total_due_now);
     res.json(out);
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
@@ -558,6 +640,9 @@ router.get('/customer/:id', async (req, res) => {
                     ${CONSIGNED_QTY} AS consigned_qty,
                     ${RAW_CONSIGNED} AS consigned_value,
                     ${RAW_SALE_TOTAL} AS total_sale,
+                    (CASE WHEN COALESCE(s.sale_type,'רגיל') <> 'קומיסיון'
+                          THEN s.date + GREATEST(COALESCE((SELECT pay_days FROM contacts WHERE id = s.customer_id), 0), 0)
+                     END) AS due_date,
                     (CASE WHEN ${CUR_S} = ${CUR_PP}
                           THEN ${RAW_SALE_TOTAL} - ${RAW_SALE_COST} - ${RAW_SALE_3PCT} END) AS total_profit
                   FROM prod_sales s
@@ -582,6 +667,9 @@ router.get('/customer/:id', async (req, res) => {
     const prodPaid = byCur(prodPays.rows, 'paid_actual', 'ILS');
     const prodRevenueU = byCur(sales.rows, 'total_sale', 'USD');
     const prodPaidU = byCur(prodPays.rows, 'paid_actual', 'USD');
+    const tm = (await customerTerms(id)).get(+id) || {};
+    const sp = splitTerms(prodRevenue, tm.later, prodPaid);
+    const su = splitTerms(prodRevenueU, tm.later_usd, prodPaidU);
     res.json({
       contact: c,
       scrolls,
@@ -607,7 +695,12 @@ router.get('/customer/:id', async (req, res) => {
         consign_units: sales.rows.reduce((a, x) => a + n(x.consigned_qty), 0),
         consign_value: byCur(sales.rows, 'consigned_value', 'ILS'),
         consign_value_usd: byCur(sales.rows, 'consigned_value', 'USD'),
+        // שוטף: מה כבר הגיע זמנו ומה עוד לא
+        immediate: sp.immediate, by_terms: sp.by_terms,
+        immediate_usd: su.immediate, by_terms_usd: su.by_terms,
+        next_due_date: tm.next_due || null,
       },
+      total_due_now_terms: r2(sum(scrolls, 'buyer_balance_now') + sp.immediate),
       total_due_now: r2(sum(scrolls, 'buyer_balance_now') + prodRevenue - prodPaid),
       total_due_overall: r2(sum(scrolls, 'buyer_balance_total') + prodRevenue - prodPaid),
       total_due_usd: r2(prodRevenueU - prodPaidU),

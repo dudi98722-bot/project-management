@@ -14,6 +14,9 @@ const router = crudRouter('contacts', [
   { key: 'bank', type: 'text' },
   { key: 'bank_branch', type: 'text' },
   { key: 'bank_account', type: 'text' },
+  // שוטף במוצרים: ימים לתשלום ממכירה רגילה, ומדיווח על מכירת קומיסיון
+  { key: 'pay_days', type: 'int' },
+  { key: 'consign_pay_days', type: 'int' },
   // הקישור נכתב רק דרך מסלול ההעלאה, לא בעריכה ידנית
 ], { orderBy: 't.name NULLS LAST' });
 

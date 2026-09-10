@@ -573,3 +573,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_user_contact ON users (contact_id) WHERE co
 -- מהם לא מכר הלאה, ולכן הרישומים ההם נמחקו והמצב הנכון הוא ההפך:
 -- מכירת קומיסיון מתחילה כשאפס דווח, והדיווח נרשם כשהלקוח באמת מוכר.
 -- המפתח consign_backfill_v1 עשוי להופיע ב-schema_meta במסדים ותיקים.
+
+-- ==================================================================
+--  שוטף — תנאי תשלום ללקוח במוצרים
+-- ==================================================================
+-- תוך כמה ימים הלקוח צריך לשלם. NULL או 0 = מיידי.
+--   pay_days          — ממכירה רגילה, מתאריך המכירה
+--   consign_pay_days  — מקומיסיון, מתאריך הדיווח שהסחורה נמכרה
+-- החוב עצמו לא משתנה; השוטף רק קובע איזה חלק ממנו כבר הגיע זמנו.
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS pay_days INTEGER;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS consign_pay_days INTEGER;

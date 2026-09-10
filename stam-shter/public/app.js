@@ -925,6 +925,36 @@ function paintApprove(btn, val) {
   btn.disabled = false;
 }
 
+// ===== שוטף =====
+// דלוק: חוב מוצרים שזמן הפירעון שלו עוד לא הגיע מוצג בנפרד, "לפי השוטף".
+// כבוי: כל החוב מיידי. הבחירה נשמרת בדפדפן ומשותפת לכל המסכים — דוח
+// שאומר "מיידי 2,000" ומרחב שאומר "מיידי 5,000" על אותו לקוח מבלבלים.
+const TERMS = { on: true };
+try { TERMS.on = localStorage.getItem('shter_terms') !== '0'; } catch (e) {}
+function setTermsOn(v) {
+  TERMS.on = !!v;
+  try { localStorage.setItem('shter_terms', TERMS.on ? '1' : '0'); } catch (e) {}
+}
+const termsToggleHTML = () => `<div class="seg" title="מה שזמן הפירעון שלו עוד לא הגיע אינו מיידי">
+    <button data-terms="1" class="${TERMS.on ? 'on' : ''}">🗓 לחשב שוטף</button>
+    <button data-terms="0" class="${TERMS.on ? '' : 'on'}">הכל מיידי</button></div>`;
+function wireTermsToggle(root, onChange) {
+  (root || document).querySelectorAll('[data-terms]').forEach(b => b.onclick = () => {
+    const v = b.dataset.terms === '1';
+    if (v === TERMS.on) return;
+    setTermsOn(v);
+    onChange();
+  });
+}
+// "מכירה 30 ימים · קומיסיון 15 ימים" — רק מה שהוגדר
+const termsText = (payDays, consignDays) => [
+  N(payDays) > 0 ? `מכירה ${N(payDays)} ימים` : '',
+  N(consignDays) > 0 ? `קומיסיון ${N(consignDays)} ימים` : '',
+].filter(Boolean).join(' · ');
+const termsLine = (c) => termsText(c && c.pay_days, c && c.consign_pay_days)
+  ? `שוטף: ${esc(termsText(c.pay_days, c.consign_pay_days))}`
+  : 'לא הוגדר שוטף ללקוח — כל החוב מיידי';
+
 // עמודת הקומיסיון בטבלת מכירות. שורת קומיסיון שטרם דווחה מציגה חיוב 0,
 // וזה נראה כמו טעות עד שכתוב לידה למה — הסחורה מונחת אצלו ועדיין לא
 // הפכה לכסף. מכאן גם מדווחים שהיא נמכרה, בלי לעבור ללשונית אחרת.
@@ -2557,32 +2587,59 @@ async function repScribeBalances() {
 }
 
 async function repCustomerBalances() {
-  const rows = await Store.reports.customerBalances();
-  const usd = rows.some(r => N(r.product_balance_usd) || N(r.product_revenue_usd) || N(r.product_paid_usd));
+  const all = await Store.reports.customerBalances();
+  const usd = all.some(r => N(r.product_balance_usd) || N(r.product_revenue_usd) || N(r.product_paid_usd));
+  // מה מיידי — לפי בחירת השוטף. כבוי: כל יתרת המוצרים מיידית.
+  const rows = all.map(r => Object.assign({}, r, {
+    _now: TERMS.on ? N(r.total_due_now_terms) : N(r.total_due_now),
+    _pnow: TERMS.on ? N(r.product_immediate) : N(r.product_balance),
+    _plater: TERMS.on ? N(r.product_by_terms) : 0,
+  })).sort((a, b) => b._now - a._now);
   const cols = [
     { label: 'רוכש', render: r => `<span class="link" data-card="${r.id}">${esc(r.name)}</span>` },
     { label: 'טלפון', render: r => esc(r.phone || '') },
+    { label: 'שוטף', render: r => termsText(r.pay_days, r.consign_pay_days)
+        ? `<span class="pill n">${esc(termsText(r.pay_days, r.consign_pay_days))}</span>`
+        : '<span class="muted">מיידי</span>' },
     { label: 'ספרים', cls: 'num', render: r => r.scrolls_count || 0 },
     { label: 'יתרה מיידית ס"ת', cls: 'num', render: r => mCell(r.scroll_due_now), total: rows => mCell(sumBy(rows, 'scroll_due_now')) },
     { label: 'יתרה כללית ס"ת', cls: 'num', render: r => mCell(r.scroll_due_total), total: rows => mCell(sumBy(rows, 'scroll_due_total')) },
     { label: 'מכירות מוצרים', cls: 'num', render: r => mCell(r.product_revenue), total: rows => mCell(sumBy(rows, 'product_revenue')) },
     { label: 'שולם מוצרים', cls: 'num', render: r => mCell(r.product_paid), total: rows => mCell(sumBy(rows, 'product_paid')) },
     { label: 'יתרה מוצרים', cls: 'num', render: r => mCell(r.product_balance), total: rows => mCell(sumBy(rows, 'product_balance')) },
+    { label: 'מוצרים — מיידי', cls: 'num', render: r => mCell(r._pnow), total: rs => mCell(sumBy(rs, '_pnow')) },
+    ...(TERMS.on ? [{ label: 'מוצרים — לפי שוטף', cls: 'num',
+      render: r => N(r._plater)
+        ? `${mCell(r._plater)}${r.next_due_date ? `<div class="mini">הבא לפירעון ${dt(r.next_due_date)}</div>` : ''}`
+        : '<span class="muted">—</span>',
+      total: rs => mCell(sumBy(rs, '_plater')) }] : []),
     // סחורה שמונחת אצלו — מוצגת לצד היתרה ולא בתוכה, כי אינה חוב
     { label: 'מונח אצלו (קומיסיון)', cls: 'num',
       render: r => N(r.consign_units)
         ? `<span class="pill a" title="נמסר וטרם דווח כנמכר">${N(r.consign_units)} יח' · ${money(r.consigned)}</span>`
         : '<span class="muted">—</span>',
       total: rows => mCell(sumBy(rows, 'consigned')) },
-    { label: 'סה"כ מיידי', cls: 'num', render: r => `<b>${mCell(r.total_due_now)}</b>`, total: rows => `<b>${mCell(sumBy(rows, 'total_due_now'))}</b>` },
+    { label: 'סה"כ מיידי', cls: 'num', render: r => `<b>${mCell(r._now)}</b>`, total: rs => `<b>${mCell(sumBy(rs, '_now'))}</b>` },
     { label: 'סה"כ כללי', cls: 'num', render: r => mCell(r.total_due_overall), total: rows => mCell(sumBy(rows, 'total_due_overall')) },
     ...(usd ? [
       { label: 'מכירות ($)', cls: 'num', render: r => money(r.product_revenue_usd, 'USD'), total: rows => money(sumBy(rows, 'product_revenue_usd'), 'USD') },
       { label: 'שילם ($)', cls: 'num', render: r => money(r.product_paid_usd, 'USD'), total: rows => money(sumBy(rows, 'product_paid_usd'), 'USD') },
       { label: 'יתרה ($)', cls: 'num', render: r => `<b>${money(r.product_balance_usd, 'USD')}</b>`, total: rows => `<b>${money(sumBy(rows, 'product_balance_usd'), 'USD')}</b>` },
+      ...(TERMS.on ? [
+        { label: 'מיידי ($)', cls: 'num', render: r => money(r.product_immediate_usd, 'USD'), total: rs => money(sumBy(rs, 'product_immediate_usd'), 'USD') },
+        { label: 'לפי שוטף ($)', cls: 'num', render: r => money(r.product_by_terms_usd, 'USD'), total: rs => money(sumBy(rs, 'product_by_terms_usd'), 'USD') },
+      ] : []),
     ] : []),
   ];
-  $('view').innerHTML += `<div class="card">${tableHTML(cols, rows, { totals: true })}</div>`;
+  $('view').innerHTML += `
+    <div class="card"><div class="toolbar" style="margin:0">
+      ${termsToggleHTML()}
+      <span class="mini">${TERMS.on
+        ? 'חוב מוצרים שזמן הפירעון שלו עוד לא הגיע מוצג בנפרד. תשלום סוגר קודם את מה שכבר הגיע זמנו. השוטף מוגדר לכל לקוח באנשי קשר.'
+        : 'כל חוב המוצרים מוצג כמיידי, בלי קשר לשוטף שהוגדר.'}</span>
+    </div></div>
+    <div class="card">${tableHTML(cols, rows, { totals: true })}</div>`;
+  wireTermsToggle(document, () => render());
   document.querySelectorAll('[data-card]').forEach(b => b.onclick = () => openCard('customer', +b.dataset.card));
 }
 
@@ -2667,14 +2724,21 @@ function repCard(kind) {
 async function openCard(kind, id) {
   try {
     const d = await Store.reports[kind](id);
-    const m = modal({ title: `כרטיס ${kind === 'scribe' ? 'סופר' : 'רוכש'} — ${esc(d.contact.name)}`, wide: true,
-            body: kind === 'scribe' ? scribeCardHTML(d) : customerCardHTML(d) });
-    // הכרטיס נסגר לפני טופס הדיווח: אחרי השמירה המספרים שבו כבר לא
-    // נכונים, וכרטיס שמראה נתון ישן גרוע מכרטיס שנסגר.
-    m.el.querySelectorAll('[data-crep]').forEach(b => b.onclick = () => {
-      m.close();
-      openForm(prodConsign(true), null, { sale_id: +b.dataset.crep, date: today() });
-    });
+    const m = modal({ title: `כרטיס ${kind === 'scribe' ? 'סופר' : 'רוכש'} — ${esc(d.contact.name)}`, wide: true, body: '' });
+    const body = m.el.querySelector('.m-body');
+    // מעבר בין שוטף למיידי מצייר מחדש מהנתונים שכבר בידינו, ומרענן גם את
+    // הדוח שמאחור — כדי ששניהם יראו את אותה בחירה כשהכרטיס נסגר.
+    const paint = () => {
+      body.innerHTML = kind === 'scribe' ? scribeCardHTML(d) : customerCardHTML(d);
+      wireTermsToggle(body, () => { paint(); render(); });
+      // הכרטיס נסגר לפני טופס הדיווח: אחרי השמירה המספרים שבו כבר לא
+      // נכונים, וכרטיס שמראה נתון ישן גרוע מכרטיס שנסגר.
+      body.querySelectorAll('[data-crep]').forEach(b => b.onclick = () => {
+        m.close();
+        openForm(prodConsign(true), null, { sale_id: +b.dataset.crep, date: today() });
+      });
+    };
+    paint();
   } catch (e) { toast(e.message, 'err'); }
 }
 
@@ -2739,9 +2803,16 @@ function scribeCardHTML(d) {
 
 function customerCardHTML(d) {
   const t = d.scroll_totals, p = d.product_totals;
+  const now = TERMS.on ? d.total_due_now_terms : d.total_due_now;
   return `
+    <div class="toolbar" style="margin-bottom:10px">${termsToggleHTML()}
+      <span class="mini">${termsLine(d.contact)}</span></div>
     <div class="grid stat-grid">
-      <div class="stat"><div class="label">חוב מיידי</div><div class="value r">${money(d.total_due_now)}</div></div>
+      <div class="stat"><div class="label">חוב מיידי</div><div class="value r">${money(now)}</div>
+        ${TERMS.on ? '<div class="sub">מה שכבר הגיע זמנו</div>' : ''}</div>
+      ${TERMS.on && N(p.by_terms) ? `<div class="stat"><div class="label">לפי השוטף (מוצרים)</div>
+        <div class="value a">${money(p.by_terms)}</div>
+        ${p.next_due_date ? `<div class="sub">הבא לפירעון ${dt(p.next_due_date)}</div>` : ''}</div>` : ''}
       <div class="stat"><div class="label">חוב כללי</div><div class="value a">${money(d.total_due_overall)}</div></div>
       <div class="stat"><div class="label">עלות פריטה</div><div class="value">${money(N(t.peritah) + N(p.peritah))}</div></div>
       ${(() => { const c = consignStat(p, 'customer'); return c
@@ -2777,7 +2848,10 @@ function customerCardHTML(d) {
                    consignSaleCol,
                    curCol,
                    { label: "מחיר ליח'", cls: 'num', render: r => mc(r.price_per_unit, r) },
-                   { label: 'סך לחיוב', cls: 'num', render: r => mc(r.total_sale, r) }], d.sales)}
+                   { label: 'סך לחיוב', cls: 'num', render: r => mc(r.total_sale, r) },
+                   ...(TERMS.on ? [{ label: 'לפירעון', render: r => r.sale_type === 'קומיסיון'
+                       ? '<span class="muted" title="בקומיסיון הפירעון נספר מכל דיווח בנפרד">לפי דיווח</span>'
+                       : (r.due_date ? dt(r.due_date) : '') }] : [])], d.sales)}
       <div class="kv" style="margin-top:10px">
         <div class="k">סה"כ לחיוב</div><div class="num">${money(p.revenue)}</div>
         ${N(p.consign_units) ? `<div class="k">מונח אצלו בקומיסיון</div>
@@ -3286,6 +3360,10 @@ function setContacts(cfgOnly) {
       { k: 'bank', label: 'בנק', type: 'text', hint: 'להעברות לסופר — מוצג במרחב הסופר' },
       { k: 'bank_branch', label: 'סניף', type: 'text' },
       { k: 'bank_account', label: 'מספר חשבון', type: 'text' },
+      { k: 'pay_days', label: 'שוטף למכירה (ימים)', type: 'number',
+        hint: 'תוך כמה ימים מתאריך המכירה הלקוח משלם על מוצרים. ריק = מיידי' },
+      { k: 'consign_pay_days', label: 'שוטף לקומיסיון (ימים)', type: 'number',
+        hint: 'תוך כמה ימים מהרגע שדיווח שמכר. ריק = מיידי' },
     ],
     // ההעלאה היא פעולה עצמאית מול הדרייב ולא שדה בטופס: היא דורשת שהרשומה
     // כבר קיימת, ולכן מוצגת רק בעריכה. שני הסוגים נבנים מאותה פונקציה.
@@ -5268,8 +5346,14 @@ async function loadCustomerSpace(id) {
   $('wsBody').innerHTML = `
     ${wsHeader(d.contact, '#c98a2e,#a1701f', 'לקוח', 'scribe', alsoScribe)}
 
+    <div class="toolbar" style="margin-bottom:6px">${termsToggleHTML()}
+      <span class="mini">${termsLine(d.contact)}</span></div>
     <div class="grid stat-grid">
-      ${wsCard('חוב מיידי', money(d.total_due_now), d.total_due_now > 0 ? 'r' : 'g', 'לפי התקדמות הכתיבה')}
+      ${(() => { const now = TERMS.on ? N(d.total_due_now_terms) : N(d.total_due_now);
+        return wsCard('חוב מיידי', money(now), now > 0 ? 'r' : 'g',
+          TERMS.on ? 'ס"ת לפי התקדמות · מוצרים שהגיע זמנם' : 'לפי התקדמות הכתיבה'); })()}
+      ${TERMS.on && N(pt.by_terms) ? wsCard('לפי השוטף', money(pt.by_terms), 'a',
+          pt.next_due_date ? `הבא לפירעון ${dt(pt.next_due_date)}` : 'מוצרים') : ''}
       ${wsCard('חוב כללי', money(d.total_due_overall), 'a', 'כולל מה שטרם נכתב')}
       ${wsCard('שילם', money(N(ct.paid) + N(pt.paid)), 'g')}
       ${wsCard('ספרים שרכש', ct.count, 'b', `שווי ${money(ct.total_price)}`)}
@@ -5338,6 +5422,7 @@ async function loadCustomerSpace(id) {
     ], d.product_payments, { totals: true }))}`;
 
   wsWire('scribe');
+  wireTermsToggle(document, () => render());
 }
 
 
