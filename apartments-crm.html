@@ -215,12 +215,41 @@ table.tbl thead th{background:#eef1fa;font-weight:700;color:#3f4863;font-size:12
   border-bottom:2px solid #d9deef;
   box-shadow:0 1px 0 #d9deef, 0 6px 12px -8px rgba(30,41,59,.35)}
 .modal-body .table-wrap{max-height:340px}
+/* קטגוריות לפי פרוייקט — מטריצה. לכותרות רוחב וגובה קבועים: סימון תא
+   משנה את המונה בכותרת, ובלי זה הטבלה הייתה זזה בכל לחיצה */
+table.ac-tbl{width:auto}
+table.ac-tbl th,table.ac-tbl td{padding:5px 8px}
+table.ac-tbl th.ac-apt{width:128px;min-width:128px;max-width:128px;white-space:normal;text-align:center;vertical-align:top}
+table.ac-tbl .ac-name{height:32px;overflow:hidden;line-height:16px;font-size:12px;word-break:break-word}
+table.ac-tbl .ac-state{height:22px;margin-top:3px;white-space:nowrap}
+table.ac-tbl .ac-out{height:20px;white-space:nowrap}
+table.ac-tbl .ac-acts{height:28px;display:flex;gap:2px;justify-content:center;white-space:nowrap}
+table.ac-tbl .ac-acts .btn{padding:2px 7px;font-size:12px}
+table.ac-tbl .ac-cat{position:sticky;inset-inline-start:0;z-index:3;background:#fff;min-width:150px;font-weight:700;
+  box-shadow:inset 1px 0 0 #e3e7f3}
+table.ac-tbl thead th.ac-cat{z-index:7;background:#eef1fa;vertical-align:bottom}
+table.ac-tbl td.ac-cell{text-align:center}
+table.ac-tbl td.ac-open{background:#fafbff}
+table.ac-tbl td.ac-warn{background:#fff1dc}
+.ac-lbl{display:inline-flex;align-items:center;gap:3px;cursor:pointer;margin:0;font-weight:400}
+.ac-lbl input{width:auto;margin:0;cursor:pointer}
+.ac-n{display:inline-block;width:18px;font-size:10.5px;color:#64748b;text-align:start}
+.ac-warn-key{background:#fff1dc;padding:0 5px;border-radius:4px}
+.cat-scope{height:19px;line-height:19px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* שורת סינון העמודות — נדבקת מתחת לכותרות */
 table.tbl thead tr.filter-row th,table.tbl thead tr.filter-row td{
   background:#f8f9fe;position:sticky;top:34px;z-index:4;padding:5px 6px;
   border-bottom:1px solid #dfe3f2;box-shadow:none}
 table.tbl thead tr.filter-row input{border-color:#dde1f0;background:#fff}
 .sort-mark{font-size:10px}
+/* שורה שהוסתרה בחיפוש (כרגע: סגירת הזמנה מול הבנק). גוברת על סינון העמודות,
+   ונחשבת מוסתרת גם בסיכום המסונן, בבחירת ערכים ובייצוא לאקסל */
+tr.row-hide{display:none!important}
+.ibm-amt-box{width:118px;height:26px;display:flex;align-items:center}
+/* "יישאר חוב…" / "ההזמנה תיסגר במלואה" — מידה קבועה ובלי שבירת שורה:
+   שני הנוסחים נשברו אחרת בחלון צר, והסרגל שמעל הטבלה שינה גובה */
+#ibm-left{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;min-width:170px;min-height:22px}
+.ibm-amt-box input{width:100%;height:26px;min-height:0;padding:2px 6px;font-size:12.5px;box-sizing:border-box;margin:0}
 table.tbl tbody td{border-bottom:1px solid #f0f2fa}
 table.tbl tbody tr:last-child td{border-bottom:none}
 table.tbl tbody tr{transition:background .12s}
@@ -377,7 +406,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 נב'";
+var APP_BUILD = "19.08 נד'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -515,16 +544,21 @@ function pickCategoryId(fieldId){
   return c.id;
 }
 /* בורר קטגוריה שלם: שדה הקלדה + כפתור "➕ חדשה" + חיווי חי מתחתיו */
-function categoryPickerHtml(fieldId,selId,hint){
+function categoryPickerHtml(fieldId,selId,hint,aptIds){
+  /* aptIds — הפרוייקטים שהטופס שייך אליהם; לפיהם מסוננת הרשימה */
+  _CATCTX[fieldId]={aptIds:(aptIds||[]).filter(Boolean),keepId:selId||""};
+  var miss=selId?catCtxMissing(fieldId,selId):"", scope=catScopeText(fieldId);
+  if(miss) hint='<span class="badge badge-warn badge-unit">⚠ '+esc(miss)+'</span>';
   return '<div style="display:flex;gap:6px;align-items:flex-start">'+
       '<div style="flex:1">'+
-        pickerHtml(fieldId,catsSorted().map(function(c){return {id:c.id,label:c.name};}),selId||"",
+        pickerHtml(fieldId,catsForApts(_CATCTX[fieldId].aptIds,selId).map(function(c){return {id:c.id,label:c.name};}),selId||"",
           {placeholder:"הקלד או בחר קטגוריה…",onchange:"catPickHint('"+fieldId+"')"})+
       '</div>'+
       '<button type="button" class="btn btn-sm" style="white-space:nowrap" '+
         'onclick="addCategoryInline(\''+fieldId+'\')" title="הוספת קטגוריה חדשה">➕ חדשה</button>'+
     '</div>'+
-    '<div class="hint" id="'+fieldId+'-fb">'+(hint||"")+'</div>';
+    '<div class="hint" id="'+fieldId+'-fb">'+(hint||"")+'</div>'+
+    (aptCatsOn()?'<div class="hint cat-scope" id="'+fieldId+'-scope" title="'+esc(scope)+'">'+esc(scope)+'</div>':'');
 }
 /* חיווי בזמן ההקלדה: קיימת / תיווצר חדשה / ריק */
 function catPickHint(fieldId){
@@ -532,7 +566,12 @@ function catPickHint(fieldId){
   var raw=String(val(fieldId)||"").trim();
   if(!raw){ box.innerHTML='<span class="muted">ללא קטגוריה</span>'; return; }
   var ex=categoryByName(raw);
-  if(ex){ box.innerHTML='<span class="pos">✔ קטגוריה קיימת</span>'; return; }
+  if(ex){
+    var miss=catCtxMissing(fieldId,ex.id);
+    box.innerHTML=miss?'<span class="badge badge-warn badge-unit">⚠ '+esc(miss)+'</span>'
+                      :'<span class="pos">✔ קטגוריה קיימת</span>';
+    return;
+  }
   var id=pickId(fieldId);
   if(id){ box.innerHTML='<span class="pos">✔ '+esc(categoryName(id))+'</span>'; return; }
   box.innerHTML='<span class="badge badge-warn badge-unit">➕ תיווצר קטגוריה חדשה: '+esc(raw)+'</span>';
@@ -553,14 +592,17 @@ function addCategoryInline(fieldId){
   }
   var c={id:uid(),name:name,deleted:false};
   DB.categories.push(c);
+  /* קטגוריה שנוצרת מתוך טופס של פרוייקט מוגבל — שייכת לו מעצם יצירתה */
+  var ctx=_CATCTX[fieldId];
+  var attached=(ctx && aptCatsOn()) ? aptCatAttach(ctx.aptIds,c.id) : 0;
   save();
   /* מרעננים את רשימת ההשלמה של השדה כדי שהחדשה תופיע בה מיד */
-  var items=catsSorted().map(function(x){ return {id:x.id,label:x.name}; });
+  var items=catsForApts(ctx?ctx.aptIds:[],ctx?ctx.keepId:"").map(function(x){ return {id:x.id,label:x.name}; });
   _PICK[fieldId]=items;
   var dl=document.getElementById(fieldId+"-list");
   if(dl) dl.innerHTML=items.map(function(x){ return '<option value="'+esc(x.label)+'"></option>'; }).join("");
-  el.value=name; catPickHint(fieldId);
-  toast('נוספה הקטגוריה "'+name+'"',"ok");
+  el.value=name; catPickHint(fieldId); catScopeRefresh(fieldId);
+  toast('נוספה הקטגוריה "'+name+'"'+(attached?" ושויכה לפרוייקט":""),"ok");
 }
 function catsSorted(){
   return active(DB.categories).slice().sort(function(a,b){
@@ -569,6 +611,142 @@ function catsSorted(){
 /* קטגוריה שנמחקה מחזירה "" — כך היא לא נראית חיה בדוחות, והשלבים
    שלה מקובצים לשורת "(קטגוריה שנמחקה)" במקום להיראות כאילו לא נמחקה. */
 function categoryName(id){ var c=id?byId(DB.categories,id):null; return (c&&!c.deleted)?c.name:""; }
+/* ============================================================
+   קטגוריות לפי פרוייקט
+   ------------------------------------------------------------
+   DB.settings.aptCats = { aptId: [categoryId, ...] }
+   פרוייקט בלי רשימה — כל הקטגוריות זמינות בו, כמו תמיד. ברגע שמסמנים
+   לו קטגוריות — רק הן מוצגות לבחירה בהוצאה שלו (רגילה, מהירה, עדכון
+   מרוכז וכלל תקופתי). קטגוריה שכבר רשומה על שלב לא נעלמת ממנו לעולם.
+
+   למה בהגדרות ולא על שורת הפרוייקט: השרת לא דורס הגדרות בשמירה של
+   מי שאינו מנהל, המיזוג בין חלונות נעשה שם לפי מפתח, וההגנה מפני
+   מחיקה המונית לא סופרת אותן — ביטול סימונים לעולם לא ייחסם.
+   פיצ'ר של מנהלים: אצל עורך הבחירה נשארת פתוחה כמו קודם.
+   ============================================================ */
+var _CATCTX={};     // id של שדה קטגוריה → {aptIds, keepId}
+var _CATPEND={};    // id של שדה → שיוך שאושר ומחכה לשמירה בפועל
+function aptCatsOn(){ return !!(CU && CU.role==="admin"); }
+function aptCatsRead(){
+  var m=DB&&DB.settings&&DB.settings.aptCats;
+  return (m && typeof m==="object" && !Array.isArray(m)) ? m : {};
+}
+function aptCatsWrite(){
+  DB.settings=DB.settings||{};
+  var m=DB.settings.aptCats;
+  if(!m || typeof m!=="object" || Array.isArray(m)) m=DB.settings.aptCats={};
+  return m;
+}
+/* הקטגוריות החיות שמשויכות לפרוייקט, או null = ללא הגבלה */
+function aptCatIds(aptId){
+  var raw=aptCatsRead()[aptId];
+  if(!Array.isArray(raw) || !raw.length) return null;
+  var ok=raw.filter(function(id){ var c=byId(DB.categories,id); return !!(c && !c.deleted); });
+  return ok.length ? ok : null;
+}
+function aptCatAllowed(aptId,catId){
+  if(!aptCatsOn() || !aptId || !catId) return true;
+  var ids=aptCatIds(aptId);
+  return !ids || ids.indexOf(catId)>=0;
+}
+/* הקטגוריות לבחירה בטופס. כמה פרוייקטים (כלל תקופתי) — רק מה שמותר
+   בכולם. keepId — הקטגוריה הנוכחית של הרשומה נשארת ברשימה גם אם אינה
+   משויכת, כדי שעריכה של שלב ישן לא תעלים לו את הקטגוריה. */
+function catsForApts(aptIds,keepId){
+  var all=catsSorted();
+  if(!aptCatsOn()) return all;
+  var lists=(aptIds||[]).filter(Boolean).map(aptCatIds).filter(Boolean);
+  if(!lists.length) return all;
+  return all.filter(function(c){
+    return c.id===keepId || lists.every(function(l){ return l.indexOf(c.id)>=0; });
+  });
+}
+/* משייך קטגוריה לפרוייקטים שכבר מוגבלים. פרוייקט בלי רשימה לא נוגעים
+   בו — אחרת שיוך ראשון היה הופך אותו בשקט ל"קטגוריה אחת בלבד". */
+function aptCatAttach(aptIds,catId){
+  if(!catId) return 0;
+  var n=0;
+  (aptIds||[]).filter(Boolean).forEach(function(aptId){
+    var ids=aptCatIds(aptId);
+    if(!ids || ids.indexOf(catId)>=0) return;
+    var m=aptCatsWrite();
+    m[aptId]=(Array.isArray(m[aptId])?m[aptId]:[]).concat([catId]);
+    n++;
+  });
+  return n;
+}
+/* למה קטגוריה אינה תקינה בשדה הזה — "" כשהכול בסדר */
+function catCtxMissing(fieldId,catId){
+  var ctx=_CATCTX[fieldId];
+  if(!ctx || !catId || !aptCatsOn()) return "";
+  var bad=ctx.aptIds.filter(function(a){ return !aptCatAllowed(a,catId); });
+  if(!bad.length) return "";
+  if(catId===ctx.keepId) return "הקטגוריה הנוכחית אינה משויכת לפרוייקט — היא נשארת כמו שהיא";
+  return "לא משויכת לפרוייקט — בשמירה תישאל אם לשייך אותה";
+}
+/* שורת ההסבר מתחת לבורר: כמה קטגוריות מוצגות ולמה */
+function catScopeText(fieldId){
+  var ctx=_CATCTX[fieldId];
+  if(!ctx || !aptCatsOn()) return "";
+  var lists=ctx.aptIds.map(aptCatIds).filter(Boolean);
+  if(!lists.length) return "";
+  var n=catsForApts(ctx.aptIds,"").length;
+  if(!n) return "⚠ אין קטגוריה שמשויכת לכל הפרוייקטים שסומנו";
+  return "🏷️ מוצגות רק "+n+" הקטגוריות "+(ctx.aptIds.length>1?"המשותפות לפרוייקטים שסומנו":"של הפרוייקט")+
+    " · לשינוי: הגדרות ← קטגוריות לפי פרוייקט";
+}
+function catScopeRefresh(fieldId){
+  var el=document.getElementById(fieldId+"-scope"); if(!el) return;
+  /* גובה קבוע — השורה לא מופיעה ונעלמת, כדי שסימון פרוייקט בכלל
+     התקופתי לא יזיז את רשימת הפרוייקטים מתחת לעכבר */
+  var t=catScopeText(fieldId);
+  el.textContent=t; el.title=t;
+}
+/* החלפת פרוייקט בטופס (הוצאה מהירה, כלל תקופתי) — רשימת הבחירה מתעדכנת */
+function refreshCatPicker(fieldId,aptIds){
+  var ctx=_CATCTX[fieldId]; if(!ctx) return;
+  aptIds=(aptIds||[]).filter(Boolean);
+  if(ctx.aptIds.join(",")===aptIds.join(",")) return;
+  ctx.aptIds=aptIds;
+  var items=catsForApts(aptIds,ctx.keepId).map(function(c){ return {id:c.id,label:c.name}; });
+  _PICK[fieldId]=items;
+  var dl=document.getElementById(fieldId+"-list");
+  if(dl) dl.innerHTML=items.map(function(x){ return '<option value="'+esc(x.label)+'"></option>'; }).join("");
+  catScopeRefresh(fieldId);
+  if(String(val(fieldId)||"").trim()) catPickHint(fieldId);
+}
+/* בדיקה בשמירה, לפני שנוגעים בנתונים. שם של קטגוריה קיימת שאינה
+   משויכת: שואלים אם לשייך — ביטול משאיר את הטופס פתוח. */
+function catFieldCheck(fieldId,aptIds,keepId){
+  delete _CATPEND[fieldId];
+  if(!aptCatsOn() || !document.getElementById(fieldId)) return true;
+  var raw=String(val(fieldId)||"").trim(); if(!raw) return true;
+  var ex=categoryByName(raw);
+  if(!ex || ex.id===keepId) return true;
+  var miss=(aptIds||[]).filter(Boolean).filter(function(a){ return !aptCatAllowed(a,ex.id); });
+  if(!miss.length) return true;
+  var names=miss.map(function(a){ var x=byId(DB.apartments,a); return x?'"'+x.name+'"':""; }).filter(Boolean);
+  if(!confirm('הקטגוריה "'+ex.name+'" לא משויכת ל'+(names.length>1?"פרוייקטים ":"פרוייקט ")+names.join(", ")+".\n\n"+
+      "לשייך אותה עכשיו ולהמשיך בשמירה?\n(ביטול — חוזרים לטופס בלי לשמור)")) return false;
+  /* השיוך נרשם רק כשהרשומה נכתבת בפועל (catFieldCommit): אחרי הבדיקה
+     הזו יש עוד נקודות ביטול, ושיוך שנשאר בזיכרון היה נשמר בשמירה הבאה */
+  _CATPEND[fieldId]={apts:miss,catId:ex.id};
+  return true;
+}
+function catFieldCommit(fieldId){
+  var pd=_CATPEND[fieldId]; if(!pd) return;
+  delete _CATPEND[fieldId];
+  aptCatAttach(pd.apts,pd.catId);
+}
+/* כמו pickCategoryId, וקטגוריה שנוצרה עכשיו מהטקסט משויכת לפרוייקטים.
+   נקרא בנקודה שבה הרשומה נכתבת — ושם גם נרשם שיוך שאושר. */
+function pickCategoryIdFor(fieldId,aptIds){
+  catFieldCommit(fieldId);
+  var before=DB.categories.length;
+  var id=pickCategoryId(fieldId);
+  if(id && DB.categories.length>before && aptCatsOn()) aptCatAttach(aptIds,id);
+  return id;
+}
 /* בחירת הקטגוריה עברה כולה לבורר-ההקלדה (categoryPickerHtml), שגם
    מוסיף קטגוריה חדשה מתוך הטופס — כך שרשימת <option> ו-onCatPick
    כבר אינן בשימוש. */
@@ -2353,6 +2531,148 @@ function orphanMatches(){
   });
   return out;
 }
+/* ============================================================
+   תשלום מהבנק ↔ שורת הבנק — בדיקת עקביות
+   ------------------------------------------------------------
+   התאמה יוצרת שני דברים שחייבים ללכת יחד: תשלום על ההזמנה (הערה
+   "מדף הבנק…") וקישור בשורת הבנק אליו (matches[].payId).
+   1. תשלום בלי קישור — ההזמנה "שולמה" והשורה "לא מותאם". קורה כששורות
+      מותאמות נוקו והדף הודבק שוב, או כשהזמנה נמחקה ושוחזרה (המחיקה
+      משחררת את הקישורים, והטעינה הבאה מוחקת אותם סופית).
+      התאמה מחדש הייתה רושמת תשלום כפול — לכן כאן רק מקשרים.
+   2. קישור בלי תשלום — השורה "מותאם" אבל התשלום נמחק מההזמנה.
+   ============================================================ */
+function bankPayIndex(){
+  var live={}, stale={};
+  (DB.bankMoves||[]).forEach(function(m){
+    (m.matches||[]).forEach(function(x){
+      if(!x || x.deleted || !x.payId) return;
+      if(m.deleted) (stale[x.payId]=stale[x.payId]||[]).push(x);
+      else (live[x.payId]=live[x.payId]||[]).push({m:m,x:x});
+    });
+  });
+  return {live:live, stale:stale};
+}
+function isBankPayNote(g){ return /^מדף הבנק/.test(String(g&&g.note||"")); }
+/* האם שורת הבנק היא המקור של התשלום: אותו תאריך, יש בה מקום לסכום,
+   והשם שלה מופיע בהערה שנרשמה ברגע ההתאמה. 0 = לא אותה שורה. */
+function moveFitsPay(m,g,room){
+  var amt=Number(g.amount)||0;
+  if(m.date!==g.date || room<amt-0.01) return 0;
+  var note=String(g.note||"");
+  var src=[m.name,m.details,m.description].filter(Boolean).join(" · ");
+  var score=1;
+  if(src){
+    if(note.indexOf(src.slice(0,20))<0) return 0;
+    score+=2;
+  } else if(note.indexOf(" · ")>=0) return 0;       // בהערה יש שם, בשורה אין
+  var bn=moveBankLabel(m);
+  if(bn && bn!=="—" && note.indexOf(bn)>=0) score+=1;
+  if(Math.abs(room-amt)<0.01) score+=1;
+  return score;
+}
+function bankPayIssues(){
+  var ix=bankPayIndex(), unlinked=[], unresolved=[], payless=[];
+  var byDate={}, room={};
+  allBankMoves().forEach(function(m){
+    if(m.ignored) return;
+    var r=moveRemaining(m); if(r<=0.01) return;
+    room[m.id]=r;
+    (byDate[m.date]=byDate[m.date]||[]).push(m);
+  });
+  active(DB.income).forEach(function(inc){
+    (inc.payments||[]).forEach(function(g){
+      if(!g || g.deleted || !isBankPayNote(g) || ix.live[g.id]) return;
+      var best=null, bestS=0, tie=false;
+      (byDate[g.date]||[]).forEach(function(m){
+        var sc=moveFitsPay(m,g,room[m.id]||0);
+        if(sc>bestS){ best=m; bestS=sc; tie=false; }
+        else if(sc && sc===bestS) tie=true;
+      });
+      if(best && !tie){
+        room[best.id]=round2(room[best.id]-(Number(g.amount)||0));
+        unlinked.push({inc:inc,g:g,m:best});
+      } else {
+        unresolved.push({inc:inc,g:g,why:best?"כמה שורות בנק מתאימות באותה מידה":"אין שורת בנק פתוחה מאותו תאריך, סכום ושם"});
+      }
+    });
+  });
+  allBankMoves().forEach(function(m){
+    moveMatches(m).forEach(function(x){
+      if(!x.payId) return;
+      var inc=byId(DB.income,x.incomeId);
+      if(!inc || inc.deleted) return;          // זה של "התאמות להכנסות שנמחקו"
+      var g=(inc.payments||[]).filter(function(q){ return q.id===x.payId; })[0];
+      if(g && !g.deleted) return;
+      payless.push({m:m,x:x,inc:inc});
+    });
+  });
+  return {unlinked:unlinked, unresolved:unresolved, payless:payless};
+}
+/* קישור תשלום קיים לשורת הבנק — בלי ליצור תשלום חדש */
+function linkBankPay(o,ix){
+  if(ix.live[o.g.id]) return false;
+  if(moveRemaining(o.m)<(Number(o.g.amount)||0)-0.01) return false;
+  o.m.matches=o.m.matches||[];
+  var x={id:uid(),incomeId:o.inc.id,payId:o.g.id,amount:round2(Number(o.g.amount)||0),deleted:false};
+  o.m.matches.push(x);
+  if(!o.m.apartmentId) o.m.apartmentId=o.inc.apartmentId;
+  /* קישור ישן על שורה שנמחקה (לפני שהדף הודבק שוב) — השורה החדשה
+     מחליפה אותו, אחרת שחזור הישנה היה סופר את התשלום פעמיים */
+  (ix.stale[o.g.id]||[]).forEach(function(old){ old.deleted=true; });
+  ix.live[o.g.id]=[{m:o.m,x:x}];
+  return true;
+}
+/* הזמנה ששוחזרה — מקשרים מחדש את תשלומי הבנק שלה */
+function relinkIncomeBankPays(incId){
+  var r=bankPayIssues(), ix=bankPayIndex(), n=0;
+  r.unlinked.forEach(function(o){ if(o.inc.id===incId && linkBankPay(o,ix)) n++; });
+  return n;
+}
+function fixBankPayLinks(){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var r=bankPayIssues();
+  if(!r.unlinked.length && !r.payless.length){ toast("לא נמצאו אי-התאמות בין הבנק להזמנות","ok"); return; }
+  function row(date,amt,moveTxt,bank,inc){
+    return '<tr><td>'+dateHe(date)+'</td><td><b>'+money(amt)+'</b></td>'+
+      '<td>'+esc(String(moveTxt||"—").slice(0,40))+'</td><td>'+esc(bank||"—")+'</td>'+
+      '<td>'+esc(inc?inc.description:"—")+'</td><td>'+esc(inc?apartmentName(inc.apartmentId):"—")+'</td></tr>';
+  }
+  var head='<div class="table-wrap" style="max-height:240px"><table class="tbl"><thead><tr>'+
+    '<th>תאריך</th><th class="num">סכום</th><th>שורת הבנק</th><th>בנק</th><th>הזמנה</th><th>פרוייקט</th></tr></thead><tbody>';
+  var h='';
+  if(r.unlinked.length){
+    h+='<div class="section-title">🔗 הזמנה "שולמה" ושורת הבנק "לא מותאם" ('+r.unlinked.length+')</div>'+
+      '<div class="hint" style="margin-bottom:6px">התשלום נוצר מהשורה הזו (אותו תאריך, סכום ושם), אבל הקישור ביניהם אבד. '+
+      'התיקון מקשר את השורה לתשלום הקיים — <b>לא נוצר תשלום נוסף</b>, וההזמנה לא משתנה.</div>'+
+      head+r.unlinked.map(function(o){ return row(o.g.date,o.g.amount,o.m.name||o.m.description,moveBankLabel(o.m),o.inc); }).join("")+'</tbody></table></div>';
+  }
+  if(r.payless.length){
+    h+='<div class="section-title">✂️ שורת הבנק "מותאם" והתשלום נמחק מההזמנה ('+r.payless.length+')</div>'+
+      '<div class="hint" style="margin-bottom:6px">השורה נחשבת מותאמת, אבל בהזמנה אין את התשלום. התיקון מחזיר את השורה ל"לא מותאם" '+
+      'כדי שתוכל להתאים אותה שוב. <b>שום שורת בנק לא נמחקת.</b></div>'+
+      head+r.payless.map(function(o){ return row(o.m.date,o.x.amount,o.m.name||o.m.description,moveBankLabel(o.m),o.inc); }).join("")+'</tbody></table></div>';
+  }
+  if(r.unresolved.length){
+    h+='<div class="section-title">לא יתוקן אוטומטית ('+r.unresolved.length+')</div>'+
+      '<div class="hint" style="margin-bottom:6px">תשלומים "מדף הבנק" בלי שורה מקושרת, שלא נמצאה להם שורה אחת ודאית. אפשר לבדוק אותם ידנית.</div>'+
+      '<div class="table-wrap" style="max-height:180px"><table class="tbl"><thead><tr><th>תאריך</th><th class="num">סכום</th><th>הזמנה</th><th>למה</th></tr></thead><tbody>'+
+      r.unresolved.slice(0,50).map(function(o){
+        return '<tr><td>'+dateHe(o.g.date)+'</td><td>'+money(o.g.amount)+'</td><td>'+esc(o.inc.description)+'</td><td class="muted">'+esc(o.why)+'</td></tr>';
+      }).join("")+'</tbody></table></div>';
+  }
+  var n=r.unlinked.length+r.payless.length;
+  openModal({title:"🔗 אי-התאמות בין הבנק להזמנות",wide:true,bodyHtml:h,
+    saveLabel:"תקן "+n,onSave:function(){
+      var ix=bankPayIndex(), a=0, b=0;
+      r.unlinked.forEach(function(o){ if(!o.g.deleted && !o.inc.deleted && linkBankPay(o,ix)) a++; });
+      r.payless.forEach(function(o){ if(!o.x.deleted){ o.x.deleted=true; b++; } });
+      save();
+      toast((a?"קושרו "+a+" שורות בנק לתשלומים הקיימים":"")+(a&&b?" · ":"")+(b?"שוחררו "+b+" שורות":""),"ok");
+      rerender();
+      return true;
+    }});
+}
 function fixOrphanMatches(){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var list=orphanMatches();
@@ -3628,9 +3948,9 @@ function merge3(baseStr,mine,theirs){
   /* הגדרות: אמצעי תשלום מתאחדים; שאר השדות — מי ששינה מול הבסיס */
   var bs=((base&&base.settings)||{}), ms=(mine.settings||{}), ts=(theirs.settings||{});
   var st={};
-  [ts,ms].forEach(function(src){ Object.keys(src).forEach(function(k){ if(k!=="paymentMethods") st[k]=src[k]; }); });
+  [ts,ms].forEach(function(src){ Object.keys(src).forEach(function(k){ if(k!=="paymentMethods"&&k!=="aptCats") st[k]=src[k]; }); });
   Object.keys(ms).forEach(function(k){
-    if(k==="paymentMethods") return;
+    if(k==="paymentMethods"||k==="aptCats") return;
     if(noBase){ if(ts[k]!==undefined) st[k]=ts[k]; return; }   // בלי בסיס — השרת גובר
     if(JSON.stringify(ms[k])!==JSON.stringify(bs[k])) st[k]=ms[k];
     else if(ts[k]!==undefined) st[k]=ts[k];
@@ -3639,6 +3959,20 @@ function merge3(baseStr,mine,theirs){
   [ts.paymentMethods||{},ms.paymentMethods||{}].forEach(function(pm){
     Object.keys(pm).forEach(function(k){ st.paymentMethods[k]=pm[k]; });
   });
+  /* קטגוריות לפי פרוייקט — מיזוג לכל פרוייקט בנפרד. כמפתח אחד, סימון
+     בחלון אחד ושיוך קטגוריה בחלון אחר היו מוחקים זה את זה בשקט. */
+  (function(){
+    var ba=bs.aptCats||{}, ma=ms.aptCats||{}, ta=ts.aptCats||{}, ac={}, ks={};
+    [ba,ma,ta].forEach(function(o){ if(o && typeof o==="object") Object.keys(o).forEach(function(k){ ks[k]=1; }); });
+    Object.keys(ks).forEach(function(k){
+      var mj=JSON.stringify(ma[k]), bj=JSON.stringify(ba[k]), tj=JSON.stringify(ta[k]), v;
+      if(noBase) v=(ta[k]!==undefined)?ta[k]:ma[k];          // בלי בסיס — השרת גובר
+      else if(mj!==bj){ v=ma[k]; if(tj!==bj && tj!==mj) conflicts++; }
+      else v=ta[k];
+      if(Array.isArray(v) && v.length) ac[k]=v;
+    });
+    if(Object.keys(ac).length || ms.aptCats || ts.aptCats) st.aptCats=ac;
+  })();
   out.settings=st;
   out.meta=theirs.meta||mine.meta||{version:1,rev:0};
   return {db:out,conflicts:conflicts};
@@ -4093,6 +4427,8 @@ function colFilterState(t){ var sig=tableSig(t); if(!COLFILT[sig]) COLFILT[sig]=
 function cellVal(cell){ return String(cell.innerText||cell.textContent||"").replace(/\s+/g," ").trim(); }
 function applyColFilters(t){
   var fr=t.querySelector("thead tr.filter-row"); if(!fr) return;
+  /* סגירת הזמנה מול הבנק: תיבת "סמן הכל" תלויה בשורות הגלויות */
+  if(t.closest && t.closest("#ibm-body")) setTimeout(function(){ if(typeof ibmSyncAll==="function") ibmSyncAll(); },0);
   var st=colFilterState(t);
   st.t={};
   fr.querySelectorAll(".col-f").forEach(function(inp){
@@ -4136,7 +4472,7 @@ function applyColFilters(t){
   rowsArr.forEach(function(tr,ri){
     var want=visArr[ri]?"":"none";
     if(tr.style.display!==want) tr.style.display=want;
-    if(visArr[ri]) shown++;
+    if(visArr[ri] && !tr.classList.contains("row-hide")) shown++;
   });
   var f=anyFilter?[1]:[];   /* תאימות: הקוד למטה בודק f.length לסיכום */
   /* שורת סיכום חיה של המסונן: מסכמת עמודות מספריות.
@@ -4158,10 +4494,10 @@ function applyColFilters(t){
          הטקסטים נקראו כבר בשלב הקריאה — אין קריאת innerText נוספת. */
       var visIds={};
       rowsArr.forEach(function(tr,ri){
-        if(visArr[ri] && tr.getAttribute("data-eid")) visIds[tr.getAttribute("data-eid")]=1;
+        if(visArr[ri] && !tr.classList.contains("row-hide") && tr.getAttribute("data-eid")) visIds[tr.getAttribute("data-eid")]=1;
       });
       rowsArr.forEach(function(tr,ri){
-        if(!visArr[ri]) return;
+        if(!visArr[ri] || tr.classList.contains("row-hide")) return;
         var par=tr.getAttribute("data-parent");
         if(par && visIds[par]) return;          // נספר כבר בשורת האב
         /* textContent — קריאה זולה שאינה מחייבת חישוב פריסה */
@@ -4219,6 +4555,7 @@ function openColPicker(t,col,btn){
   }
   var seen={}, list=[], hiddenN=0;
   Array.prototype.forEach.call(t.tBodies[0].rows,function(tr){
+    if(tr.classList.contains("row-hide")) return;   /* הוסתרה בחיפוש — לא מציעים את הערך שלה */
     var cell=tr.cells[col]; if(!cell) return;
     var v=cellVal(cell);
     if(!passesOthers(tr)){ if(!(v in seen)) hiddenN++; return; }
@@ -4610,7 +4947,7 @@ function tableToSheet(t,name){
   /* רק שורות שנראות על המסך — כך שהייצוא מכבד את הסינון הפעיל */
   var visible=[];
   if(bodyEl) Array.prototype.forEach.call(bodyEl.rows,function(tr){
-    if(tr.style.display==="none") return;
+    if(tr.style.display==="none" || tr.classList.contains("row-hide")) return;   /* גם שורה שהוסתרה בחיפוש */
     if(tr.querySelector("td.empty")) return;
     visible.push(xlRowCells(tr,n));
   });
@@ -5329,7 +5666,7 @@ function openBulkExpEdit(aptId){
           '<option value="">ללא קטגוריה</option>'+
           '<option value="set">קטגוריה שאבחר…</option></select>'+
         '<div id="eb-cat-wrap" style="display:none">'+
-          categoryPickerHtml("eb-cat","","אפשר להקליד שם חדש או ללחוץ ➕")+
+          categoryPickerHtml("eb-cat","","אפשר להקליד שם חדש או ללחוץ ➕",[aptId])+
         '</div></div>'+
       '<div class="field"><label>סיווג</label><select id="eb-class">'+
         '<option value="__keep">— ללא שינוי —</option>'+
@@ -5380,7 +5717,10 @@ function applyBulkExpEdit(aptId,ids){
      המרוכז מעולם לא עבד. */
   var _ebc=document.getElementById("eb-cat-mode");
   var catMode=_ebc?_ebc.value:"__keep";
+  if(catMode==="set" && !catFieldCheck("eb-cat",[aptId],"")) return false;
+  var catsBefore=DB.categories.length;
   var cat=catMode==="__keep"?"__keep":(catMode===""?"":pickCategoryId("eb-cat"));
+  var catIsNew=DB.categories.length>catsBefore;
   if(catMode==="set" && !cat){ toast("הקלד קטגוריה, או בחר \"ללא שינוי\"","err"); return false; }
   var cls=val("eb-class"), date=val("eb-date");
   var mg=document.getElementById("eb-mgmt")?val("eb-mgmt"):"__keep";
@@ -5408,6 +5748,11 @@ function applyBulkExpEdit(aptId,ids){
       splitRows=splitPresetRows(aptId,splitMode==="__default"?"__default":splitMode);
       if(!splitRows.length){ toast("לחלוקה שנבחרה אין שורות — בדוק את השותפים","err"); return false; }
     }
+  }
+  /* שיוך הקטגוריה לפרוייקט — רק עכשיו, אחרי כל הבדיקות שיכולות לבטל */
+  if(catMode==="set" && cat){
+    catFieldCommit("eb-cat");
+    if(catIsNew && aptCatsOn()) aptCatAttach([aptId],cat);
   }
   var n=0;
   ids.forEach(function(id){
@@ -5784,7 +6129,8 @@ function openExpenseEditor(eId,aptId,presetParent){
      (cont?'':
      '<div class="field"><label>קטגוריה</label>'+
        categoryPickerHtml("ex-cat",(e?e.categoryId:""),
-         "לפי מה שהכסף הלך — חשמל, אדריכל, ריצוף. אפשר להקליד שם חדש או ללחוץ ➕.")+
+         "לפי מה שהכסף הלך — חשמל, אדריכל, ריצוף. אפשר להקליד שם חדש או ללחוץ ➕.",
+         [aptId||(e&&e.apartmentId)])+
        '</div>')+
      ''+
      '<div class="field full"><label>הערה</label><input id="ex-note" value="'+esc(e?e.note:"")+'" placeholder="הערה חופשית"></div>'+
@@ -5919,6 +6265,9 @@ function saveExpense(eId,aptId){
       if(!confirm("סכום השלב החדש ("+money(amount)+") נמוך ממה שכבר שולם ("+money(paidSoFar)+").\n\nהשלב יסומן \"שולם ביתר\". להמשיך?")) return false;
     } }
 
+  /* קטגוריה שאינה משויכת לפרוייקט — שואלים לפני כל שינוי בנתונים */
+  if(!isCont && !catFieldCheck("ex-cat",[aptId],eId?((byId(DB.expenses,eId)||{}).categoryId||""):"")) return false;
+
   /* ---- שיוך לשלב-אב ----
      כל הוולידציות והאישורים רצים כאן, *לפני* שנוגעים ב-DB. אחרת ביטול
      ה-confirm של "יהפוך לשלב-אב" היה משאיר הוצאה חצי-שמורה בלי חלוקה,
@@ -5944,7 +6293,7 @@ function saveExpense(eId,aptId){
   if(eId){ e=byId(DB.expenses,eId); }
   else{ e={id:uid(),apartmentId:aptId,deleted:false}; DB.expenses.push(e); eId=e.id; }
   e.description=desc; e.amount=amount; e.date=val("ex-date")||todayISO();
-  if(document.getElementById("ex-cat")) e.categoryId=pickCategoryId("ex-cat");
+  if(document.getElementById("ex-cat")) e.categoryId=pickCategoryIdFor("ex-cat",[aptId]);
   else e.categoryId=e.categoryId||"";
   e.classification=val("ex-class"); e.note=val("ex-note");
   if(hasParentField) e.parentId = pv || null;
@@ -6513,7 +6862,7 @@ function openQuickExpense(){
       '<div class="field"><label>תאריך</label><input id="qe-date" type="date" value="'+todayISO()+'"></div>'+
       '<div class="field"><label>סיווג</label><select id="qe-class">'+classOptions("investment")+'</select></div>'+
       '<div class="field"><label>קטגוריה</label>'+
-        categoryPickerHtml("qe-cat","","אפשר להקליד שם חדש או ללחוץ ➕")+'</div>'+
+        categoryPickerHtml("qe-cat","","אפשר להקליד שם חדש או ללחוץ ➕",[cur])+'</div>'+
       '<div class="field full"><label>הערה</label><input id="qe-note"></div>'+
     '</div>'+
     '<div id="qe-mgmt-box"></div>'+
@@ -6598,6 +6947,7 @@ function renderQuickParent(aptId){
 function renderQuickExpenseInfo(){ return withIndex(function(){ return renderQuickExpenseInfoInner(); }); }
 function renderQuickExpenseInfoInner(){
   var box=document.getElementById("qe-info"); if(!box) return;
+  refreshCatPicker("qe-cat",[pickId("qe-apt")]);   // פרוייקט אחר — קטגוריות אחרות
   var aptId=pickId("qe-apt"); var a=byId(DB.apartments,aptId);
   renderQuickParent(aptId);
   renderQuickMgmt(aptId);
@@ -6708,13 +7058,14 @@ function saveQuickExpense(){
       if(pAmt>amount+0.01 && !confirm("התשלום ("+money(pAmt)+") גדול מסכום השלב ("+money(amount)+").\n\nהשלב יסומן \"שולם ביתר\". להמשיך?")) return false;
     }
   }
+  if(!catFieldCheck("qe-cat",[aptId],"")) return false;
   /* מכאן והלאה משנים נתונים — אין עוד ביטולים */
   if(qParent && !convertToContainer(qParent)) return false;
 
   var mgmtOn = !!document.getElementById("qe-mgmt") && val("qe-mgmt")==="on";
   var mgmtVatRaw = Number(val("qe-vat"));
   var eid=uid();
-  DB.expenses.push({id:eid,apartmentId:aptId,categoryId:pickCategoryId("qe-cat"),
+  DB.expenses.push({id:eid,apartmentId:aptId,categoryId:pickCategoryIdFor("qe-cat",[aptId]),
     classification:val("qe-class")||"investment",
     description:desc,amount:amount,date:date,note:val("qe-note")||"",
     /* השלב מקבל את סימון החשבונית מהתשלום שנרשם איתו — כך התגית 📎
@@ -8335,6 +8686,12 @@ function editIncomePay(incId,payId,aptId,back){
       if(!i.payments) i.payments=[];
       if(payId){ var ix=i.payments.map(function(x){return x.id;}).indexOf(payId); if(ix>=0) Object.assign(i.payments[ix],obj); }
       else i.payments.push(obj);
+      /* תשלום שמקושר לשורת בנק — סכום הקישור הולך אחרי התשלום, אחרת
+         השורה נשארת "מותאם" על הסכום הישן */
+      if(payId) (bankPayIndex().live[payId]||[]).forEach(function(o){
+        var others=round2(moveAllocated(o.m)-(Number(o.x.amount)||0));
+        o.x.amount=round2(Math.max(0,Math.min(amt,(Number(o.m.amount)||0)-others)));
+      });
       save(); toast("התשלום נשמר","ok"); rerender();
       if(back==="all") openAllIncomePays(aptId); else openIncomePays(incId,aptId);
       return false;
@@ -8344,8 +8701,12 @@ function delIncomePay(incId,payId,aptId,back){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var i=byId(DB.income,incId); if(!i) return;
   var g=(i.payments||[]).filter(function(x){return x.id===payId;})[0]; if(!g) return;
-  if(!confirm("למחוק תשלום של "+money(g.amount)+"?")) return;
+  var linked=bankPayIndex().live[payId]||[];
+  if(!confirm("למחוק תשלום של "+money(g.amount)+"?"+
+    (linked.length?"\n\nהתשלום נוצר מהתאמת בנק — שורת הבנק תחזור למצב 'לא מותאם'.":""))) return;
   g.deleted=true;
+  /* בלי זה השורה נשארת "מותאם" לתשלום שכבר לא קיים */
+  linked.forEach(function(o){ o.x.deleted=true; });
   save(); toast("נמחק","ok"); rerender();
   if(back==="all") openAllIncomePays(aptId); else openIncomePays(incId,aptId);
 }
@@ -8444,6 +8805,12 @@ function viewBankMatch(){
       ? '<button class="btn btn-danger btn-sm" onclick="fixOrphanMatches()">🔧 '+
         orphanMatches().length+' התאמות להכנסות שנמחקו</button> '
       : '')+
+    (function(){
+      if(!(CU&&CU.role==="admin")) return '';
+      var r=bankPayIssues(), n=r.unlinked.length+r.payless.length;
+      return n ? '<button class="btn btn-danger btn-sm" onclick="fixBankPayLinks()" '+
+        'title="הזמנה ששולמה מדף הבנק ששורת הבנק שלה לא מקושרת, או להפך">🔗 '+n+' אי-התאמות בין הבנק להזמנות</button> ' : '';
+    })()+
     '<div class="sp"></div></div>';
   h+='<div class="toolbar">'+
     searchBox("bm-q",BQ.q,"חיפוש בתיאור / אסמכתא…","bmSearchLater(this.value)")+
@@ -11227,6 +11594,7 @@ async function runSalvage(){
 function moduleSettings(){
   var tab=state.params.stab||"partners";
   var tabs=[["partners","ספר שותפים"],["cats","קטגוריות"],["accounts","חשבונות"],["methods","אמצעי תשלום"],["users","משתמשים"],["sheets","סנכרון"],["backup","גיבוי"]];
+  if(CU&&CU.role==="admin") tabs.splice(2,0,["aptcats","קטגוריות לפי פרוייקט"]);
   var h='<h2>הגדרות</h2><div class="tabs">'+tabs.map(function(t){return '<div class="tab'+(tab===t[0]?" active":"")+'" onclick="go(\'settings\',{stab:\''+t[0]+'\'})">'+t[1]+'</div>';}).join("")+'</div>';
   if(tab==="partners"){
     h+='<div class="toolbar"><button class="btn btn-primary btn-sm" onclick="editPartner(null)">➕ שותף</button>'+
@@ -11239,6 +11607,7 @@ function moduleSettings(){
       return !cats.some(function(c){ return normKey(c.name)===normKey(n); }); });
     h+='<div class="toolbar"><button class="btn btn-primary btn-sm" onclick="editCategory(null)">➕ קטגוריה</button>'+
       (missing.length?'<button class="btn btn-sm" onclick="seedCategories()">📥 טען '+missing.length+' קטגוריות מומלצות</button>':'')+
+      (CU&&CU.role==="admin"?'<button class="btn btn-sm" onclick="go(\'settings\',{stab:\'aptcats\'})">🏷️ קטגוריות לפי פרוייקט</button>':'')+
       '<div class="sp"></div><span class="muted">'+cats.length+' קטגוריות</span></div>';
     h+='<div class="table-wrap"><table class="tbl"><thead><tr><th>קטגוריה</th><th>שלבים</th><th>סכום</th><th>שולם</th><th>נותר</th><th></th></tr></thead><tbody>';
     if(!cats.length) h+='<tr><td colspan="6" class="empty">אין קטגוריות. לחץ "טען קטגוריות מומלצות" או הוסף ידנית.</td></tr>';
@@ -11258,6 +11627,8 @@ function moduleSettings(){
       '<td>'+money(ta-tp)+'</td><td></td></tr></tfoot></table></div>'+
       '<div class="hint">הקטגוריה נבחרת בעריכת שלב (או בהוצאה מהירה), ומזינה את דוח <b>"לפי קטגוריה"</b> '+
       'בלשונית הדוחות של כל פרויקט. מחיקת קטגוריה לא מוחקת שלבים — הם פשוט חוזרים ל"ללא קטגוריה".</div>';
+  } else if(tab==="aptcats"){
+    h+=(CU&&CU.role==="admin")?aptCatsViewHtml():'<div class="empty">אין הרשאה</div>';
   } else if(tab==="accounts"){
     var accs=active(DB.accounts);
     /* כפילות = אותו שם, גם אם השיוך שונה. אותו אדם/חשבון שנוצר פעמיים
@@ -11527,6 +11898,12 @@ function toggleRecurring(id){
   var r=byId(DB.recurring,id); if(!r) return;
   r.paused=!r.paused; save(); rerender();
 }
+/* סימון/ביטול פרוייקט בכלל התקופתי — רשימת הקטגוריות מתעדכנת */
+function rcCatRefresh(){
+  var ids=[];
+  document.querySelectorAll(".rc-apt:checked").forEach(function(c){ ids.push(c.getAttribute("data-a")); });
+  refreshCatPicker("rc-cat",ids);
+}
 function editRecurring(id){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var r=id?byId(DB.recurring,id):{description:"",amount:"",every:"year",nextDate:todayISO(),
@@ -11544,17 +11921,17 @@ function editRecurring(id){
       '<div class="field"><label>סכום ברירת מחדל (₪)</label><input id="rc-amount" type="number" step="0.01" value="'+esc(String(r.amount||""))+'" placeholder="0 — להשלמה ידנית">'+
         '<div class="hint">אפשר להשאיר 0 ולמלא בכל פעם</div></div>'+
       '<div class="field"><label>קטגוריה</label>'+
-        categoryPickerHtml("rc-cat",r.categoryId||"","אפשר להקליד שם חדש או ללחוץ ➕")+'</div>'+
+        categoryPickerHtml("rc-cat",r.categoryId||"","אפשר להקליד שם חדש או ללחוץ ➕",apts.filter(function(a){ return sel[a.id]; }).map(function(a){ return a.id; }))+'</div>'+
       '<div class="field"><label>סיווג</label><select id="rc-class">'+classOptions(r.classification||"ongoing")+'</select></div>'+
       '<div class="field full"><label>הערה</label><input id="rc-note" value="'+esc(r.note||"")+'"></div>'+
     '</div>'+
     '<div class="section-title">באילו פרוייקטים <span class="hint">('+apts.length+' זמינים)</span></div>'+
-    '<div class="toolbar"><button class="btn btn-sm" onclick="document.querySelectorAll(\'.rc-apt\').forEach(function(c){c.checked=true})">סמן הכל</button>'+
-    '<button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll(\'.rc-apt\').forEach(function(c){c.checked=false})">נקה</button></div>'+
+    '<div class="toolbar"><button class="btn btn-sm" onclick="document.querySelectorAll(\'.rc-apt\').forEach(function(c){c.checked=true});rcCatRefresh()">סמן הכל</button>'+
+    '<button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll(\'.rc-apt\').forEach(function(c){c.checked=false});rcCatRefresh()">נקה</button></div>'+
     '<div class="table-wrap" style="max-height:230px"><table class="tbl"><thead><tr>'+
     '<th class="chk" style="width:30px"></th><th>פרוייקט</th></tr></thead><tbody>'+
     apts.map(function(a){
-      return '<tr><td class="chk"><input type="checkbox" class="rc-apt" data-a="'+a.id+'" style="width:auto"'+(sel[a.id]?" checked":"")+'></td>'+
+      return '<tr><td class="chk"><input type="checkbox" class="rc-apt" data-a="'+a.id+'" style="width:auto" onchange="rcCatRefresh()"'+(sel[a.id]?" checked":"")+'></td>'+
         '<td>'+esc(a.name)+'</td></tr>';
     }).join("")+'</tbody></table></div>',
     saveLabel:"שמירה",onSave:function(){
@@ -11563,8 +11940,9 @@ function editRecurring(id){
       var ids=[];
       document.querySelectorAll(".rc-apt:checked").forEach(function(c){ ids.push(c.getAttribute("data-a")); });
       if(!ids.length){ toast("בחר לפחות פרוייקט אחד","err"); return false; }
+      if(!catFieldCheck("rc-cat",ids,id?(r.categoryId||""):"")) return false;
       var obj={description:desc,every:val("rc-every")||"year",nextDate:val("rc-next")||todayISO(),
-        amount:Number(val("rc-amount"))||0,categoryId:pickCategoryId("rc-cat"),
+        amount:Number(val("rc-amount"))||0,categoryId:pickCategoryIdFor("rc-cat",ids),
         classification:val("rc-class")||"ongoing",note:val("rc-note"),apartmentIds:ids};
       if(id){ Object.assign(r,obj); }
       else DB.recurring.push(Object.assign({id:uid(),paused:false,lastRun:"",deleted:false},obj));
@@ -13491,6 +13869,13 @@ function mergeApartments(srcId,dstId){
   var src=byId(DB.apartments,srcId), dst=byId(DB.apartments,dstId);
   if(!src||!dst) return 0;
   var moved=0;
+  /* קטגוריות לפי פרוייקט: יעד מוגבל מקבל גם את רשימת המקור ואת הקטגוריות
+     של השלבים שעוברים אליו — כדי שלא יהיו בו שלבים "מחוץ לרשימה" */
+  if(aptCatIds(dstId)){
+    var carry=(aptCatIds(srcId)||[]).slice();
+    active(DB.expenses).forEach(function(e){ if(e.apartmentId===srcId && e.categoryId) carry.push(e.categoryId); });
+    carry.forEach(function(cid){ var c=byId(DB.categories,cid); if(c && !c.deleted) aptCatAttach([dstId],cid); });
+  }
   // הוצאות (החלוקות, דמי הניהול והתשלומים שלהן עוברים איתן דרך expenseId)
   active(DB.expenses).forEach(function(e){ if(e.apartmentId===srcId){ e.apartmentId=dstId; moved++; } });
   // שותפי פרוייקט — לא מכפילים שותף שכבר קיים ביעד
@@ -13618,6 +14003,161 @@ function deleteApartmentExpenses(aptId){
   exps.forEach(function(e){ e.deleted=true; });
   pays.forEach(function(p){ p.deleted=true; });
   save(); toast("נמחקו "+exps.length+" הוצאות","ok"); rerender();
+}
+/* ============================================================
+   מסך "קטגוריות לפי פרוייקט" — שורה לכל קטגוריה, עמודה לכל פרוייקט
+   ============================================================ */
+var ACQ={q:"",apt:""};    // חיפוש קטגוריה / סינון פרוייקט
+/* ספירת שלבים לכל פרוייקט+קטגוריה במעבר אחד. שלבי-אב לא נספרים —
+   הכסף והקטגוריה יושבים בתתי-השלבים. */
+function aptCatUsage(){
+  var par={}, u={}, exps=active(DB.expenses);
+  exps.forEach(function(e){ if(e.parentId) par[e.parentId]=1; });
+  exps.forEach(function(e){
+    if(!e.categoryId || par[e.id]) return;
+    var c=byId(DB.categories,e.categoryId); if(!c || c.deleted) return;
+    var m=u[e.apartmentId]||(u[e.apartmentId]={});
+    m[e.categoryId]=(m[e.categoryId]||0)+1;
+  });
+  return u;
+}
+function aptCatsApts(){
+  return active(DB.apartments).filter(function(a){ return matches(ACQ.apt,a.name); })
+    .sort(function(a,b){ return String(a.name).localeCompare(String(b.name),"he"); });
+}
+function aptCatsSummary(){
+  var apts=active(DB.apartments), lim=apts.filter(function(a){ return !!aptCatIds(a.id); }).length;
+  return lim+" פרוייקטים עם רשימה · "+(apts.length-lim)+" ללא הגבלה";
+}
+function aptCatsViewHtml(){
+  return '<div class="toolbar">'+
+      searchBox("ac-q",ACQ.q,"חיפוש קטגוריה…","ACQ.q=this.value;aptCatsRefresh()")+
+      searchBox("ac-apt",ACQ.apt,"סינון פרוייקט…","ACQ.apt=this.value;aptCatsRefresh()")+
+      '<button class="btn btn-sm" onclick="aptCatsFillUsage()" title="לכל פרוייקט שעדיין אין לו רשימה — מסמן את הקטגוריות שכבר רשומות בשלבים שלו">📥 מלא לפי השימוש בפועל</button>'+
+      '<div class="sp"></div><span class="muted" id="ac-sum">'+aptCatsSummary()+'</span>'+
+    '</div>'+
+    '<div class="hint" style="margin-bottom:8px">'+
+      'סמן לכל פרוייקט את הקטגוריות שלו. בהוצאה של הפרוייקט (רגילה, מהירה, עדכון מרוכז וכלל תקופתי) יוצגו לבחירה <b>רק</b> הקטגוריות שסומנו. '+
+      'פרוייקט שלא סומן לו כלום (<span class="badge badge-unit">הכל</span>) — <b>כל הקטגוריות זמינות בו</b>, כמו היום.<br>'+
+      'המספר הקטן ליד התיבה = כמה שלבים כבר רשומים בקטגוריה הזו בפרוייקט. <span class="ac-warn-key">כתום</span> = יש שלבים בקטגוריה שלא סומנה. '+
+      'שלבים קיימים לא משתנים. קטגוריה חדשה שנוצרת בהגדרות לא נוספת לפרוייקטים מוגבלים — יש לסמן אותה כאן.</div>'+
+    '<div id="ac-wrap">'+aptCatsTableHtml()+'</div>';
+}
+function aptCatsTableHtml(){
+  var allCats=catsSorted();
+  if(!allCats.length) return '<div class="empty">אין קטגוריות עדיין — הוסף בלשונית "קטגוריות".</div>';
+  var apts=aptCatsApts();
+  if(!apts.length) return '<div class="empty">'+(ACQ.apt?"אין פרוייקט שמתאים לסינון":"אין פרוייקטים")+'</div>';
+  var cats=allCats.filter(function(c){ return matches(ACQ.q,c.name); });
+  var use=aptCatUsage(), lists={};
+  apts.forEach(function(a){ lists[a.id]=aptCatIds(a.id); });
+  var h='<div class="table-wrap"><table class="tbl ac-tbl" data-tools="off" data-xl="off"><thead><tr><th class="ac-cat">קטגוריה</th>';
+  apts.forEach(function(a){
+    var l=lists[a.id], u=use[a.id]||{}, out=0;
+    if(l) Object.keys(u).forEach(function(cid){ if(l.indexOf(cid)<0) out+=u[cid]; });
+    h+='<th class="ac-apt">'+
+      '<div class="ac-name" title="'+esc(a.name)+'">'+esc(a.name)+'</div>'+
+      '<div class="ac-state">'+(l
+        ? '<span class="badge badge-ok badge-unit">'+l.length+' קטגוריות</span>'
+        : '<span class="badge badge-unit" title="לא סומנה אף קטגוריה — כל הקטגוריות זמינות">הכל</span>')+'</div>'+
+      '<div class="ac-out">'+(out?'<span class="badge badge-warn badge-unit" title="שלבים שרשומים בקטגוריות שלא סומנו לפרוייקט">⚠ '+out+' שלבים מחוץ</span>':"")+'</div>'+
+      '<div class="ac-acts">'+
+        '<button class="btn btn-ghost btn-sm" title="סמן את הקטגוריות שכבר בשימוש בפרוייקט" onclick="aptCatsUsage(\''+a.id+'\')">📥</button>'+
+        '<button class="btn btn-ghost btn-sm" title="'+(ACQ.q?"סמן את הקטגוריות שמוצגות בחיפוש":"סמן את כל הקטגוריות")+'" onclick="aptCatsSetAll(\''+a.id+'\',true)">✔</button>'+
+        '<button class="btn btn-ghost btn-sm" title="נקה — בלי הגבלה, כל הקטגוריות זמינות" onclick="aptCatsSetAll(\''+a.id+'\',false)">✖</button>'+
+      '</div></th>';
+  });
+  h+='</tr></thead><tbody>';
+  cats.forEach(function(c){
+    h+='<tr><td class="ac-cat">'+esc(c.name)+'</td>';
+    apts.forEach(function(a){
+      var l=lists[a.id], on=!!(l && l.indexOf(c.id)>=0), n=(use[a.id]||{})[c.id]||0;
+      h+='<td class="ac-cell'+(l?"":" ac-open")+(l&&!on&&n?" ac-warn":"")+'">'+
+        '<label class="ac-lbl" title="'+esc(a.name)+" · "+esc(c.name)+'">'+
+          '<input type="checkbox"'+(on?" checked":"")+' onchange="aptCatToggle(\''+a.id+'\',\''+c.id+'\',this.checked)">'+
+          '<span class="ac-n">'+(n?n:"")+'</span></label></td>';
+    });
+    h+='</tr>';
+  });
+  if(!cats.length) h+='<tr><td class="ac-cat muted" colspan="'+(apts.length+1)+'">אין קטגוריה שמתאימה לחיפוש</td></tr>';
+  return h+'</tbody></table></div>';
+}
+/* רענון הטבלה בלבד, בלי לאבד את מיקום הגלילה — כך סימון תא לא מקפיץ.
+   לטבלה אין כפתור "אקסל" (data-xl="off"): הכפתור נתלה מעליה באיחור אחרי
+   כל רענון, והטבלה קפצה 28px למטה ובחזרה בכל סימון. */
+function aptCatsRefresh(){
+  var box=document.getElementById("ac-wrap"); if(!box) return;
+  var tw=box.querySelector(".table-wrap"), sl=tw?tw.scrollLeft:0, st=tw?tw.scrollTop:0;
+  box.innerHTML=aptCatsTableHtml();
+  var nt=box.querySelector(".table-wrap"); if(nt){ nt.scrollLeft=sl; nt.scrollTop=st; }
+  var sum=document.getElementById("ac-sum"); if(sum) sum.textContent=aptCatsSummary();
+}
+function aptCatsGuard(){
+  if(!CU || CU.role!=="admin"){ toast("אין הרשאה","err"); aptCatsRefresh(); return false; }
+  return true;
+}
+function aptCatsName(aptId){ var a=byId(DB.apartments,aptId); return a?a.name:""; }
+function aptCatToggle(aptId,catId,on){
+  if(!aptCatsGuard()) return;
+  /* מתחילים מהקטגוריות החיות בלבד: מזהה של קטגוריה שנמחקה שנשאר ברשימה
+     היה מגביל שוב בשקט פרוייקט שמוצג "הכל", ברגע ששחזרו אותה */
+  var was=!!aptCatIds(aptId), list=(aptCatIds(aptId)||[]).slice();
+  if(on && list.indexOf(catId)<0) list.push(catId);
+  if(!on) list=list.filter(function(x){ return x!==catId; });
+  var m=aptCatsWrite();
+  if(list.length) m[aptId]=list; else delete m[aptId];
+  save();
+  var now=!!aptCatIds(aptId);
+  if(!was && now) toast('"'+aptCatsName(aptId)+'" מוגבל עכשיו לקטגוריות שסומנו',"ok");
+  else if(was && !now) toast('בוטלה ההגבלה ב"'+aptCatsName(aptId)+'" — כל הקטגוריות זמינות בו',"warn");
+  aptCatsRefresh();
+}
+function aptCatsSetAll(aptId,on){
+  if(!aptCatsGuard()) return;
+  /* בדיקות על קריאה בלבד — כתיבה (שיוצרת את המפה) רק כשבאמת משנים */
+  var name=aptCatsName(aptId);
+  if(on){
+    var vis=catsSorted().filter(function(c){ return matches(ACQ.q,c.name); }).map(function(c){ return c.id; });
+    var list=(aptCatIds(aptId)||[]).slice();
+    var add=vis.filter(function(id){ return list.indexOf(id)<0; });
+    if(!add.length){ toast("הכול כבר מסומן","warn"); return; }
+    aptCatsWrite()[aptId]=list.concat(add);
+    save(); toast('סומנו '+add.length+' קטגוריות ב"'+name+'"'+(ACQ.q?" (לפי החיפוש)":""),"ok");
+  } else {
+    if(!aptCatIds(aptId)){
+      /* נשארו רק מזהים של קטגוריות שנמחקו — מנקים אותם */
+      if(Array.isArray(aptCatsRead()[aptId])){ delete aptCatsWrite()[aptId]; save(); }
+      toast('"'+name+'" כבר בלי הגבלה',"warn"); return;
+    }
+    if(!confirm('לנקות את רשימת הקטגוריות של "'+name+'"?\n\nהפרוייקט יחזור להיות בלי הגבלה — כל הקטגוריות יהיו זמינות בו.')) return;
+    delete aptCatsWrite()[aptId];
+    save(); toast('בוטלה ההגבלה ב"'+name+'"',"ok");
+  }
+  aptCatsRefresh();
+}
+function aptCatsUsage(aptId){
+  if(!aptCatsGuard()) return;
+  var name=aptCatsName(aptId), used=Object.keys(aptCatUsage()[aptId]||{});
+  if(!used.length){ toast('אין עדיין שלבים עם קטגוריה ב"'+name+'"',"warn"); return; }
+  var list=(aptCatIds(aptId)||[]).slice();
+  var add=used.filter(function(id){ return list.indexOf(id)<0; });
+  if(!add.length){ toast("כל הקטגוריות שבשימוש כבר מסומנות","warn"); return; }
+  aptCatsWrite()[aptId]=list.concat(add);
+  save(); toast('סומנו '+add.length+' קטגוריות לפי השימוש ב"'+name+'"',"ok");
+  aptCatsRefresh();
+}
+function aptCatsFillUsage(){
+  if(!aptCatsGuard()) return;
+  var use=aptCatUsage();
+  var todo=active(DB.apartments).filter(function(a){ return !aptCatIds(a.id) && Object.keys(use[a.id]||{}).length; });
+  if(!todo.length){ toast("אין פרוייקט בלי רשימה שיש בו שלבים עם קטגוריה","warn"); return; }
+  if(!confirm("ל-"+todo.length+" פרוייקטים שעדיין אין להם רשימה יסומנו הקטגוריות שכבר רשומות בשלבים שלהם.\n\n"+
+      "פרוייקטים שכבר הוגדרה להם רשימה — לא ישתנו.\n"+
+      "מעכשיו, בהוצאה בפרוייקטים האלה יוצגו רק הקטגוריות שסומנו (אפשר לתקן בטבלה בכל רגע).\n\nלהמשיך?")) return;
+  var m=aptCatsWrite();
+  todo.forEach(function(a){ m[a.id]=Object.keys(use[a.id]); });
+  save(); toast("הוגדרו רשימות ל-"+todo.length+" פרוייקטים","ok");
+  aptCatsRefresh();
 }
 function editCategory(id){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
@@ -13752,7 +14292,25 @@ function openIncomeBankMatch(incId){
     bodyHtml:'<div id="ibm-body">'+incomeBankMatchHtml()+'</div>',
     saveLabel:"בצע התאמה",onSave:function(){ return applyIncomeBankMatch(); }});
 }
-function ibmSearch(v){ IBM.q=v; var b=document.getElementById("ibm-body"); if(b) b.innerHTML=incomeBankMatchHtml(); }
+/* חיפוש — מסתיר שורות במקום לבנות את החלון מחדש. בנייה מחדש איבדה את
+   הפוקוס בשדה אחרי כל אות והעלימה את שורת סינון העמודות. ההסתרה היא
+   במחלקה ולא ב-style.display, כי סינון העמודות משתמש ב-style.display
+   ושני הסינונים היו מבטלים זה את זה. */
+function ibmSearch(v){
+  IBM.q=v;
+  var q=String(v||"").trim(), any=false;
+  document.querySelectorAll("#ibm-body tr[data-ibm]").forEach(function(tr){
+    var r=IBM.rows[Number(tr.getAttribute("data-ibm"))];
+    var ok=!!r && (!q || matches(q, moveText(r.m)+" "+moveBankLabel(r.m)));
+    tr.classList.toggle("row-hide",!ok);
+    if(ok) any=true;
+  });
+  var none=document.getElementById("ibm-none"); if(none) none.style.display=any?"none":"";
+  /* סיכום השורות המסוננות וערכי הסינון נגזרים מהשורות הגלויות — מרעננים */
+  var tbl=document.querySelector("#ibm-body table.tbl");
+  if(tbl && tbl.querySelector("thead tr.filter-row")) applyColFilters(tbl);
+  ibmSyncAll();
+}
 /* הסכום שייסגר מכל שורה מסומנת — מוגבל גם ביתרת השורה וגם בחוב שנותר */
 function ibmPlan(){
   var inc=byId(DB.income,IBM.incId);
@@ -13767,43 +14325,119 @@ function ibmPlan(){
   });
   return {plan:plan,left:left};
 }
-function ibmToggle(idx,on){ if(IBM.rows[idx]){ IBM.rows[idx].pick=!!on; ibmRefresh(); } }
+function ibmToggle(idx,on){ if(IBM.rows[idx]){ IBM.rows[idx].pick=!!on; ibmUpdate(); } }
+/* שורה שמוצגת כרגע — לא הוסתרה בחיפוש ולא בסינון העמודות */
+function ibmRowShown(tr){ return !!tr && tr.style.display!=="none" && !tr.classList.contains("row-hide"); }
+/* V על כל השורות המוצגות (אחרי חיפוש וסינון עמודות). ההחלטה לפי המצב
+   בפועל ולא לפי התיבה: אחרי שינוי בסינון העמודות התיבה עלולה להראות
+   מצב ישן, ואז לחיצה הייתה "מבטלת" שורות שלא סומנו בכלל. */
+function ibmAll(){
+  var rows=[];
+  document.querySelectorAll("#ibm-body tr[data-ibm]").forEach(function(tr){
+    if(!ibmRowShown(tr)) return;
+    var r=IBM.rows[Number(tr.getAttribute("data-ibm"))]; if(r) rows.push(r);
+  });
+  var on=!rows.every(function(r){ return r.pick; });
+  rows.forEach(function(r){ r.pick=on; });
+  ibmUpdate();
+}
+/* תיבת "סמן הכל": מלאה / חלקית / ריקה — לפי השורות המוצגות */
+function ibmSyncAll(){
+  var all=document.getElementById("ibm-all"); if(!all) return;
+  var n=0, on=0;
+  document.querySelectorAll("#ibm-body tr[data-ibm]").forEach(function(tr){
+    if(!ibmRowShown(tr)) return;
+    var r=IBM.rows[Number(tr.getAttribute("data-ibm"))]; if(!r) return;
+    n++; if(r.pick) on++;
+  });
+  all.checked=(n>0 && on===n);
+  all.indeterminate=(on>0 && on<n);
+}
 function ibmAmount(idx,v){
   var r=IBM.rows[idx]; if(!r) return;
   var n=Number(v)||0;
   r.amt=(n>0)?round2(Math.min(n,r.rem)):null;
-  ibmRefresh();
+  ibmUpdate();
 }
 function ibmRefresh(){ var b=document.getElementById("ibm-body"); if(b) b.innerHTML=incomeBankMatchHtml(); }
+/* עדכון במקום: הסיכומים, תא "לסגור" בכל שורה והתיבות — בלי לגעת במבנה
+   הטבלה. כך הגלילה, שורת הסינון ורוחב העמודות נשארים בדיוק כמו שהם. */
+function ibmUpdate(){
+  var body=document.getElementById("ibm-body"); if(!body) return;
+  var inc=byId(DB.income,IBM.incId); if(!inc) return;
+  var st=document.getElementById("ibm-stats"), lf=document.getElementById("ibm-left"), ht=document.getElementById("ibm-hint");
+  if(!st || !lf || !ht){ ibmRefresh(); return; }
+  var p=ibmPlan();
+  st.innerHTML=ibmStatsHtml(inc,p);
+  lf.outerHTML=ibmLeftHtml(p);
+  ht.innerHTML=ibmHintHtml(p);
+  body.querySelectorAll("tr[data-ibm]").forEach(function(tr){
+    var idx=Number(tr.getAttribute("data-ibm")), r=IBM.rows[idx]; if(!r) return;
+    var mine=p.plan.filter(function(x){ return x.r===r; })[0];
+    var box=tr.querySelector(".ibm-x"); if(box && box.checked!==!!r.pick) box.checked=!!r.pick;
+    var cell=tr.querySelector("td.ibm-amt"); if(!cell) return;
+    var want=ibmAmtKind(r,mine), inp=cell.querySelector("input");
+    if(want==="input" && inp){
+      if(String(inp.value)!==String(mine.amt)) inp.value=mine.amt;
+    } else if(want==="input" || cell.getAttribute("data-k")!==want){
+      cell.innerHTML=ibmAmtHtml(idx,r,mine);
+      cell.setAttribute("data-k",want);
+    }
+  });
+  ibmSyncAll();
+}
+function ibmStatsHtml(inc,p){
+  var debt=incomeDebt(inc), willClose=round2(debt-p.left);
+  return stat("ההזמנה",esc(inc.description))+
+    stat("מחיר",money(inc.amount))+
+    stat("נותר לתשלום",money(debt),debt>0.01?"neg":"pos")+
+    stat("ייסגר עכשיו",money(willClose),willClose>0.01?"pos":"");
+}
+function ibmLeftHtml(p){
+  return '<span id="ibm-left" class="'+(p.left>0.01?"muted":"badge badge-ok badge-unit")+'">'+
+    (p.left>0.01?("יישאר חוב "+money(p.left)):"ההזמנה תיסגר במלואה")+'</span>';
+}
+function ibmHintHtml(p){
+  return 'מסומנות <span class="selcount">'+p.plan.length+'</span> שורות. הסכום בכל שורה מוגבל ליתרה שבה ולחוב שנותר בהזמנה; '+
+    'אפשר לשנות אותו ידנית כדי לסגור רק חלק.';
+}
+function ibmAmtKind(r,mine){ return r.pick?(mine?"input":"done"):"none"; }
+function ibmAmtHtml(idx,r,mine){
+  /* תיבה בגודל קבוע: מקף, תג או שדה סכום תופסים בדיוק אותו מקום —
+     אחרת שדה הסכום הגביה את השורה והרחיב את העמודה, והטבלה קפצה */
+  return '<div class="ibm-amt-box">'+(r.pick
+    ? (mine
+        ? '<input type="number" step="0.01" value="'+mine.amt+'" onchange="ibmAmount('+idx+',this.value)">'
+        /* סומנה אבל החוב כבר נגמר בשורות שמעליה — אומרים את זה
+           במפורש, אחרת נראה כאילו הסימון פשוט לא עבד */
+        : '<span class="badge badge-muted badge-unit">החוב נגמר</span>')
+    : '<span class="muted">—</span>')+'</div>';
+}
 function incomeBankMatchHtml(){
   var inc=byId(DB.income,IBM.incId); if(!inc) return '<div class="empty">ההזמנה לא נמצאה</div>';
   var debt=incomeDebt(inc), p=ibmPlan();
   var willClose=round2(debt-p.left);
   var q=String(IBM.q||"").trim();
-  var h='<div class="stat-grid" style="margin-bottom:10px">'+
-      stat("ההזמנה",esc(inc.description))+
-      stat("מחיר",money(inc.amount))+
-      stat("נותר לתשלום",money(debt),debt>0.01?"neg":"pos")+
-      stat("ייסגר עכשיו",money(willClose),willClose>0.01?"pos":"")+
-    '</div>'+
+  var h='<div class="stat-grid" id="ibm-stats" style="margin-bottom:10px">'+ibmStatsHtml(inc,p)+'</div>'+
     '<div class="toolbar" style="margin-bottom:8px">'+
       '<input placeholder="חיפוש בשורות הבנק…" value="'+esc(IBM.q)+'" oninput="ibmSearch(this.value)" style="max-width:260px">'+
       '<div class="sp"></div>'+
-      '<span class="'+(p.left>0.01?"muted":"badge badge-ok badge-unit")+'">'+
-        (p.left>0.01?("יישאר חוב "+money(p.left)):"ההזמנה תיסגר במלואה")+'</span>'+
+      ibmLeftHtml(p)+
     '</div>';
-  var shown=IBM.rows.filter(function(r){ return !q || matches(q, moveText(r.m)+" "+moveBankLabel(r.m)); });
   /* כל העמודות של שורת הבנק — כמו בטבלת התאמת הבנק, שלא יחסר מידע */
   h+='<div class="table-wrap" style="max-height:340px"><table class="tbl"><thead><tr>'+
-    '<th style="width:30px"></th><th>תאריך</th><th>שורת הבנק</th><th>בנק</th>'+
+    '<th class="chk" data-xl-skip="1" style="width:30px"><input type="checkbox" id="ibm-all" style="width:auto" title="סמן / בטל V בכל השורות המוצגות" onchange="ibmAll()"></th>'+
+    '<th>תאריך</th><th>שורת הבנק</th><th>בנק</th>'+
     '<th>סוג</th><th>קטגוריה</th><th>תת קטגוריה</th><th>פרטים</th><th>אסמכתא</th><th>מסמך</th>'+
-    '<th class="num">פתוח בשורה</th><th>למה מוצע</th><th class="num">לסגור</th></tr></thead><tbody>';
-  if(!shown.length) h+='<tr><td colspan="13" class="empty">אין שורות שמתאימות לחיפוש</td></tr>';
-  shown.forEach(function(r){
-    var idx=IBM.rows.indexOf(r);
+    '<th class="num">פתוח בשורה</th><th>למה מוצע</th><th class="num" style="width:128px;min-width:128px">לסגור</th></tr></thead><tbody>';
+  /* כל השורות נבנות תמיד, והחיפוש רק מסתיר — כך סימון וחיפוש מתעדכנים במקום */
+  var anyShown=false;
+  IBM.rows.forEach(function(r,idx){
+    var isShown=!q || matches(q, moveText(r.m)+" "+moveBankLabel(r.m));
+    if(isShown) anyShown=true;
     var mine=p.plan.filter(function(x){ return x.r===r; })[0];
-    h+='<tr'+(r.score>=100?' style="background:#f0fdf4"':'')+'>'+
-      '<td class="chk"><input type="checkbox" style="width:auto"'+(r.pick?" checked":"")+
+    h+='<tr data-ibm="'+idx+'"'+(isShown?'':' class="row-hide"')+(r.score>=100?' style="background:#f0fdf4"':'')+'>'+
+      '<td class="chk"><input type="checkbox" class="ibm-x" style="width:auto"'+(r.pick?" checked":"")+
         ' onchange="ibmToggle('+idx+',this.checked)"></td>'+
       '<td>'+dateHe(r.m.date)+'</td>'+
       '<td><b>'+esc((r.m.name||r.m.description||"—")).slice(0,48)+'</b></td>'+
@@ -13816,17 +14450,13 @@ function incomeBankMatchHtml(){
       '<td>'+((DOC_STATES[moveDocState(r.m)]||{}).t||"—")+'</td>'+
       '<td><b>'+money(r.rem)+'</b></td>'+
       '<td class="muted">'+(r.why.length?esc(r.why.join(" · ")):'<span class="muted">—</span>')+'</td>'+
-      '<td>'+(r.pick
-        ? (mine
-            ? '<input type="number" step="0.01" style="max-width:110px" value="'+mine.amt+'" onchange="ibmAmount('+idx+',this.value)">'
-            /* סומנה אבל החוב כבר נגמר בשורות שמעליה — אומרים את זה
-               במפורש, אחרת נראה כאילו הסימון פשוט לא עבד */
-            : '<span class="badge badge-muted badge-unit">החוב נגמר</span>')
-        : '<span class="muted">—</span>')+'</td></tr>';
+      '<td class="ibm-amt" data-k="'+ibmAmtKind(r,mine)+'" style="width:128px;min-width:128px">'+ibmAmtHtml(idx,r,mine)+'</td></tr>';
   });
+  /* ההודעה מחוץ לטבלה: שורה בתוכה נספרה כשורת נתונים — עקפה את בדיקת
+     "פחות משתי שורות", זזה במיון והוסתרה בסינון העמודות */
   h+='</tbody></table></div>'+
-    '<div class="hint">מסומנות '+p.plan.length+' שורות. הסכום בכל שורה מוגבל ליתרה שבה ולחוב שנותר בהזמנה; '+
-    'אפשר לשנות אותו ידנית כדי לסגור רק חלק.</div>';
+    '<div class="empty" id="ibm-none"'+(anyShown?' style="display:none"':'')+'>אין שורות שמתאימות לחיפוש</div>'+
+    '<div class="hint" id="ibm-hint">'+ibmHintHtml(p)+'</div>';
   return h;
 }
 function applyIncomeBankMatch(){
@@ -14929,6 +15559,21 @@ function recycleLabel(entity,it){
 }
 function restoreItem(entity,id){ if(!can("edit")){ toast("אין הרשאה","err"); return; } var it=byId(DB[entity],id); if(it){ it.deleted=false; delete it.deletedBy; delete it.deletedAt; delete it.deletedByUser;
   if(entity==="managers"){ DB.expenseManagerFees.forEach(function(f){ if(f.managerId===id) f.deleted=false; }); }
+  if(entity==="income"){
+    /* המחיקה שחררה את הקישורים לשורות הבנק — בלי קישור מחדש ההזמנה
+       חוזרת "שולמה" והשורות שלה נשארות "לא מותאם" */
+    var rl=relinkIncomeBankPays(id);
+    if(rl) toast("קושרו מחדש "+rl+" שורות בנק להזמנה","ok");
+  }
+  if(entity==="bankMoves"){
+    /* שורה ששוחזרה, שהתשלום שלה כבר מקושר לשורה אחרת (הדף הודבק שוב) —
+       הקישור הישן משתחרר, אחרת אותו תשלום נספר בשתי שורות */
+    var ixb=bankPayIndex(), freed=0;
+    moveMatches(it).forEach(function(x){
+      if(x.payId && (ixb.live[x.payId]||[]).some(function(o){ return o.m!==it; })){ x.deleted=true; freed++; }
+    });
+    if(freed) toast("לשורה ששוחזרה היו "+freed+" קישורים שכבר שייכים לשורה אחרת — הם שוחררו","warn");
+  }
   if(entity==="expenses"){
     /* שחזור שלב-אב מחזיר איתו את תתי-השלבים שנמחקו יחד איתו */
     var etag="expense:"+id, k=0;

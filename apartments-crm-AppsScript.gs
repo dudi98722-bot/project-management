@@ -760,6 +760,9 @@ function scopeDataForUser(data, user) {
   d.users = [];
   /* פיצ'רים של מנהלים בלבד — הנתונים לא נשלחים לדפדפן של אחרים */
   d.rentals = []; d.sheets = [];
+  /* קטגוריות לפי פרוייקט — הגדרת מנהל. mergeSaveForUser ממילא שומר את
+     ההגדרות מהמאגר, כך ששמירה של משתמש כזה לא מוחקת אותן. */
+  if (d.settings) delete d.settings.aptCats;
   var aptSet = aptSetFor(d, ctx), expSet = expSetFor(d, ctx, aptSet);
   SCOPED_TABLES.forEach(function (T) {
     d[T] = (d[T] || []).filter(function (r) { return rowVisible(T, r, ctx, aptSet, expSet); });
