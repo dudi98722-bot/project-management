@@ -191,6 +191,12 @@ body.picking{padding-bottom:96px}
 /* ---------- קומבו: מקלידים ומקבלים הצעות ---------- */
 input.combo{cursor:text}
 input.combo::placeholder{color:inherit;opacity:.85}
+/* בתוך טבלה השדה יצא ברוחב 68px עם פינות של תגית — נראה כמו תווית סטטוס
+   ולא כמו מקום להקליד. רוחב מינימלי, פינות של שדה ואייקון חיפוש. */
+input.combo.catsel{min-width:170px;max-width:240px;width:100%;border-radius:8px;
+  padding:5px 28px 5px 9px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2.5' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 9px center;background-size:12px}
 #comboList{position:fixed;z-index:310;background:#fff;border:1px solid var(--line);border-radius:var(--r);
   box-shadow:var(--shadow-lg);padding:5px;max-height:280px;overflow:auto;display:none}
 #comboList.on{display:block}
@@ -1887,13 +1893,35 @@ function comboQuery(input){
   if(input.value===comboDisplay(input.dataset.value)) return '';
   return String(input.value||'').replace(/^[^\p{L}\p{N}\s]+\s+/u,'').trim();
 }
+/** תווית פריט עם הדגשת האותיות שהוקלדו — רואים מיד למה הפריט הופיע. */
+function comboLabel(c, text){
+  const name=String(c.name), q=String(text||'').trim();
+  const i = q ? name.toLowerCase().indexOf(q.toLowerCase()) : -1;
+  if(i<0) return esc(c.icon)+' '+esc(name);
+  return esc(c.icon)+' '+esc(name.slice(0,i))+
+         '<b style="color:var(--brand)">'+esc(name.slice(i,i+q.length))+'</b>'+
+         esc(name.slice(i+q.length));
+}
 function comboItems(input){
   const kind=input.dataset.kind||'';
   const text=comboQuery(input);
   const q=normName(text);
   const cats=DB.cats.filter(c=>!c.deleted && (!kind||c.kind===kind));
-  const items=cats.filter(c=>!q || normName(c.name).includes(q))
-    .map(c=>({value:c.name, label:esc(c.icon)+' '+esc(c.name)}));
+  /* דירוג: מה שמתחיל באותיות שהוקלדו קודם, אחריו מה שאחת המילים בו
+     מתחילה בהן, ואחרון מה שמכיל אותן באמצע. "מז" מביא את "מזון וסופר"
+     לראש הרשימה ולא קבור בין קטגוריות שבמקרה מכילות את הצירוף. */
+  const rank=c=>{
+    const n=normName(c.name);
+    if(!q) return 0;
+    if(n.startsWith(q)) return 1;
+    if(n.split(/[\s\-—–/]+/).some(w=>w.startsWith(q))) return 2;
+    if(n.includes(q)) return 3;
+    return 0;
+  };
+  const items=cats.map(c=>({c, r:rank(c)}))
+    .filter(x=>!q || x.r>0)
+    .sort((a,b)=>a.r-b.r)
+    .map(({c})=>({value:c.name, label:comboLabel(c, text)}));
   if(q && !cats.some(c=>normName(c.name)===q))
     items.push({value:'__create__', create:text, label:'＋ צור "'+esc(text)+'"', cls:'new'});
   items.push({value:NEW_CAT, label:'＋ קטגוריה חדשה…', cls:'new'});
@@ -1910,10 +1938,27 @@ function comboOpen(input){
   const items=comboItems(input);
   comboState={input, items, idx: items.length?0:-1};
   const box=$('comboList'), r=input.getBoundingClientRect();
-  box.style.top=(r.bottom+4)+'px';
   box.style.right=Math.max(8, innerWidth-r.right)+'px';
   box.style.minWidth=Math.max(210, r.width)+'px';
+  box.style.maxHeight='';
   comboPaint(); box.classList.add('on');
+  /* מיקום אחרי הציור, כדי שאפשר יהיה למדוד את הגובה בפועל: שדה שיושב
+     בתחתית המסך — נפוץ בטלפון — היה פותח רשימה שכולה מתחת לקצה המסך.
+     אם אין מקום למטה נפתחים למעלה, ובכל מקרה מגבילים לגובה הפנוי. */
+  const CAP=280;                                   /* גובה מרבי, כמו ב-CSS */
+  const below=innerHeight-r.bottom-10, above=r.top-10;
+  /* קודם מגבילים את הגובה ורק אז מודדים. מדידה לפני ההגבלה החזירה גובה
+     קטן מהאמיתי, והרשימה הייתה צומחת אחר כך ומכסה את השדה עצמו. */
+  const fit=sp=>Math.max(96, Math.min(CAP, sp));
+  box.style.maxHeight=fit(Math.max(below, above))+'px';
+  const h=box.offsetHeight;
+  if(h<=below || below>=above){
+    box.style.maxHeight=fit(below)+'px';
+    box.style.top=(r.bottom+4)+'px';
+  } else {
+    box.style.maxHeight=fit(above)+'px';
+    box.style.top=Math.max(8, r.top-box.offsetHeight-4)+'px';
+  }
 }
 function comboClose(){ $('comboList').classList.remove('on'); comboState=null; }
 function comboDisplay(value){
@@ -1957,16 +2002,24 @@ document.addEventListener('focusout',e=>{
 });
 document.addEventListener('keydown', e=>{
   const st=comboState; if(!st || e.target!==st.input) return;
+  /* Enter מזוהה גם לפי code ו-keyCode: מקלדות וירטואליות בטלפון ומקש
+     ה-Enter שבלוח המספרים לא תמיד שולחים key==='Enter'. */
+  const isEnter = e.key==='Enter' || e.code==='Enter' || e.code==='NumpadEnter' || e.keyCode===13;
   if(e.key==='ArrowDown'){ e.preventDefault(); st.idx=Math.min(st.items.length-1, st.idx+1); comboPaint(); }
   else if(e.key==='ArrowUp'){ e.preventDefault(); st.idx=Math.max(0, st.idx-1); comboPaint(); }
-  else if(e.key==='Enter'){ e.preventDefault(); comboPick(st.idx); }
+  else if(isEnter){ e.preventDefault(); comboPick(st.idx); }
   else if(e.key==='Escape'){ st.input.value=comboDisplay(st.input.dataset.value); comboClose(); }
   else if(e.key==='Tab'){ comboClose(); }
 });
-$('comboList').addEventListener('mousedown', e=>{
-  const it=e.target.closest('.cb-item'); e.preventDefault();   /* לא לאבד מיקוד לפני הבחירה */
-  if(it) comboPick(Number(it.dataset.i));
+/* הבחירה ב-pointerdown ולא ב-mousedown: בטלפון, אירוע ה-mousedown התואם
+   מגיע אחרי שהשדה כבר איבד פוקוס, והרשימה נסגרת לפני שהבחירה נקלטת.
+   pointerdown יורה ראשון גם במגע וגם בעכבר. אחרי בחירה comboState מתאפס,
+   כך שאם mousedown יורה בכל זאת הוא לא יבחר פעמיים. */
+$('comboList').addEventListener('pointerdown', e=>{
+  const it=e.target.closest('.cb-item'); e.preventDefault();
+  if(it && comboState) comboPick(Number(it.dataset.i));
 });
+$('comboList').addEventListener('mousedown', e=>e.preventDefault());   /* לא לאבד מיקוד */
 document.addEventListener('scroll', ()=>{ if(comboState) comboClose(); }, true);
 /** תבנית שדה קומבו. הערכים מהנתונים עוברים esc — הם במאפיינים, לא בקוד. */
 function comboField(o){
@@ -1990,9 +2043,10 @@ function catCell(t, showDel){
   if(!isAdmin()) return t.category ? catIcon(t.category)+' '+esc(t.category)
                                    : '<span class="pill p-pending">ממתין לסיווג</span>';
   const st = (t.status && t.status!=='ok') ? t.status : '';
-  const head = st ? STATUS_LBL[st] : (t.category ? '' : 'הקלד קטגוריה…');
+  /* הכיתוב מזמין להקליד — "ממתין לסיווג" לבדו נקרא כמו סטטוס ולא כמו שדה */
+  const head = st ? STATUS_LBL[st]+' — הקלד…' : 'הקלד קטגוריה…';
   return comboField({cls:'catsel '+st, act:'setRowCat', id:t.id, kind:t.kind, value:t.category,
-                     placeholder:head||'הקלד קטגוריה…'});
+                     placeholder:head});
 }
 /** בחירה בתא: מסווגת מיד, ומורידה את התנועה מ"ממתין לסיווג". */
 function setRowCat(id, el){
