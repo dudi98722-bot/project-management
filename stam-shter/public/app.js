@@ -4442,10 +4442,51 @@ function openGenerate() {
   };
 }
 
-// חלון העברה — נפתח מפס הבחירה
-function openMove(ids) {
+// חלון העברה — נפתח מפס הבחירה, משורה מקובצת במעקב ומהמרחב.
+// כשיש יותר מפריט אחד אפשר להעביר רק חלק:
+//   יריעות של ספר אחד — בוחרים אילו מספרים. ליריעה יש זהות: יריעה 13
+//     היא יריעה מסוימת, ולכן בוחרים אותה ולא "כמה".
+//   יחידות של אותו מוצר — בוחרים כמה. יחידה שקולה לחברתה, ומועברות
+//     קודם היחידות מהחבילה הוותיקה.
+// ברירת המחדל היא הכל, כך שלחיצה ישירה על "העבר" מתנהגת בדיוק כמו קודם.
+async function openMove(ids) {
+  let items = [];
+  if (ids.length > 1) {
+    try {
+      const all = await Store.track.list({});
+      const set = new Set(ids);
+      items = all.filter(r => set.has(r.id)).sort((a, b) =>
+        (N(a.purchase_id) - N(b.purchase_id)) || (N(a.seq) - N(b.seq)));
+    } catch (e) { return toast(e.message, 'err'); }
+  }
+  const scrollSet = new Set(items.map(r => r.scroll_id).filter(Boolean));
+  const productSet = new Set(items.map(r => r.purchase_product_id).filter(Boolean));
+  // בחירה חלקית רק כשהקבוצה אחידה. בחירה מפס הבחירה שמערבבת ספרים או
+  // מוצרים שונים נשארת הכל-או-כלום: יריעה 5 של שני ספרים היא שתי יריעות
+  // שונות, ו"3 יחידות" מתוך מזוזות ותפילין אינו אומר כלום.
+  const sheetMode = items.length > 1 && items.every(r => r.scroll_id) && scrollSet.size === 1;
+  const unitMode = items.length > 1 && items.every(r => !r.scroll_id && r.purchase_id) && productSet.size === 1;
+  const noun = sheetMode ? 'יריעות' : (unitMode ? 'יחידות' : 'פריטים');
+
+  const pickHTML = sheetMode ? `
+    <div class="field"><label>אילו יריעות להעביר</label>
+      <div class="toolbar" style="margin:0 0 6px">
+        <button type="button" class="btn ghost xs" data-mvall>סמן הכל</button>
+        <button type="button" class="btn ghost xs" data-mvnone>נקה</button>
+        <input id="mvSeqText" placeholder="או הקלד: 1, 13-16" style="flex:1;min-width:150px">
+      </div>
+      <div class="multi mv-seqs">${items.map(r => `<label>
+          <input type="checkbox" data-mvid="${r.id}" data-seq="${r.seq}" checked> ${esc(r.seq)}</label>`).join('')}</div>
+      <div class="hint" id="mvPickSum"></div>
+    </div>` : unitMode ? `
+    <div class="field"><label>כמה להעביר</label>
+      <input id="mvQty" type="number" min="1" max="${items.length}" step="1" value="${items.length}">
+      <div class="hint" id="mvPickSum"></div>
+    </div>` : `<p class="mini">מעבירים <b>${ids.length}</b> ${ids.length === 1 ? 'פריט' : noun}.</p>`;
+
   const body = `
-    <p class="mini">מעבירים <b>${ids.length}</b> יריעות. שדה שיישאר ריק לא ישתנה.</p>
+    ${pickHTML}
+    <p class="mini" style="margin-top:0">שדה שיישאר ריק לא ישתנה.</p>
     ${pickerHTML('mvStation', 'לתחנה', itemsStations(), '', 'לא לשנות')}
     <div class="field"><label>אצל מי</label>
       <div class="combo" data-combo="mvHolder">
@@ -4455,18 +4496,72 @@ function openMove(ids) {
       </div></div>
     <div class="field"><label>תאריך</label><input id="mvDate" type="date" value="${today()}"></div>
     <div class="field"><label>הערה</label><input id="mvNote"></div>`;
-  const m = modal({ title: 'העברת יריעות', body,
+  const m = modal({ title: `העברת ${noun}`, body,
     footer: `<button class="btn" data-ok>העבר</button><button class="btn ghost" data-no>ביטול</button>` });
   m.el.querySelector('[data-no]').onclick = m.close;
   wireCombos(m.el, [{ k: 'mvHolder', type: 'combo', items: itemsContacts },
                     { k: 'mvStation', type: 'combo', items: itemsStations }]);
+
+  // אילו פריטים ייצאו לדרך, לפי הבחירה שבחלון
+  const chosen = () => {
+    if (sheetMode) return [...m.el.querySelectorAll('[data-mvid]:checked')].map(c => +c.dataset.mvid);
+    if (unitMode) {
+      const q = Math.floor(N($('mvQty').value));
+      return q > 0 ? items.slice(0, Math.min(q, items.length)).map(r => r.id) : [];
+    }
+    return ids;
+  };
+  const sumBox = m.el.querySelector('#mvPickSum');
+  const showSum = (extra) => {
+    if (!sumBox) return;
+    const c = chosen();
+    const btn = m.el.querySelector('[data-ok]');
+    if (sheetMode) {
+      const seqs = [...m.el.querySelectorAll('[data-mvid]:checked')].map(x => +x.dataset.seq);
+      sumBox.innerHTML = c.length
+        ? `נבחרו <b>${c.length}</b> מתוך ${items.length}: ${esc(seqRanges(seqs).join(', '))}` + (extra || '')
+        : '<span class="neg">לא נבחרה אף יריעה</span>' + (extra || '');
+    } else {
+      sumBox.textContent = `מתוך ${items.length} יחידות בשורה. מה שלא מועבר נשאר בדיוק היכן שהוא.`;
+    }
+    btn.textContent = c.length && c.length < items.length ? `העבר ${c.length}` : 'העבר';
+  };
+
+  if (sheetMode) {
+    const boxes = [...m.el.querySelectorAll('[data-mvid]')];
+    const txt = m.el.querySelector('#mvSeqText');
+    boxes.forEach(b => b.onchange = () => { txt.value = ''; showSum(); });
+    m.el.querySelector('[data-mvall]').onclick = () => { boxes.forEach(b => b.checked = true); txt.value = ''; showSum(); };
+    m.el.querySelector('[data-mvnone]').onclick = () => { boxes.forEach(b => b.checked = false); txt.value = ''; showSum(); };
+    // הקלדת טווח מסמנת בדיוק את המספרים שבו
+    txt.oninput = () => {
+      const raw = txt.value.trim();
+      if (!raw) { boxes.forEach(b => b.checked = true); return showSum(); }
+      const list = parseSeqList(raw);
+      if (!list) return showSum(' · <span class="neg">הטווח לא תקין — למשל: 1, 13-16</span>');
+      const want = new Set(list);
+      boxes.forEach(b => b.checked = want.has(+b.dataset.seq));
+      const here = new Set(boxes.map(b => +b.dataset.seq));
+      const missing = list.filter(x => !here.has(x));
+      showSum(missing.length
+        ? ` · <span class="neg">לא בשורה הזו: ${esc(seqRanges(missing).join(', '))}</span>` : '');
+    };
+  }
+  if (unitMode) $('mvQty').oninput = () => showSum();
+  showSum();
+
   m.el.querySelector('[data-ok]').onclick = async () => {
+    const pick = chosen();
+    if (!pick.length) return toast(sheetMode ? 'יש לבחור לפחות יריעה אחת' : 'יש להזין כמות להעברה', 'err');
+    if (unitMode && Math.floor(N($('mvQty').value)) > items.length) {
+      return toast(`בשורה הזו יש ${items.length} יחידות בלבד`, 'err');
+    }
     const station_id = $('f_mvStation').value;
     const holder_id = $('f_mvHolder').value;
     if (!station_id && !holder_id) return toast('יש לבחור תחנה או מחזיק', 'err');
     try {
-      const r = await Store.track.move({ ids, station_id, holder_id, date: $('mvDate').value, note: $('mvNote').value });
-      toast(`הועברו ${r.moved} יריעות${r.skipped ? ` · ${r.skipped} כבר היו שם` : ''}`, 'ok');
+      const r = await Store.track.move({ ids: pick, station_id, holder_id, date: $('mvDate').value, note: $('mvNote').value });
+      toast(`הועברו ${r.moved} ${noun}${r.skipped ? ` · ${r.skipped} כבר היו שם` : ''}`, 'ok');
       m.close(); await reloadCaches(); render();
     } catch (e) { toast(e.message, 'err'); }
   };
