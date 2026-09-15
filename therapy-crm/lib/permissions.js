@@ -1,7 +1,8 @@
 // ===== הרשאות: קטלוג הפעולות, ברירות המחדל לכל תפקיד, והשינויים שנקבעו במסך =====
-// מנהל ראשי ומנהל מסמנים בלשונית "משתמשים" מה מותר לכל סוג משתמש. ברירות המחדל
-// מוגדרות כאן, ובמסד (role_permissions) נשמרות רק ההרשאות ששונו מהן — כך הרשאה חדשה
-// שנוספת בקוד מקבלת את ברירת המחדל שלה, בלי לדרוס את מה שכבר נקבע.
+// מי שמסומן לו "עריכת טבלת ההרשאות" (ברירת מחדל: מנהל ראשי, מנהל ופנינה) מסמן בלשונית
+// "משתמשים" מה מותר לכל סוג משתמש. ברירות המחדל מוגדרות כאן, ובמסד (role_permissions)
+// נשמרות רק ההרשאות ששונו מהן — כך הרשאה חדשה שנוספת בקוד מקבלת את ברירת המחדל שלה,
+// בלי לדרוס את מה שכבר נקבע.
 const { pool } = require('../db');
 
 // איזו הרשאה פותחת כל שדה של מטופל לעריכה ולצפייה — משותף לשרת ולטופס
@@ -64,6 +65,7 @@ const CATALOG = [
     { label: 'מטפלים וקבוצות', hint: 'עריכה = הוספה ועריכה של מטפלים, לו"ז וקבוצות', view: 'tabTherapists', edit: 'editTherapists' },
     { label: 'מחיקת מטפלים וקבוצות', action: 'deleteTherapists' },
     { label: 'משתמשים', hint: 'צפייה = רשימת המשתמשים · עריכה = הוספה ועריכה של משתמשים', view: 'viewUsers', edit: 'manageUsers' },
+    { label: 'עריכת טבלת ההרשאות', hint: 'את השורה הזו, ואת ההרשאות של סוג המשתמש של העורך עצמו, משנה רק מנהל ראשי', action: 'managePermissions' },
   ]},
 ];
 
@@ -81,9 +83,10 @@ const IMPLIES = {
 };
 
 const CAP_KEYS = [...new Set(CATALOG.flatMap(s => s.rows.flatMap(r => [r.view, r.edit, r.action])))].filter(Boolean);
-// נשמר למקרה שתתווסף הרשאה שאסור לשנות; היום אין כזו — כל תיבה בטבלה ניתנת לסימון
-const LOCKED_CAPS = new Set();
-const EDITABLE_CAPS = CAP_KEYS.filter(c => !LOCKED_CAPS.has(c));
+const EDITABLE_CAPS = CAP_KEYS;
+// עורך טבלה שאינו מנהל ראשי לא נוגע בהרשאות האלה — אחרת היה יכול לפתוח עריכת
+// הרשאות לסוג משתמש אחר, ודרכו לשנות גם את ההרשאות של עצמו
+const ADMIN_ONLY_CAPS = new Set(['managePermissions']);
 
 function applyImplications(caps) {
   for (let pass = 0; pass < 3; pass++) {
@@ -94,10 +97,8 @@ function applyImplications(caps) {
   return caps;
 }
 
-// managePermissions — עריכת טבלת ההרשאות. קבוע לפי תפקיד (מנהל ראשי ומנהל) ולא מופיע
-// בטבלה, כדי שאף אחד לא יוכל לנעול את עצמו או לפתוח אותו לתפקיד אחר.
 const R = (label, desc, grants) => {
-  const o = { label, desc, managePermissions: false };
+  const o = { label, desc };
   CAP_KEYS.forEach(k => { o[k] = false; });
   grants.forEach(k => { o[k] = true; });
   return applyImplications(o);
@@ -121,7 +122,7 @@ const without = (list, ...drop) => list.filter(c => !drop.includes(c));
 const ROLES = {
   // כל ההרשאות, תמיד — כולל כל הרשאה שתתווסף לקטלוג בעתיד
   admin: R('מנהל ראשי',
-    'כל ההרשאות במערכת, תמיד — כולל ניהול משתמשים ועריכת טבלת ההרשאות.', [...CAP_KEYS, 'managePermissions']),
+    'כל ההרשאות במערכת, תמיד — כולל ניהול משתמשים ועריכת טבלת ההרשאות.', CAP_KEYS),
 
   manager: R('מנהל',
     'כמו מזכירה אחראית, ובנוסף עורך את טבלת ההרשאות.', [...FULL, 'managePermissions']),
@@ -138,7 +139,8 @@ const ROLES = {
      'editUrgency', 'editClientType', 'holds', 'viewAssign', 'files']),
 
   pnina: R('פנינה',
-    'הכל מלבד ההערה המקצועית (לא רואה ולא עורכת) וניהול משתמשים.', without(FULL, 'viewNote2', 'editNote2')),
+    'הכל מלבד ההערה המקצועית (לא רואה ולא עורכת) וניהול משתמשים; עורכת את טבלת ההרשאות.',
+    [...without(FULL, 'viewNote2', 'editNote2'), 'managePermissions']),
 
   viewer: R('צופה', 'צפייה בלבד בכל הנתונים, בלי לערוך דבר.', [...BASE_VIEW, 'viewDiagnosis', 'viewNote2']),
 
@@ -194,32 +196,44 @@ async function isCustomized(role) {
   return CAP_KEYS.some(k => !!caps[k] !== !!ROLES[role][k]);
 }
 
-// הנתונים למסך ההרשאות
-async function matrix() {
+const isMainAdmin = (user) => !!user && user.role === 'admin';
+
+// הנתונים למסך ההרשאות, כפי שהעורך הנוכחי רשאי לשנות אותם:
+// readonly — סוג המשתמש של העורך עצמו; locked — הרשאות שרק מנהל ראשי משנה
+async function matrix(user) {
+  const main = isMainAdmin(user);
   const counts = await pool.query('SELECT role, COUNT(*)::int AS n FROM users GROUP BY role');
   const users = Object.fromEntries(counts.rows.map(r => [r.role, r.n]));
   const roles = [];
   for (const [key, def] of Object.entries(ROLES)) {
     roles.push({
       role: key, label: def.label, desc: def.desc, users: users[key] || 0,
-      locked: key === 'admin', legacy: LEGACY_ROLES.has(key),
+      locked: key === 'admin', readonly: !main && !!user && key === user.role,
+      legacy: LEGACY_ROLES.has(key),
       defaults: pick(def), caps: pick(await capsFor(key)),
     });
   }
-  return { sections: CATALOG, implies: IMPLIES, locked: [...LOCKED_CAPS], roles };
+  return { sections: CATALOG, implies: IMPLIES, locked: main ? [] : [...ADMIN_ONLY_CAPS], roles };
 }
 
-// שמירה: { role: { cap: true/false } }. כל תפקיד שנשלח נשמר במלואו, ובמסד נרשם רק
-// מה ששונה מברירת המחדל. מנהל ראשי אינו ניתן לשינוי.
+// שמירה: { role: { cap: true/false } }. בכל תפקיד שנשלח נשמר המצב המלא, ובמסד נרשם רק
+// מה ששונה מברירת המחדל. מנהל ראשי אינו ניתן לשינוי. עורך שאינו מנהל ראשי לא משנה
+// את סוג המשתמש של עצמו ולא את ההרשאות שב-ADMIN_ONLY_CAPS — שם נשמר הערך הקיים.
 async function saveMatrix(input, user) {
+  const main = isMainAdmin(user);
   const client = await pool.connect();
   const changed = [];
   try {
     await client.query('BEGIN');
     for (const [role, capsIn] of Object.entries(input || {})) {
       if (!ROLES[role] || role === 'admin' || !capsIn || typeof capsIn !== 'object') continue;
+      if (!main && user && role === user.role) continue;
+      const cur = await capsFor(role);
       const next = { ...ROLES[role] };
-      EDITABLE_CAPS.forEach(k => { if (typeof capsIn[k] === 'boolean') next[k] = capsIn[k]; });
+      EDITABLE_CAPS.forEach(k => {
+        const mayChange = main || !ADMIN_ONLY_CAPS.has(k);
+        next[k] = mayChange && typeof capsIn[k] === 'boolean' ? capsIn[k] : !!cur[k];
+      });
       applyImplications(next);
       await client.query('DELETE FROM role_permissions WHERE role=$1', [role]);
       for (const k of EDITABLE_CAPS) {
@@ -242,6 +256,6 @@ async function saveMatrix(input, user) {
 }
 
 module.exports = {
-  FIELD_CAPS, FIELD_VIEW_CAPS, CATALOG, IMPLIES, CAP_KEYS, EDITABLE_CAPS, ROLES,
+  FIELD_CAPS, FIELD_VIEW_CAPS, CATALOG, IMPLIES, CAP_KEYS, EDITABLE_CAPS, ADMIN_ONLY_CAPS, ROLES,
   capsFor, isCustomized, matrix, saveMatrix, hiddenName, maskPatientNames,
 };

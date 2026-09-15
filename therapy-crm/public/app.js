@@ -2183,8 +2183,11 @@ function renderPermissions() {
     if (r.locked) return `<td class="perm-cell perm-all"${attrs} title="מנהל ראשי — תמיד כל ההרשאות">✓</td>`;
     const on = !!_permDraft[r.role][cap];
     const custom = on !== !!r.defaults[cap];
+    // מה שהעורך הנוכחי לא רשאי לשנות מוצג כמו שהוא, נעול, עם הסבר במעבר עכבר
+    const lock = r.readonly ? 'את ההרשאות של סוג המשתמש שלך משנה רק מנהל ראשי'
+      : _perm.locked.includes(cap) ? 'רק מנהל ראשי יכול לשנות את זה' : '';
     return `<td class="perm-cell${custom ? ' custom' : ''}"${attrs}><input type="checkbox" data-role="${r.role}" data-cap="${cap}"
-      title="${esc(r.label)} — ${esc(row.label)}${what ? ': ' + what : ''}" ${on ? 'checked' : ''} onchange="permToggle(this)"></td>`;
+      title="${lock || `${esc(r.label)} — ${esc(row.label)}${what ? ': ' + what : ''}`}" ${on ? 'checked' : ''} ${lock ? 'disabled' : ''} onchange="permToggle(this)"></td>`;
   };
   const cells = (r, row) => row.action
     ? box(r, row.action, row, true, '')
@@ -2201,14 +2204,15 @@ function renderPermissions() {
     <div class="hint" style="margin-bottom:10px">
       לכל נושא: 👁 צפייה · ✏️ עריכה, ולפעולה בודדת (כמו מחיקה) תיבה אחת. סימון עריכה מסמן גם צפייה,
       והסרת צפייה מסירה גם את העריכה. רקע צהוב = שונה מברירת המחדל. השינוי חל מיד אחרי השמירה על כל
-      המשתמשים מאותו סוג. מנהל ראשי מקבל תמיד את כל ההרשאות; את הטבלה עורכים מנהל ראשי ומנהל.
+      המשתמשים מאותו סוג. מנהל ראשי מקבל תמיד את כל ההרשאות. את השורה "עריכת טבלת ההרשאות",
+      ואת ההרשאות של סוג המשתמש של העורך עצמו, משנה רק מנהל ראשי.
     </div>
     <div class="perm-wrap"><table class="perm-table">
       <thead><tr>
         <th class="perm-action">פעולה</th>
         ${roles.map(r => `<th colspan="2" class="perm-role" title="${esc(r.desc)}">${esc(r.label)}
-          <div class="hint">${r.users} משתמשים${r.locked ? ' · תמיד הכל' : ''}</div>
-          ${r.locked ? '' : `<button type="button" class="link-btn" onclick="permResetRole('${r.role}')">ברירת מחדל</button>`}
+          <div class="hint">${r.users} משתמשים${r.locked ? ' · תמיד הכל' : r.readonly ? ' · הסוג שלך' : ''}</div>
+          ${r.locked || r.readonly ? '' : `<button type="button" class="link-btn" onclick="permResetRole('${r.role}')">ברירת מחדל</button>`}
           <div class="perm-sub"><span>👁</span><span>✏️</span></div></th>`).join('')}
       </tr></thead>
       <tbody>
@@ -2233,8 +2237,11 @@ function permToggle(el) {
 }
 function permResetRole(role) {
   const r = _perm.roles.find(x => x.role === role);
-  if (!r) return;
-  _permDraft[role] = { ...r.defaults };
+  if (!r || r.locked || r.readonly) return;
+  const next = { ...r.defaults };
+  // הרשאות שנעולות לעורך הנוכחי נשארות כמו שהן — השרת ממילא לא ישנה אותן
+  _perm.locked.forEach(k => { next[k] = !!_permDraft[role][k]; });
+  _permDraft[role] = next;
   permSync(role);
 }
 function permUndo() { permLoad(_perm); renderPermissions(); }
@@ -2258,7 +2265,7 @@ function permStatus() {
 
 async function savePermissions() {
   const roles = {};
-  _perm.roles.filter(r => !r.locked).forEach(r => { roles[r.role] = _permDraft[r.role]; });
+  _perm.roles.filter(r => !r.locked && !r.readonly).forEach(r => { roles[r.role] = _permDraft[r.role]; });
   const btn = document.getElementById('perm-save');
   if (btn) btn.disabled = true;
   try {

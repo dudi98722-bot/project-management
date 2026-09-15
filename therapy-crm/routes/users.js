@@ -41,7 +41,7 @@ router.get('/roles', authenticate, can('viewUsers'), async (req, res) => {
 
 // ===== טבלת ההרשאות: מנהל ראשי ומנהל בלבד =====
 router.get('/permissions', authenticate, can('managePermissions'), async (req, res) => {
-  try { res.json(await matrix()); }
+  try { res.json(await matrix(req.user)); }
   catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
@@ -55,7 +55,7 @@ router.put('/permissions', authenticate, can('managePermissions'), async (req, r
   try {
     const changed = await saveMatrix(roles, req.user);
     await logAction(req.user, 'edit', 'role_permissions', '', { roles: changed });
-    res.json(await matrix());
+    res.json(await matrix(req.user));
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
