@@ -414,7 +414,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 נח'";
+var APP_BUILD = "19.08 נט'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -13053,6 +13053,9 @@ function viewAptRentals(aptId){
     var d=daysUntil(r.endDate), st=rentalStatus(r);
     var hist=(r.history||[]);
     var all=rentalIncomeStats(r);
+    var cs=rentalContractStats(r);
+    /* חוזה ב"קודמים" שמתחיל אחרי הנוכחי — הסדר הפוך */
+    var newerIx=rentalNewerHistory(r);
     var edge=st==="ended"?"#ef4444":st==="ending"?"#f59e0b":st==="free"?"#94a3b8":"#10b981";
     h+='<div class="card" style="margin-bottom:12px;border-inline-start:4px solid '+edge+'">'+
       '<div class="toolbar" style="margin-bottom:10px">'+
@@ -13083,14 +13086,17 @@ function viewAptRentals(aptId){
       '</tr></thead><tbody>';
     /* החוזה הנוכחי */
     h+='<tr style="background:#f0fdf4">'+
-      '<td><b>חוזה נוכחי</b></td>'+
+      '<td><b>חוזה נוכחי</b>'+(newerIx.length
+        ? '<div class="hint neg" title="ברשימת החוזים הקודמים יש חוזה שמתחיל אחרי החוזה הזה">⚠ יש חוזה מאוחר יותר ברשימה'+
+            (RENT_OPEN[r.id]?'':' — פתח את החוזים הקודמים')+'</div>'
+        : '')+'</td>'+
       '<td>'+(r.tenant?esc(r.tenant):'<span class="muted">פנויה</span>')+'</td>'+
       '<td>'+((r.startDate||r.endDate)
         ? (r.startDate?dateHe(r.startDate):'—')+' – '+(r.endDate?dateHe(r.endDate):'<span class="muted">ללא סיום</span>')
         : '<span class="muted">לא הוגדר</span>')+'</td>'+
       '<td>'+(d===null?'<span class="muted">—</span>':(d<0?'<span class="neg">עברו '+Math.abs(d)+'</span>':d+' ימים'))+'</td>'+
       '<td>'+(r.rent?money(r.rent):'<span class="muted">—</span>')+'</td>'+
-      '<td>'+(r.startDate?contractCollectionCell(rentalPeriodStats(r,r.startDate,"")):'<span class="muted">—</span>')+'</td>'+
+      '<td>'+(cs.cur&&(r.startDate||cs.cur.n)?contractCollectionCell(cs.cur):'<span class="muted">—</span>')+'</td>'+
       '<td class="right">'+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editRental(\''+r.id+'\')" title="עריכה">✏️</button>':'')+'</td></tr>';
     /* החוזים הקודמים — מהחדש לישן */
     if(hist.length && RENT_OPEN[r.id]){
@@ -13104,14 +13110,19 @@ function viewAptRentals(aptId){
         .forEach(function(e){
         var x=e.x;
         h+='<tr>'+
-          '<td class="muted">↩ קודם</td>'+
+          '<td class="muted">↩ קודם'+(newerIx.indexOf(e.ix)>=0
+            ? '<div><span class="badge badge-warn badge-unit" title="החוזה הזה מתחיל אחרי החוזה שמסומן כנוכחי">⚠ מאוחר מהנוכחי</span></div>'
+            : '')+'</td>'+
           '<td>'+esc(x.tenant||"—")+'</td>'+
           '<td>'+(x.startDate?dateHe(x.startDate):'—')+' – '+(x.endDate?dateHe(x.endDate):'—')+'</td>'+
           '<td><span class="muted">—</span></td>'+
           '<td>'+(x.rent?money(x.rent):'<span class="muted">—</span>')+'</td>'+
-          '<td>'+contractCollectionCell(rentalPeriodStats(r,x.startDate,x.endDate))+'</td>'+
+          '<td>'+contractCollectionCell(cs[e.ix]||{n:0})+'</td>'+
           '<td class="right" style="white-space:nowrap">'+(can("edit")
-            ? '<button class="btn btn-ghost btn-sm" title="עריכת החוזה" onclick="rentalHistEdit(\''+r.id+'\','+e.ix+',1)">✏️</button>'+
+            ? (newerIx.indexOf(e.ix)>=0
+                ? '<button class="btn btn-sm" title="החוזה הזה יהפוך לנוכחי, והנוכחי יעבור לקודמים" onclick="rentalMakeCurrent(\''+r.id+'\','+e.ix+')">⬆ הפוך לנוכחי</button> '
+                : '')+
+              '<button class="btn btn-ghost btn-sm" title="עריכת החוזה" onclick="rentalHistEdit(\''+r.id+'\','+e.ix+',1)">✏️</button>'+
               '<button class="btn btn-ghost btn-sm" title="מחיקת החוזה מההיסטוריה" onclick="rentalHistDel(\''+r.id+'\','+e.ix+',1)">🗑️</button>'
             : '')+'</td></tr>';
       });
@@ -13135,21 +13146,49 @@ function viewAptRentals(aptId){
    התשלום): שורת שכ"ד יודעת את התקופה שלה, וחיוב חד-פעמי משויך לפי
    תאריכו. חוזה בלי תאריך סיום סופר גם קדימה — כך חיוב שנרשם באיחור
    נופל על החוזה הנוכחי ולא נעלם. */
-function rentalPeriodStats(r,start,end){
-  var billed=0, paid=0, open=0, n=0;
+/* ---------- כל חיוב שייך לחוזה אחד בלבד ----------
+   קודם כל חוזה ספר את החיובים שבתקופה שלו, והחוזה הנוכחי ספר קדימה בלי
+   סוף. כשחוזה "קודם" היה בפועל מאוחר מהנוכחי, אותו חיוב נספר בשתי השורות
+   ונראה כחוב כפול. עכשיו לכל חיוב בעלים אחד:
+   החוזה שהתקופה שלו מכילה את תאריך החיוב (בחפיפה — זה שהתחיל אחרון);
+   חיוב שנפל בין חוזים או אחרי כולם — החוזה האחרון שהתחיל לפניו (כך חיוב
+   שנרשם באיחור נופל על החוזה האחרון ולא נעלם); חיוב שקדם לכל החוזים —
+   החוזה המוקדם ביותר. סכום השורות שווה תמיד לסיכום שבכותרת הדירה. */
+function rentalContracts(r){
+  var list=[];
+  if(r.startDate||r.endDate||r.tenant) list.push({key:"cur",start:r.startDate||"",end:r.endDate||""});
+  (r.history||[]).forEach(function(x,ix){ list.push({key:ix,start:x.startDate||"",end:x.endDate||""}); });
+  return list;
+}
+function rentalChargeOwner(list,d){
+  if(!list.length) return null;
+  if(!d) return list[0];                       // חיוב בלי תאריך — לחוזה הנוכחי
+  var inside=null, before=null, first=null;
+  list.forEach(function(c){
+    if(!first || c.start<first.start) first=c;
+    if(c.start && c.start>d) return;           // החוזה עוד לא התחיל בתאריך הזה
+    if(!before || c.start>before.start) before=c;
+    if((!c.end || d<=c.end) && (!inside || c.start>inside.start)) inside=c;
+  });
+  return inside||before||first;
+}
+/* הגבייה של כל חוזה: {cur:{...}, 0:{...}, 1:{...}} לפי מיקום בהיסטוריה */
+function rentalContractStats(r){
+  var list=rentalContracts(r), by={};
+  list.forEach(function(c){ by[c.key]={n:0,billed:0,paid:0,debt:0,openRows:0}; });
   rentalIncome(r.id).forEach(function(i){
-    var d=i.startDate||i.date;
-    if(!d) return;
-    if(start && d<start) return;
-    if(end && d>end) return;
-    n++;
+    var c=rentalChargeOwner(list,i.startDate||i.date); if(!c) return;
+    var st=by[c.key];
+    st.n++;
     if(i.excluded) return;
     var amt=Number(i.amount)||0, p=incomePaid(i);
-    billed+=amt; paid+=p;
-    if(amt-p>0.01) open++;
+    st.billed+=amt; st.paid+=p;
+    if(amt-p>0.01) st.openRows++;
   });
-  return {n:n, billed:round2(billed), paid:round2(paid),
-    debt:round2(billed-paid), openRows:open};
+  Object.keys(by).forEach(function(k){
+    var st=by[k]; st.billed=round2(st.billed); st.paid=round2(st.paid); st.debt=round2(st.billed-st.paid);
+  });
+  return by;
 }
 /* התא עצמו — עונה על שתי השאלות: כמה שולם, והאם נסגר */
 function contractCollectionCell(st){
@@ -13163,7 +13202,7 @@ function contractCollectionCell(st){
    שורת סיכום של כל החוזים כדי ששום כסף לא ייעלם מהעין. */
 function rentalCurrentCell(r){
   if(!r.startDate) return rentalCollectionCell(r);
-  var cur=rentalPeriodStats(r,r.startDate,"");
+  var cur=rentalContractStats(r).cur||{n:0};
   var all=rentalIncomeStats(r);
   var h=contractCollectionCell(cur);
   if((r.history||[]).length){
@@ -13455,6 +13494,50 @@ function addRentalUnits(){
 /* אילו דירות פתוחות להצגת החוזים שלהן בטבלה — מצב תצוגה, לא נתון */
 var RENT_OPEN={};
 function rentToggleOpen(id){ RENT_OPEN[id]=!RENT_OPEN[id]; rerender(); }
+/* מיקומי ההיסטוריה של חוזים שמתחילים אחרי החוזה הנוכחי */
+function rentalNewerHistory(r){
+  var out=[];
+  if(!r.startDate) return out;
+  (r.history||[]).forEach(function(x,ix){ if(x.startDate && x.startDate>r.startDate) out.push(ix); });
+  return out;
+}
+/* חוזה מהרשימה נעשה הנוכחי, והנוכחי עובר לרשימה. שום שורת הכנסה לא
+   משתנה — רק איזה חוזה נחשב "נוכחי" (סטטוס, התראות, שכ"ד, יצירה אוטומטית). */
+function rentalMakeCurrent(rid,ix){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var r=byId(DB.rentals,rid); if(!r||!r.history||!r.history[ix]) return;
+  var x=r.history[ix];
+  var cur={tenant:r.tenant||"",phone:r.phone||"",startDate:r.startDate||"",endDate:r.endDate||"",rent:Number(r.rent)||0};
+  if(!confirm('להפוך את החוזה של "'+(x.tenant||"—")+'" ('+(x.startDate?dateHe(x.startDate):"—")+' – '+
+      (x.endDate?dateHe(x.endDate):"—")+') לחוזה הנוכחי?\n\n'+
+      'החוזה שמסומן כנוכחי עכשיו ('+(cur.startDate?dateHe(cur.startDate):"—")+' – '+(cur.endDate?dateHe(cur.endDate):"—")+
+      ') יעבור לחוזים הקודמים.\nשורות ההכנסה והתשלומים לא משתנים.')) return;
+  /* יצירה אוטומטית: חודשים בתקופת החוזה שעדיין לא חויבו. שואלים, כדי
+     שלא ייווצרו בשקט חיובים על חודשים שאולי נגבו בדרך אחרת. */
+  var trial=JSON.parse(JSON.stringify(r));
+  trial.tenant=x.tenant||""; trial.startDate=x.startDate||""; trial.endDate=x.endDate||"";
+  trial.rent=Number(x.rent)||0; trial.genFrom="";
+  var miss=r.autoIncome?rentalMissingMonths(trial):[];
+  var backfill=true;
+  if(miss.length){
+    backfill=confirm('לחוזה הזה חסרים '+miss.length+' חיובים אוטומטיים ('+
+      miss.slice(0,6).map(ymLabel).join(", ")+(miss.length>6?"…":"")+').\n\n'+
+      'אישור — ליצור אותם עכשיו.\nביטול — להחליף בלי ליצור אותם (החיובים הבאים ייווצרו כרגיל).');
+  }
+  r.history.splice(ix,1);
+  if(cur.tenant||cur.startDate||cur.endDate) r.history.push(cur);
+  r.tenant=x.tenant||"";
+  /* לחוזים ישנים לא נשמר טלפון. אותו שוכר — הטלפון נשאר; שוכר אחר — נמחק
+     מהנוכחי (הוא נשמר עם החוזה שעבר לקודמים) */
+  if(x.phone!=null) r.phone=x.phone;
+  else if((x.tenant||"")!==cur.tenant) r.phone="";
+  r.startDate=x.startDate||""; r.endDate=x.endDate||""; r.rent=Number(x.rent)||0;
+  r.genFrom=(miss.length && !backfill) ? ymAdd(miss[miss.length-1],rentStepM(r)) : "";
+  save();
+  var made=(miss.length && backfill) ? runRentalIncome(true) : 0;
+  toast("החוזה הוחלף לנוכחי"+(made?" · נוצרו "+made+" חיובים":""),"ok");
+  rerender();
+}
 function rentalHistDel(rid,ix,fromTable){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var r=byId(DB.rentals,rid); if(!r||!r.history||!r.history[ix]) return;
@@ -13691,10 +13774,24 @@ function renewRental(id){
       if(!sd){ toast("יש להזין תאריך התחלה","err"); return false; }
       if(sd && ed && ed<sd){ toast("תאריך הסיום מוקדם מתאריך ההתחלה","err"); return false; }
       r.history=r.history||[];
+      /* חוזה שמתחיל לפני החוזה הנוכחי אינו "חוזה חדש" — הוא חוזה ישן
+         שמזינים באיחור. החלפה הייתה הופכת את הישן לנוכחי ושולחת את החדש
+         לרשימת הקודמים: סטטוס "הסתיים", שכ"ד ישן והתראות שגויות. */
+      if(hasCur && r.startDate && sd<r.startDate){
+        if(!confirm('החוזה שהזנת מתחיל ב-'+dateHe(sd)+' — לפני החוזה הנוכחי (מ-'+dateHe(r.startDate)+').\n\n'+
+            'להוסיף אותו לרשימת החוזים הקודמים, ולהשאיר את הנוכחי כמו שהוא?')){
+          toast("לא נשמר. חוזה שמתחיל לפני הנוכחי מתווסף לחוזים הקודמים — בדוק את התאריך","warn");
+          return false;
+        }
+        r.history.push({tenant:val("rw-tenant").trim(),phone:val("rw-phone").trim(),
+          startDate:sd,endDate:ed,rent:Number(val("rw-rent"))||0});
+        save(); toast("החוזה נוסף לחוזים הקודמים","ok"); rerender();
+        return true;
+      }
       /* שומרים רק תקופה שבאמת הייתה — דירה שהוגדרה ומעולם לא הושכרה
          לא מייצרת שורת היסטוריה ריקה */
       if(r.tenant||r.startDate||r.endDate){
-        r.history.push({tenant:r.tenant||"",startDate:r.startDate||"",endDate:r.endDate||"",rent:Number(r.rent)||0});
+        r.history.push({tenant:r.tenant||"",phone:r.phone||"",startDate:r.startDate||"",endDate:r.endDate||"",rent:Number(r.rent)||0});
       }
       r.tenant=val("rw-tenant").trim(); r.phone=val("rw-phone").trim();
       r.startDate=sd; r.endDate=ed; r.rent=Number(val("rw-rent"))||0;
