@@ -414,7 +414,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 ס'";
+var APP_BUILD = "19.08 סא'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -13261,7 +13261,12 @@ function viewAptRentals(aptId){
       '<td>'+(d===null?'<span class="muted">—</span>':(d<0?'<span class="neg">עברו '+Math.abs(d)+'</span>':d+' ימים'))+'</td>'+
       '<td>'+(r.rent?money(r.rent):'<span class="muted">—</span>')+'</td>'+
       '<td>'+(cs.cur&&(r.startDate||cs.cur.n)?contractCollectionCell(cs.cur):'<span class="muted">—</span>')+'</td>'+
-      '<td class="right">'+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editRental(\''+r.id+'\')" title="עריכה">✏️</button>':'')+'</td></tr>';
+      '<td class="right" style="white-space:nowrap">'+(can("edit")
+        ? '<button class="btn btn-ghost btn-sm" onclick="editRental(\''+r.id+'\')" title="עריכה">✏️</button>'+
+          ((r.tenant||r.startDate||r.endDate)
+            ? '<button class="btn btn-ghost btn-sm" onclick="rentalDeleteCurrent(\''+r.id+'\')" title="מחיקת החוזה הנוכחי — החוזה הקודם יחזור להיות הנוכחי">🗑️</button>'
+            : '')
+        : '')+'</td></tr>';
     /* החוזים הקודמים — מהחדש לישן */
     if(hist.length && RENT_OPEN[r.id]){
       /* מיון לפי הזמן ולא לפי סדר ההוספה למערך: חוזה שנרשם מאוחר
@@ -13676,6 +13681,15 @@ function rentalMakeCurrent(rid,ix){
       (x.endDate?dateHe(x.endDate):"—")+') לחוזה הנוכחי?\n\n'+
       'החוזה שמסומן כנוכחי עכשיו ('+(cur.startDate?dateHe(cur.startDate):"—")+' – '+(cur.endDate?dateHe(cur.endDate):"—")+
       ') יעבור לחוזים הקודמים.\nשורות ההכנסה והתשלומים לא משתנים.')) return;
+  var made=rentalAdoptContract(r,ix,true);
+  toast("החוזה הוחלף לנוכחי"+(made?" · נוצרו "+made+" חיובים":""),"ok");
+  rerender();
+}
+/* חוזה מהרשימה (במיקום ix) נעשה הנוכחי. keepCur — החוזה הנוכחי עובר
+   לרשימה (החלפה) או נעלם (מחיקה). מחזיר כמה חיובים נוצרו. */
+function rentalAdoptContract(r,ix,keepCur){
+  var x=r.history[ix];
+  var cur={tenant:r.tenant||"",phone:r.phone||"",startDate:r.startDate||"",endDate:r.endDate||"",rent:Number(r.rent)||0};
   /* יצירה אוטומטית: חודשים בתקופת החוזה שעדיין לא חויבו. שואלים, כדי
      שלא ייווצרו בשקט חיובים על חודשים שאולי נגבו בדרך אחרת. */
   var trial=JSON.parse(JSON.stringify(r));
@@ -13684,22 +13698,54 @@ function rentalMakeCurrent(rid,ix){
   var miss=r.autoIncome?rentalMissingMonths(trial):[];
   var backfill=true;
   if(miss.length){
-    backfill=confirm('לחוזה הזה חסרים '+miss.length+' חיובים אוטומטיים ('+
+    backfill=confirm('לחוזה של "'+(x.tenant||"—")+'" חסרים '+miss.length+' חיובים אוטומטיים ('+
       miss.slice(0,6).map(ymLabel).join(", ")+(miss.length>6?"…":"")+').\n\n'+
-      'אישור — ליצור אותם עכשיו.\nביטול — להחליף בלי ליצור אותם (החיובים הבאים ייווצרו כרגיל).');
+      'אישור — ליצור אותם עכשיו.\nביטול — בלי ליצור אותם (החיובים הבאים ייווצרו כרגיל).');
   }
   r.history.splice(ix,1);
-  if(cur.tenant||cur.startDate||cur.endDate) r.history.push(cur);
+  if(keepCur && (cur.tenant||cur.startDate||cur.endDate)) r.history.push(cur);
   r.tenant=x.tenant||"";
   /* לחוזים ישנים לא נשמר טלפון. אותו שוכר — הטלפון נשאר; שוכר אחר — נמחק
-     מהנוכחי (הוא נשמר עם החוזה שעבר לקודמים) */
+     מהנוכחי (בהחלפה הוא נשמר עם החוזה שעבר לקודמים) */
   if(x.phone!=null) r.phone=x.phone;
   else if((x.tenant||"")!==cur.tenant) r.phone="";
   r.startDate=x.startDate||""; r.endDate=x.endDate||""; r.rent=Number(x.rent)||0;
   r.genFrom=(miss.length && !backfill) ? ymAdd(miss[miss.length-1],rentStepM(r)) : "";
-  save();
+  /* שמירה אחת לכל הפעולה — כך "↩️ בטל" מחזיר גם את ההחלפה וגם את
+     החיובים שנוצרו בלחיצה אחת (runRentalIncome שומר בעצמו כשנוצר משהו) */
   var made=(miss.length && backfill) ? runRentalIncome(true) : 0;
-  toast("החוזה הוחלף לנוכחי"+(made?" · נוצרו "+made+" חיובים":""),"ok");
+  if(!made) save();
+  return made;
+}
+/* מחיקת החוזה הנוכחי — למשל חוזה שנפתח בטעות. החוזה הקודם האחרון (לפי
+   תאריך) חוזר להיות הנוכחי; בלי חוזים קודמים — הדירה נשארת פנויה.
+   שורות הכנסה ותשלומים לא נמחקים, ו"↩️ בטל" מחזיר את המחיקה. */
+function rentalDeleteCurrent(rid){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var r=byId(DB.rentals,rid); if(!r) return;
+  if(!(r.tenant||r.startDate||r.endDate)){ toast("אין חוזה נוכחי למחיקה","warn"); return; }
+  var hist=r.history||[], ix=-1;
+  hist.forEach(function(x,i){
+    if(ix<0){ ix=i; return; }
+    var k=x.startDate||x.endDate||"", b=hist[ix], bk=b.startDate||b.endDate||"";
+    if(k>bk || (k===bk && i>ix)) ix=i;
+  });
+  var prev=ix>=0?hist[ix]:null;
+  var n=((rentalContractStats(r).cur)||{n:0}).n;
+  function per(x){ return (x.startDate?dateHe(x.startDate):"—")+" – "+(x.endDate?dateHe(x.endDate):"—"); }
+  if(!confirm('למחוק את החוזה הנוכחי של "'+(r.tenant||"—")+'" ('+per(r)+')?\n\n'+
+      (prev ? 'החוזה הקודם של "'+(prev.tenant||"—")+'" ('+per(prev)+') יחזור להיות הנוכחי.'
+            : 'אין חוזים קודמים — הדירה תסומן פנויה.')+
+      (n ? '\n\n⚠️ לחוזה הזה משויכים '+n+' חיובים. הם לא נמחקים — אם הם שגויים, מחק אותם בלשונית ההכנסות.'
+         : '\n\nשורות הכנסה ותשלומים לא נמחקים.'))) return;
+  var made=0;
+  if(prev) made=rentalAdoptContract(r,ix,false);
+  else{
+    r.tenant=""; r.phone=""; r.startDate=""; r.endDate=""; r.rent=0; r.genFrom="";
+    save();
+  }
+  toast("החוזה הנוכחי נמחק"+(prev?" · החוזה הקודם חזר להיות הנוכחי":" · הדירה פנויה")+
+    (made?" · נוצרו "+made+" חיובים":""),"ok");
   rerender();
 }
 function rentalHistDel(rid,ix,fromTable){
