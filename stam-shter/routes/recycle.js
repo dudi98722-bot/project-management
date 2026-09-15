@@ -1,7 +1,7 @@
 // סל מחזור — שום דבר לא נמחק פיזית, ולכן הכל ניתן לשחזור מכאן.
 const express = require('express');
 const { pool, restore, restoreScroll, restorePurchase } = require('../db');
-const { authenticate, can } = require('../middleware/auth');
+const { authenticate, can, FINANCE_TABLES } = require('../middleware/auth');
 const router = express.Router();
 
 // טבלה -> תווית בעברית + ביטוי לתיאור השורה בתצוגה
@@ -29,11 +29,16 @@ const TABLES = {
   prod_consign_reports:   { label: 'דיווחי קומיסיון',       desc: `quantity||' יח\''` },
 };
 
+// סל המחזור מציג תיאור של כל שורה, ובהוצאות עסק ובתשלומי לקוחות התיאור
+// הוא הסכום עצמו. בלי finance הטבלאות האלה אינן מופיעות בו כלל.
+const hidden = (req, table) => FINANCE_TABLES.has(table) && !(req.caps && req.caps.finance);
+
 // סיכום: כמה רשומות מחוקות יש בכל טבלה
 router.get('/', authenticate, can('view'), async (req, res) => {
   try {
     const out = [];
     for (const [table, def] of Object.entries(TABLES)) {
+      if (hidden(req, table)) continue;
       const r = await pool.query(`SELECT COUNT(*)::int AS n FROM ${table} WHERE deleted=true`);
       if (r.rows[0].n > 0) out.push({ table, label: def.label, count: r.rows[0].n });
     }
@@ -44,7 +49,7 @@ router.get('/', authenticate, can('view'), async (req, res) => {
 // הרשומות המחוקות בטבלה מסוימת
 router.get('/:table', authenticate, can('view'), async (req, res) => {
   const def = TABLES[req.params.table];
-  if (!def) return res.status(400).json({ error: 'טבלה לא מוכרת' });
+  if (!def || hidden(req, req.params.table)) return res.status(400).json({ error: 'טבלה לא מוכרת' });
   try {
     const r = await pool.query(
       `SELECT id, ${def.desc} AS description, deleted_at, deleted_by
@@ -56,7 +61,7 @@ router.get('/:table', authenticate, can('view'), async (req, res) => {
 // שחזור — ספר ורכישת מוצר מחזירים גם את רשומות הבן שנמחקו איתם
 router.post('/:table/:id/restore', authenticate, can('del'), async (req, res) => {
   const { table, id } = req.params;
-  if (!TABLES[table]) return res.status(400).json({ error: 'טבלה לא מוכרת' });
+  if (!TABLES[table] || hidden(req, table)) return res.status(400).json({ error: 'טבלה לא מוכרת' });
   try {
     let ok;
     if (table === 'scrolls') ok = await restoreScroll(id, req.user);

@@ -1710,7 +1710,23 @@ function pageBizExp(cfgOnly) {
       { label: 'הערה', cls: 'wrap', render: r => esc(r.note || '') },
     ],
   };
-  return cfgOnly ? cfg : entityPage(cfg);
+  if (cfgOnly) return cfg;
+  // מי שמורשה רק להזין רואה כפתור ולא טבלה. השרת גם אינו מחזיר לו את
+  // הרשימה, כך שזו לא הסתרה בממשק אלא היעדר גישה.
+  if (!ME.caps.finance) return bizExpEntryPage(cfg);
+  return entityPage(cfg);
+}
+
+function bizExpEntryPage(cfg) {
+  $('view').innerHTML += `
+    <div class="page-head"><h2>הזנת הוצאות עסק</h2></div>
+    <div class="card"><div class="empty" style="padding:30px 16px">
+      <div class="big">🏢</div>
+      <div>כאן מזינים הוצאת עסק חדשה.</div>
+      <div class="mini" style="margin-top:4px">ההוצאות שכבר הוזנו אינן מוצגות. לתיקון הוצאה שהוזנה — פנה למנהל.</div>
+      <button class="btn" id="bizNew" style="margin-top:16px">+ הזנת הוצאה</button>
+    </div></div>`;
+  $('bizNew').onclick = () => openForm(cfg, null);
 }
 
 // ============ מוצרים ============
@@ -5532,7 +5548,7 @@ const QUICK_ADD = [
   { icon: '💵', label: 'תשלום לקוח',         cap: 'finance', cfg: () => pageCustPay(true) },
   { icon: '🧾', label: 'הוצאה לספר',         cfg: () => pageBookExp(true) },
   { icon: '📜', label: 'הוצאת קלף',          cfg: () => pageParchExp(true) },
-  { icon: '🏢', label: 'הוצאת עסק',          cap: 'finance', cfg: () => pageBizExp(true) },
+  { icon: '🏢', label: 'הוצאת עסק',          cap: 'bizEntry', cfg: () => pageBizExp(true) },
   { sep: true },
   { icon: '📦', label: 'רכישת מוצרים',       cfg: () => prodPurchases(true) },
   { icon: '🛒', label: 'מכירת מוצרים',       cfg: () => prodSales(true) },
@@ -5592,7 +5608,7 @@ const TABS = [
   { k: 'custpay', label: 'תשלומי לקוחות', fn: pageCustPay, cap: 'finance' },
   { k: 'bookexp', label: 'הוצאות לספר', fn: pageBookExp },
   { k: 'parchexp', label: 'הוצאות קלף', fn: pageParchExp },
-  { k: 'bizexp', label: 'הוצאות עסק', fn: pageBizExp, cap: 'finance' },
+  { k: 'bizexp', label: 'הוצאות עסק', fn: pageBizExp, cap: ['finance', 'bizEntry'] },
   { k: 'prod', label: 'מוצרים', fn: pageProd },
   { k: 'track', label: '📍 מעקב יריעות ומוצרים', fn: pageTrack },
   { k: 'diary', label: '⏰ תזכורות ושיחות', fn: pageDiary },
@@ -5602,7 +5618,9 @@ const TABS = [
   { k: 'system', label: 'מערכת', fn: pageSystem },
 ];
 
-function visibleTabs() { return TABS.filter(t => !t.cap || (ME.caps && ME.caps[t.cap])); }
+// cap יכול להיות רשימה — מספיקה אחת מהן (למשל הוצאות עסק: רואה או מזין)
+const hasCap = (cap) => !cap || [].concat(cap).some(c => ME.caps && ME.caps[c]);
+function visibleTabs() { return TABS.filter(t => hasCap(t.cap)); }
 
 function renderTabs() {
   $('tabs').innerHTML = visibleTabs().map(t =>

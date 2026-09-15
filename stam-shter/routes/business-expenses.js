@@ -10,6 +10,8 @@ module.exports = crudRouter('business_expenses', [
   { key: 'note', type: 'text' },
 ], {
   cap: 'finance',
+  // עובד בלי finance רשאי להזין הוצאה חדשה — לא לראות את הקיימות
+  createCap: 'bizEntry',
   orderBy: 't.date DESC NULLS LAST, t.id DESC',
   filterCols: ['scribe_id'],
   viewSql: `SELECT t.*, sc.name AS scribe_name

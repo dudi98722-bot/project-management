@@ -4,7 +4,7 @@
 // dryRun מחזיר תצוגה מקדימה בלי לכתוב כלום.
 const express = require('express');
 const { pool, logAction, softDelete, softDeleteScroll, softDeletePurchase } = require('../db');
-const { authenticate, can } = require('../middleware/auth');
+const { authenticate, can, FINANCE_TABLES } = require('../middleware/auth');
 const { APPROVABLE } = require('./_crud');
 const router = express.Router();
 
@@ -185,6 +185,17 @@ const SPEC = {
 };
 
 const { VALID_LISTS } = require('./lists');
+
+// הייבוא דרש עד כה רק הרשאת עריכה, ולכן עקף את החסימה שבמסכים: מי שאין
+// לו finance יכול היה לייבא — וגם לעדכן לפי מזהה — תשלומי לקוחות והוצאות
+// עסק, שורות שהוא אינו רואה בכלל. ס"ת נכלל כאן בגלל מחירי הרוכש.
+// חריג אחד: הוצאות עסק חדשות מותרות למי שמורשה להזין אותן (bizEntry),
+// אבל עדכון או מחיקה לפי מזהה — לא, כי אלה שורות שאינן מוצגות לו.
+const IMPORT_FINANCE = new Set([...FINANCE_TABLES, 'scrolls']);
+function importAllowed(caps, table, mode) {
+  if (!IMPORT_FINANCE.has(table) || (caps && caps.finance)) return true;
+  return table === 'business_expenses' && mode === 'create' && !!(caps && caps.bizEntry);
+}
 
 // ---------- המרות ----------
 // פרסר מספרים קפדני. עקרונות:
@@ -401,7 +412,8 @@ function resolveRow(table, raw, ctx, opts, partial) {
 
 // ---------- מסלולים ----------
 router.get('/spec', authenticate, can('view'), (req, res) => {
-  res.json(Object.entries(SPEC).map(([table, s]) => ({
+  // רק טבלאות שמותר לו לייבא אליהן — טבלה שתיכשל בשמירה לא תוצע בכלל
+  res.json(Object.entries(SPEC).filter(([table]) => importAllowed(req.caps, table, 'create')).map(([table, s]) => ({
     table, label: s.label,
     cols: s.cols.map(c => ({
       key: c.key, label: c.label, required: !!c.required,
@@ -422,6 +434,9 @@ router.post('/:table/delete', authenticate, can('del'), async (req, res) => {
   const table = req.params.table;
   if (!SPEC[table] && !BULK_DELETE_EXTRA.has(table)) {
     return res.status(400).json({ error: 'טבלה לא נתמכת' });
+  }
+  if (!importAllowed(req.caps, table, 'delete')) {
+    return res.status(403).json({ error: 'אין לך הרשאה לפעולה זו' });
   }
   const ids = [...new Set((Array.isArray(req.body.ids) ? req.body.ids : [])
     .map(Number).filter(n => Number.isInteger(n) && n > 0))];
@@ -456,6 +471,11 @@ router.post('/:table', authenticate, can('edit'), async (req, res) => {
   const opts = req.body.options || {};
   const dryRun = !!req.body.dryRun;
   const mode = req.body.mode === 'update' ? 'update' : 'create';
+  if (!importAllowed(req.caps, table, mode)) {
+    return res.status(403).json({ error: mode === 'update'
+      ? 'אין לך הרשאה לעדכן שורות קיימות בטבלה הזו'
+      : 'אין לך הרשאה לייבא לטבלה הזו' });
+  }
   if (!rows.length) return res.status(400).json({ error: 'לא התקבלו שורות' });
   if (rows.length > 5000) return res.status(400).json({ error: 'מקסימום 5000 שורות בייבוא אחד — חלק לחלקים' });
 

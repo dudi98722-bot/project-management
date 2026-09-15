@@ -38,6 +38,13 @@ function crudRouter(table, fields, opts = {}) {
   const base = opts.viewSql || `SELECT t.* FROM ${table} t`;
   // הרשאה נוספת שנדרשת לכל הפעולות בטבלה (למשל finance לתשלומי לקוחות)
   const gate = opts.cap ? [can(opts.cap)] : [];
+  // createCap — הרשאה חלופית ליצירה בלבד. מי שיש לו אותה מוסיף שורה חדשה,
+  // אבל אינו קורא, עורך או מוחק: למשל עובד שמזין הוצאות עסק בלי לראותן.
+  // התשובה ליצירה היא השורה שהוא עצמו הזין, ולא יותר.
+  const createGate = (opts.cap && opts.createCap)
+    ? [(req, res, next) => (req.caps && (req.caps[opts.cap] || req.caps[opts.createCap]))
+        ? next() : res.status(403).json({ error: 'אין לך הרשאה לפעולה זו' })]
+    : gate;
   if (opts.approvable) APPROVABLE.add(table);
 
   // רשימה (עם סינון אופציונלי)
@@ -62,7 +69,7 @@ function crudRouter(table, fields, opts = {}) {
   });
 
   // יצירה
-  router.post('/', authenticate, ...gate, can('edit'), async (req, res) => {
+  router.post('/', authenticate, ...createGate, can('edit'), async (req, res) => {
     try {
       const vals = fields.map(f => coerce(f, req.body[f.key]));
       const placeholders = cols.map((_, i) => `$${i + 1}`).join(',');
