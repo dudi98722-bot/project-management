@@ -414,7 +414,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 נט'";
+var APP_BUILD = "19.08 ס'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -1016,6 +1016,7 @@ function vaultWipe(){
   try{
     VAULT_KEYS.forEach(function(k){ localStorage.removeItem(k); });
     localStorage.removeItem(LSKEY+"_baserev");
+    localStorage.removeItem(LSKEY+"_baseuser");
     localStorage.removeItem(LSKEY+"_dirty");
   }catch(e){}
   LSQ.pending={};
@@ -2473,6 +2474,7 @@ function closeModal(){
   document.getElementById("modal-root").innerHTML=""; _modalOnSave=null;
   /* עדכון שהגיע בזמן שהמודאל היה פתוח — נטען עכשיו, כשאין מה לדרוס */
   if(typeof POLL!=="undefined" && POLL.pending) setTimeout(function(){ applyServerUpdate(); },200);
+  else if(SIBLING_VIEW) setTimeout(siblingViewRefresh,200);
 }
 function modalSave(){ if(_modalOnSave){ var r=_modalOnSave(); if(r!==false) closeModal(); } else closeModal(); }
 function val(id){ var el=document.getElementById(id); return el?el.value:""; }
@@ -3833,7 +3835,8 @@ async function applyServerUpdate(polledRev){
     toast("יש שינויים מקומיים באמצע שמירה — הם ימוזגו עם העדכון אוטומטית","warn");
     return false;
   }
-  DB=normalizeDB(res.data); setSyncBase(res.data); saveLocal(); UNDO.length=0;
+  adoptDB(normalizeDB(res.data)); setSyncBase(res.data); saveLocal(); UNDO.length=0;
+  LAST_JSON=JSON.stringify(DB);
   POLL.pending=false; hideUpdateBanner();
   rerender();
   tabSyncBroadcast();
@@ -3909,8 +3912,8 @@ async function tabSyncTry(wantRev){
        השידור השני (אחרי אישור השרת) היה יוצא מכאן מוקדם, והחלון הזה
        היה נשאר עם בסיס מיזוג ישן. */
     await loadSyncBase();
-    if(vrev<=loc) return "same";               // אין שם כלום חדש ממה שמוצג
-    DB=normalizeDB(d);
+    if(vrev<=loc){ siblingViewRefresh(); return "same"; }   // אין שם כלום חדש ממה שמוצג
+    adoptDB(normalizeDB(d));
     LAST_JSON=JSON.stringify(DB); UNDO.length=0;
     incMapClear();
     POLL.pending=false; hideUpdateBanner();
@@ -3935,11 +3938,52 @@ async function tabSyncTry(wantRev){
    מול הבסיס האמיתי — בלי זה, מיזוג בכניסה השווה את המקומי מול השרת
    עצמו וכל הבדל נראה כ"שינוי שלי" (כולל החזרת מחיקות של אחרים). */
 var SYNCBASE=null, SYNCREV=0;
+/* ---------- החלפת הנתונים בלי לשבור הפניות ----------
+   חלון פתוח מחזיק הפניות לרשומות עצמן (שורת הבנק בחלון ההתאמה, ההזמנה
+   בטופס התשלום). כשמיזוג החליף את DB באובייקטים חדשים, פעולה שבוצעה אחר
+   כך נרשמה על העותק הישן שכבר לא נשמר — כך נוצרו תשלום בלי קישור וקישור
+   בלי תשלום. כאן הרשומות הקיימות מתעדכנות במקומן לפי מזהה, והפניות
+   אליהן נשארות תקפות. התוצאה זהה ל-DB=next. */
+function adoptDB(next){
+  if(!DB || !next || DB===next){ DB=next; return DB; }
+  Object.keys(DB).forEach(function(k){ if(!(k in next)) delete DB[k]; });
+  Object.keys(next).forEach(function(k){
+    var lv=DB[k], nv=next[k];
+    if(lv===nv) return;
+    if(Array.isArray(lv) && Array.isArray(nv) && isIdList(lv) && isIdList(nv)){ adoptList(lv,nv); return; }
+    DB[k]=nv;
+  });
+  if(typeof incMapClear==="function") incMapClear();
+  return DB;
+}
+function adoptList(live,next){
+  var by={};
+  live.forEach(function(x){ if(x && typeof x==="object" && x.id!=null) by[x.id]=x; });
+  var out=next.map(function(n){
+    var l=(n && n.id!=null) ? by[n.id] : null;
+    return (l && l!==n) ? adoptRecord(l,n) : n;
+  });
+  live.length=0;
+  for(var i=0;i<out.length;i++) live.push(out[i]);
+  return live;
+}
+function adoptRecord(live,next){
+  Object.keys(live).forEach(function(k){ if(!(k in next)) delete live[k]; });
+  Object.keys(next).forEach(function(k){
+    var lv=live[k], nv=next[k];
+    if(lv===nv) return;
+    if(Array.isArray(lv) && Array.isArray(nv) && isIdList(lv) && isIdList(nv) && (lv.length||nv.length)){ adoptList(lv,nv); return; }
+    live[k]=nv;
+  });
+  return live;
+}
 function setSyncBase(d){
   try{
     SYNCBASE=(typeof d==="string")?d:JSON.stringify(d);
     var p=(typeof d==="string")?JSON.parse(d):d;
     SYNCREV=(p&&p.meta&&Number(p.meta.rev))||0;
+    /* של מי הבסיס — חלון של משתמש אחר באותו דפדפן לא ממזג ממנו */
+    try{ localStorage.setItem(LSKEY+"_baseuser",String((CU&&CU.id)||"")); }catch(e){}
     try{ vaultPut(LSKEY+"_base",SYNCBASE); localStorage.setItem(LSKEY+"_baserev",String(SYNCREV)); }
     catch(qe){ try{ localStorage.removeItem(LSKEY+"_base"); }catch(e2){} }
   }catch(e){ SYNCBASE=null; }
@@ -3953,6 +3997,63 @@ async function loadSyncBase(){
 var MERGE_TABLES=["apartments","partners","apartmentPartners","managers","categories",
   "expenses","expenseSplits","expenseManagerFees","accounts","payments","deposits",
   "income","bankMoves","stmtBanks","withdrawals","incMgmtPays","recurring","rentals","sheets","users"];
+/* ---------- מיזוג בתוך רשומה ----------
+   נקרא רק כששני הצדדים שינו את אותה רשומה. כל שדה נבחר לפי מי ששינה
+   אותו מול הבסיס; רשימה של פריטים עם מזהה (תשלומים בהזמנה, התאמות
+   בשורת בנק) ממוזגת פריט-פריט; ורק שדה שבאמת השתנה אצל שניהם לערכים
+   שונים — השרת גובר ונספר כהתנגשות. */
+var MERGE_ATOMIC={sheets:1};   // גיליון: עמודה שנוספה מזיזה את כל התאים — מיזוג תא-תא היה מערבב אותם
+function mjs(v){ return v===undefined ? "#undef" : JSON.stringify(v); }
+function isIdList(a){
+  if(!Array.isArray(a)) return false;
+  for(var i=0;i<a.length;i++){
+    var x=a[i];
+    if(!x || typeof x!=="object" || Array.isArray(x) || x.id==null) return false;
+  }
+  return true;
+}
+function isPlainObj(o){ return !!o && typeof o==="object" && !Array.isArray(o); }
+function mergeValue3(b,m,t,cx){
+  var mj=mjs(m), tj=mjs(t);
+  if(mj===tj) return m;
+  var bj=mjs(b);
+  if(mj===bj) return t;                                  // רק השרת שינה
+  if(tj===bj) return m;                                  // רק אני שיניתי
+  if(isIdList(m) && isIdList(t) && (b===undefined || isIdList(b)) && (m.length || t.length))
+    return mergeIdList3(b||[],m,t,cx);
+  if(isPlainObj(m) && isPlainObj(t) && (b===undefined || isPlainObj(b)))
+    return mergeRecord3(b||{},m,t,cx);
+  cx.n++; return t;                                      // שנינו שינינו אותו שדה — השרת גובר
+}
+function mergeRecord3(b,m,t,cx){
+  var out={}, keys={}, order=[];
+  [t,m,b].forEach(function(o){ Object.keys(o).forEach(function(k){ if(!keys[k]){ keys[k]=1; order.push(k); } }); });
+  order.forEach(function(k){
+    var v=mergeValue3(b[k],m[k],t[k],cx);
+    if(v!==undefined) out[k]=v;
+  });
+  return out;
+}
+/* רשימה עם מזהים — כמו הטבלאות: תוספות משני הצדדים נשארות, הסרה של צד
+   אחד נשארת אם הצד השני לא נגע בפריט, ופריט ששני הצדדים שינו — ממוזג. */
+function mergeIdList3(b,m,t,cx){
+  function ix(a){ var o={}; a.forEach(function(x){ o[x.id]=x; }); return o; }
+  var B=ix(b), M=ix(m), out=[], seen={};
+  t.forEach(function(tx){
+    seen[tx.id]=1;
+    var mx=M[tx.id], bx=B[tx.id];
+    if(mx){ out.push(mergeValue3(bx,mx,tx,cx)); return; }
+    if(!bx){ out.push(tx); return; }                     // השרת הוסיף
+    if(mjs(tx)!==mjs(bx)){ cx.n++; out.push(tx); }       // אני הסרתי והשרת שינה — השרת גובר
+  });
+  m.forEach(function(mx){
+    if(seen[mx.id]) return;
+    var bx=B[mx.id];
+    if(!bx){ out.push(mx); return; }                     // אני הוספתי
+    if(mjs(mx)!==mjs(bx)) cx.n++;                        // השרת הסיר ואני שיניתי — לא מחזירים בכוח
+  });
+  return out;
+}
 function merge3(baseStr,mine,theirs){
   var base=null;
   try{ base=baseStr?JSON.parse(baseStr):null; }catch(e){ base=null; }
@@ -3979,7 +4080,12 @@ function merge3(baseStr,mine,theirs){
       var b=B[t.id], bj=b?JSON.stringify(b):null;
       if(mj===bj){ res.push(t); return; }                  // רק השרת שינה — שלו
       if(tj===bj){ res.push(m); return; }                  // רק אני שיניתי — שלי
-      conflicts++; res.push(t);                            // שנינו — השרת גובר
+      /* שנינו שינינו את אותה רשומה — ממזגים שדה-שדה ולא לוקחים את כולה
+         מהשרת. בלי בסיס לרשומה, או בגיליון — כמו קודם: השרת גובר. */
+      if(!b || MERGE_ATOMIC[T]){ conflicts++; res.push(t); return; }
+      var cx={n:0};
+      res.push(mergeRecord3(b,m,t,cx));
+      conflicts+=cx.n;
     });
     (mine[T]||[]).forEach(function(m){
       if(m==null||m.id==null||seen[m.id]) return;
@@ -4050,10 +4156,11 @@ function resolveConflictAndResave(){
     var next=normalizeDB(merged.db);
     /* הבסיס מתעדכן רק אחרי מיזוג מוצלח — לפני כן הוא עדיין האב הקדמון */
     setSyncBase(res.data);
-    DB=next;
+    adoptDB(next);                       // במקום — חלון פתוח ממשיך לעבוד על הרשומות האמיתיות
     DB.meta=DB.meta||{version:1};
     DB.meta.rev=srvRev+1;
     saveLocal(); UNDO.length=0;
+    LAST_JSON=JSON.stringify(DB);        // בלי זה "בטל" היה מחזיר את המצב שלפני המיזוג
     /* מיזוג חוזר ונשנה = השרת ממשיך להתקדם או תקול. משהים בהדרגה
        במקום להסתחרר בלולאה צמודה שמציפה את הרשת ואת המסך. */
     MERGE_ROUNDS++;
@@ -4158,7 +4265,50 @@ function scheduleRetry(){
   setSync(SAVEQ.fails>=3 ? "err" : "saving");
   setTimeout(flushSave, delay);
 }
+/* ---------- תור שמירה אחד לכל החלונות של הדפדפן ----------
+   שני חלונות ששלחו לשרת במקביל התנגשו: השני נדחה, טען הכול מחדש, מיזג
+   והודיע "שולבו שינויים ממשתמש אחר". עם נעילה משותפת רק חלון אחד שולח
+   בכל רגע, והבא בתור ממזג את מה שהקודם שמר — מקומית, בלי טעינה מהשרת. */
+var SAVE_LOCK_MAX=60000;      // חלון שנתקע לא עוצר את האחרים יותר מדקה
+var SIBLING_VIEW=false;       // מוזגו כאן שינויים מחלון אחר שעוד לא מוצגים על המסך
+function siblingViewRefresh(){
+  if(!SIBLING_VIEW || uiIsBusy()) return;
+  SIBLING_VIEW=false;
+  rerender();
+}
 async function flushSave(){
+  if(SAVEQ.inflight || SAVEQ.locking || !SAVEQ.dirty) return;
+  if(!(navigator.locks && navigator.locks.request)) return flushSaveNow();
+  SAVEQ.locking=true;
+  try{
+    await navigator.locks.request(LSKEY+"_save",function(){
+      SAVEQ.locking=false;
+      return Promise.race([flushSaveNow(), new Promise(function(r){ setTimeout(r,SAVE_LOCK_MAX); })]);
+    });
+  }catch(e){
+    SAVEQ.locking=false;
+    return flushSaveNow();
+  }
+}
+/* הבסיס המשותף (המצב האחרון שהשרת אישר) התקדם בחלון אחר של אותו דפדפן
+   ואותו משתמש? מחזיר אותו — או null. הבסיס נכתב מוצפן ברקע, ולכן מחכים
+   רגע עד שהתוכן באמת תואם את מונה הגרסה. */
+async function siblingBase(){
+  try{
+    if(!CU || !SYNCBASE) return null;
+    for(var i=0;i<25;i++){
+      var rev=Number(localStorage.getItem(LSKEY+"_baserev"))||0;
+      if(rev<=SYNCREV) return null;
+      if(localStorage.getItem(LSKEY+"_baseuser")!==String(CU.id)) return null;
+      var raw=await vaultGet(LSKEY+"_base");
+      var d=raw?JSON.parse(raw):null;
+      if(d && Array.isArray(d.apartments) && ((d.meta&&Number(d.meta.rev))||0)===rev) return {str:raw,data:d,rev:rev};
+      await new Promise(function(r){ setTimeout(r,80); });
+    }
+  }catch(e){}
+  return null;
+}
+async function flushSaveNow(){
   if(SAVEQ.inflight || !SAVEQ.dirty) return;
   var h=getAuth(); if(!h){ setSync("local"); return; }
   /* תפקיד ללא הרשאת עריכה לא ינסה לדחוף — השרת יחזיר forbidden,
@@ -4166,6 +4316,21 @@ async function flushSave(){
   if(CU && !can("edit")){ SAVEQ.dirty=false; setSync("local"); return; }
   SAVEQ.dirty=false; SAVEQ.inflight=true; setSync("saving");
   try{
+  /* חלון אחר של הדפדפן שמר בינתיים — ממזגים את מה שהוא שמר לכאן, מקומית.
+     אחר כך בדיקת הגרסה מול השרת עוברת, בלי טעינה מלאה ובלי "משתמש אחר". */
+  var sib=await siblingBase();
+  if(sib){
+    try{
+      var sm=merge3(SYNCBASE, DB, sib.data);
+      adoptDB(normalizeDB(sm.db));
+      SYNCBASE=sib.str; SYNCREV=sib.rev;
+      DB.meta=DB.meta||{version:1}; DB.meta.rev=sib.rev+1;
+      LAST_JSON=JSON.stringify(DB); UNDO.length=0;
+      saveLocal();
+      SIBLING_VIEW=true;
+      if(sm.conflicts) toast("⚠️ אותו פרט שונה בשני החלונות — נשמר מה שנשמר קודם ("+sm.conflicts+")","warn");
+    }catch(e){}
+  }
   /* בדיקה מוקדמת וזולה: אם השרת כבר התקדם אל (או מעבר ל) המונה שלנו —
      משתמש אחר שמר בינתיים. בלעדיה, שמירה עם מונה שווה הייתה מתקבלת
      ודורסת בשקט את מה שהוא הכניס. נכשלה הבדיקה (רשת)? ממשיכים —
@@ -4176,8 +4341,7 @@ async function flushSave(){
       var srv=Number(rc.rev)||0, loc=(DB&&DB.meta&&Number(DB.meta.rev))||0;
       if(srv>=loc){
         SAVEQ.inflight=false;
-        resolveConflictAndResave();
-        return;
+        return resolveConflictAndResave();
       }
     }
   }catch(e){}
@@ -4206,7 +4370,7 @@ async function flushSave(){
   SAVEQ.massOk=false;
   var snap=JSON.stringify(DB);                                      // תמונת מצב עדכנית
   var payload='{"action":"save","codeHash":'+JSON.stringify(h)+',"data":'+snap+'}';
-  fetch(SHEETS_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:payload})
+  return fetch(SHEETS_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:payload})
     .then(function(r){ return r.json(); })
     .then(function(j){
       SAVEQ.inflight=false;
@@ -4220,7 +4384,7 @@ async function flushSave(){
           toast("השרת שחזר טבלאות שחסרו בשמירה: "+j.restoredTables.join(", ")+" — הנתונים נטענים מחדש","warn");
           serverLoad().then(function(r2){
             if(r2&&r2.data&&Array.isArray(r2.data.apartments)){
-              DB=normalizeDB(r2.data); setSyncBase(r2.data); saveLocal(); rerender();
+              adoptDB(normalizeDB(r2.data)); setSyncBase(r2.data); saveLocal(); rerender();
             }
           });
         }
@@ -4237,7 +4401,7 @@ async function flushSave(){
           }
           setSync("saving"); setTimeout(flushSave,0);
         }
-        else { clearDirtyMark(); setSync("ok"); }
+        else { clearDirtyMark(); setSync("ok"); siblingViewRefresh(); }
         return;
       }
       SAVEQ.dirty=true;
