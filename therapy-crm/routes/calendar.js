@@ -37,6 +37,8 @@ router.get('/week', authenticate, async (req, res) => {
        JOIN patients p ON p.id = s.patient_id
        JOIN assignments a ON a.id = s.assignment_id
        WHERE s.therapist_id=$1 AND s.date BETWEEN $2 AND $3 AND s.deleted=false AND s.status <> 'cancelled'
+         -- מטופל שנמחק לא מופיע בלוח. פגישה שעוד מתוזמנת נשארת גלויה, כי היא עדיין תופסת את המשבצת
+         AND (p.deleted = false OR s.status = 'scheduled')
        ORDER BY s.date, s.hour`, [tid, fmtDate(start), fmtDate(end)]);
     const hr = await pool.query('SELECT date, name FROM holidays WHERE date BETWEEN $1 AND $2 ORDER BY date',
       [fmtDate(start), fmtDate(end)]);

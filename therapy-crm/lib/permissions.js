@@ -28,7 +28,7 @@ const FIELD_VIEW_CAPS = {
 const CATALOG = [
   { title: 'רשימת הממתינים', rows: [
     { label: 'רשימת הממתינים', hint: 'צפייה = הלשונית · עריכה = הוספת מטופל חדש וייבוא מאקסל', view: 'tabWaiting', edit: 'addPatient' },
-    { label: 'מחיקת מטופל', action: 'deletePatient' },
+    { label: 'מחיקת מטופל', hint: 'כולל "למחוק את המטופל מהתוכנה" בביטול סדרה', action: 'deletePatient' },
   ]},
   { title: 'פרטי מטופל', rows: [
     { label: 'שם משפחה ושם פרטי', hint: 'בלי צפייה המטופל מוצג כ"מטופל #מספר"', view: 'viewName', edit: 'editName' },
@@ -52,7 +52,7 @@ const CATALOG = [
   { title: 'השהיה ושיבוץ', rows: [
     { label: 'רשימת השהיה', hint: 'עריכה = העברה להשהיה והסרה ממנה', view: 'viewHolds', edit: 'holds' },
     { label: 'שיבוץ לטיפול', hint: 'צפייה = המטפלים הפנויים למטופל · עריכה = שיבוץ בפועל, פגישה בודדת ולשונית מטופלים קיימים', view: 'viewAssign', edit: 'assign' },
-    { label: 'סדרות טיפול', hint: 'צפייה = הלשונית · עריכה = ביטול סדרה', view: 'tabSeries', edit: 'cancelSeries' },
+    { label: 'סדרות טיפול', hint: 'צפייה = הלשונית · עריכה = ביטול סדרה והחזרת המטופל לרשימת הממתינים', view: 'tabSeries', edit: 'cancelSeries' },
     { label: 'פגישות', hint: 'צפייה = רשימת הפגישות בסדרה · עריכה = בוצעה / לא הגיע / בוטלה', view: 'viewSessions', edit: 'editSessions' },
   ]},
   { title: 'ממתינים לאינטייק', rows: [

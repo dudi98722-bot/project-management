@@ -55,6 +55,31 @@ async function insertWeeklySessions(client, a, startDate, count, startNum) {
   return { created, skippedBusy, skippedHoliday };
 }
 
+// ביטול כל הטיפול הפעיל של מטופל: סדרות פעילות מסומנות כמבוטלות והפגישות העתידיות
+// שלו מבוטלות — אחרת מטופל שנמחק היה ממשיך לתפוס משבצות אצל המטפלים.
+// רץ בתוך טרנזקציה פתוחה של הקורא.
+async function cancelActiveTreatment(client, patientId) {
+  const ar = await client.query(
+    `UPDATE assignments SET status='cancelled', updated_at=NOW()
+      WHERE patient_id=$1 AND status='active' AND deleted=false RETURNING *`, [patientId]);
+  const sr = await client.query(
+    `UPDATE sessions SET status='cancelled', updated_at=NOW()
+      WHERE patient_id=$1 AND status='scheduled' AND date >= CURRENT_DATE AND deleted=false RETURNING *`, [patientId]);
+  return { assignments: ar.rows, sessions: sr.rows };
+}
+
+// מחיקת מטופל מהתוכנה (מחיקה רכה — הרשומה נשארת במסד) יחד עם ביטול הטיפול הפעיל שלו.
+// מחזיר null אם המטופל לא נמצא או שכבר נמחק. רץ בתוך טרנזקציה פתוחה של הקורא.
+async function removePatient(client, patientId, userId) {
+  const r = await client.query(
+    `UPDATE patients SET deleted=true, deleted_at=NOW(), deleted_by=$2, updated_at=NOW(),
+            status=CASE WHEN status='assigned' THEN 'waiting' ELSE status END
+      WHERE id=$1 AND deleted=false RETURNING *`, [patientId, userId]);
+  if (!r.rows.length) return null;
+  const treatment = await cancelActiveTreatment(client, patientId);
+  return { patient: r.rows[0], ...treatment };
+}
+
 // הפרת אילוץ הייחודיות uq_sessions_slot — מישהו תפס את המשבצת במקביל
 function isSlotTaken(e) { return e && e.code === '23505'; }
 const SLOT_TAKEN_MSG = 'המשבצת נתפסה הרגע על ידי משתמש אחר — רענן ונסה שוב';
@@ -62,6 +87,6 @@ const WEEKLY_TAKEN_MSG = 'המשבצת השבועית הזו תפוסה על י�
 
 module.exports = {
   parseDate, fmtDate, addDays, worksAt,
-  weeklySlotOccupied, insertWeeklySessions,
+  weeklySlotOccupied, insertWeeklySessions, cancelActiveTreatment, removePatient,
   isSlotTaken, SLOT_TAKEN_MSG, WEEKLY_TAKEN_MSG,
 };

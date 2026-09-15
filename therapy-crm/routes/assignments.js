@@ -6,7 +6,7 @@ const { authenticate, can } = require('../middleware/auth');
 const sheets = require('../sheets');
 const { maskPatientNames } = require('../lib/permissions');
 const {
-  parseDate, fmtDate, worksAt, weeklySlotOccupied, insertWeeklySessions,
+  parseDate, fmtDate, worksAt, weeklySlotOccupied, insertWeeklySessions, removePatient,
   isSlotTaken, SLOT_TAKEN_MSG, WEEKLY_TAKEN_MSG,
 } = require('../lib/scheduling');
 const router = express.Router();
@@ -26,7 +26,9 @@ const LIST_SQL = `
 
 router.get('/', authenticate, async (req, res) => {
   try {
-    const parts = ['a.deleted=false'];
+    // סדרות של מטופל שנמחק לא מוצגות. סדרה שעוד פעילה נשארת גלויה (נשארה ממחיקה ישנה,
+    // מלפני שמחיקה ביטלה את הטיפול), כדי שאפשר יהיה לראות ולבטל אותה
+    const parts = ['a.deleted=false', "(p.deleted=false OR a.status='active')"];
     const params = [];
     if (req.query.patient_id) { params.push(req.query.patient_id); parts.push(`a.patient_id=$${params.length}`); }
     if (req.query.therapist_id) { params.push(req.query.therapist_id); parts.push(`a.therapist_id=$${params.length}`); }
@@ -249,10 +251,16 @@ router.post('/single', authenticate, can('assign'), async (req, res) => {
   } finally { client.release(); }
 });
 
-// ביטול סדרה: פגישות עתידיות מבוטלות; אם למטופל אין סדרה פעילה אחרת — חוזר לרשימת ההמתנה
+// ביטול סדרה: הפגישות העתידיות שלה מבוטלות, ו-then קובע מה קורה עם המטופל —
+//   waiting — חוזר לרשימת הממתינים (גם כשיש לו סדרה פעילה נוספת: זו בחירה מפורשת)
+//   delete  — נמחק מהתוכנה, כולל ביטול שאר הטיפול הפעיל שלו (דורש גם הרשאת מחיקת מטופל)
+// בלי then (ממשק ישן שעוד פתוח בדפדפן): חוזר לממתינים רק אם אין לו סדרה פעילה אחרת
 router.put('/:id/cancel', authenticate, can('cancelSeries'), async (req, res) => {
   const id = validId(req.params.id);
   if (!id) return res.status(400).json({ error: 'מזהה לא תקין' });
+  const then = (req.body || {}).then;
+  if (then !== undefined && !['waiting', 'delete'].includes(then)) return res.status(400).json({ error: 'בחירה לא תקינה' });
+  if (then === 'delete' && !req.caps.deletePatient) return res.status(403).json({ error: 'אין לך הרשאה למחוק מטופלים' });
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -262,17 +270,35 @@ router.put('/:id/cancel', authenticate, can('cancelSeries'), async (req, res) =>
     const sr = await client.query(
       `UPDATE sessions SET status='cancelled', updated_at=NOW()
        WHERE assignment_id=$1 AND status='scheduled' AND date >= CURRENT_DATE AND deleted=false RETURNING *`, [id]);
-    const other = await client.query(
-      `SELECT 1 FROM assignments WHERE patient_id=$1 AND id<>$2 AND status='active' AND deleted=false LIMIT 1`,
-      [assignment.patient_id, id]);
-    if (!other.rows.length) {
-      await client.query(`UPDATE patients SET status='waiting', updated_at=NOW() WHERE id=$1 AND status='assigned'`, [assignment.patient_id]);
+    let removed = null;
+    if (then === 'delete') {
+      removed = await removePatient(client, assignment.patient_id, req.user.id);
+    } else if (then === 'waiting') {
+      await client.query(`UPDATE patients SET status='waiting', updated_at=NOW() WHERE id=$1 AND deleted=false`, [assignment.patient_id]);
+    } else {
+      const other = await client.query(
+        `SELECT 1 FROM assignments WHERE patient_id=$1 AND id<>$2 AND status='active' AND deleted=false LIMIT 1`,
+        [assignment.patient_id, id]);
+      if (!other.rows.length) {
+        await client.query(`UPDATE patients SET status='waiting', updated_at=NOW() WHERE id=$1 AND status='assigned'`, [assignment.patient_id]);
+      }
     }
     await client.query('COMMIT');
-    await logAction(req.user, 'cancel', 'assignments', id, { cancelled_sessions: sr.rows.length });
-    sheets.backup(req.user, 'cancel', 'assignments', id, assignment, { cancelled_sessions: sr.rows.length });
+
+    const details = { cancelled_sessions: sr.rows.length, then: then || 'auto' };
+    await logAction(req.user, 'cancel', 'assignments', id, details);
+    sheets.backup(req.user, 'cancel', 'assignments', id, assignment, details);
     sheets.mirrorMany('sessions', sr.rows);
-    res.json({ assignment, cancelled_sessions: sr.rows.length });
+    if (removed) {
+      const del = { via: 'cancel_series', assignment_id: id,
+        other_series_cancelled: removed.assignments.length, cancelled_sessions: removed.sessions.length };
+      await logAction(req.user, 'delete', 'patients', assignment.patient_id, del);
+      sheets.backup(req.user, 'delete', 'patients', assignment.patient_id, removed.patient, del);
+      sheets.mirrorMany('assignments', removed.assignments);
+      sheets.mirrorMany('sessions', removed.sessions);
+    }
+    res.json({ assignment, cancelled_sessions: sr.rows.length, then: then || null,
+      patient_deleted: !!removed, other_series_cancelled: removed ? removed.assignments.length : 0 });
   } catch (e) {
     try { await client.query('ROLLBACK'); } catch (_) {}
     console.error(e); res.status(500).json({ error: 'שגיאת שרת' });

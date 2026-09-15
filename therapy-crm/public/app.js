@@ -621,9 +621,17 @@ function waitingRowsHtml(rows) {
 }
 
 async function deletePatient(id) {
-  if (!confirm('להעביר את המטופל לסל המחיקה?')) return;
-  try { await api('/patients/' + id, { method: 'DELETE' }); toast('נמחק'); await loadAll(); render(); }
-  catch (e) { toast(e.message, true); }
+  // מחיקה מבטלת גם את הסדרות הפעילות של המטופל — אומרים את זה לפני האישור
+  const n = S.assignments.filter(a => a.patient_id === id && a.status === 'active').length;
+  const warn = !n ? '' : n === 1
+    ? 'למטופל יש סדרה פעילה — היא תבוטל יחד עם הפגישות העתידיות.\n'
+    : `למטופל יש ${n} סדרות פעילות — הן יבוטלו יחד עם הפגישות העתידיות.\n`;
+  if (!confirm(warn + 'להעביר את המטופל לסל המחיקה?')) return;
+  try {
+    const r = await api('/patients/' + id, { method: 'DELETE' });
+    toast(r.cancelled_series ? `נמחק · בוטלו ${r.cancelled_series} סדרות ו-${r.cancelled_sessions} פגישות עתידיות` : 'נמחק');
+    await loadAll(); render();
+  } catch (e) { toast(e.message, true); }
 }
 
 // ----- טופס מטופל -----
@@ -1683,13 +1691,51 @@ function renderSeries(m) {
   </div>`;
 }
 
-async function cancelAssignment(id) {
-  if (!confirm('לבטל את הסדרה? כל הפגישות העתידיות יבוטלו והמטופל יחזור לרשימת ההמתנה (אם אין לו סדרה נוספת).')) return;
+// ביטול סדרה: חלונית עם שתי אפשרויות — המטופל חוזר לרשימת הממתינים, או נמחק מהתוכנה
+function cancelAssignment(id) {
+  const a = S.assignments.find(x => x.id === id);
+  if (!a) return toast('הסדרה לא נמצאה — רענן את הדף', true);
+  const single = a.kind === 'single';
+  const n = S.assignments.filter(x => x.patient_id === a.patient_id && x.id !== a.id && x.status === 'active').length;
+  const others = n === 1 ? 'סדרה פעילה נוספת' : `${n} סדרות פעילות נוספות`;
+  const canDelete = !!S.me.caps.deletePatient;
+  showModal(`
+  <h2>ביטול ${single ? 'פגישה בודדת' : 'סדרת טיפולים'} <button class="x" onclick="closeModal()">✕</button></h2>
+  <div class="imp-summary">
+    <b>${esc(a.patient_name)}</b> אצל ${esc(a.therapist_name)} · ${single ? fmtDateHe(a.start_date) : 'יום ' + WEEKDAYS[a.weekday]} ${hourLabel(a.hour)}
+    <div class="hint" style="margin-top:4px">${single ? 'הפגישה תבוטל' : 'כל הפגישות העתידיות בסדרה יבוטלו'}. מה לעשות עם המטופל?</div>
+  </div>
+  <div class="choices">
+    <button type="button" class="choice" onclick="confirmCancel(${a.id},'waiting')">
+      <b>↩ להכניס לרשימת הממתינים</b>
+      <span class="hint">המטופל נשאר בתוכנה בסטטוס "ממתין", ואפשר לשבץ אותו מחדש${n ? ` · ${others} שלו ${n === 1 ? 'תמשיך' : 'ימשיכו'} כרגיל` : ''}</span>
+    </button>
+    <button type="button" class="choice danger" ${canDelete ? '' : 'disabled'} onclick="confirmCancel(${a.id},'delete')">
+      <b>🗑 למחוק את המטופל מהתוכנה</b>
+      <span class="hint">${canDelete
+        ? `המטופל לא יופיע יותר באף מסך${n ? ` · גם ${others} שלו ${n === 1 ? 'תבוטל' : 'יבוטלו'}` : ''}`
+        : 'אין לך הרשאה למחוק מטופלים'}</span>
+    </button>
+  </div>
+  <div class="modal-actions"><button type="button" class="btn sec" onclick="closeModal()">חזרה בלי לבטל</button></div>`);
+}
+
+async function confirmCancel(id, then) {
+  const a = S.assignments.find(x => x.id === id);
+  const name = a ? a.patient_name : 'המטופל';
+  // אין מסך לשחזור מטופל שנמחק — אישור נוסף עם שם המטופל
+  if (then === 'delete' && !confirm(`למחוק את ${name} מהתוכנה?`)) return;
+  const btns = [...document.querySelectorAll('#modal-root button')];
+  const was = btns.map(b => b.disabled);
+  btns.forEach(b => { b.disabled = true; });   // מניעת לחיצה כפולה
   try {
-    const r = await api('/assignments/' + id + '/cancel', { method: 'PUT' });
-    toast(`הסדרה בוטלה (${r.cancelled_sessions} פגישות עתידיות)`);
-    await loadAll(); render();
-  } catch (e) { toast(e.message, true); }
+    const r = await api(`/assignments/${id}/cancel`, { method: 'PUT', body: { then } });
+    let msg = `${a && a.kind === 'single' ? 'הפגישה בוטלה' : 'הסדרה בוטלה'} (${r.cancelled_sessions} פגישות עתידיות)`;
+    if (r.patient_deleted) msg += ` · ${name} נמחק מהתוכנה${r.other_series_cancelled ? `, ובוטלו עוד ${r.other_series_cancelled} סדרות` : ''}`;
+    else if (then === 'waiting') msg += ` · ${name} הוחזר לרשימת הממתינים`;
+    toast(msg);
+    closeModal(); await loadAll(); render();
+  } catch (e) { btns.forEach((b, i) => { b.disabled = was[i]; }); toast(e.message, true); }
 }
 
 async function openSessionsModal(aid) {

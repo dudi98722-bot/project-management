@@ -1,8 +1,9 @@
 // רשימת ממתינים — ניהול מטופלים
 const express = require('express');
-const { pool, logAction, softDelete, restore, validId } = require('../db');
+const { pool, logAction, restore, validId } = require('../db');
 const { authenticate, can, canAny } = require('../middleware/auth');
 const { FIELD_CAPS, FIELD_VIEW_CAPS } = require('../lib/permissions');
+const { removePatient } = require('../lib/scheduling');
 const sheets = require('../sheets');
 const router = express.Router();
 
@@ -194,14 +195,27 @@ router.put('/:id/status', authenticate, can('assign'), async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
+// מחיקה (רכה) מבטלת גם את הטיפול הפעיל של המטופל — אחרת הפגישות העתידיות שלו
+// היו ממשיכות לתפוס משבצות אצל המטפלים, בלי שאפשר לראות את המטופל עצמו
 router.delete('/:id', authenticate, can('deletePatient'), async (req, res) => {
+  const id = validId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'מזהה לא תקין' });
+  const client = await pool.connect();
   try {
-    const ok = await softDelete('patients', req.params.id, req.user);
-    if (!ok) return res.status(404).json({ error: 'לא נמצא' });
-    const r = await pool.query('SELECT * FROM patients WHERE id=$1', [req.params.id]);
-    sheets.backup(req.user, 'delete', 'patients', req.params.id, r.rows[0], {});
-    res.json({ ok: true });
-  } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+    await client.query('BEGIN');
+    const removed = await removePatient(client, id, req.user.id);
+    if (!removed) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'לא נמצא' }); }
+    await client.query('COMMIT');
+    const details = { cancelled_series: removed.assignments.length, cancelled_sessions: removed.sessions.length };
+    await logAction(req.user, 'delete', 'patients', id, details);
+    sheets.backup(req.user, 'delete', 'patients', id, removed.patient, details);
+    sheets.mirrorMany('assignments', removed.assignments);
+    sheets.mirrorMany('sessions', removed.sessions);
+    res.json({ ok: true, ...details });
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    console.error(e); res.status(500).json({ error: 'שגיאת שרת' });
+  } finally { client.release(); }
 });
 
 router.post('/:id/restore', authenticate, can('deletePatient'), async (req, res) => {
