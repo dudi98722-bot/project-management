@@ -225,6 +225,10 @@ table.ac-tbl .ac-state{height:22px;margin-top:3px;white-space:nowrap}
 table.ac-tbl .ac-out{height:20px;white-space:nowrap}
 table.ac-tbl .ac-acts{height:28px;display:flex;gap:2px;justify-content:center;white-space:nowrap}
 table.ac-tbl .ac-acts .btn{padding:2px 7px;font-size:12px}
+table.ac-tbl .ac-filt{height:26px;margin-top:3px}
+table.ac-tbl .ac-fsel{width:100%;height:24px;min-height:0;padding:0 4px;font-size:11.5px;border-radius:6px;box-sizing:border-box}
+table.ac-tbl .ac-fsel.on{background:#eef2ff;border-color:var(--brand);color:var(--brand-d);font-weight:700}
+table.ac-tbl .ac-shown{line-height:26px;font-size:11px;font-weight:400;color:var(--muted);white-space:nowrap}
 table.ac-tbl .ac-cat{position:sticky;right:0;inset-inline-start:0;z-index:3;background:#fff;min-width:150px;font-weight:700;
   box-shadow:inset 1px 0 0 #e3e7f3}
 table.ac-tbl thead th.ac-cat{z-index:7;background:#eef1fa;vertical-align:bottom}
@@ -414,7 +418,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 סא'";
+var APP_BUILD = "19.08 סב'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -14392,7 +14396,9 @@ function deleteApartmentExpenses(aptId){
 /* ============================================================
    מסך "קטגוריות לפי פרוייקט" — שורה לכל קטגוריה, עמודה לכל פרוייקט
    ============================================================ */
-var ACQ={q:"",apt:"",st:0,sl:0};    // חיפוש קטגוריה / סינון פרוייקט / מיקום הגלילה בטבלה
+var ACQ={q:"",apt:"",show:"",st:0,sl:0};    // חיפוש קטגוריה / סינון פרוייקט / אילו פרוייקטים / מיקום הגלילה
+var ACF={};    // סינון לפי עמודה: פרוייקט → "on" | "off" | "used" | "warn"
+var AC_FMODES=[["","הכל"],["on","✔ מסומן"],["off","✖ לא מסומן"],["used","בשימוש"],["warn","⚠ בשימוש, לא מסומן"]];
 var ACU={};    // מפת השימוש מהרינדור האחרון (פרוייקט → קטגוריה → שלבים) — סימון לא משנה אותה
 /* ספירת שלבים לכל פרוייקט+קטגוריה במעבר אחד. שלבי-אב לא נספרים —
    הכסף והקטגוריה יושבים בתתי-השלבים. */
@@ -14407,9 +14413,74 @@ function aptCatUsage(){
   });
   return u;
 }
-function aptCatsApts(){
-  return active(DB.apartments).filter(function(a){ return matches(ACQ.apt,a.name); })
+function aptCatsApts(use){
+  use=use||ACU||{};
+  return active(DB.apartments).filter(function(a){
+      if(!matches(ACQ.apt,a.name)) return false;
+      if(!ACQ.show) return true;
+      var l=aptCatIds(a.id);
+      if(ACQ.show==="lim") return !!l;
+      if(ACQ.show==="open") return !l;
+      if(ACQ.show==="warn"){
+        if(!l) return false;
+        var u=use[a.id]||{};
+        return Object.keys(u).some(function(cid){ return l.indexOf(cid)<0; });
+      }
+      return true;
+    })
     .sort(function(a,b){ return String(a.name).localeCompare(String(b.name),"he"); });
+}
+/* התאמה של קטגוריה לסינון של עמודת פרוייקט אחת */
+function aptCatsCellPass(aptId,catId,mode){
+  if(!mode) return true;
+  var l=aptCatIds(aptId), on=!!(l && l.indexOf(catId)>=0), n=((ACU[aptId]||{})[catId])||0;
+  if(mode==="on") return on;
+  if(mode==="off") return !on;
+  if(mode==="used") return n>0;
+  if(mode==="warn") return !!l && !on && n>0;
+  return true;
+}
+/* הסינונים הפעילים — רק של עמודות שמוצגות כרגע */
+function aptCatsActiveCols(aptIds){
+  return aptIds.filter(function(a){ return !!ACF[a]; });
+}
+function aptCatsRowPass(catId,cols){
+  return cols.every(function(a){ return aptCatsCellPass(a,catId,ACF[a]); });
+}
+function aptCatsFiltering(){
+  return !!(ACQ.q || ACQ.apt || ACQ.show || Object.keys(ACF).some(function(a){ return !!ACF[a]; }));
+}
+/* סינון עמודה — מסתיר שורות במקום, בלי לבנות את הטבלה מחדש (בלי קפיצה).
+   סימון תא אחר כך לא מסנן מחדש: השורה נשארת גלויה עד שינוי הסינון. */
+function aptCatsColFilter(sel){
+  var a=sel.getAttribute("data-apt");
+  if(sel.value) ACF[a]=sel.value; else delete ACF[a];
+  sel.classList.toggle("on",!!sel.value);
+  aptCatsApplyFilter();
+}
+function aptCatsApplyFilter(){
+  var box=document.getElementById("ac-wrap"); if(!box) return;
+  var shownApts=Array.prototype.map.call(box.querySelectorAll("th.ac-apt[data-apt]"),function(th){ return th.getAttribute("data-apt"); });
+  var cols=aptCatsActiveCols(shownApts), shown=0;
+  box.querySelectorAll("tbody tr[data-cat]").forEach(function(tr){
+    var ok=aptCatsRowPass(tr.getAttribute("data-cat"),cols);
+    var want=ok?"":"none";
+    if(tr.style.display!==want) tr.style.display=want;
+    if(ok) shown++;
+  });
+  var none=document.getElementById("ac-none"); if(none) none.style.display=shown?"none":"";
+  var cnt=document.getElementById("ac-shown"); if(cnt) cnt.textContent="מוצגות "+shown+" מתוך "+catsSorted().length;
+  aptCatsFilterState();
+}
+/* כפתור הניקוי תופס מקום תמיד (רק נעלם מהעין) — כך הסרגל לא משנה צורה */
+function aptCatsFilterState(){
+  var b=document.getElementById("ac-clear"); if(b) b.style.visibility=aptCatsFiltering()?"visible":"hidden";
+}
+function aptCatsClearFilters(){
+  ACQ.q=""; ACQ.apt=""; ACQ.show=""; ACF={};
+  ["ac-q","ac-apt"].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=""; });
+  var sh=document.getElementById("ac-show"); if(sh) sh.value="";
+  aptCatsRefresh();
 }
 function aptCatsSummary(){
   var apts=active(DB.apartments), lim=apts.filter(function(a){ return !!aptCatIds(a.id); }).length;
@@ -14424,6 +14495,11 @@ function aptCatsViewHtml(){
   return '<div class="toolbar">'+
       searchBox("ac-q",ACQ.q,"חיפוש קטגוריה…","ACQ.q=this.value;aptCatsRefresh()")+
       searchBox("ac-apt",ACQ.apt,"סינון פרוייקט…","ACQ.apt=this.value;aptCatsRefresh()")+
+      '<select id="ac-show" style="max-width:220px" title="אילו פרוייקטים להציג" onchange="ACQ.show=this.value;aptCatsRefresh()">'+
+        [["","כל הפרוייקטים"],["lim","רק פרוייקטים עם רשימה"],["open","רק פרוייקטים בלי הגבלה"],["warn","רק עם שלבים מחוץ לרשימה"]].map(function(o){
+          return '<option value="'+o[0]+'"'+(ACQ.show===o[0]?" selected":"")+'>'+o[1]+'</option>'; }).join("")+
+      '</select>'+
+      '<button type="button" id="ac-clear" class="btn btn-sm" style="transition:none;visibility:'+(aptCatsFiltering()?"visible":"hidden")+'" onclick="aptCatsClearFilters()">✖ נקה סינון</button>'+
       '<button class="btn btn-sm" onclick="aptCatsFillUsage()" title="לכל פרוייקט שעדיין אין לו רשימה — מסמן את הקטגוריות שכבר רשומות בשלבים שלו">📥 מלא לפי השימוש בפועל</button>'+
       '<div class="sp"></div><span class="muted" id="ac-sum">'+aptCatsSummary()+'</span>'+
     '</div>'+
@@ -14437,14 +14513,16 @@ function aptCatsViewHtml(){
 function aptCatsTableHtml(){
   var allCats=catsSorted();
   if(!allCats.length) return '<div class="empty">אין קטגוריות עדיין — הוסף בלשונית "קטגוריות".</div>';
-  var apts=aptCatsApts();
-  if(!apts.length) return '<div class="empty">'+(ACQ.apt?"אין פרוייקט שמתאים לסינון":"אין פרוייקטים")+'</div>';
-  var cats=allCats.filter(function(c){ return matches(ACQ.q,c.name); });
   var use=aptCatUsage(), lists={};
   ACU=use;
+  var apts=aptCatsApts(use);
+  if(!apts.length) return '<div class="empty">'+((ACQ.apt||ACQ.show)?"אין פרוייקט שמתאים לסינון":"אין פרוייקטים")+'</div>';
+  var cats=allCats.filter(function(c){ return matches(ACQ.q,c.name); });
+  var cols=aptCatsActiveCols(apts.map(function(a){ return a.id; })), shown=0;
   apts.forEach(function(a){ lists[a.id]=aptCatIds(a.id); });
   var h='<div class="table-wrap" onscroll="ACQ.st=this.scrollTop;ACQ.sl=this.scrollLeft">'+
-    '<table class="tbl ac-tbl" data-tools="off" data-xl="off"><thead><tr><th class="ac-cat">קטגוריה</th>';
+    '<table class="tbl ac-tbl" data-tools="off" data-xl="off"><thead><tr><th class="ac-cat">קטגוריה'+
+      '<div class="ac-filt ac-shown" id="ac-shown"></div></th>';
   apts.forEach(function(a){
     var l=lists[a.id], u=use[a.id]||{}, out=0;
     if(l) Object.keys(u).forEach(function(cid){ if(l.indexOf(cid)<0) out+=u[cid]; });
@@ -14454,13 +14532,18 @@ function aptCatsTableHtml(){
       '<div class="ac-out">'+aptCatsOutHtml(out)+'</div>'+
       '<div class="ac-acts">'+
         '<button class="btn btn-ghost btn-sm" title="סמן את הקטגוריות שכבר בשימוש בפרוייקט" onclick="aptCatsUsage(\''+a.id+'\')">📥</button>'+
-        '<button class="btn btn-ghost btn-sm" title="'+(ACQ.q?"סמן את הקטגוריות שמוצגות בחיפוש":"סמן את כל הקטגוריות")+'" onclick="aptCatsSetAll(\''+a.id+'\',true)">✔</button>'+
+        '<button class="btn btn-ghost btn-sm" title="סמן את כל הקטגוריות שמוצגות כרגע (לפי החיפוש והסינון)" onclick="aptCatsSetAll(\''+a.id+'\',true)">✔</button>'+
         '<button class="btn btn-ghost btn-sm" title="נקה — בלי הגבלה, כל הקטגוריות זמינות" onclick="aptCatsSetAll(\''+a.id+'\',false)">✖</button>'+
-      '</div></th>';
+      '</div>'+
+      '<div class="ac-filt"><select class="ac-fsel'+(ACF[a.id]?" on":"")+'" data-apt="'+a.id+'" title="סינון הקטגוריות לפי העמודה הזו" onchange="aptCatsColFilter(this)">'+
+        AC_FMODES.map(function(o){ return '<option value="'+o[0]+'"'+((ACF[a.id]||"")===o[0]?" selected":"")+'>'+o[1]+'</option>'; }).join("")+
+      '</select></div></th>';
   });
   h+='</tr></thead><tbody>';
   cats.forEach(function(c){
-    h+='<tr data-cat="'+c.id+'"><td class="ac-cat">'+esc(c.name)+'</td>';
+    var pass=aptCatsRowPass(c.id,cols);
+    if(pass) shown++;
+    h+='<tr data-cat="'+c.id+'"'+(pass?'':' style="display:none"')+'><td class="ac-cat">'+esc(c.name)+'</td>';
     apts.forEach(function(a){
       var l=lists[a.id], on=!!(l && l.indexOf(c.id)>=0), n=(use[a.id]||{})[c.id]||0;
       h+='<td class="ac-cell'+(l?"":" ac-open")+(l&&!on&&n?" ac-warn":"")+'" data-apt="'+a.id+'" data-cat="'+c.id+'">'+
@@ -14470,8 +14553,11 @@ function aptCatsTableHtml(){
     });
     h+='</tr>';
   });
-  if(!cats.length) h+='<tr><td class="ac-cat muted" colspan="'+(apts.length+1)+'">אין קטגוריה שמתאימה לחיפוש</td></tr>';
-  return h+'</tbody></table></div>';
+  h+='<tr id="ac-none"'+(shown?' style="display:none"':'')+'><td class="ac-cat muted" colspan="'+(apts.length+1)+'">אין קטגוריה שמתאימה לחיפוש ולסינון</td></tr>';
+  h+='</tbody></table></div>';
+  /* המונה בכותרת — כאן, כדי שיהיה נכון כבר ברינדור הראשון */
+  return h.replace('<div class="ac-filt ac-shown" id="ac-shown"></div>',
+    '<div class="ac-filt ac-shown" id="ac-shown">מוצגות '+shown+' מתוך '+allCats.length+'</div>');
 }
 /* רענון הטבלה בלבד, בלי לאבד את מיקום הגלילה — כך סימון תא לא מקפיץ.
    לטבלה אין כפתור "אקסל" (data-xl="off"): הכפתור נתלה מעליה באיחור אחרי
@@ -14534,6 +14620,7 @@ function aptCatsRefresh(){
   box.innerHTML=aptCatsTableHtml();
   var nt=box.querySelector(".table-wrap"); if(nt){ nt.scrollLeft=sl; nt.scrollTop=st; }
   var sum=document.getElementById("ac-sum"); if(sum) sum.textContent=aptCatsSummary();
+  aptCatsFilterState();
 }
 function aptCatsGuard(){
   if(!CU || CU.role!=="admin"){ toast("אין הרשאה","err"); aptCatsRefresh(); return false; }
@@ -14560,12 +14647,16 @@ function aptCatsSetAll(aptId,on){
   /* בדיקות על קריאה בלבד — כתיבה (שיוצרת את המפה) רק כשבאמת משנים */
   var name=aptCatsName(aptId);
   if(on){
-    var vis=catsSorted().filter(function(c){ return matches(ACQ.q,c.name); }).map(function(c){ return c.id; });
+    /* מה שמוצג כרגע בטבלה — אחרי החיפוש וסינון העמודות */
+    var rows=document.querySelectorAll("#ac-wrap tbody tr[data-cat]");
+    var vis=rows.length
+      ? Array.prototype.filter.call(rows,function(tr){ return tr.style.display!=="none"; }).map(function(tr){ return tr.getAttribute("data-cat"); })
+      : catsSorted().filter(function(c){ return matches(ACQ.q,c.name); }).map(function(c){ return c.id; });
     var list=(aptCatIds(aptId)||[]).slice();
     var add=vis.filter(function(id){ return list.indexOf(id)<0; });
     if(!add.length){ toast("הכול כבר מסומן","warn"); return; }
     aptCatsWrite()[aptId]=list.concat(add);
-    save(); toast('סומנו '+add.length+' קטגוריות ב"'+name+'"'+(ACQ.q?" (לפי החיפוש)":""),"ok");
+    save(); toast('סומנו '+add.length+' קטגוריות ב"'+name+'"'+(aptCatsFiltering()?" (רק המוצגות)":""),"ok");
   } else {
     if(!aptCatIds(aptId)){
       /* נשארו רק מזהים של קטגוריות שנמחקו — מנקים אותם */
