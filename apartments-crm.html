@@ -408,6 +408,18 @@ td.empty{text-align:center;color:var(--muted);padding:22px}
   .topbar{padding:9px 12px;gap:8px}.nav{padding:8px 10px;top:52px}}
 @media print{.topbar,.nav,.toolbar,.no-print{display:none!important}.content{max-width:100%}
   body{background:#fff}.card,.table-wrap{box-shadow:none}}
+
+/* ===== קבצים מצורפים ===== */
+.fchips{display:inline-flex;gap:1px;vertical-align:middle;margin-inline-start:3px}
+.fchips a{text-decoration:none;font-size:14px;line-height:1;padding:1px 2px;border-radius:5px}
+.fchips a:hover{background:var(--chip)}
+.fchip{display:inline-flex;align-items:center;gap:4px;background:#f1f5f9;border:1px solid var(--line);
+  border-radius:8px;padding:2px 8px 2px 3px;margin:0 0 6px 6px;font-size:12.5px;max-width:100%}
+.fchip a{color:var(--brand-d);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:340px}
+.fchip a:hover{text-decoration:underline}
+.fchip .btn{padding:1px 6px}
+.fchip-pend{background:#fffbeb;border-color:#fde68a}
+.ffield-add{cursor:pointer;display:inline-flex;width:auto}
 </style>
 
 <div id="app"></div>
@@ -426,7 +438,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 ע'";
+var APP_BUILD = "19.08 עא'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -2453,6 +2465,7 @@ function toast(msg,type){
 var _modalOnSave=null;
 function openModal(opt){
   _modalOnSave=opt.onSave||null;
+  if(typeof FUP!=="undefined") FUP.pend={};
   var root=document.getElementById("modal-root");
   root.innerHTML=''+
    '<div class="modal-overlay" onclick="if(event.target===this)closeModal()">'+
@@ -2468,6 +2481,7 @@ function openModal(opt){
 }
 function closeModal(){
   document.getElementById("modal-root").innerHTML=""; _modalOnSave=null;
+  if(typeof FUP!=="undefined") FUP.pend={};
   /* עדכון שהגיע בזמן שהמודאל היה פתוח — נטען עכשיו, כשאין מה לדרוס */
   if(typeof POLL!=="undefined" && POLL.pending) setTimeout(function(){ applyServerUpdate(); },200);
   else if(SIBLING_VIEW) setTimeout(siblingViewRefresh,200);
@@ -2475,6 +2489,331 @@ function closeModal(){
 function modalSave(){ if(_modalOnSave){ var r=_modalOnSave(); if(r!==false) closeModal(); } else closeModal(); }
 function val(id){ var el=document.getElementById(id); return el?el.value:""; }
 function checked(id){ var el=document.getElementById(id); return el?el.checked:false; }
+
+/* ============================================================
+   📎 קבצים מצורפים — חוזים, חשבוניות ואישורי העברה
+   הקובץ נשמר בדרייב של בעל המערכת (דרך ה-Apps Script), בתיקייה
+   פרוייקט › חוזים / חשבוניות / תקבולים / תשלומים › שנה. ברשומה נשמר
+   רק הקישור: files:[{id,name,url,mime,size,kind,at,by}]. מנהלים בלבד —
+   השרת לא שולח את השדה לאחרים ומשחזר אותו בשמירה שלהם.
+   ============================================================ */
+var FILE_KINDS={contract:"חוזים",invoice:"חשבוניות",receipt:"תקבולים",payment:"תשלומים"};
+var FILE_KIND_ONE={contract:"חוזה",invoice:"חשבונית",receipt:"תקבול",payment:"אישור תשלום"};
+var FILE_MAX_MB=20;
+/* pend — קבצים שנבחרו בחלון הפתוח ועוד לא נשלחו (נשלחים בשמירה).
+   chain — ההעלאות רצות אחת-אחת, כדי לא להעמיס על הסקריפט. */
+var FUP={pend:{}, chain:Promise.resolve(), n:0};
+/* יעד = הרשומה שהקובץ שייך לה. הכפתורים מקבלים מפתח קצר במקום אובייקט. */
+var FTG={}, FTG_KEY={}, FTG_SEQ=0;
+function filesOn(){ return !!(CU && CU.role==="admin"); }
+function ftgKey(tg){
+  var j=JSON.stringify(tg);
+  if(!FTG_KEY[j]){ FTG_KEY[j]="f"+(++FTG_SEQ); FTG[FTG_KEY[j]]=tg; }
+  return FTG_KEY[j];
+}
+function rentTg(r,c){ return {t:"rent",rid:r.id,s:(c&&c.startDate)||"",n:(c&&c.tenant)||""}; }
+/* החוזה שהיעד מצביע עליו — הנוכחי (רשומת הדירה עצמה) או אחד הקודמים.
+   אם השם או התאריך תוקנו בזמן ההעלאה — לפי השדה השני, אם הוא חד-משמעי. */
+function rentContractObj(r,s,n){
+  var list=[r].concat(r.history||[]);
+  var exact=list.filter(function(c){ return (c.startDate||"")===s && (c.tenant||"")===n; });
+  if(exact.length) return exact[0];
+  var byS=s?list.filter(function(c){ return (c.startDate||"")===s; }):[];
+  if(byS.length===1) return byS[0];
+  var byN=n?list.filter(function(c){ return (c.tenant||"")===n; }):[];
+  if(byN.length===1) return byN[0];
+  return null;
+}
+function fileTgtObj(tg){
+  if(!tg) return null;
+  if(tg.t==="exp") return byId(DB.expenses,tg.id)||null;
+  if(tg.t==="pay") return byId(DB.payments,tg.id)||null;
+  if(tg.t==="col"){
+    var i=byId(DB.income,tg.inc);
+    return i?((i.payments||[]).filter(function(g){ return g.id===tg.id; })[0]||null):null;
+  }
+  if(tg.t==="rent"){ var r=byId(DB.rentals,tg.rid); return r?rentContractObj(r,tg.s,tg.n):null; }
+  return null;
+}
+/* לאיזו תיקייה הקובץ הולך ואיך הוא ייקרא בדרייב */
+function fileTgtMeta(tg){
+  var o=fileTgtObj(tg); if(!o) return null;
+  if(tg.t==="exp") return {aptId:o.apartmentId,kind:"invoice",date:o.date,label:"חשבונית - "+(o.description||""),amount:o.amount};
+  if(tg.t==="pay"){
+    var e=byId(DB.expenses,o.expenseId); if(!e) return null;
+    return {aptId:e.apartmentId,kind:"payment",date:o.date,label:"אישור תשלום - "+(e.description||""),amount:o.amount};
+  }
+  if(tg.t==="col"){
+    var i=byId(DB.income,tg.inc); if(!i) return null;
+    return {aptId:i.apartmentId,kind:"receipt",date:o.date,label:"אישור העברה - "+(i.description||""),amount:o.amount};
+  }
+  if(tg.t==="rent"){
+    var r=byId(DB.rentals,tg.rid); if(!r) return null;
+    return {aptId:r.apartmentId,kind:"contract",date:o.startDate,label:"חוזה - "+(r.name||"")+(o.tenant?" - "+o.tenant:""),amount:0};
+  }
+  return null;
+}
+function fileSizeLabel(b){ b=Number(b)||0; return b>=1048576?(Math.round(b/104857.6)/10)+"MB":Math.max(1,Math.round(b/1024))+"KB"; }
+/* "2026-09-17 חשבונית - ריצוף - ₪12,000 (scan).pdf" */
+function fileDriveName(meta,file){
+  var m=/\.([A-Za-z0-9]{1,6})$/.exec(file.name||"");
+  var ext=m?"."+m[1].toLowerCase():"";
+  var base=String(file.name||"").replace(/\.[^.]*$/,"").trim().slice(0,40);
+  var nm=(meta.date||todayISO())+" "+meta.label+(Number(meta.amount)?" - "+money(meta.amount):"")+(base?" ("+base+")":"");
+  return nm.replace(/[\\\/:*?"<>|\x00-\x1f]+/g," ").replace(/\s+/g," ").trim().slice(0,170)+ext;
+}
+/* רק קישורי דרייב נפתחים — שום כתובת אחרת לא נכנסת ל-href */
+function fileSafeUrl(u){ u=String(u||""); return /^https:\/\/(drive|docs)\.google\.com\//.test(u)?u:""; }
+function fileToB64(file){
+  return new Promise(function(res,rej){
+    var fr=new FileReader();
+    fr.onload=function(){ var t=String(fr.result||""); res(t.slice(t.indexOf(",")+1)); };
+    fr.onerror=function(){ rej(new Error("הקובץ לא נקרא מהמחשב")); };
+    fr.readAsDataURL(file);
+  });
+}
+function fileErrText(e){
+  e=String(e||"");
+  if(e==="unknown action") return "הסקריפט בגוגל עוד לא עודכן לגרסה עם הקבצים";
+  if(/permission|authoriz|הרשאה/i.test(e)) return "לסקריפט בגוגל אין עדיין הרשאה לדרייב — בעורך הסקריפט הרץ פעם אחת את authorizeDrive ואשר";
+  if(e==="too-big") return "הקובץ גדול מדי";
+  if(e==="outside-root") return "הקובץ לא נמצא בתיקיית הקבצים של המערכת";
+  if(e==="forbidden") return "רק מנהל יכול לצרף קבצים";
+  if(e==="project-not-found") return "הפרוייקט עוד לא נשמר בשרת — נסה שוב בעוד רגע";
+  if(e==="network") return "אין חיבור לשרת (או שהקובץ גדול מדי)";
+  if(e==="unauthorized") return "צריך להתחבר מחדש";
+  return e||"שגיאה לא ידועה";
+}
+/* הודעה שנשארת על המסך מספיק זמן כדי לקרוא אותה */
+function fileToast(msg,type){
+  var box=document.getElementById("toasts"); if(!box) return;
+  var t=document.createElement("div"); t.className="toast "+(type||""); t.textContent=msg;
+  box.appendChild(t);
+  setTimeout(function(){ t.style.opacity="0"; t.style.transition="opacity .3s"; setTimeout(function(){ t.remove(); },300); },7000);
+}
+async function fileUploadOne(tg,file){
+  var meta=fileTgtMeta(tg);
+  if(!meta) throw new Error("הרשומה לא נמצאה");
+  var data=await fileToB64(file);
+  var req={action:"fileUpload",codeHash:getAuth(),aptId:meta.aptId,kind:meta.kind,
+    year:String(meta.date||todayISO()).slice(0,4),name:fileDriveName(meta,file),
+    mime:file.type||"",data:data,desc:"אלכסנדר-דירות · "+meta.label};
+  var j=await api(req);
+  /* פרוייקט חדש שעוד לא הגיע לשרת — מחכים שהשמירה תצא ומנסים שוב */
+  if(j && !j.ok && j.error==="project-not-found"){
+    for(var w=0; w<40 && hasUnsaved(); w++) await new Promise(function(r){ setTimeout(r,500); });
+    j=await api(req);
+  }
+  if(!j || !j.ok || !j.file) throw new Error(fileErrText(j&&j.error));
+  /* בזמן ההעלאה הנתונים יכלו להתחלף (סנכרון, חלון אחר) — מחפשים שוב */
+  var o=fileTgtObj(tg);
+  if(!o) throw new Error("הקובץ נשמר בדרייב (\""+j.file.name+"\"), אבל הרשומה כבר לא נמצאה — צרף אותו שוב");
+  if(!Array.isArray(o.files)) o.files=[];
+  if(!o.files.some(function(f){ return f.id===j.file.id; })){
+    o.files.push({id:j.file.id,name:j.file.name,url:j.file.url,mime:j.file.mime||file.type||"",
+      size:j.file.size||file.size||0,kind:meta.kind,at:new Date().toISOString(),by:(CU&&CU.id)||""});
+  }
+  /* חשבונית שצורפה להוצאה — ההוצאה מסומנת "יש חשבונית/קבלה" */
+  if(tg.t==="exp") o.hasInvoice=true;
+  save();
+  return j.file;
+}
+function fileQueue(tg,file){
+  FUP.n++; fupBadge();
+  FUP.chain=FUP.chain.then(function(){
+    return fileUploadOne(tg,file).then(function(f){
+      toast("📎 נשמר בדרייב: "+f.name,"ok");
+      filesRefresh(tg);
+    },function(err){
+      fileToast("📎 \""+file.name+"\" לא נשמר — "+((err&&err.message)||err),"err");
+    });
+  }).then(function(){ FUP.n--; fupBadge(); });
+}
+function fupBadge(){
+  var el=document.getElementById("fup-badge");
+  if(!FUP.n){ if(el) el.remove(); return; }
+  if(!el){
+    var box=document.getElementById("toasts"); if(!box) return;
+    el=document.createElement("div"); el.id="fup-badge"; el.className="toast";
+    box.insertBefore(el,box.firstChild);
+  }
+  el.textContent="⏫ שומר "+(FUP.n===1?"קובץ":FUP.n+" קבצים")+" בדרייב…";
+}
+window.addEventListener("beforeunload",function(e){
+  if(FUP.n){ e.preventDefault(); e.returnValue=""; return ""; }
+});
+/* אחרי העלאה / הסרה — הרשימה בחלון הפתוח והסימונים בטבלאות מתעדכנים במקום */
+function filesRefresh(tg){
+  var key=ftgKey(tg);
+  document.querySelectorAll('[data-fl="'+key+'"]').forEach(function(el){ el.innerHTML=filesListInner(tg); });
+  document.querySelectorAll('[data-fk="'+key+'"]').forEach(function(el){ el.innerHTML=filesChipsInner(tg); });
+  SIBLING_VIEW=true; siblingViewRefresh();
+}
+function fileRemove(key,fid){
+  var tg=FTG[key]; if(!tg || !filesOn()) return;
+  var o=fileTgtObj(tg); if(!o || !Array.isArray(o.files)) return;
+  var f=o.files.filter(function(x){ return x.id===fid; })[0]; if(!f) return;
+  if(!confirm("להסיר את הקובץ \""+f.name+"\"?\n\nהקובץ יועבר לפח של הדרייב (אפשר לשחזר משם במשך 30 יום).")) return;
+  o.files=o.files.filter(function(x){ return x.id!==fid; });
+  save();
+  filesRefresh(tg);
+  toast("הקובץ הוסר","ok");
+  api({action:"fileTrash",codeHash:getAuth(),fileId:fid}).then(function(j){
+    if(!j || !j.ok) fileToast("הקובץ הוסר מהרשומה, אבל לא הועבר לפח בדרייב — "+fileErrText(j&&j.error),"warn");
+  });
+}
+/* ---------- בלוק "קבצים" בטופס ----------
+   slot — כמה בלוקים באותו טופס (הוצאה + התשלום שנרשם איתה).
+   tg — רשומה קיימת (מציג את הקבצים שלה); ברשומה חדשה — null. */
+function filesFieldHtml(slot,kind,tg,title){
+  if(!filesOn()) return "";
+  return '<div class="field full ffield">'+
+    '<label>📎 '+esc(title)+'</label>'+
+    (tg?'<div data-fl="'+ftgKey(tg)+'">'+filesListInner(tg)+'</div>':'')+
+    '<div id="fl-pend-'+slot+'">'+filesPendInner(slot)+'</div>'+
+    '<label class="btn btn-sm ffield-add">➕ צרף קובץ'+
+      '<input type="file" multiple style="display:none" onchange="filesPick(\''+slot+'\',this)"></label>'+
+    '<div class="hint">נשמר בדרייב אחרי "שמירה" — בתיקייה: פרוייקט › '+FILE_KINDS[kind]+' › שנה</div>'+
+  '</div>';
+}
+function filesListInner(tg){
+  var o=fileTgtObj(tg), key=ftgKey(tg);
+  return ((o&&o.files)||[]).map(function(f){
+    var u=fileSafeUrl(f.url);
+    return '<span class="fchip">'+
+      (u?'<a href="'+esc(u)+'" target="_blank" rel="noopener" title="'+esc(f.name)+'">📄 '+esc(f.name)+'</a>':'📄 '+esc(f.name))+
+      '<button type="button" class="btn btn-ghost btn-sm" title="הסרת הקובץ" onclick="fileRemove(\''+key+'\',\''+esc(f.id)+'\')">✕</button></span>';
+  }).join("");
+}
+function filesPendInner(slot){
+  return (FUP.pend[slot]||[]).map(function(f,i){
+    return '<span class="fchip fchip-pend">⏳ '+esc(f.name)+' <span class="muted">'+fileSizeLabel(f.size)+'</span>'+
+      '<button type="button" class="btn btn-ghost btn-sm" title="לא לצרף" onclick="filesUnpick(\''+slot+'\','+i+')">✕</button></span>';
+  }).join("");
+}
+function filesOk(f){
+  if(!f.size){ fileToast("\""+f.name+"\" ריק — לא צורף","err"); return false; }
+  if(f.size>FILE_MAX_MB*1048576){ fileToast("\""+f.name+"\" גדול מדי — עד "+FILE_MAX_MB+"MB לקובץ","err"); return false; }
+  return true;
+}
+function filesPick(slot,inp){
+  var list=FUP.pend[slot]=FUP.pend[slot]||[];
+  Array.prototype.slice.call(inp.files||[]).forEach(function(f){ if(filesOk(f)) list.push(f); });
+  inp.value="";
+  var el=document.getElementById("fl-pend-"+slot); if(el) el.innerHTML=filesPendInner(slot);
+}
+function filesUnpick(slot,i){
+  (FUP.pend[slot]||[]).splice(i,1);
+  var el=document.getElementById("fl-pend-"+slot); if(el) el.innerHTML=filesPendInner(slot);
+}
+function filesPendingCount(slot){ return (FUP.pend[slot]||[]).length; }
+/* נקרא מתוך השמירה, אחרי שהרשומה כבר קיימת */
+function filesCommit(slot,tg){
+  var list=FUP.pend[slot]||[]; FUP.pend[slot]=[];
+  if(!list.length) return 0;
+  if(!tg || !filesOn()){ fileToast("הקבצים לא נשמרו — אין רשומה לצרף אליה","warn"); return 0; }
+  list.forEach(function(f){ fileQueue(tg,f); });
+  return list.length;
+}
+/* ---------- בטבלאות: 📄 לכל קובץ, ו-📎 לצירוף מהיר ---------- */
+function filesChipsHtml(tg){
+  if(!filesOn()) return "";
+  return '<span class="fchips" data-xl-skip="1" data-fk="'+ftgKey(tg)+'">'+filesChipsInner(tg)+'</span>';
+}
+function filesChipsInner(tg){
+  var o=fileTgtObj(tg);
+  return ((o&&o.files)||[]).map(function(f){
+    var u=fileSafeUrl(f.url);
+    return u?'<a href="'+esc(u)+'" target="_blank" rel="noopener" title="📄 '+esc(f.name)+'" onclick="event.stopPropagation()">📄</a>':'';
+  }).join("");
+}
+function fileAttachBtn(tg){
+  if(!filesOn()) return "";
+  return '<button class="btn btn-ghost btn-sm" title="צירוף קובץ — נשמר בדרייב" onclick="fileQuickPick(\''+ftgKey(tg)+'\')">📎</button>';
+}
+function fileQuickPick(key){
+  if(!FTG[key] || !filesOn()) return;
+  var inp=document.getElementById("fq-input");
+  if(!inp){
+    inp=document.createElement("input"); inp.type="file"; inp.multiple=true; inp.id="fq-input";
+    inp.style.display="none"; document.body.appendChild(inp);
+    inp.addEventListener("change",function(){
+      var tg=FTG[inp.getAttribute("data-key")];
+      Array.prototype.slice.call(inp.files||[]).forEach(function(f){ if(tg && filesOk(f)) fileQueue(tg,f); });
+      inp.value="";
+    });
+  }
+  inp.setAttribute("data-key",key);
+  inp.click();
+}
+/* פתיחת התיקייה בדרייב. החלון נפתח מיד (בתוך הלחיצה) כדי שחוסם החלונות
+   לא יחסום אותו, והכתובת נכנסת אליו כשהשרת עונה. */
+function filesOpenFolder(aptId){
+  if(!filesOn()) return;
+  var w=null; try{ w=window.open("about:blank","_blank"); }catch(e){}
+  api({action:"filesInfo",codeHash:getAuth(),aptId:aptId||""}).then(function(j){
+    var u=(j&&j.ok)?fileSafeUrl((aptId&&j.project)?j.project.url:(j.root&&j.root.url)):"";
+    if(!u){ try{ if(w) w.close(); }catch(e){} fileToast("התיקייה לא נפתחה — "+fileErrText(j&&j.error),"err"); return; }
+    if(w) w.location.href=u; else window.open(u,"_blank");
+  });
+}
+/* ---------- הגדרות › קבצים בדרייב ---------- */
+function filesSettingsHtml(){
+  setTimeout(filesSettingsLoad,0);
+  var cnt={contract:0,invoice:0,receipt:0,payment:0};
+  dvFileList().forEach(function(r){ if(cnt[r.kind]!=null) cnt[r.kind]++; });
+  return '<div class="card" style="max-width:820px">'+
+    '<h3 style="margin-top:0">📎 קבצים מצורפים — נשמרים בגוגל דרייב</h3>'+
+    '<p class="muted" style="line-height:1.8;margin-top:0">כל קובץ שמצרפים נשמר אוטומטית בתיקייה מסודרת:<br>'+
+      '<b>תיקיית הקבצים › שם הפרוייקט › חוזים / חשבוניות / תקבולים / תשלומים › שנה</b><br>'+
+      'חוזה — בכרטיס הדירה בשכירויות · חשבונית — בהוצאה · אישור העברה — בתשלום על הוצאה (תשלומים) '+
+      'או בתשלום שהתקבל על הכנסה (תקבולים). ליד כל רשומה עם קובץ מופיע 📄 שפותח אותו.</p>'+
+    '<div class="stat-grid" style="margin-bottom:12px">'+
+      stat("חוזים",cnt.contract)+stat("חשבוניות",cnt.invoice)+stat("תקבולים",cnt.receipt)+stat("אישורי תשלום",cnt.payment)+
+    '</div>'+
+    '<div id="fs-root" class="hint">בודק את החיבור לדרייב…</div>'+
+    '<div class="toolbar" style="margin-top:10px">'+
+      '<button class="btn btn-primary btn-sm" onclick="filesOpenFolder(\'\')">📁 פתח את תיקיית הקבצים</button>'+
+      '<button class="btn btn-sm" onclick="DQ.tab=\'fil\';go(\'data\',{})">🗂️ רשימת כל הקבצים</button>'+
+    '</div>'+
+    '<div class="section-title">להעביר את הקבצים החדשים לתיקייה אחרת</div>'+
+    '<div class="form-grid">'+
+      '<div class="field full"><label>קישור לתיקייה בדרייב</label>'+
+        '<input id="fs-folder" placeholder="https://drive.google.com/drive/folders/…"></div>'+
+    '</div>'+
+    '<button class="btn btn-sm" onclick="filesSetRoot()">שמור תיקייה</button>'+
+    '<div class="hint">רק קבצים חדשים ייכנסו לתיקייה החדשה — מה שכבר נשמר נשאר במקומו, והקישורים אליו ממשיכים לעבוד.</div>'+
+  '</div>';
+}
+async function filesSettingsLoad(){
+  if(!document.getElementById("fs-root")) return;
+  var st=await api("action=status");
+  var el=document.getElementById("fs-root"); if(!el) return;
+  if(!(st && st.ok && st.files)){
+    el.innerHTML='<span class="neg">⚠ הסקריפט בגוגל עוד לא עודכן לגרסה עם הקבצים — עד שיעודכן, צירוף קבצים לא יעבוד.</span>';
+    return;
+  }
+  var j=await api({action:"filesInfo",codeHash:getAuth()});
+  el=document.getElementById("fs-root"); if(!el) return;
+  if(!j || !j.ok){ el.innerHTML='<span class="neg">⚠ '+esc(fileErrText(j&&j.error))+'</span>'; return; }
+  var u=fileSafeUrl(j.root.url);
+  el.innerHTML='✔ מחובר לדרייב · התיקייה: '+
+    (u?'<a href="'+esc(u)+'" target="_blank" rel="noopener">📁 '+esc(j.root.name)+'</a>':esc(j.root.name));
+}
+async function filesSetRoot(){
+  var v=val("fs-folder").trim();
+  if(!v){ toast("הדבק קישור לתיקייה","err"); return; }
+  var j=await api({action:"filesSetRoot",codeHash:getAuth(),folder:v});
+  if(!j || !j.ok){
+    var why={"bad-folder":"הקישור לא נראה כמו קישור לתיקייה",
+      "folder-not-found":"התיקייה לא נמצאה, או שאין לחשבון של הסקריפט גישה אליה"}[j&&j.error];
+    fileToast("התיקייה לא נשמרה — "+(why||fileErrText(j&&j.error)),"err");
+    return;
+  }
+  toast("התיקייה נשמרה","ok");
+  var inp=document.getElementById("fs-folder"); if(inp) inp.value="";
+  filesSettingsLoad();
+}
 function confirmDelete(msg,cb){
   openModal({title:"אישור מחיקה",bodyHtml:'<p>'+esc(msg)+'</p><p class="hint">הפריט יעבור לסל המחזור וניתן לשחזר אותו.</p>',
     saveLabel:"העבר לסל מחזור",onSave:function(){ return cb(); }});
@@ -3387,6 +3726,7 @@ function renderApartment(c){
   tabs.push(["reports","דוחות"]);
   var h='<div class="toolbar"><h2 style="margin:0">🏢 '+esc(a.name)+'</h2>'+
     (can("edit")?'<button class="btn btn-sm" onclick="editApartment(\''+a.id+'\')">✏️ עריכת פרוייקט</button>':'')+
+    (filesOn()?'<button class="btn btn-sm" onclick="filesOpenFolder(\''+a.id+'\')" title="התיקייה של הפרוייקט בדרייב — חוזים, חשבוניות, תקבולים ותשלומים">📁 קבצים בדרייב</button>':'')+
     '<div class="sp"></div>'+
     (can("edit")?'<button class="btn btn-danger btn-sm" onclick="delApartment(\''+a.id+'\')">🗑️ מחק פרוייקט + תנועות</button>':'')+'</div>';
   h+='<div class="tabs">'+tabs.map(function(t){ return '<div class="tab'+(tab===t[0]?" active":"")+'" onclick="go(\'apartment\',{apartmentId:\''+a.id+'\',tab:\''+t[0]+'\'})">'+t[1]+'</div>'; }).join("")+'</div>';
@@ -5789,14 +6129,14 @@ function convertToContainer(pid,silent){
   var cid=uid();
   DB.expenses.push({id:cid,apartmentId:p.apartmentId,categoryId:p.categoryId||"",
     classification:p.classification,description:p.description,amount:p.amount,date:p.date,
-    note:p.note||"",hasInvoice:p.hasInvoice,invoiceLink:p.invoiceLink||"",
+    note:p.note||"",hasInvoice:p.hasInvoice,invoiceLink:p.invoiceLink||"",files:p.files||[],
     mgmtEnabled:p.mgmtEnabled,mgmtBaseType:p.mgmtBaseType,mgmtVatRate:p.mgmtVatRate,
     parentId:pid,deleted:false});
   /* מעבירים חלוקה, דמי ניהול ותשלומים לתת-השלב */
   DB.expenseSplits.forEach(function(s){ if(s.expenseId===pid) s.expenseId=cid; });
   DB.expenseManagerFees.forEach(function(f){ if(f.expenseId===pid) f.expenseId=cid; });
   DB.payments.forEach(function(x){ if(x.expenseId===pid) x.expenseId=cid; });
-  p.mgmtEnabled=false; p.hasInvoice=false; p.invoiceLink="";
+  p.mgmtEnabled=false; p.hasInvoice=false; p.invoiceLink=""; p.files=[];
   syncParentAmount(pid);
   return true;
 }
@@ -5877,7 +6217,8 @@ function expTableHtml(aptId){
         (isChild?'<span class="muted">↳ </span>':'')+
         '<b>'+esc(e.description)+'</b>'+(e.hidden?' <span class="badge badge-danger" title="מוסתר משאר המשתמשים">🔒 מוסתר</span>':'')+
         (e.noReport?' <span class="badge badge-muted badge-unit" title="לא נספר בדוחות">🚫 לא בדוח</span>':'')+
-        (!e.noReport&&e.noFreilich?' <span class="badge badge-muted badge-unit" title="לא נספר בדוח לפרייליך">🚫 פרייליך</span>':'')+(e.hasInvoice?' 📎':'')+
+        (!e.noReport&&e.noFreilich?' <span class="badge badge-muted badge-unit" title="לא נספר בדוח לפרייליך">🚫 פרייליך</span>':'')+
+        (e.hasInvoice&&!(filesOn()&&e.files&&e.files.length)?' 📎':'')+filesChipsHtml({t:"exp",id:e.id})+
         (cont?' <span class="pill" data-xl-skip="1">'+kids.length+' תתי-שלבים</span>':'')+'</td>'+
       /* לשלב-אב אין קטגוריה משלו — הקטגוריות יושבות בתתי-השלבים */
       '<td>'+(cont?'<span class="muted">—</span>':esc(categoryName(e.categoryId)||""))+'</td>'+
@@ -5888,6 +6229,7 @@ function expTableHtml(aptId){
       '<td class="right" style="white-space:nowrap">'+
         /* למכל אין תשלומים משלו — הכסף יושב בתתי-השלבים */
         (cont?'':'<button class="btn btn-ghost btn-sm" onclick="openPayments(\''+e.id+'\')" title="תשלומים">💳</button>')+
+        fileAttachBtn({t:"exp",id:e.id})+
         (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="openExpenseEditor(\''+e.id+'\',\''+aptId+'\')" title="עריכה">✏️</button>'+
         '<button class="btn btn-ghost btn-sm" onclick="softDelete(\'expenses\',\''+e.id+'\',\'למחוק הוצאה זו?\')">🗑️</button>':'')+'</td>'+
       splitCellsFor(e,cont,spCols)+'</tr>';
@@ -6410,6 +6752,7 @@ function openExpenseEditor(eId,aptId,presetParent){
      ''+
      '<div class="field full"><label>הערה</label><input id="ex-note" value="'+esc(e?e.note:"")+'" placeholder="הערה חופשית"></div>'+
      '<div class="field full"><label><input type="checkbox" id="ex-inv" style="width:auto" '+(e&&e.hasInvoice?"checked":"")+'> יש חשבונית/קבלה</label><input id="ex-link" placeholder="קישור לקבלה (אופציונלי)" value="'+esc(e?e.invoiceLink:"")+'" style="margin-top:4px"></div>'+
+     filesFieldHtml("main","invoice",e?{t:"exp",id:e.id}:null,"חשבונית / קבלה")+
      '<div class="field full"><label style="font-weight:400"><input type="checkbox" id="ex-inrep" style="width:auto" '+(e&&e.noReport?"":"checked")+'> להציג בדוחות</label>'+
        '<div class="hint">ברירת מחדל: מוצג. הסרת הסימון מוציאה את השלב מהדוחות בלבד — הוא נשאר בטבלת השלבים ובכל הסכומים שם.</div></div>'+
      '<div class="field full"><label style="font-weight:400"><input type="checkbox" id="ex-frl" style="width:auto" '+(e&&e.noFreilich?"checked":"")+'> 🚫 לא בדוח לפרייליך</label>'+
@@ -6502,6 +6845,7 @@ function toggleExpPayNow(aptId){
     '<div class="field"><label>אמצעי תשלום</label><select id="ex-pay-method" onchange="onMethodPick(\'ex-pay-method\')">'+methodOptions("transfer")+'</select></div>'+
     '<div class="field"><label>חשבונית</label><select id="ex-pay-invoice">'+invoiceStatusOptions("",false)+'</select></div>'+
     '<div class="field full"><label>קישור לחשבונית <span class="hint">(אופציונלי)</span></label><input id="ex-pay-link" placeholder="הדבק כאן קישור"></div>'+
+    filesFieldHtml("pay","payment",null,"אישור העברה")+
   '</div>';
 }
 function onExpPayAccount(){
@@ -6624,7 +6968,7 @@ function saveExpense(eId,aptId){
   /* ---------- תשלום שנרשם יחד עם השלב ----------
      נוצר רק אחרי שהשלב עצמו נשמר בהצלחה, כדי שלא יישאר תשלום
      יתום אם משהו נכשל למעלה. */
-  var payMsg="";
+  var payMsg="", exPayId=null;
   if(document.getElementById("ex-paynow") && checked("ex-paynow")){
     var pAmt=Number(val("ex-pay-amount"))||0;
     if(pAmt>0){
@@ -6632,7 +6976,8 @@ function saveExpense(eId,aptId){
       var isBank=accountIsBank(accId);
       var payer=isBank?null:(val("ex-pay-payer")||null);
       var inv=val("ex-pay-invoice")||"";
-      DB.payments.push({id:uid(),expenseId:eId,date:val("ex-pay-date")||val("ex-date")||todayISO(),
+      exPayId=uid();
+      DB.payments.push({id:exPayId,expenseId:eId,date:val("ex-pay-date")||val("ex-date")||todayISO(),
         amount:round2(pAmt),accountId:accId,payerPartnerId:payer,
         method:val("ex-pay-method")||"transfer",
         recipientType:"supplier",recipientManagerId:null,
@@ -6645,6 +6990,9 @@ function saveExpense(eId,aptId){
   if(oldParent && oldParent!==e.parentId) syncParentAmount(oldParent);
   if(e.parentId) syncParentAmount(e.parentId);
   save(); toast("ההוצאה נשמרה"+payMsg,"ok"); rerender();
+  filesCommit("main",{t:"exp",id:eId});
+  if(exPayId) filesCommit("pay",{t:"pay",id:exPayId});
+  else if(filesPendingCount("pay")){ FUP.pend.pay=[]; fileToast("לא נרשם תשלום — אישור ההעברה לא נשמר","warn"); }
 }
 
 /* ---------- לשונית תשלומים: כל תשלומי הפרוייקט במקום אחד ---------- */
@@ -7075,7 +7423,7 @@ function payTableHtml(aptId){
     h+='<tr'+(isMgr?' class="mgmt-row"':'')+'>'+
       (sel?'<td class="chk"><input type="checkbox" class="pb-x" value="'+p.id+'" style="width:auto" onchange="pbCount()"></td>':'')+
       '<td>'+dateHe(p.date)+'</td>'+
-      '<td><b>'+esc(e?e.description:"—")+'</b>'+(p.hidden?' <span class="badge badge-danger" title="תשלום מוסתר">🔒</span>':'')+'</td>'+
+      '<td><b>'+esc(e?e.description:"—")+'</b>'+(p.hidden?' <span class="badge badge-danger" title="תשלום מוסתר">🔒</span>':'')+filesChipsHtml({t:"pay",id:p.id})+'</td>'+
       '<td>'+esc((e&&categoryName(e.categoryId))||"—")+'</td>'+
       '<td>'+money(p.amount)+'</td>'+
       '<td>'+payAccountCell(p)+'</td>'+
@@ -7085,6 +7433,7 @@ function payTableHtml(aptId){
       noteCell(p.note)+
       '<td class="right" style="white-space:nowrap">'+
         '<button class="btn btn-ghost btn-sm" onclick="openPayments(\''+p.expenseId+'\')" title="כל תשלומי השלב">💳</button>'+
+        (p.auto?'':fileAttachBtn({t:"pay",id:p.id}))+
         (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="openPaymentEditor(\''+p.expenseId+'\',\''+p.id+'\')">✏️</button>'+
         '<button class="btn btn-ghost btn-sm" onclick="delPayment(\''+p.id+'\',\''+p.expenseId+'\')">🗑️</button>':'')+'</td></tr>';
   });
@@ -7110,11 +7459,11 @@ function openPayments(eId){
     body+='<div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>סכום</th><th>חשבון</th><th>מי שילם</th><th>מוטב</th><th>אמצעי</th><th>חשבונית</th><th>נשלח לרו"ח</th><th></th></tr></thead><tbody>';
     pays.sort(function(x,y){return x.date<y.date?1:-1;}).forEach(function(p){
       var acc=byId(DB.accounts,p.accountId); var recip=p.recipientType==="manager"?("מנהל: "+managerName(p.recipientManagerId)):"ספק";
-      body+='<tr><td>'+dateHe(p.date)+'</td><td>'+money(p.amount)+'</td><td>'+payAccountCell(p)+'</td>'+
+      body+='<tr><td>'+dateHe(p.date)+filesChipsHtml({t:"pay",id:p.id})+'</td><td>'+money(p.amount)+'</td><td>'+payAccountCell(p)+'</td>'+
         '<td>'+(p.payerPartnerId?esc(partnerName(p.payerPartnerId)):(acc&&acc.isBank?"מהבנק":"—"))+'</td>'+
         '<td>'+esc(recip)+'</td><td>'+payMethodCell(p)+'</td><td>'+invoiceCellHtml(p)+'</td>'+
         '<td>'+cpaCellHtml(p)+'</td>'+
-        '<td class="right">'+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="openPaymentEditor(\''+eId+'\',\''+p.id+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="delPayment(\''+p.id+'\',\''+eId+'\')">🗑️</button>':'')+'</td></tr>';
+        '<td class="right" style="white-space:nowrap">'+(p.auto?'':fileAttachBtn({t:"pay",id:p.id}))+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="openPaymentEditor(\''+eId+'\',\''+p.id+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="delPayment(\''+p.id+'\',\''+eId+'\')">🗑️</button>':'')+'</td></tr>';
     });
     body+='</tbody></table></div>';
   }
@@ -7141,6 +7490,7 @@ function openQuickExpense(){
       '<div class="field"><label>קטגוריה</label>'+
         categoryPickerHtml("qe-cat","","אפשר להקליד שם חדש או ללחוץ ➕",[cur])+'</div>'+
       '<div class="field full"><label>הערה</label><input id="qe-note"></div>'+
+      filesFieldHtml("main","invoice",null,"חשבונית / קבלה")+
     '</div>'+
     '<div id="qe-mgmt-box"></div>'+
     '<div id="qe-info"></div>'+
@@ -7289,6 +7639,7 @@ function renderQuickPayNow(force){
       invoiceStatusOptions("",false)+'</select></div>'+
     '<div class="field full"><label>קישור לחשבונית <span class="hint">(אופציונלי)</span></label>'+
       '<input id="qe-pay-link" placeholder="הדבק כאן קישור"></div>'+
+    filesFieldHtml("pay","payment",null,"אישור העברה")+
   '</div>';
 }
 function onQuickPayAccount(){
@@ -7367,11 +7718,12 @@ function saveQuickExpense(){
     syncAutoMgmtPayments(eid);   // תשלום "שווה ערך" אוטומטי, אם מוגדר בפרויקט
   }
 
-  var payMsg="";
+  var payMsg="", qPayId=null;
   if(payNow){
     if(pAmt>0){
       var qInv=val("qe-pay-invoice")||"";
-      DB.payments.push({id:uid(),expenseId:eid,date:date,amount:pAmt,accountId:accId,
+      qPayId=uid();
+      DB.payments.push({id:qPayId,expenseId:eid,date:date,amount:pAmt,accountId:accId,
         payerPartnerId:payer,method:val("qe-pay-method")||"transfer",
         recipientType:"supplier",recipientManagerId:null,
         invoiceStatus:qInv, hasInvoice:(qInv==="has"),
@@ -7381,6 +7733,9 @@ function saveQuickExpense(){
   }
   if(qParent) syncParentAmount(qParent);   // סכום שלב-האב = סך תתי-השלבים
   save();
+  filesCommit("main",{t:"exp",id:eid});
+  if(qPayId) filesCommit("pay",{t:"pay",id:qPayId});
+  else if(filesPendingCount("pay")){ FUP.pend.pay=[]; fileToast("לא נרשם תשלום — אישור ההעברה לא נשמר","warn"); }
   toast('נוסף '+(qParent?'תת-השלב "'+desc+'" תחת "'+expDesc(qParent)+'"':'השלב "'+desc+'"')+payMsg,"ok");
   go("apartment",{apartmentId:aptId,tab:"expenses"});
 }
@@ -7492,6 +7847,7 @@ function openPaymentEditor(eId,payId){
       invoiceStatusOptions(p?payInvoiceStatus(p):"",false)+'</select>'+
       '<input id="pm-link" placeholder="קישור לחשבונית (אופציונלי)" value="'+esc(p?p.invoiceLink:"")+'" style="margin-top:4px"></div>'+
     (CU&&CU.role==="admin"?'<div class="field full" style="background:#fff7f7;border:1px solid #f0d0d0;border-radius:10px;padding:8px"><label><input type="checkbox" id="pm-hidden" style="width:auto" '+(p&&p.hidden?"checked":"")+'> 🔒 תשלום מוסתר משאר המשתמשים</label><div class="hint">רק מנהל יראה את התשלום הזה.</div></div>':'')+
+    filesFieldHtml("main","payment",p?{t:"pay",id:p.id}:null,"אישור העברה")+
     '<div class="field full"><label>הערה</label><input id="pm-note" value="'+esc(p?p.note:"")+'"></div>'+
     '</div>'+
     (partners.length?'<div class="hint">תשלום מחשבון בנק 🏦 יורד מיתרת הבנק ואינו משויך לשותף. תשלום מחשבון שותף נחשב לתרומה שלו.</div>':'');
@@ -7567,6 +7923,7 @@ function savePayment(eId,payId){
   syncAutoMgmtPayments(eId);   // ידני חדש מצמצם את האוטומטי בהתאם לתקרה
   if(tgtId!==eId) syncAutoMgmtPayments(tgtId);   // גם שלב היעד מסתנכרן
   save();
+  filesCommit("main",{t:"pay",id:obj.id});
   toast(tgtId!==eId?('התשלום הועבר לשלב "'+te.description+'"'):"התשלום נשמר","ok");
   rerender(); openPayments(tgtId); return false;
 }
@@ -8509,7 +8866,7 @@ function gpTableHtml(aptId){
     h+='<tr>'+
       (sel?'<td class="chk"><input type="checkbox" class="gb-x" value="'+g.id+'" style="width:auto" onchange="gbCount()"></td>':'')+
       '<td>'+dateHe(g.date)+'</td>'+
-      '<td><b>'+esc(i.description)+'</b><div class="hint" data-xl-skip="1">מחיר '+money(i.amount)+' · נותר '+money(incomeDebt(i))+'</div></td>'+
+      '<td><b>'+esc(i.description)+'</b>'+filesChipsHtml({t:"col",inc:i.id,id:g.id})+'<div class="hint" data-xl-skip="1">מחיר '+money(i.amount)+' · נותר '+money(incomeDebt(i))+'</div></td>'+
       (units.length?'<td>'+unitsCellHtml(i)+'</td>':'')+
       '<td>'+money(g.amount)+'</td>'+
       '<td>'+esc(METHODS[g.method]||g.method||"—")+'</td>'+
@@ -8517,7 +8874,7 @@ function gpTableHtml(aptId){
       '<td>'+esc(g.invoices||"—")+'</td>'+
       '<td>'+cpaCellHtml(g)+'</td>'+
       noteCell(g.note)+
-      '<td class="right" style="white-space:nowrap">'+
+      '<td class="right" style="white-space:nowrap">'+fileAttachBtn({t:"col",inc:i.id,id:g.id})+
         (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editIncomePay(\''+i.id+'\',\''+g.id+'\',\''+aptId+'\',\'all\')">✏️</button>'+
         '<button class="btn btn-ghost btn-sm" onclick="delIncomePay(\''+i.id+'\',\''+g.id+'\',\''+aptId+'\',\'all\')">🗑️</button>':'')+'</td></tr>';
   });
@@ -8925,12 +9282,12 @@ function openIncomePays(incId,aptId){
   else{
     body+='<div class="table-wrap"><table class="tbl"><thead><tr><th>תאריך</th><th>סכום</th><th>אמצעי</th><th>חשבוניות</th><th>נשלח לרו"ח</th><th>הערה</th><th></th></tr></thead><tbody>';
     pays.slice().sort(function(x,y){return x.date<y.date?1:-1;}).forEach(function(g){
-      body+='<tr><td>'+dateHe(g.date)+'</td><td>'+money(g.amount)+'</td>'+
+      body+='<tr><td>'+dateHe(g.date)+filesChipsHtml({t:"col",inc:incId,id:g.id})+'</td><td>'+money(g.amount)+'</td>'+
         '<td>'+esc(METHODS[g.method]||g.method||"—")+'</td>'+
         '<td>'+esc(g.invoices||"—")+'</td>'+
         '<td>'+cpaCellHtml(g)+'</td>'+
         noteCell(g.note)+
-        '<td class="right">'+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editIncomePay(\''+incId+'\',\''+g.id+'\',\''+aptId+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="delIncomePay(\''+incId+'\',\''+g.id+'\',\''+aptId+'\')">🗑️</button>':'')+'</td></tr>';
+        '<td class="right" style="white-space:nowrap">'+fileAttachBtn({t:"col",inc:incId,id:g.id})+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editIncomePay(\''+incId+'\',\''+g.id+'\',\''+aptId+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="delIncomePay(\''+incId+'\',\''+g.id+'\',\''+aptId+'\')">🗑️</button>':'')+'</td></tr>';
     });
     body+='</tbody></table></div>';
   }
@@ -8955,6 +9312,7 @@ function editIncomePay(incId,payId,aptId,back){
     '<div class="field"><label>נשלח לרו"ח</label><select id="gp-cpa">'+
       '<option value="0"'+(g&&g.sentToCpa?"":" selected")+'>טרם נשלח</option>'+
       '<option value="1"'+(g&&g.sentToCpa?" selected":"")+'>✔ נשלח לרו"ח</option></select></div>'+
+    filesFieldHtml("main","receipt",g?{t:"col",inc:incId,id:g.id}:null,"אישור העברה")+
     '<div class="field full"><label>הערה</label><input id="gp-note" value="'+esc(g&&g.note||"")+'"></div>'+
     '</div>',
     saveLabel:"שמירה",onSave:function(){
@@ -8973,6 +9331,7 @@ function editIncomePay(incId,payId,aptId,back){
         o.x.amount=round2(Math.max(0,Math.min(amt,(Number(o.m.amount)||0)-others)));
       });
       save(); toast("התשלום נשמר","ok"); rerender();
+      filesCommit("main",{t:"col",inc:incId,id:obj.id});
       if(back==="all") openAllIncomePays(aptId); else openIncomePays(incId,aptId);
       return false;
     }});
@@ -11890,6 +12249,7 @@ function moduleSettings(){
     _after("partners",["aptpayers","משלמים לפי פרוייקט"]);
     _after("cats",["aptcats","קטגוריות לפי פרוייקט"]);
     _after("accounts",["aptaccs","חשבונות לפי פרוייקט"]);
+    _after("sheets",["files","קבצים בדרייב"]);
   }
   var h='<h2>הגדרות</h2><div class="tabs">'+tabs.map(function(t){return '<div class="tab'+(tab===t[0]?" active":"")+'" onclick="go(\'settings\',{stab:\''+t[0]+'\'})">'+t[1]+'</div>';}).join("")+'</div>';
   if(tab==="partners"){
@@ -11924,6 +12284,8 @@ function moduleSettings(){
       '<td>'+money(ta-tp)+'</td><td></td></tr></tfoot></table></div>'+
       '<div class="hint">הקטגוריה נבחרת בעריכת שלב (או בהוצאה מהירה), ומזינה את דוח <b>"לפי קטגוריה"</b> '+
       'בלשונית הדוחות של כל פרויקט. מחיקת קטגוריה לא מוחקת שלבים — הם פשוט חוזרים ל"ללא קטגוריה".</div>';
+  } else if(tab==="files"){
+    h+=(CU&&CU.role==="admin") ? filesSettingsHtml() : '<div class="empty">אין הרשאה</div>';
   } else if(tab==="aptcats"||tab==="aptaccs"||tab==="aptpayers"){
     h+=(CU&&CU.role==="admin")
       ? aptCatsViewHtml({aptcats:"cats",aptaccs:"accs",aptpayers:"payers"}[tab])
@@ -13405,7 +13767,7 @@ function viewAptRentals(aptId){
       '</tr></thead><tbody>';
     /* החוזה הנוכחי */
     h+='<tr style="background:#f0fdf4">'+
-      '<td><b>חוזה נוכחי</b>'+(newerIx.length
+      '<td><b>חוזה נוכחי</b>'+((r.tenant||r.startDate||r.endDate)?filesChipsHtml(rentTg(r,r)):'')+(newerIx.length
         ? '<div class="hint neg" title="ברשימת החוזים הקודמים יש חוזה שמתחיל אחרי החוזה הזה">⚠ יש חוזה מאוחר יותר ברשימה'+
             (RENT_OPEN[r.id]?'':' — פתח את החוזים הקודמים')+'</div>'
         : '')+'</td>'+
@@ -13417,7 +13779,8 @@ function viewAptRentals(aptId){
       '<td>'+(r.rent?money(r.rent):'<span class="muted">—</span>')+'</td>'+
       '<td>'+(cs.cur&&(r.startDate||cs.cur.n)?contractCollectionCell(cs.cur):'<span class="muted">—</span>')+'</td>'+
       '<td class="right" style="white-space:nowrap">'+(can("edit")
-        ? '<button class="btn btn-ghost btn-sm" onclick="editRental(\''+r.id+'\')" title="עריכה">✏️</button>'+
+        ? ((r.tenant||r.startDate||r.endDate)?fileAttachBtn(rentTg(r,r)):'')+
+          '<button class="btn btn-ghost btn-sm" onclick="editRental(\''+r.id+'\')" title="עריכה">✏️</button>'+
           ((r.tenant||r.startDate||r.endDate)
             ? '<button class="btn btn-ghost btn-sm" onclick="rentalDeleteCurrent(\''+r.id+'\')" title="מחיקת החוזה הנוכחי — החוזה הקודם יחזור להיות הנוכחי">🗑️</button>'
             : '')
@@ -13434,7 +13797,7 @@ function viewAptRentals(aptId){
         .forEach(function(e){
         var x=e.x;
         h+='<tr>'+
-          '<td class="muted">↩ קודם'+(newerIx.indexOf(e.ix)>=0
+          '<td class="muted">↩ קודם'+filesChipsHtml(rentTg(r,x))+(newerIx.indexOf(e.ix)>=0
             ? '<div><span class="badge badge-warn badge-unit" title="החוזה הזה מתחיל אחרי החוזה שמסומן כנוכחי">⚠ מאוחר מהנוכחי</span></div>'
             : '')+'</td>'+
           '<td>'+esc(x.tenant||"—")+'</td>'+
@@ -13454,6 +13817,7 @@ function viewAptRentals(aptId){
             ? (newerIx.indexOf(e.ix)>=0
                 ? '<button class="btn btn-sm" title="החוזה הזה יהפוך לנוכחי, והנוכחי יעבור לקודמים" onclick="rentalMakeCurrent(\''+r.id+'\','+e.ix+')">⬆ הפוך לנוכחי</button> '
                 : '')+
+              fileAttachBtn(rentTg(r,x))+
               '<button class="btn btn-ghost btn-sm" title="עריכת החוזה" onclick="rentalHistEdit(\''+r.id+'\','+e.ix+',1)">✏️</button>'+
               '<button class="btn btn-ghost btn-sm" title="מחיקת החוזה מההיסטוריה" onclick="rentalHistDel(\''+r.id+'\','+e.ix+',1)">🗑️</button>'
             : '')+'</td></tr>';
@@ -13854,6 +14218,7 @@ function rentalAdoptContract(r,ix,keepCur){
   var x=r.history[ix];
   var cur={tenant:r.tenant||"",phone:r.phone||"",startDate:r.startDate||"",endDate:r.endDate||"",rent:Number(r.rent)||0,
     every:rentEvery(r),dueDay:r.dueDay||1};
+  if(r.files&&r.files.length) cur.files=r.files;
   /* יצירה אוטומטית: חודשים בתקופת החוזה שעדיין לא חויבו. שואלים, כדי
      שלא ייווצרו בשקט חיובים על חודשים שאולי נגבו בדרך אחרת. */
   var trial=JSON.parse(JSON.stringify(r));
@@ -13877,6 +14242,7 @@ function rentalAdoptContract(r,ix,keepCur){
   if(x.phone!=null) r.phone=x.phone;
   else if((x.tenant||"")!==cur.tenant) r.phone="";
   r.startDate=x.startDate||""; r.endDate=x.endDate||""; r.rent=Number(x.rent)||0;
+  r.files=x.files||[];
   /* חוזה שזוכר תדירות ויום חיוב — הם עוברים איתו */
   if(RENT_EVERY_M[x.every]) r.every=x.every;
   if(x.dueDay) r.dueDay=Math.min(Math.max(Number(x.dueDay)||1,1),28);
@@ -13907,11 +14273,12 @@ function rentalDeleteCurrent(rid){
       (prev ? 'החוזה הקודם של "'+(prev.tenant||"—")+'" ('+per(prev)+') יחזור להיות הנוכחי.'
             : 'אין חוזים קודמים — הדירה תסומן פנויה.')+
       (n ? '\n\n⚠️ לחוזה הזה משויכים '+n+' חיובים. הם לא נמחקים — אם הם שגויים, מחק אותם בלשונית ההכנסות.'
-         : '\n\nשורות הכנסה ותשלומים לא נמחקים.'))) return;
+         : '\n\nשורות הכנסה ותשלומים לא נמחקים.')+
+      ((r.files&&r.files.length)?'\n\n📎 הקבצים שצורפו לחוזה נשארים בתיקייה בדרייב.':''))) return;
   var made=0;
   if(prev) made=rentalAdoptContract(r,ix,false);
   else{
-    r.tenant=""; r.phone=""; r.startDate=""; r.endDate=""; r.rent=0; r.genFrom="";
+    r.tenant=""; r.phone=""; r.startDate=""; r.endDate=""; r.rent=0; r.genFrom=""; r.files=[];
     save();
   }
   toast("החוזה הנוכחי נמחק"+(prev?" · החוזה הקודם חזר להיות הנוכחי":" · הדירה פנויה")+
@@ -13939,14 +14306,15 @@ function rentalHistEdit(rid,ix,fromTable){
       '<div class="field"><label>שכ"ד לכל חיוב (₪)</label><input id="rh-rent" type="number" step="0.01" value="'+esc(String(x.rent||""))+'"></div>'+
       '<div class="field"><label>מתאריך</label><input id="rh-start" type="date" value="'+esc(x.startDate||"")+'"></div>'+
       '<div class="field"><label>עד תאריך</label><input id="rh-end" type="date" value="'+esc(x.endDate||"")+'"></div>'+
-    '</div>',
+    '</div>'+
+    filesFieldHtml("main","contract",rentTg(r,x),"קובץ החוזה"),
     saveLabel:"שמירה",onSave:function(){
       var sd=val("rh-start"), ed=val("rh-end");
       if(sd && ed && ed<sd){ toast("תאריך הסיום מוקדם מתאריך ההתחלה","err"); return false; }
       x.tenant=val("rh-tenant").trim();
       x.rent=Number(val("rh-rent"))||0;
       x.startDate=sd; x.endDate=ed;
-      save(); toast("החוזה עודכן","ok");
+      save(); filesCommit("main",rentTg(r,x)); toast("החוזה עודכן","ok");
       if(fromTable){ rerender(); return true; }   /* חזרה לטבלה */
       editRental(rid);       /* חוזרים לחלון הדירה — כבר פתוח מחדש */
       return false;
@@ -13975,6 +14343,7 @@ function editRental(id){
         '<div class="hint">בחיוב חודשי — שכר הדירה החודשי; בחיוב שנתי — הסכום השנתי</div></div>'+
       '<div class="field full"><label>הערה</label><input id="rn-note" value="'+esc(r.note||"")+'"></div>'+
     '</div>'+
+    filesFieldHtml("main","contract",(id&&(r.tenant||r.startDate||r.endDate))?rentTg(r,r):null,"קובץ החוזה הנוכחי")+
     /* ---- הכנסה חודשית אוטומטית — המקטע המשותף ---- */
     rentAutoSectionHtml("rn",r,r.genFrom||"")+
     (hist.length?'<div class="section-title">חוזים קודמים ('+hist.length+') <span class="hint">אפשר לערוך או למחוק כל אחד</span></div>'+
@@ -14018,6 +14387,8 @@ function editRental(id){
       }
       else{ r=Object.assign({id:uid(),history:[],deleted:false},obj); DB.rentals.push(r); }
       save();
+      if(r.tenant||r.startDate||r.endDate) filesCommit("main",rentTg(r,r));
+      else if(filesPendingCount("main")){ FUP.pend.main=[]; fileToast("אין חוזה נוכחי (שוכר או תאריכים) — קובץ החוזה לא נשמר","warn"); }
       var made=auto?runRentalIncome(true):0;
       toast("נשמר"+(made?" · נוצרו "+made+" שורות הכנסה":""),"ok");
       rerender();
@@ -14174,6 +14545,7 @@ function renewRental(id){
         '<div class="hint">בחיוב חודשי — שכר הדירה החודשי; בשנתי או חד-פעמי — הסכום המלא</div></div>'+
       '<div class="field full"><label>הערה</label><input id="rw-note" value="'+esc(r.note||"")+'"></div>'+
     '</div>'+
+    filesFieldHtml("main","contract",null,"קובץ החוזה החדש")+
     /* ---- חיוב אוטומטי — אותו מקטע כמו בעריכת הדירה ---- */
     rentAutoSectionHtml("rw",r,""),
     saveLabel:"התחל חוזה חדש",onSave:function(){
@@ -14191,17 +14563,23 @@ function renewRental(id){
           toast("לא נשמר. חוזה שמתחיל לפני הנוכחי מתווסף לחוזים הקודמים — בדוק את התאריך","warn");
           return false;
         }
-        r.history.push({tenant:val("rw-tenant").trim(),phone:val("rw-phone").trim(),
-          startDate:sd,endDate:ed,rent:Number(val("rw-rent"))||0});
-        save(); toast("החוזה נוסף לחוזים הקודמים","ok"); rerender();
+        var oldC={tenant:val("rw-tenant").trim(),phone:val("rw-phone").trim(),
+          startDate:sd,endDate:ed,rent:Number(val("rw-rent"))||0};
+        r.history.push(oldC);
+        save(); filesCommit("main",rentTg(r,oldC));
+        toast("החוזה נוסף לחוזים הקודמים","ok"); rerender();
         return true;
       }
       /* שומרים רק תקופה שבאמת הייתה — דירה שהוגדרה ומעולם לא הושכרה
          לא מייצרת שורת היסטוריה ריקה */
       if(r.tenant||r.startDate||r.endDate){
-        r.history.push({tenant:r.tenant||"",phone:r.phone||"",startDate:r.startDate||"",endDate:r.endDate||"",rent:Number(r.rent)||0,
-          every:rentEvery(r),dueDay:r.dueDay||1});
+        var prevC={tenant:r.tenant||"",phone:r.phone||"",startDate:r.startDate||"",endDate:r.endDate||"",rent:Number(r.rent)||0,
+          every:rentEvery(r),dueDay:r.dueDay||1};
+        /* הקבצים של החוזה עוברים איתו לרשימת הקודמים */
+        if(r.files&&r.files.length) prevC.files=r.files;
+        r.history.push(prevC);
       }
+      r.files=[];
       r.tenant=val("rw-tenant").trim(); r.phone=val("rw-phone").trim();
       r.startDate=sd; r.endDate=ed; r.rent=Number(val("rw-rent"))||0;
       /* השדות האלה נשארו קודם על ערכי החוזה הקודם ודרשו פתיחת
@@ -14215,6 +14593,7 @@ function renewRental(id){
          רק אם בחרו אותו במפורש. */
       r.genFrom=r.autoIncome?(val("rw-from")||""):"";
       save();
+      filesCommit("main",rentTg(r,r));
       var made=r.autoIncome?runRentalIncome(true):0;
       toast((r.tenant?"החוזה חודש":"הדירה סומנה כפנויה")+(made?" · נוצרו "+made+" שורות הכנסה":""),"ok");
       rerender();
@@ -15205,6 +15584,34 @@ function dvPayRowHtml(r){
     dvTd(payMethodLabel(p))+dvTd(p.auto?"כן":"")+
     dvTd(invoiceStatusText(p))+dvTd(cpaText(p))+dvTd(p.note||"")+'</tr>';
 }
+var DV_FIL_HEAD=["פרוייקט","סוג","תאריך","שייך ל","סכום","קובץ","גודל","הועלה"];
+/* כל הקבצים המצורפים, מכל הפרוייקטים */
+function dvFileList(){
+  var out=[];
+  function add(a,kind,date,desc,amount,files){
+    (files||[]).forEach(function(f){ if(f) out.push({a:a,kind:f.kind||kind,date:date||"",desc:desc||"",amount:amount,f:f}); });
+  }
+  dvApts().forEach(function(a){
+    apExpenses(a.id).forEach(function(e){ add(a,"invoice",e.date,e.description,e.amount,e.files); });
+    apAllPayments(a.id).forEach(function(p){ add(a,"payment",p.date,expDesc(p.expenseId),p.amount,p.files); });
+    apIncomeRaw(a.id).forEach(function(i){
+      incomePays(i).forEach(function(g){ add(a,"receipt",g.date,i.description,g.amount,g.files); });
+    });
+    aptRentals(a.id).forEach(function(r){
+      [r].concat(r.history||[]).forEach(function(c){
+        add(a,"contract",c.startDate,(r.name||"")+(c.tenant?" · "+c.tenant:""),c.rent,c.files);
+      });
+    });
+  });
+  return out.sort(function(x,y){ return x.date<y.date?1:x.date>y.date?-1:0; });
+}
+function dvFileRowHtml(r){
+  var f=r.f, u=fileSafeUrl(f.url);
+  return '<tr>'+dvTd(r.a.name)+dvTd(FILE_KIND_ONE[r.kind]||"")+dvTd(dateHe(r.date))+dvTd(r.desc)+
+    dvTd(Number(r.amount)?money(r.amount):"")+
+    '<td>'+(u?'<a href="'+esc(u)+'" target="_blank" rel="noopener">📄 '+esc(f.name||"")+'</a>':esc(f.name||""))+'</td>'+
+    dvTd(f.size?fileSizeLabel(f.size):"")+dvTd(f.at?dateHe(String(f.at).slice(0,10)):"")+'</tr>';
+}
 var DV_COL_HEAD=["פרוייקט","תאריך","הזמנה","סכום","אמצעי","נכנס ל","שורת בנק","מס׳ חשבונית","נשלח לרו\"ח","שכירות","הערה"];
 /* כל הגבייה: תשלומים שנרשמו על הכנסות, מכל הפרוייקטים */
 function dvColList(){
@@ -15254,28 +15661,34 @@ function dvIncomeRowHtml(r,rentName){
 function viewDataSheet(){
   if(!(CU&&CU.role==="admin")) return '<div class="empty">אין הרשאה</div>';
   return withIndex(function(){
-    var isInc=DQ.tab==="inc", isPay=DQ.tab==="pay", isCol=DQ.tab==="col", isExp=!isInc&&!isPay&&!isCol;
+    var isInc=DQ.tab==="inc", isPay=DQ.tab==="pay", isCol=DQ.tab==="col", isFil=DQ.tab==="fil",
+        isExp=!isInc&&!isPay&&!isCol&&!isFil;
     var nExp=0, nInc=0;
     dvApts().forEach(function(a){
       apExpenses(a.id).forEach(function(e){ if(DQ.parents || !isContainer(e.id)) nExp++; });
       nInc+=apIncomeRaw(a.id).length;
     });
     refreshMethods();
-    var payRows=dvPayList(), colRows=dvColList();
+    var payRows=dvPayList(), colRows=dvColList(), filRows=dvFileList();
     var h='<h2>🗂️ נתונים — כל הפרוייקטים</h2>'+
       '<div class="tabs">'+
         '<div class="tab'+(isExp?" active":"")+'" onclick="DQ.tab=\'exp\';rerender()">💸 הוצאות ('+nExp+')</div>'+
         '<div class="tab'+(isPay?" active":"")+'" onclick="DQ.tab=\'pay\';rerender()">💳 תשלומים ('+payRows.length+')</div>'+
         '<div class="tab'+(isInc?" active":"")+'" onclick="DQ.tab=\'inc\';rerender()">💰 הכנסות ('+nInc+')</div>'+
         '<div class="tab'+(isCol?" active":"")+'" onclick="DQ.tab=\'col\';rerender()">🧾 גבייה ('+colRows.length+')</div>'+
+        '<div class="tab'+(isFil?" active":"")+'" onclick="DQ.tab=\'fil\';rerender()">📎 קבצים ('+filRows.length+')</div>'+
       '</div>'+
       '<div class="toolbar">'+
+        (isFil?'<button class="btn btn-sm" onclick="filesOpenFolder(\'\')">📁 פתח את תיקיית הקבצים בדרייב</button>':'')+
         (!isExp?'':'<label style="font-weight:400;margin:0"><input type="checkbox" style="width:auto;margin-inline-end:5px"'+(DQ.parents?" checked":"")+
           ' onchange="DQ.parents=this.checked;rerender()"> כולל שלבי-אב</label>')+
         '<span class="muted">👁️ לצפייה בלבד · סינון ומיון בכותרות הטבלה, כמו באקסל · "אקסל" מייצא בדיוק את מה שמסונן</span>'+
       '</div>';
     var rows, head, rowHtml, foot;
-    if(isCol){
+    if(isFil){
+      rows=filRows; head=DV_FIL_HEAD; rowHtml=dvFileRowHtml;
+      foot=['סה"כ ('+rows.length+' קבצים)',"","","","","","",""];
+    } else if(isCol){
       rows=colRows; head=DV_COL_HEAD;
       var cctx={links:bankPayIndex().live, rentName:{}};
       (DB.rentals||[]).forEach(function(r){ if(r&&r.id) cctx.rentName[r.id]=r.name||""; });

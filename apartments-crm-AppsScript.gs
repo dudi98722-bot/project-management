@@ -31,7 +31,7 @@ function doGet(e) {
   if (action === "status") {
     // מידע ציבורי מינימלי בלבד — האם כבר קיים משתמש. בלי נתונים.
     // guard = גרסת ההגנות, לאימות חיצוני שההדבקה נקלטה.
-    return jsonOut({ ok: true, hasUsers: hasAnyUser(), guard: 2 });
+    return jsonOut({ ok: true, hasUsers: hasAnyUser(), guard: 2, files: 1 });
   }
   if (action === "requestReset") {
     return jsonOut(requestReset(p.user || ""));
@@ -140,10 +140,247 @@ function doPost(e) {
       }
       return jsonOut(saveWithRevGuard(body.data, user));
     }
+    /* ---- קבצים מצורפים בדרייב — מנהל בלבד ---- */
+    if (action === "fileUpload" || action === "fileTrash" ||
+        action === "filesInfo" || action === "filesSetRoot") {
+      if (user.role !== "admin") return jsonOut({ ok: false, error: "forbidden" });
+      if (action === "fileUpload") return jsonOut(fileUpload(body));
+      if (action === "fileTrash")  return jsonOut(fileTrash(body));
+      if (action === "filesInfo")  return jsonOut(filesInfo(body));
+      return jsonOut(filesSetRoot(body));
+    }
     return jsonOut({ ok: false, error: "unknown action" });
   } catch (err) {
     return jsonOut({ ok: false, error: String(err) });
   }
+}
+
+/* ============================================================
+   קבצים מצורפים — נשמרים בדרייב של בעל הסקריפט
+   מבנה: [תיקיית הקבצים] › [פרוייקט] › [חוזים / חשבוניות / תקבולים / תשלומים] › [שנה]
+   מזהי התיקיות נשמרים בהגדרות הסקריפט: שינוי שם של פרוייקט משנה את
+   שם התיקייה שלו ולא פותח תיקייה חדשה.
+   הרשאה: בפעם הראשונה מריצים מהעורך את authorizeDrive ומאשרים.
+   ============================================================ */
+var FILES_ROOT_PROP  = "crm_files_root";
+var FILES_OLD_ROOTS  = "crm_files_roots_old";   // תיקיות ראשיות קודמות — קבצים שם עדיין שלנו
+var FILES_APT_PREFIX = "crm_files_apt_";
+var FILES_ROOT_NAME  = "אלכסנדר-דירות — קבצים";
+var FILE_KIND_FOLDERS = { contract: "חוזים", invoice: "חשבוניות", receipt: "תקבולים", payment: "תשלומים" };
+var FILE_MAX_BYTES = 25 * 1024 * 1024;
+
+function authorizeDrive() {
+  Logger.log("תיקיית הקבצים: " + filesRoot().getUrl());
+}
+function filesSafeName(v, max) {
+  var t = String(v == null ? "" : v).replace(/[\\\/\x00-\x1f]+/g, " ").replace(/\s+/g, " ").trim();
+  return t.length > max ? t.slice(0, max).trim() : t;
+}
+function folderAlive(id) {
+  if (!id) return null;
+  try { var f = DriveApp.getFolderById(id); return f.isTrashed() ? null : f; } catch (e) { return null; }
+}
+function folderHasParent(folder, parentId) {
+  var it = folder.getParents();
+  while (it.hasNext()) if (it.next().getId() === parentId) return true;
+  return false;
+}
+function filesChild(parent, name) {
+  var it = parent.getFoldersByName(name);
+  while (it.hasNext()) { var f = it.next(); if (!f.isTrashed()) return f; }
+  return parent.createFolder(name);
+}
+/* התיקייה הראשית — ליד קובץ הגיליון, או בשורש הדרייב */
+function filesRoot() {
+  var props = PropertiesService.getScriptProperties();
+  var root = folderAlive(props.getProperty(FILES_ROOT_PROP));
+  if (root) return root;
+  var parent = null;
+  try {
+    var ps = DriveApp.getFileById(ss().getId()).getParents();
+    if (ps.hasNext()) parent = ps.next();
+  } catch (e) {}
+  if (!parent) parent = DriveApp.getRootFolder();
+  root = filesChild(parent, FILES_ROOT_NAME);
+  props.setProperty(FILES_ROOT_PROP, root.getId());
+  return root;
+}
+function filesProjectFolder(root, apt) {
+  var props = PropertiesService.getScriptProperties();
+  var key = FILES_APT_PREFIX + apt.id;
+  var name = filesSafeName(apt.name, 90) || String(apt.id);
+  var f = folderAlive(props.getProperty(key));
+  if (f && folderHasParent(f, root.getId())) {
+    if (f.getName() !== name) f.setName(name);          /* שם הפרוייקט השתנה */
+    return f;
+  }
+  f = filesChild(root, name);
+  props.setProperty(key, f.getId());
+  return f;
+}
+function filesFindApt(aptId) {
+  var d = loadData() || {};
+  var list = d.apartments || [];
+  for (var i = 0; i < list.length; i++) if (list[i] && list[i].id === aptId) return list[i];
+  return null;
+}
+/* התיקייה של פרוייקט / סוג / שנה — נוצרת לפי הצורך. בנעילה, כדי ששתי
+   העלאות במקביל לא יפתחו את אותה תיקייה פעמיים. */
+function filesFolderFor(apt, kind, year) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var pf = filesProjectFolder(filesRoot(), apt);
+    if (!kind) return pf;
+    var kf = filesChild(pf, FILE_KIND_FOLDERS[kind]);
+    return year ? filesChild(kf, year) : kf;
+  } finally {
+    lock.releaseLock();
+  }
+}
+function fileUpload(body) {
+  var kind = String(body.kind || "");
+  if (!FILE_KIND_FOLDERS[kind]) return { ok: false, error: "bad-kind" };
+  if (!body.data) return { ok: false, error: "no-file" };
+  var apt = filesFindApt(String(body.aptId || ""));
+  if (!apt) return { ok: false, error: "project-not-found" };
+  var year = String(body.year || "");
+  if (!/^(19|20)\d\d$/.test(year)) year = String(new Date().getFullYear());
+  var bytes = Utilities.base64Decode(String(body.data));
+  if (!bytes.length) return { ok: false, error: "no-file" };
+  if (bytes.length > FILE_MAX_BYTES) return { ok: false, error: "too-big" };
+  var folder = filesFolderFor(apt, kind, year);
+  var name = filesSafeName(body.name, 180) || "קובץ";
+  var mime = String(body.mime || "") || "application/octet-stream";
+  var file = folder.createFile(Utilities.newBlob(bytes, mime, name));
+  if (body.desc) { try { file.setDescription(filesSafeName(body.desc, 500)); } catch (e) {} }
+  return { ok: true, file: { id: file.getId(), name: file.getName(), url: file.getUrl(),
+    mime: mime, size: bytes.length, kind: kind }, folderUrl: folder.getUrl() };
+}
+/* הסרה — לפח של הדרייב (אפשר לשחזר משם), ורק קובץ שבתוך תיקיית הקבצים */
+function fileTrash(body) {
+  var id = String(body.fileId || "");
+  if (!id) return { ok: false, error: "no-file" };
+  var file;
+  try { file = DriveApp.getFileById(id); } catch (e) { return { ok: true, missing: true }; }
+  var roots = [filesRoot().getId()];
+  try { roots = roots.concat(JSON.parse(PropertiesService.getScriptProperties().getProperty(FILES_OLD_ROOTS) || "[]")); } catch (e) {}
+  if (!fileUnderRoot(file, roots)) return { ok: false, error: "outside-root" };
+  file.setTrashed(true);
+  return { ok: true };
+}
+function fileUnderRoot(file, rootIds) {
+  var level = [file.getParents()];
+  for (var depth = 0; depth < 6 && level.length; depth++) {
+    var next = [];
+    for (var i = 0; i < level.length; i++) {
+      var it = level[i];
+      while (it.hasNext()) {
+        var f = it.next();
+        if (rootIds.indexOf(f.getId()) >= 0) return true;
+        next.push(f.getParents());
+      }
+    }
+    level = next;
+  }
+  return false;
+}
+function filesInfo(body) {
+  var root = filesRoot();
+  var out = { ok: true, root: { id: root.getId(), name: root.getName(), url: root.getUrl() } };
+  if (body.aptId) {
+    var apt = filesFindApt(String(body.aptId));
+    if (!apt) return { ok: false, error: "project-not-found" };
+    var pf = filesFolderFor(apt, "", "");
+    out.project = { id: pf.getId(), name: pf.getName(), url: pf.getUrl() };
+  }
+  return out;
+}
+function filesSetRoot(body) {
+  var raw = String(body.folder || "").trim();
+  var m = raw.match(/folders\/([-\w]{10,})/) || raw.match(/[?&]id=([-\w]{10,})/) || raw.match(/^([-\w]{10,})$/);
+  if (!m) return { ok: false, error: "bad-folder" };
+  var f = folderAlive(m[1]);
+  if (!f) return { ok: false, error: "folder-not-found" };
+  var props = PropertiesService.getScriptProperties();
+  var prev = props.getProperty(FILES_ROOT_PROP);
+  if (prev && prev !== f.getId()) {
+    var old = [];
+    try { old = JSON.parse(props.getProperty(FILES_OLD_ROOTS) || "[]"); } catch (e) {}
+    if (old.indexOf(prev) < 0) old.push(prev);
+    props.setProperty(FILES_OLD_ROOTS, JSON.stringify(old.slice(-20)));
+  }
+  props.setProperty(FILES_ROOT_PROP, f.getId());
+  return { ok: true, root: { id: f.getId(), name: f.getName(), url: f.getUrl() } };
+}
+/* ----- הקבצים אינם נשלחים למי שאינו מנהל, ונשמרים מהמאגר בשמירה שלו ----- */
+function stripFiles(d) {
+  ["expenses", "payments"].forEach(function (T) {
+    (d[T] || []).forEach(function (r) { if (r) delete r.files; });
+  });
+  (d.income || []).forEach(function (i) {
+    ((i && i.payments) || []).forEach(function (g) { if (g) delete g.files; });
+  });
+}
+function restoreFiles(stored, result) {
+  function byId(arr) {
+    var m = {};
+    (arr || []).forEach(function (r) { if (r && r.id != null) m[r.id] = r; });
+    return m;
+  }
+  ["expenses", "payments"].forEach(function (T) {
+    var S = byId(stored[T]);
+    (result[T] || []).forEach(function (r) {
+      if (!r) return;
+      var sr = S[r.id];
+      if (sr && sr.files && sr.files.length) r.files = sr.files; else delete r.files;
+    });
+  });
+  var SI = byId(stored.income);
+  (result.income || []).forEach(function (i) {
+    if (!i) return;
+    var gp = byId(SI[i.id] ? SI[i.id].payments : []);
+    (i.payments || []).forEach(function (g) {
+      if (!g) return;
+      var sg = gp[g.id];
+      if (sg && sg.files && sg.files.length) g.files = sg.files; else delete g.files;
+    });
+  });
+}
+/* לשונית "קבצים" בגיליון — כל הקבצים עם קישור */
+function filesReadableRows(d, aMap) {
+  var KIND = { contract: "חוזה", invoice: "חשבונית", receipt: "תקבול", payment: "אישור תשלום" };
+  var rows = [];
+  function add(aptId, kind, date, desc, files) {
+    (files || []).forEach(function (f) {
+      if (!f) return;
+      rows.push([aMap[aptId] || "", KIND[f.kind || kind] || "", date || "", desc || "",
+        f.name || "", f.url || "", String(f.at || "").slice(0, 10)]);
+    });
+  }
+  var expById = {};
+  (d.expenses || []).forEach(function (e) {
+    expById[e.id] = e;
+    if (!e.deleted) add(e.apartmentId, "invoice", e.date, e.description, e.files);
+  });
+  (d.payments || []).forEach(function (p) {
+    var e = expById[p.expenseId];
+    if (!p.deleted && e && !e.deleted) add(e.apartmentId, "payment", p.date, e.description, p.files);
+  });
+  (d.income || []).forEach(function (i) {
+    if (i.deleted) return;
+    (i.payments || []).forEach(function (g) {
+      if (!g.deleted) add(i.apartmentId, "receipt", g.date, i.description, g.files);
+    });
+  });
+  (d.rentals || []).forEach(function (r) {
+    if (r.deleted) return;
+    [r].concat(r.history || []).forEach(function (c) {
+      add(r.apartmentId, "contract", c.startDate, (r.name || "") + (c.tenant ? " · " + c.tenant : ""), c.files);
+    });
+  });
+  rows.sort(function (a, b) { return a[2] < b[2] ? 1 : a[2] > b[2] ? -1 : 0; });
+  return rows;
 }
 
 function jsonOut(obj) {
@@ -679,6 +916,9 @@ function renderReadable(d) {
 
   writeTab("חשבונות", ["דירה", "שם", "בנק?", "שייך לשותף", "סטטוס"],
     (d.accounts || []).map(function (ac) { return [aMap[ac.apartmentId], ac.name, yn(ac.isBank), pMap[ac.partnerId] || "", del(ac)]; }));
+
+  writeTab("קבצים", ["פרוייקט", "סוג", "תאריך", "שייך ל", "שם הקובץ", "קישור", "הועלה"],
+    filesReadableRows(d, aMap));
 }
 
 function writeTab(name, headers, rows) {
@@ -767,6 +1007,7 @@ function scopeDataForUser(data, user) {
     delete d.settings.aptAccs;      // חשבונות לפי פרוייקט
     delete d.settings.aptPayers;    // משלמים לפי פרוייקט
   }
+  stripFiles(d);                    // קבצים מצורפים — מנהלים בלבד
   var aptSet = aptSetFor(d, ctx), expSet = expSetFor(d, ctx, aptSet);
   SCOPED_TABLES.forEach(function (T) {
     d[T] = (d[T] || []).filter(function (r) { return rowVisible(T, r, ctx, aptSet, expSet); });
@@ -863,6 +1104,8 @@ function mergeSaveForUser(stored, incoming, user) {
       result[T].forEach(function (r) { if (fromIncoming[r.id]) delete r.hidden; }); /* רק מנהל מסתיר */
     }
   });
+  /* הקבצים המצורפים לא נשלחו אליו — חוזרים מהמאגר, והוא לא יכול להוסיף */
+  restoreFiles(stored, result);
   return result;
 }
 function newRowAllowed(table, row, ctx, aptSet, allowedExp) {
