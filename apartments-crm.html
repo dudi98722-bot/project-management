@@ -426,7 +426,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 סט'";
+var APP_BUILD = "19.08 ע'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -1235,6 +1235,10 @@ function normalizeDB(d){
       if(i.startDate || i.endDate) return;
       var r=byRental[i.rentalId]; if(!r || !r.startDate) return;
       var per=rentalIncomePeriod(r,i.periodYM);
+      /* החוזה הנוכחי לא מכסה את החודש (שורה של חוזה קודם) — החודש עצמו */
+      if(ymOf(per.start)!==i.periodYM){
+        per={start:i.periodYM+"-01", end:i.periodYM+"-"+String(daysInMonth(i.periodYM)).padStart(2,"0")};
+      }
       i.startDate=per.start; i.endDate=per.end;
     });
   })();
@@ -13166,9 +13170,21 @@ function rentalDueMonths(r){
      לא נוצרות כפילויות על תקופה שכבר חויבה. */
   /* חד פעמי: חיוב אחד בלבד, בחודש הראשון של החוזה */
   if(rentIsOnce(r)) return [from];
-  var step=rentStepM(r);
-  var out=[], cur=from, guard=0;
-  while(cur<=to && guard<600){ out.push(cur); cur=ymAdd(cur,step); guard++; }
+  /* תקופות לפי יום תחילת החוזה. קודם כל חודש קלנדרי שנגע בחוזה חויב: חוזה
+     10/09–09/09 קיבל 13 חיובים (ספטמבר השני חויב בשכר מלא על 9 ימים), וחוזה
+     15/01–15/02 קיבל שניים. תקופה שמתחילה ביום הסיום או אחריו — לא מחויבת.
+     כש"לייצר החל מחודש" מאוחר מהתחלת החוזה, הספירה מתחילה ממנו (כמו קודם). */
+  var step=rentStepM(r), out=[];
+  var startDay=Number(String(r.startDate).slice(8,10))||1;
+  for(var k=0;k<600;k++){
+    /* היום נלקח תמיד מתחילת החוזה ונחתך רק בחודש קצר — חוזה מה-31 לא
+       "נתקע" על ה-28 אחרי פברואר */
+    var ps=dueDateIn(ymAdd(from,k*step),startDay);
+    if(r.endDate && ps>=r.endDate && ps!==r.startDate) break;
+    var ym=ymOf(ps);
+    if(ym>to) break;
+    out.push(ym);
+  }
   return out;
 }
 /* התקופה שהשורה מייצגת: מהחודש שלה ולפי התדירות (חיוב שנתי = 12
@@ -13191,9 +13207,94 @@ function rentalIncome(rentalId){
 function rentalIncomeFor(rentalId,ym){
   return rentalIncome(rentalId).filter(function(i){ return i.periodYM===ym; })[0]||null;
 }
-/* מה עוד חסר — לתצוגה מקדימה ולכפתור "צור עכשיו" */
+/* ---------- חיובים לפי חוזה ----------
+   כל שורת חיוב שייכת לחוזה אחד (rentalChargeOwner, לפי התקופה שלה). כך חודש
+   שחויב בחוזה אחר לא חוסם את החוזה הזה, ועריכת החוזה הנוכחי לא נוגעת בחיובים
+   של חוזים קודמים. key: "cur" או מיקום בהיסטוריה. */
+function rentalRowsOf(r,key){
+  var list=rentalContracts(r);
+  return rentalIncome(r.id).filter(function(i){
+    var c=rentalChargeOwner(list,i.startDate||i.date);
+    return !!c && c.key===key;
+  });
+}
+function rentalCurRows(r){ return rentalRowsOf(r,"cur"); }
+/* מה עוד חסר בחוזה הנוכחי — לתצוגה מקדימה וליצירה האוטומטית */
 function rentalMissingMonths(r){
-  return rentalDueMonths(r).filter(function(ym){ return !rentalIncomeFor(r.id,ym); });
+  var have={};
+  rentalCurRows(r).forEach(function(i){ if(i.periodYM) have[i.periodYM]=1; });
+  return rentalDueMonths(r).filter(function(ym){ return !have[ym]; });
+}
+/* חוזה קודם כ"דירה" זמנית — כדי לחשב וליצור את החיובים שלו באותו מנגנון */
+function rentalHistAsRental(r,x){
+  return {id:r.id, apartmentId:r.apartmentId, name:r.name, tenant:x.tenant||"", autoIncome:true,
+    startDate:x.startDate||"", endDate:x.endDate||"", rent:Number(x.rent)||0,
+    every:RENT_EVERY_M[x.every]?x.every:rentEvery(r), dueDay:x.dueDay||r.dueDay||1,
+    genFrom:"", history:[], deleted:false};
+}
+function rentalHistMissing(r,ix,fake){
+  var x=(r.history||[])[ix]; if(!x || !x.startDate) return [];
+  fake=fake||rentalHistAsRental(r,x);
+  var have={};
+  rentalRowsOf(r,ix).forEach(function(i){ if(i.periodYM) have[i.periodYM]=1; });
+  return rentalDueMonths(fake).filter(function(ym){ return !have[ym]; });
+}
+/* ---------- יצירת חיובים לחוזה קודם ---------- */
+var _RHC=null;
+function rentalHistCharges(rid,ix){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var r=byId(DB.rentals,rid); if(!r||!r.history||!r.history[ix]) return;
+  var x=r.history[ix];
+  if(!x.startDate){ toast("לחוזה אין תאריך התחלה — ערוך אותו קודם (✏️)","warn"); return; }
+  _RHC={rid:rid,ix:ix};
+  var every=RENT_EVERY_M[x.every]?x.every:rentEvery(r);
+  openModal({title:'➕ חיובים לחוזה של "'+(x.tenant||"—")+'"',bodyHtml:
+    '<div class="hint" style="margin-bottom:10px">'+
+      (x.startDate?dateHe(x.startDate):"—")+' – '+(x.endDate?dateHe(x.endDate):"—")+
+      ' · ייווצרו החיובים שחסרים לתקופת החוזה (עד היום), מסומנים <b>"ממתינים לתשלום"</b>. '+
+      'אם החוזה כבר שולם — רשום עליהם את התשלומים, או התאם אותם מהתאמת הבנק.</div>'+
+    '<div class="form-grid">'+
+      '<div class="field"><label>סכום לכל חיוב (₪)</label><input id="rhc-rent" type="number" step="0.01" value="'+esc(String(x.rent||""))+'" oninput="rhcPreview()"></div>'+
+      '<div class="field"><label>תדירות החיוב</label><select id="rhc-every" onchange="rhcPreview()">'+
+        Object.keys(RENT_EVERY).map(function(k){ return '<option value="'+k+'"'+(every===k?" selected":"")+'>'+RENT_EVERY[k]+'</option>'; }).join("")+
+      '</select><div class="hint">"חד פעמי" = חיוב אחד לכל החוזה</div></div>'+
+      '<div class="field"><label>יום החיוב בחודש</label><input id="rhc-due" type="number" min="1" max="28" value="'+esc(String(x.dueDay||r.dueDay||1))+'" oninput="rhcPreview()"></div>'+
+    '</div>'+
+    '<div id="rhc-preview" class="hint"></div>',
+    saveLabel:"צור חיובים",onSave:function(){
+      var o=rhcCtx(); if(!o) return false;
+      if(o.f.rent<=0){ toast("יש להזין סכום לכל חיוב","err"); return false; }
+      var m=rentalHistMissing(o.r,_RHC.ix,o.f);
+      if(!m.length){ toast("אין חיובים חסרים לחוזה הזה","warn"); return false; }
+      /* החוזה זוכר את ההגדרה — פעם הבאה היא תוצע שוב */
+      o.x.rent=o.f.rent; o.x.every=o.f.every; o.x.dueDay=o.f.dueDay;
+      m.forEach(function(ym){ makeRentalIncome(o.f,ym); });
+      save();
+      toast("נוצרו "+m.length+" חיובים לחוזה של "+(o.x.tenant||"—"),"ok");
+      rerender();
+    }});
+  rhcPreview();
+}
+function rhcCtx(){
+  if(!_RHC) return null;
+  var r=byId(DB.rentals,_RHC.rid); if(!r || !r.history || !r.history[_RHC.ix]) return null;
+  var x=r.history[_RHC.ix], f=rentalHistAsRental(r,x);
+  f.rent=Number(val("rhc-rent"))||0;
+  if(RENT_EVERY_M[val("rhc-every")]) f.every=val("rhc-every");
+  f.dueDay=Math.min(Math.max(Number(val("rhc-due"))||1,1),28);
+  return {r:r,x:x,f:f};
+}
+function rhcPreview(){
+  var box=document.getElementById("rhc-preview"); if(!box) return;
+  var o=rhcCtx(); if(!o){ box.innerHTML=""; return; }
+  if(o.f.rent<=0){ box.innerHTML='<span class="neg">חסר סכום לכל חיוב</span>'; return; }
+  var m=rentalHistMissing(o.r,_RHC.ix,o.f), have=rentalRowsOf(o.r,_RHC.ix).length;
+  box.innerHTML=m.length
+    ? 'חיוב <b>'+RENT_EVERY[rentEvery(o.f)]+'</b> · ייווצרו <b>'+m.length+'</b> חיובים · '+
+      rentPeriodLabel(o.f,m[0])+(m.length>1?' עד '+rentPeriodLabel(o.f,m[m.length-1]):'')+
+      ' · סה"כ <b>'+money(round2(m.length*o.f.rent))+'</b>'+
+      (have?' <span class="muted">('+have+' חיובים כבר קיימים בחוזה)</span>':'')
+    : '<span class="muted">אין חיובים חסרים לחוזה הזה'+(have?' ('+have+' קיימים)':'')+'</span>';
 }
 function makeRentalIncome(r,ym){
   var a=byId(DB.apartments,r.apartmentId);
@@ -13340,7 +13441,15 @@ function viewAptRentals(aptId){
           '<td>'+(x.startDate?dateHe(x.startDate):'—')+' – '+(x.endDate?dateHe(x.endDate):'—')+'</td>'+
           '<td><span class="muted">—</span></td>'+
           '<td>'+(x.rent?money(x.rent):'<span class="muted">—</span>')+'</td>'+
-          '<td>'+contractCollectionCell(cs[e.ix]||{n:0})+'</td>'+
+          '<td>'+contractCollectionCell(cs[e.ix]||{n:0})+
+            (function(){
+              if(!can("edit") || !x.startDate) return '';
+              var miss=rentalHistMissing(r,e.ix);
+              return miss.length
+                ? '<div><button class="btn btn-sm" style="margin-top:3px" title="החיובים האוטומטיים נוצרים רק לחוזה הנוכחי — כאן יוצרים את מה שחסר לחוזה הזה" '+
+                    'onclick="rentalHistCharges(\''+r.id+'\','+e.ix+')">➕ צור '+miss.length+' חיובים חסרים</button></div>'
+                : '';
+            })()+'</td>'+
           '<td class="right" style="white-space:nowrap">'+(can("edit")
             ? (newerIx.indexOf(e.ix)>=0
                 ? '<button class="btn btn-sm" title="החוזה הזה יהפוך לנוכחי, והנוכחי יעבור לקודמים" onclick="rentalMakeCurrent(\''+r.id+'\','+e.ix+')">⬆ הפוך לנוכחי</button> '
@@ -13743,12 +13852,16 @@ function rentalMakeCurrent(rid,ix){
    לרשימה (החלפה) או נעלם (מחיקה). מחזיר כמה חיובים נוצרו. */
 function rentalAdoptContract(r,ix,keepCur){
   var x=r.history[ix];
-  var cur={tenant:r.tenant||"",phone:r.phone||"",startDate:r.startDate||"",endDate:r.endDate||"",rent:Number(r.rent)||0};
+  var cur={tenant:r.tenant||"",phone:r.phone||"",startDate:r.startDate||"",endDate:r.endDate||"",rent:Number(r.rent)||0,
+    every:rentEvery(r),dueDay:r.dueDay||1};
   /* יצירה אוטומטית: חודשים בתקופת החוזה שעדיין לא חויבו. שואלים, כדי
      שלא ייווצרו בשקט חיובים על חודשים שאולי נגבו בדרך אחרת. */
   var trial=JSON.parse(JSON.stringify(r));
+  trial.history=(r.history||[]).filter(function(h,i){ return i!==ix; });
+  if(keepCur && (cur.startDate||cur.endDate||cur.tenant)) trial.history.push(cur);
   trial.tenant=x.tenant||""; trial.startDate=x.startDate||""; trial.endDate=x.endDate||"";
   trial.rent=Number(x.rent)||0; trial.genFrom="";
+  if(RENT_EVERY_M[x.every]) trial.every=x.every;
   var miss=r.autoIncome?rentalMissingMonths(trial):[];
   var backfill=true;
   if(miss.length){
@@ -13764,6 +13877,9 @@ function rentalAdoptContract(r,ix,keepCur){
   if(x.phone!=null) r.phone=x.phone;
   else if((x.tenant||"")!==cur.tenant) r.phone="";
   r.startDate=x.startDate||""; r.endDate=x.endDate||""; r.rent=Number(x.rent)||0;
+  /* חוזה שזוכר תדירות ויום חיוב — הם עוברים איתו */
+  if(RENT_EVERY_M[x.every]) r.every=x.every;
+  if(x.dueDay) r.dueDay=Math.min(Math.max(Number(x.dueDay)||1,1),28);
   r.genFrom=(miss.length && !backfill) ? ymAdd(miss[miss.length-1],rentStepM(r)) : "";
   /* שמירה אחת לכל הפעולה — כך "↩️ בטל" מחזיר גם את ההחלפה וגם את
      החיובים שנוצרו בלחיצה אחת (runRentalIncome שומר בעצמו כשנוצר משהו) */
@@ -13950,7 +14066,18 @@ function rentAutoPreview(pf,rid){
     genFrom:val(pf+"-from")||"",dueDay:Number(val(pf+"-due"))||1};
   var months=rentalDueMonths(fake);
   if(!months.length){ box.innerHTML='<span class="muted">אין תקופות לייצר עד היום בטווח הזה — החיובים ייווצרו כשיגיע מועדם</span>'; return; }
-  var exist=rid?months.filter(function(ym){ return !!rentalIncomeFor(rid,ym); }).length:0;
+  /* מה כבר קיים — רק חיובים ששייכים לחוזה שבטופס. בחוזה חדש, הנוכחי עובר
+     לקודמים ולכן החיובים שלו לא נספרים כאן. */
+  var exist=0, base=rid?byId(DB.rentals,rid):null;
+  if(base){
+    var trial=JSON.parse(JSON.stringify(base));
+    if(pf==="rw" && (base.tenant||base.startDate||base.endDate))
+      trial.history=(trial.history||[]).concat([{tenant:base.tenant||"",startDate:base.startDate||"",endDate:base.endDate||"",rent:Number(base.rent)||0}]);
+    trial.startDate=sd; trial.endDate=ed;
+    var have={};
+    rentalCurRows(trial).forEach(function(i){ if(i.periodYM) have[i.periodYM]=1; });
+    exist=months.filter(function(ym){ return !!have[ym]; }).length;
+  }
   var todo=months.length-exist;
   box.innerHTML='חיוב <b>'+RENT_EVERY[rentEvery(fake)]+'</b> · '+rentPeriodLabel(fake,months[0])+' עד '+rentPeriodLabel(fake,months[months.length-1])+
     ' · ייווצרו <b>'+todo+'</b> שורות'+(todo?' · סה"כ <b>'+money(round2(todo*rent))+'</b>':'')+
@@ -13974,11 +14101,14 @@ function applyRentChange(r,oldRent,newRent){
 function pruneRentalIncome(r){
   var valid={};
   rentalDueMonths(r).forEach(function(ym){ valid[ym]=1; });
-  var stale=rentalIncome(r.id).filter(function(i){
+  /* רק חיובים של החוזה הנוכחי. קודם נבדקו כל החיובים של הדירה — ואחרי חידוש
+     חוזה, שמירה בעיפרון הציעה למחוק את החיובים הפתוחים של השוכר הקודם. */
+  var mine=rentalCurRows(r);
+  var stale=mine.filter(function(i){
     return i.periodYM && !valid[i.periodYM] && incomePaid(i)<=0.01;
   });
   if(!stale.length) return;
-  var paidStale=rentalIncome(r.id).filter(function(i){
+  var paidStale=mine.filter(function(i){
     return i.periodYM && !valid[i.periodYM] && incomePaid(i)>0.01;
   }).length;
   if(!confirm(stale.length+" שורות הכנסה כבר אינן בתוקף לפי החוזה המעודכן, וטרם שולמו.\n\n"+
@@ -14009,7 +14139,12 @@ function renewRental(id){
   var r=byId(DB.rentals,id); if(!r){ toast("הדירה לא נמצאה","err"); return; }
   /* ברירת מחדל: שנה קדימה מסיום החוזה הנוכחי (או מהיום, אם כבר עבר) */
   var base=(r.endDate && r.endDate>=todayISO()) ? r.endDate : todayISO();
-  var newStart=addMonthsISO(base,0);
+  /* חידוש מתחיל ביום שאחרי סיום הנוכחי — בלי יום חפיפה בין שני החוזים */
+  var newStart=base;
+  if(r.endDate && base===r.endDate){
+    var nd=new Date(base+"T00:00:00Z"); nd.setUTCDate(nd.getUTCDate()+1);
+    newStart=nd.toISOString().slice(0,10);
+  }
   var hasCur=!!(r.tenant||r.startDate||r.endDate);
   window._RW_OLD={tenant:r.tenant||"",phone:r.phone||""};
   window._RW_ID=r.id;
@@ -14064,7 +14199,8 @@ function renewRental(id){
       /* שומרים רק תקופה שבאמת הייתה — דירה שהוגדרה ומעולם לא הושכרה
          לא מייצרת שורת היסטוריה ריקה */
       if(r.tenant||r.startDate||r.endDate){
-        r.history.push({tenant:r.tenant||"",phone:r.phone||"",startDate:r.startDate||"",endDate:r.endDate||"",rent:Number(r.rent)||0});
+        r.history.push({tenant:r.tenant||"",phone:r.phone||"",startDate:r.startDate||"",endDate:r.endDate||"",rent:Number(r.rent)||0,
+          every:rentEvery(r),dueDay:r.dueDay||1});
       }
       r.tenant=val("rw-tenant").trim(); r.phone=val("rw-phone").trim();
       r.startDate=sd; r.endDate=ed; r.rent=Number(val("rw-rent"))||0;
