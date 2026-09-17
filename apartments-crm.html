@@ -426,7 +426,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 סז'";
+var APP_BUILD = "19.08 סח'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -15047,6 +15047,28 @@ function dvIncomeList(){
   return out.sort(function(x,y){ return x.i.date<y.i.date?1:x.i.date>y.i.date?-1:0; });
 }
 var DV_EXP_HEAD=["פרוייקט","תאריך","תיאור","שלב-אב","קטגוריה","סיווג","סוג שורה","סכום","עלות דמי ניהול","שולם לספק","נותר","סטטוס","חשבונית","בדוחות","פרייליך","הערה"];
+var DV_PAY_HEAD=["פרוייקט","תאריך","שלב","קטגוריה","שלב-אב","סכום","שולם ל","מנהל","מי שילם","מהחשבון","בנק זמני","אמצעי","אוטומטי","חשבונית","נשלח לרו\"ח","הערה"];
+/* כל התשלומים של הפרוייקטים הגלויים — מעבר אחד על התשלומים */
+function dvPayList(){
+  var apt={}, exp={}, out=[];
+  dvApts().forEach(function(a){ apt[a.id]=a; });
+  active(DB.expenses).forEach(function(e){ if(apt[e.apartmentId]) exp[e.id]=e; });
+  active(DB.payments).forEach(function(p){
+    var e=exp[p.expenseId]; if(!e) return;
+    out.push({a:apt[e.apartmentId],e:e,p:p});
+  });
+  return out.sort(function(x,y){ return x.p.date<y.p.date?1:x.p.date>y.p.date?-1:0; });
+}
+function dvPayRowHtml(r){
+  var p=r.p, e=r.e, mgr=p.recipientType==="manager";
+  return '<tr>'+
+    dvTd(r.a.name)+dvTd(dateHe(p.date))+dvTd(e.description||"")+dvTd(categoryName(e.categoryId))+dvTd(parentDesc(e))+
+    dvTd(money(p.amount))+dvTd(mgr?"מנהל":"ספק")+dvTd(mgr?managerName(p.recipientManagerId):"")+
+    dvTd(p.payerPartnerId?partnerName(p.payerPartnerId):"")+
+    dvTd(payAccountLabel(p))+dvTd(accountIsBank(p.accountId)?"כן":"")+
+    dvTd(payMethodLabel(p))+dvTd(p.auto?"כן":"")+
+    dvTd(invoiceStatusText(p))+dvTd(cpaText(p))+dvTd(p.note||"")+'</tr>';
+}
 var DV_INC_HEAD=["פרוייקט","תאריך","תיאור","מתאריך","עד תאריך","סכום","שולם","יתרת חוב","סטטוס","נכנס ל","חלוקה","לחישוב","פרייליך","שכירות","הערה"];
 function dvExpenseRowHtml(r){
   var e=r.e;
@@ -15074,24 +15096,31 @@ function dvIncomeRowHtml(r,rentName){
 function viewDataSheet(){
   if(!(CU&&CU.role==="admin")) return '<div class="empty">אין הרשאה</div>';
   return withIndex(function(){
-    var isInc=DQ.tab==="inc";
+    var isInc=DQ.tab==="inc", isPay=DQ.tab==="pay", isExp=!isInc&&!isPay;
     var nExp=0, nInc=0;
     dvApts().forEach(function(a){
       apExpenses(a.id).forEach(function(e){ if(DQ.parents || !isContainer(e.id)) nExp++; });
       nInc+=apIncomeRaw(a.id).length;
     });
+    refreshMethods();
+    var payRows=dvPayList();
     var h='<h2>🗂️ נתונים — כל הפרוייקטים</h2>'+
       '<div class="tabs">'+
-        '<div class="tab'+(isInc?"":" active")+'" onclick="DQ.tab=\'exp\';rerender()">💸 הוצאות ('+nExp+')</div>'+
+        '<div class="tab'+(isExp?" active":"")+'" onclick="DQ.tab=\'exp\';rerender()">💸 הוצאות ('+nExp+')</div>'+
+        '<div class="tab'+(isPay?" active":"")+'" onclick="DQ.tab=\'pay\';rerender()">💳 תשלומים ('+payRows.length+')</div>'+
         '<div class="tab'+(isInc?" active":"")+'" onclick="DQ.tab=\'inc\';rerender()">💰 הכנסות ('+nInc+')</div>'+
       '</div>'+
       '<div class="toolbar">'+
-        (isInc?'':'<label style="font-weight:400;margin:0"><input type="checkbox" style="width:auto;margin-inline-end:5px"'+(DQ.parents?" checked":"")+
+        (!isExp?'':'<label style="font-weight:400;margin:0"><input type="checkbox" style="width:auto;margin-inline-end:5px"'+(DQ.parents?" checked":"")+
           ' onchange="DQ.parents=this.checked;rerender()"> כולל שלבי-אב</label>')+
         '<span class="muted">👁️ לצפייה בלבד · סינון ומיון בכותרות הטבלה, כמו באקסל · "אקסל" מייצא בדיוק את מה שמסונן</span>'+
       '</div>';
     var rows, head, rowHtml, foot;
-    if(isInc){
+    if(isPay){
+      rows=payRows; head=DV_PAY_HEAD; rowHtml=dvPayRowHtml;
+      var pT=0; rows.forEach(function(r){ pT+=Number(r.p.amount)||0; });
+      foot=['סה"כ ('+rows.length+')',"","","","",money(round2(pT)),"","","","","","","","","",""];
+    } else if(isInc){
       rows=dvIncomeList(); head=DV_INC_HEAD;
       var rentName={}; (DB.rentals||[]).forEach(function(r){ if(r&&r.id) rentName[r.id]=r.name||""; });
       rowHtml=function(r){ return dvIncomeRowHtml(r,rentName); };
