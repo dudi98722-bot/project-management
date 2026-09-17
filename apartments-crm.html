@@ -240,6 +240,7 @@ table.ac-tbl thead th.ac-cat{z-index:7;background:#eef1fa;vertical-align:bottom}
 table.ac-tbl td.ac-cell{text-align:center}
 table.ac-tbl td.ac-open{background:#fafbff}
 table.ac-tbl td.ac-warn{background:#fff1dc}
+table.ac-tbl td.ac-na{background:#f4f5f8;color:#b0b7c3;text-align:center}
 .ac-lbl{display:inline-flex;align-items:center;gap:3px;cursor:pointer;margin:0;font-weight:400}
 .ac-lbl input{width:auto;margin:0;cursor:pointer}
 .ac-n{display:inline-block;width:18px;font-size:10.5px;color:#64748b;text-align:start}
@@ -423,7 +424,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 סה'";
+var APP_BUILD = "19.08 סו'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -644,23 +645,10 @@ function categoryName(id){ var c=id?byId(DB.categories,id):null; return (c&&!c.d
 var _CATCTX={};     // id של שדה קטגוריה → {aptIds, keepId}
 var _CATPEND={};    // id של שדה → שיוך שאושר ומחכה לשמירה בפועל
 function aptCatsOn(){ return !!(CU && CU.role==="admin"); }
-function aptCatsRead(){
-  var m=DB&&DB.settings&&DB.settings.aptCats;
-  return (m && typeof m==="object" && !Array.isArray(m)) ? m : {};
-}
-function aptCatsWrite(){
-  DB.settings=DB.settings||{};
-  var m=DB.settings.aptCats;
-  if(!m || typeof m!=="object" || Array.isArray(m)) m=DB.settings.aptCats={};
-  return m;
-}
+function aptCatsRead(){ return pkMapRead("aptCats"); }
+function aptCatsWrite(){ return pkMapWrite("aptCats"); }
 /* הקטגוריות החיות שמשויכות לפרוייקט, או null = ללא הגבלה */
-function aptCatIds(aptId){
-  var raw=aptCatsRead()[aptId];
-  if(!Array.isArray(raw) || !raw.length) return null;
-  var ok=raw.filter(function(id){ var c=byId(DB.categories,id); return !!(c && !c.deleted); });
-  return ok.length ? ok : null;
-}
+function aptCatIds(aptId){ return pkIds("cats",aptId); }
 function aptCatAllowed(aptId,catId){
   if(!aptCatsOn() || !aptId || !catId) return true;
   var ids=aptCatIds(aptId);
@@ -680,18 +668,7 @@ function catsForApts(aptIds,keepId){
 }
 /* משייך קטגוריה לפרוייקטים שכבר מוגבלים. פרוייקט בלי רשימה לא נוגעים
    בו — אחרת שיוך ראשון היה הופך אותו בשקט ל"קטגוריה אחת בלבד". */
-function aptCatAttach(aptIds,catId){
-  if(!catId) return 0;
-  var n=0;
-  (aptIds||[]).filter(Boolean).forEach(function(aptId){
-    var ids=aptCatIds(aptId);
-    if(!ids || ids.indexOf(catId)>=0) return;
-    var m=aptCatsWrite();
-    m[aptId]=(Array.isArray(m[aptId])?m[aptId]:[]).concat([catId]);
-    n++;
-  });
-  return n;
-}
+function aptCatAttach(aptIds,catId){ return pkAttach("cats",aptIds,catId); }
 /* למה קטגוריה אינה תקינה בשדה הזה — "" כשהכול בסדר */
 function catCtxMissing(fieldId,catId){
   var ctx=_CATCTX[fieldId];
@@ -4161,9 +4138,11 @@ function merge3(baseStr,mine,theirs){
   /* הגדרות: אמצעי תשלום מתאחדים; שאר השדות — מי ששינה מול הבסיס */
   var bs=((base&&base.settings)||{}), ms=(mine.settings||{}), ts=(theirs.settings||{});
   var st={};
-  [ts,ms].forEach(function(src){ Object.keys(src).forEach(function(k){ if(k!=="paymentMethods"&&k!=="aptCats") st[k]=src[k]; }); });
+  /* רשימות לפי פרוייקט (קטגוריות, חשבונות, משלמים) — ממוזגות בנפרד למטה */
+  var PKM=(typeof PK_MAP_KEYS!=="undefined" && PK_MAP_KEYS) || ["aptCats","aptAccs","aptPayers"];
+  [ts,ms].forEach(function(src){ Object.keys(src).forEach(function(k){ if(k!=="paymentMethods"&&PKM.indexOf(k)<0) st[k]=src[k]; }); });
   Object.keys(ms).forEach(function(k){
-    if(k==="paymentMethods"||k==="aptCats") return;
+    if(k==="paymentMethods"||PKM.indexOf(k)>=0) return;
     if(noBase){ if(ts[k]!==undefined) st[k]=ts[k]; return; }   // בלי בסיס — השרת גובר
     if(JSON.stringify(ms[k])!==JSON.stringify(bs[k])) st[k]=ms[k];
     else if(ts[k]!==undefined) st[k]=ts[k];
@@ -4174,8 +4153,8 @@ function merge3(baseStr,mine,theirs){
   });
   /* קטגוריות לפי פרוייקט — מיזוג לכל פרוייקט בנפרד. כמפתח אחד, סימון
      בחלון אחד ושיוך קטגוריה בחלון אחר היו מוחקים זה את זה בשקט. */
-  (function(){
-    var ba=bs.aptCats||{}, ma=ms.aptCats||{}, ta=ts.aptCats||{}, ac={}, ks={};
+  PKM.forEach(function(MK){
+    var ba=bs[MK]||{}, ma=ms[MK]||{}, ta=ts[MK]||{}, ac={}, ks={};
     [ba,ma,ta].forEach(function(o){ if(o && typeof o==="object") Object.keys(o).forEach(function(k){ ks[k]=1; }); });
     Object.keys(ks).forEach(function(k){
       var mj=JSON.stringify(ma[k]), bj=JSON.stringify(ba[k]), tj=JSON.stringify(ta[k]), v;
@@ -4184,8 +4163,8 @@ function merge3(baseStr,mine,theirs){
       else v=ta[k];
       if(Array.isArray(v) && v.length) ac[k]=v;
     });
-    if(Object.keys(ac).length || ms.aptCats || ts.aptCats) st.aptCats=ac;
-  })();
+    if(Object.keys(ac).length || ms[MK] || ts[MK]) st[MK]=ac;
+  });
   out.settings=st;
   out.meta=theirs.meta||mine.meta||{version:1,rev:0};
   return {db:out,conflicts:conflicts};
@@ -5573,7 +5552,7 @@ function availAccounts(aptId){
 }
 function accountOptions(aptId,sel){
   return '<option value="">— ידני / ללא חשבון —</option>'+
-    availAccounts(aptId).map(function(ac){
+    payAccounts(aptId,sel).map(function(ac){
       return '<option value="'+ac.id+'"'+(ac.id===sel?" selected":"")+'>'+esc(ac.name)+(ac.isBank?" 🏦 (בנק זמני)":"")+'</option>'; }).join("")+
     '<option value="__new">➕ הוסף חשבון חדש…</option>';
 }
@@ -5601,8 +5580,12 @@ function addAccountInline(aptId){
   else{
     id=uid();
     DB.accounts.push({id:id,apartmentId:(scope==="apt"?aptId:null),name:nm,isBank:isBank,partnerId:null,deleted:false});
-    save(); toast('נוסף החשבון "'+nm+'"',"ok");
+    toast('נוסף החשבון "'+nm+'"',"ok");
   }
+  /* פרוייקט עם רשימת חשבונות — החשבון שנבחר כאן משויך אליו, אחרת לא היה
+     מופיע בבורר מיד אחרי שהוספת אותו */
+  if(aptCatsOn()) pkAttach("accs",[aptId],id);
+  save();
   var sel=document.getElementById("pm-account");
   if(sel){ sel.innerHTML=accountOptions(aptId,id); sel.value=id; }
   var wrap=document.getElementById("pm-newacc"); if(wrap) wrap.style.display="none";
@@ -6492,19 +6475,20 @@ function toggleExpPayNow(aptId){
   w.style.display=on?"block":"none";
   if(!on || _exPayBuilt) return;
   _exPayBuilt=true;
-  var parts=apPartners(aptId);
+  var parts=payPayerIds(aptId,apPartners(aptId).map(function(x){ return x.partnerId; }),"")
+    .map(function(pid){ return {partnerId:pid}; });
   w.innerHTML='<div class="form-grid">'+
     '<div class="field"><label>סכום התשלום</label><input id="ex-pay-amount" type="number" step="0.01" value="'+esc(String(Number(val("ex-amount"))||""))+'"></div>'+
     '<div class="field"><label>תאריך התשלום</label><input id="ex-pay-date" type="date" value="'+esc(val("ex-date")||todayISO())+'"></div>'+
     '<div class="field"><label>מהחשבון</label><select id="ex-pay-account" onchange="onExpPayAccount()">'+
       '<option value="">— ידני / ללא חשבון —</option>'+
-      availAccounts(aptId).map(function(ac){
+      payAccounts(aptId).map(function(ac){
         return '<option value="'+ac.id+'">'+esc(ac.name)+(ac.isBank?" 🏦 (בנק זמני)":"")+'</option>'; }).join("")+
-    '</select></div>'+
+    '</select>'+pkScopeHint("accs",aptId)+'</div>'+
     (parts.length
       ? '<div class="field"><label>מי שילם</label><select id="ex-pay-payer"><option value="">—</option>'+
           parts.map(function(p){return '<option value="'+p.partnerId+'">'+esc(partnerName(p.partnerId))+'</option>';}).join("")+
-        '</select></div>'
+        '</select>'+pkScopeHint("payers",aptId)+'</div>'
       : '')+
     '<div class="field"><label>אמצעי תשלום</label><select id="ex-pay-method" onchange="onMethodPick(\'ex-pay-method\')">'+methodOptions("transfer")+'</select></div>'+
     '<div class="field"><label>חשבונית</label><select id="ex-pay-invoice">'+invoiceStatusOptions("",false)+'</select></div>'+
@@ -6894,6 +6878,7 @@ function openBulkPayEdit(aptId){
   var pIds=[]; apPartners(aptId).forEach(function(x){ if(pIds.indexOf(x.partnerId)<0) pIds.push(x.partnerId); });
   reportPartnerIds(aptId).forEach(function(pid){ if(pIds.indexOf(pid)<0) pIds.push(pid); });
   active(DB.partners).forEach(function(p){ if(pIds.indexOf(p.id)<0) pIds.push(p.id); });
+  pIds=payPayerIds(aptId,pIds,"");                               // משלמים לפי פרוייקט
   var partners=pIds.map(function(pid){ return {partnerId:pid}; });
   var sum=round2(pays.reduce(function(s,p){ return s+(Number(p.amount)||0); },0));
 
@@ -6908,9 +6893,9 @@ function openBulkPayEdit(aptId){
       '<div class="field"><label>מהחשבון</label><select id="pb-account" onchange="onPbAccount()">'+
         '<option value="">— ללא שינוי —</option>'+
         '<option value="__none">ידני / ללא חשבון</option>'+
-        availAccounts(aptId).map(function(ac){
+        payAccounts(aptId).map(function(ac){
           return '<option value="'+ac.id+'">'+esc(ac.name)+(ac.isBank?" 🏦 (בנק זמני)":"")+'</option>'; }).join("")+
-      '</select></div>'+
+      '</select>'+pkScopeHint("accs",aptId)+'</div>'+
       (partners.length
         ? '<div class="field"><label>מי שילם (שותף)</label><select id="pb-payer">'+
             '<option value="">— ללא שינוי —</option>'+
@@ -7274,18 +7259,19 @@ function renderQuickPayNow(force){
     return;
   }
   _qePayBuilt=true; _qePayApt=aptId; _qePayTouched=false;
-  var parts=apPartners(aptId);
+  var parts=payPayerIds(aptId,apPartners(aptId).map(function(x){ return x.partnerId; }),"")
+    .map(function(pid){ return {partnerId:pid}; });
   w.innerHTML='<div class="form-grid">'+
     '<div class="field"><label>סכום התשלום</label><input id="qe-pay-amount" type="number" step="0.01" oninput="_qePayTouched=true" value="'+(amt||"")+'"></div>'+
     '<div class="field"><label>מהחשבון</label><select id="qe-pay-account" onchange="onQuickPayAccount()">'+
       '<option value="">— ידני / ללא חשבון —</option>'+
-      availAccounts(aptId).map(function(ac){
+      payAccounts(aptId).map(function(ac){
         return '<option value="'+ac.id+'">'+esc(ac.name)+(ac.isBank?" 🏦 (בנק זמני)":"")+'</option>'; }).join("")+
-    '</select></div>'+
+    '</select>'+pkScopeHint("accs",aptId)+'</div>'+
     (parts.length
       ? '<div class="field"><label>מי שילם</label><select id="qe-pay-payer"><option value="">—</option>'+
           parts.map(function(p){return '<option value="'+p.partnerId+'">'+esc(partnerName(p.partnerId))+'</option>';}).join("")+
-        '</select></div>'
+        '</select>'+pkScopeHint("payers",aptId)+'</div>'
       : '')+
     '<div class="field"><label>אמצעי תשלום</label><select id="qe-pay-method" onchange="onMethodPick(\'qe-pay-method\')">'+methodOptions("transfer")+'</select></div>'+
     /* סטטוס החשבונית נקבע כאן ולא רק בעריכה מאוחרת — זה הרגע שבו
@@ -7453,6 +7439,7 @@ function openPaymentEditor(eId,payId){
   var _pids=[]; apPartners(aptId).forEach(function(x){ if(_pids.indexOf(x.partnerId)<0) _pids.push(x.partnerId); });
   reportPartnerIds(aptId).forEach(function(pid){ if(_pids.indexOf(pid)<0) _pids.push(pid); });
   active(DB.partners).forEach(function(x){ if(_pids.indexOf(x.id)<0) _pids.push(x.id); });
+  _pids=payPayerIds(aptId,_pids,p&&p.payerPartnerId);          // משלמים לפי פרוייקט
   var partners=_pids.map(function(pid){ return {partnerId:pid}; });
   var body='<div class="form-grid">'+
     '<div class="field"><label>תאריך</label><input id="pm-date" type="date" value="'+(p?esc(p.date):todayISO())+'"></div>'+
@@ -7467,7 +7454,7 @@ function openPaymentEditor(eId,payId){
           eId,{placeholder:"הקלד שם שלב…"})+
         '<div class="hint">שויך בטעות לשלב אחר? בחר כאן את השלב הנכון והתשלום יעבור אליו.</div></div>'
       : '')+
-    '<div class="field"><label>מהחשבון</label><select id="pm-account" onchange="onPmAccountPick()">'+accountOptions(aptId,p?p.accountId:"")+'</select></div>'+
+    '<div class="field"><label>מהחשבון</label><select id="pm-account" onchange="onPmAccountPick()">'+accountOptions(aptId,p?p.accountId:"")+'</select>'+pkScopeHint("accs",aptId)+'</div>'+
     '<div class="field full" id="pm-newacc" style="display:none;background:#f7f9ff;border:1px solid var(--line);border-radius:10px;padding:10px">'+
       '<label>שם החשבון החדש</label>'+
       '<input id="pm-newacc-name" placeholder="למשל: מרכנתיל / חשבון יונה" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addAccountInline(\''+aptId+'\');}">'+
@@ -7481,7 +7468,7 @@ function openPaymentEditor(eId,payId){
     '</div>'+
     /* "מי שילם" מוצג רק כשיש שותפים בפרוייקט — בפרויקט אישי אין את מי לבחור */
     (partners.length
-      ? '<div class="field"><label id="pm-payer-lbl">מי שילם (שותף)</label><select id="pm-payer"><option value="">—</option>'+partners.map(function(ap){return '<option value="'+ap.partnerId+'"'+(p&&p.payerPartnerId===ap.partnerId?" selected":"")+'>'+esc(partnerName(ap.partnerId))+'</option>';}).join("")+'</select></div>'
+      ? '<div class="field"><label id="pm-payer-lbl">מי שילם (שותף)</label><select id="pm-payer"><option value="">—</option>'+partners.map(function(ap){return '<option value="'+ap.partnerId+'"'+(p&&p.payerPartnerId===ap.partnerId?" selected":"")+'>'+esc(partnerName(ap.partnerId))+'</option>';}).join("")+'</select>'+pkScopeHint("payers",aptId)+'</div>'
       : '')+
     '<div class="field"><label>אמצעי תשלום</label><select id="pm-method" onchange="onMethodPick(\'pm-method\')">'+methodOptions(p?p.method:"transfer")+'</select></div>'+
     /* בורר "מוטב" מוצג רק כשיש דמי ניהול על השלב — אחרת יש רק אפשרות אחת והוא רעש */
@@ -7779,9 +7766,10 @@ function openBulkPayMgr(aptId,mgrId){
   }).filter(function(r){ return r.rem>0.01; })
     .sort(function(x,y){ return x.e.date<y.e.date?-1:1; });
   if(!open.length){ toast("אין שלבים פתוחים למנהל זה","warn"); return; }
-  var partners=apPartners(aptId);
+  var partners=payPayerIds(aptId,apPartners(aptId).map(function(x){ return x.partnerId; }),"")
+    .map(function(pid){ return {partnerId:pid}; });
   var accOpts='<option value="">— ידני / ללא חשבון —</option>'+
-    availAccounts(aptId).map(function(ac){
+    payAccounts(aptId).map(function(ac){
       return '<option value="'+ac.id+'">'+esc(ac.name)+(ac.isBank?" 🏦 (בנק זמני)":"")+'</option>'; }).join("");
   var body='<p class="muted">הפרטים למטה יחולו על <b>כל השלבים המסומנים</b> — תשלום נפרד לכל שלב, בגובה ה"נותר" שלו.</p>'+
     '<div class="form-grid">'+
@@ -11887,10 +11875,17 @@ async function runSalvage(){
 function moduleSettings(){
   var tab=state.params.stab||"partners";
   var tabs=[["partners","ספר שותפים"],["cats","קטגוריות"],["accounts","חשבונות"],["methods","אמצעי תשלום"],["users","משתמשים"],["sheets","סנכרון"],["backup","גיבוי"]];
-  if(CU&&CU.role==="admin") tabs.splice(2,0,["aptcats","קטגוריות לפי פרוייקט"]);
+  /* הגדרות לפי פרוייקט — כל אחת ליד הלשונית שלה (למנהל) */
+  if(CU&&CU.role==="admin"){
+    var _after=function(k,t){ for(var i=0;i<tabs.length;i++) if(tabs[i][0]===k){ tabs.splice(i+1,0,t); return; } tabs.push(t); };
+    _after("partners",["aptpayers","משלמים לפי פרוייקט"]);
+    _after("cats",["aptcats","קטגוריות לפי פרוייקט"]);
+    _after("accounts",["aptaccs","חשבונות לפי פרוייקט"]);
+  }
   var h='<h2>הגדרות</h2><div class="tabs">'+tabs.map(function(t){return '<div class="tab'+(tab===t[0]?" active":"")+'" onclick="go(\'settings\',{stab:\''+t[0]+'\'})">'+t[1]+'</div>';}).join("")+'</div>';
   if(tab==="partners"){
     h+='<div class="toolbar"><button class="btn btn-primary btn-sm" onclick="editPartner(null)">➕ שותף</button>'+
+      (CU&&CU.role==="admin"?'<button class="btn btn-sm" onclick="go(\'settings\',{stab:\'aptpayers\'})">🏷️ משלמים לפי פרוייקט</button>':'')+
       searchBox("pt-q",Q.partners,"חיפוש שותף…","Q.partners=this.value;renderPartnersTable()")+
       '<div class="sp"></div><span id="pt-count"></span></div>';
     h+='<div id="pt-table">'+partnersTableHtml()+'</div>';
@@ -11920,8 +11915,10 @@ function moduleSettings(){
       '<td>'+money(ta-tp)+'</td><td></td></tr></tfoot></table></div>'+
       '<div class="hint">הקטגוריה נבחרת בעריכת שלב (או בהוצאה מהירה), ומזינה את דוח <b>"לפי קטגוריה"</b> '+
       'בלשונית הדוחות של כל פרויקט. מחיקת קטגוריה לא מוחקת שלבים — הם פשוט חוזרים ל"ללא קטגוריה".</div>';
-  } else if(tab==="aptcats"){
-    h+=(CU&&CU.role==="admin")?aptCatsViewHtml():'<div class="empty">אין הרשאה</div>';
+  } else if(tab==="aptcats"||tab==="aptaccs"||tab==="aptpayers"){
+    h+=(CU&&CU.role==="admin")
+      ? aptCatsViewHtml({aptcats:"cats",aptaccs:"accs",aptpayers:"payers"}[tab])
+      : '<div class="empty">אין הרשאה</div>';
   } else if(tab==="accounts"){
     var accs=active(DB.accounts);
     /* כפילות = אותו שם, גם אם השיוך שונה. אותו אדם/חשבון שנוצר פעמיים
@@ -11929,6 +11926,7 @@ function moduleSettings(){
     var dupGroups=accountDupGroups();
     var dupKeys=Object.keys(dupGroups);
     h+='<div class="toolbar"><button class="btn btn-primary btn-sm" onclick="editAccount(null)">➕ חשבון</button>'+
+      (CU&&CU.role==="admin"?'<button class="btn btn-sm" onclick="go(\'settings\',{stab:\'aptaccs\'})">🏷️ חשבונות לפי פרוייקט</button>':'')+
       '<button class="btn btn-sm" onclick="seedCommonAccounts()">📥 טען רשימת חשבונות מוכנה</button>'+
       '<button class="btn '+(dupKeys.length?'btn-danger':'')+' btn-sm" onclick="openMergeAccounts()">🧹 מיזוג חשבונות'+
         (dupKeys.length?' ('+dupKeys.length+')':'')+'</button>'+
@@ -14326,6 +14324,12 @@ function mergeApartments(srcId,dstId){
     active(DB.expenses).forEach(function(e){ if(e.apartmentId===srcId && e.categoryId) carry.push(e.categoryId); });
     carry.forEach(function(cid){ var c=byId(DB.categories,cid); if(c && !c.deleted) aptCatAttach([dstId],cid); });
   }
+  ["accs","payers"].forEach(function(kind){
+    if(!pkIds(kind,dstId)) return;
+    var carry2=(pkIds(kind,srcId)||[]).slice();
+    Object.keys(PK_KINDS[kind].usage()[srcId]||{}).forEach(function(id){ carry2.push(id); });
+    carry2.forEach(function(id){ pkAttach(kind,[dstId],id); });
+  });
   // הוצאות (החלוקות, דמי הניהול והתשלומים שלהן עוברים איתן דרך expenseId)
   active(DB.expenses).forEach(function(e){ if(e.apartmentId===srcId){ e.apartmentId=dstId; moved++; } });
   // שותפי פרוייקט — לא מכפילים שותף שכבר קיים ביעד
@@ -14455,32 +14459,166 @@ function deleteApartmentExpenses(aptId){
   save(); toast("נמחקו "+exps.length+" הוצאות","ok"); rerender();
 }
 /* ============================================================
-   מסך "קטגוריות לפי פרוייקט" — שורה לכל קטגוריה, עמודה לכל פרוייקט
+   הגדרות לפי פרוייקט — קטגוריות, חשבונות ומשלמים
+   ------------------------------------------------------------
+   אותו מנגנון לשלושתם: DB.settings[key] = {aptId:[id,...]}. פרוייקט בלי
+   רשימה — הכול זמין בו, כמו תמיד. מסך אחד (טבלה: שורה לכל פריט, עמודה
+   לכל פרוייקט) משרת את שלושת הסוגים — הסוג נקבע לפי הלשונית בהגדרות.
    ============================================================ */
-var ACQ={q:"",apt:"",show:"",st:0,sl:0};    // חיפוש קטגוריה / סינון פרוייקט / אילו פרוייקטים / מיקום הגלילה
-var ACF={};    // סינון לפי עמודה: פרוייקט → "on" | "off" | "used" | "warn"
-var ACC=null;  // בחירת קטגוריות מתוך הרשימה (▾): null = כולן, אחרת {id:1}
-var AC_FMODES=[["","הכל"],["on","✔ מסומן"],["off","✖ לא מסומן"],["used","בשימוש"],["warn","⚠ בשימוש, לא מסומן"]];
-var ACU={};    // מפת השימוש מהרינדור האחרון (פרוייקט → קטגוריה → שלבים) — סימון לא משנה אותה
-/* ספירת שלבים לכל פרוייקט+קטגוריה במעבר אחד. שלבי-אב לא נספרים —
-   הכסף והקטגוריה יושבים בתתי-השלבים. */
-function aptCatUsage(){
-  var par={}, u={}, exps=active(DB.expenses);
-  exps.forEach(function(e){ if(e.parentId) par[e.parentId]=1; });
-  exps.forEach(function(e){
-    if(!e.categoryId || par[e.id]) return;
-    var c=byId(DB.categories,e.categoryId); if(!c || c.deleted) return;
-    var m=u[e.apartmentId]||(u[e.apartmentId]={});
-    m[e.categoryId]=(m[e.categoryId]||0)+1;
+var PK_MAP_KEYS=["aptCats","aptAccs","aptPayers"];
+/* ספירת שימוש בתשלומים לפי הפרוייקט של השלב — לחשבונות ולמשלמים */
+function pkPayUsage(field,liveRows){
+  var live={}; liveRows.forEach(function(r){ live[r.id]=1; });
+  var expApt={}, u={};
+  active(DB.expenses).forEach(function(e){ expApt[e.id]=e.apartmentId; });
+  active(DB.payments).forEach(function(p){
+    var v=p[field]; if(!v || !live[v]) return;
+    var a=expApt[p.expenseId]; if(!a) return;
+    var m=u[a]||(u[a]={});
+    m[v]=(m[v]||0)+1;
   });
   return u;
 }
+var PK_KINDS={
+  cats:{key:"aptCats", tab:"aptcats", title:"קטגוריות לפי פרוייקט",
+    one:"קטגוריה", many:"קטגוריות", shownW:"מוצגות", allAvail:"כל הקטגוריות זמינות",
+    noneFit:"אין קטגוריה שמתאימה", usedUnit:"שלבים",
+    empty:'אין קטגוריות עדיין — הוסף בלשונית "קטגוריות".',
+    rows:function(){ return catsSorted(); },
+    row:function(id){ var c=byId(DB.categories,id); return (c&&!c.deleted)?c:null; },
+    label:function(c){ return c.name; },
+    applies:function(){ return true; },
+    /* ספירת שלבים לכל פרוייקט+קטגוריה במעבר אחד. שלבי-אב לא נספרים —
+       הכסף והקטגוריה יושבים בתתי-השלבים. */
+    usage:function(){
+      var par={}, u={}, exps=active(DB.expenses);
+      exps.forEach(function(e){ if(e.parentId) par[e.parentId]=1; });
+      exps.forEach(function(e){
+        if(!e.categoryId || par[e.id]) return;
+        var c=byId(DB.categories,e.categoryId); if(!c || c.deleted) return;
+        var m=u[e.apartmentId]||(u[e.apartmentId]={});
+        m[e.categoryId]=(m[e.categoryId]||0)+1;
+      });
+      return u;
+    },
+    extra:function(){ return []; },
+    help:'סמן לכל פרוייקט את הקטגוריות שלו. בהוצאה של הפרוייקט (רגילה, מהירה, עדכון מרוכז וכלל תקופתי) יוצגו לבחירה <b>רק</b> הקטגוריות שסומנו. '+
+      'פרוייקט שלא סומן לו כלום (<span class="badge badge-unit">הכל</span>) — <b>כל הקטגוריות זמינות בו</b>, כמו היום.<br>'+
+      'המספר הקטן ליד התיבה = כמה שלבים כבר רשומים בקטגוריה הזו בפרוייקט. <span class="ac-warn-key">כתום</span> = יש שלבים בקטגוריה שלא סומנה. '+
+      'שלבים קיימים לא משתנים. קטגוריה חדשה שנוצרת בהגדרות לא נוספת לפרוייקטים מוגבלים — יש לסמן אותה כאן.'},
+  accs:{key:"aptAccs", tab:"aptaccs", title:"חשבונות לפי פרוייקט",
+    one:"חשבון", many:"חשבונות", shownW:"מוצגים", allAvail:"כל החשבונות זמינים",
+    noneFit:"אין חשבון שמתאים", usedUnit:"תשלומים",
+    empty:'אין חשבונות עדיין — הוסף בלשונית "חשבונות".',
+    rows:function(){
+      return active(DB.accounts).slice().sort(function(a,b){
+        return (b.isBank?1:0)-(a.isBank?1:0) || String(a.name).localeCompare(String(b.name),"he"); });
+    },
+    row:function(id){ var a=byId(DB.accounts,id); return (a&&!a.deleted)?a:null; },
+    label:function(a){
+      return a.name+(a.isBank?" 🏦":"")+(a.apartmentId?" · "+(apartmentName(a.apartmentId)||"פרוייקט"):"");
+    },
+    /* חשבון ששויך לפרוייקט מסוים זמין רק בו */
+    applies:function(aptId,a){ return !a.apartmentId || a.apartmentId===aptId; },
+    usage:function(){ return pkPayUsage("accountId",active(DB.accounts)); },
+    extra:function(){ return []; },
+    help:'סמן לכל פרוייקט את החשבונות שמהם משלמים בו. בתשלום על הוצאה בפרוייקט (תשלום, הוצאה מהירה, הוצאה חדשה, עדכון מרוכז ותשלום מרוכז למנהל) '+
+      'יוצגו בשדה <b>"מהחשבון"</b> רק החשבונות שסומנו. פרוייקט שלא סומן לו כלום (<span class="badge badge-unit">הכל</span>) — <b>כל החשבונות זמינים בו</b>, כמו היום.<br>'+
+      'המספר הקטן ליד התיבה = כמה תשלומים כבר נרשמו מהחשבון בפרוייקט. <span class="ac-warn-key">כתום</span> = יש תשלומים מחשבון שלא סומן. '+
+      'חשבון ששויך לפרוייקט מסוים מופיע עם "—" בעמודות של שאר הפרוייקטים. תשלומים קיימים לא משתנים. '+
+      'חשבון חדש שנוסף מתוך תשלום בפרוייקט מוגבל — משויך אליו אוטומטית.'},
+  payers:{key:"aptPayers", tab:"aptpayers", title:"משלמים לפי פרוייקט",
+    one:"משלם", many:"משלמים", shownW:"מוצגים", allAvail:"כל המשלמים זמינים",
+    noneFit:"אין משלם שמתאים", usedUnit:"תשלומים",
+    empty:'אין שותפים עדיין — הוסף בלשונית "ספר שותפים".',
+    rows:function(){
+      return active(DB.partners).slice().sort(function(a,b){ return String(a.name).localeCompare(String(b.name),"he"); });
+    },
+    row:function(id){ var p=byId(DB.partners,id); return (p&&!p.deleted)?p:null; },
+    label:function(p){ return p.name; },
+    applies:function(){ return true; },
+    usage:function(){ return pkPayUsage("payerPartnerId",active(DB.partners)); },
+    /* "📥" מסמן גם את שותפי הפרוייקט — הם המשלמים הטבעיים שלו */
+    extra:function(aptId){ return apPartners(aptId).map(function(x){ return x.partnerId; }); },
+    help:'סמן לכל פרוייקט מי יכול להופיע בשדה <b>"מי שילם"</b> בתשלום על הוצאה בפרוייקט (תשלום, הוצאה מהירה, הוצאה חדשה, עדכון מרוכז ותשלום מרוכז למנהל). '+
+      'פרוייקט שלא סומן לו כלום (<span class="badge badge-unit">הכל</span>) — הרשימה נשארת כמו היום.<br>'+
+      'המספר הקטן ליד התיבה = כמה תשלומים כבר נרשמו על שם המשלם בפרוייקט. <span class="ac-warn-key">כתום</span> = יש תשלומים של משלם שלא סומן. '+
+      '"📥" מסמן את מי ששילם בפועל וגם את שותפי הפרוייקט. תשלומים קיימים לא משתנים.'}
+};
+function pkMapRead(key){
+  var m=DB&&DB.settings&&DB.settings[key];
+  return (m && typeof m==="object" && !Array.isArray(m)) ? m : {};
+}
+function pkMapWrite(key){
+  DB.settings=DB.settings||{};
+  var m=DB.settings[key];
+  if(!m || typeof m!=="object" || Array.isArray(m)) m=DB.settings[key]={};
+  return m;
+}
+/* הפריטים החיים שמשויכים לפרוייקט, או null = ללא הגבלה */
+function pkIds(kind,aptId){
+  var K=PK_KINDS[kind];
+  var raw=pkMapRead(K.key)[aptId];
+  if(!Array.isArray(raw) || !raw.length) return null;
+  var ok=raw.filter(function(id){ var r=K.row(id); return !!(r && K.applies(aptId,r)); });
+  return ok.length ? ok : null;
+}
+/* משייך פריט לפרוייקטים שכבר מוגבלים. פרוייקט בלי רשימה לא נוגעים בו —
+   אחרת שיוך ראשון היה הופך אותו בשקט ל"פריט אחד בלבד". */
+function pkAttach(kind,aptIds,id){
+  if(!id) return 0;
+  var K=PK_KINDS[kind], n=0;
+  (aptIds||[]).filter(Boolean).forEach(function(aptId){
+    var ids=pkIds(kind,aptId);
+    if(!ids || ids.indexOf(id)>=0) return;
+    var m=pkMapWrite(K.key);
+    m[aptId]=(Array.isArray(m[aptId])?m[aptId]:[]).concat([id]);
+    n++;
+  });
+  return n;
+}
+/* שורת הסבר קטנה מתחת לבורר בטופס — רק כשהפרוייקט מוגבל */
+function pkScopeHint(kind,aptId){
+  if(!aptCatsOn()) return "";
+  var ids=pkIds(kind,aptId); if(!ids) return "";
+  var K=PK_KINDS[kind];
+  return '<div class="hint">🏷️ '+K.shownW+' רק '+ids.length+' ה'+K.many+' של הפרוייקט</div>';
+}
+/* חשבונות לבחירה בתשלום. keepId — החשבון שכבר רשום בתשלום נשאר ברשימה */
+function payAccounts(aptId,keepId){
+  var all=availAccounts(aptId);
+  if(!aptCatsOn()) return all;
+  var ids=pkIds("accs",aptId);
+  if(!ids) return all;
+  return all.filter(function(ac){ return ac.id===keepId || ids.indexOf(ac.id)>=0; });
+}
+/* "מי שילם" — לפי ההגדרה; בלי הגדרה נשארת רשימת ברירת המחדל של הטופס */
+function payPayerIds(aptId,baseIds,keepId){
+  if(!aptCatsOn()) return baseIds;
+  var ids=pkIds("payers",aptId);
+  if(!ids) return baseIds;
+  var out=ids.slice();
+  if(keepId && out.indexOf(keepId)<0) out.push(keepId);
+  return out;
+}
+
+/* ============================================================
+   המסך — שורה לכל פריט, עמודה לכל פרוייקט
+   ============================================================ */
+var PKA="cats";                  // הסוג שמוצג כרגע
+function pkK(){ return PK_KINDS[PKA]; }
+var ACQ={q:"",apt:"",show:"",st:0,sl:0,kind:"cats"};    // חיפוש / סינון פרוייקט / אילו פרוייקטים / גלילה / סוג
+var ACF={};    // סינון לפי עמודה: פרוייקט → "on" | "off" | "used" | "warn"
+var ACC=null;  // בחירת פריטים מתוך הרשימה (▾): null = כולם, אחרת {id:1}
+var AC_FMODES=[["","הכל"],["on","✔ מסומן"],["off","✖ לא מסומן"],["used","בשימוש"],["warn","⚠ בשימוש, לא מסומן"]];
+var ACU={};    // מפת השימוש מהרינדור האחרון (פרוייקט → פריט → כמות) — סימון לא משנה אותה
+function aptCatUsage(){ return pkK().usage(); }
 function aptCatsApts(use){
   use=use||ACU||{};
   return active(DB.apartments).filter(function(a){
       if(!matches(ACQ.apt,a.name)) return false;
       if(!ACQ.show) return true;
-      var l=aptCatIds(a.id);
+      var l=pkIds(PKA,a.id);
       if(ACQ.show==="lim") return !!l;
       if(ACQ.show==="open") return !l;
       if(ACQ.show==="warn"){
@@ -14492,10 +14630,12 @@ function aptCatsApts(use){
     })
     .sort(function(a,b){ return String(a.name).localeCompare(String(b.name),"he"); });
 }
-/* התאמה של קטגוריה לסינון של עמודת פרוייקט אחת */
-function aptCatsCellPass(aptId,catId,mode){
+/* התאמה של פריט לסינון של עמודת פרוייקט אחת */
+function aptCatsCellPass(aptId,rowId,mode){
   if(!mode) return true;
-  var l=aptCatIds(aptId), on=!!(l && l.indexOf(catId)>=0), n=((ACU[aptId]||{})[catId])||0;
+  var K=pkK(), r=K.row(rowId);
+  if(!r || !K.applies(aptId,r)) return false;
+  var l=pkIds(PKA,aptId), on=!!(l && l.indexOf(rowId)>=0), n=((ACU[aptId]||{})[rowId])||0;
   if(mode==="on") return on;
   if(mode==="off") return !on;
   if(mode==="used") return n>0;
@@ -14506,24 +14646,24 @@ function aptCatsCellPass(aptId,catId,mode){
 function aptCatsActiveCols(aptIds){
   return aptIds.filter(function(a){ return !!ACF[a]; });
 }
-function aptCatsCatPass(c){
-  if(!c) return true;
-  if(ACC && !ACC[c.id]) return false;
-  return matches(ACQ.q,c.name);
+function aptCatsCatPass(r){
+  if(!r) return true;
+  if(ACC && !ACC[r.id]) return false;
+  return matches(ACQ.q,pkK().label(r));
 }
-function aptCatsRowPass(c,cols){
-  return aptCatsCatPass(c) && cols.every(function(a){ return aptCatsCellPass(a,c.id,ACF[a]); });
+function aptCatsRowPass(r,cols){
+  return aptCatsCatPass(r) && cols.every(function(a){ return aptCatsCellPass(a,r.id,ACF[a]); });
 }
 function aptCatsFiltering(){
   return !!(ACQ.q || ACQ.apt || ACQ.show || ACC || Object.keys(ACF).some(function(a){ return !!ACF[a]; }));
 }
-/* שדה הסינון בכותרת עמודת הקטגוריה */
+/* שדה הסינון בכותרת העמודה הראשונה */
 function aptCatsCatText(v){
   ACQ.q=v;
   aptCatsApplyFilter();
   aptCatsPickerFill();
 }
-/* ---------- ▾ בחירת קטגוריות מתוך רשימה (כמו באקסל) ---------- */
+/* ---------- ▾ בחירת פריטים מתוך רשימה (כמו באקסל) ---------- */
 function aptCatsPickerClose(){
   var p=document.getElementById("ac-pick"); if(p) p.remove();
   document.removeEventListener("mousedown",aptCatsPickerOutside,true);
@@ -14550,28 +14690,32 @@ function aptCatsPicker(btn){
     document.addEventListener("keydown",aptCatsPickerKey,true);
   },0);
 }
-/* הרשימה מציגה את הקטגוריות שמתאימות לשדה הסינון — כמו סינון מדורג באקסל */
+function aptCatsListed(){
+  var K=pkK();
+  return K.rows().filter(function(r){ return matches(ACQ.q,K.label(r)); });
+}
+/* הרשימה מציגה את הפריטים שמתאימים לשדה הסינון — כמו סינון מדורג באקסל */
 function aptCatsPickerFill(){
   var p=document.getElementById("ac-pick"); if(!p) return;
-  var list=catsSorted().filter(function(c){ return matches(ACQ.q,c.name); });
+  var K=pkK(), list=aptCatsListed();
   p.innerHTML='<div style="display:flex;gap:4px;margin-bottom:6px">'+
       '<button type="button" class="btn btn-sm" onclick="aptCatsPickAll(true)">סמן הכל</button>'+
       '<button type="button" class="btn btn-sm" onclick="aptCatsPickAll(false)">נקה</button></div>'+
     (list.length
-      ? list.map(function(c){
+      ? list.map(function(r){
           return '<label class="cp-item" style="display:flex;gap:6px;align-items:center;padding:3px 2px;cursor:pointer;border-radius:6px">'+
-            '<input type="checkbox" style="width:auto" data-c="'+c.id+'"'+((!ACC||ACC[c.id])?' checked':'')+' onchange="aptCatsPickOne(this)">'+
-            '<span>'+esc(c.name)+'</span></label>';
+            '<input type="checkbox" style="width:auto" data-c="'+r.id+'"'+((!ACC||ACC[r.id])?' checked':'')+' onchange="aptCatsPickOne(this)">'+
+            '<span>'+esc(K.label(r))+'</span></label>';
         }).join("")
-      : '<div class="muted">אין קטגוריה שמתאימה לסינון</div>');
+      : '<div class="muted">'+K.noneFit+' לסינון</div>');
 }
 function aptCatsPickSeed(){
   if(ACC) return;
-  ACC={}; catsSorted().forEach(function(c){ ACC[c.id]=1; });
+  ACC={}; pkK().rows().forEach(function(r){ ACC[r.id]=1; });
 }
 function aptCatsPickNormalize(){
-  /* כולן מסומנות = אין סינון */
-  if(ACC && catsSorted().every(function(c){ return ACC[c.id]; })) ACC=null;
+  /* הכול מסומן = אין סינון */
+  if(ACC && pkK().rows().every(function(r){ return ACC[r.id]; })) ACC=null;
 }
 function aptCatsPickOne(cb){
   aptCatsPickSeed();
@@ -14580,11 +14724,11 @@ function aptCatsPickOne(cb){
   aptCatsPickNormalize();
   aptCatsApplyFilter();
 }
-/* "סמן הכל" / "נקה" — חלים על הקטגוריות שמופיעות ברשימה */
+/* "סמן הכל" / "נקה" — חלים על הפריטים שמופיעים ברשימה */
 function aptCatsPickAll(on){
-  var list=catsSorted().filter(function(c){ return matches(ACQ.q,c.name); });
+  var list=aptCatsListed();
   aptCatsPickSeed();
-  list.forEach(function(c){ if(on) ACC[c.id]=1; else delete ACC[c.id]; });
+  list.forEach(function(r){ if(on) ACC[r.id]=1; else delete ACC[r.id]; });
   aptCatsPickNormalize();
   aptCatsPickerFill();
   aptCatsApplyFilter();
@@ -14599,16 +14743,18 @@ function aptCatsColFilter(sel){
 }
 function aptCatsApplyFilter(){
   var box=document.getElementById("ac-wrap"); if(!box) return;
+  var K=pkK();
   var shownApts=Array.prototype.map.call(box.querySelectorAll("th.ac-apt[data-apt]"),function(th){ return th.getAttribute("data-apt"); });
   var cols=aptCatsActiveCols(shownApts), shown=0;
   box.querySelectorAll("tbody tr[data-cat]").forEach(function(tr){
-    var ok=aptCatsRowPass(byId(DB.categories,tr.getAttribute("data-cat")),cols);
+    var r=K.row(tr.getAttribute("data-cat"));
+    var ok=!r || aptCatsRowPass(r,cols);
     var want=ok?"":"none";
     if(tr.style.display!==want) tr.style.display=want;
     if(ok) shown++;
   });
   var none=document.getElementById("ac-none"); if(none) none.style.display=shown?"none":"";
-  var cnt=document.getElementById("ac-shown"); if(cnt) cnt.textContent="מוצגות "+shown+" מתוך "+catsSorted().length;
+  var cnt=document.getElementById("ac-shown"); if(cnt) cnt.textContent=K.shownW+" "+shown+" מתוך "+K.rows().length;
   var qi=document.getElementById("ac-q"); if(qi) qi.classList.toggle("on",!!ACQ.q);
   var pb=document.getElementById("ac-cpick"); if(pb) pb.classList.toggle("on",!!ACC);
   aptCatsFilterState();
@@ -14625,10 +14771,18 @@ function aptCatsClearFilters(){
   aptCatsRefresh();
 }
 function aptCatsSummary(){
-  var apts=active(DB.apartments), lim=apts.filter(function(a){ return !!aptCatIds(a.id); }).length;
+  var apts=active(DB.apartments), lim=apts.filter(function(a){ return !!pkIds(PKA,a.id); }).length;
   return lim+" פרוייקטים עם רשימה · "+(apts.length-lim)+" ללא הגבלה";
 }
-function aptCatsViewHtml(){
+function aptCatsViewHtml(kind){
+  kind=PK_KINDS[kind]?kind:"cats";
+  /* מעבר בין סוגים — הסינונים שייכים לסוג הקודם ומתאפסים */
+  if(ACQ.kind!==kind){
+    aptCatsPickerClose();
+    ACQ={q:"",apt:ACQ.apt,show:"",st:0,sl:0,kind:kind}; ACF={}; ACC=null;
+  }
+  PKA=kind;
+  var K=pkK();
   /* רינדור מלא של המסך (למשל אחרי מיזוג אמיתי עם שמירה מחלון אחר)
      מחזיר את הטבלה לאותו מקום גלילה. המיקום נקרא כאן, מהטבלה הקיימת
      שעוד לא הוחלפה — לא סומכים רק על אירוע הגלילה, שלא תמיד נורה. */
@@ -14636,39 +14790,36 @@ function aptCatsViewHtml(){
   setTimeout(aptCatsRestoreScroll,0);
   return '<div class="toolbar">'+
       searchBox("ac-apt",ACQ.apt,"סינון פרוייקט…","ACQ.apt=this.value;aptCatsRefresh()")+
-      '<select id="ac-show" style="max-width:220px" title="אילו פרוייקטים להציג" onchange="ACQ.show=this.value;aptCatsRefresh()">'+
-        [["","כל הפרוייקטים"],["lim","רק פרוייקטים עם רשימה"],["open","רק פרוייקטים בלי הגבלה"],["warn","רק עם שלבים מחוץ לרשימה"]].map(function(o){
+      '<select id="ac-show" style="max-width:230px" title="אילו פרוייקטים להציג" onchange="ACQ.show=this.value;aptCatsRefresh()">'+
+        [["","כל הפרוייקטים"],["lim","רק פרוייקטים עם רשימה"],["open","רק פרוייקטים בלי הגבלה"],["warn","רק עם "+K.usedUnit+" מחוץ לרשימה"]].map(function(o){
           return '<option value="'+o[0]+'"'+(ACQ.show===o[0]?" selected":"")+'>'+o[1]+'</option>'; }).join("")+
       '</select>'+
       '<button type="button" id="ac-clear" class="btn btn-sm" style="transition:none;visibility:'+(aptCatsFiltering()?"visible":"hidden")+'" onclick="aptCatsClearFilters()">✖ נקה סינון</button>'+
-      '<button class="btn btn-sm" onclick="aptCatsFillUsage()" title="לכל פרוייקט שעדיין אין לו רשימה — מסמן את הקטגוריות שכבר רשומות בשלבים שלו">📥 מלא לפי השימוש בפועל</button>'+
+      '<button class="btn btn-sm" onclick="aptCatsFillUsage()" title="לכל פרוייקט שעדיין אין לו רשימה — מסמן את ה'+K.many+' שכבר בשימוש בו">📥 מלא לפי השימוש בפועל</button>'+
       '<div class="sp"></div><span class="muted" id="ac-sum">'+aptCatsSummary()+'</span>'+
     '</div>'+
     '<details class="ac-help" ontoggle="aptCatsFit()"><summary>ℹ️ איך זה עובד</summary><div class="hint" style="margin-top:4px">'+
-      'סמן לכל פרוייקט את הקטגוריות שלו. בהוצאה של הפרוייקט (רגילה, מהירה, עדכון מרוכז וכלל תקופתי) יוצגו לבחירה <b>רק</b> הקטגוריות שסומנו. '+
-      'פרוייקט שלא סומן לו כלום (<span class="badge badge-unit">הכל</span>) — <b>כל הקטגוריות זמינות בו</b>, כמו היום.<br>'+
-      'המספר הקטן ליד התיבה = כמה שלבים כבר רשומים בקטגוריה הזו בפרוייקט. <span class="ac-warn-key">כתום</span> = יש שלבים בקטגוריה שלא סומנה. '+
-      'שלבים קיימים לא משתנים. קטגוריה חדשה שנוצרת בהגדרות לא נוספת לפרוייקטים מוגבלים — יש לסמן אותה כאן.</div></details>'+
+      K.help+'</div></details>'+
     '<div id="ac-wrap">'+aptCatsTableHtml()+'</div>';
 }
 function aptCatsTableHtml(){
-  var allCats=catsSorted();
-  if(!allCats.length) return '<div class="empty">אין קטגוריות עדיין — הוסף בלשונית "קטגוריות".</div>';
+  var K=pkK();
+  var all=K.rows();
+  if(!all.length) return '<div class="empty">'+K.empty+'</div>';
   var use=aptCatUsage(), lists={};
   ACU=use;
   var apts=aptCatsApts(use);
   if(!apts.length) return '<div class="empty">'+((ACQ.apt||ACQ.show)?"אין פרוייקט שמתאים לסינון":"אין פרוייקטים")+'</div>';
-  /* כל הקטגוריות נבנות תמיד; החיפוש והבחירה רק מסתירים — כך אפשר לסנן
+  /* כל השורות נבנות תמיד; החיפוש והבחירה רק מסתירים — כך אפשר לסנן
      במקום, בלי לבנות מחדש את השדה שמקלידים בו */
-  var cats=allCats;
   var cols=aptCatsActiveCols(apts.map(function(a){ return a.id; })), shown=0;
-  apts.forEach(function(a){ lists[a.id]=aptCatIds(a.id); });
+  apts.forEach(function(a){ lists[a.id]=pkIds(PKA,a.id); });
   var h='<div class="table-wrap" onscroll="ACQ.st=this.scrollTop;ACQ.sl=this.scrollLeft">'+
     '<table class="tbl ac-tbl" data-tools="off" data-xl="off"><thead><tr><th class="ac-cat">'+
-      '<div class="ac-cat-h">קטגוריה <span class="ac-shown" id="ac-shown"></span></div>'+
+      '<div class="ac-cat-h">'+K.one+' <span class="ac-shown" id="ac-shown"></span></div>'+
       '<div class="ac-filt ac-cfilt">'+
-        '<input id="ac-q" class="ac-ftxt'+(ACQ.q?" on":"")+'" value="'+esc(ACQ.q)+'" placeholder="🔍 סנן קטגוריה…" autocomplete="off" oninput="aptCatsCatText(this.value)">'+
-        '<button type="button" id="ac-cpick" class="ac-fpick'+(ACC?" on":"")+'" title="בחירת קטגוריות מתוך רשימה" onclick="aptCatsPicker(this)">▾</button>'+
+        '<input id="ac-q" class="ac-ftxt'+(ACQ.q?" on":"")+'" value="'+esc(ACQ.q)+'" placeholder="🔍 סנן '+K.one+'…" autocomplete="off" oninput="aptCatsCatText(this.value)">'+
+        '<button type="button" id="ac-cpick" class="ac-fpick'+(ACC?" on":"")+'" title="בחירת '+K.many+' מתוך רשימה" onclick="aptCatsPicker(this)">▾</button>'+
       '</div></th>';
   apts.forEach(function(a){
     var l=lists[a.id], u=use[a.id]||{}, out=0;
@@ -14678,43 +14829,49 @@ function aptCatsTableHtml(){
       '<div class="ac-state">'+aptCatsStateHtml(l)+'</div>'+
       '<div class="ac-out">'+aptCatsOutHtml(out)+'</div>'+
       '<div class="ac-acts">'+
-        '<button class="btn btn-ghost btn-sm" title="סמן את הקטגוריות שכבר בשימוש בפרוייקט" onclick="aptCatsUsage(\''+a.id+'\')">📥</button>'+
-        '<button class="btn btn-ghost btn-sm" title="סמן את כל הקטגוריות שמוצגות כרגע (לפי החיפוש והסינון)" onclick="aptCatsSetAll(\''+a.id+'\',true)">✔</button>'+
-        '<button class="btn btn-ghost btn-sm" title="נקה — בלי הגבלה, כל הקטגוריות זמינות" onclick="aptCatsSetAll(\''+a.id+'\',false)">✖</button>'+
+        '<button class="btn btn-ghost btn-sm" title="סמן את ה'+K.many+' שכבר בשימוש בפרוייקט" onclick="aptCatsUsage(\''+a.id+'\')">📥</button>'+
+        '<button class="btn btn-ghost btn-sm" title="סמן את כל ה'+K.many+' שמוצגים כרגע (לפי החיפוש והסינון)" onclick="aptCatsSetAll(\''+a.id+'\',true)">✔</button>'+
+        '<button class="btn btn-ghost btn-sm" title="נקה — בלי הגבלה, '+K.allAvail+'" onclick="aptCatsSetAll(\''+a.id+'\',false)">✖</button>'+
       '</div>'+
-      '<div class="ac-filt"><select class="ac-fsel'+(ACF[a.id]?" on":"")+'" data-apt="'+a.id+'" title="סינון הקטגוריות לפי העמודה הזו" onchange="aptCatsColFilter(this)">'+
+      '<div class="ac-filt"><select class="ac-fsel'+(ACF[a.id]?" on":"")+'" data-apt="'+a.id+'" title="סינון ה'+K.many+' לפי העמודה הזו" onchange="aptCatsColFilter(this)">'+
         AC_FMODES.map(function(o){ return '<option value="'+o[0]+'"'+((ACF[a.id]||"")===o[0]?" selected":"")+'>'+o[1]+'</option>'; }).join("")+
       '</select></div></th>';
   });
   h+='</tr></thead><tbody>';
-  cats.forEach(function(c){
-    var pass=aptCatsRowPass(c,cols);
+  all.forEach(function(r){
+    var pass=aptCatsRowPass(r,cols), lbl=K.label(r);
     if(pass) shown++;
-    h+='<tr data-cat="'+c.id+'"'+(pass?'':' style="display:none"')+'><td class="ac-cat">'+esc(c.name)+'</td>';
+    h+='<tr data-cat="'+r.id+'"'+(pass?'':' style="display:none"')+'><td class="ac-cat">'+esc(lbl)+'</td>';
     apts.forEach(function(a){
-      var l=lists[a.id], on=!!(l && l.indexOf(c.id)>=0), n=(use[a.id]||{})[c.id]||0;
-      h+='<td class="ac-cell'+(l?"":" ac-open")+(l&&!on&&n?" ac-warn":"")+'" data-apt="'+a.id+'" data-cat="'+c.id+'">'+
-        '<label class="ac-lbl" title="'+esc(a.name)+" · "+esc(c.name)+'">'+
-          '<input type="checkbox"'+(on?" checked":"")+' onchange="aptCatToggle(\''+a.id+'\',\''+c.id+'\',this.checked)">'+
+      if(!K.applies(a.id,r)){
+        h+='<td class="ac-cell ac-na" data-apt="'+a.id+'" data-cat="'+r.id+'" title="משויך לפרוייקט אחר">—</td>';
+        return;
+      }
+      var l=lists[a.id], on=!!(l && l.indexOf(r.id)>=0), n=(use[a.id]||{})[r.id]||0;
+      h+='<td class="ac-cell'+(l?"":" ac-open")+(l&&!on&&n?" ac-warn":"")+'" data-apt="'+a.id+'" data-cat="'+r.id+'">'+
+        '<label class="ac-lbl" title="'+esc(a.name)+" · "+esc(lbl)+'">'+
+          '<input type="checkbox"'+(on?" checked":"")+' onchange="aptCatToggle(\''+a.id+'\',\''+r.id+'\',this.checked)">'+
           '<span class="ac-n">'+(n?n:"")+'</span></label></td>';
     });
     h+='</tr>';
   });
-  h+='<tr id="ac-none"'+(shown?' style="display:none"':'')+'><td class="ac-cat muted" colspan="'+(apts.length+1)+'">אין קטגוריה שמתאימה לחיפוש ולסינון</td></tr>';
+  h+='<tr id="ac-none"'+(shown?' style="display:none"':'')+'><td class="ac-cat muted" colspan="'+(apts.length+1)+'">'+K.noneFit+' לחיפוש ולסינון</td></tr>';
   h+='</tbody></table></div>';
   /* המונה בכותרת — כאן, כדי שיהיה נכון כבר ברינדור הראשון */
   return h.replace('<span class="ac-shown" id="ac-shown"></span>',
-    '<span class="ac-shown" id="ac-shown">מוצגות '+shown+' מתוך '+allCats.length+'</span>');
+    '<span class="ac-shown" id="ac-shown">'+K.shownW+' '+shown+' מתוך '+all.length+'</span>');
 }
 /* רענון הטבלה בלבד, בלי לאבד את מיקום הגלילה — כך סימון תא לא מקפיץ.
    לטבלה אין כפתור "אקסל" (data-xl="off"): הכפתור נתלה מעליה באיחור אחרי
    כל רענון, והטבלה קפצה 28px למטה ובחזרה בכל סימון. */
 function aptCatsStateHtml(l){
-  return l ? '<span class="badge badge-ok badge-unit">'+l.length+' קטגוריות</span>'
-           : '<span class="badge badge-unit" title="לא סומנה אף קטגוריה — כל הקטגוריות זמינות">הכל</span>';
+  var K=pkK();
+  return l ? '<span class="badge badge-ok badge-unit">'+l.length+' '+K.many+'</span>'
+           : '<span class="badge badge-unit" title="לא סומן כלום — '+K.allAvail+'">הכל</span>';
 }
 function aptCatsOutHtml(out){
-  return out ? '<span class="badge badge-warn badge-unit" title="שלבים שרשומים בקטגוריות שלא סומנו לפרוייקט">⚠ '+out+' שלבים מחוץ</span>' : "";
+  var K=pkK();
+  return out ? '<span class="badge badge-warn badge-unit" title="'+K.usedUnit+' שרשומים ב'+K.many+' שלא סומנו לפרוייקט">⚠ '+out+' '+K.usedUnit+' מחוץ</span>' : "";
 }
 /* גובה הטבלה = מהמקום שלה ועד תחתית המסך. כך אין גלילה של העמוד: כל
    גלילה היא בתוך הטבלה, ושם השורה והעמודה המקובעות נשארות במקומן. */
@@ -14744,7 +14901,7 @@ function aptCatsRestoreScroll(){
 function aptCatsPaint(aptIds){
   var box=document.getElementById("ac-wrap"); if(!box) return;
   (aptIds||[]).forEach(function(aptId){
-    var l=aptCatIds(aptId), u=ACU[aptId]||{}, out=0;
+    var l=pkIds(PKA,aptId), u=ACU[aptId]||{}, out=0;
     if(l) Object.keys(u).forEach(function(cid){ if(l.indexOf(cid)<0) out+=u[cid]; });
     var th=box.querySelector('th.ac-apt[data-apt="'+aptId+'"]');
     if(th){
@@ -14753,10 +14910,11 @@ function aptCatsPaint(aptIds){
       if(ot) ot.innerHTML=aptCatsOutHtml(out);
     }
     box.querySelectorAll('td.ac-cell[data-apt="'+aptId+'"]').forEach(function(td){
+      var cb=td.querySelector("input"); if(!cb) return;          // לא רלוונטי לפרוייקט
       var cid=td.getAttribute("data-cat"), on=!!(l && l.indexOf(cid)>=0), n=u[cid]||0;
       td.classList.toggle("ac-open",!l);
       td.classList.toggle("ac-warn",!!(l && !on && n));
-      var cb=td.querySelector("input"); if(cb && cb.checked!==on) cb.checked=on;
+      if(cb.checked!==on) cb.checked=on;
     });
   });
   var sum=document.getElementById("ac-sum"); if(sum) sum.textContent=aptCatsSummary();
@@ -14774,69 +14932,84 @@ function aptCatsGuard(){
   return true;
 }
 function aptCatsName(aptId){ var a=byId(DB.apartments,aptId); return a?a.name:""; }
-function aptCatToggle(aptId,catId,on){
+function aptCatToggle(aptId,rowId,on){
   if(!aptCatsGuard()) return;
-  /* מתחילים מהקטגוריות החיות בלבד: מזהה של קטגוריה שנמחקה שנשאר ברשימה
-     היה מגביל שוב בשקט פרוייקט שמוצג "הכל", ברגע ששחזרו אותה */
-  var was=!!aptCatIds(aptId), list=(aptCatIds(aptId)||[]).slice();
-  if(on && list.indexOf(catId)<0) list.push(catId);
-  if(!on) list=list.filter(function(x){ return x!==catId; });
-  var m=aptCatsWrite();
+  var K=pkK();
+  /* מתחילים מהפריטים החיים בלבד: מזהה של פריט שנמחק שנשאר ברשימה
+     היה מגביל שוב בשקט פרוייקט שמוצג "הכל", ברגע ששחזרו אותו */
+  var was=!!pkIds(PKA,aptId), list=(pkIds(PKA,aptId)||[]).slice();
+  if(on && list.indexOf(rowId)<0) list.push(rowId);
+  if(!on) list=list.filter(function(x){ return x!==rowId; });
+  var m=pkMapWrite(K.key);
   if(list.length) m[aptId]=list; else delete m[aptId];
   save();
-  var now=!!aptCatIds(aptId);
-  if(!was && now) toast('"'+aptCatsName(aptId)+'" מוגבל עכשיו לקטגוריות שסומנו',"ok");
-  else if(was && !now) toast('בוטלה ההגבלה ב"'+aptCatsName(aptId)+'" — כל הקטגוריות זמינות בו',"warn");
+  var now=!!pkIds(PKA,aptId);
+  if(!was && now) toast('"'+aptCatsName(aptId)+'" מוגבל עכשיו ל'+K.many+' שסומנו',"ok");
+  else if(was && !now) toast('בוטלה ההגבלה ב"'+aptCatsName(aptId)+'" — '+K.allAvail+' בו',"warn");
   aptCatsPaint([aptId]);
 }
 function aptCatsSetAll(aptId,on){
   if(!aptCatsGuard()) return;
+  var K=pkK();
   /* בדיקות על קריאה בלבד — כתיבה (שיוצרת את המפה) רק כשבאמת משנים */
   var name=aptCatsName(aptId);
   if(on){
-    /* מה שמוצג כרגע בטבלה — אחרי החיפוש וסינון העמודות */
+    /* מה שמוצג כרגע בטבלה — אחרי החיפוש וסינון העמודות, ורק מה שרלוונטי לפרוייקט */
     var rows=document.querySelectorAll("#ac-wrap tbody tr[data-cat]");
     var vis=rows.length
-      ? Array.prototype.filter.call(rows,function(tr){ return tr.style.display!=="none"; }).map(function(tr){ return tr.getAttribute("data-cat"); })
-      : catsSorted().filter(function(c){ return matches(ACQ.q,c.name); }).map(function(c){ return c.id; });
-    var list=(aptCatIds(aptId)||[]).slice();
+      ? Array.prototype.filter.call(rows,function(tr){
+          return tr.style.display!=="none" && !!tr.querySelector('td.ac-cell[data-apt="'+aptId+'"] input');
+        }).map(function(tr){ return tr.getAttribute("data-cat"); })
+      : aptCatsListed().filter(function(r){ return K.applies(aptId,r); }).map(function(r){ return r.id; });
+    var list=(pkIds(PKA,aptId)||[]).slice();
     var add=vis.filter(function(id){ return list.indexOf(id)<0; });
     if(!add.length){ toast("הכול כבר מסומן","warn"); return; }
-    aptCatsWrite()[aptId]=list.concat(add);
-    save(); toast('סומנו '+add.length+' קטגוריות ב"'+name+'"'+(aptCatsFiltering()?" (רק המוצגות)":""),"ok");
+    pkMapWrite(K.key)[aptId]=list.concat(add);
+    save(); toast('סומנו '+add.length+' '+K.many+' ב"'+name+'"'+(aptCatsFiltering()?" (רק המוצגים)":""),"ok");
   } else {
-    if(!aptCatIds(aptId)){
-      /* נשארו רק מזהים של קטגוריות שנמחקו — מנקים אותם */
-      if(Array.isArray(aptCatsRead()[aptId])){ delete aptCatsWrite()[aptId]; save(); }
+    if(!pkIds(PKA,aptId)){
+      /* נשארו רק מזהים של פריטים שנמחקו — מנקים אותם */
+      if(Array.isArray(pkMapRead(K.key)[aptId])){ delete pkMapWrite(K.key)[aptId]; save(); }
       toast('"'+name+'" כבר בלי הגבלה',"warn"); return;
     }
-    if(!confirm('לנקות את רשימת הקטגוריות של "'+name+'"?\n\nהפרוייקט יחזור להיות בלי הגבלה — כל הקטגוריות יהיו זמינות בו.')) return;
-    delete aptCatsWrite()[aptId];
+    if(!confirm('לנקות את רשימת ה'+K.many+' של "'+name+'"?\n\nהפרוייקט יחזור להיות בלי הגבלה — '+K.allAvail+' בו.')) return;
+    delete pkMapWrite(K.key)[aptId];
     save(); toast('בוטלה ההגבלה ב"'+name+'"',"ok");
   }
   aptCatsPaint([aptId]);
 }
+/* מה ש"בשימוש" בפרוייקט — לפי הנתונים, ובמשלמים גם שותפי הפרוייקט */
+function aptCatsUsedIds(aptId,use){
+  var K=pkK(), out=Object.keys((use||aptCatUsage())[aptId]||{});
+  K.extra(aptId).forEach(function(id){ if(out.indexOf(id)<0) out.push(id); });
+  return out.filter(function(id){ var r=K.row(id); return !!(r && K.applies(aptId,r)); });
+}
 function aptCatsUsage(aptId){
   if(!aptCatsGuard()) return;
-  var name=aptCatsName(aptId), used=Object.keys(aptCatUsage()[aptId]||{});
-  if(!used.length){ toast('אין עדיין שלבים עם קטגוריה ב"'+name+'"',"warn"); return; }
-  var list=(aptCatIds(aptId)||[]).slice();
+  var K=pkK(), name=aptCatsName(aptId), used=aptCatsUsedIds(aptId);
+  if(!used.length){ toast('אין עדיין '+K.many+' בשימוש ב"'+name+'"',"warn"); return; }
+  var list=(pkIds(PKA,aptId)||[]).slice();
   var add=used.filter(function(id){ return list.indexOf(id)<0; });
-  if(!add.length){ toast("כל הקטגוריות שבשימוש כבר מסומנות","warn"); return; }
-  aptCatsWrite()[aptId]=list.concat(add);
-  save(); toast('סומנו '+add.length+' קטגוריות לפי השימוש ב"'+name+'"',"ok");
+  if(!add.length){ toast("כל ה"+K.many+" שבשימוש כבר מסומנים","warn"); return; }
+  pkMapWrite(K.key)[aptId]=list.concat(add);
+  save(); toast('סומנו '+add.length+' '+K.many+' לפי השימוש ב"'+name+'"',"ok");
   aptCatsPaint([aptId]);
 }
 function aptCatsFillUsage(){
   if(!aptCatsGuard()) return;
-  var use=aptCatUsage();
-  var todo=active(DB.apartments).filter(function(a){ return !aptCatIds(a.id) && Object.keys(use[a.id]||{}).length; });
-  if(!todo.length){ toast("אין פרוייקט בלי רשימה שיש בו שלבים עם קטגוריה","warn"); return; }
-  if(!confirm("ל-"+todo.length+" פרוייקטים שעדיין אין להם רשימה יסומנו הקטגוריות שכבר רשומות בשלבים שלהם.\n\n"+
+  var K=pkK(), use=aptCatUsage(), plan={};
+  var todo=active(DB.apartments).filter(function(a){
+    if(pkIds(PKA,a.id)) return false;
+    var ids=aptCatsUsedIds(a.id,use);
+    if(ids.length) plan[a.id]=ids;
+    return ids.length>0;
+  });
+  if(!todo.length){ toast("אין פרוייקט בלי רשימה שיש בו "+K.many+" בשימוש","warn"); return; }
+  if(!confirm("ל-"+todo.length+" פרוייקטים שעדיין אין להם רשימה יסומנו ה"+K.many+" שכבר בשימוש בהם.\n\n"+
       "פרוייקטים שכבר הוגדרה להם רשימה — לא ישתנו.\n"+
-      "מעכשיו, בהוצאה בפרוייקטים האלה יוצגו רק הקטגוריות שסומנו (אפשר לתקן בטבלה בכל רגע).\n\nלהמשיך?")) return;
-  var m=aptCatsWrite();
-  todo.forEach(function(a){ m[a.id]=Object.keys(use[a.id]); });
+      "מעכשיו, בפרוייקטים האלה יוצגו לבחירה רק ה"+K.many+" שסומנו (אפשר לתקן בטבלה בכל רגע).\n\nלהמשיך?")) return;
+  var m=pkMapWrite(K.key);
+  todo.forEach(function(a){ m[a.id]=plan[a.id]; });
   save(); toast("הוגדרו רשימות ל-"+todo.length+" פרוייקטים","ok");
   aptCatsPaint(todo.map(function(a){ return a.id; }));
 }

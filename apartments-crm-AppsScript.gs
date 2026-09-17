@@ -762,7 +762,11 @@ function scopeDataForUser(data, user) {
   d.rentals = []; d.sheets = [];
   /* קטגוריות לפי פרוייקט — הגדרת מנהל. mergeSaveForUser ממילא שומר את
      ההגדרות מהמאגר, כך ששמירה של משתמש כזה לא מוחקת אותן. */
-  if (d.settings) delete d.settings.aptCats;
+  if (d.settings) {
+    delete d.settings.aptCats;      // קטגוריות לפי פרוייקט
+    delete d.settings.aptAccs;      // חשבונות לפי פרוייקט
+    delete d.settings.aptPayers;    // משלמים לפי פרוייקט
+  }
   var aptSet = aptSetFor(d, ctx), expSet = expSetFor(d, ctx, aptSet);
   SCOPED_TABLES.forEach(function (T) {
     d[T] = (d[T] || []).filter(function (r) { return rowVisible(T, r, ctx, aptSet, expSet); });
