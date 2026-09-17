@@ -252,6 +252,8 @@ table.ac-tbl td.ac-na{background:#f4f5f8;color:#b0b7c3;text-align:center}
 /* הריווח התחתון (90px) שמור לפס הסיכום של סימונים במסכים אחרים — כאן
    אין סימונים, והמקום הולך לשורות נוספות בטבלה */
 .content.ac-fill{padding-bottom:12px}
+#dv-wrap .table-wrap{max-height:var(--dv-h,calc(100vh - 210px))}
+table.dv-tbl td{white-space:nowrap;max-width:320px;overflow:hidden;text-overflow:ellipsis}
 .ac-help{margin-bottom:8px}
 .ac-help summary{cursor:pointer;color:var(--muted);font-size:12.5px;user-select:none;width:max-content}
 /* שורת סינון העמודות — נדבקת מתחת לכותרות */
@@ -424,7 +426,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 סו'";
+var APP_BUILD = "19.08 סז'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -2818,6 +2820,7 @@ function renderApp(){
   /* מיד, באותה משימה — בלי פריים אחד שבו הטבלה מוצגת בראשה.
      קודם הגובה (הוא קובע עד כמה אפשר לגלול), ואז הגלילה. */
   if(typeof aptCatsFit==="function") aptCatsFit();
+  if(typeof dvFit==="function") dvFit();
   if(typeof aptCatsRestoreScroll==="function") aptCatsRestoreScroll();
   restoreSelections(kept);
   updateSelSumBar();
@@ -2847,6 +2850,7 @@ function navHtml(){
     var rentN=rentalAlertCount();
     items.push(["rentals","🔑 שכירויות"+(rentN?" ("+rentN+")":"")]);
     items.push(["sheets","📗 גיליון חופשי"]);
+    items.push(["data","🗂️ נתונים"]);
   }
   if(can("edit")) items.push(["bankmatch","🏦 התאמת בנק"]);
   if(can("edit")){
@@ -2903,6 +2907,7 @@ function renderViewInner(){
     case "recurring": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewRecurring(); break;
     case "rentals": if(!CU||CU.role!=="admin"){ go("dashboard",{}); return; } c.innerHTML=viewRentals(); break;
     case "sheets": if(!CU||CU.role!=="admin"){ go("dashboard",{}); return; } c.innerHTML=viewSheets(); break;
+    case "data": if(!CU||CU.role!=="admin"){ go("dashboard",{}); return; } c.innerHTML=viewDataSheet(); break;
     case "import": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewImport(); break;
     case "recycle": if(!can("edit")){ go("dashboard",{}); return; } c.innerHTML=viewRecycle(); break;
     default: c.innerHTML=viewDashboard();
@@ -15013,6 +15018,143 @@ function aptCatsFillUsage(){
   save(); toast("הוגדרו רשימות ל-"+todo.length+" פרוייקטים","ok");
   aptCatsPaint(todo.map(function(a){ return a.id; }));
 }
+/* ============================================================
+   נתונים — כל ההוצאות וכל ההכנסות מכל הפרוייקטים, לצפייה בלבד
+   ------------------------------------------------------------
+   טבלה אחת גדולה לכל סוג, כמו גיליון אקסל: סינון ומיון בכותרות (כלי
+   הטבלה הרגילים), סיכום חי של המסונן וייצוא לאקסל של מה שמסונן.
+   אין כאן שום עריכה — שינויים נעשים במסכי הפרוייקט.
+   ============================================================ */
+var DQ={tab:"exp",parents:false};
+var DV_FILL=null, DV_FILL_TOKEN=0;
+var DV_ST={paid:"שולם",partial:"חלקי",unpaid:"לא שולם",over:"שולם ביתר"};
+function dvTd(v,cls){ return '<td'+(cls?' class="'+cls+'"':'')+'>'+esc(v==null?"":String(v))+'</td>'; }
+function dvApts(){ return active(DB.apartments).filter(function(a){ return canSeeApartment(a.id); }); }
+function dvExpenseList(){
+  var out=[];
+  dvApts().forEach(function(a){
+    apExpenses(a.id).forEach(function(e){
+      var cont=isContainer(e.id);
+      if(cont && !DQ.parents) return;
+      out.push({a:a,e:e,cont:cont});
+    });
+  });
+  return out.sort(function(x,y){ return x.e.date<y.e.date?1:x.e.date>y.e.date?-1:0; });
+}
+function dvIncomeList(){
+  var out=[];
+  dvApts().forEach(function(a){ apIncomeRaw(a.id).forEach(function(i){ out.push({a:a,i:i}); }); });
+  return out.sort(function(x,y){ return x.i.date<y.i.date?1:x.i.date>y.i.date?-1:0; });
+}
+var DV_EXP_HEAD=["פרוייקט","תאריך","תיאור","שלב-אב","קטגוריה","סיווג","סוג שורה","סכום","עלות דמי ניהול","שולם לספק","נותר","סטטוס","חשבונית","בדוחות","פרייליך","הערה"];
+var DV_INC_HEAD=["פרוייקט","תאריך","תיאור","מתאריך","עד תאריך","סכום","שולם","יתרת חוב","סטטוס","נכנס ל","חלוקה","לחישוב","פרייליך","שכירות","הערה"];
+function dvExpenseRowHtml(r){
+  var e=r.e;
+  return '<tr data-eid="'+e.id+'"'+(e.parentId?' data-parent="'+e.parentId+'"':'')+'>'+
+    dvTd(r.a.name)+dvTd(dateHe(e.date))+dvTd(e.description)+dvTd(parentDesc(e))+
+    dvTd(categoryName(e.categoryId))+dvTd(CLASSIFICATIONS[e.classification]||"")+
+    dvTd(r.cont?"שלב-אב (סיכום)":(e.parentId?"תת-שלב":"שלב"))+
+    dvTd(money(e.amount))+dvTd(money(expenseMgmtCostLive(e.id)))+
+    dvTd(money(expensePaid(e.id)))+dvTd(money(expenseRemaining(e.id)))+
+    dvTd(DV_ST[expenseStatus(e.id)]||"")+dvTd(e.hasInvoice?"יש":"")+
+    dvTd(e.noReport?"לא":"כן")+dvTd(e.noFreilich?"לא":"כן")+dvTd(e.note||"")+'</tr>';
+}
+function dvIncomeRowHtml(r,rentName){
+  var x=r.i, tr=incomeTracked(x), hasStay=!!(x.startDate||x.endDate);
+  var paid=tr?incomePaid(x):0, debt=tr?incomeDebt(x):0;
+  var st=!tr?"":(debt<=0.01?"שולם":(paid>0.01?"חלקי":"ממתין לתשלום"));
+  return '<tr>'+
+    dvTd(r.a.name)+dvTd(dateHe(x.date))+dvTd(x.description||"")+
+    dvTd(hasStay?dateHe(stayStart(x)):"")+dvTd(x.endDate?dateHe(x.endDate):"")+
+    dvTd(money(x.amount))+dvTd(tr?money(paid):"")+dvTd(tr?money(debt):"")+dvTd(st)+
+    dvTd(incomeDestName(x))+dvTd(incomeSplitLabel(x))+
+    dvTd(x.excluded?"לא":"כן")+dvTd(x.noFreilich?"לא":"כן")+
+    dvTd(x.rentalId?(rentName[x.rentalId]||""):"")+dvTd(x.note||"")+'</tr>';
+}
+function viewDataSheet(){
+  if(!(CU&&CU.role==="admin")) return '<div class="empty">אין הרשאה</div>';
+  return withIndex(function(){
+    var isInc=DQ.tab==="inc";
+    var nExp=0, nInc=0;
+    dvApts().forEach(function(a){
+      apExpenses(a.id).forEach(function(e){ if(DQ.parents || !isContainer(e.id)) nExp++; });
+      nInc+=apIncomeRaw(a.id).length;
+    });
+    var h='<h2>🗂️ נתונים — כל הפרוייקטים</h2>'+
+      '<div class="tabs">'+
+        '<div class="tab'+(isInc?"":" active")+'" onclick="DQ.tab=\'exp\';rerender()">💸 הוצאות ('+nExp+')</div>'+
+        '<div class="tab'+(isInc?" active":"")+'" onclick="DQ.tab=\'inc\';rerender()">💰 הכנסות ('+nInc+')</div>'+
+      '</div>'+
+      '<div class="toolbar">'+
+        (isInc?'':'<label style="font-weight:400;margin:0"><input type="checkbox" style="width:auto;margin-inline-end:5px"'+(DQ.parents?" checked":"")+
+          ' onchange="DQ.parents=this.checked;rerender()"> כולל שלבי-אב</label>')+
+        '<span class="muted">👁️ לצפייה בלבד · סינון ומיון בכותרות הטבלה, כמו באקסל · "אקסל" מייצא בדיוק את מה שמסונן</span>'+
+      '</div>';
+    var rows, head, rowHtml, foot;
+    if(isInc){
+      rows=dvIncomeList(); head=DV_INC_HEAD;
+      var rentName={}; (DB.rentals||[]).forEach(function(r){ if(r&&r.id) rentName[r.id]=r.name||""; });
+      rowHtml=function(r){ return dvIncomeRowHtml(r,rentName); };
+      var tA=0,tP=0,tD=0;
+      rows.forEach(function(r){ var x=r.i; tA+=Number(x.amount)||0; if(incomeTracked(x)){ tP+=incomePaid(x); tD+=incomeDebt(x); } });
+      foot=['סה"כ ('+rows.length+')',"","","","",money(round2(tA)),money(round2(tP)),money(round2(tD)),"","","","","","",""];
+    } else {
+      rows=dvExpenseList(); head=DV_EXP_HEAD;
+      rowHtml=dvExpenseRowHtml;
+      /* רק עלים נסכמים — שלב-אב הוא סיכום של הבנים */
+      var eA=0,eM=0,eP=0,eR=0;
+      rows.forEach(function(r){ if(r.cont) return; var e=r.e;
+        eA+=Number(e.amount)||0; eM+=expenseMgmtCostLive(e.id); eP+=expensePaid(e.id); eR+=expenseRemaining(e.id); });
+      foot=['סה"כ ('+rows.filter(function(r){ return !r.cont; }).length+')',"","","","","","",
+        money(round2(eA)),money(round2(eM)),money(round2(eP)),money(round2(eR)),"","","","",""];
+    }
+    h+='<div id="dv-wrap"><div class="table-wrap"><table class="tbl dv-tbl" id="dv-table"><thead><tr>'+
+      head.map(function(t){ return '<th>'+esc(t)+'</th>'; }).join("")+'</tr></thead><tbody>';
+    if(!rows.length) h+='<tr><td colspan="'+head.length+'" class="empty">אין נתונים</td></tr>';
+    /* ---------- רינדור מדורג ----------
+       אלפי שורות בבת אחת חוסמות את הדפדפן. המנה הראשונה נבנית מיד,
+       והשאר מתווספות ברקע במנות — המסך מגיב כל הזמן. */
+    var FIRST=300;
+    h+=rows.slice(0,FIRST).map(rowHtml).join("");
+    if(rows.length>FIRST){
+      DV_FILL={rows:rows.slice(FIRST),rowHtml:rowHtml,token:++DV_FILL_TOKEN};
+      setTimeout(dvFillChunks,0);
+    } else DV_FILL=null;
+    h+='</tbody><tfoot><tr>'+foot.map(function(v){ return '<td>'+esc(v)+'</td>'; }).join("")+'</tr></tfoot></table></div></div>';
+    /* כפתור "אקסל" ושורת הסינון נוספים מעל ובתוך הטבלה רק אחרי הרינדור —
+       מחשבים את הגובה שוב אחריהם, אחרת העמוד גולש בגובה הכפתור */
+    setTimeout(dvFit,60);
+    return h;
+  });
+}
+function dvFillChunks(){
+  var job=DV_FILL;
+  if(!job || job.token!==DV_FILL_TOKEN) return;
+  var tb=document.querySelector("#dv-table tbody");
+  if(!tb){ DV_FILL=null; return; }
+  var batch=job.rows.splice(0,400);
+  if(!batch.length){ DV_FILL=null; return; }
+  withIndex(function(){ tb.insertAdjacentHTML("beforeend",batch.map(job.rowHtml).join("")); });
+  if(job.rows.length) setTimeout(dvFillChunks,16);
+  else{
+    DV_FILL=null;
+    /* סינון עמודות שכבר פעיל — מוחל גם על השורות שהגיעו */
+    var t=tb.closest("table");
+    if(t && COLFILT[tableSig(t)]) try{ applyColFilters(t); }catch(e){}
+  }
+}
+/* גובה הטבלה עד תחתית המסך — הכותרת נשארת למעלה ופס הגלילה הרוחבי גלוי */
+function dvFit(){
+  var box=document.getElementById("dv-wrap"), w=box&&box.querySelector(".table-wrap");
+  if(!w) return;
+  var content=document.getElementById("content"); if(content) content.classList.add("ac-fill");
+  var docTop=w.getBoundingClientRect().top+window.scrollY;
+  var h=Math.max(260, Math.floor(window.innerHeight-docTop-16));
+  box.style.setProperty("--dv-h",h+"px");
+  var over=document.documentElement.scrollHeight-window.innerHeight;
+  if(over>0 && h-over>=260) box.style.setProperty("--dv-h",(h-over)+"px");
+}
+window.addEventListener("resize",function(){ if(document.getElementById("dv-wrap")) dvFit(); });
 function editCategory(id){
   if(!can("edit")){ toast("אין הרשאה","err"); return; }
   var c=id?byId(DB.categories,id):{name:""};
