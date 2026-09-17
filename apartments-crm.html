@@ -228,7 +228,12 @@ table.ac-tbl .ac-acts .btn{padding:2px 7px;font-size:12px}
 table.ac-tbl .ac-filt{height:26px;margin-top:3px}
 table.ac-tbl .ac-fsel{width:100%;height:24px;min-height:0;padding:0 4px;font-size:11.5px;border-radius:6px;box-sizing:border-box}
 table.ac-tbl .ac-fsel.on{background:#eef2ff;border-color:var(--brand);color:var(--brand-d);font-weight:700}
-table.ac-tbl .ac-shown{line-height:26px;font-size:11px;font-weight:400;color:var(--muted);white-space:nowrap}
+table.ac-tbl .ac-shown{font-size:11px;font-weight:400;color:var(--muted);white-space:nowrap}
+table.ac-tbl .ac-cat-h{display:flex;align-items:baseline;gap:8px;white-space:nowrap}
+table.ac-tbl .ac-cfilt{display:flex;gap:3px;align-items:center}
+table.ac-tbl .ac-ftxt{flex:1;min-width:0;width:auto;height:24px;min-height:0;padding:0 6px;font-size:11.5px;font-weight:400;border-radius:6px;box-sizing:border-box}
+table.ac-tbl .ac-fpick{flex:none;height:24px;padding:0 7px;font-size:11px;line-height:1;border:1px solid var(--line,#d8dee9);border-radius:6px;background:#fff;cursor:pointer}
+table.ac-tbl .ac-ftxt.on,table.ac-tbl .ac-fpick.on{background:#eef2ff;border-color:var(--brand);color:var(--brand-d)}
 table.ac-tbl .ac-cat{position:sticky;right:0;inset-inline-start:0;z-index:3;background:#fff;min-width:150px;font-weight:700;
   box-shadow:inset 1px 0 0 #e3e7f3}
 table.ac-tbl thead th.ac-cat{z-index:7;background:#eef1fa;vertical-align:bottom}
@@ -418,7 +423,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 סב'";
+var APP_BUILD = "19.08 סג'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -14398,6 +14403,7 @@ function deleteApartmentExpenses(aptId){
    ============================================================ */
 var ACQ={q:"",apt:"",show:"",st:0,sl:0};    // חיפוש קטגוריה / סינון פרוייקט / אילו פרוייקטים / מיקום הגלילה
 var ACF={};    // סינון לפי עמודה: פרוייקט → "on" | "off" | "used" | "warn"
+var ACC=null;  // בחירת קטגוריות מתוך הרשימה (▾): null = כולן, אחרת {id:1}
 var AC_FMODES=[["","הכל"],["on","✔ מסומן"],["off","✖ לא מסומן"],["used","בשימוש"],["warn","⚠ בשימוש, לא מסומן"]];
 var ACU={};    // מפת השימוש מהרינדור האחרון (פרוייקט → קטגוריה → שלבים) — סימון לא משנה אותה
 /* ספירת שלבים לכל פרוייקט+קטגוריה במעבר אחד. שלבי-אב לא נספרים —
@@ -14444,11 +14450,88 @@ function aptCatsCellPass(aptId,catId,mode){
 function aptCatsActiveCols(aptIds){
   return aptIds.filter(function(a){ return !!ACF[a]; });
 }
-function aptCatsRowPass(catId,cols){
-  return cols.every(function(a){ return aptCatsCellPass(a,catId,ACF[a]); });
+function aptCatsCatPass(c){
+  if(!c) return true;
+  if(ACC && !ACC[c.id]) return false;
+  return matches(ACQ.q,c.name);
+}
+function aptCatsRowPass(c,cols){
+  return aptCatsCatPass(c) && cols.every(function(a){ return aptCatsCellPass(a,c.id,ACF[a]); });
 }
 function aptCatsFiltering(){
-  return !!(ACQ.q || ACQ.apt || ACQ.show || Object.keys(ACF).some(function(a){ return !!ACF[a]; }));
+  return !!(ACQ.q || ACQ.apt || ACQ.show || ACC || Object.keys(ACF).some(function(a){ return !!ACF[a]; }));
+}
+/* שדה הסינון בכותרת עמודת הקטגוריה */
+function aptCatsCatText(v){
+  ACQ.q=v;
+  aptCatsApplyFilter();
+  aptCatsPickerFill();
+}
+/* ---------- ▾ בחירת קטגוריות מתוך רשימה (כמו באקסל) ---------- */
+function aptCatsPickerClose(){
+  var p=document.getElementById("ac-pick"); if(p) p.remove();
+  document.removeEventListener("mousedown",aptCatsPickerOutside,true);
+  document.removeEventListener("keydown",aptCatsPickerKey,true);
+}
+function aptCatsPickerOutside(e){
+  var p=document.getElementById("ac-pick");
+  if(p && !p.contains(e.target) && !(e.target.closest && e.target.closest("#ac-cpick"))) aptCatsPickerClose();
+}
+function aptCatsPickerKey(e){ if(e.key==="Escape") aptCatsPickerClose(); }
+function aptCatsPicker(btn){
+  if(document.getElementById("ac-pick")){ aptCatsPickerClose(); return; }
+  var p=document.createElement("div");
+  p.id="ac-pick";
+  p.style.cssText="position:fixed;z-index:9999;background:#fff;border:1px solid var(--line,#d8dee9);border-radius:10px;"+
+    "box-shadow:0 12px 34px rgba(0,0,0,.20);padding:8px;max-height:340px;overflow:auto;min-width:210px;font-size:12.5px;direction:rtl";
+  document.body.appendChild(p);
+  aptCatsPickerFill();
+  var r=btn.getBoundingClientRect();
+  p.style.top=Math.max(8,Math.min(r.bottom+4, window.innerHeight-p.offsetHeight-8))+"px";
+  p.style.left=Math.max(8, Math.min(r.right-p.offsetWidth, window.innerWidth-p.offsetWidth-8))+"px";
+  setTimeout(function(){
+    document.addEventListener("mousedown",aptCatsPickerOutside,true);
+    document.addEventListener("keydown",aptCatsPickerKey,true);
+  },0);
+}
+/* הרשימה מציגה את הקטגוריות שמתאימות לשדה הסינון — כמו סינון מדורג באקסל */
+function aptCatsPickerFill(){
+  var p=document.getElementById("ac-pick"); if(!p) return;
+  var list=catsSorted().filter(function(c){ return matches(ACQ.q,c.name); });
+  p.innerHTML='<div style="display:flex;gap:4px;margin-bottom:6px">'+
+      '<button type="button" class="btn btn-sm" onclick="aptCatsPickAll(true)">סמן הכל</button>'+
+      '<button type="button" class="btn btn-sm" onclick="aptCatsPickAll(false)">נקה</button></div>'+
+    (list.length
+      ? list.map(function(c){
+          return '<label class="cp-item" style="display:flex;gap:6px;align-items:center;padding:3px 2px;cursor:pointer;border-radius:6px">'+
+            '<input type="checkbox" style="width:auto" data-c="'+c.id+'"'+((!ACC||ACC[c.id])?' checked':'')+' onchange="aptCatsPickOne(this)">'+
+            '<span>'+esc(c.name)+'</span></label>';
+        }).join("")
+      : '<div class="muted">אין קטגוריה שמתאימה לסינון</div>');
+}
+function aptCatsPickSeed(){
+  if(ACC) return;
+  ACC={}; catsSorted().forEach(function(c){ ACC[c.id]=1; });
+}
+function aptCatsPickNormalize(){
+  /* כולן מסומנות = אין סינון */
+  if(ACC && catsSorted().every(function(c){ return ACC[c.id]; })) ACC=null;
+}
+function aptCatsPickOne(cb){
+  aptCatsPickSeed();
+  var id=cb.getAttribute("data-c");
+  if(cb.checked) ACC[id]=1; else delete ACC[id];
+  aptCatsPickNormalize();
+  aptCatsApplyFilter();
+}
+/* "סמן הכל" / "נקה" — חלים על הקטגוריות שמופיעות ברשימה */
+function aptCatsPickAll(on){
+  var list=catsSorted().filter(function(c){ return matches(ACQ.q,c.name); });
+  aptCatsPickSeed();
+  list.forEach(function(c){ if(on) ACC[c.id]=1; else delete ACC[c.id]; });
+  aptCatsPickNormalize();
+  aptCatsPickerFill();
+  aptCatsApplyFilter();
 }
 /* סינון עמודה — מסתיר שורות במקום, בלי לבנות את הטבלה מחדש (בלי קפיצה).
    סימון תא אחר כך לא מסנן מחדש: השורה נשארת גלויה עד שינוי הסינון. */
@@ -14463,13 +14546,15 @@ function aptCatsApplyFilter(){
   var shownApts=Array.prototype.map.call(box.querySelectorAll("th.ac-apt[data-apt]"),function(th){ return th.getAttribute("data-apt"); });
   var cols=aptCatsActiveCols(shownApts), shown=0;
   box.querySelectorAll("tbody tr[data-cat]").forEach(function(tr){
-    var ok=aptCatsRowPass(tr.getAttribute("data-cat"),cols);
+    var ok=aptCatsRowPass(byId(DB.categories,tr.getAttribute("data-cat")),cols);
     var want=ok?"":"none";
     if(tr.style.display!==want) tr.style.display=want;
     if(ok) shown++;
   });
   var none=document.getElementById("ac-none"); if(none) none.style.display=shown?"none":"";
   var cnt=document.getElementById("ac-shown"); if(cnt) cnt.textContent="מוצגות "+shown+" מתוך "+catsSorted().length;
+  var qi=document.getElementById("ac-q"); if(qi) qi.classList.toggle("on",!!ACQ.q);
+  var pb=document.getElementById("ac-cpick"); if(pb) pb.classList.toggle("on",!!ACC);
   aptCatsFilterState();
 }
 /* כפתור הניקוי תופס מקום תמיד (רק נעלם מהעין) — כך הסרגל לא משנה צורה */
@@ -14477,7 +14562,8 @@ function aptCatsFilterState(){
   var b=document.getElementById("ac-clear"); if(b) b.style.visibility=aptCatsFiltering()?"visible":"hidden";
 }
 function aptCatsClearFilters(){
-  ACQ.q=""; ACQ.apt=""; ACQ.show=""; ACF={};
+  ACQ.q=""; ACQ.apt=""; ACQ.show=""; ACF={}; ACC=null;
+  aptCatsPickerClose();
   ["ac-q","ac-apt"].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=""; });
   var sh=document.getElementById("ac-show"); if(sh) sh.value="";
   aptCatsRefresh();
@@ -14493,7 +14579,6 @@ function aptCatsViewHtml(){
   aptCatsRememberScroll();
   setTimeout(aptCatsRestoreScroll,0);
   return '<div class="toolbar">'+
-      searchBox("ac-q",ACQ.q,"חיפוש קטגוריה…","ACQ.q=this.value;aptCatsRefresh()")+
       searchBox("ac-apt",ACQ.apt,"סינון פרוייקט…","ACQ.apt=this.value;aptCatsRefresh()")+
       '<select id="ac-show" style="max-width:220px" title="אילו פרוייקטים להציג" onchange="ACQ.show=this.value;aptCatsRefresh()">'+
         [["","כל הפרוייקטים"],["lim","רק פרוייקטים עם רשימה"],["open","רק פרוייקטים בלי הגבלה"],["warn","רק עם שלבים מחוץ לרשימה"]].map(function(o){
@@ -14517,12 +14602,18 @@ function aptCatsTableHtml(){
   ACU=use;
   var apts=aptCatsApts(use);
   if(!apts.length) return '<div class="empty">'+((ACQ.apt||ACQ.show)?"אין פרוייקט שמתאים לסינון":"אין פרוייקטים")+'</div>';
-  var cats=allCats.filter(function(c){ return matches(ACQ.q,c.name); });
+  /* כל הקטגוריות נבנות תמיד; החיפוש והבחירה רק מסתירים — כך אפשר לסנן
+     במקום, בלי לבנות מחדש את השדה שמקלידים בו */
+  var cats=allCats;
   var cols=aptCatsActiveCols(apts.map(function(a){ return a.id; })), shown=0;
   apts.forEach(function(a){ lists[a.id]=aptCatIds(a.id); });
   var h='<div class="table-wrap" onscroll="ACQ.st=this.scrollTop;ACQ.sl=this.scrollLeft">'+
-    '<table class="tbl ac-tbl" data-tools="off" data-xl="off"><thead><tr><th class="ac-cat">קטגוריה'+
-      '<div class="ac-filt ac-shown" id="ac-shown"></div></th>';
+    '<table class="tbl ac-tbl" data-tools="off" data-xl="off"><thead><tr><th class="ac-cat">'+
+      '<div class="ac-cat-h">קטגוריה <span class="ac-shown" id="ac-shown"></span></div>'+
+      '<div class="ac-filt ac-cfilt">'+
+        '<input id="ac-q" class="ac-ftxt'+(ACQ.q?" on":"")+'" value="'+esc(ACQ.q)+'" placeholder="🔍 סנן קטגוריה…" autocomplete="off" oninput="aptCatsCatText(this.value)">'+
+        '<button type="button" id="ac-cpick" class="ac-fpick'+(ACC?" on":"")+'" title="בחירת קטגוריות מתוך רשימה" onclick="aptCatsPicker(this)">▾</button>'+
+      '</div></th>';
   apts.forEach(function(a){
     var l=lists[a.id], u=use[a.id]||{}, out=0;
     if(l) Object.keys(u).forEach(function(cid){ if(l.indexOf(cid)<0) out+=u[cid]; });
@@ -14541,7 +14632,7 @@ function aptCatsTableHtml(){
   });
   h+='</tr></thead><tbody>';
   cats.forEach(function(c){
-    var pass=aptCatsRowPass(c.id,cols);
+    var pass=aptCatsRowPass(c,cols);
     if(pass) shown++;
     h+='<tr data-cat="'+c.id+'"'+(pass?'':' style="display:none"')+'><td class="ac-cat">'+esc(c.name)+'</td>';
     apts.forEach(function(a){
@@ -14556,8 +14647,8 @@ function aptCatsTableHtml(){
   h+='<tr id="ac-none"'+(shown?' style="display:none"':'')+'><td class="ac-cat muted" colspan="'+(apts.length+1)+'">אין קטגוריה שמתאימה לחיפוש ולסינון</td></tr>';
   h+='</tbody></table></div>';
   /* המונה בכותרת — כאן, כדי שיהיה נכון כבר ברינדור הראשון */
-  return h.replace('<div class="ac-filt ac-shown" id="ac-shown"></div>',
-    '<div class="ac-filt ac-shown" id="ac-shown">מוצגות '+shown+' מתוך '+allCats.length+'</div>');
+  return h.replace('<span class="ac-shown" id="ac-shown"></span>',
+    '<span class="ac-shown" id="ac-shown">מוצגות '+shown+' מתוך '+allCats.length+'</span>');
 }
 /* רענון הטבלה בלבד, בלי לאבד את מיקום הגלילה — כך סימון תא לא מקפיץ.
    לטבלה אין כפתור "אקסל" (data-xl="off"): הכפתור נתלה מעליה באיחור אחרי
