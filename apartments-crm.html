@@ -438,7 +438,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 עא'";
+var APP_BUILD = "19.08 עב'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -2776,6 +2776,18 @@ function filesSettingsHtml(){
       '<button class="btn btn-primary btn-sm" onclick="filesOpenFolder(\'\')">📁 פתח את תיקיית הקבצים</button>'+
       '<button class="btn btn-sm" onclick="DQ.tab=\'fil\';go(\'data\',{})">🗂️ רשימת כל הקבצים</button>'+
     '</div>'+
+    '<div class="section-title">לפתוח את כל התיקיות מראש</div>'+
+    '<p class="muted" style="margin-top:0">כל פרוייקט יקבל את ארבע התיקיות (חוזים, חשבוניות, תקבולים, תשלומים) '+
+      'ובכל אחת תיקייה לכל שנה — כדי שאפשר יהיה לגרור לשם קבצים ישנים ישר מהדרייב. '+
+      'תיקייה שכבר קיימת לא נפגעת, ואפשר להריץ שוב אחרי שמוסיפים פרוייקט.</p>'+
+    '<div class="toolbar">'+
+      '<label style="font-weight:400;margin:0">שנים אחורה:</label>'+
+      '<select id="fs-years" style="max-width:110px">'+
+        [3,5,7,10].map(function(y){ return '<option value="'+y+'"'+(y===5?" selected":"")+'>'+y+' שנים</option>'; }).join("")+
+      '</select>'+
+      '<button class="btn btn-primary btn-sm" id="fs-prep-btn" onclick="filesPrepareRun()">📂 פתח את התיקיות</button>'+
+    '</div>'+
+    '<div id="fs-prep" class="hint"></div>'+
     '<div class="section-title">להעביר את הקבצים החדשים לתיקייה אחרת</div>'+
     '<div class="form-grid">'+
       '<div class="field full"><label>קישור לתיקייה בדרייב</label>'+
@@ -2799,6 +2811,32 @@ async function filesSettingsLoad(){
   var u=fileSafeUrl(j.root.url);
   el.innerHTML='✔ מחובר לדרייב · התיקייה: '+
     (u?'<a href="'+esc(u)+'" target="_blank" rel="noopener">📁 '+esc(j.root.name)+'</a>':esc(j.root.name));
+}
+/* פתיחת התיקיות מראש. השרת עובד במנות ומחזיר "כמה סיים" — כאן ממשיכים
+   לקרוא לו עד שהכל נפתח, ומראים התקדמות. */
+async function filesPrepareRun(){
+  if(!filesOn()) return;
+  var btn=document.getElementById("fs-prep-btn");
+  var years=Number(val("fs-years"))||5;
+  function say(h){ var el=document.getElementById("fs-prep"); if(el) el.innerHTML=h; }
+  if(btn) btn.disabled=true;
+  var from=0, created=0, projects=0, root="", ok=true;
+  for(var guard=0; guard<80; guard++){
+    say('⏳ פותח תיקיות בדרייב…'+(projects?' ('+from+' מתוך '+projects+' פרוייקטים)':''));
+    var j=await api({action:"filesPrepare",codeHash:getAuth(),years:years,from:from});
+    if(!j || !j.ok){ say('<span class="neg">⚠ '+esc(fileErrText(j&&j.error))+'</span>'); ok=false; break; }
+    created+=Number(j.created)||0; projects=Number(j.projects)||0; root=j.root||root;
+    /* בלי התקדמות אין טעם להמשיך — עוצרים במקום להיתקע בלופ */
+    if(Number(j.processed)<=from && !j.done){ say('<span class="neg">⚠ התהליך נעצר — נסה שוב</span>'); ok=false; break; }
+    from=Number(j.processed)||0;
+    if(j.done) break;
+  }
+  if(btn) btn.disabled=false;
+  if(!ok) return;
+  var u=fileSafeUrl(root);
+  say('✔ מוכן — '+projects+' פרוייקטים × 4 סוגים × '+years+' שנים · נוצרו '+created+' תיקיות חדשות'+
+    (u?' · <a href="'+esc(u)+'" target="_blank" rel="noopener">📁 פתח בדרייב</a>':''));
+  toast("התיקיות נפתחו בדרייב","ok");
 }
 async function filesSetRoot(){
   var v=val("fs-folder").trim();

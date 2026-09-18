@@ -141,12 +141,13 @@ function doPost(e) {
       return jsonOut(saveWithRevGuard(body.data, user));
     }
     /* ---- קבצים מצורפים בדרייב — מנהל בלבד ---- */
-    if (action === "fileUpload" || action === "fileTrash" ||
-        action === "filesInfo" || action === "filesSetRoot") {
+    if (action === "fileUpload" || action === "fileTrash" || action === "filesInfo" ||
+        action === "filesSetRoot" || action === "filesPrepare") {
       if (user.role !== "admin") return jsonOut({ ok: false, error: "forbidden" });
-      if (action === "fileUpload") return jsonOut(fileUpload(body));
-      if (action === "fileTrash")  return jsonOut(fileTrash(body));
-      if (action === "filesInfo")  return jsonOut(filesInfo(body));
+      if (action === "fileUpload")   return jsonOut(fileUpload(body));
+      if (action === "fileTrash")    return jsonOut(fileTrash(body));
+      if (action === "filesInfo")    return jsonOut(filesInfo(body));
+      if (action === "filesPrepare") return jsonOut(filesPrepare(body));
       return jsonOut(filesSetRoot(body));
     }
     return jsonOut({ ok: false, error: "unknown action" });
@@ -168,6 +169,7 @@ var FILES_APT_PREFIX = "crm_files_apt_";
 var FILES_ROOT_NAME  = "אלכסנדר-דירות — קבצים";
 var FILE_KIND_FOLDERS = { contract: "חוזים", invoice: "חשבוניות", receipt: "תקבולים", payment: "תשלומים" };
 var FILE_MAX_BYTES = 25 * 1024 * 1024;
+var FILES_MADE = 0;                  // כמה תיקיות נוצרו בהרצה הזאת
 
 function authorizeDrive() {
   Logger.log("תיקיית הקבצים: " + filesRoot().getUrl());
@@ -188,6 +190,7 @@ function folderHasParent(folder, parentId) {
 function filesChild(parent, name) {
   var it = parent.getFoldersByName(name);
   while (it.hasNext()) { var f = it.next(); if (!f.isTrashed()) return f; }
+  FILES_MADE++;
   return parent.createFolder(name);
 }
 /* התיקייה הראשית — ליד קובץ הגיליון, או בשורש הדרייב */
@@ -295,6 +298,36 @@ function filesInfo(body) {
     out.project = { id: pf.getId(), name: pf.getName(), url: pf.getUrl() };
   }
   return out;
+}
+/* פתיחת התיקיות מראש — לכל הפרוייקטים, כל הסוגים וכמה שנים אחורה, כדי
+   שאפשר יהיה לגרור לשם קבצים ישנים ישר מהדרייב. הריצה מחולקת למנות:
+   מחזירה "next" והדף קורא שוב, כדי לא להיתקע במגבלת הזמן של הסקריפט.
+   הנעילה נלקחת לכל פרוייקט בנפרד — כדי שהשמירות הרגילות לא ייחסמו. */
+function filesPrepare(body) {
+  var years = Math.min(Math.max(Number(body.years) || 5, 1), 10);
+  var from = Math.max(Number(body.from) || 0, 0);
+  var d = loadData() || {};
+  var apts = (d.apartments || []).filter(function (a) { return a && a.id && !a.deleted; });
+  var nowY = new Date().getFullYear();
+  var kinds = ["contract", "invoice", "receipt", "payment"];
+  var t0 = new Date().getTime(), i = from;
+  FILES_MADE = 0;
+  for (; i < apts.length; i++) {
+    if (i > from && new Date().getTime() - t0 > 60000) break;   /* המשך במנה הבאה */
+    var lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      var pf = filesProjectFolder(filesRoot(), apts[i]);
+      for (var k = 0; k < kinds.length; k++) {
+        var kf = filesChild(pf, FILE_KIND_FOLDERS[kinds[k]]);
+        for (var y = 0; y < years; y++) filesChild(kf, String(nowY - y));
+      }
+    } finally {
+      lock.releaseLock();
+    }
+  }
+  return { ok: true, done: i >= apts.length, processed: i, projects: apts.length,
+    created: FILES_MADE, years: years, root: filesRoot().getUrl() };
 }
 function filesSetRoot(body) {
   var raw = String(body.folder || "").trim();
