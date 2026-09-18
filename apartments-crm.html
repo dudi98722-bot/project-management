@@ -438,7 +438,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 עב'";
+var APP_BUILD = "19.08 עג'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -2497,8 +2497,8 @@ function checked(id){ var el=document.getElementById(id); return el?el.checked:f
    רק הקישור: files:[{id,name,url,mime,size,kind,at,by}]. מנהלים בלבד —
    השרת לא שולח את השדה לאחרים ומשחזר אותו בשמירה שלהם.
    ============================================================ */
-var FILE_KINDS={contract:"חוזים",invoice:"חשבוניות",receipt:"תקבולים",payment:"תשלומים"};
-var FILE_KIND_ONE={contract:"חוזה",invoice:"חשבונית",receipt:"תקבול",payment:"אישור תשלום"};
+var FILE_KINDS={contract:"חוזים",invoice:"חשבוניות",receipt:"תקבולים",payment:"תשלומים",doc:"מסמכים"};
+var FILE_KIND_ONE={contract:"חוזה",invoice:"חשבונית",receipt:"תקבול",payment:"אישור תשלום",doc:"מסמך"};
 var FILE_MAX_MB=20;
 /* pend — קבצים שנבחרו בחלון הפתוח ועוד לא נשלחו (נשלחים בשמירה).
    chain — ההעלאות רצות אחת-אחת, כדי לא להעמיס על הסקריפט. */
@@ -2524,8 +2524,13 @@ function rentContractObj(r,s,n){
   if(byN.length===1) return byN[0];
   return null;
 }
+/* באיזה שדה יושבים הקבצים של היעד. בדירה להשכרה files הוא של החוזה
+   הנוכחי, ולכן המסמכים הכלליים שלה יושבים ב-docs. */
+function fileTgtField(tg){ return (tg&&tg.t==="unit")?"docs":"files"; }
 function fileTgtObj(tg){
   if(!tg) return null;
+  if(tg.t==="apt") return byId(DB.apartments,tg.id)||null;
+  if(tg.t==="unit") return byId(DB.rentals,tg.rid)||null;
   if(tg.t==="exp") return byId(DB.expenses,tg.id)||null;
   if(tg.t==="pay") return byId(DB.payments,tg.id)||null;
   if(tg.t==="col"){
@@ -2551,11 +2556,15 @@ function fileTgtMeta(tg){
     var r=byId(DB.rentals,tg.rid); if(!r) return null;
     return {aptId:r.apartmentId,kind:"contract",date:o.startDate,label:"חוזה - "+(r.name||"")+(o.tenant?" - "+o.tenant:""),amount:0};
   }
+  /* מסמך כללי — נשמר בשם המקורי שלו, בתיקייה "מסמכים" (בדירה: תיקייה משלה) */
+  if(tg.t==="apt") return {aptId:o.id,kind:"doc",date:"",label:"מסמך - "+(o.name||""),amount:0,raw:true};
+  if(tg.t==="unit") return {aptId:o.apartmentId,kind:"doc",date:"",label:"מסמך - "+(o.name||""),amount:0,raw:true,sub:o.name||""};
   return null;
 }
 function fileSizeLabel(b){ b=Number(b)||0; return b>=1048576?(Math.round(b/104857.6)/10)+"MB":Math.max(1,Math.round(b/1024))+"KB"; }
 /* "2026-09-17 חשבונית - ריצוף - ₪12,000 (scan).pdf" */
 function fileDriveName(meta,file){
+  if(meta.raw) return String(file.name||"קובץ").replace(/[\\\/:*?"<>|\x00-\x1f]+/g," ").replace(/\s+/g," ").trim().slice(0,170);
   var m=/\.([A-Za-z0-9]{1,6})$/.exec(file.name||"");
   var ext=m?"."+m[1].toLowerCase():"";
   var base=String(file.name||"").replace(/\.[^.]*$/,"").trim().slice(0,40);
@@ -2597,7 +2606,7 @@ async function fileUploadOne(tg,file){
   var data=await fileToB64(file);
   var req={action:"fileUpload",codeHash:getAuth(),aptId:meta.aptId,kind:meta.kind,
     year:String(meta.date||todayISO()).slice(0,4),name:fileDriveName(meta,file),
-    mime:file.type||"",data:data,desc:"אלכסנדר-דירות · "+meta.label};
+    mime:file.type||"",data:data,desc:"אלכסנדר-דירות · "+meta.label,sub:meta.sub||""};
   var j=await api(req);
   /* פרוייקט חדש שעוד לא הגיע לשרת — מחכים שהשמירה תצא ומנסים שוב */
   if(j && !j.ok && j.error==="project-not-found"){
@@ -2608,9 +2617,10 @@ async function fileUploadOne(tg,file){
   /* בזמן ההעלאה הנתונים יכלו להתחלף (סנכרון, חלון אחר) — מחפשים שוב */
   var o=fileTgtObj(tg);
   if(!o) throw new Error("הקובץ נשמר בדרייב (\""+j.file.name+"\"), אבל הרשומה כבר לא נמצאה — צרף אותו שוב");
-  if(!Array.isArray(o.files)) o.files=[];
-  if(!o.files.some(function(f){ return f.id===j.file.id; })){
-    o.files.push({id:j.file.id,name:j.file.name,url:j.file.url,mime:j.file.mime||file.type||"",
+  var fld=fileTgtField(tg);
+  if(!Array.isArray(o[fld])) o[fld]=[];
+  if(!o[fld].some(function(f){ return f.id===j.file.id; })){
+    o[fld].push({id:j.file.id,name:j.file.name,url:j.file.url,mime:j.file.mime||file.type||"",
       size:j.file.size||file.size||0,kind:meta.kind,at:new Date().toISOString(),by:(CU&&CU.id)||""});
   }
   /* חשבונית שצורפה להוצאה — ההוצאה מסומנת "יש חשבונית/קבלה" */
@@ -2651,10 +2661,11 @@ function filesRefresh(tg){
 }
 function fileRemove(key,fid){
   var tg=FTG[key]; if(!tg || !filesOn()) return;
-  var o=fileTgtObj(tg); if(!o || !Array.isArray(o.files)) return;
-  var f=o.files.filter(function(x){ return x.id===fid; })[0]; if(!f) return;
+  var o=fileTgtObj(tg), fld=fileTgtField(tg);
+  if(!o || !Array.isArray(o[fld])) return;
+  var f=o[fld].filter(function(x){ return x.id===fid; })[0]; if(!f) return;
   if(!confirm("להסיר את הקובץ \""+f.name+"\"?\n\nהקובץ יועבר לפח של הדרייב (אפשר לשחזר משם במשך 30 יום).")) return;
-  o.files=o.files.filter(function(x){ return x.id!==fid; });
+  o[fld]=o[fld].filter(function(x){ return x.id!==fid; });
   save();
   filesRefresh(tg);
   toast("הקובץ הוסר","ok");
@@ -2678,7 +2689,7 @@ function filesFieldHtml(slot,kind,tg,title){
 }
 function filesListInner(tg){
   var o=fileTgtObj(tg), key=ftgKey(tg);
-  return ((o&&o.files)||[]).map(function(f){
+  return ((o&&o[fileTgtField(tg)])||[]).map(function(f){
     var u=fileSafeUrl(f.url);
     return '<span class="fchip">'+
       (u?'<a href="'+esc(u)+'" target="_blank" rel="noopener" title="'+esc(f.name)+'">📄 '+esc(f.name)+'</a>':'📄 '+esc(f.name))+
@@ -2722,7 +2733,7 @@ function filesChipsHtml(tg){
 }
 function filesChipsInner(tg){
   var o=fileTgtObj(tg);
-  return ((o&&o.files)||[]).map(function(f){
+  return ((o&&o[fileTgtField(tg)])||[]).map(function(f){
     var u=fileSafeUrl(f.url);
     return u?'<a href="'+esc(u)+'" target="_blank" rel="noopener" title="📄 '+esc(f.name)+'" onclick="event.stopPropagation()">📄</a>':'';
   }).join("");
@@ -2746,6 +2757,35 @@ function fileQuickPick(key){
   inp.setAttribute("data-key",key);
   inp.click();
 }
+/* ---------- מסמכים כלליים — לפרוייקט ולדירה ----------
+   כל מה שלא חשבונית, חוזה או אישור העברה: טופס 4, נסח טאבו, תשריט,
+   אישורים, תמונות. כאן הקובץ עולה מיד בבחירה — אין "שמירה" לחכות לה. */
+function docsTg(t,id){ return t==="unit" ? {t:"unit",rid:id} : {t:"apt",id:id}; }
+function docsCount(tg){ var o=fileTgtObj(tg); return ((o&&o[fileTgtField(tg)])||[]).length; }
+function docsBtn(t,id,label){
+  if(!filesOn()) return "";
+  var tg=docsTg(t,id), n=docsCount(tg);
+  return '<button class="btn btn-sm" onclick="openDocs(\''+ftgKey(tg)+'\')" '+
+    'title="מסמכים כלליים — טופס 4, נסח טאבו, תשריט, אישורים">📄 '+esc(label||"מסמכים")+(n?' ('+n+')':'')+'</button>';
+}
+function openDocs(key){
+  var tg=FTG[key]; if(!tg || !filesOn()) return;
+  var o=fileTgtObj(tg); if(!o){ toast("לא נמצא","err"); return; }
+  var isUnit=tg.t==="unit";
+  var where=isUnit ? (apartmentName(o.apartmentId)+" › מסמכים › "+(o.name||"")) : ((o.name||"")+" › מסמכים");
+  openModal({title:"📄 מסמכים — "+(o.name||""),wide:true,bodyHtml:
+    '<p class="muted" style="margin-top:0">כל מסמך שאינו חשבונית, חוזה או אישור העברה — טופס 4, נסח טאבו, תשריט, '+
+      'אישורים, תמונות. הקובץ נשמר בדרייב בשם המקורי שלו, בתיקייה <b>'+esc(where)+'</b>.</p>'+
+    '<div data-fl="'+key+'" style="margin-bottom:8px">'+filesListInner(tg)+'</div>'+
+    '<label class="btn btn-primary btn-sm ffield-add">➕ הוסף מסמך'+
+      '<input type="file" multiple style="display:none" onchange="docsPick(\''+key+'\',this)"></label>'+
+    '<div class="hint">אפשר לבחור כמה קבצים יחד. ההעלאה מתחילה מיד — אין צורך בשמירה.</div>'});
+}
+function docsPick(key,inp){
+  var tg=FTG[key];
+  Array.prototype.slice.call(inp.files||[]).forEach(function(f){ if(tg && filesOk(f)) fileQueue(tg,f); });
+  inp.value="";
+}
 /* פתיחת התיקייה בדרייב. החלון נפתח מיד (בתוך הלחיצה) כדי שחוסם החלונות
    לא יחסום אותו, והכתובת נכנסת אליו כשהשרת עונה. */
 function filesOpenFolder(aptId){
@@ -2760,16 +2800,18 @@ function filesOpenFolder(aptId){
 /* ---------- הגדרות › קבצים בדרייב ---------- */
 function filesSettingsHtml(){
   setTimeout(filesSettingsLoad,0);
-  var cnt={contract:0,invoice:0,receipt:0,payment:0};
+  var cnt={contract:0,invoice:0,receipt:0,payment:0,doc:0};
   dvFileList().forEach(function(r){ if(cnt[r.kind]!=null) cnt[r.kind]++; });
   return '<div class="card" style="max-width:820px">'+
     '<h3 style="margin-top:0">📎 קבצים מצורפים — נשמרים בגוגל דרייב</h3>'+
     '<p class="muted" style="line-height:1.8;margin-top:0">כל קובץ שמצרפים נשמר אוטומטית בתיקייה מסודרת:<br>'+
       '<b>תיקיית הקבצים › שם הפרוייקט › חוזים / חשבוניות / תקבולים / תשלומים › שנה</b><br>'+
       'חוזה — בכרטיס הדירה בשכירויות · חשבונית — בהוצאה · אישור העברה — בתשלום על הוצאה (תשלומים) '+
-      'או בתשלום שהתקבל על הכנסה (תקבולים). ליד כל רשומה עם קובץ מופיע 📄 שפותח אותו.</p>'+
+      'או בתשלום שהתקבל על הכנסה (תקבולים) · מסמכים כלליים — בכפתור <b>📄 מסמכים</b> בכותרת הפרוייקט '+
+      'ובכרטיס הדירה. ליד כל רשומה עם קובץ מופיע 📄 שפותח אותו.</p>'+
     '<div class="stat-grid" style="margin-bottom:12px">'+
-      stat("חוזים",cnt.contract)+stat("חשבוניות",cnt.invoice)+stat("תקבולים",cnt.receipt)+stat("אישורי תשלום",cnt.payment)+
+      stat("חוזים",cnt.contract)+stat("חשבוניות",cnt.invoice)+stat("תקבולים",cnt.receipt)+
+      stat("אישורי תשלום",cnt.payment)+stat("מסמכים",cnt.doc)+
     '</div>'+
     '<div id="fs-root" class="hint">בודק את החיבור לדרייב…</div>'+
     '<div class="toolbar" style="margin-top:10px">'+
@@ -3764,6 +3806,7 @@ function renderApartment(c){
   tabs.push(["reports","דוחות"]);
   var h='<div class="toolbar"><h2 style="margin:0">🏢 '+esc(a.name)+'</h2>'+
     (can("edit")?'<button class="btn btn-sm" onclick="editApartment(\''+a.id+'\')">✏️ עריכת פרוייקט</button>':'')+
+    docsBtn("apt",a.id,"מסמכי הפרוייקט")+
     (filesOn()?'<button class="btn btn-sm" onclick="filesOpenFolder(\''+a.id+'\')" title="התיקייה של הפרוייקט בדרייב — חוזים, חשבוניות, תקבולים ותשלומים">📁 קבצים בדרייב</button>':'')+
     '<div class="sp"></div>'+
     (can("edit")?'<button class="btn btn-danger btn-sm" onclick="delApartment(\''+a.id+'\')">🗑️ מחק פרוייקט + תנועות</button>':'')+'</div>';
@@ -13783,7 +13826,8 @@ function viewAptRentals(aptId){
         (r.autoIncome?' <span class="badge badge-mgmt badge-unit" title="חיוב אוטומטי">🔁 '+esc(RENT_EVERY[rentEvery(r)])+'</span>':'')+
         '<div class="sp"></div>'+
         (can("edit")
-          ? '<button class="btn btn-sm" onclick="renewRental(\''+r.id+'\')" title="חידוש לאותו שוכר או דייר חדש">📄 חוזה חדש</button>'+
+          ? docsBtn("unit",r.id,"מסמכים")+
+            '<button class="btn btn-sm" onclick="renewRental(\''+r.id+'\')" title="חידוש לאותו שוכר או דייר חדש">📄 חוזה חדש</button>'+
             '<button class="btn btn-ghost btn-sm" onclick="oneTimeCharge(\''+r.id+'\')" title="חיוב חד-פעמי — תיקונים, נזק, ועד בית">➕₪</button>'+
             '<button class="btn btn-ghost btn-sm" onclick="editRental(\''+r.id+'\')" title="עריכת הדירה">✏️</button>'+
             '<button class="btn btn-ghost btn-sm" onclick="softDelete(\'rentals\',\''+r.id+'\',\'למחוק את הדירה?\')" title="מחיקת הדירה">🗑️</button>'
@@ -15630,12 +15674,14 @@ function dvFileList(){
     (files||[]).forEach(function(f){ if(f) out.push({a:a,kind:f.kind||kind,date:date||"",desc:desc||"",amount:amount,f:f}); });
   }
   dvApts().forEach(function(a){
+    add(a,"doc","",a.name,0,a.files);
     apExpenses(a.id).forEach(function(e){ add(a,"invoice",e.date,e.description,e.amount,e.files); });
     apAllPayments(a.id).forEach(function(p){ add(a,"payment",p.date,expDesc(p.expenseId),p.amount,p.files); });
     apIncomeRaw(a.id).forEach(function(i){
       incomePays(i).forEach(function(g){ add(a,"receipt",g.date,i.description,g.amount,g.files); });
     });
     aptRentals(a.id).forEach(function(r){
+      add(a,"doc","",r.name||"",0,r.docs);
       [r].concat(r.history||[]).forEach(function(c){
         add(a,"contract",c.startDate,(r.name||"")+(c.tenant?" · "+c.tenant:""),c.rent,c.files);
       });

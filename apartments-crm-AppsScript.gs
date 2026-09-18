@@ -167,7 +167,8 @@ var FILES_ROOT_PROP  = "crm_files_root";
 var FILES_OLD_ROOTS  = "crm_files_roots_old";   // תיקיות ראשיות קודמות — קבצים שם עדיין שלנו
 var FILES_APT_PREFIX = "crm_files_apt_";
 var FILES_ROOT_NAME  = "אלכסנדר-דירות — קבצים";
-var FILE_KIND_FOLDERS = { contract: "חוזים", invoice: "חשבוניות", receipt: "תקבולים", payment: "תשלומים" };
+var FILE_KIND_FOLDERS = { contract: "חוזים", invoice: "חשבוניות", receipt: "תקבולים",
+                          payment: "תשלומים", doc: "מסמכים" };
 var FILE_MAX_BYTES = 25 * 1024 * 1024;
 var FILES_MADE = 0;                  // כמה תיקיות נוצרו בהרצה הזאת
 
@@ -229,13 +230,14 @@ function filesFindApt(aptId) {
 }
 /* התיקייה של פרוייקט / סוג / שנה — נוצרת לפי הצורך. בנעילה, כדי ששתי
    העלאות במקביל לא יפתחו את אותה תיקייה פעמיים. */
-function filesFolderFor(apt, kind, year) {
+function filesFolderFor(apt, kind, year, sub) {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
     var pf = filesProjectFolder(filesRoot(), apt);
     if (!kind) return pf;
     var kf = filesChild(pf, FILE_KIND_FOLDERS[kind]);
+    if (sub) kf = filesChild(kf, sub);              /* מסמכים של דירה — תיקייה משלה */
     return year ? filesChild(kf, year) : kf;
   } finally {
     lock.releaseLock();
@@ -247,12 +249,18 @@ function fileUpload(body) {
   if (!body.data) return { ok: false, error: "no-file" };
   var apt = filesFindApt(String(body.aptId || ""));
   if (!apt) return { ok: false, error: "project-not-found" };
-  var year = String(body.year || "");
-  if (!/^(19|20)\d\d$/.test(year)) year = String(new Date().getFullYear());
+  /* מסמכים כלליים לא מחולקים לשנים — אבל כן לתיקייה לפי דירה */
+  var year = "", sub = "";
+  if (kind === "doc") {
+    sub = filesSafeName(body.sub, 60);
+  } else {
+    year = String(body.year || "");
+    if (!/^(19|20)\d\d$/.test(year)) year = String(new Date().getFullYear());
+  }
   var bytes = Utilities.base64Decode(String(body.data));
   if (!bytes.length) return { ok: false, error: "no-file" };
   if (bytes.length > FILE_MAX_BYTES) return { ok: false, error: "too-big" };
-  var folder = filesFolderFor(apt, kind, year);
+  var folder = filesFolderFor(apt, kind, year, sub);
   var name = filesSafeName(body.name, 180) || "קובץ";
   var mime = String(body.mime || "") || "application/octet-stream";
   var file = folder.createFile(Utilities.newBlob(bytes, mime, name));
@@ -294,7 +302,7 @@ function filesInfo(body) {
   if (body.aptId) {
     var apt = filesFindApt(String(body.aptId));
     if (!apt) return { ok: false, error: "project-not-found" };
-    var pf = filesFolderFor(apt, "", "");
+    var pf = filesFolderFor(apt, "", "", "");
     out.project = { id: pf.getId(), name: pf.getName(), url: pf.getUrl() };
   }
   return out;
@@ -322,6 +330,14 @@ function filesPrepare(body) {
         var kf = filesChild(pf, FILE_KIND_FOLDERS[kinds[k]]);
         for (var y = 0; y < years; y++) filesChild(kf, String(nowY - y));
       }
+      /* מסמכים כלליים — תיקייה לפרוייקט, ובתוכה תיקייה לכל דירה להשכרה */
+      var df = filesChild(pf, FILE_KIND_FOLDERS.doc);
+      (d.rentals || []).forEach(function (r) {
+        if (r && !r.deleted && r.apartmentId === apts[i].id) {
+          var nm = filesSafeName(r.name, 60);
+          if (nm) filesChild(df, nm);
+        }
+      });
     } finally {
       lock.releaseLock();
     }
@@ -348,7 +364,7 @@ function filesSetRoot(body) {
 }
 /* ----- הקבצים אינם נשלחים למי שאינו מנהל, ונשמרים מהמאגר בשמירה שלו ----- */
 function stripFiles(d) {
-  ["expenses", "payments"].forEach(function (T) {
+  ["apartments", "expenses", "payments"].forEach(function (T) {
     (d[T] || []).forEach(function (r) { if (r) delete r.files; });
   });
   (d.income || []).forEach(function (i) {
@@ -361,7 +377,7 @@ function restoreFiles(stored, result) {
     (arr || []).forEach(function (r) { if (r && r.id != null) m[r.id] = r; });
     return m;
   }
-  ["expenses", "payments"].forEach(function (T) {
+  ["apartments", "expenses", "payments"].forEach(function (T) {
     var S = byId(stored[T]);
     (result[T] || []).forEach(function (r) {
       if (!r) return;
@@ -382,7 +398,8 @@ function restoreFiles(stored, result) {
 }
 /* לשונית "קבצים" בגיליון — כל הקבצים עם קישור */
 function filesReadableRows(d, aMap) {
-  var KIND = { contract: "חוזה", invoice: "חשבונית", receipt: "תקבול", payment: "אישור תשלום" };
+  var KIND = { contract: "חוזה", invoice: "חשבונית", receipt: "תקבול",
+               payment: "אישור תשלום", doc: "מסמך" };
   var rows = [];
   function add(aptId, kind, date, desc, files) {
     (files || []).forEach(function (f) {
@@ -391,6 +408,9 @@ function filesReadableRows(d, aMap) {
         f.name || "", f.url || "", String(f.at || "").slice(0, 10)]);
     });
   }
+  (d.apartments || []).forEach(function (a) {
+    if (!a.deleted) add(a.id, "doc", "", a.name || "", a.files);
+  });
   var expById = {};
   (d.expenses || []).forEach(function (e) {
     expById[e.id] = e;
@@ -408,6 +428,7 @@ function filesReadableRows(d, aMap) {
   });
   (d.rentals || []).forEach(function (r) {
     if (r.deleted) return;
+    add(r.apartmentId, "doc", "", r.name || "", r.docs);
     [r].concat(r.history || []).forEach(function (c) {
       add(r.apartmentId, "contract", c.startDate, (r.name || "") + (c.tenant ? " · " + c.tenant : ""), c.files);
     });
