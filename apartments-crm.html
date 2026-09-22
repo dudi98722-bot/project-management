@@ -438,7 +438,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 עה'";
+var APP_BUILD = "19.08 עו'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -2533,6 +2533,7 @@ function fileTgtObj(tg){
   if(tg.t==="unit") return byId(DB.rentals,tg.rid)||null;
   if(tg.t==="exp") return byId(DB.expenses,tg.id)||null;
   if(tg.t==="pay") return byId(DB.payments,tg.id)||null;
+  if(tg.t==="inc") return byId(DB.income,tg.id)||null;
   if(tg.t==="col"){
     var i=byId(DB.income,tg.inc);
     return i?((i.payments||[]).filter(function(g){ return g.id===tg.id; })[0]||null):null;
@@ -2556,6 +2557,9 @@ function fileTgtMeta(tg){
     var r=byId(DB.rentals,tg.rid); if(!r) return null;
     return {aptId:r.apartmentId,kind:"contract",date:o.startDate,label:"חוזה - "+(r.name||"")+(o.tenant?" - "+o.tenant:""),amount:0};
   }
+  /* מסמך על שורת הכנסה — הזמנה, חוזה מכר, חשבונית שהוצאה */
+  if(tg.t==="inc") return {aptId:o.apartmentId,kind:"doc",sub:"הכנסות",date:o.date,
+    label:"מסמך - "+(o.description||""),amount:o.amount};
   /* מסמך כללי — נשמר בשם המקורי שלו, בתיקייה "מסמכים" (בדירה: תיקייה משלה) */
   if(tg.t==="apt") return {aptId:o.id,kind:"doc",date:"",label:"מסמך - "+(o.name||""),amount:0,raw:true};
   if(tg.t==="unit") return {aptId:o.apartmentId,kind:"doc",date:"",label:"מסמך - "+(o.name||""),amount:0,raw:true,sub:o.name||""};
@@ -2676,15 +2680,18 @@ function fileRemove(key,fid){
 /* ---------- בלוק "קבצים" בטופס ----------
    slot — כמה בלוקים באותו טופס (הוצאה + התשלום שנרשם איתה).
    tg — רשומה קיימת (מציג את הקבצים שלה); ברשומה חדשה — null. */
-function filesFieldHtml(slot,kind,tg,title){
+function filesFieldHtml(slot,kind,tg,title,sub){
   if(!filesOn()) return "";
+  var where=(kind==="doc")
+    ? "פרוייקט › "+FILE_KINDS.doc+(sub?" › "+sub:"")
+    : "פרוייקט › "+FILE_KINDS[kind]+" › שנה";
   return '<div class="field full ffield">'+
     '<label>📎 '+esc(title)+'</label>'+
     (tg?'<div data-fl="'+ftgKey(tg)+'">'+filesListInner(tg)+'</div>':'')+
     '<div id="fl-pend-'+slot+'">'+filesPendInner(slot)+'</div>'+
     '<label class="btn btn-sm ffield-add">➕ צרף קובץ'+
       '<input type="file" multiple style="display:none" onchange="filesPick(\''+slot+'\',this)"></label>'+
-    '<div class="hint">נשמר בדרייב אחרי "שמירה" — בתיקייה: פרוייקט › '+FILE_KINDS[kind]+' › שנה</div>'+
+    '<div class="hint">נשמר בדרייב אחרי "שמירה" — בתיקייה: '+esc(where)+'</div>'+
   '</div>';
 }
 function filesListInner(tg){
@@ -8812,7 +8819,8 @@ function moduleIncome(aptId){
         (i.noReport?' <span class="badge badge-muted badge-unit" title="לא נספרת בדוחות">🚫 לא בדוח</span>':'')+
         (!i.noReport&&i.noFreilich?' <span class="badge badge-muted badge-unit" title="לא נספרת בדוח לפרייליך">🚫 פרייליך</span>':'')+
         (i.rentalId?' <span class="badge badge-mgmt badge-unit" title="נוצרה אוטומטית מחוזה שכירות">🔁</span>':'')+
-        (incomeAwaits(i)&&incomePaid(i)<=0.01?' <span class="badge badge-warn badge-unit" title="הכסף טרם התקבל">ממתינה לתשלום</span>':'')+'</td>'+
+        (incomeAwaits(i)&&incomePaid(i)<=0.01?' <span class="badge badge-warn badge-unit" title="הכסף טרם התקבל">ממתינה לתשלום</span>':'')+
+        filesChipsHtml({t:"inc",id:i.id})+'</td>'+
       (units.length?'<td>'+unitsCellHtml(i)+'</td>':'')+
       '<td class="muted" title="'+esc(stayLabel(i))+'">'+esc(stayLabelShort(i))+'</td>'+
       '<td>'+money(i.amount)+'</td>'+
@@ -8829,6 +8837,7 @@ function moduleIncome(aptId){
       '<td class="right" style="white-space:nowrap">'+
         '<button class="btn btn-ghost btn-sm" onclick="openIncomePays(\''+i.id+'\',\''+aptId+'\')" title="תשלומי ההזמנה">💳'+(tracked?' '+incomePays(i).length:'')+'</button>'+
         (can("edit")&&debt>0.01?'<button class="btn btn-ghost btn-sm" title="סגירה מול שורות בדף הבנק" onclick="openIncomeBankMatch(\''+i.id+'\')">🏦</button>':'')+
+        fileAttachBtn({t:"inc",id:i.id})+
         (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editIncome(\''+i.id+'\',\''+aptId+'\')">✏️</button> <button class="btn btn-ghost btn-sm" onclick="softDelete(\'income\',\''+i.id+'\',\'למחוק הכנסה?\')">🗑️</button>':'')+'</td></tr>';
   });
   h+='</tbody></table></div>';
@@ -11311,6 +11320,7 @@ function editIncome(id,aptId){
       '</select>'+
       '<div class="hint">'+(a&&a.hasBank?'הכנסה שנכנסת לבנק הזמני מתווספת ליתרת הבנק ונזקפת לשותפים לפי החלוקה שלמטה.':'בפרויקט הזה הבנק הזמני כבוי, ולכן ניתן לבחור רק שותף.')+'</div></div>')+
     '<div class="field full"><label>הערה</label><input id="in-note" value="'+esc(it.note||"")+'"></div>'+
+    filesFieldHtml("main","doc",id?{t:"inc",id:id}:null,"מסמכים","הכנסות")+
     '<div class="field full"><label style="font-weight:400"><input type="checkbox" id="in-await" style="width:auto;margin-inline-end:6px"'+(it.awaitsPayment?" checked":"")+'>'+
       'ממתינה לתשלום — הסכום ייחשב כחוב ולא ככסף שנכנס, עד שיירשם עליה תשלום</label></div>'+
     '<div class="field full"><label style="font-weight:400"><input type="checkbox" id="in-excl" style="width:auto;margin-inline-end:6px"'+(it.excluded?" checked":"")+'>'+
@@ -11366,6 +11376,7 @@ function editIncome(id,aptId){
         markIncomePaid(target,{amount:pAmt,date:val("in-paid-date")||"",method:mth,dest:val("in-paid-dest")||""});
       }
       save(); toast(paidNow?"נשמר · נרשם גם התשלום":"נשמר","ok"); rerender();
+      filesCommit("main",{t:"inc",id:target.id});
     }});
 }
 function onInPaidNow(){
@@ -15939,6 +15950,7 @@ function dvFileList(){
     apExpenses(a.id).forEach(function(e){ add(a,"invoice",e.date,e.description,e.amount,e.files); });
     apAllPayments(a.id).forEach(function(p){ add(a,"payment",p.date,expDesc(p.expenseId),p.amount,p.files); });
     apIncomeRaw(a.id).forEach(function(i){
+      add(a,"doc",i.date,i.description,i.amount,i.files);
       incomePays(i).forEach(function(g){ add(a,"receipt",g.date,i.description,g.amount,g.files); });
     });
     aptRentals(a.id).forEach(function(r){

@@ -364,7 +364,7 @@ function filesSetRoot(body) {
 }
 /* ----- הקבצים אינם נשלחים למי שאינו מנהל, ונשמרים מהמאגר בשמירה שלו ----- */
 function stripFiles(d) {
-  ["apartments", "expenses", "payments"].forEach(function (T) {
+  ["apartments", "expenses", "payments", "income"].forEach(function (T) {
     (d[T] || []).forEach(function (r) { if (r) delete r.files; });
   });
   (d.income || []).forEach(function (i) {
@@ -377,7 +377,7 @@ function restoreFiles(stored, result) {
     (arr || []).forEach(function (r) { if (r && r.id != null) m[r.id] = r; });
     return m;
   }
-  ["apartments", "expenses", "payments"].forEach(function (T) {
+  ["apartments", "expenses", "payments", "income"].forEach(function (T) {
     var S = byId(stored[T]);
     (result[T] || []).forEach(function (r) {
       if (!r) return;
@@ -422,6 +422,7 @@ function filesReadableRows(d, aMap) {
   });
   (d.income || []).forEach(function (i) {
     if (i.deleted) return;
+    add(i.apartmentId, "doc", i.date, i.description, i.files);
     (i.payments || []).forEach(function (g) {
       if (!g.deleted) add(i.apartmentId, "receipt", g.date, i.description, g.files);
     });
