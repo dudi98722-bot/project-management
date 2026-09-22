@@ -438,7 +438,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 עג'";
+var APP_BUILD = "19.08 עד'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -6908,8 +6908,7 @@ function toggleExpPayNow(aptId){
   w.style.display=on?"block":"none";
   if(!on || _exPayBuilt) return;
   _exPayBuilt=true;
-  var parts=payPayerIds(aptId,apPartners(aptId).map(function(x){ return x.partnerId; }),"")
-    .map(function(pid){ return {partnerId:pid}; });
+  var parts=payPayerList(aptId).map(function(pid){ return {partnerId:pid}; });
   w.innerHTML='<div class="form-grid">'+
     '<div class="field"><label>סכום התשלום</label><input id="ex-pay-amount" type="number" step="0.01" value="'+esc(String(Number(val("ex-amount"))||""))+'"></div>'+
     '<div class="field"><label>תאריך התשלום</label><input id="ex-pay-date" type="date" value="'+esc(val("ex-date")||todayISO())+'"></div>'+
@@ -6931,8 +6930,11 @@ function toggleExpPayNow(aptId){
 }
 function onExpPayAccount(){
   var payer=document.getElementById("ex-pay-payer"); if(!payer) return;
-  if(accountIsBank(val("ex-pay-account"))){ payer.value=""; payer.disabled=true; }
-  else payer.disabled=false;
+  if(accountIsBank(val("ex-pay-account"))){ payer.value=""; payer.disabled=true; return; }
+  payer.disabled=false;
+  /* חשבון של שותף — הוא המשלם, בלי לבחור שוב ידנית */
+  var acc=byId(DB.accounts,val("ex-pay-account"));
+  if(acc&&acc.partnerId&&!payer.value) payer.value=acc.partnerId;
 }
 function saveExpense(eId,aptId){
   var a=byId(DB.apartments,aptId);
@@ -7699,8 +7701,7 @@ function renderQuickPayNow(force){
     return;
   }
   _qePayBuilt=true; _qePayApt=aptId; _qePayTouched=false;
-  var parts=payPayerIds(aptId,apPartners(aptId).map(function(x){ return x.partnerId; }),"")
-    .map(function(pid){ return {partnerId:pid}; });
+  var parts=payPayerList(aptId).map(function(pid){ return {partnerId:pid}; });
   w.innerHTML='<div class="form-grid">'+
     '<div class="field"><label>סכום התשלום</label><input id="qe-pay-amount" type="number" step="0.01" oninput="_qePayTouched=true" value="'+(amt||"")+'"></div>'+
     '<div class="field"><label>מהחשבון</label><select id="qe-pay-account" onchange="onQuickPayAccount()">'+
@@ -7726,7 +7727,11 @@ function renderQuickPayNow(force){
 function onQuickPayAccount(){
   var payer=document.getElementById("qe-pay-payer"); if(!payer) return;
   if(accountIsBank(val("qe-pay-account"))){ payer.value=""; payer.disabled=true; }
-  else payer.disabled=false;
+  else{
+    payer.disabled=false;
+    var acc=byId(DB.accounts,val("qe-pay-account"));
+    if(acc&&acc.partnerId&&!payer.value) payer.value=acc.partnerId;
+  }
 }
 function saveQuickExpense(){
   if(!can("edit")){ toast("אין הרשאה","err"); return false; }
@@ -7880,12 +7885,7 @@ function openPaymentEditor(eId,payId){
     return;
   }
   var mgrs=apManagers(aptId);
-  /* גם בפרוייקט בלי שותפים מקושרים — כל השותפים במערכת, שלו ראשונים */
-  var _pids=[]; apPartners(aptId).forEach(function(x){ if(_pids.indexOf(x.partnerId)<0) _pids.push(x.partnerId); });
-  reportPartnerIds(aptId).forEach(function(pid){ if(_pids.indexOf(pid)<0) _pids.push(pid); });
-  active(DB.partners).forEach(function(x){ if(_pids.indexOf(x.id)<0) _pids.push(x.id); });
-  _pids=payPayerIds(aptId,_pids,p&&p.payerPartnerId);          // משלמים לפי פרוייקט
-  var partners=_pids.map(function(pid){ return {partnerId:pid}; });
+  var partners=payPayerList(aptId,p&&p.payerPartnerId).map(function(pid){ return {partnerId:pid}; });
   var body='<div class="form-grid">'+
     '<div class="field"><label>תאריך</label><input id="pm-date" type="date" value="'+(p?esc(p.date):todayISO())+'"></div>'+
     '<div class="field"><label>סכום (₪)</label><input id="pm-amount" type="number" step="0.01" value="'+(p?esc(String(p.amount)):"")+'"></div>'+
@@ -15193,6 +15193,16 @@ function payAccounts(aptId,keepId){
   var ids=pkIds("accs",aptId);
   if(!ids) return all;
   return all.filter(function(ac){ return ac.id===keepId || ids.indexOf(ac.id)>=0; });
+}
+/* רשימת "מי שילם" לטפסים: שותפי הפרוייקט קודם, אחריהם מי שמופיע
+   בדוחות שלו, ואז כל השותפים במערכת — כדי שגם בפרוייקט בלי שותפים
+   מקושרים תהיה בחירה. בסוף מסננים לפי "משלמים לפי פרוייקט". */
+function payPayerList(aptId,keepId){
+  var ids=[];
+  apPartners(aptId).forEach(function(x){ if(ids.indexOf(x.partnerId)<0) ids.push(x.partnerId); });
+  reportPartnerIds(aptId).forEach(function(pid){ if(ids.indexOf(pid)<0) ids.push(pid); });
+  active(DB.partners).forEach(function(x){ if(ids.indexOf(x.id)<0) ids.push(x.id); });
+  return payPayerIds(aptId,ids,keepId||"");
 }
 /* "מי שילם" — לפי ההגדרה; בלי הגדרה נשארת רשימת ברירת המחדל של הטופס */
 function payPayerIds(aptId,baseIds,keepId){
