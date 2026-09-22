@@ -8,6 +8,7 @@ try { sheets = require('../sheets'); } catch (e) { sheets = null; }
 const router = crudRouter('contacts', [
   { key: 'name', type: 'text' },
   { key: 'phone', type: 'text' },
+  { key: 'national_id', type: 'text' },
   // סיווג: ערכים מופרדים בפסיק, כי אדם יכול להיות סופר וגם רוכש
   { key: 'kinds', type: 'text' },
   { key: 'address', type: 'text' },

@@ -196,6 +196,24 @@ const bankText = (c) => [
   c.bank_branch ? `סניף ${c.bank_branch}` : '',
   c.bank_account ? `חשבון ${c.bank_account}` : '',
 ].filter(Boolean).join(' · ');
+const idText = (c) => (c && c.national_id) ? `ת"ז ${String(c.national_id).trim()}` : '';
+// בהעברה לסופר צריך גם את החשבון וגם את הת"ז, ולכן הם מוצגים יחד
+const payeeText = (c) => [bankText(c || {}), idText(c)].filter(Boolean).join(' · ');
+
+// ספרת הביקורת של ת"ז ישראלית. משמשת לאזהרה בלבד ואינה חוסמת שמירה:
+// יש גם דרכונים ומספרים זרים, וחסימה הייתה מונעת רישום של אדם אמיתי.
+function validIsraeliId(v) {
+  const s = String(v == null ? '' : v).replace(/\D/g, '');
+  if (!s || s.length > 9) return false;
+  const p = s.padStart(9, '0');
+  let sum = 0;
+  for (let i = 0; i < 9; i++) {
+    let d = +p[i] * ((i % 2) + 1);
+    if (d > 9) d -= 9;
+    sum += d;
+  }
+  return sum % 10 === 0;
+}
 const kindPills = (v) => {
   const ks = splitKinds(v);
   return ks.length ? ks.map(k => `<span class="pill k">${esc(k)}</span>`).join(' ')
@@ -2760,7 +2778,7 @@ async function openCard(kind, id) {
 
 function scribeCardHTML(d) {
   const t = d.scroll_totals, p = d.product_totals;
-  const bank = bankText(d.contact || {});
+  const bank = payeeText(d.contact);
   return `
     ${bank ? `<div class="card mini">🏦 ${esc(bank)}</div>` : ''}
     <div class="grid stat-grid">
@@ -3371,6 +3389,8 @@ function setContacts(cfgOnly) {
     fields: [
       { k: 'name', label: 'שם', type: 'text', required: true },
       { k: 'phone', label: 'טלפון', type: 'text' },
+      { k: 'national_id', label: 'ת"ז', type: 'text',
+        hint: 'מוצג לצד פרטי הבנק במרחב הסופר, לשימוש בהעברות' },
       { k: 'kinds', label: 'סיווג', type: 'multi', options: () => sortHe(C.kinds.map(x => ({ t: x.value }))).map(x => x.t) },
       { k: 'address', label: 'כתובת', type: 'text' },
       { k: 'bank', label: 'בנק', type: 'text', hint: 'להעברות לסופר — מוצג במרחב הסופר' },
@@ -3384,6 +3404,22 @@ function setContacts(cfgOnly) {
     // ההעלאה היא פעולה עצמאית מול הדרייב ולא שדה בטופס: היא דורשת שהרשומה
     // כבר קיימת, ולכן מוצגת רק בעריכה. שני הסוגים נבנים מאותה פונקציה.
     onForm: (m, isEdit, row) => {
+      // בדיקת ספרת הביקורת — אזהרה בלבד. ת"ז שגויה בספרה אחת היא טעות
+      // הקלדה שקשה לגלות אחר כך, אבל לא כל מספר מזהה הוא ת"ז ישראלית.
+      const idInp = m.el.querySelector('#f_national_id');
+      if (idInp) {
+        const warn = document.createElement('div');
+        warn.className = 'hint';
+        warn.style.color = 'var(--amber)';
+        idInp.closest('.field').appendChild(warn);
+        const checkId = () => {
+          const v = idInp.value.trim();
+          warn.textContent = (v && !validIsraeliId(v))
+            ? 'המספר אינו עובר את ספרת הביקורת של ת"ז ישראלית. אפשר לשמור בכל זאת.' : '';
+        };
+        idInp.addEventListener('input', checkId);
+        checkId();
+      }
       const row1 = m.el.querySelector('.m-body .row');
       for (const ph of CONTACT_PHOTOS) {
         const box = document.createElement('div');
@@ -3433,6 +3469,11 @@ function setContacts(cfgOnly) {
     cols: [
       { label: 'שם', render: r => esc(r.name || '') },
       { label: 'טלפון', render: r => esc(r.phone || '') },
+      { label: 'ת"ז', render: r => r.national_id
+          ? `<span class="${validIsraeliId(r.national_id) ? '' : 'neg'}"
+               title="${validIsraeliId(r.national_id) ? '' : 'אינו עובר את ספרת הביקורת'}"
+               >${esc(r.national_id)}</span>`
+          : '<span class="muted">—</span>' },
       { label: 'כתובת', cls: 'wrap', render: r => esc(r.address || '') },
       { label: 'סיווג', cls: 'wrap', render: r => kindPills(r.kinds) },
       { label: 'חשבון בנק', render: r => esc(bankText(r)) },
@@ -5088,7 +5129,7 @@ function pageWorkspace() {
 
 // כותרת אישית משותפת לשני המרחבים, עם מעבר מהיר לצד השני כשיש בו פעילות
 function wsHeader(person, color, badge, otherMode, otherHasData, showBank) {
-  const bank = showBank ? bankText(person) : '';
+  const bank = showBank ? payeeText(person) : '';
   return `
     <div class="card" style="background:linear-gradient(135deg,${color});color:#fff;border:none">
       ${bank ? `<div style="font-size:13px;color:#d1fae5;margin-bottom:6px">🏦 ${esc(bank)}</div>` : ''}
@@ -5104,7 +5145,7 @@ function wsHeader(person, color, badge, otherMode, otherHasData, showBank) {
           `<span class="pill" style="background:rgba(255,255,255,.22);color:#fff">${esc(k)}</span>`).join(' ')}
         <div style="flex:1"></div>
         ${ME.caps.edit ? `<button class="btn ghost sm" data-wsedit="${person.id}" data-cfg="contactCfg"
-            title="שם, טלפון, סיווג ופרטי חשבון בנק">✎ ${showBank ? 'טלפון ופרטי בנק' : 'עריכת פרטים'}</button>` : ''}
+            title="שם, טלפון, ת&quot;ז, סיווג ופרטי חשבון בנק">✎ ${showBank ? 'טלפון, ת"ז ובנק' : 'עריכת פרטים'}</button>` : ''}
         ${otherHasData ? `<button class="btn ghost sm" id="wsSwitch">
           ${otherMode === 'customer' ? '🛒 יש לו גם פעילות כלקוח' : '🖊️ הוא גם סופר'} ←</button>` : ''}
       </div>

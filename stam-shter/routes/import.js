@@ -20,6 +20,7 @@ const SPEC = {
     cols: [
       { key: 'name', label: 'שם', required: true },
       { key: 'phone', label: 'טלפון' },
+      { key: 'national_id', label: 'ת"ז', nullable: true },
       { key: 'kinds', label: 'סיווג', nullable: true },
       { key: 'address', label: 'כתובת', nullable: true },
       { key: 'bank', label: 'בנק', nullable: true },

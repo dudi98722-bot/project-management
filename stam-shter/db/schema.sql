@@ -44,6 +44,8 @@ ALTER TABLE contacts ADD COLUMN IF NOT EXISTS kinds VARCHAR(300);
 -- פרטי חשבון בנק להעברות לסופר. טקסט ולא מספר — מספרי חשבון מתחילים
 -- לעיתים באפס, ואסור שהוא יאבד.
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS address VARCHAR(300);
+-- מספר ת"ז. טקסט ולא מספר: ת"ז מתחילה לא פעם באפס, ומספר היה מוחק אותו.
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS national_id VARCHAR(20);
 -- צילום ת"ז נשמר בדרייב; כאן רק המזהה והקישור. הקובץ עצמו אינו עובר
 -- דרך המסד — תעודות זהות של מאות אנשים במסד הן סיכון מיותר.
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS id_photo_url TEXT;
