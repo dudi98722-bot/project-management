@@ -438,7 +438,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 עד'";
+var APP_BUILD = "19.08 עה'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -13581,6 +13581,225 @@ function dueDateIn(ym,day){
 /* תדירות החיוב. r.rent הוא הסכום לכל חיוב — לא בהכרח חודשי — ולכן
    הדשבורד מנרמל אותו לערך חודשי כדי שהסיכומים יישארו בני-השוואה. */
 var RENT_EVERY={month:"חודשי",quarter:"רבעוני",half:"חצי-שנתי",year:"שנתי",once:"חד פעמי"};
+/* ============================================================
+   📝 סקיצת חוזה שכירות
+   בוחרים דירה, והפרטים שלה נכנסים לתוך תבנית. הטקסט פתוח לעריכה,
+   נשמר כטיוטה על הדירה (r.draft), ואפשר להדפיס אותו, להעתיק או
+   לשמור אותו כמסמך בדרייב. התבנית עצמה ופרטי המשכיר נשמרים
+   בהגדרות (settings.contractTpl / settings.landlord) — מנהל בלבד.
+   זו סקיצה לעריכה, לא תחליף לבדיקת עורך דין.
+   ============================================================ */
+var CONTRACT_KEYS=["משכיר","משכיר_זהות","משכיר_כתובת","משכיר_טלפון","שוכר","טלפון_שוכר",
+  "דירה","פרוייקט","מתאריך","עד_תאריך","חודשים","שכד","תדירות","יום_חיוב","עיר","תאריך_היום"];
+var CONTRACT_TPL_DEFAULT=[
+"חוזה שכירות בלתי מוגנת","",
+"שנערך ונחתם ביום {{תאריך_היום}}","",
+"בין:   {{משכיר}}   ת.ז./ח.פ. {{משכיר_זהות}}",
+"       מרחוב {{משכיר_כתובת}}   ·   טלפון {{משכיר_טלפון}}",
+"       (להלן: \"המשכיר\")","",
+"לבין:  {{שוכר}}   ת.ז. ______________",
+"       טלפון {{טלפון_שוכר}}   ·   כתובת ______________",
+"       (להלן: \"השוכר\")","",
+"הואיל והמשכיר הוא בעל הזכויות במושכר המתואר להלן;",
+"והואיל והשוכר מעוניין לשכור את המושכר בשכירות בלתי מוגנת, והצדדים מבקשים להסדיר את יחסיהם;","",
+"לפיכך הוסכם והותנה בין הצדדים כדלקמן:","",
+"1. מבוא ונספחים",
+"   1.1 המבוא לחוזה זה והנספחים לו מהווים חלק בלתי נפרד ממנו.",
+"   1.2 כותרות הסעיפים נועדו לנוחות בלבד ולא ישמשו לפרשנות.","",
+"2. המושכר",
+"   2.1 המושכר: {{דירה}}, בפרוייקט {{פרוייקט}}, הכולל ______ חדרים (להלן: \"המושכר\").",
+"   2.2 השוכר מצהיר כי ראה ובדק את המושכר, מצא אותו מתאים לצרכיו, ומקבל אותו במצבו כפי שהוא.",
+"   2.3 השכירות אינה מוגנת, ולשוכר לא תהיינה זכויות של דייר מוגן.","",
+"3. תקופת השכירות",
+"   3.1 תקופת השכירות: מיום {{מתאריך}} ועד יום {{עד_תאריך}} ({{חודשים}} חודשים).",
+"   3.2 אופציה להארכה: ______ חודשים, בהודעה מוקדמת של 60 יום ובתנאים ______.","",
+"4. דמי השכירות",
+"   4.1 דמי השכירות: {{שכד}} לכל תשלום, בחיוב {{תדירות}}.",
+"   4.2 התשלום ישולם מראש, עד ה-{{יום_חיוב}} בכל תקופת חיוב, באמצעות ______.",
+"   4.3 איחור בתשלום של למעלה מ-10 ימים ייחשב הפרה, ויישא הפרשי הצמדה וריבית.","",
+"5. תשלומים נוספים",
+"   5.1 על השוכר: חשמל, מים, גז, ארנונה, ועד בית, אינטרנט וטלוויזיה — מיום קבלת החזקה ועד הפינוי בפועל.",
+"   5.2 על המשכיר: מיסים והיטלים החלים על הבעלים, ביטוח מבנה ותיקונים מבניים.","",
+"6. בטחונות",
+"   6.1 להבטחת התחייבויות השוכר יופקדו: שטר חוב על סך ______ / ______ ערבים / פיקדון בסך ______.",
+"   6.2 המשכיר יהיה רשאי לחלט את הבטחונות בגין חוב, נזק או הפרה, לאחר מתן הודעה לשוכר.","",
+"7. השימוש במושכר",
+"   7.1 השימוש במושכר למטרת מגורים בלבד.",
+"   7.2 אין להעביר את הזכויות, להשכיר בשכירות משנה או להרשות שימוש לאחר, ללא הסכמת המשכיר בכתב ומראש.",
+"   7.3 אין לבצע שינויים או עבודות במושכר ללא הסכמת המשכיר בכתב ומראש.","",
+"8. תיקונים ואחזקה",
+"   8.1 השוכר יחזיק את המושכר במצב תקין ונקי, ויתקן על חשבונו כל נזק שנגרם על ידו או על ידי מי מטעמו.",
+"   8.2 תקלות מבניות ותקלות שאינן באשמת השוכר — על המשכיר, בתוך זמן סביר מקבלת הודעה.","",
+"9. ביטוח",
+"   9.1 השוכר יבטח על חשבונו את תכולת המושכר ואת אחריותו כלפי צד שלישי.","",
+"10. פינוי המושכר",
+"   10.1 בתום תקופת השכירות יפנה השוכר את המושכר נקי ותקין, ויחזיר את כל המפתחות.",
+"   10.2 בגין כל יום איחור בפינוי ישלם השוכר פיצוי מוסכם בסך ______ ₪ ליום, בלי לגרוע מכל סעד אחר.","",
+"11. הפרות ותרופות",
+"   11.1 הסעיפים 4, 5, 6, 7 ו-10 הם סעיפים עיקריים, והפרתם היא הפרה יסודית.",
+"   11.2 בהפרה יסודית יהיה המשכיר רשאי לבטל את החוזה, לדרוש פינוי מיידי ולחלט את הבטחונות.","",
+"12. כללי",
+"   12.1 כל שינוי בחוזה זה ייעשה בכתב ובחתימת שני הצדדים.",
+"   12.2 כתובות הצדדים לצורך הודעות הן כמפורט בראש החוזה.",
+"   12.3 סמכות השיפוט בכל הנוגע לחוזה זה תהיה לבית המשפט המוסמך ב{{עיר}}.","",
+"ולראיה באו הצדדים על החתום:","","",
+"_______________________                    _______________________",
+"        המשכיר                                      השוכר",
+"      {{משכיר}}                                  {{שוכר}}"].join("\n");
+function contractTpl(){ return (DB.settings&&DB.settings.contractTpl)||CONTRACT_TPL_DEFAULT; }
+function landlordInfo(){ return (DB.settings&&DB.settings.landlord)||{}; }
+/* אורך החוזה בחודשים. תאריך הסיום נחשב כיום האחרון, ולכן החישוב
+   נעשה מול היום שאחריו: 01/01–31/12 = 12 חודשים. */
+function contractMonths(r){
+  if(!r.startDate || !r.endDate) return "";
+  var e=new Date(r.endDate+"T00:00:00Z"); e.setUTCDate(e.getUTCDate()+1);
+  var y1=Number(r.startDate.slice(0,4)), m1=Number(r.startDate.slice(5,7)), d1=Number(r.startDate.slice(8,10));
+  var n=(e.getUTCFullYear()-y1)*12+(e.getUTCMonth()+1-m1)-(e.getUTCDate()<d1?1:0);
+  return n>0?n:"";
+}
+function contractVars(r){
+  var L=landlordInfo(), BLANK="______________";
+  return {"משכיר":L.name||BLANK,"משכיר_זהות":L.id||BLANK,"משכיר_כתובת":L.addr||BLANK,
+    "משכיר_טלפון":L.phone||BLANK,"עיר":L.city||"______",
+    "שוכר":r.tenant||BLANK,"טלפון_שוכר":r.phone||"______",
+    "דירה":r.name||BLANK,"פרוייקט":apartmentName(r.apartmentId)||"",
+    "מתאריך":r.startDate?dateHe(r.startDate):"__________",
+    "עד_תאריך":r.endDate?dateHe(r.endDate):"__________",
+    "חודשים":contractMonths(r)||"____",
+    "שכד":r.rent?money(r.rent):"__________",
+    "תדירות":RENT_EVERY[rentEvery(r)]||"חודשי","יום_חיוב":r.dueDay||1,
+    "תאריך_היום":dateHe(todayISO())};
+}
+function contractFill(tpl,r){
+  var v=contractVars(r);
+  return String(tpl||"").replace(/\{\{([^}]+)\}\}/g,function(m,k){
+    k=String(k).trim();
+    return v[k]!=null ? String(v[k]) : m;
+  });
+}
+/* בחירת דירה — הכניסה מהלשונית המרוכזת */
+function openContractPick(){
+  if(!(CU&&CU.role==="admin")){ toast("אין הרשאה","err"); return; }
+  var list=activeRentals().filter(function(r){ return canSeeApartment(r.apartmentId); });
+  if(!list.length){ toast("עוד לא הוגדרו דירות להשכרה","warn"); return; }
+  var items=list.slice().sort(function(x,y){
+    var k=String(apartmentName(x.apartmentId)).localeCompare(String(apartmentName(y.apartmentId)),"he");
+    return k||String(x.name).localeCompare(String(y.name),"he");
+  }).map(function(r){
+    return {id:r.id,label:apartmentName(r.apartmentId)+" · "+(r.name||"")+" · "+(r.tenant||"פנויה")};
+  });
+  openModal({title:"📝 סקיצת חוזה",bodyHtml:
+    '<div class="field"><label>בחר דירה</label>'+
+      pickerHtml("cd-pick",items,items[0].id,{placeholder:"הקלד שם דירה / שוכר / פרוייקט…"})+
+      '<div class="hint">הפרטים ייכנסו אוטומטית מהדירה ומהחוזה הנוכחי שלה.</div></div>',
+    saveLabel:"המשך",onSave:function(){
+      var id=pickId("cd-pick");
+      if(!id){ toast("בחר דירה מהרשימה","err"); return false; }
+      openContractDraft(id);
+      return false;
+    }});
+}
+function openContractDraft(rid){
+  if(!(CU&&CU.role==="admin")){ toast("אין הרשאה","err"); return; }
+  var r=byId(DB.rentals,rid); if(!r){ toast("הדירה לא נמצאה","err"); return; }
+  var saved=!!(r.draft&&r.draft.trim());
+  var txt=saved?r.draft:contractFill(contractTpl(),r);
+  openModal({title:"📝 סקיצת חוזה — "+(r.name||""),wide:true,bodyHtml:
+    '<div class="hint" style="margin-bottom:8px">'+
+      (saved?'מוצגת <b>הטיוטה השמורה</b> של הדירה.':'הפרטים מולאו מהדירה ומהחוזה הנוכחי שלה.')+
+      ' אפשר לערוך כאן הכול. <b>זו סקיצה לעריכה — לא תחליף לבדיקת עורך דין.</b></div>'+
+    '<textarea id="cd-text" spellcheck="false" style="width:100%;min-height:50vh;direction:rtl;'+
+      'font:13.5px/1.9 inherit;padding:12px">'+esc(txt)+'</textarea>'+
+    '<div class="toolbar" style="margin-top:8px">'+
+      '<button class="btn btn-sm" onclick="contractPrint(\''+r.id+'\')">🖨️ הדפסה / PDF</button>'+
+      '<button class="btn btn-sm" onclick="contractCopy()">📋 העתק</button>'+
+      (filesOn()?'<button class="btn btn-sm" onclick="contractToDrive(\''+r.id+'\')">💾 שמור כמסמך בדרייב</button>':'')+
+      '<div class="sp"></div>'+
+      (saved?'<button class="btn btn-ghost btn-sm" onclick="contractReset(\''+r.id+'\')">↺ מלא מחדש מהתבנית</button>':'')+
+      '<button class="btn btn-ghost btn-sm" onclick="openContractTplEdit()">✏️ תבנית ופרטי משכיר</button>'+
+    '</div>',
+    saveLabel:"שמור טיוטה",onSave:function(){
+      var t=val("cd-text");
+      r.draft = (t.trim()===contractFill(contractTpl(),r).trim()) ? "" : t;
+      save(); toast(r.draft?"הטיוטה נשמרה":"הטיוטה זהה לתבנית — לא נשמרה בנפרד","ok"); rerender();
+    }});
+}
+function contractReset(rid){
+  var r=byId(DB.rentals,rid); if(!r) return;
+  if(!confirm("למלא מחדש מהתבנית?\n\nהעריכות שבטיוטה הזאת יימחקו.")) return;
+  r.draft=""; save(); openContractDraft(rid);
+}
+function contractPrint(rid){
+  var txt=val("cd-text"); if(!txt.trim()){ toast("אין טקסט להדפסה","err"); return; }
+  var r=byId(DB.rentals,rid)||{};
+  var w=null; try{ w=window.open("","_blank"); }catch(e){}
+  if(!w){ toast("הדפדפן חסם את חלון ההדפסה — אפשר להעתיק ולהדביק במקום","err"); return; }
+  w.document.write('<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">'+
+    '<title>'+esc("חוזה שכירות - "+(r.name||"")+(r.tenant?" - "+r.tenant:""))+'</title>'+
+    '<style>@page{margin:20mm 18mm}'+
+    'body{font:12.5pt/1.8 "Times New Roman",Georgia,serif;color:#000;margin:0}'+
+    'pre{white-space:pre-wrap;font:inherit;margin:0}</style></head>'+
+    '<body><pre>'+esc(txt)+'</pre></body></html>');
+  w.document.close();
+  setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} },350);
+}
+function contractCopy(){
+  var t=val("cd-text");
+  function fallback(){
+    var ta=document.createElement("textarea"); ta.value=t;
+    ta.style.cssText="position:fixed;top:-1000px;opacity:0";
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand("copy"); toast("הועתק","ok"); }catch(e){ toast("ההעתקה נכשלה","err"); }
+    ta.remove();
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText)
+    navigator.clipboard.writeText(t).then(function(){ toast("הועתק","ok"); },fallback);
+  else fallback();
+}
+/* שמירה כמסמך בדרייב — נכנס לתיקיית המסמכים של הדירה */
+function contractToDrive(rid){
+  var r=byId(DB.rentals,rid); if(!r || !filesOn()) return;
+  var txt=val("cd-text"); if(!txt.trim()){ toast("אין טקסט לשמור","err"); return; }
+  var html='<html dir="rtl"><head><meta charset="utf-8"></head>'+
+    '<body style="font-family:\'Times New Roman\',serif;font-size:12.5pt;line-height:1.8">'+
+    '<pre style="white-space:pre-wrap;font-family:inherit;font-size:inherit">'+esc(txt)+'</pre></body></html>';
+  var nm="סקיצת חוזה - "+(r.name||"")+(r.tenant?" - "+r.tenant:"")+" - "+todayISO()+".doc";
+  fileQueue({t:"unit",rid:r.id}, new File(["﻿"+html],nm,{type:"application/msword"}));
+}
+function openContractTplEdit(){
+  if(!(CU&&CU.role==="admin")){ toast("אין הרשאה","err"); return; }
+  var L=landlordInfo();
+  openModal({title:"✏️ תבנית החוזה ופרטי המשכיר",wide:true,bodyHtml:
+    '<div class="section-title">פרטי המשכיר <span class="hint">(נכנסים אוטומטית לכל סקיצה)</span></div>'+
+    '<div class="form-grid">'+
+      '<div class="field"><label>שם</label><input id="cl-name" value="'+esc(L.name||"")+'"></div>'+
+      '<div class="field"><label>ת.ז. / ח.פ.</label><input id="cl-id" value="'+esc(L.id||"")+'"></div>'+
+      '<div class="field"><label>כתובת</label><input id="cl-addr" value="'+esc(L.addr||"")+'"></div>'+
+      '<div class="field"><label>טלפון</label><input id="cl-phone" value="'+esc(L.phone||"")+'"></div>'+
+      '<div class="field"><label>עיר (סמכות שיפוט)</label><input id="cl-city" value="'+esc(L.city||"")+'"></div>'+
+    '</div>'+
+    '<div class="section-title">התבנית</div>'+
+    '<div class="hint" style="margin-bottom:6px">מה שבתוך הסוגריים מתמלא לבד מהנתונים: '+
+      CONTRACT_KEYS.map(function(k){ return "<code>{{"+esc(k)+"}}</code>"; }).join(" · ")+'</div>'+
+    '<textarea id="cl-tpl" spellcheck="false" style="width:100%;min-height:38vh;direction:rtl;'+
+      'font:13px/1.8 inherit;padding:10px">'+esc(contractTpl())+'</textarea>'+
+    '<div class="toolbar" style="margin-top:6px">'+
+      '<button class="btn btn-ghost btn-sm" onclick="contractTplDefault()">↺ חזרה לתבנית ברירת המחדל</button>'+
+      '<div class="hint">התבנית משותפת לכל הדירות. טיוטה ששמורה על דירה לא משתנה מעצמה.</div>'+
+    '</div>',
+    saveLabel:"שמירה",onSave:function(){
+      DB.settings=DB.settings||{};
+      DB.settings.landlord={name:val("cl-name").trim(),id:val("cl-id").trim(),
+        addr:val("cl-addr").trim(),phone:val("cl-phone").trim(),city:val("cl-city").trim()};
+      var t=val("cl-tpl");
+      DB.settings.contractTpl = (t.trim()===CONTRACT_TPL_DEFAULT.trim()) ? "" : t;
+      save(); toast("נשמר","ok");
+    }});
+}
+function contractTplDefault(){
+  if(!confirm("להחזיר את התבנית לברירת המחדל?")) return;
+  var el=document.getElementById("cl-tpl"); if(el) el.value=CONTRACT_TPL_DEFAULT;
+}
 /* "חד פעמי" אינו תדירות אמיתית: הוא מייצר חיוב אחד לכל החוזה.
    הצעד נשאר 1 רק כדי שחישובי החודשים לא יתחלקו באפס — הטיפול
    האמיתי בו הוא ב-rentalDueMonths שמחזיר חודש אחד בלבד. */
@@ -13827,6 +14046,7 @@ function viewAptRentals(aptId){
         '<div class="sp"></div>'+
         (can("edit")
           ? docsBtn("unit",r.id,"מסמכים")+
+            '<button class="btn btn-sm" onclick="openContractDraft(\''+r.id+'\')" title="סקיצת חוזה עם הפרטים של הדירה">📝 סקיצת חוזה</button>'+
             '<button class="btn btn-sm" onclick="renewRental(\''+r.id+'\')" title="חידוש לאותו שוכר או דייר חדש">📄 חוזה חדש</button>'+
             '<button class="btn btn-ghost btn-sm" onclick="oneTimeCharge(\''+r.id+'\')" title="חיוב חד-פעמי — תיקונים, נזק, ועד בית">➕₪</button>'+
             '<button class="btn btn-ghost btn-sm" onclick="editRental(\''+r.id+'\')" title="עריכת הדירה">✏️</button>'+
@@ -14120,6 +14340,8 @@ function viewRentals(){
       Object.keys(RENT_STATUS).map(function(k){
         return '<option value="'+k+'"'+(Q.rentStatus===k?" selected":"")+'>'+RENT_STATUS[k].t+'</option>'; }).join("")+
     '</select>'+
+    (CU&&CU.role==="admin"?'<div class="sp"></div>'+
+      '<button class="btn btn-sm" onclick="openContractPick()">📝 סקיצת חוזה</button>':'')+
   '</div>';
 
   /* ---- תפוסה לפי פרוייקט ---- */
@@ -15676,6 +15898,35 @@ function dvPayRowHtml(r){
     dvTd(payMethodLabel(p))+dvTd(p.auto?"כן":"")+
     dvTd(invoiceStatusText(p))+dvTd(cpaText(p))+dvTd(p.note||"")+'</tr>';
 }
+var DV_RENT_HEAD=["פרוייקט","דירה","שוכר","טלפון","מתאריך","עד תאריך","נותרו","סטטוס","סכום לחיוב",
+  "תדירות","יום חיוב","חיוב אוטומטי","שווה ערך חודשי","חויב","שולם","חוב","חוזים","קבצים","הערה"];
+/* כל הדירות להשכרה, מכל הפרוייקטים — הנתונים המרכזיים של כל אחת */
+function dvRentList(){
+  var out=[];
+  dvApts().forEach(function(a){
+    aptRentals(a.id).forEach(function(r){ out.push({a:a,r:r}); });
+  });
+  return out.sort(function(x,y){
+    var k=String(x.a.name).localeCompare(String(y.a.name),"he");
+    return k||String(x.r.name).localeCompare(String(y.r.name),"he");
+  });
+}
+function dvRentFiles(r){
+  var n=((r.docs||[]).length)+((r.files||[]).length);
+  (r.history||[]).forEach(function(h){ n+=((h.files||[]).length); });
+  return n;
+}
+function dvRentRowHtml(row){
+  var r=row.r, st=rentalStatus(r), d=daysUntil(r.endDate), stats=rentalIncomeStats(r);
+  return '<tr>'+dvTd(row.a.name)+dvTd(r.name)+dvTd(r.tenant||"")+dvTd(r.phone||"")+
+    dvTd(r.startDate?dateHe(r.startDate):"")+dvTd(r.endDate?dateHe(r.endDate):"")+
+    dvTd(d===null?"":(d<0?("עברו "+Math.abs(d)):d))+
+    dvTd((RENT_STATUS[st]||{}).t||"")+
+    dvTd(r.rent?money(r.rent):"")+dvTd(RENT_EVERY[rentEvery(r)]||"")+dvTd(r.dueDay||"")+
+    dvTd(r.autoIncome?"כן":"")+dvTd(rentMonthly(r)?money(round2(rentMonthly(r))):"")+
+    dvTd(money(stats.billed))+dvTd(money(stats.paid))+dvTd(money(stats.debt))+
+    dvTd(((r.history||[]).length)+1)+dvTd(dvRentFiles(r)||"")+dvTd(r.note||"")+'</tr>';
+}
 var DV_FIL_HEAD=["פרוייקט","סוג","תאריך","שייך ל","סכום","קובץ","גודל","הועלה"];
 /* כל הקבצים המצורפים, מכל הפרוייקטים */
 function dvFileList(){
@@ -15756,20 +16007,21 @@ function viewDataSheet(){
   if(!(CU&&CU.role==="admin")) return '<div class="empty">אין הרשאה</div>';
   return withIndex(function(){
     var isInc=DQ.tab==="inc", isPay=DQ.tab==="pay", isCol=DQ.tab==="col", isFil=DQ.tab==="fil",
-        isExp=!isInc&&!isPay&&!isCol&&!isFil;
+        isRent=DQ.tab==="rent", isExp=!isInc&&!isPay&&!isCol&&!isFil&&!isRent;
     var nExp=0, nInc=0;
     dvApts().forEach(function(a){
       apExpenses(a.id).forEach(function(e){ if(DQ.parents || !isContainer(e.id)) nExp++; });
       nInc+=apIncomeRaw(a.id).length;
     });
     refreshMethods();
-    var payRows=dvPayList(), colRows=dvColList(), filRows=dvFileList();
+    var payRows=dvPayList(), colRows=dvColList(), filRows=dvFileList(), rentRows=dvRentList();
     var h='<h2>🗂️ נתונים — כל הפרוייקטים</h2>'+
       '<div class="tabs">'+
         '<div class="tab'+(isExp?" active":"")+'" onclick="DQ.tab=\'exp\';rerender()">💸 הוצאות ('+nExp+')</div>'+
         '<div class="tab'+(isPay?" active":"")+'" onclick="DQ.tab=\'pay\';rerender()">💳 תשלומים ('+payRows.length+')</div>'+
         '<div class="tab'+(isInc?" active":"")+'" onclick="DQ.tab=\'inc\';rerender()">💰 הכנסות ('+nInc+')</div>'+
         '<div class="tab'+(isCol?" active":"")+'" onclick="DQ.tab=\'col\';rerender()">🧾 גבייה ('+colRows.length+')</div>'+
+        '<div class="tab'+(isRent?" active":"")+'" onclick="DQ.tab=\'rent\';rerender()">🔑 שכירויות ('+rentRows.length+')</div>'+
         '<div class="tab'+(isFil?" active":"")+'" onclick="DQ.tab=\'fil\';rerender()">📎 קבצים ('+filRows.length+')</div>'+
       '</div>'+
       '<div class="toolbar">'+
@@ -15779,7 +16031,14 @@ function viewDataSheet(){
         '<span class="muted">👁️ לצפייה בלבד · סינון ומיון בכותרות הטבלה, כמו באקסל · "אקסל" מייצא בדיוק את מה שמסונן</span>'+
       '</div>';
     var rows, head, rowHtml, foot;
-    if(isFil){
+    if(isRent){
+      rows=rentRows; head=DV_RENT_HEAD; rowHtml=dvRentRowHtml;
+      var rM=0,rB=0,rP=0,rD=0;
+      rows.forEach(function(x){ var s=rentalIncomeStats(x.r);
+        rM+=rentMonthly(x.r); rB+=s.billed; rP+=s.paid; rD+=s.debt; });
+      foot=['סה"כ ('+rows.length+' דירות)',"","","","","","","","","","","",
+        money(round2(rM)),money(round2(rB)),money(round2(rP)),money(round2(rD)),"","",""];
+    } else if(isFil){
       rows=filRows; head=DV_FIL_HEAD; rowHtml=dvFileRowHtml;
       foot=['סה"כ ('+rows.length+' קבצים)',"","","","","","",""];
     } else if(isCol){

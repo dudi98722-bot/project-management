@@ -1060,6 +1060,8 @@ function scopeDataForUser(data, user) {
     delete d.settings.aptCats;      // קטגוריות לפי פרוייקט
     delete d.settings.aptAccs;      // חשבונות לפי פרוייקט
     delete d.settings.aptPayers;    // משלמים לפי פרוייקט
+    delete d.settings.contractTpl;  // תבנית סקיצת החוזה
+    delete d.settings.landlord;     // פרטי המשכיר
   }
   stripFiles(d);                    // קבצים מצורפים — מנהלים בלבד
   var aptSet = aptSetFor(d, ctx), expSet = expSetFor(d, ctx, aptSet);
