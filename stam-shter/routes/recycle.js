@@ -5,6 +5,8 @@ const { authenticate, can, FINANCE_TABLES } = require('../middleware/auth');
 const router = express.Router();
 
 // טבלה -> תווית בעברית + ביטוי לתיאור השורה בתצוגה
+// desc הוא ביטוי SQL, לא טקסט: גרש בתוכו חייב להיות מוכפל (''),
+// אחרת המחרוזת אינה נסגרת והשאילתה נופלת.
 const TABLES = {
   contacts:               { label: 'אנשי קשר',              desc: 'name' },
   contact_calls:          { label: 'שיחות',                 desc: `'שיחה '||COALESCE(to_char(date,'DD/MM/YYYY'),'')` },
@@ -21,12 +23,12 @@ const TABLES = {
   book_expenses:          { label: 'הוצאות לספר',           desc: `COALESCE(type,'')||' ₪'||amount` },
   parchment_expenses:     { label: 'הוצאות קלף',            desc: `quantity||' יחידות'` },
   business_expenses:      { label: 'הוצאות עסק',            desc: `COALESCE(type,'')||' ₪'||amount` },
-  prod_purchases:         { label: 'רכישות מוצרים',         desc: `quantity||' יח\\''` },
+  prod_purchases:         { label: 'רכישות מוצרים',         desc: `quantity||' יח'''` },
   prod_scribe_payments:   { label: 'תשלומי סופר (מוצרים)',  desc: `'₪'||amount` },
-  prod_sales:             { label: 'מכירות מוצרים',         desc: `quantity||' יח\\''` },
+  prod_sales:             { label: 'מכירות מוצרים',         desc: `quantity||' יח'''` },
   prod_customer_payments: { label: 'תשלומי לקוחות (מוצרים)', desc: `'₪'||amount_ils||' / $'||amount_usd` },
-  prod_returns:           { label: 'החזרות לסופר',          desc: `quantity||' יח\''` },
-  prod_consign_reports:   { label: 'דיווחי קומיסיון',       desc: `quantity||' יח\''` },
+  prod_returns:           { label: 'החזרות לסופר',          desc: `quantity||' יח'''` },
+  prod_consign_reports:   { label: 'דיווחי קומיסיון',       desc: `quantity||' יח'''` },
 };
 
 // סל המחזור מציג תיאור של כל שורה, ובהוצאות עסק ובתשלומי לקוחות התיאור

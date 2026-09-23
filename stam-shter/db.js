@@ -37,7 +37,8 @@ const SOFT_TABLES = new Set([
   'contacts', 'products', 'parchment_sizes', 'list_items', 'stations', 'track_items',
   'scrolls', 'pages_log', 'scribe_payments', 'customer_payments',
   'book_expenses', 'parchment_expenses', 'business_expenses',
-  'prod_purchases', 'prod_scribe_payments', 'prod_sales', 'prod_customer_payments'
+  'prod_purchases', 'prod_scribe_payments', 'prod_sales', 'prod_customer_payments',
+  'prod_returns', 'prod_consign_reports'
 ]);
 
 // רשומות בן שנמחקות יחד עם הספר שלהן
