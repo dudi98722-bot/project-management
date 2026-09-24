@@ -528,8 +528,10 @@ tr:last-child td { border-bottom: none; }
   <div class="toolbar">
     <input type="text" class="search-box" id="paymentsSearch" placeholder="&#x05D7;&#x05D9;&#x05E4;&#x05D5;&#x05E9;..." oninput="onPaymentsSearch()">
     <select id="paymentsMethodFilter" onchange="onPaymentsSearch()" style="padding:9px 14px;border:1px solid #ccc;border-radius:7px;font-size:13px;min-width:150px"><option value="">כל אופני התשלום</option></select>
+    <select id="paymentsAllocFilter" onchange="onPaymentsSearch()" style="padding:9px 14px;border:1px solid #ccc;border-radius:7px;font-size:13px"><option value="">משויכים וממתינים</option><option value="pending">ממתינים לשיוך בלבד</option><option value="alloc">משויכים בלבד</option></select>
     <span class="count-badge" id="paymentsCountBadge"></span>
     <button class="btn btn-secondary" onclick="openMethodsModal()" style="margin-right:auto">&#x05E2;&#x05E8;&#x05D9;&#x05DB;&#x05EA; &#x05D0;&#x05D5;&#x05E4;&#x05E0;&#x05D9; &#x05EA;&#x05E9;&#x05DC;&#x05D5;&#x05DD;</button>
+    <button class="btn" id="pendingAllocBtn" onclick="openPendingAlloc()" style="display:none;background:#ef6c00;color:#fff">&#x1F517; <span id="pendingAllocCount"></span></button>
     <button class="btn btn-secondary" onclick="openPayImport()">&#x1F4E5; &#x05D4;&#x05E2;&#x05DC;&#x05D0;&#x05EA; &#x05EA;&#x05E9;&#x05DC;&#x05D5;&#x05DE;&#x05D9;&#x05DD;</button>
     <button class="btn btn-secondary" onclick="exportRep('payments')">&#x1F4E5; &#x05D0;&#x05E7;&#x05E1;&#x05DC;</button>
     <button class="btn btn-secondary" onclick="printRep('payments')">&#x1F5A8;</button>
@@ -1055,6 +1057,7 @@ tr:last-child td { border-bottom: none; }
     </div>
     <div class="modal-footer" id="payImpFooter">
       <button class="btn btn-secondary" onclick="closePayImport()">סגור</button>
+      <button class="btn" id="payImpNoAllocBtn" onclick="uploadWithoutAllocation()" style="display:none;background:#ef6c00;color:#fff">&#x23F3; העלה בלי לסגור חובות</button>
       <button class="btn btn-primary" id="payImpStartBtn" onclick="startPayProcessing()" style="display:none">התחל שיוך תשלומים</button>
       <span id="payImpNav" style="display:none">
         <button class="btn btn-secondary" onclick="prevPayRow()">&#x25B6; הקודם</button>
@@ -1718,12 +1721,14 @@ function saveBulkVows(){
 var _impRows=[], _impIdx=0, _impStats={created:0, credited:0, skipped:0};
 
 function openPayImport(){
-  _impRows=[]; _impIdx=0; _impStats={created:0,credited:0,skipped:0};
+  _impMode='import'; _impNoAlloc=false;
+  _impRows=[]; _impIdx=0; _impStats={created:0,credited:0,skipped:0,pending:0};
   document.getElementById('payImpStage1').style.display='';
   document.getElementById('payImpStage2').style.display='none';
   document.getElementById('payImpStartBtn').style.display='none';
   document.getElementById('payImpNav').style.display='none';
   document.getElementById('payImpPreview').innerHTML='';
+  document.getElementById('payImpNoAllocBtn').style.display='none';
   var f=document.getElementById('payImpFile'); if(f) f.value='';
   document.getElementById('payImpFileStatus').textContent='';
   document.getElementById('payImportTitle').innerHTML='&#x1F4E5; העלאת תשלומים מאקסל';
@@ -1823,7 +1828,78 @@ function renderPayImpPreview(){
     '<thead><tr style="background:#f5f7ff"><th style="padding:8px;width:34px"></th><th style="padding:8px;text-align:right">תאריך</th><th style="padding:8px;text-align:right">מס\' תורם</th><th style="padding:8px;text-align:right">שם</th><th style="padding:8px;text-align:left">סכום</th><th style="padding:8px;text-align:right">אופן</th><th style="padding:8px;text-align:right">הערה</th></tr></thead>'+
     '<tbody>'+rows+'</tbody></table></div>';
   document.getElementById('payImpStartBtn').style.display = okN? '' : 'none';
+  document.getElementById('payImpNoAllocBtn').style.display = okN? '' : 'none';
 }
+/* 'import' = שורות מאקסל, 'pending' = תשלומים שכבר במערכת וממתינים לשיוך */
+var _impMode='import';
+var _impNoAlloc=false;   /* הועלה בלי לסגור חובות */
+/* מה לעשות עם עודף: 'pending' (להשאיר ממתין) או 'credit' (לשמור כזכות) */
+var _impLeftChoice='credit';
+function _setLeftChoice(v){ _impLeftChoice=v; }
+
+/* תשלום בלי התחייבות משויכת = ממתין לשיוך */
+function isPendingPay(p){ return !p.vowId && p.vowId!==0; }
+function pendingPayments(){ return payments.filter(isPendingPay); }
+function refreshPendingBtn(){
+  var b=document.getElementById('pendingAllocBtn'); if(!b) return;
+  var list=pendingPayments();
+  if(!list.length){ b.style.display='none'; return; }
+  var sum=list.reduce(function(t,p){ return t+(p.amount||0); },0);
+  b.style.display='';
+  document.getElementById('pendingAllocCount').textContent=
+    'ממתינים לשיוך: '+list.length+' (\u20AA'+sum.toLocaleString()+')';
+}
+
+/* העלאה בלי לסגור חובות - כל שורה נשמרת כתשלום ממתין */
+function uploadWithoutAllocation(){
+  _impNoAlloc=true;
+  var ok=_impRows.filter(function(r){ return r.ok && !r.done; });
+  if(!ok.length){ alert('אין שורות תקינות להעלאה'); return; }
+  var total=ok.reduce(function(t,r){ return t+r.amount; },0);
+  if(!confirm('להעלות '+ok.length+' תשלומים בסך \u20AA'+total.toLocaleString()+' בלי לסגור חובות?\n\n'+
+              'הם יישמרו כ"ממתינים לשיוך", ותוכל לסגור איתם חובות מתי שתרצה\n'+
+              'דרך הכפתור "ממתינים לשיוך" בלשונית תשלומים.')) return;
+  var base=Date.now()*100;
+  ok.forEach(function(r,i){
+    var pmt={id:base+i,date:r.date,hebrewDate:dateStrToHeb(r.date),name:r.name,vowId:null,
+      amount:r.amount,method:r.method,numPayments:1,note:r.note,_user:currentUser()};
+    payments.push(pmt); syncToSheets('payment','add',pmt);
+    r.done=true;
+  });
+  _impStats.created=ok.length;
+  _impStats.pending=ok.length;
+  document.getElementById('payImpStage1').style.display='none';
+  document.getElementById('payImpStage2').style.display='';
+  document.getElementById('payImpStartBtn').style.display='none';
+  document.getElementById('payImpNoAllocBtn').style.display='none';
+  onPaymentsSearch();
+  finishPayImport();
+}
+
+/* שיוך מאוחר: עובר על התשלומים שממתינים, באותו מסך בדיוק */
+function openPendingAlloc(){
+  _impNoAlloc=false;
+  var list=pendingPayments();
+  if(!list.length){ alert('אין תשלומים שממתינים לשיוך'); return; }
+  _impMode='pending';
+  _impRows=list.slice().sort(function(a,b){ return String(a.date||'').localeCompare(String(b.date||'')); })
+    .map(function(pm){
+      return {ok:true, payId:pm.id, date:pm.date, name:pm.name,
+              amount:pm.amount||0, method:pm.method||'', note:pm.note||''};
+    });
+  _impIdx=-1; _impStats={created:0,credited:0,skipped:0,pending:0};
+  document.getElementById('payImportTitle').innerHTML='&#x1F517; שיוך תשלומים ממתינים';
+  document.getElementById('payImpStage1').style.display='none';
+  document.getElementById('payImpStage2').style.display='';
+  document.getElementById('payImpStartBtn').style.display='none';
+  document.getElementById('payImpNoAllocBtn').style.display='none';
+  document.getElementById('payImpNav').style.display='';
+  document.getElementById('payImpPreview').innerHTML='';
+  loadCreditBalances();
+  document.getElementById('payImportOverlay').className='modal-overlay open';
+  nextPayRow();
+}
+
 /* שיוך אוטומטי: מהחוב הישן לחדש */
 function autoAllocate(openVows, amount){
   var left=amount, alloc={};
@@ -1844,10 +1920,12 @@ function openVowsFor(name){
     .sort(function(a,b){ return String(a.v.date||'').localeCompare(String(b.v.date||'')); });
 }
 function startPayProcessing(){
+  _impMode='import';
   _impIdx=-1;
   document.getElementById('payImpStage1').style.display='none';
   document.getElementById('payImpStage2').style.display='';
   document.getElementById('payImpStartBtn').style.display='none';
+  document.getElementById('payImpNoAllocBtn').style.display='none';
   document.getElementById('payImpNav').style.display='';
   nextPayRow();
 }
@@ -1865,11 +1943,15 @@ function prevPayRow(){
 function skipPayRow(){ if(_impRows[_impIdx]) _impRows[_impIdx].skipped=true; _impStats.skipped++; nextPayRow(); }
 function renderPayProcess(){
   var r=_impRows[_impIdx];
+  // במסך השיוך המאוחר ברירת המחדל היא להשאיר עודף ממתין (הפיך);
+  // בהעלאה מאקסל נשארת ההתנהגות המוכרת - עודף נשמר כזכות.
+  _impLeftChoice = (_impMode==='pending') ? 'pending' : 'credit';
   var openList=openVowsFor(r.name);
   var alloc=autoAllocate(openList, r.amount);
   var doneN=_impRows.filter(function(x){return x.done;}).length;
   var okTotal=_impRows.filter(function(x){return x.ok;}).length;
-  document.getElementById('payImpProgress').textContent='תשלום '+(doneN+1)+' מתוך '+okTotal+'  ·  הושלמו: '+doneN+'  ·  דולגו: '+_impStats.skipped;
+  document.getElementById('payImpProgress').textContent=
+    (_impMode==='pending'?'שיוך ממתין ':'תשלום ')+(doneN+1)+' מתוך '+okTotal+'  ·  הושלמו: '+doneN+'  ·  דולגו: '+_impStats.skipped;
 
   var rowsHtml = openList.length ? openList.map(function(o){
     var lbl=[o.v.forA,o.v.forB].filter(Boolean).join(' / ')||o.v.hebrewDate||('התחייבות '+o.id);
@@ -1912,7 +1994,14 @@ function onAllocInput(){
   if(!box) return;
   if(over){ box.style.background='#ffebee'; box.style.color='#c62828'; box.textContent='⚠️ אחד הסכומים גדול מהחוב שנותר — תקן לפני אישור'; }
   else if(sum>r.amount+0.001){ box.style.background='#ffebee'; box.style.color='#c62828'; box.textContent='⚠️ שויך ₪'+sum.toLocaleString()+' — יותר מהתשלום (₪'+r.amount.toLocaleString()+')'; }
-  else if(left>0.001){ box.style.background='#e8f5e9'; box.style.color='#1b5e20'; box.textContent='שויך ₪'+sum.toLocaleString()+' · נותר עודף ₪'+left.toLocaleString()+' → יישמר כזכות'; }
+  else if(left>0.001){
+    box.style.background='#fff8e1'; box.style.color='#5d4037';
+    box.innerHTML='שויך \u20AA'+sum.toLocaleString()+' · נותר עודף <b>\u20AA'+left.toLocaleString()+'</b>'+
+      '<div style="margin-top:8px;font-weight:normal;font-size:13px;display:flex;gap:18px;flex-wrap:wrap">'+
+        '<label style="cursor:pointer"><input type="radio" name="impLeft" value="pending"'+(_impLeftChoice==='pending'?' checked':'')+' onchange="_setLeftChoice(this.value)"> \u23F3 להשאיר ממתין לשיוך</label>'+
+        '<label style="cursor:pointer"><input type="radio" name="impLeft" value="credit"'+(_impLeftChoice==='credit'?' checked':'')+' onchange="_setLeftChoice(this.value)"> \uD83D\uDCB0 לשמור כזכות</label>'+
+      '</div>';
+  }
   else { box.style.background='#e8f5e9'; box.style.color='#1b5e20'; box.textContent='✓ שויך במלואו: ₪'+sum.toLocaleString(); }
 }
 function confirmPayRow(){
@@ -1928,17 +2017,48 @@ function confirmPayRow(){
   if(over){ alert('אחד הסכומים גדול מהחוב שנותר. תקן ונסה שוב.'); return; }
   if(sum>r.amount+0.001){ alert('סך השיוך גדול מהתשלום. תקן ונסה שוב.'); return; }
   var leftover=Math.round((r.amount-sum)*100)/100;
-  if(!items.length && leftover<=0){ alert('לא שויך כלום.'); return; }
-  if(leftover>0.001 && !confirm('נותר עודף של ₪'+leftover.toLocaleString()+'.\nלשמור אותו כזכות עבור '+r.name+'?')){
+  var keepPending = (leftover>0.001 && _impLeftChoice==='pending');
+  var base=Date.now()*100, heb=dateStrToHeb(r.date);
+
+  if(leftover>0.001 && !keepPending &&
+     !confirm('נותר עודף של \u20AA'+leftover.toLocaleString()+'.\nלשמור אותו כזכות עבור '+r.name+'?')){
     return; // נותנים למשתמש לתקן את השיוך
   }
-  var base=Date.now()*100, heb=dateStrToHeb(r.date);
-  items.forEach(function(it,i){
-    var pmt={id:base+i,date:r.date,hebrewDate:heb,name:r.name,vowId:parseInt(it.vowId)||it.vowId,
-      amount:it.amount,method:r.method,numPayments:1,note:r.note,_user:currentUser()};
-    payments.push(pmt); syncToSheets('payment','add',pmt); _impStats.created++;
-  });
-  if(leftover>0.001){ postCredit(r.name, leftover, r.date, 'עודף מהעלאת תשלומים'); _impStats.credited+=leftover; }
+
+  if(_impMode==='pending'){
+    // שיוך מאוחר: התשלום כבר קיים. הראשון נכנס לרשומה הקיימת כדי לשמור
+    // על המזהה ועל השורה בגיליון, והשאר נוצרים לצידה.
+    if(!items.length){ alert('לא שויך כלום. בחר סכומים או לחץ "דלג".'); return; }
+    var orig=null;
+    for(var k=0;k<payments.length;k++){ if(String(payments[k].id)===String(r.payId)){ orig=payments[k]; break; } }
+    if(!orig){ alert('התשלום כבר לא קיים — רענן את הדף.'); return; }
+    orig.vowId=parseInt(items[0].vowId)||items[0].vowId;
+    orig.amount=items[0].amount;
+    syncToSheets('payment','edit',orig); _impStats.created++;
+    items.slice(1).forEach(function(it,i){
+      var pmt={id:base+i,date:r.date,hebrewDate:heb,name:r.name,vowId:parseInt(it.vowId)||it.vowId,
+        amount:it.amount,method:r.method,numPayments:1,note:r.note,_user:currentUser()};
+      payments.push(pmt); syncToSheets('payment','add',pmt); _impStats.created++;
+    });
+  } else {
+    if(!items.length && leftover<=0){ alert('לא שויך כלום.'); return; }
+    items.forEach(function(it,i){
+      var pmt={id:base+i,date:r.date,hebrewDate:heb,name:r.name,vowId:parseInt(it.vowId)||it.vowId,
+        amount:it.amount,method:r.method,numPayments:1,note:r.note,_user:currentUser()};
+      payments.push(pmt); syncToSheets('payment','add',pmt); _impStats.created++;
+    });
+  }
+
+  if(leftover>0.001){
+    if(keepPending){
+      var rest={id:base+items.length+1,date:r.date,hebrewDate:heb,name:r.name,vowId:null,
+        amount:leftover,method:r.method,numPayments:1,note:r.note,_user:currentUser()};
+      payments.push(rest); syncToSheets('payment','add',rest); _impStats.pending++;
+    } else {
+      postCredit(r.name, leftover, r.date, _impMode==='pending'?'עודף משיוך תשלום':'עודף מהעלאת תשלומים');
+      _impStats.credited+=leftover;
+    }
+  }
   r.done=true;
   onPaymentsSearch();
   nextPayRow();
@@ -1946,15 +2066,22 @@ function confirmPayRow(){
 function finishPayImport(){
   document.getElementById('payImpNav').style.display='none';
   document.getElementById('payImpProgress').textContent='הסתיים';
+  var pend=_impStats.pending||0;
   document.getElementById('payImpPerson').innerHTML=
     '<div style="text-align:center;padding:26px">'+
       '<div style="font-size:44px">✅</div>'+
-      '<div style="font-size:20px;font-weight:bold;color:#1b5e20;margin:10px 0">השיוך הושלם</div>'+
+      '<div style="font-size:20px;font-weight:bold;color:#1b5e20;margin:10px 0">'+
+        (_impNoAlloc?'ההעלאה הושלמה':'השיוך הושלם')+
+      '</div>'+
       '<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:14px">'+
-        '<div class="summary-card"><div class="val">'+_impStats.created+'</div><div class="lbl">תשלומים נוצרו</div></div>'+
-        '<div class="summary-card"><div class="val" style="color:#1b5e20">₪'+_impStats.credited.toLocaleString()+'</div><div class="lbl">נשמר כזכות</div></div>'+
+        '<div class="summary-card"><div class="val">'+_impStats.created+'</div><div class="lbl">תשלומים נשמרו</div></div>'+
+        (pend?'<div class="summary-card"><div class="val" style="color:#e65100">'+pend+'</div><div class="lbl">ממתינים לשיוך</div></div>':'')+
+        '<div class="summary-card"><div class="val" style="color:#1b5e20">\u20AA'+_impStats.credited.toLocaleString()+'</div><div class="lbl">נשמר כזכות</div></div>'+
         '<div class="summary-card"><div class="val" style="color:#999">'+_impStats.skipped+'</div><div class="lbl">דולגו</div></div>'+
-      '</div></div>';
+      '</div>'+
+      (pend?'<div style="margin-top:16px;background:#fff3e0;border:1px solid #ffb74d;border-radius:8px;padding:10px 14px;font-size:13px;color:#e65100;display:inline-block">'+
+            '\u23F3 לסגירת חובות איתם: לשונית <b>תשלומים</b> \u2190 כפתור <b>\uD83D\uDD17 ממתינים לשיוך</b></div>':'')+
+    '</div>';
   onPaymentsSearch();
   if(document.getElementById('tab-vows').classList.contains('active'))renderVows();
 }
@@ -2913,8 +3040,11 @@ function onPaymentsSearch(){
   populatePaymentsFilters();
   var q=document.getElementById('paymentsSearch').value.trim().toLowerCase();
   var methodF=document.getElementById('paymentsMethodFilter').value;
+  var allocF=document.getElementById('paymentsAllocFilter').value;
   pFiltered=payments.filter(function(p){
     if(methodF && (p.method||'')!==methodF) return false;
+    if(allocF==='pending' && !isPendingPay(p)) return false;
+    if(allocF==='alloc'   &&  isPendingPay(p)) return false;
     if(q){
       return(p.name||'').toLowerCase().indexOf(q)>=0||(p.method||'').toLowerCase().indexOf(q)>=0||
         (p.hebrewDate||'').indexOf(q)>=0||(p.date||'').indexOf(q)>=0||(p.note||'').toLowerCase().indexOf(q)>=0;
@@ -2934,29 +3064,35 @@ function renderPayments(){
     '<div class="summary-card"><div class="val">'+payments.length+'</div><div class="lbl">סה"כ תשלומים</div></div>'+
     '<div class="summary-card"><div class="val" style="color:#2e7d32">₪'+tAmt.toLocaleString()+'</div><div class="lbl">סה"כ שולם</div></div>'+
     '<div class="summary-card"><div class="val debt-pos">₪'+(tVows-tPaid).toLocaleString()+'</div><div class="lbl">יתרה כוללת</div></div>';
+  refreshPendingBtn();
   if(!total){tb.innerHTML='';document.getElementById('paymentsPagination').innerHTML='';return;}
   var page=pFiltered.slice((pPage-1)*PAGE_SIZE,pPage*PAGE_SIZE);
   tb.innerHTML=page.map(function(p){
     // find vow
     var vow=null;for(var i=0;i<vows.length;i++){if(vows[i].id==p.vowId){vow=vows[i];break;}}
-    var vowDesc=vow?vowLabel(vow):'—';
+    var pend=isPendingPay(p);
+    var vowDesc=vow?vowLabel(vow):(pend?'ממתין לשיוך':'—');
+    var vowCell=pend
+      ? '<span style="background:#fff3e0;border:1px solid #ffb74d;color:#e65100;border-radius:10px;padding:2px 8px;font-size:11px;white-space:nowrap">\u23F3 ממתין לשיוך</span>'
+      : vowDesc;
     var paidForVow=vow?getPaidForVow(vow.id):0;
     var vowAmt=vow?vow.amount:0;
     var debtPerson=getPersonDebt(p.name);
     return '<tr>'+
       '<td style="white-space:nowrap">'+p.hebrewDate+'</td><td>'+p.date+'</td>'+
       '<td><b>'+p.name+'</b></td>'+
-      '<td style="font-size:12px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+vowDesc+'">'+vowDesc+'</td>'+
+      '<td style="font-size:12px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+vowDesc+'">'+vowCell+'</td>'+
       '<td class="paid-cell" style="text-align:left">₪'+p.amount.toLocaleString()+'</td>'+
       '<td>'+p.method+'</td>'+
       '<td style="text-align:center">'+p.numPayments+'</td>'+
-      '<td class="paid-cell" style="text-align:left">₪'+paidForVow.toLocaleString()+' / ₪'+vowAmt.toLocaleString()+'</td>'+
+      '<td class="paid-cell" style="text-align:left">'+(pend?'—':'\u20AA'+paidForVow.toLocaleString()+' / \u20AA'+vowAmt.toLocaleString())+'</td>'+
       '<td class="'+(debtPerson>0?'debt-pos':'debt-zero')+'" style="text-align:left">₪'+debtPerson.toLocaleString()+'</td>'+
       '<td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+p.note+'">'+p.note+'</td>'+
       '<td style="font-size:12px;color:#666">'+(p._user||'—')+'</td>'+
       '<td style="white-space:nowrap"><button class="btn btn-sm" style="background:#b8902f;color:white" onclick="receiptForPayment('+payments.indexOf(p)+')">&#x1F9FE; קבלה</button> <button class="btn btn-secondary btn-sm" onclick="openPaymentEditModal('+payments.indexOf(p)+')">עריכה</button> <button class="btn btn-sm" style="background:#e53935;color:white" onclick="deletePayment('+payments.indexOf(p)+')">מחק</button></td></tr>';
   }).join('');
   renderPag('paymentsPagination',total,pPage,function(p){pPage=p;renderPayments();});
+  refreshPendingBtn();
 }
 document.getElementById('paymentModalOverlay').addEventListener('mousedown',function(e){if(e.target===this)closePaymentModal();});
 
