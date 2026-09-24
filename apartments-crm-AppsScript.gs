@@ -142,12 +142,13 @@ function doPost(e) {
     }
     /* ---- קבצים מצורפים בדרייב — מנהל בלבד ---- */
     if (action === "fileUpload" || action === "fileTrash" || action === "filesInfo" ||
-        action === "filesSetRoot" || action === "filesPrepare") {
+        action === "filesSetRoot" || action === "filesPrepare" || action === "fileMove") {
       if (user.role !== "admin") return jsonOut({ ok: false, error: "forbidden" });
       if (action === "fileUpload")   return jsonOut(fileUpload(body));
       if (action === "fileTrash")    return jsonOut(fileTrash(body));
       if (action === "filesInfo")    return jsonOut(filesInfo(body));
       if (action === "filesPrepare") return jsonOut(filesPrepare(body));
+      if (action === "fileMove")     return jsonOut(fileMove(body));
       return jsonOut(filesSetRoot(body));
     }
     return jsonOut({ ok: false, error: "unknown action" });
@@ -280,6 +281,27 @@ function fileUpload(body) {
   if (body.desc) { try { file.setDescription(filesSafeName(body.desc, 500)); } catch (e) {} }
   return { ok: true, file: { id: file.getId(), name: file.getName(), url: file.getUrl(),
     mime: mime, size: bytes.length, kind: kind }, folderUrl: folder.getUrl() };
+}
+/* העברת קובץ לתיקייה של פרוייקט — למשל אסמכתת בנק שקיבלה פרוייקט
+   בהתאמה. המזהה והקישור של הקובץ לא משתנים, ולכן כל מה שכבר מצביע
+   עליו ממשיך לעבוד. מועברים רק קבצים שנמצאים בתוך תיקיית הקבצים. */
+function fileMove(body) {
+  var id = String(body.fileId || "");
+  var kind = String(body.kind || "");
+  if (!id) return { ok: false, error: "no-file" };
+  if (!FILE_KIND_FOLDERS[kind]) return { ok: false, error: "bad-kind" };
+  var apt = filesFindApt(String(body.aptId || ""));
+  if (!apt) return { ok: false, error: "project-not-found" };
+  var file;
+  try { file = DriveApp.getFileById(id); } catch (e) { return { ok: false, error: "file-not-found" }; }
+  var roots = [filesRoot().getId()];
+  try { roots = roots.concat(JSON.parse(PropertiesService.getScriptProperties().getProperty(FILES_OLD_ROOTS) || "[]")); } catch (e) {}
+  if (!fileUnderRoot(file, roots)) return { ok: false, error: "outside-root" };
+  var year = String(body.year || "");
+  if (!/^(19|20)\d\d$/.test(year)) year = String(new Date().getFullYear());
+  var folder = filesFolderFor(apt, kind, kind === "doc" ? "" : year, kind === "doc" ? filesSafeName(body.sub, 60) : "");
+  file.moveTo(folder);
+  return { ok: true, url: file.getUrl(), folderUrl: folder.getUrl(), name: file.getName() };
 }
 /* הסרה — לפח של הדרייב (אפשר לשחזר משם), ורק קובץ שבתוך תיקיית הקבצים */
 function fileTrash(body) {

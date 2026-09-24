@@ -526,6 +526,9 @@ div.empty{border:1px dashed #d8dcec;border-radius:14px;background:#fcfdff}
   padding:76px 76px 58px;position:relative;box-shadow:0 2px 10px rgba(16,24,40,.14);border-radius:2px}
 .cpage:last-child{margin-bottom:0}
 .cpage-body{height:989px;overflow:hidden}
+.cpage-body[contenteditable="true"]{height:auto;min-height:989px;overflow:visible;outline:none;cursor:text}
+.cpage-body[contenteditable="true"]:focus{outline:none}
+.cpage:focus-within{box-shadow:0 2px 10px rgba(16,24,40,.14),0 0 0 2px rgba(79,70,229,.25)}
 .cpage-num{position:absolute;bottom:22px;left:0;right:0;text-align:center;font-size:11px;color:#94a3b8}
 .cline{margin:0 0 4px;white-space:pre-wrap;word-break:break-word}
 
@@ -636,7 +639,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 פד'";
+var APP_BUILD = "19.08 פה'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -2513,6 +2516,7 @@ function applyMoveMatch(m,inc,amount){
   m.matches.push({id:uid(),incomeId:inc.id,payId:g.id,amount:amount,deleted:false});
   if(!m.apartmentId) m.apartmentId=inc.apartmentId;
   bankFilesCopy(m,g);          /* האסמכתא של השורה עוברת גם לתשלום */
+  bankFilesRelocate(m);        /* ועוברת לתיקיית הפרוייקט בדרייב */
   return g;
 }
 /* ביטול התאמה — מוחק גם את התשלום שנוצר ממנה */
@@ -2829,8 +2833,11 @@ async function fileUploadOne(tg,file){
   var fld=fileTgtField(tg);
   if(!Array.isArray(o[fld])) o[fld]=[];
   if(!o[fld].some(function(f){ return f.id===j.file.id; })){
-    o[fld].push({id:j.file.id,name:j.file.name,url:j.file.url,mime:j.file.mime||file.type||"",
-      size:j.file.size||file.size||0,kind:meta.kind,at:new Date().toISOString(),by:(CU&&CU.id)||""});
+    var rec={id:j.file.id,name:j.file.name,url:j.file.url,mime:j.file.mime||file.type||"",
+      size:j.file.size||file.size||0,kind:meta.kind,at:new Date().toISOString(),by:(CU&&CU.id)||""};
+    /* נשמר בתיקייה הכללית כי לא היה פרוייקט — יעבור לתיקיית הפרוייקט בהתאמה */
+    if(!meta.aptId) rec.gen=1;
+    o[fld].push(rec);
   }
   /* חשבונית שצורפה להוצאה — ההוצאה מסומנת "יש חשבונית/קבלה" */
   if(tg.t==="exp") o.hasInvoice=true;
@@ -3024,6 +3031,21 @@ function bankFilesCopy(m,g){
     n++;
   });
   return n;
+}
+/* שורה שקיבלה פרוייקט — הקבצים שנשמרו בתיקייה הכללית עוברים לתיקיית
+   הפרוייקט. המזהה והקישור נשארים, ולכן כל מה שמצביע עליהם ממשיך לעבוד. */
+function bankFilesRelocate(m){
+  if(!m || !m.apartmentId || !filesOn()) return;
+  (m.files||[]).filter(function(f){ return f && f.gen; }).forEach(function(f){
+    api({action:"fileMove",codeHash:getAuth(),fileId:f.id,aptId:m.apartmentId,
+      kind:f.kind||"receipt",year:String(m.date||todayISO()).slice(0,4)})
+      .then(function(j){
+        if(!j || !j.ok) return;
+        delete f.gen;
+        if(j.url) f.url=j.url;
+        save();
+      });
+  });
 }
 /* כל ההתאמות החיות של השורה — לעדכון אחרי צירוף קובץ */
 function bankFilesSync(m){
@@ -3347,6 +3369,7 @@ function linkBankPay(o,ix){
   (ix.stale[o.g.id]||[]).forEach(function(old){ old.deleted=true; });
   ix.live[o.g.id]=[{m:o.m,x:x}];
   bankFilesCopy(o.m,o.g);
+  bankFilesRelocate(o.m);
   return true;
 }
 /* הזמנה ששוחזרה — מקשרים מחדש את תשלומי הבנק שלה */
@@ -14055,7 +14078,8 @@ function openContractDraft(rid){
   openModal({title:"📝 סקיצת חוזה — "+(r.name||""),wide:true,bodyHtml:
     '<div class="hint" style="margin-bottom:8px">'+
       (saved?'מוצגת <b>הטיוטה השמורה</b> של הדירה.':'הפרטים מולאו מהדירה ומהחוזה הנוכחי שלה.')+
-      ' אפשר לערוך כאן הכול. <b>זו סקיצה לעריכה — לא תחליף לבדיקת עורך דין.</b></div>'+
+      ' אפשר לערוך כאן הכול — גם בתצוגת העמודים, ישירות על הדף. '+
+      '<b>זו סקיצה לעריכה — לא תחליף לבדיקת עורך דין.</b></div>'+
     '<textarea id="cd-text" spellcheck="false" style="width:100%;min-height:50vh;direction:rtl;'+
       'font:14px/1.9 '+esc(contractFont().css)+';padding:14px">'+esc(txt)+'</textarea>'+
     '<div id="cd-pages" class="cpages hidden"><div id="cd-pages-fit" class="cpages-fit"><div id="cd-pages-in"></div></div></div>'+
@@ -14113,9 +14137,10 @@ function contractPaginate(txt,host){
   newPage();
   String(txt||"").split("\n").forEach(function(line){
     var el=document.createElement("p"); el.className="cline";
-    if(!line.trim()) el.innerHTML="&nbsp;"; else el.textContent=line.replace(/^[ \t]+/,"");
-    var ind=(line.match(/^[ \t]+/)||[""])[0].replace(/\t/g,"    ").length;
-    if(ind) el.style.marginRight=Math.round(ind*6)+"px";
+    /* הרווחים בתחילת השורה נשמרים בטקסט עצמו (white-space:pre-wrap),
+       כדי שקריאה חזרה מהדף תחזיר בדיוק את מה שנכתב */
+    if(!line.trim()) el.appendChild(document.createElement("br"));
+    else el.textContent=line.replace(/\t/g,"    ");
     body.appendChild(el);
     /* השורה חרגה מהדף — היא פותחת את הדף הבא */
     if(body.scrollHeight>maxH+1){ body.removeChild(el); newPage(); body.appendChild(el); }
@@ -14126,6 +14151,88 @@ function contractPaginate(txt,host){
     pg.appendChild(n);
   });
   return pages.length;
+}
+/* ---------- עריכה ישירה על הדף ----------
+   כל עמוד הוא אזור עריכה. תוך כדי הקלדה הדף פשוט גדל (ואפשר להמשיך
+   לכתוב), ורגע אחרי שעוצרים הטקסט נחתך מחדש לעמודים — עם החזרת הסמן
+   למקום שבו הוא היה, לפי מספר השורה והתו. תיבת הטקסט מתעדכנת בכל
+   הקלדה, כך ששמירה, הדפסה והורדה תמיד מקבלות את הנוסח העדכני. */
+var CPG={timer:null};
+function cpagesEditable(on){
+  document.querySelectorAll("#cd-pages .cpage-body").forEach(function(b){
+    b.setAttribute("contenteditable",on?"true":"false");
+    b.setAttribute("spellcheck","false");
+  });
+}
+/* קריאה חזרה מהדף — פסקה אחת = שורה אחת.
+   innerText של אזור שלם מוסיף מעבר שורה גם לפסקה וגם ל-br שבתוכה,
+   ולכן כל שורה ריקה הוכפלה בכל מעבר בין התצוגות. */
+function cpagesText(){
+  var out=[];
+  document.querySelectorAll("#cd-pages .cpage-body").forEach(function(b){
+    Array.prototype.forEach.call(b.children,function(el){
+      if(!el.textContent.trim()){ out.push(""); return; }
+      var t=String(el.innerText!=null?el.innerText:el.textContent)
+        .replace(/\u00a0/g," ").replace(/\n+$/,"");
+      t.split("\n").forEach(function(part){ out.push(part); });
+    });
+  });
+  return out.join("\n");
+}
+/* מיקום הסמן = מספר השורה + מספר התווים בתוכה. חלוקה מחדש לעמודים
+   לא משנה את השורות עצמן, ולכן זה שריד לרינדור מחדש. */
+function cpagesCaret(){
+  var sel=window.getSelection();
+  if(!sel || !sel.rangeCount) return null;
+  var r=sel.getRangeAt(0);
+  var lines=Array.prototype.slice.call(document.querySelectorAll("#cd-pages .cpage-body > *"));
+  for(var i=0;i<lines.length;i++){
+    if(lines[i].contains(r.startContainer)){
+      var pre=document.createRange();
+      pre.selectNodeContents(lines[i]);
+      pre.setEnd(r.startContainer,r.startOffset);
+      return {line:i,off:pre.toString().length};
+    }
+  }
+  return null;
+}
+function cpagesRestoreCaret(pos){
+  if(!pos) return;
+  var lines=document.querySelectorAll("#cd-pages .cpage-body > *");
+  var el=lines[Math.min(pos.line,lines.length-1)];
+  if(!el) return;
+  var node=el.firstChild, r=document.createRange();
+  if(node && node.nodeType===3) r.setStart(node,Math.min(pos.off,node.length));
+  else { r.selectNodeContents(el); }
+  r.collapse(true);
+  var sel=window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+}
+function cpagesRepaginate(){
+  var box=document.getElementById("cd-pages"), inner=document.getElementById("cd-pages-in"),
+      ta=document.getElementById("cd-text");
+  if(!box || !inner || !ta || box.classList.contains("hidden")) return;
+  var pos=cpagesCaret(), top=box.scrollTop;
+  contractPaginate(ta.value,inner);
+  cpagesEditable(true);
+  contractPagesFit();
+  box.scrollTop=top;
+  cpagesRestoreCaret(pos);
+}
+function cpagesOnInput(){
+  var ta=document.getElementById("cd-text");
+  if(ta) ta.value=cpagesText();            /* שמירה/הדפסה תמיד מעודכנות */
+  clearTimeout(CPG.timer);
+  CPG.timer=setTimeout(cpagesRepaginate,700);
+}
+/* הדבקה — כטקסט בלבד, בלי עיצוב שמגיע מוורד */
+function cpagesOnPaste(e){
+  var t=(e.clipboardData||window.clipboardData);
+  if(!t) return;
+  e.preventDefault();
+  var txt=t.getData("text/plain")||"";
+  try{ document.execCommand("insertText",false,txt); }
+  catch(err){ return; }
+  cpagesOnInput();
 }
 /* הדף ברוחב אמיתי (794px) — מוקטן כדי להיכנס לחלון, בלי גלילה הצידה */
 function contractPagesFit(){
@@ -14147,10 +14254,19 @@ function contractPagesToggle(rid){
        היה נדחס לעמוד אחד */
     ta.classList.add("hidden"); box.classList.remove("hidden");
     var n=contractPaginate(ta.value,inner);
+    cpagesEditable(true);
     contractPagesFit();
-    if(btn) btn.textContent="✏️ חזרה לעריכה";
-    toast(n===1?"עמוד אחד":n+" עמודים","ok");
+    if(!box.getAttribute("data-bound")){
+      box.setAttribute("data-bound","1");
+      box.addEventListener("input",cpagesOnInput);
+      box.addEventListener("paste",cpagesOnPaste);
+      box.addEventListener("blur",function(){ clearTimeout(CPG.timer); cpagesRepaginate(); },true);
+    }
+    if(btn) btn.textContent="📝 תצוגת טקסט";
+    toast((n===1?"עמוד אחד":n+" עמודים")+" · אפשר לערוך ישירות על הדף","ok");
   }else{
+    clearTimeout(CPG.timer);
+    if(!box.classList.contains("hidden")) ta.value=cpagesText();
     box.classList.add("hidden"); ta.classList.remove("hidden");
     if(btn) btn.textContent="📄 תצוגת עמודים";
     ta.focus();
