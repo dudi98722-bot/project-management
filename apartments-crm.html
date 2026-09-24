@@ -636,7 +636,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 פג'";
+var APP_BUILD = "19.08 פד'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -2512,6 +2512,7 @@ function applyMoveMatch(m,inc,amount){
   m.matches=m.matches||[];
   m.matches.push({id:uid(),incomeId:inc.id,payId:g.id,amount:amount,deleted:false});
   if(!m.apartmentId) m.apartmentId=inc.apartmentId;
+  bankFilesCopy(m,g);          /* האסמכתא של השורה עוברת גם לתשלום */
   return g;
 }
 /* ביטול התאמה — מוחק גם את התשלום שנוצר ממנה */
@@ -2732,6 +2733,7 @@ function fileTgtObj(tg){
   if(tg.t==="exp") return byId(DB.expenses,tg.id)||null;
   if(tg.t==="pay") return byId(DB.payments,tg.id)||null;
   if(tg.t==="inc") return byId(DB.income,tg.id)||null;
+  if(tg.t==="bank") return byId(DB.bankMoves,tg.id)||null;
   if(tg.t==="col"){
     var i=byId(DB.income,tg.inc);
     return i?((i.payments||[]).filter(function(g){ return g.id===tg.id; })[0]||null):null;
@@ -2755,6 +2757,11 @@ function fileTgtMeta(tg){
     var r=byId(DB.rentals,tg.rid); if(!r) return null;
     return {aptId:r.apartmentId,kind:"contract",date:o.startDate,label:"חוזה - "+(r.name||"")+(o.tenant?" - "+o.tenant:""),amount:0};
   }
+  /* מסמך על שורת בנק — אסמכתא, ספח הפקדה, צילום המחאה.
+     שורה שעוד לא שויכה לפרוייקט נשמרת בתיקייה כללית של דפי הבנק. */
+  if(tg.t==="bank") return {aptId:o.apartmentId||"",kind:"receipt",date:o.date,
+    label:"אסמכתת בנק - "+(moveBankLabel(o)||"בנק")+((o.name||o.description)?" - "+(o.name||o.description):""),
+    amount:o.amount};
   /* מסמך על שורת הכנסה — הזמנה, חוזה מכר, חשבונית שהוצאה */
   if(tg.t==="inc") return {aptId:o.apartmentId,kind:"doc",sub:"הכנסות",date:o.date,
     label:"מסמך - "+(o.description||""),amount:o.amount};
@@ -2827,6 +2834,8 @@ async function fileUploadOne(tg,file){
   }
   /* חשבונית שצורפה להוצאה — ההוצאה מסומנת "יש חשבונית/קבלה" */
   if(tg.t==="exp") o.hasInvoice=true;
+  /* אסמכתא של שורת בנק — מופיעה גם בתשלומים שההתאמה כבר יצרה */
+  if(tg.t==="bank") bankFilesSync(o);
   save();
   return j.file;
 }
@@ -2998,6 +3007,33 @@ function fileQuickPick(key){
   }
   inp.setAttribute("data-key",key);
   inp.click();
+}
+/* ---------- אסמכתא של שורת בנק ----------
+   הקובץ נשאר אחד (אותו קובץ בדרייב), והקישור אליו נשמר גם בתשלום
+   שנוצר מההתאמה — כך רואים אותו גם בהזמנה, לא רק בדף הבנק. */
+function bankFilesCopy(m,g){
+  var src=(m&&m.files)||[];
+  if(!src.length || !g) return 0;
+  if(!Array.isArray(g.files)) g.files=[];
+  var have={}; g.files.forEach(function(f){ if(f&&f.id) have[f.id]=1; });
+  var n=0;
+  src.forEach(function(f){
+    if(!f || !f.id || have[f.id]) return;
+    g.files.push({id:f.id,name:f.name,url:f.url,mime:f.mime,size:f.size,
+      kind:f.kind||"receipt",at:f.at,by:f.by,fromBank:m.id});
+    n++;
+  });
+  return n;
+}
+/* כל ההתאמות החיות של השורה — לעדכון אחרי צירוף קובץ */
+function bankFilesSync(m){
+  var n=0;
+  moveMatches(m).forEach(function(x){
+    var inc=byId(DB.income,x.incomeId); if(!inc) return;
+    var g=(inc.payments||[]).filter(function(y){ return y.id===x.payId && !y.deleted; })[0];
+    if(g) n+=bankFilesCopy(m,g);
+  });
+  return n;
 }
 /* ---------- מסמכים כלליים — לפרוייקט ולדירה ----------
    כל מה שלא חשבונית, חוזה או אישור העברה: טופס 4, נסח טאבו, תשריט,
@@ -3310,6 +3346,7 @@ function linkBankPay(o,ix){
      מחליפה אותו, אחרת שחזור הישנה היה סופר את התשלום פעמיים */
   (ix.stale[o.g.id]||[]).forEach(function(old){ old.deleted=true; });
   ix.live[o.g.id]=[{m:o.m,x:x}];
+  bankFilesCopy(o.m,o.g);
   return true;
 }
 /* הזמנה ששוחזרה — מקשרים מחדש את תשלומי הבנק שלה */
@@ -10074,7 +10111,7 @@ function bankMoveRowHtml(m,selBm){
   return '<tr>'+
     (selBm?'<td class="chk"><input type="checkbox" class="bm-x" value="'+m.id+'" style="width:auto" onchange="bmCount()"></td>':'')+
     '<td>'+dateHe(m.date)+'</td>'+
-    '<td><b>'+esc(nm||"—")+'</b></td>'+
+    '<td><b>'+esc(nm||"—")+'</b>'+filesChipsHtml({t:"bank",id:m.id})+'</td>'+
     '<td><b>'+money(m.amount)+'</b></td>'+
     '<td>'+esc(moveBankLabel(m))+'</td>'+
     '<td>'+esc(m.kind||"—")+'</td>'+
@@ -10092,6 +10129,7 @@ function bankMoveRowHtml(m,selBm){
           (i&&i.apartmentId?'<div class="hint">'+esc(apartmentName(i.apartmentId))+'</div>':'')+'</div>';
       }).join(""):"—")+'</td>'+
     '<td class="right" style="white-space:nowrap">'+
+      fileAttachBtn({t:"bank",id:m.id})+
       (can("edit")?'<button class="btn btn-ghost btn-sm" onclick="openMoveMatch(\''+m.id+'\')" title="התאמה">🔗</button>'+
       '<button class="btn btn-ghost btn-sm" onclick="editBankMove(\''+m.id+'\')" title="עריכת השורה">✏️</button>'+
       (m.ignored?'<button class="btn btn-ghost btn-sm" onclick="toggleMoveIgnore(\''+m.id+'\')" title="החזר לטיפול">↩️</button>'
@@ -16413,6 +16451,10 @@ function dvFileList(){
     apIncomeRaw(a.id).forEach(function(i){
       add(a,"doc",i.date,i.description,i.amount,i.files);
       incomePays(i).forEach(function(g){ add(a,"receipt",g.date,i.description,g.amount,g.files); });
+    });
+    (DB.bankMoves||[]).forEach(function(m){
+      if(m && !m.deleted && m.apartmentId===a.id && (m.files||[]).length)
+        add(a,"receipt",m.date,"בנק · "+(m.name||m.description||""),m.amount,m.files);
     });
     aptRentals(a.id).forEach(function(r){
       add(a,"doc","",r.name||"",0,r.docs);

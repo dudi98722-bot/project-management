@@ -243,12 +243,25 @@ function filesFolderFor(apt, kind, year, sub) {
     lock.releaseLock();
   }
 }
+/* תיקייה כללית לאסמכתאות שאינן משויכות לפרוייקט */
+function filesGeneralFolder(year) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var gf = filesChild(filesRoot(), "דפי בנק — ללא פרוייקט");
+    return year ? filesChild(gf, year) : gf;
+  } finally {
+    lock.releaseLock();
+  }
+}
 function fileUpload(body) {
   var kind = String(body.kind || "");
   if (!FILE_KIND_FOLDERS[kind]) return { ok: false, error: "bad-kind" };
   if (!body.data) return { ok: false, error: "no-file" };
-  var apt = filesFindApt(String(body.aptId || ""));
-  if (!apt) return { ok: false, error: "project-not-found" };
+  /* בלי פרוייקט (שורת בנק שעוד לא הותאמה) — תיקייה כללית תחת השורש */
+  var aptId = String(body.aptId || "");
+  var apt = aptId ? filesFindApt(aptId) : null;
+  if (aptId && !apt) return { ok: false, error: "project-not-found" };
   /* מסמכים כלליים לא מחולקים לשנים — אבל כן לתיקייה לפי דירה */
   var year = "", sub = "";
   if (kind === "doc") {
@@ -260,7 +273,7 @@ function fileUpload(body) {
   var bytes = Utilities.base64Decode(String(body.data));
   if (!bytes.length) return { ok: false, error: "no-file" };
   if (bytes.length > FILE_MAX_BYTES) return { ok: false, error: "too-big" };
-  var folder = filesFolderFor(apt, kind, year, sub);
+  var folder = apt ? filesFolderFor(apt, kind, year, sub) : filesGeneralFolder(year);
   var name = filesSafeName(body.name, 180) || "קובץ";
   var mime = String(body.mime || "") || "application/octet-stream";
   var file = folder.createFile(Utilities.newBlob(bytes, mime, name));
@@ -364,7 +377,7 @@ function filesSetRoot(body) {
 }
 /* ----- הקבצים אינם נשלחים למי שאינו מנהל, ונשמרים מהמאגר בשמירה שלו ----- */
 function stripFiles(d) {
-  ["apartments", "expenses", "payments", "income"].forEach(function (T) {
+  ["apartments", "expenses", "payments", "income", "bankMoves"].forEach(function (T) {
     (d[T] || []).forEach(function (r) { if (r) delete r.files; });
   });
   (d.income || []).forEach(function (i) {
@@ -377,7 +390,7 @@ function restoreFiles(stored, result) {
     (arr || []).forEach(function (r) { if (r && r.id != null) m[r.id] = r; });
     return m;
   }
-  ["apartments", "expenses", "payments", "income"].forEach(function (T) {
+  ["apartments", "expenses", "payments", "income", "bankMoves"].forEach(function (T) {
     var S = byId(stored[T]);
     (result[T] || []).forEach(function (r) {
       if (!r) return;
@@ -426,6 +439,10 @@ function filesReadableRows(d, aMap) {
     (i.payments || []).forEach(function (g) {
       if (!g.deleted) add(i.apartmentId, "receipt", g.date, i.description, g.files);
     });
+  });
+  (d.bankMoves || []).forEach(function (m) {
+    if (!m || m.deleted) return;
+    add(m.apartmentId, "receipt", m.date, "בנק · " + (m.name || m.description || ""), m.files);
   });
   (d.rentals || []).forEach(function (r) {
     if (r.deleted) return;
