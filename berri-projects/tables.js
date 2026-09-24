@@ -246,9 +246,18 @@ function bulkBar(tk, ctx, rows) {
   el.innerHTML = '<div class="bulkbar"><b>' + picked.length + ' שורות מסומנות</b>' +
     (mc ? '<span>סה״כ ' + money(sumOf(picked, function (r) { return cellVal(mc, r); })) + '</span>' : '') +
     '<div class="sp"></div>' +
-    '<button class="btn sm p" onclick="bulkEditOpen(' + cx + ')">✏️ עדכון מרוכז</button>' +
-    '<button class="btn sm d" onclick="bulkDeleteAsk(' + cx + ')">🗑️ מחיקה</button>' +
+    (bulkReady()
+      ? '<button class="btn sm p" onclick="bulkEditOpen(' + cx + ')">✏️ עדכון מרוכז</button>' +
+        '<button class="btn sm d" onclick="bulkDeleteAsk(' + cx + ')">🗑️ מחיקה</button>'
+      : bulkNotReady()) +
     '<button class="btn sm gh" onclick="selAll(' + cx + ',false)">✕ ביטול סימון</button></div>';
+}
+/* עדכון מרוכז דורש את גרסת הסקריפט החדשה בגוגל. עד שהיא מודבקת — אומרים
+   את זה במפורש, במקום לנסות ולקבל "פעולה לא מוכרת" */
+function bulkReady() { return (S.apiVersion || 1) >= 2; }
+function bulkNotReady() {
+  return '<span style="font-size:12.5px;background:rgba(251,191,36,.18);color:#FCD34D;padding:4px 10px;border-radius:8px">' +
+    '⚠ עדכון מרוכז יעבוד אחרי שמעדכנים את הסקריפט בגוגל (Apps Script ← Deploy ← New version)</span>';
 }
 function mountTables(list) { list.forEach(function (x) { refreshTable(x[0], x[1]); }); }
 

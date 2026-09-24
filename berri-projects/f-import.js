@@ -48,7 +48,7 @@ var IMP = {
   additions: { title: 'תוספות לפרוייקט', fields: [
     { k: 'date', t: 'תאריך', type: 'date', req: 1, alias: ['תאריך', 'date'] },
     { k: 'projectId', t: 'פרוייקט', type: 'project', req: 1, alias: ['פרוייקט', 'פרויקט'] },
-    { k: 'description', t: 'תיאור התוספת', type: 'text', req: 1, alias: ['תיאור', 'תוספת', 'פירוט'] },
+    { k: 'description', t: 'תיאור התוספת', type: 'text', req: 1, alias: ['תיאור', 'פירוט', 'מה נוסף'] },
     { k: 'clientAmount', t: 'תוספת ללקוח', type: 'money', neg: 1, alias: ['ללקוח', 'תוספת ללקוח', 'סכום'] },
     { k: 'subAmount', t: 'תוספת לקבלן', type: 'money', neg: 1, alias: ['לקבלן', 'תוספת לקבלן'] },
     { k: 'note', t: 'הערה', type: 'text', alias: ['הערה', 'הערות'] }] }
@@ -119,6 +119,9 @@ function impLoaded(rows, name) {
   IMPS.head = rows[0].map(function (h) { return String(h).trim(); });
   IMPS.rows = rows.slice(1);
   IMPS.map = impAutoMap();
+  /* קובץ חדש = התחלה נקייה. "לייבא גם כפולות" שנשאר מסומן מהקובץ הקודם
+     היה מכפיל כל שורה בקובץ מתוקן שמועלה שוב */
+  IMPS.withDups = false; IMPS.retry = 0; IMPS.skippedAny = false;
   IMPS.step = 2; IMPS.name = name;
   importRender();
 }
@@ -127,18 +130,24 @@ function impAutoMap() {
   var C = IMP[IMPS.tk], map = {}, used = {};
   var norm = function (s) { return String(s).toLowerCase().replace(/["'׳״\s_-]/g, ''); };
   var heads = IMPS.head.map(norm);
+  /* שני מעברים על כל השדות: קודם רק התאמות מלאות, ואז חלקיות. אחרת שדה
+     מוקדם ברשימה "חוטף" בהתאמה חלקית עמודה שהייתה התאמה מלאה לשדה אחר
+     (למשל "תיאור" שתפס את "תוספת ללקוח" וסכומי הלקוח אבדו) */
+  var aliases = function (f) { return [f.t].concat(f.alias || []).map(norm); };
   C.fields.forEach(function (f) {
-    var al = [f.t].concat(f.alias || []).map(norm);
-    var hit = -1;
-    for (var a = 0; a < al.length && hit < 0; a++) {
-      for (var i = 0; i < heads.length; i++) if (!used[i] && heads[i] === al[a]) { hit = i; break; }
+    var al = aliases(f);
+    for (var a = 0; a < al.length && map[f.k] === undefined; a++) {
+      for (var i = 0; i < heads.length; i++) if (!used[i] && heads[i] === al[a]) { map[f.k] = i; used[i] = 1; break; }
     }
-    for (var a2 = 0; a2 < al.length && hit < 0; a2++) {
+  });
+  C.fields.forEach(function (f) {
+    if (map[f.k] !== undefined) return;
+    var al = aliases(f);
+    for (var a = 0; a < al.length && map[f.k] === undefined; a++) {
       for (var j = 0; j < heads.length; j++) {
-        if (!used[j] && heads[j] && (heads[j].indexOf(al[a2]) >= 0 || al[a2].indexOf(heads[j]) >= 0)) { hit = j; break; }
+        if (!used[j] && heads[j] && (heads[j].indexOf(al[a]) >= 0 || al[a].indexOf(heads[j]) >= 0)) { map[f.k] = j; used[j] = 1; break; }
       }
     }
-    if (hit >= 0) { map[f.k] = hit; used[hit] = 1; }
   });
   return map;
 }

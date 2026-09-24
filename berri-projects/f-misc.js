@@ -24,8 +24,9 @@ function registerModal(id) {
 }
 function saveRegister(btn, id) {
   if (!val('f-name')) return setMsg('m', 'יש להזין שם לקופה');
+  var open = amountField('f-open', 'יתרת פתיחה', true); if (open === null) return;
   saveRow(btn, 'registers', { id: id || newId('r'), name: val('f-name'), kind: val('f-kind'),
-    opening: parseAmount(val('f-open')) || 0, openingDate: val('f-odate'),
+    opening: open, openingDate: val('f-odate'),
     active: checked('f-active'), note: val('f-note') }, id ? 'הקופה עודכנה' : 'הקופה נוספה');
 }
 
@@ -44,9 +45,23 @@ function catModal(id, group) {
 var GROUP_HE = { project: 'הוצאות פרוייקט', business: 'הוצאות עסק', home: 'הוצאות בית',
                  'in': 'כסף נכנס לקופה', out: 'כסף יצא מקופה' };
 function saveCat(btn, id, group) {
-  if (!val('f-name')) return setMsg('m', 'יש להזין שם');
-  saveRow(btn, 'categories', { id: id || newId('c'), group: group, name: val('f-name') }, 'נשמר');
+  var name = val('f-name');
+  if (!name) return setMsg('m', 'יש להזין שם');
+  var old = id ? findRow('categories', id) : null, oldName = old ? old.name : '';
+  if (uniqueClash('categories', { id: id, group: group, name: name })) return setMsg('m', 'הקטגוריה כבר קיימת');
+  saveRow(btn, 'categories', { id: id || newId('c'), group: group, name: name }, 'נשמר');
+  /* השרת מעדכן את השם בכל השורות בגיליון — עושים אותו דבר גם כאן, אחרת
+     עריכה הבאה של שורה הייתה שולחת את השם הישן ומחזירה אותו */
+  if (oldName && oldName !== name) {
+    var t = CAT_GROUP_TABLE[group];
+    (S.d[t] || []).forEach(function (r) {
+      if (r.category === oldName && (t !== 'cashMoves' || r.type === group)) r.category = name;
+    });
+    S.ver++; cacheState(); rerender();
+  }
 }
+var CAT_GROUP_TABLE = { project: 'projectExpenses', business: 'businessExpenses', home: 'homeExpenses',
+                        'in': 'cashMoves', out: 'cashMoves' };
 
 function userModal(id) {
   if (!isAdmin()) return toast('ניהול משתמשים למנהל בלבד', 'err');
@@ -75,6 +90,7 @@ function saveUser(btn, id) {
     active: (me || checked('f-active')) ? '1' : '0' }).then(function (r) {
     busy(btn, false);
     if (!r.ok) { if (!handleExpired(r)) setMsg('m', r.error); return; }
+    if (r.token) { S.token = r.token; lsSet(LS.tok, r.token); }   // החלפת סיסמה לעצמי — נשארים מחוברים
     var i = S.d.users.map(function (x) { return x.id; }).indexOf(r.user.id);
     if (i < 0) S.d.users.push(r.user); else S.d.users[i] = r.user;
     S.ver++; cacheState(); closeModal(); rerender();

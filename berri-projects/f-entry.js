@@ -36,6 +36,14 @@ function entryModal(kind, id, pre) {
   var projs = sortedProjects().filter(function (p) { return p.active; });
   var r = id ? findRow(K.table, id) : null;
   var d = Object.assign({ date: calc().today, registerId: regs[0].id }, r || {}, pre || {});
+  /* עריכת תנועה בקופה שהועברה ללא פעילה: הקופה שלה חייבת להופיע ברשימה,
+     אחרת הרשימה מציגה קופה אחרת והשמירה מעבירה אליה את הכסף בשקט */
+  [d.registerId, d.toRegisterId].forEach(function (rid) {
+    var reg = rid && findRow('registers', rid);
+    if (reg && !regs.some(function (x) { return x.id === rid; })) {
+      regs = regs.concat([Object.assign({}, reg, { name: reg.name + ' (לא פעילה)' })]);
+    }
+  });
   if (K.proj && !d.projectId && projs.length === 1) d.projectId = projs[0].id;
 
   openModal(modalHtml(K.i + ' ' + (id ? 'עריכת ' : '') + K.t,

@@ -70,7 +70,11 @@ function regBalance(r, upTo, moves) {
 function monthsBetween(a, b) {
   var da = parseISO(a), db = parseISO(b);
   if (!da || !db || db < da) return 0;
-  return ((db - da) / 86400000 + 1) / 30.4375;
+  /* ספירת ימים לפי UTC: בשעון מקומי מעבר לשעון קיץ מוסיף/מוריד שעה,
+     והרווח לחודש יצא עקום בכמה שקלים */
+  var days = Math.round((Date.UTC(db.getFullYear(), db.getMonth(), db.getDate()) -
+                         Date.UTC(da.getFullYear(), da.getMonth(), da.getDate())) / 86400000);
+  return (days + 1) / 30.4375;
 }
 
 /* מצב פרוייקט. הרווח הצפוי: מחיר ללקוח (או מה ששולם בפועל, אם יותר), פחות

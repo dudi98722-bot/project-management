@@ -5,7 +5,8 @@ function kpi(label, value, sub, cls, onclick) {
   var tag = onclick ? 'button' : 'div';
   return '<' + tag + ' class="kpi ' + (cls || '') + '"' + (onclick ? ' onclick="' + onclick + '"' : '') + '>' +
     '<div class="k">' + label + '</div><div class="v' + moneyCls(value) + '">' + money(value) + '</div>' +
-    (sub ? '<div class="s">' + sub + '</div>' : '') + '</' + tag + '>';
+    /* sub יכול להכיל טקסט שמשתמש הקליד (למשל שם קטגוריה) — תמיד מסונן */
+    (sub ? '<div class="s">' + esc(sub) + '</div>' : '') + '</' + tag + '>';
 }
 function bar(p, cls) { return '<div class="bar ' + (cls || '') + '"><i style="width:' + Math.round(p) + '%"></i></div>'; }
 

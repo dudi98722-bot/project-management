@@ -47,19 +47,26 @@ function pageDaily(w) {
       return dayRegCard(r, byReg[r.id], R);
     }).join('') : '<div class="card"><div class="empty"><span class="ico">📅</span><b>אין תנועות בתקופה הזו</b>נסו תאריך אחר</div></div>');
 }
-function shiftDay(n) { S.ui.day = addDays(S.ui.day || calc().today, n); renderPage(); }
+/* אתמול/מחר ביחס ליום שמוצג על המסך — לא ביחס להיום */
+function shiftDay(n) { S.ui.day = addDays(dayRange().from, n); renderPage(); }
 
 function dayRegCard(r, list, R) {
   var start = regBalance(r, addDays(R.from, -1)), end = regBalance(r, R.to);
-  var tin = sumOf(list.filter(function (m) { return m.dir > 0; })), tout = sumOf(list.filter(function (m) { return m.dir < 0; }));
+  /* תנועה מלפני תאריך יתרת הפתיחה כבר כלולה ביתרה — מוצגת, אבל לא נספרת,
+     כדי שפתיחה + נכנס − יצא = סגירה */
+  var counts = function (m) { return !r.openingDate || m.date >= r.openingDate; };
+  var tin = sumOf(list.filter(function (m) { return m.dir > 0 && counts(m); }));
+  var tout = sumOf(list.filter(function (m) { return m.dir < 0 && counts(m); }));
   return '<div class="card"><div class="card-head"><h3>💰 ' + esc(r.name) + '</h3><div class="sp"></div>' +
       '<span class="muted">פתיחה ' + money(start) + '</span><span class="badge' + (end < 0 ? ' r' : '') + '">סגירה ' + money(end) + '</span></div>' +
     '<div class="tbl-scroll"><table class="tbl"><thead><tr><th class="nosort">תאריך</th><th class="nosort">סוג</th>' +
       '<th class="nosort">פירוט</th><th class="nosort num">נכנס</th><th class="nosort num">יצא</th></tr></thead><tbody>' +
       list.map(function (m) {
-        return '<tr' + (m.pid ? ' class="click" onclick="go(\'project\',\'' + m.pid + '\')"' : '') + '>' +
+        var pre = !counts(m);
+        return '<tr class="' + (m.pid ? 'click' : '') + (pre ? ' dim' : '') + '"' + (m.pid ? ' onclick="go(\'project\',\'' + m.pid + '\')"' : '') + '>' +
           '<td class="num">' + fmtDate(m.date) + '</td><td><span class="mv-type">' + MV[m.k].i + ' ' + MV[m.k].t + '</span></td>' +
-          '<td>' + esc(m.desc) + '</td><td class="num in">' + (m.dir > 0 ? money(m.amount) : '') + '</td>' +
+          '<td>' + esc(m.desc) + (pre ? ' <span class="badge gray">כלול ביתרת הפתיחה</span>' : '') + '</td>' +
+          '<td class="num in">' + (m.dir > 0 ? money(m.amount) : '') + '</td>' +
           '<td class="num out">' + (m.dir < 0 ? money(m.amount) : '') + '</td></tr>';
       }).join('') +
     '</tbody><tfoot><tr><td colspan="3">סה״כ</td><td class="num">' + money(tin) + '</td><td class="num">' + money(tout) + '</td></tr></tfoot></table></div></div>';

@@ -59,10 +59,12 @@ function projBulkBar(list) {
   if (!picked.length) { el.innerHTML = ''; return; }
   el.innerHTML = '<div class="bulkbar"><b>' + picked.length + ' פרוייקטים מסומנים</b>' +
     '<span>רווח צפוי ' + money(sumOf(picked, function (x) { return x.profit; })) + '</span><div class="sp"></div>' +
-    '<button class="btn sm" onclick="projBulkActive(true)">✔ סמן כפעילים</button>' +
-    '<button class="btn sm" onclick="projBulkActive(false)">⏸ סמן כלא פעילים</button>' +
-    '<button class="btn sm p" onclick="bulkEditOpen(\'projects\',\'\')">✏️ עדכון מרוכז</button>' +
-    '<button class="btn sm d" onclick="bulkDeleteAsk(\'projects\',\'\')">🗑️</button>' +
+    (bulkReady()
+      ? '<button class="btn sm" onclick="projBulkActive(true)">✔ סמן כפעילים</button>' +
+        '<button class="btn sm" onclick="projBulkActive(false)">⏸ סמן כלא פעילים</button>' +
+        '<button class="btn sm p" onclick="bulkEditOpen(\'projects\',\'\')">✏️ עדכון מרוכז</button>' +
+        '<button class="btn sm d" onclick="bulkDeleteAsk(\'projects\',\'\')">🗑️</button>'
+      : bulkNotReady()) +
     '<button class="btn sm gh" onclick="projSelAll(false)">✕</button></div>';
 }
 function projBulkActive(on) {

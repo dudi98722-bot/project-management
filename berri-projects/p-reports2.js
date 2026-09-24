@@ -15,9 +15,10 @@ function repMonthly(el) {
     return r;
   });
   var COLS = [['cp', '📥 מלקוחות', 'in'], ['in', '⬇️ כסף אחר', 'in'], ['sp', '👷 לקבלנים', 'out'],
-    ['pe', '🧱 הוצ׳ פרוייקט', 'out'], ['be', '🧾 הוצ׳ עסק', 'out']];
-  if (isAdmin()) COLS.push(['he', '🏠 הוצ׳ בית', 'out']);
-  COLS.push(['out', '⬆️ כסף אחר', 'out']);
+    ['pe', '🧱 הוצ׳ פרוייקט', 'out'], ['be', '🧾 הוצ׳ עסק', 'out'],
+    /* הסכום הכולל של הוצאות הבית גלוי לכולם (כמו בכרטסת הקופה) — בלי
+       פירוט. אם העמודה הייתה מוסתרת, התזרים לא היה מסתכם מהעמודות */
+    ['he', '🏠 הוצ׳ בית', 'out'], ['out', '⬆️ כסף אחר', 'out']];
   el.innerHTML = '<div class="card"><div class="card-head"><h3>🗓️ תזרים לפי חודשים</h3><div class="sp"></div>' +
       '<button class="btn sm gh" onclick="exportMonthly()">📤 אקסל</button></div><div class="tbl-scroll">' +
     '<table class="tbl"><thead><tr><th class="nosort">חודש</th>' +

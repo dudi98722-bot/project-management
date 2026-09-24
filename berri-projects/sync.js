@@ -13,16 +13,30 @@
    ===================================================================== */
 'use strict';
 
-var Q = { items: [], busy: false, tries: 0, timer: null };
+var Q = { items: [], busy: false, tries: 0, timer: null, done: {} };
 var LS_Q = 'berri_queue';
 
-function qRead() { try { Q.items = JSON.parse(lsGet(LS_Q) || '[]') || []; } catch (e) { Q.items = []; } }
-function qWrite() { lsSet(LS_Q, JSON.stringify(Q.items)); qBadge(); }
+function qStored() { try { return JSON.parse(lsGet(LS_Q) || '[]') || []; } catch (e) { return []; } }
+function qRead() { Q.items = qStored(); }
+/* כמה לשוניות פתוחות חולקות את אותו תור שמור. כל לשונית כותבת את שלה
+   וגם שומרת את מה שלשונית אחרת הוסיפה — אחרת לשונית אחת הייתה מוחקת
+   מהשמירה שינוי של השנייה שעוד לא נשלח. שליחה כפולה בטוחה: אותו מזהה. */
+function qWrite() {
+  var mine = {};
+  Q.items.forEach(function (j) { mine[j.qid] = 1; });
+  qStored().forEach(function (j) { if (!mine[j.qid] && !Q.done[j.qid]) Q.items.push(j); });
+  lsSet(LS_Q, JSON.stringify(Q.items));
+  qBadge();
+}
 function qCopy(o) { return o ? JSON.parse(JSON.stringify(o)) : null; }
+/* שינוי שייך למי שעשה אותו: אם מישהו אחר נכנס באותו מחשב, השינויים
+   של הקודם מחכים לו ולא נשלחים בשם הנוכחי */
+function qMine(j) { return !j.uid || (S.user && j.uid === S.user.id); }
 
 /* job: { kind: save|remove|restore|bulk, table, row, prev, prevs, fresh, catKnown, ids, op, patch, redo } */
 function enqueue(job) {
   job.qid = newId('q');
+  job.uid = S.user ? S.user.id : '';
   Q.items.push(job);
   qWrite();
   qPump();
@@ -32,7 +46,7 @@ function enqueue(job) {
    אחרת רענון באמצע היה מעלים שורה שהמשתמש כבר ראה נשמרת */
 function qOverlay() {
   Q.items.forEach(function (j) {
-    var list = S.d[j.table]; if (!list) return;
+    var list = S.d[j.table]; if (!list || !qMine(j)) return;
     var put = function (row) {
       var i = list.map(function (x) { return x.id; }).indexOf(row.id);
       if (i >= 0) list[i] = Object.assign({}, list[i], row); else list.push(row);
@@ -46,9 +60,10 @@ function qOverlay() {
 }
 
 function qPump() {
-  if (Q.busy || !Q.items.length || !S.token || !S.url) return;
+  if (Q.busy || !S.token || !S.url || !S.user) return;
+  var j = Q.items.filter(qMine)[0], action, params;
+  if (!j) return;
   clearTimeout(Q.timer);
-  var j = Q.items[0], action, params;
   if (j.kind === 'save') { action = 'save'; params = { table: j.table, row: j.row, fresh: j.fresh ? '1' : '', catKnown: j.catKnown ? '1' : '' }; }
   else if (j.kind === 'bulk') { action = 'bulk'; params = { table: j.table, op: j.op, ids: j.ids, patch: j.patch }; }
   else { action = j.kind; params = { table: j.table, id: j.id }; }
@@ -63,7 +78,9 @@ function qPump() {
     }
     Q.tries = 0;
     if (r.expired) { handleExpired(r); return; }         // נשאר בתור — ימשיך אחרי כניסה מחדש
-    Q.items.shift(); qWrite();
+    Q.done[j.qid] = 1;
+    Q.items = Q.items.filter(function (x) { return x.qid !== j.qid; });
+    qWrite();
     if (r.ok) qDone(j, r); else qUndo(j, r.error);
     qPump();
   });
@@ -100,6 +117,8 @@ function qUndo(j, error) {
   else if (j.kind === 'bulk') qRollback(j, Object.keys(j.prevs || {}).map(function (k) { return j.prevs[k]; }));
   rerender();
   var fix = j.redo ? { label: 'פתיחה לתיקון', fn: function () { runRedo(j.redo); } } : null;
+  /* "פעולה לא מוכרת" = הסקריפט בגוגל ישן מהדף. אומרים מה לעשות, לא רק שנכשל */
+  if (error === 'פעולה לא מוכרת') error = 'הסקריפט בגוגל עוד לא עודכן לגרסה החדשה — צריך להדביק אותו מחדש ב-Apps Script';
   toast('⚠ לא נשמר: ' + (error || 'השרת דחה את השינוי'), 'err', fix);
 }
 function qRollback(j, rows) {
@@ -111,7 +130,7 @@ function runRedo(r) { if (typeof window[r.fn] === 'function') window[r.fn].apply
 /* חיווי בסרגל העליון: כמה שינויים עוד בדרך */
 function qBadge() {
   var el = byId('qbadge'); if (!el) return;
-  var n = Q.items.length;
+  var n = Q.items.filter(qMine).length;
   el.classList.toggle('hide', !n);
   el.textContent = n ? (Q.tries ? '⏳ ממתין לחיבור · ' + n : '⏳ שומר · ' + n) : '';
   el.title = n ? 'השינויים כבר מוצגים, והם נשלחים לגיליון ברקע' : '';

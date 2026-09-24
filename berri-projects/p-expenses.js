@@ -3,10 +3,11 @@
 
 /* סיכום לפי קטגוריה לתקופה — משמש בשני המסכים */
 function expenseView(w, opt) {
-  var per = S.ui.expPeriod, today = calc().today, from = '';
-  if (per === 'month') from = today.slice(0, 7) + '-01';
-  else if (per === 'year') from = today.slice(0, 4) + '-01-01';
-  var rows = TBL[opt.tk].rows().filter(function (x) { return !from || x.date >= from; });
+  var per = S.ui.expPeriod, today = calc().today, from = '', to = '';
+  /* גם גבול עליון: הוצאה שנרשמה מראש לחודש הבא לא נכנסת ל"החודש" */
+  if (per === 'month') { from = today.slice(0, 7) + '-01'; to = today.slice(0, 7) + '-31'; }
+  else if (per === 'year') { from = today.slice(0, 4) + '-01-01'; to = today.slice(0, 4) + '-12-31'; }
+  var rows = TBL[opt.tk].rows().filter(function (x) { return (!from || x.date >= from) && (!to || x.date <= to); });
   var by = {};
   rows.forEach(function (x) {
     var k = x.category || '(ללא קטגוריה)';

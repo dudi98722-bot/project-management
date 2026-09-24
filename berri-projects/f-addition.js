@@ -11,7 +11,7 @@ function additionModal(id, pre) {
 
   /* בעריכה, המחיר המוצג כבר כולל את התוספת הזו — מחסירים אותה כדי
      שהתצוגה המקדימה תראה את ההפרש ולא תספור אותה פעמיים */
-  window._addWas = r ? { c: Number(r.clientAmount) || 0, s: Number(r.subAmount) || 0 } : { c: 0, s: 0 };
+  window._addWas = r ? { c: Number(r.clientAmount) || 0, s: Number(r.subAmount) || 0, p: r.projectId } : { c: 0, s: 0, p: '' };
   openModal(modalHtml('➕ ' + (id ? 'עריכת תוספת' : 'תוספת לפרוייקט'),
     '<div id="m" class="msg"></div>' +
     fld('פרוייקט', '<select id="f-project" class="inp" onchange="addPreview()">' +
@@ -44,7 +44,10 @@ function addPreview() {
   var s = calc().proj[val('f-project')];
   if (!s) { el.innerHTML = ''; return; }
   var ca = parseAmount(val('f-cadd')) || 0, sa = parseAmount(val('f-sadd')) || 0;
-  var w = window._addWas || { c: 0, s: 0 };
+  var w = window._addWas || { c: 0, s: 0, p: '' };
+  /* מחסירים את הסכום המקורי רק מהפרוייקט שהתוספת שייכת אליו עכשיו —
+     אם בעריכה בחרו פרוייקט אחר, המחיר שלו עוד לא כולל אותה */
+  if (w.p !== val('f-project')) w = { c: 0, s: 0 };
   var cFrom = round2(s.clientPrice - w.c), sFrom = round2(s.subPrice - w.s);
   el.innerHTML = '<div class="info-line">' +
     '<span>מחיר ללקוח: ' + money(cFrom) + ' ← <b>' + money(cFrom + ca) + '</b></span>' +

@@ -92,10 +92,15 @@
 ```bash
 ssh root@64.176.175.180 "bash /tmp/deploy-berri.sh"
 ```
-עדכון אחרי שינוי (לפי SHA של הקומיט, לא main — יש CDN cache):
+עדכון אחרי שינוי (לפי SHA של הקומיט, לא main — יש CDN cache).
+הרשימה נלקחת מ-GitHub עצמו, כך שקובץ חדש לא נשכח בחוץ; כל קובץ נכתב לקובץ זמני
+ומוחלף רק כשההורדה הצליחה, כדי שהאתר לא יישאר עם קובץ חצי-כתוב:
 ```bash
-for f in index.html core.js calc.js tables.js xlsx.js p-*.js f-*.js logo.png; do
-  curl -fsSL "https://raw.githubusercontent.com/dudi98722-bot/project-management/<SHA>/berri-projects/$f" -o "/var/www/berri/$f"
+SHA=<SHA>
+for f in $(curl -fsSL "https://api.github.com/repos/dudi98722-bot/project-management/contents/berri-projects?ref=$SHA" \
+           | grep -o '"name": *"[^"]*"' | cut -d'"' -f4 | grep -v -E '\.(gs|md)$'); do
+  curl -fsSL "https://raw.githubusercontent.com/dudi98722-bot/project-management/$SHA/berri-projects/$f" -o "/var/www/berri/$f.new" \
+    && mv "/var/www/berri/$f.new" "/var/www/berri/$f"
 done
 ```
 

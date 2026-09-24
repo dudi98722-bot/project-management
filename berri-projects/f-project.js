@@ -60,10 +60,12 @@ function saveProject(btn, id) {
   if (!name) return setMsg('m', 'יש להזין שם לפרוייקט');
   var st = val('f-start'), en = val('f-end');
   if (st && en && en < st) return setMsg('m', 'תאריך הסיום מוקדם מתאריך ההתחלה');
+  var cp = amountField('f-cprice', 'מחיר ללקוח'); if (cp === null) return;
+  var sp = amountField('f-sprice', 'מחיר לקבלן'); if (sp === null) return;
+  var ex = amountField('f-exp', 'צפי הוצאות'); if (ex === null) return;
   var row = { id: id || newId('p'), name: name, client: val('f-client'), clientPhone: val('f-cphone'),
     address: val('f-address'), subName: val('f-sub'), subPhone: val('f-sphone'),
-    clientPrice: parseAmount(val('f-cprice')) || 0, subPrice: parseAmount(val('f-sprice')) || 0,
-    expected: parseAmount(val('f-exp')) || 0, startDate: st, endDate: en,
+    clientPrice: cp, subPrice: sp, expected: ex, startDate: st, endDate: en,
     active: checked('f-active'), note: val('f-note') };
   saveRow(btn, 'projects', row, id ? 'הפרוייקט עודכן' : 'הפרוייקט נוצר', function (saved) {
     if (!id) go('project', saved.id);

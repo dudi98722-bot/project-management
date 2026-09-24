@@ -6,32 +6,54 @@ function impNorm(s) { return String(s == null ? '' : s).toLowerCase().replace(/[
 var IMP_PREFIX = { clientPayments: 'cp', subPayments: 'sp', projectExpenses: 'pe',
                    businessExpenses: 'be', homeExpenses: 'he', additions: 'ad' };
 
-/* התאמת שם מהאקסל לפרוייקט/קופה קיימים: שם מלא, ואם אין — הכלה */
+/* התאמת שם מהאקסל לפרוייקט/קופה קיימים: שם מלא, ואם אין — לפי מילים שלמות.
+   "כהן" מוצא את "וילה משפ׳ כהן", אבל "הרצל 1" לא ייפול בטעות על "הרצל 15" */
+function impWords(s) {
+  return String(s == null ? '' : s).toLowerCase().replace(/["'׳״]/g, '').split(/[\s,.\-–—\/()]+/).filter(Boolean);
+}
 function impMatch(list, raw) {
   var q = impNorm(raw);
   if (!q) return null;
   var exact = list.filter(function (x) { return impNorm(x.name) === q; });
   if (exact.length === 1) return exact[0];
   if (exact.length > 1) return null;
+  var qw = impWords(raw);
   var part = list.filter(function (x) {
-    var n = impNorm(x.name);
-    return n && (n.indexOf(q) >= 0 || q.indexOf(n) >= 0);
+    var nw = impWords(x.name);
+    return qw.length && qw.every(function (w) { return nw.indexOf(w) >= 0; });
   });
   return part.length === 1 ? part[0] : null;
 }
-/* תאריך: yyyy-mm-dd, dd/mm/yyyy, dd.mm.yy, או מספר סידורי של אקסל */
+function impValidISO(y, m, d) {
+  var dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
+  return y + '-' + ('0' + m).slice(-2) + '-' + ('0' + d).slice(-2);
+}
+/* תאריך: yyyy-mm-dd, dd/mm/yyyy, dd.mm.yy, או מספר סידורי של אקסל.
+   31/02 נדחה כאן, כדי לא להיראות "תקין" בבדיקה ואז ליפול בשרת.
+   מספר עשרוני כמו 15.03 הוא יום.חודש בלי שנה — לא מספר סידורי */
 function impDate(v) {
   var s = String(v == null ? '' : v).trim();
   if (!s) return '';
   var m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
-  if (m) return m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2);
+  if (m) return impValidISO(+m[1], +m[2], +m[3]);
   m = /^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/.exec(s);
   if (m) {
     var y = +m[3]; if (y < 100) y += y < 70 ? 2000 : 1900;
-    return y + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
+    return impValidISO(y, +m[2], +m[1]);
   }
-  if (/^\d+(\.\d+)?$/.test(s)) { var iso = serialToISO(s); if (iso) return iso; }
+  if (/^\d{5}(\.\d+)?$/.test(s) && +s >= 20000) return serialToISO(s) || null;
   return null;
+}
+/* אמצעי תשלום חופשי מהאקסל -> אחד מהערכים שהשרת מקבל */
+function impMethod(v) {
+  var s = impNorm(v);
+  if (!s) return '';
+  if (/העבר|בנקאית|זיכוי/.test(s)) return 'העברה בנקאית';
+  if (/צק|שיק|ציק|check|cheque/.test(s)) return 'צ׳ק';
+  if (/מזומן|cash/.test(s)) return 'מזומן';
+  if (/אשראי|כרטיס|ויזה|credit|visa/.test(s)) return 'אשראי';
+  return 'אחר';
 }
 function impBool(v) {
   var s = impNorm(v);
@@ -74,7 +96,8 @@ function impParse() {
       } else if (f.type === 'bool') {
         o[f.k] = impBool(v);
       } else {
-        o[f.k] = v;
+        if (f.req && !v) errs.push('חסר ' + f.t);
+        o[f.k] = f.k === 'method' ? impMethod(v) : v;
       }
     });
     if (IMPS.tk === 'additions' && !o.clientAmount && !o.subAmount) errs.push('חסר סכום — ללקוח או לקבלן');
@@ -88,10 +111,15 @@ function impParse() {
     return { o: o, errs: errs, warn: warn, dup: dup, raw: raw };
   });
 }
+/* אותו תאריך + סכום + פרוייקט, ואם בשתי השורות יש ספק/תיאור/אסמכתא — גם
+   הם זהים. אחרת שתי הוצאות שונות באותו יום ובאותו סכום היו מדולגות */
 function impExists(o) {
+  var tag = function (x) { return impNorm(x.supplier || x.description || x.reference || ''); };
   return (S.d[IMPS.tk] || []).some(function (x) {
-    return x.date === o.date && Number(x.amount || x.clientAmount || 0) === Number(o.amount || o.clientAmount || 0) &&
-      (x.projectId || '') === (o.projectId || '');
+    if (x.date !== o.date || Number(x.amount || x.clientAmount || 0) !== Number(o.amount || o.clientAmount || 0) ||
+        (x.projectId || '') !== (o.projectId || '')) return false;
+    var a = tag(x), b = tag(o);
+    return !a || !b || a === b;
   });
 }
 /* כפילויות מדולגות אלא אם ביקשו במפורש — קובץ שמועלה פעמיים בטעות

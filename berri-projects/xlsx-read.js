@@ -42,14 +42,17 @@ function unzip(b) {
 
 function xtext(u8) { return u8 ? new TextDecoder('utf-8').decode(u8) : ''; }
 function xunesc(s) {
-  return String(s).replace(/&#(\d+);/g, function (m, d) { return String.fromCharCode(+d); })
+  return String(s).replace(/&#x([0-9a-f]+);/gi, function (m, h) { return String.fromCharCode(parseInt(h, 16)); })
+    .replace(/&#(\d+);/g, function (m, d) { return String.fromCharCode(+d); })
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'").replace(/&amp;/g, '&');
 }
-/* כל <t> בתוך <si> מצטרף למחרוזת אחת — טקסט מעוצב מפוצל לכמה <t> */
+/* כל <t> בתוך <si> מצטרף למחרוזת אחת — טקסט מעוצב מפוצל לכמה <t>.
+   <rPh> הוא הגייה נלווית (יפנית) ולא חלק מהתא — מסירים אותו */
 function sharedStrings(xml) {
   if (!xml) return [];
-  return (xml.match(/<si>[\s\S]*?<\/si>/g) || []).map(function (si) {
+  return (xml.match(/<si\b[^>]*>[\s\S]*?<\/si>|<si\b[^>]*\/>/g) || []).map(function (si) {
+    si = si.replace(/<rPh\b[\s\S]*?<\/rPh>/g, '');
     var t = '';
     var re = /<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g, m;
     while ((m = re.exec(si))) t += xunesc(m[1]);
@@ -82,24 +85,30 @@ function colIdx(ref) {
   for (var i = 0; i < s[0].length; i++) n = n * 26 + (s[0].charCodeAt(i) - 64);
   return n - 1;
 }
-/* מספר סידורי של אקסל -> yyyy-mm-dd (1899-12-30 הוא היום ה-0) */
-function serialToISO(n) {
+/* מספר סידורי של אקסל -> yyyy-mm-dd. ברירת המחדל: 1899-12-30 הוא היום ה-0.
+   קבצי מק ישנים (date1904) סופרים מ-1904-01-01 — אחרת התאריך יוצא 4 שנים מוקדם */
+function serialToISO(n, d1904) {
   n = Math.floor(Number(n));
   if (!isFinite(n) || n < 1 || n > 80000) return null;
-  var d = new Date(Date.UTC(1899, 11, 30) + n * 86400000);
+  var d = new Date((d1904 ? Date.UTC(1904, 0, 1) : Date.UTC(1899, 11, 30)) + n * 86400000);
   var p = function (x) { return ('0' + x).slice(-2); };
   return d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate());
 }
 
-function parseSheet(xml, shared, dstyles) {
+/* תגית שנסגרת בעצמה (<c r="B2" s="1"/>) היא תא ריק. ביטוי שבולע את ה-"/"
+   היה מדלג לתא הבא ומעביר סכומים לעמודה הלא נכונה — לכן [^>/] ולא [^>] */
+var TAG_ATTRS = '((?:[^>\\/]|\\/(?!>))*)';
+function parseSheet(xml, shared, dstyles, d1904) {
   var rows = [], width = 0;
-  var rowRe = /<row[^>]*>([\s\S]*?)<\/row>|<row[^>]*\/>/g, rm;
+  var rowRe = new RegExp('<row\\b' + TAG_ATTRS + '(?:\\/>|>([\\s\\S]*?)<\\/row>)', 'g'), rm;
   while ((rm = rowRe.exec(xml))) {
-    var body = rm[1] || '', cells = [];
-    var cRe = /<c\b([^>]*)(?:\/>|>([\s\S]*?)<\/c>)/g, cm;
+    var body = rm[2] || '', cells = [], next = 0;
+    var cRe = new RegExp('<c\\b' + TAG_ATTRS + '(?:\\/>|>([\\s\\S]*?)<\\/c>)', 'g'), cm;
     while ((cm = cRe.exec(body))) {
       var attrs = cm[1], inner = cm[2] || '';
-      var idx = colIdx((attrs.match(/r="([A-Z]+\d+)"/) || [])[1] || 'A1');
+      var ref = (attrs.match(/\br="([A-Z]+)\d+"/) || [])[1];
+      var idx = ref ? colIdx(ref) : next;          // תא בלי r= — העמודה שאחרי הקודם
+      next = idx + 1;
       var t = (attrs.match(/t="([^"]+)"/) || [])[1] || 'n';
       var s = (attrs.match(/s="(\d+)"/) || [])[1];
       var v = '';
@@ -112,7 +121,7 @@ function parseSheet(xml, shared, dstyles) {
           raw = xunesc(raw);
           if (t === 's') v = shared[+raw] != null ? shared[+raw] : '';
           else if (t === 'b') v = raw === '1' ? 'TRUE' : 'FALSE';
-          else if (s != null && dstyles[+s] && /^\d+(\.\d+)?$/.test(raw)) v = serialToISO(raw) || raw;
+          else if (s != null && dstyles[+s] && /^\d+(\.\d+)?$/.test(raw)) v = serialToISO(raw, d1904) || raw;
           else v = raw;
         }
       }
@@ -130,33 +139,39 @@ function parseSheet(xml, shared, dstyles) {
 
 function readXlsxFile(file) {
   return file.arrayBuffer().then(function (ab) { return unzip(new Uint8Array(ab)); }).then(function (z) {
-    var wb = xtext(z['xl/workbook.xml']);
-    var rels = xtext(z['xl/_rels/workbook.xml.rels']);
-    var first = (wb.match(/<sheet[^>]*\/?>/) || [''])[0];
-    var rid = (first.match(/r:id="([^"]+)"/) || [])[1];
+    /* חלק מהתוכנות כותבות <x:sheet> במקום <sheet> — מסירים את הקידומת */
+    var x = function (name) { return xtext(z[name]).replace(/<(\/?)[A-Za-z][\w.-]*:(?=[A-Za-z])/g, '<$1'); };
+    var wb = x('xl/workbook.xml'), rels = x('xl/_rels/workbook.xml.rels');
+    var d1904 = /<workbookPr\b[^>]*\bdate1904="(1|true)"/.test(wb);
+    var first = (wb.match(/<sheet\b[^>]*\/?>/) || [''])[0];         // \b: לא לתפוס את <sheets>
+    var rid = (first.match(/\bid="([^"]+)"/) || [])[1];
     var target = rid && (rels.match(new RegExp('Id="' + rid + '"[^>]*Target="([^"]+)"')) || [])[1];
     var path = target ? ('xl/' + String(target).replace(/^\/?xl\//, '').replace(/^\//, '')) : 'xl/worksheets/sheet1.xml';
-    var sheet = z[path] || z['xl/worksheets/sheet1.xml'];
-    if (!sheet) throw new Error('לא נמצא גיליון בקובץ');
-    return parseSheet(xtext(sheet), sharedStrings(xtext(z['xl/sharedStrings.xml'])),
-                      dateStyles(xtext(z['xl/styles.xml'])));
+    var sheetName = z[path] ? path : 'xl/worksheets/sheet1.xml';
+    if (!z[sheetName]) throw new Error('לא נמצא גיליון בקובץ');
+    return parseSheet(x(sheetName), sharedStrings(x('xl/sharedStrings.xml')), dateStyles(x('xl/styles.xml')), d1904);
   });
 }
 
-/* CSV / הדבקה מאקסל. מפריד = טאב אם יש, אחרת פסיק */
+/* CSV / הדבקה מאקסל. מפריד: טאב (הדבקה), אחרת פסיק או נקודה-פסיק — מה
+   שמופיע יותר בשורה הראשונה (אקסל באזורים מסוימים שומר עם ";").
+   מרכאות פותחות "שדה מצוטט" רק בתחילת התא: הגרשיים ב-בע"מ / מע"מ / סה"כ
+   הם חלק מהטקסט, ואם היו פותחים ציטוט הם היו בולעים את השורות שאחריהם. */
 function parseDelimited(text) {
   text = String(text).replace(/^﻿/, '').replace(/\r\n?/g, '\n');
-  var sep = (text.split('\n')[0].indexOf('\t') >= 0) ? '\t' : ',';
-  var rows = [], row = [], cell = '', q = false;
+  var head = text.split('\n')[0];
+  var sep = head.indexOf('\t') >= 0 ? '\t'
+    : ((head.match(/;/g) || []).length > (head.match(/,/g) || []).length ? ';' : ',');
+  var rows = [], row = [], cell = '', q = false, fresh = true;
   for (var i = 0; i < text.length; i++) {
     var c = text[i];
     if (q) {
       if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; }
       else cell += c;
-    } else if (c === '"') q = true;
-    else if (c === sep) { row.push(cell); cell = ''; }
-    else if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
-    else cell += c;
+    } else if (c === '"' && fresh) { q = true; fresh = false; }
+    else if (c === sep) { row.push(cell); cell = ''; fresh = true; }
+    else if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; fresh = true; }
+    else { cell += c; fresh = false; }
   }
   if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
   var w = rows.reduce(function (m, r) { return Math.max(m, r.length); }, 0);
@@ -167,10 +182,20 @@ function parseDelimited(text) {
   });
 }
 
+/* CSV שנשמר מאקסל בעברית מקודד לרוב ב-windows-1255 ולא ב-UTF-8.
+   קודם מנסים UTF-8 בקפדנות; אם הבתים לא תקינים — מפענחים כעברית של חלונות */
+function decodeText(ab) {
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(ab); }
+  catch (e) {
+    try { return new TextDecoder('windows-1255').decode(ab); }
+    catch (e2) { return new TextDecoder('utf-8').decode(ab); }
+  }
+}
+
 /* נקודת הכניסה: קובץ -> מערך שורות */
 function readSpreadsheet(file) {
   var n = String(file.name || '').toLowerCase();
-  if (/\.(csv|txt|tsv)$/.test(n)) return file.text().then(parseDelimited);
+  if (/\.(csv|txt|tsv)$/.test(n)) return file.arrayBuffer().then(function (ab) { return parseDelimited(decodeText(ab)); });
   if (!canReadXlsx()) return Promise.reject(new Error('הדפדפן הזה לא יודע לפתוח xlsx — שמור באקסל כ-CSV, או השתמש בהדבקה'));
   if (/\.xls$/.test(n)) return Promise.reject(new Error('פורמט xls ישן אינו נתמך — באקסל: שמירה בשם ← xlsx'));
   return readXlsxFile(file);

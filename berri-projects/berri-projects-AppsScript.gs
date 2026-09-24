@@ -22,8 +22,8 @@
    ===================================================================== */
 
 var APP            = 'berri';
-var SCRIPT_VERSION = '2026-09-24-fast';   // להעלות בכל שינוי — כך רואים ב-ping איזו גרסה פרוסה
-var API_VERSION    = 1;
+var SCRIPT_VERSION = '2026-09-24-b';   // להעלות בכל שינוי — כך רואים ב-ping איזו גרסה פרוסה
+var API_VERSION    = 2;    // 2 = עדכון מרוכז (bulk). הדפדפן בודק את המספר לפני שהוא מציע את הפעולה
 var TZ             = 'Asia/Jerusalem';
 var SS_ID          = '';                         // ריק = הגיליון שהסקריפט מחובר אליו
 var TOKEN_TTL      = 30 * 24 * 60 * 60 * 1000;   // תוקף כניסה: 30 יום
@@ -161,7 +161,9 @@ function rows_(key) {
     var vals = sh.getRange(2, 1, last - 1, cols.length).getValues();
     for (var i = 0; i < vals.length; i++) {
       var row = vals[i];
-      if (row[0] === '' || row[0] === null) continue;
+      /* רק שורה עם מזהה של המערכת היא נתון. שורת "סה״כ" או הערה שמישהו
+         הקליד ידנית בגיליון לא תיספר כהוצאה ולא תכפיל סכומים */
+      if (!ID_RE.test(String(row[0] === null || row[0] === undefined ? '' : row[0]))) continue;
       var o = { _row: i + 2 };
       for (var c = 0; c < cols.length; c++) o[cols[c].f] = fromCell_(cols[c].t, row[c]);
       out.push(o);
@@ -256,8 +258,11 @@ function syncColumn_(key, match, field, value) {
   for (var i = 0; i < cols.length; i++) if (cols[i].f === field) idx = i;
   var hits = rows_(key).filter(match);
   if (idx < 0 || !hits.length) return 0;
-  var sh = sheet_(key), rng = sh.getRange(2, idx + 1, sh.getLastRow() - 1, 1), vals = rng.getValues();
-  hits.forEach(function (r) { r[field] = value; vals[r._row - 2][0] = toCell_(cols[idx].t, value); });
+  var sh = sheet_(key), rng = sh.getRange(2, idx + 1, sh.getLastRow() - 1, 1), t = cols[idx].t;
+  /* כותבים את כל העמודה חזרה — ולכן כל טקסט עובר שוב דרך toCell_, אחרת
+     שיטס היה מפרש מחדש "050…" כמספר או "1/2" כתאריך גם בשורות שלא שונו */
+  var vals = rng.getValues().map(function (v) { return [typeof v[0] === 'string' ? toCell_(t, v[0]) : v[0]]; });
+  hits.forEach(function (r) { r[field] = value; vals[r._row - 2][0] = toCell_(t, value); });
   rng.setValues(vals);
   return hits.length;
 }
@@ -526,6 +531,9 @@ function save_(p) {
   var inp;
   try { inp = JSON.parse(p.row || '{}'); } catch (e) { return err_('נתונים לא תקינים'); }
   if (!inp || typeof inp !== 'object') return err_('נתונים לא תקינים');
+  /* מנקים את הקבוצה לפני בדיקת ההרשאה — אחרת " home" עם רווח עוקף אותה
+     ונשמר בכל זאת כ-home */
+  if (inp.group !== undefined) inp.group = clean_(inp.group, 10);
   var need = (key === 'categories' && inp.group === 'home') ? 'admin' : rule.who;
   if (!can_(me, need)) return err_(need === 'admin' ? 'הפעולה מותרת למנהל בלבד' : 'אין לך הרשאה לשנות נתונים');
   var id = clean_(inp.id, 40);
@@ -587,14 +595,16 @@ function saveBulk_(p) {
   var lock = LockService.getScriptLock();
   lock.waitLock(45000);
   try {
-    var stamp = now_(), ready = [], failed = [], skipped = 0, cats = {};
+    var stamp = now_(), ready = [], failed = [], skipped = 0, cats = {}, inBatch = {};
     for (var i = 0; i < list.length; i++) {
       var inp = list[i];
       try {
         if (!inp || typeof inp !== 'object') throw new Bad('שורה לא תקינה');
         var id = clean_(inp.id, 40);
         if (id && !ID_RE.test(id)) throw new Bad('מזהה לא תקין');
-        if (id && find_(key, id)) { skipped++; continue; }
+        /* אותו מזהה פעמיים באותה מנה היה נכנס פעמיים — ואת הכפיל אי אפשר למחוק */
+        if (id && (inBatch[id] || find_(key, id))) { skipped++; continue; }
+        if (id) inBatch[id] = 1;
         var o = build_(key, inp, null);
         o.id = id || uid_(rule.prefix);
         o.createdAt = stamp; o.deleted = false;
@@ -683,8 +693,7 @@ function bulk_(p) {
           }
           cur.deleted = true;
         } else {
-          if (cur.projectId) { var pr = find_('projects', cur.projectId); if (!pr || pr.deleted) throw new Bad('הפרוייקט של השורה נמחק'); }
-          if (cur.registerId) { var rg = find_('registers', cur.registerId); if (!rg || rg.deleted) throw new Bad('הקופה של השורה נמחקה'); }
+          if (cur.deleted) restoreCheck_(key, cur);
           cur.deleted = false;
         }
         if ('updatedAt' in cur) cur.updatedAt = stamp;
@@ -865,11 +874,12 @@ function afterUpdate_(key, cur, o) {
   }
 }
 
-/* קטגוריה חדשה שהוקלדה בטופס נוספת לרשימה, כדי שתוצע בפעם הבאה */
+/* קטגוריה חדשה שהוקלדה בטופס נוספת לרשימה, כדי שתוצע בפעם הבאה.
+   קטגוריה שנמחקה נשארת מחוקה — עריכה של שורה ישנה שמשתמשת בה לא
+   מחזירה אותה לרשימה בלי שאיש ביקש. */
 function ensureCategory_(group, name) {
   var all = rows_('categories').filter(function (c) { return c.group === group && c.name === name; });
-  if (all.some(function (c) { return !c.deleted; })) return null;
-  if (all.length) { all[0].deleted = false; update_('categories', all[0]); return all[0]; }
+  if (all.length) return null;
   var max = 0;
   rows_('categories').forEach(function (c) { if (c.group === group && c.sort > max) max = c.sort; });
   return insert_('categories', { id: uid_('c'), group: group, groupHe: GROUPS[group], name: name,
@@ -877,6 +887,17 @@ function ensureCategory_(group, name) {
 }
 
 /* =====================  מחיקה ושחזור  ===================== */
+/* שחזור מותר רק אם כל מה שהשורה מפנה אליו עדיין קיים — כולל קופת היעד
+   של העברה (אחרת הכסף "נעלם" מהיתרות) — ובלי ליצור שם כפול */
+function restoreCheck_(key, cur) {
+  var gone = function (t, id) { var r = find_(t, id); return !r || r.deleted; };
+  if (cur.projectId && gone('projects', cur.projectId)) throw new Bad('הפרוייקט של השורה נמחק');
+  if (cur.registerId && gone('registers', cur.registerId)) throw new Bad('הקופה של השורה נמחקה');
+  if (cur.toRegisterId && gone('registers', cur.toRegisterId)) throw new Bad('קופת היעד של ההעברה נמחקה');
+  if ((key === 'registers' || key === 'categories') && live_(key).some(function (r) {
+    return r.id !== cur.id && r.name === cur.name && (key !== 'categories' || r.group === cur.group);
+  })) throw new Bad('כבר קיים פריט פעיל בשם "' + cur.name + '"');
+}
 /* מחיקה רכה: השורה נשארת בגיליון עם סימון "נמחק", וניתן לבטל אותה */
 function remove_(p, del) {
   var me = auth_(p.token);
@@ -908,8 +929,7 @@ function remove_(p, del) {
       }
     } else {
       if (!cur.deleted) return json_({ ok: true, row: strip_(cur) });
-      if (cur.projectId) { var pr = find_('projects', cur.projectId); if (!pr || pr.deleted) return err_('הפרוייקט של השורה נמחק'); }
-      if (cur.registerId) { var rg = find_('registers', cur.registerId); if (!rg || rg.deleted) return err_('הקופה של השורה נמחקה'); }
+      restoreCheck_(key, cur);
     }
     cur.deleted = del;
     if ('updatedAt' in cur) cur.updatedAt = now_();
@@ -932,6 +952,7 @@ function saveUser_(p) {
   var lock = LockService.getScriptLock();
   lock.waitLock(25000);
   try {
+    delete _memo.users;                    // קוראים מחדש אחרי הנעילה: שני מנהלים במקביל לא יורידו זה את זה
     var users = rows_('users');
     if (users.some(function (u) { return u.active && String(u.username).toLowerCase() === username && u.id !== id; })) {
       return err_('שם המשתמש כבר תפוס');
@@ -940,7 +961,7 @@ function saveUser_(p) {
       var u = find_('users', id);
       if (!u) return err_('המשתמש לא נמצא');
       if (u.id === me.id && (!active || role !== 'admin')) return err_('אי אפשר להוריד הרשאות מעצמך');
-      if (u.role === 'admin' && (role !== 'admin' || !active) && admins_().length < 2) {
+      if (u.active && u.role === 'admin' && (role !== 'admin' || !active) && admins_().length < 2) {
         return err_('חייב להישאר לפחות מנהל אחד פעיל');
       }
       if (pass && pass.length < 6) return err_('סיסמה חייבת 6 תווים לפחות');
@@ -948,7 +969,8 @@ function saveUser_(p) {
       if (pass) { u.salt = newSalt_(); u.hash = hashPass_(pass, u.salt); }
       update_('users', u);
       authDrop_(u.id);                     // תפקיד/השבתה נכנסים לתוקף מיד
-      return json_({ ok: true, user: pubUser_(u) });
+      /* מנהל שהחליף לעצמו סיסמה ממסך המשתמשים — מקבל טוקן חדש, אחרת היה מנותק בפעולה הבאה */
+      return json_({ ok: true, user: pubUser_(u), token: (pass && u.id === me.id) ? makeToken_(u) : undefined });
     }
     if (pass.length < 6) return err_('סיסמה חייבת 6 תווים לפחות');
     var salt = newSalt_();
@@ -965,6 +987,7 @@ function deleteUser_(p) {
   var lock = LockService.getScriptLock();
   lock.waitLock(25000);
   try {
+    delete _memo.users;
     var u = find_('users', clean_(p.id, 40));
     if (!u) return err_('המשתמש לא נמצא');
     if (u.id === me.id) return err_('אי אפשר להשבית את עצמך');

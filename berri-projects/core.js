@@ -14,14 +14,14 @@ var TABLE_KEYS = ['registers', 'projects', 'additions', 'clientPayments', 'subPa
 var ROLE_HE = { admin: 'מנהל', editor: 'עורך', viewer: 'צופה' };
 
 var S = {
-  /* בשרת האמיתי הכתובת המוטמעת קובעת תמיד. על localhost כתובת שנשמרה
-     בדפדפן גוברת עליה, כדי שבדיקה מקומית לא תדבר עם הגיליון החי. */
-  url: (isLocal() && lsGet(LS.url)) || DEFAULT_GS_URL || lsGet(LS.url),
+  /* בשרת האמיתי הכתובת המוטמעת קובעת תמיד. על localhost — רק כתובת שהוזנה
+     בדפדפן, כדי שבדיקה מקומית לא תדבר בטעות עם הגיליון החי */
+  url: isLocal() ? lsGet(LS.url) : (DEFAULT_GS_URL || lsGet(LS.url)),
   token: lsGet(LS.tok),
   user: null, today: '', sheetUrl: '', scriptVersion: '',
   d: {}, ver: 0,
   route: { page: 'dash', arg: '' },
-  ui: { projFilter: 'active', projSearch: '', repTab: 'projects', repYear: '', dayMode: 'day',
+  ui: { projFilter: 'active', projSearch: '', repTab: 'summary', repYear: '', dayMode: 'day',
         day: '', dayFrom: '', dayTo: '', ledgerFrom: '', ledgerTo: '', expPeriod: 'month' },
   filters: {}, sorts: {},
   syncing: false, lastLoad: 0, offline: false
@@ -48,11 +48,31 @@ function money(n) {
 }
 function moneyCls(n) { return round2(n) < 0 ? ' neg' : ''; }
 function pct(a, b) { return b > 0 ? Math.max(0, Math.min(100, a / b * 100)) : 0; }
+/* סכום מהקלדה או מאקסל: "12,500", "₪1,200.50", "12 500",
+   ובפורמט החשבונאי של אקסל: "₪ -" = 0, "(500)" או "500-" = מינוס 500.
+   "1.200,50" (אירופאי) מזוהה רק כשיש גם נקודות אלפים וגם פסיק עשרוני */
 function parseAmount(s) {
-  s = String(s == null ? '' : s).replace(/[,\s₪]/g, '');
+  s = String(s == null ? '' : s).replace(/[\s  ₪$]/g, '');
   if (s === '') return NaN;
+  if (s === '-' || s === '–') return 0;
+  var neg = false;
+  if (/^\(.*\)$/.test(s)) { neg = true; s = s.slice(1, -1); }
+  if (/^[^-].*-$/.test(s)) { neg = true; s = s.slice(0, -1); }
+  if (/^-?\d{1,3}(\.\d{3})+,\d+$/.test(s)) s = s.replace(/\./g, '').replace(',', '.');
+  else s = s.replace(/,/g, '');
   var n = Number(s);
-  return isFinite(n) ? round2(n) : NaN;
+  if (!isFinite(n) || !/\d/.test(s)) return NaN;
+  return round2(neg ? -Math.abs(n) : n);
+}
+/* שדה סכום אופציונלי בטופס: ריק = 0, טקסט שלא מובן = null (ואז מציגים שגיאה).
+   בלי ההבחנה הזו "12,5OO" עם אות O היה נשמר בשקט כ-0 */
+function amountField(id, label, allowNeg) {
+  var raw = val(id);
+  if (raw === '') return 0;
+  var n = parseAmount(raw);
+  if (!isFinite(n)) { setMsg('m', label + ': "' + raw + '" אינו סכום תקין'); return null; }
+  if (n < 0 && !allowNeg) { setMsg('m', label + ' לא יכול להיות שלילי'); return null; }
+  return n;
 }
 function iso(d) {
   var p = function (x) { return ('0' + x).slice(-2); };
@@ -153,17 +173,27 @@ function handleExpired(r) {
 function applyPayload(r) {
   S.user = r.user; S.today = r.today || iso(new Date());
   S.sheetUrl = r.sheetUrl || ''; S.scriptVersion = r.scriptVersion || '';
+  S.apiVersion = Number(r.apiVersion) || 1;     // 2 ומעלה = השרת יודע לעדכן במרוכז
   TABLE_KEYS.forEach(function (k) { S.d[k] = r[k] || []; });
   if (typeof qOverlay === 'function') qOverlay();      // שינויים שעוד בדרך לשרת
   S.ver++;
 }
 function cacheState() {
-  var o = { user: S.user, today: S.today, sheetUrl: S.sheetUrl, scriptVersion: S.scriptVersion };
+  var o = { user: S.user, today: S.today, sheetUrl: S.sheetUrl, scriptVersion: S.scriptVersion, apiVersion: S.apiVersion };
   TABLE_KEYS.forEach(function (k) { o[k] = S.d[k]; });
   lsSet(LS.cache, JSON.stringify(o));
 }
+/* המטמון מוצג רק אם הוא של המשתמש שהטוקן שייך לו — אחרת צופה שנכנס
+   במחשב של מנהל היה רואה לרגע את נתוני המנהל (הוצאות בית, משתמשים) */
+function tokenUid(t) {
+  try { return atob(String(t || '').split('.')[0].replace(/-/g, '+').replace(/_/g, '/')).split('|')[0]; }
+  catch (e) { return ''; }
+}
 function cacheGet() {
-  try { var o = JSON.parse(lsGet(LS.cache) || 'null'); return o && o.user ? o : null; } catch (e) { return null; }
+  try {
+    var o = JSON.parse(lsGet(LS.cache) || 'null');
+    return o && o.user && o.user.id === tokenUid(S.token) ? o : null;
+  } catch (e) { return null; }
 }
 /* אחרי שמירה מוצלחת: מעדכנים את השורה מקומית, בלי לטעון הכל מחדש */
 function upsertLocal(table, row) {
@@ -307,7 +337,7 @@ function logout() {
 /* יציאה כשעוד יש שינויים בדרך: הם לא הולכים לאיבוד (שמורים במחשב הזה),
    אבל יישלחו רק בכניסה הבאה — כדאי שהמשתמש יידע */
 function askLogout() {
-  var n = (typeof Q !== 'undefined' && Q.items) ? Q.items.length : 0;
+  var n = (typeof Q !== 'undefined' && Q.items) ? Q.items.filter(qMine).length : 0;
   if (!n) return logout();
   confirmModal('יציאה', 'יש עוד <b>' + n + '</b> שינויים שנשלחים לגיליון ברקע.<br>' +
     'אם תצא עכשיו הם יישמרו במחשב הזה ויישלחו בכניסה הבאה ממנו.', 'לצאת בכל זאת',
