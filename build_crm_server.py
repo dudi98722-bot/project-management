@@ -106,7 +106,7 @@ function _toApi(type, data){
 var _ENDPOINT = {contact:'/contacts', vow:'/vows', payment:'/payments'};
 
 // Override sync: send writes to REST API
-function syncToSheets(type, action, data){
+function syncToSheets(type, action, data, cb){
   var ep = _ENDPOINT[type]; if(!ep) return;
   var body = _toApi(type, data);
   var opts;
@@ -114,7 +114,8 @@ function syncToSheets(type, action, data){
   else if(action==='edit'){ opts = {method:'PUT', body:body}; ep = ep + '/' + data.id; }
   else { opts = {method:'POST', body:body}; }
   window.apiFetch(ep, opts).then(function(r){
-    if(!r.ok){ r.json().then(function(d){ console.warn('שמירה נכשלה:', d.error||r.status); }); }
+    if(!r.ok){ r.json().then(function(d){ console.warn('שמירה נכשלה:', d.error||r.status); }); return; }
+    if(cb) r.json().then(function(d){ cb(d); }).catch(function(){});
   }).catch(function(){ console.warn('שגיאת רשת בשמירה'); });
 }
 function exportAllToSheets(){ /* disabled - data lives in DB */ }
@@ -123,7 +124,18 @@ function exportAllToSheets(){ /* disabled - data lives in DB */ }
 function bootstrapData(){
   var loader = document.getElementById('_bootLoader');
   if(loader) loader.style.display='flex';
-  function getArr(path){ return window.apiFetch(path).then(function(r){ return r.ok ? r.json() : []; }).then(function(d){ return Array.isArray(d) ? d : []; }).catch(function(){ return []; }); }
+  // חשוב: שגיאה חייבת להתפוצץ, לא להחזיר [].
+  // רשימה ריקה נראית בדיוק כמו "אין נתונים", והמשתמש היה מוסיף רשומות
+  // על בסיס מצב ריק שגוי (למשל מזהה איש קשר שכבר תפוס).
+  function getArr(path){
+    return window.apiFetch(path).then(function(r){
+      if(!r.ok) throw new Error(path+' -> '+r.status);
+      return r.json();
+    }).then(function(d){
+      if(!Array.isArray(d)) throw new Error(path+' -> תשובה לא תקינה');
+      return d;
+    });
+  }
   Promise.all([ getArr('/contacts/all'), getArr('/vows/all'), getArr('/payments/all') ]).then(function(res){
     var cts = res[0]||[], vws = res[1]||[], pys = res[2]||[];
     window.contacts = cts.map(function(c,i){ return Object.assign({}, c, {_idx:i}); });
@@ -147,17 +159,11 @@ function bootstrapData(){
         TABLE1.length=0; L.table1.forEach(function(x){TABLE1.push(x);});
         TABLE2.length=0; L.table2.forEach(function(x){TABLE2.push(x);});
       }
-      var added = window.mergeUsedIntoLists ? mergeUsedIntoLists() : {A:[],B:[],count:0};
-      populateSelect('vfForA', TABLE1, '--');
-      populateSelect('vfForB', TABLE2, '--');
-      // ריצה ראשונה (אין עדיין שמור) או ערכים ששוחזרו -> נשלחים כהוספה בלבד.
-      // אף פעם לא שולחים כאן רשימה מלאה לדריסה: טאב ישן היה מוחק ככה
-      // קטגוריות שעובד אחר הוסיף בינתיים.
-      if(!L){
-        if(window.saveListsDelta) saveListsDelta({addA:TABLE1.slice(), addB:TABLE2.slice()}, '');
-      } else if(added.count && window.saveListsDelta){
-        saveListsDelta({addA:added.A, addB:added.B}, '');
-      }
+      // ערכים שבשימוש בנדרים מתווספים לאפשרויות הבחירה בלבד, ולא נשמרים
+      // בחזרה לשרת: אחרת מחיקה של קטגוריה פעילה הייתה חוזרת בכל טעינה.
+      if(window.refreshForSelects) refreshForSelects();
+      // ריצה ראשונה בלבד (אין עדיין רשימה שמורה) -> שומרים את רשימת הבסיס
+      if(!L && window.saveListsDelta) saveListsDelta({addA:TABLE1.slice(), addB:TABLE2.slice()}, '');
     }).catch(function(){});
     if(loader) loader.style.display='none';
     init();

@@ -1528,6 +1528,17 @@ function openAddModal(){
   var nid=String(maxId+1);
   document.getElementById('fId').value=nid;document.getElementById('fIdDisplay').value=nid;
   updatePreview();document.getElementById('modalOverlay').className='modal-overlay open';
+  // המזהה האמיתי נקבע בשרת - הרשימה בזיכרון עלולה להיות ישנה
+  if(window.apiFetch){
+    window.apiFetch('/contacts/next-id').then(function(r){ return r.ok?r.json():null; }).then(function(d){
+      if(d && d.id && editContact===null){
+        var sid=String(d.id);
+        document.getElementById('fId').value=sid;
+        document.getElementById('fIdDisplay').value=sid;
+        updatePreview();
+      }
+    }).catch(function(){});
+  }
 }
 function openEditModal(idx){
   editContact=idx;var c=contacts[idx];
@@ -1575,7 +1586,19 @@ function saveContact(){
       populateReportSelect();
     }
   }
-  else{c._idx=contacts.length;contacts.push(c);syncToSheets('contact','add',c);}
+  else{
+    c._idx=contacts.length;contacts.push(c);
+    syncToSheets('contact','add',c,function(saved){
+      if(!saved || !saved.id) return;
+      if(String(saved.id)!==String(c.id)){
+        // המזהה שביקשנו כבר היה תפוס והשרת הקצה אחר - מיישרים קו
+        c.id=saved.id;
+        if(saved.display_name) c.display_name=saved.display_name;
+        refreshNameSelects(); onSearch();
+        alert('שים לב: המזהה '+saved.requested_id+' כבר היה תפוס.\nאיש הקשר נשמר תחת מזהה '+saved.id+'.');
+      }
+    });
+  }
   refreshNameSelects();closeModal();onSearch();
 }
 document.getElementById('modalOverlay').addEventListener('mousedown',function(e){if(e.target===this)closeModal();});
@@ -1643,7 +1666,7 @@ function openBulkVows(){
   dl.innerHTML=contacts.map(function(c){return '<option value="'+String(c.display_name||'').replace(/"/g,'&quot;')+'">';}).join('');
   // dropdown "עבור ב" מתוך רשימת TABLE2
   var fb=document.getElementById('bulkForB');
-  fb.innerHTML='<option value="">-- ללא / בחר --</option>'+(typeof TABLE2!=='undefined'?TABLE2:[]).map(function(v){return '<option value="'+String(v).replace(/"/g,'&quot;')+'">'+v+'</option>';}).join('');
+  fb.innerHTML='<option value="">-- ללא / בחר --</option>'+(typeof forOptionsB==='function'?forOptionsB():[]).map(function(v){return '<option value="'+String(v).replace(/"/g,'&quot;')+'">'+v+'</option>';}).join('');
   var tb=document.getElementById('bulkVowsBody');
   tb.innerHTML=BULK_ALIYOT.map(function(label,i){
     return '<tr style="border-bottom:1px solid #f0f0f0">'+
@@ -2189,8 +2212,8 @@ function openPasteImport(){
   var pf=document.getElementById('piFile'); if(pf) pf.value='';
   var pfs=document.getElementById('piFileStatus'); if(pfs) pfs.textContent='';
   _piRows=[];
-  fillFilter(document.getElementById('piForA'), TABLE1.slice(), '-- ללא --');
-  fillFilter(document.getElementById('piForB'), TABLE2.slice(), '-- ללא --');
+  fillFilter(document.getElementById('piForA'), forOptionsA(), '-- ללא --');
+  fillFilter(document.getElementById('piForB'), forOptionsB(), '-- ללא --');
   document.getElementById('piForA').value=''; document.getElementById('piForB').value='';
   document.getElementById('pasteImportOverlay').className='modal-overlay open';
 }
@@ -2954,7 +2977,7 @@ function renderMethodsList(){
   var div=document.getElementById('methodsList');
   div.innerHTML='<table style="width:100%;border-collapse:collapse">';
   paymentMethods.forEach(function(m,i){
-    div.innerHTML+='<tr><td style="padding:4px 0"><input type="text" value="'+m+'" id="pm_'+i+'"></td>'+
+    div.innerHTML+='<tr><td style="padding:4px 0"><input type="text" value="'+String(m).replace(/"/g,'&quot;')+'" id="pm_'+i+'"></td>'+
       '<td style="padding:4px 0 4px 8px;width:40px"><button class="btn btn-danger btn-sm" onclick="removeMethod('+i+')">&#x2715;</button></td></tr>';
   });
   div.innerHTML+='</table>';
@@ -3070,7 +3093,6 @@ function openListsModal(){
         if(L && Array.isArray(L.table1) && Array.isArray(L.table2)){
           TABLE1.length = 0; L.table1.forEach(function(x){ TABLE1.push(x); });
           TABLE2.length = 0; L.table2.forEach(function(x){ TABLE2.push(x); });
-          if(window.mergeUsedIntoLists) mergeUsedIntoLists();
           renderListItems('listA_items', TABLE1, 'A');
           renderListItems('listB_items', TABLE2, 'B');
         }
@@ -3092,8 +3114,7 @@ function closeListsModal(){
     return; // נשארים פתוחים, כדי שיראו שזה אכן נוסף ונשמר
   }
   document.getElementById('listsModalOverlay').className = 'modal-overlay';
-  populateSelect('vfForA', TABLE1, '--');
-  populateSelect('vfForB', TABLE2, '--');
+  refreshForSelects();
 }
 
 /* שולח לשרת רק את מה שהשתנה. השרת ממזג על המצב העדכני תחת נעילה,
@@ -3111,8 +3132,7 @@ function saveListsDelta(delta, label){
           TABLE2.length = 0; res.d.table2.forEach(function(x){ TABLE2.push(x); });
           renderListItems('listA_items', TABLE1, 'A');
           renderListItems('listB_items', TABLE2, 'B');
-          populateSelect('vfForA', TABLE1, '--');
-          populateSelect('vfForB', TABLE2, '--');
+          refreshForSelects();
           setListsStatus('\u2705 ' + label, '#2e7d32');
         } else {
           setListsStatus('\u274C השמירה נכשלה: ' + (res.d.error || ''), '#c62828');
@@ -3130,22 +3150,26 @@ function saveListsToServer(){
   saveListsDelta({ addA: TABLE1.slice(), addB: TABLE2.slice() }, 'הרשימות עודכנו');
 }
 
-/* רשת ביטחון: ערך שכבר בשימוש בנדרים לעולם לא ייעלם מהרשימה.
-   מחזיר את מה שהוחזר, כדי שהאתחול ישמור רק אותו. */
-function mergeUsedIntoLists(){
-  var inA = {}, inB = {};
-  TABLE1.forEach(function(x){ inA[x] = 1; });
-  TABLE2.forEach(function(x){ inB[x] = 1; });
-  var addedA = [], addedB = [];
+/* אפשרויות הבחירה = הרשימה השמורה + כל ערך שכבר בשימוש בנדר קיים.
+   הערכים שבשימוש מתווספים לתצוגה בלבד ולא נשמרים בחזרה לשרת - אחרת
+   מחיקה של קטגוריה פעילה הייתה חוזרת מעצמה בכל טעינה. */
+function listWithUsed(list, which){
+  var seen = {}, out = list.slice();
+  out.forEach(function(x){ seen[x] = 1; });
   (window.vows || []).forEach(function(v){
-    var a = (v.forA || '').trim(), b = (v.forB || '').trim();
-    if(a && !inA[a]){ inA[a] = 1; TABLE1.push(a); addedA.push(a); }
-    if(b && !inB[b]){ inB[b] = 1; TABLE2.push(b); addedB.push(b); }
+    var val = ((which === 'A' ? v.forA : v.forB) || '').trim();
+    if(val && !seen[val]){ seen[val] = 1; out.push(val); }
   });
-  TABLE1.sort(function(x, y){ return String(x).localeCompare(String(y), 'he'); });
-  TABLE2.sort(function(x, y){ return String(x).localeCompare(String(y), 'he'); });
-  return { A: addedA, B: addedB, count: addedA.length + addedB.length };
+  return out.sort(function(x, y){ return String(x).localeCompare(String(y), 'he'); });
 }
+function forOptionsA(){ return listWithUsed(TABLE1, 'A'); }
+function forOptionsB(){ return listWithUsed(TABLE2, 'B'); }
+function refreshForSelects(){
+  populateSelect('vfForA', forOptionsA(), '--');
+  populateSelect('vfForB', forOptionsB(), '--');
+}
+/* נשמר לתאימות: כבר לא משנה את TABLE1/TABLE2 ולא נשמר לשרת */
+function mergeUsedIntoLists(){ return { A: [], B: [], count: 0 }; }
 
 /* כמה נדרים משתמשים בכל ערך - כדי להזהיר לפני מחיקה */
 function _listUsage(which){
@@ -4101,8 +4125,7 @@ function emailPersonReport(idx, btn){ sendReportByName(generalFiltered[idx]?gene
 function init(){
   initUserUI();
   refreshNameSelects();
-  populateSelect('vfForA',TABLE1,'--');
-  populateSelect('vfForB',TABLE2,'--');
+  refreshForSelects();
   refreshPaymentMethodSelect();
   populateTitleSelect();
   loadBlessing();
@@ -4145,7 +4168,7 @@ function _toApi(type, data){
 var _ENDPOINT = {contact:'/contacts', vow:'/vows', payment:'/payments'};
 
 // Override sync: send writes to REST API
-function syncToSheets(type, action, data){
+function syncToSheets(type, action, data, cb){
   var ep = _ENDPOINT[type]; if(!ep) return;
   var body = _toApi(type, data);
   var opts;
@@ -4153,7 +4176,8 @@ function syncToSheets(type, action, data){
   else if(action==='edit'){ opts = {method:'PUT', body:body}; ep = ep + '/' + data.id; }
   else { opts = {method:'POST', body:body}; }
   window.apiFetch(ep, opts).then(function(r){
-    if(!r.ok){ r.json().then(function(d){ console.warn('שמירה נכשלה:', d.error||r.status); }); }
+    if(!r.ok){ r.json().then(function(d){ console.warn('שמירה נכשלה:', d.error||r.status); }); return; }
+    if(cb) r.json().then(function(d){ cb(d); }).catch(function(){});
   }).catch(function(){ console.warn('שגיאת רשת בשמירה'); });
 }
 function exportAllToSheets(){ /* disabled - data lives in DB */ }
@@ -4162,7 +4186,18 @@ function exportAllToSheets(){ /* disabled - data lives in DB */ }
 function bootstrapData(){
   var loader = document.getElementById('_bootLoader');
   if(loader) loader.style.display='flex';
-  function getArr(path){ return window.apiFetch(path).then(function(r){ return r.ok ? r.json() : []; }).then(function(d){ return Array.isArray(d) ? d : []; }).catch(function(){ return []; }); }
+  // חשוב: שגיאה חייבת להתפוצץ, לא להחזיר [].
+  // רשימה ריקה נראית בדיוק כמו "אין נתונים", והמשתמש היה מוסיף רשומות
+  // על בסיס מצב ריק שגוי (למשל מזהה איש קשר שכבר תפוס).
+  function getArr(path){
+    return window.apiFetch(path).then(function(r){
+      if(!r.ok) throw new Error(path+' -> '+r.status);
+      return r.json();
+    }).then(function(d){
+      if(!Array.isArray(d)) throw new Error(path+' -> תשובה לא תקינה');
+      return d;
+    });
+  }
   Promise.all([ getArr('/contacts/all'), getArr('/vows/all'), getArr('/payments/all') ]).then(function(res){
     var cts = res[0]||[], vws = res[1]||[], pys = res[2]||[];
     window.contacts = cts.map(function(c,i){ return Object.assign({}, c, {_idx:i}); });
@@ -4186,17 +4221,11 @@ function bootstrapData(){
         TABLE1.length=0; L.table1.forEach(function(x){TABLE1.push(x);});
         TABLE2.length=0; L.table2.forEach(function(x){TABLE2.push(x);});
       }
-      var added = window.mergeUsedIntoLists ? mergeUsedIntoLists() : {A:[],B:[],count:0};
-      populateSelect('vfForA', TABLE1, '--');
-      populateSelect('vfForB', TABLE2, '--');
-      // ריצה ראשונה (אין עדיין שמור) או ערכים ששוחזרו -> נשלחים כהוספה בלבד.
-      // אף פעם לא שולחים כאן רשימה מלאה לדריסה: טאב ישן היה מוחק ככה
-      // קטגוריות שעובד אחר הוסיף בינתיים.
-      if(!L){
-        if(window.saveListsDelta) saveListsDelta({addA:TABLE1.slice(), addB:TABLE2.slice()}, '');
-      } else if(added.count && window.saveListsDelta){
-        saveListsDelta({addA:added.A, addB:added.B}, '');
-      }
+      // ערכים שבשימוש בנדרים מתווספים לאפשרויות הבחירה בלבד, ולא נשמרים
+      // בחזרה לשרת: אחרת מחיקה של קטגוריה פעילה הייתה חוזרת בכל טעינה.
+      if(window.refreshForSelects) refreshForSelects();
+      // ריצה ראשונה בלבד (אין עדיין רשימה שמורה) -> שומרים את רשימת הבסיס
+      if(!L && window.saveListsDelta) saveListsDelta({addA:TABLE1.slice(), addB:TABLE2.slice()}, '');
     }).catch(function(){});
     if(loader) loader.style.display='none';
     init();
