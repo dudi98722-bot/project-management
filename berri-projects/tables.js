@@ -153,6 +153,7 @@ function tableCard(tk, ctx, opts) {
       '<button class="btn sm gh" onclick="toggleFilters(' + cx + ')">🔍 סינון' + (nf ? ' · ' + nf : '') + '</button>' +
       (nf ? '<button class="btn sm gh" onclick="clearFilters(' + cx + ')">✕ נקה</button>' : '') +
       '<button class="btn sm gh" onclick="exportTable(' + cx + ')">📤 אקסל</button>' +
+      (IMP[tk] && acts ? '<button class="btn sm gh" onclick="importOpen(' + cx + ')" title="ייבוא שורות מקובץ אקסל">📥 ייבוא</button>' : '') +
       (opts.add && acts ? '<button class="btn sm o" onclick="' + opts.add + '">➕ ' + (opts.addLabel || 'הוספה') + '</button>' : '') +
     '</div><div class="tbl-scroll"><table class="tbl"><thead><tr>' +
       cols.map(function (c) {

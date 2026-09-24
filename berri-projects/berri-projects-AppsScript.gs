@@ -206,6 +206,18 @@ function insert_(key, o) {
   rows_(key).push(o);
   return o;
 }
+/* הוספת הרבה שורות בכתיבה אחת. appendRow לכל שורה היה לוקח דקות
+   בייבוא של מאות שורות, ו-Apps Script היה קוטע את הבקשה באמצע. */
+function insertMany_(key, list) {
+  if (!list.length) return;
+  var sh = sheet_(key), cols = cols_(key), start = sh.getLastRow() + 1;
+  var over = start + list.length - 1 - sh.getMaxRows();
+  if (over > 0) sh.insertRowsAfter(sh.getMaxRows(), over);
+  sh.getRange(start, 1, list.length, cols.length)
+    .setValues(list.map(function (o) { return rowValues_(key, o); }));
+  var all = rows_(key);
+  list.forEach(function (o, i) { o._row = start + i; all.push(o); });
+}
 function update_(key, o) {
   sheet_(key).getRange(o._row, 1, 1, cols_(key).length).setValues([rowValues_(key, o)]);
   var all = rows_(key);
@@ -345,6 +357,7 @@ function route_(e) {
       case 'login':      return login_(p);
       case 'load':       return load_(p);
       case 'save':       return save_(p);
+      case 'saveBulk':   return saveBulk_(p);
       case 'remove':     return remove_(p, true);
       case 'restore':    return remove_(p, false);
       case 'saveUser':   return saveUser_(p);
@@ -507,6 +520,56 @@ function save_(p) {
   } finally { lock.releaseLock(); }
 }
 
+/* =====================  ייבוא מרוכז (אקסל)  =====================
+   כל שורה נבדקת בדיוק כמו הזנה ידנית. שורה פסולה אינה עוצרת את השאר —
+   היא חוזרת ברשימת הנפילות עם הסיבה, כדי שאפשר יהיה לתקן ולייבא שוב.
+   שורה שמזהה שלה כבר קיים מדולגת: כך ניסיון חוזר אחרי ניתוק באמצע
+   לא מייצר כפילויות. */
+var BULK_MAX = 300;
+function saveBulk_(p) {
+  var me = auth_(p.token);
+  if (!me) return expired_();
+  var key = String(p.table || ''), rule = RULES[key];
+  if (!rule || key === 'categories') return err_('טבלה לא מוכרת');
+  if (!can_(me, rule.who)) return err_(rule.who === 'admin' ? 'הפעולה מותרת למנהל בלבד' : 'אין לך הרשאה לשנות נתונים');
+  var list;
+  try { list = JSON.parse(p.rows || '[]'); } catch (e) { return err_('נתונים לא תקינים'); }
+  if (!list || !list.length) return err_('אין שורות לייבוא');
+  if (list.length > BULK_MAX) return err_('אפשר לייבא עד ' + BULK_MAX + ' שורות בפעם אחת');
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(45000);
+  try {
+    var stamp = now_(), ready = [], failed = [], skipped = 0, cats = {};
+    for (var i = 0; i < list.length; i++) {
+      var inp = list[i];
+      try {
+        if (!inp || typeof inp !== 'object') throw new Bad('שורה לא תקינה');
+        var id = clean_(inp.id, 40);
+        if (id && !ID_RE.test(id)) throw new Bad('מזהה לא תקין');
+        if (id && find_(key, id)) { skipped++; continue; }
+        var o = build_(key, inp, null);
+        o.id = id || uid_(rule.prefix);
+        o.createdAt = stamp; o.deleted = false;
+        o.userName = me.fullName; o.userId = me.id; o.updatedAt = '';
+        ready.push(o);
+        var g = rule.cat || (key === 'cashMoves' && o.type !== 'transfer' ? o.type : '');
+        if (g && o.category) cats[g + '|' + o.category] = 1;
+      } catch (ex) {
+        failed.push({ i: i, error: (ex instanceof Bad) ? ex.msg : String(ex && ex.message ? ex.message : ex) });
+      }
+    }
+    insertMany_(key, ready);
+    var newCats = [];
+    Object.keys(cats).forEach(function (k) {
+      var at = k.indexOf('|');
+      var c = ensureCategory_(k.slice(0, at), k.slice(at + 1));
+      if (c) newCats.push(strip_(c));
+    });
+    return json_({ ok: true, added: ready.map(strip_), failed: failed, skipped: skipped, categories: newCats });
+  } finally { lock.releaseLock(); }
+}
+
 /* בונה את השורה מהקלט: רק שדות מוכרים, בסוג הנכון, עם בדיקות תקינות.
    שדה שלא נשלח נשאר כפי שהיה בגיליון. */
 function build_(key, inp, cur) {
@@ -561,6 +624,11 @@ function build_(key, inp, cur) {
       }
       pick('kind', REG_KINDS); if (!o.kind) o.kind = 'אחר';
       money('opening', true); date('openingDate'); money('sort', true);
+      /* קופה חדשה בלי סדר מפורש נכנסת בסוף — אחרת סדר 0 היה מקפיץ
+         אותה לראש הרשימה, והופך אותה לברירת המחדל בכל טופס */
+      if (!cur && !has('sort')) {
+        o.sort = live_('registers').reduce(function (m, r) { return Math.max(m, Number(r.sort) || 0); }, 0) + 1;
+      }
       if (!cur) o.active = true;
       bool('active'); text('note', 500);
       break;
