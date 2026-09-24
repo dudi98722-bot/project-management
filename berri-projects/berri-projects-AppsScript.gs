@@ -50,6 +50,10 @@ var TABLES = {
     ['clientPrice', 'מחיר ללקוח', 'money'], ['subPrice', 'מחיר לקבלן משנה', 'money'],
     ['expected', 'צפי הוצאות', 'money'], ['startDate', 'תאריך התחלה', 'date'],
     ['endDate', 'תאריך סיום', 'date'], ['active', 'פעיל', 'bool'], ['note', 'הערות']].concat(MOVE_TAIL) },
+  additions: { name: 'תוספות לפרוייקט', cols: [
+    ['id', 'מזהה'], ['date', 'תאריך', 'date'], ['projectId', 'מזהה פרוייקט'], ['projectName', 'פרוייקט'],
+    ['description', 'תיאור התוספת'], ['clientAmount', 'תוספת למחיר ללקוח', 'money'],
+    ['subAmount', 'תוספת למחיר לקבלן', 'money'], ['note', 'הערה']].concat(MOVE_TAIL) },
   clientPayments: { name: 'תשלומי לקוחות', cols: [
     ['id', 'מזהה'], ['date', 'תאריך', 'date'], ['projectId', 'מזהה פרוייקט'], ['projectName', 'פרוייקט'],
     ['amount', 'סכום', 'money'], ['registerId', 'מזהה קופה'], ['registerName', 'לקופה'],
@@ -81,12 +85,13 @@ var TABLES = {
     ['id', 'מזהה'], ['group', 'קוד קבוצה'], ['groupHe', 'קבוצה'], ['name', 'שם'], ['sort', 'סדר', 'num'],
     ['createdAt', 'נוצר בתאריך'], ['deleted', 'נמחק', 'bool']] }
 };
-var SCHEMA_VERSION = '1';
+var SCHEMA_VERSION = '2';
 
 /* מי רשאי לכתוב לכל טבלה, ואיזו קבוצת קטגוריות משויכת אליה */
 var RULES = {
   registers:        { prefix: 'r',  who: 'admin' },
   projects:         { prefix: 'p',  who: 'editor' },
+  additions:        { prefix: 'ad', who: 'editor' },
   clientPayments:   { prefix: 'cp', who: 'editor' },
   subPayments:      { prefix: 'sp', who: 'editor' },
   projectExpenses:  { prefix: 'pe', who: 'editor', cat: 'project' },
@@ -96,7 +101,7 @@ var RULES = {
   categories:       { prefix: 'c',  who: 'editor' }
 };
 var MOVE_TABLES = ['clientPayments', 'subPayments', 'projectExpenses', 'businessExpenses', 'homeExpenses', 'cashMoves'];
-var PROJECT_TABLES = ['clientPayments', 'subPayments', 'projectExpenses'];
+var PROJECT_TABLES = ['additions', 'clientPayments', 'subPayments', 'projectExpenses'];
 var GROUPS = { project: 'הוצאות פרוייקט', business: 'הוצאות עסק', home: 'הוצאות בית',
                'in': 'כסף נכנס לקופה', out: 'כסף יצא מקופה' };
 var CAT_TABLE = { project: 'projectExpenses', business: 'businessExpenses', home: 'homeExpenses',
@@ -441,7 +446,7 @@ function load_(p) {
 function payload_(me) {
   var out = { ok: true, app: APP, apiVersion: API_VERSION, scriptVersion: SCRIPT_VERSION,
               today: today_(), user: pubUser_(me) };
-  ['registers', 'projects', 'clientPayments', 'subPayments', 'projectExpenses',
+  ['registers', 'projects', 'additions', 'clientPayments', 'subPayments', 'projectExpenses',
    'businessExpenses', 'cashMoves', 'categories'].forEach(function (k) { out[k] = live_(k).map(strip_); });
   var home = live_('homeExpenses');
   if (me.role === 'admin') {
@@ -568,6 +573,17 @@ function build_(key, inp, cur) {
       if (o.startDate && o.endDate && o.endDate < o.startDate) throw new Bad('תאריך הסיום לפני תאריך ההתחלה');
       if (!cur) o.active = true;
       bool('active'); text('note', 1000);
+      break;
+    /* תוספת אינה תנועת כסף אלא שינוי במחיר שסוכם, ולכן היא לא נוגעת
+       בקופות. סכום שלילי מותר — כך נרשם זיכוי על עבודה שירדה. */
+    case 'additions':
+      date('date', true);
+      project();
+      text('description', 200);
+      if (!o.description) throw new Bad('יש להזין תיאור לתוספת');
+      money('clientAmount', true); money('subAmount', true);
+      if (!o.clientAmount && !o.subAmount) throw new Bad('יש להזין סכום — ללקוח, לקבלן, או לשניהם');
+      text('note', 500);
       break;
     case 'clientPayments':
     case 'subPayments':

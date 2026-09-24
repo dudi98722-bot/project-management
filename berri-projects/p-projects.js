@@ -9,7 +9,8 @@ var PROJ_COLS = [
   { k: 'start', t: 'התחלה', d: 1, get: function (s) { return s.p.startDate; } },
   { k: 'end', t: 'סיום', d: 1, get: function (s) { return s.p.endDate; } },
   { k: 'months', t: 'חודשים', n: 1, get: function (s) { return s.months ? Math.round(s.months * 10) / 10 : ''; } },
-  { k: 'clientPrice', t: 'מחיר ללקוח', m: 1 }, { k: 'clientPaid', t: 'נגבה', m: 1, c: 'in' },
+  { k: 'basePrice', t: 'מחיר בסיס', m: 1 }, { k: 'addClient', t: 'תוספות', m: 1 },
+  { k: 'clientPrice', t: 'סה״כ ללקוח', m: 1 }, { k: 'clientPaid', t: 'נגבה', m: 1, c: 'in' },
   { k: 'clientDue', t: 'יתרת לקוח', m: 1 }, { k: 'subPrice', t: 'מחיר לקבלן', m: 1 },
   { k: 'subCovered', t: 'שולם + קוזז לקבלן', m: 1, c: 'out' }, { k: 'subDue', t: 'יתרה לקבלן', m: 1 },
   { k: 'expected', t: 'צפי הוצאות', m: 1 }, { k: 'ownExp', t: 'הוצאות בפועל', m: 1, c: 'out' },
@@ -47,8 +48,10 @@ function pageProjects(w) {
       '<th class="nosort toggle-col">פעיל</th>' + PROJ_COLS.map(function (c) { return '<th class="nosort' + (c.m || c.n ? ' num' : '') + '">' + c.t + '</th>'; }).join('') +
     '</tr></thead><tbody id="ptb"></tbody><tfoot id="ptf"></tfoot></table></div>' +
     '<div class="count-line" id="pcl"></div></div>' +
-    '<p class="hint">רווח צפוי = מחיר ללקוח − מחיר לקבלן − הוצאות (בפרוייקט פעיל: הגבוה מבין צפי ההוצאות לבפועל; בפרוייקט שהסתיים: בפועל). ' +
-    'רווח לחודש = רווח צפוי חלקי משך הפרוייקט — מתאריך ההתחלה עד תאריך הסיום, ואם אין תאריך סיום — עד היום.</p>';
+    '<p class="hint">סה״כ ללקוח = מחיר הבסיס שסוכם + כל התוספות שנרשמו. ' +
+    'רווח צפוי = סה״כ ללקוח − סה״כ לקבלן − הוצאות (בפרוייקט פעיל: הגבוה מבין צפי ההוצאות לבפועל; בפרוייקט שהסתיים: בפועל). ' +
+    'רווח לחודש = רווח צפוי חלקי משך הפרוייקט — מתאריך ההתחלה עד תאריך הסיום, ואם אין תאריך סיום — עד היום. ' +
+    'מוצג רק בפרוייקט שרץ חודש לפחות, כי בפחות מזה החלוקה מנפחת את המספר.</p>';
   refreshProjTable();
 }
 

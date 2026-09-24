@@ -52,7 +52,7 @@ function projPreview() {
   el.innerHTML = '<div class="info-line' + (profit < 0 ? ' warn' : '') + '">' +
     '<span>רווח מתוכנן: <b>' + money(profit) + '</b>' + (cp ? ' (' + Math.round(profit / cp * 100) + '%)' : '') + '</span>' +
     (mon ? '<span>משך: <b>' + fmtMonths(mon) + ' חודשים</b>' + (val('f-end') ? '' : ' עד היום') + '</span>' +
-      '<span>רווח לחודש: <b>' + money(profit / mon) + '</b></span>' : '') + '</div>';
+      (mon >= 1 ? '<span>רווח לחודש: <b>' + money(profit / mon) + '</b></span>' : '') : '') + '</div>';
 }
 
 function saveProject(btn, id) {

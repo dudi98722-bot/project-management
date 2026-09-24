@@ -115,13 +115,15 @@ function savePass(btn) {
 
 /* כפתור ה"הזנה" שבסרגל העליון */
 function quickAdd() {
-  var opts = [['cp', 'תשלום מלקוח', 'כסף שנכנס מלקוח'], ['sp', 'תשלום לקבלן', 'כסף שיצא לקבלן משנה'],
+  var opts = [['ad', 'תוספת לפרוייקט', 'עבודה שנוספה למחיר'],
+    ['cp', 'תשלום מלקוח', 'כסף שנכנס מלקוח'], ['sp', 'תשלום לקבלן', 'כסף שיצא לקבלן משנה'],
     ['pe', 'הוצאה לפרוייקט', 'חומרים, כלים, פועלים'], ['be', 'הוצאת עסק', 'בלי שיוך לפרוייקט']];
   if (isAdmin()) opts.push(['he', 'הוצאת בית', 'הוצאות פרטיות']);
   opts.push(['in', 'כסף נכנס לקופה', 'הפקדה, הלוואה'], ['out', 'כסף יצא מקופה', 'משיכה, החזר'],
     ['tr', 'העברה בין קופות', 'מקופה לקופה']);
   openModal(modalHtml('➕ מה להזין?', '<div class="quick">' + opts.map(function (o) {
-    return '<button onclick="closeModal();entryModal(\'' + o[0] + '\')"><span class="qi">' + KIND[o[0]].i + '</span>' +
+    var open = o[0] === 'ad' ? 'additionModal()' : 'entryModal(\'' + o[0] + '\')';
+    return '<button onclick="closeModal();' + open + '"><span class="qi">' + (o[0] === 'ad' ? '➕' : KIND[o[0]].i) + '</span>' +
       '<b>' + o[1] + '</b><small>' + o[2] + '</small></button>';
   }).join('') + '</div>' + (canEdit() ? '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">' +
     '<button class="btn sm" onclick="closeModal();projectModal()">🏗️ פרוייקט חדש</button>' +

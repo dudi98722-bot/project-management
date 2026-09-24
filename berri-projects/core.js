@@ -9,12 +9,14 @@
 var DEFAULT_GS_URL = 'https://script.google.com/macros/s/AKfycbwamNXeJ-5KU80Zm6zJBN2iI2Hh365nmLCDR7tHQ48n0eqeWSxJzzjIEQDj1mxUy4WJJA/exec';
 
 var LS = { url: 'berri_gs_url', tok: 'berri_token', cache: 'berri_cache', last: 'berri_last' };
-var TABLE_KEYS = ['registers', 'projects', 'clientPayments', 'subPayments', 'projectExpenses',
+var TABLE_KEYS = ['registers', 'projects', 'additions', 'clientPayments', 'subPayments', 'projectExpenses',
                   'businessExpenses', 'homeExpenses', 'cashMoves', 'categories', 'users'];
 var ROLE_HE = { admin: 'מנהל', editor: 'עורך', viewer: 'צופה' };
 
 var S = {
-  url: DEFAULT_GS_URL || lsGet(LS.url),
+  /* בשרת האמיתי הכתובת המוטמעת קובעת תמיד. על localhost כתובת שנשמרה
+     בדפדפן גוברת עליה, כדי שבדיקה מקומית לא תדבר עם הגיליון החי. */
+  url: (isLocal() && lsGet(LS.url)) || DEFAULT_GS_URL || lsGet(LS.url),
   token: lsGet(LS.tok),
   user: null, today: '', sheetUrl: '', scriptVersion: '',
   d: {}, ver: 0,

@@ -9,6 +9,17 @@ var RCOL = function (t) { return { k: 'registerName', t: t, type: 'pick', get: f
 var WHO = [{ k: 'userName', t: 'נרשם על ידי', type: 'pick', muted: true }];
 
 var TBL = {
+  additions: {
+    title: 'תוספות לפרוייקט', icon: '➕', table: 'additions', kind: 'ad',
+    rows: function (ctx) { return S.d.additions.filter(function (x) { return !ctx || x.projectId === ctx; }); },
+    cols: [{ k: 'date', t: 'תאריך', type: 'date' }, PCOL,
+      { k: 'description', t: 'תיאור התוספת', type: 'text' },
+      { k: 'clientAmount', t: 'תוספת ללקוח', type: 'money', sum: true, cls: 'in' },
+      { k: 'subAmount', t: 'תוספת לקבלן', type: 'money', sum: true, cls: 'out' },
+      { k: 'profitAdd', t: 'תוספת לרווח', type: 'money', sum: true,
+        get: function (r) { return round2((Number(r.clientAmount) || 0) - (Number(r.subAmount) || 0)); } },
+      { k: 'note', t: 'הערה', type: 'text' }].concat(WHO)
+  },
   clientPayments: {
     title: 'תשלומי לקוחות', icon: '📥', table: 'clientPayments', kind: 'cp',
     rows: function (ctx) { return S.d.clientPayments.filter(function (x) { return !ctx || x.projectId === ctx; }); },

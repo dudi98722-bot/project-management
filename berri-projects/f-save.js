@@ -34,6 +34,7 @@ function saveEntry(btn, kind, id) {
 var TABLE_KIND = { clientPayments: 'cp', subPayments: 'sp', projectExpenses: 'pe',
                    businessExpenses: 'be', homeExpenses: 'he' };
 function editRow(tk, id) {
+  if (tk === 'additions') return additionModal(id);
   if (tk === 'cashMoves') {
     var m = findRow('cashMoves', id);
     return entryModal(m.type === 'transfer' ? 'tr' : m.type, id);
@@ -41,12 +42,14 @@ function editRow(tk, id) {
   entryModal(TABLE_KIND[tk], id);
 }
 
-var DEL_LABEL = { projects: 'הפרוייקט', registers: 'הקופה', categories: 'הקטגוריה' };
+var DEL_LABEL = { projects: 'הפרוייקט', registers: 'הקופה', categories: 'הקטגוריה', additions: 'התוספת' };
 function askDelete(table, id) {
   var row = findRow(table, id), what = DEL_LABEL[table] || 'השורה';
   var desc = table === 'projects' || table === 'registers' || table === 'categories'
     ? '<b>' + esc(row.name) + '</b>'
-    : fmtDate(row.date) + ' · <b>' + money(row.amount) + '</b>';
+    : table === 'additions'
+      ? fmtDate(row.date) + ' · ' + esc(row.description) + ' · <b>' + money(row.clientAmount) + '</b>'
+      : fmtDate(row.date) + ' · <b>' + money(row.amount) + '</b>';
   confirmModal('מחיקה', 'למחוק את ' + what + '?<div style="margin-top:8px">' + desc + '</div>' +
     '<div class="hint" style="margin-top:10px">השורה נשארת בגיליון מסומנת כ"נמחק", ואפשר לבטל מיד אחרי המחיקה.</div>',
     '🗑️ מחיקה', function (btn) { doDelete(btn, table, id); });

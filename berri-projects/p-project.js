@@ -32,10 +32,15 @@ function pageProject(w, id) {
     '</div>' +
 
     '<div class="p-grid">' +
-      '<div class="pbox"><h4>📥 הלקוח</h4>' + ln('מחיר ללקוח', s.clientPrice) + ln('נגבה עד היום', s.clientPaid, 'in') +
+      '<div class="pbox"><h4>📥 הלקוח</h4>' +
+        (s.addClient ? ln('מחיר בסיס', s.basePrice) + ln('תוספות (' + s.ads.length + ')', s.addClient, 'in') +
+          ln('סה״כ ללקוח', s.clientPrice) : ln('מחיר ללקוח', s.clientPrice)) +
+        ln('נגבה עד היום', s.clientPaid, 'in') +
         bar(pct(s.clientPaid, s.clientPrice), 'g') +
         '<div class="ln tot"><span>יתרה לגבייה</span><b class="' + moneyCls(s.clientDue) + '">' + money(s.clientDue) + '</b></div></div>' +
-      '<div class="pbox"><h4>👷 קבלן המשנה' + (p.subName ? ' — ' + esc(p.subName) : '') + '</h4>' + ln('מחיר לקבלן', s.subPrice) +
+      '<div class="pbox"><h4>👷 קבלן המשנה' + (p.subName ? ' — ' + esc(p.subName) : '') + '</h4>' +
+        (s.addSub ? ln('מחיר בסיס', s.baseSubPrice) + ln('תוספות', s.addSub, 'out') + ln('סה״כ לקבלן', s.subPrice)
+                  : ln('מחיר לקבלן', s.subPrice)) +
         ln('שולם לו', s.subPaid, 'out') + ln('קוזז מהוצאות', s.dedExp, 'out') + bar(pct(s.subCovered, s.subPrice), 'n') +
         '<div class="ln tot"><span>יתרה לתשלום</span><b class="' + moneyCls(s.subDue) + '">' + money(s.subDue) + '</b></div></div>' +
       '<div class="pbox"><h4>🧱 הוצאות</h4>' + ln('צפי הוצאות', s.expected) + ln('הוצאות בפועל', s.ownExp, 'out') +
@@ -50,10 +55,11 @@ function pageProject(w, id) {
     '</div>' +
     s.warns.map(function (x) { return '<div class="warn-line" style="margin-bottom:8px">⚠️ ' + esc(x) + '</div>'; }).join('') +
 
+    tableCard('additions', id, { title: 'תוספות למחיר', add: 'additionModal(null,{projectId:\'' + id + '\'})', addLabel: 'תוספת' }) +
     tableCard('clientPayments', id, { title: 'תשלומי הלקוח', add: 'entryModal(\'cp\',null,{projectId:\'' + id + '\'})', addLabel: 'תשלום מלקוח' }) +
     tableCard('subPayments', id, { title: 'תשלומים לקבלן המשנה', add: 'entryModal(\'sp\',null,{projectId:\'' + id + '\'})', addLabel: 'תשלום לקבלן' }) +
     tableCard('projectExpenses', id, { title: 'הוצאות הפרוייקט', add: 'entryModal(\'pe\',null,{projectId:\'' + id + '\'})', addLabel: 'הוצאה' });
-  mountTables([['clientPayments', id], ['subPayments', id], ['projectExpenses', id]]);
+  mountTables([['additions', id], ['clientPayments', id], ['subPayments', id], ['projectExpenses', id]]);
 }
 
 function exportProject(id) {
@@ -67,10 +73,15 @@ function exportProject(id) {
   saveXlsx([
     { name: 'תמונת מצב', rows: [['פרוייקט', p.name], ['לקוח', p.client], ['קבלן משנה', p.subName],
       ['התחלה', { v: p.startDate, t: 'd' }], ['סיום', { v: p.endDate, t: 'd' }], ['משך בחודשים', s.months ? { v: Math.round(s.months * 10) / 10, t: 'n' } : ''], [],
-      ['מחיר ללקוח', M(s.clientPrice)], ['נגבה', M(s.clientPaid)], ['יתרה לגבייה', M(s.clientDue)], [],
-      ['מחיר לקבלן', M(s.subPrice)], ['שולם לקבלן', M(s.subPaid)], ['קוזז מהקבלן', M(s.dedExp)], ['יתרה לקבלן', M(s.subDue)], [],
+      ['מחיר בסיס ללקוח', M(s.basePrice)], ['תוספות ללקוח', M(s.addClient)], ['סה״כ ללקוח', M(s.clientPrice)],
+      ['נגבה', M(s.clientPaid)], ['יתרה לגבייה', M(s.clientDue)], [],
+      ['מחיר בסיס לקבלן', M(s.baseSubPrice)], ['תוספות לקבלן', M(s.addSub)], ['סה״כ לקבלן', M(s.subPrice)],
+      ['שולם לקבלן', M(s.subPaid)], ['קוזז מהקבלן', M(s.dedExp)], ['יתרה לקבלן', M(s.subDue)], [],
       ['צפי הוצאות', M(s.expected)], ['הוצאות בפועל', M(s.ownExp)], [],
       ['רווח מתוכנן', M(s.planned)], ['רווח צפוי', M(s.profit)], ['רווח לחודש', s.monthly === null ? '' : M(s.monthly)], ['מזומן נטו', M(s.cashNet)]] },
+    { name: 'תוספות', rows: list(s.ads, [['תאריך', function (r) { return r.date; }, 'd'], ['תיאור התוספת', function (r) { return r.description; }],
+      ['תוספת ללקוח', function (r) { return r.clientAmount; }, 'm'], ['תוספת לקבלן', function (r) { return r.subAmount; }, 'm'],
+      ['הערה', function (r) { return r.note; }]]) },
     { name: 'תשלומי לקוח', rows: list(s.cps, [['תאריך', function (r) { return r.date; }, 'd'], ['סכום', function (r) { return r.amount; }, 'm'],
       ['קופה', function (r) { return regName(r.registerId); }], ['אמצעי', function (r) { return r.method; }], ['אסמכתא', function (r) { return r.reference; }], ['הערה', function (r) { return r.note; }]]) },
     { name: 'תשלומים לקבלן', rows: list(s.sps, [['תאריך', function (r) { return r.date; }, 'd'], ['סכום', function (r) { return r.amount; }, 'm'],

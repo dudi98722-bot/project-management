@@ -82,11 +82,17 @@ function projectStats(p, today) {
   var sps = S.d.subPayments.filter(function (x) { return x.projectId === id; });
   var pes = S.d.projectExpenses.filter(function (x) { return x.projectId === id; });
   var own = pes.filter(function (x) { return !x.deductSub; }), ded = pes.filter(function (x) { return x.deductSub; });
+  var ads = S.d.additions.filter(function (x) { return x.projectId === id; });
   var s = {
-    p: p, cps: cps, sps: sps, pes: pes,
-    clientPrice: Number(p.clientPrice) || 0, subPrice: Number(p.subPrice) || 0, expected: Number(p.expected) || 0,
+    p: p, cps: cps, sps: sps, pes: pes, ads: ads,
+    basePrice: Number(p.clientPrice) || 0, baseSubPrice: Number(p.subPrice) || 0, expected: Number(p.expected) || 0,
+    addClient: round2(sumOf(ads, function (x) { return x.clientAmount; })),
+    addSub: round2(sumOf(ads, function (x) { return x.subAmount; })),
     clientPaid: round2(sumOf(cps)), subPaid: round2(sumOf(sps)), ownExp: round2(sumOf(own)), dedExp: round2(sumOf(ded))
   };
+  /* המחיר שעליו נסגר החשבון = מה שסוכם בהתחלה + כל התוספות שנרשמו */
+  s.clientPrice = round2(s.basePrice + s.addClient);
+  s.subPrice = round2(s.baseSubPrice + s.addSub);
   s.clientDue = round2(s.clientPrice - s.clientPaid);
   s.subCovered = round2(s.subPaid + s.dedExp);
   s.subDue = round2(s.subPrice - s.subCovered);
@@ -100,8 +106,10 @@ function projectStats(p, today) {
   s.endEst = !p.endDate;
   var end = p.endDate || today;
   s.months = p.startDate ? monthsBetween(p.startDate, end) : 0;
-  s.monthly = s.months > 0 ? round2(s.profit / s.months) : null;
-  s.plannedMonthly = s.months > 0 ? round2(s.planned / s.months) : null;
+  /* פרוייקט שרץ פחות מחודש: חלוקה בשבר קטן מנפחת את התוצאה פי עשרות
+     (פרוייקט שהתחיל היום = חלוקה ב-0.03), ולכן אין מספר להציג. */
+  s.monthly = s.months >= 1 ? round2(s.profit / s.months) : null;
+  s.plannedMonthly = s.months >= 1 ? round2(s.planned / s.months) : null;
   s.lastDate = [].concat(cps, sps, pes).reduce(function (m, x) { return x.date > m ? x.date : m; }, '');
   s.warns = [];
   if (s.clientPaid > s.clientPrice && s.clientPrice > 0) s.warns.push('הלקוח שילם ' + money(s.clientPaid - s.clientPrice) + ' יותר מהמחיר — אם יש תוספות, עדכן את המחיר');
