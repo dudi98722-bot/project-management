@@ -244,12 +244,22 @@ function filesFolderFor(apt, kind, year, sub) {
     lock.releaseLock();
   }
 }
-/* תיקייה כללית לאסמכתאות שאינן משויכות לפרוייקט */
+/* תיקיית האסמכתאות של דפי הבנק — המקור של כל קובץ שצורף לשורת בנק.
+   כשלשורה יש פרוייקט, עותק נשמר גם בתיקיית התקבולים שלו. */
+var FILES_BANK_NAME = "דפי בנק";
 function filesGeneralFolder(year) {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    var gf = filesChild(filesRoot(), "דפי בנק — ללא פרוייקט");
+    var root = filesRoot(), gf = null;
+    var it = root.getFoldersByName(FILES_BANK_NAME);
+    while (it.hasNext()) { var f = it.next(); if (!f.isTrashed()) { gf = f; break; } }
+    if (!gf) {
+      /* השם הקודם — משנים לו שם במקום לפתוח תיקייה חדשה */
+      var old = root.getFoldersByName("דפי בנק — ללא פרוייקט");
+      while (old.hasNext()) { var o = old.next(); if (!o.isTrashed()) { o.setName(FILES_BANK_NAME); gf = o; break; } }
+    }
+    if (!gf) gf = filesChild(root, FILES_BANK_NAME);
     return year ? filesChild(gf, year) : gf;
   } finally {
     lock.releaseLock();

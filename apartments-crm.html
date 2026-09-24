@@ -639,7 +639,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 פו'";
+var APP_BUILD = "19.08 פז'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -2762,8 +2762,9 @@ function fileTgtMeta(tg){
     return {aptId:r.apartmentId,kind:"contract",date:o.startDate,label:"חוזה - "+(r.name||"")+(o.tenant?" - "+o.tenant:""),amount:0};
   }
   /* מסמך על שורת בנק — אסמכתא, ספח הפקדה, צילום המחאה.
-     שורה שעוד לא שויכה לפרוייקט נשמרת בתיקייה כללית של דפי הבנק. */
-  if(tg.t==="bank") return {aptId:o.apartmentId||"",kind:"receipt",date:o.date,
+     המקור נשמר תמיד בתיקיית "דפי בנק" (aptId ריק), וכשלשורה יש
+     פרוייקט נוצר ממנו עותק בתיקיית התקבולים שלו — שמור גם וגם. */
+  if(tg.t==="bank") return {aptId:"",kind:"receipt",date:o.date,
     label:"אסמכתת בנק - "+(moveBankLabel(o)||"בנק")+((o.name||o.description)?" - "+(o.name||o.description):""),
     amount:o.amount};
   /* מסמך על שורת הכנסה — הזמנה, חוזה מכר, חשבונית שהוצאה */
