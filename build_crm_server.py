@@ -20,6 +20,9 @@ table2 = [str(v).strip() for v in df.iloc[1:, 6] if str(v).strip() not in ['nan'
 
 template = open(BASE + '/crm_template.html', 'r', encoding='utf-8').read()
 
+# 0) Security: strip any Apps Script URL from the client (writes go through the backend only)
+template = re.sub(r"https://script\.google\.com/macros/s/[A-Za-z0-9_\-]+/exec", "", template)
+
 # 1) Data placeholders: empty at parse time, loaded from API at runtime
 template = template.replace('/*USERS_DATA*/', '')
 template = template.replace('/*CONTACTS_DATA*/', 'var CONTACTS_DATA = [];')
@@ -133,6 +136,28 @@ function bootstrapData(){
     // load saved payment methods from server
     window.apiFetch('/settings/methods').then(function(r){return r.ok?r.json():null;}).then(function(m){
       if(Array.isArray(m) && m.length){ window.paymentMethods = m; if(window.refreshPaymentMethodSelect) refreshPaymentMethodSelect(); }
+    }).catch(function(){});
+    // load saved contact titles from server
+    window.apiFetch('/settings/titles').then(function(r){return r.ok?r.json():null;}).then(function(t){
+      if(Array.isArray(t) && t.length){ window.contactTitles = t; if(window.populateTitleSelect) populateTitleSelect(); }
+    }).catch(function(){});
+    // load saved lists (עבור א / עבור ב); merge in any value already used so nothing disappears
+    window.apiFetch('/settings/lists').then(function(r){return r.ok?r.json():null;}).then(function(L){
+      if(L && Array.isArray(L.table1) && Array.isArray(L.table2)){
+        TABLE1.length=0; L.table1.forEach(function(x){TABLE1.push(x);});
+        TABLE2.length=0; L.table2.forEach(function(x){TABLE2.push(x);});
+      }
+      var added = window.mergeUsedIntoLists ? mergeUsedIntoLists() : {A:[],B:[],count:0};
+      populateSelect('vfForA', TABLE1, '--');
+      populateSelect('vfForB', TABLE2, '--');
+      // ריצה ראשונה (אין עדיין שמור) או ערכים ששוחזרו -> נשלחים כהוספה בלבד.
+      // אף פעם לא שולחים כאן רשימה מלאה לדריסה: טאב ישן היה מוחק ככה
+      // קטגוריות שעובד אחר הוסיף בינתיים.
+      if(!L){
+        if(window.saveListsDelta) saveListsDelta({addA:TABLE1.slice(), addB:TABLE2.slice()}, '');
+      } else if(added.count && window.saveListsDelta){
+        saveListsDelta({addA:added.A, addB:added.B}, '');
+      }
     }).catch(function(){});
     if(loader) loader.style.display='none';
     init();

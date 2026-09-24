@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CRM - בית כנסת</title>
+<title>מוסדות אלכסנדר — נדרים ונדבות</title>
+<link rel="icon" type="image/svg+xml" href="/assets/torah-icon.svg">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: Arial, sans-serif; background: #f0f2f8; direction: rtl; color: #222; }
@@ -435,6 +436,8 @@ tr:last-child td { border-bottom: none; }
   <div class="toolbar">
     <input type="text" class="search-box" id="searchInput" placeholder="&#x05D7;&#x05D9;&#x05E4;&#x05D5;&#x05E9;..." oninput="onSearch()">
     <span class="count-badge" id="countBadge"></span>
+    <button class="btn btn-secondary" onclick="exportRep('contacts')">&#x1F4E5; &#x05D0;&#x05E7;&#x05E1;&#x05DC;</button>
+    <button class="btn btn-secondary" onclick="printRep('contacts')">&#x1F5A8;</button>
     <button class="btn btn-primary" onclick="openAddModal()">+ &#x05D4;&#x05D5;&#x05E1;&#x05E3; &#x05D0;&#x05D9;&#x05E9; &#x05E7;&#x05E9;&#x05E8;</button>
   </div>
   <div class="table-wrap">
@@ -470,10 +473,19 @@ tr:last-child td { border-bottom: none; }
     </select>
     <select id="vowsForAFilter" onchange="onVowsSearch()" style="padding:9px 14px;border:1px solid #ccc;border-radius:7px;font-size:13px;min-width:160px"><option value="">כל סוגי ההתחייבות</option></select>
     <select id="vowsForBFilter" onchange="onVowsSearch()" style="padding:9px 14px;border:1px solid #ccc;border-radius:7px;font-size:13px;min-width:160px"><option value="">כל השבתות (עבור ב)</option></select>
+    <select id="vowsSortFilter" onchange="onVowsSearch()" style="padding:9px 14px;border:1px solid #ccc;border-radius:7px;font-size:13px;min-width:170px">
+      <option value="">מיון: תאריך (חדש&#x2190;ישן)</option>
+      <option value="oldest">החוב הישן ביותר למעלה</option>
+      <option value="biggest">החוב הגדול ביותר למעלה</option>
+    </select>
     <span class="count-badge" id="vowsCountBadge"></span>
     <button class="btn btn-secondary" onclick="openListsModal()">&#x2699; &#x05E2;&#x05E8;&#x05D9;&#x05DB;&#x05EA; &#x05E8;&#x05E9;&#x05D9;&#x05DE;&#x05D5;&#x05EA;</button>
     <button class="btn btn-secondary" onclick="openBulkVows()">&#x1F4CB; &#x05D4;&#x05DB;&#x05E0;&#x05E1;&#x05D4; &#x05DE;&#x05E8;&#x05D5;&#x05DB;&#x05D6;&#x05EA;</button>
     <button class="btn btn-secondary" onclick="openCalendar()">&#x1F4C5; &#x05DC;&#x05D5;&#x05D7; &#x05E9;&#x05E0;&#x05D4;</button>
+    <button class="btn btn-secondary" onclick="openAliyotReport()">&#x1F4DC; &#x05D3;&#x05D5;&#x05D7; &#x05E2;&#x05DC;&#x05D9;&#x05D5;&#x05EA;</button>
+    <button class="btn btn-secondary" onclick="openPasteImport()">&#x1F4E5; &#x05D4;&#x05D3;&#x05D1;&#x05E7;&#x05D4; &#x05DE;&#x05D0;&#x05E7;&#x05E1;&#x05DC;</button>
+    <button class="btn btn-secondary" onclick="exportRep('vows')">&#x1F4E5; &#x05D0;&#x05E7;&#x05E1;&#x05DC;</button>
+    <button class="btn btn-secondary" onclick="printRep('vows')">&#x1F5A8;</button>
     <button class="btn btn-primary" onclick="openVowModal()">+ &#x05D4;&#x05D5;&#x05E1;&#x05E3; &#x05E8;&#x05E9;&#x05D5;&#x05DE;&#x05D4;</button>
   </div>
   <div class="table-wrap">
@@ -510,6 +522,9 @@ tr:last-child td { border-bottom: none; }
     <select id="paymentsMethodFilter" onchange="onPaymentsSearch()" style="padding:9px 14px;border:1px solid #ccc;border-radius:7px;font-size:13px;min-width:150px"><option value="">כל אופני התשלום</option></select>
     <span class="count-badge" id="paymentsCountBadge"></span>
     <button class="btn btn-secondary" onclick="openMethodsModal()" style="margin-right:auto">&#x05E2;&#x05E8;&#x05D9;&#x05DB;&#x05EA; &#x05D0;&#x05D5;&#x05E4;&#x05E0;&#x05D9; &#x05EA;&#x05E9;&#x05DC;&#x05D5;&#x05DD;</button>
+    <button class="btn btn-secondary" onclick="openPayImport()">&#x1F4E5; &#x05D4;&#x05E2;&#x05DC;&#x05D0;&#x05EA; &#x05EA;&#x05E9;&#x05DC;&#x05D5;&#x05DE;&#x05D9;&#x05DD;</button>
+    <button class="btn btn-secondary" onclick="exportRep('payments')">&#x1F4E5; &#x05D0;&#x05E7;&#x05E1;&#x05DC;</button>
+    <button class="btn btn-secondary" onclick="printRep('payments')">&#x1F5A8;</button>
     <button class="btn btn-primary" onclick="openPaymentModal()">+ &#x05D4;&#x05D5;&#x05E1;&#x05E3; &#x05EA;&#x05E9;&#x05DC;&#x05D5;&#x05DD;</button>
   </div>
   <div class="table-wrap">
@@ -545,10 +560,19 @@ tr:last-child td { border-bottom: none; }
       <input type="text" id="reportNameSelect" list="reportNameList" onchange="renderReport()" placeholder="הקלד שם או מספר..." autocomplete="off" style="width:100%;padding:10px 14px;border:1px solid #ccc;border-radius:7px;font-size:14px">
       <datalist id="reportNameList"></datalist>
     </div>
+    <div style="min-width:180px">
+      <label style="font-size:12px;font-weight:bold;color:#555;display:block;margin-bottom:6px">סוג הדוח</label>
+      <select id="reportFilter" onchange="renderReport()" style="width:100%;padding:10px 14px;border:1px solid #ccc;border-radius:7px;font-size:14px">
+        <option value="all">כל ההתחייבויות</option>
+        <option value="open">חובות פתוחים בלבד</option>
+        <option value="paid">ששולמו בלבד</option>
+      </select>
+    </div>
     <div id="reportActions" style="display:none;display:flex;gap:8px;margin-top:18px;flex-wrap:wrap">
       <button class="btn btn-secondary" onclick="printReport()">&#x1F5A8; &#x05D4;&#x05D3;&#x05E4;&#x05E1; / PDF</button>
       <button class="btn btn-secondary" id="emailReportBtn" onclick="emailReport()">&#x2709; &#x05E9;&#x05DC;&#x05D7; &#x05DC;&#x05DE;&#x05D9;&#x05D9;&#x05DC;</button>
     </div>
+    <button class="btn btn-secondary" onclick="openReportLog()" style="margin-top:18px">&#x1F4CB; &#x05D9;&#x05D5;&#x05DE;&#x05DF; &#x05E9;&#x05DC;&#x05D9;&#x05D7;&#x05D5;&#x05EA;</button>
   </div>
   <div id="printHeader" style="display:none"></div>
   <div id="reportContent"></div>
@@ -579,6 +603,8 @@ tr:last-child td { border-bottom: none; }
         <option value="name">מיין: שם</option>
       </select>
       <span class="count-badge" id="generalCountBadge"></span>
+      <button class="btn btn-secondary" onclick="exportRep('general')" style="margin-right:auto">&#x1F4E5; &#x05D0;&#x05E7;&#x05E1;&#x05DC;</button>
+      <button class="btn btn-secondary" onclick="printRep('general')">&#x1F5A8; &#x05D4;&#x05D3;&#x05E4;&#x05E1;</button>
     </div>
   </div>
   <div class="table-wrap">
@@ -591,6 +617,7 @@ tr:last-child td { border-bottom: none; }
         <th>יתרה לתשלום</th>
         <th>% שולם</th>
         <th>מס' התחייבויות</th>
+        <th>נשלח לאחרונה</th>
         <th>פעולות</th>
       </tr></thead>
       <tbody id="generalBody"></tbody>
@@ -771,7 +798,7 @@ tr:last-child td { border-bottom: none; }
           <div class="form-group"><label>שם משתמש</label><input type="text" id="editUsername"></div>
           <div class="form-group"><label>סיסמא חדשה (ריק = ללא שינוי)</label><input type="password" id="editPassword" placeholder="השאר ריק לאי-שינוי"></div>
           <div class="form-group"><label>תפקיד</label>
-            <select id="editRole"><option value="viewer">צופה (קריאה בלבד)</option><option value="editor">עורך (הוספה ועריכה)</option><option value="treasurer">גזבר (כולל תשלומים)</option><option value="admin">מנהל (הכל)</option></select>
+            <select id="editRole"><option value="viewer">צופה (קריאה בלבד)</option><option value="editor">עורך (הוספה ועריכה)</option><option value="treasurer">גזבר (כולל תשלומים)</option><option value="manager">מנהל מוגבל (הכל חוץ מפילוחים/סיכומים)</option><option value="admin">מנהל (הכל)</option></select>
           </div>
         </div>
         <div style="text-align:left;margin-top:10px;display:flex;gap:8px;justify-content:flex-end">
@@ -784,7 +811,7 @@ tr:last-child td { border-bottom: none; }
         <div class="form-group"><label>שם משתמש</label><input type="text" id="newUsername" placeholder="שם משתמש"></div>
         <div class="form-group"><label>סיסמא</label><input type="password" id="newPassword" placeholder="סיסמא"></div>
         <div class="form-group"><label>תפקיד</label>
-          <select id="newRole"><option value="viewer">צופה (קריאה בלבד)</option><option value="editor">עורך (הוספה ועריכה)</option><option value="treasurer">גזבר (כולל תשלומים)</option><option value="admin">מנהל (הכל)</option></select>
+          <select id="newRole"><option value="viewer">צופה (קריאה בלבד)</option><option value="editor">עורך (הוספה ועריכה)</option><option value="treasurer">גזבר (כולל תשלומים)</option><option value="manager">מנהל מוגבל (הכל חוץ מפילוחים/סיכומים)</option><option value="admin">מנהל (הכל)</option></select>
         </div>
       </div>
       <div style="text-align:left;margin-top:12px">
@@ -802,8 +829,8 @@ tr:last-child td { border-bottom: none; }
         <input type="hidden" id="fId">
         <div class="form-group"><label>&#x05DE;&#x05D6;&#x05D4;&#x05D4;</label><input type="text" id="fIdDisplay" disabled></div>
         <div class="form-group"><label>&#x05DE;&#x05E1;' &#x05EA;&#x05D5;&#x05E8;&#x05DD; APT</label><input type="text" id="fApt"></div>
-        <div class="form-group"><label>&#x05EA;&#x05D5;&#x05D0;&#x05E8;</label>
-          <select id="fTitle"><option value=""></option><option>&#x05D4;&#x05E8;&#x05D1;</option><option>&#x05D4;&#x05E8;"&#x05E8;</option><option>&#x05E8;'</option><option>&#x05DE;&#x05E8;</option></select>
+        <div class="form-group"><label>&#x05EA;&#x05D5;&#x05D0;&#x05E8; <button type="button" onclick="openTitlesModal()" title="ניהול תארים" style="background:none;border:none;cursor:pointer;font-size:13px;color:#1a237e">&#x2699;</button></label>
+          <select id="fTitle"><option value=""></option></select>
         </div>
         <div class="form-group"></div>
         <div class="form-group"><label>&#x05E9;&#x05DD; &#x05E4;&#x05E8;&#x05D8;&#x05D9; <span class="required">*</span></label><input type="text" id="fFirstName" oninput="updatePreview()"></div>
@@ -867,9 +894,24 @@ tr:last-child td { border-bottom: none; }
             <div style="flex:1;min-width:140px"><label>&#x05E1;&#x05DB;&#x05D5;&#x05DD; (&#x05E9;"&#x05D7;) <span class="required">*</span></label><input type="number" id="pfAmount" min="0" step="1" oninput="onPaymentAmountInput()" style="width:100%;padding:9px;border:1px solid #ccc;border-radius:6px"><div id="pfRemainHint" style="font-size:12px;color:#888;margin-top:3px"></div></div>
           </div>
         </div>
+        <div class="form-group full" id="creditBanner" style="display:none"></div>
         <div class="form-group full" id="payMultiSection">
           <label>&#x05D4;&#x05EA;&#x05D7;&#x05D9;&#x05D9;&#x05D1;&#x05D5;&#x05D9;&#x05D5;&#x05EA; &#x05E4;&#x05EA;&#x05D5;&#x05D7;&#x05D5;&#x05EA; &#x2014; &#x05D4;&#x05D6;&#x05DF; &#x05E1;&#x05DB;&#x05D5;&#x05DD; &#x05DC;&#x05EA;&#x05E9;&#x05DC;&#x05D5;&#x05DD; &#x05DE;&#x05DB;&#x05DC; &#x05D0;&#x05D7;&#x05EA;</label>
           <div id="payMultiBody" style="border:1px solid #eee;border-radius:8px;overflow:hidden;margin-top:4px"><div style="padding:12px;color:#888;text-align:center">בחר איש קשר לראות את ההתחייבויות הפתוחות</div></div>
+        </div>
+        <div class="form-group full" id="creditActions" style="display:none">
+          <div style="display:flex;gap:14px;flex-wrap:wrap;background:#f1f8e9;border:1px solid #c5e1a5;border-radius:8px;padding:10px 14px">
+            <div style="flex:1;min-width:190px">
+              <label style="font-size:12px">💰 ניצול זכות קיימת (₪)</label>
+              <input type="number" id="pfUseCredit" min="0" step="1" value="" placeholder="0" oninput="onCreditFieldsInput()" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:5px">
+              <div id="pfUseCreditHint" style="font-size:11px;color:#888;margin-top:2px"></div>
+            </div>
+            <div style="flex:1;min-width:190px">
+              <label style="font-size:12px">➕ עודף לשמירה כזכות (₪)</label>
+              <input type="number" id="pfAddCredit" min="0" step="1" value="" placeholder="0" oninput="onCreditFieldsInput()" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:5px">
+              <div style="font-size:11px;color:#888;margin-top:2px">אם שילם יותר ממה שחייב</div>
+            </div>
+          </div>
         </div>
         <div class="form-group"><label>&#x05D0;&#x05D5;&#x05E4;&#x05DF; &#x05EA;&#x05E9;&#x05DC;&#x05D5;&#x05DD;</label><select id="pfMethod"><option value="">--</option></select></div>
         <div class="form-group"><label>&#x05DE;&#x05E1;' &#x05EA;&#x05E9;&#x05DC;&#x05D5;&#x05DE;&#x05D9;&#x05DD;</label><input type="number" id="pfNumPayments" min="1" step="1" value="1"></div>
@@ -892,6 +934,9 @@ tr:last-child td { border-bottom: none; }
       <button class="modal-close" onclick="closeListsModal()">&#x2715;</button>
     </div>
     <div class="modal-body">
+      <div style="background:#e8f4fd;border:1px solid #b3e0ff;border-radius:6px;padding:8px 12px;margin-bottom:14px;font-size:12px;color:#0d47a1">
+        כל הוספה או מחיקה נשמרת מיד בשרת ומופיעה לכל המשתמשים.
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
         <div>
           <div style="font-weight:bold;color:#1a237e;margin-bottom:10px;font-size:14px">&#x05E2;&#x05D1;&#x05D5;&#x05E8; &#x05D0;</div>
@@ -912,6 +957,7 @@ tr:last-child td { border-bottom: none; }
       </div>
     </div>
     <div class="modal-footer">
+      <span id="listsStatus" style="flex:1;font-size:13px;text-align:right;align-self:center"></span>
       <button class="btn btn-secondary" onclick="closeListsModal()">&#x05E1;&#x05D2;&#x05D5;&#x05E8;</button>
     </div>
   </div>
@@ -929,6 +975,173 @@ tr:last-child td { border-bottom: none; }
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeMethodsModal()">&#x05D1;&#x05D9;&#x05D8;&#x05D5;&#x05DC;</button>
       <button class="btn btn-primary" onclick="saveMethods()">&#x05E9;&#x05DE;&#x05D5;&#x05E8;</button>
+    </div>
+  </div>
+</div>
+
+<!-- TITLES Modal -->
+<div class="modal-overlay" id="titlesModalOverlay">
+  <div class="modal" style="width:420px">
+    <div class="modal-header"><h2>&#x05E0;&#x05D9;&#x05D4;&#x05D5;&#x05DC; &#x05EA;&#x05D0;&#x05E8;&#x05D9;&#x05DD;</h2><button class="modal-close" onclick="closeTitlesModal()">&#x2715;</button></div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:#666;margin-bottom:12px">הוסף או מחק תארים (הרב, ר', גב' וכו'):</p>
+      <div id="titlesList" class="methods-table-wrap"></div>
+      <button class="btn btn-secondary btn-sm" style="margin-top:10px" onclick="addTitleRow()">+ &#x05D4;&#x05D5;&#x05E1;&#x05E3; &#x05EA;&#x05D5;&#x05D0;&#x05E8;</button>
+      <div id="titlesSaveStatus" style="display:none;margin-top:10px;font-weight:bold;color:#2e7d32"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeTitlesModal()">&#x05D1;&#x05D9;&#x05D8;&#x05D5;&#x05DC;</button>
+      <button class="btn btn-primary" onclick="saveTitles()">&#x05E9;&#x05DE;&#x05D5;&#x05E8;</button>
+    </div>
+  </div>
+</div>
+
+<!-- REPORT LOG Modal -->
+<div class="modal-overlay" id="reportLogOverlay">
+  <div class="modal modal-lg" style="max-width:900px">
+    <div class="modal-header"><h2>&#x1F4CB; &#x05D9;&#x05D5;&#x05DE;&#x05DF; &#x05E9;&#x05DC;&#x05D9;&#x05D7;&#x05EA; &#x05D3;&#x05D5;&#x05D7;&#x05D5;&#x05EA;</h2><button class="modal-close" onclick="closeReportLog()">&#x2715;</button></div>
+    <div class="modal-body">
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+        <div style="display:flex;border:1px solid #ccc;border-radius:7px;overflow:hidden">
+          <button id="rlTabHist" onclick="setReportLogTab('hist')" style="border:none;padding:8px 16px;font-size:13px;cursor:pointer">היסטוריה</button>
+          <button id="rlTabSum" onclick="setReportLogTab('sum')" style="border:none;padding:8px 16px;font-size:13px;cursor:pointer">סיכום לכל אדם</button>
+        </div>
+        <input type="text" id="rlSearch" oninput="renderReportLog()" placeholder="חיפוש שם..." style="flex:1;min-width:160px;padding:8px 12px;border:1px solid #ccc;border-radius:7px;font-size:13px">
+        <button class="btn btn-secondary btn-sm" onclick="exportReportLogCsv()">&#x1F4E5; ייצוא לאקסל</button>
+        <button class="btn btn-secondary btn-sm" onclick="printReportLog()">&#x1F5A8; הדפס</button>
+      </div>
+      <div id="reportLogContent"><div style="padding:20px;text-align:center;color:#888">טוען...</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- PAYMENTS IMPORT Modal -->
+<div class="modal-overlay" id="payImportOverlay">
+  <div class="modal modal-lg" style="max-width:960px">
+    <div class="modal-header"><h2 id="payImportTitle">&#x1F4E5; &#x05D4;&#x05E2;&#x05DC;&#x05D0;&#x05EA; &#x05EA;&#x05E9;&#x05DC;&#x05D5;&#x05DE;&#x05D9;&#x05DD; &#x05DE;&#x05D0;&#x05E7;&#x05E1;&#x05DC;</h2><button class="modal-close" onclick="closePayImport()">&#x2715;</button></div>
+    <div class="modal-body">
+
+      <!-- שלב 1: טעינה ואימות -->
+      <div id="payImpStage1">
+        <div style="background:#f5f7ff;border:1px solid #dde3f5;border-radius:8px;padding:12px 14px;margin-bottom:12px">
+          <div style="font-size:13px;color:#555;margin-bottom:8px">
+            <b>מבנה הקובץ</b> — עמודות לפי הסדר:
+            <span style="background:#fff;border:1px solid #ccd;border-radius:4px;padding:2px 8px;margin:0 2px">תאריך</span>
+            <span style="background:#fff;border:1px solid #ccd;border-radius:4px;padding:2px 8px;margin:0 2px">מס' תורם</span>
+            <span style="background:#fff;border:1px solid #ccd;border-radius:4px;padding:2px 8px;margin:0 2px">סכום</span>
+            <span style="background:#fff;border:1px solid #ccd;border-radius:4px;padding:2px 8px;margin:0 2px">אופן תשלום</span>
+            <span style="background:#fff;border:1px solid #ccd;border-radius:4px;padding:2px 8px;margin:0 2px">הערה</span>
+          </div>
+          <input type="file" id="payImpFile" accept=".xlsx,.xls,.csv" onchange="loadPayExcel(this)" style="font-size:13px">
+          <span id="payImpFileStatus" style="font-size:12px;color:#666;margin-right:8px"></span>
+        </div>
+        <div id="payImpPreview"></div>
+      </div>
+
+      <!-- שלב 2: עיבוד שם-שם -->
+      <div id="payImpStage2" style="display:none">
+        <div id="payImpProgress" style="background:#e8eaf6;border-radius:8px;padding:8px 14px;margin-bottom:12px;font-size:13px;color:#1a237e;font-weight:bold"></div>
+        <div id="payImpPerson"></div>
+      </div>
+
+    </div>
+    <div class="modal-footer" id="payImpFooter">
+      <button class="btn btn-secondary" onclick="closePayImport()">סגור</button>
+      <button class="btn btn-primary" id="payImpStartBtn" onclick="startPayProcessing()" style="display:none">התחל שיוך תשלומים</button>
+      <span id="payImpNav" style="display:none">
+        <button class="btn btn-secondary" onclick="prevPayRow()">&#x25B6; הקודם</button>
+        <button class="btn btn-secondary" onclick="skipPayRow()">דלג</button>
+        <button class="btn btn-primary" onclick="confirmPayRow()">אשר ועבור לבא &#x25C0;</button>
+      </span>
+    </div>
+  </div>
+</div>
+
+<!-- CREDITS LOG Modal -->
+<div class="modal-overlay" id="creditsLogOverlay">
+  <div class="modal modal-lg" style="max-width:700px">
+    <div class="modal-header"><h2 id="creditsLogTitle">זכויות</h2><button class="modal-close" onclick="closeCreditsLog()">&#x2715;</button></div>
+    <div class="modal-body"><div id="creditsLogBody"></div></div>
+  </div>
+</div>
+
+<!-- RECEIPT Modal -->
+<div class="modal-overlay" id="receiptOverlay">
+  <div class="modal modal-lg" style="max-width:820px">
+    <div class="modal-header"><h2>&#x1F9FE; &#x05E7;&#x05D1;&#x05DC;&#x05D4;</h2><button class="modal-close" onclick="closeReceipt()">&#x2715;</button></div>
+    <div class="modal-body">
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="printReceipt()">&#x1F5A8; הדפס / PDF</button>
+        <button class="btn btn-secondary" onclick="openBlessingEditor()">&#x270D; ערוך ברכה קבועה</button>
+      </div>
+      <div id="receiptContent" style="background:#fff"></div>
+    </div>
+  </div>
+</div>
+
+<!-- BLESSING EDITOR Modal -->
+<div class="modal-overlay" id="blessingOverlay">
+  <div class="modal" style="width:560px">
+    <div class="modal-header"><h2>&#x270D; &#x05D1;&#x05E8;&#x05DB;&#x05D4; &#x05E7;&#x05D1;&#x05D5;&#x05E2;&#x05D4; &#x05D1;&#x05E7;&#x05D1;&#x05DC;&#x05D4;</h2><button class="modal-close" onclick="closeBlessingEditor()">&#x2715;</button></div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:#666;margin-bottom:10px">הנוסח יופיע בתחתית כל קבלה. אפשר לרדת שורה.</p>
+      <textarea id="blessingText" rows="6" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:7px;font-size:14px;line-height:1.7"></textarea>
+      <div id="blessingStatus" style="display:none;margin-top:8px;font-weight:bold"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeBlessingEditor()">ביטול</button>
+      <button class="btn btn-primary" onclick="saveBlessing()">שמור</button>
+    </div>
+  </div>
+</div>
+
+<!-- PASTE IMPORT Modal -->
+<div class="modal-overlay" id="pasteImportOverlay">
+  <div class="modal modal-lg" style="max-width:900px">
+    <div class="modal-header"><h2>&#x1F4E5; &#x05D4;&#x05D3;&#x05D1;&#x05E7;&#x05D4; &#x05DE;&#x05D0;&#x05E7;&#x05E1;&#x05DC; &#x2014; &#x05E0;&#x05D3;&#x05E8;&#x05D9;&#x05DD; &#x05D5;&#x05E0;&#x05D3;&#x05D1;&#x05D5;&#x05EA;</h2><button class="modal-close" onclick="closePasteImport()">&#x2715;</button></div>
+    <div class="modal-body">
+      <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">
+        <div class="form-group"><label>תאריך <span class="required">*</span></label><input type="date" id="piDate" oninput="onPiDateChange()" style="padding:9px;border:1px solid #ccc;border-radius:6px"></div>
+        <div class="form-group"><label>תאריך עברי</label><div class="hebrew-date-box" id="piHebrewDate">בחר תאריך...</div></div>
+        <div class="form-group" style="flex:1;min-width:190px"><label>קטגוריה (עבור א)</label><select id="piForA" style="width:100%;padding:9px;border:1px solid #ccc;border-radius:6px"><option value="">-- ללא --</option></select></div>
+        <div class="form-group" style="flex:1;min-width:190px"><label>קטגוריה (עבור ב)</label><select id="piForB" style="width:100%;padding:9px;border:1px solid #ccc;border-radius:6px"><option value="">-- ללא --</option></select></div>
+      </div>
+      <div style="background:#f5f7ff;border:1px solid #dde3f5;border-radius:8px;padding:10px 12px;margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <b style="font-size:13px">📎 העלאת קובץ:</b>
+        <input type="file" id="piFile" accept=".xlsx,.xls,.csv" onchange="loadExcelFile(this)" style="font-size:13px">
+        <span id="piFileStatus" style="font-size:12px;color:#666"></span>
+      </div>
+      <div style="font-size:13px;color:#666;margin-bottom:6px">
+        או הדבק ידנית — בפורמט: <b>מס' תורם &nbsp;|&nbsp; סכום &nbsp;|&nbsp; הערה</b> (הערה לא חובה). כל שורה = נדר אחד.
+      </div>
+      <textarea id="piText" rows="7" oninput="parsePasteImport()" placeholder="105638	350	הערה כלשהי&#10;101402	120&#10;106478	1000	תרומה" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:7px;font-family:monospace;font-size:13px;direction:ltr;text-align:left"></textarea>
+      <div id="piPreview" style="margin-top:10px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closePasteImport()">ביטול</button>
+      <button class="btn btn-primary" id="piImportBtn" onclick="runPasteImport()">ייבא</button>
+    </div>
+  </div>
+</div>
+
+<!-- ALIYOT REPORT Modal -->
+<div class="modal-overlay" id="aliyotReportOverlay">
+  <div class="modal modal-lg" style="max-width:920px">
+    <div class="modal-header"><h2>&#x1F4DC; &#x05D3;&#x05D5;&#x05D7; &#x05E2;&#x05DC;&#x05D9;&#x05D5;&#x05EA; &#x05DC;&#x05E4;&#x05D9; &#x05EA;&#x05E7;&#x05D5;&#x05E4;&#x05D4;</h2><button class="modal-close" onclick="closeAliyotReport()">&#x2715;</button></div>
+    <div class="modal-body">
+      <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px">
+        <div class="form-group"><label>מתאריך</label><input type="date" id="alFrom" style="padding:9px;border:1px solid #ccc;border-radius:6px"></div>
+        <div class="form-group"><label>עד תאריך</label><input type="date" id="alTo" style="padding:9px;border:1px solid #ccc;border-radius:6px"></div>
+        <div class="form-group"><label>סינון מהיר</label><select id="alQuick" onchange="alQuickRange()" style="padding:9px;border:1px solid #ccc;border-radius:6px"><option value="30">30 יום אחרונים</option><option value="90">3 חודשים אחרונים</option><option value="365">שנה אחרונה</option><option value="">מותאם אישית</option></select></div>
+        <div class="form-group" style="flex:1;min-width:170px;position:relative"><label>סוג עליה (עבור א)</label>
+          <div id="alTypeBtn" onclick="toggleAlTypePanel(event)" style="width:100%;padding:9px;border:1px solid #ccc;border-radius:6px;cursor:pointer;background:#fff;user-select:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">כל העליות &#x25BE;</div>
+          <div id="alTypePanel" style="display:none;position:absolute;z-index:60;background:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.18);max-height:280px;overflow:auto;width:100%;margin-top:2px"></div>
+        </div>
+        <button class="btn btn-primary" onclick="renderAliyotReport()">הצג</button>
+        <button class="btn btn-secondary" onclick="exportAliyotReport()">&#x1F4E5; אקסל</button>
+        <button class="btn btn-secondary" onclick="printAliyotReport()">&#x1F5A8; הדפס</button>
+      </div>
+      <div id="aliyotReportContent"></div>
     </div>
   </div>
 </div>
@@ -1040,6 +1253,13 @@ var filtered = contacts.slice();
 var vows = typeof VOWS_DATA !== 'undefined' ? VOWS_DATA : [];
 var payments = typeof PAYMENTS_DATA !== 'undefined' ? PAYMENTS_DATA : [];
 var paymentMethods = ['מזומן','שיק','העברה בנקאית','כרטיס אשראי','פייבוקס','ביט'];
+var contactTitles = ['הרב','הר"ר',"ר'",'מר','גב\'','משפ\''];
+function populateTitleSelect(){
+  var sel=document.getElementById('fTitle'); if(!sel) return;
+  var cur=sel.value;
+  sel.innerHTML='<option value=""></option>'+contactTitles.map(function(t){return '<option value="'+String(t).replace(/"/g,'&quot;')+'">'+t+'</option>';}).join('');
+  if(cur){ if(contactTitles.indexOf(cur)<0){ sel.insertAdjacentHTML('beforeend','<option value="'+cur.replace(/"/g,'&quot;')+'">'+cur+'</option>'); } sel.value=cur; }
+}
 
 var PAGE_SIZE = 50;
 var cPage=1, vPage=1, pPage=1;
@@ -1050,6 +1270,8 @@ var editContact=null, editVow=null, editPayment=null;
 function currentUser(){return sessionStorage.getItem('crm_user')||'לא ידוע';}
 function currentRole(){return sessionStorage.getItem('crm_role')||'user';}
 function isRestrictedRole(){var r=currentRole();return r==='editor'||r==='viewer';}
+function noAnalytics(){var r=currentRole();return r==='editor'||r==='viewer'||r==='manager';}
+function noGeneralSummary(){return currentRole()==='manager';}
 /* ===== EMAIL SETTINGS ===== */
 function openMailSettings(){
   document.getElementById('mailSettingsOverlay').className='modal-overlay open';
@@ -1083,17 +1305,16 @@ function initUserUI(){
     document.getElementById('manageUsersBtn').style.display='';
     var esb=document.getElementById('emailSettingsBtn'); if(esb)esb.style.display='';
   }
-  // עורך/צופה: הסתרת דוח כללי ופילוחים וגרפים
+  // עורך/צופה: בלי דוח כללי ובלי פילוחים | מנהל מוגבל: דוח כללי כן, פילוחים לא
   var restricted=isRestrictedRole();
+  var hideAnalytics=noAnalytics();
   var gb=document.getElementById('tabBtnGeneralreport');
   var ab=document.getElementById('tabBtnAnalytics');
   if(gb)gb.style.display=restricted?'none':'';
-  if(ab)ab.style.display=restricted?'none':'';
-  if(restricted){
-    // אם נמצאים על לשונית חסומה (ברירת המחדל), עבור לאנשי קשר
-    if(ab&&ab.classList.contains('active')||gb&&gb.classList.contains('active')){
-      switchTab('contacts');
-    }
+  if(ab)ab.style.display=hideAnalytics?'none':'';
+  // אם נמצאים על לשונית חסומה (ברירת המחדל היא פילוחים) — עבור לאנשי קשר
+  if((hideAnalytics&&ab&&ab.classList.contains('active')) || (restricted&&gb&&gb.classList.contains('active'))){
+    switchTab('contacts');
   }
 }
 function openUserMgmt(){
@@ -1114,7 +1335,7 @@ function renderUsersMgmt(){
         '<button class="btn btn-sm" style="background:#e53935;color:white" onclick="removeUser(\''+u.id+'\')">מחק</button></td></tr>';
     }).join('');
 }
-function roleLabel(r){return ({admin:'מנהל',editor:'עורך',treasurer:'גזבר',viewer:'צופה'})[r]||r;}
+function roleLabel(r){return ({admin:'מנהל',manager:'מנהל מוגבל',editor:'עורך',treasurer:'גזבר',viewer:'צופה'})[r]||r;}
 function _userApiResult(r){return r.json().then(function(d){return {ok:r.ok,d:d};});}
 function addUser(){
   var un=document.getElementById('newUsername').value.trim();
@@ -1176,7 +1397,7 @@ function showUserStatus(msg){
 document.getElementById('userMgmtOverlay').addEventListener('mousedown',function(e){if(e.target===this)closeUserMgmt();});
 
 /* ===== GOOGLE SHEETS SYNC ===== */
-var SHEETS_URL='https://script.google.com/macros/s/AKfycbyuJlKaSaz8xWv9Ht48SQUy4sax6POiO8ZR8_kZ5WU6-rACiRi0Ls_h7EPmZ5PK6TBo/exec';
+var SHEETS_URL='';
 function syncToSheets(type,action,data){
   if(!SHEETS_URL)return;
   fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({type:type,action:action,data:data})})
@@ -1340,7 +1561,20 @@ function saveContact(){
     house_num:document.getElementById('fHouse').value.trim(),city:document.getElementById('fCity').value.trim(),
     zip:document.getElementById('fZip').value.trim(),email:document.getElementById('fEmail').value.trim(),
     display_name:calcDisplayName(ln,fn,fa,id)};
-  if(editContact!==null){c._idx=editContact;contacts[editContact]=c;syncToSheets('contact','edit',c);}
+  if(editContact!==null){
+    var oldName=contacts[editContact]?contacts[editContact].display_name:null;
+    c._idx=editContact;contacts[editContact]=c;syncToSheets('contact','edit',c);
+    // שינוי שם -> עדכון מיידי גם בנדרים ובתשלומים (השרת מעדכן במקביל את מסד הנתונים והגיליון)
+    if(oldName && oldName!==c.display_name){
+      var n=0;
+      vows.forEach(function(v){ if(v.name===oldName){ v.name=c.display_name; n++; } });
+      payments.forEach(function(p){ if(p.name===oldName){ p.name=c.display_name; n++; } });
+      if(n) setTimeout(function(){ alert('✅ השם עודכן ב-'+n+' רשומות נדרים/תשלומים'); },100);
+      if(typeof vFiltered!=='undefined') onVowsSearch();
+      if(typeof pFiltered!=='undefined') onPaymentsSearch();
+      populateReportSelect();
+    }
+  }
   else{c._idx=contacts.length;contacts.push(c);syncToSheets('contact','add',c);}
   refreshNameSelects();closeModal();onSearch();
 }
@@ -1448,6 +1682,802 @@ function saveBulkVows(){
   onVowsSearch();
   setTimeout(closeBulkVows,1300);
 }
+
+/* ===== העלאת תשלומים מאקסל + שיוך לחובות פתוחים ===== */
+var _impRows=[], _impIdx=0, _impStats={created:0, credited:0, skipped:0};
+
+function openPayImport(){
+  _impRows=[]; _impIdx=0; _impStats={created:0,credited:0,skipped:0};
+  document.getElementById('payImpStage1').style.display='';
+  document.getElementById('payImpStage2').style.display='none';
+  document.getElementById('payImpStartBtn').style.display='none';
+  document.getElementById('payImpNav').style.display='none';
+  document.getElementById('payImpPreview').innerHTML='';
+  var f=document.getElementById('payImpFile'); if(f) f.value='';
+  document.getElementById('payImpFileStatus').textContent='';
+  document.getElementById('payImportTitle').innerHTML='&#x1F4E5; העלאת תשלומים מאקסל';
+  loadCreditBalances();
+  document.getElementById('payImportOverlay').className='modal-overlay open';
+}
+function closePayImport(){
+  if(_impRows.length && _impIdx<_impRows.length && document.getElementById('payImpStage2').style.display!=='none'){
+    if(!confirm('יש תשלומים שעדיין לא שויכו. לסגור בכל זאת?')) return;
+  }
+  document.getElementById('payImportOverlay').className='modal-overlay';
+}
+/* קריאת קובץ האקסל */
+function loadPayExcel(input){
+  var f=input.files && input.files[0];
+  var st=document.getElementById('payImpFileStatus');
+  if(!f){ st.textContent=''; return; }
+  st.style.color='#666'; st.textContent='טוען...';
+  ensureXlsxLib(function(ok){
+    if(!ok){ st.style.color='#c62828'; st.textContent='❌ טעינת מנוע האקסל נכשלה'; return; }
+    var reader=new FileReader();
+    reader.onload=function(e){
+      try{
+        var wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+        var sheet=wb.Sheets[wb.SheetNames[0]];
+        var rows=XLSX.utils.sheet_to_json(sheet,{header:1,raw:false,defval:''});
+        var byId=contactsById();
+        _impRows=[];
+        rows.forEach(function(r,idx){
+          if(!r||!r.length) return;
+          var rawDate=String(r[0]==null?'':r[0]).trim();
+          var rawId=String(r[1]==null?'':r[1]).trim();
+          var rawAmt=String(r[2]==null?'':r[2]).trim();
+          var method=String(r[3]==null?'':r[3]).trim();
+          var note=String(r[4]==null?'':r[4]).trim();
+          if(!rawDate && !rawId && !rawAmt) return;
+          if(idx===0 && !/\d/.test(rawId)) return;            // שורת כותרת
+          var date=normalizeDate(rawDate);
+          var id=rawId.replace(/[^0-9]/g,'');
+          var amount=parseFloat(rawAmt.replace(/[₪,\s]/g,''))||0;
+          var c=byId[id];
+          var err='';
+          if(!date) err='תאריך לא תקין';
+          else if(!c) err='מספר תורם לא נמצא';
+          else if(amount<=0) err='סכום לא תקין';
+          _impRows.push({date:date,id:id,name:c?c.display_name:'',amount:amount,method:method,note:note,
+                         ok:!err, err:err, done:false, skipped:false});
+        });
+        renderPayImpPreview();
+        st.style.color='#2e7d32';
+        st.textContent='✅ נטענו '+_impRows.length+' שורות מתוך "'+f.name+'"';
+      }catch(err){ st.style.color='#c62828'; st.textContent='❌ שגיאה בקריאת הקובץ: '+err.message; }
+    };
+    reader.readAsArrayBuffer(f);
+  });
+}
+/* המרת תאריך מפורמטים שונים ל-YYYY-MM-DD */
+function normalizeDate(s){
+  if(!s) return '';
+  s=String(s).trim();
+  var m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);                       // 2026-09-24
+  if(m) return m[1]+'-'+pad2(m[2])+'-'+pad2(m[3]);
+  m=s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/);             // 24/09/2026
+  if(m){ var y=m[3].length===2?('20'+m[3]):m[3]; return y+'-'+pad2(m[2])+'-'+pad2(m[1]); }
+  if(/^\d+(\.\d+)?$/.test(s)){                                          // מספר סידורי של אקסל
+    var d=new Date(Date.UTC(1899,11,30)+parseFloat(s)*86400000);
+    if(!isNaN(d)) return d.toISOString().slice(0,10);
+  }
+  var d2=new Date(s);
+  return isNaN(d2)?'':d2.toISOString().slice(0,10);
+}
+function pad2(n){ n=String(n); return n.length<2?('0'+n):n; }
+
+function renderPayImpPreview(){
+  var el=document.getElementById('payImpPreview');
+  if(!_impRows.length){ el.innerHTML=''; document.getElementById('payImpStartBtn').style.display='none'; return; }
+  var okN=_impRows.filter(function(r){return r.ok;}).length, badN=_impRows.length-okN;
+  var total=_impRows.filter(function(r){return r.ok;}).reduce(function(s,r){return s+r.amount;},0);
+  var rows=_impRows.map(function(r){
+    return '<tr style="background:'+(r.ok?'#fff':'#fff4f4')+'">'+
+      '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0">'+(r.ok?'✅':'⚠️')+'</td>'+
+      '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0">'+(r.date||'—')+'</td>'+
+      '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0">'+(r.id||'—')+'</td>'+
+      '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0">'+(r.name||'<span style="color:#c62828">'+r.err+'</span>')+'</td>'+
+      '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0;text-align:left">₪'+r.amount.toLocaleString()+'</td>'+
+      '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0">'+(r.method||'')+'</td>'+
+      '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0;font-size:12px;color:#666">'+(r.note||'')+'</td></tr>';
+  }).join('');
+  el.innerHTML=
+    '<div style="display:flex;gap:10px;margin-bottom:8px;flex-wrap:wrap">'+
+      '<div class="summary-card" style="flex:1"><div class="val" style="color:#2e7d32">'+okN+'</div><div class="lbl">תשלומים תקינים</div></div>'+
+      '<div class="summary-card" style="flex:1"><div class="val" style="color:'+(badN?'#c62828':'#999')+'">'+badN+'</div><div class="lbl">שורות עם בעיה</div></div>'+
+      '<div class="summary-card" style="flex:1"><div class="val">₪'+total.toLocaleString()+'</div><div class="lbl">סה"כ לשיוך</div></div>'+
+    '</div>'+
+    (badN?'<div style="background:#fff3e0;border:1px solid #e6cf8f;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:13px">⚠️ שורות עם בעיה יידלגו אוטומטית.</div>':'')+
+    '<div style="border:1px solid #eee;border-radius:8px;overflow:auto;max-height:38vh"><table style="width:100%;border-collapse:collapse;font-size:13px">'+
+    '<thead><tr style="background:#f5f7ff"><th style="padding:8px;width:34px"></th><th style="padding:8px;text-align:right">תאריך</th><th style="padding:8px;text-align:right">מס\' תורם</th><th style="padding:8px;text-align:right">שם</th><th style="padding:8px;text-align:left">סכום</th><th style="padding:8px;text-align:right">אופן</th><th style="padding:8px;text-align:right">הערה</th></tr></thead>'+
+    '<tbody>'+rows+'</tbody></table></div>';
+  document.getElementById('payImpStartBtn').style.display = okN? '' : 'none';
+}
+/* שיוך אוטומטי: מהחוב הישן לחדש */
+function autoAllocate(openVows, amount){
+  var left=amount, alloc={};
+  openVows.forEach(function(v){
+    if(left<=0.001){ alloc[v.id]=0; return; }
+    var take=Math.min(left, v.remain);
+    alloc[v.id]=Math.round(take*100)/100;
+    left-=take;
+  });
+  return alloc;
+}
+function openVowsFor(name){
+  var paidMap={};
+  payments.forEach(function(p){ var k=String(p.vowId); paidMap[k]=(paidMap[k]||0)+(p.amount||0); });
+  return vows.filter(function(v){ return v.name===name; })
+    .map(function(v){ return {v:v, id:v.id, remain:(v.amount||0)-(paidMap[String(v.id)]||0)}; })
+    .filter(function(x){ return x.remain>0.001; })
+    .sort(function(a,b){ return String(a.v.date||'').localeCompare(String(b.v.date||'')); });
+}
+function startPayProcessing(){
+  _impIdx=-1;
+  document.getElementById('payImpStage1').style.display='none';
+  document.getElementById('payImpStage2').style.display='';
+  document.getElementById('payImpStartBtn').style.display='none';
+  document.getElementById('payImpNav').style.display='';
+  nextPayRow();
+}
+function nextPayRow(){
+  do { _impIdx++; } while(_impIdx<_impRows.length && (!_impRows[_impIdx].ok || _impRows[_impIdx].done || _impRows[_impIdx].skipped));
+  if(_impIdx>=_impRows.length){ finishPayImport(); return; }
+  renderPayProcess();
+}
+function prevPayRow(){
+  var i=_impIdx-1;
+  while(i>=0 && !_impRows[i].ok) i--;
+  if(i<0){ alert('זו השורה הראשונה'); return; }
+  _impIdx=i; renderPayProcess();
+}
+function skipPayRow(){ if(_impRows[_impIdx]) _impRows[_impIdx].skipped=true; _impStats.skipped++; nextPayRow(); }
+function renderPayProcess(){
+  var r=_impRows[_impIdx];
+  var openList=openVowsFor(r.name);
+  var alloc=autoAllocate(openList, r.amount);
+  var doneN=_impRows.filter(function(x){return x.done;}).length;
+  var okTotal=_impRows.filter(function(x){return x.ok;}).length;
+  document.getElementById('payImpProgress').textContent='תשלום '+(doneN+1)+' מתוך '+okTotal+'  ·  הושלמו: '+doneN+'  ·  דולגו: '+_impStats.skipped;
+
+  var rowsHtml = openList.length ? openList.map(function(o){
+    var lbl=[o.v.forA,o.v.forB].filter(Boolean).join(' / ')||o.v.hebrewDate||('התחייבות '+o.id);
+    return '<tr>'+
+      '<td style="padding:7px 9px;border-bottom:1px solid #f0f0f0;white-space:nowrap">'+(o.v.date||'')+'</td>'+
+      '<td style="padding:7px 9px;border-bottom:1px solid #f0f0f0">'+lbl+'</td>'+
+      '<td style="padding:7px 9px;border-bottom:1px solid #f0f0f0;text-align:left;color:#c62828;font-weight:bold">₪'+o.remain.toLocaleString()+'</td>'+
+      '<td style="padding:7px 9px;border-bottom:1px solid #f0f0f0"><input type="number" class="impAlloc" data-vowid="'+o.id+'" data-remain="'+o.remain+'" min="0" step="1" value="'+(alloc[o.id]||'')+'" oninput="onAllocInput()" style="width:105px;padding:5px;border:1px solid #ccc;border-radius:4px"></td>'+
+      '</tr>';
+  }).join('') : '<tr><td colspan="4" style="padding:14px;text-align:center;color:#2e7d32">✓ אין חובות פתוחים — כל הסכום יישמר כזכות</td></tr>';
+
+  document.getElementById('payImpPerson').innerHTML=
+    '<div style="background:#fff;border:2px solid #1a237e;border-radius:10px;padding:14px 16px;margin-bottom:12px">'+
+      '<div style="font-size:19px;font-weight:bold;color:#1a237e">'+r.name+'</div>'+
+      '<div style="font-size:13px;color:#666;margin-top:4px">'+
+        'תאריך: <b>'+r.date+'</b> &nbsp;·&nbsp; אופן: <b>'+(r.method||'—')+'</b>'+(r.note?' &nbsp;·&nbsp; הערה: '+r.note:'')+
+      '</div>'+
+      '<div style="font-size:26px;font-weight:bold;color:#2e7d32;margin-top:6px">שולם: ₪'+r.amount.toLocaleString()+'</div>'+
+      (creditOf(r.name)>0?'<div style="margin-top:6px;font-size:13px;color:#1b5e20">💰 יש לו גם זכות קיימת: ₪'+creditOf(r.name).toLocaleString()+'</div>':'')+
+    '</div>'+
+    '<div style="font-size:14px;font-weight:bold;color:#333;margin-bottom:6px">שיוך לחובות פתוחים <span style="font-weight:normal;color:#888;font-size:12px">(מולא אוטומטית מהחוב הישן — ניתן לשנות)</span></div>'+
+    '<div style="border:1px solid #eee;border-radius:8px;overflow:auto;max-height:34vh"><table style="width:100%;border-collapse:collapse;font-size:13px">'+
+    '<thead><tr style="background:#f5f7ff"><th style="padding:8px;text-align:right">תאריך</th><th style="padding:8px;text-align:right">עבור</th><th style="padding:8px;text-align:left">נותר</th><th style="padding:8px;text-align:right">לשייך</th></tr></thead>'+
+    '<tbody>'+rowsHtml+'</tbody></table></div>'+
+    '<div id="impAllocSummary" style="margin-top:10px;padding:10px 14px;border-radius:8px;font-size:14px;font-weight:bold"></div>';
+  onAllocInput();
+}
+function onAllocInput(){
+  var r=_impRows[_impIdx];
+  var inputs=document.querySelectorAll('#payImpPerson .impAlloc');
+  var sum=0, over=false;
+  inputs.forEach(function(inp){
+    var v=parseFloat(inp.value)||0;
+    var rem=parseFloat(inp.getAttribute('data-remain'))||0;
+    if(v>rem+0.001){ inp.style.borderColor='#e53935'; over=true; } else inp.style.borderColor='#ccc';
+    sum+=v;
+  });
+  var left=Math.round((r.amount-sum)*100)/100;
+  var box=document.getElementById('impAllocSummary');
+  if(!box) return;
+  if(over){ box.style.background='#ffebee'; box.style.color='#c62828'; box.textContent='⚠️ אחד הסכומים גדול מהחוב שנותר — תקן לפני אישור'; }
+  else if(sum>r.amount+0.001){ box.style.background='#ffebee'; box.style.color='#c62828'; box.textContent='⚠️ שויך ₪'+sum.toLocaleString()+' — יותר מהתשלום (₪'+r.amount.toLocaleString()+')'; }
+  else if(left>0.001){ box.style.background='#e8f5e9'; box.style.color='#1b5e20'; box.textContent='שויך ₪'+sum.toLocaleString()+' · נותר עודף ₪'+left.toLocaleString()+' → יישמר כזכות'; }
+  else { box.style.background='#e8f5e9'; box.style.color='#1b5e20'; box.textContent='✓ שויך במלואו: ₪'+sum.toLocaleString(); }
+}
+function confirmPayRow(){
+  var r=_impRows[_impIdx];
+  var inputs=document.querySelectorAll('#payImpPerson .impAlloc');
+  var items=[], sum=0, over=false;
+  inputs.forEach(function(inp){
+    var v=parseFloat(inp.value)||0;
+    var rem=parseFloat(inp.getAttribute('data-remain'))||0;
+    if(v>rem+0.001) over=true;
+    if(v>0){ items.push({vowId:inp.getAttribute('data-vowid'), amount:v}); sum+=v; }
+  });
+  if(over){ alert('אחד הסכומים גדול מהחוב שנותר. תקן ונסה שוב.'); return; }
+  if(sum>r.amount+0.001){ alert('סך השיוך גדול מהתשלום. תקן ונסה שוב.'); return; }
+  var leftover=Math.round((r.amount-sum)*100)/100;
+  if(!items.length && leftover<=0){ alert('לא שויך כלום.'); return; }
+  if(leftover>0.001 && !confirm('נותר עודף של ₪'+leftover.toLocaleString()+'.\nלשמור אותו כזכות עבור '+r.name+'?')){
+    return; // נותנים למשתמש לתקן את השיוך
+  }
+  var base=Date.now()*100, heb=dateStrToHeb(r.date);
+  items.forEach(function(it,i){
+    var pmt={id:base+i,date:r.date,hebrewDate:heb,name:r.name,vowId:parseInt(it.vowId)||it.vowId,
+      amount:it.amount,method:r.method,numPayments:1,note:r.note,_user:currentUser()};
+    payments.push(pmt); syncToSheets('payment','add',pmt); _impStats.created++;
+  });
+  if(leftover>0.001){ postCredit(r.name, leftover, r.date, 'עודף מהעלאת תשלומים'); _impStats.credited+=leftover; }
+  r.done=true;
+  onPaymentsSearch();
+  nextPayRow();
+}
+function finishPayImport(){
+  document.getElementById('payImpNav').style.display='none';
+  document.getElementById('payImpProgress').textContent='הסתיים';
+  document.getElementById('payImpPerson').innerHTML=
+    '<div style="text-align:center;padding:26px">'+
+      '<div style="font-size:44px">✅</div>'+
+      '<div style="font-size:20px;font-weight:bold;color:#1b5e20;margin:10px 0">השיוך הושלם</div>'+
+      '<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:14px">'+
+        '<div class="summary-card"><div class="val">'+_impStats.created+'</div><div class="lbl">תשלומים נוצרו</div></div>'+
+        '<div class="summary-card"><div class="val" style="color:#1b5e20">₪'+_impStats.credited.toLocaleString()+'</div><div class="lbl">נשמר כזכות</div></div>'+
+        '<div class="summary-card"><div class="val" style="color:#999">'+_impStats.skipped+'</div><div class="lbl">דולגו</div></div>'+
+      '</div></div>';
+  onPaymentsSearch();
+  if(document.getElementById('tab-vows').classList.contains('active'))renderVows();
+}
+
+/* ===== זכויות (עודף תשלום שנשמר לתורם) ===== */
+var _creditBal={};   // שם -> יתרת זכות
+function loadCreditBalances(cb){
+  if(!window.apiFetch){ if(cb)cb(); return; }
+  window.apiFetch('/credits/balances').then(function(r){return r.ok?r.json():[];}).then(function(list){
+    _creditBal={};
+    (Array.isArray(list)?list:[]).forEach(function(x){ _creditBal[x.person_name]=parseFloat(x.balance)||0; });
+    if(cb)cb();
+  }).catch(function(){ if(cb)cb(); });
+}
+function creditOf(name){ return _creditBal[name]||0; }
+/* באנר הזכות במודל התשלום */
+function renderCreditBanner(name){
+  var b=document.getElementById('creditBanner');
+  var act=document.getElementById('creditActions');
+  if(!b) return;
+  // שדות הזכות זמינים רק בהוספת תשלום (לא בעריכה)
+  if(act) act.style.display = (editPayment===null && name) ? '' : 'none';
+  var bal=creditOf(name);
+  if(!name || !bal){ b.style.display='none'; b.innerHTML=''; }
+  else if(bal>0){
+    b.style.display='';
+    b.innerHTML='<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;font-size:14px;color:#1b5e20">'+
+      '💰 <b>יש לו זכות של ₪'+bal.toLocaleString()+'</b> מתשלום קודם — אפשר לנצל אותה בתשלום זה.'+
+      ' <button type="button" class="btn btn-sm" style="background:#2e7d32;color:#fff;margin-right:8px" onclick="useAllCredit()">נצל הכל</button>'+
+      ' <button type="button" class="btn btn-secondary btn-sm" onclick="openCreditsLog(\''+String(name).replace(/'/g,"\\'")+'\')">פירוט</button></div>';
+  } else {
+    b.style.display='';
+    b.innerHTML='<div style="background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;padding:10px 14px;font-size:14px;color:#e65100">⚠️ יתרת זכות שלילית: ₪'+bal.toLocaleString()+'</div>';
+  }
+  var hint=document.getElementById('pfUseCreditHint');
+  if(hint) hint.textContent = bal>0 ? ('זמין: ₪'+bal.toLocaleString()) : 'אין זכות זמינה';
+}
+function useAllCredit(){
+  var name=document.getElementById('pfName').value.trim();
+  var bal=creditOf(name);
+  if(bal>0){ document.getElementById('pfUseCredit').value=bal; onCreditFieldsInput(); }
+}
+function onCreditFieldsInput(){
+  var name=document.getElementById('pfName').value.trim();
+  var bal=creditOf(name);
+  var el=document.getElementById('pfUseCredit');
+  var v=parseFloat(el.value)||0;
+  el.style.borderColor = (v>bal+0.001) ? '#e53935' : '#ccc';
+  var hint=document.getElementById('pfUseCreditHint');
+  if(hint) hint.textContent = (v>bal+0.001) ? ('⚠️ חורג מהזכות הזמינה (₪'+bal.toLocaleString()+')') : ('זמין: ₪'+bal.toLocaleString());
+}
+/* רישום תנועת זכות בשרת */
+function postCredit(person, amount, date, note, cb){
+  window.apiFetch('/credits',{method:'POST',body:{
+    person:person, amount:amount, date:date, hebrew_date:dateStrToHeb(date), note:note||''
+  }}).then(function(r){return r.ok?r.json():null;}).then(function(){
+    _creditBal[person]=(_creditBal[person]||0)+amount;
+    if(cb)cb();
+  }).catch(function(){ if(cb)cb(); });
+}
+/* יומן זכויות של אדם */
+function openCreditsLog(name){
+  window.apiFetch('/credits?person='+encodeURIComponent(name))
+    .then(function(r){return r.ok?r.json():[];})
+    .then(function(list){
+      var bal=creditOf(name);
+      var rows=(list||[]).map(function(c){
+        var a=parseFloat(c.amount)||0;
+        return '<tr><td style="padding:6px 9px;border-bottom:1px solid #f0f0f0">'+(c.hebrew_date||'')+'</td>'+
+          '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0">'+String(c.date||'').slice(0,10)+'</td>'+
+          '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0;text-align:left;font-weight:bold;color:'+(a>0?'#2e7d32':'#c62828')+'">'+(a>0?'+':'')+'₪'+a.toLocaleString()+'</td>'+
+          '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0;font-size:12px;color:#666">'+(c.note||'')+'</td></tr>';
+      }).join('') || '<tr><td colspan="4" style="padding:14px;text-align:center;color:#888">אין תנועות</td></tr>';
+      document.getElementById('creditsLogTitle').textContent='זכויות — '+name;
+      document.getElementById('creditsLogBody').innerHTML=
+        '<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:15px;color:#1b5e20">יתרת זכות נוכחית: <b>₪'+bal.toLocaleString()+'</b></div>'+
+        '<div style="border:1px solid #eee;border-radius:8px;overflow:auto;max-height:44vh"><table style="width:100%;border-collapse:collapse;font-size:13px">'+
+        '<thead><tr style="background:#f5f7ff"><th style="padding:8px;text-align:right">תאריך עברי</th><th style="padding:8px;text-align:right">תאריך</th><th style="padding:8px;text-align:left">סכום</th><th style="padding:8px;text-align:right">הערה</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+      document.getElementById('creditsLogOverlay').className='modal-overlay open';
+    }).catch(function(){ alert('שגיאה בטעינת הזכויות'); });
+}
+function closeCreditsLog(){document.getElementById('creditsLogOverlay').className='modal-overlay';}
+
+/* ===== קבלה ===== */
+var _blessingText='';
+var _receiptIds=[];
+function loadBlessing(cb){
+  if(!window.apiFetch){ if(cb)cb(); return; }
+  window.apiFetch('/settings/blessing').then(function(r){return r.ok?r.json():null;}).then(function(d){
+    if(d && typeof d.text==='string') _blessingText=d.text;
+    if(cb)cb();
+  }).catch(function(){ if(cb)cb(); });
+}
+function openBlessingEditor(){
+  document.getElementById('blessingText').value=_blessingText||'';
+  document.getElementById('blessingStatus').style.display='none';
+  document.getElementById('blessingOverlay').className='modal-overlay open';
+}
+function closeBlessingEditor(){document.getElementById('blessingOverlay').className='modal-overlay';}
+function saveBlessing(){
+  var t=document.getElementById('blessingText').value;
+  window.apiFetch('/settings/blessing',{method:'POST',body:{text:t}})
+    .then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
+    .then(function(res){
+      var st=document.getElementById('blessingStatus');st.style.display='block';
+      if(res.ok){
+        _blessingText=t; st.style.color='#2e7d32'; st.textContent='✅ נשמר';
+        if(_receiptIds.length) renderReceipt(_receiptIds);   // רענון הקבלה הפתוחה
+        setTimeout(closeBlessingEditor,700);
+      } else { st.style.color='#c62828'; st.textContent='❌ '+(res.d.error||'שמירה נכשלה'); }
+    }).catch(function(){ alert('שגיאת חיבור לשרת'); });
+}
+function closeReceipt(){document.getElementById('receiptOverlay').className='modal-overlay';}
+function openReceipt(ids){
+  _receiptIds = Array.isArray(ids)?ids:[ids];
+  document.getElementById('receiptOverlay').className='modal-overlay open';
+  if(_blessingText) renderReceipt(_receiptIds);
+  else loadBlessing(function(){ renderReceipt(_receiptIds); });
+}
+/* קבלה מטבלת התשלומים — אוספת את כל התשלומים של אותו אדם באותו תאריך,
+   כך שתשלום עבור כמה התחייבויות מופיע כקבלה אחת עם טבלה */
+function receiptForPayment(idx){
+  var p=payments[idx]; if(!p) return;
+  var ids=payments.filter(function(x){
+    return x.name===p.name && String(x.date||'')===String(p.date||'');
+  }).map(function(x){return x.id;});
+  openReceipt(ids.length?ids:[p.id]);
+}
+function renderReceipt(ids){
+  var list=payments.filter(function(p){ return ids.indexOf(p.id)>=0; });
+  if(!list.length){ document.getElementById('receiptContent').innerHTML='<div style="padding:20px;text-align:center;color:#888">התשלום לא נמצא</div>'; return; }
+  var name=list[0].name||'';
+  var contact=null;
+  for(var i=0;i<contacts.length;i++){ if(contacts[i].display_name===name){contact=contacts[i];break;} }
+  var titlePrefix=(contact&&contact.title)?contact.title+' ':'';
+  var payDate=list[0].date||'';
+  var total=list.reduce(function(s,p){return s+(p.amount||0);},0);
+
+  // מיון לפי תאריך ההתחייבות (מהישן לחדש) כדי שהטבלה תהיה קריאה
+  list.sort(function(a,b){
+    var va=null,vb=null;
+    for(var i=0;i<vows.length;i++){
+      if(String(vows[i].id)===String(a.vowId)) va=vows[i];
+      if(String(vows[i].id)===String(b.vowId)) vb=vows[i];
+    }
+    return String(va&&va.date||'').localeCompare(String(vb&&vb.date||''));
+  });
+  // מה נסגר: לכל תשלום — הנדר שלו, וכמה נותר בו אחרי התשלום
+  var rows=list.map(function(p){
+    var vow=null;
+    for(var i=0;i<vows.length;i++){ if(String(vows[i].id)===String(p.vowId)){vow=vows[i];break;} }
+    var desc = vow ? ([vow.forA,vow.forB].filter(Boolean).join(' / ') || vow.hebrewDate || ('התחייבות '+vow.id)) : '—';
+    var vowAmt = vow?(vow.amount||0):0;
+    var paidAll = vow?getPaidForVow(vow.id):0;
+    var remain = Math.max(0, vowAmt-paidAll);
+    var status = !vow ? '—' : (remain<=0.001
+      ? '<span style="color:#2e7d32;font-weight:bold">נסגר במלואו ✓</span>'
+      : '<span style="color:#c62828">נותרו ₪'+remain.toLocaleString()+'</span>');
+    return '<tr>'+
+      '<td style="padding:9px 10px;border-bottom:1px solid #e8e0c8">'+(vow&&vow.hebrewDate?vow.hebrewDate:(vow&&vow.date?vow.date:''))+'</td>'+
+      '<td style="padding:9px 10px;border-bottom:1px solid #e8e0c8">'+desc+'</td>'+
+      '<td style="padding:9px 10px;border-bottom:1px solid #e8e0c8;text-align:left">₪'+vowAmt.toLocaleString()+'</td>'+
+      '<td style="padding:9px 10px;border-bottom:1px solid #e8e0c8;text-align:left;color:#2e7d32;font-weight:bold">₪'+(p.amount||0).toLocaleString()+'</td>'+
+      '<td style="padding:9px 10px;border-bottom:1px solid #e8e0c8">'+status+'</td>'+
+      '</tr>';
+  }).join('');
+
+  // יתרה כוללת של התורם אחרי התשלום
+  var totCommit=0, totPaid=0;
+  vows.forEach(function(v){ if(v.name===name){ totCommit+=v.amount||0; totPaid+=getPaidForVow(v.id); } });
+  var balance=Math.max(0, totCommit-totPaid);
+
+  var ref=String(list[0].id).slice(-8);
+  var mSeen={}, mList=[];
+  list.forEach(function(p){ var m=(p.method||'').trim(); if(m && !mSeen[m]){ mSeen[m]=1; mList.push(m); } });
+  var method=mList.join(' + ');
+  var bless=(_blessingText||'').replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}).replace(/\n/g,'<br>');
+
+  document.getElementById('receiptContent').innerHTML=
+  '<div id="receiptPaper" style="max-width:760px;margin:0 auto;background:#f7f0db;font-family:Arial,sans-serif">'+
+    '<img src="/assets/letterhead_header.jpg" alt="בית המדרש אלכסנדר" style="width:100%;display:block">'+
+    '<div id="receiptBody" style="padding:22px 34px 26px">'+
+      '<div style="text-align:center;margin-bottom:16px">'+
+        '<div style="font-size:26px;font-weight:bold;color:#5a3a22;letter-spacing:2px">קבלה</div>'+
+        '<div style="font-size:12px;color:#8a7648;margin-top:3px">אסמכתא ' + ref + ' &nbsp;·&nbsp; ' + (payDate?dateStrToHeb(payDate):'') + ' &nbsp;·&nbsp; ' + payDate + '</div>'+
+      '</div>'+
+      '<div style="background:rgba(255,255,255,.55);border:1px solid #e0d3a8;border-radius:8px;padding:12px 16px;margin-bottom:16px">'+
+        '<div style="font-size:13px;color:#777">התקבל בתודה מאת</div>'+
+        '<div style="font-size:19px;font-weight:bold;color:#b8902f;margin-top:2px">'+titlePrefix+name+'</div>'+
+        (contact&&contact.city?'<div style="font-size:12px;color:#888;margin-top:2px">'+contact.city+'</div>':'')+
+      '</div>'+
+      '<div style="text-align:center;background:#fff;border:2px solid #b8902f;border-radius:10px;padding:14px;margin-bottom:18px">'+
+        '<div style="font-size:13px;color:#777">סך התרומה</div>'+
+        '<div style="font-size:30px;font-weight:bold;color:#2e7d32">₪'+total.toLocaleString()+'</div>'+
+        (method?'<div style="font-size:12px;color:#888;margin-top:3px">אופן התשלום: '+method+'</div>':'')+
+      '</div>'+
+      '<div style="font-size:15px;font-weight:bold;color:#5a3a22;border-bottom:2px solid #b8902f;padding-bottom:5px;margin-bottom:8px">'+
+        'עבור ההתחייבויות הבאות'+
+        (list.length>1?'<span style="font-size:12px;font-weight:normal;color:#8a7648"> &nbsp;· קבלה זו כוללת '+list.length+' תשלומים</span>':'')+
+      '</div>'+
+      '<table style="width:100%;border-collapse:collapse;font-size:13px">'+
+        '<thead><tr style="background:#efe5c4;color:#5a3a22">'+
+          '<th style="padding:9px 10px;text-align:right">תאריך</th>'+
+          '<th style="padding:9px 10px;text-align:right">עבור</th>'+
+          '<th style="padding:9px 10px;text-align:left">סכום ההתחייבות</th>'+
+          '<th style="padding:9px 10px;text-align:left">שולם כעת</th>'+
+          '<th style="padding:9px 10px;text-align:right">מצב</th>'+
+        '</tr></thead><tbody>'+rows+'</tbody>'+
+        (list.length>1?'<tfoot><tr style="background:#efe5c4;color:#5a3a22;font-weight:bold">'+
+          '<td colspan="3" style="padding:9px 10px;text-align:right">סה"כ ששולם בקבלה זו</td>'+
+          '<td style="padding:9px 10px;text-align:left;color:#2e7d32">₪'+total.toLocaleString()+'</td>'+
+          '<td></td></tr></tfoot>':'')+
+      '</table>'+
+      '<div style="margin-top:12px;text-align:left;font-size:13px;color:#5a3a22">'+
+        'יתרה כוללת לאחר תשלום זה: <b style="color:'+(balance>0?'#c62828':'#2e7d32')+'">₪'+balance.toLocaleString()+'</b>'+
+        (creditOf(name)>0?'<div style="margin-top:4px;color:#1b5e20">יתרת זכות עומדת לזכותו: <b>₪'+creditOf(name).toLocaleString()+'</b></div>':'')+
+      '</div>'+
+      (bless?'<div style="margin-top:20px;background:rgba(255,255,255,.5);border-right:4px solid #b8902f;border-radius:6px;padding:14px 16px;font-size:14px;line-height:1.9;color:#5a3a22;text-align:center">'+bless+'</div>':'')+
+      '<div style="text-align:center;margin-top:18px;font-size:13px;color:#8a7648">בברכת התורה והמצווה · בית המדרש הגדול אלכסנדר</div>'+
+    '</div>'+
+    '<img src="/assets/letterhead_footer.jpg" alt="אלכסנדר" style="width:100%;display:block">'+
+  '</div>';
+}
+document.getElementById('receiptOverlay').addEventListener('mousedown',function(e){if(e.target===this)closeReceipt();});
+document.getElementById('blessingOverlay').addEventListener('mousedown',function(e){if(e.target===this)closeBlessingEditor();});
+function printReceipt(){
+  var body=document.getElementById('receiptBody');
+  if(!body){alert('אין קבלה להדפסה');return;}
+  // הלטרהד מוגדר כ-fixed כדי שיחזור זהה בכל עמוד, והתוכן זורם ביניהם.
+  // גובה הכותרת/אמבלם מחושב מיחס התמונות (1241x289 / 1241x290) על רוחב A4.
+  var w=window.open('','_blank');
+  w.document.write('<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>קבלה</title>'+
+    '<style>'+
+    '@page{size:A4;margin:0}'+
+    'html,body{margin:0;padding:0;background:#f7f0db;font-family:Arial,sans-serif}'+
+    '*{-webkit-print-color-adjust:exact;print-color-adjust:exact}'+
+    '#hdr{position:fixed;top:0;left:0;right:0;z-index:2}'+
+    '#ftr{position:fixed;bottom:0;left:0;right:0;z-index:2}'+
+    '#hdr img,#ftr img{width:100%;display:block}'+
+    '#content{padding:52mm 12mm 54mm 12mm}'+   /* מרווח לכותרת ולאמבלם בכל עמוד */
+    'table{width:100%;border-collapse:collapse}'+
+    'thead{display:table-header-group}'+        /* כותרת הטבלה חוזרת בכל עמוד */
+    'tfoot{display:table-footer-group}'+
+    'tr{page-break-inside:avoid}'+
+    '</style></head><body>'+
+    '<div id="hdr"><img src="/assets/letterhead_header.jpg" alt=""></div>'+
+    '<div id="ftr"><img src="/assets/letterhead_footer.jpg" alt=""></div>'+
+    '<div id="content">'+body.innerHTML+'</div>'+
+    '</body></html>');
+  w.document.close();
+  // מדפיסים רק אחרי שתמונות הלטרהד נטענו (אחרת יודפס עמוד ריק מהן)
+  var go=function(){ try{ w.focus(); w.print(); }catch(e){} };
+  if(w.document.readyState==='complete') setTimeout(go,400); else w.onload=function(){ setTimeout(go,300); };
+}
+
+/* ===== הדבקה מאקסל — יצירת נדרים מרשימה ===== */
+var _piRows=[];
+function openPasteImport(){
+  document.getElementById('piDate').value='';
+  document.getElementById('piHebrewDate').textContent='בחר תאריך...';
+  document.getElementById('piText').value='';
+  document.getElementById('piPreview').innerHTML='';
+  var pf=document.getElementById('piFile'); if(pf) pf.value='';
+  var pfs=document.getElementById('piFileStatus'); if(pfs) pfs.textContent='';
+  _piRows=[];
+  fillFilter(document.getElementById('piForA'), TABLE1.slice(), '-- ללא --');
+  fillFilter(document.getElementById('piForB'), TABLE2.slice(), '-- ללא --');
+  document.getElementById('piForA').value=''; document.getElementById('piForB').value='';
+  document.getElementById('pasteImportOverlay').className='modal-overlay open';
+}
+function closePasteImport(){document.getElementById('pasteImportOverlay').className='modal-overlay';}
+/* טעינת ספריית האקסל מהשרת שלנו (לא CDN חיצוני) — רק כשצריך */
+function ensureXlsxLib(cb){
+  if(window.XLSX){ cb(true); return; }
+  var s=document.createElement('script');
+  s.src='/assets/xlsx.full.min.js';
+  s.onload=function(){ cb(!!window.XLSX); };
+  s.onerror=function(){ cb(false); };
+  document.head.appendChild(s);
+}
+/* קריאת קובץ Excel/CSV והזרמתו לאותו מנגנון אימות של ההדבקה */
+function loadExcelFile(input){
+  var f=input.files && input.files[0];
+  var st=document.getElementById('piFileStatus');
+  if(!f){ st.textContent=''; return; }
+  st.style.color='#666'; st.textContent='טוען...';
+  ensureXlsxLib(function(ok){
+    if(!ok){ st.style.color='#c62828'; st.textContent='❌ טעינת מנוע האקסל נכשלה — נסה להדביק ידנית'; return; }
+    var reader=new FileReader();
+    reader.onload=function(e){
+      try{
+        var wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+        var sheet=wb.Sheets[wb.SheetNames[0]];
+        var rows=XLSX.utils.sheet_to_json(sheet,{header:1,raw:true,defval:''});
+        var lines=[], skippedHeader=false;
+        rows.forEach(function(r,idx){
+          if(!r || !r.length) return;
+          var id=String(r[0]==null?'':r[0]).trim();
+          var amt=String(r[1]==null?'':r[1]).trim();
+          var note=String(r[2]==null?'':r[2]).trim();
+          if(!id && !amt) return;
+          // דילוג על שורת כותרת (שורה ראשונה שאין בה מספר)
+          if(idx===0 && !/\d/.test(id)){ skippedHeader=true; return; }
+          lines.push(id+'\t'+amt+'\t'+note);
+        });
+        document.getElementById('piText').value=lines.join('\n');
+        parsePasteImport();
+        st.style.color='#2e7d32';
+        st.textContent='✅ נטענו '+lines.length+' שורות מתוך "'+f.name+'"'+(skippedHeader?' (שורת כותרת דולגה)':'');
+      }catch(err){
+        st.style.color='#c62828';
+        st.textContent='❌ שגיאה בקריאת הקובץ: '+err.message;
+      }
+    };
+    reader.onerror=function(){ st.style.color='#c62828'; st.textContent='❌ שגיאה בקריאת הקובץ'; };
+    reader.readAsArrayBuffer(f);
+  });
+}
+function onPiDateChange(){
+  var d=document.getElementById('piDate').value;
+  document.getElementById('piHebrewDate').textContent=d?dateStrToHeb(d):'בחר תאריך...';
+}
+/* מפה: מספר תורם -> איש קשר */
+function contactsById(){
+  var m={};
+  contacts.forEach(function(c){ if(c.id!==undefined && c.id!==null && String(c.id).trim()) m[String(c.id).trim()]=c; });
+  return m;
+}
+function parsePasteImport(){
+  var txt=document.getElementById('piText').value;
+  var byId=contactsById();
+  _piRows=[];
+  txt.split(/\r?\n/).forEach(function(line){
+    if(!line.trim()) return;
+    // זיהוי מפריד לפי עדיפות: טאב (הדבקה מאקסל) > רווחים מרובים > פסיק.
+    // חשוב: לא לפצל לפי פסיק כשיש טאב, אחרת סכום כמו ₪1,250 נשבר.
+    var sep = line.indexOf('\t')>=0 ? /\t/ : (/\s{2,}/.test(line) ? /\s{2,}/ : /,/);
+    var parts=line.split(sep).map(function(s){return s.trim();}).filter(function(s){return s!=='';});
+    if(!parts.length) return;
+    var id=parts[0].replace(/[^0-9]/g,'');
+    var amount=parseFloat(String(parts[1]||'').replace(/[₪,\s]/g,''))||0;
+    var note=parts.slice(2).join(' ').trim();
+    var c=byId[id];
+    _piRows.push({raw:line, id:id, contact:c||null, name:c?c.display_name:'', amount:amount, note:note,
+      ok: !!c && amount>0, err: !c ? 'מספר תורם לא נמצא' : (amount<=0 ? 'סכום לא תקין' : '')});
+  });
+  renderPastePreview();
+}
+function renderPastePreview(){
+  var el=document.getElementById('piPreview');
+  if(!_piRows.length){ el.innerHTML=''; return; }
+  var okCount=_piRows.filter(function(r){return r.ok;}).length;
+  var badCount=_piRows.length-okCount;
+  var total=_piRows.filter(function(r){return r.ok;}).reduce(function(s,r){return s+r.amount;},0);
+  var rows=_piRows.map(function(r){
+    return '<tr style="background:'+(r.ok?'#fff':'#fff4f4')+'">'+
+      '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0">'+(r.ok?'✅':'⚠️')+'</td>'+
+      '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0">'+(r.id||'—')+'</td>'+
+      '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0">'+(r.name||'<span style="color:#c62828">'+r.err+'</span>')+'</td>'+
+      '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0;text-align:left">₪'+r.amount.toLocaleString()+'</td>'+
+      '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0;font-size:12px;color:#666">'+(r.note||'')+'</td>'+
+      '</tr>';
+  }).join('');
+  el.innerHTML=
+    '<div style="display:flex;gap:10px;margin-bottom:8px;flex-wrap:wrap">'+
+      '<div class="summary-card" style="flex:1"><div class="val" style="color:#2e7d32">'+okCount+'</div><div class="lbl">שורות תקינות</div></div>'+
+      '<div class="summary-card" style="flex:1"><div class="val" style="color:'+(badCount?'#c62828':'#999')+'">'+badCount+'</div><div class="lbl">שורות עם בעיה</div></div>'+
+      '<div class="summary-card" style="flex:1"><div class="val">₪'+total.toLocaleString()+'</div><div class="lbl">סה"כ סכום</div></div>'+
+    '</div>'+
+    (badCount?'<div style="background:#fff3e0;border:1px solid #e6cf8f;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:13px">⚠️ שורות עם בעיה <b>לא ייובאו</b>. תקן אותן בהדבקה או המשך בלעדיהן.</div>':'')+
+    '<div style="border:1px solid #eee;border-radius:8px;overflow:auto;max-height:34vh"><table style="width:100%;border-collapse:collapse;font-size:13px">'+
+    '<thead><tr style="background:#f5f7ff"><th style="padding:8px;width:36px"></th><th style="padding:8px;text-align:right">מס\' תורם</th><th style="padding:8px;text-align:right">שם</th><th style="padding:8px;text-align:left">סכום</th><th style="padding:8px;text-align:right">הערה</th></tr></thead>'+
+    '<tbody>'+rows+'</tbody></table></div>';
+  document.getElementById('piImportBtn').textContent = okCount? ('ייבא '+okCount+' רשומות') : 'ייבא';
+}
+function runPasteImport(){
+  var date=document.getElementById('piDate').value;
+  if(!date){alert('יש לבחור תאריך');return;}
+  var good=_piRows.filter(function(r){return r.ok;});
+  if(!good.length){alert('אין שורות תקינות לייבוא');return;}
+  var forA=document.getElementById('piForA').value;
+  var forB=document.getElementById('piForB').value;
+  if(!confirm('לייבא '+good.length+' נדרים בתאריך '+dateStrToHeb(date)+'?')) return;
+  var heb=dateStrToHeb(date), base=Date.now()*100, n=0;
+  good.forEach(function(r,i){
+    var vow={id:base+i, date:date, hebrewDate:heb, name:r.name, forA:forA, forB:forB,
+      amount:r.amount, note:r.note, place:'', _user:currentUser()};
+    vows.push(vow);
+    syncToSheets('vow','add',vow);
+    n++;
+  });
+  alert('✅ יובאו '+n+' נדרים בהצלחה');
+  closePasteImport();
+  populateVowsFilters();
+  onVowsSearch();
+}
+document.getElementById('pasteImportOverlay').addEventListener('mousedown',function(e){if(e.target===this)closePasteImport();});
+
+/* ===== ALIYOT REPORT (דוח עליות לפי תקופה) ===== */
+var _alTypes=[]; // סוגי עליות שנבחרו (ריק = הכל)
+var _alLastList=[]; // הרשימה שהוצגה לאחרונה (לייצוא)
+function exportAliyotReport(){
+  var list=_alLastList||[];
+  var chks=document.querySelectorAll('#aliyotReportContent .alChk');
+  var anyChecked=Array.prototype.some.call(chks,function(c){return c.checked;});
+  var sel=list;
+  if(anyChecked) sel=list.filter(function(v,i){ return chks[i] && chks[i].checked; });
+  if(!sel.length){alert('אין נתונים לייצוא');return;}
+  downloadCsv('דוח_עליות.csv',['תאריך עברי','תאריך','עליה','שם','עבור ב','סכום'],
+    sel.map(function(v){return [v.hebrewDate,v.date,v.forA,v.name,v.forB,(v.amount||0)];}));
+}
+function buildAlTypeList(){
+  var types={};
+  vows.forEach(function(v){var a=(v.forA||'').trim();if(a)types[a]=1;});
+  BULK_ALIYOT.forEach(function(a){types[a]=1;});
+  return Object.keys(types).sort(function(a,b){return a.localeCompare(b,'he');});
+}
+function renderAlTypePanel(){
+  var panel=document.getElementById('alTypePanel');
+  var list=buildAlTypeList();
+  var allChecked=_alTypes.length===0;
+  var html='<label style="display:block;padding:7px 10px;border-bottom:1px solid #eee;cursor:pointer;font-weight:bold"><input type="checkbox" id="alTypeAll" '+(allChecked?'checked':'')+' onchange="toggleAlTypeAll(this)"> כל העליות</label>';
+  html+=list.map(function(a){
+    var checked=_alTypes.indexOf(a)>=0?'checked':'';
+    return '<label style="display:block;padding:5px 10px;cursor:pointer;font-size:13px"><input type="checkbox" class="alTypeChk" value="'+a.replace(/"/g,'&quot;')+'" '+checked+' onchange="onAlTypeChange()"> '+a+'</label>';
+  }).join('');
+  panel.innerHTML=html;
+}
+function toggleAlTypePanel(e){
+  e.stopPropagation();
+  var panel=document.getElementById('alTypePanel');
+  if(panel.style.display==='none'){ renderAlTypePanel(); panel.style.display=''; }
+  else panel.style.display='none';
+}
+function onAlTypeChange(){
+  _alTypes=Array.prototype.map.call(document.querySelectorAll('#alTypePanel .alTypeChk:checked'),function(c){return c.value;});
+  var all=document.getElementById('alTypeAll'); if(all) all.checked=(_alTypes.length===0);
+  updateAlTypeBtn();
+  renderAliyotReport();
+}
+function toggleAlTypeAll(box){
+  if(box.checked){ _alTypes=[]; document.querySelectorAll('#alTypePanel .alTypeChk').forEach(function(c){c.checked=false;}); }
+  updateAlTypeBtn();
+  renderAliyotReport();
+}
+function updateAlTypeBtn(){
+  var btn=document.getElementById('alTypeBtn');
+  if(!btn) return;
+  if(!_alTypes.length) btn.textContent='כל העליות ▾';
+  else if(_alTypes.length===1) btn.textContent=_alTypes[0]+' ▾';
+  else btn.textContent='נבחרו '+_alTypes.length+' סוגים ▾';
+}
+document.addEventListener('click',function(e){
+  var panel=document.getElementById('alTypePanel'), btn=document.getElementById('alTypeBtn');
+  if(panel && btn && panel.style.display!=='none' && !panel.contains(e.target) && e.target!==btn){ panel.style.display='none'; }
+});
+function openAliyotReport(){
+  alQuickRange();
+  _alTypes=[]; updateAlTypeBtn();
+  document.getElementById('alTypePanel').style.display='none';
+  document.getElementById('aliyotReportContent').innerHTML='<div style="padding:20px;text-align:center;color:#888">בחר תקופה ולחץ "הצג"</div>';
+  document.getElementById('aliyotReportOverlay').className='modal-overlay open';
+  renderAliyotReport();
+}
+function closeAliyotReport(){document.getElementById('aliyotReportOverlay').className='modal-overlay';}
+function alQuickRange(){
+  var days=document.getElementById('alQuick').value;
+  if(!days) return; // מותאם אישית — לא נוגעים
+  var to=new Date(), from=new Date(to.getTime()-parseInt(days)*86400000);
+  document.getElementById('alTo').value=isoDate(to);
+  document.getElementById('alFrom').value=isoDate(from);
+}
+function renderAliyotReport(){
+  var from=document.getElementById('alFrom').value, to=document.getElementById('alTo').value;
+  var el=document.getElementById('aliyotReportContent');
+  var list=vows.filter(function(v){
+    if(!(v.forA||'').trim()) return false;            // רק רשומות עם עליה
+    if(_alTypes.length && _alTypes.indexOf(v.forA||'')<0) return false;  // סינון מרובה
+    var d=v.date||'';
+    if(from && d<from) return false;
+    if(to && d>to) return false;
+    return true;
+  });
+  list.sort(function(a,b){return String(a.date||'').localeCompare(String(b.date||''));});
+  _alLastList=list;
+  var total=0; list.forEach(function(v){total+=v.amount||0;});
+  var rangeLbl=(from?dateStrToHeb(from):'תחילה')+' – '+(to?dateStrToHeb(to):'סוף');
+  var th='padding:9px;position:sticky;top:0;background:#f5f7ff;';
+  var rows=list.length?list.map(function(v){
+    return '<tr>'+
+      '<td style="padding:7px 9px;border-bottom:1px solid #f0f0f0;text-align:center"><input type="checkbox" class="alChk" data-amt="'+(v.amount||0)+'" onchange="onAlSelect()"></td>'+
+      '<td style="padding:7px 9px;border-bottom:1px solid #f0f0f0;white-space:nowrap">'+(v.hebrewDate||'')+'</td>'+
+      '<td style="padding:7px 9px;border-bottom:1px solid #f0f0f0">'+(v.date||'')+'</td>'+
+      '<td style="padding:7px 9px;border-bottom:1px solid #f0f0f0;font-weight:bold;color:#1a237e">'+(v.forA||'')+'</td>'+
+      '<td style="padding:7px 9px;border-bottom:1px solid #f0f0f0"><b>'+(v.name||'')+'</b></td>'+
+      '<td style="padding:7px 9px;border-bottom:1px solid #f0f0f0">'+(v.forB||'')+'</td>'+
+      '<td style="padding:7px 9px;border-bottom:1px solid #f0f0f0;text-align:left">₪'+(v.amount||0).toLocaleString()+'</td>'+
+      '</tr>';
+  }).join(''):'<tr><td colspan="7" style="padding:16px;text-align:center;color:#888">לא נמצאו עליות בתקופה זו</td></tr>';
+  el.innerHTML=
+    '<div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap">'+
+      '<div class="summary-card" style="flex:1"><div class="val">'+list.length+'</div><div class="lbl">עליות בתקופה</div></div>'+
+      '<div class="summary-card" style="flex:1"><div class="val">₪'+total.toLocaleString()+'</div><div class="lbl">סה"כ סכום</div></div>'+
+    '</div>'+
+    '<div style="font-size:13px;color:#666;margin-bottom:6px">תקופה: '+rangeLbl+(_alTypes.length?(' • '+_alTypes.join(', ')):'')+'</div>'+
+    '<div id="alSelBar" style="display:none;background:#e8eaf6;border:1px solid #c5cae9;border-radius:7px;padding:8px 14px;margin-bottom:8px;font-weight:bold;color:#1a237e"></div>'+
+    '<div style="border:1px solid #eee;border-radius:8px;overflow:auto;max-height:48vh"><table style="width:100%;border-collapse:collapse;font-size:13px">'+
+    '<thead><tr style="background:#f5f7ff"><th style="'+th+'text-align:center;width:36px"><input type="checkbox" onclick="toggleAlAll(this)" title="בחר הכל"></th><th style="'+th+'text-align:right">תאריך עברי</th><th style="'+th+'text-align:right">תאריך</th><th style="'+th+'text-align:right">עליה</th><th style="'+th+'text-align:right">שם</th><th style="'+th+'text-align:right">עבור ב</th><th style="'+th+'text-align:left">סכום</th></tr></thead>'+
+    '<tbody>'+rows+'</tbody></table></div>';
+  onAlSelect();
+}
+function onAlSelect(){
+  var chks=document.querySelectorAll('#aliyotReportContent .alChk');
+  var n=0,sum=0;
+  chks.forEach(function(c){ if(c.checked){ n++; sum+=parseFloat(c.getAttribute('data-amt'))||0; } });
+  var bar=document.getElementById('alSelBar');
+  if(!bar) return;
+  if(n>0){ bar.style.display=''; bar.textContent='✓ נבחרו '+n+' שורות · סה"כ ₪'+sum.toLocaleString(); }
+  else { bar.style.display='none'; }
+}
+function toggleAlAll(box){
+  document.querySelectorAll('#aliyotReportContent .alChk').forEach(function(c){ c.checked=box.checked; });
+  onAlSelect();
+}
+function printAliyotReport(){
+  var src=document.getElementById('aliyotReportContent');
+  if(!src) return;
+  var chks=src.querySelectorAll('.alChk');
+  var anyChecked=Array.prototype.some.call(chks,function(c){return c.checked;});
+  var clone=src.cloneNode(true);
+  var sb=clone.querySelector('#alSelBar'); if(sb) sb.remove();
+  if(anyChecked){
+    // הדפס רק את השורות שנבחרו + עדכן סיכום
+    var cloneRows=clone.querySelectorAll('tbody tr');
+    var srcRows=src.querySelectorAll('tbody tr');
+    for(var i=0;i<srcRows.length;i++){
+      var cb=srcRows[i].querySelector('.alChk');
+      if(cb && !cb.checked && cloneRows[i]) cloneRows[i].remove();
+    }
+    var n=0,sum=0;
+    chks.forEach(function(c){ if(c.checked){ n++; sum+=parseFloat(c.getAttribute('data-amt'))||0; } });
+    var vals=clone.querySelectorAll('.summary-card .val');
+    if(vals[0]) vals[0].textContent=n;
+    if(vals[1]) vals[1].textContent='₪'+sum.toLocaleString();
+  }
+  // הסר את עמודת תיבות הסימון
+  clone.querySelectorAll('thead th:first-child, tbody td:first-child').forEach(function(c){ if(c.getAttribute('colspan')===null) c.remove(); });
+  var w=window.open('','_blank');
+  w.document.write('<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>דוח עליות</title>'+
+    '<style>body{font-family:Arial;padding:20px}table{width:100%;border-collapse:collapse}td,th{padding:6px 9px;border-bottom:1px solid #eee}.summary-card{display:inline-block;border:1px solid #ddd;border-radius:8px;padding:10px 20px;margin-left:10px;text-align:center}.summary-card .val{font-size:20px;font-weight:bold;color:#1a237e}.summary-card .lbl{font-size:12px;color:#777}th{background:#f5f7ff!important;-webkit-print-color-adjust:exact}</style></head><body>'+
+    '<h2 style="text-align:center;color:#1a237e">מוסדות אלכסנדר — דוח עליות</h2>'+clone.innerHTML+'</body></html>');
+  w.document.close(); setTimeout(function(){w.print();},300);
+}
+document.getElementById('aliyotReportOverlay').addEventListener('mousedown',function(e){if(e.target===this)closeAliyotReport();});
 
 /* ===== CALENDAR (לוח שנה עברי/לועזי + פרשות) ===== */
 var calCursor=new Date(), calMode='heb';
@@ -1607,6 +2637,26 @@ function onVowsSearch(){
     if(debtFilter==='gt5000') return balance>5000;
     return true;
   });
+  // מיון
+  var sortMode=document.getElementById('vowsSortFilter').value;
+  if(sortMode){
+    // חישוב יתרות מראש (מהיר — מעבר אחד על התשלומים)
+    var paidMap={};
+    payments.forEach(function(p){var k=String(p.vowId);paidMap[k]=(paidMap[k]||0)+(p.amount||0);});
+    var balOf=function(v){return (v.amount||0)-(paidMap[String(v.id)]||0);};
+    if(sortMode==='oldest'){
+      // חובות פתוחים קודם, מהישן לחדש; אחריהם ששולמו
+      vFiltered.sort(function(a,b){
+        var oa=balOf(a)>0?0:1, ob=balOf(b)>0?0:1;
+        if(oa!==ob) return oa-ob;
+        return String(a.date||'').localeCompare(String(b.date||''));
+      });
+    } else if(sortMode==='biggest'){
+      vFiltered.sort(function(a,b){return balOf(b)-balOf(a);});
+    }
+  } else {
+    vFiltered.sort(function(a,b){return String(b.date||'').localeCompare(String(a.date||''));});
+  }
   vPage=1;renderVows();
 }
 function renderVows(){
@@ -1679,6 +2729,7 @@ function onPaymentNameChange(){
     // מצב הוספה: טבלת התחייבויות מרובות
     renderPayMultiTable(name);
   }
+  renderCreditBanner(name);
 }
 function renderPayMultiTable(name){
   var body=document.getElementById('payMultiBody');
@@ -1739,6 +2790,10 @@ function openPaymentModal(){
   // מצב הוספה: הצג טבלת התחייבויות מרובות
   document.getElementById('payMultiSection').style.display='';
   document.getElementById('paySingleSection').style.display='none';
+  document.getElementById('pfUseCredit').value='';
+  document.getElementById('pfAddCredit').value='';
+  renderCreditBanner('');
+  loadCreditBalances();
   renderPayMultiTable('');
   document.getElementById('paymentModalOverlay').className='modal-overlay open';
 }
@@ -1785,8 +2840,12 @@ function savePayment(){
   }
 
   // הוספה — כמה התחייבויות יחד
+  var useCredit=parseFloat((document.getElementById('pfUseCredit')||{}).value)||0;
+  var addCredit=parseFloat((document.getElementById('pfAddCredit')||{}).value)||0;
+  var availCredit=creditOf(name);
+  if(useCredit>availCredit+0.001){ alert('לא ניתן לנצל יותר מיתרת הזכות (₪'+availCredit.toLocaleString()+')'); return; }
   var rows=document.querySelectorAll('.payMultiAmount');
-  if(!rows.length){alert('בחר איש קשר עם התחייבויות פתוחות');return;}
+  if(!rows.length && !addCredit){alert('בחר איש קשר עם התחייבויות פתוחות');return;}
   var toCreate=[],overErr=false;
   rows.forEach(function(inp){
     var amt=parseFloat(inp.value)||0;
@@ -1796,15 +2855,25 @@ function savePayment(){
     toCreate.push({vowId:inp.getAttribute('data-vowid'),amount:amt});
   });
   if(overErr){alert('אחד הסכומים גדול מהיתרה שנותרה. תקן ונסה שוב.');return;}
-  if(!toCreate.length){alert('הזן סכום לפחות בהתחייבות אחת.');return;}
+  if(!toCreate.length && !addCredit){alert('הזן סכום לפחות בהתחייבות אחת (או עודף לזכות).');return;}
   var base=Date.now()*100,heb=dateStrToHeb(date);
+  var newIds=[];
   toCreate.forEach(function(item,i){
     var pmt={id:base+i,date:date,hebrewDate:heb,name:name,vowId:parseInt(item.vowId)||item.vowId,
       amount:item.amount,method:method,numPayments:1,note:note,_user:currentUser()};
-    payments.push(pmt);syncToSheets('payment','add',pmt);
+    payments.push(pmt);syncToSheets('payment','add',pmt);newIds.push(pmt.id);
   });
+  // תנועות זכות: ניצול (שלילי) ו/או שמירת עודף (חיובי)
+  if(useCredit>0) postCredit(name, -useCredit, date, 'ניצול זכות בתשלום');
+  if(addCredit>0) postCredit(name,  addCredit, date, 'עודף תשלום שנשמר לזכות');
   closePaymentModal();onPaymentsSearch();
   if(document.getElementById('tab-vows').classList.contains('active'))renderVows();
+  var msg='';
+  if(useCredit>0) msg+='\nנוצלה זכות: ₪'+useCredit.toLocaleString();
+  if(addCredit>0) msg+='\nנשמר לזכות: ₪'+addCredit.toLocaleString();
+  // הפקת קבלה על התשלום שנקלט
+  if(newIds.length){ if(confirm('התשלום נשמר.'+msg+'\n\nלהפיק קבלה?')) openReceipt(newIds); }
+  else if(msg) alert('נשמר.'+msg);
 }
 function populatePaymentsFilters(){
   fillFilter(document.getElementById('paymentsMethodFilter'),distinctVals(payments,'method'),'כל אופני התשלום');
@@ -1854,7 +2923,7 @@ function renderPayments(){
       '<td class="'+(debtPerson>0?'debt-pos':'debt-zero')+'" style="text-align:left">₪'+debtPerson.toLocaleString()+'</td>'+
       '<td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+p.note+'">'+p.note+'</td>'+
       '<td style="font-size:12px;color:#666">'+(p._user||'—')+'</td>'+
-      '<td style="white-space:nowrap"><button class="btn btn-secondary btn-sm" onclick="openPaymentEditModal('+payments.indexOf(p)+')">עריכה</button> <button class="btn btn-sm" style="background:#e53935;color:white" onclick="deletePayment('+payments.indexOf(p)+')">מחק</button></td></tr>';
+      '<td style="white-space:nowrap"><button class="btn btn-sm" style="background:#b8902f;color:white" onclick="receiptForPayment('+payments.indexOf(p)+')">&#x1F9FE; קבלה</button> <button class="btn btn-secondary btn-sm" onclick="openPaymentEditModal('+payments.indexOf(p)+')">עריכה</button> <button class="btn btn-sm" style="background:#e53935;color:white" onclick="deletePayment('+payments.indexOf(p)+')">מחק</button></td></tr>';
   }).join('');
   renderPag('paymentsPagination',total,pPage,function(p){pPage=p;renderPayments();});
 }
@@ -1893,60 +2962,233 @@ function saveMethods(){
   closeMethodsModal();
 }
 
+/* ===== ניהול תארים ===== */
+function openTitlesModal(){
+  renderTitlesList();
+  document.getElementById('titlesSaveStatus').style.display='none';
+  document.getElementById('titlesModalOverlay').className='modal-overlay open';
+}
+function closeTitlesModal(){document.getElementById('titlesModalOverlay').className='modal-overlay';}
+function renderTitlesList(){
+  var div=document.getElementById('titlesList');
+  div.innerHTML='<table style="width:100%;border-collapse:collapse">'+contactTitles.map(function(t,i){
+    return '<tr><td style="padding:4px 0"><input type="text" value="'+String(t).replace(/"/g,'&quot;')+'" id="ct_'+i+'"></td>'+
+      '<td style="padding:4px 0 4px 8px;width:40px"><button class="btn btn-danger btn-sm" onclick="removeTitle('+i+')">&#x2715;</button></td></tr>';
+  }).join('')+'</table>';
+}
+function addTitleRow(){contactTitles.push('');renderTitlesList();}
+function removeTitle(i){contactTitles.splice(i,1);renderTitlesList();}
+function saveTitles(){
+  var inputs=document.querySelectorAll('#titlesList input[type=text]');
+  contactTitles=[];
+  inputs.forEach(function(inp){var v=inp.value.trim();if(v)contactTitles.push(v);});
+  window.contactTitles=contactTitles;
+  populateTitleSelect();
+  if(window.apiFetch){
+    window.apiFetch('/settings/titles',{method:'POST',body:{titles:contactTitles}})
+      .then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
+      .then(function(res){
+        var st=document.getElementById('titlesSaveStatus');
+        if(res.ok){ st.textContent='✅ נשמר'; st.style.color='#2e7d32'; st.style.display='block'; setTimeout(closeTitlesModal,800); }
+        else { st.textContent='❌ '+(res.d.error||'שמירה נכשלה'); st.style.color='#c62828'; st.style.display='block'; }
+      })
+      .catch(function(){ alert('שגיאת חיבור — התארים לא נשמרו בשרת'); });
+  } else closeTitlesModal();
+}
+document.getElementById('titlesModalOverlay').addEventListener('mousedown',function(e){if(e.target===this)closeTitlesModal();});
+
 /* ===== LISTS MANAGER ===== */
+/*
+ * חשוב: אסור לשלוח לשרת את כל הרשימה ולדרוס אותה. דפדפן שנשאר פתוח מהבוקר
+ * מחזיק עותק ישן, וכל שמירה כזו החזירה את המצב הישן ומחקה קטגוריות שעובד
+ * אחר הוסיף בינתיים. לכן כל פעולה כאן נשמרת מיד כדלתא (הוספה/מחיקה בודדת)
+ * והשרת ממזג אותה על המצב העדכני שלו.
+ */
+var _listsBusy = false;
+var _listsChain = Promise.resolve();
+
+function setListsStatus(msg, color){
+  var el = document.getElementById('listsStatus');
+  if(!el) return;
+  el.textContent = msg || '';
+  el.style.color = color || '#666';
+}
+
 function openListsModal(){
-  renderListItems('listA_items', TABLE1, 'A');
-  renderListItems('listB_items', TABLE2, 'B');
   document.getElementById('listA_new').value = '';
   document.getElementById('listB_new').value = '';
+  renderListItems('listA_items', TABLE1, 'A');
+  renderListItems('listB_items', TABLE2, 'B');
+  setListsStatus('', '');
   document.getElementById('listsModalOverlay').className = 'modal-overlay open';
+  // תמיד עורכים את המצב העדכני מהשרת, לא עותק ישן מהבוקר
+  if(window.apiFetch){
+    setListsStatus('טוען רשימות מעודכנות...', '#666');
+    window.apiFetch('/settings/lists')
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(L){
+        if(L && Array.isArray(L.table1) && Array.isArray(L.table2)){
+          TABLE1.length = 0; L.table1.forEach(function(x){ TABLE1.push(x); });
+          TABLE2.length = 0; L.table2.forEach(function(x){ TABLE2.push(x); });
+          if(window.mergeUsedIntoLists) mergeUsedIntoLists();
+          renderListItems('listA_items', TABLE1, 'A');
+          renderListItems('listB_items', TABLE2, 'B');
+        }
+        setListsStatus('', '');
+      })
+      .catch(function(){
+        setListsStatus('\u26A0\uFE0F לא הצלחתי לרענן מהשרת - בדוק חיבור', '#c62828');
+      });
+  }
 }
+
 function closeListsModal(){
+  // טקסט שהוקלד ולא נלחץ עליו "+ הוסף" - מוסיפים בכל זאת, שלא ייעלם בשקט
+  var pendingA = (document.getElementById('listA_new').value || '').trim();
+  var pendingB = (document.getElementById('listB_new').value || '').trim();
+  if(pendingA || pendingB){
+    if(pendingA) addListItem('A');
+    if(pendingB) addListItem('B');
+    return; // נשארים פתוחים, כדי שיראו שזה אכן נוסף ונשמר
+  }
   document.getElementById('listsModalOverlay').className = 'modal-overlay';
-  // refresh selects in vow modal
   populateSelect('vfForA', TABLE1, '--');
   populateSelect('vfForB', TABLE2, '--');
 }
+
+/* שולח לשרת רק את מה שהשתנה. השרת ממזג על המצב העדכני תחת נעילה,
+   כך שאי אפשר יותר למחוק בטעות פריט שמישהו אחר הוסיף. */
+function saveListsDelta(delta, label){
+  if(!window.apiFetch) return;
+  _listsBusy = true;
+  setListsStatus('שומר...', '#666');
+  _listsChain = _listsChain.then(function(){
+    return window.apiFetch('/settings/lists', { method: 'POST', body: delta })
+      .then(function(r){ return r.json().then(function(d){ return { ok: r.ok, d: d }; }); })
+      .then(function(res){
+        if(res.ok && Array.isArray(res.d.table1) && Array.isArray(res.d.table2)){
+          TABLE1.length = 0; res.d.table1.forEach(function(x){ TABLE1.push(x); });
+          TABLE2.length = 0; res.d.table2.forEach(function(x){ TABLE2.push(x); });
+          renderListItems('listA_items', TABLE1, 'A');
+          renderListItems('listB_items', TABLE2, 'B');
+          populateSelect('vfForA', TABLE1, '--');
+          populateSelect('vfForB', TABLE2, '--');
+          setListsStatus('\u2705 ' + label, '#2e7d32');
+        } else {
+          setListsStatus('\u274C השמירה נכשלה: ' + (res.d.error || ''), '#c62828');
+        }
+      })
+      .catch(function(){
+        setListsStatus('\u274C שגיאת חיבור - לא נשמר. נסה שוב.', '#c62828');
+      })
+      .then(function(){ _listsBusy = false; });
+  });
+}
+
+/* תאימות לאחור: קריאה ישנה לשמירה מלאה נשלחת כהוספה בלבד, לעולם לא כמחיקה */
+function saveListsToServer(){
+  saveListsDelta({ addA: TABLE1.slice(), addB: TABLE2.slice() }, 'הרשימות עודכנו');
+}
+
+/* רשת ביטחון: ערך שכבר בשימוש בנדרים לעולם לא ייעלם מהרשימה.
+   מחזיר את מה שהוחזר, כדי שהאתחול ישמור רק אותו. */
+function mergeUsedIntoLists(){
+  var inA = {}, inB = {};
+  TABLE1.forEach(function(x){ inA[x] = 1; });
+  TABLE2.forEach(function(x){ inB[x] = 1; });
+  var addedA = [], addedB = [];
+  (window.vows || []).forEach(function(v){
+    var a = (v.forA || '').trim(), b = (v.forB || '').trim();
+    if(a && !inA[a]){ inA[a] = 1; TABLE1.push(a); addedA.push(a); }
+    if(b && !inB[b]){ inB[b] = 1; TABLE2.push(b); addedB.push(b); }
+  });
+  TABLE1.sort(function(x, y){ return String(x).localeCompare(String(y), 'he'); });
+  TABLE2.sort(function(x, y){ return String(x).localeCompare(String(y), 'he'); });
+  return { A: addedA, B: addedB, count: addedA.length + addedB.length };
+}
+
+/* כמה נדרים משתמשים בכל ערך - כדי להזהיר לפני מחיקה */
+function _listUsage(which){
+  var use = {};
+  (window.vows || []).forEach(function(v){
+    var val = ((which === 'A' ? v.forA : v.forB) || '').trim();
+    if(val) use[val] = (use[val] || 0) + 1;
+  });
+  return use;
+}
+
 function renderListItems(containerId, list, which){
   var div = document.getElementById(containerId);
+  if(!div) return;
+  var use = _listUsage(which);
   div.innerHTML = list.map(function(item, i){
+    var n = use[item] || 0;
+    var badge = n ? '<span style="font-size:11px;color:#888;background:#f0f0f0;border-radius:9px;padding:1px 7px">' + n + '</span>' : '';
     return '<div style="display:flex;align-items:center;gap:6px;padding:4px 2px;border-bottom:1px solid #f5f5f5">' +
-      '<span style="flex:1;font-size:13px">'+item+'</span>' +
-      '<button class="btn btn-danger btn-sm" style="padding:2px 8px;font-size:11px" onclick="removeListItem(\''+which+'\','+i+')">✕</button>' +
+      '<span style="flex:1;font-size:13px">' + item + '</span>' + badge +
+      '<button class="btn btn-danger btn-sm" style="padding:2px 8px;font-size:11px" onclick="removeListItem(\'' + which + '\',' + i + ')">\u2715</button>' +
       '</div>';
   }).join('');
 }
+
 function removeListItem(which, i){
-  if(which==='A'){ TABLE1.splice(i,1); renderListItems('listA_items', TABLE1, 'A'); }
-  else           { TABLE2.splice(i,1); renderListItems('listB_items', TABLE2, 'B'); }
+  if(_listsBusy) return;
+  var list = which === 'A' ? TABLE1 : TABLE2;
+  var val = list[i];
+  if(val === undefined) return;
+  var n = _listUsage(which)[val] || 0;
+  var msg = n
+    ? 'למחוק את "' + val + '"?\n\nשים לב: יש ' + n + ' נדרים שמשתמשים בפריט הזה. הנדרים לא יימחקו, אבל הפריט לא יופיע יותר ברשימה לבחירה.'
+    : 'למחוק את "' + val + '" מהרשימה?';
+  if(!confirm(msg)) return;
+  list.splice(i, 1);
+  renderListItems(which === 'A' ? 'listA_items' : 'listB_items', list, which);
+  var d = {}; d[which === 'A' ? 'delA' : 'delB'] = [val];
+  saveListsDelta(d, 'נמחק: ' + val);
 }
-function addToListA(){
-  var val = document.getElementById('listA_new').value.trim();
+
+function addListItem(which){
+  if(_listsBusy) return;
+  var input = document.getElementById(which === 'A' ? 'listA_new' : 'listB_new');
+  var val = (input.value || '').trim();
   if(!val) return;
-  TABLE1.push(val);
-  document.getElementById('listA_new').value = '';
-  renderListItems('listA_items', TABLE1, 'A');
+  var list = which === 'A' ? TABLE1 : TABLE2;
+  var dup = list.some(function(x){ return String(x).trim() === val; });
+  if(dup){
+    input.value = '';
+    setListsStatus('\u26A0\uFE0F "' + val + '" כבר קיים ברשימה', '#e65100');
+    return;
+  }
+  input.value = '';
+  list.push(val);
+  list.sort(function(x, y){ return String(x).localeCompare(String(y), 'he'); });
+  renderListItems(which === 'A' ? 'listA_items' : 'listB_items', list, which);
+  var d = {}; d[which === 'A' ? 'addA' : 'addB'] = [val];
+  saveListsDelta(d, 'נוסף ונשמר: ' + val);
 }
-function addToListB(){
-  var val = document.getElementById('listB_new').value.trim();
-  if(!val) return;
-  TABLE2.push(val);
-  document.getElementById('listB_new').value = '';
-  renderListItems('listB_items', TABLE2, 'B');
-}
+
+function addToListA(){ addListItem('A'); }
+function addToListB(){ addListItem('B'); }
+
 document.getElementById('listsModalOverlay').addEventListener('mousedown', function(e){ if(e.target===this) closeListsModal(); });
 
 // Enter key support
-document.getElementById('listA_new').addEventListener('keydown', function(e){ if(e.key==='Enter') addToListA(); });
-document.getElementById('listB_new').addEventListener('keydown', function(e){ if(e.key==='Enter') addToListB(); });
+document.getElementById('listA_new').addEventListener('keydown', function(e){ if(e.key==='Enter') addListItem('A'); });
+document.getElementById('listB_new').addEventListener('keydown', function(e){ if(e.key==='Enter') addListItem('B'); });
 document.getElementById('methodsModalOverlay').addEventListener('mousedown',function(e){if(e.target===this)closeMethodsModal();});
 
 /* ===== PERSONAL REPORT ===== */
 function populateReportSelect(){
-  // שדה חיפוש חופשי עם השלמה — מקלידים שם או מספר
+  // שדה חיפוש חופשי עם השלמה — מקלידים שם או מספר.
+  // הרשימה מאחדת אנשי קשר + כל שם שמופיע בנדרים/תשלומים, כדי שלא ייעלמו
+  // רשומות שנשמרו תחת גרסת-שם אחרת (למשל מזהה ישן) או ללא איש קשר תואם.
   var dl = document.getElementById('reportNameList');
   if(!dl) return;
-  var names = contacts.map(function(c){return c.display_name;}).filter(Boolean).sort();
+  var seen = {};
+  contacts.forEach(function(c){ if(c.display_name) seen[c.display_name]=1; });
+  vows.forEach(function(v){ if(v.name) seen[v.name]=1; });
+  payments.forEach(function(p){ if(p.name) seen[p.name]=1; });
+  var names = Object.keys(seen).sort(function(a,b){return a.localeCompare(b,'he');});
   dl.innerHTML = names.map(function(n){return '<option value="'+String(n).replace(/"/g,'&quot;')+'"></option>';}).join('');
 }
 
@@ -1984,6 +3226,15 @@ function renderReport(forceName){
   // person's payments
   var personPayments = payments.filter(function(p){return p.name===name;});
 
+  // סינון לפי סוג הדוח: הכל / חובות פתוחים / ששולמו
+  var repFilter = document.getElementById('reportFilter') ? document.getElementById('reportFilter').value : 'all';
+  if(repFilter==='open'){
+    personVows = personVows.filter(function(v){ return (v.amount||0)-getPaidForVow(v.id) > 0.001; });
+    personPayments = []; // דוח חובות פתוחים — ללא היסטוריית תשלומים
+  } else if(repFilter==='paid'){
+    personVows = personVows.filter(function(v){ return (v.amount||0)-getPaidForVow(v.id) <= 0.001; });
+  }
+
   var totalCommitted=0, totalPaid=0;
   personVows.forEach(function(v){
     totalCommitted += v.amount||0;
@@ -2012,7 +3263,9 @@ function renderReport(forceName){
 
   // Header card
   html += '<div class="report-header-card">';
-  html += '<div><div class="report-name">' + name + '</div>';
+  var _filtLbl = repFilter==='open' ? '<span style="background:#c62828;color:#fff;border-radius:5px;padding:2px 10px;font-size:13px;margin-right:8px">חובות פתוחים</span>' : (repFilter==='paid' ? '<span style="background:#2e7d32;color:#fff;border-radius:5px;padding:2px 10px;font-size:13px;margin-right:8px">ששולמו</span>' : '');
+  var _titlePrefix = (contact && contact.title) ? contact.title + ' ' : '';
+  html += '<div><div class="report-name">' + _titlePrefix + name + ' ' + _filtLbl + '</div>';
   if(contact){
     var info = [];
     if(contact.phone_mobile) info.push('&#x05E0;&#x05D9;&#x05D9;&#x05D3;: ' + contact.phone_mobile);
@@ -2027,6 +3280,15 @@ function renderReport(forceName){
   html += '<div class="report-kpi"><div class="val">&#x20AA;'+totalCommitted.toLocaleString()+'</div><div class="lbl">סה"כ התחייב</div></div>';
   html += '<div class="report-kpi"><div class="val" style="color:#2e7d32">&#x20AA;'+totalPaid.toLocaleString()+'</div><div class="lbl">סה"כ שילם</div></div>';
   html += '<div class="report-kpi"><div class="val '+(totalDebt>0?'debt-pos':'debt-zero')+'">&#x20AA;'+totalDebt.toLocaleString()+'</div><div class="lbl">יתרה לתשלום</div></div>';
+  // זכות עומדת (עודף תשלום שנשמר) — מוצג רק אם קיימת
+  var _cr=creditOf(name);
+  if(_cr){
+    html += '<div class="report-kpi"><div class="val" style="color:'+(_cr>0?'#1b5e20':'#c62828')+'">&#x20AA;'+_cr.toLocaleString()+'</div><div class="lbl">'+(_cr>0?'זכות עומדת':'יתרת זכות שלילית')+'</div></div>';
+    if(_cr>0){
+      var _net=totalDebt-_cr;
+      html += '<div class="report-kpi"><div class="val '+(_net>0?'debt-pos':'debt-zero')+'">&#x20AA;'+(_net>0?_net:0).toLocaleString()+'</div><div class="lbl">לתשלום בפועל (אחרי זכות)</div></div>';
+    }
+  }
   html += '</div></div>';
 
   // Yearly breakdown
@@ -2130,8 +3392,171 @@ function printReport(){
       '<div style="font-size:12px;color:#666">' + (todayHeb ? todayHeb + ' | ' : '') + todayGreg + '</div>' +
     '</div>';
 
+  if(name) logReportAction(name, 'print', null);
   window.print();
   ph.style.display = 'none';
+}
+
+/* יומן שליחת/הדפסת דוחות */
+var _lastSentMap = {};   // שם -> {last_sent, email_count, print_count}
+function loadLastSentMap(cb){
+  if(!window.apiFetch){ if(cb)cb(); return; }
+  window.apiFetch('/reportlog/summary').then(function(r){return r.ok?r.json():[];}).then(function(list){
+    _lastSentMap={};
+    (Array.isArray(list)?list:[]).forEach(function(x){ _lastSentMap[x.person_name]=x; });
+    if(cb)cb();
+  }).catch(function(){ if(cb)cb(); });
+}
+function lastSentCell(name){
+  var e=_lastSentMap[name];
+  if(!e || !e.last_sent) return '<span style="color:#bbb">—</span>';
+  var d=new Date(e.last_sent);
+  var days=Math.floor((Date.now()-d.getTime())/86400000);
+  var ago = days===0?'היום' : (days===1?'אתמול' : 'לפני '+days+' ימים');
+  var color = days<=30 ? '#2e7d32' : (days<=90 ? '#ef6c00' : '#c62828');
+  var tip = 'מיילים: '+(e.email_count||0)+' | הדפסות: '+(e.print_count||0);
+  return '<span title="'+tip+'" style="color:'+color+'">'+d.toLocaleDateString('he-IL')+'<br><span style="font-size:11px;color:#888">'+ago+'</span></span>';
+}
+function logReportAction(person, action, email){
+  if(!person || !window.apiFetch) return;
+  window.apiFetch('/reportlog',{method:'POST',body:{person:person, action:action, email:email||undefined}})
+    .then(function(){
+      // עדכון מיידי של העמודה "נשלח לאחרונה" בדוח הכללי
+      var e=_lastSentMap[person]||{person_name:person,email_count:0,print_count:0};
+      e.last_sent=new Date().toISOString();
+      if(action==='email') e.email_count=(+e.email_count||0)+1; else e.print_count=(+e.print_count||0)+1;
+      _lastSentMap[person]=e;
+      var gt=document.getElementById('tab-generalreport');
+      if(gt && gt.classList.contains('active')) renderGeneralReport();
+    })
+    .catch(function(){});
+}
+
+/* ===== כלי ייצוא/הדפסה כלליים (בשימוש חוזר בכל הדוחות) ===== */
+function downloadCsv(filename, header, rows){
+  var esc=function(v){ v=(v==null?'':String(v)); return '"'+v.replace(/"/g,'""')+'"'; };
+  var csv=[header.map(esc).join(',')].concat(rows.map(function(r){return r.map(esc).join(',');})).join('\r\n');
+  var blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8;'}); // BOM לתמיכה בעברית באקסל
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename;
+  document.body.appendChild(a); a.click(); setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(a.href);},100);
+}
+function printHtmlDoc(title, bodyHtml){
+  var w=window.open('','_blank');
+  w.document.write('<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>'+title+'</title>'+
+    '<style>body{font-family:Arial;padding:20px}table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:6px 9px;border-bottom:1px solid #eee;text-align:right;vertical-align:top}th{background:#f5f7ff!important;-webkit-print-color-adjust:exact}tr{page-break-inside:avoid}thead{display:table-header-group}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}.summary-card{display:inline-block;border:1px solid #ddd;border-radius:8px;padding:10px 20px;margin-left:10px;text-align:center}.summary-card .val{font-size:20px;font-weight:bold;color:#1a237e}.summary-card .lbl{font-size:12px;color:#777}</style></head><body>'+
+    '<h2 style="text-align:center;color:#1a237e">מוסדות אלכסנדר</h2>'+bodyHtml+'</body></html>');
+  w.document.close(); setTimeout(function(){w.print();},300);
+}
+
+/* ===== יומן שליחות — מודל ===== */
+var _rlTab='hist', _rlHist=[], _rlSum=[];
+function openReportLog(){
+  document.getElementById('reportLogOverlay').className='modal-overlay open';
+  document.getElementById('rlSearch').value='';
+  setReportLogTab('hist');
+  loadReportLog();
+}
+function closeReportLog(){document.getElementById('reportLogOverlay').className='modal-overlay';}
+function setReportLogTab(t){
+  _rlTab=t;
+  var h=document.getElementById('rlTabHist'), s=document.getElementById('rlTabSum');
+  h.style.background=t==='hist'?'#1a237e':'#fff'; h.style.color=t==='hist'?'#fff':'#333';
+  s.style.background=t==='sum'?'#1a237e':'#fff'; s.style.color=t==='sum'?'#fff':'#333';
+  renderReportLog();
+}
+function loadReportLog(){
+  document.getElementById('reportLogContent').innerHTML='<div style="padding:20px;text-align:center;color:#888">טוען...</div>';
+  Promise.all([
+    window.apiFetch('/reportlog').then(function(r){return r.ok?r.json():[];}),
+    window.apiFetch('/reportlog/summary').then(function(r){return r.ok?r.json():[];})
+  ]).then(function(res){ _rlHist=res[0]||[]; _rlSum=res[1]||[]; renderReportLog(); })
+    .catch(function(){ document.getElementById('reportLogContent').innerHTML='<div style="padding:20px;text-align:center;color:#c00">שגיאה בטעינת היומן</div>'; });
+}
+function _rlFmtDT(s){ if(!s)return ''; var d=new Date(s); return d.toLocaleDateString('he-IL')+' '+d.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}); }
+function _rlActLbl(a){ return a==='email'?'📧 מייל':'🖨️ הדפסה'; }
+function renderReportLog(){
+  var q=(document.getElementById('rlSearch').value||'').trim().toLowerCase();
+  var el=document.getElementById('reportLogContent');
+  if(_rlTab==='hist'){
+    var rows=_rlHist.filter(function(x){return !q||String(x.person_name||'').toLowerCase().indexOf(q)>=0;});
+    var body=rows.length?rows.map(function(x){
+      return '<tr><td>'+_rlFmtDT(x.sent_at)+'</td><td><b>'+(x.person_name||'')+'</b></td><td>'+_rlActLbl(x.action)+'</td><td>'+(x.email_to||'—')+'</td><td>'+(x.sent_by||'')+'</td></tr>';
+    }).join(''):'<tr><td colspan="5" style="text-align:center;color:#888;padding:16px">אין רשומות עדיין</td></tr>';
+    el.innerHTML='<div style="font-size:13px;color:#666;margin-bottom:6px">סה"כ '+rows.length+' פעולות</div><div style="border:1px solid #eee;border-radius:8px;overflow:auto;max-height:52vh"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#f5f7ff"><th style="padding:8px;text-align:right">תאריך ושעה</th><th style="padding:8px;text-align:right">שם</th><th style="padding:8px;text-align:right">פעולה</th><th style="padding:8px;text-align:right">נשלח אל</th><th style="padding:8px;text-align:right">בוצע ע"י</th></tr></thead><tbody>'+body+'</tbody></table></div>';
+  } else {
+    var rows2=_rlSum.filter(function(x){return !q||String(x.person_name||'').toLowerCase().indexOf(q)>=0;});
+    var body2=rows2.length?rows2.map(function(x){
+      return '<tr><td><b>'+(x.person_name||'')+'</b></td><td style="text-align:center">'+x.email_count+'</td><td style="text-align:center">'+x.print_count+'</td><td style="text-align:center;font-weight:bold">'+x.total+'</td><td>'+_rlFmtDT(x.last_sent)+'</td></tr>';
+    }).join(''):'<tr><td colspan="5" style="text-align:center;color:#888;padding:16px">אין רשומות עדיין</td></tr>';
+    el.innerHTML='<div style="font-size:13px;color:#666;margin-bottom:6px">סה"כ '+rows2.length+' אנשים</div><div style="border:1px solid #eee;border-radius:8px;overflow:auto;max-height:52vh"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#f5f7ff"><th style="padding:8px;text-align:right">שם</th><th style="padding:8px;text-align:center">מיילים</th><th style="padding:8px;text-align:center">הדפסות</th><th style="padding:8px;text-align:center">סה"כ</th><th style="padding:8px;text-align:right">שליחה אחרונה</th></tr></thead><tbody>'+body2+'</tbody></table></div>';
+  }
+}
+function exportReportLogCsv(){
+  var q=(document.getElementById('rlSearch').value||'').trim().toLowerCase();
+  if(_rlTab==='hist'){
+    var rows=_rlHist.filter(function(x){return !q||String(x.person_name||'').toLowerCase().indexOf(q)>=0;});
+    downloadCsv('יומן_שליחות.csv',['תאריך ושעה','שם','פעולה','נשלח אל','בוצע ע"י'], rows.map(function(x){return [_rlFmtDT(x.sent_at), x.person_name, (x.action==='email'?'מייל':'הדפסה'), x.email_to||'', x.sent_by||''];}));
+  } else {
+    var rows2=_rlSum.filter(function(x){return !q||String(x.person_name||'').toLowerCase().indexOf(q)>=0;});
+    downloadCsv('סיכום_שליחות.csv',['שם','מיילים','הדפסות','סה"כ','שליחה אחרונה'], rows2.map(function(x){return [x.person_name, x.email_count, x.print_count, x.total, _rlFmtDT(x.last_sent)];}));
+  }
+}
+function printReportLog(){
+  printHtmlDoc('יומן שליחות', '<h3 style="text-align:center">'+(_rlTab==='hist'?'יומן שליחת דוחות — היסטוריה':'סיכום שליחת דוחות')+'</h3>'+document.getElementById('reportLogContent').innerHTML);
+}
+document.getElementById('reportLogOverlay').addEventListener('mousedown',function(e){if(e.target===this)closeReportLog();});
+
+/* ===== ייצוא / הדפסה לכל הדוחות ===== */
+function _tableHtml(title, header, rows){
+  return '<h3 style="text-align:center;color:#1a237e">'+title+'</h3>'+
+    '<div style="text-align:center;color:#666;font-size:12px;margin-bottom:10px">'+rows.length+' רשומות · '+new Date().toLocaleDateString('he-IL')+'</div>'+
+    '<table><thead><tr>'+header.map(function(x){return '<th>'+x+'</th>';}).join('')+'</tr></thead><tbody>'+
+    rows.map(function(r){return '<tr>'+r.map(function(c){return '<td>'+(c==null?'':c)+'</td>';}).join('')+'</tr>';}).join('')+
+    '</tbody></table>';
+}
+function _repData(which, mode){
+  mode = mode || 'csv';
+  if(which==='contacts'){
+    return {title:'אנשי קשר', file:'אנשי_קשר',
+      header:['מזהה','תואר','שם פרטי','שם משפחה','שם האב','נייד','טלפון בית','רחוב','מספר בית','עיר','מיקוד','מייל','שם לתצוגה'],
+      rows:(cFiltered||contacts).map(function(c){return [c.id,c.title,c.first_name,c.last_name,c.father_name,c.phone_mobile,c.phone_home,c.street,c.house_num,c.city,c.zip,c.email,c.display_name];})};
+  }
+  if(which==='vows'){
+    return {title:'נדרים ונדבות', file:'נדרים_ונדבות',
+      header:['תאריך עברי','תאריך','שם','עבור א','עבור ב','סכום','שולם','יתרה','הערה','מקום'],
+      rows:(vFiltered||[]).map(function(v){var paid=getPaidForVow(v.id);return [v.hebrewDate,v.date,v.name,v.forA,v.forB,(v.amount||0),paid,(v.amount||0)-paid,v.note,v.place];})};
+  }
+  if(which==='payments'){
+    return {title:'תשלומים', file:'תשלומים',
+      header:['תאריך עברי','תאריך','שם','עבור התחייבות','סכום','אופן תשלום','מס תשלומים','הערה'],
+      rows:(pFiltered||[]).map(function(p){var vow=null;for(var i=0;i<vows.length;i++){if(vows[i].id==p.vowId){vow=vows[i];break;}}return [p.hebrewDate,p.date,p.name,vow?((vow.forA||'')+' '+(vow.forB||'')).trim():'',(p.amount||0),p.method,p.numPayments,p.note];})};
+  }
+  if(which==='general'){
+    return {title:'דוח כללי', file:'דוח_כללי',
+      header:['שם','סה"כ התחייב','שולם','יתרה','% שולם','מס התחייבויות','נשלח לאחרונה','חיובים פתוחים'],
+      rows:(generalFiltered||[]).map(function(r){
+        var debt=r.committed-r.paid;var pct=r.committed>0?Math.round(r.paid/r.committed*100):0;
+        var e=_lastSentMap[r.name];
+        var last=(e&&e.last_sent)?new Date(e.last_sent).toLocaleDateString('he-IL'):'';
+        var openList=(r.open||[]);
+        // בהדפסה — פירוט מעוצב מתחת לשם; בייצוא — טקסט רגיל בעמודה נפרדת
+        var nameCell = (mode==='print' && openList.length)
+          ? '<b>'+r.name+'</b><div style="font-size:10px;color:#666;margin-top:2px">'+
+            openList.map(function(o){return '₪'+o.bal.toLocaleString()+' · '+(o.date||'')+' · '+o.label;}).join('<br>')+'</div>'
+          : r.name;
+        var openText = openList.map(function(o){return '₪'+o.bal+' · '+(o.date||'')+' · '+o.label;}).join(' | ');
+        return [nameCell,r.committed,r.paid,debt,pct+'%',r.count,last, mode==='print'?'':openText];})};
+  }
+  return {title:'',file:'report',header:[],rows:[]};
+}
+function exportRep(which){ var d=_repData(which,'csv'); if(!d.rows.length){alert('אין נתונים לייצוא בתצוגה הנוכחית');return;} downloadCsv(d.file+'.csv', d.header, d.rows); }
+function printRep(which){
+  var d=_repData(which,'print');
+  if(!d.rows.length){alert('אין נתונים להדפסה בתצוגה הנוכחית');return;}
+  var header=d.header.slice(), rows=d.rows;
+  // בהדפסה הפירוט משולב בעמודת השם — מסירים את העמודה הנפרדת אם היא ריקה
+  if(header[header.length-1]==='חיובים פתוחים'){ header=header.slice(0,-1); rows=rows.map(function(r){return r.slice(0,-1);}); }
+  printHtmlDoc(d.title, _tableHtml(d.title, header, rows));
 }
 
 function savePdfFromEmail(){
@@ -2175,6 +3600,7 @@ function emailReport(){
     .then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
     .then(function(res){
       btn.disabled=false; btn.innerHTML=old;
+      if(res.ok) logReportAction(name, 'email', email);
       alert((res.ok?'✅ ':'❌ ')+(res.ok?(res.d.message||'הדוח נשלח'):(res.d.error||'שליחה נכשלה')));
     }).catch(function(){ btn.disabled=false; btn.innerHTML=old; alert('שגיאת חיבור לשרת'); });
 }
@@ -2185,23 +3611,63 @@ var generalFiltered = [];
 var generalPage = 1;
 
 function buildGeneralData(){
+  // מפת תשלומים לפי נדר — מעבר אחד בלבד (במקום סריקה חוזרת לכל נדר)
+  var paidMap = {};
+  payments.forEach(function(p){
+    var k = String(p.vowId);
+    paidMap[k] = (paidMap[k]||0) + (p.amount||0);
+  });
   var nameMap = {};
   vows.forEach(function(v){
     if(!v.name) return;
-    if(!nameMap[v.name]) nameMap[v.name] = {name:v.name, committed:0, paid:0, count:0};
-    nameMap[v.name].committed += v.amount||0;
-    nameMap[v.name].paid += getPaidForVow(v.id);
-    nameMap[v.name].count++;
+    if(!nameMap[v.name]) nameMap[v.name] = {name:v.name, committed:0, paid:0, count:0, open:[]};
+    var amt = v.amount||0;
+    var paid = paidMap[String(v.id)]||0;
+    var e = nameMap[v.name];
+    e.committed += amt;
+    e.paid += paid;
+    e.count++;
+    if(amt - paid > 0.001) e.open.push({label:vowLabelShort(v), bal:amt-paid, date:v.date||''});
   });
   generalData = Object.values(nameMap);
+  // החיובים הפתוחים מסודרים מהישן לחדש
+  generalData.forEach(function(e){ e.open.sort(function(a,b){return String(a.date).localeCompare(String(b.date));}); });
+}
+/* תווית קצרה לחיוב (בלי הסכום — הוא מוצג בנפרד) */
+function vowLabelShort(v){
+  var parts=[];
+  if(v.forA)parts.push(v.forA);
+  if(v.forB)parts.push(v.forB);
+  var lbl=parts.join(' / ');
+  if(!lbl)lbl=v.hebrewDate||('התחייבות '+v.id);
+  return lbl;
+}
+/* רשימת החיובים הפתוחים שמוצגת מתחת לשם בדוח הכללי */
+function openVowsMini(entry){
+  var list=entry.open||[];
+  if(!list.length) return '<div style="font-size:11px;color:#2e7d32;margin-top:2px">✓ אין חוב פתוח</div>';
+  var MAX=5;
+  var html='<div style="font-size:11px;color:#777;margin-top:3px;line-height:1.5">';
+  list.slice(0,MAX).forEach(function(o){
+    html+='<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:330px">'+
+      '<span style="color:#c62828;font-weight:bold">₪'+o.bal.toLocaleString()+'</span> · '+
+      (o.date?'<span style="color:#aaa">'+o.date+'</span> · ':'')+o.label+'</div>';
+  });
+  if(list.length>MAX) html+='<div style="color:#1a237e">+ עוד '+(list.length-MAX)+' חיובים</div>';
+  html+='</div>';
+  return html;
 }
 
 function onGeneralSearch(){
-  buildGeneralData();
-  var q = document.getElementById('generalSearch').value.trim().toLowerCase();
+  generalPage = 1;
+  renderGeneralReport();
+}
+/* סינון משולב: חיפוש שם + מסנן יתרה (שניהם יחד) */
+function applyGeneralFilters(){
+  var q  = document.getElementById('generalSearch').value.trim().toLowerCase();
   var df = document.getElementById('generalDebtFilter').value;
   generalFiltered = generalData.filter(function(r){
-    if(q && r.name.toLowerCase().indexOf(q) < 0) return false;
+    if(q && String(r.name||'').toLowerCase().indexOf(q) < 0) return false;
     var debt = r.committed - r.paid;
     if(df==='open')   return debt > 0;
     if(df==='paid')   return debt <= 0;
@@ -2212,16 +3678,11 @@ function onGeneralSearch(){
     if(df==='gt10000')return debt > 10000;
     return true;
   });
-  generalPage = 1;
-  renderGeneralReport();
 }
 
 function renderGeneralReport(){
   buildGeneralData();
-  var q = document.getElementById('generalSearch').value.trim().toLowerCase();
-  generalFiltered = !q ? generalData.slice() : generalData.filter(function(r){
-    return r.name.toLowerCase().indexOf(q) >= 0;
-  });
+  applyGeneralFilters();
 
   var sort = document.getElementById('generalSort').value;
   generalFiltered.sort(function(a,b){
@@ -2232,11 +3693,19 @@ function renderGeneralReport(){
   });
 
   var total = generalFiltered.length;
+  // הגנה: אם הסינון הקטין את מספר העמודים, אל תישאר בעמוד ריק
+  var maxPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if(generalPage > maxPage) generalPage = maxPage;
   var tC=0, tP=0;
-  generalData.forEach(function(r){tC+=r.committed;tP+=r.paid;});
+  // הסיכומים משקפים את התוצאות המסוננות
+  generalFiltered.forEach(function(r){tC+=r.committed;tP+=r.paid;});
   document.getElementById('generalCountBadge').textContent = total.toLocaleString() + ' אנשים';
-  document.getElementById('generalSummary').innerHTML =
-    '<div class="summary-card"><div class="val">'+generalData.length+'</div><div class="lbl">אנשים עם התחייבויות</div></div>'+
+  // מנהל מוגבל: בלי כרטיסי הסיכום הכספי למעלה (הטבלה עצמה נשארת)
+  var _gs=document.getElementById('generalSummary');
+  if(noGeneralSummary()){ _gs.innerHTML=''; _gs.style.display='none'; }
+  else _gs.style.display='';
+  if(!noGeneralSummary()) _gs.innerHTML =
+    '<div class="summary-card"><div class="val">'+total+'</div><div class="lbl">אנשים'+(total!==generalData.length?' (מסונן מתוך '+generalData.length+')':' עם התחייבויות')+'</div></div>'+
     '<div class="summary-card"><div class="val">₪'+tC.toLocaleString()+'</div><div class="lbl">סה"כ התחייבויות</div></div>'+
     '<div class="summary-card"><div class="val" style="color:#2e7d32">₪'+tP.toLocaleString()+'</div><div class="lbl">סה"כ שולם</div></div>'+
     '<div class="summary-card"><div class="val debt-pos">₪'+(tC-tP).toLocaleString()+'</div><div class="lbl">סה"כ יתרה</div></div>';
@@ -2254,12 +3723,13 @@ function renderGeneralReport(){
     var color = pct>=100 ? '#2e7d32' : pct>=50 ? '#1a237e' : '#c62828';
     rows += '<tr>'+
       '<td style="color:#aaa;font-size:12px">'+(start+i+1)+'</td>'+
-      '<td><b>'+r.name+'</b></td>'+
+      '<td><b>'+r.name+'</b>'+openVowsMini(r)+'</td>'+
       '<td style="text-align:left">₪'+r.committed.toLocaleString()+'</td>'+
       '<td class="paid-cell" style="text-align:left">₪'+r.paid.toLocaleString()+'</td>'+
       '<td class="'+(debt>0?'debt-pos':'debt-zero')+'" style="text-align:left">₪'+debt.toLocaleString()+'</td>'+
       '<td style="min-width:120px"><div class="pct-bar-wrap"><div class="pct-bar"><div class="pct-bar-fill" style="width:'+Math.min(pct,100)+'%;background:'+color+'"></div></div><span style="font-size:12px;min-width:32px">'+pct+'%</span></div></td>'+
       '<td style="text-align:center;color:#666">'+r.count+'</td>'+
+      '<td style="white-space:nowrap;font-size:12px">'+lastSentCell(r.name)+'</td>'+
       '<td style="white-space:nowrap"><button class="btn btn-secondary btn-sm" onclick="goToPersonReport('+(start+i)+')">דוח אישי</button> <button class="btn btn-sm" style="background:#1565c0;color:white" onclick="emailPersonReport('+(start+i)+',this)">&#x1F4E7; מייל</button></td>'+
       '</tr>';
   });
@@ -2581,6 +4051,7 @@ function sendReportByName(name, btn){
     .then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
     .then(function(res){
       if(btn){btn.disabled=false;btn.innerHTML=old;}
+      if(res.ok) logReportAction(name, 'email', email);
       alert((res.ok?'✅ ':'❌ ')+(res.ok?(res.d.message||'הדוח נשלח'):(res.d.error||'שליחה נכשלה')));
     }).catch(function(){ if(btn){btn.disabled=false;btn.innerHTML=old;} alert('שגיאת חיבור לשרת'); });
 }
@@ -2593,6 +4064,9 @@ function init(){
   populateSelect('vfForA',TABLE1,'--');
   populateSelect('vfForB',TABLE2,'--');
   refreshPaymentMethodSelect();
+  populateTitleSelect();
+  loadBlessing();
+  loadCreditBalances();
   populateReportSelect();
   populateVowsFilters();
   populatePaymentsFilters();
@@ -2602,8 +4076,9 @@ function init(){
 }
 
 function switchTab(name){
-  // חסימת גישה לעורך/צופה לדוח כללי ופילוחים
-  if((name==='generalreport'||name==='analytics')&&isRestrictedRole()){name='contacts';}
+  // חסימת גישה: עורך/צופה — דוח כללי ופילוחים | מנהל מוגבל — פילוחים בלבד
+  if(name==='generalreport'&&isRestrictedRole()){name='contacts';}
+  if(name==='analytics'&&noAnalytics()){name='contacts';}
   document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});
   document.querySelectorAll('.tab-content').forEach(function(t){t.classList.remove('active');});
   var map={contacts:0,vows:1,payments:2,report:3,generalreport:4,analytics:5};
@@ -2611,8 +4086,8 @@ function switchTab(name){
   document.getElementById('tab-'+name).classList.add('active');
   if(name==='vows'){populateVowsFilters();vFiltered=vows.slice();renderVows();}
   if(name==='payments'){populatePaymentsFilters();pFiltered=payments.slice();renderPayments();}
-  if(name==='report'){populateReportSelect();}
-  if(name==='generalreport'){renderGeneralReport();}
+  if(name==='report'){populateReportSelect();loadCreditBalances(function(){ if(document.getElementById('reportNameSelect').value) renderReport(); });}
+  if(name==='generalreport'){renderGeneralReport();loadLastSentMap(renderGeneralReport);}
   if(name==='analytics'){renderAnalytics();}
 }
 
@@ -2660,6 +4135,28 @@ function bootstrapData(){
     // load saved payment methods from server
     window.apiFetch('/settings/methods').then(function(r){return r.ok?r.json():null;}).then(function(m){
       if(Array.isArray(m) && m.length){ window.paymentMethods = m; if(window.refreshPaymentMethodSelect) refreshPaymentMethodSelect(); }
+    }).catch(function(){});
+    // load saved contact titles from server
+    window.apiFetch('/settings/titles').then(function(r){return r.ok?r.json():null;}).then(function(t){
+      if(Array.isArray(t) && t.length){ window.contactTitles = t; if(window.populateTitleSelect) populateTitleSelect(); }
+    }).catch(function(){});
+    // load saved lists (עבור א / עבור ב); merge in any value already used so nothing disappears
+    window.apiFetch('/settings/lists').then(function(r){return r.ok?r.json():null;}).then(function(L){
+      if(L && Array.isArray(L.table1) && Array.isArray(L.table2)){
+        TABLE1.length=0; L.table1.forEach(function(x){TABLE1.push(x);});
+        TABLE2.length=0; L.table2.forEach(function(x){TABLE2.push(x);});
+      }
+      var added = window.mergeUsedIntoLists ? mergeUsedIntoLists() : {A:[],B:[],count:0};
+      populateSelect('vfForA', TABLE1, '--');
+      populateSelect('vfForB', TABLE2, '--');
+      // ריצה ראשונה (אין עדיין שמור) או ערכים ששוחזרו -> נשלחים כהוספה בלבד.
+      // אף פעם לא שולחים כאן רשימה מלאה לדריסה: טאב ישן היה מוחק ככה
+      // קטגוריות שעובד אחר הוסיף בינתיים.
+      if(!L){
+        if(window.saveListsDelta) saveListsDelta({addA:TABLE1.slice(), addB:TABLE2.slice()}, '');
+      } else if(added.count && window.saveListsDelta){
+        saveListsDelta({addA:added.A, addB:added.B}, '');
+      }
     }).catch(function(){});
     if(loader) loader.style.display='none';
     init();
