@@ -228,16 +228,23 @@ function boot(){
     el('noServer').style.display = 'block';
     return;
   }
+  // ממלא את רשימת הפרויקטים והקטגוריות מ-meta, תוך שמירת הבחירה הנוכחית
+  function populateSelects(){
+    var psel = el('fProj').value;
+    el('fProj').innerHTML = '<option value="">— ללא פרויקט —</option>' + meta.projects.map(function(p){ return '<option>'+esc(p)+'</option>'; }).join('');
+    if(psel && meta.projects.indexOf(psel)>=0) el('fProj').value = psel;
+    refresh();
+  }
   var shown = false;
   function showForm(){
-    if(shown) return;
-    shown = true;
-    el('fProj').innerHTML = '<option value="">— ללא פרויקט —</option>' + meta.projects.map(function(p){ return '<option>'+esc(p)+'</option>'; }).join('');
-    applyHomeOnly();
-    refresh();
-    el('loading').style.display = 'none';
-    el('formView').style.display = 'block';
-    if(!HOME_ONLY) el('modeSeg').style.display = 'grid';
+    if(!shown){
+      shown = true;
+      applyHomeOnly();
+      el('loading').style.display = 'none';
+      el('formView').style.display = 'block';
+      if(!HOME_ONLY) el('modeSeg').style.display = 'grid';
+    }
+    populateSelects();
   }
   // הגנה: אם גוגל איטי/חסום — מציגים את הטופס תוך 4 שניות עם קטגוריות ברירת מחדל
   var safety = setTimeout(showForm, 4000);
@@ -254,7 +261,8 @@ function boot(){
     .catch(function(){ /* ממשיכים עם ברירות מחדל */ })
     .finally(function(){
       clearTimeout(safety);
-      showForm();
+      showForm();           // מציג אם עוד לא הוצג
+      populateSelects();    // תמיד ממלא מחדש עם הנתונים שהגיעו — גם אם הטופס כבר הוצג
     });
 }
 
