@@ -282,7 +282,7 @@ table.tbl tfoot td{font-weight:800;background:#eef1fa;border-top:2px solid #d9de
 /* ===== כפתורים ===== */
 .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 15px;border-radius:10px;
   border:1.5px solid #dde1f0;background:#fff;color:#334155;cursor:pointer;font-weight:600;font-size:13.5px;
-  transition:all .15s;user-select:none}
+  transition:background-color .15s,border-color .15s,box-shadow .15s,color .15s;user-select:none}
 .btn:hover{background:#f6f7fd;border-color:#c4cbe8;transform:translateY(-1px);box-shadow:0 3px 10px rgba(30,41,59,.08)}
 .btn:active{transform:translateY(0)}
 .btn-primary{background:linear-gradient(135deg,var(--brand),#6366f1);border-color:transparent;color:#fff;
@@ -409,6 +409,201 @@ td.empty{text-align:center;color:var(--muted);padding:22px}
 @media print{.topbar,.nav,.toolbar,.no-print{display:none!important}.content{max-width:100%}
   body{background:#fff}.card,.table-wrap{box-shadow:none}}
 
+/* ============================================================
+   רענון עיצוב
+   שכבה אחרונה, ובכוונה: היא מכוונת מחדש את הקיים בלי לגעת במבנה.
+   שלושה עקרונות — (1) צבע וצל רק במקום שבו הם אומרים משהו, (2) לכל
+   דבר שנלחץ יש תגובה מיידית ומצב פוקוס, (3) תנועה קצרה, ease-out,
+   ורק כשהיא מסבירה מה קרה על המסך.
+   ============================================================ */
+:root{
+  --ease-out:cubic-bezier(.23,1,.32,1);
+  --line:#e7eaf3;
+  --shadow:0 1px 2px rgba(16,24,40,.04),0 1px 3px rgba(16,24,40,.05);
+  --shadow-md:0 2px 4px rgba(16,24,40,.04),0 10px 24px -8px rgba(16,24,40,.12);
+  --shadow-lg:0 16px 40px -12px rgba(16,24,40,.24);
+  --ring:0 0 0 3px rgba(79,70,229,.18);
+}
+body{background-image:radial-gradient(1000px 400px at 88% -140px,rgba(79,70,229,.07),transparent 60%),
+                     radial-gradient(760px 320px at 4% -90px,rgba(14,165,233,.05),transparent 55%)}
+h2{font-size:21px;letter-spacing:-.02em}
+*::-webkit-scrollbar{width:9px;height:9px}
+*::-webkit-scrollbar-thumb{background:#ccd2e4}
+*::-webkit-scrollbar-thumb:hover{background:#aab3cf}
+
+/* ---- פוקוס: נראה למקלדת, לא מפריע לעכבר ---- */
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.btn:focus-visible,.nav-item:focus-visible,.tab:focus-visible,.x:focus-visible{outline:none;box-shadow:var(--ring)}
+
+/* ---- ראש המסך: שטוח ושקט יותר ---- */
+.topbar{background:linear-gradient(180deg,#332f86,#2b2872);
+  box-shadow:inset 0 -1px 0 rgba(255,255,255,.07),0 8px 20px -14px rgba(30,27,75,.7)}
+.nav{background:rgba(255,255,255,.93);box-shadow:inset 0 -1px 0 var(--line)}
+.nav-item{transition:background-color .15s var(--ease-out),color .15s var(--ease-out)}
+.nav-item.active{background:var(--brand);box-shadow:0 1px 2px rgba(79,70,229,.3)}
+.nav-item:active{transform:scale(.97)}
+
+/* ---- כפתורים: המשוב הוא בלחיצה, לא בריחוף ---- */
+.btn{transition:background-color .15s var(--ease-out),border-color .15s var(--ease-out),
+  box-shadow .15s var(--ease-out),transform .12s var(--ease-out)}
+.btn:hover{transform:none;box-shadow:none;background:#f7f8fc;border-color:#ccd3ea}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:var(--brand);box-shadow:0 1px 2px rgba(79,70,229,.3)}
+.btn-primary:hover{background:var(--brand-d);box-shadow:0 2px 8px -2px rgba(79,70,229,.45)}
+.btn-ghost:hover{background:var(--brand-l);color:var(--brand-d)}
+.btn-danger:hover{background:#fef2f2;border-color:#fca5a5}
+.x{transition:background-color .14s var(--ease-out),color .14s var(--ease-out),transform .12s var(--ease-out)}
+.x:active{transform:scale(.94)}
+
+/* ---- שדות ---- */
+input,select,textarea{border-width:1px;border-color:#dfe3f0;border-radius:9px;
+  transition:border-color .14s var(--ease-out),box-shadow .14s var(--ease-out)}
+input:hover,select:hover,textarea:hover{border-color:#c9d0e6}
+input:focus,select:focus,textarea:focus{border-color:var(--brand);box-shadow:var(--ring)}
+label{font-size:12px;font-weight:600;color:#5b6478}
+
+/* ---- כרטיסים: המספר הוא הגיבור, לא המסגרת ---- */
+.card{border-radius:14px;box-shadow:var(--shadow)}
+.card h3{font-size:15.5px;letter-spacing:-.01em}
+.stat{border-radius:12px;padding:13px 15px;box-shadow:var(--shadow)}
+.stat::before{display:none}                     /* פס גרדיאנט בכל כרטיס — רעש שחוזר על עצמו */
+.stat .label{font-size:11.5px;font-weight:600;color:#6b7488}
+.stat .value{font-size:23px;letter-spacing:-.03em;color:#0f172a}
+.apt-card{transition:transform .18s var(--ease-out),box-shadow .18s var(--ease-out);border-top-width:3px}
+.apt-card:active{transform:scale(.995)}
+@media (hover:hover) and (pointer:fine){
+  .apt-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
+}
+
+/* ---- לשוניות ---- */
+.tabs{border-bottom:1px solid var(--line)}
+.tab{border-bottom-width:2px;transition:color .15s var(--ease-out),background-color .15s var(--ease-out)}
+.tab:hover{background:rgba(79,70,229,.045)}
+
+/* ---- טבלאות: קווים דקים, הדגשה רק בשורה שמתחתיה העכבר ---- */
+.table-wrap{border-radius:12px;box-shadow:var(--shadow)}
+table.tbl thead th{background:#f7f8fc;color:#4a5369;border-bottom:1px solid var(--line);
+  box-shadow:0 1px 0 var(--line),0 6px 10px -10px rgba(16,24,40,.35)}
+table.tbl thead tr.filter-row th,table.tbl thead tr.filter-row td{background:#fbfcfe;border-bottom:1px solid var(--line)}
+table.tbl tbody td{border-bottom:1px solid #f2f4f9}
+table.tbl tbody tr{transition:background-color .12s var(--ease-out)}
+table.tbl tbody tr:hover{background:transparent}
+@media (hover:hover) and (pointer:fine){
+  table.tbl tbody tr:hover{background:#f8faff}
+}
+table.tbl tfoot td{background:#f7f8fc;border-top:1px solid var(--line);
+  box-shadow:0 -1px 0 var(--line),0 -6px 10px -10px rgba(16,24,40,.3)}
+
+/* ---- תגיות ---- */
+.badge{padding:3px 9px;font-weight:600}
+.badge::before{opacity:.6}
+.pill{font-weight:600;border-color:#e0e5ff}
+
+/* ---- מודאל: נכנס מלמטה במעט, בלי קפיצה ---- */
+.modal-overlay{background:rgba(15,23,42,.45);animation:fade-in .16s var(--ease-out)}
+.modal{border-radius:16px;box-shadow:0 24px 60px -14px rgba(2,6,23,.35),0 0 0 1px rgba(16,24,40,.04);
+  animation:modal-in .2s var(--ease-out)}
+.modal-header{background:#fff;border-radius:16px 16px 0 0}
+.modal-header h3{font-size:16px;letter-spacing:-.01em}
+.modal-footer{background:#fbfcfe;border-radius:0 0 16px 16px}
+@keyframes fade-in{from{opacity:0}to{opacity:1}}
+@keyframes modal-in{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+
+/* ---- טוסט: נכנס מהפינה שבה הוא חי ---- */
+.toast{border-radius:11px;box-shadow:0 12px 28px -10px rgba(2,6,23,.45);
+  animation:toast-in .22s var(--ease-out)}
+@keyframes toast-in{from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:none}}
+
+/* ---- ריק / רמזים ---- */
+div.empty{border:1px dashed #d8dcec;border-radius:14px;background:#fcfdff}
+.section-title{font-size:14px;color:#3f495e}
+
+/* ---- תצוגת עמודים של החוזה ---- */
+.cpages{background:#eef0f6;border:1px solid var(--line);border-radius:12px;padding:14px 8px;
+  max-height:58vh;overflow:auto}
+.cpages-fit{overflow:hidden}
+.cpage{width:794px;min-height:1123px;box-sizing:border-box;background:#fff;margin:0 auto 18px;
+  padding:76px 76px 58px;position:relative;box-shadow:0 2px 10px rgba(16,24,40,.14);border-radius:2px}
+.cpage:last-child{margin-bottom:0}
+.cpage-body{height:989px;overflow:hidden}
+.cpage-num{position:absolute;bottom:22px;left:0;right:0;text-align:center;font-size:11px;color:#94a3b8}
+.cline{margin:0 0 4px;white-space:pre-wrap;word-break:break-word}
+
+/* ============================================================
+   שכבת אפליקציה
+   מה שמבדיל אפליקציה מאתר: המשטחים העליונים הם חומר שקוף שהתוכן
+   נע מתחתיו, לכל נגיעה יש תגובה מיידית בלי הבהוב אפור, וחלון בנייד
+   עולה מלמטה כמו גיליון. הכל CSS — המבנה לא השתנה.
+   ============================================================ */
+:root{--ease-sheet:cubic-bezier(.32,.72,0,1);--tap:rgba(79,70,229,.10)}
+html{-webkit-text-size-adjust:100%}
+body{overscroll-behavior-y:none}
+button,.btn,.nav-item,.tab,.apt-card,.x,label,summary,a{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+
+/* ---- חומרים: הסרגלים שקופים והתוכן נע מתחתיהם ---- */
+.topbar{background:linear-gradient(180deg,rgba(51,47,134,.92),rgba(43,40,114,.92));
+  backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);
+  border-bottom:1px solid rgba(255,255,255,.08)}
+.nav{background:rgba(248,249,253,.82);backdrop-filter:blur(20px) saturate(180%);
+  -webkit-backdrop-filter:blur(20px) saturate(180%);box-shadow:inset 0 -1px 0 rgba(16,24,40,.06)}
+.tabs{background:rgba(255,255,255,.86);backdrop-filter:blur(18px) saturate(180%);
+  -webkit-backdrop-filter:blur(18px) saturate(180%)}
+
+/* ---- מגע: תגובה על הלחיצה, לא בסופה ---- */
+.nav-item,.tab{transition:background-color .15s var(--ease-out),color .15s var(--ease-out),transform .1s var(--ease-out)}
+.nav-item:active,.tab:active{transform:scale(.96)}
+.x:active{transform:scale(.92)}
+.fchip .btn:active{transform:scale(.9)}
+
+/* ---- אזורי גלילה מתנהגים כמו באפליקציה ---- */
+.table-wrap,.modal-body,.cpages{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+
+/* ---- נייד: ניווט כמו פס לשוניות, וחלון שעולה מלמטה ---- */
+@media(max-width:640px){
+  body{background-image:none;background:#f3f4f9}
+  .nav{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;gap:4px;padding:8px 12px}
+  .nav::-webkit-scrollbar{display:none}
+  .nav-item{flex:none;font-size:13px;padding:8px 14px}
+  .content{padding:16px 12px calc(96px + env(safe-area-inset-bottom))}
+  .btn{min-height:38px}
+  .btn-sm{min-height:32px}
+  input,select,textarea{font-size:16px;padding:11px 12px}   /* 16px — אחרת הדפדפן מקרב את המסך */
+  .stat-grid{grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:10px}
+  .card{padding:14px;border-radius:14px}
+  /* גיליון תחתון — נפתח מלמטה, נשאר צמוד לתחתית המסך */
+  .modal-overlay{align-items:flex-end;padding:0}
+  .modal,.modal.wide{max-width:100%;border-radius:20px 20px 0 0;
+    max-height:94vh;display:flex;flex-direction:column;
+    animation:sheet-in .32s var(--ease-sheet)}
+  .modal-header{border-radius:20px 20px 0 0;padding:14px 16px;position:relative}
+  /* ידית אחיזה, כמו בגיליון של אפליקציה */
+  .modal-header::before{content:"";position:absolute;top:6px;left:50%;transform:translateX(-50%);
+    width:38px;height:4px;border-radius:99px;background:#d7dbe8}
+  .modal-body{max-height:none;flex:1;padding:16px;overscroll-behavior:contain}
+  .modal-footer{border-radius:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom))}
+}
+@keyframes sheet-in{from{transform:translateY(100%)}to{transform:none}}
+
+/* ---- העדפות נגישות של המערכת ---- */
+@media (prefers-reduced-transparency:reduce){
+  .topbar{background:#2f2c7d;backdrop-filter:none;-webkit-backdrop-filter:none}
+  .nav,.tabs{background:#fff;backdrop-filter:none;-webkit-backdrop-filter:none}
+  .modal-overlay{backdrop-filter:none}
+}
+@media (prefers-contrast:more){
+  :root{--line:#c9cede;--muted:#4b5468}
+  .btn{border-color:#aab2cc}
+  table.tbl tbody td{border-bottom-color:#e2e6f1}
+}
+
+/* ---- מי שביקש פחות תנועה, יקבל פחות תנועה ---- */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;
+    transition-duration:.01ms!important;scroll-behavior:auto!important}
+  .apt-card:hover{transform:none}
+  .modal{animation:fade-in .2s ease!important}
+}
+
 /* ===== קבצים מצורפים ===== */
 .fchips{display:inline-flex;gap:1px;vertical-align:middle;margin-inline-start:3px}
 .fchips a{text-decoration:none;font-size:14px;line-height:1;padding:1px 2px;border-radius:5px}
@@ -441,7 +636,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 פ'";
+var APP_BUILD = "19.08 פג'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -13825,7 +14020,9 @@ function openContractDraft(rid){
       ' אפשר לערוך כאן הכול. <b>זו סקיצה לעריכה — לא תחליף לבדיקת עורך דין.</b></div>'+
     '<textarea id="cd-text" spellcheck="false" style="width:100%;min-height:50vh;direction:rtl;'+
       'font:14px/1.9 '+esc(contractFont().css)+';padding:14px">'+esc(txt)+'</textarea>'+
+    '<div id="cd-pages" class="cpages hidden"><div id="cd-pages-fit" class="cpages-fit"><div id="cd-pages-in"></div></div></div>'+
     '<div class="toolbar" style="margin-top:8px">'+
+      '<button class="btn btn-sm" id="cd-mode" onclick="contractPagesToggle(\''+r.id+'\')">📄 תצוגת עמודים</button>'+
       '<button class="btn btn-sm" onclick="contractPrint(\''+r.id+'\')">🖨️ הדפסה / PDF</button>'+
       '<button class="btn btn-sm" onclick="contractDownloadDoc(\''+r.id+'\')">⬇️ הורדה כ-Word</button>'+
       '<button class="btn btn-sm" onclick="contractCopy()">📋 העתק</button>'+
@@ -13859,6 +14056,72 @@ function openContractUnitDesc(rid){
       return false;
     }});
 }
+/* ---------- תצוגת עמודים ----------
+   אותו טקסט, מחולק לדפי A4 באותן מידות של ההדפסה: שורה אחרי שורה
+   נכנסת לדף, וכשהיא כבר לא נכנסת — נפתח דף חדש. כך רואים בדיוק איפה
+   נופל מעבר העמוד לפני שמדפיסים. */
+function contractPaginate(txt,host){
+  var f=contractFont();
+  host.innerHTML="";
+  var pages=[], page=null, body=null, maxH=0;
+  function newPage(){
+    page=document.createElement("div"); page.className="cpage";
+    body=document.createElement("div"); body.className="cpage-body";
+    body.style.font="12pt/1.75 "+f.css;
+    body.style.direction="rtl";
+    page.appendChild(body); host.appendChild(page); pages.push(page);
+    maxH=body.clientHeight;
+  }
+  newPage();
+  String(txt||"").split("\n").forEach(function(line){
+    var el=document.createElement("p"); el.className="cline";
+    if(!line.trim()) el.innerHTML="&nbsp;"; else el.textContent=line.replace(/^[ \t]+/,"");
+    var ind=(line.match(/^[ \t]+/)||[""])[0].replace(/\t/g,"    ").length;
+    if(ind) el.style.marginRight=Math.round(ind*6)+"px";
+    body.appendChild(el);
+    /* השורה חרגה מהדף — היא פותחת את הדף הבא */
+    if(body.scrollHeight>maxH+1){ body.removeChild(el); newPage(); body.appendChild(el); }
+  });
+  pages.forEach(function(pg,i){
+    var n=document.createElement("div"); n.className="cpage-num";
+    n.textContent="עמוד "+(i+1)+" מתוך "+pages.length;
+    pg.appendChild(n);
+  });
+  return pages.length;
+}
+/* הדף ברוחב אמיתי (794px) — מוקטן כדי להיכנס לחלון, בלי גלילה הצידה */
+function contractPagesFit(){
+  var box=document.getElementById("cd-pages"), fit=document.getElementById("cd-pages-fit"),
+      inner=document.getElementById("cd-pages-in");
+  if(!box || !fit || !inner) return;
+  var k=Math.min(1,(box.clientWidth-18)/794);
+  inner.style.transform = k<1 ? "scale("+k+")" : "";
+  inner.style.transformOrigin="top center";
+  fit.style.height = k<1 ? (inner.scrollHeight*k)+"px" : "";
+}
+function contractPagesToggle(rid){
+  var ta=document.getElementById("cd-text"), box=document.getElementById("cd-pages"),
+      inner=document.getElementById("cd-pages-in"), btn=document.getElementById("cd-mode");
+  if(!ta || !box || !inner) return;
+  var toPages=box.classList.contains("hidden");
+  if(toPages){
+    /* קודם מציגים ורק אז מחשבים — לאלמנט מוסתר אין גובה, וכל הטקסט
+       היה נדחס לעמוד אחד */
+    ta.classList.add("hidden"); box.classList.remove("hidden");
+    var n=contractPaginate(ta.value,inner);
+    contractPagesFit();
+    if(btn) btn.textContent="✏️ חזרה לעריכה";
+    toast(n===1?"עמוד אחד":n+" עמודים","ok");
+  }else{
+    box.classList.add("hidden"); ta.classList.remove("hidden");
+    if(btn) btn.textContent="📄 תצוגת עמודים";
+    ta.focus();
+  }
+}
+window.addEventListener("resize",function(){
+  var box=document.getElementById("cd-pages");
+  if(box && !box.classList.contains("hidden")) contractPagesFit();
+});
 function contractReset(rid){
   var r=byId(DB.rentals,rid); if(!r) return;
   if(!confirm("למלא מחדש מהתבנית?\n\nהעריכות שבטיוטה הזאת יימחקו.")) return;
