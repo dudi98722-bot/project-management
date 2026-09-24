@@ -2938,9 +2938,24 @@ function renderPayments(){
 document.getElementById('paymentModalOverlay').addEventListener('mousedown',function(e){if(e.target===this)closePaymentModal();});
 
 /* ===== PAYMENT METHODS ===== */
+var _methodsBaseline = [];
 function openMethodsModal(){
   renderMethodsList();
+  _methodsBaseline = paymentMethods.slice();
   document.getElementById('methodsModalOverlay').className='modal-overlay open';
+  // עורכים תמיד את המצב העדכני מהשרת, לא עותק ישן מהבוקר
+  if(window.apiFetch){
+    window.apiFetch('/settings/methods')
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(m){
+        if(Array.isArray(m) && m.length){
+          paymentMethods = m.slice(); window.paymentMethods = paymentMethods;
+          _methodsBaseline = m.slice();
+          renderMethodsList();
+        }
+      })
+      .catch(function(){});
+  }
 }
 function closeMethodsModal(){document.getElementById('methodsModalOverlay').className='modal-overlay';}
 function renderMethodsList(){
@@ -2962,19 +2977,41 @@ function saveMethods(){
   refreshPaymentMethodSelect();
   // שמירה בשרת
   if(window.apiFetch){
-    window.apiFetch('/settings/methods',{method:'POST',body:{methods:paymentMethods}})
+    // baseline = מה שהיה כשפתחנו. השרת מחיל רק את ההפרש, ולכן לא נמחק
+    // אופן תשלום שעובד אחר הוסיף בזמן שהחלון היה פתוח.
+    window.apiFetch('/settings/methods',{method:'POST',body:{methods:paymentMethods, baseline:_methodsBaseline}})
       .then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
-      .then(function(res){ if(!res.ok) alert('שמירה נכשלה: '+(res.d.error||'')); })
+      .then(function(res){
+        if(!res.ok){ alert('שמירה נכשלה: '+(res.d.error||'')); return; }
+        if(Array.isArray(res.d.methods)){
+          paymentMethods = res.d.methods.slice(); window.paymentMethods = paymentMethods;
+          refreshPaymentMethodSelect();
+        }
+      })
       .catch(function(){ alert('שגיאת חיבור — האופנים לא נשמרו בשרת'); });
   }
   closeMethodsModal();
 }
 
 /* ===== ניהול תארים ===== */
+var _titlesBaseline = [];
 function openTitlesModal(){
   renderTitlesList();
+  _titlesBaseline = contactTitles.slice();
   document.getElementById('titlesSaveStatus').style.display='none';
   document.getElementById('titlesModalOverlay').className='modal-overlay open';
+  if(window.apiFetch){
+    window.apiFetch('/settings/titles')
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(t){
+        if(Array.isArray(t) && t.length){
+          contactTitles = t.slice(); window.contactTitles = contactTitles;
+          _titlesBaseline = t.slice();
+          renderTitlesList();
+        }
+      })
+      .catch(function(){});
+  }
 }
 function closeTitlesModal(){document.getElementById('titlesModalOverlay').className='modal-overlay';}
 function renderTitlesList(){
@@ -2993,11 +3030,14 @@ function saveTitles(){
   window.contactTitles=contactTitles;
   populateTitleSelect();
   if(window.apiFetch){
-    window.apiFetch('/settings/titles',{method:'POST',body:{titles:contactTitles}})
+    window.apiFetch('/settings/titles',{method:'POST',body:{titles:contactTitles, baseline:_titlesBaseline}})
       .then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
       .then(function(res){
         var st=document.getElementById('titlesSaveStatus');
-        if(res.ok){ st.textContent='✅ נשמר'; st.style.color='#2e7d32'; st.style.display='block'; setTimeout(closeTitlesModal,800); }
+        if(res.ok){
+          if(Array.isArray(res.d.titles)){ contactTitles = res.d.titles.slice(); window.contactTitles = contactTitles; populateTitleSelect(); renderTitlesList(); }
+          st.textContent='✅ נשמר'; st.style.color='#2e7d32'; st.style.display='block'; setTimeout(closeTitlesModal,800);
+        }
         else { st.textContent='❌ '+(res.d.error||'שמירה נכשלה'); st.style.color='#c62828'; st.style.display='block'; }
       })
       .catch(function(){ alert('שגיאת חיבור — התארים לא נשמרו בשרת'); });

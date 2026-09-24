@@ -19,22 +19,85 @@ async function setSetting(key, value) {
   );
 }
 
+/**
+ * מיזוג במקום דריסה עבור רשימה פשוטה שנשמרת כ-JSON ב-app_settings.
+ *
+ * הלקוח שולח `next` (הרשימה כפי שהוא רואה אותה אחרי העריכה) ואת `baseline`
+ * (הרשימה כפי שהייתה כשהוא פתח את החלון). השרת מחשב מה הוא הוסיף ומה הוא
+ * הסיר, ומחיל רק את זה על המצב העדכני. כך טאב ישן לא מוחק פריטים שעובד
+ * אחר הוסיף בינתיים, ושינוי-שם (הסרה + הוספה) ממשיך לעבוד.
+ *
+ * בלי baseline (לקוח ישן) -> איחוד בלבד: אפשר להוסיף, לעולם לא למחוק.
+ */
+async function mergeListSetting(key, lockName, next, baseline, fallback) {
+  const clean = v => Array.isArray(v) ? v.map(x => String(x).trim()).filter(Boolean) : null;
+  const nextArr = clean(next);
+  if (!nextArr) throw Object.assign(new Error('bad_list'), { badRequest: true });
+  const baseArr = clean(baseline);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [lockName]);
+    const cur = await client.query('SELECT value FROM app_settings WHERE key=$1 FOR UPDATE', [key]);
+    let current = fallback.slice();
+    if (cur.rows.length) {
+      try { const parsed = JSON.parse(cur.rows[0].value); if (Array.isArray(parsed)) current = clean(parsed) || []; }
+      catch { /* ערך פגום - ממשיכים מברירת המחדל */ }
+    }
+
+    let merged;
+    const added = [], removed = [];
+    if (baseArr) {
+      const inBase = new Set(baseArr), inNext = new Set(nextArr);
+      nextArr.forEach(x => { if (!inBase.has(x)) added.push(x); });
+      baseArr.forEach(x => { if (!inNext.has(x)) removed.push(x); });
+      const kill = new Set(removed);
+      merged = current.filter(x => !kill.has(x));
+      const seen = new Set(merged);
+      // סדר: קודם מה שנשאר במצב העדכני, ואז מה שהמשתמש הוסיף עכשיו
+      added.forEach(x => { if (!seen.has(x)) { seen.add(x); merged.push(x); } });
+      // פריטים חדשים שהגיעו מהשרת ושהמשתמש לא נגע בהם נשמרים כמות שהם
+    } else {
+      const seen = new Set(current);
+      merged = current.slice();
+      nextArr.forEach(x => { if (!seen.has(x)) { seen.add(x); merged.push(x); added.push(x); } });
+    }
+
+    await client.query(
+      `INSERT INTO app_settings (key, value) VALUES ($1, $2)
+       ON CONFLICT (key) DO UPDATE SET value=$2`,
+      [key, JSON.stringify(merged)]
+    );
+    await client.query('COMMIT');
+    return { list: merged, added, removed };
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 // GET payment methods
 router.get('/methods', authenticate, async (req, res) => {
   try { res.json(await getSetting('payment_methods', DEFAULT_METHODS)); }
   catch (e) { res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-// POST payment methods (write access)
+// POST payment methods (write access) - מיזוג, לא דריסה
 router.post('/methods', authenticate, requireWrite, async (req, res) => {
-  const { methods } = req.body;
-  if (!Array.isArray(methods)) return res.status(400).json({ error: 'רשימה לא תקינה' });
-  const clean = methods.map(m => String(m).trim()).filter(Boolean);
+  const { methods, baseline } = req.body;
   try {
-    await setSetting('payment_methods', clean);
-    await logAction(req.user.id, req.user.username, 'edit', 'settings', 0, { what: 'payment_methods' });
-    res.json({ message: 'נשמר', methods: clean });
-  } catch (e) { res.status(500).json({ error: 'שגיאת שרת' }); }
+    const r = await mergeListSetting('payment_methods', 'crm_methods', methods, baseline, DEFAULT_METHODS);
+    await logAction(req.user.id, req.user.username, 'edit', 'settings', 0,
+      { what: 'payment_methods', added: r.added, removed: r.removed, total: r.list.length });
+    res.json({ message: 'נשמר', methods: r.list, added: r.added, removed: r.removed });
+  } catch (e) {
+    if (e.badRequest) return res.status(400).json({ error: 'רשימה לא תקינה' });
+    console.error('methods save error:', e.message);
+    res.status(500).json({ error: 'שגיאת שרת' });
+  }
 });
 
 const DEFAULT_BLESSING = 'יהי רצון שיקוים בו מקרא שכתוב: "וּבָחַנוּנִי נָא בָּזֹאת" —\nויתברך בכל מילי דמיטב, בבריאות איתנה ונחת מכל יוצאי חלציו,\nמתוך הרחבת הדעת ושפע ברכה והצלחה.';
@@ -145,16 +208,19 @@ router.get('/titles', authenticate, async (req, res) => {
   catch (e) { res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-// POST contact titles (write access)
+// POST contact titles (write access) - מיזוג, לא דריסה
 router.post('/titles', authenticate, requireWrite, async (req, res) => {
-  const { titles } = req.body;
-  if (!Array.isArray(titles)) return res.status(400).json({ error: 'רשימה לא תקינה' });
-  const clean = titles.map(t => String(t).trim()).filter(Boolean);
+  const { titles, baseline } = req.body;
   try {
-    await setSetting('contact_titles', clean);
-    await logAction(req.user.id, req.user.username, 'edit', 'settings', 0, { what: 'contact_titles' });
-    res.json({ message: 'נשמר', titles: clean });
-  } catch (e) { res.status(500).json({ error: 'שגיאת שרת' }); }
+    const r = await mergeListSetting('contact_titles', 'crm_titles', titles, baseline, DEFAULT_TITLES);
+    await logAction(req.user.id, req.user.username, 'edit', 'settings', 0,
+      { what: 'contact_titles', added: r.added, removed: r.removed, total: r.list.length });
+    res.json({ message: 'נשמר', titles: r.list, added: r.added, removed: r.removed });
+  } catch (e) {
+    if (e.badRequest) return res.status(400).json({ error: 'רשימה לא תקינה' });
+    console.error('titles save error:', e.message);
+    res.status(500).json({ error: 'שגיאת שרת' });
+  }
 });
 
 module.exports = router;
