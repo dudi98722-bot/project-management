@@ -25,7 +25,7 @@ function projFiltered() {
     if (f === 'active' && !p.active) return false;
     if (f === 'closed' && p.active) return false;
     return !q || [p.name, p.client, p.subName, p.address].join(' ').toLowerCase().indexOf(q) >= 0;
-  }).map(function (p) { return v.proj[p.id]; });
+  }).map(function (p) { return v.proj[p.id]; }).filter(projPasses);
 }
 
 function projSeg() {
@@ -42,10 +42,15 @@ function pageProjects(w) {
     '<div class="toolbar">' + projSeg() +
       '<input class="inp search" type="search" placeholder="חיפוש פרוייקט, לקוח או קבלן…" value="' + esc(S.ui.projSearch) + '" ' +
         'oninput="S.ui.projSearch=this.value;refreshProjTable()">' +
-      '<div class="sp"></div><button class="btn sm gh" onclick="exportProjects()">📤 אקסל</button>' +
+      '<div class="sp"></div>' +
+      (Object.keys(projFstate()).length ? '<button class="btn sm gh" onclick="projClearFilters()">✕ נקה סינון</button>' : '') +
+      '<button class="btn sm gh" onclick="exportProjects()">📤 אקסל</button>' +
       '<button class="btn sm gh" onclick="printPage(\'דוח פרוייקטים\')">🖨️ הדפסה</button></div>' +
-    '<div class="card"><div class="tbl-scroll"><table class="tbl"><thead><tr>' +
+    '<div class="card"><div id="bb-projects"></div><div class="tbl-scroll"><table class="tbl"><thead><tr>' +
+      (canEdit() ? '<th class="nosort sel-col"><input type="checkbox" id="sa-projects" title="סימון כל הפרוייקטים המוצגים" onchange="projSelAll(this.checked)"></th>' : '') +
       '<th class="nosort toggle-col">פעיל</th>' + PROJ_COLS.map(function (c) { return '<th class="nosort' + (c.m || c.n ? ' num' : '') + '">' + c.t + '</th>'; }).join('') +
+    '</tr><tr class="filt noprint">' + (canEdit() ? '<th></th>' : '') + '<th class="toggle-col"></th>' +
+      PROJ_COLS.map(function (c) { return '<th>' + projFilterCell(c) + '</th>'; }).join('') +
     '</tr></thead><tbody id="ptb"></tbody><tfoot id="ptf"></tfoot></table></div>' +
     '<div class="count-line" id="pcl"></div></div>' +
     '<p class="hint">סה״כ ללקוח = מחיר הבסיס שסוכם + כל התוספות שנרשמו. ' +
@@ -57,15 +62,20 @@ function pageProjects(w) {
 
 function refreshProjTable() {
   var tb = byId('ptb'); if (!tb) return;
-  var list = projFiltered();
+  var list = projFiltered(), ed = canEdit(), sel = selOf('projects', ''), shown = {};
+  list.forEach(function (s) { shown[s.p.id] = 1; });
+  Object.keys(sel).forEach(function (k) { if (!shown[k]) delete sel[k]; });   // לא נוגעים במה שהוסתר בסינון
+  projBulkBar(list);
   if (!list.length) {
-    tb.innerHTML = '<tr><td colspan="' + (PROJ_COLS.length + 1) + '"><div class="empty"><span class="ico">🏗️</span>' +
+    tb.innerHTML = '<tr><td colspan="' + (PROJ_COLS.length + (ed ? 2 : 1)) + '"><div class="empty"><span class="ico">🏗️</span>' +
       (S.d.projects.length ? 'אין פרוייקטים שמתאימים לסינון' : '<b>עדיין אין פרוייקטים</b>התחילו ב"פרוייקט חדש"') + '</div></td></tr>';
     byId('ptf').innerHTML = ''; byId('pcl').textContent = '';
     return;
   }
   tb.innerHTML = list.map(function (s) {
-    return '<tr class="click' + (s.p.active ? '' : ' dim') + '" onclick="go(\'project\',\'' + s.p.id + '\')">' +
+    return '<tr class="click' + (s.p.active ? '' : ' dim') + (sel[s.p.id] ? ' selected' : '') + '" onclick="go(\'project\',\'' + s.p.id + '\')">' +
+      (ed ? '<td class="sel-col" onclick="event.stopPropagation()"><input type="checkbox"' + (sel[s.p.id] ? ' checked' : '') +
+        ' onchange="projSel(\'' + s.p.id + '\',this.checked)"></td>' : '') +
       '<td class="toggle-col" onclick="event.stopPropagation()">' + activeToggle(s.p) + '</td>' +
       PROJ_COLS.map(function (c) {
         var x = pv(c, s);
@@ -75,7 +85,7 @@ function refreshProjTable() {
         return '<td>' + (c.k === 'name' ? '<b>' + esc(x) + '</b>' : esc(x || '')) + '</td>';
       }).join('') + '</tr>';
   }).join('');
-  byId('ptf').innerHTML = '<tr><td></td>' + PROJ_COLS.map(function (c, i) {
+  byId('ptf').innerHTML = '<tr>' + (ed ? '<td></td>' : '') + '<td></td>' + PROJ_COLS.map(function (c, i) {
     if (!c.m) return '<td>' + (i === 0 ? 'סה״כ ' + list.length + ' פרוייקטים' : '') + '</td>';
     return '<td class="num">' + money(sumOf(list, function (s) { return pv(c, s) || 0; })) + '</td>';
   }).join('') + '</tr>';
@@ -88,14 +98,11 @@ function activeToggle(p) {
     : '<span class="toggle' + (p.active ? ' on' : '') + '">' + h + '</span>';
 }
 function toggleActive(id) {
-  var p = findRow('projects', id); if (!p) return;
+  var p = findRow('projects', id); if (!p || !canEdit()) return;
   var next = !p.active;
-  p.active = next; S.ver++; rerender();                 /* המסך מתעדכן מיד, השרת ברקע */
-  api('save', { table: 'projects', row: { id: id, active: next } }).then(function (r) {
-    if (r.ok) { upsertLocal('projects', r.row); toast(next ? 'הפרוייקט סומן כפעיל' : 'הפרוייקט סומן כלא פעיל', 'ok'); return; }
-    if (handleExpired(r)) return;
-    p.active = !next; S.ver++; rerender(); toast(r.error, 'err');
-  });
+  commit('projects', { id: id, active: next }, null);   /* המסך מתעדכן מיד, השרת ברקע */
+  rerender();
+  toast(next ? 'הפרוייקט סומן כפעיל' : 'הפרוייקט סומן כלא פעיל', 'ok');
 }
 
 function exportProjects() {

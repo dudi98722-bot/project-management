@@ -22,7 +22,7 @@
    ===================================================================== */
 
 var APP            = 'berri';
-var SCRIPT_VERSION = '2026-09-23';
+var SCRIPT_VERSION = '2026-09-24-fast';   // להעלות בכל שינוי — כך רואים ב-ping איזו גרסה פרוסה
 var API_VERSION    = 1;
 var TZ             = 'Asia/Jerusalem';
 var SS_ID          = '';                         // ריק = הגיליון שהסקריפט מחובר אליו
@@ -199,11 +199,13 @@ function asText_(v) {
 function rowValues_(key, o) {
   return cols_(key).map(function (c) { return toCell_(c.t, o[c.f]); });
 }
+/* שורה חדשה לא מחייבת לקרוא את כל הלשונית: נכנסת לזיכרון רק אם הוא
+   כבר נטען בבקשה הזו, ואחרת קריאה מאוחרת תמצא אותה בגיליון ממילא. */
 function insert_(key, o) {
   var sh = sheet_(key);
   sh.appendRow(rowValues_(key, o));
-  o._row = sh.getLastRow();
-  rows_(key).push(o);
+  if (_memo[key]) { o._row = sh.getLastRow(); _memo[key].push(o); }
+  cacheDrop_(key);
   return o;
 }
 /* הוספת הרבה שורות בכתיבה אחת. appendRow לכל שורה היה לוקח דקות
@@ -215,13 +217,38 @@ function insertMany_(key, list) {
   if (over > 0) sh.insertRowsAfter(sh.getMaxRows(), over);
   sh.getRange(start, 1, list.length, cols.length)
     .setValues(list.map(function (o) { return rowValues_(key, o); }));
-  var all = rows_(key);
-  list.forEach(function (o, i) { o._row = start + i; all.push(o); });
+  list.forEach(function (o, i) { o._row = start + i; if (_memo[key]) _memo[key].push(o); });
+  cacheDrop_(key);
 }
 function update_(key, o) {
   sheet_(key).getRange(o._row, 1, 1, cols_(key).length).setValues([rowValues_(key, o)]);
   var all = rows_(key);
   for (var i = 0; i < all.length; i++) if (all[i].id === o.id) all[i] = o;
+  cacheDrop_(key);
+}
+
+/* =====================  מטמון שמות (מהירות)  =====================
+   כל שמירה צריכה את שם הקופה ואת שם הפרוייקט. במקום לקרוא את שתי
+   הלשוניות בכל פעם, שומרים מפה קטנה במטמון של השרת. כל כתיבה של
+   המערכת לקופות/לפרוייקטים מוחקת אותה, כך שהיא תמיד מעודכנת.
+   שינוי ידני ישירות בגיליון ייקלט תוך שעה לכל היותר. */
+var LOOKUP_TABLES = { registers: 1, projects: 1 };
+function lookup_(key, id) {
+  if (_memo[key]) return find_(key, id);          // כבר נקרא בבקשה הזו
+  var cache = CacheService.getScriptCache(), ck = 'lk_' + key, map = null, hit = cache.get(ck);
+  if (hit) { try { map = JSON.parse(hit); } catch (e) { map = null; } }
+  if (!map) {
+    map = {};
+    rows_(key).forEach(function (r) {
+      map[r.id] = { id: r.id, name: r.name, subName: r.subName || '', deleted: !!r.deleted };
+    });
+    try { cache.put(ck, JSON.stringify(map), 3600); } catch (e) {}
+  }
+  return map[id] || null;
+}
+function cacheDrop_(key) {
+  if (!LOOKUP_TABLES[key]) return;
+  try { CacheService.getScriptCache().remove('lk_' + key); } catch (e) {}
 }
 /* משנה עמודה אחת בכל השורות המתאימות — בכתיבה אחת לגיליון */
 function syncColumn_(key, match, field, value) {
@@ -317,6 +344,10 @@ function makeToken_(u) {
   var payload = u.id + '|' + (Date.now() + TOKEN_TTL) + '|' + String(u.hash).slice(-10);
   return Utilities.base64EncodeWebSafe(payload) + '.' + sign_(payload);
 }
+/* המשתמש המחובר נשמר במטמון השרת ל-10 דקות, כדי שלא לקרוא את לשונית
+   המשתמשים בכל שמירה. כל שינוי דרך המערכת (עריכה, השבתה, החלפת סיסמה)
+   מוחק אותו מיד. השבתה ידנית ישירות בגיליון נכנסת לתוקף תוך 10 דקות. */
+var AUTH_CACHE_SEC = 600;
 function auth_(token) {
   try {
     var parts = String(token || '').split('.');
@@ -325,11 +356,20 @@ function auth_(token) {
     if (sign_(payload) !== parts[1]) return null;
     var bits = payload.split('|');
     if (Number(bits[1]) < Date.now()) return null;
-    var u = find_('users', bits[0]);
-    if (!u || !u.active || String(u.hash).slice(-10) !== bits[2]) return null;
+    var cache = CacheService.getScriptCache(), ck = 'au_' + bits[0], u = null, hit = cache.get(ck);
+    if (hit) { try { u = JSON.parse(hit); } catch (e) { u = null; } }
+    if (!u) {
+      var row = find_('users', bits[0]);
+      if (!row) return null;
+      u = { id: row.id, username: row.username, fullName: row.fullName, role: row.role,
+            active: row.active, createdAt: row.createdAt, stamp: String(row.hash).slice(-10) };
+      cache.put(ck, JSON.stringify(u), AUTH_CACHE_SEC);
+    }
+    if (!u.active || u.stamp !== bits[2]) return null;
     return u;
   } catch (e) { return null; }
 }
+function authDrop_(id) { try { CacheService.getScriptCache().remove('au_' + id); } catch (e) {} }
 function can_(me, need) {
   if (need === 'admin') return me.role === 'admin';
   return me.role === 'admin' || me.role === 'editor';
@@ -358,6 +398,7 @@ function route_(e) {
       case 'load':       return load_(p);
       case 'save':       return save_(p);
       case 'saveBulk':   return saveBulk_(p);
+      case 'bulk':       return bulk_(p);
       case 'remove':     return remove_(p, true);
       case 'restore':    return remove_(p, false);
       case 'saveUser':   return saveUser_(p);
@@ -494,8 +535,12 @@ function save_(p) {
   lock.waitLock(25000);
   try {
     /* המזהה נוצר בדפדפן: לחיצה כפולה או ניסיון חוזר אחרי ניתוק
-       מגיעים עם אותו מזהה והופכים לעדכון — לא לשורה כפולה */
-    var cur = id ? find_(key, id) : null;
+       מגיעים עם אותו מזהה והופכים לעדכון — לא לשורה כפולה.
+       שורה חדשה (fresh) לא מחייבת לקרוא את כל הלשונית: מספיק לבדוק
+       במטמון אם המזהה הזה כבר נשמר בשעות האחרונות. */
+    var cache = CacheService.getScriptCache();
+    var fresh = p.fresh === '1' && id && !cache.get('nid_' + id);
+    var cur = (id && !fresh) ? find_(key, id) : null;
     if (cur && cur.deleted) return err_('השורה נמחקה בינתיים — רענן את הנתונים');
     if (cur && key === 'categories' && cur.group === 'home' && me.role !== 'admin') {
       return err_('הפעולה מותרת למנהל בלבד');
@@ -513,9 +558,11 @@ function save_(p) {
       o.createdAt = now_(); o.deleted = false;
       if (key !== 'categories') { o.userName = me.fullName; o.userId = me.id; o.updatedAt = ''; }
       insert_(key, o);
+      try { cache.put('nid_' + o.id, '1', 21600); } catch (e) {}
     }
+    /* catKnown = הדפדפן כבר מכיר את הקטגוריה — אין צורך לקרוא את הלשונית */
     var g = rule.cat || (key === 'cashMoves' && o.type !== 'transfer' ? o.type : '');
-    if (g && o.category && (g !== 'home' || me.role === 'admin')) newCat = ensureCategory_(g, o.category);
+    if (g && o.category && p.catKnown !== '1' && (g !== 'home' || me.role === 'admin')) newCat = ensureCategory_(g, o.category);
     return json_({ ok: true, row: strip_(o), category: newCat ? strip_(newCat) : null });
   } finally { lock.releaseLock(); }
 }
@@ -570,6 +617,94 @@ function saveBulk_(p) {
   } finally { lock.releaseLock(); }
 }
 
+/* =====================  עדכון / מחיקה מרוכזים  =====================
+   op = update (אותם שדות לכל השורות שנבחרו) / delete / restore.
+   כל שורה נבדקת בנפרד בדיוק כמו בעריכה רגילה; שורה שנכשלה חוזרת
+   ברשימת הנפילות ואינה עוצרת את השאר. */
+var BULK_FIELDS = {
+  projects:         ['active', 'client', 'subName', 'subPhone', 'startDate', 'endDate', 'note'],
+  additions:        ['date', 'projectId', 'note'],
+  clientPayments:   ['date', 'projectId', 'registerId', 'method', 'reference', 'note'],
+  subPayments:      ['date', 'projectId', 'registerId', 'method', 'reference', 'note'],
+  projectExpenses:  ['date', 'projectId', 'registerId', 'category', 'supplier', 'deductSub', 'note'],
+  businessExpenses: ['date', 'registerId', 'category', 'supplier', 'note'],
+  homeExpenses:     ['date', 'registerId', 'category', 'supplier', 'note'],
+  cashMoves:        ['date', 'registerId', 'category', 'note']
+};
+function bulk_(p) {
+  var me = auth_(p.token);
+  if (!me) return expired_();
+  var key = String(p.table || ''), rule = RULES[key], op = String(p.op || '');
+  if (!rule || !BULK_FIELDS[key]) return err_('טבלה לא מוכרת');
+  if (['update', 'delete', 'restore'].indexOf(op) < 0) return err_('פעולה לא מוכרת');
+  if (!can_(me, rule.who)) return err_(rule.who === 'admin' ? 'הפעולה מותרת למנהל בלבד' : 'אין לך הרשאה לשנות נתונים');
+  var ids, patch = {};
+  try {
+    ids = JSON.parse(p.ids || '[]');
+    if (op === 'update') patch = JSON.parse(p.patch || '{}');
+  } catch (e) { return err_('נתונים לא תקינים'); }
+  if (!ids || !ids.length) return err_('לא נבחרו שורות');
+  if (ids.length > BULK_MAX) return err_('אפשר לעדכן עד ' + BULK_MAX + ' שורות בפעם אחת');
+  if (op === 'update') {
+    var clean = {};
+    Object.keys(patch || {}).forEach(function (k) { if (BULK_FIELDS[key].indexOf(k) >= 0) clean[k] = patch[k]; });
+    if (!Object.keys(clean).length) return err_('לא נבחר שדה לעדכון');
+    patch = clean;
+  }
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(45000);
+  try {
+    var stamp = now_(), done = [], failed = [], cats = {};
+    ids.forEach(function (raw) {
+      var id = clean_(raw, 40);
+      try {
+        var cur = find_(key, id);
+        if (!cur) throw new Bad('השורה לא נמצאה');
+        if (op === 'update') {
+          if (cur.deleted) throw new Bad('השורה נמחקה');
+          var o = build_(key, patch, cur);
+          o._row = cur._row; o.id = cur.id; o.deleted = false; o.createdAt = cur.createdAt;
+          if ('userName' in cur) { o.userName = cur.userName; o.userId = cur.userId; o.updatedAt = stamp; }
+          update_(key, o);
+          afterUpdate_(key, cur, o);
+          var g = rule.cat || (key === 'cashMoves' && o.type !== 'transfer' ? o.type : '');
+          if (g && o.category && (g !== 'home' || me.role === 'admin')) cats[g + '|' + o.category] = 1;
+          done.push(strip_(o));
+          return;
+        }
+        if (op === 'delete') {
+          if (!cur.deleted && key === 'projects') {
+            var n = 0;
+            PROJECT_TABLES.forEach(function (t) {
+              n += live_(t).filter(function (r) { return r.projectId === cur.id; }).length;
+            });
+            if (n) throw new Bad('בפרוייקט "' + cur.name + '" יש ' + n + ' תנועות');
+          }
+          cur.deleted = true;
+        } else {
+          if (cur.projectId) { var pr = find_('projects', cur.projectId); if (!pr || pr.deleted) throw new Bad('הפרוייקט של השורה נמחק'); }
+          if (cur.registerId) { var rg = find_('registers', cur.registerId); if (!rg || rg.deleted) throw new Bad('הקופה של השורה נמחקה'); }
+          cur.deleted = false;
+        }
+        if ('updatedAt' in cur) cur.updatedAt = stamp;
+        update_(key, cur);
+        done.push(strip_(cur));
+      } catch (ex) {
+        failed.push({ id: id, error: (ex instanceof Bad) ? ex.msg : String(ex && ex.message ? ex.message : ex) });
+      }
+    });
+    var newCats = [];
+    Object.keys(cats).forEach(function (k) {
+      var at = k.indexOf('|');
+      var c = ensureCategory_(k.slice(0, at), k.slice(at + 1));
+      if (c) newCats.push(strip_(c));
+    });
+    if (key === 'projects' && done.length) cacheDrop_('projects');
+    return json_({ ok: true, rows: done, failed: failed, categories: newCats });
+  } finally { lock.releaseLock(); }
+}
+
 /* בונה את השורה מהקלט: רק שדות מוכרים, בסוג הנכון, עם בדיקות תקינות.
    שדה שלא נשלח נשאר כפי שהיה בגיליון. */
 function build_(key, inp, cur) {
@@ -597,14 +732,14 @@ function build_(key, inp, cur) {
   function amount() { money('amount'); if (!(o.amount > 0)) throw new Bad('יש להזין סכום גדול מאפס'); }
   function register(f, nameF) {
     if (has(f)) o[f] = clean_(inp[f], 40);
-    var r = o[f] ? find_('registers', o[f]) : null;
+    var r = o[f] ? lookup_('registers', o[f]) : null;
     if (!r || r.deleted) throw new Bad('יש לבחור קופה');
     o[nameF] = r.name;
     return r;
   }
   function project() {
     if (has('projectId')) o.projectId = clean_(inp.projectId, 40);
-    var pr = o.projectId ? find_('projects', o.projectId) : null;
+    var pr = o.projectId ? lookup_('projects', o.projectId) : null;
     if (!pr || pr.deleted) throw new Bad('יש לבחור פרוייקט');
     o.projectName = pr.name;
     return pr;
@@ -812,6 +947,7 @@ function saveUser_(p) {
       u.username = username; u.fullName = fullName || username; u.role = role; u.active = active;
       if (pass) { u.salt = newSalt_(); u.hash = hashPass_(pass, u.salt); }
       update_('users', u);
+      authDrop_(u.id);                     // תפקיד/השבתה נכנסים לתוקף מיד
       return json_({ ok: true, user: pubUser_(u) });
     }
     if (pass.length < 6) return err_('סיסמה חייבת 6 תווים לפחות');
@@ -835,6 +971,7 @@ function deleteUser_(p) {
     if (u.role === 'admin' && u.active && admins_().length < 2) return err_('חייב להישאר לפחות מנהל אחד פעיל');
     u.active = false;
     update_('users', u);
+    authDrop_(u.id);
     return json_({ ok: true });
   } finally { lock.releaseLock(); }
 }
@@ -844,13 +981,15 @@ function changePass_(p) {
   if (!me) return expired_();
   var newP = String(p.newPassword || '');
   if (newP.length < 6) return err_('הסיסמה החדשה חייבת 6 תווים לפחות');
-  if (hashPass_(String(p.oldPassword || ''), me.salt) !== me.hash) return err_('הסיסמה הנוכחית שגויה');
+  var full = find_('users', me.id);        // במטמון אין מלח וגיבוב — צריך את השורה המלאה
+  if (!full || hashPass_(String(p.oldPassword || ''), full.salt) !== full.hash) return err_('הסיסמה הנוכחית שגויה');
   var lock = LockService.getScriptLock();
   lock.waitLock(25000);
   try {
-    me.salt = newSalt_();
-    me.hash = hashPass_(newP, me.salt);
-    update_('users', me);
-    return json_({ ok: true, token: makeToken_(me) });   // החיבורים האחרים מתנתקים
+    full.salt = newSalt_();
+    full.hash = hashPass_(newP, full.salt);
+    update_('users', full);
+    authDrop_(full.id);
+    return json_({ ok: true, token: makeToken_(full) });   // החיבורים האחרים מתנתקים
   } finally { lock.releaseLock(); }
 }

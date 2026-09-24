@@ -179,6 +179,7 @@ function importRun(btn) {
     if (n >= chunks.length) {
       IMPS.busy = false; busy(btn, false);
       rerender();
+      if (IMPS.skippedAny) loadAll(true);      // שורות שנשמרו בניסיון שתשובתו אבדה — מביאים אותן מהגיליון
       if (!failed.length) { closeModal(); toast('יובאו ' + done + ' שורות', 'ok'); return; }
       /* נשארים בחלון ומראים למה נפלו — כדי שאפשר יהיה לתקן באקסל */
       var why = {};
@@ -189,7 +190,15 @@ function importRun(btn) {
       return;
     }
     busy(btn, true, 'מייבא… ' + done + '/' + list.length);
-    api('saveBulk', { table: table, rows: chunks[n] }).then(function (r) {
+    api('saveBulk', { table: table, rows: chunks[n] }, 90000).then(function (r) {
+      /* לא הגיעה תשובה: ייתכן שהמנה כבר נשמרה. שולחים שוב — השרת מדלג
+         על מזהים שכבר קיימים, כך שאין כפילות */
+      if (r.net && (IMPS.retry = (IMPS.retry || 0) + 1) <= 4) {
+        busy(btn, true, 'אין תשובה — מנסה שוב…');
+        return setTimeout(function () { run(n); }, 2000 * IMPS.retry);
+      }
+      IMPS.retry = 0;
+      if (r.ok && r.skipped) { done += r.skipped; IMPS.skippedAny = true; }   // נשמרו בניסיון הקודם
       if (!r.ok) {
         IMPS.busy = false; busy(btn, false);
         if (!handleExpired(r)) setMsg('m', r.error);

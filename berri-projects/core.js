@@ -113,20 +113,32 @@ function toast(text, kind, action) {
 
 /* ---------- שרת ---------- */
 /* טופס רגיל (לא JSON) — כך הדפדפן לא שולח בקשת preflight, ש-Apps Script לא עונה לה */
-function api(action, params) {
+/* timeoutMs — אחרי הזמן הזה מוותרים על התשובה. זה לא אומר שהשרת לא
+   שמר: הבקשה כבר יצאה. לכן שמירות עוברות בתור (sync.js), ששולח שוב את
+   אותה בקשה עם אותו מזהה — והשרת מזהה אותה ולא יוצר כפילות. */
+function api(action, params, timeoutMs) {
   var body = new URLSearchParams();
   body.append('action', action);
   if (S.token) body.append('token', S.token);
   Object.keys(params || {}).forEach(function (k) {
     var v = params[k];
-    if (v !== undefined && v !== null) body.append(k, typeof v === 'object' ? JSON.stringify(v) : v);
+    if (v !== undefined && v !== null && v !== '') body.append(k, typeof v === 'object' ? JSON.stringify(v) : v);
   });
-  return fetch(S.url, { method: 'POST', body: body })
+  var ctl = (timeoutMs && typeof AbortController === 'function') ? new AbortController() : null;
+  var t = ctl ? setTimeout(function () { ctl.abort(); }, timeoutMs) : null;
+  return fetch(S.url, { method: 'POST', body: body, signal: ctl ? ctl.signal : undefined })
     .then(function (r) { return r.json(); })
-    .then(function (r) { setOffline(false); return r; })
-    .catch(function () { setOffline(true); return { ok: false, error: 'אין תקשורת עם השרת — בדוק את חיבור האינטרנט ונסה שוב', net: true }; });
+    .then(function (r) { clearTimeout(t); setOffline(false); return r; })
+    .catch(function () {
+      clearTimeout(t); setOffline(true);
+      return { ok: false, error: 'לא התקבלה תשובה מהשרת — בדוק את החיבור ונסה שוב', net: true };
+    });
 }
+/* תשובה אחת שלא הגיעה היא לרוב תקלה חולפת (והשמירה נשלחת שוב לבד) —
+   הפס האדום מופיע רק אחרי שתי תקלות ברצף, כדי לא להבהיל לחינם */
 function setOffline(on) {
+  S.netFails = on ? (S.netFails || 0) + 1 : 0;
+  on = on && S.netFails >= 2;
   if (S.offline === on) return;
   S.offline = on;
   var b = byId('offline'); if (b) b.classList.toggle('hide', !on);
@@ -142,6 +154,7 @@ function applyPayload(r) {
   S.user = r.user; S.today = r.today || iso(new Date());
   S.sheetUrl = r.sheetUrl || ''; S.scriptVersion = r.scriptVersion || '';
   TABLE_KEYS.forEach(function (k) { S.d[k] = r[k] || []; });
+  if (typeof qOverlay === 'function') qOverlay();      // שינויים שעוד בדרך לשרת
   S.ver++;
 }
 function cacheState() {
@@ -181,7 +194,8 @@ function loadAll(silent) {
     }
     var firstRender = !S.user || S.user.role !== r.user.role;
     applyPayload(r); cacheState(); S.lastLoad = Date.now();
-    if (firstRender || !byId('wrap')) renderApp(); else { renderTop(); renderPage(); }
+    if (firstRender || !byId('wrap')) renderApp(); else if (!silent || !typingInPage()) { renderTop(); renderPage(); }
+    qPump();
     return true;
   });
 }
@@ -279,10 +293,25 @@ function loginDone(r) {
   S.token = r.token; lsSet(LS.tok, r.token);
   applyPayload(r); cacheState(); S.lastLoad = Date.now();
   renderApp();
+  qPump();                                  // שינויים שחיכו לכניסה מחדש
+}
+/* רענון ברקע לא בונה את המסך מחדש בזמן שמקלידים בו (למשל בשורת הסינון) */
+function typingInPage() {
+  var a = document.activeElement;
+  return !!a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && !!byId('wrap') && byId('wrap').contains(a);
 }
 function logout() {
   S.token = ''; S.user = null; lsDel(LS.tok); lsDel(LS.cache); closeModal();
   showLogin();
+}
+/* יציאה כשעוד יש שינויים בדרך: הם לא הולכים לאיבוד (שמורים במחשב הזה),
+   אבל יישלחו רק בכניסה הבאה — כדאי שהמשתמש יידע */
+function askLogout() {
+  var n = (typeof Q !== 'undefined' && Q.items) ? Q.items.length : 0;
+  if (!n) return logout();
+  confirmModal('יציאה', 'יש עוד <b>' + n + '</b> שינויים שנשלחים לגיליון ברקע.<br>' +
+    'אם תצא עכשיו הם יישמרו במחשב הזה ויישלחו בכניסה הבאה ממנו.', 'לצאת בכל זאת',
+    function () { closeModal(); logout(); });
 }
 function resetUrl() { lsDel(LS.url); S.url = DEFAULT_GS_URL || ''; boot(); }
 
@@ -352,6 +381,7 @@ function renderApp() {
       '<div class="brandmark" onclick="go(\'dash\')"><span class="bx"><i></i><i></i><i></i></span>' +
         '<span class="bn">BERRI<small>ניהול פרוייקטים</small></span></div>' +
       '<div class="sp"></div>' +
+      '<span id="qbadge" class="qbadge hide"></span>' +
       '<div class="bal-pill" onclick="go(\'registers\')" title="יתרה בכל הקופות"><span class="t">בקופות</span>' +
         '<b id="balpill"></b><i id="syncdot" class="syncdot"></i></div>' +
       (canEdit() ? '<button class="tb-add" onclick="quickAdd()">➕<span class="t"> הזנה</span></button>' : '') +
@@ -362,7 +392,7 @@ function renderApp() {
           '<button onclick="closeMenu();refresh()">🔄 רענון מהגיליון</button>' +
           (S.sheetUrl ? '<a href="' + esc(S.sheetUrl) + '" target="_blank" rel="noopener" onclick="closeMenu()">📗 פתיחת הגיליון בגוגל שיטס</a>' : '') +
           '<button onclick="closeMenu();passwordModal()">🔑 החלפת סיסמה</button>' +
-          '<button onclick="closeMenu();logout()">🚪 יציאה</button>' +
+          '<button onclick="closeMenu();askLogout()">🚪 יציאה</button>' +
         '</div></div>' +
     '</div></div>' +
     '<div id="offline" class="offline' + (S.offline ? '' : ' hide') + '">אין חיבור לשרת — הנתונים המוצגים הם מהפעם האחרונה</div>' +
@@ -371,6 +401,7 @@ function renderApp() {
   hideBoot();
   renderTop(); renderNav(); renderPage();
   if (S.syncing) setSync(true);
+  qBadge();
 }
 function renderTop() {
   var b = byId('balpill');

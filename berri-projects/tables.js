@@ -147,7 +147,9 @@ function tableCard(tk, ctx, opts) {
   opts = opts || {};
   var T = TBL[tk], id = tid(tk, ctx), s = sstate(id), cols = colsOf(tk, ctx), acts = tableEditable(tk);
   var nf = Object.keys(fstate(id)).length;
-  var showF = S.filters['_show_' + id] || nf > 0;
+  /* שורת הסינון פתוחה כברירת מחדל במחשב; בטלפון — בלחיצה */
+  var sf = S.filters['_show_' + id];
+  var showF = nf > 0 || (sf === undefined ? window.innerWidth > 720 : sf);
   var cx = '\'' + tk + '\',\'' + (ctx || '') + '\'';
   return '<div class="card"><div class="card-head"><h3>' + T.icon + ' ' + (opts.title || T.title) + '</h3><div class="sp"></div>' +
       '<button class="btn sm gh" onclick="toggleFilters(' + cx + ')">🔍 סינון' + (nf ? ' · ' + nf : '') + '</button>' +
@@ -155,19 +157,22 @@ function tableCard(tk, ctx, opts) {
       '<button class="btn sm gh" onclick="exportTable(' + cx + ')">📤 אקסל</button>' +
       (IMP[tk] && acts ? '<button class="btn sm gh" onclick="importOpen(' + cx + ')" title="ייבוא שורות מקובץ אקסל">📥 ייבוא</button>' : '') +
       (opts.add && acts ? '<button class="btn sm o" onclick="' + opts.add + '">➕ ' + (opts.addLabel || 'הוספה') + '</button>' : '') +
-    '</div><div class="tbl-scroll"><table class="tbl"><thead><tr>' +
+    '</div><div id="bb-' + id + '"></div><div class="tbl-scroll"><table class="tbl"><thead><tr>' +
+      (acts ? '<th class="nosort sel-col"><input type="checkbox" id="sa-' + id + '" title="סימון כל השורות המוצגות" ' +
+        'onchange="selAll(' + cx + ',this.checked)"></th>' : '') +
       cols.map(function (c) {
         return '<th class="' + (c.type === 'money' ? 'num' : '') + '" onclick="sortBy(' + cx + ',\'' + c.k + '\')">' + c.t +
           (s.k === c.k ? '<span class="arw">' + (s.dir > 0 ? '▲' : '▼') + '</span>' : '') + '</th>';
       }).join('') + (acts ? '<th class="nosort"></th>' : '') + '</tr>' +
-      (showF ? '<tr class="filt">' + cols.map(function (c) { return '<th>' + filterCell(tk, ctx, c) + '</th>'; }).join('') +
+      (showF ? '<tr class="filt">' + (acts ? '<th></th>' : '') +
+        cols.map(function (c) { return '<th>' + filterCell(tk, ctx, c) + '</th>'; }).join('') +
         (acts ? '<th></th>' : '') + '</tr>' : '') +
     '</thead><tbody id="tb-' + id + '"></tbody><tfoot id="tf-' + id + '"></tfoot></table></div>' +
     '<div class="count-line" id="cl-' + id + '"></div></div>';
 }
 function toggleFilters(tk, ctx) {
-  var k = '_show_' + tid(tk, ctx);
-  S.filters[k] = !S.filters[k];
+  var k = '_show_' + tid(tk, ctx), cur = S.filters[k];
+  S.filters[k] = !(cur === undefined ? window.innerWidth > 720 : cur);
   renderPage();
 }
 function cellHtml(c, r) {
@@ -184,26 +189,66 @@ function refreshTable(tk, ctx) {
   var id = tid(tk, ctx), tb = byId('tb-' + id);
   if (!tb) return;
   var T = TBL[tk], rows = tableRows(tk, ctx), all = T.rows(ctx).length, cols = colsOf(tk, ctx), acts = tableEditable(tk);
-  var n = cols.length + (acts ? 1 : 0);
+  var n = cols.length + (acts ? 2 : 0);
+  /* סימון נשאר רק על שורות שמוצגות עכשיו — כדי שפעולה מרוכזת לא תיגע
+     בשורה שהוסתרה בסינון ואי אפשר לראות אותה */
+  var sel = selOf(tk, ctx), shown = {};
+  rows.forEach(function (r) { shown[r.id] = 1; });
+  Object.keys(sel).forEach(function (k) { if (!shown[k]) delete sel[k]; });
   if (!rows.length) {
     tb.innerHTML = '<tr><td colspan="' + n + '"><div class="empty"><span class="ico">' + (all ? '🔍' : T.icon) + '</span>' +
       (all ? 'אין שורות שמתאימות לסינון' : 'עדיין לא הוזנו ' + T.title) + '</div></td></tr>';
     byId('tf-' + id).innerHTML = '';
   } else {
     tb.innerHTML = rows.map(function (r) {
-      return '<tr>' + cols.map(function (c) { return cellHtml(c, r); }).join('') +
+      return '<tr' + (sel[r.id] ? ' class="selected"' : '') + '>' +
+        (acts ? '<td class="sel-col"><input type="checkbox"' + (sel[r.id] ? ' checked' : '') +
+          ' onchange="selOne(\'' + tk + '\',\'' + (ctx || '') + '\',\'' + r.id + '\',this.checked)"></td>' : '') +
+        cols.map(function (c) { return cellHtml(c, r); }).join('') +
         (acts ? '<td><div class="row-acts">' +
           '<button class="icon-btn" title="עריכה" onclick="editRow(\'' + tk + '\',\'' + r.id + '\')">✏️</button>' +
           '<button class="icon-btn del" title="מחיקה" onclick="askDelete(\'' + T.table + '\',\'' + r.id + '\')">🗑️</button>' +
           '</div></td>' : '') + '</tr>';
     }).join('');
-    byId('tf-' + id).innerHTML = '<tr>' + cols.map(function (c, i) {
+    byId('tf-' + id).innerHTML = '<tr>' + (acts ? '<td></td>' : '') + cols.map(function (c, i) {
       if (c.sum) return '<td class="num">' + money(sumOf(rows, function (r) { return cellVal(c, r); })) + '</td>';
       return '<td>' + (i === 0 ? 'סה״כ' : '') + '</td>';
     }).join('') + (acts ? '<td></td>' : '') + '</tr>';
   }
   byId('cl-' + id).innerHTML = rows.length === all ? '<span>' + all + ' שורות</span>'
     : '<span class="badge o">מציג ' + rows.length + ' מתוך ' + all + '</span>';
+  if (acts) bulkBar(tk, ctx, rows);
+}
+
+/* ---------- סימון שורות לפעולה מרוכזת ---------- */
+function selOf(tk, ctx) { S.sel = S.sel || {}; var k = tid(tk, ctx); return (S.sel[k] = S.sel[k] || {}); }
+function selOne(tk, ctx, id, on) {
+  var s = selOf(tk, ctx);
+  if (on) s[id] = 1; else delete s[id];
+  refreshTable(tk, ctx);
+}
+function selAll(tk, ctx, on) {
+  if (tk === 'projects') return projSelAll(on);      // לטבלת הפרוייקטים יש מנוע משלה
+  var s = selOf(tk, ctx);
+  Object.keys(s).forEach(function (k) { delete s[k]; });
+  if (on) tableRows(tk, ctx).forEach(function (r) { s[r.id] = 1; });
+  refreshTable(tk, ctx);
+}
+function bulkBar(tk, ctx, rows) {
+  var id = tid(tk, ctx), el = byId('bb-' + id), s = selOf(tk, ctx);
+  var picked = rows.filter(function (r) { return s[r.id]; });
+  var sa = byId('sa-' + id);
+  if (sa) { sa.checked = !!picked.length && picked.length === rows.length; sa.indeterminate = !!picked.length && picked.length < rows.length; }
+  if (!el) return;
+  if (!picked.length) { el.innerHTML = ''; return; }
+  var mc = colsOf(tk, ctx).filter(function (c) { return c.sum && c.type === 'money'; })[0];
+  var cx = '\'' + tk + '\',\'' + (ctx || '') + '\'';
+  el.innerHTML = '<div class="bulkbar"><b>' + picked.length + ' שורות מסומנות</b>' +
+    (mc ? '<span>סה״כ ' + money(sumOf(picked, function (r) { return cellVal(mc, r); })) + '</span>' : '') +
+    '<div class="sp"></div>' +
+    '<button class="btn sm p" onclick="bulkEditOpen(' + cx + ')">✏️ עדכון מרוכז</button>' +
+    '<button class="btn sm d" onclick="bulkDeleteAsk(' + cx + ')">🗑️ מחיקה</button>' +
+    '<button class="btn sm gh" onclick="selAll(' + cx + ',false)">✕ ביטול סימון</button></div>';
 }
 function mountTables(list) { list.forEach(function (x) { refreshTable(x[0], x[1]); }); }
 
