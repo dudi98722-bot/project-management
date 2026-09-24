@@ -6,7 +6,7 @@
 
 /* כתובת ה-Web App של Apps Script. כשהיא מוגדרת כאן — אף אחד לא צריך
    להזין כלום; אם היא ריקה, מזינים אותה פעם אחת והיא נשמרת בדפדפן. */
-var DEFAULT_GS_URL = '';
+var DEFAULT_GS_URL = 'https://script.google.com/macros/s/AKfycbwamNXeJ-5KU80Zm6zJBN2iI2Hh365nmLCDR7tHQ48n0eqeWSxJzzjIEQDj1mxUy4WJJA/exec';
 
 var LS = { url: 'berri_gs_url', tok: 'berri_token', cache: 'berri_cache', last: 'berri_last' };
 var TABLE_KEYS = ['registers', 'projects', 'clientPayments', 'subPayments', 'projectExpenses',
