@@ -1,52 +1,59 @@
 /* BERRI — דוח חודשי ודוח חובות פתוחים */
 'use strict';
 
-function repMonthly(el) {
-  var v = calc(), by = {};
-  v.moves.forEach(function (m) {
+/* עמודות הדוח החודשי. הוצאות הבית מוצגות לכולם כסכום (כמו בכרטסת הקופה),
+   בלי פירוט — אחרת התזרים לא היה מסתכם מהעמודות. ניתן להסתיר (⚙️ עמודות) */
+var MONTH_COLS = [
+  { k: 'cp',  t: '📥 מלקוחות',       x: 'מלקוחות',         c: 'in' },
+  { k: 'in',  t: '⬇️ כסף אחר',       x: 'כסף אחר שנכנס',  c: 'in' },
+  { k: 'sp',  t: '👷 לקבלנים',        x: 'לקבלנים',         c: 'out' },
+  { k: 'pe',  t: '🧱 הוצ׳ פרוייקט',   x: 'הוצאות פרוייקט',  c: 'out' },
+  { k: 'be',  t: '🧾 הוצ׳ עסק',       x: 'הוצאות עסק',      c: 'out' },
+  { k: 'he',  t: '🏠 הוצ׳ בית',       x: 'הוצאות בית',      c: 'out' },
+  { k: 'out', t: '⬆️ כסף אחר',       x: 'כסף אחר שיצא',   c: 'out' },
+  { k: 'net', t: 'תזרים',            x: 'תזרים',           c: 'net' }
+];
+/* התזרים תמיד מחושב מכל התנועות — הסתרת עמודה משנה את התצוגה, לא את החשבון */
+function monthRows() {
+  var by = {};
+  calc().moves.forEach(function (m) {
     if (m.k === 'tr') return;
     var ym = m.date.slice(0, 7);
     by[ym] = by[ym] || { ym: ym, cp: 0, sp: 0, pe: 0, be: 0, he: 0, in: 0, out: 0 };
     by[ym][m.k] += m.amount;
   });
-  var list = Object.keys(by).sort().reverse().map(function (k) {
+  return Object.keys(by).sort().reverse().map(function (k) {
     var r = by[k];
-    r.inn = r.cp + r.in; r.exp = r.sp + r.pe + r.be + r.he + r.out; r.net = round2(r.inn - r.exp);
+    r.net = round2(r.cp + r.in - r.sp - r.pe - r.be - r.he - r.out);
     return r;
   });
-  var COLS = [['cp', '📥 מלקוחות', 'in'], ['in', '⬇️ כסף אחר', 'in'], ['sp', '👷 לקבלנים', 'out'],
-    ['pe', '🧱 הוצ׳ פרוייקט', 'out'], ['be', '🧾 הוצ׳ עסק', 'out'],
-    /* הסכום הכולל של הוצאות הבית גלוי לכולם (כמו בכרטסת הקופה) — בלי
-       פירוט. אם העמודה הייתה מוסתרת, התזרים לא היה מסתכם מהעמודות */
-    ['he', '🏠 הוצ׳ בית', 'out'], ['out', '⬆️ כסף אחר', 'out']];
+}
+
+function repMonthly(el) {
+  var list = monthRows(), cols = visibleCols('monthly', MONTH_COLS);
+  var cell = function (c, r) {
+    if (c.k === 'net') return '<td class="num m' + moneyCls(r.net) + '">' + money(r.net) + '</td>';
+    return '<td class="num ' + (r[c.k] ? c.c : 'muted') + '">' + money(r[c.k]) + '</td>';
+  };
   el.innerHTML = '<div class="card"><div class="card-head"><h3>🗓️ תזרים לפי חודשים</h3><div class="sp"></div>' +
+      colsBtn('monthly', 'דוח חודשי') +
       '<button class="btn sm gh" onclick="exportMonthly()">📤 אקסל</button></div><div class="tbl-scroll">' +
     '<table class="tbl"><thead><tr><th class="nosort">חודש</th>' +
-      COLS.map(function (c) { return '<th class="nosort num">' + c[1] + '</th>'; }).join('') +
-      '<th class="nosort num">תזרים</th></tr></thead><tbody>' +
+      cols.map(function (c) { return '<th class="nosort num">' + c.t + '</th>'; }).join('') + '</tr></thead><tbody>' +
       (list.length ? list.map(function (r) {
-        return '<tr><td><b>' + monthLabel(r.ym) + '</b></td>' +
-          COLS.map(function (c) { return '<td class="num ' + (r[c[0]] ? c[2] : 'muted') + '">' + money(r[c[0]]) + '</td>'; }).join('') +
-          '<td class="num m' + moneyCls(r.net) + '">' + money(r.net) + '</td></tr>';
-      }).join('') : '<tr><td colspan="' + (COLS.length + 2) + '"><div class="empty">אין תנועות עדיין</div></td></tr>') +
+        return '<tr><td><b>' + monthLabel(r.ym) + '</b></td>' + cols.map(function (c) { return cell(c, r); }).join('') + '</tr>';
+      }).join('') : '<tr><td colspan="' + (cols.length + 1) + '"><div class="empty">אין תנועות עדיין</div></td></tr>') +
     '</tbody><tfoot><tr><td>סה״כ</td>' +
-      COLS.map(function (c) { return '<td class="num">' + money(sumOf(list, function (r) { return r[c[0]]; })) + '</td>'; }).join('') +
-      '<td class="num">' + money(sumOf(list, function (r) { return r.net; })) + '</td></tr></tfoot></table></div></div>';
+      cols.map(function (c) { return '<td class="num">' + money(sumOf(list, function (r) { return r[c.k]; })) + '</td>'; }).join('') +
+    '</tr></tfoot></table></div></div>';
 }
 function exportMonthly() {
-  var v = calc(), by = {};
-  v.moves.forEach(function (m) {
-    if (m.k === 'tr') return;
-    var ym = m.date.slice(0, 7);
-    by[ym] = by[ym] || { cp: 0, sp: 0, pe: 0, be: 0, he: 0, in: 0, out: 0 };
-    by[ym][m.k] += m.amount;
-  });
-  var M = function (x) { return { v: x, t: 'money' }; };
-  saveXlsx([{ name: 'לפי חודשים', rows: [['חודש', 'מלקוחות', 'כסף אחר שנכנס', 'לקבלנים', 'הוצאות פרוייקט', 'הוצאות עסק', 'הוצאות בית', 'כסף אחר שיצא', 'תזרים']].concat(
-    Object.keys(by).sort().reverse().map(function (k) {
-      var r = by[k], net = r.cp + r.in - r.sp - r.pe - r.be - r.he - r.out;
-      return [monthLabel(k), M(r.cp), M(r.in), M(r.sp), M(r.pe), M(r.be), M(r.he), M(r.out), M(round2(net))];
-    })) }], 'דוח חודשי');
+  var list = monthRows(), cols = visibleCols('monthly', MONTH_COLS), M = function (x) { return { v: x, t: 'money' }; };
+  saveXlsx([{ name: 'לפי חודשים',
+    rows: [['חודש'].concat(cols.map(function (c) { return c.x; }))].concat(list.map(function (r) {
+      return [monthLabel(r.ym)].concat(cols.map(function (c) { return M(r[c.k]); }));
+    })),
+    foot: [['סה״כ'].concat(cols.map(function (c) { return M(sumOf(list, function (r) { return r[c.k]; })); }))] }], 'דוח חודשי');
 }
 
 function repDebts(el) {

@@ -12,7 +12,7 @@ function pageProject(w, id) {
       '<button class="btn" style="margin-top:10px" onclick="go(\'projects\')">חזרה לפרוייקטים</button></div>';
     return;
   }
-  var s = calc().proj[id], ed = canEdit();
+  var s = calc().proj[id], ed = can('projects', 'edit');
   var ex = s.expected || s.ownExp;
   w.innerHTML =
     '<div class="crumb noprint"><a onclick="go(\'projects\')">🏗️ פרוייקטים</a> ‹ ' + esc(p.name) + '</div>' +
@@ -21,7 +21,7 @@ function pageProject(w, id) {
       (ed ? '<button class="btn sm" onclick="projectModal(\'' + id + '\')">✏️ עריכה</button>' : '') +
       '<button class="btn sm gh" onclick="exportProject(\'' + id + '\')">📤 אקסל</button>' +
       '<button class="btn sm gh" onclick="printPage(\'תמונת מצב — ' + jsq(p.name) + '\')">🖨️ הדפסה</button>' +
-      (ed ? '<button class="btn sm gh" onclick="askDelete(\'projects\',\'' + id + '\')">🗑️</button>' : '') + '</span></h2>' +
+      (can('projects', 'delete') ? '<button class="btn sm gh" onclick="askDelete(\'projects\',\'' + id + '\')">🗑️</button>' : '') + '</span></h2>' +
       '<div class="p-meta">' +
         (p.client ? '<span>לקוח: <b>' + esc(p.client) + '</b>' + (p.clientPhone ? ' · <a href="tel:' + esc(p.clientPhone) + '">' + esc(p.clientPhone) + '</a>' : '') + '</span>' : '') +
         (p.subName ? '<span>קבלן משנה: <b>' + esc(p.subName) + '</b>' + (p.subPhone ? ' · <a href="tel:' + esc(p.subPhone) + '">' + esc(p.subPhone) + '</a>' : '') + '</span>' : '') +
@@ -55,10 +55,10 @@ function pageProject(w, id) {
     '</div>' +
     s.warns.map(function (x) { return '<div class="warn-line" style="margin-bottom:8px">⚠️ ' + esc(x) + '</div>'; }).join('') +
 
-    tableCard('additions', id, { title: 'תוספות למחיר', add: 'additionModal(null,{projectId:\'' + id + '\'})', addLabel: 'תוספת' }) +
-    tableCard('clientPayments', id, { title: 'תשלומי הלקוח', add: 'entryModal(\'cp\',null,{projectId:\'' + id + '\'})', addLabel: 'תשלום מלקוח' }) +
-    tableCard('subPayments', id, { title: 'תשלומים לקבלן המשנה', add: 'entryModal(\'sp\',null,{projectId:\'' + id + '\'})', addLabel: 'תשלום לקבלן' }) +
-    tableCard('projectExpenses', id, { title: 'הוצאות הפרוייקט', add: 'entryModal(\'pe\',null,{projectId:\'' + id + '\'})', addLabel: 'הוצאה' });
+    tableOrAdd('additions', id, { title: 'תוספות למחיר', add: 'additionModal(null,{projectId:\'' + id + '\'})', addLabel: 'תוספת' }) +
+    tableOrAdd('clientPayments', id, { title: 'תשלומי הלקוח', add: 'entryModal(\'cp\',null,{projectId:\'' + id + '\'})', addLabel: 'תשלום מלקוח' }) +
+    tableOrAdd('subPayments', id, { title: 'תשלומים לקבלן המשנה', add: 'entryModal(\'sp\',null,{projectId:\'' + id + '\'})', addLabel: 'תשלום לקבלן' }) +
+    tableOrAdd('projectExpenses', id, { title: 'הוצאות הפרוייקט', add: 'entryModal(\'pe\',null,{projectId:\'' + id + '\'})', addLabel: 'הוצאה' });
   mountTables([['additions', id], ['clientPayments', id], ['subPayments', id], ['projectExpenses', id]]);
 }
 

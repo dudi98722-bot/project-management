@@ -15,12 +15,12 @@ function ledgerRows(r, from, to) {
 function pageRegister(w, id) {
   var r = findRow('registers', id);
   if (!r) { w.innerHTML = '<div class="empty"><b>הקופה לא נמצאה</b></div>'; return; }
-  var L = ledgerRows(r, S.ui.ledgerFrom, S.ui.ledgerTo), ed = canEdit();
+  var L = ledgerRows(r, S.ui.ledgerFrom, S.ui.ledgerTo), ed = can('cashMoves', 'add');
   var tin = sumOf(L.list.filter(function (m) { return m.dir > 0; })), tout = sumOf(L.list.filter(function (m) { return m.dir < 0; }));
   w.innerHTML =
     '<div class="crumb noprint"><a onclick="go(\'registers\')">💰 קופות</a> ‹ ' + esc(r.name) + '</div>' +
     '<div class="page-head"><h2>📒 כרטסת — ' + esc(r.name) + '</h2><div class="sp"></div>' +
-      (isAdmin() ? '<button class="btn sm" onclick="registerModal(\'' + id + '\')">✏️ עריכת קופה</button>' : '') +
+      (can('registers', 'edit') ? '<button class="btn sm" onclick="registerModal(\'' + id + '\')">✏️ עריכת קופה</button>' : '') +
       '<button class="btn sm gh" onclick="exportLedger(\'' + id + '\')">📤 אקסל</button>' +
       '<button class="btn sm gh" onclick="printPage(\'כרטסת קופה — ' + jsq(r.name) + '\')">🖨️ הדפסה</button></div>' +
     '<div class="toolbar noprint"><span class="lbl" style="margin:0">מתאריך</span>' +

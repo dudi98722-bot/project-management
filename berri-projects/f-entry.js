@@ -30,7 +30,7 @@ function catList(group) {
 /* kind — סוג התנועה; id — עריכה של שורה קיימת; pre — ערכים מוכנים מראש */
 function entryModal(kind, id, pre) {
   var K = KIND[kind];
-  if (K.admin ? !isAdmin() : !canEdit()) return toast('אין לך הרשאה להזין', 'err');
+  if (!canT(K.table, id ? 'edit' : 'add')) return toast(id ? 'אין לך הרשאה לערוך' : 'אין לך הרשאה להזין', 'err');
   var regs = sortedRegisters();
   if (!regs.length) return toast('צריך להגדיר קופה אחת לפחות — הגדרות ‹ קופות', 'err');
   var projs = sortedProjects().filter(function (p) { return p.active; });
@@ -68,7 +68,7 @@ function entryModal(kind, id, pre) {
 
     '<button class="btn o" onclick="saveEntry(this,\'' + kind + '\',\'' + (id || '') + '\')">' + (id ? 'שמירה' : 'הוספה') + '</button>' +
     '<button class="btn gh" onclick="closeModal()">ביטול</button>' +
-    (id ? '<div class="sp"></div><button class="btn d" onclick="askDelete(\'' + K.table + '\',\'' + id + '\')">🗑️ מחיקה</button>' : '')));
+    (id && canT(K.table, 'delete') ? '<div class="sp"></div><button class="btn d" onclick="askDelete(\'' + K.table + '\',\'' + id + '\')">🗑️ מחיקה</button>' : '')));
   if (K.proj) entryProjInfo(kind);
   bindEnter(['f-amount', 'f-cat', 'f-sup', 'f-ref', 'f-note'], function () {
     saveEntry(document.querySelector('.modal-foot .btn.o'), kind, id || '');

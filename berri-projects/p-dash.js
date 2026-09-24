@@ -21,26 +21,40 @@ function regCards(sel) {
   }).join('') + '</div>';
 }
 
+/* מי שאין לו צפייה בדוחות (למשל עובד שטח) — מקבל במקום תמונת המצב לוח
+   הזנה מהירה עם מה שמותר לו להוסיף, ולא מספרים שאין לו הרשאה לראות */
+function pageEntry(w) {
+  var opts = quickOpts();
+  w.innerHTML = '<div class="page-head"><h2>👋 שלום ' + esc(S.user.fullName) + '</h2><div class="sp"></div>' +
+      '<span class="muted">' + dayLabel(calc().today) + '</span></div>' +
+    (opts.length
+      ? '<div class="card"><div class="card-head"><h3>➕ מה להזין?</h3></div><div class="card-body">' + quickGrid() + '</div></div>'
+      : '<div class="card"><div class="empty"><span class="ico">🔒</span><b>עדיין לא הוגדרו לך הרשאות</b>' +
+        'פנה למנהל המערכת כדי שיגדיר מה מותר לך לראות ולהזין</div></div>');
+}
 function pageDash(w) {
+  if (!can('reports', 'view')) return pageEntry(w);
   var v = calc(), ym = v.today.slice(0, 7);
   var monthMv = v.moves.filter(function (m) { return m.date.slice(0, 7) === ym && m.k !== 'tr'; });
   var mIn = sumOf(monthMv.filter(function (m) { return m.dir > 0; })), mOut = sumOf(monthMv.filter(function (m) { return m.dir < 0; }));
   var byK = function (k) { return sumOf(monthMv.filter(function (m) { return m.k === k; })); };
   var act = sortedProjects().filter(function (p) { return p.active; });
+  /* כל חלק מוצג רק למי שיש לו צפייה בנתונים שלו */
+  var R = can('registers', 'view'), Pj = can('projects', 'view');
 
   w.innerHTML =
     '<div class="page-head"><h2>📊 תמונת מצב</h2><div class="sp"></div><span class="muted">' + dayLabel(v.today) + '</span></div>' +
     '<div class="kpis">' +
-      kpi('💰 יתרה בכל הקופות', v.totalBalance, S.d.registers.filter(function (r) { return r.active; }).length + ' קופות פעילות', 'navy', 'go(\'registers\')') +
-      kpi('📥 חובות לקוחות לגבייה', v.clientDebt, 'מכל הפרוייקטים', 'green', 'go(\'reports\')') +
-      kpi('👷 יתרה לתשלום לקבלנים', v.subDebt, 'מחיר שסוכם פחות ששולם וקוזז', 'red', 'go(\'reports\')') +
-      kpi('🧱 צפי הוצאות שנותרו', v.expLeft, 'בפרוייקטים הפעילים', 'amber') +
-      kpi('🔮 צפי קופה בסיום', v.projected, 'יתרה + גבייה − קבלנים − הוצאות', 'blue') +
-      kpi('📈 רווח צפוי — פעילים', v.activeProfit, v.activeCount + ' פרוייקטים פעילים', '', 'go(\'projects\')') +
-      kpi('🗓️ קצב רווח לחודש', v.runRate, 'סכום הרווח החודשי של הפעילים') +
+      (R ? kpi('💰 יתרה בכל הקופות', v.totalBalance, S.d.registers.filter(function (r) { return r.active; }).length + ' קופות פעילות', 'navy', 'go(\'registers\')') : '') +
+      (Pj ? kpi('📥 חובות לקוחות לגבייה', v.clientDebt, 'מכל הפרוייקטים', 'green', 'go(\'reports\')') +
+        kpi('👷 יתרה לתשלום לקבלנים', v.subDebt, 'מחיר שסוכם פחות ששולם וקוזז', 'red', 'go(\'reports\')') +
+        kpi('🧱 צפי הוצאות שנותרו', v.expLeft, 'בפרוייקטים הפעילים', 'amber') : '') +
+      (R && Pj ? kpi('🔮 צפי קופה בסיום', v.projected, 'יתרה + גבייה − קבלנים − הוצאות', 'blue') : '') +
+      (Pj ? kpi('📈 רווח צפוי — פעילים', v.activeProfit, v.activeCount + ' פרוייקטים פעילים', '', 'go(\'projects\')') +
+        kpi('🗓️ קצב רווח לחודש', v.runRate, 'סכום הרווח החודשי של הפעילים') : '') +
     '</div>' +
-    '<div class="card-head" style="border:0;background:none;padding:0 0 8px"><h3>💰 קופות</h3></div>' + regCards() +
-    '<div class="cols2"><div>' + activeProjectsCard(act) + '</div><div>' +
+    (R ? '<div class="card-head" style="border:0;background:none;padding:0 0 8px"><h3>💰 קופות</h3></div>' + regCards() : '') +
+    '<div class="cols2"><div>' + (Pj ? activeProjectsCard(act) : '') + '</div><div>' +
       '<div class="card"><div class="card-head"><h3>🗓️ ' + monthLabel(ym) + '</h3><div class="sp"></div>' +
         '<button class="btn sm gh" onclick="go(\'reports\');S.ui.repTab=\'monthly\'">דוח חודשי ›</button></div><div class="card-body">' +
         [['📥 תשלומי לקוחות', byK('cp'), 'in'], ['⬇️ כסף אחר שנכנס', byK('in'), 'in'], ['👷 תשלומים לקבלנים', byK('sp'), 'out'],
@@ -72,7 +86,7 @@ function activeProjectsCard(list) {
           '<td class="num">' + (s.monthly === null ? '<span class="muted">—</span>' : money(s.monthly)) + '</td></tr>';
       }).join('') + '</tbody></table></div>'
     : '<div class="empty"><span class="ico">🏗️</span><b>אין פרוייקטים פעילים</b>' +
-      (canEdit() ? '<button class="btn o" style="margin-top:10px" onclick="projectModal()">➕ פרוייקט חדש</button>' : '') + '</div>') + '</div>';
+      (can('projects', 'add') ? '<button class="btn o" style="margin-top:10px" onclick="projectModal()">➕ פרוייקט חדש</button>' : '') + '</div>') + '</div>';
 }
 
 function recentCard(moves) {

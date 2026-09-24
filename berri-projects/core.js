@@ -11,7 +11,7 @@ var DEFAULT_GS_URL = 'https://script.google.com/macros/s/AKfycbwamNXeJ-5KU80Zm6z
 var LS = { url: 'berri_gs_url', tok: 'berri_token', cache: 'berri_cache', last: 'berri_last' };
 var TABLE_KEYS = ['registers', 'projects', 'additions', 'clientPayments', 'subPayments', 'projectExpenses',
                   'businessExpenses', 'homeExpenses', 'cashMoves', 'categories', 'users'];
-var ROLE_HE = { admin: 'מנהל', editor: 'עורך', viewer: 'צופה' };
+var ROLE_HE = { admin: 'מנהל', user: 'משתמש', editor: 'עורך', viewer: 'צופה' };
 
 var S = {
   /* בשרת האמיתי הכתובת המוטמעת קובעת תמיד. על localhost — רק כתובת שהוזנה
@@ -103,7 +103,11 @@ function initials(name) {
   return ((p[0] || '')[0] || '') + ((p[1] || '')[0] || '');
 }
 function isAdmin() { return !!S.user && S.user.role === 'admin'; }
-function canEdit() { return !!S.user && (S.user.role === 'admin' || S.user.role === 'editor'); }
+/* יש למשתמש הרשאה להזין משהו כלשהו — קובע אם להציג את כפתור ה"הזנה" */
+function canAddAny() {
+  return ['projects', 'clientPayments', 'subPayments', 'projectExpenses', 'businessExpenses',
+          'homeExpenses', 'cashMoves', 'registers'].some(function (a) { return can(a, 'add'); });
+}
 function val(id) { var e = byId(id); return e ? String(e.value).trim() : ''; }
 function checked(id) { var e = byId(id); return !!(e && e.checked); }
 function setMsg(id, text, kind) {
@@ -174,12 +178,13 @@ function applyPayload(r) {
   S.user = r.user; S.today = r.today || iso(new Date());
   S.sheetUrl = r.sheetUrl || ''; S.scriptVersion = r.scriptVersion || '';
   S.apiVersion = Number(r.apiVersion) || 1;     // 2 ומעלה = השרת יודע לעדכן במרוכז
+  S.perms = r.perms || (r.user && r.user.perms) || null;   // 3 ומעלה = הרשאות לפי משתמש
   TABLE_KEYS.forEach(function (k) { S.d[k] = r[k] || []; });
   if (typeof qOverlay === 'function') qOverlay();      // שינויים שעוד בדרך לשרת
   S.ver++;
 }
 function cacheState() {
-  var o = { user: S.user, today: S.today, sheetUrl: S.sheetUrl, scriptVersion: S.scriptVersion, apiVersion: S.apiVersion };
+  var o = { user: S.user, today: S.today, sheetUrl: S.sheetUrl, scriptVersion: S.scriptVersion, apiVersion: S.apiVersion, perms: S.perms };
   TABLE_KEYS.forEach(function (k) { o[k] = S.d[k]; });
   lsSet(LS.cache, JSON.stringify(o));
 }
@@ -370,26 +375,29 @@ function pingThenGate() {
 /* =====================================================================
    שלד וניווט (לפי ה-hash בכתובת — כפתור "חזור" בדפדפן עובד)
    ===================================================================== */
+/* area = האזור שצריך עליו צפייה כדי לראות את המסך. תמונת מצב פתוחה לכולם —
+   מי שאין לו צפייה בדוחות רואה בה לוח הזנה מהירה */
 var PAGES = [
   { k: 'dash',     t: 'תמונת מצב',     i: '📊' },
-  { k: 'projects', t: 'פרוייקטים',      i: '🏗️' },
-  { k: 'registers',t: 'קופות',          i: '💰' },
-  { k: 'daily',    t: 'דוח יומי',       i: '📅' },
-  { k: 'business', t: 'הוצאות עסק',     i: '🧾' },
-  { k: 'home',     t: 'הוצאות בית',     i: '🏠', admin: true },
-  { k: 'reports',  t: 'דוחות',          i: '📈' },
+  { k: 'projects', t: 'פרוייקטים',      i: '🏗️', area: 'projects' },
+  { k: 'registers',t: 'קופות',          i: '💰', area: 'registers' },
+  { k: 'daily',    t: 'דוח יומי',       i: '📅', area: 'registers' },
+  { k: 'business', t: 'הוצאות עסק',     i: '🧾', area: 'businessExpenses' },
+  { k: 'home',     t: 'הוצאות בית',     i: '🏠', area: 'homeExpenses' },
+  { k: 'reports',  t: 'דוחות',          i: '📈', area: 'reports' },
   { k: 'settings', t: 'הגדרות',         i: '⚙️' }
 ];
+var SUB_PAGES = { project: 'projects', register: 'registers' };
 function pageAllowed(k) {
+  if (SUB_PAGES[k]) return can(SUB_PAGES[k], 'view');
   var p = PAGES.filter(function (x) { return x.k === k; })[0];
-  return !!p && (!p.admin || isAdmin());
+  return !!p && (!p.area || can(p.area, 'view'));
 }
 function parseHash() {
   var h = decodeURIComponent(location.hash.replace(/^#\/?/, '')), i = h.indexOf('/');
   var page = i < 0 ? h : h.slice(0, i), arg = i < 0 ? '' : h.slice(i + 1);
-  if (page === 'project' || page === 'register') return { page: page, arg: arg };
-  if (!pageAllowed(page)) page = 'dash';
-  return { page: page, arg: arg };
+  if (!pageAllowed(page)) return { page: 'dash', arg: '' };
+  return { page: page, arg: SUB_PAGES[page] ? arg : '' };
 }
 function go(page, arg) {
   var h = '#' + page + (arg ? '/' + encodeURIComponent(arg) : '');
@@ -412,9 +420,11 @@ function renderApp() {
         '<span class="bn">BERRI<small>ניהול פרוייקטים</small></span></div>' +
       '<div class="sp"></div>' +
       '<span id="qbadge" class="qbadge hide"></span>' +
-      '<div class="bal-pill" onclick="go(\'registers\')" title="יתרה בכל הקופות"><span class="t">בקופות</span>' +
-        '<b id="balpill"></b><i id="syncdot" class="syncdot"></i></div>' +
-      (canEdit() ? '<button class="tb-add" onclick="quickAdd()">➕<span class="t"> הזנה</span></button>' : '') +
+      (can('registers', 'view')
+        ? '<div class="bal-pill" onclick="go(\'registers\')" title="יתרה בכל הקופות"><span class="t">בקופות</span>' +
+          '<b id="balpill"></b><i id="syncdot" class="syncdot"></i></div>'
+        : '<i id="syncdot" class="syncdot"></i>') +
+      (canAddAny() ? '<button class="tb-add" onclick="quickAdd()">➕<span class="t"> הזנה</span></button>' : '') +
       '<div class="who"><button class="who-btn" onclick="toggleMenu(event)">' +
         '<span class="avatar">' + esc(initials(S.user.fullName)) + '</span>' +
         '<span class="who-name">' + esc(S.user.fullName) + '<small>' + (ROLE_HE[S.user.role] || '') + '</small></span></button>' +
@@ -440,7 +450,7 @@ function renderTop() {
 function renderNav() {
   var n = byId('nav'); if (!n) return;
   var cur = S.route.page === 'project' ? 'projects' : S.route.page === 'register' ? 'registers' : S.route.page;
-  n.innerHTML = PAGES.filter(function (p) { return !p.admin || isAdmin(); }).map(function (p) {
+  n.innerHTML = PAGES.filter(function (p) { return pageAllowed(p.k); }).map(function (p) {
     return '<button class="nav-item' + (cur === p.k ? ' on' : '') + '" onclick="go(\'' + p.k + '\')"><span>' + p.i + '</span>' + p.t + '</button>';
   }).join('');
 }

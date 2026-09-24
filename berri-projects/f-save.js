@@ -82,6 +82,8 @@ var DEL_LABEL = { projects: 'הפרוייקט', registers: 'הקופה', categor
 function askDelete(table, id) {
   var row = findRow(table, id), what = DEL_LABEL[table] || 'השורה';
   if (!row) return;
+  var okDel = table === 'categories' ? canCat(row.group, 'delete') : canT(table, 'delete');
+  if (!okDel) return toast('אין לך הרשאה למחוק', 'err');
   var block = deleteBlocker(table, id);
   if (block) return toast(block, 'err');
   var desc = table === 'projects' || table === 'registers' || table === 'categories'

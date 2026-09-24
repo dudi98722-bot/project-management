@@ -42,9 +42,9 @@ function expenseView(w, opt) {
 }
 
 function pageBusiness(w) {
-  expenseView(w, { tk: 'businessExpenses', kind: 'be', icon: '🧾', title: 'הוצאות עסק', can: canEdit() });
+  expenseView(w, { tk: 'businessExpenses', kind: 'be', icon: '🧾', title: 'הוצאות עסק', can: can('businessExpenses', 'add') });
 }
 function pageHome(w) {
-  if (!isAdmin()) { w.innerHTML = '<div class="empty"><b>המסך הזה פתוח למנהל בלבד</b></div>'; return; }
-  expenseView(w, { tk: 'homeExpenses', kind: 'he', icon: '🏠', title: 'הוצאות בית', can: true });
+  if (!can('homeExpenses', 'view')) { w.innerHTML = '<div class="empty"><b>אין לך הרשאה לצפות בהוצאות הבית</b></div>'; return; }
+  expenseView(w, { tk: 'homeExpenses', kind: 'he', icon: '🏠', title: 'הוצאות בית', can: can('homeExpenses', 'add') });
 }

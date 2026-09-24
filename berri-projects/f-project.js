@@ -2,7 +2,7 @@
 'use strict';
 
 function projectModal(id) {
-  if (!canEdit()) return toast('אין לך הרשאה', 'err');
+  if (!can('projects', id ? 'edit' : 'add')) return toast('אין לך הרשאה', 'err');
   var p = id ? findRow('projects', id) : null;
   var d = p || { startDate: calc().today, active: true };
   openModal(modalHtml('🏗️ ' + (id ? 'עריכת פרוייקט' : 'פרוייקט חדש'),

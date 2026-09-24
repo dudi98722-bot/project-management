@@ -22,8 +22,8 @@
    ===================================================================== */
 
 var APP            = 'berri';
-var SCRIPT_VERSION = '2026-09-24-b';   // להעלות בכל שינוי — כך רואים ב-ping איזו גרסה פרוסה
-var API_VERSION    = 2;    // 2 = עדכון מרוכז (bulk). הדפדפן בודק את המספר לפני שהוא מציע את הפעולה
+var SCRIPT_VERSION = '2026-09-25-perms';   // להעלות בכל שינוי — כך רואים ב-ping איזו גרסה פרוסה
+var API_VERSION    = 3;    // 2 = עדכון מרוכז, 3 = הרשאות לפי משתמש. הדפדפן בודק את המספר לפני שהוא מציע יכולת
 var TZ             = 'Asia/Jerusalem';
 var SS_ID          = '';                         // ריק = הגיליון שהסקריפט מחובר אליו
 var TOKEN_TTL      = 30 * 24 * 60 * 60 * 1000;   // תוקף כניסה: 30 יום
@@ -39,7 +39,8 @@ var MOVE_TAIL = [['userName', 'נרשם על ידי'], ['userId', 'מזהה מש
 var TABLES = {
   users: { name: 'משתמשים', cols: [
     ['id', 'מזהה'], ['username', 'שם משתמש'], ['fullName', 'שם מלא'], ['role', 'תפקיד'],
-    ['salt', 'מלח'], ['hash', 'סיסמה מוצפנת'], ['active', 'פעיל', 'bool'], ['createdAt', 'נוצר בתאריך']] },
+    ['salt', 'מלח'], ['hash', 'סיסמה מוצפנת'], ['active', 'פעיל', 'bool'], ['createdAt', 'נוצר בתאריך'],
+    ['perms', 'הרשאות (JSON)']] },
   registers: { name: 'קופות', cols: [
     ['id', 'מזהה'], ['name', 'שם הקופה'], ['kind', 'סוג'], ['opening', 'יתרת פתיחה', 'money'],
     ['openingDate', 'יתרת הפתיחה נכונה לתאריך', 'date'], ['sort', 'סדר', 'num'], ['active', 'פעילה', 'bool'],
@@ -85,7 +86,7 @@ var TABLES = {
     ['id', 'מזהה'], ['group', 'קוד קבוצה'], ['groupHe', 'קבוצה'], ['name', 'שם'], ['sort', 'סדר', 'num'],
     ['createdAt', 'נוצר בתאריך'], ['deleted', 'נמחק', 'bool']] }
 };
-var SCHEMA_VERSION = '2';
+var SCHEMA_VERSION = '3';   // 3 = עמודת הרשאות בלשונית המשתמשים
 
 /* מי רשאי לכתוב לכל טבלה, ואיזו קבוצת קטגוריות משויכת אליה */
 var RULES = {
@@ -109,7 +110,77 @@ var CAT_TABLE = { project: 'projectExpenses', business: 'businessExpenses', home
 var MOVE_TYPES = { 'in': 'כסף נכנס לקופה', out: 'כסף יצא מקופה', transfer: 'העברה בין קופות' };
 var REG_KINDS = ['מזומן', 'בנק', 'צ׳קים', 'אשראי', 'אחר'];
 var METHODS = ['העברה בנקאית', 'צ׳ק', 'מזומן', 'אשראי', 'אחר'];
-var ROLES = { admin: 'מנהל', editor: 'עורך', viewer: 'צופה' };
+var ROLES = { admin: 'מנהל', user: 'משתמש', editor: 'עורך', viewer: 'צופה' };
+
+/* =====================  הרשאות לפי משתמש  =====================
+   מנהל — הכל, כולל ניהול משתמשים. כל משתמש אחר מקבל טבלת הרשאות שהמנהל
+   קובע: לכל אזור — צפייה / הוספה / עריכה / מחיקה. הכל נאכף כאן בשרת:
+   מה שאין עליו צפייה לא נשלח לדפדפן בכלל. */
+var AREAS = ['projects', 'clientPayments', 'subPayments', 'projectExpenses', 'businessExpenses',
+             'homeExpenses', 'cashMoves', 'registers', 'reports', 'categories'];
+var ACTS = ['view', 'add', 'edit', 'delete'];
+var AREA_OF = { projects: 'projects', additions: 'projects', clientPayments: 'clientPayments',
+  subPayments: 'subPayments', projectExpenses: 'projectExpenses', businessExpenses: 'businessExpenses',
+  homeExpenses: 'homeExpenses', cashMoves: 'cashMoves', registers: 'registers', categories: 'categories' };
+/* התפקידים הישנים ממשיכים לעבוד בלי שינוי — הם פשוט תבנית הרשאות */
+function presetPerms_(role) {
+  var p = {};
+  AREAS.forEach(function (a) {
+    var full = role === 'editor', view = role === 'editor' || role === 'viewer';
+    p[a] = { view: view, add: full, edit: full, 'delete': full };
+  });
+  p.homeExpenses = { view: false, add: false, edit: false, 'delete': false };
+  p.registers = { view: p.registers.view, add: false, edit: false, 'delete': false };
+  return p;
+}
+/* מקבל הרשאות מהדפדפן או מהגיליון, ומשאיר רק אזורים ופעולות מוכרים */
+function cleanPerms_(raw) {
+  var src = raw;
+  if (typeof src === 'string') { try { src = JSON.parse(src || '{}'); } catch (e) { src = {}; } }
+  var out = {};
+  AREAS.forEach(function (a) {
+    var s = (src && src[a]) || {};
+    out[a] = {};
+    ACTS.forEach(function (k) { out[a][k] = s[k] === true; });
+    /* הוספה בלי צפייה מותרת בכוונה: עובד שטח שמזין הוצאות בלי לראות את
+       כל ההוצאות. דוחות הם צפייה בלבד */
+    if (a === 'reports') { out[a].add = out[a].edit = out[a]['delete'] = false; }
+  });
+  return out;
+}
+function permsOf_(u) {
+  if (!u) return cleanPerms_({});
+  if (u.role === 'admin') {
+    var all = {};
+    AREAS.forEach(function (a) { all[a] = { view: true, add: true, edit: true, 'delete': true }; });
+    return all;
+  }
+  if (u.perms) return cleanPerms_(u.perms);
+  return presetPerms_(u.role);
+}
+function allowed_(u, area, act) {
+  if (!u) return false;
+  if (u.role === 'admin') return true;
+  var p = permsOf_(u)[area];
+  return !!(p && p[act]);
+}
+var ACT_HE = { view: 'לצפות ב', add: 'להוסיף ל', edit: 'לערוך את', 'delete': 'למחוק מ' };
+var AREA_HE = { projects: 'פרוייקטים', clientPayments: 'תשלומי לקוחות', subPayments: 'תשלומים לקבלנים',
+  projectExpenses: 'הוצאות פרוייקט', businessExpenses: 'הוצאות עסק', homeExpenses: 'הוצאות בית',
+  cashMoves: 'תנועות קופה', registers: 'קופות', reports: 'דוחות', categories: 'קטגוריות' };
+function denied_(area, act) { return err_('אין לך הרשאה ' + ACT_HE[act] + AREA_HE[area]); }
+/* כל קבוצת קטגוריות שייכת לאזור. משתמש רואה ומנהל רק את הקטגוריות של
+   האזורים שהוא עובד בהם — הרשאת "קטגוריות" קובעת מה מותר לו לעשות בהן */
+var CAT_AREA = { project: 'projectExpenses', business: 'businessExpenses', home: 'homeExpenses',
+                 'in': 'cashMoves', out: 'cashMoves' };
+function catGroupOk_(u, group) {
+  var a = CAT_AREA[group];
+  if (!a) return false;
+  return ACTS.some(function (k) { return allowed_(u, a, k); });
+}
+function catAllowed_(u, group, act) {
+  return allowed_(u, 'categories', act) && catGroupOk_(u, group);
+}
 
 /* =====================  תשתית גיליון  ===================== */
 var _ss = null, _sh = {}, _memo = {};
@@ -367,7 +438,7 @@ function auth_(token) {
       var row = find_('users', bits[0]);
       if (!row) return null;
       u = { id: row.id, username: row.username, fullName: row.fullName, role: row.role,
-            active: row.active, createdAt: row.createdAt, stamp: String(row.hash).slice(-10) };
+            active: row.active, createdAt: row.createdAt, stamp: String(row.hash).slice(-10), perms: row.perms || '' };
       cache.put(ck, JSON.stringify(u), AUTH_CACHE_SEC);
     }
     if (!u.active || u.stamp !== bits[2]) return null;
@@ -375,13 +446,16 @@ function auth_(token) {
   } catch (e) { return null; }
 }
 function authDrop_(id) { try { CacheService.getScriptCache().remove('au_' + id); } catch (e) {} }
-function can_(me, need) {
-  if (need === 'admin') return me.role === 'admin';
-  return me.role === 'admin' || me.role === 'editor';
+/* מזהה = קידומת + זמן יצירה (8 תווים בבסיס 36) + אקראי. "חדש" = נוצר ב-6 השעות האחרונות */
+var FRESH_MS = 6 * 60 * 60 * 1000;
+function idRecent_(id, prefix) {
+  if (!prefix || String(id).indexOf(prefix) !== 0) return false;
+  var t = parseInt(String(id).substr(prefix.length, 8), 36);
+  return isFinite(t) && Math.abs(Date.now() - t) < FRESH_MS;
 }
 function pubUser_(u) {
   return { id: u.id, username: u.username, fullName: u.fullName, role: u.role,
-           active: u.active, createdAt: u.createdAt };
+           active: u.active, createdAt: u.createdAt, perms: permsOf_(u) };
 }
 function admins_() { return live_('users').filter(function (u) { return u.active && u.role === 'admin'; }); }
 function needsSetup_() { return !rows_('users').some(function (u) { return u.active; }); }
@@ -502,24 +576,48 @@ function load_(p) {
 /* כל מצב המערכת למשתמש נתון — משמש גם בכניסה, כדי שתסתיים בסבב רשת אחד.
    מי שאינו מנהל מקבל את הוצאות הבית בלי פירוט: רק סכום, תאריך וקופה,
    כדי שיתרות הקופות יהיו נכונות גם אצלו. */
+/* כל טבלה נשלחת רק לפי ההרשאות:
+   - צפייה באזור  -> כל השורות
+   - בלי צפייה, אבל עם צפייה בקופות -> שורות "מוסתרות": רק תאריך, סכום וקופה,
+     כדי שיתרות הקופות יהיו נכונות (בלי פרוייקט, קטגוריה או הערה)
+   - אחרת -> כלום
+   פרוייקטים בלי הרשאת צפייה נשלחים רק כשם (לבחירה בטופס) — בלי מחירים. */
 function payload_(me) {
+  var P = permsOf_(me), admin = me.role === 'admin';
   var out = { ok: true, app: APP, apiVersion: API_VERSION, scriptVersion: SCRIPT_VERSION,
-              today: today_(), user: pubUser_(me) };
-  ['registers', 'projects', 'additions', 'clientPayments', 'subPayments', 'projectExpenses',
-   'businessExpenses', 'cashMoves', 'categories'].forEach(function (k) { out[k] = live_(k).map(strip_); });
-  var home = live_('homeExpenses');
-  if (me.role === 'admin') {
-    out.homeExpenses = home.map(strip_);
+              today: today_(), user: pubUser_(me), perms: P };
+  var any = function (a) { var x = P[a]; return x.view || x.add || x.edit || x['delete']; };
+
+  var regs = live_('registers').map(strip_);
+  out.registers = P.registers.view ? regs : regs.map(function (r) {
+    return { id: r.id, name: r.name, kind: r.kind, active: r.active, sort: r.sort };
+  });
+
+  var projs = live_('projects').map(strip_);
+  var needNames = ['projects', 'clientPayments', 'subPayments', 'projectExpenses'].some(any);
+  out.projects = P.projects.view ? projs : (needNames ? projs.map(function (p) {
+    return { id: p.id, name: p.name, subName: p.subName, active: p.active };
+  }) : []);
+  out.additions = P.projects.view ? live_('additions').map(strip_) : [];
+
+  MOVE_TABLES.forEach(function (t) {
+    var rows = live_(t);
+    out[t] = P[t].view ? rows.map(strip_) : (P.registers.view ? rows.map(mask_) : []);
+  });
+
+  out.categories = live_('categories').filter(function (c) { return catGroupOk_(me, c.group); }).map(strip_);
+
+  if (admin) {
     out.users = rows_('users').map(pubUser_);
     out.sheetUrl = ss_().getUrl();
-  } else {
-    out.homeExpenses = home.map(function (h) {
-      return { id: h.id, date: h.date, amount: h.amount, registerId: h.registerId,
-               registerName: h.registerName, masked: true };
-    });
-    out.categories = out.categories.filter(function (c) { return c.group !== 'home'; });
   }
   return out;
+}
+function mask_(h) {
+  var m = { id: h.id, date: h.date, amount: h.amount, registerId: h.registerId,
+            registerName: h.registerName, masked: true };
+  if (h.type) { m.type = h.type; m.toRegisterId = h.toRegisterId; m.toRegisterName = h.toRegisterName; }
+  return m;
 }
 
 /* =====================  שמירת שורה (הוספה או עדכון)  ===================== */
@@ -534,8 +632,9 @@ function save_(p) {
   /* מנקים את הקבוצה לפני בדיקת ההרשאה — אחרת " home" עם רווח עוקף אותה
      ונשמר בכל זאת כ-home */
   if (inp.group !== undefined) inp.group = clean_(inp.group, 10);
-  var need = (key === 'categories' && inp.group === 'home') ? 'admin' : rule.who;
-  if (!can_(me, need)) return err_(need === 'admin' ? 'הפעולה מותרת למנהל בלבד' : 'אין לך הרשאה לשנות נתונים');
+  var area = AREA_OF[key];
+  /* בדיקה ראשונה, זולה: בלי הרשאת הוספה וגם בלי עריכה אין מה לחפש */
+  if (!allowed_(me, area, 'add') && !allowed_(me, area, 'edit')) return denied_(area, 'add');
   var id = clean_(inp.id, 40);
   if (id && !ID_RE.test(id)) return err_('מזהה לא תקין');
 
@@ -545,13 +644,16 @@ function save_(p) {
     /* המזהה נוצר בדפדפן: לחיצה כפולה או ניסיון חוזר אחרי ניתוק
        מגיעים עם אותו מזהה והופכים לעדכון — לא לשורה כפולה.
        שורה חדשה (fresh) לא מחייבת לקרוא את כל הלשונית: מספיק לבדוק
-       במטמון אם המזהה הזה כבר נשמר בשעות האחרונות. */
+       במטמון אם המזהה הזה כבר נשמר בשעות האחרונות. זה תקף רק למזהה
+       שנוצר בשעות האחרונות — מזהה ישן תמיד נבדק מול הגיליון, כדי שאי
+       אפשר יהיה "להוסיף" שורה בשם של שורה קיימת ולעקוף הרשאת עריכה. */
     var cache = CacheService.getScriptCache();
-    var fresh = p.fresh === '1' && id && !cache.get('nid_' + id);
+    var fresh = p.fresh === '1' && id && idRecent_(id, rule.prefix) && !cache.get('nid_' + id);
     var cur = (id && !fresh) ? find_(key, id) : null;
     if (cur && cur.deleted) return err_('השורה נמחקה בינתיים — רענן את הנתונים');
-    if (cur && key === 'categories' && cur.group === 'home' && me.role !== 'admin') {
-      return err_('הפעולה מותרת למנהל בלבד');
+    var act = cur ? 'edit' : 'add';
+    if (key === 'categories' ? !catAllowed_(me, cur ? cur.group : inp.group, act) : !allowed_(me, area, act)) {
+      return denied_(area, act);
     }
     var o = build_(key, inp, cur);
     var newCat = null;
@@ -570,7 +672,7 @@ function save_(p) {
     }
     /* catKnown = הדפדפן כבר מכיר את הקטגוריה — אין צורך לקרוא את הלשונית */
     var g = rule.cat || (key === 'cashMoves' && o.type !== 'transfer' ? o.type : '');
-    if (g && o.category && p.catKnown !== '1' && (g !== 'home' || me.role === 'admin')) newCat = ensureCategory_(g, o.category);
+    if (g && o.category && p.catKnown !== '1' && catAllowed_(me, g, 'add')) newCat = ensureCategory_(g, o.category);
     return json_({ ok: true, row: strip_(o), category: newCat ? strip_(newCat) : null });
   } finally { lock.releaseLock(); }
 }
@@ -586,7 +688,7 @@ function saveBulk_(p) {
   if (!me) return expired_();
   var key = String(p.table || ''), rule = RULES[key];
   if (!rule || key === 'categories') return err_('טבלה לא מוכרת');
-  if (!can_(me, rule.who)) return err_(rule.who === 'admin' ? 'הפעולה מותרת למנהל בלבד' : 'אין לך הרשאה לשנות נתונים');
+  if (!allowed_(me, AREA_OF[key], 'add')) return denied_(AREA_OF[key], 'add');
   var list;
   try { list = JSON.parse(p.rows || '[]'); } catch (e) { return err_('נתונים לא תקינים'); }
   if (!list || !list.length) return err_('אין שורות לייבוא');
@@ -611,12 +713,19 @@ function saveBulk_(p) {
         o.userName = me.fullName; o.userId = me.id; o.updatedAt = '';
         ready.push(o);
         var g = rule.cat || (key === 'cashMoves' && o.type !== 'transfer' ? o.type : '');
-        if (g && o.category) cats[g + '|' + o.category] = 1;
+        if (g && o.category && catAllowed_(me, g, 'add')) cats[g + '|' + o.category] = 1;
       } catch (ex) {
         failed.push({ i: i, error: (ex instanceof Bad) ? ex.msg : String(ex && ex.message ? ex.message : ex) });
       }
     }
     insertMany_(key, ready);
+    /* זוכרים את המזהים החדשים — כמו בשמירה רגילה — כדי ששורה שיובאה עכשיו
+       לא תוכל להיכתב שוב כ"חדשה" בלי בדיקה מול הגיליון */
+    if (ready.length) {
+      var seen = {};
+      ready.forEach(function (o) { seen['nid_' + o.id] = '1'; });
+      try { CacheService.getScriptCache().putAll(seen, 21600); } catch (e) {}
+    }
     var newCats = [];
     Object.keys(cats).forEach(function (k) {
       var at = k.indexOf('|');
@@ -647,7 +756,8 @@ function bulk_(p) {
   var key = String(p.table || ''), rule = RULES[key], op = String(p.op || '');
   if (!rule || !BULK_FIELDS[key]) return err_('טבלה לא מוכרת');
   if (['update', 'delete', 'restore'].indexOf(op) < 0) return err_('פעולה לא מוכרת');
-  if (!can_(me, rule.who)) return err_(rule.who === 'admin' ? 'הפעולה מותרת למנהל בלבד' : 'אין לך הרשאה לשנות נתונים');
+  var bulkAct = op === 'update' ? 'edit' : 'delete';
+  if (!allowed_(me, AREA_OF[key], bulkAct)) return denied_(AREA_OF[key], bulkAct);
   var ids, patch = {};
   try {
     ids = JSON.parse(p.ids || '[]');
@@ -679,7 +789,7 @@ function bulk_(p) {
           update_(key, o);
           afterUpdate_(key, cur, o);
           var g = rule.cat || (key === 'cashMoves' && o.type !== 'transfer' ? o.type : '');
-          if (g && o.category && (g !== 'home' || me.role === 'admin')) cats[g + '|' + o.category] = 1;
+          if (g && o.category && catAllowed_(me, g, 'add')) cats[g + '|' + o.category] = 1;
           done.push(strip_(o));
           return;
         }
@@ -909,8 +1019,9 @@ function remove_(p, del) {
   try {
     var cur = find_(key, clean_(p.id, 40));
     if (!cur) return err_('השורה לא נמצאה');
-    var need = (key === 'categories' && cur.group === 'home') ? 'admin' : rule.who;
-    if (!can_(me, need)) return err_(need === 'admin' ? 'הפעולה מותרת למנהל בלבד' : 'אין לך הרשאה לשנות נתונים');
+    if (key === 'categories' ? !catAllowed_(me, cur.group, 'delete') : !allowed_(me, AREA_OF[key], 'delete')) {
+      return denied_(AREA_OF[key], 'delete');
+    }
     if (del) {
       if (cur.deleted) return json_({ ok: true });
       if (key === 'projects') {
@@ -967,6 +1078,8 @@ function saveUser_(p) {
       if (pass && pass.length < 6) return err_('סיסמה חייבת 6 תווים לפחות');
       u.username = username; u.fullName = fullName || username; u.role = role; u.active = active;
       if (pass) { u.salt = newSalt_(); u.hash = hashPass_(pass, u.salt); }
+      /* הרשאות נשמרות רק למשתמש רגיל; למנהל אין צורך — יש לו הכל */
+      if (p.perms !== undefined) u.perms = role === 'admin' ? '' : JSON.stringify(cleanPerms_(p.perms));
       update_('users', u);
       authDrop_(u.id);                     // תפקיד/השבתה נכנסים לתוקף מיד
       /* מנהל שהחליף לעצמו סיסמה ממסך המשתמשים — מקבל טוקן חדש, אחרת היה מנותק בפעולה הבאה */
@@ -975,7 +1088,8 @@ function saveUser_(p) {
     if (pass.length < 6) return err_('סיסמה חייבת 6 תווים לפחות');
     var salt = newSalt_();
     var nu = insert_('users', { id: uid_('u'), username: username, fullName: fullName || username, role: role,
-      salt: salt, hash: hashPass_(pass, salt), active: true, createdAt: now_() });
+      salt: salt, hash: hashPass_(pass, salt), active: true, createdAt: now_(),
+      perms: (role === 'admin' || p.perms === undefined) ? '' : JSON.stringify(cleanPerms_(p.perms)) });
     return json_({ ok: true, user: pubUser_(nu) });
   } finally { lock.releaseLock(); }
 }

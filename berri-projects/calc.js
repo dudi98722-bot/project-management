@@ -24,8 +24,9 @@ var MV = {
 function buildMoves() {
   var out = [];
   function add(k, x, reg, dir, desc, extra) {
+    /* שורה מוסתרת (אין הרשאת צפייה באזור שלה) — מופיעה ביתרות, בלי פרטים */
     var m = { k: k, id: x.id, date: x.date, amount: Number(x.amount) || 0, reg: reg, dir: dir,
-              desc: desc, pid: x.projectId || '', ts: x.createdAt || '', src: x };
+              desc: x.masked ? 'פרטים מוסתרים' : desc, pid: x.projectId || '', ts: x.createdAt || '', src: x };
     if (extra) for (var e in extra) m[e] = extra[e];
     out.push(m);
   }

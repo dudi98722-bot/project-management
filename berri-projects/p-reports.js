@@ -39,7 +39,7 @@ function repSummary(el) {
       kpi('📈 רווח מפרוייקטים', profit, all.length + ' פרוייקטים', 'green') +
       kpi('🧾 הוצאות עסק', totBiz, 'ללא שיוך לפרוייקט', 'red') +
       kpi('💼 רווח נטו', round2(profit - totBiz), 'אחרי הוצאות העסק', 'navy') +
-      (isAdmin() ? kpi('🏠 הוצאות בית', totHome, 'סך הכל', 'amber') : '') +
+      (can('homeExpenses', 'view') ? kpi('🏠 הוצאות בית', totHome, 'סך הכל', 'amber') : '') +
       kpi('💰 בקופות עכשיו', v.totalBalance, '', 'blue') +
     '</div>' +
     '<div class="cols2"><div><div class="card"><div class="card-head"><h3>📋 סיכום כספי כולל</h3></div><table class="tbl"><tbody>' +

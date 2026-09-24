@@ -25,7 +25,7 @@ function projSetFilt(k, part, value) {
 }
 function projPasses(s) {
   var f = projFstate();
-  return PROJ_COLS.every(function (c) {
+  return projCols().every(function (c) {
     var v = f[c.k]; if (!v) return true;
     var x = pv(c, s);
     if (c.d) return !(v.from && (!x || x < v.from)) && !(v.to && (!x || x > v.to));
@@ -60,10 +60,11 @@ function projBulkBar(list) {
   el.innerHTML = '<div class="bulkbar"><b>' + picked.length + ' פרוייקטים מסומנים</b>' +
     '<span>רווח צפוי ' + money(sumOf(picked, function (x) { return x.profit; })) + '</span><div class="sp"></div>' +
     (bulkReady()
-      ? '<button class="btn sm" onclick="projBulkActive(true)">✔ סמן כפעילים</button>' +
-        '<button class="btn sm" onclick="projBulkActive(false)">⏸ סמן כלא פעילים</button>' +
-        '<button class="btn sm p" onclick="bulkEditOpen(\'projects\',\'\')">✏️ עדכון מרוכז</button>' +
-        '<button class="btn sm d" onclick="bulkDeleteAsk(\'projects\',\'\')">🗑️</button>'
+      ? (can('projects', 'edit')
+          ? '<button class="btn sm" onclick="projBulkActive(true)">✔ סמן כפעילים</button>' +
+            '<button class="btn sm" onclick="projBulkActive(false)">⏸ סמן כלא פעילים</button>' +
+            '<button class="btn sm p" onclick="bulkEditOpen(\'projects\',\'\')">✏️ עדכון מרוכז</button>' : '') +
+        (can('projects', 'delete') ? '<button class="btn sm d" onclick="bulkDeleteAsk(\'projects\',\'\')">🗑️</button>' : '')
       : bulkNotReady()) +
     '<button class="btn sm gh" onclick="projSelAll(false)">✕</button></div>';
 }

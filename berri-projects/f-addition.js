@@ -2,7 +2,7 @@
 'use strict';
 
 function additionModal(id, pre) {
-  if (!canEdit()) return toast('אין לך הרשאה להזין', 'err');
+  if (!can('projects', id ? 'edit' : 'add')) return toast('אין לך הרשאה', 'err');
   var projs = sortedProjects();
   if (!projs.length) return toast('צריך להגדיר פרוייקט קודם', 'err');
   var r = id ? findRow('additions', id) : null;
@@ -31,7 +31,7 @@ function additionModal(id, pre) {
 
     '<button class="btn o" onclick="saveAddition(this,\'' + (id || '') + '\')">' + (id ? 'שמירה' : 'הוספה') + '</button>' +
     '<button class="btn gh" onclick="closeModal()">ביטול</button>' +
-    (id ? '<div class="sp"></div><button class="btn d" onclick="askDelete(\'additions\',\'' + id + '\')">🗑️ מחיקה</button>' : '')), true);
+    (id && can('projects', 'delete') ? '<div class="sp"></div><button class="btn d" onclick="askDelete(\'additions\',\'' + id + '\')">🗑️ מחיקה</button>' : '')), true);
   addPreview();
   bindEnter(['f-desc', 'f-cadd', 'f-sadd', 'f-note'], function () {
     saveAddition(document.querySelector('.modal-foot .btn.o'), id || '');

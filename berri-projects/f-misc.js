@@ -4,7 +4,7 @@
 var REG_KINDS = ['מזומן', 'בנק', 'צ׳קים', 'אשראי', 'אחר'];
 
 function registerModal(id) {
-  if (!isAdmin()) return toast('קופות מוגדרות על ידי מנהל בלבד', 'err');
+  if (!can('registers', id ? 'edit' : 'add')) return toast('אין לך הרשאה להגדיר קופות', 'err');
   var r = id ? findRow('registers', id) : null, d = r || { kind: 'מזומן', active: true, sort: S.d.registers.length + 1 };
   openModal(modalHtml('💰 ' + (id ? 'עריכת קופה' : 'קופה חדשה'),
     '<div id="m" class="msg"></div>' +
@@ -31,8 +31,8 @@ function saveRegister(btn, id) {
 }
 
 function catModal(id, group) {
-  if (!canEdit()) return toast('אין לך הרשאה', 'err');
   var c = id ? findRow('categories', id) : null;
+  if (!canCat(c ? c.group : group, id ? 'edit' : 'add')) return toast('אין לך הרשאה', 'err');
   openModal(modalHtml('🏷️ ' + (id ? 'שינוי שם קטגוריה' : 'קטגוריה חדשה'),
     '<div id="m" class="msg"></div>' +
     '<div class="hint">' + esc(GROUP_HE[(c ? c.group : group)] || '') + '</div>' +
@@ -63,30 +63,51 @@ function saveCat(btn, id, group) {
 var CAT_GROUP_TABLE = { project: 'projectExpenses', business: 'businessExpenses', home: 'homeExpenses',
                         'in': 'cashMoves', out: 'cashMoves' };
 
+/* הרשאות לפי משתמש דורשות את הסקריפט המעודכן בגוגל (apiVersion 3) */
+function permsReady() { return (S.apiVersion || 1) >= 3; }
+
 function userModal(id) {
   if (!isAdmin()) return toast('ניהול משתמשים למנהל בלבד', 'err');
-  var u = id ? findRow('users', id) : null, d = u || { role: 'editor', active: true };
+  var u = id ? findRow('users', id) : null, d = u || { role: 'user', active: true, perms: presetPerms('field') };
   var me = u && u.id === S.user.id;
+  /* עורך/צופה מהגרסה הקודמת מוצג כמשתמש רגיל, עם ההרשאות שהיו לו */
+  var role = d.role === 'admin' ? 'admin' : 'user';
+  var roles = permsReady()
+    ? [{ v: 'user', t: 'משתמש — לפי הרשאות שאני קובע' }, { v: 'admin', t: 'מנהל — הכל, כולל ניהול משתמשים' }]
+    : [{ v: 'admin', t: 'מנהל — הכל' }, { v: 'editor', t: 'עורך — הזנה ועריכה' }, { v: 'viewer', t: 'צופה — צפייה בלבד' }];
+  if (!permsReady()) role = d.role;
   openModal(modalHtml('👥 ' + (id ? 'עריכת משתמש' : 'משתמש חדש'),
     '<div id="m" class="msg"></div>' +
-    fld('שם מלא', '<input id="f-full" class="inp" autofocus value="' + esc(d.fullName || '') + '">') +
-    fld('שם משתמש', '<input id="f-user" class="inp" dir="ltr" autocomplete="off" value="' + esc(d.username || '') + '">', 1) +
+    '<div class="grid2">' +
+      fld('שם מלא', '<input id="f-full" class="inp" autofocus value="' + esc(d.fullName || '') + '">') +
+      fld('שם משתמש', '<input id="f-user" class="inp" dir="ltr" autocomplete="off" value="' + esc(d.username || '') + '">', 1) +
+    '</div>' +
     fld('סיסמה' + (id ? ' חדשה' : ''), '<input id="f-pass" class="inp" type="password" autocomplete="new-password" placeholder="' +
       (id ? 'להשאיר ריק — בלי שינוי' : '6 תווים לפחות') + '">', !id) +
-    fld('תפקיד', '<select id="f-role" class="inp"' + (me ? ' disabled' : '') + '>' +
-      selOpts([{ v: 'admin', t: 'מנהל — הכל' }, { v: 'editor', t: 'עורך — הזנה ועריכה' }, { v: 'viewer', t: 'צופה — צפייה בלבד' }], d.role, 'v', 't') + '</select>') +
+    fld('תפקיד', '<select id="f-role" class="inp"' + (me ? ' disabled' : '') + ' onchange="userRoleChanged()">' +
+      selOpts(roles, role, 'v', 't') + '</select>') +
+    (permsReady()
+      ? '<div id="perm-box"' + (role === 'admin' ? ' class="hide"' : '') + '><div class="lbl">מה מותר למשתמש הזה</div>' +
+          permMatrix(d.perms || presetPerms(d.role)) + '</div>'
+      : '<p class="hint">להרשאות מפורטות לכל משתמש — צריך לעדכן את הסקריפט בגוגל (Apps Script ← Deploy ← New version).</p>') +
     (me ? '<p class="hint">אי אפשר לשנות לעצמך תפקיד או להשבית את עצמך.</p>' :
       '<label class="check' + (d.active ? ' on' : '') + '" onclick="setTimeout(function(){this.classList.toggle(\'on\',byId(\'f-active\').checked)}.bind(this),0)">' +
       '<input type="checkbox" id="f-active"' + (d.active ? ' checked' : '') + '><span><b>משתמש פעיל</b></span></label>'),
     '<button class="btn o" onclick="saveUser(this,\'' + (id || '') + '\')">שמירה</button>' +
-    '<button class="btn gh" onclick="closeModal()">ביטול</button>'));
+    '<button class="btn gh" onclick="closeModal()">ביטול</button>'), true);
+}
+function userRoleChanged() {
+  var box = byId('perm-box');
+  if (box) box.classList.toggle('hide', val('f-role') === 'admin');
 }
 function saveUser(btn, id) {
   var u = id ? findRow('users', id) : null, me = u && u.id === S.user.id;
   if (!val('f-user')) return setMsg('m', 'יש להזין שם משתמש');
+  var role = me ? u.role : val('f-role');
+  var perms = (permsReady() && role !== 'admin') ? permRead() : undefined;
   setMsg('m', ''); busy(btn, true);
   api('saveUser', { id: id, username: val('f-user'), fullName: val('f-full'),
-    role: me ? u.role : val('f-role'), password: byId('f-pass').value,
+    role: role, password: byId('f-pass').value, perms: perms,
     active: (me || checked('f-active')) ? '1' : '0' }).then(function (r) {
     busy(btn, false);
     if (!r.ok) { if (!handleExpired(r)) setMsg('m', r.error); return; }
@@ -129,19 +150,23 @@ function savePass(btn) {
   });
 }
 
-/* כפתור ה"הזנה" שבסרגל העליון */
-function quickAdd() {
-  var opts = [['ad', 'תוספת לפרוייקט', 'עבודה שנוספה למחיר'],
-    ['cp', 'תשלום מלקוח', 'כסף שנכנס מלקוח'], ['sp', 'תשלום לקבלן', 'כסף שיצא לקבלן משנה'],
-    ['pe', 'הוצאה לפרוייקט', 'חומרים, כלים, פועלים'], ['be', 'הוצאת עסק', 'בלי שיוך לפרוייקט']];
-  if (isAdmin()) opts.push(['he', 'הוצאת בית', 'הוצאות פרטיות']);
-  opts.push(['in', 'כסף נכנס לקופה', 'הפקדה, הלוואה'], ['out', 'כסף יצא מקופה', 'משיכה, החזר'],
-    ['tr', 'העברה בין קופות', 'מקופה לקופה']);
-  openModal(modalHtml('➕ מה להזין?', '<div class="quick">' + opts.map(function (o) {
+/* כפתור ה"הזנה" שבסרגל העליון — רק מה שמותר למשתמש להוסיף */
+var QUICK = [['ad', 'תוספת לפרוייקט', 'עבודה שנוספה למחיר', 'projects'],
+  ['cp', 'תשלום מלקוח', 'כסף שנכנס מלקוח', 'clientPayments'], ['sp', 'תשלום לקבלן', 'כסף שיצא לקבלן משנה', 'subPayments'],
+  ['pe', 'הוצאה לפרוייקט', 'חומרים, כלים, פועלים', 'projectExpenses'], ['be', 'הוצאת עסק', 'בלי שיוך לפרוייקט', 'businessExpenses'],
+  ['he', 'הוצאת בית', 'הוצאות פרטיות', 'homeExpenses'], ['in', 'כסף נכנס לקופה', 'הפקדה, הלוואה', 'cashMoves'],
+  ['out', 'כסף יצא מקופה', 'משיכה, החזר', 'cashMoves'], ['tr', 'העברה בין קופות', 'מקופה לקופה', 'cashMoves']];
+function quickOpts() { return QUICK.filter(function (o) { return can(o[3], 'add'); }); }
+function quickGrid() {
+  return '<div class="quick">' + quickOpts().map(function (o) {
     var open = o[0] === 'ad' ? 'additionModal()' : 'entryModal(\'' + o[0] + '\')';
     return '<button onclick="closeModal();' + open + '"><span class="qi">' + (o[0] === 'ad' ? '➕' : KIND[o[0]].i) + '</span>' +
       '<b>' + o[1] + '</b><small>' + o[2] + '</small></button>';
-  }).join('') + '</div>' + (canEdit() ? '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">' +
-    '<button class="btn sm" onclick="closeModal();projectModal()">🏗️ פרוייקט חדש</button>' +
-    (isAdmin() ? '<button class="btn sm" onclick="closeModal();registerModal()">💰 קופה חדשה</button>' : '') + '</div>' : ''), ''), true);
+  }).join('') + '</div>';
+}
+function quickAdd() {
+  var more = (can('projects', 'add') ? '<button class="btn sm" onclick="closeModal();projectModal()">🏗️ פרוייקט חדש</button>' : '') +
+    (can('registers', 'add') ? '<button class="btn sm" onclick="closeModal();registerModal()">💰 קופה חדשה</button>' : '');
+  openModal(modalHtml('➕ מה להזין?', quickGrid() +
+    (more ? '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">' + more + '</div>' : ''), ''), true);
 }

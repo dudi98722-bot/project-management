@@ -77,11 +77,16 @@ var TBL = {
 };
 
 function tid(tk, ctx) { return tk + (ctx ? '_' + ctx : ''); }
-function colsOf(tk, ctx) { return TBL[tk].cols.filter(function (c) { return !(ctx && c.noCtx); }); }
+/* העמודות שמוצגות: בלי עמודות שאין בהן טעם בתוך פרוייקט, ובלי מה שהמשתמש הסתיר */
+function colsOf(tk, ctx) {
+  return visibleCols(tk, TBL[tk].cols).filter(function (c) { return !(ctx && c.noCtx); });
+}
 function cellVal(c, r) { return c.get ? c.get(r) : r[c.k]; }
 function fstate(id) { return (S.filters[id] = S.filters[id] || {}); }
 function sstate(id) { return (S.sorts[id] = S.sorts[id] || { k: 'date', dir: -1 }); }
-function tableEditable(tk) { return TBL[tk].admin ? isAdmin() : canEdit(); }
+/* מה מותר למשתמש בטבלה הזו — לפי ההרשאות שהמנהל קבע. acts = אפשר לסמן שורות */
+function tCan(tk, act) { return canT(TBL[tk].table, act); }
+function tableEditable(tk) { return tCan(tk, 'edit') || tCan(tk, 'delete'); }
 
 function filterCell(tk, ctx, c) {
   var id = tid(tk, ctx), v = fstate(id)[c.k] || {};
@@ -153,10 +158,11 @@ function tableCard(tk, ctx, opts) {
   var cx = '\'' + tk + '\',\'' + (ctx || '') + '\'';
   return '<div class="card"><div class="card-head"><h3>' + T.icon + ' ' + (opts.title || T.title) + '</h3><div class="sp"></div>' +
       '<button class="btn sm gh" onclick="toggleFilters(' + cx + ')">🔍 סינון' + (nf ? ' · ' + nf : '') + '</button>' +
+      colsBtn(tk, opts.title || T.title) +
       (nf ? '<button class="btn sm gh" onclick="clearFilters(' + cx + ')">✕ נקה</button>' : '') +
       '<button class="btn sm gh" onclick="exportTable(' + cx + ')">📤 אקסל</button>' +
-      (IMP[tk] && acts ? '<button class="btn sm gh" onclick="importOpen(' + cx + ')" title="ייבוא שורות מקובץ אקסל">📥 ייבוא</button>' : '') +
-      (opts.add && acts ? '<button class="btn sm o" onclick="' + opts.add + '">➕ ' + (opts.addLabel || 'הוספה') + '</button>' : '') +
+      (IMP[tk] && tCan(tk, 'add') ? '<button class="btn sm gh" onclick="importOpen(' + cx + ')" title="ייבוא שורות מקובץ אקסל">📥 ייבוא</button>' : '') +
+      (opts.add && tCan(tk, 'add') ? '<button class="btn sm o" onclick="' + opts.add + '">➕ ' + (opts.addLabel || 'הוספה') + '</button>' : '') +
     '</div><div id="bb-' + id + '"></div><div class="tbl-scroll"><table class="tbl"><thead><tr>' +
       (acts ? '<th class="nosort sel-col"><input type="checkbox" id="sa-' + id + '" title="סימון כל השורות המוצגות" ' +
         'onchange="selAll(' + cx + ',this.checked)"></th>' : '') +
@@ -206,8 +212,8 @@ function refreshTable(tk, ctx) {
           ' onchange="selOne(\'' + tk + '\',\'' + (ctx || '') + '\',\'' + r.id + '\',this.checked)"></td>' : '') +
         cols.map(function (c) { return cellHtml(c, r); }).join('') +
         (acts ? '<td><div class="row-acts">' +
-          '<button class="icon-btn" title="עריכה" onclick="editRow(\'' + tk + '\',\'' + r.id + '\')">✏️</button>' +
-          '<button class="icon-btn del" title="מחיקה" onclick="askDelete(\'' + T.table + '\',\'' + r.id + '\')">🗑️</button>' +
+          (tCan(tk, 'edit') ? '<button class="icon-btn" title="עריכה" onclick="editRow(\'' + tk + '\',\'' + r.id + '\')">✏️</button>' : '') +
+          (tCan(tk, 'delete') ? '<button class="icon-btn del" title="מחיקה" onclick="askDelete(\'' + T.table + '\',\'' + r.id + '\')">🗑️</button>' : '') +
           '</div></td>' : '') + '</tr>';
     }).join('');
     byId('tf-' + id).innerHTML = '<tr>' + (acts ? '<td></td>' : '') + cols.map(function (c, i) {
@@ -247,8 +253,8 @@ function bulkBar(tk, ctx, rows) {
     (mc ? '<span>סה״כ ' + money(sumOf(picked, function (r) { return cellVal(mc, r); })) + '</span>' : '') +
     '<div class="sp"></div>' +
     (bulkReady()
-      ? '<button class="btn sm p" onclick="bulkEditOpen(' + cx + ')">✏️ עדכון מרוכז</button>' +
-        '<button class="btn sm d" onclick="bulkDeleteAsk(' + cx + ')">🗑️ מחיקה</button>'
+      ? (tCan(tk, 'edit') ? '<button class="btn sm p" onclick="bulkEditOpen(' + cx + ')">✏️ עדכון מרוכז</button>' : '') +
+        (tCan(tk, 'delete') ? '<button class="btn sm d" onclick="bulkDeleteAsk(' + cx + ')">🗑️ מחיקה</button>' : '')
       : bulkNotReady()) +
     '<button class="btn sm gh" onclick="selAll(' + cx + ',false)">✕ ביטול סימון</button></div>';
 }
@@ -260,6 +266,14 @@ function bulkNotReady() {
     '⚠ עדכון מרוכז יעבוד אחרי שמעדכנים את הסקריפט בגוגל (Apps Script ← Deploy ← New version)</span>';
 }
 function mountTables(list) { list.forEach(function (x) { refreshTable(x[0], x[1]); }); }
+/* טבלה למי שיש לו צפייה; למי שמותר רק להזין — כרטיס עם כפתור הוספה בלבד */
+function tableOrAdd(tk, ctx, opts) {
+  if (tCan(tk, 'view')) return tableCard(tk, ctx, opts);
+  if (!opts.add || !tCan(tk, 'add')) return '';
+  return '<div class="card"><div class="card-head"><h3>' + TBL[tk].icon + ' ' + (opts.title || TBL[tk].title) + '</h3>' +
+    '<div class="sp"></div><span class="muted" style="font-size:12.5px">הזנה בלבד</span>' +
+    '<button class="btn sm o" onclick="' + opts.add + '">➕ ' + (opts.addLabel || 'הוספה') + '</button></div></div>';
+}
 
 function exportTable(tk, ctx) {
   var T = TBL[tk], cols = colsOf(tk, ctx), rows = tableRows(tk, ctx);

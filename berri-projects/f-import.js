@@ -59,7 +59,7 @@ var IMPS = { step: 1, tk: '', ctx: '', rows: [], head: [], map: {}, parsed: [], 
 function importOpen(tk, ctx) {
   var C = IMP[tk];
   if (!C) return toast('אין ייבוא לטבלה הזו', 'err');
-  if (!tableEditable(tk)) return toast('אין לך הרשאה לייבא', 'err');
+  if (!tCan(tk, 'add')) return toast('אין לך הרשאה לייבא לטבלה הזו', 'err');
   IMPS = { step: 1, tk: tk, ctx: ctx || '', rows: [], head: [], map: {}, parsed: [], busy: false };
   importRender();
 }
