@@ -420,6 +420,9 @@ td.empty{text-align:center;color:var(--muted);padding:22px}
 .fchip .btn{padding:1px 6px}
 .fchip-pend{background:#fffbeb;border-color:#fde68a}
 .ffield-add{cursor:pointer;display:inline-flex;width:auto}
+.fview{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;min-height:64vh}
+.fview iframe,.fview img{display:block;width:100%;height:64vh;border:0;background:#fff}
+.fview img{object-fit:contain;background:#f8fafc}
 </style>
 
 <div id="app"></div>
@@ -438,7 +441,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 עט'";
+var APP_BUILD = "19.08 פ'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -2697,9 +2700,10 @@ function filesFieldHtml(slot,kind,tg,title,sub){
 function filesListInner(tg){
   var o=fileTgtObj(tg), key=ftgKey(tg);
   return ((o&&o[fileTgtField(tg)])||[]).map(function(f){
-    var u=fileSafeUrl(f.url);
+    var u=fileSafeUrl(f.url); fileRemember(f);
     return '<span class="fchip">'+
-      (u?'<a href="'+esc(u)+'" target="_blank" rel="noopener" title="'+esc(f.name)+'">📄 '+esc(f.name)+'</a>':'📄 '+esc(f.name))+
+      (u?'<a href="'+esc(u)+'" target="_blank" rel="noopener" title="'+esc(f.name)+'" '+
+        'onclick="return fileOpen(\''+esc(f.id)+'\',event)">📄 '+esc(f.name)+'</a>':'📄 '+esc(f.name))+
       '<button type="button" class="btn btn-ghost btn-sm" title="הסרת הקובץ" onclick="fileRemove(\''+key+'\',\''+esc(f.id)+'\')">✕</button></span>';
   }).join("");
 }
@@ -2741,9 +2745,45 @@ function filesChipsHtml(tg){
 function filesChipsInner(tg){
   var o=fileTgtObj(tg);
   return ((o&&o[fileTgtField(tg)])||[]).map(function(f){
-    var u=fileSafeUrl(f.url);
-    return u?'<a href="'+esc(u)+'" target="_blank" rel="noopener" title="📄 '+esc(f.name)+'" onclick="event.stopPropagation()">📄</a>':'';
+    var u=fileSafeUrl(f.url); fileRemember(f);
+    return u?'<a href="'+esc(u)+'" target="_blank" rel="noopener" title="📄 '+esc(f.name)+'" '+
+      'onclick="event.stopPropagation();return fileOpen(\''+esc(f.id)+'\',event)">📄</a>':'';
   }).join("");
+}
+/* ---------- פתיחת קובץ בתוך התוכנה ----------
+   דרייב יודע להטמיע קובץ בכתובת /preview, ותמונות נפתחות מיד דרך
+   התמונה הממוזערת. הכל עובד מול החשבון שהמשתמש מחובר אליו בדפדפן —
+   ולכן יש תמיד גם כפתור "פתח בדרייב" ליתר ביטחון. */
+var FMETA={};
+function fileRemember(f){ if(f&&f.id) FMETA[f.id]={name:f.name||"",mime:f.mime||""}; }
+function fileDriveId(u){ var m=/\/d\/([-\w]{10,})/.exec(String(u||"")); return m?m[1]:""; }
+function fileOpen(id,ev){
+  /* Ctrl / אמצעי — שיפתח בלשונית חדשה כרגיל */
+  if(ev && (ev.ctrlKey||ev.metaKey||ev.shiftKey||ev.button===1)) return true;
+  if(ev && ev.preventDefault) ev.preventDefault();
+  var m=FMETA[id]||{}, isImg=/^image\//.test(m.mime||"");
+  var view="https://drive.google.com/file/d/"+encodeURIComponent(id)+"/preview";
+  var body=isImg
+    ? '<div class="fview"><img src="https://drive.google.com/thumbnail?id='+encodeURIComponent(id)+'&sz=w1600" '+
+      'alt="'+esc(m.name||"")+'" onerror="fviewFallback(this)"></div>'
+    : '<div class="fview"><iframe src="'+view+'" allow="autoplay"></iframe></div>';
+  openModal({title:"📄 "+(m.name||"קובץ"),wide:true,bodyHtml:
+    body+
+    '<div class="toolbar" style="margin-top:8px">'+
+      '<a class="btn btn-sm" href="https://drive.google.com/file/d/'+encodeURIComponent(id)+'/view" '+
+        'target="_blank" rel="noopener">🔗 פתח בדרייב</a>'+
+      '<a class="btn btn-sm" href="https://drive.google.com/uc?export=download&id='+encodeURIComponent(id)+'" '+
+        'target="_blank" rel="noopener">⬇️ הורדה</a>'+
+      '<div class="hint">התצוגה מגיעה מהדרייב. אם היא ריקה — יש להתחבר בדפדפן לחשבון הגוגל של המערכת, '+
+        'או ללחוץ "פתח בדרייב".</div>'+
+    '</div>'});
+  return false;
+}
+/* תמונה שלא נטענה — מנסים את התצוגה המוטמעת של דרייב */
+function fviewFallback(img){
+  var id=fileDriveId(img.getAttribute("src"))||((/id=([-\w]{10,})/.exec(img.getAttribute("src"))||[])[1]||"");
+  if(!id || !img.parentNode) return;
+  img.parentNode.innerHTML='<iframe src="https://drive.google.com/file/d/'+encodeURIComponent(id)+'/preview" allow="autoplay"></iframe>';
 }
 function fileAttachBtn(tg){
   if(!filesOn()) return "";
@@ -16121,10 +16161,11 @@ function dvFileList(){
   return out.sort(function(x,y){ return x.date<y.date?1:x.date>y.date?-1:0; });
 }
 function dvFileRowHtml(r){
-  var f=r.f, u=fileSafeUrl(f.url);
+  var f=r.f, u=fileSafeUrl(f.url); fileRemember(f);
   return '<tr>'+dvTd(r.a.name)+dvTd(FILE_KIND_ONE[r.kind]||"")+dvTd(dateHe(r.date))+dvTd(r.desc)+
     dvTd(Number(r.amount)?money(r.amount):"")+
-    '<td>'+(u?'<a href="'+esc(u)+'" target="_blank" rel="noopener">📄 '+esc(f.name||"")+'</a>':esc(f.name||""))+'</td>'+
+    '<td>'+(u?'<a href="'+esc(u)+'" target="_blank" rel="noopener" '+
+      'onclick="return fileOpen(\''+esc(f.id)+'\',event)">📄 '+esc(f.name||"")+'</a>':esc(f.name||""))+'</td>'+
     dvTd(f.size?fileSizeLabel(f.size):"")+dvTd(f.at?dateHe(String(f.at).slice(0,10)):"")+'</tr>';
 }
 var DV_COL_HEAD=["פרוייקט","תאריך","הזמנה","סכום","אמצעי","נכנס ל","שורת בנק","מס׳ חשבונית","נשלח לרו\"ח","שכירות","הערה"];
