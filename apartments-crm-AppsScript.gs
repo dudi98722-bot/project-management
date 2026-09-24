@@ -142,13 +142,13 @@ function doPost(e) {
     }
     /* ---- קבצים מצורפים בדרייב — מנהל בלבד ---- */
     if (action === "fileUpload" || action === "fileTrash" || action === "filesInfo" ||
-        action === "filesSetRoot" || action === "filesPrepare" || action === "fileMove") {
+        action === "filesSetRoot" || action === "filesPrepare" || action === "fileCopy") {
       if (user.role !== "admin") return jsonOut({ ok: false, error: "forbidden" });
       if (action === "fileUpload")   return jsonOut(fileUpload(body));
       if (action === "fileTrash")    return jsonOut(fileTrash(body));
       if (action === "filesInfo")    return jsonOut(filesInfo(body));
       if (action === "filesPrepare") return jsonOut(filesPrepare(body));
-      if (action === "fileMove")     return jsonOut(fileMove(body));
+      if (action === "fileCopy")     return jsonOut(fileCopy(body));
       return jsonOut(filesSetRoot(body));
     }
     return jsonOut({ ok: false, error: "unknown action" });
@@ -282,10 +282,10 @@ function fileUpload(body) {
   return { ok: true, file: { id: file.getId(), name: file.getName(), url: file.getUrl(),
     mime: mime, size: bytes.length, kind: kind }, folderUrl: folder.getUrl() };
 }
-/* העברת קובץ לתיקייה של פרוייקט — למשל אסמכתת בנק שקיבלה פרוייקט
-   בהתאמה. המזהה והקישור של הקובץ לא משתנים, ולכן כל מה שכבר מצביע
-   עליו ממשיך לעבוד. מועברים רק קבצים שנמצאים בתוך תיקיית הקבצים. */
-function fileMove(body) {
+/* עותק של קובץ לתיקייה של פרוייקט — למשל אסמכתת בנק שהותאמה לפרוייקט.
+   המקור נשאר במקומו (בתיקיית דפי הבנק), והעותק יושב אצל הפרוייקט —
+   כך הוא נמצא בשני המקומות. מועתקים רק קבצים מתוך תיקיית הקבצים. */
+function fileCopy(body) {
   var id = String(body.fileId || "");
   var kind = String(body.kind || "");
   if (!id) return { ok: false, error: "no-file" };
@@ -300,8 +300,11 @@ function fileMove(body) {
   var year = String(body.year || "");
   if (!/^(19|20)\d\d$/.test(year)) year = String(new Date().getFullYear());
   var folder = filesFolderFor(apt, kind, kind === "doc" ? "" : year, kind === "doc" ? filesSafeName(body.sub, 60) : "");
-  file.moveTo(folder);
-  return { ok: true, url: file.getUrl(), folderUrl: folder.getUrl(), name: file.getName() };
+  var copy = file.makeCopy(file.getName(), folder);
+  var size = 0, mime = "";
+  try { size = copy.getSize(); mime = copy.getMimeType(); } catch (e) {}
+  return { ok: true, file: { id: copy.getId(), name: copy.getName(), url: copy.getUrl(),
+    mime: mime, size: size }, folderUrl: folder.getUrl() };
 }
 /* הסרה — לפח של הדרייב (אפשר לשחזר משם), ורק קובץ שבתוך תיקיית הקבצים */
 function fileTrash(body) {

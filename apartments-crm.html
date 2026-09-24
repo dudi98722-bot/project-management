@@ -639,7 +639,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 פה'";
+var APP_BUILD = "19.08 פו'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -2515,8 +2515,8 @@ function applyMoveMatch(m,inc,amount){
   m.matches=m.matches||[];
   m.matches.push({id:uid(),incomeId:inc.id,payId:g.id,amount:amount,deleted:false});
   if(!m.apartmentId) m.apartmentId=inc.apartmentId;
-  bankFilesCopy(m,g);          /* האסמכתא של השורה עוברת גם לתשלום */
-  bankFilesRelocate(m);        /* ועוברת לתיקיית הפרוייקט בדרייב */
+  bankFilesCopy(m,g,inc.apartmentId);   /* האסמכתא של השורה נכנסת גם לתשלום */
+  bankFilesRelocate(m);                 /* ועותק שלה נשמר בתיקיית הפרוייקט */
   return g;
 }
 /* ביטול התאמה — מוחק גם את התשלום שנוצר ממנה */
@@ -2842,7 +2842,7 @@ async function fileUploadOne(tg,file){
   /* חשבונית שצורפה להוצאה — ההוצאה מסומנת "יש חשבונית/קבלה" */
   if(tg.t==="exp") o.hasInvoice=true;
   /* אסמכתא של שורת בנק — מופיעה גם בתשלומים שההתאמה כבר יצרה */
-  if(tg.t==="bank") bankFilesSync(o);
+  if(tg.t==="bank"){ bankFilesSync(o); bankFilesRelocate(o); }
   save();
   return j.file;
 }
@@ -3018,33 +3018,56 @@ function fileQuickPick(key){
 /* ---------- אסמכתא של שורת בנק ----------
    הקובץ נשאר אחד (אותו קובץ בדרייב), והקישור אליו נשמר גם בתשלום
    שנוצר מההתאמה — כך רואים אותו גם בהזמנה, לא רק בדף הבנק. */
-function bankFilesCopy(m,g){
+function bankFilesCopy(m,g,aptId){
   var src=(m&&m.files)||[];
   if(!src.length || !g) return 0;
   if(!Array.isArray(g.files)) g.files=[];
   var have={}; g.files.forEach(function(f){ if(f&&f.id) have[f.id]=1; });
   var n=0;
   src.forEach(function(f){
-    if(!f || !f.id || have[f.id]) return;
-    g.files.push({id:f.id,name:f.name,url:f.url,mime:f.mime,size:f.size,
+    if(!f || !f.id) return;
+    /* אם כבר קיים עותק בתיקיית הפרוייקט — מצביעים אליו */
+    var use=(f.copy && f.copy.apt===aptId) ? f.copy : f;
+    if(have[use.id]) return;
+    g.files.push({id:use.id,name:use.name||f.name,url:use.url||f.url,mime:f.mime,size:f.size,
       kind:f.kind||"receipt",at:f.at,by:f.by,fromBank:m.id});
     n++;
   });
   return n;
 }
-/* שורה שקיבלה פרוייקט — הקבצים שנשמרו בתיקייה הכללית עוברים לתיקיית
-   הפרוייקט. המזהה והקישור נשארים, ולכן כל מה שמצביע עליהם ממשיך לעבוד. */
+/* שורה שקיבלה פרוייקט — נוצר עותק של האסמכתא בתיקיית הפרוייקט,
+   והמקור נשאר בתיקיית דפי הבנק. מרגע שהעותק קיים, התשלומים של
+   הפרוייקט מצביעים אליו, ושורת הבנק ממשיכה להצביע למקור. */
 function bankFilesRelocate(m){
   if(!m || !m.apartmentId || !filesOn()) return;
-  (m.files||[]).filter(function(f){ return f && f.gen; }).forEach(function(f){
-    api({action:"fileMove",codeHash:getAuth(),fileId:f.id,aptId:m.apartmentId,
+  var apt=m.apartmentId;
+  (m.files||[]).forEach(function(f){
+    if(!f || !f.gen) return;                       /* כבר יושב אצל פרוייקט */
+    if(f.copy && f.copy.apt===apt) return;         /* כבר הועתק לפרוייקט הזה */
+    api({action:"fileCopy",codeHash:getAuth(),fileId:f.id,aptId:apt,
       kind:f.kind||"receipt",year:String(m.date||todayISO()).slice(0,4)})
       .then(function(j){
-        if(!j || !j.ok) return;
-        delete f.gen;
-        if(j.url) f.url=j.url;
+        if(!j || !j.ok || !j.file) return;
+        f.copy={apt:apt,id:j.file.id,name:j.file.name,url:j.file.url};
+        bankFilesRepoint(m,f);
         save();
       });
+  });
+}
+/* התשלומים שנוצרו מההתאמה מצביעים למקור עד שהעותק מוכן — כאן הם
+   מוחלפים לעותק שבתיקיית הפרוייקט */
+function bankFilesRepoint(m,f){
+  if(!f.copy) return;
+  moveMatches(m).forEach(function(x){
+    var inc=byId(DB.income,x.incomeId);
+    if(!inc || inc.apartmentId!==f.copy.apt) return;
+    var g=(inc.payments||[]).filter(function(y){ return y.id===x.payId && !y.deleted; })[0];
+    if(!g || !g.files) return;
+    g.files.forEach(function(gf){
+      if(gf && gf.id===f.id && gf.fromBank===m.id){
+        gf.id=f.copy.id; gf.url=f.copy.url; if(f.copy.name) gf.name=f.copy.name;
+      }
+    });
   });
 }
 /* כל ההתאמות החיות של השורה — לעדכון אחרי צירוף קובץ */
@@ -3053,7 +3076,7 @@ function bankFilesSync(m){
   moveMatches(m).forEach(function(x){
     var inc=byId(DB.income,x.incomeId); if(!inc) return;
     var g=(inc.payments||[]).filter(function(y){ return y.id===x.payId && !y.deleted; })[0];
-    if(g) n+=bankFilesCopy(m,g);
+    if(g) n+=bankFilesCopy(m,g,inc.apartmentId);
   });
   return n;
 }
@@ -3368,7 +3391,7 @@ function linkBankPay(o,ix){
      מחליפה אותו, אחרת שחזור הישנה היה סופר את התשלום פעמיים */
   (ix.stale[o.g.id]||[]).forEach(function(old){ old.deleted=true; });
   ix.live[o.g.id]=[{m:o.m,x:x}];
-  bankFilesCopy(o.m,o.g);
+  bankFilesCopy(o.m,o.g,o.inc&&o.inc.apartmentId);
   bankFilesRelocate(o.m);
   return true;
 }
