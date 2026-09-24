@@ -438,7 +438,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 עז'";
+var APP_BUILD = "19.08 עח'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -13659,6 +13659,18 @@ var CONTRACT_TPL_DEFAULT=[
 "_______________________                    _______________________",
 "        המשכיר                                      השוכר",
 "      {{משכיר}}                                  {{שוכר}}"].join("\n");
+/* הגופן של המסמך. web — נטען מגוגל בחלון ההדפסה בלבד (בוורד הוא נופל
+   לגופן המותקן במחשב, ולכן בכל שרשרת יש גם גופני מערכת). */
+var CONTRACT_FONTS={
+  modern:{label:"מודרני (Assistant)",css:'"Assistant","Rubik","Segoe UI",Calibri,Arial,sans-serif',web:"Assistant:wght@400;600;700"},
+  rubik:{label:"רוביק (Rubik)",css:'"Rubik","Assistant","Segoe UI",Calibri,Arial,sans-serif',web:"Rubik:wght@400;500;700"},
+  arial:{label:"אריאל — סטנדרטי",css:'Arial,"Segoe UI","Noto Sans Hebrew",sans-serif',web:""},
+  classic:{label:"דויד — קלאסי",css:'"David","Frank Ruehl CLM","Times New Roman",serif',web:""}
+};
+function contractFont(){
+  var k=(landlordInfo().font)||"modern";
+  return CONTRACT_FONTS[k]||CONTRACT_FONTS.modern;
+}
 function contractTpl(){ return (DB.settings&&DB.settings.contractTpl)||CONTRACT_TPL_DEFAULT; }
 function landlordInfo(){ return (DB.settings&&DB.settings.landlord)||{}; }
 /* אורך החוזה בחודשים. תאריך הסיום נחשב כיום האחרון, ולכן החישוב
@@ -13722,7 +13734,7 @@ function openContractDraft(rid){
       (saved?'מוצגת <b>הטיוטה השמורה</b> של הדירה.':'הפרטים מולאו מהדירה ומהחוזה הנוכחי שלה.')+
       ' אפשר לערוך כאן הכול. <b>זו סקיצה לעריכה — לא תחליף לבדיקת עורך דין.</b></div>'+
     '<textarea id="cd-text" spellcheck="false" style="width:100%;min-height:50vh;direction:rtl;'+
-      'font:13.5px/1.9 inherit;padding:12px">'+esc(txt)+'</textarea>'+
+      'font:14px/1.9 '+esc(contractFont().css)+';padding:14px">'+esc(txt)+'</textarea>'+
     '<div class="toolbar" style="margin-top:8px">'+
       '<button class="btn btn-sm" onclick="contractPrint(\''+r.id+'\')">🖨️ הדפסה / PDF</button>'+
       '<button class="btn btn-sm" onclick="contractDownloadDoc(\''+r.id+'\')">⬇️ הורדה כ-Word</button>'+
@@ -13768,14 +13780,23 @@ function contractPrint(rid){
   var w=null; try{ w=window.open("","_blank"); }catch(e){}
   if(!w){ toast("הדפדפן חסם את חלון ההדפסה — אפשר להעתיק ולהדביק במקום","err"); return; }
   /* הכותרת היא מה שהדפדפן מדפיס בראש העמוד — משאירים אותה ריקה */
+  var f=contractFont();
   w.document.write('<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">'+
     '<title> </title>'+
+    (f.web?'<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'+
+      '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family='+esc(f.web)+'&display=swap">':'')+
     '<style>@page{margin:20mm 18mm}'+
-    'body{font:12.5pt/1.8 "Times New Roman",Georgia,serif;color:#000;margin:0}'+
+    'body{font:12pt/1.75 '+f.css+';color:#111;margin:0;-webkit-print-color-adjust:exact}'+
     'pre{white-space:pre-wrap;font:inherit;margin:0}</style></head>'+
     '<body><pre>'+esc(txt)+'</pre></body></html>');
   w.document.close();
-  setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} },350);
+  /* מדפיסים רק אחרי שהגופן נטען — אחרת העמוד יוצא בגופן ברירת המחדל */
+  var done=false;
+  function go(){ if(done) return; done=true; try{ w.focus(); w.print(); }catch(e){} }
+  try{
+    if(w.document.fonts && w.document.fonts.ready) w.document.fonts.ready.then(function(){ setTimeout(go,120); });
+  }catch(e){}
+  setTimeout(go,2500);
 }
 function contractCopy(){
   var t=val("cd-text");
@@ -13792,9 +13813,10 @@ function contractCopy(){
 }
 /* שמירה כמסמך בדרייב — נכנס לתיקיית המסמכים של הדירה */
 function contractDocHtml(txt){
+  var f=contractFont();
   return '<html dir="rtl"><head><meta charset="utf-8">'+
-    '<style>@page{margin:2cm}body{font-family:"Times New Roman",serif;font-size:12.5pt;line-height:1.8}</style>'+
-    '</head><body><pre style="white-space:pre-wrap;font-family:inherit;font-size:inherit">'+
+    '<style>@page{margin:2cm}body{font-family:'+f.css+';font-size:12pt;line-height:1.7}</style>'+
+    '</head><body><pre style="white-space:pre-wrap;font-family:inherit;font-size:inherit;line-height:inherit">'+
     esc(txt)+'</pre></body></html>';
 }
 function contractDocName(r){
@@ -13829,6 +13851,11 @@ function openContractTplEdit(){
       '<div class="field"><label>כתובת</label><input id="cl-addr" value="'+esc(L.addr||"")+'"></div>'+
       '<div class="field"><label>טלפון</label><input id="cl-phone" value="'+esc(L.phone||"")+'"></div>'+
       '<div class="field"><label>עיר (סמכות שיפוט)</label><input id="cl-city" value="'+esc(L.city||"")+'"></div>'+
+      '<div class="field"><label>גופן החוזה</label><select id="cl-font">'+
+        Object.keys(CONTRACT_FONTS).map(function(k){
+          return '<option value="'+k+'"'+(((L.font||"modern")===k)?" selected":"")+'>'+esc(CONTRACT_FONTS[k].label)+'</option>';
+        }).join("")+'</select>'+
+        '<div class="hint">משפיע על ההדפסה, על קובץ ה-Word ועל חלון העריכה.</div></div>'+
     '</div>'+
     '<div class="section-title">התבנית</div>'+
     '<div class="hint" style="margin-bottom:6px">מה שבתוך הסוגריים מתמלא לבד מהנתונים: '+
@@ -13842,7 +13869,8 @@ function openContractTplEdit(){
     saveLabel:"שמירה",onSave:function(){
       DB.settings=DB.settings||{};
       DB.settings.landlord={name:val("cl-name").trim(),id:val("cl-id").trim(),
-        addr:val("cl-addr").trim(),phone:val("cl-phone").trim(),city:val("cl-city").trim()};
+        addr:val("cl-addr").trim(),phone:val("cl-phone").trim(),city:val("cl-city").trim(),
+        font:CONTRACT_FONTS[val("cl-font")]?val("cl-font"):"modern"};
       var t=val("cl-tpl");
       DB.settings.contractTpl = (t.trim()===CONTRACT_TPL_DEFAULT.trim()) ? "" : t;
       save(); toast("נשמר","ok");
