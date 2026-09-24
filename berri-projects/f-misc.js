@@ -68,6 +68,15 @@ function permsReady() { return (S.apiVersion || 1) >= 3; }
 
 function userModal(id) {
   if (!isAdmin()) return toast('ניהול משתמשים למנהל בלבד', 'err');
+  /* אם המסך עוד חושב שהסקריפט בגוגל ישן — שואלים את השרת עכשיו, לפני
+     שמציגים את החלון הישן. כך עדכון סקריפט נקלט בלי רענון של הדף */
+  if (!permsReady() && Date.now() - (S.pingAt || 0) > 20000) {
+    S.pingAt = Date.now();
+    return api('ping', {}).then(function (r) {
+      if (r && r.ok && Number(r.apiVersion) > (S.apiVersion || 1)) { S.apiVersion = Number(r.apiVersion); loadAll(true); }
+      userModal(id);
+    });
+  }
   var u = id ? findRow('users', id) : null, d = u || { role: 'user', active: true, perms: presetPerms('field') };
   var me = u && u.id === S.user.id;
   /* עורך/צופה מהגרסה הקודמת מוצג כמשתמש רגיל, עם ההרשאות שהיו לו */

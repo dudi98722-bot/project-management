@@ -102,6 +102,8 @@ for f in $(curl -fsSL "https://api.github.com/repos/dudi98722-bot/project-manage
   curl -fsSL "https://raw.githubusercontent.com/dudi98722-bot/project-management/$SHA/berri-projects/$f" -o "/var/www/berri/$f.new" \
     && mv "/var/www/berri/$f.new" "/var/www/berri/$f"
 done
+# חותמת גרסה על כל קובץ קוד — הדפדפן מוריד עותק חדש בכל עדכון, ולא מערבב ישן עם חדש
+sed -i -E "s/\.js(\?v=[0-9a-f]+)?\"/.js?v=${SHA:0:8}\"/g" /var/www/berri/index.html
 ```
 
 ### 4. כניסה ראשונה

@@ -77,6 +77,12 @@ server {
         try_files \$uri \$uri/ /index.html;
     }
 
+    # הדפדפן חייב לבדוק גרסה חדשה של הקוד בכל טעינה (304 אם לא השתנה).
+    # בלי זה נשארת אצלו גרסה ישנה של קובץ אחד לצד גרסה חדשה של אחר.
+    location ~* \.(js|css)\$ {
+        add_header Cache-Control "no-cache";
+    }
+
     location ~* \.(html)\$ {
         add_header Cache-Control "no-cache";
     }
