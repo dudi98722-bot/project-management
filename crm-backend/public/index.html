@@ -4189,8 +4189,11 @@ function bootstrapData(){
   // חשוב: שגיאה חייבת להתפוצץ, לא להחזיר [].
   // רשימה ריקה נראית בדיוק כמו "אין נתונים", והמשתמש היה מוסיף רשומות
   // על בסיס מצב ריק שגוי (למשל מזהה איש קשר שכבר תפוס).
-  function getArr(path){
+  // allow403: לתפקיד צופה אין הרשאה לתשלומים, ושם ריק הוא התשובה הנכונה.
+  // כל שאר השגיאות חייבות להתפוצץ ולא להיבלע כרשימה ריקה.
+  function getArr(path, allow403){
     return window.apiFetch(path).then(function(r){
+      if(r.status===403 && allow403) return [];
       if(!r.ok) throw new Error(path+' -> '+r.status);
       return r.json();
     }).then(function(d){
@@ -4198,7 +4201,7 @@ function bootstrapData(){
       return d;
     });
   }
-  Promise.all([ getArr('/contacts/all'), getArr('/vows/all'), getArr('/payments/all') ]).then(function(res){
+  Promise.all([ getArr('/contacts/all'), getArr('/vows/all'), getArr('/payments/all', true) ]).then(function(res){
     var cts = res[0]||[], vws = res[1]||[], pys = res[2]||[];
     window.contacts = cts.map(function(c,i){ return Object.assign({}, c, {_idx:i}); });
     window.filtered = window.contacts.slice();
