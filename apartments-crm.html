@@ -129,6 +129,7 @@ table.tbl.sheet-grid input{
 table.tbl.sheet-grid input:focus{background:#eef2ff;box-shadow:inset 0 0 0 2px var(--brand)}
 table.tbl.sheet-grid thead input{font-weight:700;height:20px}
 table.tbl.sheet-grid input.num{direction:ltr;font-variant-numeric:tabular-nums}
+table.tbl.sheet-grid td.sep input,table.tbl.sheet-grid td.sep{direction:ltr;font-variant-numeric:tabular-nums}
 /* עמודת המספור צרה. הסלקטור מפורט כי כללי הטבלה הצפופה מרחיבים
    את העמודה הראשונה ל-min-width:150px וגוברים על סלקטור קצר יותר. */
 .tbl-compact table.tbl.sheet-grid tbody td.rownum,
@@ -618,6 +619,11 @@ button,.btn,.nav-item,.tab,.apt-card,.x,label,summary,a{-webkit-tap-highlight-co
 .fchip .btn{padding:1px 6px}
 .fchip-pend{background:#fffbeb;border-color:#fde68a}
 .ffield-add{cursor:pointer;display:inline-flex;width:auto}
+.dv-ed{display:inline-block;min-width:24px;border-bottom:1px dashed transparent;border-radius:3px;padding:0 1px}
+.dv-ed:hover{border-bottom-color:#b9c0d8;background:#fbfcff;cursor:text}
+.dv-ed:focus{outline:none;background:#eef2ff;border-bottom-color:var(--brand)}
+.dv-open{padding:0 4px;font-size:11px;opacity:.45;cursor:pointer;background:none;border:0}
+.dv-open:hover{opacity:1}
 .fview{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;min-height:64vh}
 .fview iframe,.fview img{display:block;width:100%;height:64vh;border:0;background:#fff}
 .fview img{object-fit:contain;background:#f8fafc}
@@ -639,7 +645,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 פז'";
+var APP_BUILD = "19.08 פט'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -13155,9 +13161,29 @@ function curSheet(){
 /* לבקשת דודי: בלי סימני ₪ בגיליון החופשי. ערך שהוא מספר עם ₪ —
    הסימן מוסר; משפט חופשי שבמקרה מכיל ₪ נשאר כמו שהוא. */
 function sheetStripShekel(v){
-  if(typeof v!=="string" || v.indexOf("₪")<0) return v;
+  if(typeof v!=="string") return v;
+  /* "₪1,234" → "1234": הערך נשמר נקי, והתצוגה היא זו שמוסיפה סימנים */
+  if(v.indexOf("₪")<0 && v.indexOf(",")<0) return v;
   if(cellNum(v)===null) return v;
-  return v.replace(/₪/g,"").trim();
+  return v.replace(/₪/g,"").replace(/,/g,"").trim();
+}
+/* תצוגת התא: תא שסומן כ"מספר" מוצג עם פסיקי אלפים */
+function sheetCellDisp(v,f){
+  if(!f || !f.sep) return v==null?"":String(v);
+  var n=cellNum(v);
+  return n===null ? (v==null?"":String(v)) : num(n);
+}
+function sheetCellRaw(s,r,c){
+  var v=((s.rows||[])[r]||[])[c];
+  return v==null?"":String(v);
+}
+/* בעריכה מציגים את המספר הנקי, וביציאה חוזרים לתצוגה עם הפסיקים */
+function sheetCellEdit(inp,id,r,c,editing){
+  var s=byId(DB.sheets,id); if(!s || !inp) return;
+  var f=sheetFmt(s,r,c);
+  if(!f || !f.sep) return;
+  var raw=sheetCellRaw(s,r,c);
+  inp.value = editing ? raw : sheetCellDisp(raw,f);
 }
 function cellNum(v){
   var s=String(v==null?"":v).trim();
@@ -13342,6 +13368,10 @@ function sheetApplyFmt(id,kind,value){
         var cc=sheetFmt(s,r,c);
         patch(r,c,{cur:(cc&&cc.cur)?0:1});
       }
+      else if(kind==="sep"){
+        var cs=sheetFmt(s,r,c);
+        patch(r,c,{sep:(cs&&cs.sep)?0:1});
+      }
       else if(kind==="clear") delete s.fmt[fmtKey(r,c)];
     }
   }
@@ -13360,6 +13390,12 @@ function sheetApplyFmt(id,kind,value){
     for(var r3=sel.r1;r3<=sel.r2;r3++)
       for(var c3=sel.c1;c3<=sel.c2;c3++) patch(r3,c3,{cur:onc?1:0});
   }
+  if(kind==="sep"){
+    var fs=sheetFmt(s,sel.r1,sel.c1);
+    var ons=!!(fs&&fs.sep);
+    for(var r4=sel.r1;r4<=sel.r2;r4++)
+      for(var c4=sel.c1;c4<=sel.c2;c4++) patch(r4,c4,{sep:ons?1:0});
+  }
   save();
   /* ---------- החלה במקום ----------
      קודם כל שינוי עיצוב בנה מחדש את כל המסך, והמסך קפץ בכל הדגשה
@@ -13375,8 +13411,15 @@ function sheetApplyFmtDom(s,sel){
       if(!td) continue;
       any=true;
       var f=sheetFmt(s,r,c)||{};
-      ["bold","bt","bb","bl","br","cur"].forEach(function(k){ td.classList.toggle(k,!!f[k]); });
+      ["bold","bt","bb","bl","br","cur","sep"].forEach(function(k){ td.classList.toggle(k,!!f[k]); });
       if(f.bg) td.style.background=f.bg; else td.style.removeProperty("background");
+      /* התצוגה עצמה משתנה עם הסימון — פסיקים נכנסים או יורדים מיד */
+      var inp=td.querySelector("input");
+      if(inp && document.activeElement!==inp){
+        var raw=sheetCellRaw(s,r,c);
+        inp.value=sheetCellDisp(raw,f);
+        inp.classList.toggle("num",cellNum(raw)!==null);
+      }
     }
   }
   if(!any){ rerender(); return; }   /* הטווח אינו על המסך */
@@ -13447,6 +13490,7 @@ function viewSheets(){
       '<span style="width:10px"></span>'+
       '<button class="btn btn-sm" onclick="sheetApplyFmt(\''+s.id+'\',\'bold\')"><b>מודגש</b></button>'+
       '<button class="btn btn-sm" title="סימון התאים כסכום בשקלים — הסימן מוצג, והערך נשאר מספר נקי לסיכומים ולאקסל" onclick="sheetApplyFmt(\''+s.id+'\',\'cur\')">₪ שקל</button>'+
+      '<button class="btn btn-sm" title="הצגת המספר עם פסיקי אלפים. בעריכה רואים את המספר הנקי, וגם הסיכומים והאקסל מקבלים אותו נקי" onclick="sheetApplyFmt(\''+s.id+'\',\'sep\')">1,234 פסיקים</button>'+
       '<button class="btn btn-sm" onclick="sheetApplyFmt(\''+s.id+'\',\'boxOut\')">⬛ מסגרת מסביב</button>'+
       '<button class="btn btn-sm" onclick="sheetApplyFmt(\''+s.id+'\',\'boxAll\')">▦ מסגרת לכל תא</button>'+
       '<button class="btn btn-sm" onclick="sheetApplyFmt(\''+s.id+'\',\'noBox\')">הסר מסגרת</button>'+
@@ -13532,18 +13576,21 @@ function sheetRowHtml(s,ri,nCols){
     var v=(r[c]==null?"":r[c]);
     var isNum=cellNum(v)!==null;
     var f=sheetFmt(s,ri,c);
-    var cls=[]; if(f){ if(f.bold) cls.push("bold"); if(f.cur) cls.push("cur"); ["bt","bb","bl","br"].forEach(function(k){ if(f[k]) cls.push(k); }); }
+    var cls=[]; if(f){ if(f.bold) cls.push("bold"); if(f.cur) cls.push("cur"); if(f.sep) cls.push("sep"); ["bt","bb","bl","br"].forEach(function(k){ if(f[k]) cls.push(k); }); }
+    var disp=sheetCellDisp(v,f);
     var sty=(f&&f.bg)?' style="background:'+esc(f.bg)+'"':'';
     h+=can("edit")
       ? '<td class="'+cls.join(" ")+'"'+sty+' data-cr="'+ri+'" data-cc="'+c+'"'+
         ' onmousedown="sheetCellDown(event,\''+s.id+'\','+ri+','+c+')"'+
         ' oncontextmenu="event.preventDefault();sheetCellHistory(\''+s.id+'\','+ri+','+c+')"'+
         ' onmouseover="sheetCellOver(\''+s.id+'\','+ri+','+c+')">'+
-        '<input class="'+(isNum?"num":"")+'" value="'+esc(v)+'"'+
+        '<input class="'+(isNum?"num":"")+'" value="'+esc(disp)+'"'+
         ' data-r="'+ri+'" data-c="'+c+'" onchange="setSheetCell(\''+s.id+'\','+ri+','+c+',this.value)"'+
         ' onmouseup="sheetCellUp(event,this)"'+
+        ' onfocus="sheetCellEdit(this,\''+s.id+'\','+ri+','+c+',1)"'+
+        ' onblur="sheetCellEdit(this,\''+s.id+'\','+ri+','+c+',0)"'+
         ' onkeydown="sheetKey(event,'+ri+','+c+')" onpaste="sheetPaste(event,\''+s.id+'\','+ri+','+c+')"></td>'
-      : '<td class="cellval'+(isNum?" num":"")+" "+cls.join(" ")+'"'+sty+'>'+esc(v)+'</td>';
+      : '<td class="cellval'+(isNum?" num":"")+" "+cls.join(" ")+'"'+sty+'>'+esc(disp)+'</td>';
   }
   return h+(can("edit")?'<td class="right"><button class="btn btn-ghost btn-sm" title="מחק שורה" onclick="delSheetRow(\''+s.id+'\','+ri+')">✕</button></td>':'')+'</tr>';
 }
@@ -16508,6 +16555,70 @@ var DQ={tab:"exp",parents:false};
 var DV_FILL=null, DV_FILL_TOKEN=0;
 var DV_ST={paid:"שולם",partial:"חלקי",unpaid:"לא שולם",over:"שולם ביתר"};
 function dvTd(v,cls){ return '<td'+(cls?' class="'+cls+'"':'')+'>'+esc(v==null?"":String(v))+'</td>'; }
+/* ---------- עריכה ישר בטבלת הנתונים ----------
+   רק שדות טקסט (שם, תיאור, הערה) — מה שאין לו השפעה על חישובים.
+   הכתיבה נכנסת לרשומה המקורית, ולכן משתנה בכל מקום במערכת. סכומים,
+   תאריכים וקטגוריות נשארים דרך ✏️ שפותח את הרשומה המלאה. */
+var DV_ED={exp:"expenses",pay:"payments",inc:"income",rent:"rentals"};
+function dvEdObj(kind,id,sub){
+  if(kind==="col"){
+    var i=byId(DB.income,id); if(!i) return null;
+    return ((i.payments||[]).filter(function(g){ return g.id===sub; })[0])||null;
+  }
+  var t=DV_ED[kind]; if(!t) return null;
+  return byId(DB[t],id)||null;
+}
+/* תא שניתן לעריכה. בלי הרשאת עריכה — טקסט רגיל */
+function dvEd(kind,id,field,value,sub){
+  var v=value==null?"":String(value);
+  if(!can("edit")) return dvTd(v);
+  return '<td><span class="dv-ed" contenteditable="true" spellcheck="false"'+
+    ' onkeydown="dvEdKey(event,this)" onblur="dvEdSave(this,\''+kind+'\',\''+id+'\',\''+field+'\''+
+    (sub?(',\''+sub+'\''):'')+')">'+esc(v)+'</span></td>';
+}
+function dvEdKey(e,el){
+  if(e.key==="Enter"){ e.preventDefault(); el.blur(); }
+  else if(e.key==="Escape"){ e.preventDefault(); el.setAttribute("data-cancel","1"); el.blur(); }
+}
+function dvEdSave(el,kind,id,field,sub){
+  if(!can("edit")) return;
+  var o=dvEdObj(kind,id,sub);
+  var was=o?String(o[field]==null?"":o[field]):"";
+  if(el.getAttribute("data-cancel")){ el.removeAttribute("data-cancel"); el.textContent=was; return; }
+  if(!o){ toast("הרשומה לא נמצאה","err"); return; }
+  var now=String(el.innerText||"").replace(/\s+/g," ").trim();
+  if(now===was.trim()) { el.textContent=was; return; }
+  /* שם ריק לדירה או תיאור ריק להוצאה — חוסמים, אחרת הרשומה נעלמת מהמסכים */
+  if(!now && (field==="name" || field==="description")){
+    toast("אי אפשר להשאיר את השדה ריק","err"); el.textContent=was; return;
+  }
+  o[field]=now;
+  el.textContent=now;
+  save();
+  toast("נשמר","ok");
+}
+/* ✏️ — פתיחת הרשומה המלאה לעריכת סכומים, תאריכים וכל השאר */
+function dvOpen(kind,id,sub){
+  if(!can("edit")){ toast("אין הרשאה","err"); return; }
+  var o=dvEdObj(kind,id,sub);
+  if(!o){ toast("הרשומה לא נמצאה","err"); return; }
+  if(kind==="exp") openExpenseEditor(o.id,o.apartmentId);
+  else if(kind==="pay") openPaymentEditor(o.expenseId,o.id);
+  else if(kind==="inc") editIncome(o.id,o.apartmentId);
+  else if(kind==="col"){ var i=byId(DB.income,id); if(i) editIncomePay(i.id,sub,i.apartmentId); }
+  else if(kind==="rent") editRental(o.id);
+}
+/* תא השם/התיאור — עריכה במקום, ולידו ✏️ לרשומה המלאה */
+function dvEdCell(kind,id,field,value,sub){
+  if(!can("edit")) return dvTd(value==null?"":String(value));
+  var td=dvEd(kind,id,field,value,sub);
+  return td.replace("<td>","<td>"+dvOpenBtn(kind,id,sub));
+}
+function dvOpenBtn(kind,id,sub){
+  if(!can("edit")) return "";
+  return '<button class="dv-open" data-xl-skip="1" title="פתיחת הרשומה לעריכה מלאה" '+
+    'onclick="dvOpen(\''+kind+'\',\''+id+'\''+(sub?(',\''+sub+'\''):'')+')">✏️</button>';
+}
 function dvApts(){ return active(DB.apartments).filter(function(a){ return canSeeApartment(a.id); }); }
 function dvExpenseList(){
   var out=[];
@@ -16541,12 +16652,14 @@ function dvPayList(){
 function dvPayRowHtml(r){
   var p=r.p, e=r.e, mgr=p.recipientType==="manager";
   return '<tr>'+
-    dvTd(r.a.name)+dvTd(dateHe(p.date))+dvTd(e.description||"")+dvTd(categoryName(e.categoryId))+dvTd(parentDesc(e))+
+    dvTd(r.a.name)+dvTd(dateHe(p.date))+
+    '<td>'+dvOpenBtn("pay",p.id)+esc(e.description||"")+'</td>'+
+    dvTd(categoryName(e.categoryId))+dvTd(parentDesc(e))+
     dvTd(money(p.amount))+dvTd(mgr?"מנהל":"ספק")+dvTd(mgr?managerName(p.recipientManagerId):"")+
     dvTd(p.payerPartnerId?partnerName(p.payerPartnerId):"")+
     dvTd(payAccountLabel(p))+dvTd(accountIsBank(p.accountId)?"כן":"")+
     dvTd(payMethodLabel(p))+dvTd(p.auto?"כן":"")+
-    dvTd(invoiceStatusText(p))+dvTd(cpaText(p))+dvTd(p.note||"")+'</tr>';
+    dvTd(invoiceStatusText(p))+dvTd(cpaText(p))+dvEd("pay",p.id,"note",p.note||"")+'</tr>';
 }
 var DV_RENT_HEAD=["פרוייקט","דירה","שוכר","טלפון","מתאריך","עד תאריך","נותרו","סטטוס","סכום לחיוב",
   "תדירות","יום חיוב","חיוב אוטומטי","שווה ערך חודשי","חויב","שולם","חוב","חוזים","קבצים","הערה"];
@@ -16568,14 +16681,15 @@ function dvRentFiles(r){
 }
 function dvRentRowHtml(row){
   var r=row.r, st=rentalStatus(r), d=daysUntil(r.endDate), stats=rentalIncomeStats(r);
-  return '<tr>'+dvTd(row.a.name)+dvTd(r.name)+dvTd(r.tenant||"")+dvTd(r.phone||"")+
+  return '<tr>'+dvTd(row.a.name)+dvEdCell("rent",r.id,"name",r.name)+
+    dvEd("rent",r.id,"tenant",r.tenant||"")+dvTd(r.phone||"")+
     dvTd(r.startDate?dateHe(r.startDate):"")+dvTd(r.endDate?dateHe(r.endDate):"")+
     dvTd(d===null?"":(d<0?("עברו "+Math.abs(d)):d))+
     dvTd((RENT_STATUS[st]||{}).t||"")+
     dvTd(r.rent?money(r.rent):"")+dvTd(RENT_EVERY[rentEvery(r)]||"")+dvTd(r.dueDay||"")+
     dvTd(r.autoIncome?"כן":"")+dvTd(rentMonthly(r)?money(round2(rentMonthly(r))):"")+
     dvTd(money(stats.billed))+dvTd(money(stats.paid))+dvTd(money(stats.debt))+
-    dvTd(((r.history||[]).length)+1)+dvTd(dvRentFiles(r)||"")+dvTd(r.note||"")+'</tr>';
+    dvTd(((r.history||[]).length)+1)+dvTd(dvRentFiles(r)||"")+dvEd("rent",r.id,"note",r.note||"")+'</tr>';
 }
 var DV_FIL_HEAD=["פרוייקט","סוג","תאריך","שייך ל","סכום","קובץ","גודל","הועלה"];
 /* כל הקבצים המצורפים, מכל הפרוייקטים */
@@ -16628,36 +16742,39 @@ function dvColRowHtml(r,ctx){
   var g=r.g, x=r.i;
   var ln=(ctx.links[g.id]||[])[0];
   return '<tr>'+
-    dvTd(r.a.name)+dvTd(dateHe(g.date))+dvTd(x.description||"")+dvTd(money(g.amount))+
+    dvTd(r.a.name)+dvTd(dateHe(g.date))+
+    '<td>'+dvOpenBtn("col",x.id,g.id)+esc(x.description||"")+'</td>'+dvTd(money(g.amount))+
     dvTd(METHODS[g.method]||g.method||"")+dvTd(destName(g.receivedBy))+
     /* התשלום מקושר לשורה מדף הבנק — איזה בנק ומאיזה תאריך */
     dvTd(ln?(moveBankLabel(ln.m)+" · "+dateHe(ln.m.date)):"")+
     dvTd(g.invoices||"")+dvTd(g.sentToCpa?"נשלח":"טרם נשלח")+
-    dvTd(x.rentalId?(ctx.rentName[x.rentalId]||""):"")+dvTd(g.note||"")+'</tr>';
+    dvTd(x.rentalId?(ctx.rentName[x.rentalId]||""):"")+dvEd("col",x.id,"note",g.note||"",g.id)+'</tr>';
 }
 var DV_INC_HEAD=["פרוייקט","תאריך","תיאור","מתאריך","עד תאריך","סכום","שולם","יתרת חוב","סטטוס","נכנס ל","חלוקה","לחישוב","פרייליך","שכירות","הערה"];
 function dvExpenseRowHtml(r){
   var e=r.e;
   return '<tr data-eid="'+e.id+'"'+(e.parentId?' data-parent="'+e.parentId+'"':'')+'>'+
-    dvTd(r.a.name)+dvTd(dateHe(e.date))+dvTd(e.description)+dvTd(parentDesc(e))+
+    dvTd(r.a.name)+dvTd(dateHe(e.date))+
+    dvEdCell("exp",e.id,"description",e.description)+dvTd(parentDesc(e))+
     dvTd(categoryName(e.categoryId))+dvTd(CLASSIFICATIONS[e.classification]||"")+
     dvTd(r.cont?"שלב-אב (סיכום)":(e.parentId?"תת-שלב":"שלב"))+
     dvTd(money(e.amount))+dvTd(money(expenseMgmtCostLive(e.id)))+
     dvTd(money(expensePaid(e.id)))+dvTd(money(expenseRemaining(e.id)))+
     dvTd(DV_ST[expenseStatus(e.id)]||"")+dvTd(e.hasInvoice?"יש":"")+
-    dvTd(e.noReport?"לא":"כן")+dvTd(e.noFreilich?"לא":"כן")+dvTd(e.note||"")+'</tr>';
+    dvTd(e.noReport?"לא":"כן")+dvTd(e.noFreilich?"לא":"כן")+dvEd("exp",e.id,"note",e.note||"")+'</tr>';
 }
 function dvIncomeRowHtml(r,rentName){
   var x=r.i, tr=incomeTracked(x), hasStay=!!(x.startDate||x.endDate);
   var paid=tr?incomePaid(x):0, debt=tr?incomeDebt(x):0;
   var st=!tr?"":(debt<=0.01?"שולם":(paid>0.01?"חלקי":"ממתין לתשלום"));
   return '<tr>'+
-    dvTd(r.a.name)+dvTd(dateHe(x.date))+dvTd(x.description||"")+
+    dvTd(r.a.name)+dvTd(dateHe(x.date))+
+    dvEdCell("inc",x.id,"description",x.description||"")+
     dvTd(hasStay?dateHe(stayStart(x)):"")+dvTd(x.endDate?dateHe(x.endDate):"")+
     dvTd(money(x.amount))+dvTd(tr?money(paid):"")+dvTd(tr?money(debt):"")+dvTd(st)+
     dvTd(incomeDestName(x))+dvTd(incomeSplitLabel(x))+
     dvTd(x.excluded?"לא":"כן")+dvTd(x.noFreilich?"לא":"כן")+
-    dvTd(x.rentalId?(rentName[x.rentalId]||""):"")+dvTd(x.note||"")+'</tr>';
+    dvTd(x.rentalId?(rentName[x.rentalId]||""):"")+dvEd("inc",x.id,"note",x.note||"")+'</tr>';
 }
 function viewDataSheet(){
   if(!(CU&&CU.role==="admin")) return '<div class="empty">אין הרשאה</div>';
@@ -16684,7 +16801,8 @@ function viewDataSheet(){
         (isFil?'<button class="btn btn-sm" onclick="filesOpenFolder(\'\')">📁 פתח את תיקיית הקבצים בדרייב</button>':'')+
         (!isExp?'':'<label style="font-weight:400;margin:0"><input type="checkbox" style="width:auto;margin-inline-end:5px"'+(DQ.parents?" checked":"")+
           ' onchange="DQ.parents=this.checked;rerender()"> כולל שלבי-אב</label>')+
-        '<span class="muted">👁️ לצפייה בלבד · סינון ומיון בכותרות הטבלה, כמו באקסל · "אקסל" מייצא בדיוק את מה שמסונן</span>'+
+        '<span class="muted">✏️ שם, תיאור והערה נערכים ישר בטבלה (ומשתנים במקור) · ✏️ שליד השם פותח את הרשומה המלאה · '+
+        'סינון ומיון בכותרות, כמו באקסל · "אקסל" מייצא בדיוק את מה שמסונן</span>'+
       '</div>';
     var rows, head, rowHtml, foot;
     if(isRent){
