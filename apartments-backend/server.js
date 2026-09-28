@@ -5,8 +5,8 @@
    Node טהור (בלי תלויות / בלי npm install).
    מאחסן את כל ה-DB כקובץ JSON יחיד על השרת, ומדבר בדיוק
    את אותו חוזה שהאפליקציה כבר מכירה:
-     GET  /api?key=TOKEN&action=load  -> { ok:true, data:<DB|null> }
-     POST /api?key=TOKEN  body {action:"save", data:<DB>} -> { ok:true, savedAt }
+     GET  /api?key=<token>&action=load  -> { ok:true, data:<DB|null> }
+     POST /api?key=<token>  body {action:"save", data:<DB>} -> { ok:true, savedAt }
    ------------------------------------------------------------ */
 const http = require('http');
 const fs = require('fs');
@@ -14,10 +14,15 @@ const path = require('path');
 
 const PORT = 3610;
 const HOST = '127.0.0.1';                                   // מאזין רק מקומית; nginx חושף החוצה
-const TOKEN = 'f11fad687d3005d8a75809c0dcf84fc782568f34';   // חייב להיות זהה למה שמוטמע ב-HTML
+const TOKEN = process.env.DIROT_TOKEN || '';                   // נטען ממשתנה סביבה — לא נשמר בקוד ולא ב-git
 const DATA_DIR = '/var/lib/alexander-dirot';
 const DATA_FILE = path.join(DATA_DIR, 'db.json');
 const MAX_BODY = 60 * 1024 * 1024;                          // 60MB תקרה
+
+if (!TOKEN || TOKEN.length < 24) {
+  console.error('DIROT_TOKEN missing or too short — refusing to start');
+  process.exit(1);
+}
 
 try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (e) {}
 

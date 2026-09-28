@@ -22,6 +22,12 @@ echo "📥 מוריד server.js..."
 curl -fsSL "$RAW_BASE/apartments-backend/server.js" -o "$APP_DIR/server.js"
 echo "   ✅ $APP_DIR/server.js"
 
+# ---- טוקן: נוצר אקראית על השרת ונשמר רק שם ----
+if [ ! -f /etc/alexander-dirot.env ]; then
+  echo "DIROT_TOKEN=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')" > /etc/alexander-dirot.env
+  chmod 600 /etc/alexander-dirot.env
+fi
+
 # ---- 2. שירות systemd ----
 echo "⚙️  מגדיר שירות systemd..."
 cat > /etc/systemd/system/alexander-dirot.service <<UNIT
@@ -36,6 +42,7 @@ Restart=always
 RestartSec=3
 User=root
 Environment=NODE_ENV=production
+EnvironmentFile=/etc/alexander-dirot.env
 
 [Install]
 WantedBy=multi-user.target
@@ -94,5 +101,5 @@ echo "   ✅ nginx נטען מחדש"
 echo ""
 echo "============================================"
 echo "✅ ה-Backend פעיל. בדיקת עשן:"
-curl -s "http://127.0.0.1:$PORT/api?key=f11fad687d3005d8a75809c0dcf84fc782568f34" && echo ""
+. /etc/alexander-dirot.env && curl -s "http://127.0.0.1:$PORT/api?key=$DIROT_TOKEN" && echo ""
 echo "============================================"
