@@ -645,7 +645,7 @@ var LSKEY = "apartmentsCRM_v1";
 /* חותמת הגרסה מוצגת בתחתית התפריט. כשמדווחים "התיקון לא עובד", הדבר
    הראשון לבדוק הוא אם הדפדפן בכלל קיבל את הגרסה — רענון רגיל (F5)
    מגיש לפעמים את הקובץ הישן מהמטמון. */
-var APP_BUILD = "19.08 פט'";
+var APP_BUILD = "19.08 צב'";
 /* אחסון על השרת (VPS) — מקור האמת. מוטמע בקוד כדי שכל מכשיר יתחבר אוטומטית */
 /* ---- גוגל שיטס = מקור האמת ----
    הכתובת מוטמעת כדי שכל מכשיר יתחבר אוטומטית.
@@ -1064,7 +1064,16 @@ async function hashCode(code){
     var enc=new TextEncoder().encode(String(code));
     var buf=await crypto.subtle.digest("SHA-256",enc);
     return Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,"0");}).join("");
-  }catch(e){ return "plain:"+String(code); }
+  }catch(e){
+    toast("הדפדפן חוסם הצפנה — יש לפתוח את האפליקציה בכתובת https","err");
+    throw new Error("no-crypto");
+  }
+}
+/* A07: קוד כניסה חדש — לפחות 6 תווים. קודים קיימים ממשיכים לעבוד. */
+var CODE_MIN_LEN=6;
+function codeTooShort(code){
+  if(String(code||"").length>=CODE_MIN_LEN) return false;
+  toast("קוד כניסה חייב להכיל לפחות "+CODE_MIN_LEN+" תווים","err"); return true;
 }
 /* ============================================================
    שכבת אינדוקס לרינדור
@@ -3716,6 +3725,7 @@ async function renderLogin(){
 async function createAdmin(){
   var name=val("lg-name").trim()||"מנהל"; var code=val("lg-code");
   if(!code){ toast("יש להזין קוד","err"); return; }
+  if(codeTooShort(code)) return;
   var h=await hashCode(code);
   var u={id:uid(),name:name,code:h,role:"admin",allowedApartments:[],partnerId:null,active:true,deleted:false};
   if(!DB){ DB=blankDB(); seedIfEmpty(); }
@@ -3763,6 +3773,7 @@ async function doLogin(){
     var er=j&&j.error;
     toast(er==="network" ? "אין חיבור לשרת"
       : er==="too-many" ? ("יותר מדי ניסיונות כניסה — נסה שוב בעוד "+Math.ceil((j.retryAfter||120)/60)+" דקות")
+      : (er==="storage-error"||er==="server-error") ? "תקלה בשרת — לא ניתן להתחבר כרגע. נסה שוב מאוחר יותר או פנה למנהל"
       : "שם המשתמש או קוד הכניסה שגויים","err");
     return;
   }
@@ -3838,18 +3849,19 @@ async function forgotCode(){
     return;
   }
   toast("שולח קוד שחזור למייל…","ok");
-  var j=await api("action=requestReset&user="+encodeURIComponent(name));
+  var j=await api({action:"requestReset",user:name});
   if(!j||!j.ok){
-    var m={"user-not-found":"לא נמצא משתמש פעיל בשם הזה",
-           "no-email":"למשתמש הזה לא משויך מייל — בקש מהמנהל לקבוע לך קוד חדש (הגדרות ← משתמשים)"};
-    toast(m[j&&j.error]||("שליחת הקוד נכשלה"+((j&&j.error)?": "+j.error:"")),"err");
+    var m={"too-many":"יותר מדי בקשות שחזור — נסה שוב בעוד שעה",
+           "server-error":"תקלה בשרת — נסה שוב מאוחר יותר"};
+    toast(m[j&&j.error]||"שליחת הקוד נכשלה","err");
     return;
   }
   openResetCodeModal(j.sentTo||"");
 }
 function openResetCodeModal(sentTo){
   openModal({title:"שחזור קוד כניסה",bodyHtml:
-    '<p class="muted">נשלח קוד בן 6 ספרות למייל'+(sentTo?" "+esc(sentTo):"")+'. הקוד תקף ל-15 דקות ולשימוש חד-פעמי.</p>'+
+    '<p class="muted">אם השם קיים ומשויך לו מייל — נשלח קוד בן 6 ספרות למייל הרשום. הקוד תקף ל-15 דקות ולשימוש חד-פעמי.<br>'+
+    'לא הגיע מייל תוך דקה? ייתכן שלא הוגדר לך מייל — בקש מהמנהל לקבוע לך קוד חדש (הגדרות ← משתמשים).</p>'+
     '<div class="field"><label>הקוד מהמייל</label><input id="rs-code" inputmode="numeric" placeholder="6 ספרות"></div>'+
     '<div class="field"><label>קוד כניסה חדש</label><input id="rs-new" type="password" placeholder="בחר קוד חדש"></div>',
     saveLabel:"אפס קוד",onSave:function(){ doResetCode(); return false; }});
@@ -3857,7 +3869,8 @@ function openResetCodeModal(sentTo){
 async function doResetCode(){
   var code=val("rs-code").trim(), nw=val("rs-new");
   if(!code||!nw){ toast("יש למלא את שני השדות","err"); return; }
-  var v=await api("action=verifyReset&code="+encodeURIComponent(code));
+  if(codeTooShort(nw)) return;
+  var v=await api({action:"verifyReset",code:code});
   if(!v||!v.ok){
     var m={"bad-code":"קוד שגוי","expired":"הקוד פג תוקף — בקש קוד חדש","no-request":"לא נמצאה בקשת שחזור"};
     toast(m[v&&v.error]||"האימות נכשל","err"); return;
@@ -3892,7 +3905,7 @@ function viewDashboard(){
     '<div class="sp"></div>'+
     (can("edit")?'<button class="btn btn-sm" onclick="openMergeTool()">🔀 איחוד כפילויות</button> ':'')+
     (can("edit")?'<button class="btn btn-sm" onclick="bulkAptFlags()">⚙️ בנק / ניהול מרוכז</button> ':'')+
-    (can("edit")?'<button class="btn btn-primary" onclick="editApartment(null)">➕ פרוייקט חדש</button>':'')+'</div>';
+    (canAddProject()?'<button class="btn btn-primary" onclick="editApartment(null)">➕ פרוייקט חדש</button>':'')+'</div>';
   if(!all.length) return h+'<div class="empty">אין פרוייקטים עדיין. הוסף פרוייקט ראשון.</div>';
 
   h+=rentalAlertBanner();
@@ -4105,7 +4118,14 @@ function sortApts(key){
   else { APT_SORT.by=key; APT_SORT.dir = (key==="name"?"asc":"desc"); }
   renderAptGrid();
 }
+/* יצירת פרוייקט: מנהל, או עורך שלא הוגבל לפרוייקטים מסוימים. עורך
+   מוגבל רואה רק את הפרוייקטים שלו, והשרת משמיט פרוייקט שהוא יוצר. */
+function canAddProject(){
+  if(!CU) return can("edit");
+  return CU.role==="admin" || (can("edit") && !(CU.allowedApartments||[]).length);
+}
 function editApartment(id){
+  if(!id && !canAddProject()){ toast("רק מנהל יכול להוסיף פרוייקט","warn"); return; }
   var a=id?byId(DB.apartments,id):{name:"",notes:"",hasManagement:false,hasBank:false};
   openModal({title:id?"עריכת פרוייקט":"פרוייקט חדש",bodyHtml:
     '<div class="field"><label>שם / כתובת</label><input id="ap-name" value="'+esc(a.name)+'"></div>'+
@@ -4203,7 +4223,7 @@ function reviewCardHtml(aptId){
       '<th>תאריך בדיקה</th><th>מי בדק</th><th>הערה</th><th></th></tr></thead><tbody>'+
       rs.map(function(r){
         return '<tr><td>'+dateHe(r.date)+'</td><td>'+esc(r.by||"—")+'</td>'+noteCell(r.note)+
-          '<td class="right">'+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="delReview(\''+aptId+'\',\''+r.id+'\')">🗑️</button>':'')+'</td></tr>';
+          '<td class="right">'+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="delReview(\''+aptId+'\','+esc(JSON.stringify(String(r.id)))+')">🗑️</button>':'')+'</td></tr>';
       }).join("")+'</tbody></table></div>';
   }else{
     h+='<div class="hint">עוד לא אושרה בדיקה בפרוייקט הזה.</div>';
@@ -4542,6 +4562,13 @@ async function pollForUpdates(){
   POLL.busy=true;
   try{
     var res=await api({action:"rev",codeHash:getAuth()});
+    if(res && res.error==="unauthorized"){
+      /* הקוד הוחלף/בוטל ממקום אחר — לשונית שממשיכה לסקור רק צוברת
+         כישלונות בשרת. עוצרים ומבקשים כניסה מחדש; העבודה שמורה מקומית. */
+      setAuth(""); CU=null;
+      toast("קוד הכניסה כבר אינו תקף — יש להתחבר מחדש. השינויים שלך שמורים מקומית","warn");
+      renderApp(); return;
+    }
     if(!res||!res.ok) return;
     var srv=Number(res.rev)||0, loc=(DB&&DB.meta&&Number(DB.meta.rev))||0;
     if(srv<=loc) return;
@@ -5160,6 +5187,10 @@ async function flushSaveNow(){
     return;
   }
   SAVEQ.massOk=false;
+  /* המונה שיוצא הוא תמיד "מה שהשרת אישר לאחרונה" + 1. ערך מקומי גבוה
+     יותר (ביטולים מעלים אותו) היה עוקף את בדיקת ההתנגשות בשרת. */
+  DB.meta=DB.meta||{version:1}; DB.meta.rev=(Number(SYNCREV)||0)+1;
+  var sentRev=DB.meta.rev;
   var snap=JSON.stringify(DB);                                      // תמונת מצב עדכנית
   var payload='{"action":"save","codeHash":'+JSON.stringify(h)+',"data":'+snap+'}';
   return fetch(SHEETS_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:payload})
@@ -5168,7 +5199,28 @@ async function flushSaveNow(){
       SAVEQ.inflight=false;
       if(j&&j.ok){
         SAVEQ.fails=0; MERGE_ROUNDS=0;
-        setSyncBase(snap);                   // מה שנשלח הוא עכשיו מצב השרת
+        /* השרת קובע את מונה הגרסה (השמור+1) ומחזיר אותו. הבסיס המסונכרן
+           נשמר עם המונה של השרת, כדי שסקירת העדכונים וחלונות אחרים
+           יראו את אותו מספר. */
+        var srvRev=Number(j.rev)||0, base=snap;
+        if(srvRev && srvRev!==sentRev){
+          try{ var sp=JSON.parse(snap); sp.meta=sp.meta||{}; sp.meta.rev=srvRev; base=sp; }catch(e){}
+        }
+        setSyncBase(base);                   // מה שנשלח הוא עכשיו מצב השרת
+        if(srvRev && DB && DB.meta){
+          DB.meta.rev = SAVEQ.dirty ? srvRev+1 : srvRev;
+          try{ LAST_JSON=JSON.stringify(DB); vaultPut(LSKEY, LAST_JSON); }catch(e){}
+        }
+        if(j.dropped && j.dropped.length){
+          /* השרת השמיט שינויים מחוץ להרשאות (למשל פרוייקט חדש של עורך
+             מוגבל). המקומי לא תואם — מושכים את המלא כדי לא לשלוח שוב. */
+          toast("השרת לא קיבל חלק מהשינויים (מחוץ להרשאות שלך): "+esc(j.dropped.slice(0,3).join(", "))+" — הנתונים נטענים מחדש","warn");
+          serverLoad().then(function(r2){
+            if(r2&&r2.data&&Array.isArray(r2.data.apartments)){
+              adoptDB(normalizeDB(r2.data)); setSyncBase(r2.data); saveLocal(); rerender();
+            }
+          });
+        }
         tabSyncBroadcast();                  // חלונות אחרים של אותו דפדפן מתעדכנים בשקט
         if(j.restoredTables&&j.restoredTables.length){
           /* השרת השלים טבלאות שחסרו בשמירה — העותק המקומי חסר.
@@ -5209,6 +5261,18 @@ async function flushSaveNow(){
            שוב ושוב. השינוי נשאר מקומי ומסומן. */
         SAVEQ.dirty=false; setSync("local");
         toast("למשתמש הזה אין הרשאת עריכה — השינויים נשמרו מקומית בלבד","warn");
+        return;
+      }
+      if(err==="bad-id"||err==="scope-violation"){
+        /* השרת דחה את השמירה: מזהה עם תווים אסורים, או שינוי מחוץ
+           להרשאות. ניסיון חוזר לא יעזור — העבודה שמורה מקומית ומסומנת. */
+        SAVEQ.dirty=true; setSync("local");
+        if(!SAVEQ.guardToasted){
+          SAVEQ.guardToasted=true;
+          toast(err==="bad-id"
+            ? "השרת דחה רשומה עם מזהה לא תקין ("+esc(j.detail||"")+") — השינויים נשמרו מקומית בלבד. רענן את הדף; אם זה חוזר, פנה למנהל"
+            : "השרת דחה שינוי מחוץ להרשאות שלך ("+esc(j.detail||"")+") — השינויים נשמרו מקומית בלבד. רענן את הדף כדי לקבל את הנתונים העדכניים","err");
+        }
         return;
       }
       if(err==="shrink-guard"||err==="users-wipe"||err==="storage-error"){
@@ -6716,7 +6780,7 @@ function openBulkExpEdit(aptId){
         '<div id="eb-split-custom" style="display:none;padding-top:8px"><div class="form-grid">'+
           apPartners(aptId).map(function(p){
             return '<div class="field"><label>'+esc(partnerName(p.partnerId))+' %</label>'+
-              '<input class="eb-sp" data-p="'+p.partnerId+'" type="number" step="0.01" placeholder="'+num(p.defaultPercent)+'"></div>';
+              '<input class="eb-sp" data-p="'+esc(p.partnerId)+'" type="number" step="0.01" placeholder="'+num(p.defaultPercent)+'"></div>';
           }).join("")+'</div>'+
         '<div class="hint">האחוזים חייבים להסתכם ל-100. שדה ריק = 0%.</div></div>'+
         '<div class="hint">החלוקה שתיבחר תחליף את החלוקה הקיימת בכל השלבים שסומנו. שלבי-אב מדולגים — החלוקה יושבת בתתי-השלבים.</div></div>'+
@@ -6838,8 +6902,8 @@ function splitPresetsCardHtml(aptId){
     h+='<tr><td><b>'+esc(p.name)+'</b></td><td class="muted">'+
       esc(p.rows.map(function(r){return partnerName(r.partnerId)+" "+num(r.percent)+"%";}).join(" · "))+'</td>'+
       '<td class="'+(Math.abs(sum-100)<0.01?"pos":"neg")+'">'+num(sum)+'%</td>'+
-      '<td class="right">'+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editSplitPreset(\''+aptId+'\',\''+p.id+'\')">✏️</button> '+
-      '<button class="btn btn-ghost btn-sm" onclick="delSplitPreset(\''+aptId+'\',\''+p.id+'\')">🗑️</button>':'')+'</td></tr>';
+      '<td class="right">'+(can("edit")?'<button class="btn btn-ghost btn-sm" onclick="editSplitPreset(\''+aptId+'\','+esc(JSON.stringify(String(p.id)))+')">✏️</button> '+
+      '<button class="btn btn-ghost btn-sm" onclick="delSplitPreset(\''+aptId+'\','+esc(JSON.stringify(String(p.id)))+')">🗑️</button>':'')+'</td></tr>';
   });
   return h+'</tbody></table></div></div>';
 }
@@ -8972,7 +9036,7 @@ function openBulkDeposit(aptId){
   var rows=parts.map(function(p){
     return '<tr><td><b>'+esc(partnerName(p.partnerId))+'</b></td>'+
       '<td class="muted">'+num(p.defaultPercent)+'%</td>'+
-      '<td><input class="bd-amt" data-p="'+p.partnerId+'" data-pct="'+(Number(p.defaultPercent)||0)+'" '+
+      '<td><input class="bd-amt" data-p="'+esc(p.partnerId)+'" data-pct="'+(Number(p.defaultPercent)||0)+'" '+
         'type="number" step="0.01" placeholder="0" oninput="bdSum()" style="max-width:130px"></td></tr>';
   }).join("");
   openModal({title:"➕ הפקדה מרוכזת",wide:true,bodyHtml:
@@ -9240,21 +9304,21 @@ function openAllIncomePays(aptId){
     '</div>'+
     '<div class="toolbar">'+
       searchBox("gp-q",GPQ.q,"חיפוש לפי שם הזמנה / הערה / חשבונית…","GPQ.q=this.value;renderGpTable('+JSON.stringify(aptId)+')")+
-      '<select style="max-width:150px" onchange="GPQ.method=this.value;renderGpTable('+JSON.stringify(aptId)+')">'+
+      '<select style="max-width:150px" onchange="GPQ.method=this.value;renderGpTable('+esc(JSON.stringify(aptId))+')">'+
         '<option value="">כל האמצעים</option>'+
         Object.keys(METHODS).map(function(k){
           return '<option value="'+esc(k)+'"'+(GPQ.method===k?" selected":"")+'>'+esc(METHODS[k])+'</option>'; }).join("")+
       '</select>'+
-      '<select style="max-width:150px" onchange="GPQ.cpa=this.value;renderGpTable('+JSON.stringify(aptId)+')">'+
+      '<select style="max-width:150px" onchange="GPQ.cpa=this.value;renderGpTable('+esc(JSON.stringify(aptId))+')">'+
         [["","רו\"ח — הכל"],["sent","✔ נשלח לרו\"ח"],["not","טרם נשלח לרו\"ח"]].map(function(o){
           return '<option value="'+o[0]+'"'+(GPQ.cpa===o[0]?" selected":"")+'>'+o[1]+'</option>'; }).join("")+
       '</select>'+
-      (units.length?'<select style="max-width:150px" onchange="GPQ.unit=this.value;renderGpTable('+JSON.stringify(aptId)+')">'+
+      (units.length?'<select style="max-width:150px" onchange="GPQ.unit=this.value;renderGpTable('+esc(JSON.stringify(aptId))+')">'+
         '<option value="">כל היחידות</option>'+
         units.map(function(n){ return '<option value="'+esc(n)+'"'+(GPQ.unit===n?" selected":"")+'>'+esc(n)+'</option>'; }).join("")+
       '</select>':'')+
-      ((GPQ.q||GPQ.method||GPQ.cpa||GPQ.unit)?'<button class="btn btn-ghost btn-sm" onclick="GPQ={q:\'\',method:\'\',cpa:\'\',unit:\'\'};openAllIncomePays('+JSON.stringify(aptId)+')">✕ נקה</button>':'')+
-      (can("edit")?'<button class="btn btn-primary btn-sm" onclick="openBulkIncPayEdit('+JSON.stringify(aptId)+')">✏️ עדכון מרוכז <span id="gb-count" class="selcount"></span></button>':'')+
+      ((GPQ.q||GPQ.method||GPQ.cpa||GPQ.unit)?'<button class="btn btn-ghost btn-sm" onclick="GPQ={q:\'\',method:\'\',cpa:\'\',unit:\'\'};openAllIncomePays('+esc(JSON.stringify(aptId))+')">✕ נקה</button>':'')+
+      (can("edit")?'<button class="btn btn-primary btn-sm" onclick="openBulkIncPayEdit('+esc(JSON.stringify(aptId))+')">✏️ עדכון מרוכז <span id="gb-count" class="selcount"></span></button>':'')+
       '<div class="sp"></div><span id="gp-count"></span>'+
     '</div>'+
     '<div id="gp-table">'+gpTableHtml(aptId)+'</div>'});
@@ -11391,7 +11455,7 @@ function renderIncomeMap(){
   var box=document.getElementById("ii-map"); if(!box||!IIMP.grid) return;
   var head=IIMP.grid[0].map(function(c,i){ return String(c||"").trim()||("עמודה "+(i+1)); });
   function sel(key,cur,isUnit){
-    return '<select onchange="'+(isUnit?('IIMP.units['+JSON.stringify(key)+']'):('IIMP.map.'+key))+'=Number(this.value);renderIncomePreview()">'+
+    return '<select onchange="'+(isUnit?('IIMP.units['+esc(JSON.stringify(key))+']'):('IIMP.map.'+esc(String(key))))+'=Number(this.value);renderIncomePreview()">'+
       '<option value="-1">— ללא —</option>'+
       head.map(function(hh,i){ return '<option value="'+i+'"'+(i===cur?" selected":"")+'>'+esc(hh)+'</option>'; }).join("")+
       '</select>';
@@ -11603,7 +11667,7 @@ function editIncome(id,aptId){
   (it.split||[]).forEach(function(x){ if(pids.indexOf(x.partnerId)<0) pids.push(x.partnerId); });
   var splitFields=pids.map(function(pid){
     return '<div class="field"><label>'+esc(partnerName(pid))+' %</label>'+
-      '<input class="in-sp" data-p="'+pid+'" type="number" step="0.01" value="'+(ownSplit[pid]!=null?esc(String(ownSplit[pid])):"")+'"'+
+      '<input class="in-sp" data-p="'+esc(pid)+'" type="number" step="0.01" value="'+(ownSplit[pid]!=null?esc(String(ownSplit[pid])):"")+'"'+
       ' placeholder="'+(defSplit[pid]!=null?esc(String(defSplit[pid])):"0")+'"></div>';
   }).join("");
   var booking=aptBookingMode(aptId);
@@ -11723,7 +11787,7 @@ function editIncomeSplitDefault(aptId){
     '<div class="form-grid">'+
     parts.map(function(p){
       return '<div class="field"><label>'+esc(partnerName(p.partnerId))+' %</label>'+
-        '<input class="isd-sp" data-p="'+p.partnerId+'" type="number" step="0.01" value="'+(cur[p.partnerId]!=null?esc(String(cur[p.partnerId])):"")+'"'+
+        '<input class="isd-sp" data-p="'+esc(p.partnerId)+'" type="number" step="0.01" value="'+(cur[p.partnerId]!=null?esc(String(cur[p.partnerId])):"")+'"'+
         ' placeholder="'+esc(String(p.defaultPercent||0))+'"></div>';
     }).join("")+'</div>',
     saveLabel:"שמירה",onSave:function(){
@@ -12753,7 +12817,7 @@ function moduleSettings(){
       h+='<tr><td><b>'+esc(METHODS[k])+'</b></td>'+
         '<td>'+(isBase?'<span class="muted">מובנה</span>':'<span class="pill">נוסף ידנית</span>')+'</td>'+
         '<td>'+(used||'<span class="muted">—</span>')+'</td>'+
-        '<td class="right">'+(isBase?'':'<button class="btn btn-ghost btn-sm" onclick="delPaymentMethod(\''+k+'\')">🗑️</button>')+'</td></tr>';
+        '<td class="right">'+(isBase?'':'<button class="btn btn-ghost btn-sm" onclick="delPaymentMethod('+esc(JSON.stringify(String(k)))+')">🗑️</button>')+'</td></tr>';
     });
     h+='</tbody></table></div>'+
       '<div class="hint">אמצעים מובנים אינם ניתנים למחיקה. אמצעי שנוסף ידנית ומשמש בתשלומים — לא יימחק.</div>';
@@ -16942,6 +17006,7 @@ async function saveUser(id,u){
   if(email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ toast("כתובת המייל אינה תקינה","err"); return; }
   var apts=Array.prototype.slice.call(document.querySelectorAll(".u-apt:checked")).map(function(c){return c.value;});
   var code=val("us-code");
+  if(code && codeTooShort(code)) return;
   var role=val("us-role");
   /* הקוד הוא הזהות — אין שם משתמש בכניסה. שני משתמשים עם אותו קוד
      היו נכנסים שניהם לחשבון הראשון שמתאים, וזה נראה כמו "הכניסה
