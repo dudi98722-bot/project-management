@@ -1560,22 +1560,33 @@ function openAddModal(){
   clearContactForm();
   var maxId=100000;contacts.forEach(function(c){var n=parseInt(c.id)||0;if(n>maxId)maxId=n;});
   var nid=String(maxId+1);
-  document.getElementById('fId').value=nid;document.getElementById('fIdDisplay').value=nid;
+  _suggestedId=nid;
+  var idBox=document.getElementById('fIdDisplay');
+  idBox.disabled=false;
+  idBox.title='אפשר להשאיר את המספר המוצע או להקליד מספר אחר';
+  document.getElementById('fId').value=nid;idBox.value=nid;
   updatePreview();document.getElementById('modalOverlay').className='modal-overlay open';
-  // המזהה האמיתי נקבע בשרת - הרשימה בזיכרון עלולה להיות ישנה
+  // המספר הפנוי האמיתי נקבע בשרת - הרשימה בזיכרון עלולה להיות ישנה.
+  // מעדכנים את ההצעה רק אם המשתמש עוד לא הקליד מספר משלו.
   if(window.apiFetch){
     window.apiFetch('/contacts/next-id').then(function(r){ return r.ok?r.json():null; }).then(function(d){
       if(d && d.id && editContact===null){
-        var sid=String(d.id);
-        document.getElementById('fId').value=sid;
-        document.getElementById('fIdDisplay').value=sid;
-        updatePreview();
+        var sid=String(d.id), untouched=(idBox.value===_suggestedId);
+        _suggestedId=sid;
+        if(untouched){
+          document.getElementById('fId').value=sid;
+          idBox.value=sid;
+          updatePreview();
+        }
       }
     }).catch(function(){});
   }
 }
+var _suggestedId='';
 function openEditModal(idx){
   editContact=idx;var c=contacts[idx];
+  // בעריכה המספר נעול - שינוי שלו עובר דרך "שנה מספר", שמעדכן גם נדרים ותשלומים
+  var idBox=document.getElementById('fIdDisplay'); idBox.disabled=true; idBox.title='';
   var cib=document.getElementById('changeIdBtn'); if(cib) cib.style.display=(currentRole()==='admin')?'':'none';
   document.getElementById('modalTitle').textContent='עריכת איש קשר';
   document.getElementById('fId').value=c.id;document.getElementById('fIdDisplay').value=c.id;
@@ -1600,6 +1611,27 @@ function closeModal(){document.getElementById('modalOverlay').className='modal-o
 function saveContact(){
   var fn=document.getElementById('fFirstName').value.trim(),ln=document.getElementById('fLastName').value.trim();
   if(!fn||!ln){alert('שם פרטי ושם משפחה הם שדות חובה');return;}
+  if(editContact===null){
+    // איש קשר חדש: המספר שנבחר נבדק כאן, לפני השליחה
+    var idf=document.getElementById('fId'), chosen=String(idf.value||'').trim();
+    if(!chosen){ chosen=_suggestedId; idf.value=chosen; document.getElementById('fIdDisplay').value=chosen; }
+    if(!/^\d+$/.test(chosen) || Number(chosen)<1 || Number(chosen)>9999999){
+      alert('המספר חייב להיות מספר שלם בין 1 ל-9,999,999.\n(מספר ארוך יותר הוא כנראה טלפון או ת"ז)');
+      return;
+    }
+    chosen=String(Number(chosen)); idf.value=chosen;
+    for(var ci=0;ci<contacts.length;ci++){
+      if(String(contacts[ci].id)===chosen){
+        alert('המספר '+chosen+' כבר שייך ל:\n'+contacts[ci].display_name+'\n\nבחר מספר אחר, או השאר ריק לקבלת המספר הפנוי הבא ('+_suggestedId+').');
+        return;
+      }
+    }
+    var curMax=0; contacts.forEach(function(c){ var n=parseInt(c.id)||0; if(n>curMax) curMax=n; });
+    if(Number(chosen)>curMax+1000 && !confirm(
+        'המספר '+chosen+' גבוה בהרבה מהמספר הגבוה הקיים ('+curMax+').\n\n'+
+        'מעכשיו, כל איש קשר חדש שיקבל מספר אוטומטית ימשיך ממנו ('+(Number(chosen)+1)+' והלאה).\n\nלהמשיך?')) return;
+    updatePreview();
+  }
   var id=document.getElementById('fId').value,fa=document.getElementById('fFatherName').value.trim();
   var c={id:id,apt:document.getElementById('fApt').value.trim(),title:document.getElementById('fTitle').value,
     first_name:fn,last_name:ln,father_name:fa,phone_home:document.getElementById('fPhone').value.trim(),
@@ -1637,6 +1669,14 @@ function saveContact(){
   refreshNameSelects();closeModal();onSearch();
 }
 document.getElementById('modalOverlay').addEventListener('mousedown',function(e){if(e.target===this)closeModal();});
+// הקלדת מספר בחלון ההוספה: ספרות בלבד, והתצוגה המקדימה של השם מתעדכנת
+document.getElementById('fIdDisplay').addEventListener('input',function(){
+  if(this.disabled) return;
+  var v=this.value.replace(/\D/g,'');
+  if(v!==this.value) this.value=v;
+  document.getElementById('fId').value=v;
+  updatePreview();
+});
 
 /* ===== שינוי מספר איש קשר (מנהל בלבד) ===== */
 /* המספר הוא חלק מהשם ("כהן משה - 100483"), והשם מקשר נדרים, תשלומים

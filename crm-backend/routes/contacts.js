@@ -293,7 +293,10 @@ router.get('/:id', authenticate, async (req, res) => {
 router.post('/', authenticate, requireWrite, async (req, res) => {
   const { id, apt, title, first_name, last_name, father_name, phone_home, phone_mobile, street, house_num, city, zip, email, display_name } = req.body;
   if (!first_name || !last_name) return res.status(400).json({ error: 'שם פרטי ושם משפחה חובה' });
-  const cid = /^\d+$/.test(String(id)) ? Number(id) : null;
+  // מספר שהמשתמש בחר - באותם גבולות כמו בייבוא ובשינוי מספר
+  const hasId = id != null && String(id).trim() !== '';
+  const cid = hasId ? validContactId(id) : null;
+  if (hasId && cid === null) return res.status(400).json({ error: 'המספר חייב להיות מספר שלם בין 1 ל-9,999,999' });
 
   const client = await pool.connect();
   try {
