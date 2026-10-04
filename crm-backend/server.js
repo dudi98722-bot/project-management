@@ -14,6 +14,25 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// אף שדה טקסט במערכת (שמות, הערות, קטגוריות) לא צריך תגיות HTML.
+// מנטרלים < ו-> בכל גוף בקשת כתיבה, כדי שתא מזויף באקסל או בטופס לא
+// יוכל להפוך לקוד שרץ בדפדפן של מי שפותח את הטבלה. ‹ › נשארים קריאים.
+// (לא חל על /api/auth, /api/users ו-/api/email - שם יש סיסמאות.)
+function neutralizeTags(v) {
+  if (typeof v === 'string') return v.replace(/</g, '\u2039').replace(/>/g, '\u203A');
+  if (Array.isArray(v)) return v.map(neutralizeTags);
+  if (v && typeof v === 'object') {
+    const o = {};
+    for (const k of Object.keys(v)) o[k] = neutralizeTags(v[k]);
+    return o;
+  }
+  return v;
+}
+app.use(['/api/contacts', '/api/vows', '/api/payments', '/api/credits', '/api/settings'], (req, res, next) => {
+  if (req.body && (req.method === 'POST' || req.method === 'PUT')) req.body = neutralizeTags(req.body);
+  next();
+});
+
 // Routes
 app.use('/api/auth',     require('./routes/auth'));
 app.use('/api/users',    require('./routes/users'));
@@ -24,6 +43,8 @@ app.use('/api/reports',  require('./routes/reports'));
 app.use('/api/email',    require('./routes/email'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/calendar', require('./routes/calendar'));
+app.use('/api/reportlog', require('./routes/reportlog'));
+app.use('/api/credits',   require('./routes/credits'));
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -40,6 +61,15 @@ app.get('*', (req, res) => {
   } else {
     res.status(404).json({ error: 'Not found' });
   }
+});
+
+// טיפול אחיד בשגיאות: JSON פגום מקבל 400 נקי, כל השאר 500 בלי דליפת פרטים
+app.use((err, req, res, next) => {
+  if (err.type === 'entity.parse.failed' || err instanceof SyntaxError) {
+    return res.status(400).json({ error: 'בקשה לא תקינה' });
+  }
+  console.error('Unhandled error:', err.message);
+  res.status(500).json({ error: 'שגיאת שרת' });
 });
 
 const PORT = process.env.PORT || 3000;

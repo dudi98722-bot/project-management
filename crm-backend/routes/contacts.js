@@ -12,8 +12,14 @@ function calcDisplayName(ln, fn, fa, id) {
   return n;
 }
 
-// contacts.id הוא INTEGER - מעבר לזה ה-INSERT נכשל
-const MAX_CONTACT_ID = 2147483647;
+// מזהים במערכת הם 5-6 ספרות. מספר של 8 ספרות ומעלה הוא כמעט תמיד טלפון
+// או ת"ז שנכנס בטעות - ומזהה אחד כזה היה מקפיץ את כל המספור לתמיד, כי
+// המספר הבא מחושב כ-MAX+1.
+const MAX_CONTACT_ID = 9999999;
+// בייבוא: מספר קטן מזה הוא כמעט תמיד מספר שורה ולא מזהה תורם
+const MIN_IMPORT_ID = 10000;
+// השוואת שמות סלחנית: בלי גרשיים, נקודות ורווחים כפולים
+const normName = s => String(s == null ? '' : s).replace(/['"\u05F3\u05F4.]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
 function validContactId(v) {
   const t = String(v == null ? '' : v).trim();
   if (!/^\d+$/.test(t)) return null;
@@ -114,7 +120,8 @@ router.post('/import', authenticate, requireWrite, async (req, res) => {
     F.forEach(f => { o[f] = clean(r[f]); });
     const rawId = clean(r.id);
     o.id = rawId ? validContactId(rawId) : null;
-    if (rawId && o.id === null) errors.push(`שורה ${o.line}: מזהה לא תקין (${rawId})`);
+    if (rawId && o.id === null) errors.push(`שורה ${o.line}: מזהה לא תקין (${rawId}) - נראה כמו טלפון או ת"ז`);
+    else if (o.id && o.id < MIN_IMPORT_ID) errors.push(`שורה ${o.line}: מזהה ${o.id} קטן מדי - כנראה מספר שורה ולא מספר תורם`);
     if (!o.first_name || !o.last_name) errors.push(`שורה ${o.line}: חסר שם פרטי או שם משפחה`);
     F.forEach(f => { if (o[f].length > LIM[f]) errors.push(`שורה ${o.line}: הערך בשדה ${f} ארוך מדי`); });
     if (o.id) {
@@ -126,7 +133,7 @@ router.post('/import', authenticate, requireWrite, async (req, res) => {
   if (errors.length) return res.status(400).json({ error: 'יש שורות לא תקינות - לא יובא כלום', details: errors.slice(0, 50) });
 
   const client = await pool.connect();
-  const created = [], updated = [], skipped = [];
+  const created = [], updated = [], skipped = [], conflicts = [];
   try {
     await client.query('BEGIN');
     await client.query("SELECT pg_advisory_xact_lock(hashtext('crm_contact_id'))");
@@ -143,9 +150,18 @@ router.post('/import', authenticate, requireWrite, async (req, res) => {
     for (const o of items) {
       const cur = o.id ? existing.get(o.id) : null;
       if (cur) {
+        // המזהה תפוס - אבל האם זה אותו אדם? אחרת היינו כותבים טלפון וכתובת
+        // של מישהו אחר על תורם קיים.
+        const sameLast = normName(o.last_name) === normName(cur.last_name);
+        const sameFirst = normName(o.first_name) === normName(cur.first_name);
+        const fa1 = normName(o.father_name), fa2 = normName(cur.father_name);
+        if (!sameLast || !sameFirst || (fa1 && fa2 && fa1 !== fa2)) {
+          conflicts.push(`שורה ${o.line}: המזהה ${o.id} שייך ל"${cur.display_name}" ולא ל"${o.last_name} ${o.first_name}"`);
+          continue;
+        }
         if (!updateExisting) { skipped.push({ line: o.line, id: o.id, name: cur.display_name }); continue; }
         const m = {};
-        DETAILS.forEach(f => { m[f] = o[f] !== '' ? o[f] : (cur[f] || null); });
+        DETAILS.forEach(f => { m[f] = o[f] !== '' ? o[f] : (cur[f] || ''); });
         const changed = DETAILS.some(f => String(m[f] || '') !== String(cur[f] || ''));
         if (!changed) { skipped.push({ line: o.line, id: o.id, name: cur.display_name, same: true }); continue; }
         const r = await client.query(
@@ -165,10 +181,15 @@ router.post('/import', authenticate, requireWrite, async (req, res) => {
       const r = await client.query(
         `INSERT INTO contacts (id,apt,title,first_name,last_name,father_name,phone_home,phone_mobile,street,house_num,city,zip,email,display_name,created_by,updated_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$15) RETURNING *`,
-        [id, o.apt || null, o.title || null, o.first_name, o.last_name, o.father_name || null, o.phone_home || null,
-         o.phone_mobile || null, o.street || null, o.house_num || null, o.city || null, o.zip || null, o.email || null,
+        [id, o.apt, o.title, o.first_name, o.last_name, o.father_name, o.phone_home,
+         o.phone_mobile, o.street, o.house_num, o.city, o.zip, o.email,
          dn, req.user.id]);
       created.push(r.rows[0]);
+    }
+    if (conflicts.length) {
+      // הכל או כלום: גם התנגשות אחת מבטלת את כל הייבוא
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'יש מזהים בקובץ ששייכים לאנשים אחרים - לא יובא כלום', details: conflicts.slice(0, 50) });
     }
     await client.query('COMMIT');
   } catch (err) {
@@ -179,14 +200,13 @@ router.post('/import', authenticate, requireWrite, async (req, res) => {
     client.release();
   }
 
-  for (const c of created) {
-    await logAction(req.user.id, req.user.username, 'add', 'contacts', c.id, { display_name: c.display_name, source: 'import' });
-    syncContact('add', c, req.user.username);
-  }
-  for (const c of updated) {
-    await logAction(req.user.id, req.user.username, 'edit', 'contacts', c.id, { display_name: c.display_name, source: 'import' });
-    syncContact('edit', c, req.user.username);
-  }
+  // שורת יומן אחת לכל הייבוא, עם כל המזהים - במקום המתנה לכל שורה
+  await logAction(req.user.id, req.user.username, 'import', 'contacts', 0, {
+    source: 'import', created: created.length, updated: updated.length, skipped: skipped.length,
+    created_ids: created.map(c => c.id), updated_ids: updated.map(c => c.id)
+  });
+  created.forEach(c => syncContact('add', c, req.user.username));
+  updated.forEach(c => syncContact('edit', c, req.user.username));
   res.json({ created: created.length, updated: updated.length, skipped: skipped.length,
              created_rows: created, updated_rows: updated, skipped_rows: skipped });
 });

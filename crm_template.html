@@ -1488,6 +1488,9 @@ function exportAllToSheets(){
 /* ===== TABS ===== (defined later in init section) */
 
 /* ===== CALC ===== */
+/* כל טקסט שמגיע מהנתונים עובר כאן לפני שנכנס ל-innerHTML.
+   null/undefined מוצגים כריק (לא כמילה "null"). */
+function escH(s){ return (s==null?'':String(s)).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
 function calcDisplayName(ln,fn,fa,id){
   var n=(ln+' '+fn).trim();
   if(fa)n+=' ב"ר '+fa;
@@ -1538,11 +1541,11 @@ function render(){
   if(!total){tb.innerHTML='';document.getElementById('pagination').innerHTML='';return;}
   var page=cFiltered.slice((cPage-1)*PAGE_SIZE,cPage*PAGE_SIZE);
   tb.innerHTML=page.map(function(c){
-    var em=c.email?'<a href="mailto:'+c.email+'" style="color:#1a237e;text-decoration:none">'+c.email+'</a>':'';
-    return '<tr><td style="color:#888;font-size:12px">'+c.id+'</td><td>'+c.title+'</td>'+
-      '<td><b>'+c.first_name+'</b></td><td><b>'+c.last_name+'</b></td>'+
-      '<td style="color:#666">'+c.father_name+'</td><td>'+c.phone_mobile+'</td>'+
-      '<td style="color:#777">'+c.phone_home+'</td><td>'+c.city+'</td>'+
+    var em=c.email?'<a href="mailto:'+escH(encodeURIComponent(c.email).replace(/%40/g,'@'))+'" style="color:#1a237e;text-decoration:none">'+escH(c.email)+'</a>':'';
+    return '<tr><td style="color:#888;font-size:12px">'+escH(c.id)+'</td><td>'+escH(c.title)+'</td>'+
+      '<td><b>'+escH(c.first_name)+'</b></td><td><b>'+escH(c.last_name)+'</b></td>'+
+      '<td style="color:#666">'+escH(c.father_name)+'</td><td>'+escH(c.phone_mobile)+'</td>'+
+      '<td style="color:#777">'+escH(c.phone_home)+'</td><td>'+escH(c.city)+'</td>'+
       '<td style="font-size:12px">'+em+'</td>'+
       '<td><button class="btn btn-secondary btn-sm" onclick="openEditModal('+c._idx+')">עריכה</button></td></tr>';
   }).join('');
@@ -1697,21 +1700,21 @@ function changeContactId(){
 /* ===== ייבוא אנשי קשר מאקסל (מנהל בלבד) ===== */
 var CI_FIELDS=[
   {k:'',            l:'— לא לייבא —',                 syn:[]},
-  {k:'id',          l:'מזהה / מס\' תורם',             syn:['מזהה','מס תורם','מספר תורם','קוד תורם','מספר','מס','קוד','id']},
+  {k:'id',          l:'מזהה / מס\' תורם',             syn:['מזהה','מס תורם','מספר תורם','קוד תורם','מזהה תורם','id']},
   {k:'title',       l:'תואר',                          syn:['תואר']},
   {k:'last_name',   l:'שם משפחה',                      syn:['שם משפחה','משפחה']},
   {k:'first_name',  l:'שם פרטי',                       syn:['שם פרטי','פרטי']},
   {k:'father_name', l:'שם האב',                        syn:['שם האב','שם אב','האב','בר']},
   {k:'full_lf',     l:'שם מלא (משפחה ואז פרטי)',       syn:['שם מלא','שם','שם לתצוגה']},
   {k:'full_fl',     l:'שם מלא (פרטי ואז משפחה)',       syn:[]},
-  {k:'phone_mobile',l:'נייד',                          syn:['נייד','טלפון נייד','פלאפון','סלולרי']},
-  {k:'phone_home',  l:'טלפון בית',                     syn:['טלפון בית','טלפון','טל']},
+  {k:'phone_mobile',l:'נייד',                          syn:['נייד','טלפון נייד','מספר נייד','מס נייד','פלאפון','סלולרי']},
+  {k:'phone_home',  l:'טלפון בית',                     syn:['טלפון בית','טלפון','מספר טלפון','מס טלפון','טל']},
   {k:'street',      l:'רחוב',                          syn:['רחוב','כתובת']},
   {k:'house_num',   l:'מספר בית',                      syn:['מספר בית','מס בית']},
   {k:'city',        l:'עיר',                           syn:['עיר','ישוב','יישוב']},
   {k:'zip',         l:'מיקוד',                         syn:['מיקוד']},
-  {k:'email',       l:'מייל',                          syn:['מייל','אימייל','דואל','email','e-mail','mail']},
-  {k:'apt',         l:'דירה',                          syn:['דירה']}
+  {k:'email',       l:'מייל',                          syn:['מייל','אימייל','דואל','כתובת דואל','כתובת מייל','כתובת אימייל','דואר אלקטרוני','email','e-mail','mail']},
+  {k:'apt',         l:'דירה',                          syn:['דירה','מספר דירה','מס דירה']}
 ];
 /* אותן מגבלות אורך כמו בעמודות במסד - נבדק כבר בתצוגה המקדימה */
 var CI_LIM={apt:50,title:50,first_name:100,last_name:100,father_name:100,phone_home:50,phone_mobile:50,street:200,house_num:20,city:100,zip:20,email:200};
@@ -1734,7 +1737,8 @@ function _ciGuess(headers){
       f.syn.forEach(function(sy){
         var ns=_ciNorm(sy), sc=0;
         if(nh===ns) sc=1000+ns.length;
-        else if(ns.length>=3 && nh.indexOf(ns)>=0) sc=ns.length;
+        // מזהה - רק בהתאמה מדויקת. "מספר נייד" / "מספר זהות" לעולם לא יהפכו למזהה תורם
+        else if(f.k!=='id' && ns.length>=3 && nh.indexOf(ns)>=0) sc=ns.length;
         if(sc) cand.push({ci:ci,k:f.k,sc:sc});
       });
     });
@@ -1759,6 +1763,18 @@ function ciSplitFull(s,lastFirst){
                    : {first:p.slice(0,-1).join(' '),last:p[p.length-1],father:fa,id:id};
 }
 
+/* קריאת קובץ אקסל/CSV. CSV עברי שנשמר בלי BOM (כמו שאקסל שומר ב-Windows)
+   הוא בקידוד windows-1255 - בלי זה כל העברית הופכת לג'יבריש. */
+function xlsxReadBuffer(fileName, buf){
+  if(/\.csv$/i.test(fileName||'')){
+    var text;
+    try{ text=new TextDecoder('utf-8',{fatal:true}).decode(buf); }
+    catch(e){ text=new TextDecoder('windows-1255').decode(buf); }
+    return XLSX.read(text.replace(/^\uFEFF/,''),{type:'string'});
+  }
+  return XLSX.read(new Uint8Array(buf),{type:'array'});
+}
+
 function openContactImport(){
   if(currentRole()!=='admin'){ alert('ייבוא אנשי קשר מותר למנהל בלבד'); return; }
   _ci={raw:[],map:[],hasHeader:true,evald:[]};
@@ -1781,7 +1797,7 @@ function loadContactExcel(input){
     var reader=new FileReader();
     reader.onload=function(e){
       try{
-        var wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+        var wb=xlsxReadBuffer(f.name, e.target.result);
         var sh=wb.Sheets[wb.SheetNames[0]];
         var all=XLSX.utils.sheet_to_json(sh,{header:1,raw:false,defval:''})
           .filter(function(r){ return r && r.some(function(c){ return String(c).trim()!==''; }); });
@@ -1829,8 +1845,14 @@ function ciToggleHeader(on){
 function ciEvaluate(){
   var s0=_ci.hasHeader?1:0;
   var key=function(l,f,a){ return _ciNorm(l)+'|'+_ciNorm(f)+'|'+_ciNorm(a); };
-  var byId={}, byName={};
-  contacts.forEach(function(c){ byId[String(c.id)]=c; byName[key(c.last_name,c.first_name,c.father_name)]=c; });
+  var byId={}, byName={}, byLF={};
+  contacts.forEach(function(c){
+    byId[String(c.id)]=c;
+    byName[key(c.last_name,c.first_name,c.father_name)]=c;
+    // גם לפי משפחה+פרטי בלבד: רשימה בלי שמות אבות לא תשכפל את כל התורמים
+    var lf=_ciNorm(c.last_name)+'|'+_ciNorm(c.first_name);
+    (byLF[lf]=byLF[lf]||[]).push(c);
+  });
   var seenId={}, seenName={};
   _ci.evald=_ci.raw.slice(s0).map(function(r,idx){
     var o={line:idx+s0+1,id:''};
@@ -1846,10 +1868,17 @@ function ciEvaluate(){
         if(!o.id && sp.id) o.id=sp.id;
       } else if(v) o[k]=v;
     });
+    // אקסל מוחק את ה-0 בתחילת טלפון שנשמר כמספר (527123456 -> 0527123456)
+    ['phone_mobile','phone_home'].forEach(function(f){
+      var d=o[f].replace(/[\s-]/g,'');
+      if(/^[1-9]\d{7,8}$/.test(d)) o[f]='0'+d;
+    });
     var pr=[];
     if(!o.first_name||!o.last_name) pr.push('חסר שם פרטי או שם משפחה');
     if(o.id){
-      if(!/^\d+$/.test(o.id) || Number(o.id)<=0 || Number(o.id)>2147483647) pr.push('מזהה לא תקין');
+      if(!/^\d+$/.test(o.id) || Number(o.id)<=0) pr.push('מזהה לא תקין');
+      else if(Number(o.id)>9999999) pr.push('מזהה של 8 ספרות ומעלה \u2014 נראה כמו טלפון או ת"ז');
+      else if(Number(o.id)<10000) pr.push('מזהה קטן מדי \u2014 כנראה מספר שורה ולא מספר תורם');
       else {
         o.id=String(Number(o.id));
         if(seenId[o.id]) pr.push('המזהה מופיע פעמיים בקובץ');
@@ -1859,9 +1888,22 @@ function ciEvaluate(){
     Object.keys(CI_LIM).forEach(function(f){ if(o[f].length>CI_LIM[f]) pr.push(_ciLabel(f)+' ארוך מדי'); });
     o.probs=pr;
     if(pr.length){ o.st='bad'; return o; }
-    if(o.id && byId[o.id]){ o.st='exists'; o.match=byId[o.id]; return o; }
+    if(o.id && byId[o.id]){
+      var ec=byId[o.id];
+      var fa1=_ciNorm(o.father_name), fa2=_ciNorm(ec.father_name);
+      // המזהה תפוס - אבל אם השם שונה, זה אדם אחר ואסור לעדכן אותו
+      if(_ciNorm(o.last_name)!==_ciNorm(ec.last_name) || _ciNorm(o.first_name)!==_ciNorm(ec.first_name) || (fa1&&fa2&&fa1!==fa2)){
+        o.st='bad'; o.probs=['המזהה '+o.id+' שייך לאדם אחר: '+ec.display_name]; return o;
+      }
+      o.st='exists'; o.match=ec; return o;
+    }
     var nk=key(o.last_name,o.first_name,o.father_name);
     if(byName[nk]){ o.st='dupname'; o.match=byName[nk]; return o; }
+    // אותו משפחה+פרטי, וחסר שם אב באחד הצדדים - כנראה אותו אדם
+    var lfm=(byLF[_ciNorm(o.last_name)+'|'+_ciNorm(o.first_name)]||[]).filter(function(c){
+      return !_ciNorm(o.father_name) || !_ciNorm(c.father_name);
+    });
+    if(lfm.length){ o.st='dupname'; o.match=lfm[0]; return o; }
     if(seenName[nk]){ o.st='dupname'; o.inFile=true; return o; }
     seenName[nk]=1;
     o.st='new'; return o;
@@ -1944,7 +1986,7 @@ function runContactImport(){
       if(!res.ok){
         b.disabled=false; b.textContent=label;
         var det=(res.d.details||[]).slice(0,12).join('\n');
-        alert('\u274C '+(res.d.error||'הייבוא נכשל')+(det?'\n\n'+det:''));
+        alert('\u274C '+(res.d.error||'הייבוא נכשל')+(det?'\n\n'+det:'')+((res.d.details||[]).length>12?'\n...':''));
         return;
       }
       b.style.display='none';
@@ -2124,7 +2166,7 @@ function loadPayExcel(input){
     var reader=new FileReader();
     reader.onload=function(e){
       try{
-        var wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+        var wb=xlsxReadBuffer(f.name, e.target.result);
         var sheet=wb.Sheets[wb.SheetNames[0]];
         var rows=XLSX.utils.sheet_to_json(sheet,{header:1,raw:false,defval:''});
         var byId=contactsById();
@@ -2761,7 +2803,7 @@ function loadExcelFile(input){
     var reader=new FileReader();
     reader.onload=function(e){
       try{
-        var wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+        var wb=xlsxReadBuffer(f.name, e.target.result);
         var sheet=wb.Sheets[wb.SheetNames[0]];
         var rows=XLSX.utils.sheet_to_json(sheet,{header:1,raw:true,defval:''});
         var lines=[], skippedHeader=false;
@@ -3221,15 +3263,15 @@ function renderVows(){
   tb.innerHTML=page.map(function(v){
     var paid=getPaidForVow(v.id),owing=v.amount-paid,debt=getPersonDebt(v.name);
     return '<tr>'+
-      '<td style="white-space:nowrap">'+v.hebrewDate+'</td><td>'+v.date+'</td>'+
-      '<td><b>'+v.name+'</b></td><td>'+v.forA+'</td><td>'+v.forB+'</td>'+
+      '<td style="white-space:nowrap">'+escH(v.hebrewDate)+'</td><td>'+escH(v.date)+'</td>'+
+      '<td><b>'+escH(v.name)+'</b></td><td>'+escH(v.forA)+'</td><td>'+escH(v.forB)+'</td>'+
       '<td style="text-align:left">₪'+v.amount.toLocaleString()+'</td>'+
       '<td class="paid-cell" style="text-align:left">₪'+paid.toLocaleString()+'</td>'+
       '<td class="'+(owing>0?'debt-pos':'debt-zero')+'" style="text-align:left">₪'+owing.toLocaleString()+'</td>'+
       '<td class="'+(debt>0?'debt-pos':'debt-zero')+'" style="text-align:left">₪'+debt.toLocaleString()+'</td>'+
-      '<td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+v.note+'">'+v.note+'</td>'+
-      '<td>'+v.place+'</td>'+
-      '<td style="font-size:12px;color:#666">'+(v._user||'—')+'</td>'+
+      '<td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escH(v.note)+'">'+escH(v.note)+'</td>'+
+      '<td>'+escH(v.place)+'</td>'+
+      '<td style="font-size:12px;color:#666">'+(v._user?escH(v._user):'—')+'</td>'+
       '<td style="white-space:nowrap"><button class="btn btn-secondary btn-sm" onclick="openVowEditModal('+vows.indexOf(v)+')">עריכה</button> <button class="btn btn-sm" style="background:#e53935;color:white" onclick="deleteVow('+vows.indexOf(v)+')">מחק</button></td></tr>';
   }).join('');
   renderPag('vowsPagination',total,vPage,function(p){vPage=p;renderVows();});
@@ -3468,16 +3510,16 @@ function renderPayments(){
     var vowAmt=vow?vow.amount:0;
     var debtPerson=getPersonDebt(p.name);
     return '<tr>'+
-      '<td style="white-space:nowrap">'+p.hebrewDate+'</td><td>'+p.date+'</td>'+
-      '<td><b>'+p.name+'</b></td>'+
-      '<td style="font-size:12px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+vowDesc+'">'+vowCell+'</td>'+
+      '<td style="white-space:nowrap">'+escH(p.hebrewDate)+'</td><td>'+escH(p.date)+'</td>'+
+      '<td><b>'+escH(p.name)+'</b></td>'+
+      '<td style="font-size:12px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escH(vowDesc)+'">'+(pend?vowCell:escH(vowDesc))+'</td>'+
       '<td class="paid-cell" style="text-align:left">₪'+p.amount.toLocaleString()+'</td>'+
-      '<td>'+p.method+'</td>'+
-      '<td style="text-align:center">'+p.numPayments+'</td>'+
+      '<td>'+escH(p.method)+'</td>'+
+      '<td style="text-align:center">'+escH(p.numPayments)+'</td>'+
       '<td class="paid-cell" style="text-align:left">'+(pend?'—':'\u20AA'+paidForVow.toLocaleString()+' / \u20AA'+vowAmt.toLocaleString())+'</td>'+
       '<td class="'+(debtPerson>0?'debt-pos':'debt-zero')+'" style="text-align:left">₪'+debtPerson.toLocaleString()+'</td>'+
-      '<td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+p.note+'">'+p.note+'</td>'+
-      '<td style="font-size:12px;color:#666">'+(p._user||'—')+'</td>'+
+      '<td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escH(p.note)+'">'+escH(p.note)+'</td>'+
+      '<td style="font-size:12px;color:#666">'+(p._user?escH(p._user):'—')+'</td>'+
       '<td style="white-space:nowrap"><button class="btn btn-sm" style="background:#b8902f;color:white" onclick="receiptForPayment('+payments.indexOf(p)+')">&#x1F9FE; קבלה</button> <button class="btn btn-secondary btn-sm" onclick="openPaymentEditModal('+payments.indexOf(p)+')">עריכה</button> <button class="btn btn-sm" style="background:#e53935;color:white" onclick="deletePayment('+payments.indexOf(p)+')">מחק</button></td></tr>';
   }).join('');
   renderPag('paymentsPagination',total,pPage,function(p){pPage=p;renderPayments();});
