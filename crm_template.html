@@ -444,6 +444,7 @@ tr:last-child td { border-bottom: none; }
   <div class="toolbar">
     <input type="text" class="search-box" id="searchInput" placeholder="&#x05D7;&#x05D9;&#x05E4;&#x05D5;&#x05E9;..." oninput="onSearch()">
     <span class="count-badge" id="countBadge"></span>
+    <button class="btn btn-secondary" id="contactsImportBtn" onclick="openContactImport()" style="display:none">&#x1F4E4; העלאת אנשי קשר</button>
     <button class="btn btn-secondary" onclick="exportRep('contacts')">&#x1F4E5; &#x05D0;&#x05E7;&#x05E1;&#x05DC;</button>
     <button class="btn btn-secondary" onclick="printRep('contacts')">&#x1F5A8;</button>
     <button class="btn btn-primary" onclick="openAddModal()">+ &#x05D4;&#x05D5;&#x05E1;&#x05E3; &#x05D0;&#x05D9;&#x05E9; &#x05E7;&#x05E9;&#x05E8;</button>
@@ -837,7 +838,7 @@ tr:last-child td { border-bottom: none; }
     <div class="modal-body">
       <div class="form-grid">
         <input type="hidden" id="fId">
-        <div class="form-group"><label>&#x05DE;&#x05D6;&#x05D4;&#x05D4;</label><input type="text" id="fIdDisplay" disabled></div>
+        <div class="form-group"><label>&#x05DE;&#x05D6;&#x05D4;&#x05D4;</label><div style="display:flex;gap:6px"><input type="text" id="fIdDisplay" disabled style="flex:1;min-width:0"><button type="button" class="btn btn-secondary btn-sm" id="changeIdBtn" onclick="changeContactId()" style="display:none;white-space:nowrap">&#x270F;&#xFE0F; שנה מספר</button></div></div>
         <div class="form-group"><label>&#x05DE;&#x05E1;' &#x05EA;&#x05D5;&#x05E8;&#x05DD; APT</label><input type="text" id="fApt"></div>
         <div class="form-group"><label>&#x05EA;&#x05D5;&#x05D0;&#x05E8; <button type="button" onclick="openTitlesModal()" title="ניהול תארים" style="background:none;border:none;cursor:pointer;font-size:13px;color:#1a237e">&#x2699;</button></label>
           <select id="fTitle"><option value=""></option></select>
@@ -1064,6 +1065,31 @@ tr:last-child td { border-bottom: none; }
         <button class="btn btn-secondary" onclick="skipPayRow()">דלג</button>
         <button class="btn btn-primary" onclick="confirmPayRow()">אשר ועבור לבא &#x25C0;</button>
       </span>
+    </div>
+  </div>
+</div>
+
+<!-- CONTACTS IMPORT Modal -->
+<div class="modal-overlay" id="contactImportOverlay">
+  <div class="modal modal-lg" style="max-width:1040px">
+    <div class="modal-header"><h2>&#x1F4E4; העלאת אנשי קשר מאקסל</h2><button class="modal-close" onclick="closeContactImport()">&#x2715;</button></div>
+    <div class="modal-body">
+      <div style="background:#f5f7ff;border:1px solid #dde3f5;border-radius:8px;padding:12px 14px;margin-bottom:12px">
+        <div style="font-size:13px;color:#555;margin-bottom:8px;line-height:1.7">
+          השורה הראשונה בקובץ: <b>כותרות</b> (שם פרטי, שם משפחה, נייד, עיר...). המערכת מזהה אותן לבד, ואפשר לתקן למטה.<br>
+          <b>חובה:</b> שם פרטי + שם משפחה, או עמודת "שם מלא". <b>מספר מזהה</b> — לא חובה; בלי מספר יוקצה הפנוי הבא.
+        </div>
+        <input type="file" id="ciFile" accept=".xlsx,.xls,.csv" onchange="loadContactExcel(this)" style="font-size:13px">
+        <span id="ciFileStatus" style="font-size:12px;color:#666;margin-right:8px"></span>
+      </div>
+      <div id="ciMapping"></div>
+      <div id="ciOptions"></div>
+      <div id="ciPreview"></div>
+      <div id="ciResult"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeContactImport()">סגור</button>
+      <button class="btn btn-primary" id="ciImportBtn" onclick="runContactImport()" style="display:none"></button>
     </div>
   </div>
 </div>
@@ -1314,6 +1340,7 @@ function initUserUI(){
   document.getElementById('currentUserBadge').textContent='👤 '+u;
   if(currentRole()==='admin'){
     document.getElementById('manageUsersBtn').style.display='';
+    var cib=document.getElementById('contactsImportBtn'); if(cib)cib.style.display='';
     var esb=document.getElementById('emailSettingsBtn'); if(esb)esb.style.display='';
   }
   // עורך/צופה: בלי דוח כללי ובלי פילוחים | מנהל מוגבל: דוח כללי כן, פילוחים לא
@@ -1533,6 +1560,7 @@ function renderPag(id,total,cur,cb){
 }
 function openAddModal(){
   editContact=null;
+  var cib=document.getElementById('changeIdBtn'); if(cib) cib.style.display='none';
   document.getElementById('modalTitle').textContent='הוסף איש קשר';
   clearContactForm();
   var maxId=100000;contacts.forEach(function(c){var n=parseInt(c.id)||0;if(n>maxId)maxId=n;});
@@ -1553,6 +1581,7 @@ function openAddModal(){
 }
 function openEditModal(idx){
   editContact=idx;var c=contacts[idx];
+  var cib=document.getElementById('changeIdBtn'); if(cib) cib.style.display=(currentRole()==='admin')?'':'none';
   document.getElementById('modalTitle').textContent='עריכת איש קשר';
   document.getElementById('fId').value=c.id;document.getElementById('fIdDisplay').value=c.id;
   document.getElementById('fApt').value=c.apt||'';document.getElementById('fTitle').value=c.title||'';
@@ -1613,6 +1642,347 @@ function saveContact(){
   refreshNameSelects();closeModal();onSearch();
 }
 document.getElementById('modalOverlay').addEventListener('mousedown',function(e){if(e.target===this)closeModal();});
+
+/* ===== שינוי מספר איש קשר (מנהל בלבד) ===== */
+/* המספר הוא חלק מהשם ("כהן משה - 100483"), והשם מקשר נדרים, תשלומים
+   וזכויות. לכן השינוי נעשה בשרת בטרנזקציה אחת ונשמר מיד - בנפרד משאר
+   השדות בחלון, שנשארים כמו שהם עד שלוחצים "שמור". */
+function changeContactId(){
+  if(editContact===null) return;
+  if(currentRole()!=='admin'){ alert('שינוי מספר מותר למנהל בלבד'); return; }
+  var c=contacts[editContact]; if(!c) return;
+  var oldId=String(c.id);
+  var nv=prompt('מספר חדש עבור:\n'+c.display_name+'\n\n(המספר הנוכחי: '+oldId+')','');
+  if(nv===null) return;
+  nv=String(nv).trim();
+  if(!/^\d+$/.test(nv) || Number(nv)<=0 || Number(nv)>2147483647){ alert('המספר חייב להיות מספר שלם וחיובי'); return; }
+  nv=String(Number(nv));
+  if(nv===String(Number(oldId))){ alert('זה אותו מספר'); return; }
+  for(var i=0;i<contacts.length;i++){
+    if(String(contacts[i].id)===nv){ alert('המספר '+nv+' כבר שייך ל:\n'+contacts[i].display_name); return; }
+  }
+  var oldName=c.display_name||'';
+  var newName=oldName.replace(/\s*-\s*\d+\s*$/,'').trim()+' - '+nv;   // אותה נוסחה כמו בשרת
+  var nV=0,nP=0;
+  vows.forEach(function(v){ if(v.name===oldName) nV++; });
+  payments.forEach(function(p){ if(p.name===oldName) nP++; });
+  if(!confirm('לשנות את המספר של איש הקשר?\n\n'+oldId+'  \u2190  '+nv+
+              '\n\nהשם יהיה:\n'+newName+
+              '\n\nיעודכנו גם '+nV+' נדרים ו-'+nP+' תשלומים'+(creditOf(oldName)?' וגם הזכות':'')+'.'+
+              '\n\nשים לב: מעכשיו בקובץ התשלומים מאקסל צריך את המספר החדש.')) return;
+  var btn=document.getElementById('changeIdBtn'); if(btn) btn.disabled=true;
+  window.apiFetch('/contacts/'+encodeURIComponent(oldId)+'/change-id',{method:'POST',body:{new_id:nv}})
+    .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
+    .then(function(res){
+      if(btn) btn.disabled=false;
+      if(!res.ok){ alert('\u274C '+(res.d.error||'השינוי נכשל')); return; }
+      var nc=res.d.contact, on=res.d.old_name;
+      c.id=nc.id; c.display_name=nc.display_name;
+      vows.forEach(function(v){ if(v.name===on) v.name=nc.display_name; });
+      payments.forEach(function(p){ if(p.name===on) p.name=nc.display_name; });
+      if(_creditBal[on]!=null){ _creditBal[nc.display_name]=_creditBal[on]; delete _creditBal[on]; }
+      document.getElementById('fId').value=nc.id;
+      document.getElementById('fIdDisplay').value=nc.id;
+      updatePreview();
+      refreshNameSelects(); onSearch();
+      if(typeof vFiltered!=='undefined') onVowsSearch();
+      if(typeof pFiltered!=='undefined') onPaymentsSearch();
+      populateReportSelect();
+      var rn=res.d.renamed||{};
+      alert('\u2705 המספר שונה ל-'+nc.id+'\nעודכנו '+(rn.vows||0)+' נדרים ו-'+(rn.payments||0)+' תשלומים'+(rn.credits?' וגם הזכות':'')+'.');
+    })
+    .catch(function(){ if(btn) btn.disabled=false; alert('שגיאת חיבור — לא ברור אם המספר שונה. רענן את הדף ובדוק.'); });
+}
+
+/* ===== ייבוא אנשי קשר מאקסל (מנהל בלבד) ===== */
+var CI_FIELDS=[
+  {k:'',            l:'— לא לייבא —',                 syn:[]},
+  {k:'id',          l:'מזהה / מס\' תורם',             syn:['מזהה','מס תורם','מספר תורם','קוד תורם','מספר','מס','קוד','id']},
+  {k:'title',       l:'תואר',                          syn:['תואר']},
+  {k:'last_name',   l:'שם משפחה',                      syn:['שם משפחה','משפחה']},
+  {k:'first_name',  l:'שם פרטי',                       syn:['שם פרטי','פרטי']},
+  {k:'father_name', l:'שם האב',                        syn:['שם האב','שם אב','האב','בר']},
+  {k:'full_lf',     l:'שם מלא (משפחה ואז פרטי)',       syn:['שם מלא','שם','שם לתצוגה']},
+  {k:'full_fl',     l:'שם מלא (פרטי ואז משפחה)',       syn:[]},
+  {k:'phone_mobile',l:'נייד',                          syn:['נייד','טלפון נייד','פלאפון','סלולרי']},
+  {k:'phone_home',  l:'טלפון בית',                     syn:['טלפון בית','טלפון','טל']},
+  {k:'street',      l:'רחוב',                          syn:['רחוב','כתובת']},
+  {k:'house_num',   l:'מספר בית',                      syn:['מספר בית','מס בית']},
+  {k:'city',        l:'עיר',                           syn:['עיר','ישוב','יישוב']},
+  {k:'zip',         l:'מיקוד',                         syn:['מיקוד']},
+  {k:'email',       l:'מייל',                          syn:['מייל','אימייל','דואל','email','e-mail','mail']},
+  {k:'apt',         l:'דירה',                          syn:['דירה']}
+];
+/* אותן מגבלות אורך כמו בעמודות במסד - נבדק כבר בתצוגה המקדימה */
+var CI_LIM={apt:50,title:50,first_name:100,last_name:100,father_name:100,phone_home:50,phone_mobile:50,street:200,house_num:20,city:100,zip:20,email:200};
+var CI_DATA_FIELDS=['title','first_name','last_name','father_name','phone_home','phone_mobile','street','house_num','city','zip','email','apt'];
+var _ci={raw:[],map:[],hasHeader:true,evald:[]};
+var _ciOpt={update:false,dupname:false};
+
+function _ciEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function _ciNorm(s){ return String(s==null?'':s).replace(/['"\u05F3\u05F4.]/g,'').replace(/\s+/g,' ').trim().toLowerCase(); }
+function _ciLabel(k){ for(var i=0;i<CI_FIELDS.length;i++){ if(CI_FIELDS[i].k===k) return CI_FIELDS[i].l; } return k; }
+
+/* זיהוי עמודות לפי הכותרות: התאמה מדויקת עדיפה, ואחריה "מכיל" (רק למילים
+   של 3 אותיות ומעלה). כל שדה מוקצה לעמודה אחת לכל היותר. */
+function _ciGuess(headers){
+  var cand=[];
+  headers.forEach(function(h,ci){
+    var nh=_ciNorm(h); if(!nh) return;
+    CI_FIELDS.forEach(function(f){
+      if(!f.k) return;
+      f.syn.forEach(function(sy){
+        var ns=_ciNorm(sy), sc=0;
+        if(nh===ns) sc=1000+ns.length;
+        else if(ns.length>=3 && nh.indexOf(ns)>=0) sc=ns.length;
+        if(sc) cand.push({ci:ci,k:f.k,sc:sc});
+      });
+    });
+  });
+  cand.sort(function(a,b){ return b.sc-a.sc; });
+  var map=headers.map(function(){ return ''; }), used={};
+  cand.forEach(function(c){ if(map[c.ci]||used[c.k]) return; map[c.ci]=c.k; used[c.k]=1; });
+  // שם מלא מיותר כשיש כבר עמודות נפרדות לשם פרטי ומשפחה
+  if(used.first_name && used.last_name) map=map.map(function(k){ return (k==='full_lf'||k==='full_fl')?'':k; });
+  return map;
+}
+
+/* "כהן משה ב"ר אברהם - 100483" -> משפחה / פרטי / אב / מזהה */
+function ciSplitFull(s,lastFirst){
+  s=String(s||'').replace(/\s+/g,' ').trim();
+  var id='', fa='';
+  var mi=s.match(/^(.*?)\s*-\s*(\d+)$/); if(mi){ s=mi[1].trim(); id=mi[2]; }
+  var mf=s.match(/^(.*?)\s+ב["\u05F4]ר\s+(.+)$/); if(mf){ s=mf[1].trim(); fa=mf[2].trim(); }
+  var p=s.split(' ').filter(Boolean);
+  if(p.length<2) return lastFirst ? {last:p[0]||'',first:'',father:fa,id:id} : {first:p[0]||'',last:'',father:fa,id:id};
+  return lastFirst ? {last:p[0],first:p.slice(1).join(' '),father:fa,id:id}
+                   : {first:p.slice(0,-1).join(' '),last:p[p.length-1],father:fa,id:id};
+}
+
+function openContactImport(){
+  if(currentRole()!=='admin'){ alert('ייבוא אנשי קשר מותר למנהל בלבד'); return; }
+  _ci={raw:[],map:[],hasHeader:true,evald:[]};
+  _ciOpt={update:false,dupname:false};
+  ['ciMapping','ciOptions','ciPreview','ciResult'].forEach(function(id){ document.getElementById(id).innerHTML=''; });
+  var f=document.getElementById('ciFile'); if(f) f.value='';
+  document.getElementById('ciFileStatus').textContent='';
+  var b=document.getElementById('ciImportBtn'); b.style.display='none'; b.disabled=false;
+  document.getElementById('contactImportOverlay').className='modal-overlay open';
+}
+function closeContactImport(){ document.getElementById('contactImportOverlay').className='modal-overlay'; }
+
+function loadContactExcel(input){
+  var f=input.files&&input.files[0], st=document.getElementById('ciFileStatus');
+  document.getElementById('ciResult').innerHTML='';
+  if(!f){ st.textContent=''; return; }
+  st.style.color='#666'; st.textContent='טוען...';
+  ensureXlsxLib(function(ok){
+    if(!ok){ st.style.color='#c62828'; st.textContent='\u274C טעינת מנוע האקסל נכשלה'; return; }
+    var reader=new FileReader();
+    reader.onload=function(e){
+      try{
+        var wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+        var sh=wb.Sheets[wb.SheetNames[0]];
+        var all=XLSX.utils.sheet_to_json(sh,{header:1,raw:false,defval:''})
+          .filter(function(r){ return r && r.some(function(c){ return String(c).trim()!==''; }); });
+        if(!all.length){ st.style.color='#c62828'; st.textContent='\u274C הקובץ ריק'; return; }
+        var w=all.reduce(function(m,r){ return Math.max(m,r.length); },0);
+        _ci.raw=all.map(function(r){ var o=r.slice(); while(o.length<w) o.push(''); return o; });
+        var g=_ciGuess(_ci.raw[0]);
+        _ci.hasHeader=g.some(Boolean);
+        _ci.map=_ci.hasHeader ? g : _ci.raw[0].map(function(){ return ''; });
+        st.style.color='#2e7d32';
+        st.textContent='\u2705 '+f.name+' \u2014 '+(_ci.raw.length-(_ci.hasHeader?1:0))+' שורות';
+        ciRenderMapping(); ciEvaluate();
+      }catch(err){ st.style.color='#c62828'; st.textContent='\u274C שגיאה בקריאת הקובץ'; console.error(err); }
+    };
+    reader.readAsArrayBuffer(f);
+  });
+}
+
+function ciRenderMapping(){
+  var hdr=_ci.raw[0], s0=_ci.hasHeader?1:0, body=_ci.raw.slice(s0,s0+3);
+  var opts=function(sel){ return CI_FIELDS.map(function(f){ return '<option value="'+f.k+'"'+(f.k===sel?' selected':'')+'>'+f.l+'</option>'; }).join(''); };
+  var cols=hdr.map(function(h,ci){
+    var smp=body.map(function(r){ return _ciEsc(r[ci]); }).filter(Boolean).join('<br>');
+    return '<td style="padding:8px;vertical-align:top;border:1px solid #eee;min-width:130px">'+
+      '<div style="font-weight:bold;font-size:12px;color:#1a237e;margin-bottom:4px">'+(_ci.hasHeader?(_ciEsc(h)||'\u2014'):'עמודה '+(ci+1))+'</div>'+
+      '<select onchange="ciSetMap('+ci+',this.value)" style="width:100%;padding:4px;font-size:12px;border:1px solid '+(_ci.map[ci]?'#43a047':'#ccc')+';border-radius:4px">'+opts(_ci.map[ci])+'</select>'+
+      '<div style="font-size:11px;color:#888;margin-top:5px;line-height:1.5">'+(smp||'&nbsp;')+'</div></td>';
+  }).join('');
+  document.getElementById('ciMapping').innerHTML=
+    '<div style="font-size:14px;font-weight:bold;color:#333;margin:4px 0 6px">התאמת עמודות <span style="font-weight:normal;color:#888;font-size:12px">(זוהה אוטומטית \u2014 אפשר לשנות)</span></div>'+
+    '<label style="font-size:12px;cursor:pointer;display:inline-block;margin-bottom:6px"><input type="checkbox" '+(_ci.hasHeader?'checked':'')+' onchange="ciToggleHeader(this.checked)"> השורה הראשונה היא כותרות</label>'+
+    '<div style="overflow-x:auto;border:1px solid #eee;border-radius:8px;margin-bottom:12px"><table style="border-collapse:collapse;font-size:13px"><tr>'+cols+'</tr></table></div>';
+}
+function ciSetMap(ci,k){
+  if(k) _ci.map=_ci.map.map(function(x,i){ return (x===k&&i!==ci)?'':x; });
+  _ci.map[ci]=k; ciRenderMapping(); ciEvaluate();
+}
+function ciToggleHeader(on){
+  _ci.hasHeader=on;
+  if(on && !_ci.map.some(Boolean)) _ci.map=_ciGuess(_ci.raw[0]);
+  ciRenderMapping(); ciEvaluate();
+}
+
+/* מצב לכל שורה: new (חדש) / exists (המזהה כבר קיים) / dupname (השם כבר קיים) / bad */
+function ciEvaluate(){
+  var s0=_ci.hasHeader?1:0;
+  var key=function(l,f,a){ return _ciNorm(l)+'|'+_ciNorm(f)+'|'+_ciNorm(a); };
+  var byId={}, byName={};
+  contacts.forEach(function(c){ byId[String(c.id)]=c; byName[key(c.last_name,c.first_name,c.father_name)]=c; });
+  var seenId={}, seenName={};
+  _ci.evald=_ci.raw.slice(s0).map(function(r,idx){
+    var o={line:idx+s0+1,id:''};
+    CI_DATA_FIELDS.forEach(function(f){ o[f]=''; });
+    _ci.map.forEach(function(k,ci){
+      if(!k) return;
+      var v=String(r[ci]==null?'':r[ci]).replace(/\s+/g,' ').trim();
+      if(k==='full_lf'||k==='full_fl'){
+        var sp=ciSplitFull(v,k==='full_lf');
+        if(!o.last_name) o.last_name=sp.last;
+        if(!o.first_name) o.first_name=sp.first;
+        if(!o.father_name) o.father_name=sp.father;
+        if(!o.id && sp.id) o.id=sp.id;
+      } else if(v) o[k]=v;
+    });
+    var pr=[];
+    if(!o.first_name||!o.last_name) pr.push('חסר שם פרטי או שם משפחה');
+    if(o.id){
+      if(!/^\d+$/.test(o.id) || Number(o.id)<=0 || Number(o.id)>2147483647) pr.push('מזהה לא תקין');
+      else {
+        o.id=String(Number(o.id));
+        if(seenId[o.id]) pr.push('המזהה מופיע פעמיים בקובץ');
+        seenId[o.id]=1;
+      }
+    }
+    Object.keys(CI_LIM).forEach(function(f){ if(o[f].length>CI_LIM[f]) pr.push(_ciLabel(f)+' ארוך מדי'); });
+    o.probs=pr;
+    if(pr.length){ o.st='bad'; return o; }
+    if(o.id && byId[o.id]){ o.st='exists'; o.match=byId[o.id]; return o; }
+    var nk=key(o.last_name,o.first_name,o.father_name);
+    if(byName[nk]){ o.st='dupname'; o.match=byName[nk]; return o; }
+    if(seenName[nk]){ o.st='dupname'; o.inFile=true; return o; }
+    seenName[nk]=1;
+    o.st='new'; return o;
+  });
+  ciRenderPreview();
+}
+
+function ciRenderPreview(){
+  var E=_ci.evald, n={new:0,exists:0,dupname:0,bad:0};
+  E.forEach(function(o){ n[o.st]++; });
+  var hasName=_ci.map.some(function(k){ return k==='first_name'||k==='last_name'||k==='full_lf'||k==='full_fl'; });
+
+  var opt='';
+  if(!hasName) opt+='<div style="background:#ffebee;border:1px solid #ef9a9a;border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:13px;color:#c62828">\u26A0\uFE0F לא נבחרה עמודת שם \u2014 בחר למעלה "שם פרטי" + "שם משפחה", או "שם מלא".</div>';
+  if(n.exists) opt+='<div style="background:#e3f2fd;border:1px solid #90caf9;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:13px">'+
+    '<b>'+n.exists+'</b> שורות עם מזהה שכבר קיים במערכת:'+
+    '<label style="margin-right:14px;cursor:pointer"><input type="radio" name="ciUpd" '+(!_ciOpt.update?'checked':'')+' onchange="_ciOpt.update=false;ciRenderPreview()"> לדלג עליהן</label>'+
+    '<label style="margin-right:14px;cursor:pointer"><input type="radio" name="ciUpd" '+(_ciOpt.update?'checked':'')+' onchange="_ciOpt.update=true;ciRenderPreview()"> לעדכן פרטי קשר (טלפון, כתובת, מייל, תואר, דירה)</label>'+
+    '<div style="font-size:11px;color:#666;margin-top:4px">השם של מי שכבר קיים לעולם לא משתנה מייבוא, ושדה ריק בקובץ לא מוחק נתון קיים.</div></div>';
+  if(n.dupname) opt+='<div style="background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:13px">'+
+    '<b>'+n.dupname+'</b> שורות בלי מזהה קיים, אבל עם שם (משפחה + פרטי + אב) שכבר קיים \u2014 כנראה אותו אדם. '+
+    '<label style="margin-right:10px;cursor:pointer"><input type="checkbox" '+(_ciOpt.dupname?'checked':'')+' onchange="_ciOpt.dupname=this.checked;ciRenderPreview()"> לייבא אותם בכל זאת כאנשים חדשים</label></div>';
+  document.getElementById('ciOptions').innerHTML=opt;
+
+  var card=function(v,l,c){ return '<div class="summary-card"><div class="val" style="color:'+c+'">'+v+'</div><div class="lbl">'+l+'</div></div>'; };
+  var chip={
+    new:'<span style="background:#e8f5e9;color:#2e7d32;border-radius:9px;padding:2px 8px;font-size:11px;white-space:nowrap">\u2705 חדש</span>',
+    exists:'<span style="background:#e3f2fd;color:#1565c0;border-radius:9px;padding:2px 8px;font-size:11px;white-space:nowrap">\uD83D\uDD01 קיים</span>',
+    dupname:'<span style="background:#fff8e1;color:#e65100;border-radius:9px;padding:2px 8px;font-size:11px;white-space:nowrap">\u26A0\uFE0F שם קיים</span>',
+    bad:'<span style="background:#ffebee;color:#c62828;border-radius:9px;padding:2px 8px;font-size:11px;white-space:nowrap">\u274C שגוי</span>'
+  };
+  var MAX=300;
+  var rows=E.slice(0,MAX).map(function(o){
+    var note = o.st==='bad' ? o.probs.join(' · ')
+             : o.st==='exists' ? 'במערכת: '+_ciEsc(o.match.display_name)
+             : o.st==='dupname' ? (o.inFile?'מופיע כבר למעלה בקובץ':'במערכת: '+_ciEsc(o.match.display_name))
+             : (o.id?'':'יוקצה מספר חדש');
+    var td='<td style="padding:6px 8px;border-bottom:1px solid #f0f0f0">';
+    return '<tr'+(o.st==='bad'?' style="background:#fffafa"':'')+'>'+
+      td+chip[o.st]+'</td>'+td+o.line+'</td>'+td+_ciEsc(o.id)+'</td>'+
+      td+_ciEsc(o.title)+'</td>'+td+'<b>'+_ciEsc(o.last_name)+'</b></td>'+td+_ciEsc(o.first_name)+'</td>'+td+_ciEsc(o.father_name)+'</td>'+
+      td+_ciEsc(o.phone_mobile||o.phone_home)+'</td>'+td+_ciEsc(o.city)+'</td>'+
+      '<td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;font-size:11px;color:#777">'+note+'</td></tr>';
+  }).join('');
+  document.getElementById('ciPreview').innerHTML=
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 10px">'+
+      card(n.new,'חדשים','#2e7d32')+card(n.exists,'מזהה קיים','#1565c0')+card(n.dupname,'שם קיים','#e65100')+card(n.bad,'שגויים (ידלגו)','#c62828')+
+    '</div>'+
+    '<div style="border:1px solid #eee;border-radius:8px;overflow:auto;max-height:36vh"><table style="width:100%;border-collapse:collapse;font-size:12px">'+
+    '<thead><tr style="background:#f5f7ff;position:sticky;top:0">'+
+      ['','שורה','מזהה','תואר','משפחה','פרטי','אב','טלפון','עיר','הערה'].map(function(h){ return '<th style="padding:7px 8px;text-align:right">'+h+'</th>'; }).join('')+
+    '</tr></thead><tbody>'+rows+'</tbody></table></div>'+
+    (E.length>MAX?'<div style="font-size:12px;color:#888;margin-top:4px">מוצגות '+MAX+' השורות הראשונות מתוך '+E.length+' \u2014 כל השורות ייובאו.</div>':'');
+
+  var nNew=n.new+(_ciOpt.dupname?n.dupname:0), nUpd=_ciOpt.update?n.exists:0;
+  var b=document.getElementById('ciImportBtn');
+  if(hasName && (nNew||nUpd)){
+    b.style.display=''; b.disabled=false;
+    b.textContent='ייבא '+nNew+' חדשים'+(nUpd?' ועדכן '+nUpd+' קיימים':'');
+  } else b.style.display='none';
+}
+
+function runContactImport(){
+  var send=_ci.evald.filter(function(o){
+    return o.st==='new' || (o.st==='exists'&&_ciOpt.update) || (o.st==='dupname'&&_ciOpt.dupname);
+  });
+  if(!send.length){ alert('אין מה לייבא'); return; }
+  var nUpd=send.filter(function(o){ return o.st==='exists'; }).length, nNew=send.length-nUpd;
+  if(!confirm('לייבא '+nNew+' אנשי קשר חדשים'+(nUpd?' ולעדכן פרטי קשר של עד '+nUpd+' קיימים':'')+'?\n\nהייבוא נעשה כמקשה אחת: או שהכל נכנס, או ששום דבר לא.')) return;
+  var rows=send.map(function(o){
+    var r={line:o.line, id:o.id||''};
+    CI_DATA_FIELDS.forEach(function(f){ r[f]=o[f]; });
+    return r;
+  });
+  var b=document.getElementById('ciImportBtn'), label=b.textContent;
+  b.disabled=true; b.textContent='מייבא...';
+  window.apiFetch('/contacts/import',{method:'POST',body:{rows:rows,update_existing:_ciOpt.update}})
+    .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
+    .then(function(res){
+      if(!res.ok){
+        b.disabled=false; b.textContent=label;
+        var det=(res.d.details||[]).slice(0,12).join('\n');
+        alert('\u274C '+(res.d.error||'הייבוא נכשל')+(det?'\n\n'+det:''));
+        return;
+      }
+      b.style.display='none';
+      ['ciMapping','ciOptions','ciPreview'].forEach(function(id){ document.getElementById(id).innerHTML=''; });
+      var d=res.d, skipped=_ci.evald.length-d.created-d.updated;
+      var list=(d.created_rows||[]).slice(0,30).map(function(c){ return '<div>'+_ciEsc(c.display_name)+'</div>'; }).join('');
+      document.getElementById('ciResult').innerHTML=
+        '<div style="text-align:center;padding:16px">'+
+          '<div style="font-size:40px">\u2705</div>'+
+          '<div style="font-size:19px;font-weight:bold;color:#1b5e20;margin:8px 0 14px">הייבוא הושלם</div>'+
+          '<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">'+
+            '<div class="summary-card"><div class="val" style="color:#2e7d32">'+d.created+'</div><div class="lbl">נוצרו</div></div>'+
+            '<div class="summary-card"><div class="val" style="color:#1565c0">'+d.updated+'</div><div class="lbl">עודכנו</div></div>'+
+            '<div class="summary-card"><div class="val" style="color:#999">'+skipped+'</div><div class="lbl">דולגו</div></div>'+
+          '</div>'+
+          (list?'<div style="margin-top:14px;text-align:right;font-size:12px;color:#555;max-height:24vh;overflow:auto;border:1px solid #eee;border-radius:8px;padding:8px 12px"><b>נוצרו:</b>'+list+(d.created>30?'<div style="color:#999">ועוד '+(d.created-30)+'...</div>':'')+'</div>':'')+
+        '</div>';
+      reloadContactsFromServer();
+    })
+    .catch(function(){
+      b.disabled=false; b.textContent=label;
+      alert('שגיאת חיבור \u2014 לא ברור אם הייבוא הושלם. רענן את הדף ובדוק באנשי קשר לפני שמנסים שוב.');
+    });
+}
+
+/* טעינה מחדש של אנשי הקשר מהשרת - אחרי ייבוא המספרים נקבעים בשרת */
+function reloadContactsFromServer(cb){
+  if(!window.apiFetch){ if(cb) cb(false); return; }
+  window.apiFetch('/contacts/all')
+    .then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function(cts){
+      contacts=cts.map(function(c,i){ return Object.assign({},c,{_idx:i}); });
+      window.contacts=contacts; filtered=contacts.slice(); cFiltered=contacts.slice();
+      refreshNameSelects(); onSearch(); populateReportSelect();
+      if(cb) cb(true);
+    })
+    .catch(function(){ alert('אנשי הקשר יובאו, אבל הרשימה לא התרעננה. רענן את הדף.'); if(cb) cb(false); });
+}
 
 /* ===== VOWS ===== */
 function populateSelect(id,items,blank){
