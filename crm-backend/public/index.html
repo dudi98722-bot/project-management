@@ -830,7 +830,7 @@ tr:last-child td { border-bottom: none; }
     <div class="modal-body">
       <div class="form-grid">
         <input type="hidden" id="fId">
-        <div class="form-group"><label>&#x05DE;&#x05D6;&#x05D4;&#x05D4;</label><div style="display:flex;gap:6px"><input type="text" id="fIdDisplay" disabled style="flex:1;min-width:0"><button type="button" class="btn btn-secondary btn-sm" id="changeIdBtn" onclick="changeContactId()" style="display:none;white-space:nowrap">&#x270F;&#xFE0F; שנה מספר</button></div></div>
+        <div class="form-group"><label>מספר תורם *</label><div style="display:flex;gap:6px"><input type="text" id="fIdDisplay" disabled inputmode="numeric" style="flex:1;min-width:0"><button type="button" class="btn btn-secondary btn-sm" id="changeIdBtn" onclick="changeContactId()" style="display:none;white-space:nowrap">&#x270F;&#xFE0F; שנה מספר</button></div></div>
         <div class="form-group"><label>&#x05DE;&#x05E1;' &#x05EA;&#x05D5;&#x05E8;&#x05DD; APT</label><input type="text" id="fApt"></div>
         <div class="form-group"><label>&#x05EA;&#x05D5;&#x05D0;&#x05E8; <button type="button" onclick="openTitlesModal()" title="ניהול תארים" style="background:none;border:none;cursor:pointer;font-size:13px;color:#1a237e">&#x2699;</button></label>
           <select id="fTitle"><option value=""></option></select>
@@ -1069,7 +1069,7 @@ tr:last-child td { border-bottom: none; }
       <div style="background:#f5f7ff;border:1px solid #dde3f5;border-radius:8px;padding:12px 14px;margin-bottom:12px">
         <div style="font-size:13px;color:#555;margin-bottom:8px;line-height:1.7">
           השורה הראשונה בקובץ: <b>כותרות</b> (שם פרטי, שם משפחה, נייד, עיר...). המערכת מזהה אותן לבד, ואפשר לתקן למטה.<br>
-          <b>חובה:</b> שם פרטי + שם משפחה, או עמודת "שם מלא". <b>מספר מזהה</b> — לא חובה; בלי מספר יוקצה הפנוי הבא.
+          <b>חובה בכל שורה:</b> מספר תורם (עמודה בשם "מזהה" / "מס' תורם"), ושם פרטי + שם משפחה או עמודת "שם מלא".
         </div>
         <input type="file" id="ciFile" accept=".xlsx,.xls,.csv" onchange="loadContactExcel(this)" style="font-size:13px">
         <span id="ciFileStatus" style="font-size:12px;color:#666;margin-right:8px"></span>
@@ -1558,35 +1558,19 @@ function openAddModal(){
   var cib=document.getElementById('changeIdBtn'); if(cib) cib.style.display='none';
   document.getElementById('modalTitle').textContent='הוסף איש קשר';
   clearContactForm();
-  var maxId=100000;contacts.forEach(function(c){var n=parseInt(c.id)||0;if(n>maxId)maxId=n;});
-  var nid=String(maxId+1);
-  _suggestedId=nid;
+  // מספר תורם מוזן ידנית בלבד - אין מספר אוטומטי
   var idBox=document.getElementById('fIdDisplay');
   idBox.disabled=false;
-  idBox.title='אפשר להשאיר את המספר המוצע או להקליד מספר אחר';
-  document.getElementById('fId').value=nid;idBox.value=nid;
+  idBox.placeholder='חובה \u2014 הקלד מספר תורם';
+  idBox.title='';
+  document.getElementById('fId').value='';idBox.value='';
   updatePreview();document.getElementById('modalOverlay').className='modal-overlay open';
-  // המספר הפנוי האמיתי נקבע בשרת - הרשימה בזיכרון עלולה להיות ישנה.
-  // מעדכנים את ההצעה רק אם המשתמש עוד לא הקליד מספר משלו.
-  if(window.apiFetch){
-    window.apiFetch('/contacts/next-id').then(function(r){ return r.ok?r.json():null; }).then(function(d){
-      if(d && d.id && editContact===null){
-        var sid=String(d.id), untouched=(idBox.value===_suggestedId);
-        _suggestedId=sid;
-        if(untouched){
-          document.getElementById('fId').value=sid;
-          idBox.value=sid;
-          updatePreview();
-        }
-      }
-    }).catch(function(){});
-  }
+  setTimeout(function(){ idBox.focus(); },50);
 }
-var _suggestedId='';
 function openEditModal(idx){
   editContact=idx;var c=contacts[idx];
   // בעריכה המספר נעול - שינוי שלו עובר דרך "שנה מספר", שמעדכן גם נדרים ותשלומים
-  var idBox=document.getElementById('fIdDisplay'); idBox.disabled=true; idBox.title='';
+  var idBox=document.getElementById('fIdDisplay'); idBox.disabled=true; idBox.title=''; idBox.placeholder='';
   var cib=document.getElementById('changeIdBtn'); if(cib) cib.style.display=(currentRole()==='admin')?'':'none';
   document.getElementById('modalTitle').textContent='עריכת איש קשר';
   document.getElementById('fId').value=c.id;document.getElementById('fIdDisplay').value=c.id;
@@ -1614,7 +1598,7 @@ function saveContact(){
   if(editContact===null){
     // איש קשר חדש: המספר שנבחר נבדק כאן, לפני השליחה
     var idf=document.getElementById('fId'), chosen=String(idf.value||'').trim();
-    if(!chosen){ chosen=_suggestedId; idf.value=chosen; document.getElementById('fIdDisplay').value=chosen; }
+    if(!chosen){ alert('חובה להזין מספר תורם.'); document.getElementById('fIdDisplay').focus(); return; }
     if(!/^\d+$/.test(chosen) || Number(chosen)<1 || Number(chosen)>9999999){
       alert('המספר חייב להיות מספר שלם בין 1 ל-9,999,999.\n(מספר ארוך יותר הוא כנראה טלפון או ת"ז)');
       return;
@@ -1622,14 +1606,14 @@ function saveContact(){
     chosen=String(Number(chosen)); idf.value=chosen;
     for(var ci=0;ci<contacts.length;ci++){
       if(String(contacts[ci].id)===chosen){
-        alert('המספר '+chosen+' כבר שייך ל:\n'+contacts[ci].display_name+'\n\nבחר מספר אחר, או השאר ריק לקבלת המספר הפנוי הבא ('+_suggestedId+').');
+        alert('המספר '+chosen+' כבר שייך ל:\n'+contacts[ci].display_name+'\n\nבחר מספר אחר.');
         return;
       }
     }
     var curMax=0; contacts.forEach(function(c){ var n=parseInt(c.id)||0; if(n>curMax) curMax=n; });
+    // הגנה מטעות הקלדה (ספרה כפולה וכד')
     if(Number(chosen)>curMax+1000 && !confirm(
-        'המספר '+chosen+' גבוה בהרבה מהמספר הגבוה הקיים ('+curMax+').\n\n'+
-        'מעכשיו, כל איש קשר חדש שיקבל מספר אוטומטית ימשיך ממנו ('+(Number(chosen)+1)+' והלאה).\n\nלהמשיך?')) return;
+        'המספר '+chosen+' גבוה בהרבה מהמספר הגבוה הקיים ('+curMax+').\n\nלוודא שאין טעות הקלדה \u2014 לשמור בכל זאת?')) return;
     updatePreview();
   }
   var id=document.getElementById('fId').value,fa=document.getElementById('fFatherName').value.trim();
@@ -1656,14 +1640,15 @@ function saveContact(){
   else{
     c._idx=contacts.length;contacts.push(c);
     syncToSheets('contact','add',c,function(saved){
-      if(!saved || !saved.id) return;
-      if(String(saved.id)!==String(c.id)){
-        // המזהה שביקשנו כבר היה תפוס והשרת הקצה אחר - מיישרים קו
-        c.id=saved.id;
-        if(saved.display_name) c.display_name=saved.display_name;
-        refreshNameSelects(); onSearch();
-        alert('שים לב: המזהה '+saved.requested_id+' כבר היה תפוס.\nאיש הקשר נשמר תחת מזהה '+saved.id+'.');
+      // השם לתצוגה נקבע בשרת - מיישרים קו אם הוא שונה במשהו
+      if(saved && saved.display_name && saved.display_name!==c.display_name){
+        c.display_name=saved.display_name; refreshNameSelects(); onSearch();
       }
+    },function(err){
+      // השרת דחה (למשל: מישהו אחר שמר בדיוק עכשיו את אותו מספר).
+      // טוענים מחדש מהשרת, כדי שהרשימה תשקף רק את מה שבאמת נשמר.
+      alert('\u274C איש הקשר לא נשמר:\n'+(err&&err.error?err.error:'שגיאה'));
+      reloadContactsFromServer();
     });
   }
   refreshNameSelects();closeModal();onSearch();
@@ -1906,6 +1891,7 @@ function ciEvaluate(){
       if(/^[1-9]\d{7,8}$/.test(d)) o[f]='0'+d;
     });
     var pr=[];
+    if(!o.id) pr.push('חסר מספר תורם');
     if(!o.first_name||!o.last_name) pr.push('חסר שם פרטי או שם משפחה');
     if(o.id){
       if(!/^\d+$/.test(o.id) || Number(o.id)<=0) pr.push('מזהה לא תקין');
@@ -1947,8 +1933,10 @@ function ciRenderPreview(){
   var E=_ci.evald, n={new:0,exists:0,dupname:0,bad:0};
   E.forEach(function(o){ n[o.st]++; });
   var hasName=_ci.map.some(function(k){ return k==='first_name'||k==='last_name'||k==='full_lf'||k==='full_fl'; });
+  var hasId=_ci.map.indexOf('id')>=0 || _ci.evald.some(function(o){ return !!o.id; });
 
   var opt='';
+  if(!hasId) opt+='<div style="background:#ffebee;border:1px solid #ef9a9a;border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:13px;color:#c62828">\u26A0\uFE0F לא נבחרה עמודת מספר תורם \u2014 בחר למעלה "מזהה / מס\' תורם". המספר הוא חובה.</div>';
   if(!hasName) opt+='<div style="background:#ffebee;border:1px solid #ef9a9a;border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:13px;color:#c62828">\u26A0\uFE0F לא נבחרה עמודת שם \u2014 בחר למעלה "שם פרטי" + "שם משפחה", או "שם מלא".</div>';
   if(n.exists) opt+='<div style="background:#e3f2fd;border:1px solid #90caf9;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:13px">'+
     '<b>'+n.exists+'</b> שורות עם מזהה שכבר קיים במערכת:'+
@@ -1972,7 +1960,7 @@ function ciRenderPreview(){
     var note = o.st==='bad' ? o.probs.join(' · ')
              : o.st==='exists' ? 'במערכת: '+_ciEsc(o.match.display_name)
              : o.st==='dupname' ? (o.inFile?'מופיע כבר למעלה בקובץ':'במערכת: '+_ciEsc(o.match.display_name))
-             : (o.id?'':'יוקצה מספר חדש');
+             : '';
     var td='<td style="padding:6px 8px;border-bottom:1px solid #f0f0f0">';
     return '<tr'+(o.st==='bad'?' style="background:#fffafa"':'')+'>'+
       td+chip[o.st]+'</td>'+td+o.line+'</td>'+td+_ciEsc(o.id)+'</td>'+
@@ -1992,7 +1980,7 @@ function ciRenderPreview(){
 
   var nNew=n.new+(_ciOpt.dupname?n.dupname:0), nUpd=_ciOpt.update?n.exists:0;
   var b=document.getElementById('ciImportBtn');
-  if(hasName && (nNew||nUpd)){
+  if(hasName && hasId && (nNew||nUpd)){
     b.style.display=''; b.disabled=false;
     b.textContent='ייבא '+nNew+' חדשים'+(nUpd?' ועדכן '+nUpd+' קיימים':'');
   } else b.style.display='none';
@@ -4781,7 +4769,7 @@ function _toApi(type, data){
 var _ENDPOINT = {contact:'/contacts', vow:'/vows', payment:'/payments'};
 
 // Override sync: send writes to REST API
-function syncToSheets(type, action, data, cb){
+function syncToSheets(type, action, data, cb, errCb){
   var ep = _ENDPOINT[type]; if(!ep) return;
   var body = _toApi(type, data);
   var opts;
@@ -4789,9 +4777,15 @@ function syncToSheets(type, action, data, cb){
   else if(action==='edit'){ opts = {method:'PUT', body:body}; ep = ep + '/' + data.id; }
   else { opts = {method:'POST', body:body}; }
   window.apiFetch(ep, opts).then(function(r){
-    if(!r.ok){ r.json().then(function(d){ console.warn('שמירה נכשלה:', d.error||r.status); }); return; }
+    if(!r.ok){
+      r.json().catch(function(){ return {}; }).then(function(d){
+        console.warn('שמירה נכשלה:', d.error||r.status);
+        if(errCb) errCb(d||{}, r.status);
+      });
+      return;
+    }
     if(cb) r.json().then(function(d){ cb(d); }).catch(function(){});
-  }).catch(function(){ console.warn('שגיאת רשת בשמירה'); });
+  }).catch(function(){ console.warn('שגיאת רשת בשמירה'); if(errCb) errCb({error:'שגיאת רשת'}, 0); });
 }
 function exportAllToSheets(){ /* disabled - data lives in DB */ }
 

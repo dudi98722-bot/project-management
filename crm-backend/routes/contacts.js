@@ -120,7 +120,8 @@ router.post('/import', authenticate, requireWrite, async (req, res) => {
     F.forEach(f => { o[f] = clean(r[f]); });
     const rawId = clean(r.id);
     o.id = rawId ? validContactId(rawId) : null;
-    if (rawId && o.id === null) errors.push(`שורה ${o.line}: מזהה לא תקין (${rawId}) - נראה כמו טלפון או ת"ז`);
+    if (!rawId) errors.push(`שורה ${o.line}: חסר מספר תורם (חובה)`);
+    else if (o.id === null) errors.push(`שורה ${o.line}: מזהה לא תקין (${rawId}) - נראה כמו טלפון או ת"ז`);
     else if (o.id && o.id < MIN_IMPORT_ID) errors.push(`שורה ${o.line}: מזהה ${o.id} קטן מדי - כנראה מספר שורה ולא מספר תורם`);
     if (!o.first_name || !o.last_name) errors.push(`שורה ${o.line}: חסר שם פרטי או שם משפחה`);
     F.forEach(f => { if (o[f].length > LIM[f]) errors.push(`שורה ${o.line}: הערך בשדה ${f} ארוך מדי`); });
@@ -143,9 +144,6 @@ router.post('/import', authenticate, requireWrite, async (req, res) => {
       ? await client.query('SELECT * FROM contacts WHERE id = ANY($1::int[]) FOR UPDATE', [fileIds])
       : { rows: [] };
     const existing = new Map(ex.rows.map(c => [Number(c.id), c]));
-    const mx = await client.query('SELECT COALESCE(MAX(id), 100000) AS m FROM contacts');
-    let next = Number(mx.rows[0].m) + 1;
-    const reserved = new Set(fileIds);
 
     for (const o of items) {
       const cur = o.id ? existing.get(o.id) : null;
@@ -171,12 +169,7 @@ router.post('/import', authenticate, requireWrite, async (req, res) => {
         updated.push(r.rows[0]);
         continue;
       }
-      let id = o.id;
-      if (!id) {
-        while (reserved.has(next)) next++;
-        id = next++;
-        reserved.add(id);
-      }
+      const id = o.id;   // תמיד קיים - נבדק למעלה
       const dn = calcDisplayName(o.last_name, o.first_name, o.father_name, id);
       const r = await client.query(
         `INSERT INTO contacts (id,apt,title,first_name,last_name,father_name,phone_home,phone_mobile,street,house_num,city,zip,email,display_name,created_by,updated_by)
@@ -287,39 +280,30 @@ router.get('/:id', authenticate, async (req, res) => {
 });
 
 // POST /api/contacts
-// לעולם לא דורס איש קשר קיים. אם המזהה שהלקוח ביקש כבר תפוס - מוקצה
-// המזהה הפנוי הבא, ה-display_name מתוקן בהתאם, והתשובה מסמנת reassigned
-// כדי שהלקוח יציג את המזהה שנשמר בפועל.
+// מספר התורם חובה ומוזן ידנית. מספר תפוס נדחה (409) - לעולם לא דורסים
+// איש קשר קיים, ולא מקצים מספר אחר במקום זה שהמשתמש בחר.
 router.post('/', authenticate, requireWrite, async (req, res) => {
   const { id, apt, title, first_name, last_name, father_name, phone_home, phone_mobile, street, house_num, city, zip, email, display_name } = req.body;
   if (!first_name || !last_name) return res.status(400).json({ error: 'שם פרטי ושם משפחה חובה' });
-  // מספר שהמשתמש בחר - באותם גבולות כמו בייבוא ובשינוי מספר
+  // מספר תורם הוא חובה ומוזן ידנית - המערכת לא מקצה מספרים בעצמה
   const hasId = id != null && String(id).trim() !== '';
-  const cid = hasId ? validContactId(id) : null;
-  if (hasId && cid === null) return res.status(400).json({ error: 'המספר חייב להיות מספר שלם בין 1 ל-9,999,999' });
+  if (!hasId) return res.status(400).json({ error: 'חובה להזין מספר תורם' });
+  const cid = validContactId(id);
+  if (cid === null) return res.status(400).json({ error: 'המספר חייב להיות מספר שלם בין 1 ל-9,999,999' });
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    // נעילה על הקצאת המזהים - שתי הוספות במקביל לא יקבלו אותו מספר
+    // נעילה: שתי הוספות במקביל עם אותו מספר - רק אחת תעבור
     await client.query("SELECT pg_advisory_xact_lock(hashtext('crm_contact_id'))");
-
-    let useId = cid, reassigned = false;
-    if (useId !== null) {
-      const taken = await client.query('SELECT 1 FROM contacts WHERE id=$1', [useId]);
-      if (taken.rows.length) { useId = null; reassigned = true; }
+    const taken = await client.query('SELECT display_name FROM contacts WHERE id=$1', [cid]);
+    if (taken.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: `המספר ${cid} כבר שייך ל: ${taken.rows[0].display_name}` });
     }
-    if (useId === null) {
-      const mx = await client.query('SELECT COALESCE(MAX(id), 100000) AS m FROM contacts');
-      useId = Number(mx.rows[0].m) + 1;
-    }
-
-    // display_name מכיל את המזהה בסופו - להתאים אותו למזהה שהוקצה בפועל
-    let dn = display_name;
-    if (reassigned && dn) {
-      const fixed = String(dn).replace(/\s*-\s*\d+\s*$/, ' - ' + useId);
-      dn = (fixed === String(dn)) ? (String(dn) + ' - ' + useId) : fixed;
-    }
+    const useId = cid;
+    // השם לתצוגה תמיד נגזר מהשדות ומהמספר, באותה נוסחה כמו בדפדפן
+    const dn = calcDisplayName(last_name, first_name, father_name, useId);
 
     const result = await client.query(
       `INSERT INTO contacts (id,apt,title,first_name,last_name,father_name,phone_home,phone_mobile,street,house_num,city,zip,email,display_name,created_by,updated_by)
@@ -329,10 +313,9 @@ router.post('/', authenticate, requireWrite, async (req, res) => {
     );
     await client.query('COMMIT');
 
-    await logAction(req.user.id, req.user.username, 'add', 'contacts', result.rows[0].id,
-      reassigned ? { display_name: dn, requested_id: cid, reassigned_to: useId } : { display_name: dn });
+    await logAction(req.user.id, req.user.username, 'add', 'contacts', result.rows[0].id, { display_name: dn });
     syncContact('add', result.rows[0], req.user.username);
-    res.status(201).json(Object.assign({}, result.rows[0], { reassigned, requested_id: cid }));
+    res.status(201).json(result.rows[0]);
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('contact add error:', err.message);

@@ -106,7 +106,7 @@ function _toApi(type, data){
 var _ENDPOINT = {contact:'/contacts', vow:'/vows', payment:'/payments'};
 
 // Override sync: send writes to REST API
-function syncToSheets(type, action, data, cb){
+function syncToSheets(type, action, data, cb, errCb){
   var ep = _ENDPOINT[type]; if(!ep) return;
   var body = _toApi(type, data);
   var opts;
@@ -114,9 +114,15 @@ function syncToSheets(type, action, data, cb){
   else if(action==='edit'){ opts = {method:'PUT', body:body}; ep = ep + '/' + data.id; }
   else { opts = {method:'POST', body:body}; }
   window.apiFetch(ep, opts).then(function(r){
-    if(!r.ok){ r.json().then(function(d){ console.warn('שמירה נכשלה:', d.error||r.status); }); return; }
+    if(!r.ok){
+      r.json().catch(function(){ return {}; }).then(function(d){
+        console.warn('שמירה נכשלה:', d.error||r.status);
+        if(errCb) errCb(d||{}, r.status);
+      });
+      return;
+    }
     if(cb) r.json().then(function(d){ cb(d); }).catch(function(){});
-  }).catch(function(){ console.warn('שגיאת רשת בשמירה'); });
+  }).catch(function(){ console.warn('שגיאת רשת בשמירה'); if(errCb) errCb({error:'שגיאת רשת'}, 0); });
 }
 function exportAllToSheets(){ /* disabled - data lives in DB */ }
 
