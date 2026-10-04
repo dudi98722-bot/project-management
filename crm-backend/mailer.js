@@ -43,6 +43,16 @@ async function buildPersonalReport(name) {
     FROM vows v LEFT JOIN payments p ON p.vow_id = v.id
     WHERE v.name = $1 GROUP BY v.id ORDER BY v.date`, [name]);
   const payRes = await pool.query('SELECT * FROM payments WHERE name=$1 ORDER BY date', [name]);
+  // תואר איש הקשר (מוצג לפני השם)
+  const cRes = await pool.query('SELECT title FROM contacts WHERE display_name=$1 LIMIT 1', [name]);
+  const titlePrefix = (cRes.rows.length && cRes.rows[0].title) ? cRes.rows[0].title + ' ' : '';
+  // זכות עומדת (עודף תשלום שנשמר)
+  const crRes = await pool.query('SELECT COALESCE(SUM(amount),0) AS bal FROM credits WHERE person_name=$1', [name]);
+  const credit = Number(crRes.rows[0] && crRes.rows[0].bal) || 0;
+  // כסף שהתקבל ועוד לא שויך להתחייבות. totalPaid למטה נגזר מה-JOIN על
+  // vow_id ולכן לא כולל אותו, בעוד טבלת התשלומים כן מציגה אותו - בלי
+  // השורה הזו המכתב סותר את עצמו.
+  const pending = payRes.rows.reduce((s, p) => (p.vow_id == null ? s + (Number(p.amount) || 0) : s), 0);
 
   const vows = vowsRes.rows, pays = payRes.rows;
   let totalVow = 0, totalPaid = 0;
@@ -65,7 +75,7 @@ async function buildPersonalReport(name) {
 
   const payRows = pays.length ? pays.map(p => `<tr>
       <td style="padding:8px 10px;border-bottom:1px solid ${line}">${esc(p.hebrew_date) || d10(p.date)}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid ${line}">${esc(p.method) || '—'}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid ${line}">${esc(p.method) || '—'}${p.vow_id == null ? ' <span style="color:#e65100;font-size:11px">(ממתין לשיוך)</span>' : ''}</td>
       <td style="padding:8px 10px;border-bottom:1px solid ${line};text-align:left;color:#2e7d32">${ils(p.amount)}</td>
     </tr>`).join('') : `<tr><td colspan="3" style="padding:12px;text-align:center;color:#888">אין תשלומים</td></tr>`;
 
@@ -76,7 +86,7 @@ async function buildPersonalReport(name) {
   <div style="padding:24px 34px">
     <div style="text-align:center;margin-bottom:18px">
       <div style="font-size:24px;font-weight:bold;color:${brown}">דוח אישי</div>
-      <div style="font-size:20px;color:${gold};margin-top:4px;font-weight:bold">${esc(name)}</div>
+      <div style="font-size:20px;color:${gold};margin-top:4px;font-weight:bold">${esc(titlePrefix + name)}</div>
       <div style="font-size:13px;color:#777;margin-top:4px">נכון לתאריך ${today}</div>
     </div>
 
@@ -104,9 +114,16 @@ async function buildPersonalReport(name) {
       <tr>
         <td style="padding:14px;text-align:center;border-left:1px solid ${line}"><div style="font-size:12px;color:#777">סך התחייבות</div><div style="font-size:19px;font-weight:bold;color:${brown}">${ils(totalVow)}</div></td>
         <td style="padding:14px;text-align:center;border-left:1px solid ${line}"><div style="font-size:12px;color:#777">סך ששולם</div><div style="font-size:19px;font-weight:bold;color:#2e7d32">${ils(totalPaid)}</div></td>
-        <td style="padding:14px;text-align:center"><div style="font-size:12px;color:#777">יתרה לתשלום</div><div style="font-size:19px;font-weight:bold;color:${balance > 0 ? '#c62828' : '#2e7d32'}">${ils(balance)}</div></td>
+        ${pending > 0 ? `<td style="padding:14px;text-align:center;border-left:1px solid ${line}"><div style="font-size:12px;color:#777">ממתין לשיוך</div><div style="font-size:19px;font-weight:bold;color:#e65100">${ils(pending)}</div></td>` : ''}
+        <td style="padding:14px;text-align:center"><div style="font-size:12px;color:#777">יתרה בהתחייבויות</div><div style="font-size:19px;font-weight:bold;color:${balance > 0 ? '#c62828' : '#2e7d32'}">${ils(balance)}</div></td>
       </tr>
     </table>
+    ${pending > 0 ? `<div style="margin-top:12px;background:#fff3e0;border:1px solid #ffb74d;border-radius:8px;padding:12px 16px;text-align:center;color:#e65100;font-size:14px">
+      התקבלו <b>${ils(pending)}</b> שטרם שויכו להתחייבות מסוימת — לתשלום בפועל: <b>${ils(Math.max(0, balance - pending - Math.max(0, credit)))}</b>
+    </div>` : ''}
+    ${credit > 0 ? `<div style="margin-top:12px;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:12px 16px;text-align:center;color:#1b5e20;font-size:14px">
+      💰 עומדת לזכותך יתרת זכות של <b>${ils(credit)}</b> מתשלום קודם${balance > 0 ? ` — לתשלום בפועל: <b>${ils(Math.max(0, balance - credit))}</b>` : ''}
+    </div>` : ''}
 
     <div style="text-align:center;margin-top:22px;font-size:14px;color:${brown}">תשואת חן וברכת ידידות<br>בית המדרש הגדול אלכסנדר</div>
   </div>

@@ -13,7 +13,9 @@ router.get('/summary', authenticate, async (req, res) => {
                COALESCE(SUM(CASE WHEN amount > 0 THEN 1 ELSE 0 END),0) as with_amount
         FROM vows
       `),
-      pool.query('SELECT COUNT(*) as total, COALESCE(SUM(amount),0) as total_paid FROM payments'),
+      pool.query(`SELECT COUNT(*) as total, COALESCE(SUM(amount),0) as total_paid,
+                         COALESCE(SUM(CASE WHEN vow_id IS NULL THEN amount ELSE 0 END),0) as total_pending
+                  FROM payments`),
       pool.query(`
         SELECT v.name, COALESCE(SUM(p.amount),0) as total_paid
         FROM vows v
@@ -36,8 +38,12 @@ router.get('/summary', authenticate, async (req, res) => {
       payments: {
         total: parseInt(payData.total),
         total_paid: parseFloat(payData.total_paid),
+        total_pending: parseFloat(payData.total_pending),
       },
-      balance: parseFloat(vowData.total_amount) - parseFloat(payData.total_paid),
+      // היתרה נמדדת מול ההתחייבויות בלבד. תשלום שעוד לא שויך הוא כסף
+      // שהתקבל אבל לא סגר התחייבות, ולכן מדווח בנפרד ולא מקוזז כאן.
+      balance: parseFloat(vowData.total_amount)
+             - (parseFloat(payData.total_paid) - parseFloat(payData.total_pending)),
       top_donors: topDonors.rows
     });
   } catch (err) {
