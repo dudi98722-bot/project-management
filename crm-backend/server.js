@@ -46,6 +46,25 @@ app.use('/api/calendar', require('./routes/calendar'));
 app.use('/api/reportlog', require('./routes/reportlog'));
 app.use('/api/credits',   require('./routes/credits'));
 
+// דיווח שגיאות מהדפדפן. בלי זה תקלה אצל משתמש נראית רק כ"מסך ריק",
+// ואין דרך לדעת מה נפל. נכתב ליומן השרת (journalctl -u crm-backend).
+const { authenticate } = require('./middleware/auth');
+const _clientLogHits = new Map();   // משתמש -> [זמנים] - תקרה נגד הצפה
+app.post('/api/clientlog', authenticate, (req, res) => {
+  const now = Date.now(), key = req.user.username || String(req.user.id);
+  const hits = (_clientLogHits.get(key) || []).filter(t => now - t < 60000);
+  if (hits.length >= 20) return res.status(429).json({ ok: false });
+  hits.push(now); _clientLogHits.set(key, hits);
+  const b = req.body || {};
+  const clip = (v, n) => String(v == null ? '' : v).replace(/[\r\n]+/g, ' | ').slice(0, n);
+  console.warn('[client-error] ' + JSON.stringify({
+    user: req.user.username, role: req.user.role,
+    where: clip(b.where, 80), msg: clip(b.msg, 500), stack: clip(b.stack, 1500),
+    ua: clip(req.headers['user-agent'], 200)
+  }));
+  res.json({ ok: true });
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });

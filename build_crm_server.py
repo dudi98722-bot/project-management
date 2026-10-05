@@ -38,6 +38,22 @@ NEW_LOGIN = r"""(function(){
   window.API = API;
   function token(){ return sessionStorage.getItem('crm_token') || ''; }
   window.apiToken = token;
+  // דיווח שגיאות לשרת (עד 5 לכל טעינת דף). רץ ראשון, כדי לתפוס גם תקלות
+  // בסקריפט הראשי. בלי טוקן (לפני כניסה) לא מדווחים.
+  var _errSent = 0;
+  window.reportClientError = function(where, e){
+    try{
+      if(_errSent >= 5 || !token()) return;
+      _errSent++;
+      var msg = (e && e.message) ? e.message : String(e);
+      var stack = (e && e.stack) ? String(e.stack) : '';
+      fetch(API + '/clientlog', {method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+token()},
+        body: JSON.stringify({where:where, msg:msg, stack:stack})}).catch(function(){});
+    }catch(_){}
+  };
+  window.addEventListener('error', function(ev){ window.reportClientError('window', ev.error || ev.message); });
+  window.addEventListener('unhandledrejection', function(ev){ window.reportClientError('promise', ev.reason); });
   window.apiFetch = function(path, opts){
     opts = opts || {};
     opts.headers = opts.headers || {};
@@ -91,7 +107,7 @@ NEW_LOGIN = r"""(function(){
 template, n = login_re.subn(lambda m: NEW_LOGIN, template, count=1)
 assert n == 1, 'login IIFE not replaced (n=%d)' % n
 
-# 3) Replace the final init(); call with a guarded bootstrap that loads data first
+# 3) Replace the final crmInit(); call with a guarded bootstrap that loads data first
 ADAPTER = r"""
 /* ===== API ADAPTER (data load + write sync) ===== */
 function _vowFromApi(v){ return {id:v.id, date:v.date?String(v.date).slice(0,10):'', hebrewDate:v.hebrew_date||'', name:v.name||'', forA:v.for_a||'', forB:v.for_b||'', amount:parseFloat(v.amount)||0, note:v.note||'', place:v.place||'', _user:v._user||''}; }
@@ -175,9 +191,15 @@ function bootstrapData(){
       if(!L && window.saveListsDelta) saveListsDelta({addA:TABLE1.slice(), addB:TABLE2.slice()}, '');
     }).catch(function(){});
     if(loader) loader.style.display='none';
-    init();
+    crmInit();
   }).catch(function(e){
-    if(loader) loader.innerHTML = '<div style="color:#c00;font-size:18px">שגיאה בטעינת הנתונים מהשרת. רענן את הדף.</div>';
+    // מסך הטעינה עלול כבר להיות מוסתר - מציגים אותו מחדש, שהשגיאה תיראה
+    if(loader){
+      loader.style.display='flex';
+      loader.innerHTML = '<div style="color:#c00;font-size:18px">שגיאה בטעינת הנתונים מהשרת. רענן את הדף.</div>'+
+        '<div style="color:#888;font-size:12px;margin-top:8px">'+String((e&&e.message)||e).replace(/[<>&]/g,'')+'</div>';
+    }
+    if(window.reportClientError) reportClientError('bootstrap', e);
     console.error(e);
   });
 }
@@ -188,9 +210,9 @@ if(sessionStorage.getItem('crm_token')){
   bootstrapData();
 }
 """
-# Replace trailing "init();" (the last standalone call) with the adapter
-assert template.rstrip().endswith('init();\n</script>\n</body>\n</html>') or 'init();' in template
-template = template.replace('\ninit();\n</script>', '\n' + ADAPTER + '\n</script>', 1)
+# Replace trailing "crmInit();" (the last standalone call) with the adapter
+assert '\ncrmInit();\n</script>' in template, 'trailing crmInit(); not found'
+template = template.replace('\ncrmInit();\n</script>', '\n' + ADAPTER + '\n</script>', 1)
 
 # 4) Add a simple loading overlay right after <body>
 LOADER = '<div id="_bootLoader" style="display:none;position:fixed;inset:0;background:#fff;z-index:9999;align-items:center;justify-content:center;flex-direction:column;gap:16px"><div style="font-size:22px;color:#1565c0">טוען נתונים...</div><div style="font-size:14px;color:#888">מוסדות אלכסנדר</div></div>'

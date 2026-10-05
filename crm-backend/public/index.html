@@ -360,6 +360,22 @@ tr:last-child td { border-bottom: none; }
   window.API = API;
   function token(){ return sessionStorage.getItem('crm_token') || ''; }
   window.apiToken = token;
+  // דיווח שגיאות לשרת (עד 5 לכל טעינת דף). רץ ראשון, כדי לתפוס גם תקלות
+  // בסקריפט הראשי. בלי טוקן (לפני כניסה) לא מדווחים.
+  var _errSent = 0;
+  window.reportClientError = function(where, e){
+    try{
+      if(_errSent >= 5 || !token()) return;
+      _errSent++;
+      var msg = (e && e.message) ? e.message : String(e);
+      var stack = (e && e.stack) ? String(e.stack) : '';
+      fetch(API + '/clientlog', {method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+token()},
+        body: JSON.stringify({where:where, msg:msg, stack:stack})}).catch(function(){});
+    }catch(_){}
+  };
+  window.addEventListener('error', function(ev){ window.reportClientError('window', ev.error || ev.message); });
+  window.addEventListener('unhandledrejection', function(ev){ window.reportClientError('promise', ev.reason); });
   window.apiFetch = function(path, opts){
     opts = opts || {};
     opts.headers = opts.headers || {};
@@ -1331,10 +1347,10 @@ function saveMailSettings(){
 }
 function initUserUI(){
   var u=currentUser();
-  document.getElementById('currentUserBadge').textContent='👤 '+u;
+  var ub=document.getElementById('currentUserBadge'); if(ub) ub.textContent='👤 '+u;
   var cib=document.getElementById('contactsImportBtn'); if(cib)cib.style.display=canWriteRole()?'':'none';
   if(currentRole()==='admin'){
-    document.getElementById('manageUsersBtn').style.display='';
+    var mub=document.getElementById('manageUsersBtn'); if(mub) mub.style.display='';
     var esb=document.getElementById('emailSettingsBtn'); if(esb)esb.style.display='';
   }
   // עורך/צופה: בלי דוח כללי ובלי פילוחים | מנהל מוגבל: דוח כללי כן, פילוחים לא
@@ -4724,20 +4740,46 @@ function sendReportByName(name, btn){
 function emailPersonReport(idx, btn){ sendReportByName(generalFiltered[idx]?generalFiltered[idx].name:'', btn); }
 
 /* ===== INIT ===== */
-function init(){
-  initUserUI();
-  refreshNameSelects();
-  refreshForSelects();
-  refreshPaymentMethodSelect();
-  populateTitleSelect();
-  loadBlessing();
-  loadCreditBalances();
-  populateReportSelect();
-  populateVowsFilters();
-  populatePaymentsFilters();
-  cFiltered=contacts.slice();
-  render();
-  renderAnalytics();
+/* נקודת הכניסה. השם crmInit ולא init: init הוא שם גנרי שסקריפטים
+   ותוספים מגדירים לפעמים בדף ודורסים.
+   כל שלב רץ בנפרד - תקלה באחד (למשל אצל עובד שתוסף בדפדפן שלו מתנגש)
+   לא משאירה את כל המסך ריק, והיא מדווחת לשרת. */
+function crmInit(){
+  var steps=[
+    ['initUserUI',initUserUI],
+    ['refreshNameSelects',refreshNameSelects],
+    ['refreshForSelects',refreshForSelects],
+    ['refreshPaymentMethodSelect',refreshPaymentMethodSelect],
+    ['populateTitleSelect',populateTitleSelect],
+    ['loadBlessing',loadBlessing],
+    ['loadCreditBalances',function(){ loadCreditBalances(); }],
+    ['populateReportSelect',populateReportSelect],
+    ['populateVowsFilters',populateVowsFilters],
+    ['populatePaymentsFilters',populatePaymentsFilters],
+    ['render',function(){ cFiltered=contacts.slice(); render(); }],
+    ['renderAnalytics',renderAnalytics]
+  ];
+  var failed=[];
+  steps.forEach(function(s){
+    try{ s[1](); }
+    catch(e){
+      failed.push(s[0]);
+      console.error('crmInit step failed:', s[0], e);
+      if(window.reportClientError) reportClientError('init:'+s[0], e);
+    }
+  });
+  if(failed.length) showInitWarning(failed);
+}
+function showInitWarning(failed){
+  var bar=document.getElementById('_initWarn');
+  if(!bar){
+    bar=document.createElement('div'); bar.id='_initWarn';
+    bar.style.cssText='background:#fff3e0;border-bottom:1px solid #ffb74d;color:#e65100;padding:8px 16px;font-size:13px;text-align:center';
+    var hdr=document.querySelector('.header');
+    if(hdr && hdr.parentNode) hdr.parentNode.insertBefore(bar, hdr.nextSibling); else document.body.insertBefore(bar, document.body.firstChild);
+  }
+  bar.innerHTML='\u26A0\uFE0F חלק מהתצוגה לא נטען כראוי ('+failed.join(', ')+'). הנתונים שמורים בשרת, והתקלה דווחה אוטומטית. '+
+    '<a href="#" onclick="location.reload();return false" style="color:#e65100;font-weight:bold">רענן</a>';
 }
 
 function switchTab(name){
@@ -4840,9 +4882,15 @@ function bootstrapData(){
       if(!L && window.saveListsDelta) saveListsDelta({addA:TABLE1.slice(), addB:TABLE2.slice()}, '');
     }).catch(function(){});
     if(loader) loader.style.display='none';
-    init();
+    crmInit();
   }).catch(function(e){
-    if(loader) loader.innerHTML = '<div style="color:#c00;font-size:18px">שגיאה בטעינת הנתונים מהשרת. רענן את הדף.</div>';
+    // מסך הטעינה עלול כבר להיות מוסתר - מציגים אותו מחדש, שהשגיאה תיראה
+    if(loader){
+      loader.style.display='flex';
+      loader.innerHTML = '<div style="color:#c00;font-size:18px">שגיאה בטעינת הנתונים מהשרת. רענן את הדף.</div>'+
+        '<div style="color:#888;font-size:12px;margin-top:8px">'+String((e&&e.message)||e).replace(/[<>&]/g,'')+'</div>';
+    }
+    if(window.reportClientError) reportClientError('bootstrap', e);
     console.error(e);
   });
 }
