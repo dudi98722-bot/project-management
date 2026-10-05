@@ -96,12 +96,12 @@ router.get('/next-id', authenticate, async (req, res) => {
 });
 
 // POST /api/contacts/import  { rows:[...], update_existing:bool }
-// ייבוא מאקסל. הכל בטרנזקציה אחת - או שכל הקובץ נכנס, או ששום דבר לא.
+// ייבוא מאקסל - לכל מי שיש לו הרשאת עריכה (requireWrite), כמו הוספה רגילה.
+// הכל בטרנזקציה אחת - או שכל הקובץ נכנס, או ששום דבר לא.
 // "עדכון קיימים" נוגע רק בפרטי קשר (טלפון, כתובת, מייל, תואר, דירה) ולעולם
 // לא בשם: איות קצת שונה בקובץ היה משנה שם לתורם בכל הנדרים והתשלומים.
 // שדה ריק בקובץ לא מוחק נתון קיים.
 router.post('/import', authenticate, requireWrite, async (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ error: 'ייבוא אנשי קשר מותר למנהל בלבד' });
   const rows = Array.isArray(req.body.rows) ? req.body.rows : null;
   if (!rows || !rows.length) return res.status(400).json({ error: 'אין שורות לייבוא' });
   if (rows.length > 5000) return res.status(400).json({ error: 'עד 5,000 שורות בייבוא אחד' });
@@ -204,11 +204,10 @@ router.post('/import', authenticate, requireWrite, async (req, res) => {
              created_rows: created, updated_rows: updated, skipped_rows: skipped });
 });
 
-// POST /api/contacts/:id/change-id  { new_id }
+// POST /api/contacts/:id/change-id  { new_id }  - לכל מי שיש לו הרשאת עריכה
 // המספר הוא חלק מהשם ("כהן משה - 100483"), והשם הוא מה שמקשר נדרים,
 // תשלומים וזכויות לתורם - לכן השינוי עובר בטרנזקציה אחת על כולם.
 router.post('/:id/change-id', authenticate, requireWrite, async (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ error: 'שינוי מספר איש קשר מותר למנהל בלבד' });
   const oldId = validContactId(req.params.id);
   const newId = validContactId(req.body.new_id);
   if (!oldId) return res.status(400).json({ error: 'מספר נוכחי לא תקין' });

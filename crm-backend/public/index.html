@@ -1299,6 +1299,8 @@ var editContact=null, editVow=null, editPayment=null;
 function currentUser(){return sessionStorage.getItem('crm_user')||'לא ידוע';}
 function currentRole(){return sessionStorage.getItem('crm_role')||'user';}
 function isRestrictedRole(){var r=currentRole();return r==='editor'||r==='viewer';}
+/* מי יכול להוסיף ולערוך אנשי קשר - אותם תפקידים שהשרת מתיר (requireWrite) */
+function canWriteRole(){var r=currentRole();return r==='admin'||r==='manager'||r==='editor';}
 function noAnalytics(){var r=currentRole();return r==='editor'||r==='viewer'||r==='manager';}
 function noGeneralSummary(){return currentRole()==='manager';}
 /* ===== EMAIL SETTINGS ===== */
@@ -1330,9 +1332,9 @@ function saveMailSettings(){
 function initUserUI(){
   var u=currentUser();
   document.getElementById('currentUserBadge').textContent='👤 '+u;
+  var cib=document.getElementById('contactsImportBtn'); if(cib)cib.style.display=canWriteRole()?'':'none';
   if(currentRole()==='admin'){
     document.getElementById('manageUsersBtn').style.display='';
-    var cib=document.getElementById('contactsImportBtn'); if(cib)cib.style.display='';
     var esb=document.getElementById('emailSettingsBtn'); if(esb)esb.style.display='';
   }
   // עורך/צופה: בלי דוח כללי ובלי פילוחים | מנהל מוגבל: דוח כללי כן, פילוחים לא
@@ -1571,7 +1573,7 @@ function openEditModal(idx){
   editContact=idx;var c=contacts[idx];
   // בעריכה המספר נעול - שינוי שלו עובר דרך "שנה מספר", שמעדכן גם נדרים ותשלומים
   var idBox=document.getElementById('fIdDisplay'); idBox.disabled=true; idBox.title=''; idBox.placeholder='';
-  var cib=document.getElementById('changeIdBtn'); if(cib) cib.style.display=(currentRole()==='admin')?'':'none';
+  var cib=document.getElementById('changeIdBtn'); if(cib) cib.style.display=canWriteRole()?'':'none';
   document.getElementById('modalTitle').textContent='עריכת איש קשר';
   document.getElementById('fId').value=c.id;document.getElementById('fIdDisplay').value=c.id;
   document.getElementById('fApt').value=c.apt||'';document.getElementById('fTitle').value=c.title||'';
@@ -1663,13 +1665,13 @@ document.getElementById('fIdDisplay').addEventListener('input',function(){
   updatePreview();
 });
 
-/* ===== שינוי מספר איש קשר (מנהל בלבד) ===== */
+/* ===== שינוי מספר איש קשר (כל מי שיכול לערוך אנשי קשר) ===== */
 /* המספר הוא חלק מהשם ("כהן משה - 100483"), והשם מקשר נדרים, תשלומים
    וזכויות. לכן השינוי נעשה בשרת בטרנזקציה אחת ונשמר מיד - בנפרד משאר
    השדות בחלון, שנשארים כמו שהם עד שלוחצים "שמור". */
 function changeContactId(){
   if(editContact===null) return;
-  if(currentRole()!=='admin'){ alert('שינוי מספר מותר למנהל בלבד'); return; }
+  if(!canWriteRole()){ alert('אין לך הרשאה לשנות מספר איש קשר'); return; }
   var c=contacts[editContact]; if(!c) return;
   var oldId=String(c.id);
   var nv=prompt('מספר חדש עבור:\n'+c.display_name+'\n\n(המספר הנוכחי: '+oldId+')','');
@@ -1714,7 +1716,7 @@ function changeContactId(){
     .catch(function(){ if(btn) btn.disabled=false; alert('שגיאת חיבור — לא ברור אם המספר שונה. רענן את הדף ובדוק.'); });
 }
 
-/* ===== ייבוא אנשי קשר מאקסל (מנהל בלבד) ===== */
+/* ===== ייבוא אנשי קשר מאקסל (כל מי שיכול לערוך אנשי קשר) ===== */
 var CI_FIELDS=[
   {k:'',            l:'— לא לייבא —',                 syn:[]},
   {k:'id',          l:'מזהה / מס\' תורם',             syn:['מזהה','מס תורם','מספר תורם','קוד תורם','מזהה תורם','id']},
@@ -1793,7 +1795,7 @@ function xlsxReadBuffer(fileName, buf){
 }
 
 function openContactImport(){
-  if(currentRole()!=='admin'){ alert('ייבוא אנשי קשר מותר למנהל בלבד'); return; }
+  if(!canWriteRole()){ alert('אין לך הרשאה לייבא אנשי קשר'); return; }
   _ci={raw:[],map:[],hasHeader:true,evald:[]};
   _ciOpt={update:false,dupname:false};
   ['ciMapping','ciOptions','ciPreview','ciResult'].forEach(function(id){ document.getElementById(id).innerHTML=''; });
