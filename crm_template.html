@@ -1797,7 +1797,9 @@ function xlsxReadBuffer(fileName, buf){
     var text;
     try{ text=new TextDecoder('utf-8',{fatal:true}).decode(buf); }
     catch(e){ text=new TextDecoder('windows-1255').decode(buf); }
-    return XLSX.read(text.replace(/^\uFEFF/,''),{type:'string'});
+    // raw:true - הכל נשאר טקסט. אחרת SheetJS מנחש תאריכים בפורמט אמריקאי
+    // (1/9/26 = 9 בינואר) ומוחק 0 מתחילת טלפונים ומספרים.
+    return XLSX.read(text.replace(/^\uFEFF/,''),{type:'string',raw:true});
   }
   return XLSX.read(new Uint8Array(buf),{type:'array'});
 }
@@ -2163,7 +2165,7 @@ function saveBulkVows(){
 var _impRows=[], _impIdx=0, _impStats={created:0, credited:0, skipped:0};
 
 function openPayImport(){
-  _impMode='import'; _impNoAlloc=false;
+  _impMode='import'; _impNoAlloc=false; _impIncludeDups=false; _impDateFmt={order:'dmy'};
   _impRows=[]; _impIdx=0; _impStats={created:0,credited:0,skipped:0,pending:0};
   document.getElementById('payImpStage1').style.display='';
   document.getElementById('payImpStage2').style.display='none';
@@ -2198,11 +2200,20 @@ function loadPayExcel(input){
       try{
         var wb=xlsxReadBuffer(f.name, e.target.result);
         var sheet=wb.Sheets[wb.SheetNames[0]];
-        var rows=XLSX.utils.sheet_to_json(sheet,{header:1,raw:false,defval:''});
+        // raw:true - תאריך שאקסל שמר כתאריך מגיע כמספר סידורי, חד-משמעי.
+        // (raw:false הפך אותו לטקסט אמריקאי "9/1/26", שנקרא כ-9 בינואר.)
+        var rows=XLSX.utils.sheet_to_json(sheet,{header:1,raw:true,defval:''});
         var byId=contactsById();
+        var fmt=detectDateOrder(rows.map(function(r){ return r && r[0]; }));
+        _impDateFmt=fmt;
+        // תשלומים שכבר קיימים במערכת - כדי שהעלאה חוזרת של אותו קובץ לא תכפיל
+        var have={};
+        payments.forEach(function(p){ var k=p.name+'|'+p.date+'|'+(+p.amount); have[k]=(have[k]||0)+1; });
+        var futureLimit=_isoDaysFromToday(45);
         _impRows=[];
         rows.forEach(function(r,idx){
           if(!r||!r.length) return;
+          var rawDateVal=r[0];
           var rawDate=String(r[0]==null?'':r[0]).trim();
           var rawId=String(r[1]==null?'':r[1]).trim();
           var rawAmt=String(r[2]==null?'':r[2]).trim();
@@ -2210,16 +2221,23 @@ function loadPayExcel(input){
           var note=String(r[4]==null?'':r[4]).trim();
           if(!rawDate && !rawId && !rawAmt) return;
           if(idx===0 && !/\d/.test(rawId)) return;            // שורת כותרת
-          var date=normalizeDate(rawDate);
+          var isText=/^\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}$/.test(rawDate);
+          var date=(fmt.mixed && isText) ? '' : normalizeDate(rawDateVal, fmt.order||'dmy');
           var id=rawId.replace(/[^0-9]/g,'');
           var amount=parseFloat(rawAmt.replace(/[₪,\s]/g,''))||0;
           var c=byId[id];
           var err='';
-          if(!date) err='תאריך לא תקין';
+          if(!date) err=(fmt.mixed && isText) ? 'פורמט התאריכים בקובץ לא אחיד' : 'תאריך לא תקין ('+rawDate+')';
           else if(!c) err='מספר תורם לא נמצא';
           else if(amount<=0) err='סכום לא תקין';
-          _impRows.push({date:date,id:id,name:c?c.display_name:'',amount:amount,method:method,note:note,
-                         ok:!err, err:err, done:false, skipped:false});
+          var dup=false;
+          if(!err){
+            var k=c.display_name+'|'+date+'|'+amount;
+            if(have[k]>0){ have[k]--; dup=true; }
+          }
+          _impRows.push({line:idx+1, date:date,id:id,name:c?c.display_name:'',amount:amount,method:method,note:note,
+                         ok:!err && !dup, err:err, dup:dup, future:!!(date && date>futureLimit),
+                         done:false, skipped:false});
         });
         renderPayImpPreview();
         st.style.color='#2e7d32';
@@ -2229,34 +2247,74 @@ function loadPayExcel(input){
     reader.readAsArrayBuffer(f);
   });
 }
-/* המרת תאריך מפורמטים שונים ל-YYYY-MM-DD */
-function normalizeDate(s){
-  if(!s) return '';
+/* המרת תאריך ל-YYYY-MM-DD, עם בדיקה שזה תאריך שקיים בלוח.
+   order: 'dmy' (ישראלי, ברירת מחדל) או 'mdy' (אמריקאי) - לתאריך שנכתב כטקסט.
+   מחזיר '' לתאריך לא קיים (חודש 28, 31 בפברואר) - לעולם לא מעביר אותו הלאה. */
+function normalizeDate(s, order){
+  if(s==null || s==='') return '';
+  if(s instanceof Date) return isNaN(s) ? '' : _isoYMD(s.getFullYear(), s.getMonth()+1, s.getDate());
   s=String(s).trim();
-  var m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);                       // 2026-09-24
-  if(m) return m[1]+'-'+pad2(m[2])+'-'+pad2(m[3]);
-  m=s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/);             // 24/09/2026
-  if(m){ var y=m[3].length===2?('20'+m[3]):m[3]; return y+'-'+pad2(m[2])+'-'+pad2(m[1]); }
-  if(/^\d+(\.\d+)?$/.test(s)){                                          // מספר סידורי של אקסל
-    var d=new Date(Date.UTC(1899,11,30)+parseFloat(s)*86400000);
-    if(!isNaN(d)) return d.toISOString().slice(0,10);
+  var m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);                      // 2026-09-24
+  if(m) return _isoYMD(+m[1], +m[2], +m[3]);
+  m=s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);            // 24/09/2026 או 9/24/26
+  if(m){
+    var y=m[3].length===2 ? 2000+(+m[3]) : +m[3], a=+m[1], b=+m[2];
+    return order==='mdy' ? _isoYMD(y,a,b) : _isoYMD(y,b,a);
   }
-  var d2=new Date(s);
-  return isNaN(d2)?'':d2.toISOString().slice(0,10);
+  if(/^\d+(\.\d+)?$/.test(s)){                                         // מספר סידורי של אקסל
+    var n=Math.floor(parseFloat(s));
+    if(n<30000 || n>80000) return '';                                   // 1982-2119: אחרת זה לא תאריך
+    var d=new Date(Date.UTC(1899,11,30)+n*86400000);
+    return _isoYMD(d.getUTCFullYear(), d.getUTCMonth()+1, d.getUTCDate());
+  }
+  return '';
 }
+function _isoYMD(y,mo,d){
+  if(!(y>=2000 && y<=2100 && mo>=1 && mo<=12 && d>=1 && d<=31)) return '';
+  var t=new Date(Date.UTC(y,mo-1,d));
+  if(t.getUTCMonth()!==mo-1 || t.getUTCDate()!==d) return '';          // 31/02 וכד'
+  return y+'-'+pad2(mo)+'-'+pad2(d);
+}
+/* תאריך שהוקלד כטקסט "1/9/26" יכול להיות יום/חודש או חודש/יום. מכריעים
+   לפי כל הקובץ: מספר שני גדול מ-12 = אמריקאי; מספר ראשון גדול מ-12 = ישראלי. */
+function detectDateOrder(values){
+  var us=0, il=0, text=0;
+  values.forEach(function(v){
+    var m=String(v==null?'':v).trim().match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);
+    if(!m) return;
+    text++;
+    var a=+m[1], b=+m[2];
+    if(b>12 && a<=12) us++;
+    else if(a>12 && b<=12) il++;
+  });
+  if(us && il) return {order:null, mixed:true};
+  if(us) return {order:'mdy'};
+  if(il) return {order:'dmy'};
+  return {order:'dmy', ambiguous: text>0};
+}
+function _isoDaysFromToday(n){ var d=new Date(); d.setDate(d.getDate()+n); return _isoYMD(d.getFullYear(), d.getMonth()+1, d.getDate()); }
+function _dmy(iso){ var m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? (m[3]+'/'+m[2]+'/'+m[1]) : (iso||''); }
 function pad2(n){ n=String(n); return n.length<2?('0'+n):n; }
 
 function renderPayImpPreview(){
   var el=document.getElementById('payImpPreview');
   if(!_impRows.length){ el.innerHTML=''; document.getElementById('payImpStartBtn').style.display='none'; return; }
-  var okN=_impRows.filter(function(r){return r.ok;}).length, badN=_impRows.length-okN;
+  var okN=_impRows.filter(function(r){return r.ok;}).length;
+  var dupN=_impRows.filter(function(r){return r.dup;}).length;
+  var badN=_impRows.filter(function(r){return !r.ok && !r.dup;}).length;
+  var futN=_impRows.filter(function(r){return r.ok && r.future;}).length;
   var total=_impRows.filter(function(r){return r.ok;}).reduce(function(s,r){return s+r.amount;},0);
   var rows=_impRows.map(function(r){
-    return '<tr style="background:'+(r.ok?'#fff':'#fff4f4')+'">'+
-      '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0">'+(r.ok?'✅':'⚠️')+'</td>'+
-      '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0">'+(r.date||'—')+'</td>'+
+    var icon=r.ok?(r.future?'⚠️':'✅'):(r.dup?'🔁':'❌');
+    var dcell=r.date?(_dmy(r.date)+'<div style="font-size:11px;color:#888">'+escH(dateStrToHeb(r.date))+'</div>'):'—';
+    return '<tr style="background:'+(r.ok?'#fff':(r.dup?'#f5f9ff':'#fff4f4'))+'">'+
+      '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0">'+icon+'</td>'+
+      '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0;white-space:nowrap">'+dcell+'</td>'+
       '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0">'+(r.id||'—')+'</td>'+
-      '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0">'+(r.name||'<span style="color:#c62828">'+r.err+'</span>')+'</td>'+
+      '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0">'+
+        (r.err ? '<span style="color:#c62828">'+escH(r.err)+'</span>'+(r.name?'<div>'+escH(r.name)+'</div>':'')
+               : escH(r.name)+(r.dup?'<div style="font-size:11px;color:#1565c0">כבר קיים במערכת (אותו תאריך וסכום)</div>':'')
+                 +(r.future?'<div style="font-size:11px;color:#e65100">תאריך עתידי - לבדוק</div>':''))+'</td>'+
       '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0;text-align:left">₪'+r.amount.toLocaleString()+'</td>'+
       '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0">'+(r.method||'')+'</td>'+
       '<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0;font-size:12px;color:#666">'+(r.note||'')+'</td></tr>';
@@ -2264,15 +2322,29 @@ function renderPayImpPreview(){
   el.innerHTML=
     '<div style="display:flex;gap:10px;margin-bottom:8px;flex-wrap:wrap">'+
       '<div class="summary-card" style="flex:1"><div class="val" style="color:#2e7d32">'+okN+'</div><div class="lbl">תשלומים תקינים</div></div>'+
+      (dupN?'<div class="summary-card" style="flex:1"><div class="val" style="color:#1565c0">'+dupN+'</div><div class="lbl">כבר קיימים</div></div>':'')+
       '<div class="summary-card" style="flex:1"><div class="val" style="color:'+(badN?'#c62828':'#999')+'">'+badN+'</div><div class="lbl">שורות עם בעיה</div></div>'+
       '<div class="summary-card" style="flex:1"><div class="val">₪'+total.toLocaleString()+'</div><div class="lbl">סה"כ לשיוך</div></div>'+
     '</div>'+
+    (_impDateFmt.order==='mdy'?'<div style="background:#e3f2fd;border:1px solid #90caf9;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:13px">📅 התאריכים בקובץ בפורמט חודש/יום (אמריקאי) - הומרו בהתאם. בדוק בעמודת התאריך שהם נכונים.</div>':'')+
+    (_impDateFmt.ambiguous?'<div style="background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:13px">📅 כל התאריכים בקובץ יכולים להיקרא גם כיום/חודש וגם כחודש/יום - הונח <b>יום/חודש</b>. בדוק בעמודת התאריך (כולל התאריך העברי) שהם נכונים לפני השמירה.</div>':'')+
+    (_impDateFmt.mixed?'<div style="background:#ffebee;border:1px solid #ef9a9a;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:13px;color:#c62828">📅 בקובץ יש גם תאריכים יום/חודש וגם חודש/יום - שורות שאי אפשר להכריע בהן סומנו כשגויות. מומלץ לתקן את עמודת התאריך באקסל.</div>':'')+
+    (futN?'<div style="background:#fff3e0;border:1px solid #ffb74d;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:13px">⚠️ '+futN+' תשלומים בתאריך עתידי - אם זה לא שיקים דחויים, כנראה התאריך התהפך.</div>':'')+
+    (dupN?'<div style="background:#f5f9ff;border:1px solid #bbdefb;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:13px">🔁 '+dupN+' תשלומים כבר קיימים במערכת (אותו תורם, תאריך וסכום) ולא יישמרו שוב. '+
+       '<label style="cursor:pointer;margin-right:8px"><input type="checkbox" '+(_impIncludeDups?'checked':'')+' onchange="setImpIncludeDups(this.checked)"> לשמור אותם בכל זאת</label></div>':'')+
     (badN?'<div style="background:#fff3e0;border:1px solid #e6cf8f;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:13px">⚠️ שורות עם בעיה יידלגו אוטומטית.</div>':'')+
     '<div style="border:1px solid #eee;border-radius:8px;overflow:auto;max-height:38vh"><table style="width:100%;border-collapse:collapse;font-size:13px">'+
     '<thead><tr style="background:#f5f7ff"><th style="padding:8px;width:34px"></th><th style="padding:8px;text-align:right">תאריך</th><th style="padding:8px;text-align:right">מס\' תורם</th><th style="padding:8px;text-align:right">שם</th><th style="padding:8px;text-align:left">סכום</th><th style="padding:8px;text-align:right">אופן</th><th style="padding:8px;text-align:right">הערה</th></tr></thead>'+
     '<tbody>'+rows+'</tbody></table></div>';
   document.getElementById('payImpStartBtn').style.display = okN? '' : 'none';
   document.getElementById('payImpNoAllocBtn').style.display = okN? '' : 'none';
+}
+var _impDateFmt={order:'dmy'};
+var _impIncludeDups=false;
+function setImpIncludeDups(on){
+  _impIncludeDups=on;
+  _impRows.forEach(function(r){ if(r.dup) r.ok=on; });
+  renderPayImpPreview();
 }
 /* 'import' = שורות מאקסל, 'pending' = תשלומים שכבר במערכת וממתינים לשיוך */
 var _impMode='import';
@@ -2303,21 +2375,60 @@ function uploadWithoutAllocation(){
   if(!confirm('להעלות '+ok.length+' תשלומים בסך \u20AA'+total.toLocaleString()+' בלי לסגור חובות?\n\n'+
               'הם יישמרו כ"ממתינים לשיוך", ותוכל לסגור איתם חובות מתי שתרצה\n'+
               'דרך הכפתור "ממתינים לשיוך" בלשונית תשלומים.')) return;
+  // שמירה מרוכזת בשרת, הכל או כלום. קודם כל תשלום נשלח לבד בלי לבדוק
+  // תשובה - ותשלומים שנדחו (תאריך הפוך) הוצגו כאילו נשמרו.
   var base=Date.now()*100;
-  ok.forEach(function(r,i){
-    var pmt={id:base+i,date:r.date,hebrewDate:dateStrToHeb(r.date),name:r.name,vowId:null,
-      amount:r.amount,method:r.method,numPayments:1,note:r.note,_user:currentUser()};
-    payments.push(pmt); syncToSheets('payment','add',pmt);
-    r.done=true;
+  var rows=ok.map(function(r,i){
+    return {line:r.line, id:base+i, date:r.date, hebrew_date:dateStrToHeb(r.date), name:r.name,
+            vow_id:null, amount:r.amount, method:r.method, num_payments:1, note:r.note};
   });
-  _impStats.created=ok.length;
-  _impStats.pending=ok.length;
-  document.getElementById('payImpStage1').style.display='none';
-  document.getElementById('payImpStage2').style.display='';
-  document.getElementById('payImpStartBtn').style.display='none';
-  document.getElementById('payImpNoAllocBtn').style.display='none';
-  onPaymentsSearch();
-  finishPayImport();
+  var btn=document.getElementById('payImpNoAllocBtn'), lbl=btn.innerHTML;
+  btn.disabled=true; btn.innerHTML='שומר...';
+  window.apiFetch('/payments/bulk',{method:'POST',body:{rows:rows}})
+    .then(function(r){ return r.json().catch(function(){return {};}).then(function(d){ return {ok:r.ok,d:d}; }); })
+    .then(function(res){
+      btn.disabled=false; btn.innerHTML=lbl;
+      if(!res.ok){
+        var det=(res.d.details||[]).slice(0,12).join('\n');
+        alert('\u274C '+(res.d.error||'השמירה נכשלה - לא נשמר כלום')+(det?'\n\n'+det:''));
+        return;
+      }
+      (res.d.rows||[]).forEach(function(p){ payments.push(typeof _payFromApi==='function' ? _payFromApi(p) : p); });
+      ok.forEach(function(r){ r.done=true; });
+      _impStats.created=res.d.created;
+      _impStats.pending=res.d.created;
+      document.getElementById('payImpStage1').style.display='none';
+      document.getElementById('payImpStage2').style.display='';
+      document.getElementById('payImpStartBtn').style.display='none';
+      document.getElementById('payImpNoAllocBtn').style.display='none';
+      onPaymentsSearch();
+      finishPayImport();
+    })
+    .catch(function(){
+      btn.disabled=false; btn.innerHTML=lbl;
+      alert('שגיאת חיבור - לא ברור אם נשמר. רענן את הדף ובדוק לפני שמנסים שוב.\n(בהעלאה חוזרת, תשלומים שכבר נשמרו יזוהו ולא יוכפלו.)');
+    });
+}
+
+/* תשלום שהשרת דחה - מודיעים, וטוענים את התשלומים מחדש מהשרת כדי שהמסך
+   יראה רק מה שבאמת נשמר. (הודעה אחת גם אם כמה נכשלו יחד.) */
+var _payErrShown=false;
+function _onPaySaveError(err){
+  if(_payErrShown) return;
+  _payErrShown=true; setTimeout(function(){ _payErrShown=false; }, 4000);
+  alert('\u274C תשלום לא נשמר בשרת:\n'+((err&&err.error)||'שגיאה')+'\n\nהתשלומים נטענים מחדש מהשרת - בדוק שוב את מה שעשית עכשיו.');
+  reloadPaymentsFromServer();
+}
+function reloadPaymentsFromServer(cb){
+  if(!window.apiFetch || typeof _payFromApi!=='function'){ if(cb) cb(false); return; }
+  window.apiFetch('/payments/all')
+    .then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function(list){
+      payments=list.map(_payFromApi); window.payments=payments;
+      if(typeof onPaymentsSearch==='function') onPaymentsSearch();
+      if(cb) cb(true);
+    })
+    .catch(function(){ if(cb) cb(false); });
 }
 
 /* שיוך מאוחר: עובר על התשלומים שממתינים, באותו מסך בדיוק */
@@ -2489,17 +2600,17 @@ function confirmPayRow(){
     // על המזהה ועל השורה בגיליון, והשאר נוצרים לצידה.
     orig.vowId=parseInt(items[0].vowId)||items[0].vowId;
     orig.amount=items[0].amount;
-    syncToSheets('payment','edit',orig); _impStats.created++;
+    syncToSheets('payment','edit',orig,null,_onPaySaveError); _impStats.created++;
     items.slice(1).forEach(function(it,i){
       var pmt={id:base+i,date:r.date,hebrewDate:heb,name:r.name,vowId:parseInt(it.vowId)||it.vowId,
         amount:it.amount,method:r.method,numPayments:1,note:r.note,_user:currentUser()};
-      payments.push(pmt); syncToSheets('payment','add',pmt); _impStats.created++;
+      payments.push(pmt); syncToSheets('payment','add',pmt,null,_onPaySaveError); _impStats.created++;
     });
   } else {
     items.forEach(function(it,i){
       var pmt={id:base+i,date:r.date,hebrewDate:heb,name:r.name,vowId:parseInt(it.vowId)||it.vowId,
         amount:it.amount,method:r.method,numPayments:1,note:r.note,_user:currentUser()};
-      payments.push(pmt); syncToSheets('payment','add',pmt); _impStats.created++;
+      payments.push(pmt); syncToSheets('payment','add',pmt,null,_onPaySaveError); _impStats.created++;
     });
   }
 
@@ -2507,7 +2618,7 @@ function confirmPayRow(){
     if(keepPending){
       var rest={id:base+items.length+1,date:r.date,hebrewDate:heb,name:r.name,vowId:null,
         amount:leftover,method:r.method,numPayments:1,note:r.note,_user:currentUser()};
-      payments.push(rest); syncToSheets('payment','add',rest); _impStats.pending++;
+      payments.push(rest); syncToSheets('payment','add',rest,null,_onPaySaveError); _impStats.pending++;
     } else {
       postCredit(r.name, leftover, r.date, _impMode==='pending'?'עודף משיוך תשלום':'עודף מהעלאת תשלומים');
       _impStats.credited+=leftover;
@@ -2591,10 +2702,13 @@ function onCreditFieldsInput(){
 function postCredit(person, amount, date, note, cb){
   window.apiFetch('/credits',{method:'POST',body:{
     person:person, amount:amount, date:date, hebrew_date:dateStrToHeb(date), note:note||''
-  }}).then(function(r){return r.ok?r.json():null;}).then(function(){
+  }}).then(function(r){ return r.json().catch(function(){return {};}).then(function(d){ return {ok:r.ok,d:d}; }); })
+  .then(function(res){
+    // היתרה מתעדכנת במסך רק אם השרת באמת שמר
+    if(!res.ok){ alert('\u274C הזכות של '+person+' לא נשמרה בשרת: '+((res.d&&res.d.error)||'שגיאה')); if(cb)cb(false); return; }
     _creditBal[person]=(_creditBal[person]||0)+amount;
-    if(cb)cb();
-  }).catch(function(){ if(cb)cb(); });
+    if(cb)cb(true);
+  }).catch(function(){ alert('\u274C שגיאת חיבור - הזכות של '+person+' לא נשמרה'); if(cb)cb(false); });
 }
 /* יומן זכויות של אדם */
 function openCreditsLog(name){
@@ -3432,7 +3546,7 @@ function closePaymentModal(){document.getElementById('paymentModalOverlay').clas
 function deletePayment(idx){
   if(!confirm('למחוק תשלום זה?'))return;
   var deleted=payments.splice(idx,1)[0];
-  syncToSheets('payment','delete',{id:deleted.id});
+  syncToSheets('payment','delete',{id:deleted.id},null,_onPaySaveError);
   onPaymentsSearch();
   if(document.getElementById('tab-vows').classList.contains('active'))renderVows();
 }
@@ -3451,7 +3565,7 @@ function savePayment(){
     if(rem!=null && amount>rem+0.001){alert('לא ניתן לשלם יותר מיתרת ההתחייבות (₪'+rem.toLocaleString()+')');return;}
     var pmt={id:payments[editPayment].id,date:date,hebrewDate:dateStrToHeb(date),name:name,vowId:parseInt(vowId)||vowId,
       amount:amount,method:method,numPayments:parseInt(document.getElementById('pfNumPayments').value)||1,note:note,_user:currentUser()};
-    payments[editPayment]=pmt;syncToSheets('payment','edit',pmt);
+    payments[editPayment]=pmt;syncToSheets('payment','edit',pmt,null,_onPaySaveError);
     closePaymentModal();onPaymentsSearch();
     if(document.getElementById('tab-vows').classList.contains('active'))renderVows();
     return;
@@ -3479,7 +3593,7 @@ function savePayment(){
   toCreate.forEach(function(item,i){
     var pmt={id:base+i,date:date,hebrewDate:heb,name:name,vowId:parseInt(item.vowId)||item.vowId,
       amount:item.amount,method:method,numPayments:1,note:note,_user:currentUser()};
-    payments.push(pmt);syncToSheets('payment','add',pmt);newIds.push(pmt.id);
+    payments.push(pmt);syncToSheets('payment','add',pmt,null,_onPaySaveError);newIds.push(pmt.id);
   });
   // תנועות זכות: ניצול (שלילי) ו/או שמירת עודף (חיובי)
   if(useCredit>0) postCredit(name, -useCredit, date, 'ניצול זכות בתשלום');

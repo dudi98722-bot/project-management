@@ -8,6 +8,17 @@ const router = express.Router();
 let _seq = 0;
 function genId() { return Date.now() * 1000 + (_seq++ % 1000); }
 
+// תאריך חייב להיות YYYY-MM-DD אמיתי. בלי הבדיקה, תאריך הפוך מאקסל
+// ("2026-28-08") נכשל במסד ב-500 בלי הסבר, והמשתמש לא ידע שלא נשמר.
+function validISODate(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s == null ? '' : s).slice(0, 10));
+  if (!m) return false;
+  const y = +m[1], mo = +m[2], d = +m[3];
+  if (y < 2000 || y > 2100) return false;
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
+}
+
 // GET /api/payments
 router.get('/', authenticate, requirePayments, async (req, res) => {
   try {
@@ -57,10 +68,73 @@ router.get('/all', authenticate, requirePayments, async (req, res) => {
   }
 });
 
+// POST /api/payments/bulk  { rows:[...] } - העלאה מרוכזת ("העלה בלי לסגור חובות").
+// הכל או כלום: שורה פגומה אחת עוצרת את כל ההעלאה עם פירוט, במקום
+// שחצי מהתשלומים יישמרו בשקט וחצי ייעלמו.
+router.post('/bulk', authenticate, requireWrite, requirePayments, async (req, res) => {
+  const rows = Array.isArray(req.body.rows) ? req.body.rows : null;
+  if (!rows || !rows.length) return res.status(400).json({ error: 'אין תשלומים לשמירה' });
+  if (rows.length > 3000) return res.status(400).json({ error: 'עד 3,000 תשלומים בהעלאה אחת' });
+  const errors = [];
+  const items = rows.map((r, i) => {
+    const line = Number(r.line) || (i + 1);
+    const o = {
+      id: /^\d+$/.test(String(r.id)) ? Number(r.id) : genId(),
+      date: String(r.date == null ? '' : r.date).slice(0, 10),
+      hebrew_date: r.hebrew_date || '',
+      name: String(r.name == null ? '' : r.name).trim(),
+      vow_id: r.vow_id || null,
+      amount: Number(r.amount),
+      method: r.method || '',
+      num_payments: r.num_payments || 1,
+      note: r.note || ''
+    };
+    if (!validISODate(o.date)) errors.push(`שורה ${line}: תאריך לא תקין (${r.date})`);
+    if (!o.name) errors.push(`שורה ${line}: חסר שם`);
+    if (!(o.amount > 0)) errors.push(`שורה ${line}: סכום לא תקין`);
+    return o;
+  });
+  if (errors.length) return res.status(400).json({ error: 'יש שורות לא תקינות - לא נשמר כלום', details: errors.slice(0, 50) });
+
+  const client = await pool.connect();
+  const created = [];
+  try {
+    await client.query('BEGIN');
+    const vowIds = [...new Set(items.filter(o => o.vow_id).map(o => String(o.vow_id)))];
+    if (vowIds.length) {
+      const v = await client.query('SELECT id FROM vows WHERE id = ANY($1::bigint[])', [vowIds]);
+      if (v.rows.length !== vowIds.length) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'אחד התשלומים משויך להתחייבות שלא קיימת - לא נשמר כלום' });
+      }
+    }
+    for (const o of items) {
+      const r = await client.query(
+        `INSERT INTO payments (id,date,hebrew_date,name,vow_id,amount,method,num_payments,note,created_by,updated_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10) RETURNING *`,
+        [o.id, o.date, o.hebrew_date, o.name, o.vow_id, o.amount, o.method, o.num_payments, o.note, req.user.id]);
+      created.push(r.rows[0]);
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('payments bulk error:', err.message);
+    return res.status(500).json({ error: 'שגיאת שרת - לא נשמר כלום' });
+  } finally {
+    client.release();
+  }
+  const total = created.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  await logAction(req.user.id, req.user.username, 'import', 'payments', 0,
+    { source: 'bulk', count: created.length, total, ids: created.map(p => p.id) });
+  created.forEach(p => syncPayment('add', p, req.user.username));
+  res.status(201).json({ created: created.length, rows: created });
+});
+
 // POST /api/payments
 router.post('/', authenticate, requireWrite, requirePayments, async (req, res) => {
   const { id: bodyId, date, hebrew_date, name, vow_id, amount, method, num_payments, note } = req.body;
   if (!date || !name || !amount) return res.status(400).json({ error: 'תאריך, שם וסכום חובה' });
+  if (!validISODate(date)) return res.status(400).json({ error: `תאריך לא תקין: ${date}` });
   try {
     const id = /^\d+$/.test(String(bodyId)) ? Number(bodyId) : genId();
     const result = await pool.query(
@@ -81,6 +155,7 @@ router.post('/', authenticate, requireWrite, requirePayments, async (req, res) =
 // PUT /api/payments/:id
 router.put('/:id', authenticate, requireWrite, requirePayments, async (req, res) => {
   const { date, hebrew_date, name, vow_id, amount, method, num_payments, note } = req.body;
+  if (!validISODate(date)) return res.status(400).json({ error: `תאריך לא תקין: ${date}` });
   try {
     const result = await pool.query(
       `UPDATE payments SET date=$1,hebrew_date=$2,name=$3,vow_id=$4,amount=$5,method=$6,num_payments=$7,note=$8,updated_by=$9,updated_at=NOW()
