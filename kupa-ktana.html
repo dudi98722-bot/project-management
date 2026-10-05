@@ -697,10 +697,13 @@ function applyPayload(r){
   S.deposits = r.deposits || []; S.withdrawals = (r.withdrawals || []).map(decorateWd);
   S.categories = r.categories || []; S.users = r.users || [];
   S.totals = r.totals || {deposits:0,withdrawals:0,balance:0};
+  S.scoped = (r.scoped === true);
 }
 
 /* סימון חשבונית מוצג רק מול שרת שתומך בו — אחרת היה מופיע מתג שלא נשמר */
 function hasInvoice(){ return (S.apiVersion || 0) >= 2; }
+/* השרת סימן שהנתונים שהגיעו הם רק של המשתמש הזה */
+function isScoped(){ return S.scoped === true; }
 function decorateWd(w){ w.invoiceHe = w.invoice ? 'התקבלה' : 'חסרה'; return w; }
 
 /* שומר את המצב הנוכחי במטמון, אחרי שינוי מקומי שלא עבר טעינה מחדש */
@@ -952,37 +955,60 @@ function renderDash(w){
       '<button class="btn btn-yellow only-desk" onclick="entryModal(\'deposit\')">⬆️ הפקדה</button>' +
       '<button class="btn btn-primary only-desk" onclick="entryModal(\'withdrawal\')">⬇️ משיכה</button>' +
     '</div>' +
-    '<div class="stats">' +
-      '<div class="stat big' + (S.totals.balance<0?' neg':'') + '">' +
-        '<div class="lbl">💰 יתרה בקופה כרגע</div>' +
-        '<div class="val">' + money(S.totals.balance) + '</div>' +
-        '<div class="sub">' + S.deposits.length + ' הפקדות · ' + S.withdrawals.length + ' משיכות</div></div>' +
-      '<div class="stat in"><div class="lbl">⬆️ סך ההפקדות</div>' +
-        '<div class="val">' + money(S.totals.deposits) + '</div>' +
-        '<div class="sub">החודש: ' + money(sum(mDep)) + '</div></div>' +
-      '<div class="stat out"><div class="lbl">⬇️ סך המשיכות</div>' +
-        '<div class="val">' + money(S.totals.withdrawals) + '</div>' +
-        '<div class="sub">החודש: ' + money(sum(mWd)) + '</div></div>' +
-      '<div class="stat"><div class="lbl">📅 ' + monthLabel(ym) + '</div>' +
-        '<div class="val">' + money(sum(mDep) - sum(mWd)) + '</div>' +
-        '<div class="sub">הפרש הפקדות פחות משיכות</div></div>' +
-    '</div>' +
-    '<div class="card"><div class="card-title">🕘 תנועות אחרונות</div>' +
+    dashStats(mDep, mWd, sum) +
+    '<div class="card"><div class="card-title">🕘 ' +
+      (isScoped() ? 'התנועות האחרונות שלי' : 'תנועות אחרונות') + '</div>' +
       (recent.length ? (isMobile() ? mobileRecent(recent) : '<div class="tbl-scroll"><table class="tbl">' +
         '<thead><tr><th class="nosort">תאריך</th><th class="nosort">תנועה</th>' +
-        '<th class="nosort">פירוט</th><th class="nosort">נרשם על ידי</th>' +
+        '<th class="nosort">פירוט</th>' +
+        (isScoped() ? '' : '<th class="nosort">נרשם על ידי</th>') +
         '<th class="nosort" style="text-align:end">סכום</th></tr></thead><tbody>' +
         recent.map(function(r,i){
           return '<tr' + (i%2?' class="zebra"':'') + '><td class="num">' + fmtDate(r.date) + '</td>' +
             '<td><span class="chip" style="background:' + (r.t==='in'?'var(--green-soft)':'var(--red-soft)') +
               ';color:' + (r.t==='in'?'var(--green)':'var(--red)') + '">' +
               (r.t==='in'?'הפקדה':'משיכה') + '</span></td>' +
-            '<td>' + esc(r.what) + '</td><td class="muted">' + esc(r.who) + '</td>' +
+            '<td>' + esc(r.what) + '</td>' +
+            (isScoped() ? '' : '<td class="muted">' + esc(r.who) + '</td>') +
             '<td class="num ' + (r.t==='in'?'in':'out') + '" style="text-align:end">' +
               (r.t==='in'?'+':'−') + money(r.amount) + '</td></tr>';
         }).join('') + '</tbody></table></div>')
-        : '<div class="empty"><span class="ico">🗒️</span>עדיין אין תנועות בקופה.<br>התחל בהפקדה ראשונה.</div>') +
+        : '<div class="empty"><span class="ico">🗒️</span>' +
+          (isScoped() ? 'עדיין לא רשמת תנועות.<br>הוסף הפקדה או משיכה.'
+                      : 'עדיין אין תנועות בקופה.<br>התחל בהפקדה ראשונה.') + '</div>') +
     '</div>' + fab('');
+}
+
+/* לעובד מוצגת היתרה של הקופה כולה — זה מה שהוא צריך לפני משיכה —
+   ולצידה רק הסכומים שהוא עצמו רשם */
+function dashStats(mDep, mWd, sum){
+  var bal = '<div class="stat big' + (S.totals.balance<0?' neg':'') + '">' +
+    '<div class="lbl">💰 יתרה בקופה כרגע</div>' +
+    '<div class="val">' + money(S.totals.balance) + '</div>' +
+    '<div class="sub">' + (isScoped() ? 'היתרה של כל הקופה'
+      : S.deposits.length + ' הפקדות · ' + S.withdrawals.length + ' משיכות') + '</div></div>';
+
+  if(isScoped()){
+    return '<div class="stats">' + bal +
+      '<div class="stat in"><div class="lbl">⬆️ ההפקדות שלי</div>' +
+        '<div class="val">' + money(sum(S.deposits)) + '</div>' +
+        '<div class="sub">החודש: ' + money(sum(mDep)) + '</div></div>' +
+      '<div class="stat out"><div class="lbl">⬇️ המשיכות שלי</div>' +
+        '<div class="val">' + money(sum(S.withdrawals)) + '</div>' +
+        '<div class="sub">החודש: ' + money(sum(mWd)) + '</div></div>' +
+    '</div>';
+  }
+  return '<div class="stats">' + bal +
+    '<div class="stat in"><div class="lbl">⬆️ סך ההפקדות</div>' +
+      '<div class="val">' + money(S.totals.deposits) + '</div>' +
+      '<div class="sub">החודש: ' + money(sum(mDep)) + '</div></div>' +
+    '<div class="stat out"><div class="lbl">⬇️ סך המשיכות</div>' +
+      '<div class="val">' + money(S.totals.withdrawals) + '</div>' +
+      '<div class="sub">החודש: ' + money(sum(mWd)) + '</div></div>' +
+    '<div class="stat"><div class="lbl">📅 ' + monthLabel(monthOf(S.today)) + '</div>' +
+      '<div class="val">' + money(sum(mDep) - sum(mWd)) + '</div>' +
+      '<div class="sub">הפרש הפקדות פחות משיכות</div></div>' +
+  '</div>';
 }
 
 /* אותן תנועות, כשאין רוחב לטבלה */
@@ -997,7 +1023,7 @@ function mobileRecent(list){
         '<span class="mc-amt ' + (inn?'in':'out') + '">' + (inn?'+':'−') + money(r.amount) + '</span>' +
       '</div>' +
       '<div class="mc-note">' + esc(r.what) + '</div>' +
-      '<div class="mc-bot">' + esc(r.who) + '</div></div>';
+      (isScoped() ? '' : '<div class="mc-bot">' + esc(r.who) + '</div>') + '</div>';
   }).join('') + '</div>';
 }
 
@@ -1010,27 +1036,44 @@ var WD_COLS = [
   { k:'catName',   t:'סוג הוצאה',      type:'pick', chip:true },
   { k:'details',   t:'פרטים נוספים',   type:'text' },
   { k:'invoiceHe', t:'חשבונית',        type:'pick', invoice:true, needsInvoice:true },
-  { k:'userName',  t:'נרשם על ידי',    type:'pick' },
+  { k:'userName',  t:'נרשם על ידי',    type:'pick', hideWhenScoped:true },
   { k:'createdAt', t:'נרשם בתאריך',    type:'text', muted:true }
 ];
+var DEP_COLS = [
+  { k:'date',      t:'תאריך',          type:'date' },
+  { k:'amount',    t:'סכום',           type:'money', cls:'in', sum:true, end:true },
+  { k:'note',      t:'הערה',           type:'text' },
+  { k:'userName',  t:'נרשם על ידי',    type:'pick', hideWhenScoped:true },
+  { k:'createdAt', t:'נרשם בתאריך',    type:'text', muted:true }
+];
+var CAT_COLS = [
+  { k:'name',      t:'שם הסוג',       type:'text' },
+  { k:'uses',      t:'מספר משיכות',   type:'num', sum:true },
+  { k:'total',     t:'סך ההוצאה',     type:'money', cls:'out', sum:true, end:true },
+  { k:'userName',  t:'נוצר על ידי',   type:'pick', hideWhenScoped:true },
+  { k:'createdAt', t:'נוצר בתאריך',   type:'text', muted:true }
+];
+/* עמודה שאין בה טעם למשתמש הנוכחי פשוט לא מוצגת: אצל עובד כל השורות
+   ממילא שלו, והשרת גם לא שולח את שמות האחרים */
+function visibleCols(list){
+  return list.filter(function(c){
+    if(c.needsInvoice && !hasInvoice()) return false;
+    if(c.hideWhenScoped && isScoped()) return false;
+    return true;
+  });
+}
 var TABLES = {
   dep: {
-    title:'הפקדות', icon:'⬆️', kind:'deposit', file:'הפקדות',
+    get title(){ return isScoped() ? 'ההפקדות שלי' : 'הפקדות'; },
+    icon:'⬆️', kind:'deposit', file:'הפקדות',
     rows:function(){ return S.deposits; },
-    cols:[
-      { k:'date',     t:'תאריך',          type:'date' },
-      { k:'amount',   t:'סכום',           type:'money', cls:'in', sum:true, end:true },
-      { k:'note',     t:'הערה',           type:'text' },
-      { k:'userName', t:'נרשם על ידי',    type:'pick' },
-      { k:'createdAt',t:'נרשם בתאריך',    type:'text', muted:true }
-    ]
+    get cols(){ return visibleCols(DEP_COLS); }
   },
   wd: {
-    title:'משיכות', icon:'⬇️', kind:'withdrawal', file:'משיכות',
+    get title(){ return isScoped() ? 'המשיכות שלי' : 'משיכות'; },
+    icon:'⬇️', kind:'withdrawal', file:'משיכות',
     rows:function(){ return S.withdrawals; },
-    get cols(){
-      return WD_COLS.filter(function(c){ return !c.needsInvoice || hasInvoice(); });
-    }
+    get cols(){ return visibleCols(WD_COLS); }
   },
   cat: {
     title:'סוגי הוצאות', icon:'🏷️', file:'סוגי הוצאות',
@@ -1042,13 +1085,7 @@ var TABLES = {
                  total:used.reduce(function(s,w){ return s+(Number(w.amount)||0); },0) };
       });
     },
-    cols:[
-      { k:'name',     t:'שם הסוג',       type:'text' },
-      { k:'uses',     t:'מספר משיכות',   type:'num', sum:true },
-      { k:'total',    t:'סך ההוצאה',     type:'money', cls:'out', sum:true, end:true },
-      { k:'userName', t:'נוצר על ידי',   type:'pick' },
-      { k:'createdAt',t:'נוצר בתאריך',   type:'text', muted:true }
-    ]
+    get cols(){ return visibleCols(CAT_COLS); }
   },
   usr: {
     title:'משתמשים', icon:'👥', file:'משתמשים',
@@ -2154,7 +2191,8 @@ function mcardHtml(tk, r){
       '<div class="mc-top"><span class="mc-date">' + fmtDate(r.date) + '</span>' +
         '<span class="mc-amt in">+' + money(r.amount) + '</span></div>' +
       '<div class="mc-note' + (r.note?'':' empty') + '">' + (r.note ? esc(r.note) : 'ללא הערה') + '</div>' +
-      '<div class="mc-bot">' + esc(r.userName) + acts + '</div></div>';
+      (isScoped() && !acts ? '' : '<div class="mc-bot">' +
+        (isScoped() ? '' : esc(r.userName)) + acts + '</div>') + '</div>';
   }
   if(tk === 'wd'){
     return '<div class="mcard"' + tap + '>' +
@@ -2163,8 +2201,11 @@ function mcardHtml(tk, r){
         '<span class="mc-amt out">−' + money(r.amount) + '</span></div>' +
       '<div class="mc-note' + (r.details?'':' empty') + '">' +
         (r.details ? esc(r.details) : 'ללא פירוט') + '</div>' +
-      '<div class="mc-bot">' + esc(r.userName) +
-        (hasInvoice() ? invBadge(r, false, true) : '') + acts + '</div></div>';
+      (function(){
+        var bot = (isScoped() ? '' : esc(r.userName)) +
+                  (hasInvoice() ? invBadge(r, false, true) : '') + acts;
+        return bot ? '<div class="mc-bot">' + bot + '</div>' : '';
+      })() + '</div>';
   }
   if(tk === 'cat'){
     return '<div class="mcard"' + tap + '>' +

@@ -53,7 +53,7 @@ var DATE_FIELDS = { date: 1 };
 var NUM_FIELDS  = { amount: 1 };
 var BOOL_FIELDS = { deleted: 1, active: 1, invoice: 1 };
 
-var API_VERSION    = 2;    // הממשק בודק את המספר הזה כדי לדעת אילו יכולות קיימות בשרת
+var API_VERSION    = 3;    // הממשק בודק את המספר הזה כדי לדעת אילו יכולות קיימות בשרת
 var SCHEMA_VERSION = '2';  // להעלות בכל פעם שמוסיפים עמודה לגיליון
 
 /* רוחב כל לשונית בגרסה הראשונה. אם בעמודה שנוספה אחר כך כבר יש ערך
@@ -371,17 +371,35 @@ function payload_(me) {
   var withdrawals = readAll_('withdrawals');
   var categories  = readAll_('categories');
 
+  /* היתרה נספרת על כל הקופה, לפני הסינון: גם עובד צריך לדעת כמה כסף
+     יש בקופה לפני שהוא מוציא ממנה. */
   var totalIn = 0, totalOut = 0;
   deposits.forEach(function (d)    { totalIn  += d.amount; delete d._row; });
   withdrawals.forEach(function (w) { totalOut += w.amount; delete w._row; });
   categories.forEach(function (c)  { delete c._row; });
 
+  var scoped = !isManager_(me);
+  if (scoped) {
+    /* עובד מקבל רק את השורות שהוא עצמו רשם. הסינון כאן ולא בדפדפן —
+       מה שלא נשלח אי אפשר לחשוף מהלקוח. */
+    deposits    = deposits.filter(function (d) { return d.userId === me.id; });
+    withdrawals = withdrawals.filter(function (w) { return w.userId === me.id; });
+    /* רשימת סוגי ההוצאה משותפת לכולם, אבל בלי לחשוף מי מהצוות יצר כל סוג */
+    categories  = categories.map(function (c) {
+      return { id: c.id, name: c.name, createdAt: c.createdAt };
+    });
+  }
+
   var out = {
     ok: true, apiVersion: API_VERSION, user: pubUser_(me), today: today_(),
     deposits: deposits, withdrawals: withdrawals, categories: categories,
-    totals: { deposits: totalIn, withdrawals: totalOut, balance: totalIn - totalOut }
+    /* לעובד נשלחת היתרה בלבד. הסכומים הכלליים הם נתון על מה שאחרים רשמו. */
+    totals: scoped ? { balance: totalIn - totalOut }
+                   : { deposits: totalIn, withdrawals: totalOut, balance: totalIn - totalOut }
   };
-  if (isManager_(me)) {
+  if (scoped) {
+    out.scoped = true;
+  } else {
     out.users = readAll_('users', true).map(function (u) { return pubUser_(u); });
   }
   return out;
