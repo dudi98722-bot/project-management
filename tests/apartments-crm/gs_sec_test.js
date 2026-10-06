@@ -143,7 +143,7 @@ const ldM = post({ action: 'load', codeHash: H.mgmt }).data;
 t('A01-1 mgmt: bank/withdrawals/recurring/incMgmtPays empty', ldM.bankMoves.length === 0 && ldM.withdrawals.length === 0 && ldM.recurring.length === 0 && ldM.incMgmtPays.length === 0 && ldM.stmtBanks.length === 0);
 t('mgmt: only mgmt-enabled expenses + manager payments', ldM.expenses.map(e => e.id).join() === 'e1' && ldM.payments.map(p => p.id).join() === 'py1');
 const ldV = post({ action: 'load', codeHash: H.viewer }).data;
-t('viewer scoped like editor', ldV.bankMoves.length === 1 && ldV.expenses.length === 1);
+t('viewer scoped: own expenses only, no unassigned bank lines', ldV.bankMoves.length === 0 && ldV.expenses.length === 1, ldV.bankMoves);
 
 /* ======================= 4. הרשאות כתיבה (A01-2/3/5/6, A06-03) ======================= */
 reset();
@@ -246,6 +246,7 @@ const bad = ctx.doPost({ postData: { contents: '{not json' } });
 t('malformed JSON → generic error, no stack', bad.ok === false && !/SyntaxError|at /.test(JSON.stringify(bad)), bad);
 t('unknown action w/o auth → unauthorized', post({ action: 'nope', codeHash: H.bad }).error === 'unauthorized');
 t('admin-only file action as editor → forbidden + logged', post({ action: 'filesInfo', codeHash: H.editor }).error === 'forbidden' && (book.getSheetByName('_seclog') || { rows: [] }).rows.some(r => r[1] === 'forbidden'));
+t('fileMove as editor → forbidden', post({ action: 'fileMove', codeHash: H.editor, fileId: 'F1', aptId: 'a1', kind: 'contract' }).error === 'forbidden');
 
 /* ======================= 9. נוסחאות בגיליון (A05) ======================= */
 t('sheetSafe neutralises formula prefix', ctx.sheetSafe('=HYPERLINK("x")') === "'=HYPERLINK(\"x\")" && ctx.sheetSafe('רגיל') === 'רגיל' && ctx.sheetSafe(5) === 5);
@@ -272,7 +273,7 @@ sv = saveAs(H.admin, d => { d.recurring.push({ id: 'rcMix', apartmentIds: ['a1',
 let ldR = post({ action: 'load', codeHash: H.editor }).data;
 t('REG-01 shared recurring rule visible to editor', ldR.recurring.some(r => r.id === 'rcMix'));
 sv = saveAs(H.editor, d => { d.expenses[0].note = 'x'; d.recurring.find(r => r.id === 'rcMix').lastRun = '2026-09-30'; });
-t('REG-01 editor save with shared rule ok, rule updated, foreign apt kept', sv.ok && !sv.dropped.length && readDB().recurring.find(r => r.id === 'rcMix').lastRun === '2026-09-30' && readDB().recurring.find(r => r.id === 'rcMix').apartmentIds.join() === 'a1,a2', sv);
+t('REG-01/ED-01 editor save with shared rule: save ok, shared rule kept as stored', sv.ok && sv.dropped.join() === 'recurring:rcMix shared' && readDB().recurring.find(r => r.id === 'rcMix').lastRun === undefined && readDB().recurring.find(r => r.id === 'rcMix').apartmentIds.join() === 'a1,a2' && readDB().expenses[0].note === 'x', sv);
 sv = saveAs(H.editor, d => { d.recurring.find(r => r.id === 'rcMix').apartmentIds = ['a1']; });
 t('REG-01 editor removing foreign apt from shared rule: restored', sv.ok && sv.dropped.join().includes('rcMix') && readDB().recurring.find(r => r.id === 'rcMix').apartmentIds.join() === 'a1,a2', sv);
 sv = saveAs(H.editor, d => { d.recurring.push({ id: 'rcOwn', apartmentIds: ['a1'], amount: 1, deleted: false }); });
@@ -381,7 +382,7 @@ t('R2-03 nested split foreign partner dropped', sv.ok && sv.dropped.join().inclu
 reset();
 sv = saveAs(H.admin, d => { d.accounts.push({ id: 'accG', apartmentId: '', partnerId: 'p2', name: 'כללי', deleted: false }); });
 sv = saveAs(H.editor, d => { d.accounts.find(a => a.id === 'accG').name = 'כללי (שונה)'; });
-t('R2-08 unchanged foreign ref: edit accepted, no dropped noise', sv.ok && !sv.dropped.length && readDB().accounts.find(a => a.id === 'accG').name === 'כללי (שונה)', sv);
+t('R2-08/CG-01 editor rename of global account: kept, reported', sv.ok && sv.dropped.join() === 'accounts:accG shared' && readDB().accounts.find(a => a.id === 'accG').name === 'כללי', sv);
 sv = saveAs(H.editor, d => { d.expenses[0].note = 'unrelated'; });
 t('REG2-02 unrelated save has no dropped noise', sv.ok && !sv.dropped.length, sv);
 // R2-07: שותף משותף לפרוייקט זר
@@ -450,6 +451,240 @@ t('R8 unreadable DB -> storage-error (client does not log out)', sl.error === 's
 reset();
 sv = saveAs(H.editor, d => { d.income[0].split = { p2: 100 }; });
 t('P3c object-shaped split with foreign partner dropped', sv.ok && sv.dropped.join().includes('income:i1 partner'), sv);
+
+
+/* ======================= 13. סבב 4 — בדיקת הרשאות לפי תפקיד ======================= */
+reset();
+(function () {
+  const d = readDB();
+  d.expenses.push({ id: 'eP', apartmentId: 'a1', name: 'מכל', amount: 105, deleted: false });
+  d.expenses.push({ id: 'eK1', apartmentId: 'a1', name: 'גלוי', amount: 100, parentId: 'eP', deleted: false });
+  d.expenses.push({ id: 'eK2', apartmentId: 'a1', name: 'מוסתר', amount: 5, parentId: 'eP', hidden: true, deleted: false });
+  d.expenses.push({ id: 'eHP', apartmentId: 'a1', name: 'אב מוסתר', amount: 500, hidden: true, deleted: false });
+  d.expenses.push({ id: 'eHC', apartmentId: 'a1', name: 'ילד של מוסתר', amount: 500, parentId: 'eHP', deleted: false });
+  d.payments.push({ id: 'pyHC', expenseId: 'eHC', amount: 500, deleted: false });
+  d.expenses.push({ id: 'eDel', apartmentId: 'a1', name: 'נמחקה', amount: 9, deleted: true, deletedByUser: 'דודי', deletedAt: '2026-09-01' });
+  d.partners[0].phone = '050-1111111'; d.partners[0].note = 'הערה';
+  d.recurring.push({ id: 'rcOwn', apartmentIds: ['a1'], amount: 3, deleted: false });
+  d.accounts.push({ id: 'accG', apartmentId: '', partnerId: 'p2', name: 'כללי', deleted: false });
+  d.categories.push({ id: 'cX', name: 'של חנקין בלבד', deleted: false });
+  d.stmtBanks.push({ id: 'sb2', name: 'בנק של חנקין', deleted: false });
+  d.bankMoves.find(b => b.id === 'bm2').stmtBankId = 'sb1';
+  d.settings.futureAdminOnly = { secret: 1 }; d.settings.currency = '₪'; d.settings.paymentMethods = { x: 'ביט' };
+  writeDB(d);
+})();
+let LV = post({ action: 'load', codeHash: H.viewer }).data;
+t('V-01 viewer: no unassigned bank lines / withdrawals', LV.bankMoves.length === 0 && LV.withdrawals.length === 0 && LV.incMgmtPays.length === 0, LV.bankMoves);
+t('V-02/MGMT-01 viewer: children of hidden stage hidden, with their payments', !LV.expenses.some(e => e.id === 'eHC') && !LV.payments.some(p => p.id === 'pyHC'));
+t('V-03 viewer: container amount = visible children only', LV.expenses.find(e => e.id === 'eP').amount === 100, LV.expenses.find(e => e.id === 'eP'));
+t('V-04 viewer: no recycle-bin rows', !LV.expenses.some(e => e.deleted));
+t('V-05 viewer: partner name only, no phone/notes', LV.partners.length === 1 && LV.partners[0].name && !('phone' in LV.partners[0]) && !('note' in LV.partners[0]), LV.partners);
+t('V-06 viewer: no recurring, no unused banks/accounts/categories', LV.recurring.length === 0 && LV.stmtBanks.length === 0 && !LV.accounts.some(a => a.id === 'accG') && !LV.categories.some(c => c.id === 'cX'), [LV.stmtBanks, LV.accounts.map(a => a.id), LV.categories.map(c => c.id)]);
+t('V-07 settings allowlist for non-admin', JSON.stringify(Object.keys(LV.settings).sort()) === JSON.stringify(['currency', 'paymentMethods']), LV.settings);
+let LE = post({ action: 'load', codeHash: H.editor }).data;
+t('editor keeps what its screens need (unassigned lines, recycle bin, partner phone, rules)', LE.bankMoves.some(b => b.id === 'bm2') && LE.expenses.some(e => e.id === 'eDel') && LE.partners[0].phone === '050-1111111' && LE.recurring.some(r => r.id === 'rcOwn'));
+t('editor: hidden-stage children hidden too', !LE.expenses.some(e => e.id === 'eHC') && !LE.payments.some(p => p.id === 'pyHC'));
+t('editor: settings allowlist', !('futureAdminOnly' in LE.settings));
+let LM = post({ action: 'load', codeHash: H.mgmt }).data;
+t('MGMT-02/03 mgmt: no project notes/splits, no supplier notes/links, no categories', LM.categories.length === 0 && LM.apartments.every(a => !('notes' in a) && !('splitPresets' in a)) && LM.expenses.every(e => !('note' in e) && !('invoiceLink' in e)) && LM.payments.every(p => !('accountId' in p)), [LM.apartments, LM.expenses]);
+// כתיבה
+sv = saveAs(H.editor, d => { d.expenses.find(e => e.id === 'eP').amount = 100; d.expenses[0].note = 'ok'; });
+t('V-03/ED-08 editor save keeps stored container amount', sv.ok && readDB().expenses.find(e => e.id === 'eP').amount === 105 && readDB().expenses[0].note === 'ok', readDB().expenses.find(e => e.id === 'eP'));
+sv = saveAs(H.editor, d => { d.expenses = d.expenses.filter(e => e.id !== 'eDel'); });
+t('ED-02 editor cannot purge recycle-bin rows by omission', sv.ok && readDB().expenses.some(e => e.id === 'eDel' && e.deleted), sv);
+sv = saveAs(H.admin, d => { d.expenses = d.expenses.filter(e => e.id !== 'eDel'); });
+t('admin purge still possible, and logged', sv.ok && !readDB().expenses.some(e => e.id === 'eDel') && (book.getSheetByName('_seclog') || { rows: [] }).rows.some(r => r[1] === 'purged-rows'), sv);
+sv = saveAs(H.editor, d => { d.categories.find(c => c.id === 'cX').name = 'PWNED'; d.stmtBanks.find(b => b.id === 'sb1').deleted = true; d.categories.push({ id: 'cNew', name: 'חדשה', deleted: false }); });
+t('CG-02/03 editor: global categories/banks kept, new category allowed', sv.ok && readDB().categories.find(c => c.id === 'cX').name === 'של חנקין בלבד' && !readDB().stmtBanks.find(b => b.id === 'sb1').deleted && readDB().categories.some(c => c.id === 'cNew') && /categories:cX shared/.test(sv.dropped.join()), sv);
+sv = saveAs(H.editor, d => { const g = d.accounts.find(a => a.id === 'accG'); g.apartmentId = 'a1'; });
+t('CG-01 editor cannot take over a global account', readDB().accounts.find(a => a.id === 'accG').apartmentId === '', sv);
+sv = saveAs(H.editor, d => { const b = d.bankMoves.find(x => x.id === 'bm2'); b.amount = 1; b.name = 'HACKED'; b.deleted = true; });
+const bm2b = readDB().bankMoves.find(x => x.id === 'bm2');
+t('ED-03 limited editor cannot alter/delete an unassigned bank line', bm2b.amount === 7 && bm2b.deleted === false && /bankline/.test(sv.dropped.join()), [sv.dropped, bm2b]);
+sv = saveAs(H.editor, d => { d.bankMoves.find(x => x.id === 'bm2').apartmentId = 'a1'; });
+t('ED-03 limited editor can still assign an unassigned line to own project', sv.ok && readDB().bankMoves.find(x => x.id === 'bm2').apartmentId === 'a1', sv);
+sv = saveAs(H.editor, d => { d.expenses.push({ id: 'eNP', apartmentId: 'a1', name: 'x', amount: 1, parentId: 'e2', deleted: false }); });
+t('ED-06 new expense under foreign/hidden parent dropped', !readDB().expenses.some(e => e.id === 'eNP') && /eNP parent/.test(sv.dropped.join()), sv);
+sv = saveAs(H.editor, d => { d.expenses.push({ id: 'eNP2', apartmentId: 'a1', name: 'x', amount: 1, parentId: 'eP', deleted: false }); });
+t('ED-06 new expense under own visible parent ok', sv.ok && readDB().expenses.some(e => e.id === 'eNP2'), sv);
+// ED-07: עורך לא מוגבל מצמיד תשלום להוצאה מוסתרת
+sv = saveAs(H.admin, d => { d.users[1].allowedApartments = []; });
+sv = saveAs(H.editor, d => { d.payments.push({ id: 'pyU', expenseId: 'e2', amount: 1, deleted: false }); });
+t('ED-07 unlimited editor cannot attach payment to hidden expense', !readDB().payments.some(p => p.id === 'pyU') && /pyU new/.test(sv.dropped.join()), sv);
+// ED-09: ייחוס מחיקה ישן לא ניתן לזיוף
+reset();
+(function () { const d = readDB(); d.expenses.push({ id: 'eD2', apartmentId: 'a1', name: 'x', amount: 1, deleted: true, deletedByUser: 'דודי', deletedAt: '2026-09-01' }); writeDB(d); })();
+sv = saveAs(H.editor, d => { const e = d.expenses.find(x => x.id === 'eD2'); e.deletedByUser = 'מישהו אחר'; e.deletedAt = '2020-01-01'; });
+t('ED-09 deletedBy of already-deleted row cannot be forged', readDB().expenses.find(x => x.id === 'eD2').deletedByUser === 'דודי' && readDB().expenses.find(x => x.id === 'eD2').deletedAt === '2026-09-01');
+// V-10: בקשת שחזור של אחר לא מבטלת קוד שבדרך
+reset();
+get('action=requestReset&user=' + encodeURIComponent('דודי'));
+const adminCode = (mails.filter(m => /קוד שחזור/.test(m.subject)).pop().body.match(/(\d{6})/) || [])[1];
+get('action=requestReset&user=' + encodeURIComponent('עורך'));
+get('action=requestReset&user=' + encodeURIComponent('דודי'));
+const resent = (mails.filter(m => /קוד שחזור/.test(m.subject)).pop().body.match(/(\d{6})/) || [])[1];
+t('V-10 repeat request re-sends the same code', resent === adminCode, [adminCode, resent]);
+const vA = get('action=verifyReset&code=' + adminCode);
+t('V-10 admin code still valid after another user requested a reset', vA.ok, vA);
+t('V-10 admin reset completes', post({ action: 'setCode', resetToken: vA.resetToken, codeHash: sha('admin-new-v10') }).ok && post({ action: 'login', codeHash: sha('admin-new-v10') }).ok);
+for (let i = 0; i < 5; i++) get('action=requestReset&user=' + encodeURIComponent('לא קיים ' + i));
+get('action=requestReset&user=' + encodeURIComponent('עורך'));
+t('V-10 requests for other names do not exhaust a user budget', mails.filter(m => /קוד שחזור/.test(m.subject)).length >= 3);
+// MGMT-09: "קוד תפוס" שוב ושוב שורף את האסימון
+reset();
+get('action=requestReset&user=' + encodeURIComponent('עורך'));
+const ec = (mails.filter(m => /קוד שחזור/.test(m.subject)).pop().body.match(/(\d{6})/) || [])[1];
+const vt = get('action=verifyReset&code=' + ec);
+const taken = [1, 2, 3].map(() => post({ action: 'setCode', resetToken: vt.resetToken, codeHash: H.admin }).error);
+t('MGMT-09 code-taken probes burn the token after 3', taken.join() === 'code-taken,code-taken,too-many' && post({ action: 'setCode', resetToken: vt.resetToken, codeHash: sha('free') }).ok === false, taken);
+// V-11: מי שנכנס בעבר לא ננעל בחסימה הכללית
+reset();
+post({ action: 'login', codeHash: H.admin });
+for (let i = 0; i < 60; i++) post({ action: 'login', codeHash: sha('scan' + i) });
+t('V-11 known user passes global block', post({ action: 'login', codeHash: H.admin }).ok);
+t('V-11 never-logged-in user still blocked during global block', post({ action: 'login', codeHash: H.viewer }).error === 'too-many');
+
+
+/* ======================= 14. סבב 5 — אחרי בדיקת התקיפה של סבב 4 ======================= */
+// RB-01: מכל שנמחק עם תת-שלב מוסתר
+reset();
+(function () {
+  const d = readDB();
+  d.expenses.push({ id: 'eC', apartmentId: 'a1', name: 'מכל', amount: 800, deleted: true, deletedBy: 'manual' });
+  d.expenses.push({ id: 'eCV', apartmentId: 'a1', name: 'גלוי', amount: 100, parentId: 'eC', deleted: true, deletedBy: 'expense:eC' });
+  d.expenses.push({ id: 'eCH', apartmentId: 'a1', name: 'מוסתר', amount: 700, parentId: 'eC', hidden: true, deleted: true, deletedBy: 'expense:eC' });
+  writeDB(d);
+})();
+let L5 = post({ action: 'load', codeHash: H.editor }).data;
+t('RB-01 deleted container shows visible-children amount only', L5.expenses.find(e => e.id === 'eC').amount === 100, L5.expenses.find(e => e.id === 'eC'));
+// RB-02: סבא של שלב מוסתר
+reset();
+(function () {
+  const d = readDB();
+  d.expenses.push({ id: 'eG', apartmentId: 'a1', name: 'סבא', amount: 850, deleted: false });
+  d.expenses.push({ id: 'eP2', apartmentId: 'a1', name: 'אב', amount: 800, parentId: 'eG', deleted: false });
+  d.expenses.push({ id: 'eV2', apartmentId: 'a1', name: 'גלוי', amount: 100, parentId: 'eP2', deleted: false });
+  d.expenses.push({ id: 'eH2', apartmentId: 'a1', name: 'מוסתר', amount: 700, parentId: 'eP2', hidden: true, deleted: false });
+  d.expenses.push({ id: 'eS2', apartmentId: 'a1', name: 'אח', amount: 50, parentId: 'eG', deleted: false });
+  writeDB(d);
+})();
+L5 = post({ action: 'load', codeHash: H.viewer }).data;
+t('RB-02 every ancestor of a hidden stage rewritten', L5.expenses.find(e => e.id === 'eP2').amount === 100 && L5.expenses.find(e => e.id === 'eG').amount === 150, [L5.expenses.find(e => e.id === 'eP2').amount, L5.expenses.find(e => e.id === 'eG').amount]);
+reset();
+(function () { const d = readDB(); d.expenses.push({ id: 'eTop', apartmentId: 'a1', name: 'אב', amount: 1, deleted: false }); d.expenses.push({ id: 'eMid', apartmentId: 'a1', name: 'תת', amount: 1, parentId: 'eTop', deleted: false }); writeDB(d); })();
+sv = saveAs(H.editor, d => { d.expenses.push({ id: 'eLow', apartmentId: 'a1', name: 'נכד', amount: 1, parentId: 'eMid', deleted: false }); });
+t('RB-02 one nesting level only (new grandchild dropped)', !readDB().expenses.some(e => e.id === 'eLow') && /eLow parent/.test(sv.dropped.join()), sv);
+sv = saveAs(H.editor, d => { d.expenses.find(e => e.id === 'eTop').parentId = 'e1'; });
+t('RB-02 a stage with children cannot get a parent', readDB().expenses.find(e => e.id === 'eTop').parentId === undefined && /eTop parent/.test(sv.dropped.join()), sv);
+// RB-04/05 + R4-REG-01
+reset();
+(function () {
+  const d = readDB();
+  d.apartments[0].note = 'הערה מייבוא'; d.apartments[0].reviews = [{ id: 'rv1', note: 'ok' }, { id: 'rv2', note: 'נמחקה', deleted: true }];
+  d.income[0].payments = [{ id: 'g1', amount: 10 }, { id: 'g2', amount: 4321, deleted: true, receivedBy: 'bank:accSecret' }];
+  d.accounts.push({ id: 'accSecret', apartmentId: '', name: 'חשבון פרטי', deleted: false });
+  d.accounts.push({ id: 'accOld', apartmentId: 'a1', name: 'חשבון שנמחק', isBank: true, deleted: true });
+  d.withdrawals.push({ id: 'wOld', apartmentId: 'a1', amount: 50, accountId: 'accOld', deleted: false });
+  d.managers.push({ id: 'mOld', apartmentId: 'a1', name: 'מנהל לשעבר', deleted: true });
+  d.payments.push({ id: 'pyM', expenseId: 'e1', amount: 5, recipientType: 'manager', recipientManagerId: 'mOld', deleted: false });
+  d.apartments.push({ id: 'aD', name: 'פרוייקט שנמחק', deleted: true });
+  d.users[2].allowedApartments = ['a1', 'aD'];
+  d.bankMoves.push({ id: 'bmD', apartmentId: 'aD', amount: 9999, deleted: false });
+  writeDB(d);
+})();
+L5 = post({ action: 'load', codeHash: H.mgmt }).data;
+t('RB-04 mgmt does not get project note', L5.apartments.every(a => !('note' in a)), L5.apartments);
+L5 = post({ action: 'load', codeHash: H.viewer }).data;
+t('RB-05 viewer: no deleted nested entries', L5.apartments[0].reviews.length === 1 && L5.income[0].payments.length === 1, [L5.apartments[0].reviews, L5.income[0].payments]);
+t('RB-05 viewer: account used only by a deleted nested entry not sent', !L5.accounts.some(a => a.id === 'accSecret'));
+t('R4-REG-01 viewer keeps deleted account / manager still referenced', L5.accounts.some(a => a.id === 'accOld') && L5.managers.some(m => m.id === 'mOld'), [L5.accounts.map(a => a.id), L5.managers.map(m => m.id)]);
+t('RB-03 viewer: rows of a deleted project not sent', !L5.bankMoves.some(b => b.id === 'bmD'), L5.bankMoves);
+// WB-01 / R4-BYP-01: השמטה של שורות מוגנות
+reset();
+(function () { const d = readDB(); d.recurring.push({ id: 'rcS', apartmentIds: ['a1', 'a2'], amount: 1, deleted: false }); writeDB(d); })();
+sv = saveAs(H.editor, d => {
+  d.categories = d.categories.filter(c => c.id !== 'c1');
+  d.stmtBanks = d.stmtBanks.filter(b => b.id !== 'sb1');
+  d.bankMoves = d.bankMoves.filter(b => b.id !== 'bm2');
+  d.recurring = d.recurring.filter(r => r.id !== 'rcS');
+});
+const S5 = readDB();
+t('WB-01 omitting protected rows does not delete them', !S5.categories.find(c => c.id === 'c1').deleted && !S5.stmtBanks.find(b => b.id === 'sb1').deleted && !S5.bankMoves.find(b => b.id === 'bm2').deleted && !S5.recurring.find(r => r.id === 'rcS').deleted && sv.dropped.length === 4, sv);
+// mass delete cannot be hidden by new rows
+reset();
+(function () { const d = readDB(); for (let i = 0; i < 10; i++) d.withdrawals.push({ id: 'wm' + i, apartmentId: 'a1', amount: i, deleted: false }); writeDB(d); })();
+sv = saveAs(H.admin, d => { d.withdrawals.forEach(w => { if (/^wm/.test(w.id)) w.deleted = true; }); for (let i = 0; i < 10; i++) d.withdrawals.push({ id: 'wn' + i, apartmentId: 'a1', amount: i, deleted: false }); });
+t('mass delete not masked by new rows', readDB().withdrawals.filter(w => /^wm/.test(w.id) && !w.deleted).length === 10, sv);
+// WB-02: שיוך → עריכה → ביטול שיוך
+reset();
+sv = saveAs(H.admin, d => { d.expenses[0].note = 'stamp pool'; });
+t('pool stamped on unassigned lines at save', readDB().bankMoves.find(b => b.id === 'bm2').pool === true);
+reset();
+const s1 = saveAs(H.editor, d => { d.bankMoves.find(b => b.id === 'bm2').apartmentId = 'a1'; });
+const s2 = saveAs(H.editor, d => { const b = d.bankMoves.find(x => x.id === 'bm2'); b.amount = 1; b.name = 'HACKED'; b.deleted = true; });
+const s3 = saveAs(H.editor, d => { d.bankMoves.find(b => b.id === 'bm2').apartmentId = ''; });
+const b5 = readDB().bankMoves.find(b => b.id === 'bm2');
+t('WB-02 assign-edit-unassign cannot rewrite a pool line', s1.ok && b5.amount === 7 && !b5.deleted && b5.apartmentId === 'a1' && b5.pool === true && /bankline/.test(s2.dropped.join()) && /bankline/.test(s3.dropped.join()), [b5, s2.dropped, s3.dropped]);
+// R4-REG-02 / AR-03: אחרי "קוד תפוס" — הלקוח ממשיך עם האסימון; בקשה חדשה שולחת מייל
+reset();
+get('action=requestReset&user=' + encodeURIComponent('עורך'));
+let c5 = (mails.filter(m => /קוד שחזור/.test(m.subject)).pop().body.match(/(\d{6})/) || [])[1];
+let v5 = get('action=verifyReset&code=' + c5);
+let st5 = post({ action: 'setCode', resetToken: v5.resetToken, codeHash: H.admin });
+t('code-taken then retry with same token works', st5.error === 'code-taken' && post({ action: 'setCode', resetToken: v5.resetToken, codeHash: sha('editor-free-1') }).ok);
+reset();
+get('action=requestReset&user=' + encodeURIComponent('עורך'));
+c5 = (mails.filter(m => /קוד שחזור/.test(m.subject)).pop().body.match(/(\d{6})/) || [])[1];
+v5 = get('action=verifyReset&code=' + c5);
+const mBefore = mails.filter(m => /קוד שחזור/.test(m.subject)).length;
+get('action=requestReset&user=' + encodeURIComponent('עורך'));
+t('R4-REG-02 new request after a verified token mails a fresh code', mails.filter(m => /קוד שחזור/.test(m.subject)).length === mBefore + 1);
+// R4-REG-05: קוד שפג — "expired" ולא נספר
+reset();
+get('action=requestReset&user=' + encodeURIComponent('עורך'));
+c5 = (mails.filter(m => /קוד שחזור/.test(m.subject)).pop().body.match(/(\d{6})/) || [])[1];
+(function () { const sh = book.getSheetByName('_reset'); sh.rows[0][1] = Date.now() - 1000; })();
+t('R4-REG-05 expired code reported as expired', get('action=verifyReset&code=' + c5).error === 'expired' && !props.crm_reset_bad);
+// AR-01: מכסת ניחושים לא מתאפסת בשריפה
+reset();
+for (let i = 0; i < 8; i++) get('action=verifyReset&code=00000' + i);
+get('action=requestReset&user=' + encodeURIComponent('דודי'));
+c5 = (mails.filter(m => /קוד שחזור/.test(m.subject)).pop().body.match(/(\d{6})/) || [])[1];
+t('AR-01 after the guess cap even the right code waits for the window', get('action=verifyReset&code=' + c5).error === 'too-many');
+// AR-02: משתמש שהושבת לא חוזר דרך שחזור
+reset();
+get('action=requestReset&user=' + encodeURIComponent('עורך'));
+c5 = (mails.filter(m => /קוד שחזור/.test(m.subject)).pop().body.match(/(\d{6})/) || [])[1];
+v5 = get('action=verifyReset&code=' + c5);
+sv = saveAs(H.admin, d => { d.users[1].active = false; });
+const st6 = post({ action: 'setCode', resetToken: v5.resetToken, codeHash: sha('back-door') });
+t('AR-02 deactivated user cannot finish a pending reset', !st6.ok && !post({ action: 'login', codeHash: sha('back-door') }).ok && readDB().users[1].active === false, st6);
+// AR-05: קוד שנקבע בשחזור עובר חסימה כללית
+reset();
+get('action=requestReset&user=' + encodeURIComponent('דודי'));
+c5 = (mails.filter(m => /קוד שחזור/.test(m.subject)).pop().body.match(/(\d{6})/) || [])[1];
+v5 = get('action=verifyReset&code=' + c5);
+post({ action: 'setCode', resetToken: v5.resetToken, codeHash: sha('new-after-reset') });
+for (let i = 0; i < 60; i++) post({ action: 'login', codeHash: sha('scan2-' + i) });
+t('AR-05 code set via e-mail reset passes the global block', post({ action: 'login', codeHash: sha('new-after-reset') }).ok);
+// AR-06: תשובה אחידה כשאין חלון פתוח
+reset();
+t('AR-06 verify with no pending reset answers bad-code (no user enumeration)', get('action=verifyReset&code=123456').error === 'bad-code');
+
+/* ======================= קטגוריית הכנסה — מנהלים בלבד ======================= */
+reset();
+sv = saveAs(H.admin, d => { const i = d.income.find(x => x.id === 'i1'); i.cat = 'משכורת'; i.subCat = 'חודשית'; });
+t('IC-01 admin sets income category', sv.ok && readDB().income.find(i => i.id === 'i1').cat === 'משכורת', sv);
+t('IC-02 admin load includes income category', post({ action: 'load', codeHash: H.admin }).data.income.find(i => i.id === 'i1').subCat === 'חודשית');
+const ldIC = post({ action: 'load', codeHash: H.editor }).data;
+t('IC-03 editor load: income category sent (open to editors, 06/10)', ldIC.income.some(i => i.cat === 'משכורת' && i.subCat === 'חודשית'), ldIC.income);
+sv = saveAs(H.editor, d => { d.income.find(i => i.id === 'i1').amount = 11; });
+const i1IC = readDB().income.find(i => i.id === 'i1');
+t('IC-04 editor save keeps stored income category', sv.ok && i1IC.amount === 11 && i1IC.cat === 'משכורת' && i1IC.subCat === 'חודשית', i1IC);
+sv = saveAs(H.editor, d => { d.income.find(i => i.id === 'i1').cat = 'זיוף'; d.income.push({ id: 'iC', apartmentId: 'a1', amount: 1, cat: 'חדש', deleted: false }); });
+const dbIC = readDB();
+t('IC-05 editor can set and add income category', sv.ok && dbIC.income.find(i => i.id === 'i1').cat === 'זיוף' && dbIC.income.find(i => i.id === 'iC').cat === 'חדש', dbIC.income);
+t('IC-06 viewer load: income category not sent', !post({ action: 'load', codeHash: H.viewer }).data.income.some(i => 'cat' in i));
 
 console.log(R.join('\n'));
 console.log('\n' + (fails ? fails + ' FAILED' : 'ALL PASSED') + ' / ' + R.length);

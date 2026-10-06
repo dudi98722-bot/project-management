@@ -31,7 +31,7 @@ function doGet(e) {
   if (action === "status") {
     // מידע ציבורי מינימלי בלבד — האם כבר קיים משתמש. בלי נתונים.
     // guard = גרסת ההגנות, לאימות חיצוני שההדבקה נקלטה.
-    return jsonOut({ ok: true, hasUsers: hasAnyUser(), guard: 5, files: 1 });
+    return jsonOut({ ok: true, hasUsers: hasAnyUser(), guard: 8, files: 1 });
   }
   if (action === "requestReset") {
     return jsonOut(requestReset(p.user || ""));
@@ -69,6 +69,7 @@ function doPost(e) {
         return jsonOut({ ok: false, error: "bad-code" });
       }
       clearLoginFails(body.codeHash);
+      noteGoodKey(body.codeHash);
       secLog("login", au.user.id, au.user.role);
       return jsonOut({ ok: true, user: publicUser(au.user) });
     }
@@ -83,7 +84,7 @@ function doPost(e) {
       // המשתמש שביקש את השחזור (נשמר עם הבקשה). בקשה ישנה בלי מזהה — המנהל.
       var target = null;
       for (var i = 0; i < d.users.length; i++) {
-        if (!d.users[i].deleted && chk.userId && d.users[i].id === chk.userId) { target = d.users[i]; break; }
+        if (!d.users[i].deleted && d.users[i].active && chk.userId && d.users[i].id === chk.userId) { target = d.users[i]; break; }
       }
       // אסימון שקושר למשתמש שנמחק בינתיים — נכשל, לא נופלים לחשבון המנהל
       if (!target && chk.userId) return jsonOut({ ok: false, error: "user-not-found" });
@@ -99,16 +100,19 @@ function doPost(e) {
         var o = d.users[k];
         if (!o.deleted && o.active && o.code && codeMatches(o.code, body.codeHash, newDerived) &&
             (!target || o.id !== target.id)) {
+          secLog("reset-code-taken", chk.userId || "", "");
+          if (noteCodeTaken(body.resetToken)) return jsonOut({ ok: false, error: "too-many" });
           return jsonOut({ ok: false, error: "code-taken" });
         }
       }
-      if (target) { target.code = newDerived; target.active = true; }
+      if (target) { target.code = newDerived; }
       else {
         d.users.push({ id: "u" + new Date().getTime(), name: "מנהל", code: newDerived,
           role: "admin", allowedApartments: [], partnerId: null, active: true, deleted: false });
       }
       saveData(d);
-      clearReset();                     // האסימון חד-פעמי — נשרף רק אחרי שהשמירה הצליחה
+      clearReset(body.resetToken);      // האסימון חד-פעמי — נשרף רק אחרי שהשמירה הצליחה
+      noteGoodKey(body.codeHash);       // המייל הוכיח זהות — הקוד החדש לא ייחסם בחסימה כללית
       secLog("code-reset", target ? target.id : "new-admin", "");
       alertOwner("קוד כניסה הוחלף דרך שחזור במייל", "קוד הכניסה של " + (target ? target.name : "מנהל חדש") + " הוחלף.");
       return jsonOut({ ok: true });
@@ -144,7 +148,8 @@ function doPost(e) {
     }
     if (action === "load") {
       // כל משתמש מקבל רק את מה ששויך לו, ולעולם לא את ה-hash של הקודים
-      return jsonOut({ ok: true, data: scopeDataForUser(loadData() || {}, user), user: publicUser(user) });
+      /* auth.data = המסד שהאימות כבר קרא באותה הרצה (קודם נקרא ופוענח פעמיים) */
+      return jsonOut({ ok: true, data: scopeDataForUser(auth.data || loadData() || {}, user), user: publicUser(user) });
     }
     if (action === "save") {
       /* רשימת היתר: רק מנהל ועורך כותבים. תפקיד לא מוכר — לא. */
@@ -158,7 +163,8 @@ function doPost(e) {
     }
     /* ---- קבצים מצורפים בדרייב — מנהל בלבד ---- */
     if (action === "fileUpload" || action === "fileTrash" || action === "filesInfo" ||
-        action === "filesSetRoot" || action === "filesPrepare" || action === "fileCopy") {
+        action === "filesSetRoot" || action === "filesPrepare" || action === "fileCopy" ||
+        action === "fileMove") {
       if (user.role !== "admin") { secLog("forbidden", user.id, action); return jsonOut({ ok: false, error: "forbidden" }); }
       if (action !== "filesInfo") secLog(action, user.id, String(body.name || body.fileId || body.folderId || ""));
       if (action === "fileUpload")   return jsonOut(fileUpload(body));
@@ -166,6 +172,7 @@ function doPost(e) {
       if (action === "filesInfo")    return jsonOut(filesInfo(body));
       if (action === "filesPrepare") return jsonOut(filesPrepare(body));
       if (action === "fileCopy")     return jsonOut(fileCopy(body));
+      if (action === "fileMove")     return jsonOut(fileMove(body));
       return jsonOut(filesSetRoot(body));
     }
     return jsonOut({ ok: false, error: "unknown action" });
@@ -335,6 +342,35 @@ function fileCopy(body) {
   return { ok: true, file: { id: copy.getId(), name: copy.getName(), url: copy.getUrl(),
     mime: mime, size: size }, folderUrl: folder.getUrl() };
 }
+/* העברת קובץ שכבר צורף לתיקייה של סוג אחר באותו פרוייקט — למשל חוזה
+   שצורף להוצאה ונכנס ל"חשבוניות" במקום ל"חוזים". הקובץ זז בדרייב
+   (אותו מזהה ואותו קישור), ואם נשלח שם — מקבל שם לפי הסוג החדש.
+   רק קובץ מתוך תיקיית הקבצים, ולא אסמכתא שיושבת בתיקיית דפי הבנק. */
+function fileMove(body) {
+  var id = String(body.fileId || "");
+  var kind = String(body.kind || "");
+  if (!id) return { ok: false, error: "no-file" };
+  if (!FILE_KIND_FOLDERS[kind]) return { ok: false, error: "bad-kind" };
+  var apt = filesFindApt(String(body.aptId || ""));
+  if (!apt) return { ok: false, error: "project-not-found" };
+  var file;
+  try { file = DriveApp.getFileById(id); } catch (e) { return { ok: false, error: "file-not-found" }; }
+  if (file.isTrashed()) return { ok: false, error: "file-not-found" };
+  var root = filesRoot(), roots = [root.getId()];
+  try { roots = roots.concat(JSON.parse(PropertiesService.getScriptProperties().getProperty(FILES_OLD_ROOTS) || "[]")); } catch (e) {}
+  if (!fileUnderRoot(file, roots)) return { ok: false, error: "outside-root" };
+  var bank = [], bi = root.getFoldersByName(FILES_BANK_NAME);
+  while (bi.hasNext()) bank.push(bi.next().getId());
+  if (bank.length && fileUnderRoot(file, bank)) return { ok: false, error: "bank-file" };
+  var year = String(body.year || "");
+  if (!/^(19|20)\d\d$/.test(year)) year = String(new Date().getFullYear());
+  var folder = filesFolderFor(apt, kind, kind === "doc" ? "" : year, kind === "doc" ? filesSafeName(body.sub, 60) : "");
+  file.moveTo(folder);
+  var name = filesSafeName(body.name, 180);
+  if (name && name !== file.getName()) file.setName(name);
+  return { ok: true, file: { id: file.getId(), name: file.getName(), url: file.getUrl(), kind: kind },
+    folderUrl: folder.getUrl() };
+}
 /* הסרה — לפח של הדרייב (אפשר לשחזר משם), ורק קובץ שבתוך תיקיית הקבצים */
 function fileTrash(body) {
   var id = String(body.fileId || "");
@@ -464,6 +500,31 @@ function restoreFiles(stored, result) {
     });
   });
 }
+/* ----- שדות שרק מנהל ועורך רואים, בתוך טבלאות שגם אחרים רואים -----
+   קטגוריה ותת-קטגוריה של הכנסה (cat / subCat) — פתוחות למנהל ולעורך
+   (החלטת דודי, 06/10/2026). לא נשלחות לצפייה/דמי-ניהול; ובשמירה של מי
+   שאינו מנהל או עורך הן חוזרות מהמאגר. */
+var ADMIN_ONLY_FIELDS = { income: ["cat", "subCat"] };
+function stripAdminFields(d) {
+  Object.keys(ADMIN_ONLY_FIELDS).forEach(function (T) {
+    (d[T] || []).forEach(function (r) {
+      if (r) ADMIN_ONLY_FIELDS[T].forEach(function (f) { delete r[f]; });
+    });
+  });
+}
+function restoreAdminFields(stored, result) {
+  Object.keys(ADMIN_ONLY_FIELDS).forEach(function (T) {
+    var S = Object.create(null);
+    (stored[T] || []).forEach(function (r) { if (r && r.id != null) S[r.id] = r; });
+    (result[T] || []).forEach(function (r) {
+      if (!r) return;
+      var sr = S[r.id];
+      ADMIN_ONLY_FIELDS[T].forEach(function (f) {
+        if (sr && sr[f] !== undefined) r[f] = sr[f]; else delete r[f];
+      });
+    });
+  });
+}
 /* לשונית "קבצים" בגיליון — כל הקבצים עם קישור */
 function filesReadableRows(d, aMap) {
   var KIND = { contract: "חוזה", invoice: "חשבונית", receipt: "תקבול",
@@ -556,12 +617,40 @@ function bytesToHex(bytes) {
   return out.join("");
 }
 function isLegacyCode(c) { return /^[0-9a-f]{64}$/.test(String(c || "")); }
+/* 400 סבבי HMAC רצים בכל פנייה מאומתת — כניסה, טעינה, שמירה, ובדיקת הגרסה
+   שכל לשונית פתוחה שולחת כל 45 שניות. הנגזרת היא פונקציה קבועה של הקוד
+   ושל הפלפל, ולכן:
+   - בתוך אותה הרצה היא מחושבת פעם אחת (KDF_MEMO);
+   - בין הרצות היא נשמרת במטמון הסקריפט — רק אחרי שהקוד התאים למשתמש
+     (kdfRemember), ובמפתח שנגזר מהפלפל: בלי הפלפל אי אפשר לקשר מפתח לקוד,
+     והערך עצמו זהה לנגזרת שכבר שמורה בגיליון. ניחוש שגוי לא נשמר ולא מתקצר.
+   תקלה במטמון — פשוט מחשבים כרגיל. */
+var KDF_CACHE_SEC = 3600;
+var KDF_MEMO = null;
+function kdfCacheKey(key, codeHash) {
+  return "kdf2:" + bytesToHex(Utilities.computeHmacSha256Signature("kdf-cache:" + codeHash, key)).slice(0, 40);
+}
 function deriveCode(codeHash) {
-  var key = pepper(), cur = String(codeHash || "");
-  for (var i = 0; i < KDF_ITER; i++) {
-    cur = bytesToHex(Utilities.computeHmacSha256Signature(cur + ":" + i, key));
+  var key = pepper(), h = String(codeHash || "");
+  if (KDF_MEMO && KDF_MEMO.k === key && KDF_MEMO.h === h) return KDF_MEMO.v;
+  var ck = kdfCacheKey(key, h), v = "";
+  try { v = String(CacheService.getScriptCache().get(ck) || ""); } catch (err) { v = ""; }
+  var hit = /^v2:[0-9a-f]{64}$/.test(v);
+  if (!hit) {
+    var cur = h;
+    for (var i = 0; i < KDF_ITER; i++) {
+      cur = bytesToHex(Utilities.computeHmacSha256Signature(cur + ":" + i, key));
+    }
+    v = "v2:" + cur;
   }
-  return "v2:" + cur;
+  KDF_MEMO = { k: key, h: h, v: v, ck: ck, cached: hit };
+  return v;
+}
+/* נקרא רק אחרי שהקוד התאים למשתמש פעיל — רק אז הנגזרת נכנסת למטמון */
+function kdfRemember(codeHash) {
+  var m = KDF_MEMO;
+  if (!m || m.cached || m.h !== String(codeHash || "")) return;
+  try { CacheService.getScriptCache().put(m.ck, m.v, KDF_CACHE_SEC); m.cached = true; } catch (err) {}
 }
 /* השוואה בזמן קבוע — לא מסגירה כמה תווים תאמו */
 function constEq(a, b) {
@@ -635,8 +724,30 @@ function loginGate(codeHash) {
   var st = loginState(), now = new Date().getTime();
   var e = st.keys[loginKey(codeHash)];
   if (e && e.until && now < e.until) return { ok: false, retryAfter: Math.ceil((e.until - now) / 1000) };
-  if (st.g.until && now < st.g.until) return { ok: false, retryAfter: Math.ceil((st.g.until - now) / 1000) };
+  if (st.g.until && now < st.g.until && !isGoodKey(codeHash)) return { ok: false, retryAfter: Math.ceil((st.g.until - now) / 1000) };
   return { ok: true };
+}
+/* קודים שנכנסו בהצלחה ב-30 הימים האחרונים. בזמן חסימה כללית (סריקה של
+   קודים זרים) הם ממשיכים לעבור; הוויסות לפי קוד ממשיך לחול גם עליהם. */
+var GOOD_PROP = "crm_good_keys", GOOD_DAYS = 30;
+function goodKeys() {
+  try { var m = JSON.parse(PropertiesService.getScriptProperties().getProperty(GOOD_PROP) || "{}"); return (m && typeof m === "object") ? m : {}; }
+  catch (err) { return {}; }
+}
+function isGoodKey(codeHash) {
+  var t = goodKeys()[loginKey(codeHash)];
+  return !!t && new Date().getTime() - t < GOOD_DAYS * 86400000;
+}
+function noteGoodKey(codeHash) {
+  try {
+    var m = goodKeys(), now = new Date().getTime(), k = loginKey(codeHash);
+    if (m[k] && now - m[k] < 86400000) return;            /* מתעדכן לכל היותר פעם ביום */
+    m[k] = now;
+    var keys = Object.keys(m).filter(function (x) { return now - m[x] < GOOD_DAYS * 86400000; })
+      .sort(function (a, b) { return m[b] - m[a]; }).slice(0, 100);
+    var out = {}; keys.forEach(function (x) { out[x] = m[x]; });
+    PropertiesService.getScriptProperties().setProperty(GOOD_PROP, JSON.stringify(out));
+  } catch (err) {}
 }
 function noteLoginFail(codeHash) {
   withLock(function () {
@@ -683,7 +794,8 @@ function authenticate(codeHash) {
     Utilities.sleep(800);
     return { user: null, error: "unauthorized" };
   }
-  return { user: u, error: "" };
+  /* המסד שכבר נקרא כאן חוזר לקורא — "load" לא קורא ומפענח אותו פעם שנייה */
+  return { user: u, error: "", data: d0 };
 }
 
 /* ---------- יומן אבטחה והתראות ----------
@@ -738,7 +850,7 @@ function findUserIn(d, codeHash) {
   var derived = deriveCode(codeHash);
   for (var i = 0; i < d.users.length; i++) {
     var u = d.users[i];
-    if (!u.deleted && u.active && u.code && codeMatches(u.code, codeHash, derived)) return u;
+    if (!u.deleted && u.active && u.code && codeMatches(u.code, codeHash, derived)) { kdfRemember(codeHash); return u; }
   }
   return null;
 }
@@ -753,27 +865,40 @@ function publicUser(u) {
    לקבל ל-OWNER_EMAIL (תאימות לאחור); משתמש אחר בלי מייל מקבל שגיאה. */
 function normName(s) { return String(s || "").replace(/\s+/g, " ").trim(); }
 var RESET_REQ_PROP = "crm_reset_reqs";
-var RESET_REQ_MAX  = 4;             // בקשות שחזור מותרות בשעה
+var RESET_REQ_PER_NAME = 3;         // בקשות שחזור לאותו שם בשעה
+var RESET_REQ_GLOBAL   = 20;        // בקשות שחזור מכל השמות בשעה
 /* בלי ויסות אפשר להציף את תיבת המייל של הבעלים, וגם לדרוס שוב ושוב
    בקשת שחזור לגיטימית שנמצאת באמצע. */
-function resetReqGate() {
+/* nameKey ריק = בדיקת התקרה הכללית בלבד; אחרת — המכסה של השם בלבד */
+function resetReqGate(nameKey) {
   try {
     var props = PropertiesService.getScriptProperties();
     var s = null;
     try { s = JSON.parse(props.getProperty(RESET_REQ_PROP) || "null"); } catch (e) { s = null; }   /* ערך פגום מתוקן, לא פותח את השער */
-    if (!s || typeof s !== "object") s = { n: 0, first: 0 };
+    if (!s || typeof s !== "object" || !s.g || typeof s.k !== "object" || !s.k) s = { g: { n: 0, first: 0 }, k: {} };
     var now = new Date().getTime();
-    if (!s.first || now - s.first > 3600000) { s.n = 0; s.first = now; }
-    s.n = (Number(s.n) || 0) + 1;
+    if (!s.g.first || now - s.g.first > 3600000) { s.g = { n: 0, first: now }; }
+    Object.keys(s.k).forEach(function (k) { if (!s.k[k] || now - s.k[k].first > 3600000) delete s.k[k]; });
+    if (nameKey) {
+      var e = s.k[nameKey] || { n: 0, first: now };
+      e.n = (Number(e.n) || 0) + 1; s.k[nameKey] = e;
+      props.setProperty(RESET_REQ_PROP, JSON.stringify(s));
+      return e.n <= RESET_REQ_PER_NAME;
+    }
+    s.g.n = (Number(s.g.n) || 0) + 1;
     props.setProperty(RESET_REQ_PROP, JSON.stringify(s));
-    return s.n <= RESET_REQ_MAX;
+    if (s.g.n > RESET_REQ_GLOBAL) {
+      alertOwner("הרבה בקשות שחזור קוד", "התקבלו יותר מ-" + RESET_REQ_GLOBAL + " בקשות שחזור בשעה האחרונה. בקשות נוספות נחסמות עד סוף השעה.");
+      return false;
+    }
+    return true;
   } catch (err) {
     secLog("throttle-state-error", "", "reset: " + String(err && err.message || err));
     return false;                         /* אחסון תקול — לא שולחים מיילי שחזור בלי מונה */
   }
 }
 function requestReset(userName) {
-  if (!resetReqGate()) return { ok: false, error: "too-many" };
+  if (!resetReqGate("")) return { ok: false, error: "too-many" };
   try {
     var d = loadData();
     var want = normName(userName);
@@ -788,6 +913,8 @@ function requestReset(userName) {
     /* תשובה אחידה בכל מקרה — שם משתמש לא נכון, או בלי מייל — כדי שאי
        אפשר יהיה לגלות אילו שמות קיימים במערכת */
     var generic = { ok: true, sentTo: "***" };
+    /* מכסה לכל שם — לפי המשתמש שנמצא (שם ריק = המנהל), כדי שאין שתי "דלתות" לאותו חשבון */
+    if (!resetReqGate("n:" + (user ? normName(user.name) : (want || "-")))) return { ok: false, error: "too-many" };
     if (!user) {
       /* אין אף משתמש פעיל במסד (אחרי מחיקה/שחזור)? דלת מילוט אחת:
          קוד שחזור למייל הבעלים הקבוע בקוד. setCode ייצור מנהל חדש. */
@@ -805,11 +932,15 @@ function requestReset(userName) {
         "אפשר לקבוע לו קוד חדש בהגדרות ← משתמשים.");
       return generic;
     }
+    /* לכל משתמש חלון שחזור משלו. בקשה של מישהו אחר לא מבטלת קוד שבדרך.
+       בקשה חוזרת של אותו משתמש בזמן שהקוד בתוקף — אותו קוד נשלח שוב. */
+    var uid0 = String(user.id || ""), pend = null;
+    readResetRows().forEach(function (r) { if (String(r[3] || "") === uid0 && String(r[0] || "")) pend = r; });
     /* קוד אקראי-קריפטוגרפי, לא Math.random */
     var rnd = bytesToHex(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,
       Utilities.getUuid() + ":" + new Date().getTime() + ":" + Utilities.getUuid()));
-    var code = String(100000 + (parseInt(rnd.slice(0, 12), 16) % 900000));
-    var exp  = new Date().getTime() + RESET_MINUTES * 60 * 1000;
+    var code = pend ? String(pend[0]) : String(100000 + (parseInt(rnd.slice(0, 12), 16) % 900000));
+    var exp  = new Date().getTime() + RESET_MINUTES * 60 * 1000;     /* גם קוד שנשלח שוב — תקף 15 דקות מעכשיו */
     MailApp.sendEmail(email,
       "קוד שחזור — מערכת ניהול דירות",
       "שלום " + user.name + ",\n\n" +
@@ -817,11 +948,13 @@ function requestReset(userName) {
       "הקוד תקף ל-" + RESET_MINUTES + " דקות וניתן לשימוש חד-פעמי.\n" +
       "אם לא ביקשת שחזור — התעלם מהודעה זו ושקול להחליף את קוד הכניסה.");
     /* נכתב רק אחרי שהמייל יצא — כישלון בשליחה לא מוחק קוד קודם שבדרך */
-    var sh = ss().getSheetByName(RESET_SHEET) || ss().insertSheet(RESET_SHEET);
-    sh.clear();
-    // עמודה 5 = מונה ניסיונות כושלים (נגד ניחוש בכוח גס)
-    sh.getRange(1, 1, 1, 5).setValues([[code, exp, "", user.id, 0]]);
-    try { sh.hideSheet(); } catch (err) {}
+    /* חלון אחד למשתמש: בקשה חדשה מחליפה גם אסימון שלא נוצל (המבקש הוכיח
+       שוב גישה למייל) */
+    lockedReset(function () {
+      var rows = readResetRows().filter(function (r) { return String(r[3] || "") !== uid0; });
+      rows.push([code, exp, "", uid0, 0, 0]);
+      writeResetRows(rows);
+    });
     secLog("reset-sent", user.id, email.replace(/^(.{2}).*(@.*)$/, "$1***$2"));
     return generic;
   } catch (err) {
@@ -830,34 +963,75 @@ function requestReset(userName) {
   }
 }
 
-var RESET_MAX_TRIES = 5;
+var RESET_MAX_TRIES = 8;           /* ניחושים שגויים מכל המקורות ב-15 דקות, ואז כל הקודים נשרפים */
+var RESET_BAD_PROP  = "crm_reset_bad";
+var RESET_COLS      = 6;           /* קוד, תוקף, אסימון, משתמש, (שמור), "קוד תפוס" */
+function readResetRows(includeExpired) {
+  var sh = ss().getSheetByName(RESET_SHEET);
+  if (!sh || sh.getLastRow() === 0) return [];
+  var now = new Date().getTime();
+  return sh.getRange(1, 1, sh.getLastRow(), RESET_COLS).getValues().filter(function (r) {
+    return (String(r[0] || "") || String(r[2] || "")) && (includeExpired || Number(r[1] || 0) > now);
+  });
+}
+/* מוחק חלונות שחזור של משתמשים שהושבתו/נמחקו או שהקוד/התפקיד/המייל שלהם שונה */
+function clearResetFor(ids) {
+  if (!ids || !ids.length) return;
+  var drop = Object.create(null); ids.forEach(function (x) { drop[String(x)] = 1; });
+  lockedReset(function () {
+    var rows = readResetRows();
+    var keep = rows.filter(function (r) { return !drop[String(r[3] || "")]; });
+    if (keep.length !== rows.length) writeResetRows(keep);
+  });
+}
+function writeResetRows(rows) {
+  var sh = ss().getSheetByName(RESET_SHEET) || ss().insertSheet(RESET_SHEET);
+  sh.clear();
+  if (rows.length) sh.getRange(1, 1, rows.length, RESET_COLS).setValues(rows);
+  try { sh.hideSheet(); } catch (err) {}
+}
+function lockedReset(fn) {
+  var lock = LockService.getScriptLock(), got = false;
+  try { lock.waitLock(10000); got = true; } catch (e) {}
+  try { return fn(); } finally { if (got) lock.releaseLock(); }
+}
 /* מאמת את הקוד מהמייל ומחזיר אסימון קצר-מועד שמתיר קביעת קוד חדש.
-   נעילה: אחרי RESET_MAX_TRIES ניחושים כושלים הקוד נשרף — כך שקוד בן
-   6 ספרות אינו ניתן לניחוש בכוח גס בחלון תוקפו. */
+   ניחושים שגויים נספרים בכלל המערכת; אחרי RESET_MAX_TRIES בחלון כל
+   הקודים שבדרך נשרפים — כך שקוד בן 6 ספרות אינו ניתן לניחוש. */
 function verifyReset(code) {
-  /* אין בקשת שחזור פתוחה? עונים מיד, בלי לתפוס את נעילת השמירה */
-  var pre = ss().getSheetByName(RESET_SHEET);
-  if (!pre || pre.getLastRow() === 0) return { ok: false, error: "no-request" };
   var lock = LockService.getScriptLock();
   try { lock.waitLock(10000); } catch (e) { return { ok: false, error: "busy" }; }
   try {
-    var sh = ss().getSheetByName(RESET_SHEET);
-    if (!sh || sh.getLastRow() === 0) return { ok: false, error: "no-request" };
-    var v = sh.getRange(1, 1, 1, 5).getValues()[0];
-    var stored = String(v[0] || "");
-    var exp    = Number(v[1] || 0);
-    var tries  = Number(v[4] || 0);
-    if (!stored) return { ok: false, error: "no-request" };
-    if (new Date().getTime() > exp) { sh.clear(); return { ok: false, error: "expired" }; }
-    if (String(code).trim() !== stored) {
-      tries++;
-      if (tries >= RESET_MAX_TRIES) { sh.clear(); return { ok: false, error: "too-many" }; }
-      sh.getRange(1, 5).setValue(tries);
+    var props = PropertiesService.getScriptProperties(), now = new Date().getTime(), b = null;
+    try { b = JSON.parse(props.getProperty(RESET_BAD_PROP) || "null"); } catch (e) { b = null; }
+    if (!b || typeof b !== "object" || !b.first || now - b.first > RESET_MINUTES * 60000) b = { n: 0, first: now };
+    /* מכסת הניחושים לא מתאפסת עם שריפת הקודים: עד סוף החלון לא בודקים כלום */
+    if (b.n >= RESET_MAX_TRIES) return { ok: false, error: "too-many" };
+    var rows = readResetRows(), want = String(code || "").trim(), idx = -1;
+    /* חלונות של משתמשים שהושבתו או נמחקו — לא מתקבלים */
+    var d0 = loadData(), live = Object.create(null);
+    ((d0 && d0.users) || []).forEach(function (u) { if (u && !u.deleted && u.active) live[String(u.id)] = 1; });
+    var anyLive = Object.keys(live).length > 0;
+    rows = rows.filter(function (r) { var id = String(r[3] || ""); return id ? !!live[id] : !anyLive; });
+    for (var i = 0; i < rows.length; i++) if (want && String(rows[i][0] || "") === want) { idx = i; break; }
+    if (idx < 0) {
+      /* קוד שפג — "פג תוקף", בלי להיחשב ניחוש */
+      var expired = readResetRows(true).some(function (r) { return want && String(r[0] || "") === want && Number(r[1] || 0) <= now; });
+      if (expired) return { ok: false, error: "expired" };
+      b.n = (Number(b.n) || 0) + 1;
+      props.setProperty(RESET_BAD_PROP, JSON.stringify(b));
+      if (b.n >= RESET_MAX_TRIES) {
+        writeResetRows(rows.filter(function (r) { return !String(r[0] || ""); }));
+        secLog("reset-burned", "", "too many wrong codes");
+        alertOwner("ניחוש קודי שחזור", "נרשמו " + RESET_MAX_TRIES + " קודי שחזור שגויים. כל קודי השחזור שבדרך בוטלו, ושחזור חסום ל-" + RESET_MINUTES + " דקות.");
+        return { ok: false, error: "too-many" };
+      }
       return { ok: false, error: "bad-code" };
     }
     var token = Utilities.getUuid();
     // שומרים את מזהה המשתמש — כדי שהקוד החדש ייקבע לו ולא למנהל
-    sh.getRange(1, 1, 1, 5).setValues([["", new Date().getTime() + 10 * 60 * 1000, token, String(v[3] || ""), 0]]);
+    rows[idx] = ["", new Date().getTime() + 10 * 60 * 1000, token, String(rows[idx][3] || ""), 0, 0];
+    writeResetRows(rows);
     return { ok: true, resetToken: token };
   } catch (err) {
     secLog("server-error", "", "verifyReset: " + String(err && err.message || err));
@@ -869,16 +1043,32 @@ function verifyReset(code) {
    להתחיל את כל השחזור מחדש. הניקוי נעשה רק אחרי הצלחה. */
 function peekResetToken(token) {
   if (!token) return { ok: false, error: "no-token" };
-  var sh = ss().getSheetByName(RESET_SHEET);
-  if (!sh || sh.getLastRow() === 0) return { ok: false, error: "no-request" };
-  var v = sh.getRange(1, 1, 1, 4).getValues()[0];
-  var exp = Number(v[1] || 0);
-  var stored = String(v[2] || "");
-  if (!stored || stored !== token) return { ok: false, error: "bad-token" };
-  if (new Date().getTime() > exp) { sh.clear(); return { ok: false, error: "expired" }; }
-  return { ok: true, userId: String(v[3] || "") };
+  var rows = readResetRows();
+  if (!rows.length) return { ok: false, error: "no-request" };
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][2] || "") === String(token)) return { ok: true, userId: String(rows[i][3] || "") };
+  }
+  return { ok: false, error: "bad-token" };
 }
-function clearReset() { var sh = ss().getSheetByName(RESET_SHEET); if (sh) sh.clear(); }
+/* "קוד תפוס" נספר לכל אסימון; אחרי 3 — האסימון נשרף */
+function noteCodeTaken(token) {
+  return lockedReset(function () {
+    var rows = readResetRows(), burned = false;
+    rows = rows.filter(function (r) {
+      if (String(r[2] || "") !== String(token)) return true;
+      r[5] = (Number(r[5]) || 0) + 1;
+      if (r[5] >= 3) { burned = true; return false; }
+      return true;
+    });
+    writeResetRows(rows);
+    return burned;
+  });
+}
+function clearReset(token) {
+  lockedReset(function () {
+    writeResetRows(readResetRows().filter(function (r) { return String(r[2] || "") !== String(token); }));
+  });
+}
 
 /* ========================= שמירה וטעינה ========================= */
 /* שומר רק אם מונה הגרסה של הנשלח אינו נמוך מהשמור — עותק ישן ממכשיר
@@ -933,7 +1123,10 @@ function restoreMassDeleted(stored, incoming) {
     if (!stored.hasOwnProperty(k)) continue;
     if (k === "settings" || k === "meta") continue;
     if (!Array.isArray(stored[k]) || !Array.isArray(incoming[k])) continue;
-    var before = liveCount(stored[k]), after = liveCount(incoming[k]);
+    var aliveBefore = Object.create(null);
+    stored[k].forEach(function (r) { if (r && !r.deleted && r.id != null) aliveBefore[r.id] = 1; });
+    var before = liveCount(stored[k]), after = 0;
+    incoming[k].forEach(function (r) { if (r && !r.deleted && aliveBefore[r.id]) after++; });
     if (after >= before) continue;
     var mass = (before >= 2 && after === 0) || (before >= 8 && after < before * 0.3);
     if (!mass) continue;
@@ -1050,6 +1243,8 @@ function saveWithRevGuard(data, user) {
        של טבלה מאוכלסת לעולם אינו לגיטימי — משחזרים מהשמור. */
     var restoredTables = restoreMissingTables(stored, toSave);
     /* שורה חיה שחסרה בשמירה נרשמת כמחיקה רכה (ראה softDeleteOmitted) */
+    var purged = countPurged(stored, toSave);
+    if (purged) secLog("purged-rows", (user && user.id) || "", purged);
     var omitted = softDeleteOmitted(stored, toSave, user || {});
     if (omitted.length) secLog("omitted-rows-soft-deleted", (user && user.id) || "", omitted.join(" "));
     /* גם מחיקה רכה של טבלה שלמה מוחזרת — ההגנות האחרות עיוורות לה */
@@ -1071,12 +1266,24 @@ function saveWithRevGuard(data, user) {
     }
     /* מונה הגרסה בבעלות השרת: תמיד השמור + 1. ערך מופרז מהלקוח (למשל
        1e308) היה נועל את כל השמירות של כולם לתמיד. */
+    /* שורת בנק שנשמרה בלי פרוייקט מסומנת כשורה מהמאגר המשותף: פרטי התנועה
+       שלה נשארים מוגנים מעורך מוגבל גם אחרי שיוך */
+    (toSave.bankMoves || []).forEach(function (m) { if (m && !m.apartmentId) m.pool = true; });
     var newRev = storedRev + 1;
     toSave.meta = toSave.meta || {};
     toSave.meta.rev = newRev;
     stampDeletions(stored, toSave, user || {});
     noteUserChanges(stored, toSave, user || {});
+    var resetDrop = [];
+    var before0 = Object.create(null);
+    ((stored && stored.users) || []).forEach(function (u) { if (u) before0[u.id] = u; });
+    ((toSave && toSave.users) || []).forEach(function (u) {
+      var b0 = u && before0[u.id];
+      if (b0 && (u.deleted || !u.active || b0.role !== u.role || String(b0.email || "") !== String(u.email || "") ||
+          storableCode(b0.code) !== storableCode(u.code))) resetDrop.push(u.id);
+    });
     saveData(toSave);
+    clearResetFor(resetDrop);
     secLog("save", (user && user.id) || "", "rev " + newRev + (MERGE_INFO.dropped.length ? " dropped " + MERGE_INFO.dropped.length : ""));
     return { ok: true, savedAt: new Date().toISOString(), rev: newRev,
       restoredTables: restoredTables, dropped: MERGE_INFO.dropped.slice(0, 20) };
@@ -1089,6 +1296,21 @@ function saveWithRevGuard(data, user) {
    יצירה, לקוח חלקי, או ניסיון למחוק בלי להשאיר עקבות) נרשמת כמחיקה
    רכה עם שם המשתמש שהשרת אימת — נשארת בסל המחזור וניתנת לשחזור.
    רץ לפני restoreMassDeleted, כך שהשמטה המונית מטופלת כמחיקה המונית. */
+/* שורות מחוקות (סל המחזור) שהושמטו — כלומר נמחקו לצמיתות */
+function countPurged(stored, next) {
+  var out = [];
+  if (!stored || !next) return "";
+  Object.keys(stored).forEach(function (T) {
+    if (T === "users" || T === "settings" || T === "meta") return;
+    if (!Array.isArray(stored[T]) || !Array.isArray(next[T])) return;
+    var have = Object.create(null);
+    next[T].forEach(function (r) { if (r && r.id != null) have[r.id] = 1; });
+    var n = 0;
+    stored[T].forEach(function (r) { if (r && r.id != null && r.deleted && !have[r.id]) n++; });
+    if (n) out.push(T + " (" + n + ")");
+  });
+  return out.join(" ");
+}
 function softDeleteOmitted(stored, next, user) {
   var out = [], who = (user && user.name) || "", now = new Date().toISOString();
   if (!stored || !next) return out;
@@ -1174,11 +1396,16 @@ function stampDeletions(stored, next, user) {
   Object.keys(next).forEach(function (T) {
     var arr = next[T];
     if (!Array.isArray(arr) || !Array.isArray(stored[T])) return;
-    var was = {};
-    stored[T].forEach(function (r) { if (r && r.id != null) was[r.id] = !!r.deleted; });
+    var was = Object.create(null);
+    stored[T].forEach(function (r) { if (r && r.id != null) was[r.id] = r; });
     arr.forEach(function (r) {
       if (!r || r.id == null) return;
-      if (r.deleted && !was[r.id]) { r.deletedByUser = who; r.deletedAt = now; }
+      var p0 = was[r.id];
+      if (r.deleted && !(p0 && p0.deleted)) { r.deletedByUser = who; r.deletedAt = now; }
+      else if (r.deleted && p0 && p0.deleted) {
+        if (p0.deletedByUser === undefined) delete r.deletedByUser; else r.deletedByUser = p0.deletedByUser;
+        if (p0.deletedAt === undefined) delete r.deletedAt; else r.deletedAt = p0.deletedAt;
+      }
     });
   });
 }
@@ -1221,7 +1448,7 @@ function quickAuth(codeHash) {
     var raw = PropertiesService.getScriptProperties().getProperty(AUTH_PROP);
     if (!raw) return false;
     var list = JSON.parse(raw), derived = deriveCode(codeHash);
-    for (var i = 0; i < list.length; i++) if (constEq(list[i], derived)) return true;
+    for (var i = 0; i < list.length; i++) if (constEq(list[i], derived)) { kdfRemember(codeHash); return true; }
     return false;
   } catch (err) { return false; }
 }
@@ -1337,6 +1564,33 @@ function noteFallbackLoad(name) {
   alertOwner("המסד נטען מעותק חלופי", "לשונית הנתונים הראשית (" + DATA_SHEET + ") חסרה או לא קריאה, והמערכת עובדת כרגע מהעותק \"" +
     name + "\". שינויים שנעשו אחרי העותק הזה אינם מוצגים. כדאי לבדוק את הגיליון.");
 }
+/* מדידת זמני הכניסה בשרת — להרצה ידנית מהעורך: בוחרים measureLoginSpeed
+   בתפריט שליד "הפעלה", מריצים, ופותחים את "יומן ביצוע". לא נגיש מהאינטרנט
+   (רק doGet/doPost נגישים), לא נוגע בפלפל ולא מדפיס קודים או נתונים — רק זמנים. */
+function measureLoginSpeed() {
+  var t0 = new Date().getTime(), out = [];
+  function lap(name) { var t = new Date().getTime(); out.push(name + ": " + (t - t0) + "ms"); t0 = t; }
+  var sh = ss().getSheetByName(DATA_SHEET), n = sh ? sh.getLastRow() : 0;
+  lap("פתיחת לשונית הנתונים (" + n + " שורות)");
+  var str = n ? sh.getRange(1, 1, n, 1).getValues().map(function (r) { return r[0]; }).join("") : "";
+  lap("קריאת הנתונים (" + Math.round(str.length / 1024) + " KB)");
+  var d = str ? JSON.parse(str) : {};
+  lap("פענוח JSON");
+  JSON.parse(JSON.stringify(d));
+  lap("העתק עמוק (מה שנחסך בטעינת מנהל)");
+  JSON.stringify({ ok: true, data: d });
+  lap("הכנת התשובה");
+  var cur = "measure";
+  for (var i = 0; i < KDF_ITER; i++) cur = bytesToHex(Utilities.computeHmacSha256Signature(cur + ":" + i, "measure-key"));
+  lap(KDF_ITER + " סבבי HMAC (נגזרת קוד אחת)");
+  loginState();
+  lap("קריאת מונה הכניסות");
+  try { CacheService.getScriptCache().get("kdf2:measure"); } catch (err) {}
+  lap("קריאה ממטמון הסקריפט");
+  Logger.log(out.join("\n"));
+  return out.join("\n");
+}
+
 function everInit() {
   try { return PropertiesService.getScriptProperties().getProperty(INIT_PROP) === "1"; }
   catch (err) { return false; }
@@ -1445,11 +1699,36 @@ function aptSetFor(data, ctx) {
   });
   return set;
 }
+/* כל האבות (בכל עומק) של שלב מוסתר — מחוק או חי. סכום של אב כזה חושף
+   את הסכום המוסתר, ולכן נשלח למי שאינו מנהל מחושב מהגלויים בלבד */
+function hiddenAncestorsOf(exps) {
+  var by = Object.create(null), out = Object.create(null), hid = hiddenIdsOf(exps);
+  (exps || []).forEach(function (e) { if (e && e.id != null) by[e.id] = e; });
+  Object.keys(hid).forEach(function (id) {
+    var e = by[id], seen = Object.create(null);
+    while (e && e.parentId && !seen[e.id]) { seen[e.id] = 1; out[e.parentId] = 1; e = by[e.parentId]; }
+  });
+  return out;
+}
+/* שלב מוסתר מסתיר גם את כל תתי-השלבים שלו (בכל עומק) */
+function hiddenIdsOf(exps) {
+  var by = Object.create(null), out = Object.create(null);
+  (exps || []).forEach(function (e) { if (e && e.id != null) by[e.id] = e; });
+  Object.keys(by).forEach(function (id) {
+    var e = by[id], seen = Object.create(null);
+    while (e && !seen[e.id]) {
+      if (e.hidden) { out[id] = 1; break; }
+      seen[e.id] = 1;
+      e = e.parentId ? by[e.parentId] : null;
+    }
+  });
+  return out;
+}
 function expSetFor(data, ctx, aptSet) {
-  var set = {};
+  var set = Object.create(null), hid = ctx.nonAdmin ? hiddenIdsOf(data.expenses) : Object.create(null);
   (data.expenses || []).forEach(function (e) {
     if (!aptSet[e.apartmentId]) return;
-    if (ctx.nonAdmin && e.hidden) return;
+    if (hid[e.id]) return;
     set[e.id] = 1;
   });
   return set;
@@ -1496,32 +1775,117 @@ function scopeFieldOf(table) {
 /* ----- סינון בטעינה ----- */
 function scopeDataForUser(data, user) {
   var ctx = userCtx(user);
-  var d = JSON.parse(JSON.stringify(data));
   if (ctx.isAdmin) {
-    d.users = (d.users || []).map(function (u) {
+    /* מנהל מקבל הכל חוץ מהקודים. קודם כל המסד הועתק עמוק (מחרוזת ופענוח של
+       כל הנתונים) רק כדי להחליף שדה אחד בטבלת המשתמשים. עכשיו העתק רדוד:
+       טבלת המשתמשים מועתקת שורה-שורה, כך שהמסד המקורי לא משתנה — ושאר
+       הטבלאות משותפות עם data, ולכן אסור לשנות את התוצאה (היא נשלחת כמו שהיא). */
+    var a = {};
+    Object.keys(data || {}).forEach(function (k0) { a[k0] = data[k0]; });
+    a.users = ((data && data.users) || []).map(function (u) {
       var c = {}; for (var k in u) if (u.hasOwnProperty(k)) c[k] = u[k];
       c.code = "***"; return c;
     });
-    return d;
+    return a;
   }
+  var d = JSON.parse(JSON.stringify(data));
   d.users = [];
   /* פיצ'רים של מנהלים בלבד — הנתונים לא נשלחים לדפדפן של אחרים */
   d.rentals = []; d.sheets = [];
   Object.keys(d).forEach(function (k) { if (!knownKey(k)) delete d[k]; });
   /* קטגוריות לפי פרוייקט — הגדרת מנהל. mergeSaveForUser ממילא שומר את
      ההגדרות מהמאגר, כך ששמירה של משתמש כזה לא מוחקת אותן. */
-  if (d.settings) {
-    delete d.settings.aptCats;      // קטגוריות לפי פרוייקט
-    delete d.settings.aptAccs;      // חשבונות לפי פרוייקט
-    delete d.settings.aptPayers;    // משלמים לפי פרוייקט
-    delete d.settings.contractTpl;  // תבנית סקיצת החוזה
-    delete d.settings.landlord;     // פרטי המשכיר
-  }
+  /* הגדרות: רשימת היתר — רק מה שמסכי המשתמשים האחרים צריכים. הגדרה חדשה
+     של מנהל לא נשלחת לאחרים כברירת מחדל. mergeSaveForUser לוקח את ההגדרות
+     מהמאגר, כך ששמירה של משתמש כזה לא מוחקת אף אחת מהן. */
+  var st0 = d.settings || {};
+  d.settings = { paymentMethods: st0.paymentMethods || {} };
+  if (st0.currency != null) d.settings.currency = st0.currency;
   stripFiles(d);                    // קבצים מצורפים — מנהלים בלבד
+  if (user.role !== "editor") stripAdminFields(d);   // קטגוריית הכנסה — מנהל ועורך בלבד
   var aptSet = aptSetFor(d, ctx), expSet = expSetFor(d, ctx, aptSet);
   SCOPED_TABLES.forEach(function (T) {
     d[T] = (d[T] || []).filter(function (r) { return rowVisible(T, r, ctx, aptSet, expSet); });
   });
+  /* מכל שיש לו תת-שלב מוסתר: הסכום נשלח כסכום תתי-השלבים הגלויים בלבד,
+     כדי שאי אפשר יהיה לחשב ממנו את הסכום המוסתר */
+  var hidKids = hiddenAncestorsOf(data.expenses);
+  if (Object.keys(hidKids).length) {
+    /* מלמטה למעלה: סכום הילדים הגלויים באותו מצב (חי/מחוק) כמו האב */
+    var kidsOf = Object.create(null), byId0 = Object.create(null);
+    (d.expenses || []).forEach(function (e) {
+      if (!e) return;
+      byId0[e.id] = e;
+      if (e.parentId) (kidsOf[e.parentId] = kidsOf[e.parentId] || []).push(e);
+    });
+    var done = Object.create(null);
+    var calc = function (e, depth) {
+      if (!hidKids[e.id] || done[e.id] || depth > 10) return Number(e.amount) || 0;
+      done[e.id] = 1;
+      var sum = 0;
+      (kidsOf[e.id] || []).forEach(function (k) { if (!!k.deleted === !!e.deleted) sum += calc(k, depth + 1); });
+      e.amount = Math.round(sum * 100) / 100;
+      return e.amount;
+    };
+    Object.keys(hidKids).forEach(function (id) { if (byId0[id]) calc(byId0[id], 0); });
+  }
+  /* צפייה ודמי ניהול לא כותבים: אין להם צורך בשורות בנק שלא שויכו,
+     בסל המחזור, בהוראות קבע, ובפרטי קשר של שותפים */
+  if (user.role !== "editor") {
+    ["bankMoves", "withdrawals", "incMgmtPays"].forEach(function (T) {
+      d[T] = (d[T] || []).filter(function (r) { return r && r.apartmentId && aptSet[r.apartmentId]; });
+    });
+    d.recurring = [];
+    /* סל המחזור לא נשלח: שורות מחוקות — וגם פריטים מחוקים בתוך שורות
+       (תשלומי אורח, ביקורות, התאמות). טבלאות עזר (חשבונות, מנהלים,
+       קטגוריות, בנקים) נשארות אם שורה חיה עדיין מצביעה עליהן. */
+    var REF_T = { accounts: 1, managers: 1, categories: 1, stmtBanks: 1 };
+    /* שורות של פרוייקט שנמחק (נמצא בסל המחזור) — גם הן לא נשלחות */
+    var delApt = Object.create(null);
+    (data.apartments || []).forEach(function (a) { if (a && a.deleted) delApt[a.id] = 1; });
+    SCOPED_TABLES.forEach(function (T) {
+      if (REF_T[T] || T === "apartments") return;
+      d[T] = (d[T] || []).filter(function (r) { return !(r && r.apartmentId && delApt[r.apartmentId]); });
+    });
+    SCOPED_TABLES.forEach(function (T) {
+      if (REF_T[T]) return;
+      d[T] = (d[T] || []).filter(function (r) { return r && !r.deleted; });
+    });
+    SCOPED_TABLES.forEach(function (T) {
+      (d[T] || []).forEach(function (r) {
+        Object.keys(r).forEach(function (f) {
+          if (Array.isArray(r[f])) r[f] = r[f].filter(function (x) { return !(x && typeof x === "object" && x.deleted); });
+        });
+      });
+    });
+    (d.apartments || []).forEach(function (a) {
+      Object.keys(a).forEach(function (f) {
+        if (Array.isArray(a[f])) a[f] = a[f].filter(function (x) { return !(x && typeof x === "object" && x.deleted); });
+      });
+    });
+    var usedMgr = Object.create(null);
+    (d.payments || []).forEach(function (x) { if (x.recipientManagerId) usedMgr[x.recipientManagerId] = 1; });
+    (d.expenseManagerFees || []).forEach(function (x) { if (x.managerId) usedMgr[x.managerId] = 1; });
+    (d.incMgmtPays || []).forEach(function (x) { if (x.incMgmtManagerId) usedMgr[x.incMgmtManagerId] = 1; });
+    d.managers = (d.managers || []).filter(function (m) { return m && (!m.deleted || usedMgr[m.id]); });
+    var usedBank = Object.create(null), usedAcc = Object.create(null), usedCat = Object.create(null);
+    (d.bankMoves || []).forEach(function (m) { if (m.stmtBankId) usedBank[m.stmtBankId] = 1; });
+    ["payments", "deposits", "withdrawals", "income", "incMgmtPays", "bankMoves"].forEach(function (T) {
+      (d[T] || []).forEach(function (r) {
+        ["accountId", "fromAccount", "bankId"].forEach(function (f) { if (r[f]) usedAcc[r[f]] = 1; });
+        if (r.receivedBy) usedAcc[String(r.receivedBy).replace(/^bank:/, "")] = 1;
+        (Array.isArray(r.payments) ? r.payments : []).forEach(function (g) {
+          if (g && g.receivedBy) usedAcc[String(g.receivedBy).replace(/^bank:/, "")] = 1;
+          if (g && g.accountId) usedAcc[g.accountId] = 1;
+        });
+      });
+    });
+    (d.expenses || []).forEach(function (e) { if (e.categoryId) usedCat[e.categoryId] = 1; });
+    d.stmtBanks = (d.stmtBanks || []).filter(function (b) { return usedBank[b.id]; });
+    d.accounts = (d.accounts || []).filter(function (a) { return (!a.deleted && a.apartmentId) || usedAcc[a.id]; })
+      .map(function (a) { if (!a.apartmentId) { a = JSON.parse(JSON.stringify(a)); delete a.partnerId; } return a; });
+    d.categories = (d.categories || []).filter(function (c) { return usedCat[c.id]; });
+  }
   /* התאמות של שורת בנק להזמנות שאינן בהיקף — לא נשלחות */
   var incOk = {};
   (d.income || []).forEach(function (i) { if (i && i.id != null) incOk[i.id] = 1; });
@@ -1540,11 +1904,29 @@ function scopeDataForUser(data, user) {
     d.expenseSplits = []; d.deposits = []; d.income = [];
     d.partners = []; d.apartmentPartners = []; d.accounts = [];
     d.bankMoves = []; d.stmtBanks = []; d.withdrawals = []; d.incMgmtPays = []; d.recurring = [];
+    d.categories = [];
+    /* שדות שהדוח שלו לא צריך: הערות פרוייקט, חלוקות שותפים, ביקורות,
+       יחידות להשכרה, הערות וקישורי חשבונית של ספקים, חשבונות ומשלמים */
+    (d.apartments || []).forEach(function (a) {
+      ["notes", "note", "splitPresets", "incomeSplit", "reviews", "rentalUnits", "bankAcctInit", "bookingMode", "docs"]
+        .forEach(function (f) { delete a[f]; });
+      if (a.autoMgmt && typeof a.autoMgmt === "object") delete a.autoMgmt.partnerId;
+    });
+    (d.expenses || []).forEach(function (e) {
+      ["note", "invoiceLink", "invoices", "categoryId", "sentToCpa"].forEach(function (f) { delete e[f]; });
+    });
+    (d.payments || []).forEach(function (x) {
+      ["payerPartnerId", "accountId", "invoiceLink", "fromAccount", "receivedBy"].forEach(function (f) { delete x[f]; });
+    });
     return d;
   }
   /* שותפים: רק אלה שקשורים לדירות/לתנועות שכבר סוננו למשתמש. כך גם
      שם, וגם טלפון/הערות של שותפים מדירות אחרות — לא נשלחים כלל. */
   d.partners = scopePartnersFor(d, true);
+  /* צפייה: שם השותף בלבד — בלי טלפון והערות (רק ספר השותפים של המנהל מציג אותם) */
+  if (user.role !== "editor") {
+    d.partners = d.partners.map(function (p) { return { id: p.id, name: p.name, deleted: !!p.deleted }; });
+  }
   return d;
 }
 /* קבוצת מזהי-השותפים המוזכרים בנתונים שכבר סוננו למשתמש */
@@ -1647,8 +2029,11 @@ function mergeSaveForUser(stored, incoming, user) {
      מחדש עם פרוייקט אחר לא "מלבין" הוצאה זרה. */
   var storedExpById = Object.create(null);
   (stored.expenses || []).forEach(function (e) { if (e && e.id != null) storedExpById[e.id] = e; });
+  var storedHid = hiddenIdsOf(stored.expenses);
+  /* מכלים שיש להם תת-שלב מוסתר — הסכום שלהם נשמר מהמאגר */
+  var storedHidKids = hiddenAncestorsOf(stored.expenses);
   var allowedExp = Object.create(null);
-  (stored.expenses || []).forEach(function (e) { if (aptSet[e.apartmentId] && !e.hidden) allowedExp[e.id] = 1; });
+  (stored.expenses || []).forEach(function (e) { if (aptSet[e.apartmentId] && !storedHid[e.id]) allowedExp[e.id] = 1; });
   (incoming.expenses || []).forEach(function (e) {
     if (!e || !aptSet[e.apartmentId]) return;
     var se = storedExpById[e.id];
@@ -1662,8 +2047,38 @@ function mergeSaveForUser(stored, incoming, user) {
      לעדכן (לא ליצור) אם היא בהיקף. הוראת קבע שמשותפת לפרוייקט זר —
      מותר לערוך כל עוד החלק הזר לא השתנה. */
   function foreignApts(a) { return (a || []).filter(function (x) { return !aptSet[x]; }).sort().join(); }
+  function nv(v) { return (v == null || v === false || v === "") ? "" : (Array.isArray(v) ? v.slice().sort().join() : String(v)); }
+  function keyChanged(a, b, fields) {
+    for (var i = 0; i < fields.length; i++) if (nv(a[fields[i]]) !== nv(b[fields[i]])) return true;
+    return false;
+  }
+  /* קטגוריות, בנקים וחשבונות כלליים — טבלאות עזר של כל העסק. מי שאינו
+     מנהל יכול להוסיף שורה חדשה, לא לשנות או למחוק קיימת */
+  function isGlobalRef(T, sr) {
+    return T === "categories" || T === "stmtBanks" || (T === "accounts" && !sr.apartmentId);
+  }
+  /* אב תקין לתת-שלב: גלוי למשתמש, אינו בעצמו תת-שלב, והשורה אינה אב */
+  var allExpById = Object.create(null), hasKids = Object.create(null);
+  (stored.expenses || []).concat(incoming.expenses || []).forEach(function (e) {
+    if (!e || e.id == null) return;
+    allExpById[e.id] = e;
+  });
+  (stored.expenses || []).forEach(function (e) { if (e && e.parentId && !e.deleted) hasKids[e.parentId] = 1; });
+  function parentOk(r) {
+    if (!allowedExp[r.parentId]) return false;
+    var par = allExpById[r.parentId];
+    if (par && par.parentId) return false;
+    if (hasKids[r.id]) return false;
+    return true;
+  }
+  var REF_FIELDS = ["name", "deleted", "isBank", "apartmentId", "partnerId"];
+  var REC_FIELDS = ["apartmentIds", "amount", "description", "every", "nextDate", "lastRun", "paused", "deleted", "categoryId", "note"];
+  var BANK_FIELDS = ["amount", "date", "name", "details", "ref", "stmtBankId", "kind", "deleted"];
   function updOk(T, r, sr) {
-    if (!ctx.limited) return true;
+    if (!ctx.limited) {
+      if (T === "payments" || T === "expenseSplits" || T === "expenseManagerFees") return !!allowedExp[r.expenseId];
+      return true;
+    }
     if (T === "apartments") return !!aptSet[r.id];
     if (T === "recurring" && sr) {
       return (r.apartmentIds || []).some(function (a) { return !!aptSet[a]; }) &&
@@ -1723,10 +2138,21 @@ function mergeSaveForUser(stored, incoming, user) {
     var storedById = Object.create(null); (stored[T] || []).forEach(function (r) { if (r) storedById[r.id] = r; });
     var scopeF = scopeFieldOf(T);
 
-    /* 1. שחזור כל שורה שהוסתרה מהמשתמש ואינה במה ששלח — לא נאבד דבר */
+    /* 1. שחזור כל שורה שהוסתרה מהמשתמש ואינה במה ששלח — לא נאבד דבר.
+          גם שורה מחוקה (בסל המחזור) שהושמטה חוזרת: רק מנהל מוחק לצמיתות. */
+    var purgeTry = 0;
     (stored[T] || []).forEach(function (row) {
-      if (!rowVisible(T, row, ctx, aptSet, expSet) && !fromIncoming[row.id]) result[T].push(row);
+      if (fromIncoming[row.id]) return;
+      if (!rowVisible(T, row, ctx, aptSet, expSet)) result[T].push(row);
+      else if (row.deleted) { result[T].push(row); purgeTry++; }
+      else if (isGlobalRef(T, row) ||
+               (T === "recurring" && ctx.limited && foreignApts(row.apartmentIds)) ||
+               (T === "bankMoves" && ctx.limited && (row.pool || !row.apartmentId))) {
+        /* שורה שהמשתמש לא רשאי למחוק — השמטה שלה לא נחשבת מחיקה */
+        result[T].push(row); dropped.push(T + ":" + row.id + (T === "bankMoves" ? " bankline" : " shared"));
+      }
     });
+    if (purgeTry) tampered.push(T + ":purge(" + purgeTry + ")");
     /* 2. כל שורה שהמשתמש שלח: יצירה — רק בהיקף; עדכון — רק אם השורה
           השמורה הייתה גלויה לו, והגרסה החדשה עדיין בהיקף */
     var out = [];
@@ -1740,6 +2166,27 @@ function mergeSaveForUser(stored, incoming, user) {
           /* שורה שלא נשלחה אליו חזרה ממנו — נשמרת כפי שהייתה, והמקרה נרשם */
           tampered.push(T + ":" + r.id); out.push(sr); continue;
         }
+        if (isGlobalRef(T, sr)) {
+          if (keyChanged(r, sr, REF_FIELDS)) dropped.push(T + ":" + r.id + " shared");
+          out.push(sr); continue;
+        }
+        if (T === "recurring" && ctx.limited && foreignApts(sr.apartmentIds)) {
+          /* הוראת קבע שמשותפת לפרוייקט שהמשתמש לא רואה — נשארת כפי שהיא */
+          if (keyChanged(r, sr, REC_FIELDS)) dropped.push(T + ":" + r.id + " shared");
+          out.push(sr); continue;
+        }
+        if (T === "bankMoves" && sr.pool) r.pool = true;           /* הסימון דביק */
+        if (T === "bankMoves" && ctx.limited && sr.apartmentId && !r.apartmentId) {
+          /* החזרת שורה למאגר המשותף אחרי שיוך — רק מנהל */
+          dropped.push(T + ":" + r.id + " bankline"); r.apartmentId = sr.apartmentId;
+        }
+        if (T === "bankMoves" && ctx.limited && (sr.pool || !sr.apartmentId)) {
+          r.pool = true;                                         /* שויכה מהמאגר המשותף — נשארת מוגנת */
+          /* שורת בנק שעוד לא שויכה: מותר לשייך לפרוייקט שלו ולהתאים — לא
+             לשנות את פרטי התנועה עצמה או למחוק אותה */
+          if (keyChanged(r, sr, BANK_FIELDS)) dropped.push(T + ":" + r.id + " bankline");
+          BANK_FIELDS.forEach(function (f) { if (sr[f] === undefined) delete r[f]; else r[f] = sr[f]; });
+        }
         /* גרסה חדשה מחוץ להיקף, או העברה לפרוייקט זר — השורה נשארת כפי
            שהייתה, והשינוי מדווח. השמירה עצמה לא נכשלת. */
         if (!updOk(T, r, sr)) { dropped.push(T + ":" + r.id + " scope"); out.push(sr); continue; }
@@ -1747,11 +2194,18 @@ function mergeSaveForUser(stored, incoming, user) {
           dropped.push(T + ":" + r.id + " move"); out.push(sr); continue;
         }
         if (!partnerRefOk(r, sr)) { dropped.push(T + ":" + r.id + " partner"); out.push(sr); continue; }
+        if (T === "expenses" && nv(r.parentId) !== nv(sr.parentId) && r.parentId && !parentOk(r)) {
+          dropped.push(T + ":" + r.id + " parent"); out.push(sr); continue;
+        }
         /* רק מנהל מסתיר — הדגל חוזר מהמאגר */
         if (T === "expenses" || T === "payments") { if (sr.hidden) r.hidden = true; else delete r.hidden; }
+        if (T === "expenses" && storedHidKids[sr.id]) r.amount = sr.amount;
         if (T === "bankMoves") fixMatches(r, sr);
       } else {
         if (!newRowAllowed(T, r, ctx, aptSet, allowedExp)) { dropped.push(T + ":" + r.id + " new"); continue; }
+        if (T === "expenses" && r.parentId && !parentOk(r)) {
+          delete allowedExp[r.id]; dropped.push(T + ":" + r.id + " parent"); continue;
+        }
         if (!partnerRefOk(r, null)) {
           if (T === "expenses") delete allowedExp[r.id];      /* הוצאה שנפלה — גם הילדים שלה לא נכנסים */
           dropped.push(T + ":" + r.id + " partner"); continue;
@@ -1768,9 +2222,14 @@ function mergeSaveForUser(stored, incoming, user) {
   MERGE_INFO.dropped = dropped;
   /* הקבצים המצורפים לא נשלחו אליו — חוזרים מהמאגר, והוא לא יכול להוסיף */
   restoreFiles(stored, result);
+  /* גם קטגוריית ההכנסה — לא נשלחה אליו, חוזרת מהמאגר */
+  if (user.role !== "editor") restoreAdminFields(stored, result);
   return result;
 }
 function newRowAllowed(table, row, ctx, aptSet, allowedExp) {
+  if (ctx.isAdmin) return true;
+  if (table === "payments" || table === "expenseSplits" || table === "expenseManagerFees")
+    return !!allowedExp[row.expenseId];
   if (!ctx.limited) return true;
   switch (table) {
     case "apartments":          return false;
