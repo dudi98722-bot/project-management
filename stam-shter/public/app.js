@@ -986,6 +986,23 @@ const consignSaleCol = {
   },
 };
 
+// מה שהוחזר לסופר. בלי העמודה הזו החוב נראה כאילו אינו תואם את הכמות:
+// 30 יחידות ב-480 אבל חוב של 13,920, בלי שום רמז שאחת חזרה אליו.
+const returnedCol = {
+  label: 'הוחזר', cls: 'num',
+  render: (r) => N(r.returned_qty)
+    ? `<span class="pill a" title="הוחזר לסופר — אינו במלאי ואינו מחייב">↩ ${N(r.returned_qty)}</span>`
+    : '<span class="muted">—</span>',
+};
+
+// החוב מחושב על הכמות שבאמת מחייבת. כשהיא קטנה מהכמות שנרכשה — בגלל
+// החזרה או בגלל קומיסיון שטרם נמכר — כתוב מתחת למספר על מה הוא מחושב.
+const owedBasis = (r) => (N(r.owed_qty) && N(r.owed_qty) !== N(r.quantity))
+  ? `<div class="mini" title="${r.purchase_type === 'קומיסיון'
+      ? 'בקומיסיון משלמים רק על מה שהתממש' : 'מה שהוחזר לסופר אינו מחייב'}"
+      >לפי ${N(r.owed_qty)} מתוך ${N(r.quantity)}</div>`
+  : '';
+
 // אותו רעיון בצד הרכישה: מה שנקנה בקומיסיון וטרם התממש אינו מחייב אותנו
 const consignPurchCol = {
   label: 'קומיסיון', cls: 'center',
@@ -1913,8 +1930,7 @@ function prodPurchases(cfgOnly) {
           ? esc(r.extra_cost_note) : '<span class="muted">—</span>' },
       { label: 'סוג', render: r => `<span class="pill n">${esc(r.purchase_type || '')}</span>` },
       { label: 'סה"כ לתשלום לסופר', cls: 'num',
-        render: r => mc(r.owed_scribe, r) + (r.purchase_type === 'קומיסיון'
-          ? `<div class="mini" title="בקומיסיון משלמים רק על מה שהתממש">לפי ${N(r.owed_qty)} מתוך ${N(r.quantity)}</div>` : ''),
+        render: r => mc(r.owed_scribe, r) + owedBasis(r),
         total: rows => totalCur(rows, 'owed_scribe') },
       { label: '', cls: 'center', render: r => `
         <button class="btn ghost xs" data-trk="${r.id}" title="מעקב היחידות של החבילה">📍 מעקב</button>
@@ -2811,11 +2827,12 @@ function scribeCardHTML(d) {
         { label: 'תאריך', render: r => dt(r.date) },
         { label: 'מוצר', render: r => esc(r.product_name || '—') },
         { label: 'כמות', cls: 'num', render: r => numCell(r.quantity) },
+        returnedCol,
         { label: 'נשאר', cls: 'num', render: r => numCell(r.remaining_qty) },
         consignPurchCol,
         curCol,
         { label: "עלות ליח'", cls: 'num', render: r => mc(r.cost_per_unit, r) },
-        { label: 'חוב', cls: 'num', render: r => mc(r.owed, r) },
+        { label: 'חוב', cls: 'num', render: r => mc(r.owed, r) + owedBasis(r) },
       ], d.purchases)}
       <div class="kv" style="margin-top:10px">
         <div class="k">סה"כ חוב מוצרים</div><div class="num">${money(p.owed)}</div>
@@ -4191,7 +4208,13 @@ function pageImport() {
 const itemsStations = () => C.stations.map(s => ({ v: s.id, t: s.name }));
 
 function itemLabel(r) {
-  if (r.scroll_id) return `ספר #${r.scroll_id} · ${r.product_name || ''}`;
+  // המק"ט הוא המזהה שמכירים, ולכן הוא בראש; מספר הספר הפנימי נשאר
+  // בסוגריים, כי הוא מה שמחפשים לפיו במסכים האחרים.
+  if (r.scroll_id) {
+    const head = r.scroll_sku ? String(r.scroll_sku) : `ספר #${r.scroll_id}`;
+    const tail = r.scroll_sku ? ` (#${r.scroll_id})` : '';
+    return `${head} · ${r.product_name || ''}${tail}`;
+  }
   // התאריך מבדיל בין שתי חבילות של אותו מוצר מאותו סופר — בלעדיו הן
   // נראו כשורה כפולה במעקב, כשבפועל אלה שתי רכישות שונות
   if (r.purchase_id) return `חבילה #${r.purchase_id} · ${r.purchase_product_name || ''}`
@@ -5449,11 +5472,12 @@ async function loadScribeSpace(id) {
       { label: 'תאריך', render: r => dt(r.date) },
       { label: 'מוצר', render: r => esc(r.product_name || '—') },
       { label: 'כמות', cls: 'num', render: r => numCell(r.quantity) },
+      returnedCol,
       { label: 'נשאר', cls: 'num', render: r => numCell(r.remaining_qty) },
       consignPurchCol,
       curCol,
       { label: "עלות ליח'", cls: 'num', render: r => mc(r.cost_per_unit, r) },
-      { label: 'חוב', cls: 'num', render: r => mc(r.owed, r), total: rs => totalCur(rs, 'owed') },
+      { label: 'חוב', cls: 'num', render: r => mc(r.owed, r) + owedBasis(r), total: rs => totalCur(rs, 'owed') },
       wsActCol('prodPurchaseCfg'),
     ], d.purchases, { totals: true })) : ''}
 
