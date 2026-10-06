@@ -2824,6 +2824,9 @@ function scribeCardHTML(d) {
     </div>
     <div class="card"><h3>צד מוצרים — רכישות ממנו</h3>
       ${tableHTML([
+        // מספר החבילה — המזהה של הרכישה. בלעדיו שבע רכישות של אותו
+        // מוצר נראות זהות, ואי אפשר להצליב אותן מול שאר המסכים.
+        { label: '#', render: r => `<b>${r.id}</b>` },
         { label: 'תאריך', render: r => dt(r.date) },
         { label: 'מוצר', render: r => esc(r.product_name || '—') },
         { label: 'כמות', cls: 'num', render: r => numCell(r.quantity) },
@@ -5469,6 +5472,7 @@ async function loadScribeSpace(id) {
     ${wsDiaryHTML(diary, id)}
 
     ${d.purchases.length ? wsSec('purch', 'רכישות מוצרים ממנו', d.purchases.length, tableHTML([
+      { label: '#', render: r => `<b>${r.id}</b>` },
       { label: 'תאריך', render: r => dt(r.date) },
       { label: 'מוצר', render: r => esc(r.product_name || '—') },
       { label: 'כמות', cls: 'num', render: r => numCell(r.quantity) },
