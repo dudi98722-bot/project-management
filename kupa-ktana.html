@@ -408,6 +408,9 @@ button, .mcard, .bnav-item, .sheet-item{ touch-action: manipulation; }
   border:1px solid transparent; font-family:inherit; }
 .inv.ok{ background:var(--green-soft); color:var(--green); }
 .inv.miss{ background:var(--amber-soft); color:var(--amber); }
+/* העברה לתוכנה — כחול, כדי שלא יתחלף במבט חטוף בתג החשבונית */
+.inv.sent{ background:var(--blue-soft); color:var(--blue); }
+.inv.pend{ background:var(--line-2); color:var(--muted); }
 button.inv{ cursor:pointer; transition:transform .1s ease-out, border-color .15s; }
 button.inv:hover{ border-color:currentColor; }
 button.inv:active{ transform:scale(.94); }
@@ -436,6 +439,25 @@ button.inv:active{ transform:scale(.94); }
 .stat-link:hover{ border-color:var(--amber); }
 .stat.warn::after{ background:var(--amber); }
 .stat.warn .val{ color:var(--amber); }
+.stat-link.info:hover{ border-color:var(--blue); }
+.stat.info::after{ background:var(--blue); }
+.stat.info .val{ color:var(--blue); }
+
+/* רצועת הסימון המרוכז — מופיעה רק כשיש משיכות שעוד לא הועברו לתוכנה */
+.bulkbar:empty{ display:none; }
+.bulkbar{ display:flex; align-items:center; gap:12px; margin-bottom:14px;
+  padding:12px 15px; border:1px solid #CBD9F4; border-radius:var(--radius);
+  background:var(--blue-soft); box-shadow:var(--shadow); }
+.bulkbar .bb-ico{ font-size:20px; line-height:1; }
+.bulkbar .bb-txt{ flex:1; font-size:13.5px; color:var(--olive); line-height:1.35; }
+.bulkbar .bb-txt b{ color:var(--blue); }
+.bulkbar .bb-txt small{ display:block; font-size:12px; color:var(--muted); margin-top:1px; }
+/* בטלפון הכפתור יורד לשורה משלו — אחרת הטקסט נדחס ונשבר באמצע משפט */
+@media(max-width:720px){
+  .bulkbar{ flex-wrap:wrap; gap:10px; }
+  .bulkbar .bb-txt{ min-width:0; }
+  .bulkbar .btn{ width:100%; }
+}
 
 /* ---------- לוגו ---------- */
 .brand-logo{ height:36px; width:auto; display:block; border-radius:9px;
@@ -702,9 +724,15 @@ function applyPayload(r){
 
 /* סימון חשבונית מוצג רק מול שרת שתומך בו — אחרת היה מופיע מתג שלא נשמר */
 function hasInvoice(){ return (S.apiVersion || 0) >= 2; }
+/* סימון "הועבר לתוכנה" — גם הוא רק מול שרת שמכיר את השדה */
+function hasTransfer(){ return (S.apiVersion || 0) >= 4; }
 /* השרת סימן שהנתונים שהגיעו הם רק של המשתמש הזה */
 function isScoped(){ return S.scoped === true; }
-function decorateWd(w){ w.invoiceHe = w.invoice ? 'התקבלה' : 'חסרה'; return w; }
+function decorateWd(w){
+  w.invoiceHe = w.invoice ? 'התקבלה' : 'חסרה';
+  w.transferredHe = w.transferred ? 'הועבר' : 'לא הועבר';
+  return w;
+}
 
 /* שומר את המצב הנוכחי במטמון, אחרי שינוי מקומי שלא עבר טעינה מחדש */
 function cacheState(){
@@ -724,6 +752,58 @@ function invBadge(r, clickable, long){
          '" onclick="' + "event.stopPropagation();toggleInvoice('" + r.id + "')" + '">' + txt + '</button>';
 }
 
+/* תג ההעברה לתוכנה. אותו מבנה כמו תג החשבונית, בצבע אחר */
+function trBadge(r, clickable, long){
+  var ok = !!r.transferred;
+  var txt = long ? (ok ? '✓ הועבר לתוכנה' : 'לא הועבר לתוכנה')
+                 : (ok ? '✓ הועבר' : 'לא הועבר');
+  var cls = 'inv ' + (ok ? 'sent' : 'pend');
+  if(!clickable) return '<span class="' + cls + '">' + txt + '</span>';
+  return '<button class="' + cls + '" title="' + (ok ? 'לחץ לסימון שלא הועבר' : 'לחץ לסימון שהועבר') +
+         '" onclick="' + "event.stopPropagation();toggleTransfer('" + r.id + "')" + '">' + txt + '</button>';
+}
+
+function toggleTransfer(id){
+  if(!isManager() || !hasTransfer()) return;
+  var w = S.withdrawals.filter(function(x){ return x.id === id; })[0];
+  if(!w) return;
+  var next = !w.transferred;
+  w.transferred = next; decorateWd(w);
+  haptic(8);
+  redrawWdFlags();
+  api('setTransferred', { id:id, value: next ? '1' : '0' }).then(function(r){
+    if(r && r.ok){ cacheState(); return; }
+    w.transferred = !next; decorateWd(w);
+    redrawWdFlags();
+    toast((r && r.error) || 'השמירה נכשלה — הסימון לא עודכן', 'err');
+  });
+}
+
+/* סימון של כל מה שמוצג עכשיו בטבלה — הדרך לעבור על חודש שלם בפעולה אחת */
+function bulkTransfer(){
+  if(!isManager() || !hasTransfer()) return;
+  var pend = tableRows('wd').filter(function(x){ return !x.transferred; });
+  if(!pend.length) return toast('כל המשיכות שמוצגות כבר מסומנות','ok');
+  var total = pend.reduce(function(a,x){ return a + (Number(x.amount)||0); }, 0);
+  confirmModal('סימון העברה לתוכנה',
+    'לסמן ' + (pend.length === 1 ? '<b>משיכה אחת</b>' : '<b>' + pend.length + ' משיכות</b>') +
+    ' בסך ' + money(total) + ' כ"הועבר לתוכנה"?<br>' +
+    '<span class="muted">מסומנות רק המשיכות שמוצגות כרגע בטבלה. אפשר לבטל סימון בכל שורה בנפרד.</span>',
+    function(btn){
+      var ids = pend.map(function(x){ return x.id; });
+      busy(btn, true, 'מסמן…');
+      api('setTransferred', { ids: ids.join(','), value:'1' }).then(function(r){
+        busy(btn, false);
+        /* נכשל — החלון נשאר פתוח, ושום שורה לא השתנתה על המסך */
+        if(!(r && r.ok)) return toast((r && r.error) || 'הסימון לא נשמר', 'err');
+        closeModal();
+        pend.forEach(function(x){ x.transferred = true; decorateWd(x); });
+        cacheState(); redrawWdFlags();
+        toast(r.count === 1 ? 'משיכה אחת סומנה כהועברה' : r.count + ' משיכות סומנו כהועברו', 'ok');
+      });
+    });
+}
+
 /* המסך מתעדכן מיד והשרת ברקע. אם השמירה נכשלת — הסימון חוזר למצבו */
 function toggleInvoice(id){
   if(!isManager() || !hasInvoice()) return;
@@ -732,15 +812,15 @@ function toggleInvoice(id){
   var next = !w.invoice;
   w.invoice = next; decorateWd(w);
   haptic(8);
-  redrawInvoice();
+  redrawWdFlags();
   api('setInvoice', { id:id, value: next ? '1' : '0' }).then(function(r){
     if(r && r.ok){ cacheState(); return; }
     w.invoice = !next; decorateWd(w);
-    redrawInvoice();
+    redrawWdFlags();
     toast((r && r.error) || 'השמירה נכשלה — הסימון לא עודכן', 'err');
   });
 }
-function redrawInvoice(){
+function redrawWdFlags(){
   if(S.tab === 'wd') refreshTable('wd');
   else if(S.tab === 'rep') renderTab();
 }
@@ -759,6 +839,27 @@ function missingInvoiceStat(list){
     '<span class="sub">' + (miss.length === 1 ? 'משיכה אחת' : miss.length + ' משיכות') +
       ' · הצג ‹</span></button>';
 }
+/* כמה כסף עוד לא הוקלד להנהלת החשבונות — ובלחיצה, אילו משיכות אלה */
+function transferStat(list){
+  var pend = list.filter(function(x){ return !x.transferred; });
+  if(!pend.length){
+    return '<div class="stat in"><div class="lbl">💻 העברה לתוכנה</div>' +
+      '<div class="val">הכל הועבר</div><div class="sub">אין משיכות שממתינות להקלדה</div></div>';
+  }
+  var total = pend.reduce(function(a,x){ return a + (Number(x.amount)||0); }, 0);
+  return '<button class="stat stat-link info" onclick="showPendingTransfer()">' +
+    '<span class="lbl">💻 לא הועבר לתוכנה</span>' +
+    '<span class="val">' + money(total) + '</span>' +
+    '<span class="sub">' + (pend.length === 1 ? 'משיכה אחת' : pend.length + ' משיכות') +
+      ' · הצג ‹</span></button>';
+}
+function showPendingTransfer(){
+  var f = { transferredHe: { eq: 'לא הועבר' } };
+  if(S.repMonth !== 'all') f.date = { from: S.repMonth + '-01', to: S.repMonth + '-31' };
+  S.filters.wd = f;
+  go('wd');
+}
+
 function showMissingInvoices(){
   var f = { invoiceHe: { eq: 'חסרה' } };
   if(S.repMonth !== 'all') f.date = { from: S.repMonth + '-01', to: S.repMonth + '-31' };
@@ -1036,6 +1137,8 @@ var WD_COLS = [
   { k:'catName',   t:'סוג הוצאה',      type:'pick', chip:true },
   { k:'details',   t:'פרטים נוספים',   type:'text' },
   { k:'invoiceHe', t:'חשבונית',        type:'pick', invoice:true, needsInvoice:true },
+  { k:'transferredHe', t:'הועבר לתוכנה', type:'pick', transfer:true,
+    needsTransfer:true, managerOnly:true },
   { k:'userName',  t:'נרשם על ידי',    type:'pick', hideWhenScoped:true },
   { k:'createdAt', t:'נרשם בתאריך',    type:'text', muted:true }
 ];
@@ -1058,6 +1161,8 @@ var CAT_COLS = [
 function visibleCols(list){
   return list.filter(function(c){
     if(c.needsInvoice && !hasInvoice()) return false;
+    if(c.needsTransfer && !hasTransfer()) return false;
+    if(c.managerOnly && !isManager()) return false;
     if(c.hideWhenScoped && isScoped()) return false;
     return true;
   });
@@ -1242,6 +1347,8 @@ function refreshTable(tk){
   var acts = !!(T.kind || tk==='cat' || tk==='usr') && isManager();
   var cl = byId('cl-'+tk);
   updateSheetCount(tk);
+  var bb = byId('bulk-'+tk);
+  if(bb) bb.innerHTML = bulkBarHtml(rows);
 
   var mc = byId('mc-'+tk);
   if(mc){                                        /* מצב כרטיסים */
@@ -1301,6 +1408,7 @@ function cellHtml(c, r){
   if(c.status)return '<td><span class="chip' + (r.active?'':' off') + '">' + esc(v) + '</span></td>';
   if(c.chip)  return '<td><span class="chip">' + esc(v) + '</span></td>';
   if(c.invoice) return '<td>' + invBadge(r, isManager()) + '</td>';
+  if(c.transfer) return '<td>' + trBadge(r, isManager()) + '</td>';
   return '<td' + (c.muted?' class="muted"':'') + (c.ltr?' dir="ltr"':'') + '>' +
          (v ? esc(v) : '<span class="muted">—</span>') + '</td>';
 }
@@ -1332,10 +1440,27 @@ function rowActions(tk, r){
   return '';
 }
 
+/* הרצועה מתעדכנת מתוך refreshTable, כדי שתתאים למה שהסינון משאיר על המסך */
+function bulkBar(tk){
+  if(tk !== 'wd' || !isManager() || !hasTransfer()) return '';
+  return '<div class="bulkbar" id="bulk-wd"></div>';
+}
+function bulkBarHtml(rows){
+  var pend = rows.filter(function(x){ return !x.transferred; });
+  if(!pend.length) return '';
+  var total = pend.reduce(function(a,x){ return a + (Number(x.amount)||0); }, 0);
+  return '<span class="bb-ico">💻</span>' +
+    '<div class="bb-txt"><b>' +
+      (pend.length === 1 ? 'משיכה אחת' : pend.length + ' משיכות') + '</b> לא הועברו לתוכנה' +
+      '<small>' + money(total) + ' · רק מה שמוצג כאן</small></div>' +
+    '<button class="btn btn-primary btn-sm" onclick="bulkTransfer()">✓ סמן שהועברו</button>';
+}
+
 function renderEntries(w, tk){
   var kind = TABLES[tk].kind;
   w.innerHTML =
     '<div class="page-head only-desk"><h2>' + TABLES[tk].icon + ' ' + TABLES[tk].title + '</h2></div>' +
+    bulkBar(tk) +
     tableShell(tk, { actions:true, add:'entryModal(\'' + kind + '\')',
                      addLabel: kind==='deposit' ? 'הפקדה חדשה' : 'משיכה חדשה' }) +
     fab(kind);
@@ -1447,6 +1572,7 @@ function renderReports(w){
         '<div class="val">' + money(R.wd.length ? totOut/R.wd.length : 0) + '</div>' +
         '<div class="sub">' + cats.length + ' סוגי הוצאה בשימוש</div></div>' +
       (hasInvoice() ? missingInvoiceStat(R.wd) : '') +
+      (hasTransfer() ? transferStat(R.wd) : '') +
     '</div>' +
     '<div class="rep-grid">' +
       '<div class="card"><div class="card-title">🏷️ הוצאות לפי סוג</div><div class="card-pad">' +
@@ -1551,6 +1677,12 @@ function entryModal(kind, id){
               '</small></span>' +
             '<input type="checkbox" id="e-inv" class="sw-in"' + ((e && e.invoice) ? ' checked' : '') + '>' +
             '<span class="sw" aria-hidden="true"></span></label>'
+          : '') +
+        ((hasTransfer() && isManager())
+          ? '<label class="sw-row"><span class="sw-txt">💻 הועבר לתוכנה' +
+              '<small>אם ההוצאה הזאת כבר הוקלדה בהנהלת החשבונות</small></span>' +
+            '<input type="checkbox" id="e-tr" class="sw-in"' + ((e && e.transferred) ? ' checked' : '') + '>' +
+            '<span class="sw" aria-hidden="true"></span></label>'
           : ''));
 
   openModal(modalBox(
@@ -1593,6 +1725,8 @@ function saveEntry(btn, kind, id){
     p.details = val('e-det');
     var inv = byId('e-inv');
     if(inv) p.invoice = inv.checked ? '1' : '0';
+    var tr = byId('e-tr');
+    if(tr) p.transferred = tr.checked ? '1' : '0';
   }
   setMsg('mm',''); busy(btn,true,'שומר…');
   api('saveEntry',p).then(function(r){
@@ -1789,6 +1923,7 @@ function exportReport(){
   var totIn = sum(R.dep), totOut = sum(R.wd);
   var period = S.repMonth==='all' ? 'כל התקופות' : monthLabel(S.repMonth);
   var missing = R.wd.filter(function(x){ return !x.invoice; });
+  var pending = R.wd.filter(function(x){ return !x.transferred; });
 
   var byCat = {};
   R.wd.forEach(function(x){
@@ -1830,7 +1965,10 @@ function exportReport(){
             ['מאזן התקופה',{v:totIn-totOut,t:'money'}],
             ['יתרה בקופה כרגע',{v:S.totals.balance,t:'money'}]].concat(hasInvoice() ? [[],
             ['משיכות ללא חשבונית',{v:missing.length,t:'n'}],
-            ['סכום ללא חשבונית',{v:sum(missing),t:'money'}]] : []) },
+            ['סכום ללא חשבונית',{v:sum(missing),t:'money'}]] : [])
+          .concat(hasTransfer() ? [[],
+            ['משיכות שלא הועברו לתוכנה',{v:pending.length,t:'n'}],
+            ['סכום שלא הועבר לתוכנה',{v:sum(pending),t:'money'}]] : []) },
     { name:'לפי סוג הוצאה',
       rows:[['סוג הוצאה','מספר משיכות','סכום','אחוז מסך המשיכות']].concat(
         cats.map(function(c){
@@ -1851,10 +1989,12 @@ function exportReport(){
         })) },
     { name:'משיכות מפורט',
       rows:[['תאריך','סכום','סוג הוצאה','פרטים נוספים','נרשם על ידי']
-              .concat(hasInvoice() ? ['חשבונית'] : [])].concat(
+              .concat(hasInvoice() ? ['חשבונית'] : [])
+              .concat(hasTransfer() ? ['הועבר לתוכנה'] : [])].concat(
         R.wd.slice().sort(function(a,b){ return a.date<b.date?1:-1; }).map(function(x){
           return [{v:x.date,t:'d'}, {v:x.amount,t:'money'}, x.catName, x.details, x.userName]
-            .concat(hasInvoice() ? [x.invoice ? 'התקבלה' : 'חסרה'] : []);
+            .concat(hasInvoice() ? [x.invoice ? 'התקבלה' : 'חסרה'] : [])
+            .concat(hasTransfer() ? [x.transferred ? 'הועבר' : 'לא הועבר'] : []);
         })) },
     { name:'הפקדות מפורט',
       rows:[['תאריך','סכום','הערה','נרשם על ידי']].concat(
@@ -2203,7 +2343,8 @@ function mcardHtml(tk, r){
         (r.details ? esc(r.details) : 'ללא פירוט') + '</div>' +
       (function(){
         var bot = (isScoped() ? '' : esc(r.userName)) +
-                  (hasInvoice() ? invBadge(r, false, true) : '') + acts;
+                  (hasInvoice() ? invBadge(r, false, true) : '') +
+                  (hasTransfer() && isManager() ? trBadge(r, false, true) : '') + acts;
         return bot ? '<div class="mc-bot">' + bot + '</div>' : '';
       })() + '</div>';
   }
@@ -2250,9 +2391,15 @@ function cardActions(tk, id){
           '<span class="ic">🧾</span>' +
           (r.invoice ? 'סמן שחסרה חשבונית' : 'סמן שהתקבלה חשבונית') + '</button>';
   }
+  var tr = '';
+  if(tk === 'wd' && hasTransfer()){
+    tr = '<button class="sheet-item" onclick="' + "closeModal();toggleTransfer('" + id + "')" + '">' +
+         '<span class="ic">💻</span>' +
+         (r.transferred ? 'סמן שלא הועבר לתוכנה' : 'סמן שהועבר לתוכנה') + '</button>';
+  }
   haptic(6);
   openModal(modalBox(title,
-    '<div class="sheet-list">' + inv +
+    '<div class="sheet-list">' + inv + tr +
       '<button class="sheet-item" onclick="' + edit + '">' +
         '<span class="ic">✏️</span>עריכה</button>' +
       (del ? '<button class="sheet-item" style="color:var(--red)" onclick="' + del + '">' +

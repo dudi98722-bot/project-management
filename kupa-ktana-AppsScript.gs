@@ -39,8 +39,8 @@ var SHEETS = {
   withdrawals: {
     name: 'משיכות',
     /* עמודות חדשות נוספות רק בסוף: הנתונים נקראים לפי מיקום, והזזה הייתה משבשת שורות קיימות */
-    headers: ['מזהה', 'תאריך', 'סכום', 'סוג הוצאה', 'מזהה סוג', 'פרטים נוספים', 'נרשם על ידי', 'מזהה משתמש', 'נרשם בתאריך', 'עודכן בתאריך', 'נמחק', 'התקבלה חשבונית'],
-    fields:  ['id', 'date', 'amount', 'catName', 'catId', 'details', 'userName', 'userId', 'createdAt', 'updatedAt', 'deleted', 'invoice']
+    headers: ['מזהה', 'תאריך', 'סכום', 'סוג הוצאה', 'מזהה סוג', 'פרטים נוספים', 'נרשם על ידי', 'מזהה משתמש', 'נרשם בתאריך', 'עודכן בתאריך', 'נמחק', 'התקבלה חשבונית', 'הועבר לתוכנה'],
+    fields:  ['id', 'date', 'amount', 'catName', 'catId', 'details', 'userName', 'userId', 'createdAt', 'updatedAt', 'deleted', 'invoice', 'transferred']
   },
   categories: {
     name: 'סוגי הוצאות',
@@ -51,10 +51,10 @@ var SHEETS = {
 
 var DATE_FIELDS = { date: 1 };
 var NUM_FIELDS  = { amount: 1 };
-var BOOL_FIELDS = { deleted: 1, active: 1, invoice: 1 };
+var BOOL_FIELDS = { deleted: 1, active: 1, invoice: 1, transferred: 1 };
 
-var API_VERSION    = 3;    // הממשק בודק את המספר הזה כדי לדעת אילו יכולות קיימות בשרת
-var SCHEMA_VERSION = '2';  // להעלות בכל פעם שמוסיפים עמודה לגיליון
+var API_VERSION    = 4;    // הממשק בודק את המספר הזה כדי לדעת אילו יכולות קיימות בשרת
+var SCHEMA_VERSION = '3';  // להעלות בכל פעם שמוסיפים עמודה לגיליון
 
 /* רוחב כל לשונית בגרסה הראשונה. אם בעמודה שנוספה אחר כך כבר יש ערך
    שאינו שלנו — זה תוכן שהוקלד ידנית בגיליון, ואסור לדרוס אותו. */
@@ -287,6 +287,7 @@ function route_(e) {
       case 'saveEntry':    return saveEntry_(p);
       case 'deleteEntry':  return deleteEntry_(p);
       case 'setInvoice':   return setInvoice_(p);
+      case 'setTransferred': return setTransferred_(p);
       case 'addCategory':  return addCategory_(p);
       case 'saveCategory': return saveCategory_(p);
       case 'saveUser':     return saveUser_(p);
@@ -384,6 +385,9 @@ function payload_(me) {
        מה שלא נשלח אי אפשר לחשוף מהלקוח. */
     deposits    = deposits.filter(function (d) { return d.userId === me.id; });
     withdrawals = withdrawals.filter(function (w) { return w.userId === me.id; });
+    /* הסימון "הועבר לתוכנה" הוא מעקב הנהלת חשבונות של המנהל. לעובד הוא
+       לא אומר כלום, ולכן הוא לא נשלח אליו כלל — לא רק מוסתר בממשק. */
+    withdrawals.forEach(function (w) { delete w.transferred; });
     /* רשימת סוגי ההוצאה משותפת לכולם, אבל בלי לחשוף מי מהצוות יצר כל סוג */
     categories  = categories.map(function (c) {
       return { id: c.id, name: c.name, createdAt: c.createdAt };
@@ -434,6 +438,7 @@ function saveEntry_(p) {
         row.details = clean_(p.details, 500);
         /* רק אם נשלח — עריכה מדף ישן שלא מכיר את השדה לא תאפס את הסימון */
         if (p.invoice !== undefined) row.invoice = (p.invoice === '1');
+        if (p.transferred !== undefined) row.transferred = (p.transferred === '1');
       }
       writeRow_(kind, row._row, row);
       delete row._row;
@@ -452,6 +457,9 @@ function saveEntry_(p) {
       o.catId = c2.id; o.catName = c2.name;
       o.details = clean_(p.details, 500);
       o.invoice = (p.invoice === '1');
+      /* סימון ההעברה לתוכנה נקבע רק בידי מנהל — עובד לא יכול לרשום משיכה
+         שתיראה כאילו היא כבר נכנסה להנהלת החשבונות */
+      o.transferred = isManager_(me) && (p.transferred === '1');
     }
     insert_(kind, o);
     return json_({ ok: true, entry: o });
@@ -474,6 +482,53 @@ function setInvoice_(p) {
     row.updatedAt = now_();
     writeRow_('withdrawals', row._row, row);
     return json_({ ok: true, invoice: row.invoice });
+  } finally { lock.releaseLock(); }
+}
+
+/* סימון "הועבר לתוכנה" — מעקב של המנהל על מה שהוא כבר הקליד להנהלת
+   החשבונות, ולכן מנהלים בלבד. מקבל מזהה אחד או רשימה (סימון של חודש
+   שלם בפעולה אחת). */
+function setTransferred_(p) {
+  var me = auth_(p.token);
+  if (!me) return err_('פג תוקף החיבור — התחבר מחדש');
+  if (!isManager_(me)) return err_('רק מנהל רשאי לסמן העברה לתוכנה');
+
+  var want = (p.value === '1');
+  /* '#' לפני המזהה: בלעדיו מזהה כמו "toString" היה נראה כבר-קיים במפתח */
+  var wanted = {}, n = 0;
+  String(p.ids !== undefined ? p.ids : (p.id || '')).split(',').forEach(function (raw) {
+    var id = clean_(raw, 40);
+    if (id && !wanted['#' + id] && n < 400) { wanted['#' + id] = 1; n++; }
+  });
+  if (!n) return err_('לא נבחרו משיכות');
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var hit = readAll_('withdrawals').filter(function (r) { return wanted['#' + r.id]; });
+    if (!hit.length) return err_('המשיכה לא נמצאה');
+
+    /* כותבים רק את שתי העמודות שהשתנו, בקריאה אחת לכל הטווח: סימון של חודש
+       שלם הוא עשרות שורות, ושורה-שורה היה לוקח שניות ארוכות בכל פעם. */
+    var cfg = SHEETS.withdrawals, sh = sheet_('withdrawals');
+    var cT = cfg.fields.indexOf('transferred') + 1;
+    var cU = cfg.fields.indexOf('updatedAt') + 1;
+    var first = hit[0]._row, last = hit[0]._row;
+    hit.forEach(function (r) {
+      if (r._row < first) first = r._row;
+      if (r._row > last)  last  = r._row;
+    });
+    var span = last - first + 1;
+    var colT = sh.getRange(first, cT, span, 1).getValues();
+    var colU = sh.getRange(first, cU, span, 1).getValues();
+    var stamp = now_();
+    hit.forEach(function (r) {
+      colT[r._row - first][0] = want;
+      colU[r._row - first][0] = stamp;
+    });
+    sh.getRange(first, cT, span, 1).setValues(colT);
+    sh.getRange(first, cU, span, 1).setValues(colU);
+    return json_({ ok: true, count: hit.length, value: want });
   } finally { lock.releaseLock(); }
 }
 
