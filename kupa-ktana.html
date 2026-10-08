@@ -211,6 +211,45 @@ table.tbl tfoot td{background:#F7F6EF;font-weight:800;color:var(--olive);border-
 .modal-body{padding:18px 20px;overflow-y:auto}
 .modal-foot{padding:14px 20px;border-top:1px solid var(--line-2);display:flex;gap:9px;justify-content:flex-end}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+
+/* ---------- הזנת כמה משיכות ---------- */
+.modal-box.wide:has(.multi-wrap){max-width:980px}
+.multi-wrap{--mcols:140px 104px minmax(110px,1fr) minmax(130px,1.3fr) 56px 34px}
+.mhead,.mrow{display:grid;grid-template-columns:var(--mcols);gap:8px;align-items:end}
+.mhead{font-size:12px;font-weight:700;color:var(--olive-2);margin-bottom:6px;padding:0 2px}
+.mrow{margin-bottom:8px;padding:0}
+.mrow>.mf>label{display:none}
+.mrow .inp{padding:8px 9px}
+.mrow.bad .inp{border-color:var(--red);background:var(--red-soft)}
+.mchk{display:flex;align-items:center;gap:7px;justify-content:center;
+  height:37px;border:1px solid var(--line);border-radius:var(--radius-sm);
+  background:#fff;cursor:pointer;user-select:none;transition:background-color .15s,border-color .15s}
+.mchk input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
+.mchk .mchk-box{font-size:16px;filter:grayscale(1);opacity:.4;transition:filter .15s,opacity .15s}
+.mchk:has(input:checked){background:var(--green-soft);border-color:#BFE3CF}
+.mchk:has(input:checked) .mchk-box{filter:none;opacity:1}
+.mchk:has(input:focus-visible){outline:2px solid var(--yellow);outline-offset:1px}
+.mchk .mchk-txt{display:none;font-size:13.5px;font-weight:600;color:var(--olive)}
+.mdel{align-self:center}
+.addrow{margin-top:4px}
+.multi-sum{display:flex;align-items:center;gap:10px;margin-top:14px;padding:11px 14px;
+  border-radius:var(--radius-sm);background:var(--yellow-pale);border:1px solid var(--yellow-soft);
+  font-size:13.5px;color:var(--olive)}
+.multi-sum b{margin-inline-start:auto;font-size:16px;font-weight:800}
+@media(max-width:720px){
+  .mhead{display:none}
+  .mrow{grid-template-columns:1fr 1fr 34px;gap:9px 8px;
+    padding:12px;margin-bottom:10px;border:1px solid var(--line);
+    border-radius:var(--radius);background:var(--yellow-pale);
+    grid-template-areas:"date amt del" "cat cat cat" "det det det" "inv inv inv"}
+  .mrow.bad{border-color:var(--red);background:var(--red-soft)}
+  .mrow>.mf>label{display:block}
+  .mf-date{grid-area:date}.mf-amt{grid-area:amt}.mf-cat{grid-area:cat}
+  .mf-det{grid-area:det}.mf-inv{grid-area:inv}.mdel{grid-area:del}
+  .mchk{justify-content:flex-start;padding:0 12px;height:42px;background:#fff}
+  .mchk .mchk-txt{display:inline}
+  .addrow{width:100%}
+}
 .cat-pick{display:flex;gap:7px}
 .cat-pick .inp{flex:1}
 
@@ -726,6 +765,8 @@ function applyPayload(r){
 function hasInvoice(){ return (S.apiVersion || 0) >= 2; }
 /* סימון "הועבר לתוכנה" — גם הוא רק מול שרת שמכיר את השדה */
 function hasTransfer(){ return (S.apiVersion || 0) >= 4; }
+/* הזנה מרובה — שומרת הכול בסבב רשת אחד, ולכן דורשת שרת שמכיר את הפעולה */
+function hasMulti(){ return (S.apiVersion || 0) >= 5; }
 /* השרת סימן שהנתונים שהגיעו הם רק של המשתמש הזה */
 function isScoped(){ return S.scoped === true; }
 function decorateWd(w){
@@ -1313,6 +1354,7 @@ function tableShell(tk, opts){
     return '<div class="card">' +
       '<div class="card-title">' + T.icon + ' ' + T.title +
         '<div class="spacer"></div>' +
+        (opts.multi ? '<button class="btn btn-ghost btn-sm" onclick="multiModal()">➕ מרובה</button>' : '') +
         '<button class="btn btn-ghost btn-sm" onclick="filterSheet(\'' + tk + '\')">' +
           'סינון' + (n ? ' · ' + n : '') + '</button>' +
         '<button class="btn btn-ghost btn-sm" onclick="exportTable(\'' + tk + '\')">📤</button>' +
@@ -1326,6 +1368,7 @@ function tableShell(tk, opts){
       '<div class="spacer"></div>' +
       (hasFilters(tk) ? '<button class="btn btn-ghost btn-sm" onclick="clearFilters(\'' + tk + '\')">✕ נקה סינון</button>' : '') +
       '<button class="btn btn-ghost btn-sm" onclick="exportTable(\'' + tk + '\')">📤 ייצוא לאקסל</button>' +
+      (opts.multi ? '<button class="btn btn-ghost btn-sm" onclick="multiModal()">➕ הזנה מרובה</button>' : '') +
       (opts.add ? '<button class="btn btn-yellow btn-sm" onclick="' + opts.add + '">➕ ' + (opts.addLabel||'הוספה') + '</button>' : '') +
     '</div>' +
     '<div class="tbl-scroll"><table class="tbl"><thead>' +
@@ -1462,6 +1505,7 @@ function renderEntries(w, tk){
     '<div class="page-head only-desk"><h2>' + TABLES[tk].icon + ' ' + TABLES[tk].title + '</h2></div>' +
     bulkBar(tk) +
     tableShell(tk, { actions:true, add:'entryModal(\'' + kind + '\')',
+                     multi: (tk === 'wd' && hasMulti()),
                      addLabel: kind==='deposit' ? 'הפקדה חדשה' : 'משיכה חדשה' }) +
     fab(kind);
   refreshTable(tk);
@@ -1693,6 +1737,147 @@ function entryModal(kind, id){
       (e?'שמור שינויים':'שמור') + '</button>'
   ));
   setTimeout(function(){ var a = byId('e-amt'); if(a && !e) a.focus(); }, 60);
+}
+
+/* =====================================================================
+   הזנת כמה משיכות יחד — ערימת קבלות בבת אחת
+   ===================================================================== */
+var MULTI_N = 0;          /* מונה שורות; המזהים לא נספרים מחדש אחרי מחיקה */
+
+function multiModal(){
+  if(!hasMulti()) return entryModal('withdrawal');
+  MULTI_N = 0;
+  openModal(modalBox('⬇️ הזנת כמה משיכות',
+    '<div class="multi-wrap">' +
+      '<div class="mhead"><span>תאריך</span><span>סכום (₪)</span><span>סוג הוצאה</span>' +
+        '<span>פרטים נוספים</span><span style="text-align:center">🧾</span><span></span></div>' +
+      '<div id="mrows"></div>' +
+      '<button class="btn btn-ghost btn-sm addrow" onclick="multiAdd()">➕ עוד שורה</button>' +
+      '<div class="multi-sum" id="msum"></div>' +
+    '</div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">ביטול</button>' +
+    '<button class="btn btn-primary" id="msave" onclick="multiSave(this)">שמור</button>',
+    true));
+  multiAdd(); multiAdd(); multiAdd();
+  multiTotal();
+  setTimeout(function(){ var a = byId('m1-amt'); if(a) a.focus(); }, 60);
+}
+
+function multiCatOpts(sel){
+  return '<option value="">— בחר סוג —</option>' +
+    S.categories.map(function(c){
+      return '<option value="' + esc(c.id) + '"' + (c.id===sel?' selected':'') + '>' +
+             esc(c.name) + '</option>';
+    }).join('') +
+    '<option value="__new">➕ סוג הוצאה חדש…</option>';
+}
+
+/* שורה חדשה יורשת את התאריך שמעליה: ערימת קבלות היא בדרך כלל מאותו יום */
+function multiAdd(){
+  var box = byId('mrows'); if(!box) return;
+  var prev = box.lastElementChild;
+  var date = prev ? (prev.querySelector('input[type=date]').value || S.today) : (S.today || todayISO());
+  var n = ++MULTI_N;
+  var el = document.createElement('div');
+  el.className = 'mrow'; el.id = 'mr-' + n;
+  el.innerHTML =
+    '<div class="mf mf-date"><label>תאריך</label>' +
+      '<input class="inp" type="date" id="m' + n + '-date" value="' + esc(date) + '"></div>' +
+    '<div class="mf mf-amt"><label>סכום (₪)</label>' +
+      '<input class="inp" type="number" step="0.01" min="0.01" inputmode="decimal" ' +
+        'id="m' + n + '-amt" placeholder="0.00" oninput="multiTouch(' + n + ')"></div>' +
+    '<select class="inp mf-cat" id="m' + n + '-cat" onchange="multiCat(this)">' +
+      multiCatOpts('') + '</select>' +
+    '<input class="inp mf-det" type="text" id="m' + n + '-det" placeholder="ספק, פירוט…">' +
+    '<label class="mchk mf-inv" title="התקבלה חשבונית">' +
+      '<input type="checkbox" id="m' + n + '-inv">' +
+      '<span class="mchk-box">🧾</span><span class="mchk-txt">התקבלה חשבונית</span></label>' +
+    '<button class="icon-btn del mdel" title="הסר שורה" onclick="multiDel(' + n + ')">🗑️</button>';
+  box.appendChild(el);
+  return el;
+}
+
+function multiDel(n){
+  var el = byId('mr-' + n); if(!el) return;
+  el.remove();
+  if(!byId('mrows').children.length) multiAdd();
+  multiTotal();
+}
+
+/* הקלדת סכום בשורה האחרונה פותחת שורה נוספת, כמו גיליון */
+function multiTouch(n){
+  multiTotal();
+  var box = byId('mrows');
+  if(box.lastElementChild && box.lastElementChild.id === 'mr-' + n && val('m' + n + '-amt')) multiAdd();
+}
+
+function multiTotal(){
+  var t = 0, n = 0;
+  [].forEach.call(document.querySelectorAll('#mrows .mrow'), function(el){
+    var a = Number(el.querySelector('input[type=number]').value);
+    if(isFinite(a) && a > 0){ t += a; n++; }
+  });
+  var sum = byId('msum');
+  if(sum) sum.innerHTML = n
+    ? '<span>💸 ' + (n===1 ? 'משיכה אחת' : n + ' משיכות') + '</span><b>' + money(t) + '</b>'
+    : '<span class="muted">מלא סכום בשורה הראשונה — שורה חדשה תיפתח מעצמה</span>';
+  var btn = byId('msave');
+  if(btn && !btn.disabled) btn.innerHTML = n ? ('שמור ' + n + (n===1 ? ' משיכה' : ' משיכות')) : 'שמור';
+}
+
+function multiCat(sel){
+  if(sel.value !== '__new') return;
+  sel.value = '';
+  var name = prompt('שם סוג ההוצאה החדש:');
+  if(!name || !name.trim()) return;
+  api('addCategory', { name:name.trim() }).then(function(r){
+    if(!r.ok) return toast(r.error,'err');
+    if(!S.categories.some(function(c){ return c.id===r.category.id; })) S.categories.push(r.category);
+    /* כל הבוררים מתרעננים, כדי שהסוג החדש יהיה זמין גם בשורות האחרות */
+    [].forEach.call(document.querySelectorAll('#mrows select'), function(x){
+      x.innerHTML = multiCatOpts(x === sel ? r.category.id : x.value);
+    });
+    toast(r.existed ? 'הסוג כבר היה קיים ונבחר' : 'סוג ההוצאה נוסף','ok');
+  });
+}
+
+function multiSave(btn){
+  var out = [], ids = [], bad = 0;
+  [].forEach.call(document.querySelectorAll('#mrows .mrow'), function(el){
+    var n = el.id.slice(3);
+    var date = val('m'+n+'-date'), amt = val('m'+n+'-amt'),
+        cat  = val('m'+n+'-cat'),  det = val('m'+n+'-det');
+    el.classList.remove('bad');
+    if(!amt && !cat && !det) return;                 /* שורה ריקה — פשוט מדלגים */
+    if(!date || !amt || Number(amt) <= 0 || !cat){ el.classList.add('bad'); bad++; return; }
+    out.push({ date:date, amount:amt, catId:cat, details:det,
+               invoice: byId('m'+n+'-inv').checked ? '1' : '0' });
+    ids.push(n);
+  });
+  if(bad) return setMsg('mm','יש להשלים תאריך, סכום וסוג הוצאה בשורות המסומנות');
+  if(!out.length) return setMsg('mm','לא מילאת אף שורה');
+
+  setMsg('mm','');
+  busy(btn, true, 'שומר ' + out.length + '…');
+  api('saveEntries', { rows: JSON.stringify(out) }).then(function(r){
+    busy(btn, false);
+    if(!r.ok){
+      /* השרת מחזיר את מספרי השורות שנפסלו — מסמנים בדיוק אותן */
+      (r.rows || []).forEach(function(x){
+        var el = byId('mr-' + ids[x.i]); if(el) el.classList.add('bad');
+      });
+      return setMsg('mm', r.error);
+    }
+    closeModal();
+    r.entries.forEach(function(e){ S.withdrawals.push(decorateWd(e)); });
+    var s = r.entries.reduce(function(a,x){ return a + (Number(x.amount)||0); }, 0);
+    if(S.totals.withdrawals !== undefined) S.totals.withdrawals += s;
+    S.totals.balance -= s;
+    cacheState();
+    haptic(12);
+    toast(r.count === 1 ? 'נרשמה משיכה אחת' : r.count + ' משיכות נרשמו', 'ok');
+    renderApp();
+  });
 }
 
 function inlineNewCat(btn){
@@ -2315,6 +2500,8 @@ function fabChoice(){
         '<span class="ic">⬆️</span>הפקדה לקופה</button>' +
       '<button class="sheet-item" onclick="closeModal();entryModal(\'withdrawal\')">' +
         '<span class="ic">⬇️</span>משיכה מהקופה</button>' +
+      (hasMulti() ? '<button class="sheet-item" onclick="closeModal();multiModal()">' +
+        '<span class="ic">🧾</span>כמה משיכות יחד</button>' : '') +
     '</div>', ''));
 }
 

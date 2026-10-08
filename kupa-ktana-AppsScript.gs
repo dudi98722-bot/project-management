@@ -53,7 +53,7 @@ var DATE_FIELDS = { date: 1 };
 var NUM_FIELDS  = { amount: 1 };
 var BOOL_FIELDS = { deleted: 1, active: 1, invoice: 1, transferred: 1 };
 
-var API_VERSION    = 4;    // הממשק בודק את המספר הזה כדי לדעת אילו יכולות קיימות בשרת
+var API_VERSION    = 5;    // הממשק בודק את המספר הזה כדי לדעת אילו יכולות קיימות בשרת
 var SCHEMA_VERSION = '3';  // להעלות בכל פעם שמוסיפים עמודה לגיליון
 
 /* רוחב כל לשונית בגרסה הראשונה. אם בעמודה שנוספה אחר כך כבר יש ערך
@@ -131,6 +131,16 @@ function rowValues_(key, o) {
 function insert_(key, o) {
   sheet_(key).appendRow(rowValues_(key, o));
   return o;
+}
+
+/* הוספת כמה שורות בכתיבה אחת. appendRow לכל שורה היה סבב נפרד מול
+   הגיליון, וחמש-עשרה קבלות היו לוקחות חצי דקה. */
+function insertMany_(key, list) {
+  if (!list.length) return list;
+  var cfg = SHEETS[key], sh = sheet_(key);
+  var vals = list.map(function (o) { return rowValues_(key, o); });
+  sh.getRange(sh.getLastRow() + 1, 1, vals.length, cfg.headers.length).setValues(vals);
+  return list;
 }
 
 function findRow_(key, id) {
@@ -285,6 +295,7 @@ function route_(e) {
       case 'login':        return login_(p);
       case 'load':         return load_(p);
       case 'saveEntry':    return saveEntry_(p);
+      case 'saveEntries':  return saveEntries_(p);
       case 'deleteEntry':  return deleteEntry_(p);
       case 'setInvoice':   return setInvoice_(p);
       case 'setTransferred': return setTransferred_(p);
@@ -482,6 +493,50 @@ function setInvoice_(p) {
     row.updatedAt = now_();
     writeRow_('withdrawals', row._row, row);
     return json_({ ok: true, invoice: row.invoice });
+  } finally { lock.releaseLock(); }
+}
+
+/* הזנת כמה משיכות יחד. הכול או כלום: שורה פסולה אחת עוצרת את כולן
+   ומסומנת בחזרה, כדי שלא יישאר חצי ערימת קבלות בקופה בלי לדעת מה נכנס. */
+function saveEntries_(p) {
+  var me = auth_(p.token);
+  if (!me) return err_('פג תוקף החיבור — התחבר מחדש');
+
+  var rows = null;
+  try { rows = JSON.parse(p.rows || '[]'); } catch (ex) { rows = null; }
+  if (!rows || !rows.length) return err_('לא התקבלו שורות לשמירה');
+  if (rows.length > 60)      return err_('אפשר לשמור עד 60 משיכות בבת אחת');
+
+  /* סוגי ההוצאה נקראים פעם אחת ולא לכל שורה — קריאה לגיליון היא היקרה כאן */
+  var cats = {};
+  readAll_('categories').forEach(function (c) { cats['#' + c.id] = c; });
+
+  var manager = isManager_(me), stamp = now_(), out = [], bad = [];
+  rows.forEach(function (r, i) {
+    r = r || {};
+    var date   = dstr_(r.date) || today_();
+    var amount = Number(r.amount);
+    var cat    = cats['#' + clean_(r.catId, 40)];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { bad.push({ i: i, error: 'תאריך לא תקין' }); return; }
+    if (!isFinite(amount) || amount <= 0)    { bad.push({ i: i, error: 'יש להזין סכום גדול מאפס' }); return; }
+    if (!cat)                                { bad.push({ i: i, error: 'יש לבחור סוג הוצאה' }); return; }
+    out.push({
+      id: uid_('w') + i.toString(36),     /* הסיומת מבטיחה מזהים שונים בתוך אותה אצווה */
+      date: date, amount: amount, catId: cat.id, catName: cat.name,
+      details: clean_(r.details, 500), userName: me.fullName, userId: me.id,
+      createdAt: stamp, updatedAt: '', deleted: false,
+      invoice: (r.invoice === true || r.invoice === '1'),
+      /* כמו ברישום בודד — רק מנהל קובע שמשיכה כבר הועברה לתוכנה */
+      transferred: manager && (r.transferred === true || r.transferred === '1')
+    });
+  });
+  if (bad.length) return json_({ ok: false, error: 'יש שורות שצריך לתקן', rows: bad });
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    insertMany_('withdrawals', out);
+    return json_({ ok: true, count: out.length, entries: out });
   } finally { lock.releaseLock(); }
 }
 
