@@ -1508,8 +1508,11 @@ function calcDisplayName(ln,fn,fa,id){
   return n;
 }
 function getPaidForVow(vowId){
-  var t=0;
-  payments.forEach(function(p){if(p.vowId===vowId)t+=p.amount||0;});
+  // מספר התחייבות מגיע מהשרת כטקסט ("1789386217937"), ותשלום שנוצר במסך
+  // מחזיק אותו כמספר. השוואה מדויקת (===) לא ספרה תשלום חדש עד רענון ידני -
+  // וההתחייבות נשארה "פתוחה" גם בחלון התשלום הבא. משווים כטקסט.
+  var k=String(vowId), t=0;
+  payments.forEach(function(p){ if(p.vowId!=null && String(p.vowId)===k) t+=p.amount||0; });
   return t;
 }
 function getPersonDebt(name){
