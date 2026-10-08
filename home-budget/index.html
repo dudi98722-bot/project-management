@@ -757,7 +757,9 @@ document.addEventListener('mousedown', e=>{
 
 /** מזהה תקין הוא רק מה ש-uid() מייצר. שורה עם מזהה אחר לא נכנסת
  *  ל-DOM בכלל — גם אם נכתבה ידנית בגיליון. */
-const ID_OK=/^[a-z]{1,4}-[0-9]{10,16}-[0-9]{1,7}$/;
+/* u1/u2 — המזהים שהשרת נותן למשתמשי ברירת המחדל (readUsers). בלעדיהם המנהל
+   האמיתי בגיליון נדחה כ"מזהה לא תקין", והעותק המקומי של ברירת המחדל עלה במקומו. */
+const ID_OK=/^(?:[a-z]{1,4}-[0-9]{10,16}-[0-9]{1,7}|u[0-9]{1,2})$/;
 function safeId(v){ return ID_OK.test(String(v==null?'':v)); }
 
 /* ---------------- עזרים ---------------- */
@@ -880,14 +882,21 @@ const ROLES = {
   user:  { label:'סיווג, הזנה וצפייה בכל הנתונים',
            tabs:['dash','classify','tx','add'] }
 };
+/* משתמשי ברירת המחדל למצב מקומי. הקודים שלהם ציבוריים (הריפו ציבורי), ולכן
+   עותק שלהם לעולם לא עולה לגיליון — ראה isSeedUser. */
+const DEFAULT_USERS=[{id:'u1', name:'דוד', code:'1234', role:'admin', email:''},
+                     {id:'u2', name:'בן/בת זוג', code:'5678', role:'user', email:''}];
+function isSeedUser(u){
+  const pin=v=>String(v==null?'':v).replace(/\D/g,'');
+  return !!u && DEFAULT_USERS.some(d=>d.id===u.id && normName(d.name)===normName(u.name) && pin(d.code)===pin(u.code));
+}
 function users(){
   let list = (DB.users||[]).filter(u=>!u.deleted);
   if(!list.length){
     /* מיגרציה מגרסה קודמת ששמרה משתמשים בתוך ההגדרות */
     try{ const u=JSON.parse(DB.settings.users||'null'); if(Array.isArray(u)&&u.length) list=u; }catch(e){}
   }
-  if(!list.length) list=[{id:'u1', name:'דוד', code:'1234', role:'admin', email:''},
-                         {id:'u2', name:'בן/בת זוג', code:'5678', role:'user', email:''}];
+  if(!list.length) list=DEFAULT_USERS.map(u=>Object.assign({}, u));
   list.forEach(u=>{ if(u.role!=='admin' && u.role!=='user') u.role='user'; });
   /* אם לא נשאר אף מנהל — הראשון הופך למנהל, אחרת איש לא יוכל להיכנס להגדרות */
   if(!list.some(u=>u.role==='admin')) list[0].role='admin';
@@ -988,12 +997,21 @@ function hasPending(){
    ושמירה תקועה השאירה את flushing דלוק וחסמה כל שמירה שאחריה.
    אם אין תשובה תוך HEDGE_MS שולחים את אותה פנייה שוב ולוקחים את הראשונה.
    זה בטוח לכל פעולות השמירה כאן — כולן "עדכן לפי מזהה" או "סמן כמחוק",
-   והרצה כפולה מגיעה לאותה תוצאה. פניות הכניסה לא משוכפלות: כל כפילה
-   הייתה נספרת כעוד ניסיון במכסה של חמישה.
+   והרצה כפולה מגיעה לאותה תוצאה. פניות הכניסה משוכפלות רק מול שרת
+   שמזהה כפילה לפי rid (SERVER_CAPS.ridLogin) — אחרת כל כפילה הייתה
+   נספרת כעוד ניסיון במכסה של חמישה.
    ------------------------------------------------------------ */
 const HEDGE_MS=4000;
 const NO_HEDGE={requestCode:1, verifyCode:1, logout:1};
-const API_TIMEOUT={requestCode:30000, verifyCode:30000, logout:15000};
+/* הכניסה מחזירה עכשיו גם את כל הנתונים, ולכן גבול הזמן שלה ארוך יותר */
+const API_TIMEOUT={requestCode:40000, verifyCode:40000, logout:15000};
+/* caps מהשרת. כניסה משוכפלת רק כשהשרת מצהיר ridLogin: הוא מזהה כפילה לפי
+   מזהה ומחזיר לה את אותה תשובה. מול שרת ישן כפילה הייתה נספרת כניסיון. */
+let SERVER_CAPS={};
+function newRid(){
+  const a=new Uint8Array(12); crypto.getRandomValues(a);
+  return 'r'+Array.from(a, b=>b.toString(16).padStart(2,'0')).join('');
+}
 function apiErr(msg){ const e=new Error(msg); e.userMsg=msg; return e; }
 function apiRaw(payload){
   const action=(payload&&payload.action)||'';
@@ -1014,7 +1032,9 @@ function apiRaw(payload){
     const win=t=>{ if(done) return; done=true;
       if(second&&second!==first) second.cancel(); if(first!==second) first.cancel(); resolve(t); };
     const lose=e=>{ if(done) return; done=true; reject(e); };
-    const ht = NO_HEDGE[action] ? null : setTimeout(()=>{
+    const hedge = !NO_HEDGE[action] ||
+      (SERVER_CAPS.ridLogin && (action==='requestCode'||action==='verifyCode'));
+    const ht = !hedge ? null : setTimeout(()=>{
       if(done) return;
       second=send();
       second.then(t=>{ if(t!=='__TIMEOUT__') win(t); }, ()=>{});
@@ -1055,7 +1075,10 @@ async function flush(){
       const ids=Object.keys(pending[kind]);
       if(!ids.length) return;
       snap[kind]={}; ids.forEach(id=>{ snap[kind][id]=pending[kind][id]; });
-      const rows=ids.map(id=>(DB[kind]||[]).find(x=>x.id===id)).filter(Boolean);
+      /* עותק של משתמש ברירת מחדל לא עולה: הוא היה דורס את המשתמש האמיתי
+         בגיליון בקוד הציבורי 1234/5678 ומנתק את שאר המכשירים */
+      const rows=ids.map(id=>(DB[kind]||[]).find(x=>x.id===id))
+        .filter(r=>r && !(kind==='users' && isSeedUser(r)));
       if(rows.length) ops.push({op, rows});
     };
     pack('tx','upsertTx'); pack('cats','upsertCat');
@@ -1108,7 +1131,8 @@ function mergeCloud(kind, cloudRows){
   /* קטגוריות ברירת מחדל שנוצרו בדפדפן לפני החיבור הראשון לא עולות לגיליון:
      יש לו כבר קטגוריות משלו, והן נכנסו לשם ככפולות — 22 בכל מכשיר חדש. */
   const localOnly=(DB[kind]||[]).filter(r=>r&&r.id&&!ids[r.id]
-    && !(kind==='cats' && r.seed && cloud.length));
+    && !(kind==='cats' && r.seed && cloud.length)
+    && !(kind==='users' && isSeedUser(r) && cloud.length));
   localOnly.forEach(r=>{ pending[kind][r.id]=1; });
   return cloud.concat(localOnly);
 }
@@ -1124,6 +1148,23 @@ async function pushAll(){
   renderSettings();
 }
 
+/** החלת תשובת טעינה מהשרת — משותפת ל-syncNow ולכניסה שמחזירה נתונים */
+function applyLoad(j){
+  DB.tx       = mergeCloud('tx',       j.tx);
+  DB.cats     = (j.cats && j.cats.length) ? mergeCloud('cats', j.cats) : DB.cats;
+  DB.stencils = mergeCloud('stencils', j.stencils);
+  DB.rules    = mergeCloud('rules',    j.rules);
+  DB.users    = mergeCloud('users', j.users);                 // גם משתמש שנוסף ולא הספיק לעלות שורד
+  /* הכתובת לא נשמרת כשהיא ברירת המחדל — אחרת שינוי עתידי של ברירת המחדל
+     לא היה מגיע למכשירים שכבר שמרו את הישנה */
+  DB.settings = Object.assign({}, j.settings||{}, {apiUrl: GS_URL===DEFAULT_GS_URL ? '' : GS_URL});
+  if(j.me && CU){ CU.role=j.me.role; CU.name=j.me.name; }    // ההרשאה נקבעת בשרת
+  saveLocal(); savePending(); renderAll();
+  const left=pendingCount();
+  if(left){ setSync('saving', left+' ממתינים להעלאה'); schedFlush(); }
+  else setSync('on','מסונכרן ✓');
+}
+
 async function syncNow(){
   if(!GS_URL){ toast('לא מחובר — הדבק כתובת /exec בהגדרות'); return; }
   if(!TOKEN){ showLogin(); return; }
@@ -1131,19 +1172,7 @@ async function syncNow(){
   try{
     await flush();
     const j = await apiPost({action:'load'});
-    if(j && j.tx){
-      DB.tx       = mergeCloud('tx',       j.tx);
-      DB.cats     = (j.cats && j.cats.length) ? mergeCloud('cats', j.cats) : DB.cats;
-      DB.stencils = mergeCloud('stencils', j.stencils);
-      DB.rules    = mergeCloud('rules',    j.rules);
-      DB.users    = mergeCloud('users', j.users);                 // גם משתמש שנוסף ולא הספיק לעלות שורד
-      DB.settings = Object.assign({}, j.settings||{}, {apiUrl:GS_URL});
-      if(j.me && CU){ CU.role=j.me.role; CU.name=j.me.name; }    // ההרשאה נקבעת בשרת
-      saveLocal(); savePending(); renderAll();
-      const left=pendingCount();
-      if(left){ setSync('saving', left+' ממתינים להעלאה'); schedFlush(); }
-      else { setSync('on','מסונכרן ✓'); toast('הנתונים נטענו מהענן'); }
-    }
+    if(j && j.tx){ applyLoad(j); if(!pendingCount()) toast('הנתונים נטענו מהענן'); }
   }catch(e){
     if(String(e.message)!=='unauthorized'){
       setSync('err','שגיאה בטעינה'); toast((e&&e.userMsg)||'לא הצלחתי לטעון מהגיליון');
@@ -1185,6 +1214,12 @@ function showStep(which){
   if(which==='connectStep'){ $('loginApi').value=GS_URL||''; $('connErr').textContent=''; }
 }
 /** מסך הכניסה לא חושף שום שם משתמש — כל אחד מקליד את שלו. */
+/* פנייה ריקה ברקע ברגע שמסך הכניסה נפתח: מעירה את השרת של גוגל בזמן שמקלידים,
+   כך שהכניסה עצמה לא משלמת על ההתעוררות, וגם מגלה מה השרת יודע (caps). */
+function warmServer(){
+  if(!GS_URL) return;
+  apiRaw({action:'authmeta'}).then(j=>{ if(j && j.caps) SERVER_CAPS=j.caps; }).catch(()=>{});
+}
 function showLogin(){
   clearInterval(resendTimer);
   challenge=null; loginBusy=false;
@@ -1193,6 +1228,7 @@ function showLogin(){
   $('loginErr').textContent=''; $('otpErr').textContent='';
   showStep('credStep');
   setTimeout(()=>{ try{ $('loginName').focus(); }catch(e){} }, 60);
+  warmServer();
 }
 function backToCred(){
   clearInterval(resendTimer); challenge=null;
@@ -1242,10 +1278,10 @@ async function submitPin(){
   /* בלי זה, פנייה איטית נראתה כמו מסך תקוע */
   const slow=setTimeout(()=>{ if(loginBusy) $('loginErr').textContent='השרת של גוגל איטי כרגע — ממתין…'; }, 4000);
   try{
-    const j=await apiRaw({action:'requestCode', name, pin});
+    const j=await apiRaw({action:'requestCode', name, pin, rid:newRid()});
     if(j.status!=='ok'){ $('loginErr').textContent=j.message||BAD_CREDS; $('loginCode').value=''; return; }
     /* השרת יכול להיות מוגדר בלי אימות מייל — אז הוא מחזיר טוקן מיד */
-    if(j.skipOtp && j.token){ finishLogin(j.user, j.token); return; }
+    if(j.skipOtp && j.token){ finishLogin(j.user, j.token, j.data); return; }
     challenge={ref:j.ref, name, pin};
     showStep('otpStep');
     $('otpSentTo').innerHTML='קוד בן 6 ספרות נשלח אל<br><b>'+esc(j.to)+'</b>';
@@ -1264,12 +1300,12 @@ async function submitOtp(){
   const myRef=challenge.ref;
   loginBusy=true; $('otpBtn').textContent='בודק...'; $('otpErr').textContent='';
   try{
-    const j=await apiRaw({action:'verifyCode', ref:myRef, otp});
+    const j=await apiRaw({action:'verifyCode', ref:myRef, otp, rid:newRid()});
     /* "התחל מחדש" באמצע הבדיקה מבטל את הכניסה — בלי זה היא הייתה
        מושלמת אחרי שהמשתמש כבר ביטל אותה */
     if(!challenge || challenge.ref!==myRef) return;
     if(j.status!=='ok'){ $('otpErr').textContent=j.message||'קוד שגוי'; $('otpCode').value=''; return; }
-    finishLogin(j.user, j.token);
+    finishLogin(j.user, j.token, j.data);
   }catch(e){
     $('otpErr').textContent=(e&&e.userMsg)||'אין תקשורת עם השרת';
   }finally{ loginBusy=false; $('otpBtn').textContent='כניסה'; }
@@ -1291,14 +1327,14 @@ async function resendCode(){
   if(!challenge || loginBusy) { if(!challenge) backToCred(); return; }
   loginBusy=true;
   try{
-    const j=await apiRaw({action:'requestCode', name:challenge.name, pin:challenge.pin});
+    const j=await apiRaw({action:'requestCode', name:challenge.name, pin:challenge.pin, rid:newRid()});
     if(j.status==='ok'){ if(challenge) challenge.ref=j.ref; startResendCooldown(); toast('קוד חדש נשלח'); }
     else $('otpErr').textContent=j.message||'שגיאה';
   }catch(e){ $('otpErr').textContent=(e&&e.userMsg)||'אין תקשורת עם השרת'; }
   finally{ loginBusy=false; }
 }
 
-function finishLogin(user, token){
+function finishLogin(user, token, data){
   clearInterval(resendTimer);
   challenge=null;
   CU = {id:user.id, name:user.name, role:user.role, email:user.email||''};
@@ -1312,7 +1348,13 @@ function finishLogin(user, token){
   /* לא משאירים שם וקוד בשדות אחרי כניסה */
   $('loginName').value=''; $('loginCode').value=''; $('otpCode').value='';
   renderAll();
-  if(GS_URL && TOKEN) syncNow();
+  if(GS_URL && TOKEN){
+    /* השרת מחזיר את הנתונים כבר בתשובת הכניסה — חוסך פנייה שלמה. אבל רק כשאין
+       כאן שינויים שלא עלו: הנתונים נקראו בשרת לפני שהשינויים הגיעו אליו, והיו
+       דורסים עריכה מקומית של שורה קיימת. אז קודם מעלים, ואחר כך טוענים. */
+    if(data && data.tx && !pendingCount()) applyLoad(data);
+    else syncNow();
+  }
 }
 
 async function logout(){

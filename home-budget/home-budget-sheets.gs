@@ -48,7 +48,7 @@
 var APP_NAME  = 'ניהול הוצאות בית';
 /* חותם גרסה. מוחזר ב-authmeta, וכך אפשר לדעת מבחוץ איזו גרסת קוד
    באמת פרוסה — העורך והפריסה יכולים להחזיק קוד שונה לגמרי. */
-var SCRIPT_VERSION = '2026-10-08-a';
+var SCRIPT_VERSION = '2026-10-08-b';
 
 /* ------------------------------------------------------------
    אימות דו-שלבי במייל
@@ -83,14 +83,19 @@ var RL_WINDOW = 15 * 60 * 1000;               //   בחלון של 15 דקות
    ------------------------------------------------------------ */
 var SHEET_ID = '1aT7lV9gxe_FskJVZWICDWbbKzOCq7hKYWaLoz_nKPoY';
 
+/* פתיחת הגיליון פעם אחת לכל פנייה. כל טבלה קראה ל-openById מחדש — טעינה
+   אחת פתחה את הגיליון שש-שבע פעמים, וכל פתיחה היא פנייה נפרדת לשרתי גוגל.
+   כל פנייה ל-Apps Script רצה בסביבה נקייה, אז המטמון לא חוצה בקשות. */
+var SS_ = null;
 function getSpreadsheet() {
-  if (SHEET_ID) return SpreadsheetApp.openById(SHEET_ID);
+  if (SS_) return SS_;
+  if (SHEET_ID) return (SS_ = SpreadsheetApp.openById(SHEET_ID));
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) {
     throw new Error('הסקריפט אינו מחובר לגיליון. פתח את הגיליון ← תוספים ← ' +
                     'Apps Script והדבק שם את הקוד, או מלא את SHEET_ID בראש הקובץ.');
   }
-  return ss;
+  return (SS_ = ss);
 }
 
 var SHEETS = {
@@ -189,8 +194,31 @@ function handle(e) {
     /* ---------- פתוח: כניסה ---------- */
     if (action === 'authmeta')    return json(authMeta());
     if (action === 'diag')        return json(diag(g('key')));
-    if (action === 'requestCode') { lock.waitLock(20000); return json(requestCode(g('name'), g('pin'))); }
-    if (action === 'verifyCode')  { lock.waitLock(20000); return json(verifyCode(g('ref'), g('otp'))); }
+    if (action === 'requestCode' || action === 'verifyCode') {
+      /* הדפדפן שולח את אותה פנייה שוב כשגוגל לא עונה בזמן. אותו מזהה = אותה
+         תשובה, בלי לבצע שוב: אחרת הכפילה הייתה נספרת עוד פעם במכסת חמשת
+         הניסיונות, או נכשלת על קוד מייל שהמקורית כבר צרכה. המפתח במטמון כולל
+         את השם והקוד — מזהה לבדו לא מספיק כדי לקבל את הטוקן ששמור שם. */
+      var rkey = ridKey(g('rid'), action === 'requestCode'
+        ? [action, normName(g('name')), String(g('pin') || '')]
+        : [action, String(g('ref') || ''), String(g('otp') || '')]);
+      lock.waitLock(20000);
+      /* הבדיקה אחרי הנעילה, כי הכפילה מחכה לנעילה עד שהמקורית מסיימת */
+      var res = rkey ? ridGet(rkey) : null;
+      if (!res) {
+        res = action === 'requestCode' ? requestCode(g('name'), g('pin')) : verifyCode(g('ref'), g('otp'));
+        if (rkey) ridPut(rkey, res);
+      }
+      lock.releaseLock();     // הקריאה של הנתונים לא צריכה לעכב כניסה או שמירה של מישהו אחר
+      /* כניסה מוצלחת מחזירה את כל הנתונים — פנייה אחת במקום שתיים, וכל פנייה
+         לגוגל עולה כמה שניות של תקורה. הנתונים לא נשמרים במטמון (גדולים מהמגבלה
+         שלו) אלא נקראים מחדש גם לכפילה. */
+      if (res && res.status === 'ok' && res.token && res.user) {
+        var me0 = findUser(res.user.id);
+        if (me0) { var out0 = {}; for (var k0 in res) out0[k0] = res[k0]; out0.data = loadAll(me0); res = out0; }
+      }
+      return json(res);
+    }
     if (action === 'logout')      { props().deleteProperty('sess_' + g('token')); return json({ status: 'ok' }); }
 
     /* ---------- מכאן ואילך חייב טוקן ---------- */
@@ -235,13 +263,14 @@ function handle(e) {
         /* ניהול משתמשים — מנהל בלבד, ונבדק כאן ולא רק בממשק */
         else if (o.op === 'upsertUser') {
           if (me.role !== 'admin') return json({ status: 'error', message: 'ניהול משתמשים מותר למנהל בלבד' });
-          var guard = guardAdmins(o.rows || [], []) || guardNames(o.rows || []);
+          var urows = dropStaleSeedUsers(o.rows || []);
+          var guard = guardAdmins(urows, []) || guardNames(urows);
           if (guard) return json({ status: 'error', message: guard });
           /* החלפת קוד אישי היא הצעד שמייל הקוד עצמו ממליץ עליו כשמישהו
              מנסה להיכנס. בלי ביטול ההתחברויות הקיימות היא לא הייתה
              מנתקת את מי שכבר נכנס. */
-          revokeOnCodeChange(o.rows || [], g('token'));
-          upsertMany('users', o.rows || []); count += (o.rows || []).length;
+          revokeOnCodeChange(urows, g('token'));
+          upsertMany('users', urows); count += urows.length;
         }
         else if (o.op === 'delUser') {
           if (me.role !== 'admin') return json({ status: 'error', message: 'ניהול משתמשים מותר למנהל בלבד' });
@@ -269,6 +298,26 @@ function props() { return PropertiesService.getScriptProperties(); }
 
 /** רשימת המשתמשים. בשימוש הראשון נוצרת מתוך ההגדרות הישנות
  *  (settings.users מגרסה קודמת) או מברירת מחדל. */
+/* משתמשי ברירת המחדל — נוצרים רק כשאין אף משתמש. הקודים שלהם כתובים בקוד
+   הציבורי, ולכן הם לעולם לא נכתבים מחדש על משתמש קיים (dropStaleSeedUsers). */
+var SEED_USERS = [{ id: 'u1', name: 'דוד', code: '1234', role: 'admin' },
+                  { id: 'u2', name: 'בן/בת זוג', code: '5678', role: 'user' }];
+
+/** שורת משתמש שזהה לברירת המחדל (מזהה+שם+קוד) ומיועדת למשתמש שכבר קיים
+ *  אינה עריכה אמיתית: זה עותק ישן שדפדפן יצר לעצמו לפני שהתחבר. דפדפן כזה
+ *  החזיר בכל טעינה את קוד המנהל ל-1234 ואת המשתמש השני ל"בן/בת זוג" 5678,
+ *  וניתק את שאר המכשירים (revokeOnCodeChange). */
+function dropStaleSeedUsers(rows) {
+  var have = {};
+  readAll('users').forEach(function (u) { have[String(u.id)] = 1; });
+  return (rows || []).filter(function (r) {
+    if (!r || !have[String(r.id)]) return true;
+    return !SEED_USERS.some(function (d) {
+      return d.id === String(r.id) && normName(d.name) === normName(r.name) && normPin(d.code) === normPin(r.code);
+    });
+  });
+}
+
 function readUsers() {
   var list = readAll('users').filter(function (u) { return !u.deleted; });
   if (list.length) return list;
@@ -278,8 +327,7 @@ function readUsers() {
   var old = null;
   try { old = JSON.parse(s.users || 'null'); } catch (x) {}
   var seed = (old && old.length) ? old
-           : [{ id: 'u1', name: 'דוד', code: '1234', role: 'admin' },
-              { id: 'u2', name: 'בן/בת זוג', code: '5678', role: 'user' }];
+           : SEED_USERS.map(function (u) { return { id: u.id, name: u.name, code: u.code, role: u.role }; });
   seed.forEach(function (u) {
     if (u.role !== 'admin' && u.role !== 'user') u.role = 'user';
     if (!u.email) u.email = '';
@@ -347,8 +395,28 @@ function maskEmail(e) {
 
 /** מסך הכניסה לא מקבל שום רשימת משתמשים — כל אחד מקליד את שמו.
  *  חשיפת השמות הייתה מאפשרת לדעת מי רשום במערכת לפני כל אימות. */
+/* caps: מה השרת יודע. הדפדפן משכפל פניות כניסה רק כשמופיע ridLogin —
+   מול שרת ישן כפילה הייתה נספרת כניסיון נוסף. */
 function authMeta() {
-  return { status: 'ok', app: APP_NAME, v: SCRIPT_VERSION };
+  return { status: 'ok', app: APP_NAME, v: SCRIPT_VERSION, caps: { ridLogin: 1, loginData: 1 } };
+}
+
+var RID_RE = /^[A-Za-z0-9_-]{16,64}$/;
+var RID_TTL = 600;
+/** מפתח המטמון: גיבוב של המזהה יחד עם פרטי הכניסה. בלי מזהה תקין — אין מטמון. */
+function ridKey(rid, parts) {
+  rid = String(rid || '');
+  if (!RID_RE.test(rid)) return '';
+  var d = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, rid + '\n' + parts.join('\n'),
+                                  Utilities.Charset.UTF_8);
+  return 'rid_' + d.map(function (b) { return ('0' + (b & 255).toString(16)).slice(-2); }).join('');
+}
+function ridGet(key) {
+  try { var h = CacheService.getScriptCache().get(key); return h ? JSON.parse(h) : null; }
+  catch (x) { return null; }
+}
+function ridPut(key, out) {
+  try { CacheService.getScriptCache().put(key, JSON.stringify(out), RID_TTL); } catch (x) {}
 }
 
 /**
@@ -493,7 +561,7 @@ function requestCode(name, pin) {
     props().deleteProperty(rlKey);
     var tok = newToken();
     props().setProperty('sess_' + tok, JSON.stringify({ u: u.id, exp: Date.now() + SESS_TTL }));
-    cleanupExpired();
+    /* בלי cleanupExpired כאן — הוא קורא את כל המאגר, ורץ ממילא ב-10% מהפניות למעלה */
     return { status: 'ok', skipOtp: true, token: tok,
              user: { id: u.id, name: u.name, role: u.role, email: u.email } };
   }
@@ -569,7 +637,7 @@ function verifyCode(ref, otp) {
   if (!u) return { status: 'error', message: 'המשתמש הוסר מהמערכת' };
   var token = newToken();
   props().setProperty('sess_' + token, JSON.stringify({ u: o.u, exp: Date.now() + SESS_TTL }));
-  cleanupExpired();
+  if (Math.random() < 0.1) cleanupExpired();
   return { status: 'ok', token: token,
            user: { id: u.id, name: u.name, role: u.role, email: u.email } };
 }
