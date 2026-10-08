@@ -704,6 +704,11 @@ const TRANSFER_RE = /(העברה\s*עצמית|העברה\s*בין\s*חשבונו
 
 let DB = {tx:[], cats:[], stencils:[], rules:[], users:[], settings:{}};
 let CU = null;
+/* כתובת השרת מובנית. קודם היא נשמרה רק בזיכרון של כל דפדפן, אז מכשיר
+   חדש — או דפדפן שזיכרונו נמחק — עלה במצב מקומי ובדק שם וקוד מול רשימת
+   ברירת מחדל בדפדפן ולא מול הגיליון: משתמש אמיתי נדחה כ"קוד שגוי" גם
+   כשהקוד נכון. הכתובת אינה סוד — הגישה לנתונים חסומה בטוקן. */
+const DEFAULT_GS_URL='https://script.google.com/macros/s/AKfycbyP05aHX2IsMnv7V04ABwmR3ptS5PPIweuhWbs7AjSTkkvn6BnOJ-Z4TrTKe67XFcsrMg/exec';
 let GS_URL = '';
 let TOKEN = '';
 const emptyPending = () => ({tx:{}, cats:{}, stencils:{}, rules:{}, users:{}, settings:{},
@@ -854,11 +859,12 @@ function loadLocal(){
      לרשומות אמיתיות, כדי שיהיה מה לערוך ולסנכרן. */
   if(!DB.users || !DB.users.length)
     DB.users = users().map(u=>Object.assign({email:'', deleted:''}, u));
-  GS_URL = DB.settings.apiUrl || '';
+  GS_URL = DB.settings.apiUrl || DEFAULT_GS_URL;
 }
 function seedCats(){
+  /* seed מסמן קטגוריה שנוצרה בדפדפן כברירת מחדל ולא בידי המשתמש — ראה mergeCloud */
   DB.cats = DEFAULT_CATS.map((c,i)=>({
-    id:uid('c'), name:c[0], kind:c[1], color:c[2], icon:c[3], ord:String(i), deleted:''
+    id:uid('c'), name:c[0], kind:c[1], color:c[2], icon:c[3], ord:String(i), deleted:'', seed:'1'
   }));
 }
 /* ---------------- הרשאות ----------------
@@ -868,8 +874,11 @@ function seedCats(){
 const ROLES = {
   admin: { label:'מנהל — גישה מלאה',
            tabs:['dash','classify','tx','import','add','sources','cats','settings'] },
-  user:  { label:'סיווג, הזנה וצפייה בדוחות',
-           tabs:['dash','classify','add'] }
+  /* תנועות פתוחות למשתמש רגיל לצפייה בכל הנתונים (דודי, 08/10). עריכה,
+     מחיקה, פעולות מרוכזות ותצוגת מחוקות נשארות למנהל — כל אחת מהן נבדקת
+     מול isAdmin() בנפרד, והשרת מתיר למשתמש רגיל רק upsertTx/upsertRule. */
+  user:  { label:'סיווג, הזנה וצפייה בכל הנתונים',
+           tabs:['dash','classify','tx','add'] }
 };
 function users(){
   let list = (DB.users||[]).filter(u=>!u.deleted);
@@ -972,8 +981,54 @@ function hasPending(){
 }
 /** כל פנייה לשרת היא POST עם הטוקן בגוף הבקשה ולא בכתובת —
  *  כתובות נשמרות בהיסטוריה ובלוגים, גוף הבקשה לא. */
+/* ------------------------------------------------------------
+   פנייה לשרת: גבול זמן + כפילה
+   גוגל נתקע באקראי — נמדד פנייה אחת מתוך שלוש תקועה מעל 20 שניות, גם
+   פנייה שלא נוגעת בגיליון. בלי גבול זמן פנייה תקועה הקפיאה את המסך,
+   ושמירה תקועה השאירה את flushing דלוק וחסמה כל שמירה שאחריה.
+   אם אין תשובה תוך HEDGE_MS שולחים את אותה פנייה שוב ולוקחים את הראשונה.
+   זה בטוח לכל פעולות השמירה כאן — כולן "עדכן לפי מזהה" או "סמן כמחוק",
+   והרצה כפולה מגיעה לאותה תוצאה. פניות הכניסה לא משוכפלות: כל כפילה
+   הייתה נספרת כעוד ניסיון במכסה של חמישה.
+   ------------------------------------------------------------ */
+const HEDGE_MS=4000;
+const NO_HEDGE={requestCode:1, verifyCode:1, logout:1};
+const API_TIMEOUT={requestCode:30000, verifyCode:30000, logout:15000};
+function apiErr(msg){ const e=new Error(msg); e.userMsg=msg; return e; }
 function apiRaw(payload){
-  return fetch(GS_URL, {method:'POST', body: JSON.stringify(payload)}).then(r=>r.json());
+  const action=(payload&&payload.action)||'';
+  const limit=API_TIMEOUT[action]||45000;
+  const body=JSON.stringify(payload);
+  function send(){
+    const ac=new AbortController();
+    const timer=setTimeout(()=>ac.abort(), limit);
+    const p=fetch(GS_URL,{method:'POST', body, signal:ac.signal})
+      .then(r=>r.text())
+      .then(t=>{ clearTimeout(timer); return t; },
+            e=>{ clearTimeout(timer); if(e&&e.name==='AbortError') return '__TIMEOUT__'; throw e; });
+    p.cancel=()=>{ clearTimeout(timer); ac.abort(); };
+    return p;
+  }
+  return new Promise((resolve,reject)=>{
+    const first=send(); let second=null, done=false;
+    const win=t=>{ if(done) return; done=true;
+      if(second&&second!==first) second.cancel(); if(first!==second) first.cancel(); resolve(t); };
+    const lose=e=>{ if(done) return; done=true; reject(e); };
+    const ht = NO_HEDGE[action] ? null : setTimeout(()=>{
+      if(done) return;
+      second=send();
+      second.then(t=>{ if(t!=='__TIMEOUT__') win(t); }, ()=>{});
+    }, HEDGE_MS);
+    first.then(t=>{ if(ht) clearTimeout(ht); if(t==='__TIMEOUT__' && second) second.then(win,lose); else win(t); },
+               e=>{ if(ht) clearTimeout(ht); if(second) second.then(win,lose); else lose(e); });
+  }).then(t=>{
+    if(t==='__TIMEOUT__') throw apiErr('השרת של גוגל לא ענה בזמן. נסה שוב בעוד רגע');
+    try{ return JSON.parse(t); }
+    catch(e){
+      if(/netfree/i.test(t)) throw apiErr('NetFree חוסם את החיבור לשרת. צריך לבקש מ-NetFree לפתוח את script.google.com');
+      throw apiErr('השרת של גוגל החזיר תשובה לא צפויה. נסה שוב בעוד רגע');
+    }
+  }, e=>{ throw (e&&e.userMsg) ? e : apiErr('אין תקשורת עם השרת — בדוק את החיבור לאינטרנט'); });
 }
 function apiPost(payload){
   return apiRaw(Object.assign({token:TOKEN}, payload)).then(j=>{
@@ -1050,7 +1105,10 @@ function mergeCloud(kind, cloudRows){
   if(bad) console.warn('דולגו '+bad+' שורות עם מזהה לא תקין ב-'+kind);
   const cloud=(cloudRows||[]).filter(r=>r&&safeId(r.id));
   const ids={}; cloud.forEach(r=>{ if(r&&r.id) ids[r.id]=1; });
-  const localOnly=(DB[kind]||[]).filter(r=>r&&r.id&&!ids[r.id]);
+  /* קטגוריות ברירת מחדל שנוצרו בדפדפן לפני החיבור הראשון לא עולות לגיליון:
+     יש לו כבר קטגוריות משלו, והן נכנסו לשם ככפולות — 22 בכל מכשיר חדש. */
+  const localOnly=(DB[kind]||[]).filter(r=>r&&r.id&&!ids[r.id]
+    && !(kind==='cats' && r.seed && cloud.length));
   localOnly.forEach(r=>{ pending[kind][r.id]=1; });
   return cloud.concat(localOnly);
 }
@@ -1088,7 +1146,7 @@ async function syncNow(){
     }
   }catch(e){
     if(String(e.message)!=='unauthorized'){
-      setSync('err','שגיאה בטעינה'); toast('לא הצלחתי לטעון — בדוק את הכתובת');
+      setSync('err','שגיאה בטעינה'); toast((e&&e.userMsg)||'לא הצלחתי לטעון מהגיליון');
     }
   }
 }
@@ -1180,7 +1238,9 @@ async function submitPin(){
     return;
   }
 
-  loginBusy=true; $('pinBtn').textContent='שולח קוד...'; $('loginErr').textContent='';
+  loginBusy=true; $('pinBtn').textContent='מתחבר...'; $('loginErr').textContent='';
+  /* בלי זה, פנייה איטית נראתה כמו מסך תקוע */
+  const slow=setTimeout(()=>{ if(loginBusy) $('loginErr').textContent='השרת של גוגל איטי כרגע — ממתין…'; }, 4000);
   try{
     const j=await apiRaw({action:'requestCode', name, pin});
     if(j.status!=='ok'){ $('loginErr').textContent=j.message||BAD_CREDS; $('loginCode').value=''; return; }
@@ -1193,8 +1253,8 @@ async function submitPin(){
     startResendCooldown();
     setTimeout(()=>$('otpCode').focus(), 60);
   }catch(e){
-    $('loginErr').textContent='אין תקשורת עם השרת';
-  }finally{ loginBusy=false; $('pinBtn').textContent='המשך'; }
+    $('loginErr').textContent=(e&&e.userMsg)||'אין תקשורת עם השרת';
+  }finally{ clearTimeout(slow); loginBusy=false; $('pinBtn').textContent='המשך'; }
 }
 
 async function submitOtp(){
@@ -1211,7 +1271,7 @@ async function submitOtp(){
     if(j.status!=='ok'){ $('otpErr').textContent=j.message||'קוד שגוי'; $('otpCode').value=''; return; }
     finishLogin(j.user, j.token);
   }catch(e){
-    $('otpErr').textContent='אין תקשורת עם השרת';
+    $('otpErr').textContent=(e&&e.userMsg)||'אין תקשורת עם השרת';
   }finally{ loginBusy=false; $('otpBtn').textContent='כניסה'; }
 }
 
@@ -1234,7 +1294,7 @@ async function resendCode(){
     const j=await apiRaw({action:'requestCode', name:challenge.name, pin:challenge.pin});
     if(j.status==='ok'){ if(challenge) challenge.ref=j.ref; startResendCooldown(); toast('קוד חדש נשלח'); }
     else $('otpErr').textContent=j.message||'שגיאה';
-  }catch(e){ $('otpErr').textContent='אין תקשורת עם השרת'; }
+  }catch(e){ $('otpErr').textContent=(e&&e.userMsg)||'אין תקשורת עם השרת'; }
   finally{ loginBusy=false; }
 }
 

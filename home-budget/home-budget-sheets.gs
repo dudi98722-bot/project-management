@@ -48,7 +48,7 @@
 var APP_NAME  = 'ניהול הוצאות בית';
 /* חותם גרסה. מוחזר ב-authmeta, וכך אפשר לדעת מבחוץ איזו גרסת קוד
    באמת פרוסה — העורך והפריסה יכולים להחזיק קוד שונה לגמרי. */
-var SCRIPT_VERSION = '2026-09-11-b';
+var SCRIPT_VERSION = '2026-10-08-a';
 
 /* ------------------------------------------------------------
    אימות דו-שלבי במייל
@@ -221,7 +221,7 @@ function handle(e) {
         }
         if (o.op === 'upsertTx')            { upsertMany('tx', o.rows || []);       count += (o.rows || []).length; }
         else if (o.op === 'delTx')          { markDeleted('tx', o.ids || []);       count += (o.ids || []).length; }
-        else if (o.op === 'upsertCat')      { upsertMany('cats', o.rows || []);     count += (o.rows || []).length; }
+        else if (o.op === 'upsertCat')      { var rc = dropDupCats(o.rows || []); upsertMany('cats', rc); count += rc.length; }
         else if (o.op === 'delCat')         { markDeleted('cats', o.ids || []);     count += (o.ids || []).length; }
         else if (o.op === 'upsertStencil')  { upsertMany('stencils', o.rows || []); count += (o.rows || []).length; }
         else if (o.op === 'delStencil')     { markDeleted('stencils', o.ids || []); count += (o.ids || []).length; }
@@ -356,24 +356,59 @@ function authMeta() {
  * לא מחזיר קודים אישיים, רק את מה שדרוש כדי להבין למה כניסה נכשלת.
  * אפשר להסיר את הפעולה הזו אחרי שהמערכת מתייצבת.
  */
+/** קטגוריה חדשה (מזהה שלא קיים) בשם+סוג שכבר קיימים — נזרקת. עדכון של
+ *  שורה קיימת עובר תמיד. הגנה מאחור: כל מכשיר חדש העלה בעבר את 22 קטגוריות
+ *  ברירת המחדל שלו ככפולות. התנועות מצביעות על קטגוריה לפי שם, אז אין
+ *  מה לאבד כשהכפולה לא נוצרת. */
+function dropDupCats(rows) {
+  var byId = {}, live = {};
+  readAll('cats').forEach(function (c) {
+    byId[String(c.id)] = true;
+    if (!c.deleted) live[normName(c.name) + '|' + c.kind] = true;
+  });
+  return (rows || []).filter(function (c) {
+    if (!c) return false;
+    if (byId[String(c.id)]) return true;
+    var k = normName(c.name) + '|' + c.kind;
+    if (live[k]) return false;
+    live[k] = true;                        /* שתי כפולות באותה פנייה — רק הראשונה */
+    return true;
+  });
+}
+
+/**
+ * ★ ניקוי חד-פעמי — הרץ מהעורך ★
+ * מסמן כמחוקות קטגוריות וכללי סיווג כפולים. הראשונה מכל קבוצה נשארת — היא
+ * המקורית, עם הצבע והאייקון שבחרת. מחיקה רכה בלבד: אפשר לשחזר מהמסך.
+ */
+function dedupeData() {
+  function pass(key, keyOf) {
+    var seen = {}, dup = [];
+    readAll(key).forEach(function (r) {
+      if (r.deleted) return;
+      var k = keyOf(r);
+      if (seen[k]) dup.push(r.id); else seen[k] = true;
+    });
+    markDeleted(key, dup);
+    return { removed: dup.length, kept: Object.keys(seen).length };
+  }
+  var c = pass('cats',  function (r) { return normName(r.name) + '|' + r.kind; });
+  var r = pass('rules', function (x) { return normName(x.match) + '|' + x.category + '|' + x.status; });
+  var msg = 'קטגוריות: סומנו כמחוקות ' + c.removed + ' כפולות, נשארו ' + c.kept + '.\n' +
+            'כללי סיווג: סומנו כמחוקים ' + r.removed + ' כפולים, נשארו ' + r.kept + '.';
+  Logger.log(msg);
+  return msg;
+}
+
 function diag(key) {
   if (!SHEET_ID || String(key) !== SHEET_ID) return { status: 'error', message: 'no' };
   var out = { status: 'ok', v: SCRIPT_VERSION };
   try { out.sheet = getSpreadsheet().getName(); }
   catch (e) { out.sheet = 'שגיאה: ' + e; }
-  try {
-    out.users = readUsers().map(function (u) {
-      return {
-        להקליד:      normName(u.name),
-        שם_גולמי:    String(u.name),
-        שם_נקי:      normName(u.name) === String(u.name),
-        ספרות_בקוד:  normPin(u.code).length,
-        קוד_נקי:     normPin(u.code) === String(u.code),
-        הרשאה:       u.role,
-        יש_מייל:     !!u.email
-      };
-    });
-  } catch (e) { out.users = 'שגיאה: ' + e; }
+  /* בלי פרטי משתמשים. מזהה הגיליון, שהוא המפתח כאן, דלף לריפו הציבורי —
+     אז האבחון מחזיר רק גרסה וספירות. פרטי משתמשים: setup() מהעורך בלבד. */
+  try { out.users = readUsers().length; }
+  catch (e) { out.users = 'שגיאה: ' + e; }
   try { out.mailQuota = MailApp.getRemainingDailyQuota(); }
   catch (e) { out.mailQuota = 'אין הרשאת מייל: ' + e; }
   /* ספירות — כדי לדעת מבחוץ אם נתונים בכלל הגיעו לגיליון, ומתי לאחרונה */
@@ -385,8 +420,10 @@ function diag(key) {
       tx: tx.length,
       txDeleted: tx.filter(function (t) { return t.deleted; }).length,
       cats: readAll('cats').length,
+      catsLive: readAll('cats').filter(function (c) { return !c.deleted; }).length,
       stencils: readAll('stencils').length,
       rules: readAll('rules').length,
+      rulesLive: readAll('rules').filter(function (r) { return !r.deleted; }).length,
       lastImportedAt: lastImp
     };
   } catch (e) { out.counts = 'שגיאה: ' + e; }
