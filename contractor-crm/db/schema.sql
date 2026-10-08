@@ -141,6 +141,9 @@ CREATE TABLE IF NOT EXISTS debts (
   updated_by INTEGER, updated_at TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_debts_open ON debts(lender) WHERE deleted=false;
+-- החזר חוב נרשם גם כתנועה כספית (הוצאת עסק) ומקושר לחוב שממנו נוצר
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS debt_id BIGINT REFERENCES debts(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_tx_debt ON transactions(debt_id) WHERE deleted=false;
 
 -- כללי סיווג נלמדים לבית (טקסט -> קטגוריה)
 CREATE TABLE IF NOT EXISTS home_rules (

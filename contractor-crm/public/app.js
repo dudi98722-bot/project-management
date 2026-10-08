@@ -299,6 +299,8 @@
       const sTot = +p.planned_sub || 0, sPaid = +p.sub_paid || 0;
       const cPct = cTot > 0 ? Math.round(cGot / cTot * 100) : 0;
       const sPct = sTot > 0 ? Math.round(sPaid / sTot * 100) : 0;
+      const pExp = +p.project_expenses || 0;
+      const pPct = cGot > 0 ? Math.round(pExp / cGot * 100) : 0;
       const diff = cGot - sPaid;
       return `<div style="padding:12px 0;border-bottom:1px solid var(--line)">
         <a class="link" data-openproj="${p.id}" style="font-weight:700">${esc(p.name)}</a>
@@ -310,6 +312,10 @@
           <div>
             <div class="mini" style="display:flex;justify-content:space-between;margin-bottom:3px"><span>🔵 שולם לקבלן</span><span><b>${money0(sPaid)}</b> מתוך ${money0(sTot)} · <b style="color:var(--accent)">${sPct}%</b></span></div>
             <div class="bar"><span style="width:${Math.min(100, sPct)}%;background:var(--accent)"></span></div>
+          </div>
+          <div style="margin-top:10px">
+            <div class="mini" style="display:flex;justify-content:space-between;margin-bottom:3px"><span>🟠 הוצאות לפרויקט</span><span><b>${money0(pExp)}</b>${cGot > 0 ? ` · <b style="color:var(--brand-d)">${pPct}%</b> ממה שנגבה` : ''}</span></div>
+            <div class="bar"><span style="width:${Math.min(100, pPct)}%;background:var(--brand)"></span></div>
           </div>
         </div>
         <div class="mini" style="margin-top:7px;color:${diff >= 0 ? 'var(--green)' : 'var(--red)'}">${diff >= 0 ? '↑ נכנס מהלקוח יותר ממה ששולם לקבלן ב-' : '↓ שולם לקבלן יותר ממה שנכנס ב-'}<b>${money(Math.abs(diff))}</b></div>
@@ -430,7 +436,7 @@
           <td class="num" style="color:var(--red);font-weight:${u > 0 ? '800' : '400'}">${u > 0 ? '🔥 ' + money0(u) : '—'}</td>
           <td class="mini" style="color:${late ? 'var(--red)' : 'inherit'}">${d.due_date ? dfmt(d.due_date) + (late ? ' ⚠️' : '') : '—'}</td>
           <td class="mini">${esc(d.note || '')}</td>
-          <td style="white-space:nowrap">${!done ? `<button class="btn xs green" data-repay="${d.id}">💰 החזר</button>` : ''}<button class="btn xs ghost" data-editdebt="${d.id}">✏️</button>${cDel ? `<button class="btn xs red" data-deldebt="${d.id}">🗑️</button>` : ''}</td></tr>`;
+          <td style="white-space:nowrap">${!done ? `<button class="btn xs green" data-repay="${d.id}">💰 החזר</button>` : ''}${(+d.repaid || 0) > 0 ? `<button class="btn xs ghost" data-paydebt="${d.id}" title="היסטוריית החזרים">📜</button>` : ''}<button class="btn xs ghost" data-editdebt="${d.id}">✏️</button>${cDel ? `<button class="btn xs red" data-deldebt="${d.id}">🗑️</button>` : ''}</td></tr>`;
       }).join('')}
       <tr style="border-top:2px solid var(--ink);font-weight:800">
         <td>סה"כ</td><td class="num">${money0(tot.taken)}</td>
@@ -440,6 +446,7 @@
       </tbody></table>`;
 
     box.querySelectorAll('[data-editdebt]').forEach(b => b.onclick = () => debtForm(rows.find(x => x.id === +b.dataset.editdebt)));
+    box.querySelectorAll('[data-paydebt]').forEach(b => b.onclick = () => debtPayments(rows.find(x => x.id === +b.dataset.paydebt)));
     box.querySelectorAll('[data-repay]').forEach(b => b.onclick = () => repayForm(rows.find(x => x.id === +b.dataset.repay)));
     box.querySelectorAll('[data-deldebt]').forEach(b => b.onclick = async () => {
       if (!await confirmDialog('להעביר את החוב לסל המחזור?', 'מחיקה')) return;
@@ -479,15 +486,42 @@
     const left = Math.max(0, (+d.taken || 0) - (+d.repaid || 0));
     openModal('רישום החזר — ' + (d.lender || ''), `
       <div class="mini muted" style="margin-bottom:8px">יתרה נוכחית: <b style="color:var(--red)">${money(left)}</b></div>
-      <div class="field"><label>סכום שהוחזר עכשיו (₪) *</label><input id="db_amt" type="number" autofocus></div>`,
+      <div class="row">
+        <div class="field"><label>סכום שהוחזר עכשיו (₪) *</label><input id="db_amt" type="number" autofocus></div>
+        <div class="field"><label>תאריך</label><input id="db_date" type="date" value="${today()}"></div>
+      </div>
+      <div class="field"><label>אמצעי תשלום</label><input id="db_method" placeholder="מזומן / העברה / צ׳ק"></div>
+      <div class="mini muted">ההחזר יירשם אוטומטית גם כהוצאת עסק — ויופיע בתנועות ובדוח היומי.</div>`,
       [{ label: 'רישום החזר', cls: 'green', onClick: async (close) => {
         const amt = parseFloat(fv('db_amt')) || 0;
         if (!(amt > 0)) return toast('הזן סכום', 'err');
         if (amt > left + 0.001) return toast(`הסכום גדול מהיתרה (${money(left)})`, 'err');
-        await guard(window.Store.debts.repay(d.id, amt));
+        await guard(window.Store.debts.repay(d.id, { amount: amt, date: fv('db_date') || null, method: fv('db_method') }));
         close(); toast('ההחזר נרשם', 'ok'); scrDebts();
       } }, { label: 'ביטול', cls: 'ghost', onClick: (c) => c() }]);
   }
+  // היסטוריית ההחזרים של חוב — מהתנועות שנוצרו אוטומטית בכל רישום החזר
+  async function debtPayments(d) {
+    if (!d) return;
+    const rows = await guard(window.Store.debts.payments(d.id));
+    const sum = rows.reduce((s, r) => s + (+r.amount || 0), 0);
+    const left = Math.max(0, (+d.taken || 0) - (+d.repaid || 0));
+    const body = rows.length ? `
+      <div class="grid stat-grid" style="margin-bottom:10px">
+        ${stat('סה"כ הוחזר', money(d.repaid), 'g', rows.length + ' החזרים')}
+        ${stat('נותר לתשלום', money(left), left > 0 ? 'r' : 'g')}
+      </div>
+      <div style="overflow-x:auto"><table><thead><tr><th>תאריך</th><th>אמצעי</th><th>הערה</th><th class="num">סכום</th></tr></thead><tbody>
+      ${rows.map(r => `<tr><td>${dfmt(r.date)}</td><td class="mini">${esc(r.method || '—')}</td><td class="mini">${esc(r.note || '')}</td>
+        <td class="num" style="font-weight:700;color:var(--green)">${money0(r.amount)}</td></tr>`).join('')}
+      <tr style="border-top:2px solid var(--ink);font-weight:800"><td>סה"כ</td><td></td><td></td>
+        <td class="num" style="color:var(--green)">${money0(sum)}</td></tr>
+      </tbody></table></div>
+      ${Math.abs(sum - (+d.repaid || 0)) > 0.5 ? `<div class="mini muted" style="margin-top:8px">הערה: סכום ההחזרים הרשומים (${money0(sum)}) שונה מהשדה "החזרתי" (${money0(d.repaid)}) — ייתכן שחלק הוזן ידנית בעריכת החוב.</div>` : ''}`
+      : '<div class="empty">לא נרשמו החזרים דרך כפתור "החזר"</div>';
+    openModal('היסטוריית החזרים — ' + (d.lender || ''), body, [{ label: 'סגירה', cls: 'ghost', onClick: (c) => c() }]);
+  }
+
   // קליטה מרוכזת של חובות — טבלת שורות ריקות למילוי מהיר
   function debtsBulkForm() {
     const inp = (cls, ph, num) => `<input class="${cls}" ${num ? 'type="number"' : ''} placeholder="${ph}" style="width:${num ? '100px' : '100%'};min-width:${num ? '90px' : '120px'};padding:7px;border:1px solid var(--line);border-radius:8px">`;

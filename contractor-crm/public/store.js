@@ -74,7 +74,8 @@
       list: () => apiFetch('/debts'),
       create: (d) => apiFetch('/debts', { method: 'POST', body: d }),
       update: (id, d) => apiFetch('/debts/' + id, { method: 'PUT', body: d }),
-      repay: (id, amount) => apiFetch('/debts/' + id + '/repay', { method: 'POST', body: { amount } }),
+      repay: (id, d) => apiFetch('/debts/' + id + '/repay', { method: 'POST', body: d }),
+      payments: (id) => apiFetch('/debts/' + id + '/payments'),
       bulk: (debts) => apiFetch('/debts/bulk', { method: 'POST', body: { debts } }),
       remove: (id) => apiFetch('/debts/' + id, { method: 'DELETE' }),
     },
@@ -338,7 +339,20 @@
       list: () => delay(A(D.debts).slice().sort((a, b) => ((b.taken - b.repaid) - (a.taken - a.repaid)) || b.id - a.id)),
       create: (d) => { const r = Object.assign({ id: nid(), deleted: false }, d, { taken: +d.taken || 0, repaid: +d.repaid || 0, urgent: +d.urgent || 0 }); D.debts.push(r); return delay(r); },
       update: (id, d) => { id = +id; const r = D.debts.find(x => x.id === id); Object.assign(r, d, { taken: +d.taken || 0, repaid: +d.repaid || 0, urgent: +d.urgent || 0 }); return delay(r); },
-      repay: (id, amount) => { id = +id; const r = D.debts.find(x => x.id === id); if (r) { r.repaid = (+r.repaid || 0) + (+amount || 0); r.urgent = Math.max(0, Math.min(+r.urgent || 0, (+r.taken || 0) - r.repaid)); } return delay(r); },
+      repay: (id, d) => {
+        id = +id; d = d || {}; const amt = +d.amount || 0;
+        const r = D.debts.find(x => x.id === id);
+        if (r) {
+          r.repaid = (+r.repaid || 0) + amt;
+          r.urgent = Math.max(0, Math.min(+r.urgent || 0, (+r.taken || 0) - r.repaid));
+          // ההחזר נרשם גם כתנועת הוצאת עסק מקושרת — בדיוק כמו בשרת
+          D.tx.push({ id: nid(), type: 'business_expense', direction: 'out', amount: amt, date: d.date || (new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0') + '-' + String(new Date().getDate()).padStart(2, '0')),
+            project_id: null, stage_id: null, subcontractor_id: null, supplier: r.lender, category: 'החזרי חובות',
+            purpose: 'החזר חוב — ' + r.lender, method: d.method || '', invoice_url: '', note: d.note || '', debt_id: id, deleted: false });
+        }
+        return delay(r);
+      },
+      payments: (id) => { id = +id; return delay(A(D.tx).filter(t => t.debt_id === id).map(t => ({ id: t.id, amount: +t.amount || 0, date: t.date, method: t.method, note: t.note })).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || b.id - a.id)); },
       bulk: (list) => { let n = 0; (list || []).forEach(d => { const lender = String(d.lender || '').trim(); const taken = +d.taken || 0; if (!lender || !(taken > 0)) return; D.debts.push(Object.assign({ id: nid(), deleted: false }, d, { lender, taken, repaid: +d.repaid || 0, urgent: +d.urgent || 0 })); n++; }); return delay({ count: n }); },
       remove: (id) => { id = +id; const r = D.debts.find(x => x.id === +id); if (r) r.deleted = true; return delay({ ok: true }); },
     },

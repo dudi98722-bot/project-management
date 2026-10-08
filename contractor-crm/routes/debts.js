@@ -79,21 +79,46 @@ router.put('/:id', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-// POST /api/debts/:id/repay — רישום החזר מהיר (מוסיף לסכום שהוחזר)
+// POST /api/debts/:id/repay — רישום החזר: מעדכן את החוב ויוצר תנועת הוצאת עסק
+// מקושרת (debt_id), כדי שההחזר יופיע אוטומטית בתנועות, בדוח היומי ובדוחות.
 router.post('/:id/repay', async (req, res) => {
-  const amt = parseFloat((req.body || {}).amount);
+  const b = req.body || {};
+  const amt = parseFloat(b.amount);
   if (!(amt > 0)) return res.status(400).json({ error: 'סכום החזר חייב להיות גדול מ-0' });
+  const client = await pool.connect();
   try {
-    const r = await pool.query(
+    await client.query('BEGIN');
+    const r = await client.query(
       `UPDATE debts SET repaid = repaid + $1::numeric,
          urgent = GREATEST(0, LEAST(urgent, taken - (repaid + $1::numeric))),
          updated_by=$2, updated_at=NOW()
        WHERE id=$3 AND deleted=false RETURNING ${COLS}`,
       [amt, req.user.id, req.params.id]
     );
-    if (!r.rows.length) return res.status(404).json({ error: 'חוב לא נמצא' });
-    await logAction(req.user, 'edit', 'debts', req.params.id, { repay: amt });
-    res.json(r.rows[0]);
+    if (!r.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'חוב לא נמצא' }); }
+    const debt = r.rows[0];
+    const tx = await client.query(
+      `INSERT INTO transactions (type, direction, amount, date, supplier, category, purpose, method, note, debt_id, created_by, updated_by)
+       VALUES ('business_expense','out',$1::numeric,COALESCE($2::date,CURRENT_DATE),$3,'החזרי חובות',$4,$5,$6,$7,$8,$8)
+       RETURNING id`,
+      [amt, b.date || null, debt.lender, 'החזר חוב — ' + debt.lender, b.method || null, b.note || null, debt.id, req.user.id]
+    );
+    await client.query('COMMIT');
+    await logAction(req.user, 'edit', 'debts', req.params.id, { repay: amt, tx: tx.rows[0].id });
+    res.json(debt);
+  } catch (e) { await client.query('ROLLBACK'); console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+  finally { client.release(); }
+});
+
+// GET /api/debts/:id/payments — היסטוריית ההחזרים של החוב (מהתנועות המקושרות)
+router.get('/:id/payments', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT id, amount::float AS amount, date, method, note FROM transactions
+       WHERE debt_id=$1 AND deleted=false ORDER BY date DESC NULLS LAST, id DESC`,
+      [req.params.id]
+    );
+    res.json(r.rows);
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
