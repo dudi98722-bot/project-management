@@ -168,7 +168,7 @@
       };
     });
     if (x.saved >= 0) {
-      items.push({ color: C_LEFT, iconHtml: esc('🐷'), label: 'נשאר', valueHtml: '<b class="num">' + fmt(x.leftSq) + ' ₪</b>',
+      items.push({ color: C_LEFT, iconHtml: esc('💰'), label: 'נשאר', valueHtml: '<b class="num">' + fmt(x.leftSq) + ' ₪</b>',
         sub: ltr(fmt(x.saved) + ' ₪'), actName: 'rep_savings_pick', actId: x.cats.length });
     } else {
       items.push({ color: 'var(--bad)', iconHtml: esc('⚠️'), label: 'מעבר להכנסות',
@@ -187,7 +187,7 @@
       (x.saved < 0 ? ' data-over="' + (x.cats.length + 1) + '"' : '') + '>';
     x.squares.forEach(function (s) {
       h += '<i data-c="' + s.c + '"' + (s.over ? ' class="over"' : '') + ' style="background-color:' + RK.color(s.color, '#94a3b8') + '">' +
-        (s.pig ? '<span aria-hidden="true">🐷</span>' : '') + '</i>';
+        '</i>';
     });
     return h + '</div>';
   }
@@ -204,7 +204,7 @@
     /* 1) תובנה ראשית */
     h += neg
       ? RK.insight(where(x) + ' יצא יותר ממה שנכנס: על כל 100 ₪ הכנסה יצאו ' + b(RK.money(x.expPer100)) + '.', { tone: 'warn' })
-      : RK.insight('מכל 100 ₪ שנכנסו ' + where(x) + ' נשארו לכם ' + b(RK.money(x.per100Left)) + ' 🐷',
+      : RK.insight('מכל 100 ₪ שנכנסו ' + where(x) + ' נשארו לכם ' + b(RK.money(x.per100Left)) + '.',
         { tone: x.per100Left >= 20 ? 'ok' : 'brand' });
 
     /* 2) וופל + מקרא */
@@ -330,7 +330,7 @@
   };
 
   REP_DEFS.push({
-    k: 'savings', t: 'מכל 100 ₪ שנכנסו', ic: '🐷',
+    k: 'savings', t: 'מכל 100 ₪ שנכנסו', ic: '💰',
     d: 'לאן הלך כל שקל השנה, וכמה נשאר לנו',
     g: 'השנה שלנו', period: 'year',
     calc: calc, html: html, mount: mount
