@@ -346,7 +346,7 @@
           r.repaid = (+r.repaid || 0) + amt;
           r.urgent = Math.max(0, Math.min(+r.urgent || 0, (+r.taken || 0) - r.repaid));
           // ההחזר נרשם גם כתנועת הוצאת עסק מקושרת — בדיוק כמו בשרת
-          D.tx.push({ id: nid(), type: 'business_expense', direction: 'out', amount: amt, date: d.date || (new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0') + '-' + String(new Date().getDate()).padStart(2, '0')),
+          D.tx.push({ id: nid(), type: 'debt_payment', direction: 'out', amount: amt, date: d.date || (new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0') + '-' + String(new Date().getDate()).padStart(2, '0')),
             project_id: null, stage_id: null, subcontractor_id: null, supplier: r.lender, category: 'החזרי חובות',
             purpose: 'החזר חוב — ' + r.lender, method: d.method || '', invoice_url: '', note: d.note || '', debt_id: id, deleted: false });
         }

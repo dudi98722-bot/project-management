@@ -144,6 +144,12 @@ CREATE INDEX IF NOT EXISTS idx_debts_open ON debts(lender) WHERE deleted=false;
 -- החזר חוב נרשם גם כתנועה כספית (הוצאת עסק) ומקושר לחוב שממנו נוצר
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS debt_id BIGINT REFERENCES debts(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_tx_debt ON transactions(debt_id) WHERE deleted=false;
+-- החזר חוב הוא סוג תנועה נפרד, כדי שלא ייספר כהוצאת עסק
+ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_type_check;
+ALTER TABLE transactions ADD CONSTRAINT transactions_type_check
+  CHECK (type IN ('client_payment','sub_payment','project_expense','business_expense','debt_payment'));
+-- מיגרציה: החזרים שנרשמו כהוצאת עסק לפני השינוי עוברים לסוג הנכון
+UPDATE transactions SET type='debt_payment' WHERE debt_id IS NOT NULL AND type='business_expense';
 
 -- כללי סיווג נלמדים לבית (טקסט -> קטגוריה)
 CREATE TABLE IF NOT EXISTS home_rules (

@@ -99,7 +99,7 @@ router.post('/:id/repay', async (req, res) => {
     const debt = r.rows[0];
     const tx = await client.query(
       `INSERT INTO transactions (type, direction, amount, date, supplier, category, purpose, method, note, debt_id, created_by, updated_by)
-       VALUES ('business_expense','out',$1::numeric,COALESCE($2::date,CURRENT_DATE),$3,'החזרי חובות',$4,$5,$6,$7,$8,$8)
+       VALUES ('debt_payment','out',$1::numeric,COALESCE($2::date,CURRENT_DATE),$3,'החזרי חובות',$4,$5,$6,$7,$8,$8)
        RETURNING id`,
       [amt, b.date || null, debt.lender, 'החזר חוב — ' + debt.lender, b.method || null, b.note || null, debt.id, req.user.id]
     );

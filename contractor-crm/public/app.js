@@ -16,7 +16,7 @@
   const money0 = (n) => (Math.round(+n || 0)).toLocaleString('he-IL');
   const dfmt = (d) => d ? String(d).slice(0, 10).split('-').reverse().join('/') : '';
   const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
-  const TYPE_HE = { client_payment: 'תשלום מלקוח', sub_payment: 'תשלום לקבלן משנה', project_expense: 'הוצאה לפרויקט', business_expense: 'הוצאת עסק' };
+  const TYPE_HE = { client_payment: 'תשלום מלקוח', sub_payment: 'תשלום לקבלן משנה', project_expense: 'הוצאה לפרויקט', business_expense: 'הוצאת עסק', debt_payment: 'החזר חוב' };
   const STATUS_HE = { active: 'פעיל', paused: 'מושהה', done: 'הושלם', pending: 'ממתין', in_progress: 'בביצוע' };
   const SOURCE_HE = { form: 'טופס', bank: 'בנק', credit: 'אשראי', cash: 'מזומן', transfer: 'העברה' };
   const HE_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
@@ -338,36 +338,38 @@
     const byDay = {};
     rows.forEach(t => {
       const d = t.date ? String(t.date).slice(0, 10) : null; if (!d) return;
-      const g = byDay[d] || (byDay[d] = { date: d, income: 0, subPaid: 0, projExp: 0, bizExp: 0, txs: [] });
+      const g = byDay[d] || (byDay[d] = { date: d, income: 0, subPaid: 0, projExp: 0, bizExp: 0, debtPay: 0, txs: [] });
       const amt = +t.amount || 0;
       if (t.type === 'client_payment') g.income += amt;
       else if (t.type === 'sub_payment') g.subPaid += amt;
       else if (t.type === 'project_expense') g.projExp += amt;
       else if (t.type === 'business_expense') g.bizExp += amt;
+      else if (t.type === 'debt_payment') g.debtPay += amt;
       g.txs.push(t);
     });
     // רשימת כל הימים (היום למעלה, אחורה)
     const days = [];
-    for (let i = 0; i < DAYS; i++) { const dt = new Date(); dt.setDate(dt.getDate() - i); const k = ymd(dt); days.push(byDay[k] || { date: k, income: 0, subPaid: 0, projExp: 0, bizExp: 0, txs: [] }); }
-    const tot = days.reduce((a, g) => ({ income: a.income + g.income, subPaid: a.subPaid + g.subPaid, projExp: a.projExp + g.projExp, bizExp: a.bizExp + g.bizExp }), { income: 0, subPaid: 0, projExp: 0, bizExp: 0 });
-    const totBal = tot.income - tot.subPaid - tot.projExp - tot.bizExp;
+    for (let i = 0; i < DAYS; i++) { const dt = new Date(); dt.setDate(dt.getDate() - i); const k = ymd(dt); days.push(byDay[k] || { date: k, income: 0, subPaid: 0, projExp: 0, bizExp: 0, debtPay: 0, txs: [] }); }
+    const tot = days.reduce((a, g) => ({ income: a.income + g.income, subPaid: a.subPaid + g.subPaid, projExp: a.projExp + g.projExp, bizExp: a.bizExp + g.bizExp, debtPay: a.debtPay + g.debtPay }), { income: 0, subPaid: 0, projExp: 0, bizExp: 0, debtPay: 0 });
+    const totBal = tot.income - tot.subPaid - tot.projExp - tot.bizExp - tot.debtPay;
     const cell = (v, col) => `<td class="num" style="color:${col}">${v ? money0(v) : '—'}</td>`;
 
     view().innerHTML = `
       <div class="page-head"><h2>דוח יומי</h2><span class="mini">${DAYS} הימים האחרונים · לחץ על יום לפירוט</span></div>
-      <div class="card" style="padding:6px;overflow-x:auto"><table style="min-width:780px"><thead><tr>
-        <th>תאריך</th><th class="num">תקבול מלקוחות</th><th class="num">תשלום לקבלן משנה</th><th class="num">הוצאות לפרויקט</th><th class="num">הוצאות עסק</th><th class="num">יתרה יומית</th>
+      <div class="card" style="padding:6px;overflow-x:auto"><table style="min-width:900px"><thead><tr>
+        <th>תאריך</th><th class="num">תקבול מלקוחות</th><th class="num">תשלום לקבלן משנה</th><th class="num">הוצאות לפרויקט</th><th class="num">הוצאות עסק</th><th class="num">החזרי חובות</th><th class="num">יתרה יומית</th>
       </tr></thead><tbody>
       ${days.map(g => {
-      const bal = g.income - g.subPaid - g.projExp - g.bizExp, isToday = g.date === toStr, empty = !g.txs.length;
+      const bal = g.income - g.subPaid - g.projExp - g.bizExp - g.debtPay, isToday = g.date === toStr, empty = !g.txs.length;
       return `<tr data-day="${g.date}" style="cursor:pointer${isToday ? ';background:var(--soft);font-weight:700' : ''}">
         <td>${dfmt(g.date)}${isToday ? ' <span class="mini" style="color:var(--brand-d)">היום</span>' : ''}</td>
-        ${cell(g.income, 'var(--green)')}${cell(g.subPaid, 'var(--red)')}${cell(g.projExp, 'var(--red)')}${cell(g.bizExp, 'var(--red)')}
+        ${cell(g.income, 'var(--green)')}${cell(g.subPaid, 'var(--red)')}${cell(g.projExp, 'var(--red)')}${cell(g.bizExp, 'var(--red)')}${cell(g.debtPay, 'var(--brand-d)')}
         <td class="num" style="font-weight:800;color:${bal >= 0 ? 'var(--green)' : 'var(--red)'}">${empty ? '—' : money0(bal)}</td></tr>`;
     }).join('')}
       <tr style="border-top:2px solid var(--line);font-weight:800"><td>סה"כ ${DAYS} ימים</td>
         <td class="num" style="color:var(--green)">${money0(tot.income)}</td><td class="num" style="color:var(--red)">${money0(tot.subPaid)}</td>
         <td class="num" style="color:var(--red)">${money0(tot.projExp)}</td><td class="num" style="color:var(--red)">${money0(tot.bizExp)}</td>
+        <td class="num" style="color:var(--brand-d)">${money0(tot.debtPay)}</td>
         <td class="num" style="color:${totBal >= 0 ? 'var(--green)' : 'var(--red)'}">${money0(totBal)}</td></tr>
       </tbody></table></div>`;
 
@@ -378,7 +380,7 @@
     const txs = (g && g.txs) || [];
     const body = txs.length ? `<div style="overflow-x:auto"><table><thead><tr><th>סוג</th><th>פרטים</th><th>חשבונית</th><th class="num">סכום</th></tr></thead><tbody>${txs.map(t => {
       const isIn = t.type === 'client_payment';
-      const detail = t.type === 'business_expense' ? [t.supplier, t.purpose].filter(Boolean).join(' · ')
+      const detail = (t.type === 'business_expense' || t.type === 'debt_payment') ? [t.supplier, t.purpose].filter(Boolean).join(' · ')
         : t.type === 'project_expense' ? [t.project_name, t.supplier, t.purpose].filter(Boolean).join(' · ')
           : [t.project_name, t.stage_name, t.subcontractor_name].filter(Boolean).join(' · ');
       return `<tr><td>${esc(TYPE_HE[t.type] || t.type)}</td><td class="mini">${esc(detail) || '—'}</td><td>${invoiceLink(t.invoice_url)}</td>
@@ -1251,7 +1253,7 @@
       const rows = await guard(window.Store.tx.list({ from: year + '-01-01', to: year + '-12-31' }));
       // קיבוץ לפי חודש — 12 חודשי השנה, גם ריקים
       const byMonth = {};
-      for (let m = 1; m <= 12; m++) { const k = year + '-' + String(m).padStart(2, '0'); byMonth[k] = { month: k, income: 0, subPaid: 0, projExp: 0, bizExp: 0, txs: [] }; }
+      for (let m = 1; m <= 12; m++) { const k = year + '-' + String(m).padStart(2, '0'); byMonth[k] = { month: k, income: 0, subPaid: 0, projExp: 0, bizExp: 0, debtPay: 0, txs: [] }; }
       rows.forEach(t => {
         const k = t.date ? String(t.date).slice(0, 7) : null; const g = k && byMonth[k]; if (!g) return;
         const amt = +t.amount || 0;
@@ -1259,10 +1261,11 @@
         else if (t.type === 'sub_payment') { g.subPaid += amt; g.txs.push(t); }
         else if (t.type === 'project_expense') { g.projExp += amt; g.txs.push(t); }
         else if (t.type === 'business_expense') { g.bizExp += amt; g.txs.push(t); }
+        else if (t.type === 'debt_payment') { g.debtPay += amt; g.txs.push(t); }
       });
       const months = Object.values(byMonth);
-      const tot = months.reduce((a, g) => ({ income: a.income + g.income, subPaid: a.subPaid + g.subPaid, projExp: a.projExp + g.projExp, bizExp: a.bizExp + g.bizExp }), { income: 0, subPaid: 0, projExp: 0, bizExp: 0 });
-      const totBal = tot.income - tot.subPaid - tot.projExp - tot.bizExp;
+      const tot = months.reduce((a, g) => ({ income: a.income + g.income, subPaid: a.subPaid + g.subPaid, projExp: a.projExp + g.projExp, bizExp: a.bizExp + g.bizExp, debtPay: a.debtPay + g.debtPay }), { income: 0, subPaid: 0, projExp: 0, bizExp: 0, debtPay: 0 });
+      const totBal = tot.income - tot.subPaid - tot.projExp - tot.bizExp - tot.debtPay;
       const cell = (v, col) => `<td class="num" style="color:${col}">${v ? money0(v) : '—'}</td>`;
       out.innerHTML = `
         <div class="grid stat-grid">
@@ -1270,16 +1273,17 @@
           ${stat('תשלום לקבלני משנה', money(tot.subPaid), 'r')}
           ${stat('הוצאות לפרויקט', money(tot.projExp), 'r')}
           ${stat('הוצאות עסק', money(tot.bizExp), 'r')}
+          ${stat('החזרי חובות', money(tot.debtPay), 'a')}
           ${stat('יתרה שנתית', money(totBal), totBal >= 0 ? 'g' : 'r')}
         </div>
-        <div class="card" style="padding:6px;overflow-x:auto"><table style="min-width:760px"><thead><tr>
-          <th>חודש</th><th class="num">תשלומי לקוחות</th><th class="num">תשלום לקבלן משנה</th><th class="num">הוצאות לפרויקט</th><th class="num">הוצאות עסק</th><th class="num">יתרה חודשית</th>
+        <div class="card" style="padding:6px;overflow-x:auto"><table style="min-width:900px"><thead><tr>
+          <th>חודש</th><th class="num">תשלומי לקוחות</th><th class="num">תשלום לקבלן משנה</th><th class="num">הוצאות לפרויקט</th><th class="num">הוצאות עסק</th><th class="num">החזרי חובות</th><th class="num">יתרה חודשית</th>
         </tr></thead><tbody>
         ${months.map(g => {
-          const bal = g.income - g.subPaid - g.projExp - g.bizExp, empty = !g.txs.length;
+          const bal = g.income - g.subPaid - g.projExp - g.bizExp - g.debtPay, empty = !g.txs.length;
           return `<tr data-ym="${g.month}" style="cursor:pointer${empty ? ';opacity:.55' : ''}">
             <td><b>${monLabel(g.month)}</b></td>
-            ${cell(g.income, 'var(--green)')}${cell(g.subPaid, 'var(--red)')}${cell(g.projExp, 'var(--red)')}${cell(g.bizExp, 'var(--red)')}
+            ${cell(g.income, 'var(--green)')}${cell(g.subPaid, 'var(--red)')}${cell(g.projExp, 'var(--red)')}${cell(g.bizExp, 'var(--red)')}${cell(g.debtPay, 'var(--brand-d)')}
             <td class="num" style="font-weight:800;color:${bal >= 0 ? 'var(--green)' : 'var(--red)'}">${empty ? '—' : money0(bal)}</td></tr>`;
         }).join('')}
         <tr style="border-top:2px solid var(--ink);font-weight:800"><td>סה"כ ${esc(year)}</td>
@@ -1287,6 +1291,7 @@
           <td class="num" style="color:var(--red)">${money0(tot.subPaid)}</td>
           <td class="num" style="color:var(--red)">${money0(tot.projExp)}</td>
           <td class="num" style="color:var(--red)">${money0(tot.bizExp)}</td>
+          <td class="num" style="color:var(--brand-d)">${money0(tot.debtPay)}</td>
           <td class="num" style="color:${totBal >= 0 ? 'var(--green)' : 'var(--red)'}">${money0(totBal)}</td></tr>
         </tbody></table></div>
         <div class="mini muted" style="margin-top:6px">לחץ על חודש כדי לראות את הפירוט</div>`;
@@ -1313,19 +1318,20 @@
   function monthDetail(ym, g) {
     const txs = ((g && g.txs) || []).slice().sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
     const sum = (ty) => txs.filter(t => t.type === ty).reduce((s, t) => s + (+t.amount || 0), 0);
-    const inc = sum('client_payment'), sp = sum('sub_payment'), pe = sum('project_expense'), be = sum('business_expense');
+    const inc = sum('client_payment'), sp = sum('sub_payment'), pe = sum('project_expense'), be = sum('business_expense'), dp = sum('debt_payment');
     const body = txs.length ? `
       <div class="grid stat-grid" style="margin-bottom:10px">
         ${stat('תשלומי לקוחות', money(inc), 'g')}
         ${stat('לקבלני משנה', money(sp), 'r')}
         ${stat('הוצאות לפרויקט', money(pe), 'r')}
         ${stat('הוצאות עסק', money(be), 'r')}
-        ${stat('יתרה', money(inc - sp - pe - be), (inc - sp - pe - be) >= 0 ? 'g' : 'r')}
+        ${stat('החזרי חובות', money(dp), 'a')}
+        ${stat('יתרה', money(inc - sp - pe - be - dp), (inc - sp - pe - be - dp) >= 0 ? 'g' : 'r')}
       </div>
       <div style="overflow-x:auto"><table><thead><tr><th>תאריך</th><th>סוג</th><th>פרטים</th><th>חשבונית</th><th class="num">סכום</th></tr></thead><tbody>
       ${txs.map(t => {
         const isIn = t.type === 'client_payment';
-        const detail = t.type === 'business_expense' ? [t.supplier, t.purpose].filter(Boolean).join(' · ')
+        const detail = (t.type === 'business_expense' || t.type === 'debt_payment') ? [t.supplier, t.purpose].filter(Boolean).join(' · ')
           : t.type === 'project_expense' ? [t.project_name, t.supplier, t.purpose].filter(Boolean).join(' · ')
           : [t.project_name, t.stage_name, t.subcontractor_name].filter(Boolean).join(' · ');
         return `<tr><td>${dfmt(t.date)}</td><td>${esc(TYPE_HE[t.type] || t.type)}</td><td class="mini">${esc(detail) || '—'}</td>

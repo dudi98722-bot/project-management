@@ -4,8 +4,8 @@ const sheets = require('../sheets');
 const { authenticate, can, canAny } = require('../middleware/auth');
 const router = express.Router();
 
-const TYPES = ['client_payment', 'sub_payment', 'project_expense', 'business_expense'];
-const DIRECTION = { client_payment: 'in', sub_payment: 'out', project_expense: 'out', business_expense: 'out' };
+const TYPES = ['client_payment', 'sub_payment', 'project_expense', 'business_expense', 'debt_payment'];
+const DIRECTION = { client_payment: 'in', sub_payment: 'out', project_expense: 'out', business_expense: 'out', debt_payment: 'out' };
 
 // בדיקת תקינות לפי סוג התנועה
 function validate(type, b) {
