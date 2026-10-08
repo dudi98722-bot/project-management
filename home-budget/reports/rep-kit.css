@@ -1,0 +1,232 @@
+/* ============================================================
+   rep-kit.css — ערכת הדוחות + הנתב. כל בורר מתחיל ב-.rk- או #repRoot.
+   תנועה: transform/opacity בלבד, var(--ease-out), עד 300ms, ריחוף רק בעכבר.
+   ============================================================ */
+
+/* ---------- נתב: כותרת ---------- */
+#repRoot{min-width:0}
+/* .num של האפליקציה הוא direction:ltr; על span צריך גם בידוד כדי ש"−1,234 ₪" לא יתהפך */
+#repRoot .num{unicode-bidi:isolate}
+#repRoot .rk-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:2px 0 14px;flex-wrap:wrap}
+#repRoot .rk-h{margin:0;font-size:20px;font-weight:800;letter-spacing:-.02em;color:var(--ink)}
+#repRoot .rk-hs{font-size:12.5px;color:var(--dim);margin-top:2px}
+
+/* ---------- נתב: גלריית דוחות ---------- */
+.rk-gal{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow-sm);
+  padding:14px 16px 6px;margin-bottom:14px;min-width:0}
+.rk-gal-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+.rk-gal-tt{font-size:13px;font-weight:700;color:var(--ink2)}
+.rk-grp{margin-bottom:12px;min-width:0}
+.rk-grp-t{font-size:11.5px;font-weight:700;color:var(--dim);letter-spacing:.02em;margin:0 2px 7px}
+.rk-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.rk-tile{display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-align:start;cursor:pointer;
+  background:var(--card2);border:1px solid var(--line);border-radius:var(--r-lg);padding:11px 12px 12px;color:var(--ink);
+  -webkit-tap-highlight-color:transparent;
+  transition:transform var(--dur-press) var(--ease-out),border-color var(--dur-fast) ease,background-color var(--dur-fast) ease}
+.rk-tile:active{transform:scale(.97)}
+.rk-tile.on{border-color:var(--brand);background:var(--brand-soft)}
+.rk-tile.on .rk-tile-d{color:var(--ink2)}
+.rk-tile-ic{font-size:22px;line-height:1.1;margin-bottom:2px}
+.rk-tile-t{font-size:14px;font-weight:700;line-height:1.3}
+.rk-tile-d{font-size:12px;color:var(--dim);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.rk-tile:focus-visible,.rk-more:focus-visible,.rk-step:focus-visible,.rk-seg-b:focus-visible,.rk-leg-row:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+@media (max-width:639px){
+  .rk-gal{padding:12px 12px 4px}
+  .rk-tiles{display:flex;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;
+    gap:8px;padding:2px 2px 8px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .rk-tiles::-webkit-scrollbar{display:none}
+  .rk-tile{flex:0 0 148px;scroll-snap-align:start}
+}
+
+/* מצב מקופל: הדוח הנוכחי + "כל הדוחות" */
+.rk-cur{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);
+  border-radius:var(--r-lg);box-shadow:var(--shadow-sm);padding:9px 10px 9px 12px;margin-bottom:12px;min-width:0}
+.rk-cur-ic{font-size:22px;line-height:1;flex:0 0 auto}
+.rk-cur-t{font-size:15px;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rk-more{flex:0 0 auto;background:var(--brand-soft);color:var(--brand);border:1px solid var(--brand-line);border-radius:999px;
+  padding:6px 12px;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent;
+  transition:transform var(--dur-press) var(--ease-out),background-color var(--dur-fast) ease}
+.rk-more:active{transform:scale(.97)}
+
+/* ---------- נתב: בחירת תקופה ---------- */
+.rk-period{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.rk-period .rk-sel{width:auto;min-width:150px;max-width:100%;flex:0 1 auto;background:var(--card);font-weight:600;border-radius:999px;padding:7px 14px}
+.rk-step{width:34px;height:34px;flex:0 0 34px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink2);
+  font-size:18px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0 0 2px;
+  -webkit-tap-highlight-color:transparent;transition:transform var(--dur-press) var(--ease-out),background-color var(--dur-fast) ease}
+.rk-step:active{transform:scale(.97)}
+.rk-step:disabled{opacity:.35;cursor:default}
+.rk-step:disabled:active{transform:none}
+
+/* ---------- גוף הדוח ---------- */
+.rk-report{min-width:0}
+.rk-report>*{min-width:0}
+
+/* ---------- כרטיס ---------- */
+.rk-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px;
+  box-shadow:var(--shadow-sm);margin-bottom:14px;min-width:0}
+.rk-card-t{margin:0 0 4px;font-size:14.5px;font-weight:700;color:var(--ink);letter-spacing:-.01em}
+.rk-card-s{font-size:12.5px;color:var(--dim);margin-bottom:12px;line-height:1.5}
+.rk-card-t+:not(.rk-card-s){margin-top:10px}
+@media (max-width:399px){ .rk-card{padding:14px} }
+
+/* ---------- תובנה ---------- */
+.rk-ins{margin-bottom:14px}
+.rk-ins strong{color:#332d8f;font-weight:700}
+.rk-ins-ok{background:var(--ok-soft);border-color:#bfe5d4}
+.rk-ins-ok b,.rk-ins-ok strong{color:var(--ok)}
+.rk-ins-warn{background:var(--warn-soft);border-color:#f0d9a8}
+.rk-ins-warn b,.rk-ins-warn strong{color:var(--warn)}
+
+/* ---------- KPI ---------- */
+.rk-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
+.rk-kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:12px 14px;box-shadow:var(--shadow-sm);min-width:0}
+.rk-kpi-l{font-size:12px;color:var(--dim);font-weight:500;margin-bottom:4px}
+.rk-kpi-v{font-size:22px;font-weight:700;letter-spacing:-.025em;line-height:1.2;font-variant-numeric:tabular-nums lining-nums;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rk-kpi-v.brand{color:var(--brand)}
+.rk-kpi-s{font-size:11.5px;color:var(--dim);margin-top:4px;line-height:1.4;text-wrap:balance}
+.rk-card .rk-kpis{margin-bottom:0}
+@media (max-width:495px){
+  .rk-kpis{grid-template-columns:1fr 1fr}
+  .rk-kpi:last-child:nth-child(odd){grid-column:1/-1}
+}
+.rk-card .rk-kpi{background:var(--card2);box-shadow:none}
+
+/* ---------- תגיות ---------- */
+.rk-pill{display:inline-flex;align-items:center;gap:3px;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:600;
+  white-space:nowrap;line-height:1.5;background:var(--brand-soft);color:var(--brand);vertical-align:middle}
+.rk-pill.ok,.rk-pill.down{background:var(--ok-soft);color:var(--ok)}
+.rk-pill.bad,.rk-pill.up{background:var(--bad-soft);color:var(--bad)}
+.rk-pill.warn{background:var(--warn-soft);color:var(--warn)}
+.rk-pill.dim{background:var(--line2);color:var(--ink2)}
+.rk-pill .num{font-variant-numeric:tabular-nums}
+
+/* ---------- מצב ריק ---------- */
+.rk-empty{text-align:center;padding:28px 16px;color:var(--dim);line-height:1.6}
+.rk-empty-i{font-size:32px;line-height:1.2;margin-bottom:8px}
+.rk-empty-t{font-size:15px;font-weight:700;color:var(--ink2)}
+.rk-empty-s{font-size:13px;color:var(--dim);margin-top:3px;text-wrap:balance}
+
+/* ---------- רשימת פסים ---------- */
+.rk-rows{display:flex;flex-direction:column;gap:12px}
+.rk-row-h{display:flex;align-items:baseline;gap:7px;font-size:13px;margin-bottom:5px;min-width:0}
+.rk-row-i{flex:0 0 auto;font-size:15px;line-height:1}
+.rk-row-l{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.rk-row-s{color:var(--dim);font-size:11.5px;margin-inline-start:6px}
+.rk-row-v{flex:0 0 auto;font-weight:700;white-space:nowrap}
+.rk-row-v.up{color:var(--bad)} .rk-row-v.down{color:var(--ok)}
+.rk-row.dim .rk-row-l,.rk-row.dim .rk-row-v{color:var(--dim)}
+.rk-track{height:8px;background:var(--line2);border-radius:999px;overflow:hidden}
+.rk-track>i{display:block;height:100%;border-radius:999px}
+.rk-ghost{height:3px;margin-top:3px;border-radius:999px;overflow:hidden}
+.rk-ghost>i{display:block;height:100%;background:var(--faint);border-radius:999px;opacity:.75}
+
+/* ---------- פסים מתפצלים ממרכז ---------- */
+.rk-div{display:flex;flex-direction:column;gap:12px}
+.rk-div-t{position:relative;height:10px;background:var(--line2);border-radius:999px;overflow:hidden}
+.rk-div-t::after{content:"";position:absolute;inset-inline-start:calc(50% - 1px);top:0;bottom:0;width:2px;background:var(--faint)}
+.rk-div-t>i{position:absolute;top:0;bottom:0;display:block}
+.rk-div-t>i.inc{background:var(--bad-soft);box-shadow:inset 0 0 0 1px rgba(190,18,60,.12);border-inline-end:3px solid var(--bad)}
+.rk-div-t>i.dec{background:var(--ok-soft);box-shadow:inset 0 0 0 1px rgba(4,120,87,.12);border-inline-start:3px solid var(--ok)}
+
+/* ---------- פס 100% ---------- */
+.rk-stack{display:flex;gap:2px;width:100%;border-radius:999px;overflow:hidden;background:var(--line2)}
+.rk-stack>span{display:block;height:100%;min-width:3px}
+
+/* ---------- טבעת ---------- */
+.rk-ring{position:relative;flex:0 0 auto;margin-inline:auto}
+.rk-ring-svg{display:block;transform:rotate(-90deg)}
+.rk-ring-c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
+  line-height:1.2;padding:18%}
+
+/* ---------- מקרא ---------- */
+.rk-leg{display:flex;flex-direction:column;gap:2px}
+.rk-leg-row{display:flex;align-items:center;gap:8px;width:100%;padding:6px 6px;border-radius:var(--r);font-size:13px;color:var(--ink);
+  background:transparent;border:0;text-align:start;font-family:inherit;min-width:0}
+button.rk-leg-row{cursor:pointer;-webkit-tap-highlight-color:transparent;
+  transition:transform var(--dur-press) var(--ease-out),background-color var(--dur-fast) ease}
+button.rk-leg-row:active{transform:scale(.97)}
+button.rk-leg-row[aria-pressed=true]{background:var(--brand-soft)}
+.rk-sw{flex:0 0 10px;width:10px;height:10px;border-radius:3px}
+.rk-sw.dashed{height:0;border-top:2px dashed;border-radius:0;background:none}
+.rk-leg-i{flex:0 0 auto;font-size:14px;line-height:1}
+.rk-leg-l{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rk-leg-s{color:var(--dim);font-size:11.5px;margin-inline-start:6px}
+.rk-leg-v{flex:0 0 auto;font-weight:700;white-space:nowrap}
+
+/* ---------- צ'יפים ---------- */
+.rk-chips{display:flex;flex-wrap:wrap;gap:6px}
+.rk-chip{display:inline-flex;align-items:center;gap:4px;background:var(--card2);border:1px solid var(--line);border-radius:999px;
+  padding:4px 11px;font-size:12.5px;color:var(--ink2);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+
+/* ---------- מתג מקטעים ---------- */
+.rk-seg{display:inline-flex;gap:2px;background:var(--line2);border-radius:999px;padding:3px;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.rk-seg::-webkit-scrollbar{display:none}
+.rk-seg-b{border:0;background:transparent;border-radius:999px;padding:5px 12px;font-size:12.5px;font-weight:600;color:var(--dim);
+  cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent;
+  transition:transform var(--dur-press) var(--ease-out),background-color var(--dur-fast) ease,color var(--dur-fast) ease}
+.rk-seg-b:active{transform:scale(.97)}
+.rk-seg-b.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow-sm)}
+
+/* ---------- פרטים מתקפלים ---------- */
+.rk-details{margin-top:12px}
+.rk-details>summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;
+  color:var(--brand);padding:6px 2px;border-radius:8px;-webkit-tap-highlight-color:transparent}
+.rk-details>summary::-webkit-details-marker{display:none}
+.rk-det-a{display:inline-block;font-size:11px;transition:transform var(--dur-fast) var(--ease-out)}
+.rk-details[open] .rk-det-a{transform:rotate(90deg)}
+[dir=rtl] .rk-det-a{transform:scaleX(-1) rotate(0deg)}
+[dir=rtl] .rk-details[open] .rk-det-a{transform:scaleX(-1) rotate(90deg)}
+.rk-det-b{margin-top:8px}
+
+/* ---------- פריסה ---------- */
+.rk-g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;min-width:0}
+.rk-g3{display:grid;grid-template-columns:1fr;gap:14px;min-width:0}
+@media (min-width:640px){ .rk-g3{grid-template-columns:repeat(3,1fr)} }
+.rk-g2>*,.rk-g3>*{min-width:0}
+.rk-foot{font-size:11.5px;color:var(--dim);margin-top:10px;line-height:1.5}
+.rk-chart{position:relative;width:100%;min-width:0}
+.rk-chart>canvas{display:block}
+.rk-report .table-wrap.report{margin-top:4px}
+
+/* ---------- טלפון: יעדי לחיצה של 40px לפחות (הגודל החזותי כמעט לא משתנה) ---------- */
+@media (max-width:639px){
+  .rk-step{width:40px;height:40px;flex-basis:40px}
+  .rk-more{min-height:40px;padding-block:9px}
+  .rk-seg-b{min-height:36px;padding:8px 14px}
+  .rk-details>summary{min-height:40px;padding-block:9px}
+  button.rk-leg-row{min-height:40px}
+}
+
+/* הודעת מצב לקורא מסך בלבד */
+.rk-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* ---------- ריחוף — רק עכבר אמיתי ---------- */
+@media (hover:hover) and (pointer:fine){
+  .rk-tile:hover{border-color:var(--brand-line);background:var(--card)}
+  .rk-tile.on:hover{border-color:var(--brand);background:var(--brand-soft)}
+  .rk-more:hover{background:#e4e6fd}
+  .rk-step:not(:disabled):hover{background:var(--card2)}
+  .rk-seg-b:not(.on):hover{color:var(--ink2)}
+  button.rk-leg-row:hover{background:var(--card2)}
+  .rk-details>summary:hover{color:var(--brand-h)}
+}
+
+/* ---------- כניסה מדורגת: רק במעבר בין דוחות ---------- */
+@keyframes rk-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes rk-fade{from{opacity:0}to{opacity:1}}
+.rk-entering .rk-enter,
+.rk-report.rk-entering>:not(.rk-enter){animation:rk-in 240ms var(--ease-out) both;animation-delay:calc(var(--i,0) * 45ms)}
+.rk-report.rk-entering>:nth-child(2){--i:1}
+.rk-report.rk-entering>:nth-child(3){--i:2}
+.rk-report.rk-entering>:nth-child(4){--i:3}
+.rk-report.rk-entering>:nth-child(5){--i:4}
+.rk-report.rk-entering>:nth-child(n+6){--i:5}
+
+@media (prefers-reduced-motion:reduce){
+  .rk-entering .rk-enter,
+  .rk-report.rk-entering>:not(.rk-enter){animation:rk-fade 200ms ease both;animation-delay:0s}
+  .rk-tile,.rk-more,.rk-step,.rk-seg-b,button.rk-leg-row,.rk-det-a{transition:none}
+  .rk-tile:active,.rk-more:active,.rk-step:active,.rk-seg-b:active,button.rk-leg-row:active{transform:none}
+}

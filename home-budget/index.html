@@ -78,7 +78,7 @@ section.on{display:block;animation:fade 120ms ease-out}
   padding:15px 17px;box-shadow:var(--shadow-sm)}
 .kpi .lbl{font-size:12px;color:var(--dim);margin-bottom:6px;font-weight:500}
 .kpi .val{font-size:26px;font-weight:700;letter-spacing:-.025em;line-height:1.15}
-.kpi .sub{font-size:11.5px;color:var(--faint);margin-top:5px;text-wrap:balance}
+.kpi .sub{font-size:11.5px;color:var(--dim);margin-top:5px;text-wrap:balance}
 .up{color:var(--bad)} .down{color:var(--ok)}
 
 .insight{background:linear-gradient(135deg,#f7f7ff,#eef0fe);border:1px solid var(--brand-line);
@@ -347,6 +347,497 @@ input.combo.catsel{min-width:170px;max-width:240px;width:100%;border-radius:8px;
   #loginOverlay .lcard{@starting-style{transform:none}}
   section.on{animation-duration:1ms}
 }
+/* ===== דוחות: התחלה (נבנה מ-rep-*.css) ===== */
+/* --- rep-kit.css --- */
+/* ============================================================
+   rep-kit.css — ערכת הדוחות + הנתב. כל בורר מתחיל ב-.rk- או #repRoot.
+   תנועה: transform/opacity בלבד, var(--ease-out), עד 300ms, ריחוף רק בעכבר.
+   ============================================================ */
+
+/* ---------- נתב: כותרת ---------- */
+#repRoot{min-width:0}
+/* .num של האפליקציה הוא direction:ltr; על span צריך גם בידוד כדי ש"−1,234 ₪" לא יתהפך */
+#repRoot .num{unicode-bidi:isolate}
+#repRoot .rk-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:2px 0 14px;flex-wrap:wrap}
+#repRoot .rk-h{margin:0;font-size:20px;font-weight:800;letter-spacing:-.02em;color:var(--ink)}
+#repRoot .rk-hs{font-size:12.5px;color:var(--dim);margin-top:2px}
+
+/* ---------- נתב: גלריית דוחות ---------- */
+.rk-gal{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow-sm);
+  padding:14px 16px 6px;margin-bottom:14px;min-width:0}
+.rk-gal-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+.rk-gal-tt{font-size:13px;font-weight:700;color:var(--ink2)}
+.rk-grp{margin-bottom:12px;min-width:0}
+.rk-grp-t{font-size:11.5px;font-weight:700;color:var(--dim);letter-spacing:.02em;margin:0 2px 7px}
+.rk-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.rk-tile{display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-align:start;cursor:pointer;
+  background:var(--card2);border:1px solid var(--line);border-radius:var(--r-lg);padding:11px 12px 12px;color:var(--ink);
+  -webkit-tap-highlight-color:transparent;
+  transition:transform var(--dur-press) var(--ease-out),border-color var(--dur-fast) ease,background-color var(--dur-fast) ease}
+.rk-tile:active{transform:scale(.97)}
+.rk-tile.on{border-color:var(--brand);background:var(--brand-soft)}
+.rk-tile.on .rk-tile-d{color:var(--ink2)}
+.rk-tile-ic{font-size:22px;line-height:1.1;margin-bottom:2px}
+.rk-tile-t{font-size:14px;font-weight:700;line-height:1.3}
+.rk-tile-d{font-size:12px;color:var(--dim);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.rk-tile:focus-visible,.rk-more:focus-visible,.rk-step:focus-visible,.rk-seg-b:focus-visible,.rk-leg-row:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+@media (max-width:639px){
+  .rk-gal{padding:12px 12px 4px}
+  .rk-tiles{display:flex;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;
+    gap:8px;padding:2px 2px 8px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .rk-tiles::-webkit-scrollbar{display:none}
+  .rk-tile{flex:0 0 148px;scroll-snap-align:start}
+}
+
+/* מצב מקופל: הדוח הנוכחי + "כל הדוחות" */
+.rk-cur{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);
+  border-radius:var(--r-lg);box-shadow:var(--shadow-sm);padding:9px 10px 9px 12px;margin-bottom:12px;min-width:0}
+.rk-cur-ic{font-size:22px;line-height:1;flex:0 0 auto}
+.rk-cur-t{font-size:15px;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rk-more{flex:0 0 auto;background:var(--brand-soft);color:var(--brand);border:1px solid var(--brand-line);border-radius:999px;
+  padding:6px 12px;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent;
+  transition:transform var(--dur-press) var(--ease-out),background-color var(--dur-fast) ease}
+.rk-more:active{transform:scale(.97)}
+
+/* ---------- נתב: בחירת תקופה ---------- */
+.rk-period{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.rk-period .rk-sel{width:auto;min-width:150px;max-width:100%;flex:0 1 auto;background:var(--card);font-weight:600;border-radius:999px;padding:7px 14px}
+.rk-step{width:34px;height:34px;flex:0 0 34px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink2);
+  font-size:18px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0 0 2px;
+  -webkit-tap-highlight-color:transparent;transition:transform var(--dur-press) var(--ease-out),background-color var(--dur-fast) ease}
+.rk-step:active{transform:scale(.97)}
+.rk-step:disabled{opacity:.35;cursor:default}
+.rk-step:disabled:active{transform:none}
+
+/* ---------- גוף הדוח ---------- */
+.rk-report{min-width:0}
+.rk-report>*{min-width:0}
+
+/* ---------- כרטיס ---------- */
+.rk-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px;
+  box-shadow:var(--shadow-sm);margin-bottom:14px;min-width:0}
+.rk-card-t{margin:0 0 4px;font-size:14.5px;font-weight:700;color:var(--ink);letter-spacing:-.01em}
+.rk-card-s{font-size:12.5px;color:var(--dim);margin-bottom:12px;line-height:1.5}
+.rk-card-t+:not(.rk-card-s){margin-top:10px}
+@media (max-width:399px){ .rk-card{padding:14px} }
+
+/* ---------- תובנה ---------- */
+.rk-ins{margin-bottom:14px}
+.rk-ins strong{color:#332d8f;font-weight:700}
+.rk-ins-ok{background:var(--ok-soft);border-color:#bfe5d4}
+.rk-ins-ok b,.rk-ins-ok strong{color:var(--ok)}
+.rk-ins-warn{background:var(--warn-soft);border-color:#f0d9a8}
+.rk-ins-warn b,.rk-ins-warn strong{color:var(--warn)}
+
+/* ---------- KPI ---------- */
+.rk-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
+.rk-kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:12px 14px;box-shadow:var(--shadow-sm);min-width:0}
+.rk-kpi-l{font-size:12px;color:var(--dim);font-weight:500;margin-bottom:4px}
+.rk-kpi-v{font-size:22px;font-weight:700;letter-spacing:-.025em;line-height:1.2;font-variant-numeric:tabular-nums lining-nums;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rk-kpi-v.brand{color:var(--brand)}
+.rk-kpi-s{font-size:11.5px;color:var(--dim);margin-top:4px;line-height:1.4;text-wrap:balance}
+.rk-card .rk-kpis{margin-bottom:0}
+@media (max-width:495px){
+  .rk-kpis{grid-template-columns:1fr 1fr}
+  .rk-kpi:last-child:nth-child(odd){grid-column:1/-1}
+}
+.rk-card .rk-kpi{background:var(--card2);box-shadow:none}
+
+/* ---------- תגיות ---------- */
+.rk-pill{display:inline-flex;align-items:center;gap:3px;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:600;
+  white-space:nowrap;line-height:1.5;background:var(--brand-soft);color:var(--brand);vertical-align:middle}
+.rk-pill.ok,.rk-pill.down{background:var(--ok-soft);color:var(--ok)}
+.rk-pill.bad,.rk-pill.up{background:var(--bad-soft);color:var(--bad)}
+.rk-pill.warn{background:var(--warn-soft);color:var(--warn)}
+.rk-pill.dim{background:var(--line2);color:var(--ink2)}
+.rk-pill .num{font-variant-numeric:tabular-nums}
+
+/* ---------- מצב ריק ---------- */
+.rk-empty{text-align:center;padding:28px 16px;color:var(--dim);line-height:1.6}
+.rk-empty-i{font-size:32px;line-height:1.2;margin-bottom:8px}
+.rk-empty-t{font-size:15px;font-weight:700;color:var(--ink2)}
+.rk-empty-s{font-size:13px;color:var(--dim);margin-top:3px;text-wrap:balance}
+
+/* ---------- רשימת פסים ---------- */
+.rk-rows{display:flex;flex-direction:column;gap:12px}
+.rk-row-h{display:flex;align-items:baseline;gap:7px;font-size:13px;margin-bottom:5px;min-width:0}
+.rk-row-i{flex:0 0 auto;font-size:15px;line-height:1}
+.rk-row-l{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.rk-row-s{color:var(--dim);font-size:11.5px;margin-inline-start:6px}
+.rk-row-v{flex:0 0 auto;font-weight:700;white-space:nowrap}
+.rk-row-v.up{color:var(--bad)} .rk-row-v.down{color:var(--ok)}
+.rk-row.dim .rk-row-l,.rk-row.dim .rk-row-v{color:var(--dim)}
+.rk-track{height:8px;background:var(--line2);border-radius:999px;overflow:hidden}
+.rk-track>i{display:block;height:100%;border-radius:999px}
+.rk-ghost{height:3px;margin-top:3px;border-radius:999px;overflow:hidden}
+.rk-ghost>i{display:block;height:100%;background:var(--faint);border-radius:999px;opacity:.75}
+
+/* ---------- פסים מתפצלים ממרכז ---------- */
+.rk-div{display:flex;flex-direction:column;gap:12px}
+.rk-div-t{position:relative;height:10px;background:var(--line2);border-radius:999px;overflow:hidden}
+.rk-div-t::after{content:"";position:absolute;inset-inline-start:calc(50% - 1px);top:0;bottom:0;width:2px;background:var(--faint)}
+.rk-div-t>i{position:absolute;top:0;bottom:0;display:block}
+.rk-div-t>i.inc{background:var(--bad-soft);box-shadow:inset 0 0 0 1px rgba(190,18,60,.12);border-inline-end:3px solid var(--bad)}
+.rk-div-t>i.dec{background:var(--ok-soft);box-shadow:inset 0 0 0 1px rgba(4,120,87,.12);border-inline-start:3px solid var(--ok)}
+
+/* ---------- פס 100% ---------- */
+.rk-stack{display:flex;gap:2px;width:100%;border-radius:999px;overflow:hidden;background:var(--line2)}
+.rk-stack>span{display:block;height:100%;min-width:3px}
+
+/* ---------- טבעת ---------- */
+.rk-ring{position:relative;flex:0 0 auto;margin-inline:auto}
+.rk-ring-svg{display:block;transform:rotate(-90deg)}
+.rk-ring-c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
+  line-height:1.2;padding:18%}
+
+/* ---------- מקרא ---------- */
+.rk-leg{display:flex;flex-direction:column;gap:2px}
+.rk-leg-row{display:flex;align-items:center;gap:8px;width:100%;padding:6px 6px;border-radius:var(--r);font-size:13px;color:var(--ink);
+  background:transparent;border:0;text-align:start;font-family:inherit;min-width:0}
+button.rk-leg-row{cursor:pointer;-webkit-tap-highlight-color:transparent;
+  transition:transform var(--dur-press) var(--ease-out),background-color var(--dur-fast) ease}
+button.rk-leg-row:active{transform:scale(.97)}
+button.rk-leg-row[aria-pressed=true]{background:var(--brand-soft)}
+.rk-sw{flex:0 0 10px;width:10px;height:10px;border-radius:3px}
+.rk-sw.dashed{height:0;border-top:2px dashed;border-radius:0;background:none}
+.rk-leg-i{flex:0 0 auto;font-size:14px;line-height:1}
+.rk-leg-l{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rk-leg-s{color:var(--dim);font-size:11.5px;margin-inline-start:6px}
+.rk-leg-v{flex:0 0 auto;font-weight:700;white-space:nowrap}
+
+/* ---------- צ'יפים ---------- */
+.rk-chips{display:flex;flex-wrap:wrap;gap:6px}
+.rk-chip{display:inline-flex;align-items:center;gap:4px;background:var(--card2);border:1px solid var(--line);border-radius:999px;
+  padding:4px 11px;font-size:12.5px;color:var(--ink2);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+
+/* ---------- מתג מקטעים ---------- */
+.rk-seg{display:inline-flex;gap:2px;background:var(--line2);border-radius:999px;padding:3px;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.rk-seg::-webkit-scrollbar{display:none}
+.rk-seg-b{border:0;background:transparent;border-radius:999px;padding:5px 12px;font-size:12.5px;font-weight:600;color:var(--dim);
+  cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent;
+  transition:transform var(--dur-press) var(--ease-out),background-color var(--dur-fast) ease,color var(--dur-fast) ease}
+.rk-seg-b:active{transform:scale(.97)}
+.rk-seg-b.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow-sm)}
+
+/* ---------- פרטים מתקפלים ---------- */
+.rk-details{margin-top:12px}
+.rk-details>summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;
+  color:var(--brand);padding:6px 2px;border-radius:8px;-webkit-tap-highlight-color:transparent}
+.rk-details>summary::-webkit-details-marker{display:none}
+.rk-det-a{display:inline-block;font-size:11px;transition:transform var(--dur-fast) var(--ease-out)}
+.rk-details[open] .rk-det-a{transform:rotate(90deg)}
+[dir=rtl] .rk-det-a{transform:scaleX(-1) rotate(0deg)}
+[dir=rtl] .rk-details[open] .rk-det-a{transform:scaleX(-1) rotate(90deg)}
+.rk-det-b{margin-top:8px}
+
+/* ---------- פריסה ---------- */
+.rk-g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;min-width:0}
+.rk-g3{display:grid;grid-template-columns:1fr;gap:14px;min-width:0}
+@media (min-width:640px){ .rk-g3{grid-template-columns:repeat(3,1fr)} }
+.rk-g2>*,.rk-g3>*{min-width:0}
+.rk-foot{font-size:11.5px;color:var(--dim);margin-top:10px;line-height:1.5}
+.rk-chart{position:relative;width:100%;min-width:0}
+.rk-chart>canvas{display:block}
+.rk-report .table-wrap.report{margin-top:4px}
+
+/* ---------- טלפון: יעדי לחיצה של 40px לפחות (הגודל החזותי כמעט לא משתנה) ---------- */
+@media (max-width:639px){
+  .rk-step{width:40px;height:40px;flex-basis:40px}
+  .rk-more{min-height:40px;padding-block:9px}
+  .rk-seg-b{min-height:36px;padding:8px 14px}
+  .rk-details>summary{min-height:40px;padding-block:9px}
+  button.rk-leg-row{min-height:40px}
+}
+
+/* הודעת מצב לקורא מסך בלבד */
+.rk-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* ---------- ריחוף — רק עכבר אמיתי ---------- */
+@media (hover:hover) and (pointer:fine){
+  .rk-tile:hover{border-color:var(--brand-line);background:var(--card)}
+  .rk-tile.on:hover{border-color:var(--brand);background:var(--brand-soft)}
+  .rk-more:hover{background:#e4e6fd}
+  .rk-step:not(:disabled):hover{background:var(--card2)}
+  .rk-seg-b:not(.on):hover{color:var(--ink2)}
+  button.rk-leg-row:hover{background:var(--card2)}
+  .rk-details>summary:hover{color:var(--brand-h)}
+}
+
+/* ---------- כניסה מדורגת: רק במעבר בין דוחות ---------- */
+@keyframes rk-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes rk-fade{from{opacity:0}to{opacity:1}}
+.rk-entering .rk-enter,
+.rk-report.rk-entering>:not(.rk-enter){animation:rk-in 240ms var(--ease-out) both;animation-delay:calc(var(--i,0) * 45ms)}
+.rk-report.rk-entering>:nth-child(2){--i:1}
+.rk-report.rk-entering>:nth-child(3){--i:2}
+.rk-report.rk-entering>:nth-child(4){--i:3}
+.rk-report.rk-entering>:nth-child(5){--i:4}
+.rk-report.rk-entering>:nth-child(n+6){--i:5}
+
+@media (prefers-reduced-motion:reduce){
+  .rk-entering .rk-enter,
+  .rk-report.rk-entering>:not(.rk-enter){animation:rk-fade 200ms ease both;animation-delay:0s}
+  .rk-tile,.rk-more,.rk-step,.rk-seg-b,button.rk-leg-row,.rk-det-a{transition:none}
+  .rk-tile:active,.rk-more:active,.rk-step:active,.rk-seg-b:active,button.rk-leg-row:active{transform:none}
+}
+
+/* --- rep-pace.css --- */
+/* rep-pace.css — רק לדוח "קצב החודש". כל בורר מתחיל ב-.rep-pace
+   הפריסה הבסיסית יושבת ב-style של ה-HTML, כך שבלי הקובץ הזה הדוח עדיין תקין;
+   כאן רק ליטוש: מקרא אופקי מתחת לגרף (KPI שלישי ברוחב מלא — בערכה, לכל הדוחות). */
+.rep-pace .rk-leg{flex-direction:row;flex-wrap:wrap;column-gap:14px;row-gap:0}
+.rep-pace .rk-leg-row{width:auto;padding:4px 2px}
+.rep-pace .rk-leg-l{overflow:visible}
+
+/* --- rep-heatcal.css --- */
+/* ============================================================
+   rep-heatcal.css — "לוח החודש". כל בורר מתחיל ב-.rep-heatcal.
+   תנועה: transform/opacity בלבד; ריחוף רק בעכבר אמיתי.
+   ============================================================ */
+.rep-heatcal [hidden]{display:none!important}
+
+/* שורת המתג + "חודש חלקי" */
+.rep-heatcal .rep-heatcal-top{display:flex;align-items:center;justify-content:space-between;gap:8px 10px;flex-wrap:wrap;margin-bottom:12px}
+
+/* כרטיס הלוח — ריפוד צר בטלפון כדי שהתאים יהיו גדולים */
+.rep-heatcal .rep-heatcal-cal{padding:16px 14px 14px}
+@media (max-width:399px){ .rep-heatcal .rep-heatcal-cal{padding:12px 8px} }
+
+/* ---------- הלוח ---------- */
+.rep-heatcal .rep-heatcal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;max-width:420px;margin-inline:auto}
+.rep-heatcal .rep-heatcal-h{text-align:center;font-size:11.5px;font-weight:600;color:var(--dim);line-height:1.4;padding-bottom:2px}
+.rep-heatcal .rep-heatcal-cell{aspect-ratio:1/1;min-width:0;margin:0;padding:4px;border:1px solid transparent;border-radius:10px;
+  display:flex;flex-direction:column;justify-content:space-between;align-items:stretch;overflow:hidden;
+  font:inherit;font-size:11px;line-height:1.15;color:var(--ink);text-align:start;background:transparent}
+.rep-heatcal .rep-heatcal-cell .d{align-self:flex-start;color:var(--dim);font-weight:600;font-variant-numeric:tabular-nums lining-nums}
+.rep-heatcal .rep-heatcal-cell .a{align-self:flex-end;max-width:100%;font-size:10.5px;font-weight:700;letter-spacing:-.01em;overflow:hidden}
+.rep-heatcal .rep-heatcal-cell .a.xs{font-size:9.5px}
+.rep-heatcal .rep-heatcal-cell .a.xxs{font-size:8.5px;letter-spacing:-.03em}
+.rep-heatcal .rep-heatcal-cell .q{align-self:center;font-size:13px;line-height:1}
+
+/* רמות — סולם אחד של צבע המותג (בהיר = מעט, כהה = הרבה) */
+.rep-heatcal .L0{background:var(--card2);border-color:var(--line2)}
+.rep-heatcal .L1{background:#eef0fe}
+.rep-heatcal .L2{background:#c9c9f5}
+/* על L3 טקסט כהה: לבן נותן רק ~3:1 בגודל 10.5px */
+.rep-heatcal .L3{background:#8f87e6;color:#1e1b4b}
+.rep-heatcal .L4{background:#5145cd;color:#fff}
+/* מספר היום על L1/L2: --dim נותן רק ~3:1 על #c9c9f5 */
+.rep-heatcal .rep-heatcal-cell.L1 .d,.rep-heatcal .rep-heatcal-cell.L2 .d{color:var(--ink2)}
+.rep-heatcal .rep-heatcal-cell.L3 .d{color:#1e1b4b}
+.rep-heatcal .rep-heatcal-cell.L4 .d{color:rgba(255,255,255,.8)}
+
+.rep-heatcal .rep-heatcal-cell.fut{background:transparent;border:1px dashed var(--line)}
+.rep-heatcal .rep-heatcal-cell.fut .d{color:var(--faint)}
+.rep-heatcal .rep-heatcal-cell.nd{background:transparent;border:1px solid var(--line2)}
+.rep-heatcal .rep-heatcal-cell.nd .d,.rep-heatcal .rep-heatcal-cell.nd .q{color:var(--faint)}
+.rep-heatcal .rep-heatcal-cell.today{box-shadow:0 0 0 2px var(--brand)}
+.rep-heatcal .rep-heatcal-cell[aria-pressed=true]{box-shadow:0 0 0 2px var(--ink2)}
+
+.rep-heatcal button.rep-heatcal-cell{cursor:pointer;-webkit-appearance:none;appearance:none;-webkit-tap-highlight-color:transparent;
+  transition:transform var(--dur-press) var(--ease-out)}
+.rep-heatcal button.rep-heatcal-cell:active{transform:scale(.97)}
+.rep-heatcal button.rep-heatcal-cell:focus-visible,.rep-heatcal .rep-heatcal-x:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+
+/* ---------- מקרא ---------- */
+.rep-heatcal .rep-heatcal-leg{max-width:420px;margin:12px auto 0}
+.rep-heatcal .rep-heatcal-leg .rk-chips{justify-content:center}
+.rep-heatcal .rep-heatcal-sw{display:inline-block;flex:0 0 11px;width:11px;height:11px;border-radius:3px}
+.rep-heatcal .rep-heatcal-sw.L0{border:1px solid var(--line2)}
+.rep-heatcal .rep-heatcal-sw.L1{box-shadow:inset 0 0 0 1px var(--brand-line)}
+.rep-heatcal .rep-heatcal-foot{max-width:420px;margin-inline:auto;text-align:center;text-wrap:balance}
+
+/* ---------- פירוט יום ---------- */
+.rep-heatcal .rep-heatcal-det{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow-sm);
+  padding:12px 14px;margin-bottom:14px;min-width:0;animation:rep-heatcal-in 180ms var(--ease-out) both}
+.rep-heatcal .rep-heatcal-det-h{display:flex;align-items:center;gap:8px;margin-bottom:6px;min-width:0}
+.rep-heatcal .rep-heatcal-det-h .t{flex:1;min-width:0;font-size:14.5px;font-weight:700;color:var(--ink)}
+.rep-heatcal .rep-heatcal-det-h .w{font-size:12.5px;font-weight:500;color:var(--dim);margin-inline-start:6px}
+.rep-heatcal .rep-heatcal-det-h .v{flex:0 0 auto;font-size:14.5px;font-weight:700}
+.rep-heatcal .rep-heatcal-x{flex:0 0 30px;width:30px;height:30px;border-radius:999px;border:1px solid var(--line);background:var(--card2);
+  color:var(--dim);font-size:17px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0 0 2px;
+  -webkit-tap-highlight-color:transparent;transition:transform var(--dur-press) var(--ease-out)}
+.rep-heatcal .rep-heatcal-x:active{transform:scale(.97)}
+@media (max-width:639px){ .rep-heatcal .rep-heatcal-x{flex-basis:40px;width:40px;height:40px} }
+.rep-heatcal .rep-heatcal-q{font-size:13px;font-weight:600;color:var(--ok);margin:2px 0 6px}
+.rep-heatcal .rep-heatcal-more{font-size:12.5px;color:var(--dim);padding:4px 6px 0}
+@keyframes rep-heatcal-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@keyframes rep-heatcal-fade{from{opacity:0}to{opacity:1}}
+
+@media (hover:hover) and (pointer:fine){
+  .rep-heatcal button.rep-heatcal-cell:hover{filter:brightness(.97)}
+  .rep-heatcal .rep-heatcal-x:hover{color:var(--ink2)}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .rep-heatcal button.rep-heatcal-cell,.rep-heatcal .rep-heatcal-x{transition:none}
+  .rep-heatcal button.rep-heatcal-cell:active,.rep-heatcal .rep-heatcal-x:active{transform:none}
+  .rep-heatcal .rep-heatcal-det{animation:rep-heatcal-fade 150ms ease both}
+}
+
+/* כותרת פירוט היום: הסכום של המצב המוצג בלבד (תואם לתא) */
+.rep-heatcal[data-mode=var] .rep-heatcal-det-h .v[data-m=all],
+.rep-heatcal[data-mode=all] .rep-heatcal-det-h .v[data-m=var]{display:none}
+.rep-heatcal .rep-heatcal-det-h .v .fx{display:block;font-size:11.5px;font-weight:500;color:var(--dim);text-align:end}
+
+/* --- rep-fixflex.css --- */
+/* rep-fixflex.css — כל בורר מתחיל ב-.rep-fixflex (עטיפת שלושת הדליים) */
+/* הדליים נכנסים במדורג בעצמם (RK.stagger), ולכן העטיפה לא מונפשת כיחידה — אחרת התזוזה מוכפלת */
+.rep-fixflex.rk-g3{animation:none !important;margin-bottom:14px}
+.rep-fixflex.rk-g3>.rk-card{margin-bottom:0}
+/* צ'יפ: התיאור מתקצר, הסכום תמיד נשאר גלוי */
+.rep-fixflex .rk-chip{max-width:100%}
+.rep-fixflex .rep-fixflex-cd{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rep-fixflex .rk-chip>.num{flex:0 0 auto;font-weight:600;color:var(--ink)}
+.rep-fixflex .rk-details .rk-leg-row{padding-inline:2px}
+
+/* --- rep-savings.css --- */
+/* rep-savings.css — רק לדוח "מכל 100 ₪ שנכנסו". כל בורר מתחיל ב-.rep-savings */
+
+/* וופל + מקרא: אחד מתחת לשני בטלפון, זה לצד זה מ-640px */
+.rep-savings-hero{display:flex;flex-direction:column;align-items:stretch;gap:16px;min-width:0}
+.rep-savings-wbox{width:100%;max-width:280px;margin-inline:auto;flex:0 0 auto}
+.rep-savings-leg{min-width:0}
+@media (min-width:640px){
+  .rep-savings-hero{flex-direction:row;align-items:center;gap:28px}
+  .rep-savings-wbox{width:280px;margin:0}
+  .rep-savings-leg{flex:1 1 0;max-width:440px}
+}
+
+/* 10×10. ב-RTL הגריד מתמלא מהפינה הימנית העליונה */
+.rep-savings-waffle{display:grid;grid-template-columns:repeat(10,1fr);gap:3px;max-width:280px;margin-inline:auto}
+.rep-savings-waffle i{display:flex;align-items:center;justify-content:center;aspect-ratio:1/1;border-radius:4px;
+  font-style:normal;font-size:9px;line-height:1;overflow:hidden;transition:opacity 150ms var(--ease-out)}
+.rep-savings-waffle i>span{display:block;line-height:1}
+.rep-savings-waffle i.over{background-image:repeating-linear-gradient(45deg,var(--bad) 0 1.5px,transparent 1.5px 4.5px)}
+.rep-savings-waffle.dim i:not(.is-pick){opacity:.25}
+.rep-savings-cap{font-size:11.5px;color:var(--dim);text-align:center;margin-top:8px;line-height:1.4}
+
+/* מקרא הגרף: שורה אופקית קטנה */
+.rep-savings-chleg{margin-top:10px}
+.rep-savings-chleg .rk-leg{flex-direction:row;flex-wrap:wrap;column-gap:14px;row-gap:0}
+.rep-savings-chleg .rk-leg-row{width:auto;padding:3px 2px;font-size:12px;color:var(--ink2)}
+.rep-savings-chleg .rk-leg-l{overflow:visible}
+
+.rep-savings-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+
+/* --- rep-maaser.css --- */
+/* rep-maaser.css — רק לדוח "מעשרות וצדקה". כל בורר מתחיל ב-.rep-maaser
+   הפריסה הבסיסית יושבת ב-style של ה-HTML, כך שבלי הקובץ הזה הדוח עדיין תקין;
+   כאן רק ליטוש: מקרא אופקי וכניסה של הטבעת (KPI שלישי ברוחב מלא — בערכה). */
+.rep-maaser .rk-leg{flex-direction:row;flex-wrap:wrap;column-gap:14px;row-gap:0}
+.rep-maaser .rk-leg-row{width:auto;padding:4px 2px}
+.rep-maaser .rk-leg-l{overflow:visible}
+.rep-maaser .rk-chip{gap:6px}
+.rep-maaser .rk-chip>.num{flex:0 0 auto}
+/* כניסה לדוח בלבד: הטבעת מופיעה ב-opacity + scale(.96)→1 (לא מ-0, בלי ציור של הקשת).
+   מחליף רק את שם האנימציה של .rk-enter מהערכה — משך, עקומה ועיכוב נשארים משם.
+   בהעדפת תנועה מופחתת לא נוגעים: הערכה כבר מחליפה ל-fade בלבד. */
+@keyframes rep-maaser-pop{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:no-preference){
+  .rk-entering .rep-maaser.rep-maaser-ring.rk-enter{animation-name:rep-maaser-pop}
+}
+
+/* --- rep-subs.css --- */
+/* ============================================================
+   rep-subs.css — "מנויים וחיובים קבועים". כל בורר מתחיל ב-.rep-subs.
+   אין כאן ריחוף ואין לחיצות: השורות הן מידע, לא כפתורים.
+   ============================================================ */
+
+/* כניסה: השורות עצמן נכנסות במדורג (rk-enter), ולכן כרטיסי הרשימה רק מתבהרים.
+   אחרת השורה זזה פעמיים (הכרטיס + השורה). בלי .rk-entering משך האנימציה 0 — אין השפעה. */
+.rep-subs.rep-subs-list.rk-card:not(.rk-enter),
+div.rep-subs.rep-subs-cols:not(.rk-enter){animation-name:rk-fade}
+
+/* שתי הרשימות: אחת מתחת לשנייה, ובמסך רחב זו לצד זו */
+.rep-subs.rep-subs-cols{display:grid;grid-template-columns:minmax(0,1fr);column-gap:14px;align-items:start;min-width:0}
+@media (min-width:900px){ .rep-subs.rep-subs-cols{grid-template-columns:repeat(2,minmax(0,1fr))} }
+
+/* ---------- כרטיס הפתיחה ---------- */
+.rep-subs .rep-subs-big{font-size:26px;font-weight:800;letter-spacing:-.025em;line-height:1.15;color:var(--ink);
+  font-variant-numeric:tabular-nums lining-nums}
+.rep-subs .rep-subs-unit{font-size:16px;font-weight:700;letter-spacing:0;color:var(--ink2)}
+.rep-subs .rep-subs-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin-top:6px}
+.rep-subs .rep-subs-yr{font-size:13.5px;font-weight:600;color:var(--dim)}
+.rep-subs .rep-subs-lead{margin:12px 0 0;padding-top:12px;border-top:1px solid var(--line2);
+  font-size:14px;line-height:1.55;color:var(--ink2);text-wrap:pretty}
+
+/* ---------- כותרת רשימה: שם + סה"כ לשנה ---------- */
+.rep-subs .rep-subs-hd{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-width:0}
+.rep-subs .rep-subs-hd .rk-card-t{margin:0}
+.rep-subs .rep-subs-hd-v{flex:0 0 auto;font-size:13px;font-weight:700;color:var(--ink2);white-space:nowrap}
+.rep-subs .rep-subs-hd+.rk-card-s{margin:2px 0 6px}
+
+/* ---------- שורה ---------- */
+.rep-subs .rep-subs-rows{display:flex;flex-direction:column;min-width:0}
+.rep-subs .rep-subs-row{padding:11px 0;border-top:1px solid var(--line2);min-width:0}
+.rep-subs .rep-subs-row:first-child{border-top:0}
+.rep-subs .rep-subs-row:last-child{padding-bottom:2px}
+
+.rep-subs .rep-subs-l1{display:flex;align-items:baseline;gap:8px;min-width:0}
+.rep-subs .rep-subs-ic{flex:0 0 16px;width:16px;font-size:15px;line-height:1;text-align:center}
+.rep-subs .rep-subs-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:14px;font-weight:600;color:var(--ink)}
+.rep-subs .rep-subs-yv{flex:0 0 auto;white-space:nowrap;font-size:14px}
+.rep-subs .rep-subs-yv b{font-weight:700;color:var(--ink)}
+.rep-subs .rep-subs-yv small{font-size:12px;font-weight:500;color:var(--dim)}
+
+/* שורה 2 ו-3 מתחילות מתחת לשם (16px אייקון + 8px רווח) */
+.rep-subs .rep-subs-l2{display:flex;flex-wrap:wrap;align-items:center;gap:5px 6px;margin-top:6px;padding-inline-start:24px;min-width:0}
+.rep-subs .rep-subs-l2 .rk-pill{font-size:11.5px;padding:1px 8px}
+.rep-subs .rep-subs-amt{margin-inline-start:auto;font-size:12.5px;color:var(--dim);white-space:nowrap}
+
+/* 12 נקודות: הישן משמאל, האחרון מימין (כמו ציר הזמן בגרפים) */
+.rep-subs .rep-subs-l3{margin-top:8px;padding-inline-start:24px;line-height:0}
+.rep-subs .rep-subs-dots{display:inline-flex;direction:ltr;gap:3px}
+.rep-subs .rep-subs-dots>i{display:block;width:8px;height:8px;border-radius:999px;background:var(--line2);
+  box-shadow:inset 0 0 0 1px var(--line)}
+.rep-subs .rep-subs-dots>i.on{box-shadow:none}
+
+/* ---------- נעלמו ---------- */
+.rep-subs.rep-subs-gone{margin-bottom:14px;min-width:0}
+.rep-subs.rep-subs-gone .rk-details{margin-top:0}
+.rep-subs.rep-subs-gone .rk-det-b{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-sm);padding:4px 14px 10px}
+.rep-subs .rep-subs-row.gone .rep-subs-name,
+.rep-subs .rep-subs-row.gone .rep-subs-yv{color:var(--dim);font-weight:600}
+.rep-subs .rep-subs-row.gone .rep-subs-dots>i.on{opacity:.55}
+.rep-subs .rep-subs-last{font-size:12.5px;color:var(--dim)}
+
+/* --- rep-sinking.css --- */
+/* rep-sinking.css — רק לדוח "קופה להוצאות הלא-חודשיות". כל בורר מתחיל ב-.rep-sinking
+   הפריסה הבסיסית יושבת ב-style של ה-HTML, כך שבלי הקובץ הזה הדוח עדיין תקין;
+   כאן רק ליטוש: רצועת החודשים נכנסת בשקיפות בלבד, מקרא אופקי, ורשימת נושאים צפופה. */
+
+/* הרצועה נכנסת כקבוצה אחת — שקיפות בלבד, בלי תזוזה (הכרטיס עצמו כבר זז) */
+.rep-sinking .rep-sinking-strip.rk-enter{animation-name:rk-fade}
+
+/* בטלפון צר: תווית לכל עמודה שנייה, בלי לשנות את גובה השורה.
+   סופרים מהסוף, כדי שהחודש האחרון (הכי רלוונטי) תמיד יקבל תווית */
+@media (max-width:400px){
+  .rep-sinking .rep-sinking-col:nth-last-child(even) .rep-sinking-ml{visibility:hidden}
+}
+
+/* מקרא אופקי מתחת לרצועה */
+.rep-sinking .rep-sinking-leg .rk-leg{flex-direction:row;flex-wrap:wrap;column-gap:12px;row-gap:0}
+.rep-sinking .rep-sinking-leg .rk-leg-row{width:auto;padding:3px 2px;font-size:12px}
+.rep-sinking .rep-sinking-leg .rk-leg-l{overflow:visible}
+
+/* רשימת הנושאים: שורות צמודות עם קו מפריד, בלי מרווח של rk-details */
+.rep-sinking .rep-sinking-det{margin-top:0}
+.rep-sinking .rep-sinking-det+.rep-sinking-det{border-top:1px solid var(--line2)}
+.rep-sinking .rep-sinking-det>summary{border-radius:8px;transition:background-color var(--dur-fast) ease}
+.rep-sinking .rep-sinking-det>summary:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.rep-sinking .rep-sinking-det .rk-det-b{margin-top:4px}
+
+@media (hover:hover) and (pointer:fine){
+  .rep-sinking .rep-sinking-det>summary:hover{background:var(--card2)}
+}
+@media (prefers-reduced-motion:reduce){
+  .rep-sinking .rep-sinking-det>summary{transition:none}
+}
+/* ===== דוחות: סוף ===== */
 </style>
 </head>
 <body>
@@ -360,6 +851,7 @@ input.combo.catsel{min-width:170px;max-width:240px;width:100%;border-radius:8px;
   </div>
   <nav id="nav">
     <button data-tab="dash" class="on">📊 דשבורד</button>
+    <button data-tab="reports">📈 דוחות</button>
     <button data-tab="classify">🏷️ לסיווג<span class="badge" id="pendBadge" style="display:none">0</span></button>
     <button data-tab="tx">📋 תנועות</button>
     <button data-tab="import">📥 ייבוא</button>
@@ -406,6 +898,9 @@ input.combo.catsel{min-width:170px;max-width:240px;width:100%;border-radius:8px;
     <div class="table-wrap report" id="catMonths"></div>
   </div>
 </section>
+
+<!-- ============ דוחות ============ -->
+<section id="tab-reports"><div id="repRoot"></div></section>
 
 <!-- ============ לסיווג ============ -->
 <section id="tab-classify">
@@ -875,12 +1370,12 @@ function seedCats(){
    בלעדיו הוא לא יוכל לחבר את המכשיר שלו והמערכת תהיה חסרת שימוש עבורו. */
 const ROLES = {
   admin: { label:'מנהל — גישה מלאה',
-           tabs:['dash','classify','tx','import','add','sources','cats','settings'] },
+           tabs:['dash','reports','classify','tx','import','add','sources','cats','settings'] },
   /* תנועות פתוחות למשתמש רגיל לצפייה בכל הנתונים (דודי, 08/10). עריכה,
      מחיקה, פעולות מרוכזות ותצוגת מחוקות נשארות למנהל — כל אחת מהן נבדקת
      מול isAdmin() בנפרד, והשרת מתיר למשתמש רגיל רק upsertTx/upsertRule. */
   user:  { label:'סיווג, הזנה וצפייה בכל הנתונים',
-           tabs:['dash','classify','tx','add'] }
+           tabs:['dash','reports','classify','tx','add'] }
 };
 /* משתמשי ברירת המחדל למצב מקומי. הקודים שלהם ציבוריים (הריפו ציבורי), ולכן
    עותק שלהם לעולם לא עולה לגיליון — ראה isSeedUser. */
@@ -1374,18 +1869,22 @@ async function logout(){
 document.querySelectorAll('#nav button').forEach(b=>{
   b.onclick = ()=> gotoTab(b.dataset.tab);
 });
-function gotoTab(name){
+function gotoTab(name, keepScroll){
   if(!allowedTabs().includes(name)) name='dash';   // חסימה גם בניווט תכנותי
+  /* גרפי הדוחות לא נשארים חיים מאחורי לשונית אחרת */
+  if(name!=='reports' && window.RK && RK.destroyCharts) RK.destroyCharts();
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on', b.dataset.tab===name));
   document.querySelectorAll('main section').forEach(s=>s.classList.toggle('on', s.id==='tab-'+name));
   if(name==='dash') renderDash();
+  if(name==='reports' && typeof renderReports==='function') renderReports();
   if(name==='classify') renderClassify();
   if(name==='tx') renderTx();
   if(name==='import') renderSrcTiles();
   if(name==='sources'){ renderSrcTable(); renderRulesTable(); }
   if(name==='cats') renderCats();
   if(name==='settings') renderSettings();
-  window.scrollTo(0,0);
+  /* רענון אחרי סנכרון (renderAll) לא מקפיץ לראש הדף באמצע קריאה */
+  if(!keepScroll) window.scrollTo(0,0);
 }
 
 /* ---------------- נתונים נגזרים ---------------- */
@@ -1397,7 +1896,11 @@ const catByName = n => DB.cats.find(c=>c.name===n && !c.deleted);
    לא קוד. הצבע נכנס לתוך style ולכן חייב להיות צבע ותו לא. */
 function catColor(n){ const c=catByName(n); const v=c&&c.color;
   return /^#[0-9a-fA-F]{6}$/.test(v||'') ? v : '#94a3b8'; }
-function catIcon(n){ const c=catByName(n); return esc((c?c.icon:'🏷️')||'🏷️').slice(0,12); }
+/* חותכים לפני ההברחה — חיתוך אחריה יכול להשאיר ישות שבורה */
+function catIcon(n){ const c=catByName(n); const s=String((c?c.icon:'🏷️')||'🏷️'); let g;
+  try{ g=Array.from(new Intl.Segmenter('he',{granularity:'grapheme'}).segment(s),x=>x.segment).slice(0,2).join(''); }
+  catch(e){ g=Array.from(s).slice(0,4).join(''); }
+  return esc(g); }
 function monthsList(){
   const set={};
   live().forEach(t=>{ if(t.date) set[monthOf(t.date)]=1; });
@@ -3095,11 +3598,3088 @@ Object.assign(ACTIONS,{
   userRole:(id,el)=>setUserField(id,'role',el.value),
 });
 
+/* ===== דוחות: התחלה (נבנה מ-rep-*.js) ===== */
+/* --- rep-kit.js --- */
+try{
+/* ============================================================
+   rep-kit.js — ערכת הדוחות המשותפת (RK + repChart)
+   כל מה שכאן הוא בניית מחרוזות או חישוב טהור, חוץ מ-repChart.
+   כל פרמטר טקסט מוברח כאן; פרמטר ששמו מסתיים ב-Html נחשב בטוח (הקורא הבריח).
+   ============================================================ */
+var REP_DEFS = (typeof REP_DEFS !== 'undefined' && REP_DEFS) || [];
+(function (root) {
+  'use strict';
+  var RK = {};
+  RK.entering = false;           // הנתב מדליק רק במעבר לדוח אחר (גרפים מונפשים רק אז)
+  RK._charts = [];               // כל הגרפים החיים, כדי שהנתב יהרוס אותם לפני רינדור
+
+  /* ---------- עזרים פנימיים ---------- */
+  var E = function (s) { return esc(s); };
+  var N = function (v) { v = Number(v); return isFinite(v) ? v : 0; };
+  var NBSP = ' ';
+  /* צבע בטוח ל-style: #hex, var(--token), rgb()/rgba() — אחרת ברירת מחדל */
+  function color(c, fb) {
+    c = String(c == null ? '' : c).trim();
+    if (/^#[0-9a-fA-F]{3,8}$/.test(c) || /^var\(--[a-zA-Z0-9-]+\)$/.test(c) ||
+        /^rgba?\(\s*[\d.]+%?\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*(,\s*[\d.]+\s*)?\)$/.test(c)) return c;
+    return fb || 'var(--brand)';
+  }
+  RK.color = color;
+  function cls(s) { return String(s == null ? '' : s).replace(/[^a-zA-Z0-9_\- ]/g, '').trim(); }
+
+  /* ============================================================
+     A) חישובים טהורים
+     ============================================================ */
+  RK.quantile = function (arr, p) {
+    if (!arr || !arr.length) return 0;
+    var a = arr.map(N).sort(function (x, y) { return x - y; });
+    p = Math.min(1, Math.max(0, N(p)));
+    var pos = (a.length - 1) * p, lo = Math.floor(pos), hi = Math.ceil(pos);
+    return a[lo] + (a[hi] - a[lo]) * (pos - lo);
+  };
+  RK.median = function (arr) { return RK.quantile(arr, 0.5); };
+
+  RK.monthsBetween = function (a, b) {
+    a = String(a || ''); b = String(b || '');
+    return (Number(b.slice(0, 4)) - Number(a.slice(0, 4))) * 12 + (Number(b.slice(5, 7)) - Number(a.slice(5, 7))) || 0;
+  };
+  var DIM = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  RK.daysIn = function (ym) {
+    var y = Number(String(ym).slice(0, 4)), m = Number(String(ym).slice(5, 7));
+    if (!(m >= 1 && m <= 12)) return 30;
+    if (m === 2 && ((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0)) return 29;
+    return DIM[m - 1];
+  };
+  RK.wd = function (d) {
+    d = String(d || '');
+    var r = new Date(Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)))).getUTCDay();
+    return isFinite(r) ? r : 0;
+  };
+  RK.catKinds = function (cats) {
+    var m = new Map();
+    (cats || []).forEach(function (c) { if (c && !c.deleted) m.set(c.name, c.kind); });
+    /* קטגוריה שנמחקה עדיין קובעת את סוג התנועות הישנות שלה (זיכוי בקטגוריית הוצאה שנמחקה הוא עדיין זיכוי) */
+    try {
+      var all = (typeof DB !== 'undefined' && DB && DB.cats) || [];
+      all.forEach(function (c) { if (c && c.name && !m.has(c.name)) m.set(c.name, c.kind); });
+    } catch (e) { }
+    return m;
+  };
+  /* סכום הוצאה: הוצאה = +, זיכוי (הכנסה בקטגוריית הוצאה) = −, אחרת 0 */
+  RK.amt = function (t, kinds) {
+    if (t.kind === 'expense') return num(t.amount);
+    if (t.kind === 'income' && kinds && kinds.get(t.category) === 'expense') return -num(t.amount);
+    return 0;
+  };
+  RK.isIncome = function (t, kinds) { return t.kind === 'income' && !(kinds && kinds.get(t.category) === 'expense'); };
+  RK.key = function (desc) { return normDesc(desc).toLowerCase(); };
+  /* מפתח לזיהוי חיובים חוזרים: מספרים מתחלפים (חשבון 3/26, תשלום 2 מ-6, תקופה 5) מתאחדים ל-# */
+  RK.rkey = function (desc) {
+    return normDesc(desc).toLowerCase().replace(/\d+([\/.\-]\d+)*/g, '#').replace(/\s+/g, ' ').trim();
+  };
+  RK.firstDate = function (rows) {
+    var m = '';
+    for (var i = 0; i < (rows || []).length; i++) { var d = rows[i].date; if (d && (!m || d < m)) m = d; }
+    return m;
+  };
+  /* החודש הראשון בנתונים הוא "חלקי" כשהנתונים מתחילים אחרי ה-3 בו (ייבוא ראשון מאמצע החודש):
+     יש בו הוצאות אבל לרוב בלי משכורת, ולכן הוא לא נכנס לסכומים שנתיים / חודש רגיל.
+     מחזיר {first, firstM, headPartial: 'YYYY-MM' או '', fullFrom: החודש המלא הראשון} */
+  RK.firstFullMonth = function (rows) {
+    var first = '';
+    for (var i = 0; i < (rows || []).length; i++) {
+      var d = String(rows[i].date || '');
+      if (/^\d{4}-\d{2}-\d{2}/.test(d) && (!first || d < first)) first = d;
+    }
+    if (!first) return { first: '', firstM: '', headPartial: '', fullFrom: '' };
+    var fm = first.slice(0, 7), late = Number(first.slice(8, 10)) > 3;
+    return { first: first, firstM: fm, headPartial: late ? fm : '', fullFrom: late ? addMonths(fm, 1) : fm };
+  };
+  /* מספרים שלמים שסכומם בדיוק 100 (שארית גדולה) */
+  RK.shares100 = function (values) {
+    var v = (values || []).map(function (x) { return Math.max(0, N(x)); });
+    var s = v.reduce(function (a, b) { return a + b; }, 0);
+    if (!s) return v.map(function () { return 0; });
+    var raw = v.map(function (x) { return x / s * 100; });
+    var out = raw.map(Math.floor);
+    var left = 100 - out.reduce(function (a, b) { return a + b; }, 0);
+    var ord = raw.map(function (r, i) { return { i: i, f: r - Math.floor(r) }; })
+      .sort(function (a, b) { return b.f - a.f || a.i - b.i; });
+    for (var k = 0; k < left && k < ord.length; k++) out[ord[k].i]++;
+    return out;
+  };
+
+  /* ---------- זיהוי חיובים חוזרים (מנויים / הוראות קבע) ---------- */
+  /* דלק / סופר בסכום משתנה הם הרגל, לא חיוב קבוע (מילוי חודשי באותה תחנה עובר את כל הכללים) */
+  var HABIT_RE = /דלק|תדלוק|סופר|מזון|מכולת|סונול|דור אלון|(^|\s)פז(\s|$|\s*-)|yellow|(^|\s)ten(\s|$)/i;
+  function byDate(a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; }
+  function evalGroup(g, endYm) {
+    var months = new Map();
+    g.forEach(function (t) { var m = monthOf(t.date); months.set(m, (months.get(m) || 0) + 1); });
+    var ms = Array.from(months.keys()).sort();
+    if (ms.length < 3) return null;                                   // (1)
+    if (g.length / ms.length > 1.3) return null;                      // (2)
+    var gaps = [];
+    for (var j = 1; j < ms.length; j++) gaps.push(RK.monthsBetween(ms[j - 1], ms[j]));
+    var cad = Math.round(RK.median(gaps));
+    if (cad !== 1 && cad !== 2) return null;                          // (3)
+    if (gaps.filter(function (x) { return x === cad; }).length / gaps.length < 0.75) return null; // (4)
+    var span = RK.monthsBetween(ms[0], ms[ms.length - 1]);
+    if (ms.length / (Math.floor(span / cad) + 1) < 0.75) return null; // (5)
+    var amts = g.map(function (t) { return num(t.amount); });
+    var med = RK.median(amts);
+    var near = amts.filter(function (a) { return Math.abs(a - med) <= Math.abs(med) * 0.2; }).length;
+    if (near / amts.length < 0.67) return null;                       // (6)
+    var last = g[g.length - 1], lastM = ms[ms.length - 1];
+    var near5 = amts.filter(function (a) { return Math.abs(a - med) <= Math.abs(med) * 0.05; }).length;
+    if (near5 / amts.length < 0.67 && HABIT_RE.test(normDesc(last.desc) + ' ' + (last.category || ''))) return null; // (7)
+    return {
+      cad: cad, median: med, months: ms, amts: amts, n: g.length,
+      active: RK.monthsBetween(lastM, endYm) <= cad,
+      desc: normDesc(last.desc), cat: last.category || '', payment: last.payment || '',
+      monthly: med / cad
+    };
+  }
+  var recurMemo = new WeakMap();
+  /* Map: מפתח → חיוב חוזר. כמה חיובים תחת אותו תיאור (APPLE.COM/BILL, "הוראת קבע") מפוצלים לפי סכום,
+     והמפתח שלהם הוא "תיאור|סכום". לבדיקה אם תנועה היא חיוב קבוע — RK.recKey(rec, t), לא rec.has(...) */
+  RK.recurring = function (rows, endYm) {
+    rows = rows || [];
+    var byEnd = recurMemo.get(rows);
+    if (!byEnd) { byEnd = new Map(); recurMemo.set(rows, byEnd); }
+    if (byEnd.has(endYm)) return byEnd.get(endYm);
+    var start = addMonths(endYm, -11), groups = new Map();
+    for (var i = 0; i < rows.length; i++) {
+      var t = rows[i];
+      if (t.kind !== 'expense') continue;
+      var ym = monthOf(t.date);
+      if (ym < start || ym > endYm) continue;
+      var k = RK.rkey(t.desc);
+      if (!k) continue;
+      var g = groups.get(k);
+      if (!g) { g = []; groups.set(k, g); }
+      g.push(t);
+    }
+    var res = new Map(), clMap = new Map();
+    groups.forEach(function (g, k) {
+      g.sort(byDate);
+      var e = evalGroup(g, endYm);
+      if (e) { res.set(k, e); return; }
+      /* פיצול לפי סכום — רק כשיש כמה חיובים בחודש תחת אותו תיאור (כלל 2 נכשל), ולא לסופר/דלק.
+         אשכול חדש רק בקפיצה אמיתית בין סכומים סמוכים (8%+), כך שטווח רציף נשאר אשכול אחד ונפסל */
+      var gm = new Set();
+      g.forEach(function (t) { gm.add(monthOf(t.date)); });
+      if (g.length < 6 || g.length / gm.size <= 1.3) return;
+      var lt = g[g.length - 1];
+      if (HABIT_RE.test(normDesc(lt.desc) + ' ' + (lt.category || ''))) return;
+      var srt = g.slice().sort(function (a, b) { return num(a.amount) - num(b.amount); });
+      var cls = [], cur = [srt[0]];
+      for (var j = 1; j < srt.length; j++) {
+        if (num(srt[j].amount) > num(srt[j - 1].amount) * 1.08 + 0.5) { cls.push(cur); cur = []; }
+        cur.push(srt[j]);
+      }
+      cls.push(cur);
+      if (cls.length < 2) return;
+      var list = [];
+      cls.forEach(function (c) {
+        if (c.length < 4) return;
+        c.sort(byDate);
+        var e2 = evalGroup(c, endYm);
+        if (!e2) return;
+        /* אשכול = מנוי אמיתי: כמעט אותו סכום בכל פעם (±3%), לא צירוף מקרי של קניות */
+        var tight = e2.amts.filter(function (a) { return Math.abs(a - e2.median) <= Math.abs(e2.median) * 0.03; }).length;
+        if (tight / e2.amts.length < 0.8) return;
+        var ck = k + '|' + Math.round(e2.median);
+        res.set(ck, e2);
+        list.push({ key: ck, med: e2.median });
+      });
+      if (list.length) clMap.set(k, list);
+    });
+    res._cl = clMap;
+    byEnd.set(endYm, res);
+    return res;
+  };
+  /* המפתח של החיוב החוזר שהתנועה שייכת אליו, או '' */
+  RK.recKey = function (rec, t) {
+    if (!rec || !t) return '';
+    var k = RK.rkey(t.desc);
+    if (!k) return '';
+    if (rec.has(k)) return k;
+    var L = rec._cl && rec._cl.get(k);
+    if (!L) return '';
+    var a = num(t.amount), best = '', bd = Infinity;
+    for (var i = 0; i < L.length; i++) {
+      var m = Math.abs(L[i].med) || 1, d = Math.abs(a - L[i].med) / m;
+      if (d <= 0.2 && d < bd) { bd = d; best = L[i].key; }
+    }
+    return best;
+  };
+  /* חיובים קבועים שצפויים החודש ועוד לא ירדו עד יום D (לפי 12 החודשים שלפני) — משותף לקצב ולקבוע/שוטף */
+  RK.expectedFixed = function (rows, ym, D) {
+    rows = rows || [];
+    var rec = RK.recurring(rows, addMonths(ym, -1)), seen = new Set();
+    for (var i = 0; i < rows.length; i++) {
+      var t = rows[i];
+      if (t.kind !== 'expense' || monthOf(t.date) !== ym) continue;
+      if ((Number(String(t.date).slice(8, 10)) || 0) > D) continue;
+      var k = RK.recKey(rec, t);
+      if (k) seen.add(k);
+    }
+    var list = [];
+    rec.forEach(function (r, k) {
+      if (r.active && !seen.has(k) && RK.monthsBetween(r.months[r.months.length - 1], ym) === r.cad)
+        list.push({ key: k, desc: r.desc, amount: Math.round(r.median * 100) / 100, cat: r.cat, cad: r.cad });
+    });
+    list.sort(function (a, b) { return b.amount - a.amount; });
+    var sum = 0;
+    list.forEach(function (e) { sum += e.amount; });
+    return { sum: Math.round(sum * 100) / 100, list: list, rec: rec, seen: seen };
+  };
+
+  /* ---------- שמות חודשים ותאריכים ---------- */
+  var MON = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+  var MONS = ['ינו׳', 'פבר׳', 'מרץ', 'אפר׳', 'מאי', 'יוני', 'יולי', 'אוג׳', 'ספט׳', 'אוק׳', 'נוב׳', 'דצמ׳'];
+  function mi(ym) { var m = Number(String(ym || '').slice(5, 7)); return m >= 1 && m <= 12 ? m - 1 : -1; }
+  RK.monName = function (ym) { var i = mi(ym); return i < 0 ? '' : MON[i]; };
+  RK.monShort = function (ym) { var i = mi(ym); return i < 0 ? '' : MONS[i]; };
+  RK.dayLabel = function (d) {
+    d = String(d || ''); var i = mi(d.slice(0, 7)), day = Number(d.slice(8, 10));
+    return i < 0 || !day ? '' : day + ' ב' + MON[i];
+  };
+  var hebFmt = null;
+  RK.hebDate = function (d) {
+    try {
+      if (!hebFmt) hebFmt = new Intl.DateTimeFormat('en-u-ca-hebrew', { timeZone: 'UTC', month: 'long', day: 'numeric' });
+      if (hebFmt.resolvedOptions().calendar !== 'hebrew') return null;
+      d = String(d || '');
+      var dt = new Date(Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10))));
+      if (!isFinite(dt.getTime())) return null;
+      var o = {};
+      hebFmt.formatToParts(dt).forEach(function (p) { o[p.type] = p.value; });
+      if (!o.month || !o.day) return null;
+      return { month: o.month, day: Number(o.day) };
+    } catch (e) { return null; }
+  };
+
+  /* ============================================================
+     B) בוני HTML
+     ============================================================ */
+  RK.money = function (v, o) {
+    v = N(v); o = o || {};
+    var r = Math.round(v), s = r < 0 ? '−' : (o.sign && r > 0 ? '+' : '');
+    return '<span class="num">' + s + fmt(Math.abs(v)) + ' ₪</span>';
+  };
+
+  RK.card = function (innerHtml, o) {
+    o = o || {};
+    var enter = typeof o.i === 'number' && o.i >= 0;
+    return '<div class="rk-card' + (o.cls ? ' ' + cls(o.cls) : '') + (enter ? ' rk-enter' : '') + '"' +
+      (enter ? RK.stagger(o.i) : '') + '>' +
+      (o.title ? '<h3 class="rk-card-t">' + E(o.title) + '</h3>' : '') +
+      (o.sub ? '<div class="rk-card-s">' + E(o.sub) + '</div>' : '') +
+      (innerHtml || '') + '</div>';
+  };
+
+  RK.insight = function (html, o) {
+    var tone = (o && o.tone) || 'brand';
+    return '<div class="insight rk-ins rk-ins-' + cls(tone) + '">' + (html || '') + '</div>';
+  };
+
+  RK.kpis = function (items) {
+    return '<div class="rk-kpis">' + (items || []).map(function (it) {
+      it = it || {};
+      var unit = it.unit == null ? '₪' : it.unit, v;
+      if (it.valHtml != null) v = it.valHtml;
+      else {
+        var x = N(it.val), sgn = Math.round(x) < 0 ? '−' : '';
+        v = '<span class="num">' + sgn + fmt(Math.abs(x)) + (unit === '₪' ? ' ₪' : unit === '%' ? '%' : '') + '</span>';
+      }
+      return '<div class="rk-kpi"><div class="rk-kpi-l">' + E(it.lbl) + '</div>' +
+        '<div class="rk-kpi-v' + (it.tone ? ' ' + cls(it.tone) : '') + '">' + v + '</div>' +
+        (it.subHtml ? '<div class="rk-kpi-s">' + it.subHtml + '</div>' : it.sub ? '<div class="rk-kpi-s">' + E(it.sub) + '</div>' : '') +
+        '</div>';
+    }).join('') + '</div>';
+  };
+
+  function pillHtml(html, tone) { return '<span class="rk-pill' + (tone ? ' ' + cls(tone) : '') + '">' + html + '</span>'; }
+  RK.pill = function (text, tone) { return pillHtml(E(text), tone); };
+
+  RK.delta = function (v, o) {
+    v = N(v); o = o || {};
+    var r = Math.round(v), flat = o.flat || r === 0;
+    var val = o.pct ? '<span class="num">' + fmt(Math.abs(v)) + '%</span>'
+      : o.money ? RK.money(Math.abs(v)) : '<span class="num">' + fmt(Math.abs(v)) + '</span>';
+    if (flat) return pillHtml('≈ ' + val, 'dim');
+    return pillHtml((r > 0 ? '▲ ' : '▼ ') + val, r > 0 ? 'up' : 'down');
+  };
+
+  RK.partial = function (P) {
+    if (!P || !P.today || P.ym !== monthOf(P.today)) return '';
+    return RK.pill('חודש חלקי · עד ' + RK.dayLabel(P.today), 'warn');
+  };
+
+  RK.empty = function (icon, title, sub) {
+    return '<div class="rk-empty"><div class="rk-empty-i" aria-hidden="true">' + E(icon || '🌱') + '</div>' +
+      (title ? '<div class="rk-empty-t">' + E(title) + '</div>' : '') +
+      (sub ? '<div class="rk-empty-s">' + E(sub) + '</div>' : '') + '</div>';
+  };
+
+  function iconSpan(it) {
+    var h = it.iconHtml != null && it.iconHtml !== '' ? it.iconHtml : it.icon ? E(it.icon) : '';
+    return h ? '<span class="rk-row-i" aria-hidden="true">' + h + '</span>' : '';
+  }
+  /* שם פעולה ל-act(): רק rep_<מפתח>_... — כך שלא יוזרק לשם הזה שום ערך מהנתונים */
+  function actOk(n) { return /^rep_[a-z0-9_]{1,60}$/.test(String(n || '')); }
+  RK.actOk = actOk;
+  function pctW(v, max) { if (!(v > 0) || !(max > 0)) return 0; return Math.max(2, Math.min(100, v / max * 100)); }
+  RK.rows = function (items, o) {
+    items = items || []; o = o || {};
+    var max = N(o.max);
+    if (!(max > 0)) items.forEach(function (it) { max = Math.max(max, N(it.value), N(it.ghost)); });
+    return '<div class="rk-rows">' + items.map(function (it) {
+      var w = pctW(N(it.value), max), gw = pctW(N(it.ghost), max);
+      return '<div class="rk-row' + (it.tone ? ' ' + cls(it.tone) : '') + '">' +
+        '<div class="rk-row-h">' + iconSpan(it) +
+        '<span class="rk-row-l">' + E(it.label) + (it.sub ? '<span class="rk-row-s">' + E(it.sub) + '</span>' : '') + '</span>' +
+        '<span class="rk-row-v">' + (it.valueHtml || '') + '</span></div>' +
+        '<div class="rk-track"><i style="width:' + w.toFixed(2) + '%;background:' + color(it.color) + '"></i></div>' +
+        (it.ghost != null && gw > 0 ? '<div class="rk-ghost"><i style="width:' + gw.toFixed(2) + '%"></i></div>' : '') +
+        '</div>';
+    }).join('') + '</div>';
+  };
+
+  RK.diverge = function (items) {
+    items = items || [];
+    var max = 0;
+    items.forEach(function (it) { max = Math.max(max, Math.abs(N(it.d))); });
+    return '<div class="rk-div">' + items.map(function (it) {
+      var d = N(it.d), half = max > 0 ? Math.abs(d) / max * 50 : 0;
+      if (d !== 0) half = Math.max(1, half);
+      var side = d > 0 ? 'inset-inline-start:50%' : 'inset-inline-end:50%';
+      return '<div class="rk-div-r">' +
+        '<div class="rk-row-h">' + iconSpan(it) +
+        '<span class="rk-row-l">' + E(it.label) + '</span>' +
+        '<span class="rk-row-v ' + (d > 0 ? 'up' : d < 0 ? 'down' : '') + '">' + RK.money(d, { sign: true }) + '</span></div>' +
+        '<div class="rk-div-t">' + (d !== 0 ? '<i class="' + (d > 0 ? 'inc' : 'dec') + '" style="' + side + ';width:' + half.toFixed(2) + '%"></i>' : '') + '</div>' +
+        '</div>';
+    }).join('') + '</div>';
+  };
+
+  RK.stack = function (segs, o) {
+    o = o || {};
+    var h = Math.max(4, Math.min(40, N(o.h) || 14));
+    var list = (segs || []).filter(function (s) { return N(s.value) > 0; });
+    var tot = list.reduce(function (a, s) { return a + N(s.value); }, 0);
+    if (!tot) return '<div class="rk-stack" style="height:' + h + 'px"></div>';
+    return '<div class="rk-stack" style="height:' + h + 'px">' + list.map(function (s) {
+      var w = Math.max(2, N(s.value) / tot * 100), lab = E((s.label || '') + ': ' + fmt(N(s.value)) + ' ₪');
+      return '<span role="img" title="' + lab + '" aria-label="' + lab + '" style="flex:' + w.toFixed(3) + ' 1 0%;background:' + color(s.color) + '"></span>';
+    }).join('') + '</div>';
+  };
+
+  RK.ring = function (o) {
+    o = o || {};
+    var size = Math.max(40, Math.min(400, N(o.size) || 140)), sw = Math.max(2, Math.min(size / 3, N(o.stroke) || 12));
+    var c = size / 2, r = (size - sw) / 2 - 1, C = 2 * Math.PI * r;
+    var f = Math.min(1, Math.max(0, N(o.frac))), ov = Math.min(1, Math.max(0, N(o.over)));
+    var col = color(o.color, 'var(--brand)'), trk = color(o.track, 'var(--line2)'), ovc = color(o.overColor, 'var(--bad)');
+    var s = '<svg class="rk-ring-svg" width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '" role="img" aria-label="' + E(o.aria || '') + '">' +
+      '<circle cx="' + c + '" cy="' + c + '" r="' + r.toFixed(2) + '" fill="none" stroke="' + trk + '" stroke-width="' + sw + '"/>';
+    if (f > 0) s += '<circle cx="' + c + '" cy="' + c + '" r="' + r.toFixed(2) + '" fill="none" stroke="' + col + '" stroke-width="' + sw +
+      '" stroke-linecap="round" stroke-dasharray="' + (C * f).toFixed(2) + ' ' + C.toFixed(2) + '"/>';
+    if (ov > 0) {
+      var osw = Math.max(3, sw / 2.4), r2 = r - sw / 2 - osw / 2 - 3, C2 = 2 * Math.PI * r2;
+      if (r2 > 2) s += '<circle cx="' + c + '" cy="' + c + '" r="' + r2.toFixed(2) + '" fill="none" stroke="' + ovc + '" stroke-width="' + osw.toFixed(2) +
+        '" stroke-linecap="round" stroke-dasharray="' + (C2 * ov).toFixed(2) + ' ' + C2.toFixed(2) + '"/>';
+    }
+    if (o.marker != null && isFinite(Number(o.marker))) {
+      var mf = Math.min(1, Math.max(0, Number(o.marker))), a = mf * 2 * Math.PI;
+      s += '<circle cx="' + (c + r * Math.cos(a)).toFixed(2) + '" cy="' + (c + r * Math.sin(a)).toFixed(2) + '" r="3.5" fill="var(--ink2)" stroke="#fff" stroke-width="2"/>';
+    }
+    s += '</svg>';
+    return '<div class="rk-ring" style="width:' + size + 'px;height:' + size + 'px">' + s +
+      (o.centerHtml ? '<div class="rk-ring-c">' + o.centerHtml + '</div>' : '') + '</div>';
+  };
+
+  RK.legend = function (items) {
+    return '<div class="rk-leg">' + (items || []).map(function (it) {
+      var sw = '<span class="rk-sw' + (it.dashed ? ' dashed' : '') + '" style="' + (it.dashed ? 'border-color:' : 'background:') + color(it.color, 'var(--faint)') + '" aria-hidden="true"></span>';
+      var body = sw + (it.iconHtml ? '<span class="rk-leg-i" aria-hidden="true">' + it.iconHtml + '</span>' : '') +
+        '<span class="rk-leg-l">' + E(it.label) + (it.sub ? '<span class="rk-leg-s">' + E(it.sub) + '</span>' : '') + '</span>' +
+        (it.valueHtml ? '<span class="rk-leg-v">' + it.valueHtml + '</span>' : '');
+      return it.actName && actOk(it.actName)
+        ? '<button type="button" class="rk-leg-row"' + act(it.actName, it.actId == null ? '' : it.actId) + ' aria-pressed="false">' + body + '</button>'
+        : '<div class="rk-leg-row">' + body + '</div>';
+    }).join('') + '</div>';
+  };
+
+  RK.chips = function (htmlArr) {
+    return '<div class="rk-chips">' + (htmlArr || []).map(function (h) { return '<span class="rk-chip">' + h + '</span>'; }).join('') + '</div>';
+  };
+
+  RK.seg = function (options, actName) {
+    if (!actOk(actName)) actName = 'rep_noop';
+    return '<div class="rk-seg" role="group">' + (options || []).map(function (op) {
+      return '<button type="button" class="rk-seg-b' + (op.on ? ' on' : '') + '"' + act(actName, op.id) +
+        ' aria-pressed="' + (op.on ? 'true' : 'false') + '">' + E(op.label) + '</button>';
+    }).join('') + '</div>';
+  };
+
+  RK.details = function (summaryText, innerHtml) {
+    return '<details class="rk-details"><summary><span class="rk-det-a" aria-hidden="true">▸</span>' + E(summaryText) + '</summary>' +
+      '<div class="rk-det-b">' + (innerHtml || '') + '</div></details>';
+  };
+
+  /* headers ותאים: מחרוזת/מספר (מוברחים) או {html, cls} — HTML נכנס רק דרך {html} */
+  RK.table = function (headers, rows) {
+    function cell(tag, c, escape) {
+      if (c && typeof c === 'object') return '<' + tag + (c.cls ? ' class="' + cls(c.cls) + '"' : '') + '>' + (c.html == null ? '' : c.html) + '</' + tag + '>';
+      return '<' + tag + '>' + (escape ? E(c) : (c == null ? '' : c)) + '</' + tag + '>';
+    }
+    return '<div class="table-wrap report"><table><thead><tr>' + (headers || []).map(function (h) { return cell('th', h, true); }).join('') +
+      '</tr></thead><tbody>' + (rows || []).map(function (r) {
+        return '<tr>' + (r || []).map(function (c) { return cell('td', c, true); }).join('') + '</tr>';
+      }).join('') + '</tbody></table></div>';
+  };
+
+  RK.stagger = function (i) { return " style='--i:" + Math.max(0, Math.min(N(i) | 0, 5)) + "'"; };
+
+  /* ============================================================
+     C) גרפים
+     ============================================================ */
+  function isObj(x) { if (!x || typeof x !== 'object' || Object.prototype.toString.call(x) !== '[object Object]') return false; var p = Object.getPrototypeOf(x); return p === null || !Object.getPrototypeOf(p); }
+  function merge(base, over) {   // over מנצח; אובייקטים פשוטים ממוזגים לעומק
+    var out = {}, k;
+    for (k in base) if (Object.prototype.hasOwnProperty.call(base, k)) out[k] = base[k];
+    for (k in over) if (Object.prototype.hasOwnProperty.call(over, k)) {
+      out[k] = isObj(out[k]) && isObj(over[k]) ? merge(out[k], over[k]) : over[k];
+    }
+    return out;
+  }
+  function reducedMotion() {
+    try { return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; }
+  }
+  RK.reducedMotion = reducedMotion;
+  RK.axisMoney = function (v) { return fmt(v); };   // callback לציר ערכים מספרי
+  var FONT = 'Assistant, "Segoe UI", system-ui, sans-serif';
+  var NO_AXES = { pie: 1, doughnut: 1, polarArea: 1, radar: 1 };
+
+  function tipLabel(c) {
+    var v = c.parsed;
+    if (v && typeof v === 'object') v = (c.chart && c.chart.options && c.chart.options.indexAxis === 'y') ? v.x : v.y;
+    if (typeof v !== 'number') v = Number(c.raw);
+    var lab = (c.dataset && c.dataset.label) || c.label || '';
+    return (lab ? lab + ': ' : '') + fmt(isFinite(v) ? v : 0) + ' ₪';
+  }
+
+  function chartMissing(canvas) {
+    try {
+      var box = canvas.parentNode;
+      if (!box || box._rkMissing) return;
+      box._rkMissing = true;
+      box.innerHTML = RK.empty('📉', 'הגרף לא נטען', 'שאר הדוח תקין');
+      box.style.height = 'auto';
+      var card = box.closest && box.closest('.rk-card');
+      if (card) { var L = card.querySelectorAll('.rk-leg'); for (var i = 0; i < L.length; i++) L[i].hidden = true; }
+    } catch (e) { }
+  }
+  function repChart(canvas, config) {
+    if (!canvas || !config) return null;
+    if (typeof Chart === 'undefined') { chartMissing(canvas); return null; }
+    try { if (canvas._rk) canvas._rk.destroy(); } catch (e) { }
+    canvas._rk = null;
+    var animate = RK.entering === true && !reducedMotion();
+    var userOpts = config.options || {};
+    var defs = {
+      responsive: true, maintainAspectRatio: false,
+      color: '#6b7280', font: { family: FONT },
+      animation: animate ? { duration: 350, easing: 'easeOutQuart' } : false,
+      plugins: {
+        legend: { rtl: true, textDirection: 'rtl', labels: { color: '#6b7280', font: { family: FONT, size: 12 }, boxWidth: 10, boxHeight: 10, usePointStyle: true } },
+        tooltip: {
+          rtl: true, textDirection: 'rtl', backgroundColor: '#111827', padding: 10, cornerRadius: 8, boxPadding: 4,
+          titleFont: { family: FONT, weight: '700' }, bodyFont: { family: FONT }, footerFont: { family: FONT },
+          callbacks: {}
+        }
+      }
+    };
+    var opts = merge(defs, userOpts);
+    if (!animate) opts.animation = false;
+    var tcb = opts.plugins.tooltip.callbacks || {};
+    if (typeof tcb.label !== 'function') opts.plugins.tooltip.callbacks = merge(tcb, { label: tipLabel });
+    var axisDef = { grid: { color: '#eef0f3' }, border: { color: '#e6e8ec' }, ticks: { color: '#6b7280', font: { family: FONT, size: 11.5 } } };
+    if (!NO_AXES[config.type] || opts.scales) {
+      var sc = NO_AXES[config.type] ? (opts.scales || {}) : merge({ x: {}, y: {} }, opts.scales || {});
+      var out = {};
+      Object.keys(sc).forEach(function (k) { out[k] = merge(axisDef, sc[k] || {}); });
+      if (Object.keys(out).length) opts.scales = out;
+    }
+    var cfg = merge(config, { options: opts });
+    cfg.options = opts;   // לא לבלוע מערכים/פונקציות של המשתמש
+    var ch = null;
+    try { ch = new Chart(canvas, cfg); } catch (e) { if (typeof console !== 'undefined') console.error('repChart', e); return null; }
+    canvas._rk = ch;
+    RK._charts.push(ch);
+    return ch;
+  }
+  RK.destroyCharts = function () {
+    var L = RK._charts; RK._charts = [];
+    L.forEach(function (c) { try { c.destroy(); } catch (e) { } });
+  };
+
+  root.RK = RK;
+  root.repChart = repChart;
+})(typeof window !== 'undefined' ? window : globalThis);
+}catch(e){ console.error("report load rep-kit.js", e); }
+
+/* --- rep-pace.js --- */
+try{
+/* ============================================================
+   rep-pace.js — "קצב החודש": עד היום, יותר או פחות מחודש רגיל באותו יום?
+   ההשוואה היא לאותו יום בחודש (לא לחודש מלא), מול חציון של עד 6 החודשים
+   המלאים הקודמים. הצפי לא לינארי: מה שנשאר "לחודש רגיל" אחרי היום נוסף
+   למה שכבר הוצא, כך שחיוב קבוע ב-10 לחודש לא נספר פעמיים.
+   ============================================================ */
+(function () {
+  'use strict';
+
+  var C_CUR = '#5145cd', C_NORM = '#6b7280', C_BAND = 'rgba(81,69,205,.10)', C_BAND_LEG = 'rgba(81,69,205,.15)';
+  var BAND = 'טווח רגיל';
+
+  function zeros(n) { var a = new Array(n); for (var i = 0; i < n; i++) a[i] = 0; return a; }
+  /* cum[0]=0, cum[d]=cum[d-1]+arr[d] עבור d=1..31 */
+  function cum(arr) { var c = zeros(32); for (var d = 1; d <= 31; d++) c[d] = c[d - 1] + arr[d]; return c; }
+
+  function calc(rows, P) {
+    rows = rows || [];
+    var kinds = RK.catKinds(P.cats), cur = monthOf(P.today), ym = P.ym;
+    if (ym > cur) return { state: 'future' };
+    var N = RK.daysIn(ym), partial = ym === cur;
+    var D = partial ? Number(String(P.today).slice(8, 10)) : N;
+    if (!(D >= 1 && D <= N)) D = partial ? Math.min(N, Math.max(1, D | 0)) : N;
+
+    var cand = [];
+    for (var k = 1; k <= 6; k++) { var m = addMonths(ym, -k); if (m < cur) cand.push(m); }
+    var ly = addMonths(ym, -12);
+    var slot = Object.create(null);
+    [ym, ly].concat(cand).forEach(function (mm) { slot[mm] = { days: zeros(32), exp: false }; });
+
+    /* מעבר אחד: סכום לפי יום לחודשים הרלוונטיים + התאריך הראשון בנתונים */
+    var first = '';
+    for (var i = 0; i < rows.length; i++) {
+      var t = rows[i], s = String(t.date || '');
+      if (s && (!first || s < first)) first = s;
+      var sl = slot[s.slice(0, 7)];
+      if (!sl) continue;
+      var day = Number(s.slice(8, 10));
+      if (!(day >= 1 && day <= 31)) continue;
+      var v = RK.amt(t, kinds);
+      if (!v) continue;
+      sl.days[day] += v;
+      if (t.kind === 'expense') sl.exp = true;
+    }
+
+    /* חודש שבו הנתונים מתחילים באמצע (ייבוא ראשון מה-15) הוא לא "חודש מלא" */
+    var firstM = first.slice(0, 7), firstDay = Number(first.slice(8, 10));
+    var base = cand.filter(function (mm) { return slot[mm].exp && !(mm === firstM && firstDay > 3); });
+    var baseN = base.length;
+    /* חודש שעבר בלי הוצאות (למשל לפני תחילת הנתונים) — "אין הוצאות", לא "עוד אין חודש מלא" */
+    if (!partial && !slot[ym].exp) return { state: 'none' };
+    if (!baseN) return { state: 'nobase' };
+
+    var cumB = base.map(function (mm) { return cum(slot[mm].days); });
+    var tot = cumB.map(function (c) { return c[31]; });
+    var cc = cum(slot[ym].days);
+    var normalFull = RK.median(tot);
+    var spentTo = cc[partial ? D : 31];
+    /* ביום האחרון של חודש קצר משווים לחודש רגיל מלא (כמו normal[N] בגרף), לא ל"עד ה-30" של חודשים בני 31 */
+    var normalTo = partial && D < N ? RK.median(cumB.map(function (c) { return c[D]; })) : normalFull;
+
+    var normal = [], p25 = baseN >= 3 ? [] : null, p75 = baseN >= 3 ? [] : null;
+    for (var d = 1; d <= N; d++) {
+      var vals = d < N ? cumB.map(function (c) { return c[d]; }) : tot;
+      normal.push(d < N ? RK.median(vals) : normalFull);
+      if (p25) { p25.push(RK.quantile(vals, 0.25)); p75.push(RK.quantile(vals, 0.75)); }
+    }
+
+    var diff = spentTo - normalTo;
+    var pct = normalTo > 0 ? Math.round(diff / normalTo * 100) : null;
+    if (pct === 0) pct = 0;   // בלי ‎-0
+    var status = pct === null ? 'na' : pct <= -5 ? 'slow' : pct < 5 ? 'even' : pct <= 20 ? 'fast' : 'vfast';
+    var projected = partial ? spentTo + Math.max(0, normalFull - normalTo) : spentTo;
+    var daysLeft = N - D, allowance = normalFull - spentTo;
+    /* חיובים קבועים שעוד לא ירדו החודש (משכנתא, הלוואה, גן...) הם לא "כסף ליום" — מורידים אותם לפני החלוקה */
+    var expFixed = 0, expN = 0, expNames = [];
+    if (partial && daysLeft > 0) {
+      var ef = RK.expectedFixed(rows, ym, D);
+      expFixed = ef.sum; expN = ef.list.length;
+      expNames = ef.list.slice(0, 3).map(function (e) { return e.desc; });
+    }
+    var freeLeft = allowance - expFixed;
+    var perDay = (partial && daysLeft > 0 && freeLeft > 0) ? freeLeft / daysLeft : 0;
+
+    var lyTo = null, lyFull = null;
+    if (slot[ly].exp) { var lc = cum(slot[ly].days); lyTo = lc[partial ? D : 31]; lyFull = lc[31]; }
+
+    return {
+      state: 'ok', ym: ym, partial: partial, D: D, N: N, baseN: baseN,
+      spentTo: spentTo, normalTo: normalTo, normalFull: normalFull, diff: diff, pct: pct, status: status,
+      projected: projected, daysLeft: daysLeft, allowance: allowance, perDay: perDay, early: partial && D < 5,
+      expFixed: expFixed, expN: expN, expNames: expNames, freeLeft: freeLeft,
+      lyTo: lyTo, lyFull: lyFull,
+      frac: normalFull > 0 ? spentTo / normalFull : 0,
+      marker: partial && normalFull > 0 ? Math.min(1, normalTo / normalFull) : null,
+      curCum: cc.slice(1, D + 1), normal: normal, p25: p25, p75: p75
+    };
+  }
+
+  /* ---------- טקסטים ---------- */
+  var PILL = {
+    slow: ['🐢 לאט מהרגיל', 'ok'], even: ['🚶 בדיוק בקצב', 'brand'],
+    fast: ['🏃 מהר מהרגיל', 'warn'], vfast: ['🚀 הרבה יותר מהר', 'bad']
+  };
+  var TONE = { slow: 'ok', even: 'brand', fast: 'warn', vfast: 'warn', na: 'brand' };
+  function b(h) { return '<strong>' + h + '</strong>'; }
+  function baseTxt(n) { return n === 1 ? 'לפי חודש אחד' : 'חציון של ' + n + ' חודשים'; }
+
+  function headline(x) {
+    var mon = esc(RK.monName(x.ym)), money = b(RK.money(x.spentTo)), ap = Math.abs(x.pct);
+    if (x.partial) {
+      var pre = 'עד ה-' + x.D + ' ב' + mon + ' הוצאתם ' + money;
+      if (x.pct === null) return pre + '.';
+      if (ap < 5) return pre + ', בדיוק כמו בחודש רגיל באותו יום 👌';
+      return pre + ', ' + b(ap + '% ' + (x.pct > 0 ? 'יותר' : 'פחות')) + ' מחודש רגיל באותו יום.';
+    }
+    var pre2 = mon + ' נסגר ב-' + money;
+    if (x.pct === null) return pre2 + '.';
+    if (ap < 5) return pre2 + ', בדיוק כמו חודש רגיל 👌';
+    return pre2 + ', ' + b(ap + '% ' + (x.pct > 0 ? 'מעל' : 'מתחת')) + (x.pct > 0 ? ' חודש רגיל.' : ' לחודש רגיל.');
+  }
+
+  function closing(x) {
+    var txt = '', tone = 'brand', mon = esc(RK.monName(x.ym));
+    if (x.partial) {
+      if (x.normalFull <= 0) return null;
+      var fx = x.expFixed > 0
+        ? ' מתוכם כ-' + b(RK.money(x.expFixed)) + ' ' + (x.expN === 1 ? 'חיוב קבוע שעוד יירד' : 'חיובים קבועים שעוד יירדו') +
+          (x.expNames && x.expNames.length ? ' (' + esc(x.expNames.join(', ')) + (x.expN > x.expNames.length ? ' ועוד' : '') + ')' : '') + '.'
+        : '';
+      if (x.allowance > 0 && x.daysLeft >= 1 && x.expFixed > 0 && x.freeLeft <= 0) {
+        txt = 'כדי לסיים כמו חודש רגיל, נשארו לכם כ-' + b(RK.money(x.allowance)) + '.' + fx +
+          ' כלומר החיובים הקבועים שעוד לפניכם כבר ממלאים את מה שנשאר מחודש רגיל.';
+        tone = 'warn';
+      } else if (x.allowance > 0 && x.daysLeft > 1) {
+        txt = 'כדי לסיים כמו חודש רגיל, נשארו לכם כ-' + b(RK.money(x.allowance)) + ' ל-' + x.daysLeft + '&nbsp;הימים הבאים.' + fx +
+          ' ' + (x.expFixed > 0 ? 'לשאר ההוצאות נשארו כ-' + b(RK.money(x.freeLeft)) + ', ' : '') +
+          'בערך ' + b(RK.money(x.perDay)) + ' ליום.';
+      } else if (x.allowance > 0 && x.daysLeft === 1) {
+        txt = 'כדי לסיים כמו חודש רגיל, נשארו לכם כ-' + b(RK.money(x.allowance)) + ' ליום האחרון.' + fx;
+      } else if (x.allowance > 0) {
+        txt = 'היום האחרון של החודש, ואתם עדיין ' + b(RK.money(x.allowance)) + ' מתחת לחודש רגיל 🎉';
+        tone = 'ok';
+      } else {
+        txt = 'כבר עברתם את הסכום של חודש רגיל (' + b(RK.money(x.normalFull)) + '). מכאן כל הוצאה נוספת היא מעבר לחודש רגיל.';
+        tone = 'warn';
+      }
+      if (x.early) txt += ' עוד מוקדם לשפוט: חיוב גדול אחד מזיז הכול.';
+      if (x.lyFull && x.lyFull > x.normalFull * 1.15)
+        txt += ' בשנה שעברה ' + mon + ' היה יקר ב-' + Math.round((x.lyFull / x.normalFull - 1) * 100) + '% מחודש רגיל, אולי כדאי להיערך.';
+      return { txt: txt, tone: tone };
+    }
+    if (x.status === 'slow') {
+      txt = 'נשארו בצד ' + b(RK.money(-x.diff)) + ' לעומת חודש רגיל 🎉 שווה להעביר אותם לחיסכון.'; tone = 'ok';
+    } else if (x.status === 'fast' || x.status === 'vfast') {
+      txt = 'החודש עלה ' + b(RK.money(x.diff)) + ' יותר מחודש רגיל. אם זה בגלל חג או קנייה גדולה, זה בסדר, רק כדאי לדעת.'; tone = 'warn';
+      /* בחודש שנסגר "להיערך" כבר מאוחר; אבל אם גם בשנה שעברה הוא היה יקר — זה מסביר את החריגה */
+      if (x.lyFull && x.normalFull > 0 && x.lyFull > x.normalFull * 1.15)
+        txt += ' גם בשנה שעברה ' + mon + ' היה יקר ב-' + Math.round((x.lyFull / x.normalFull - 1) * 100) + '% מחודש רגיל, כנראה עונה יקרה.';
+    } else if (x.status === 'even') {
+      txt = 'חודש רגיל לגמרי 👌';
+    }
+    return txt ? { txt: txt, tone: tone } : null;
+  }
+
+  function html(x, P) {
+    if (!x || x.state !== 'ok') {
+      if (x && x.state === 'future') return RK.card(RK.empty('🗓️', 'החודש הזה עוד לא התחיל', ''));
+      if (x && x.state === 'none') return RK.card(RK.empty('🙂', 'אין הוצאות בחודש הזה', ''));
+      return RK.card(RK.empty('🌱', 'עוד אין חודש מלא להשוואה', 'הדוח יתמלא אחרי החודש המלא הראשון'));
+    }
+    var h = '';
+
+    /* 1) שורת התובנה */
+    var pill = PILL[x.status], tags = (pill ? RK.pill(pill[0], pill[1]) : '') + RK.partial(P);
+    h += RK.insight((tags ? '<div class="rep-pace-tags" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px">' + tags + '</div>' : '') +
+      headline(x), { tone: TONE[x.status] || 'brand' });
+
+    /* 2) טבעת + מספרים */
+    var ring = RK.ring({
+      frac: x.frac, size: 168, stroke: 14,
+      color: x.pct !== null && x.pct > 5 ? 'var(--warn)' : 'var(--brand)',
+      over: Math.max(0, x.frac - 1), overColor: 'var(--bad)', marker: x.marker,
+      centerHtml: '<span class="rep-pace-big" style="font-size:20px;font-weight:800;letter-spacing:-.02em;color:var(--ink)">' +
+        RK.money(x.spentTo) + '</span><small style="display:block;font-size:11.5px;color:var(--dim);font-weight:500;margin-top:3px">' +
+        'מתוך כ-' + RK.money(x.normalFull) + '</small>',
+      aria: 'הוצאתם ' + fmt(x.spentTo) + ' ₪ מתוך חודש רגיל של ' + fmt(x.normalFull) + ' ₪'
+    });
+    var cap = x.marker != null
+      ? '<div class="rep-pace-cap" style="font-size:11.5px;color:var(--dim);text-align:center"><span aria-hidden="true" style="color:var(--ink2)">●</span> הנקודה = כאן הייתם בחודש רגיל</div>'
+      : '';
+    var kp = x.partial ? [
+      { lbl: 'עד היום', val: x.spentTo, unit: '₪' },
+      { lbl: 'חודש רגיל עד ה-' + x.D, val: x.normalTo, unit: '₪', sub: baseTxt(x.baseN) },
+      { lbl: 'אם תמשיכו כרגיל', val: x.projected, unit: '₪', sub: 'צפי לסוף החודש' }
+    ] : [
+      { lbl: 'סה״כ החודש', val: x.spentTo },
+      { lbl: 'חודש רגיל', val: x.normalFull, sub: baseTxt(x.baseN) },
+      { lbl: 'הפרש', valHtml: RK.money(x.diff, { sign: true }), tone: x.status === 'even' ? '' : x.diff > 0 ? 'up' : 'down' }
+    ];
+    h += RK.card(
+      '<div class="rep-pace-hero" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:16px 24px">' +
+      '<div class="rep-pace-ringbox" style="display:flex;flex-direction:column;align-items:center;gap:8px;flex:0 0 auto">' + ring + cap + '</div>' +
+      '<div class="rep-pace-kp" style="flex:1 1 440px;min-width:0">' + RK.kpis(kp) + '</div></div>',
+      { cls: 'rep-pace' });
+
+    /* 3) גרף מצטבר */
+    var leg = [{ color: C_CUR, label: 'החודש' }, { color: C_NORM, label: 'חודש רגיל', dashed: true }];
+    if (x.p25) leg.push({ color: C_BAND_LEG, label: BAND });
+    var lyLine = '';
+    if (x.lyTo != null) {
+      lyLine = '<div class="rep-pace-ly" style="font-size:12.5px;color:var(--dim);margin-top:8px">' +
+        (x.partial ? 'באותו חודש בשנה שעברה, עד ה-' + x.D + ': ' + RK.money(x.lyTo)
+                   : 'באותו חודש בשנה שעברה: ' + RK.money(x.lyFull)) + '</div>';
+    }
+    h += RK.card(
+      '<div class="rk-chart" style="height:220px"><canvas role="img" aria-label="הוצאות מצטברות לפי יום בחודש, מול חודש רגיל"></canvas></div>' +
+      '<div style="margin-top:10px">' + RK.legend(leg) + '</div>' + lyLine,
+      { title: 'איך החודש מתקדם', sub: 'הוצאות מצטברות, יום אחרי יום', cls: 'rep-pace' });
+
+    /* 4) מה עושים עם זה */
+    var cl = closing(x);
+    if (cl) h += RK.insight(cl.txt, { tone: cl.tone });
+    h += '<div class="rk-foot">' + (x.baseN === 1 ? 'חודש רגיל = החודש המלא האחרון שיש בו נתונים.'
+      : 'חודש רגיל = חציון של ' + x.baseN + ' החודשים המלאים האחרונים.') +
+      (x.expFixed > 0 ? ' חיובים קבועים צפויים = מה שחזר כל חודש (או חודשיים) ועוד לא ירד החודש.' : '') +
+      ' זיכוי שסווג לקטגוריית הוצאה מקוזז; תנועות שממתינות לסיווג לא נכללות.</div>';
+    return h;
+  }
+
+  function mount(root, x) {
+    if (!x || x.state !== 'ok' || !root) return;
+    var cv = root.querySelector('.rk-chart canvas');
+    if (!cv) return;
+    var N = x.N, D = x.D, labels = [], cur = [];
+    for (var d = 1; d <= N; d++) { labels.push(d); cur.push(d <= x.curCum.length ? x.curCum[d - 1] : null); }
+    var ds = [];
+    if (x.p75) {
+      ds.push({ label: BAND, data: x.p75, borderWidth: 0, pointRadius: 0, pointHoverRadius: 0, fill: false, order: 2 });
+      ds.push({ label: BAND, data: x.p25, borderWidth: 0, pointRadius: 0, pointHoverRadius: 0, fill: '-1', backgroundColor: C_BAND, order: 2 });
+    }
+    ds.push({ label: 'חודש רגיל', data: x.normal, borderColor: C_NORM, borderDash: [5, 4], borderWidth: 1.5,
+      pointRadius: 0, pointHoverRadius: 3, pointBackgroundColor: C_NORM, order: 1 });
+    ds.push({ label: 'החודש', data: cur, borderColor: C_CUR, borderWidth: 2.5, backgroundColor: C_CUR,
+      pointRadius: function (c) { return c.dataIndex === D - 1 ? 4 : 0; }, pointHoverRadius: 4,
+      pointBackgroundColor: C_CUR, order: 0 });
+    repChart(cv, {
+      type: 'line',
+      data: { labels: labels, datasets: ds },
+      options: {
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            mode: 'index', intersect: false,
+            filter: function (it) { return it.dataset.label !== BAND; },
+            callbacks: {
+              title: function (items) { return items && items.length ? 'יום ' + items[0].label : ''; },
+              label: function (c) { return c.dataset.label + ': ' + fmt(c.parsed && c.parsed.y) + ' ₪'; }
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { maxTicksLimit: 8, maxRotation: 0 } },
+          y: { beginAtZero: true, ticks: { callback: RK.axisMoney } }
+        }
+      }
+    });
+  }
+
+  REP_DEFS.push({
+    k: 'pace', t: 'קצב החודש', ic: '🏃',
+    d: 'עד היום: יותר או פחות מחודש רגיל, וכמה נשאר ליום',
+    g: 'מבט על החודש', period: 'month',
+    calc: calc, html: html, mount: mount
+  });
+})();
+}catch(e){ console.error("report load rep-pace.js", e); }
+
+/* --- rep-heatcal.js --- */
+try{
+/* ============================================================
+   rep-heatcal.js — "לוח החודש": מפת חום של ימי החודש, 🌱 על ימים שקטים.
+   ברירת המחדל מסתירה חיובים קבועים (RK.recurring), כדי שהצבעים יראו הרגלים
+   יומיים ולא את יום המשכנתא. זיכויים לא נספרים — הלוח מראה כסף שיצא.
+   CSS: rep-heatcal.css (כל בורר מתחיל ב-.rep-heatcal).
+   ============================================================ */
+(function () {
+  'use strict';
+  var mode = 'var';   // המתג נשמר בזיכרון בין חודשים; 'var' רק כשיש מספיק היסטוריה לזהות קבועים
+  var DOW = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
+  var DOW_LONG = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+  var DET_MAX = 6;
+
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function numSpan(s) { return '<span class="num">' + esc(s) + '</span>'; }
+
+  /* ---------- חישוב לכל מצב (משתנות בלבד / הכול) ---------- */
+  /* "יום שקט" נספר רק בימי חול: שבת בלי קניות היא לא החלטה, והייתה מנפחת את המספר ואת הרצף.
+     רצף עובר דרך שבת שקטה בלי להישבר ובלי לגדול. שבת עם הוצאה כן נספרת כיום עם הוצאה. */
+  function modeStats(sums, tops, days, N) {
+    var vals = [], pastDays = 0, spendDays = 0, quietDays = 0, run = 0, longest = 0, heavy = null, total = 0;
+    for (var d = 1; d <= N; d++) {
+      if (days[d - 1].st !== 'past') { run = 0; continue; }
+      pastDays++;
+      var s = sums[d];
+      if (s > 0) {
+        spendDays++; vals.push(s); run = 0; total += s;
+        if (!heavy || s > heavy.sum) heavy = { d: d, sum: s, topDesc: tops[d] ? tops[d].desc : '' };
+      } else if (!days[d - 1].sat) {
+        quietDays++; run++;
+        if (run > longest) longest = run;
+      }
+    }
+    vals.sort(function (a, b) { return a - b; });
+    var cut = null, n = vals.length;
+    if (n >= 4) cut = { q1: vals[Math.floor(0.25 * (n - 1))], q2: vals[Math.floor(0.5 * (n - 1))], q3: vals[Math.floor(0.75 * (n - 1))] };
+    var sumArr = [], lv = [], counts = [0, 0, 0, 0, 0];
+    for (d = 1; d <= N; d++) {
+      var v = sums[d], l = 0;
+      if (days[d - 1].st === 'past' && v > 0) l = !cut ? 2 : v <= cut.q1 ? 1 : v <= cut.q2 ? 2 : v <= cut.q3 ? 3 : 4;
+      if (days[d - 1].st === 'past') counts[l]++;
+      sumArr.push(v);
+      lv.push(l);
+    }
+    return {
+      sums: sumArr, lv: lv, cut: cut, counts: counts, total: total,
+      pastDays: pastDays, spendDays: spendDays, quietDays: quietDays, longestQuiet: longest, heaviest: heavy
+    };
+  }
+
+  function calc(rows, P) {
+    rows = rows || [];
+    var cur = monthOf(P.today), ym = P.ym;
+    if (ym > cur) return { state: 'future', ym: ym };
+    var first = RK.firstDate(rows);
+    var lo = addMonths(ym, -12), hi = addMonths(ym, -1);
+    var histM = new Set(), mine = [];
+    for (var i = 0; i < rows.length; i++) {
+      var t = rows[i];
+      if (t.kind !== 'expense') continue;
+      var m = monthOf(t.date);
+      if (m === ym) mine.push(t);
+      else if (m >= lo && m <= hi && /^\d{4}-\d{2}$/.test(m)) histM.add(m);
+    }
+    var useFixed = histM.size >= 3;
+    var rec = useFixed ? RK.recurring(rows, hi) : new Map();
+    var N = RK.daysIn(ym);
+    var all = [], vr = [], allTop = [], vrTop = [], det = {}, fixedN = 0, fixedSum = 0, used = 0;
+    for (var d0 = 0; d0 <= N; d0++) { all.push(0); vr.push(0); allTop.push(null); vrTop.push(null); }
+    for (i = 0; i < mine.length; i++) {
+      t = mine[i];
+      var d = Number(String(t.date).slice(8, 10));
+      if (!(d >= 1 && d <= N) || d !== Math.floor(d)) continue;
+      var a = num(t.amount), fixed = !!RK.recKey(rec, t);
+      used++;
+      all[d] += a;
+      if (!allTop[d] || a > allTop[d].a) allTop[d] = { a: a, desc: normDesc(t.desc) };
+      if (fixed) { if (String(t.date).slice(0, 10) <= P.today) { fixedN++; fixedSum += a; } }   // רק ימים שכבר עברו, כמו הלוח
+      else {
+        vr[d] += a;
+        if (!vrTop[d] || a > vrTop[d].a) vrTop[d] = { a: a, desc: normDesc(t.desc) };
+      }
+      (det[d] = det[d] || []).push({ desc: normDesc(t.desc), amount: a, category: t.category || '', fixed: fixed });
+    }
+    if (!used) return { state: 'none', ym: ym };
+
+    var firstDow = RK.wd(ym + '-01'), days = [];
+    for (d = 1; d <= N; d++) {
+      var ds = ym + '-' + pad2(d);
+      days.push({ d: d, st: ds > P.today ? 'future' : (first && ds < first ? 'nodata' : 'past'), today: ds === P.today,
+        sat: (firstDow + d - 1) % 7 === 6 });
+    }
+    var modes = { all: modeStats(all, allTop, days, N) };
+    if (useFixed) {
+      modes['var'] = modeStats(vr, vrTop, days, N);
+      modes['var'].fixedN = fixedN;
+      modes['var'].fixedSum = fixedSum;
+    }
+    var detOut = {};
+    Object.keys(det).forEach(function (k) {
+      var L = det[k].slice().sort(function (x, y) { return y.amount - x.amount; });
+      var rest = L.slice(DET_MAX), dn = Number(k);
+      detOut[k] = {
+        sum: all[dn], vsum: useFixed ? vr[dn] : all[dn],
+        items: L.slice(0, DET_MAX),
+        restN: rest.length, restSum: rest.reduce(function (s, x) { return s + x.amount; }, 0)
+      };
+    });
+    return {
+      state: 'ok', ym: ym, partial: ym === cur, N: N, firstDow: firstDow, days: days,
+      useFixed: useFixed, modes: modes, det: detOut
+    };
+  }
+
+  /* ---------- HTML ---------- */
+  function insightHtml(M, data) {
+    var mon = RK.monName(data.ym), when = 'ב' + esc(mon) + (data.partial ? ' עד עכשיו' : ''), s;
+    if (M.quietDays > 0) {
+      s = when + (M.quietDays === 1 ? ' היה <strong>יום חול אחד</strong> בלי קניות 🌱' : ' היו <strong>' + M.quietDays + ' ימי חול</strong> בלי קניות 🌱') +
+        (M.longestQuiet >= 2 ? ', והרצף הארוך ביותר: <strong>' + M.longestQuiet + ' ימים</strong> (בלי לספור שבת).' : '.');
+    } else if (M.spendDays > 0) {
+      s = when + ' יצא כסף כל יום 🙂';
+    } else {
+      s = when + ' עוד אין ימים להצגה.';
+    }
+    var h = M.heaviest;
+    if (h) {
+      s += ' היום הכבד: <strong>' + esc(RK.dayLabel(data.ym + '-' + pad2(h.d))) + '</strong> · ' + RK.money(h.sum) +
+        (h.topDesc ? ' (' + esc(h.topDesc) + ')' : '') + '.';
+    }
+    return RK.insight(s);
+  }
+
+  function kpisHtml(M, data) {
+    var h = M.heaviest;
+    return RK.kpis([
+      { lbl: 'ימים עם הוצאה', valHtml: numSpan(String(M.spendDays)),
+        subHtml: esc('מתוך ' + M.pastDays + ' ימים') + (M.total > 0 ? ' · סה״כ ' + RK.money(M.total) : '') },
+      { lbl: '🌱 ימים שקטים', val: M.quietDays, unit: '', sub: 'ימי חול בלי קניות' + (M.longestQuiet >= 2 ? ' · רצף: ' + M.longestQuiet : '') },
+      h ? { lbl: '🔥 היום הכבד', valHtml: RK.money(h.sum), sub: RK.dayLabel(data.ym + '-' + pad2(h.d)) }
+        : { lbl: '🔥 היום הכבד', valHtml: numSpan('—'), sub: '' }
+    ]);
+  }
+
+  function gridHtml(M, data) {
+    var g = '<div class="rep-heatcal-grid rk-enter"' + RK.stagger(2) + ' role="group" aria-label="' + esc('לוח ' + heMonth(data.ym)) + '">';
+    for (var w = 0; w < 7; w++) {
+      g += '<div class="rep-heatcal-h" aria-hidden="true"' + (w === 6 ? ' title="שבת"' : '') + '>' + DOW[w] + '</div>';
+    }
+    for (var i = 0; i < data.firstDow; i++) g += '<div class="rep-heatcal-sp" aria-hidden="true"></div>';
+    for (var d = 1; d <= data.N; d++) {
+      var day = data.days[d - 1], tcls = day.today ? ' today' : '';
+      if (day.st === 'future') { g += '<div class="rep-heatcal-cell fut' + tcls + '"><span class="d">' + d + '</span></div>'; continue; }
+      if (day.st === 'nodata') { g += '<div class="rep-heatcal-cell nd' + tcls + '"><span class="d">' + d + '</span><span class="q" aria-hidden="true">·</span></div>'; continue; }
+      var s = M.sums[d - 1], lv = M.lv[d - 1];
+      var open = '<button type="button" class="rep-heatcal-cell L' + lv + tcls + '"' + act('rep_heatcal_day', String(d)) +
+        ' aria-pressed="false"' + (day.today ? ' aria-current="date"' : '');
+      if (s > 0) {
+        var lab = fmt(s);
+        g += open + ' aria-label="' + esc('יום ' + d + ': ' + lab + ' ₪') + '"><span class="d">' + d + '</span>' +
+          '<span class="num a' + (lab.length >= 7 ? ' xxs' : lab.length >= 6 ? ' xs' : '') + '">' + esc(lab) + '</span></button>';
+      } else {
+        g += open + ' aria-label="' + esc('יום ' + d + ': בלי קניות') + '"><span class="d">' + d + '</span>' +
+          '<span class="q" aria-hidden="true">🌱</span></button>';
+      }
+    }
+    return g + '</div>';
+  }
+
+  function legendHtml(M) {
+    var chips = [], c = M.cut;
+    function sw(l) { return '<i class="rep-heatcal-sw L' + l + '" aria-hidden="true"></i>'; }
+    if (c) {
+      var L = [
+        [1, 'עד ' + numSpan(fmt(c.q1))],
+        [2, numSpan(fmt(c.q1) + '–' + fmt(c.q2))],
+        [3, numSpan(fmt(c.q2) + '–' + fmt(c.q3))],
+        [4, 'מעל ' + RK.money(c.q3)]
+      ];
+      L.forEach(function (x) { if (M.counts[x[0]] > 0) chips.push(sw(x[0]) + x[1]); });
+    } else if (M.spendDays > 0) chips.push(sw(2) + 'ימים עם הוצאה');
+    if (M.quietDays > 0) chips.push('🌱 בלי קניות');
+    return chips.length ? '<div class="rep-heatcal-leg">' + RK.chips(chips) + '</div>' : '';
+  }
+
+  function blockHtml(M, m, data, vis) {
+    var foot = 'הקישו על יום כדי לראות מה יצא בו.';
+    if (m === 'var' && M.fixedN > 0) {
+      foot = '🔒 ' + (M.fixedN === 1 ? 'חיוב קבוע אחד' : M.fixedN + ' חיובים קבועים') + ' (' + RK.money(M.fixedSum) +
+        ') לא נצבעים כאן — רואים אותם ב״הכול״. ' + foot;
+    }
+    return '<div class="rep-heatcal-mode" data-m="' + m + '"' + (m === vis ? '' : ' hidden') + '>' +
+      insightHtml(M, data) + kpisHtml(M, data) +
+      RK.card(gridHtml(M, data) + legendHtml(M) + '<div class="rk-foot rep-heatcal-foot">' + foot + '</div>', { cls: 'rep-heatcal-cal' }) +
+      '</div>';
+  }
+
+  /* הסכום בכותרת הפירוט תואם למה שהתא מראה: במצב "בלי חיובים קבועים" — רק המשתנות, והקבועים בנפרד */
+  function headVal(x, useFixed) {
+    if (!x || !(x.sum > 0)) return '';
+    var all = '<span class="v" data-m="all">' + RK.money(x.sum) + '</span>';
+    if (!useFixed) return all;
+    var fx = x.sum - x.vsum;
+    return '<span class="v" data-m="var">' + (x.vsum > 0 ? RK.money(x.vsum) : '') +
+      (fx > 0.005 ? '<small class="fx">' + (x.vsum > 0 ? '+ ' : '') + RK.money(fx) + ' קבועים</small>' : '') + '</span>' + all;
+  }
+
+  function detHtml(data) {
+    var h = '<div class="rep-heatcal-dets">';
+    for (var d = 1; d <= data.N; d++) {
+      var day = data.days[d - 1];
+      if (day.st !== 'past') continue;
+      var x = data.det[d], date = data.ym + '-' + pad2(d), anyFixed = false;
+      h += '<div class="rep-heatcal-det" data-d="' + d + '" hidden>' +
+        '<div class="rep-heatcal-det-h"><span class="t">' + esc(RK.dayLabel(date)) +
+        '<span class="w">· יום ' + esc(DOW_LONG[RK.wd(date)]) + '</span></span>' +
+        headVal(x, data.useFixed) +
+        '<button type="button" class="rep-heatcal-x"' + act('rep_heatcal_day', String(d)) + ' aria-label="סגירה">×</button></div>';
+      if (!x || !(x.vsum > 0)) h += '<div class="rep-heatcal-q">🌱 יום בלי קניות' + (x && x.items.length ? ' — רק חיובים קבועים:' : '') + '</div>';
+      if (x && x.items.length) {
+        h += RK.legend(x.items.map(function (it) {
+          if (it.fixed) anyFixed = true;
+          return { color: catColor(it.category), iconHtml: catIcon(it.category), label: it.desc + (it.fixed ? ' 🔒' : ''), valueHtml: RK.money(it.amount) };
+        }));
+        if (x.restN > 0) {
+          h += '<div class="rep-heatcal-more">+ ' + (x.restN === 1 ? 'עוד תנועה אחת' : 'עוד ' + x.restN + ' תנועות') +
+            ' (' + RK.money(x.restSum) + ')</div>';
+        }
+        if (anyFixed) h += '<div class="rk-foot">🔒 = חיוב קבוע (חוזר כל חודש)</div>';
+      }
+      h += '</div>';
+    }
+    return h + '</div>';
+  }
+
+  function wrap(inner, m) { return '<div class="rep-heatcal"' + (m ? ' data-mode="' + m + '"' : '') + '>' + inner + '</div>'; }
+
+  function html(data, P) {
+    if (!data || data.state === 'future') return wrap(RK.card(RK.empty('🗓️', 'החודש הזה עוד לא התחיל', '')));
+    if (data.state !== 'ok') return wrap(RK.card(RK.empty('🌱', 'אין הוצאות בחודש הזה', '')));
+    var vis = mode === 'var' && data.useFixed && data.modes['var'] ? 'var' : 'all';
+    var seg = data.useFixed ? RK.seg([
+      { id: 'var', label: '🛒 בלי חיובים קבועים', on: vis === 'var' },
+      { id: 'all', label: 'הכול', on: vis === 'all' }
+    ], 'rep_heatcal_mode') : '';
+    var part = RK.partial(P), h = '';
+    if (seg || part) h += '<div class="rep-heatcal-top">' + seg + part + '</div>';
+    ['var', 'all'].forEach(function (m) { if (data.modes[m]) h += blockHtml(data.modes[m], m, data, vis); });
+    h += detHtml(data);
+    return wrap(h, vis);
+  }
+
+  /* ---------- פעולות (בלי innerHTML — רק hidden / aria-pressed) ---------- */
+  function each(list, fn) { for (var i = 0; i < list.length; i++) fn(list[i]); }
+
+  ACTIONS.rep_heatcal_mode = function (id, el) {
+    if (id !== 'var' && id !== 'all') return;
+    var r = el && el.closest && el.closest('.rep-heatcal');
+    if (!r) return;
+    mode = id;
+    r.setAttribute('data-mode', id);
+    each(r.querySelectorAll('.rep-heatcal-mode'), function (b) { b.hidden = b.getAttribute('data-m') !== id; });
+    each(r.querySelectorAll('[data-act="rep_heatcal_mode"]'), function (b) {
+      var on = b.getAttribute('data-id') === id;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  };
+
+  ACTIONS.rep_heatcal_day = function (id, el) {
+    var r = el && el.closest && el.closest('.rep-heatcal');
+    if (!r) return;
+    var target = null, dets = r.querySelectorAll('.rep-heatcal-det');
+    var cells = r.querySelectorAll('.rep-heatcal-cell[data-act="rep_heatcal_day"]');
+    each(dets, function (x) { if (x.getAttribute('data-d') === id) target = x; });
+    if (target && !target.hidden) {
+      target.hidden = true;
+      each(cells, function (c) { c.setAttribute('aria-pressed', 'false'); });
+      return;
+    }
+    each(dets, function (x) { x.hidden = true; });
+    each(cells, function (c) { c.setAttribute('aria-pressed', c.getAttribute('data-id') === id ? 'true' : 'false'); });
+    if (!target) return;
+    target.hidden = false;
+    try {
+      target.scrollIntoView({ block: 'nearest', behavior: RK.reducedMotion() ? 'auto' : 'smooth' });
+    } catch (e) { }
+  };
+
+  REP_DEFS.push({
+    k: 'heatcal',
+    t: 'לוח החודש',
+    ic: '📅',
+    d: 'החודש יום אחרי יום: איפה יצא כסף ואיפה היו ימים שקטים',
+    g: 'מבט על החודש',
+    period: 'month',
+    calc: calc,
+    html: html
+  });
+})();
+}catch(e){ console.error("report load rep-heatcal.js", e); }
+
+/* --- rep-fixflex.js --- */
+try{
+/* ============================================================
+   rep-fixflex.js — "קבוע, שוטף וחד-פעמי"
+   כמה מההוצאות של החודש יוצאות לבד (חיובים חוזרים), כמה הן החלטות יומיומיות (שוטף),
+   וכמה הן הוצאה גדולה חד-פעמית. השוטף מושווה לחודש רגיל עד אותו יום בחודש.
+   קבוע = לפי RK.recurring על 12 החודשים שלפני החודש הנבחר (סוחר חדש החודש לא נחשב קבוע).
+   ============================================================ */
+(function () {
+  'use strict';
+  var NOCAT = 'ללא קטגוריה', NODESC = 'ללא תיאור';
+  var COL = { fixed: '#64748b', flex: '#5145cd', big: '#f59e0b' };
+  var BIG = 1000;        // הוצאה לא-חוזרת מהסכום הזה ומעלה = חד-פעמי גדול
+  var BASE_N = 6;        // חודשי ההשוואה לשוטף
+  var CHIP_LEN = 22;     // קיצור תיאור בצ'יפ (גם בלי CSS הסכום לא נחתך)
+
+  function r2(v) { return Math.round(v * 100) / 100; }
+  function addTo(map, k, v) { map.set(k, (map.get(k) || 0) + v); }
+  function bySumDesc(a, b) { return b.sum - a.sum; }
+
+  /* ---------------- חישוב ---------------- */
+  function calc(rows, P) {
+    rows = rows || [];
+    var kinds = RK.catKinds(P.cats), ym = P.ym, cur = monthOf(P.today);
+    if (ym > cur) return { state: 'future' };
+    var partial = ym === cur;
+    var D = partial ? (Number(String(P.today).slice(8, 10)) || 31) : 31;
+    /* היסטוריה בלבד: מי שמופיע לראשונה החודש נספר כשוטף/חד-פעמי, לא כקבוע */
+    var rec = RK.recurring(rows, addMonths(ym, -1));
+
+    var hist = new Set(), base = new Map(), curHas = false;
+    var fixed = 0, flex = 0, big = 0, fn = 0, bn = 0, flexN = 0;
+    var flexByCat = new Map(), seenFixed = new Set(), fixedBy = new Map(), flexBy = new Map(), bigItems = [];
+
+    for (var i = 0; i < rows.length; i++) {
+      var t = rows[i], m = monthOf(t.date), isCur = m === ym;
+      var back = isCur ? 0 : RK.monthsBetween(m, ym);
+      if (!isCur && !(back >= 1 && back <= 12)) continue;
+      if (!isCur && t.kind === 'expense') hist.add(m);
+      if (!isCur && (back > BASE_N || !(m < cur))) continue;
+      var day = Number(String(t.date).slice(8, 10)) || 0, inTo = day <= D;
+      if (isCur && !inTo) continue;
+
+      var b = null;
+      if (isCur) { if (t.kind === 'expense') curHas = true; }
+      else {
+        b = base.get(m);
+        if (!b) { b = { m: m, to: 0, full: 0, cat: new Map(), has: false }; base.set(m, b); }
+        if (t.kind === 'expense') b.has = true;
+      }
+
+      var v = RK.amt(t, kinds);
+      if (!v) continue;
+      var key = RK.key(t.desc), cat = t.category || NOCAT, isExp = t.kind === 'expense';
+      var rk = isExp ? RK.recKey(rec, t) : '';
+      var bucket = rk ? 'fixed' : isExp && num(t.amount) >= BIG ? 'big' : 'flex';
+
+      if (!isCur) {
+        if (bucket === 'flex') {
+          b.full += v;
+          if (inTo) { b.to += v; addTo(b.cat, cat, v); }
+        }
+        continue;
+      }
+
+      if (bucket === 'fixed') {
+        fixed += v; fn++; seenFixed.add(rk);
+        var f = fixedBy.get(rk);
+        if (!f) { f = { key: rk, desc: '', date: '', sum: 0, cat: '' }; fixedBy.set(rk, f); }
+        f.sum += v;
+        if (String(t.date) >= f.date) { f.date = String(t.date); f.desc = normDesc(t.desc); f.cat = t.category || ''; }
+      } else if (bucket === 'big') {
+        big += v; bn++;
+        bigItems.push({ desc: normDesc(t.desc), amount: r2(v), cat: t.category || '' });
+      } else {
+        flex += v;
+        addTo(flexByCat, cat, v);
+        if (isExp) {
+          flexN++;
+          var g = flexBy.get(key);
+          if (!g) { g = { desc: '', date: '', sum: 0, n: 0 }; flexBy.set(key, g); }
+          g.sum += v; g.n++;
+          if (String(t.date) >= g.date) { g.date = String(t.date); g.desc = normDesc(t.desc); }
+        }
+      }
+    }
+
+    if (hist.size < 3) return { state: 'short', hist: hist.size };
+    if (!curHas) return { state: 'none' };
+
+    /* חודש רגיל = חציון חודשי ההשוואה שיש בהם הוצאות */
+    var bm = Array.from(base.values()).filter(function (x) { return x.has; })
+      .sort(function (a, c) { return a.m < c.m ? -1 : 1; });
+    var baseN = bm.length;
+    var normFlexTo = baseN ? RK.median(bm.map(function (x) { return x.to; })) : 0;
+    var normFlexFull = baseN ? RK.median(bm.map(function (x) { return x.full; })) : 0;
+    var flexDiff = flex - normFlexTo;
+    /* זיכוי גדול יכול להפוך את השוטף לשלילי; מוצג 0, ולכן האחוז לא יורד מתחת ל-100%−.
+       בתחילת החודש (עד ה-4, או כשבחודש רגיל עד היום יצא פחות מ-15% מהשוטף) קנייה אחת היא "מאות אחוזים" —
+       אז אין אחוז, רק ההפרש בשקלים ו"עוד מוקדם לשפוט" */
+    var early = partial && baseN > 0 && (D < 5 || normFlexTo < 0.15 * normFlexFull);
+    var flexPct = !early && baseN && normFlexTo > 0 ? Math.max(-100, Math.round(flexDiff / normFlexTo * 100)) : null;
+
+    var fixedD = Math.max(0, fixed), flexD = Math.max(0, flex), bigD = Math.max(0, big);
+    var total = fixedD + flexD + bigD;
+    var shares = RK.shares100([fixedD, flexD, bigD]);
+
+    /* מה הזיז את השוטף: קטגוריה מול החציון שלה באותם חודשים */
+    var movers = [];
+    if (baseN) {
+      var all = new Set(flexByCat.keys());
+      bm.forEach(function (x) { x.cat.forEach(function (_, c) { all.add(c); }); });
+      var thr = Math.max(100, 0.05 * normFlexTo);
+      all.forEach(function (c) {
+        var cu = flexByCat.get(c) || 0;
+        var no = RK.median(bm.map(function (x) { return x.cat.get(c) || 0; }));
+        var dl = cu - no;
+        if (Math.abs(dl) >= thr) movers.push({ cat: c, cur: r2(cu), norm: r2(no), delta: r2(dl) });
+      });
+      movers.sort(function (a, c) { return Math.abs(c.delta) - Math.abs(a.delta); });
+      movers = movers.slice(0, 5);
+    }
+
+    /* קבועים שעוד צפויים לרדת החודש (אותו חישוב כמו ב"קצב החודש") */
+    var expList = partial ? RK.expectedFixed(rows, ym, D).list : [];
+    var expSum = r2(expList.reduce(function (s, e) { return s + e.amount; }, 0));
+
+    var topFlexCat = null, topV = 0;
+    flexByCat.forEach(function (v, c) { if (v > topV) { topV = v; topFlexCat = c; } });
+
+    var fixedList = Array.from(fixedBy.values()).sort(bySumDesc).map(function (f) {
+      var r = rec.get(f.key);
+      return { desc: f.desc, sum: r2(f.sum), cat: f.cat, cad: r ? r.cad : 1 };
+    });
+    var flexTop = Array.from(flexBy.values()).filter(function (g) { return g.sum > 0; })
+      .sort(bySumDesc).slice(0, 3).map(function (g) { return { desc: g.desc, sum: r2(g.sum), n: g.n }; });
+    var bigTop = bigItems.slice().sort(function (a, c) { return c.amount - a.amount; }).slice(0, 3);
+
+    return {
+      state: 'ok', ym: ym, partial: partial, D: D,
+      fixed: r2(fixed), flex: r2(flex), big: r2(big), fn: fn, bn: bn, flexN: flexN,
+      fixedD: r2(fixedD), flexD: r2(flexD), bigD: r2(bigD), total: r2(total), shares: shares,
+      recN: rec.size, baseN: baseN, baseMonths: bm.map(function (x) { return x.m; }),
+      normFlexTo: r2(normFlexTo), normFlexFull: r2(normFlexFull), flexDiff: r2(flexDiff), flexPct: flexPct, early: early,
+      movers: movers,
+      expSum: expSum, expN: expList.length, expNames: expList.slice(0, 3).map(function (e) { return e.desc; }), expList: expList,
+      remainFlex: partial ? r2(normFlexFull - flex) : null,
+      topFlexCat: topFlexCat,
+      fixedList: fixedList, fixedTop: fixedList.slice(0, 3), flexTop: flexTop, bigTop: bigTop
+    };
+  }
+
+  /* ---------------- תצוגה ---------------- */
+  function shortText(s) {
+    var a = Array.from(String(s || ''));
+    return a.length > CHIP_LEN ? a.slice(0, CHIP_LEN - 1).join('').trim() + '…' : a.join('');
+  }
+  function chip(desc, v) {
+    var full = desc || NODESC;
+    return '<span class="rep-fixflex-cd" title="' + esc(full) + '">' + esc(shortText(full)) + '</span>' + RK.money(v);
+  }
+  /* "ב" / "מ" לפני שם קטגוריה: מקף לפני שם שלא מתחיל באות עברית, ו"ללא קטגוריה" בצורה קריאה */
+  function pre(p, c) {
+    if (c === NOCAT) return p + 'הוצאות בלי קטגוריה';
+    return /^[א-ת]/.test(c) ? p + esc(c) : p + '-' + esc(c);
+  }
+  function count(n, one, many) { return n === 1 ? one : n + ' ' + many; }
+
+  function tile(i, title, color, valueHtml, subHtml, caption, chipsHtml, extraHtml) {
+    var inner = '<h3 class="rk-card-t"><span class="rk-sw" style="display:inline-block;vertical-align:middle;margin-inline-end:7px;background:' +
+      color + '" aria-hidden="true"></span>' + esc(title) + '</h3>' +
+      '<div class="rk-kpi-v">' + valueHtml + '</div>' +
+      (subHtml ? '<div class="rk-kpi-s">' + subHtml + '</div>' : '') +
+      '<div class="rk-card-s" style="margin:8px 0 10px">' + esc(caption) + '</div>' +
+      (chipsHtml.length ? RK.chips(chipsHtml) : '') + (extraHtml || '');
+    return RK.card(inner, { i: i, cls: 'rep-fixflex-tile' });
+  }
+
+  function html(d, P) {
+    if (!d || d.state === 'future') return RK.card(RK.empty('🗓️', 'החודש הזה עוד לא התחיל', ''));
+    if (d.state === 'short') return RK.card(RK.empty('🔍', 'צריך לפחות 3 חודשי היסטוריה', 'כך אפשר לזהות מה קבוע'));
+    if (d.state === 'none') return RK.card(RK.empty('🙂', 'אין הוצאות בחודש הזה', ''));
+
+    var M = RK.monName(P.ym), h = '', nTop = 0;
+
+    /* 1) חודש חלקי */
+    var pill = RK.partial(P);
+    if (pill) { h += '<div style="margin:0 0 10px">' + pill + '</div>'; nTop++; }
+
+    /* 2) המשפט הראשי */
+    var lead = d.partial ? 'עד ה-' + d.D + ' ב' + esc(M) + ': ' : 'ב' + esc(M) + ' ';
+    h += RK.insight(lead + (d.fn
+      ? '<strong>' + d.shares[0] + '%</strong> מההוצאות הן חיובים קבועים שיוצאים לבד. '
+      : d.recN ? 'עוד לא ירדו חיובים קבועים. ' : 'עוד לא זוהו חיובים קבועים. ') +
+      'על השוטף (<strong>' + RK.money(d.flexD) + '</strong>) יש לכם השפעה יומיומית.');
+    nTop++;
+
+    /* 3) פס 100% ומקרא */
+    var parts = [
+      { k: 'fixed', ic: '🔒', l: 'קבוע', v: d.fixedD, s: d.shares[0] },
+      { k: 'flex', ic: '🛒', l: 'שוטף', v: d.flexD, s: d.shares[1] },
+      { k: 'big', ic: '🎈', l: 'חד-פעמי גדול', v: d.bigD, s: d.shares[2] }
+    ];
+    h += RK.card(
+      RK.stack(parts.map(function (p) { return { value: p.v, color: COL[p.k], label: p.ic + ' ' + p.l }; }), { h: 28 }) +
+      '<div style="margin-top:10px">' + RK.legend(parts.map(function (p) {
+        return { color: COL[p.k], iconHtml: p.ic, label: p.l, sub: p.s + '%', valueHtml: RK.money(p.v) };
+      })) + '</div>' +
+      '<div class="rk-foot">סה"כ ' + RK.money(d.total) + (d.partial ? ' עד היום' : '') + '</div>',
+      { title: 'לאן הלכו ההוצאות' });
+    nTop++;
+
+    /* 4) שלושת הדליים — כל אחד נכנס במדורג אחרי מה שמעליו */
+    var fixedChips = d.fixedTop.map(function (f) { return chip(f.desc, f.sum); });
+    var flexChips = d.flexTop.map(function (g) { return chip(g.desc, g.sum); });
+    var bigChips = d.bigTop.map(function (x) { return chip(x.desc, x.amount); });
+
+    var fixedExtra = '';
+    if (d.partial && d.expSum > 0) {
+      var names = d.expNames.join(', ') + (d.expN > d.expNames.length ? ' ועוד ' + (d.expN - d.expNames.length) : '');
+      fixedExtra += '<div class="rk-foot">עוד צפויים החודש: כ-' + RK.money(d.expSum) + ' ' +
+        esc(d.expN === 1 ? 'בחיוב אחד' : 'ב-' + d.expN + ' חיובים') + ' (' + esc(names) + ')</div>';
+    }
+    var exp = d.partial ? d.expList : [];
+    if (d.fixedList.length || exp.length) {
+      var n = d.fixedList.length;
+      var summ = n === 0 ? (exp.length === 1 ? 'החיוב הקבוע הצפוי' : exp.length + ' החיובים הקבועים הצפויים')
+        : (n === 1 ? 'החיוב הקבוע' : 'כל ' + n + ' החיובים הקבועים') + (exp.length ? ' (ועוד ' + exp.length + ' צפויים)' : '');
+      var items = d.fixedList.map(function (f) {
+        return { color: catColor(f.cat), iconHtml: catIcon(f.cat), label: f.desc || NODESC,
+          sub: f.cad === 2 ? 'כל חודשיים' : '', valueHtml: RK.money(f.sum) };
+      }).concat(exp.map(function (e) {
+        return { color: catColor(e.cat), iconHtml: catIcon(e.cat), label: e.desc || NODESC, sub: 'צפוי', dashed: true,
+          valueHtml: '<span style="color:var(--dim)">' + RK.money(e.amount) + '</span>' };
+      }));
+      fixedExtra += RK.details(summ, RK.legend(items));
+    }
+
+    var flexSub = '';
+    if (d.flexPct != null) {
+      flexSub = esc(d.partial ? 'רגיל עד ה-' + d.D + ': ' : 'רגיל: ') + RK.money(d.normFlexTo) + ' ' +
+        RK.delta(d.flexPct, { pct: true, flat: Math.abs(d.flexPct) < 5 });
+    } else if (d.early && d.baseN) {
+      flexSub = esc('רגיל עד ה-' + d.D + ': ') + RK.money(d.normFlexTo) + ' ' +
+        RK.delta(d.flexDiff, { money: true, flat: Math.abs(d.flexDiff) < 50 });
+    } else if (d.flexN) flexSub = esc(count(d.flexN, 'תנועה אחת', 'תנועות'));
+
+    h += '<div class="rk-g3 rep-fixflex">' +
+      tile(nTop, '🔒 קבוע', COL.fixed, RK.money(d.fixedD),
+        esc(d.fn ? count(d.fn, 'חיוב אחד', 'חיובים') : d.recN ? 'עוד לא ירדו החודש' : 'לא זוהו חיובים קבועים'),
+        'משתנה רק כשמחליטים לשנות אותו', fixedChips, fixedExtra) +
+      tile(nTop + 1, '🛒 שוטף', COL.flex, RK.money(d.flexD), flexSub,
+        'כאן גרות ההחלטות היומיות', flexChips, '') +
+      tile(nTop + 2, '🎈 חד-פעמי גדול', COL.big, RK.money(d.bigD),
+        esc(d.bn === 0 ? 'אין החודש 👍' : count(d.bn, 'הוצאה אחת', 'הוצאות')),
+        'מעל 1,000 ₪, לא חוזר כל חודש', bigChips, '') +
+      '</div>';
+
+    /* 5) מה הזיז את השוטף */
+    if (d.baseN > 0 && d.movers.length) {
+      var mx = 0;
+      d.movers.forEach(function (m) { mx = Math.max(mx, m.cur, m.norm); });
+      h += RK.card(RK.rows(d.movers.map(function (m) {
+        return {
+          iconHtml: m.cat === NOCAT ? '🏷️' : catIcon(m.cat), label: m.cat,
+          valueHtml: RK.money(m.delta, { sign: true }), tone: m.delta > 0 ? 'up' : 'down',
+          value: Math.max(m.cur, 0), ghost: Math.max(m.norm, 0), color: catColor(m.cat),
+          sub: 'רגיל: ' + fmt(m.norm) + ' ₪'
+        };
+      }), { max: mx }), {
+        title: 'מה הזיז את השוטף',
+        sub: (d.partial ? 'עד ה-' + d.D + ' בחודש, ' : '') + 'מול חודש רגיל (חציון ' +
+          (d.baseN === 1 ? 'החודש שלפני' : d.baseN + ' החודשים שלפני') + '). הקו הדק = הרגיל.',
+        i: nTop + 3   /* נכנס אחרי שלושת הדליים, לא באמצע */
+      });
+    }
+
+    /* 6) המשפט הסוגר */
+    var p = d.flexPct, s, tone = 'brand';
+    if (p === null && d.early) {
+      var ad = Math.abs(d.flexDiff);
+      s = 'עוד מוקדם לשפוט: עד ה-' + d.D + ' יצאו על השוטף ' + RK.money(d.flexD) + ', ובחודש רגיל עד אותו יום ' +
+        RK.money(d.normFlexTo) + (Math.round(ad) >= 50 ? ' (' + RK.money(ad) + (d.flexDiff > 0 ? ' יותר' : ' פחות') + ')' : '') +
+        '. קנייה גדולה אחת בתחילת החודש מזיזה הכול.';
+    } else if (p === null) s = d.baseN && d.partial
+      ? 'עוד מוקדם בחודש: בחודש רגיל עד ה-' + d.D + ' כמעט לא יוצא שוטף, אז עוד אין למה להשוות.'
+      : d.baseN ? 'בחודשים הקודמים כמעט לא היה שוטף, אז אין למה להשוות.'
+      : 'אין עדיין חודשים קודמים להשוות אליהם את השוטף.';
+    else if (d.partial && p >= 5) {
+      tone = 'warn';
+      s = 'הקבועות (' + RK.money(d.fixedD) + ') כבר בחשבון. השוטף <strong>' + p + '%</strong> מעל הרגיל עד עכשיו' +
+        (d.remainFlex > 0 ? ', וכדי לסיים כרגיל נשארו לשוטף כ-<strong>' + RK.money(d.remainFlex) + '</strong> עד סוף החודש.'
+          : ', וכבר עבר את מה שיוצא בחודש רגיל שלם.');
+    } else if (p <= -5) {
+      tone = 'ok';
+      var saved = Math.min(-d.flexDiff, d.normFlexTo);   // זיכוי גדול לא "חוסך" יותר מכל השוטף הרגיל
+      s = d.partial
+        ? 'השוטף <strong>' + Math.abs(p) + '%</strong> מתחת לרגיל עד עכשיו 🎉 (' + RK.money(saved) + ' פחות). אם הקצב יישמר, את ההפרש שווה להעביר לחיסכון.'
+        : 'השוטף <strong>' + Math.abs(p) + '%</strong> מתחת לרגיל 🎉 את ה-' + RK.money(saved) + ' שנחסכו שווה להעביר לחיסכון.';
+    } else if (Math.abs(p) < 5) {
+      s = 'השוטף בדיוק ברגיל 👌' + (d.topFlexCat ? ' אם רוצים לחסוך יותר, הכי קל להתחיל ' + pre('מ', d.topFlexCat) + '.' : '');
+    } else {
+      tone = 'warn';
+      var up = null;
+      for (var j = 0; j < d.movers.length; j++) if (d.movers[j].delta > 0) { up = d.movers[j]; break; }
+      s = 'השוטף היה <strong>' + p + '%</strong> מעל הרגיל' +
+        (up ? ', בעיקר ' + pre('ב', up.cat) + '. בחודש הבא שווה לשים עליו עין.' : '.');
+    }
+    if (d.bigD > 0 && d.bigTop.length) {
+      s += ' ההוצאה הגדולה ' + (d.partial ? 'החודש' : 'ב' + esc(M)) + ': ' + esc(d.bigTop[0].desc || NODESC) +
+        ' (' + RK.money(d.bigTop[0].amount) + ').';
+    }
+    /* המשפט הסוגר והערת השוליים נכנסים אחרונים (אחרת סדר ה-nth-child של הנתב מקדים אותם לדליים) */
+    h += '<div' + RK.stagger(5) + '>' + RK.insight(s, { tone: tone }) +
+      '<div class="rk-foot">קבוע = חיוב שחוזר כל חודש או כל חודשיים בסכום דומה (לפי 12 החודשים שלפני). ' +
+      'חד-פעמי גדול = מעל 1,000 ₪ שלא חוזר. זיכוי שסווג לקטגוריית הוצאה מקוזז מהשוטף.</div></div>';
+    return h;
+  }
+
+  REP_DEFS.push({
+    k: 'fixflex',
+    t: 'קבוע, שוטף וחד-פעמי',
+    ic: '🎛️',
+    d: 'כמה מההוצאות יוצאות לבד, ועל כמה יש לנו השפעה',
+    g: 'מבט על החודש',
+    period: 'month',
+    calc: calc,
+    html: html
+  });
+})();
+}catch(e){ console.error("report load rep-fixflex.js", e); }
+
+/* --- rep-lastyear.js --- */
+try{
+/* ============================================================
+   rep-lastyear.js — "אותו חודש, לפני שנה"
+   החודש הנבחר מול אותו חודש בשנה שעברה: כמה, מה זז ולמה.
+   חודש חלקי: שני החודשים נספרים רק עד אותו יום בחודש, כדי שההשוואה תהיה הוגנת.
+   חגים: אם ראש השנה / סוכות / פסח נפל רק באחד משני החודשים — הערה שחלק מההפרש הוא תזמון.
+   ============================================================ */
+(function () {
+  'use strict';
+  var NOCAT = 'ללא קטגוריה', REST = 'שאר הקטגוריות';
+  /* w = ימי ההכנות לפני החג (הקניות לפסח מתחילות ~3 שבועות לפני, לתשרי ~שבועיים) */
+  var HOLIDAYS = [
+    { m: 'Tishri', d: 1, name: 'ראש השנה', w: 14 },
+    { m: 'Tishri', d: 15, name: 'סוכות', w: 14 },
+    { m: 'Nisan', d: 15, name: 'פסח', w: 21 }
+  ];
+  /* חודשים שחלון ההכנות יכול לגעת בהם: פסח 26/3–25/4 (חלון מ-5/3), ראש השנה 5/9–5/10 (חלון מ-22/8), סוכות עד 19/10 */
+  var HOL_MONTHS = { 3: 1, 4: 1, 8: 1, 9: 1, 10: 1 };
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function r2(v) { v = Number(v); return isFinite(v) ? Math.round(v * 100) / 100 : 0; }
+  function byName(a, b) { return a < b ? -1 : a > b ? 1 : 0; }
+  function dayNo(ds) { return Math.floor(Date.UTC(Number(ds.slice(0, 4)), Number(ds.slice(5, 7)) - 1, Number(ds.slice(8, 10))) / 864e5); }
+
+  /* תאריכי החגים בשנה לועזית y → {שם: 'YYYY-MM-DD'}; null = אין לוח עברי בדפדפן. נשמר בזיכרון לכל שנה */
+  var holCache = Object.create(null);
+  function holidayDates(y) {
+    if (y in holCache) return holCache[y];
+    var out = {}, ranges = [[3, 20, 4, 30], [9, 1, 10, 25]];
+    for (var r = 0; r < ranges.length; r++) {
+      var R = ranges[r];
+      for (var mo = R[0]; mo <= R[2]; mo++) {
+        var from = mo === R[0] ? R[1] : 1, to = mo === R[2] ? R[3] : RK.daysIn(y + '-' + pad(mo));
+        for (var day = from; day <= to; day++) {
+          var ds = y + '-' + pad(mo) + '-' + pad(day), h = RK.hebDate(ds);
+          if (!h) { holCache[y] = null; return null; }
+          for (var i = 0; i < HOLIDAYS.length; i++) {
+            if (h.month === HOLIDAYS[i].m && h.day === HOLIDAYS[i].d) out[HOLIDAYS[i].name] = ds;
+          }
+        }
+      }
+    }
+    holCache[y] = out;
+    return out;
+  }
+  /* איזה חלק מחלון ההכנות (w ימים לפני החג + יום החג) נופל בימים 1..cut של החודש ym */
+  function prepFrac(ym, cut, date, w) {
+    if (!date) return 0;
+    var he = dayNo(date), hs = he - w, ms = dayNo(ym + '-01'), me = ms + Math.min(cut, RK.daysIn(ym)) - 1;
+    var ov = Math.min(he, me) - Math.max(hs, ms) + 1;
+    return ov > 0 ? ov / (w + 1) : 0;
+  }
+
+  /* חג שההכנות אליו נפלו בחלון ההשוואה הרבה יותר באחד משני החודשים (פסח 2/4 מול 13/4 מזיז את הקניות ממרץ לאפריל) */
+  function holidayNote(cur, prev, cut, today) {
+    if (!HOL_MONTHS[Number(cur.slice(5, 7))]) return null;
+    var A = holidayDates(cur.slice(0, 4)), B = holidayDates(prev.slice(0, 4));
+    if (!A || !B) return null;
+    for (var i = 0; i < HOLIDAYS.length; i++) {
+      var H = HOLIDAYS[i], da = A[H.name], db = B[H.name];
+      if (!da || !db) continue;
+      var fa = prepFrac(cur, cut, da, H.w), fb = prepFrac(prev, cut, db, H.w);
+      if (Math.abs(fa - fb) < 0.35) continue;
+      return { name: H.name, more: fa > fb, curDate: da, prevDate: db, future: da > today };
+    }
+    return null;
+  }
+
+  function calc(rows, P) {
+    rows = rows || [];
+    var kinds = RK.catKinds(P.cats), cur = P.ym, prev = addMonths(cur, -12);
+    var todayYm = monthOf(P.today);
+    if (cur > todayYm) return { state: 'future', cur: cur, prev: prev };
+    var partial = cur === todayYm;
+    var cut = partial ? (Number(String(P.today).slice(8, 10)) || 31) : 31;
+
+    var ff = RK.firstFullMonth(rows), first = ff.first;
+    if (!first) return { state: 'none', cur: cur, prev: prev };
+    var firstYm = ff.firstM;
+    if (prev < firstYm) {
+      var opensYm = addMonths(firstYm, 12);
+      return { state: 'noHistory', cur: cur, prev: prev, firstYm: firstYm, opensYm: opensYm,
+        opensAt: heMonth(opensYm), opensPast: opensYm <= todayYm };
+    }
+
+    /* החודש של שנה שעברה הוא החודש הראשון בנתונים, והם מתחילים באמצעו: משווים בשני החודשים
+       רק מאותו יום — אחרת חודש בלי משכורת ובלי השבוע הראשון נראה "זול ב-60%" */
+    var lo = prev === ff.headPartial ? Number(first.slice(8, 10)) : 1;
+    if (lo > cut) return { state: 'lateStart', cur: cur, prev: prev, lo: lo, first: first };
+
+    /* מעבר אחד על השורות: רק שני החודשים, רק בימים lo..cut */
+    var A = new Map(), B = new Map(), curT = 0, prevT = 0;
+    for (var i = 0; i < rows.length; i++) {
+      var t = rows[i], m = monthOf(t.date);
+      if (m !== cur && m !== prev) continue;
+      var dd = Number(String(t.date).slice(8, 10));
+      if (dd > cut || dd < lo) continue;
+      var v = RK.amt(t, kinds);
+      if (!v) continue;
+      var k = t.category || NOCAT;
+      if (m === cur) { A.set(k, (A.get(k) || 0) + v); curT += v; }
+      else { B.set(k, (B.get(k) || 0) + v); prevT += v; }
+    }
+    curT = r2(Math.max(0, curT)); prevT = r2(Math.max(0, prevT));
+    if (curT === 0 && prevT === 0) return { state: 'none', cur: cur, prev: prev, partial: partial, cut: cut };
+
+    var prevPartialData = lo > 1;
+    var diff = r2(curT - prevT);
+    var pct = prevT > 0 ? Math.round(diff / prevT * 100) : null;
+
+    var keys = new Set();
+    A.forEach(function (_, key) { keys.add(key); });
+    B.forEach(function (_, key) { keys.add(key); });
+    var all = [];
+    keys.forEach(function (key) {
+      var a = r2(A.get(key) || 0), b = r2(B.get(key) || 0);
+      all.push({ k: key, cur: a, prev: b, d: r2(a - b) });
+    });
+
+    /* מה זז: לפי גודל השינוי, כל עוד הוא לפחות 50 ₪ ו-1% מהחודש של שנה שעברה, עד 6 */
+    var th = Math.max(50, prevT * 0.01);
+    var byAbs = all.slice().sort(function (a, b) { return Math.abs(b.d) - Math.abs(a.d) || byName(a.k, b.k); });
+    var movers = [], restD = 0, restN = 0;
+    for (var j = 0; j < byAbs.length; j++) {
+      var r = byAbs[j];
+      if (movers.length === j && j < 6 && Math.abs(r.d) >= th) movers.push({ k: r.k, d: r.d });
+      else { restD += r.d; if (Math.round(r.d) !== 0) restN++; }
+    }
+    restD = r2(restD);
+    if (Math.abs(restD) >= 50) movers.push({ k: REST, d: restD, rest: true, n: restN });
+
+    all.sort(function (a, b) { return b.cur - a.cur || b.prev - a.prev || byName(a.k, b.k); });
+
+    var note = null;
+    try { note = holidayNote(cur, prev, cut, String(P.today || '')); } catch (e) { note = null; }
+
+    return { state: 'ok', cur: cur, prev: prev, partial: partial, cut: cut, lo: lo, curT: curT, prevT: prevT,
+      diff: diff, pct: pct, movers: movers, all: all, prevPartialData: prevPartialData, note: note, first: first };
+  }
+
+  /* ---------- HTML ---------- */
+  function signedPct(p) {
+    return '<span class="num">' + (p > 0 ? '+' : p < 0 ? '−' : '') + fmt(Math.abs(p)) + '%</span>';
+  }
+
+  function headline(D) {
+    var mon = esc(RK.monName(D.prev)), h, tone = 'brand', lead = '';
+    if (D.curT === 0) {
+      h = 'ב<strong>' + esc(heMonth(D.cur)) + '</strong> עוד לא נרשמו הוצאות' +
+        (D.partial ? '.' : ' — אולי עוד לא ייבאתם את התנועות של החודש הזה?');
+    } else if (D.pct === null) {
+      h = 'ב<strong>' + esc(heMonth(D.prev)) + '</strong> לא נרשמו הוצאות להשוואה.';
+    } else if (Math.abs(D.pct) < 5) {
+      lead = '🔄 ';
+      h = 'כמעט בדיוק כמו ב' + mon + ' שעבר (' + signedPct(D.pct) + ') 🙂';
+    } else if (D.pct <= -5) {
+      h = 'הוצאתם <strong>' + fmt(Math.abs(D.pct)) + '%</strong> פחות מאשר ב' + mon + ' שעבר 🎉';
+      tone = 'ok';
+    } else {
+      h = 'הוצאתם <strong>' + fmt(D.pct) + '%</strong> יותר מאשר ב' + mon + ' שעבר. הנה מה שזז:';
+    }
+    h = lead + (D.lo > 1 ? 'מה-' + fmt(D.lo) + (D.partial ? ' עד ה-' + fmt(D.cut) : '') + ' בחודש: '
+      : D.partial ? 'עד ה-' + fmt(D.cut) + ' בחודש: ' : '') + h;
+    if (D.prevPartialData) {
+      h += '<div class="rk-foot">' + esc('הנתונים של ' + heMonth(D.prev) + ' מתחילים רק ב-' + RK.dayLabel(D.first) +
+        ', ולכן בשני החודשים נספרו רק הימים מה-' + D.lo + ' בחודש.') + '</div>';
+    }
+    return RK.insight(h, { tone: tone });
+  }
+
+  function noteHtml(D) {
+    var n = D.note;
+    if (!n || !(D.curT > 0) || D.pct == null) return '';   /* בלי השוואה אין "הפרש" להסביר */
+    var s = '<strong>' + esc(n.name) + '</strong> ' + (n.future ? 'יחול' : 'חל') + ' השנה ב-' + esc(RK.dayLabel(n.curDate)) +
+      ' ובשנה שעברה ב-' + esc(RK.dayLabel(n.prevDate)) + ', ולכן השנה ' + (n.more ? 'יותר' : 'פחות') +
+      ' מהקניות לקראת החג נפלו ' + (D.partial || D.lo > 1 ? 'בימים האלה' : 'בחודש הזה');
+    return RK.insight('🗓️ ' + s + '. חלק מההפרש הוא תזמון החגים, לא שינוי בהרגלים.', { tone: 'warn' });
+  }
+
+  /* תאי הטבלה בלי ₪ (כמו טבלת הקטגוריות בדשבורד) — אחרת 4 עמודות לא נכנסות ב-375px
+     ועמודת ההפרש, החשובה מכולן, נחתכת. היחידה כתובה מתחת לטבלה. */
+  var DASH = '<span style="color:var(--faint)">–</span>';
+  function amtCell(v) {
+    var r = Math.round(v);
+    return r === 0 ? DASH : '<span class="num">' + (r < 0 ? '−' : '') + fmt(Math.abs(v)) + '</span>';
+  }
+  function diffCell(d) {
+    var r = Math.round(d);
+    if (r === 0) return DASH;
+    return '<span class="num ' + (r > 0 ? 'up' : 'down') + '">' + (r > 0 ? '+' : '−') + fmt(Math.abs(d)) + '</span>';
+  }
+
+  function moversCard(D) {
+    var body, cmp = D.curT > 0 && D.pct !== null;
+    /* בלי צד אחד להשוואה (תחילת חודש בלי הוצאות / חודש ריק בשנה שעברה) כל הפסים היו
+       ירוקים "ירדנו" או אדומים "עלינו" — מטעה. במקום זה שורה אחת, והפירוט נשאר בטבלה */
+    if (!cmp) {
+      body = '<div class="rk-foot" style="margin-top:0">' + esc(D.curT > 0
+        ? 'אין מול מה להשוות. בטבלה למטה: ההוצאות של ' + heMonth(D.cur) + ' לפי קטגוריה.'
+        : 'עוד אין הוצאות להשוות. בטבלה למטה: ההוצאות של ' + heMonth(D.prev) + ' לפי קטגוריה.') + '</div>';
+    } else if (D.movers.length) {
+      body = RK.diverge(D.movers.map(function (m) {
+        return {
+          iconHtml: m.rest ? '➕' : catIcon(m.k),
+          label: m.rest ? REST + (m.n > 1 ? ' (' + m.n + ')' : '') : m.k,
+          d: m.d
+        };
+      }));
+      /* כניסה מדורגת לפסים — רק במעבר לדוח (הכיתה rk-enter פעילה רק תחת rk-entering) */
+      var i = 0;
+      body = body.replace(/<div class="rk-div-r">/g, function () { return '<div class="rk-div-r rk-enter"' + RK.stagger(1 + i++) + '>'; });
+    } else {
+      body = '<div class="rk-foot" style="margin-top:0">אף קטגוריה לא זזה באופן שמורגש — כמעט אותו חודש בדיוק 🙂</div>';
+    }
+    var rows = D.all.map(function (r) {
+      return [{ html: catIcon(r.k) + ' ' + esc(r.k) },
+        { html: amtCell(r.prev), cls: 'num' },
+        { html: amtCell(r.cur), cls: 'num' },
+        { html: diffCell(r.d), cls: 'num' }];
+    });
+    rows.push([{ html: '<strong>' + esc('סה"כ') + '</strong>' },
+      { html: '<strong>' + amtCell(D.prevT) + '</strong>', cls: 'num' },
+      { html: '<strong>' + amtCell(D.curT) + '</strong>', cls: 'num' },
+      { html: '<strong>' + diffCell(D.diff) + '</strong>', cls: 'num' }]);
+    /* כותרות: רק השנה — החודש כבר ידוע מהדוח, ושם חודש מלא מרחיב את העמודה */
+    var table = RK.table(['קטגוריה',
+      { html: esc(D.prev.slice(0, 4)), cls: 'num' },
+      { html: esc(D.cur.slice(0, 4)), cls: 'num' },
+      { html: 'הפרש', cls: 'num' }], rows);
+    table += '<div class="rk-foot">' + esc('הסכומים ב-₪, ' + RK.monName(D.cur) + ' ' + D.prev.slice(0, 4) + ' מול ' +
+      RK.monName(D.cur) + ' ' + D.cur.slice(0, 4) +
+      (D.lo > 1 ? '. בשני החודשים נספרו רק הימים מה-' + D.lo + (D.partial ? ' עד ה-' + D.cut : '') + ' בחודש, כדי שההשוואה תהיה הוגנת.'
+        : D.partial ? '. בשני החודשים נספרו רק הימים עד ה-' + D.cut + ' בחודש, כדי שההשוואה תהיה הוגנת.' : '.')) + '</div>';
+    return RK.card(body + RK.details('כל הקטגוריות', table), cmp
+      ? { title: 'מה זז', sub: 'מול ' + heMonth(D.prev) + ' · אדום = יותר, ירוק = פחות' }
+      : { title: 'לפי קטגוריה' });
+  }
+
+  function html(D, P) {
+    if (!D || D.state === 'future') return RK.card(RK.empty('🗓️', 'החודש הזה עוד לא התחיל', ''));
+    if (D.state === 'noHistory') {
+      return RK.card(D.opensPast
+        ? RK.empty('🌱', 'אין נתונים מ' + heMonth(D.prev) + ' להשוואה',
+          'הנתונים מתחילים ב' + heMonth(D.firstYm) + ', אז אפשר להשוות כל חודש מ' + D.opensAt + ' והלאה')
+        : RK.empty('🌱', 'הדוח הזה ייפתח ב' + D.opensAt, 'כשתהיה שנה של נתונים להשוות אליה'));
+    }
+    if (D.state === 'lateStart') return RK.card(RK.empty('🌱', 'עוד אין ימים להשוות',
+      'הנתונים של ' + heMonth(D.prev) + ' מתחילים רק ב-' + RK.dayLabel(D.first) + ', וההשוואה תיפתח מה-' + D.lo + ' בחודש'));
+    if (D.state !== 'ok') return RK.card(RK.empty('🙂', 'אין הוצאות בחודשים האלה', heMonth(D.prev) + ' מול ' + heMonth(D.cur)));
+
+    /* "1–8" בתוך טקסט עברי מתהפך ל-"8–1" — בידוד LTR דרך .num */
+    var span = D.partial || D.lo > 1 ? '<span class="num">' + fmt(D.lo) + '–' + fmt(D.partial ? D.cut : RK.daysIn(D.cur)) + '</span> בחודש' : '';
+    var deltaLine = '';
+    if (D.curT > 0 && D.pct != null) {   /* מול חודש ריק, "▲ כל הסכום" לא אומר כלום */
+      var flat = D.pct != null && Math.abs(D.pct) < 5;
+      deltaLine = '<div style="display:flex;justify-content:center;align-items:center;gap:8px;flex-wrap:wrap;margin-top:-4px">' +
+        RK.delta(D.diff, { money: true, flat: flat }) +
+        (D.pct == null ? '' : '<span style="font-size:13px;font-weight:600;color:var(--dim)">' + signedPct(D.pct) + '</span>') +
+        '</div>';
+    }
+    var top = '<div style="margin-bottom:14px"><div class="rk-g2">' +
+      RK.kpis([{ lbl: heMonth(D.cur), val: D.curT, subHtml: span, tone: 'brand' }]) +
+      RK.kpis([{ lbl: heMonth(D.prev), val: D.prevT, subHtml: span }]) +
+      '</div>' + deltaLine + '</div>';
+
+    return top + headline(D) + moversCard(D) + noteHtml(D);
+  }
+
+  REP_DEFS.push({
+    k: 'lastyear',
+    t: 'אותו חודש, לפני שנה',
+    ic: '🔄',
+    d: 'החודש מול אותו חודש בשנה שעברה: מה זז ולמה',
+    g: 'מבט על החודש',
+    period: 'month',
+    calc: calc,
+    html: html
+  });
+})();
+}catch(e){ console.error("report load rep-lastyear.js", e); }
+
+/* --- rep-savings.js --- */
+try{
+/* ============================================================
+   rep-savings.js — "מכל 100 ₪ שנכנסו": לאן הלך כל שקל השנה, וכמה נשאר.
+   וופל 10×10 (כל ריבוע = שקל מתוך 100 שנכנסו) + עמודות "נשאר" לכל חודש,
+   קו מצטבר, והחודש הכי טוב/חלש. מתארים מה קרה — בלי יעד שהמשפחה לא בחרה.
+   הסכומים נספרים רק על חודשים שלמים: לא החודש הנוכחי, ולא חודש ראשון שהנתונים בו מתחילים
+   באמצע (RK.firstFullMonth) — בשניהם יש הוצאות בלי המשכורת, והם היו נראים כ"הפסד".
+   ============================================================ */
+(function () {
+  'use strict';
+
+  var NOCAT = 'ללא קטגוריה', REST = 'שאר', C_REST = '#cbd5e1', C_LEFT = '#047857', C_LINE = '#5145cd';
+  var C_POS = '#047857', C_NEG = '#be123c', C_POS_P = 'rgba(4,120,87,.35)', C_NEG_P = 'rgba(190,18,60,.35)';
+  var TOP = 7;
+
+  function pctTxt(r) { var v = Math.round(r * 100); return (v < 0 ? '−' : '') + Math.abs(v) + '%'; }
+  function b(h) { return '<strong>' + h + '</strong>'; }
+  /* טקסט פשוט (sub של המקרא מוברח) — בידוד LTR כדי ש"43,380 ₪" לא יתהפך ל"₪ 43,380" */
+  function ltr(s) { return '\u2066' + s + '\u2069'; }
+
+  /* מספרים שלמים שסכומם בדיוק total (שארית גדולה) — כמו RK.shares100, ליעד אחר */
+  function sharesTo(values, total) {
+    var v = values.map(function (x) { x = Number(x); return isFinite(x) && x > 0 ? x : 0; });
+    var s = v.reduce(function (a, c) { return a + c; }, 0);
+    total = Math.max(0, Math.round(total));
+    if (!s || !total) return v.map(function () { return 0; });
+    var raw = v.map(function (x) { return x / s * total; }), out = raw.map(Math.floor);
+    var left = total - out.reduce(function (a, c) { return a + c; }, 0);
+    var ord = raw.map(function (r, i) { return { i: i, f: r - Math.floor(r) }; })
+      .sort(function (a, c) { return c.f - a.f || a.i - c.i; });
+    for (var k = 0; k < left && k < ord.length; k++) out[ord[k].i]++;
+    return out;
+  }
+
+  function calc(rows, P) {
+    rows = rows || [];
+    var kinds = RK.catKinds(P.cats), Y = String(P.year || ''), cur = monthOf(P.today), curY = cur.slice(0, 4);
+    var head = RK.firstFullMonth(rows).headPartial;
+    if (!/^\d{4}$/.test(Y)) return { state: 'empty' };
+    if (Y > curY) return { state: 'future' };
+
+    /* מעבר אחד על השורות של השנה */
+    var inc = Object.create(null), exp = Object.create(null), catExp = Object.create(null), firstM = '';
+    for (var i = 0; i < rows.length; i++) {
+      var t = rows[i], d = String(t.date || '');
+      if (d.slice(0, 4) !== Y) continue;
+      var m = d.slice(0, 7);
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(m)) continue;
+      if (!firstM || m < firstM) firstM = m;
+      if (RK.isIncome(t, kinds)) { inc[m] = (inc[m] || 0) + num(t.amount); continue; }
+      var v = RK.amt(t, kinds);
+      if (!v) continue;
+      exp[m] = (exp[m] || 0) + v;
+      var ce = catExp[m] || (catExp[m] = Object.create(null)), cn = t.category || NOCAT;
+      ce[cn] = (ce[cn] || 0) + v;
+    }
+    if (!firstM) return { state: 'empty' };
+
+    var startM = firstM > Y + '-01' ? firstM : Y + '-01', endM = cur < Y + '-12' ? cur : Y + '-12';
+    var monthsList = [];
+    for (var mm = startM, g = 0; mm <= endM && g < 12; mm = addMonths(mm, 1), g++) monthsList.push(mm);
+    var complete = monthsList.filter(function (x) { return x < cur && x !== head; });
+    /* אין אף חודש שלם: בשנה הנוכחית — החודש הנוכחי עד היום; בשנה קודמת — מה שיש (החודש הראשון החלקי) */
+    var partialOnly = !complete.length && Y === curY;
+    var headOnly = !complete.length && !partialOnly;
+    var S = partialOnly ? [cur] : headOnly ? monthsList.slice() : complete;
+    var headSkipped = !!head && monthsList.indexOf(head) >= 0 && S.indexOf(head) < 0;
+    var lastM = S[S.length - 1], late = S[0] > Y + '-01';
+
+    var totInc = 0, sumExp = 0;
+    S.forEach(function (x) { totInc += inc[x] || 0; sumExp += exp[x] || 0; });
+    var totExp = Math.max(0, sumExp), saved = totInc - totExp;
+
+    var label = (Y === curY && !partialOnly) ? 'עד סוף ' + RK.monName(lastM) : (partialOnly ? 'עד היום' : Y);
+    /* חלק הסוגריים במשפטים: בשנה הנוכחית תמיד, ובשנה קודמת רק אם הנתונים התחילו באמצעה */
+    var labelPart = Y === curY
+      ? (partialOnly ? 'עד היום' : (late ? 'מ' + RK.monName(S[0]) + ' ' : '') + 'עד סוף ' + RK.monName(lastM))
+      : headOnly ? 'רק חלק מ' + RK.monName(S[0])
+      : (late ? 'מ' + RK.monName(S[0]) + ' עד סוף השנה' : '');
+    if (totInc <= 0) return { state: 'noIncome', totExp: totExp, label: label, Y: Y, labelPart: labelPart };
+    var rate = saved / totInc;
+
+    /* קטגוריות על חודשי הסיכום בלבד */
+    var catSum = Object.create(null);
+    S.forEach(function (x) {
+      var ce = catExp[x];
+      if (!ce) return;
+      for (var k in ce) catSum[k] = (catSum[k] || 0) + ce[k];
+    });
+    var all = [];
+    for (var cn2 in catSum) if (catSum[cn2] > 0) all.push({ name: cn2, v: catSum[cn2] });
+    all.sort(function (a, c) { return c.v - a.v || (a.name < c.name ? -1 : a.name > c.name ? 1 : 0); });
+    var per100 = Object.create(null);
+    all.forEach(function (c) { per100[c.name] = Math.round(c.v / totInc * 100); });
+    var cats = (all.length <= TOP + 1 ? all : all.slice(0, TOP)).map(function (c) {
+      return { name: c.name, v: c.v, color: catColor(c.name), rest: false };
+    });
+    if (all.length > TOP + 1) {
+      var rv = 0;
+      all.slice(TOP).forEach(function (c) { rv += c.v; });
+      cats.push({ name: REST, v: rv, color: C_REST, rest: true, n: all.length - TOP });
+    }
+
+    var leftover = Math.max(0, saved), over = Math.max(0, -saved), base = Math.max(totInc, totExp);
+    var per100Left = Math.max(-100, Math.min(100, Math.round(rate * 100)));
+    var expPer100 = Math.round(totExp / totInc * 100);
+    var catVals = cats.map(function (c) { return c.v; });
+
+    /* ריבועים: כשנשאר משהו — הירוקים הם בדיוק per100Left (אותו מספר כמו במשפט וב-KPI),
+       והקטגוריות מתחלקות בשאר. כשיצא יותר — 100 הריבועים הם ההוצאות, והאחרונים מקווקווים. */
+    var catSq, leftSq, legN, overN = 0;
+    if (saved >= 0) {
+      leftSq = Math.max(0, Math.min(100, per100Left));
+      catSq = sharesTo(catVals, 100 - leftSq);
+      legN = catSq.slice();
+    } else {
+      leftSq = 0;
+      catSq = RK.shares100(catVals.map(function (v) { return v / base; }));
+      legN = catSq.slice();   // כל ריבוע = 1% מההוצאות — המספר בשורה = מספר הריבועים שהיא מדגישה
+      overN = totExp > totInc ? Math.round(over / totExp * 100) : 0;
+    }
+    var squares = [];
+    cats.forEach(function (c, ci) { for (var q = 0; q < catSq[ci]; q++) squares.push({ c: ci, color: c.color }); });
+    for (var q2 = 0; q2 < leftSq; q2++) squares.push({ c: cats.length, color: C_LEFT, left: true });
+    while (squares.length < 100) squares.push({ c: -1, color: '#eef0f3' });
+    squares.length = 100;
+    for (var o = 0; o < overN; o++) squares[99 - o].over = true;
+    for (var pi = 99; pi >= 0; pi--) if (squares[pi].left) { squares[pi].pig = true; break; }
+
+    /* חודש אחרי חודש */
+    /* הגרף מראה רק חודשים שלמים: חודש חלקי בלי משכורת היה עמודה אדומה ענקית שקובעת את הציר */
+    var monthly = complete.map(function (x) {
+      var a = inc[x] || 0, e = exp[x] || 0;
+      return { ym: x, inc: a, exp: e, saved: a - e, rate: a > 0 ? (a - e) / a : null, partial: false };
+    });
+    var run = 0, cum = monthly.map(function (r) { run += r.saved; return run; });
+    var completeN = complete.length, best = null, worst = null;
+    var withInc = monthly.filter(function (r) { return r.inc > 0; });
+    if (withInc.length >= 2) {
+      withInc.forEach(function (r) {
+        if (!best || r.rate > best.rate) best = r;
+        if (!worst || r.rate < worst.rate) worst = r;
+      });
+      /* כל החודשים באותו שיעור (במספר שמוצג) — אין "הכי טוב" ו"הכי חלש" */
+      if (worst === best || Math.round(best.rate * 100) === Math.round(worst.rate * 100)) { best = null; worst = null; }
+    }
+
+    return {
+      state: 'ok', Y: Y, curY: curY, cur: cur, label: label, labelPart: labelPart, partialOnly: partialOnly, headOnly: headOnly,
+      months: S.length, completeN: completeN, hasPartial: Y === curY && !partialOnly && monthsList.indexOf(cur) >= 0,
+      headSkipped: headSkipped ? head : '', legUnit: saved >= 0 ? '₪' : '%',
+      totInc: totInc, totExp: totExp, saved: saved, rate: rate, leftover: leftover, over: over,
+      per100: per100, per100Left: per100Left, expPer100: expPer100, overN: overN,
+      cats: cats, legN: legN, leftSq: leftSq, squares: squares,
+      monthly: monthly, cum: cum, best: best, worst: worst
+    };
+  }
+
+  /* ---------- HTML ---------- */
+  function where(x) { return 'ב-' + x.Y + (x.labelPart ? ' (' + x.labelPart + ')' : ''); }
+
+  function legendItems(x) {
+    var items = x.cats.map(function (c, i) {
+      return {
+        color: c.color, iconHtml: c.rest ? esc('🏷️') : catIcon(c.name),
+        label: c.rest ? REST + ' (' + c.n + ' קטגוריות)' : c.name,
+        valueHtml: '<b class="num">' + fmt(x.legN[i]) + (x.legUnit === '%' ? '%' : ' ₪') + '</b>', sub: ltr(fmt(c.v) + ' ₪'),
+        actName: 'rep_savings_pick', actId: i
+      };
+    });
+    if (x.saved >= 0) {
+      items.push({ color: C_LEFT, iconHtml: esc('🐷'), label: 'נשאר', valueHtml: '<b class="num">' + fmt(x.leftSq) + ' ₪</b>',
+        sub: ltr(fmt(x.saved) + ' ₪'), actName: 'rep_savings_pick', actId: x.cats.length });
+    } else {
+      items.push({ color: 'var(--bad)', iconHtml: esc('⚠️'), label: 'מעבר להכנסות',
+        valueHtml: '<b class="num">' + fmt(x.overN) + '%</b>',
+        sub: ltr(fmt(x.over) + ' ₪'), actName: 'rep_savings_pick', actId: x.cats.length + 1 });
+    }
+    return items;
+  }
+
+  function waffle(x) {
+    var parts = x.cats.map(function (c, i) { return (c.rest ? REST : c.name) + ' ' + fmt(x.legN[i]) + (x.legUnit === '%' ? '%' : ' ₪'); });
+    var aria = x.saved >= 0
+      ? 'מכל 100 ₪ שנכנסו: ' + parts.join(', ') + (parts.length ? ', ' : '') + 'נשארו ' + fmt(x.leftSq) + ' ₪'
+      : 'ההוצאות לפי קטגוריה: ' + parts.join(', ') + '. ' + fmt(x.overN) + '% מההוצאות היו מעבר להכנסות';
+    var h = '<div class="rep-savings-waffle rk-enter"' + RK.stagger(1) + ' role="img" aria-label="' + esc(aria) + '"' +
+      (x.saved < 0 ? ' data-over="' + (x.cats.length + 1) + '"' : '') + '>';
+    x.squares.forEach(function (s) {
+      h += '<i data-c="' + s.c + '"' + (s.over ? ' class="over"' : '') + ' style="background-color:' + RK.color(s.color, '#94a3b8') + '">' +
+        (s.pig ? '<span aria-hidden="true">🐷</span>' : '') + '</i>';
+    });
+    return h + '</div>';
+  }
+
+  function html(x, P) {
+    if (!x || x.state === 'future') return RK.card(RK.empty('🗓️', 'השנה הזו עוד לא התחילה', ''));
+    if (x.state === 'empty') return RK.card(RK.empty('🌱', 'אין תנועות בשנה הזו', ''));
+    if (x.state === 'noIncome') {
+      return RK.kpis([{ lbl: 'יצא', val: x.totExp }]) +
+        RK.card(RK.empty('💼', 'אין הכנסות רשומות בשנה הזו', 'הוסיפו את המשכורות כדי לראות כמה נשאר'));
+    }
+    var h = '', neg = x.saved < 0, rp = Math.round(x.rate * 100);
+
+    /* 1) תובנה ראשית */
+    h += neg
+      ? RK.insight(where(x) + ' יצא יותר ממה שנכנס: על כל 100 ₪ הכנסה יצאו ' + b(RK.money(x.expPer100)) + '.', { tone: 'warn' })
+      : RK.insight('מכל 100 ₪ שנכנסו ' + where(x) + ' נשארו לכם ' + b(RK.money(x.per100Left)) + ' 🐷',
+        { tone: x.per100Left >= 20 ? 'ok' : 'brand' });
+
+    /* 2) וופל + מקרא */
+    h += RK.card(
+      '<div class="rep-savings-hero"><div class="rep-savings-wbox">' + waffle(x) +
+      '<div class="rep-savings-cap">' + (neg ? 'כל ריבוע = 1% מההוצאות · המקווקווים = החלק שמעבר להכנסות' : 'כל ריבוע = 1 ₪ מתוך 100 שנכנסו') + '</div></div>' +
+      '<div class="rep-savings-leg">' + RK.legend(legendItems(x)) + '</div></div>',
+      { title: neg ? 'לאן הלך הכסף' : 'לאן הלך כל 100 ₪', sub: 'לחיצה על שורה מדגישה אותה', cls: 'rep-savings' });
+
+    /* 3) מספרים */
+    var avg = x.partialOnly ? '' : 'בממוצע ' + RK.money(x.saved / x.months, {}) + ' לחודש';
+    h += RK.kpis([
+      { lbl: 'נכנס', val: x.totInc },
+      { lbl: 'יצא', val: x.totExp },
+      { lbl: 'נשאר', val: x.saved, tone: x.saved >= 0 ? 'down' : 'up', subHtml: avg },
+      { lbl: 'שיעור חיסכון', valHtml: '<span class="num">' + pctTxt(x.rate) + '</span>', sub: 'מכל ההכנסות' }
+    ]);
+
+    /* 4) חודש אחרי חודש */
+    var chips = '';
+    if (x.best) {
+      chips = '<div class="rep-savings-tags">' +
+        RK.pill('החודש הכי טוב: ' + RK.monName(x.best.ym) + ' · ' + ltr(pctTxt(x.best.rate)), 'ok') +
+        (x.worst ? RK.pill('הכי חלש: ' + RK.monName(x.worst.ym) + ' · ' + ltr(pctTxt(x.worst.rate)), 'warn') : '') + '</div>';
+    }
+    var chLeg = [{ color: C_POS, label: 'נשאר בחודש' }];
+    if (x.monthly.some(function (m) { return m.saved < 0; })) chLeg.push({ color: C_NEG, label: 'יצא יותר מנכנס' });
+    chLeg.push({ color: C_LINE, label: 'מצטבר מתחילת השנה' });
+    if (x.monthly.length) h += RK.card(
+      '<div class="rk-chart" style="height:220px"><canvas role="img" aria-label="כמה נשאר בכל חודש, וכמה הצטבר מתחילת השנה"></canvas></div>' +
+      '<div class="rep-savings-chleg">' + RK.legend(chLeg) + '</div>' + chips,
+      { title: 'חודש אחרי חודש', sub: 'כמה נשאר בכל חודש שהסתיים (הכנסות פחות הוצאות)', cls: 'rep-savings' });
+
+    /* 5) מה עושים עם זה */
+    if (x.per100Left >= 20) {
+      h += RK.insight('יפה מאוד 🎉 נשארו לכם ' + b(RK.money(x.saved)) +
+        '. כדי שזה לא יתפזר, אפשר להעביר סכום קבוע לחיסכון מיד כשהמשכורת נכנסת.', { tone: 'ok' });
+    } else if (x.rate >= 0) {
+      var tail = x.partialOnly || x.headOnly ? '' : ' בממוצע ' + b(RK.money(x.saved / x.months)) + ' בחודש.';
+      h += RK.insight('נשארו לכם ' + b(RK.money(x.per100Left)) + ' מכל 100.' + tail, { tone: 'brand' });
+    } else {
+      h += RK.insight((x.Y === x.curY ? 'השנה' : 'ב-' + x.Y) + ' יצא ' + b(RK.money(-x.saved)) +
+        ' יותר ממה שנכנס. כדאי להציץ בדוחות ״קבוע, שוטף וחד-פעמי״ ו״מנויים וחיובים קבועים״.', { tone: 'warn' });
+    }
+    var foot = 'נשאר = הכנסות פחות הוצאות. זיכוי שסווג לקטגוריית הוצאה מקוזז ממנה (זיכוי שסווג כהכנסה נספר כהכנסה); העברה לחיסכון שנרשמה כהוצאה נספרת כאן כהוצאה.';
+    if (x.headSkipped) foot += ' ' + RK.monName(x.headSkipped) + ' לא נכלל כי הנתונים בו מתחילים באמצע החודש.';
+    else if (x.headOnly) foot += ' הנתונים בשנה הזו מתחילים באמצע החודש, אז המספרים חלקיים.';
+    if (x.hasPartial) foot += ' ' + RK.monName(x.cur) + ' לא נכלל כי הוא עוד לא נגמר.';
+    else if (x.partialOnly) foot += ' ' + RK.monName(x.cur) + ' עוד לא נגמר, אז המספרים הם עד היום.';
+    h += '<div class="rk-foot">' + esc(foot) + '</div>';
+    return h;
+  }
+
+  /* ---------- גרף ---------- */
+  function mount(root, x) {
+    if (!x || x.state !== 'ok' || !root) return;
+    var cvs = root.querySelectorAll('.rk-chart canvas'), cv = cvs && cvs[0];
+    if (!cv) return;
+    var M = x.monthly;
+    var labels = M.map(function (m) { return RK.monShort(m.ym) + (m.partial ? ' (חלקי)' : ''); });
+    var colors = M.map(function (m) { return m.saved >= 0 ? (m.partial ? C_POS_P : C_POS) : (m.partial ? C_NEG_P : C_NEG); });
+    repChart(cv, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          { type: 'bar', label: 'נשאר', data: M.map(function (m) { return m.saved; }), backgroundColor: colors,
+            hoverBackgroundColor: colors, borderRadius: 6, maxBarThickness: 28, order: 1 },
+          { type: 'line', label: 'מצטבר מתחילת השנה', data: x.cum, borderColor: C_LINE, backgroundColor: C_LINE,
+            pointBackgroundColor: C_LINE, borderWidth: 2, pointRadius: 2, pointHoverRadius: 4, spanGaps: false, tension: 0, order: 0 }
+        ]
+      },
+      options: {
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            mode: 'index', intersect: false,
+            filter: function (it) { return it.parsed && it.parsed.y != null; },
+            itemSort: function (a, c) { return a.datasetIndex - c.datasetIndex; },
+            callbacks: {
+              title: function (items) {
+                var m = items && items.length ? M[items[0].dataIndex] : null;
+                return m ? heMonth(m.ym) + (m.partial ? ' (חלקי)' : '') : '';
+              },
+              label: function (c) { return c.dataset.label + ': ' + fmt(c.parsed && c.parsed.y) + ' ₪'; },
+              afterLabel: function (c) {
+                var m = M[c.dataIndex];
+                if (c.datasetIndex !== 0 || !m) return '';
+                if (m.partial) return 'החודש עוד לא נגמר';
+                if (m.rate == null) return '';
+                var r = Math.round(m.rate * 100);
+                return r >= 0 ? 'מכל 100 ₪ נשארו ' + r + ' ₪' : 'על כל 100 ₪ שנכנסו יצאו ' + (100 - r) + ' ₪';
+              }
+            }
+          }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true } },
+          y: { ticks: { callback: RK.axisMoney, maxTicksLimit: 6 } }
+        }
+      }
+    });
+  }
+
+  /* ---------- לחיצה על שורה במקרא: הדגשת הריבועים שלה ---------- */
+  ACTIONS.rep_savings_pick = function (id, el) {
+    var r = el && el.closest && el.closest('.rep-savings');
+    var g = r && r.querySelector('.rep-savings-waffle');
+    if (!g) return;
+    id = String(id == null ? '' : id);
+    var off = g.dataset.pick === id;
+    if (off) { delete g.dataset.pick; g.classList.remove('dim'); }
+    else { g.dataset.pick = id; g.classList.add('dim'); }
+    var overId = g.getAttribute('data-over');
+    var sq = g.querySelectorAll('i');
+    for (var i = 0; i < sq.length; i++) {
+      var on = !off && (sq[i].getAttribute('data-c') === id || (overId != null && id === overId && sq[i].classList.contains('over')));
+      sq[i].classList.toggle('is-pick', on);
+    }
+    var bt = r.querySelectorAll('[data-act="rep_savings_pick"]');
+    for (var j = 0; j < bt.length; j++) bt[j].setAttribute('aria-pressed', !off && bt[j].getAttribute('data-id') === id ? 'true' : 'false');
+  };
+
+  REP_DEFS.push({
+    k: 'savings', t: 'מכל 100 ₪ שנכנסו', ic: '🐷',
+    d: 'לאן הלך כל שקל השנה, וכמה נשאר לנו',
+    g: 'השנה שלנו', period: 'year',
+    calc: calc, html: html, mount: mount
+  });
+})();
+}catch(e){ console.error("report load rep-savings.js", e); }
+
+/* --- rep-maaser.js --- */
+try{
+/* ============================================================
+   rep-maaser.js — "מעשרות וצדקה": כמה נתנו השנה, מול קו ייחוס של 10% מההכנסות.
+   קו ייחוס בלבד, לא המלצה: הניסוח לא אומר מה "צריך" לתת.
+   תקופה: חודשי השנה מהחודש הראשון בנתונים ועד החודש המלא האחרון (כמו "חיסכון").
+   רק כשאין בשנה הנוכחית אף חודש מלא עם תנועות — החודש החלקי הנוכחי (partialOnly).
+   חודש ראשון שהנתונים בו מתחילים באמצע (RK.firstFullMonth) לא נספר: יש בו תרומות בלי המשכורת.
+   נתינה = הוצאות בקטגוריה ששמה מכיל צדק/מעשר/תרומ; תרומה שהוחזרה (הכנסה באותה קטגוריה) מקוזזת.
+   הכנסות = הכנסות אמיתיות (לא זיכויים בקטגוריית הוצאה), בלי החזרי תרומות.
+   ============================================================ */
+(function () {
+  'use strict';
+
+  var C_LINE = '#6b7280', C_FALLBACK = '#5145cd';
+  var L_GIVEN = 'ניתן (מצטבר)', L_TARGET = '10% מההכנסות (מצטבר)';
+  var FOOT = 'קו ייחוס בלבד: 10% מההכנסות שנרשמו כאן (כולל קצבאות ומתנות; זיכוי נספר כהכנסה אם סווג לקטגוריית הכנסה). ' +
+    'חשבון מעשרות בפועל תלוי בהלכה ובנסיבות, ולשאלה כדאי לפנות לרב.';
+  var TZ_RE = /צדק|מעשר|תרומ/;
+
+  function F(v) { v = Number(v); return isFinite(v) ? v : 0; }
+  function bucket() {
+    return { rows: 0, tzExp: false, given: 0, income: 0, rec: new Map(), last: new Map(), tzCat: new Map() };
+  }
+  function addTo(map, k, v) { map.set(k, (map.get(k) || 0) + v); }
+
+  function calc(rows, P) {
+    rows = rows || [];
+    P = P || {};
+    var kinds = RK.catKinds(P.cats);
+    function isTz(name) { return !!name && TZ_RE.test(name) && kinds.get(name) !== 'income'; }
+
+    var Y = String(P.year || ''), cur = monthOf(P.today), curY = cur.slice(0, 4);
+    if (!/^\d{4}$/.test(Y) || !/^\d{4}-\d{2}$/.test(cur)) return { state: 'empty', Y: Y };
+    if (Y > curY) return { state: 'future', Y: Y };
+
+    /* מעבר אחד: החודשים המלאים של השנה (m<cur) בדלי אחד, החודש הנוכחי בדלי נפרד.
+       בסוף מחליטים אם יש חודש מלא — ואם לא, משתמשים בחודש החלקי. */
+    var full = bucket(), part = bucket(), headB = bucket(), gm = Object.create(null), im = Object.create(null);
+    var head = RK.firstFullMonth(rows).headPartial;
+    var firstM = '', tzRow = false;
+    for (var i = 0; i < rows.length; i++) {
+      var t = rows[i], d = String(t.date || ''), m = d.slice(0, 7);
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(m)) continue;
+      if (m.slice(0, 4) !== Y || m > cur) continue;      // שנה אחרת / תאריך עתידי
+      if (!firstM || m < firstM) firstM = m;             // החודש הראשון עם נתונים בשנה הזו (כמו "חיסכון")
+      var B = m === head && m < cur ? headB : m < cur ? full : part;
+      B.rows++;
+      var cat = t.category || '', tz = isTz(cat), a = F(num(t.amount));
+      if (tz) tzRow = true;
+      if (t.kind === 'expense' && tz) {
+        B.given += a; gm[m] = F(gm[m]) + a; B.tzExp = true;
+        var key = normDesc(t.desc).replace(/\d+/g, '').trim() || '—';
+        addTo(B.rec, key, a);
+        var prev = B.last.get(key);
+        if (!prev || d >= prev.d) B.last.set(key, { d: d, desc: normDesc(t.desc) || '—' });
+        addTo(B.tzCat, cat, a);
+      } else if (t.kind === 'income' && tz) {
+        B.given -= a; gm[m] = F(gm[m]) - a;              // תרומה שהוחזרה
+      } else if (RK.isIncome(t, kinds) && !tz) {
+        B.income += a; im[m] = F(im[m]) + a;
+      }
+    }
+
+    var partialOnly = Y === curY && !full.rows;
+    var headOnly = !partialOnly && !full.rows && headB.rows > 0;   // שנה קודמת שיש בה רק את החודש הראשון החלקי
+    var X = partialOnly ? part : headOnly ? headB : full;
+    if (!X.rows) return { state: 'empty', Y: Y };
+    var hasTzCat = (P.cats || []).some(function (c) { return c && isTz(c.name); }) || tzRow;
+    if (!hasTzCat) return { state: 'noTz', Y: Y };
+
+    /* חודשי התקופה */
+    var S = [];
+    if (partialOnly) S.push(cur);
+    else {
+      var start = firstM > Y + '-01' ? firstM : Y + '-01';
+      if (head && start === head && !headOnly) start = addMonths(head, 1);
+      var end = Y === curY ? addMonths(cur, -1) : Y + '-12';
+      for (var mm = start, g = 0; mm <= end && g < 24; mm = addMonths(mm, 1), g++) S.push(mm);
+    }
+    var last = S[S.length - 1] || cur;
+    var from = !partialOnly && S.length && S[0] > Y + '-01' ? 'מ' + RK.monName(S[0]) : '';
+    var label = Y === curY
+      ? (partialOnly ? 'עד היום' : (from ? from + ' ' : '') + 'עד סוף ' + RK.monName(last))
+      : headOnly ? 'רק חלק מ' + RK.monName(head)
+      : (from ? from + ' עד סוף השנה' : '');
+
+    var income = F(X.income), given = Math.max(0, F(X.given));
+    var target = F(income * 0.1);
+    var pct = target > 0 ? Math.round(given / target * 100) : null;
+    if (pct !== null && !isFinite(pct)) pct = null;
+    if (pct !== null && given < target && pct >= 100) pct = 99;   // לא "100%" כשעוד לא הגעתם לקו
+    var toLine = Math.max(0, target - given), over = Math.max(0, given - target);
+
+    var mainCat = '', mainV = -Infinity;
+    X.tzCat.forEach(function (v, k) { if (v > mainV) { mainV = v; mainCat = k; } });
+    var color = mainCat ? catColor(mainCat) : C_FALLBACK;
+
+    var cumGiven = [], cumTarget = [], labels = [], cg = 0, ci = 0;
+    S.forEach(function (mo) {
+      cg += F(gm[mo]); ci += F(im[mo]);
+      cumGiven.push(Math.max(0, Math.round(cg))); cumTarget.push(Math.round(ci * 0.1));
+      labels.push(RK.monShort(mo));
+    });
+
+    var recipients = [];
+    X.rec.forEach(function (v, k) { if (F(v) > 0) recipients.push({ key: k, sum: F(v) }); });
+    recipients.sort(function (a, b) { return b.sum - a.sum; });
+    recipients = recipients.slice(0, 4).map(function (r) {
+      var l = X.last.get(r.key);
+      return { desc: (l && l.desc) || r.key, sum: r.sum };
+    });
+
+    return {
+      state: income > 0 ? 'ok' : 'noIncome',
+      Y: Y, label: label, partialOnly: partialOnly, headOnly: headOnly, months: S, labels: labels, anyGiving: !!X.tzExp,
+      headSkipped: head && head.slice(0, 4) === Y && !headOnly && !partialOnly ? head : '',
+      income: income, given: given, target: target, pct: pct, toLine: toLine, over: over,
+      mainCat: mainCat, color: color, cumGiven: cumGiven, cumTarget: cumTarget, recipients: recipients
+    };
+  }
+
+  /* ---------- HTML ---------- */
+  function b(h) { return '<strong>' + h + '</strong>'; }
+  function foot() { return '<div class="rk-foot rep-maaser-foot">' + esc(FOOT) + '</div>'; }
+
+  function recipientsHtml(x) {
+    if (!x.recipients || !x.recipients.length) return '';
+    return RK.card(RK.chips(x.recipients.map(function (r) {
+      return '<span class="rep-maaser-cd" style="overflow:hidden;text-overflow:ellipsis;min-width:0">' + esc(r.desc) + '</span> ' + RK.money(r.sum);
+    })), { title: 'לאן נתנו', cls: 'rep-maaser' });
+  }
+
+  function html(x, P) {
+    if (!x || x.state === 'empty') return RK.card(RK.empty('🌱', 'אין תנועות בשנה הזו', ''));
+    if (x.state === 'future') return RK.card(RK.empty('🗓️', 'השנה הזו עוד לא התחילה', ''));
+    if (x.state === 'noTz') return RK.card(RK.empty('🤲', 'לא נמצאה קטגוריה של צדקה או מעשרות',
+      'אפשר להוסיף קטגוריה בשם ״צדקה ומעשרות״ ולסווג אליה את התרומות'));
+
+    var when = 'ב-' + esc(x.Y) + (x.label ? ' (' + esc(x.label) + ')' : '');
+    var h = '';
+
+    if (x.state === 'noIncome') {
+      h += RK.insight(x.given > 0 || x.anyGiving ? '🤲 ' + when + ' נתתם ' + b(RK.money(x.given)) + '.'
+        : '🤲 ' + when + ' עוד לא נרשמו כאן תרומות.');
+      h += RK.kpis([{ lbl: 'ניתן בפועל', val: x.given }]);
+      h += '<div class="rep-maaser-note" style="font-size:13px;color:var(--dim);margin:-4px 2px 10px;line-height:1.5">' +
+        'כשיירשמו הכנסות, יופיע כאן גם האחוז מקו ה-10%.</div>';
+      return h + foot();
+    }
+
+    var pct = x.pct == null ? 0 : x.pct;
+
+    /* 1) שורת התובנה — קו ייחוס, לא עצה */
+    var line, tone = 'brand';
+    if (x.given <= 0 && !x.anyGiving) {
+      line = '🤲 ' + when + ' עוד לא נרשמו כאן תרומות. קו ה-10% מההכנסות שנרשמו: ' + b(RK.money(x.target)) + '.';
+    } else if (x.given >= x.target) {
+      tone = 'ok';
+      line = Math.round(x.over) >= 1
+        ? '✨ ' + when + ' נתתם ' + b(RK.money(x.given)) + ', ' + b(RK.money(x.over)) + ' מעבר לקו&nbsp;ה-10%.'
+        : '✨ ' + when + ' נתתם ' + b(RK.money(x.given)) + ', בדיוק על קו&nbsp;ה-10%.';
+    } else {
+      line = '🤲 ' + when + ' נתתם ' + b(RK.money(x.given)) + ', ' + b(pct + '%') + ' מקו&nbsp;ה-10%.';
+    }
+    h += RK.insight(line, { tone: tone });
+
+    /* 2) טבעת + מספרים */
+    var ring = RK.ring({
+      frac: Math.min(pct, 100) / 100, size: 132, stroke: 12, color: x.color,
+      centerHtml: '<b class="num" style="display:block;font-size:24px;font-weight:800;letter-spacing:-.02em;color:var(--ink)">' +
+        pct + '%</b><small style="display:block;font-size:11.5px;color:var(--dim);font-weight:500;margin-top:2px">מקו ה-10%</small>',
+      aria: 'ניתנו ' + pct + ' אחוז מקו העשרה אחוזים'
+    });
+    var kp = RK.kpis([
+      { lbl: 'הכנסות שנרשמו', val: x.income },
+      { lbl: 'קו ה-10%', val: x.target },
+      { lbl: 'ניתן בפועל', val: x.given, tone: 'brand',
+        subHtml: Math.round(x.over) >= 1 ? 'מעבר לקו: ' + RK.money(x.over) : '' }
+    ]);
+    h += RK.card(
+      '<div class="rep-maaser-hero" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:16px 24px">' +
+      ring + '<div class="rep-maaser-kp" style="flex:1 1 440px;min-width:0">' + kp + '</div></div>',
+      { cls: 'rep-maaser rep-maaser-ring', i: 1 });
+
+    /* 3) לאורך השנה */
+    if (x.months.length >= 2) {
+      h += RK.card(
+        '<div class="rk-chart rep-maaser-chart" style="height:180px"><canvas role="img" aria-label="נתינה מצטברת לאורך השנה, מול 10% מההכנסות המצטברות"></canvas></div>' +
+        '<div style="margin-top:10px">' + RK.legend([
+          { color: x.color, label: L_GIVEN },
+          { color: C_LINE, label: L_TARGET, dashed: true }
+        ]) + '</div>',
+        { title: 'לאורך השנה', sub: 'סכום מצטבר, חודש אחרי חודש', cls: 'rep-maaser' });
+    }
+
+    /* 4) לאן נתנו */
+    h += recipientsHtml(x);
+
+    /* 5) הערה */
+    if (x.headSkipped) h += '<div class="rk-foot">' + esc(RK.monName(x.headSkipped) + ' לא נכלל כי הנתונים בו מתחילים באמצע החודש.') + '</div>';
+    return h + foot();
+  }
+
+  function mount(root, x) {
+    if (!root || !x || x.state !== 'ok' || !x.months || x.months.length < 2) return;
+    var cv = root.querySelector('.rep-maaser-chart canvas');
+    if (!cv) return;
+    var months = x.months;
+    repChart(cv, {
+      type: 'line',
+      data: {
+        labels: x.labels,
+        datasets: [
+          { label: L_GIVEN, data: x.cumGiven, borderColor: x.color, backgroundColor: x.color, borderWidth: 2,
+            pointRadius: 0, pointHoverRadius: 4, pointBackgroundColor: x.color, order: 0 },
+          { label: L_TARGET, data: x.cumTarget, borderColor: C_LINE, backgroundColor: C_LINE, borderDash: [5, 4], borderWidth: 1.5,
+            pointRadius: 0, pointHoverRadius: 3, pointBackgroundColor: C_LINE, order: 1 }
+        ]
+      },
+      options: {
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            mode: 'index', intersect: false,
+            callbacks: {
+              title: function (items) {
+                var it = items && items[0];
+                return it && months[it.dataIndex] ? heMonth(months[it.dataIndex]) : '';
+              },
+              label: function (c) {
+                var v = c.parsed && c.parsed.y;
+                return c.dataset.label + ': ' + fmt(isFinite(v) ? v : 0) + ' ₪';
+              }
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { maxRotation: 0, autoSkip: true } },
+          y: { beginAtZero: true, ticks: { callback: RK.axisMoney, maxTicksLimit: 5 } }
+        }
+      }
+    });
+  }
+
+  REP_DEFS.push({
+    k: 'maaser', t: 'מעשרות וצדקה', ic: '🤲',
+    d: 'כמה נתנו השנה, מול קו ייחוס של 10% מההכנסות',
+    g: 'השנה שלנו', period: 'year',
+    calc: calc, html: html, mount: mount
+  });
+})();
+}catch(e){ console.error("report load rep-maaser.js", e); }
+
+/* --- rep-subs.js --- */
+try{
+/* ============================================================
+   rep-subs.js — "מנויים וחיובים קבועים"
+   מה יורד מאיתנו לבד כל חודש (או כל חודשיים), כמה זה בשנה, ומה התייקר או הפסיק.
+   הזיהוי: RK.recurring על 12 החודשים המלאים האחרונים (בלי החודש הנוכחי החלקי).
+   ============================================================ */
+(function () {
+  'use strict';
+  var BIG = 300;          // מ-300 ₪ לחודש ומעלה = "הגדולים"
+  var PAY_LEN = 22;       // קיצור אמצעי תשלום ארוך בתגית (לפני הברחה)
+  var STAGGER_N = 6;      // רק 6 השורות הראשונות נכנסות במדורג
+
+  function r2(v) { return Math.round(v * 100) / 100; }
+  function short(s, n) {
+    var a = Array.from(String(s == null ? '' : s));
+    return a.length > n ? a.slice(0, n - 1).join('').trim() + '…' : a.join('');
+  }
+
+  /* ---------------- חישוב ---------------- */
+  function calc(rows, P) {
+    rows = rows || [];
+    var kinds = RK.catKinds(P.cats);
+    var endYm = addMonths(monthOf(P.today), -1), start = addMonths(endYm, -11);
+
+    /* מעבר אחד: חודשים עם הוצאות בחלון + הכנסה לכל חודש */
+    var win = new Set(), inc = new Map();
+    for (var i = 0; i < rows.length; i++) {
+      var t = rows[i], m = monthOf(t.date);
+      if (m < start || m > endYm) continue;
+      if (t.kind === 'expense') win.add(m);
+      else if (RK.isIncome(t, kinds)) inc.set(m, (inc.get(m) || 0) + num(t.amount));
+    }
+    if (win.size < 3) return { state: 'short', winN: win.size };
+
+    var months = [];
+    for (var j = 0; j < 12; j++) months.push(addMonths(start, j));
+
+    var rec = RK.recurring(rows, endYm), items = [];
+    rec.forEach(function (r, k) {
+      if (!(r.median > 0)) return;
+      var amts = r.amts || [], med = r.median;
+      var near = 0;
+      for (var a = 0; a < amts.length; a++) if (Math.abs(amts[a] - med) <= Math.abs(med) * 0.05) near++;
+      var variableAmt = amts.length ? near / amts.length < 0.67 : false;
+      /* התייקרות: התשלום האחרון מול החציון של הקודמים. בחשבון משתנה (חשמל, מים) זו עונה ולא מחיר — לא מסמנים */
+      var last = amts.length ? amts[amts.length - 1] : 0, prevMed = RK.median(amts.slice(0, -1));
+      var up = !variableAmt && amts.length >= 3 && prevMed > 0 && last >= prevMed * 1.05 && last - prevMed >= 3;
+      var has = new Set(r.months);
+      items.push({
+        key: k, desc: r.desc, cat: r.cat, payment: r.payment, cad: r.cad,
+        median: r2(med), monthly: r2(med / r.cad), yearly: r2(med * 12 / r.cad),
+        variableAmt: variableAmt, up: up, upPct: up ? Math.round((last / prevMed - 1) * 100) : 0, lastAmt: r2(last),
+        dots: months.map(function (mm) { return has.has(mm); }),
+        lastM: r.months[r.months.length - 1] || '', active: !!r.active
+      });
+    });
+
+    var byYear = function (a, b) { return b.yearly - a.yearly || (a.desc < b.desc ? -1 : 1); };
+    var active = items.filter(function (x) { return x.active; }).sort(byYear);
+    var gone = items.filter(function (x) { return !x.active; })
+      .sort(function (a, b) { return a.lastM < b.lastM ? 1 : a.lastM > b.lastM ? -1 : b.yearly - a.yearly; });
+    if (!active.length && !gone.length) return { state: 'none', start: start, endYm: endYm };
+
+    var big = active.filter(function (x) { return x.monthly >= BIG; });
+    var small = active.filter(function (x) { return x.monthly < BIG; });
+    var sum = function (L, f) { return L.reduce(function (s, x) { return s + x[f]; }, 0); };
+
+    var incN = 0, incSum = 0;
+    win.forEach(function (m) { var v = inc.get(m) || 0; if (v > 0) { incN++; incSum += v; } });
+    var incomeAvg = incN ? incSum / incN : 0;
+    var monthlyAll = sum(active, 'monthly');
+
+    return {
+      state: 'ok', start: start, endYm: endYm, winN: win.size, months: months,
+      big: big, small: small, gone: gone, activeN: active.length,
+      monthlyAll: r2(monthlyAll), yearlyAll: r2(sum(active, 'yearly')),
+      yearlyBig: r2(sum(big, 'yearly')), yearlySmall: r2(sum(small, 'yearly')),
+      smallTop3: small.slice(0, 3).map(function (x) { return x.desc; }),
+      incomeAvg: r2(incomeAvg), share: incomeAvg > 0 ? monthlyAll / incomeAvg : null,
+      upN: active.filter(function (x) { return x.up; }).length
+    };
+  }
+
+  /* ---------------- תצוגה ---------------- */
+  function dotsHtml(it, months) {
+    var n = 0, h = '';
+    for (var i = 0; i < 12; i++) {
+      var on = !!(it.dots && it.dots[i]);
+      if (on) n++;
+      h += '<i' + (on ? ' class="on" style="background:' + catColor(it.cat) + '"' : '') +
+        ' title="' + esc(heMonth(months[i]) + (on ? ' · חויב' : '')) + '"></i>';
+    }
+    return '<div class="rep-subs-l3"><span class="rep-subs-dots" role="img" aria-label="' +
+      esc('חויב ב-' + n + ' מתוך 12 החודשים האחרונים') + '">' + h + '</span></div>';
+  }
+
+  function rowHtml(it, idx, isSmall, months) {
+    var l1 = '<div class="rep-subs-l1"><span class="rep-subs-ic" aria-hidden="true">' + catIcon(it.cat) + '</span>' +
+      '<span class="rep-subs-name" title="' + esc(it.desc) + '">' + esc(it.desc) + '</span>' +
+      '<span class="rep-subs-yv"><b>' + RK.money(it.yearly) + '</b><small> בשנה</small></span></div>';
+
+    var tags = RK.pill(it.cad === 1 ? '🔁 כל חודש' : '🗓️ כל חודשיים', 'dim');
+    if (it.payment) tags += RK.pill(short(it.payment, PAY_LEN), 'dim');
+    if (it.variableAmt) tags += RK.pill('סכום משתנה', 'dim');
+    /* "+12%" בתוך .num — אחרת בתוך משפט עברי הפלוס קופץ לצד השני */
+    if (it.up) tags += '<span class="rk-pill warn">התייקר <span class="num">+' + fmt(it.upPct) + '%</span></span>';
+    /* הסכום לשנה כבר בשורה הראשונה; כאן רק מה שרואים בחיוב עצמו. אצל הקטנים: "רק X בחודש" מול "Y בשנה" */
+    /* חיוב שהתייקר: מציגים את המחיר החדש, אחרת "התייקר +27%" ליד "רק 55 ₪" (החציון הישן) מבלבל */
+    var amt = it.up
+      ? 'עכשיו ' + RK.money(it.lastAmt) + (it.cad === 1 ? ' בחודש' : ' כל חודשיים')
+      : (isSmall ? 'רק ' : '') + (it.cad === 1
+        ? RK.money(it.monthly) + (isSmall ? ' בחודש' : ' לחודש')
+        : RK.money(it.median) + ' כל חודשיים');
+    var l2 = '<div class="rep-subs-l2">' + tags + '<span class="rep-subs-amt">' + amt + '</span></div>';
+
+    var enter = idx < STAGGER_N;
+    return '<div class="rep-subs-row' + (enter ? ' rk-enter' : '') + '"' + (enter ? RK.stagger(idx) : '') + '>' +
+      l1 + l2 + dotsHtml(it, months) + '</div>';
+  }
+
+  function listCard(title, sub, list, yearly, offset, isSmall, months) {
+    var hd = '<div class="rep-subs-hd"><h3 class="rk-card-t">' + esc(title) + '</h3>' +
+      '<span class="rep-subs-hd-v">' + RK.money(yearly) + ' בשנה</span></div>' +
+      '<div class="rk-card-s">' + esc(sub) + '</div>';
+    return RK.card(hd + '<div class="rep-subs-rows">' + list.map(function (it, i) {
+      return rowHtml(it, offset + i, isSmall, months);
+    }).join('') + '</div>', { cls: 'rep-subs rep-subs-list' });
+  }
+
+  function goneHtml(d) {
+    var rows = d.gone.map(function (it) {
+      return '<div class="rep-subs-row gone">' +
+        '<div class="rep-subs-l1"><span class="rep-subs-ic" aria-hidden="true">' + catIcon(it.cat) + '</span>' +
+        '<span class="rep-subs-name" title="' + esc(it.desc) + '">' + esc(it.desc) + '</span>' +
+        '<span class="rep-subs-yv">' + RK.money(it.median) + '<small>' + (it.cad === 2 ? ' כל חודשיים' : ' בחודש') + '</small></span></div>' +
+        /* הסכום כבר בשורה הראשונה — כאן רק מתי חויב לאחרונה (בלי לחזור על הסכום) */
+        '<div class="rep-subs-l2"><span class="rep-subs-last">' + esc('חויב לאחרונה ב' + heMonth(it.lastM)) + '</span></div>' +
+        dotsHtml(it, d.months) + '</div>';
+    }).join('');
+    return '<div class="rep-subs rep-subs-gone">' +
+      RK.details('הפסיקו (' + d.gone.length + ') — בוטלו או שהתשלומים הסתיימו', '<div class="rep-subs-rows">' + rows + '</div>') + '</div>';
+  }
+
+  function html(d, P) {
+    if (!d || d.state === 'short') return RK.card(RK.empty('🔍', 'צריך לפחות 3 חודשים של נתונים', 'כך אפשר לזהות חיובים שחוזרים'));
+    if (d.state === 'none') return RK.card(RK.empty('🙂', 'לא נמצאו חיובים שחוזרים כל חודש', ''));
+
+    var h = '';
+
+    /* 1) כמה יוצא לבד */
+    if (d.activeN) {
+      var pct = d.share != null ? Math.round(d.share * 100) : null;
+      var pill = pct == null ? '' : RK.pill(pct >= 1 ? 'כ-' + pct + '% מההכנסה החודשית' : 'פחות מ-1% מההכנסה החודשית', 'brand');
+      h += RK.card(
+        '<div class="rep-subs-big">' + RK.money(d.monthlyAll) + '<span class="rep-subs-unit"> בחודש</span></div>' +
+        '<div class="rep-subs-meta"><span class="rep-subs-yr">' + RK.money(d.yearlyAll) + ' בשנה · ' +
+        esc(d.activeN === 1 ? 'חיוב קבוע אחד' : d.activeN + ' חיובים קבועים') + '</span>' + pill + '</div>' +
+        '<p class="rep-subs-lead">עוד לפני שקניתם לחם, ' + RK.money(d.monthlyAll) + ' יוצאים לבד כל חודש 🔁</p>',
+        { cls: 'rep-subs rep-subs-hero' });
+    } else {
+      h += RK.card(RK.empty('🙂', 'אין כרגע חיובים קבועים פעילים', 'כל החיובים שחזרו בעבר הפסיקו'), { cls: 'rep-subs' });
+    }
+
+    /* 2) הגדולים, ואז הקטנים שמצטברים (במסך רחב — זה לצד זה) */
+    var lists = '';
+    if (d.big.length) lists += listCard('הגדולים', 'מ-' + BIG + ' ₪ בחודש ומעלה', d.big, d.yearlyBig, 0, false, d.months);
+    if (d.small.length) lists += listCard('קטנים שמצטברים', 'פחות מ-' + BIG + ' ₪ בחודש כל אחד, אבל בשנה זה כבר סכום', d.small, d.yearlySmall, d.big.length, true, d.months);
+    h += d.big.length && d.small.length ? '<div class="rep-subs rep-subs-cols">' + lists + '</div>' : lists;
+
+    /* 3) מה הפסיק */
+    if (d.gone.length) h += goneHtml(d);
+
+    /* 4) המשפט הסוגר */
+    var s = '';
+    if (d.small.length) {
+      s += 'החיובים הקטנים (' + d.smallTop3.map(esc).join(', ') + (d.small.length > 3 ? '…' : '') + ') עולים יחד <strong>' +
+        RK.money(d.yearlySmall) + '</strong> בשנה. פעם בשנה כדאי לעבור עליהם, לבטל מה שלא בשימוש ולהשוות מחיר בביטוח ובתקשורת.';
+    } else if (d.activeN) {
+      s += 'פעם בשנה כדאי לעבור על החיובים הקבועים, לבטל מה שלא בשימוש ולהשוות מחיר בביטוח ובתקשורת.';
+    }
+    if (d.upN) {
+      var up1 = d.upN === 1 ? d.big.concat(d.small).filter(function (x) { return x.up; })[0] : null;
+      s += (s ? ' ' : '') + (up1 ? 'החיוב של ' + esc(up1.desc) + ' התייקר ב-<span class="num">' + fmt(up1.upPct) + '%</span>' : '<strong>' + d.upN + '</strong> חיובים התייקרו') +
+        ', שווה להתקשר ולבקש את המחיר הקודם.';
+    }
+    if (d.gone.length) s += (s ? ' ' : '') + (d.gone.length === 1
+      ? (s ? 'בנוסף, חיוב' : 'חיוב') + ' אחד הפסיק. אם לא ביטלתם אותו בכוונה ואלה לא תשלומים שהסתיימו, כדאי לבדוק למה.'
+      : (s ? 'בנוסף, ' : '') + d.gone.length + ' חיובים הפסיקו. אם לא ביטלתם אותם בכוונה ואלה לא תשלומים שהסתיימו, כדאי לבדוק למה.');
+    if (s) h += RK.insight(s, { tone: d.upN ? 'warn' : 'brand' });
+
+    h += '<div class="rk-foot">' + esc('לפי 12 החודשים המלאים האחרונים (' + heMonth(d.start) + '–' + heMonth(d.endYm) + '). ' +
+      'חיוב נחשב קבוע כשהוא חוזר כל חודש או כל חודשיים בסכום דומה. כל נקודה בשורה היא חודש: הישן משמאל, האחרון מימין.') + '</div>';
+    return h;
+  }
+
+  REP_DEFS.push({
+    k: 'subs',
+    t: 'מנויים וחיובים קבועים',
+    ic: '🔁',
+    d: 'מה יורד מאיתנו לבד כל חודש, וכמה זה בשנה',
+    g: 'תכנון קדימה',
+    period: 'all',
+    calc: calc,
+    html: html
+  });
+})();
+}catch(e){ console.error("report load rep-subs.js", e); }
+
+/* --- rep-sinking.js --- */
+try{
+/* ============================================================
+   rep-sinking.js — "קופה להוצאות הלא-חודשיות"
+   משלים את "מנויים" (subs): שם מה שחוזר כל חודש, כאן הדברים הגדולים שלא.
+   הוצאה לא-חודשית = 300 ₪ ומעלה, לא חיוב חוזר (RK.recurring), ותיאור
+   שהופיע לכל היותר ב-5 מהחודשים המלאים בחלון (עד 12 האחרונים).
+   הסכום החודשי להפרשה = סה"כ / מספר החודשים, מעוגל למעלה לעשרות.
+   זיכויים לא מקוזזים כאן (קטנים מדי כדי לשנות את התמונה).
+   ============================================================ */
+(function () {
+  'use strict';
+
+  var MIN_AMT = 300, MAX_MONTHS = 5, NO_CAT = 'ללא קטגוריה';
+
+  function byAmtDesc(a, b) { return b.amount - a.amount || (a.date < b.date ? -1 : a.date > b.date ? 1 : 0); }
+
+  function calc(rows, P) {
+    rows = rows || [];
+    var cur = monthOf(P.today), endYm = addMonths(cur, -1);
+    var first = RK.firstDate(rows);
+    if (!first) return { state: 'short' };
+    var start = addMonths(endYm, -11), fm = monthOf(first);
+    if (!/^\d{4}-\d{2}$/.test(fm)) {          /* תאריך פגום בראש הרשימה — החודש התקין הראשון */
+      fm = '';
+      for (var f = 0; f < rows.length; f++) { var fx = monthOf(rows[f].date); if (/^\d{4}-\d{2}$/.test(fx) && (!fm || fx < fm)) fm = fx; }
+      if (!fm) return { state: 'short' };
+    }
+    if (fm > start) start = fm;
+    var monthsCovered = RK.monthsBetween(start, endYm) + 1;
+    if (!(monthsCovered >= 3)) return { state: 'short' };
+
+    var rec = RK.recurring(rows, endYm);
+
+    /* מעבר 1: באילו חודשים הופיע כל תיאור (מספרים מתחלפים מאוחדים — "חשבון 3/26") + סכומים לכל תיאור
+       + סך ההוצאות בחלון ולכל חודש */
+    var ms = new Map(), amtsBy = new Map(), monTot = new Map(), allExp = 0, inWin = [];
+    for (var i = 0; i < rows.length; i++) {
+      var t = rows[i];
+      if (t.kind !== 'expense') continue;
+      var m = monthOf(t.date);
+      if (m < start || m > endYm) continue;
+      var a = num(t.amount);
+      if (!(a > 0)) continue;
+      var k = RK.rkey(t.desc);
+      var set = ms.get(k);
+      if (!set) { set = new Set(); ms.set(k, set); amtsBy.set(k, []); }
+      set.add(m);
+      amtsBy.get(k).push(a);
+      allExp += a;
+      monTot.set(m, (monTot.get(m) || 0) + a);
+      inWin.push({ t: t, m: m, a: a, k: k });
+    }
+    /* "חד-פעמי גדול מאוד" (רכב, שיפוץ, חתונה): פריט אחד מעל פי 1.5 מחודש הוצאות רגיל (חציון) —
+       לא נכנס להפרשה החודשית, אחרת קנייה אחת קובעת את ההמלצה לכל השנה */
+    var huge = Math.max(5000, 1.5 * RK.median(Array.from(monTot.values())));
+    var medBy = new Map();
+    amtsBy.forEach(function (L, k) { medBy.set(k, RK.median(L)); });
+
+    /* מעבר 2: מה לא-חודשי. "עד 5 חודשים" נקבע לחלון של 12; בחלון קצר יותר הסף יורד באותו יחס
+       (3→1, 4→2, 6→3, 9→4, 11→5), אחרת קניות סופר גדולות שמופיעות בכל חודש נספרות כלא-חודשיות.
+       עיגול ולא floor: עם floor חלון של 4 חודשים זרק את קניות החג של תשרי (ספטמבר+אוקטובר) ונתן 90 ₪ */
+    var maxM = Math.max(1, Math.round(monthsCovered * MAX_MONTHS / 12));
+    var total = 0, n = 0, byCat = new Map(), byMonth = new Map(), irr = [], hugeList = [], hugeSum = 0;
+    for (var j = 0; j < inWin.length; j++) {
+      var r = inWin[j];
+      if (r.a < MIN_AMT || RK.recKey(rec, r.t)) continue;
+      /* תיאור שחוזר כמעט כל חודש (העברה בביט, חנות קבועה) — נספר רק פריט חריג בו: פי 3 מהרגיל שלו */
+      if (ms.get(r.k).size > maxM && !(r.a > 3 * medBy.get(r.k))) continue;
+      var cat = r.t.category || NO_CAT;
+      var it = { date: String(r.t.date || ''), desc: normDesc(r.t.desc) || 'ללא תיאור', amount: r.a, ym: r.m, cat: cat };
+      if (r.a > huge) { hugeList.push(it); hugeSum += r.a; continue; }
+      total += r.a; n++;
+      irr.push(it);
+      var c = byCat.get(cat);
+      if (!c) { c = { cat: cat, sum: 0, n: 0, items: [] }; byCat.set(cat, c); }
+      c.sum += r.a; c.n++; c.items.push(it);
+      var bm = byMonth.get(r.m);
+      if (!bm) { bm = new Map(); byMonth.set(r.m, bm); }
+      bm.set(cat, (bm.get(cat) || 0) + r.a);
+    }
+    hugeList.sort(byAmtDesc);
+    var hugeOut = hugeList.slice(0, 4).map(function (x) { return { date: x.date, desc: x.desc, amount: x.amount }; });
+    if (!(total > 0)) return { state: 'none', monthsCovered: monthsCovered, huge: hugeOut, hugeSum: hugeSum, hugeN: hugeList.length };
+
+    var cats = Array.from(byCat.values()).sort(function (x, y) { return y.sum - x.sum || (x.cat < y.cat ? -1 : 1); });
+    cats.forEach(function (c) {
+      c.items = c.items.sort(byAmtDesc).slice(0, 4).map(function (x) { return { date: x.date, desc: x.desc, amount: x.amount }; });
+    });
+
+    var perMonth = Math.ceil(total / monthsCovered / 10) * 10;
+    var share = allExp > 0 ? total / allExp : 0;
+
+    var strip = [], heaviest = null;
+    for (var mm = start, g = 0; mm <= endYm && g < 24; mm = addMonths(mm, 1), g++) {
+      var bmm = byMonth.get(mm), segs = [], tot = 0;
+      if (bmm) cats.forEach(function (c) { var v = bmm.get(c.cat); if (v > 0) { segs.push({ cat: c.cat, v: v }); tot += v; } });
+      var col = { ym: mm, total: tot, segs: segs };
+      strip.push(col);
+      if (!heaviest || tot > heaviest.total) heaviest = col;
+    }
+
+    /* מה היה בשלושת החודשים הקרובים — לפני שנה */
+    var aheadMonths = [];
+    for (var q = 0; q <= 2; q++) {
+      var tw = addMonths(cur, q - 12);
+      if (tw >= start && tw <= endYm) aheadMonths.push(tw);
+    }
+    var aheadTotal = 0, aheadAll = [];
+    irr.forEach(function (x) { if (aheadMonths.indexOf(x.ym) >= 0) { aheadTotal += x.amount; aheadAll.push(x); } });
+    var aheadItems = aheadAll.sort(byAmtDesc).slice(0, 6).map(function (x) { return { desc: x.desc, amount: x.amount, ym: x.ym }; });
+
+    return {
+      state: 'ok', start: start, endYm: endYm, monthsCovered: monthsCovered, estimated: monthsCovered < 12,
+      total: total, n: n, perMonth: perMonth, share: share, cats: cats, strip: strip,
+      heaviest: { ym: heaviest.ym, total: heaviest.total },
+      aheadTotal: aheadTotal, aheadItems: aheadItems,
+      aheadFrom: aheadMonths[0] || '', aheadTo: aheadMonths[aheadMonths.length - 1] || '',
+      huge: hugeOut, hugeSum: hugeSum, hugeN: hugeList.length
+    };
+  }
+
+  /* ---------- HTML ---------- */
+  function b(h) { return '<strong>' + h + '</strong>'; }
+  function pct(v, max) { return max > 0 && v > 0 ? Math.max(0, Math.min(100, v / max * 100)) : 0; }
+
+  function heroHtml(x) {
+    return RK.card(
+      '<div class="rep-sinking-hero">' +
+      '<div class="rep-sinking-k" style="font-size:12.5px;font-weight:600;color:var(--dim)">כדאי להפריש</div>' +
+      '<div class="rep-sinking-big" style="font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1.25;color:var(--ink);margin:2px 0 6px">' +
+      'כ-' + RK.money(x.perMonth) + ' בחודש</div>' +
+      '<div class="rep-sinking-sub" style="font-size:13px;color:var(--ink2);line-height:1.6">לקופה נפרדת. ב-' + x.monthsCovered +
+      ' החודשים האחרונים: ' + RK.money(x.total) + ' ב-' + x.n + ' הוצאות לא-חודשיות (' + Math.round(x.share * 100) + '% מכל ההוצאות)' +
+      (x.estimated ? ' ' + RK.pill('הערכה לפי ' + x.monthsCovered + ' חודשים', 'dim') : '') + '</div>' +
+      '<div class="rep-sinking-copy" style="font-size:12.5px;color:var(--dim);margin-top:8px">הוצאות שלא באות כל חודש הן לא הפתעה, הן פשוט שנתיות 💰</div>' +
+      '</div>', { cls: 'rep-sinking' });
+  }
+
+  function stripHtml(x) {
+    var max = x.heaviest.total, cols = x.strip.map(function (s) {
+      var lab = esc(heMonth(s.ym) + ': ' + fmt(s.total) + ' ₪'), h = pct(s.total, max), bar;
+      if (s.total > 0) {
+        bar = '<div class="rep-sinking-bar" style="position:absolute;left:0;right:0;bottom:0;height:' + h.toFixed(2) +
+          '%;min-height:2px;display:flex;flex-direction:column-reverse">' +
+          s.segs.map(function (g, i) {
+            var top = i === s.segs.length - 1;
+            return '<i style="display:block;flex:' + (g.v / s.total).toFixed(4) + ' 1 0;min-height:0;background:' + catColor(g.cat) +
+              (top ? ';border-radius:3px 3px 0 0' : '') + '"></i>';
+          }).join('') + '</div>';
+      } else {
+        bar = '<div class="rep-sinking-bar rep-sinking-zero" style="position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--line2);border-radius:1px"></div>';
+      }
+      var top = s.ym === x.heaviest.ym && s.total > 0;
+      return '<div class="rep-sinking-col' + (top ? ' top' : '') + '" role="img" aria-label="' + lab + '" title="' + lab + '"' +
+        ' style="flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:stretch">' +
+        '<div class="rep-sinking-plot" style="position:relative;height:120px">' + bar +
+        (top ? '<span class="rep-sinking-dot" aria-hidden="true" style="position:absolute;left:50%;bottom:calc(' + h.toFixed(2) +
+          '% + 5px);width:6px;height:6px;margin-left:-3px;border-radius:50%;background:var(--ink2)"></span>' : '') +
+        '</div>' +
+        '<div class="rep-sinking-ml" style="font-size:11px;color:var(--dim);text-align:center;margin-top:4px;white-space:nowrap;line-height:1.2">' +
+        esc(RK.monShort(s.ym)) + '</div></div>';
+    }).join('');
+
+    var leg = RK.legend(x.cats.map(function (c) { return { color: catColor(c.cat), iconHtml: catIcon(c.cat), label: c.cat }; }));
+    return RK.card(
+      /* --i ידני (לא RK.stagger): ל-div הזה כבר יש style, ותכונת style שנייה נבלעת */
+      '<div class="rep-sinking-strip rk-enter" role="group" aria-label="הוצאות לא-חודשיות לפי חודש"' +
+      ' style="--i:2;direction:ltr;display:flex;gap:4px;align-items:flex-end;padding-top:12px">' + cols + '</div>' +
+      '<div class="rep-sinking-heavy" style="font-size:12.5px;color:var(--dim);margin-top:10px">' +
+      '<span aria-hidden="true" style="color:var(--ink2)">●</span> החודש הכבד ביותר: ' + esc(heMonth(x.heaviest.ym)) + ', ' + RK.money(x.heaviest.total) + '</div>' +
+      '<div class="rep-sinking-leg" style="margin-top:8px">' + leg + '</div>',
+      { title: 'מתי זה קרה', cls: 'rep-sinking' });
+  }
+
+  function catsHtml(x) {
+    var body = x.cats.map(function (c) {
+      var w = pct(c.sum, x.total), more = c.n - c.items.length;
+      var items = c.items.map(function (it) {
+        return '<div class="rep-sinking-it" style="display:flex;align-items:baseline;gap:8px;font-size:13px;padding:5px 0;border-top:1px solid var(--line2);min-width:0">' +
+          '<span class="rep-sinking-d" style="flex:0 0 auto;color:var(--dim);font-size:12px;min-width:76px">' + esc(RK.dayLabel(it.date)) + '</span>' +
+          '<span class="rep-sinking-ds" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)">' + esc(it.desc) + '</span>' +
+          '<span style="flex:0 0 auto;font-weight:600">' + RK.money(it.amount) + '</span></div>';
+      }).join('') + (more > 0 ? '<div class="rep-sinking-more" style="font-size:12px;color:var(--dim);padding-top:5px;border-top:1px solid var(--line2)">ועוד ' +
+        (more === 1 ? 'הוצאה אחת קטנה יותר' : more + ' הוצאות קטנות יותר') + '</div>' : '');
+      return '<details class="rk-details rep-sinking-det" style="margin-top:0">' +
+        '<summary style="display:block;width:100%;color:var(--ink);padding:8px 4px">' +
+        '<span class="rep-sinking-sh" style="display:flex;align-items:baseline;gap:7px;min-width:0">' +
+        '<span class="rk-det-a" aria-hidden="true" style="color:var(--faint)">▸</span>' +
+        '<span aria-hidden="true" style="flex:0 0 auto;font-size:15px;line-height:1">' + catIcon(c.cat) + '</span>' +
+        '<span class="rep-sinking-cn" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.cat) +
+        '<span style="color:var(--dim);font-size:11.5px;font-weight:500;margin-inline-start:6px">' + (c.n === 1 ? 'הוצאה אחת' : c.n + ' הוצאות') + '</span></span>' +
+        '<span style="flex:0 0 auto;font-weight:700">' + RK.money(c.sum) + '</span></span>' +
+        '<span class="rep-sinking-share" aria-hidden="true" style="display:block;height:4px;margin:6px 0 0;margin-inline-start:18px;background:var(--line2);border-radius:999px;overflow:hidden">' +
+        '<i style="display:block;height:100%;width:' + w.toFixed(2) + '%;min-width:2px;background:' + catColor(c.cat) + ';border-radius:999px"></i></span>' +
+        '</summary>' +
+        '<div class="rk-det-b" style="margin:4px 0 6px;padding-inline:18px 4px">' + items + '</div></details>';
+    }).join('');
+    return RK.card('<div class="rep-sinking-cats">' + body + '</div>', { title: 'לפי נושא', cls: 'rep-sinking' });
+  }
+
+  function aheadHtml(x) {
+    if (!x.aheadItems.length) return '';
+    var range = x.aheadFrom === x.aheadTo ? heMonth(x.aheadFrom)
+      : (x.aheadFrom.slice(0, 4) === x.aheadTo.slice(0, 4) ? RK.monName(x.aheadFrom) : heMonth(x.aheadFrom)) + '–' + heMonth(x.aheadTo);
+    return RK.card(
+      RK.chips(x.aheadItems.map(function (i) { return esc(i.desc) + ' ' + RK.money(i.amount); })) +
+      '<div class="rep-sinking-once" style="font-size:12px;color:var(--dim);margin-top:10px">חלק מזה היה חד-פעמי.</div>',
+      { title: 'מה חיכה לנו בתקופה הזו בשנה שעברה', sub: range, cls: 'rep-sinking' });
+  }
+
+  function hugeHtml(x) {
+    if (!x.huge || !x.huge.length) return '';
+    var more = x.hugeN - x.huge.length;
+    return RK.card(
+      RK.chips(x.huge.map(function (i) { return esc(i.desc) + ' ' + RK.money(i.amount); })) +
+      '<div class="rep-sinking-once" style="font-size:12px;color:var(--dim);margin-top:10px">' +
+      (more > 0 ? esc('ועוד ' + more + '. ') : '') +
+      'קנייה כזו מתכננים בנפרד, ולכן היא לא נכנסה לסכום החודשי למעלה.</div>',
+      { title: 'חד-פעמי גדול מאוד — לא נכלל בהפרשה', sub: 'סה"כ ' + fmt(x.hugeSum) + ' ₪', cls: 'rep-sinking' });
+  }
+
+  function html(x, P) {
+    if (!x || x.state === 'short') return RK.card(RK.empty('🔍', 'צריך לפחות 3 חודשים מלאים של נתונים', ''));
+    if (x.state !== 'ok') return RK.card(RK.empty('👍', 'אין הוצאות גדולות לא-חודשיות', '')) + (x.huge ? hugeHtml(x) : '');
+    var ins = 'ב-' + x.monthsCovered + ' החודשים האחרונים חגים, מתנות, תיקונים וטיולים עלו ' + b(RK.money(x.total)) +
+      '. אם תפרישו כ-' + b(RK.money(x.perMonth)) + ' בכל חודש לקופה נפרדת, הם לא יפילו אף חודש.';
+    if (x.aheadTotal > 0) ins += ' בשנה שעברה, בחודשים הקרובים, היו כאן ' + b(RK.money(x.aheadTotal)) + ', כדאי שהקופה תהיה מוכנה.';
+    if (x.estimated) ins += ' החישוב יתחדד כשיצטברו 12 חודשים.';
+    return heroHtml(x) + stripHtml(x) + catsHtml(x) + hugeHtml(x) + aheadHtml(x) + RK.insight(ins) +
+      '<div class="rk-foot">נספרות הוצאות מ-300 ₪ ומעלה שלא חוזרות כל חודש (בלי משכנתא, מנויים, סופר ודלק).</div>';
+  }
+
+  REP_DEFS.push({
+    k: 'sinking', t: 'קופה להוצאות הלא-חודשיות', ic: '💰',
+    d: 'כמה להפריש כל חודש לחגים, מתנות, תיקונים וטיולים',
+    g: 'תכנון קדימה', period: 'all',
+    calc: calc, html: html
+  });
+})();
+}catch(e){ console.error("report load rep-sinking.js", e); }
+
+/* --- rep-router.js --- */
+try{
+/* ============================================================
+   rep-router.js — לשונית "📈 דוחות": גלריה, בחירת תקופה, והדוח הנבחר.
+   renderReports(opts?) מרנדר לתוך #repRoot. opts.enter=true מכריח אנימציית כניסה.
+   הנתב לא משנה את סדר REP_DEFS; קבוצות לפי def.g. דוח חדש = קובץ + REP_DEFS.push.
+   ============================================================ */
+var REP_DEFS = (typeof REP_DEFS !== 'undefined' && REP_DEFS) || [];
+(function (root) {
+  'use strict';
+  var GROUP_ORDER = ['מבט על החודש', 'השנה שלנו', 'תכנון קדימה'];
+  var LS_K = 'hb_rep_k', LS_YM = 'hb_rep_ym', LS_Y = 'hb_rep_y';
+  var ENTER_MS = 520;   // 240ms + 5×45ms עיכוב מדורג + מרווח קטן
+
+  function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { } }
+
+  var S = {
+    k: null, ym: null, y: null,
+    gallery: null,        // null = עוד לא הוחלט (ביקור ראשון → פתוח)
+    entered: false,       // האם כבר הייתה כניסה גלויה ללשונית
+    enterNext: false,     // מעבר דוח → אנימציה ברינדור הבא
+    enterTimer: 0, token: 0,
+    ctx: null             // {rows, months, years, today, curYm, curY}
+  };
+
+  /* REP_TODAY (קיבוע "היום" לתצוגה מקדימה / בדיקות) עובד רק בשרת מקומי — לא באתר האמיתי */
+  function isLocal() {
+    try { var h = root.location && root.location.hostname; return h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || h === '::1'; }
+    catch (e) { return false; }
+  }
+  function todayStr() {
+    if (root.REP_TODAY && isLocal() && /^\d{4}-\d{2}-\d{2}$/.test(root.REP_TODAY)) return root.REP_TODAY;
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function defs() { return (typeof REP_DEFS !== 'undefined' && REP_DEFS) || []; }
+  function defOf(k) { var L = defs(); for (var i = 0; i < L.length; i++) if (L[i] && L[i].k === k) return L[i]; return null; }
+  function defaultKey() { return defOf('pace') ? 'pace' : (defs()[0] && defs()[0].k) || null; }
+
+  function groups() {
+    var order = GROUP_ORDER.slice(), by = {};
+    defs().forEach(function (d) {
+      if (!d || !d.k) return;
+      var g = d.g || 'עוד';
+      if (order.indexOf(g) < 0) order.push(g);
+      (by[g] = by[g] || []).push(d);
+    });
+    return order.filter(function (g) { return by[g]; }).map(function (g) { return { g: g, list: by[g] }; });
+  }
+
+  /* הקשר הנתונים — מחושב פעם אחת לכל רינדור מלא */
+  function buildCtx() {
+    var today = todayStr(), curYm = today.slice(0, 7), curY = today.slice(0, 4);
+    var rows = [];
+    try { rows = counted(); } catch (e) { console.error('reports: counted()', e); }
+    var minM = '', maxM = '', ys = {};
+    for (var i = 0; i < rows.length; i++) {
+      var m = monthOf(rows[i].date);
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(m)) continue;
+      if (m > curYm || m < '2000-01') continue;   // תשלום עתידי / שנה שגויה (0202) לא מנפחים את הבוררים
+      if (!minM || m < minM) minM = m;
+      if (!maxM || m > maxM) maxM = m;
+      ys[m.slice(0, 4)] = 1;
+    }
+    var months = [], start = minM && minM < curYm ? minM : curYm, guard = 0;
+    for (var cur = curYm; cur >= start && guard < 600; cur = addMonths(cur, -1), guard++) months.push(cur);
+    ys[curY] = 1;
+    var years = Object.keys(ys).sort().reverse();
+    return { rows: rows, months: months, years: years, today: today, curYm: curYm, curY: curY };
+  }
+
+  /* חודש/שנה שנבחרו נשמרים יחד עם החודש שבו נבחרו. בחודש חדש הדוחות נפתחים שוב על "עכשיו",
+     אחרת "קצב החודש" ייפתח בנובמבר על ספטמבר בלי שישימו לב */
+  function lsPeriod(k) {
+    var v = lsGet(k);
+    if (!v) return null;
+    try { var o = JSON.parse(v); return o && o.at === S.ctx.curYm && typeof o.v === 'string' ? o.v : null; } catch (e) { return null; }
+  }
+  function lsSetPeriod(k, v) { lsSet(k, JSON.stringify({ v: v, at: S.ctx ? S.ctx.curYm : '' })); }
+  function syncState() {
+    var c = S.ctx;
+    if (S.k == null) S.k = lsGet(LS_K);
+    if (!defOf(S.k)) S.k = defaultKey();
+    if (S.ym == null) S.ym = lsPeriod(LS_YM);
+    if (c.months.indexOf(S.ym) < 0) S.ym = c.curYm;
+    if (S.y == null) S.y = lsPeriod(LS_Y);
+    if (c.years.indexOf(S.y) < 0) S.y = c.curY;
+    if (S.gallery == null) S.gallery = !lsGet(LS_K);
+  }
+
+  /* ---------- חלק עליון: כותרת + גלריה + תקופה ---------- */
+  function topHtml() {
+    var c = S.ctx, def = defOf(S.k), h = '';
+    h += '<div class="rk-head"><div><h2 class="rk-h">📈 דוחות</h2>' +
+      '<div class="rk-hs">תמונות קטנות וברורות של הכסף של הבית</div></div></div>';
+    if (S.gallery || !def) {
+      h += '<div class="rk-gal">';
+      if (def) h += '<div class="rk-gal-top"><span class="rk-gal-tt">בחרו דוח</span>' +
+        '<button type="button" class="rk-more"' + act('rep_gallery', '') + ' aria-expanded="true">סגירה ▴</button></div>';
+      groups().forEach(function (gr) {
+        h += '<div class="rk-grp"><div class="rk-grp-t">' + esc(gr.g) + '</div><div class="rk-tiles">' +
+          gr.list.map(function (d) {
+            var on = d.k === S.k;
+            return '<button type="button" class="rk-tile' + (on ? ' on' : '') + '"' + act('rep_pick', d.k) +
+              ' aria-pressed="' + (on ? 'true' : 'false') + '">' +
+              '<span class="rk-tile-ic" aria-hidden="true">' + esc(d.ic) + '</span>' +
+              '<span class="rk-tile-t">' + esc(d.t) + '</span>' +
+              '<span class="rk-tile-d">' + esc(d.d) + '</span></button>';
+          }).join('') + '</div></div>';
+      });
+      h += '</div>';
+    } else {
+      h += '<div class="rk-cur"><span class="rk-cur-ic" aria-hidden="true">' + esc(def.ic) + '</span>' +
+        '<span class="rk-cur-t">' + esc(def.t) + '</span>' +
+        '<button type="button" class="rk-more"' + act('rep_gallery', '') + ' aria-expanded="false">כל הדוחות ▾</button></div>';
+    }
+    if (def && c.rows.length) h += periodHtml(def);
+    return h;
+  }
+
+  function periodHtml(def) {
+    var c = S.ctx;
+    if (def.period === 'month') {
+      var i = c.months.indexOf(S.ym);
+      return '<div class="rk-period">' +
+        '<button type="button" class="rk-step"' + act('rep_ym_step', '-1') + ' aria-label="חודש קודם"' +
+        (i >= c.months.length - 1 ? ' disabled' : '') + '>›</button>' +
+        '<select class="rk-sel"' + act('rep_ym', '') + ' aria-label="חודש">' +
+        c.months.map(function (m) {
+          return '<option value="' + esc(m) + '"' + (m === S.ym ? ' selected' : '') + '>' +
+            esc(heMonth(m) + (m === c.curYm ? ' (חלקי)' : '')) + '</option>';
+        }).join('') + '</select>' +
+        '<button type="button" class="rk-step"' + act('rep_ym_step', '1') + ' aria-label="חודש הבא"' +
+        (i <= 0 ? ' disabled' : '') + '>‹</button></div>';
+    }
+    if (def.period === 'year') {
+      return '<div class="rk-period"><select class="rk-sel"' + act('rep_y', '') + ' aria-label="שנה">' +
+        c.years.map(function (y) {
+          return '<option value="' + esc(y) + '"' + (y === S.y ? ' selected' : '') + '>' +
+            esc(y + (y === c.curY ? ' (עד היום)' : '')) + '</option>';
+        }).join('') + '</select></div>';
+    }
+    return '<div class="rk-period">' + RK.pill('12 החודשים האחרונים', 'dim') + '</div>';
+  }
+
+  /* ---------- גוף הדוח ---------- */
+  function destroyCharts(el) {
+    try { RK.destroyCharts(); } catch (e) { }
+    if (!el || !el.querySelectorAll) return;
+    var cv = el.querySelectorAll('canvas');
+    for (var i = 0; i < cv.length; i++) { try { if (cv[i]._rk) { cv[i]._rk.destroy(); cv[i]._rk = null; } } catch (e) { } }
+  }
+  function errorHtml() { return RK.card(RK.empty('🛠️', 'הדוח לא הצליח להיטען', 'אפשר לבחור חודש או דוח אחר — שאר הלשונית עובדת כרגיל')); }
+
+  function renderBody(enter) {
+    var rootEl = document.getElementById('repRoot');
+    var body = rootEl && rootEl.querySelector('.rk-report');
+    if (!body) return;
+    var c = S.ctx, def = defOf(S.k);
+    S.token++;
+    var tok = S.token;
+    clearTimeout(S.enterTimer);
+    RK.entering = false;
+    destroyCharts(rootEl);
+    body.classList.remove('rk-entering');
+
+    if (!defs().length) { body.innerHTML = RK.card(RK.empty('🧩', 'עוד אין דוחות', '')); return; }
+    if (!c.rows.length) {
+      body.innerHTML = RK.card(RK.empty('🌱', 'עוד אין תנועות', 'אחרי שתוסיפו או תייבאו תנועות, הדוחות יתמלאו כאן'));
+      return;
+    }
+    var P = {
+      ym: def.period === 'all' ? c.curYm : S.ym,
+      year: def.period === 'all' ? c.curY : (def.period === 'year' ? S.y : S.ym.slice(0, 4)),
+      today: c.today,
+      cats: ((typeof DB !== 'undefined' && DB && DB.cats) || []).filter(function (x) { return x && !x.deleted; })
+    };
+    if (def.period === 'year') P.ym = S.y === c.curY ? c.curYm : S.y + '-12';
+    S.sig = S.k + '|' + S.ym + '|' + S.y;   // מה מוצג עכשיו — לשמירת פרטים פתוחים ברינדור מחדש
+    var data, html;
+    try { data = def.calc(c.rows, P); html = def.html(data, P); }
+    catch (e) { console.error('report ' + def.k + ' failed', e); body.innerHTML = errorHtml(); return; }
+    if (enter) { body.classList.add('rk-entering'); RK.entering = true; }
+    body.setAttribute('data-k', def.k);
+    body.innerHTML = typeof html === 'string' && html ? html : errorHtml();
+    if (typeof def.mount === 'function') {
+      try { def.mount(body, data, P); }
+      catch (e) {
+        console.error('report ' + def.k + ' mount failed', e);
+        destroyCharts(rootEl); body.innerHTML = errorHtml();
+      }
+    }
+    if (enter) {
+      S.enterTimer = setTimeout(function () {
+        if (tok !== S.token) return;
+        body.classList.remove('rk-entering');
+        RK.entering = false;
+      }, ENTER_MS);
+    }
+  }
+
+  /* החלק העליון נבנה מחדש בכל שינוי; הפוקוס חוזר לאותו כפתור/בורר (אחרת הוא נופל ל-body,
+     ומשתמש מקלדת חוזר לראש הדף בכל צעד חודש). fallback: כפתור שנעלם (גלריה נסגרה) → "כל הדוחות" */
+  function renderTop(fallbackSel) {
+    var el = document.getElementById('repRoot');
+    var top = el && el.querySelector('.rk-top');
+    if (!top) return;
+    var ae = document.activeElement, fa = null, fid = null;
+    if (ae && ae !== document.body && top.contains(ae)) { fa = ae.getAttribute('data-act'); fid = ae.getAttribute('data-id'); }
+    top.innerHTML = topHtml();
+    if (!fa) return;
+    var L = top.querySelectorAll('[data-act]'), t = null;
+    for (var i = 0; i < L.length; i++) if (L[i].getAttribute('data-act') === fa && L[i].getAttribute('data-id') === fid) { t = L[i]; break; }
+    if (!t || t.disabled) t = top.querySelector(fallbackSel || '.rk-sel') || top.querySelector('.rk-more');
+    try { if (t) t.focus({ preventScroll: true }); } catch (e) { }
+  }
+
+  /* הודעה קצרה לקורא מסך אחרי שינוי דוח/תקופה (במקום להקריא את כל הדוח) */
+  function announce() {
+    var el = document.getElementById('repRoot'), st = el && el.querySelector('.rk-status'), def = defOf(S.k);
+    if (!st || !def || !S.ctx) return;
+    var per = def.period === 'month' ? heMonth(S.ym) : def.period === 'year' ? S.y : '12 החודשים האחרונים';
+    st.textContent = 'מוצג: ' + def.t + ' · ' + per;
+  }
+
+  function isVisible(el) {
+    try { return !!(el.offsetParent || (el.getClientRects && el.getClientRects().length)); } catch (e) { return true; }
+  }
+
+  function renderReports(opts) {
+    var el = document.getElementById('repRoot');
+    if (!el) return;
+    opts = opts || {};
+    S.ctx = buildCtx();
+    syncState();
+    var visible = isVisible(el);
+    var enter = !!opts.enter || S.enterNext || (!S.entered && visible);
+    if (visible) S.entered = true;
+    S.enterNext = false;
+    /* רינדור מחדש של אותו דוח ואותה תקופה (סנכרון ברקע): פרטים שהיו פתוחים נשארים פתוחים */
+    var sig = S.k + '|' + S.ym + '|' + S.y, open = [];
+    if (S.sig === sig) {
+      var od = el.querySelectorAll('.rk-report details');
+      for (var i = 0; i < od.length; i++) if (od[i].open) open.push(i);
+    }
+    destroyCharts(el);
+    el.innerHTML = '<div class="rk-top"></div><div class="rk-sr rk-status" role="status"></div><div class="rk-report"></div>';
+    renderTop();
+    renderBody(enter && visible);
+    if (open.length) {
+      var nd = el.querySelectorAll('.rk-report details');
+      open.forEach(function (j) { if (nd[j]) nd[j].open = true; });
+    }
+  }
+
+  /* ---------- פעולות ---------- */
+  ACTIONS.rep_pick = function (k) {
+    if (!defOf(k)) return;
+    var changed = k !== S.k;
+    S.k = k; S.gallery = false;
+    lsSet(LS_K, k);
+    if (!S.ctx) return renderReports();
+    renderTop('.rk-more');
+    if (changed) {
+      S.enterNext = false;
+      renderBody(true);
+      announce();
+      try { var el = document.getElementById('repRoot'); if (el && el.getBoundingClientRect().top < 0) el.scrollIntoView({ block: 'start' }); } catch (e) { }
+    }
+  };
+  ACTIONS.rep_gallery = function () {
+    S.gallery = !S.gallery;
+    if (!S.ctx) return renderReports();
+    renderTop(S.gallery ? '.rk-tile.on' : '.rk-more');
+  };
+  function setYm(ym) {
+    if (!S.ctx || S.ctx.months.indexOf(ym) < 0) return;
+    S.ym = ym; lsSetPeriod(LS_YM, ym);
+    renderTop(); renderBody(false); announce();
+  }
+  ACTIONS.rep_ym = function (id, el) { if (el) setYm(el.value); };
+  ACTIONS.rep_ym_step = function (id) {
+    if (!S.ctx) return;
+    var i = S.ctx.months.indexOf(S.ym), j = i - Number(id || 0);   // months: החדש ראשון
+    if (j >= 0 && j < S.ctx.months.length) setYm(S.ctx.months[j]);
+  };
+  ACTIONS.rep_y = function (id, el) {
+    if (!el || !S.ctx || S.ctx.years.indexOf(el.value) < 0) return;
+    S.y = el.value; lsSetPeriod(LS_Y, S.y);
+    renderTop(); renderBody(false); announce();
+  };
+
+  root.renderReports = renderReports;
+})(typeof window !== 'undefined' ? window : globalThis);
+}catch(e){ console.error("report load rep-router.js", e); }
+/* ===== דוחות: סוף ===== */
 /* ---------------- אתחול ---------------- */
 function renderAll(){
   applyTitle(); applyRole(); updateBadge(); renderConnBar();
   const on=document.querySelector('#nav button.on');
-  gotoTab(on?on.dataset.tab:'dash');
+  gotoTab(on?on.dataset.tab:'dash', true);
   fillAddCats();
 }
 function boot(){

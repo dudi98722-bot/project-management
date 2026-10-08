@@ -1,0 +1,64 @@
+/* ============================================================
+   rep-subs.css — "מנויים וחיובים קבועים". כל בורר מתחיל ב-.rep-subs.
+   אין כאן ריחוף ואין לחיצות: השורות הן מידע, לא כפתורים.
+   ============================================================ */
+
+/* כניסה: השורות עצמן נכנסות במדורג (rk-enter), ולכן כרטיסי הרשימה רק מתבהרים.
+   אחרת השורה זזה פעמיים (הכרטיס + השורה). בלי .rk-entering משך האנימציה 0 — אין השפעה. */
+.rep-subs.rep-subs-list.rk-card:not(.rk-enter),
+div.rep-subs.rep-subs-cols:not(.rk-enter){animation-name:rk-fade}
+
+/* שתי הרשימות: אחת מתחת לשנייה, ובמסך רחב זו לצד זו */
+.rep-subs.rep-subs-cols{display:grid;grid-template-columns:minmax(0,1fr);column-gap:14px;align-items:start;min-width:0}
+@media (min-width:900px){ .rep-subs.rep-subs-cols{grid-template-columns:repeat(2,minmax(0,1fr))} }
+
+/* ---------- כרטיס הפתיחה ---------- */
+.rep-subs .rep-subs-big{font-size:26px;font-weight:800;letter-spacing:-.025em;line-height:1.15;color:var(--ink);
+  font-variant-numeric:tabular-nums lining-nums}
+.rep-subs .rep-subs-unit{font-size:16px;font-weight:700;letter-spacing:0;color:var(--ink2)}
+.rep-subs .rep-subs-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin-top:6px}
+.rep-subs .rep-subs-yr{font-size:13.5px;font-weight:600;color:var(--dim)}
+.rep-subs .rep-subs-lead{margin:12px 0 0;padding-top:12px;border-top:1px solid var(--line2);
+  font-size:14px;line-height:1.55;color:var(--ink2);text-wrap:pretty}
+
+/* ---------- כותרת רשימה: שם + סה"כ לשנה ---------- */
+.rep-subs .rep-subs-hd{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-width:0}
+.rep-subs .rep-subs-hd .rk-card-t{margin:0}
+.rep-subs .rep-subs-hd-v{flex:0 0 auto;font-size:13px;font-weight:700;color:var(--ink2);white-space:nowrap}
+.rep-subs .rep-subs-hd+.rk-card-s{margin:2px 0 6px}
+
+/* ---------- שורה ---------- */
+.rep-subs .rep-subs-rows{display:flex;flex-direction:column;min-width:0}
+.rep-subs .rep-subs-row{padding:11px 0;border-top:1px solid var(--line2);min-width:0}
+.rep-subs .rep-subs-row:first-child{border-top:0}
+.rep-subs .rep-subs-row:last-child{padding-bottom:2px}
+
+.rep-subs .rep-subs-l1{display:flex;align-items:baseline;gap:8px;min-width:0}
+.rep-subs .rep-subs-ic{flex:0 0 16px;width:16px;font-size:15px;line-height:1;text-align:center}
+.rep-subs .rep-subs-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:14px;font-weight:600;color:var(--ink)}
+.rep-subs .rep-subs-yv{flex:0 0 auto;white-space:nowrap;font-size:14px}
+.rep-subs .rep-subs-yv b{font-weight:700;color:var(--ink)}
+.rep-subs .rep-subs-yv small{font-size:12px;font-weight:500;color:var(--dim)}
+
+/* שורה 2 ו-3 מתחילות מתחת לשם (16px אייקון + 8px רווח) */
+.rep-subs .rep-subs-l2{display:flex;flex-wrap:wrap;align-items:center;gap:5px 6px;margin-top:6px;padding-inline-start:24px;min-width:0}
+.rep-subs .rep-subs-l2 .rk-pill{font-size:11.5px;padding:1px 8px}
+.rep-subs .rep-subs-amt{margin-inline-start:auto;font-size:12.5px;color:var(--dim);white-space:nowrap}
+
+/* 12 נקודות: הישן משמאל, האחרון מימין (כמו ציר הזמן בגרפים) */
+.rep-subs .rep-subs-l3{margin-top:8px;padding-inline-start:24px;line-height:0}
+.rep-subs .rep-subs-dots{display:inline-flex;direction:ltr;gap:3px}
+.rep-subs .rep-subs-dots>i{display:block;width:8px;height:8px;border-radius:999px;background:var(--line2);
+  box-shadow:inset 0 0 0 1px var(--line)}
+.rep-subs .rep-subs-dots>i.on{box-shadow:none}
+
+/* ---------- נעלמו ---------- */
+.rep-subs.rep-subs-gone{margin-bottom:14px;min-width:0}
+.rep-subs.rep-subs-gone .rk-details{margin-top:0}
+.rep-subs.rep-subs-gone .rk-det-b{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-sm);padding:4px 14px 10px}
+.rep-subs .rep-subs-row.gone .rep-subs-name,
+.rep-subs .rep-subs-row.gone .rep-subs-yv{color:var(--dim);font-weight:600}
+.rep-subs .rep-subs-row.gone .rep-subs-dots>i.on{opacity:.55}
+.rep-subs .rep-subs-last{font-size:12.5px;color:var(--dim)}

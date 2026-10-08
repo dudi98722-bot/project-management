@@ -1,0 +1,31 @@
+/* rep-sinking.css — רק לדוח "קופה להוצאות הלא-חודשיות". כל בורר מתחיל ב-.rep-sinking
+   הפריסה הבסיסית יושבת ב-style של ה-HTML, כך שבלי הקובץ הזה הדוח עדיין תקין;
+   כאן רק ליטוש: רצועת החודשים נכנסת בשקיפות בלבד, מקרא אופקי, ורשימת נושאים צפופה. */
+
+/* הרצועה נכנסת כקבוצה אחת — שקיפות בלבד, בלי תזוזה (הכרטיס עצמו כבר זז) */
+.rep-sinking .rep-sinking-strip.rk-enter{animation-name:rk-fade}
+
+/* בטלפון צר: תווית לכל עמודה שנייה, בלי לשנות את גובה השורה.
+   סופרים מהסוף, כדי שהחודש האחרון (הכי רלוונטי) תמיד יקבל תווית */
+@media (max-width:400px){
+  .rep-sinking .rep-sinking-col:nth-last-child(even) .rep-sinking-ml{visibility:hidden}
+}
+
+/* מקרא אופקי מתחת לרצועה */
+.rep-sinking .rep-sinking-leg .rk-leg{flex-direction:row;flex-wrap:wrap;column-gap:12px;row-gap:0}
+.rep-sinking .rep-sinking-leg .rk-leg-row{width:auto;padding:3px 2px;font-size:12px}
+.rep-sinking .rep-sinking-leg .rk-leg-l{overflow:visible}
+
+/* רשימת הנושאים: שורות צמודות עם קו מפריד, בלי מרווח של rk-details */
+.rep-sinking .rep-sinking-det{margin-top:0}
+.rep-sinking .rep-sinking-det+.rep-sinking-det{border-top:1px solid var(--line2)}
+.rep-sinking .rep-sinking-det>summary{border-radius:8px;transition:background-color var(--dur-fast) ease}
+.rep-sinking .rep-sinking-det>summary:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.rep-sinking .rep-sinking-det .rk-det-b{margin-top:4px}
+
+@media (hover:hover) and (pointer:fine){
+  .rep-sinking .rep-sinking-det>summary:hover{background:var(--card2)}
+}
+@media (prefers-reduced-motion:reduce){
+  .rep-sinking .rep-sinking-det>summary{transition:none}
+}

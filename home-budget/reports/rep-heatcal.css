@@ -1,0 +1,89 @@
+/* ============================================================
+   rep-heatcal.css — "לוח החודש". כל בורר מתחיל ב-.rep-heatcal.
+   תנועה: transform/opacity בלבד; ריחוף רק בעכבר אמיתי.
+   ============================================================ */
+.rep-heatcal [hidden]{display:none!important}
+
+/* שורת המתג + "חודש חלקי" */
+.rep-heatcal .rep-heatcal-top{display:flex;align-items:center;justify-content:space-between;gap:8px 10px;flex-wrap:wrap;margin-bottom:12px}
+
+/* כרטיס הלוח — ריפוד צר בטלפון כדי שהתאים יהיו גדולים */
+.rep-heatcal .rep-heatcal-cal{padding:16px 14px 14px}
+@media (max-width:399px){ .rep-heatcal .rep-heatcal-cal{padding:12px 8px} }
+
+/* ---------- הלוח ---------- */
+.rep-heatcal .rep-heatcal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;max-width:420px;margin-inline:auto}
+.rep-heatcal .rep-heatcal-h{text-align:center;font-size:11.5px;font-weight:600;color:var(--dim);line-height:1.4;padding-bottom:2px}
+.rep-heatcal .rep-heatcal-cell{aspect-ratio:1/1;min-width:0;margin:0;padding:4px;border:1px solid transparent;border-radius:10px;
+  display:flex;flex-direction:column;justify-content:space-between;align-items:stretch;overflow:hidden;
+  font:inherit;font-size:11px;line-height:1.15;color:var(--ink);text-align:start;background:transparent}
+.rep-heatcal .rep-heatcal-cell .d{align-self:flex-start;color:var(--dim);font-weight:600;font-variant-numeric:tabular-nums lining-nums}
+.rep-heatcal .rep-heatcal-cell .a{align-self:flex-end;max-width:100%;font-size:10.5px;font-weight:700;letter-spacing:-.01em;overflow:hidden}
+.rep-heatcal .rep-heatcal-cell .a.xs{font-size:9.5px}
+.rep-heatcal .rep-heatcal-cell .a.xxs{font-size:8.5px;letter-spacing:-.03em}
+.rep-heatcal .rep-heatcal-cell .q{align-self:center;font-size:13px;line-height:1}
+
+/* רמות — סולם אחד של צבע המותג (בהיר = מעט, כהה = הרבה) */
+.rep-heatcal .L0{background:var(--card2);border-color:var(--line2)}
+.rep-heatcal .L1{background:#eef0fe}
+.rep-heatcal .L2{background:#c9c9f5}
+/* על L3 טקסט כהה: לבן נותן רק ~3:1 בגודל 10.5px */
+.rep-heatcal .L3{background:#8f87e6;color:#1e1b4b}
+.rep-heatcal .L4{background:#5145cd;color:#fff}
+/* מספר היום על L1/L2: --dim נותן רק ~3:1 על #c9c9f5 */
+.rep-heatcal .rep-heatcal-cell.L1 .d,.rep-heatcal .rep-heatcal-cell.L2 .d{color:var(--ink2)}
+.rep-heatcal .rep-heatcal-cell.L3 .d{color:#1e1b4b}
+.rep-heatcal .rep-heatcal-cell.L4 .d{color:rgba(255,255,255,.8)}
+
+.rep-heatcal .rep-heatcal-cell.fut{background:transparent;border:1px dashed var(--line)}
+.rep-heatcal .rep-heatcal-cell.fut .d{color:var(--faint)}
+.rep-heatcal .rep-heatcal-cell.nd{background:transparent;border:1px solid var(--line2)}
+.rep-heatcal .rep-heatcal-cell.nd .d,.rep-heatcal .rep-heatcal-cell.nd .q{color:var(--faint)}
+.rep-heatcal .rep-heatcal-cell.today{box-shadow:0 0 0 2px var(--brand)}
+.rep-heatcal .rep-heatcal-cell[aria-pressed=true]{box-shadow:0 0 0 2px var(--ink2)}
+
+.rep-heatcal button.rep-heatcal-cell{cursor:pointer;-webkit-appearance:none;appearance:none;-webkit-tap-highlight-color:transparent;
+  transition:transform var(--dur-press) var(--ease-out)}
+.rep-heatcal button.rep-heatcal-cell:active{transform:scale(.97)}
+.rep-heatcal button.rep-heatcal-cell:focus-visible,.rep-heatcal .rep-heatcal-x:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+
+/* ---------- מקרא ---------- */
+.rep-heatcal .rep-heatcal-leg{max-width:420px;margin:12px auto 0}
+.rep-heatcal .rep-heatcal-leg .rk-chips{justify-content:center}
+.rep-heatcal .rep-heatcal-sw{display:inline-block;flex:0 0 11px;width:11px;height:11px;border-radius:3px}
+.rep-heatcal .rep-heatcal-sw.L0{border:1px solid var(--line2)}
+.rep-heatcal .rep-heatcal-sw.L1{box-shadow:inset 0 0 0 1px var(--brand-line)}
+.rep-heatcal .rep-heatcal-foot{max-width:420px;margin-inline:auto;text-align:center;text-wrap:balance}
+
+/* ---------- פירוט יום ---------- */
+.rep-heatcal .rep-heatcal-det{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow-sm);
+  padding:12px 14px;margin-bottom:14px;min-width:0;animation:rep-heatcal-in 180ms var(--ease-out) both}
+.rep-heatcal .rep-heatcal-det-h{display:flex;align-items:center;gap:8px;margin-bottom:6px;min-width:0}
+.rep-heatcal .rep-heatcal-det-h .t{flex:1;min-width:0;font-size:14.5px;font-weight:700;color:var(--ink)}
+.rep-heatcal .rep-heatcal-det-h .w{font-size:12.5px;font-weight:500;color:var(--dim);margin-inline-start:6px}
+.rep-heatcal .rep-heatcal-det-h .v{flex:0 0 auto;font-size:14.5px;font-weight:700}
+.rep-heatcal .rep-heatcal-x{flex:0 0 30px;width:30px;height:30px;border-radius:999px;border:1px solid var(--line);background:var(--card2);
+  color:var(--dim);font-size:17px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0 0 2px;
+  -webkit-tap-highlight-color:transparent;transition:transform var(--dur-press) var(--ease-out)}
+.rep-heatcal .rep-heatcal-x:active{transform:scale(.97)}
+@media (max-width:639px){ .rep-heatcal .rep-heatcal-x{flex-basis:40px;width:40px;height:40px} }
+.rep-heatcal .rep-heatcal-q{font-size:13px;font-weight:600;color:var(--ok);margin:2px 0 6px}
+.rep-heatcal .rep-heatcal-more{font-size:12.5px;color:var(--dim);padding:4px 6px 0}
+@keyframes rep-heatcal-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@keyframes rep-heatcal-fade{from{opacity:0}to{opacity:1}}
+
+@media (hover:hover) and (pointer:fine){
+  .rep-heatcal button.rep-heatcal-cell:hover{filter:brightness(.97)}
+  .rep-heatcal .rep-heatcal-x:hover{color:var(--ink2)}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .rep-heatcal button.rep-heatcal-cell,.rep-heatcal .rep-heatcal-x{transition:none}
+  .rep-heatcal button.rep-heatcal-cell:active,.rep-heatcal .rep-heatcal-x:active{transform:none}
+  .rep-heatcal .rep-heatcal-det{animation:rep-heatcal-fade 150ms ease both}
+}
+
+/* כותרת פירוט היום: הסכום של המצב המוצג בלבד (תואם לתא) */
+.rep-heatcal[data-mode=var] .rep-heatcal-det-h .v[data-m=all],
+.rep-heatcal[data-mode=all] .rep-heatcal-det-h .v[data-m=var]{display:none}
+.rep-heatcal .rep-heatcal-det-h .v .fx{display:block;font-size:11.5px;font-weight:500;color:var(--dim);text-align:end}
