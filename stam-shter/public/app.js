@@ -986,6 +986,14 @@ const consignSaleCol = {
   },
 };
 
+// מוצר ולצידו הסופר שממנו נקנה. בכרטיס הלקוח ובמרחב שלו הופיע שם המוצר
+// בלבד, ולא היה אפשר לדעת של מי הסחורה בלי לפתוח את החבילה.
+const productScribeCol = {
+  label: 'מוצר',
+  render: (r) => esc(r.product_name || '—')
+    + (r.scribe_name ? ` <span class="mini">· ${esc(r.scribe_name)}</span>` : ''),
+};
+
 // מה שהוחזר לסופר. בלי העמודה הזו החוב נראה כאילו אינו תואם את הכמות:
 // 30 יחידות ב-480 אבל חוב של 13,920, בלי שום רמז שאחת חזרה אליו.
 const returnedCol = {
@@ -2034,7 +2042,7 @@ function prodSales(cfgOnly) {
       { label: 'רוכש', render: r => esc(r.customer_name || '—') },
       { label: 'תאריך', render: r => dt(r.date) },
       { label: 'מחבילה', render: r => r.purchase_id ? `<span class="pill n">#${r.purchase_id}</span>` : '—' },
-      { label: 'מוצר', render: r => esc(r.product_name || '—') + (r.scribe_name ? ` <span class="mini">· ${esc(r.scribe_name)}</span>` : '') },
+      productScribeCol,
       { label: 'כמות', cls: 'num', render: r => numCell(r.quantity), total: rows => numCell(sumBy(rows, 'quantity')) },
       curCol,
       { label: "מחיר ליח'", cls: 'num', render: r => mc(r.price_per_unit, r) },
@@ -2897,7 +2905,7 @@ function customerCardHTML(d) {
     </div>
     <div class="card"><h3>צד מוצרים — מכירות לו</h3>
       ${tableHTML([{ label: 'תאריך', render: r => dt(r.date) },
-                   { label: 'מוצר', render: r => esc(r.product_name || '—') },
+                   productScribeCol,
                    { label: 'כמות', cls: 'num', render: r => numCell(r.quantity) },
                    consignSaleCol,
                    curCol,
@@ -5581,7 +5589,7 @@ async function loadCustomerSpace(id) {
 
     ${wsSec('sales', 'מכירות מוצרים לו', d.sales.length, tableHTML([
       { label: 'תאריך', render: r => dt(r.date) },
-      { label: 'מוצר', render: r => esc(r.product_name || '—') },
+      productScribeCol,
       { label: 'כמות', cls: 'num', render: r => numCell(r.quantity), total: rs => numCell(sumBy(rs, 'quantity')) },
       consignSaleCol,
       curCol,
